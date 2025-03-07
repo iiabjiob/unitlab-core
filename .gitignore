@@ -37,4 +37,4 @@ coverage
 __pycache__/
 *.pyc
 
-backend/venv/
+.venv/
