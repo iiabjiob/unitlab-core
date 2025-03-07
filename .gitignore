@@ -36,3 +36,5 @@ coverage
 # FastAPI
 __pycache__/
 *.pyc
+
+backend/venv/
