@@ -31,7 +31,18 @@ services:
       DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
     expose:
       - "8000"
-      
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: fat-simulator-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
 
   nginx:
     image: nginx:latest  # или build: ./nginx если используем Dockerfile
