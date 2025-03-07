@@ -25,6 +25,7 @@ services:
       DATABASE_URL: "postgresql://myuser:mypassword@db:5432/mydatabase"
     expose:
       - "8000"
+      
 
   nginx:
     image: nginx:latest  # или build: ./nginx если используем Dockerfile
