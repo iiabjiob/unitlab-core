@@ -12,6 +12,16 @@ services:
     ports:
       - "8000:8000"
 
+  adminer:
+    image: adminer
+    container_name: fat-simulator-adminer
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
   # (Опционально) Поменять настройку nginx:
   # может захотим другой порт для dev, чтоб не конфликтовать с системой.
   nginx:

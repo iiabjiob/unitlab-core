@@ -18,6 +18,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - app_network
 
   api:
     build: ./backend
@@ -26,23 +28,14 @@ services:
     env_file:
       - .env  # Подключаем .env
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
     expose:
       - "8000"
-
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: fat-simulator-pgadmin
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
-    ports:
-      - "5050:80"
-    depends_on:
-      - db
+    networks:
+      - app_network
 
   nginx:
     image: nginx:latest  # или build: ./nginx если используем Dockerfile
@@ -57,5 +50,11 @@ services:
       - ./frontend/dist:/usr/share/nginx/html
       # Монтируем конфиг Nginx (см. nginx.conf ниже)
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - app_network
+
 volumes:
   db_data:
+
+networks:
+  app_network:
