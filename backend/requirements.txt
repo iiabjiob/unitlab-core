@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+pymodbus
+paho-mqtt
+SQLAlchemy
+python-dotenv
+psycopg2-binary
