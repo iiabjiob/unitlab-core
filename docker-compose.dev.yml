@@ -1,16 +1,4 @@
 services:
-  api:
-    # Переопределяем команду, добавляя --reload для "горячей" перезагрузки
-    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-    # Примонтируем локальный код, чтобы изменения сразу были видны
-    volumes:
-      - ./backend/app:/app/app
-
-    # Прокинем порт наружу, если хотим обращаться к FastAPI напрямую
-    # (Например, http://localhost:8000/docs )
-    ports:
-      - "8000:8000"
 
   adminer:
     image: adminer

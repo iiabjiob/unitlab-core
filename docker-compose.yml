@@ -21,22 +21,6 @@ services:
     networks:
       - app_network
 
-  api:
-    build: ./backend
-    container_name: fat-simulator-api
-    restart: unless-stopped
-    env_file:
-      - .env  # Подключаем .env
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}"
-    expose:
-      - "8000"
-    networks:
-      - app_network
-
   nginx:
     image: nginx:latest  # или build: ./nginx если используем Dockerfile
     container_name: fat-simulator-nginx
