@@ -1,27 +1,20 @@
-from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-import os
-from dotenv import load_dotenv
+from app.core.config import settings
 
-# Загружаем переменные из .env
-load_dotenv()
+# Асинхронный движок для SQLAlchemy
+engine = create_async_engine(settings.DATABASE_URL, future=True, echo=True)
 
-# Подключение к базе данных
-DATABASE_URL = os.getenv("DATABASE_URL")
+# Сессия для работы с БД
+AsyncSessionLocal = sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
 
-# Создаём движок SQLAlchemy
-engine = create_engine(DATABASE_URL)
-
-# Создаём фабрику сессий
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Базовый класс для моделей
 Base = declarative_base()
 
-# Функция для получения сессии (используется в зависимостях FastAPI)
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Dependency для получения асинхронной сессии
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        yield session

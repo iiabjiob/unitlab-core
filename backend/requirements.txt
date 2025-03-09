@@ -3,5 +3,7 @@ uvicorn[standard]
 pymodbus
 paho-mqtt
 SQLAlchemy
-python-dotenv
+pydantic
+pydantic-settings
 psycopg2-binary
+asyncpg
