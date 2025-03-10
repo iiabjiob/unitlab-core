@@ -24,3 +24,10 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     return Settings()
+
+# Проверка: загружены ли переменные
+if __name__ == "__main__":
+    settings = get_settings()
+    print(f"✅ POSTGRES_USER={settings.postgres_user}")
+    print(f"✅ POSTGRES_DB={settings.postgres_db}")
+    print(f"✅ DATABASE_URL={settings.database_url}")
