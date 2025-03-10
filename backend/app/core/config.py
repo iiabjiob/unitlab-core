@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -14,7 +15,11 @@ class Settings(BaseSettings):
     postgres_host: str = "localhost"
     postgres_port: int = 5432
 
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(
+        env_file=str(Path(__file__).parent.parent / ".env"),  # Путь к .env в корне проекта
+        env_file_encoding="utf-8",
+        extra="allow",
+    )
 
     @property
     def database_url(self) -> str:
