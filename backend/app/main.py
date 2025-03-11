@@ -2,17 +2,15 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.core.config import get_settings
 
-settings = get_settings()
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(
-    title=settings.app_name,
-    description=settings.description,
-    version=settings.version,
-    debug=settings.debug,
+    title=get_settings.app_name,
+    description=get_settings.description,
+    version=get_settings.version,
+    debug=get_settings.debug,
     lifespan=lifespan
     )
 
