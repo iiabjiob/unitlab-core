@@ -13,8 +13,9 @@ app = FastAPI(
     description=settings.description,
     version=settings.version,
     debug=settings.debug,
-    lifespan=lifespan)
+    lifespan=lifespan
+    )
 
 @app.get("/")
 def read_root():
-    return {"message": f"Welcome to {settings.app_name}"}
+    return {"message": f"Welcome to {get_settings.app_name}"}
