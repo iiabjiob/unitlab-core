@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from api import wifi
 from contextlib import asynccontextmanager
 from app.core.config import get_settings
 
@@ -16,6 +17,5 @@ app = FastAPI(
     lifespan=lifespan
     )
 
-@app.get("/")
-def read_root():
-    return {"message": f"Welcome to {settings.app_name}"}
+# Подключаем роутер Wi-Fi
+app.include_router(wifi.router)
