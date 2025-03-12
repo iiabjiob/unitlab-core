@@ -1,5 +1,5 @@
 <template>
-  <div v-if="message" :class="alertClass" class="p-4 rounded-md text-sm flex items-center">
+  <div v-if="message" :class="alertClass">
     <span v-if="icon" class="mr-2">{{ icon }}</span>
     <span>{{ message }}</span>
   </div>
@@ -22,10 +22,10 @@ const props = defineProps({
 
 const alertClass = computed(() => {
   return {
-    "bg-red-100 text-red-700 border border-red-400": props.type === "error",
-    "bg-yellow-100 text-yellow-700 border border-yellow-400": props.type === "warning",
-    "bg-blue-100 text-blue-700 border border-blue-400": props.type === "info",
-    "bg-green-100 text-green-700 border border-green-400": props.type === "success",
+    "text-red-700 dark:text-red-300": props.type === "error",
+    "text-yellow-700 dark:text-yellow-300": props.type === "warning",
+    "text-blue-700 dark:text-blue-300": props.type === "info",
+    "text-green-700 dark:text-green-300": props.type === "success",
   };
 });
 </script>

@@ -2,6 +2,8 @@
 import { ref, onMounted } from "vue";
 import axios from "axios";
 import ButtonComponent from "@/components/ButtonComponent.vue";
+import AlertComponent from "@/components/AlertComponent.vue";
+import InputComponent from "@/components/InputComponent.vue";
 
 const networks = ref([]);
 const selectedNetwork = ref(null);
@@ -9,26 +11,27 @@ const password = ref("");
 const isLoading = ref(false);
 const message = ref("");
 
-// Получение списка Wi-Fi сетей
+// Fetch available Wi-Fi networks
 const fetchNetworks = async () => {
   try {
     isLoading.value = true;
     const response = await axios.get("/api/wifi/scan", { baseURL: "/" });
     if (response.data.error) {
-      message.value = response.data.error; // Выводим ошибку
-      networks.value = []; // Очищаем список
+      message.value = response.data.error; // Show error message
+      networks.value = []; // Clear network list
     } else {
-      networks.value = response.data; // Записываем список сетей
-      message.value = ""; // Очищаем возможные прошлые ошибки
+      networks.value = response.data; // Save network list
+      message.value = ""; // Clear previous errors
     }
   } catch (error) {
-    console.error("Ошибка загрузки Wi-Fi сетей:", error);
+    console.error("Failed to load Wi-Fi networks:", error);
+    message.value = "An error occurred while fetching Wi-Fi networks.";
   } finally {
     isLoading.value = false;
   }
 };
 
-// Подключение к Wi-Fi
+// Connect to Wi-Fi
 const connectToWifi = async () => {
   if (!selectedNetwork.value) return;
   try {
@@ -40,26 +43,28 @@ const connectToWifi = async () => {
       baseURL: "/"
     });
 
-    message.value = `Подключено к ${selectedNetwork.value}`;
+    message.value = `Connected to ${selectedNetwork.value}`;
   } catch (error) {
-    message.value = error.response?.data?.detail || "Ошибка подключения";
+    message.value = error.response?.data?.detail || "Failed to connect to Wi-Fi.";
   } finally {
     isLoading.value = false;
   }
 };
 
-// Автоматический запрос Wi-Fi сетей при загрузке
+// Automatically fetch networks on mount
 onMounted(fetchNetworks);
 </script>
 
 <template>
   <div>
-    <!-- Кнопка для сканирования Wi-Fi -->
-    <ButtonComponent @click="fetchNetworks">{{ isLoading ? "Scanning..." : "Scan Wi-Fi" }}</ButtonComponent>
+    <!-- Scan Wi-Fi button -->
+    <ButtonComponent @click="fetchNetworks" v-if="!message">
+      {{ isLoading ? "Scanning..." : "Scan Wi-Fi" }}
+    </ButtonComponent>
 
-    <!-- Вывод списка сетей -->
+    <!-- Wi-Fi network list -->
     <div v-if="networks.length && !message" class="w-full max-w-md">
-      <p class="mb-2 text-gray-600">Chose network:</p>
+      <p class="mb-2 text-gray-600">Choose a network:</p>
       <ul class="space-y-2">
         <li v-for="network in networks" :key="network.ssid"
             @click="selectedNetwork = network.ssid"
@@ -69,20 +74,18 @@ onMounted(fetchNetworks);
       </ul>
     </div>
 
-    <!-- Поле ввода пароля -->
+    <!-- Password input field -->
     <div v-if="selectedNetwork" class="mt-4 w-full max-w-md">
       <p class="mb-2 font-medium">Network: {{ selectedNetwork }}</p>
 
-      <!-- TODO: use vue component for input -->
-      <input v-model="password" type="password" placeholder="Enter password"
-             class="w-full p-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-300">
+      <InputComponent v-model="password" type="password" placeholder="Enter password"/>
 
-      <ButtonComponent @click="connectToWifi">{{ isLoading ? "Connecting..." : "Connect" }}</ButtonComponent>
-
+      <ButtonComponent @click="connectToWifi">
+        {{ isLoading ? "Connecting..." : "Connect" }}
+      </ButtonComponent>
     </div>
 
-    <!-- Сообщение об ошибке или статусе -->
-    <!-- TODO: use vue component for input -->
-    <p v-if="message" >{{ message }}</p>
+    <!-- Error or status message -->
+    <AlertComponent v-if="message" :message="message" type="error"/>
   </div>
 </template>
