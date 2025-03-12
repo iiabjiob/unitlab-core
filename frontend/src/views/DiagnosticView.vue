@@ -1,6 +1,6 @@
 <template>
   <div>
-    <PageHeader title="Diagnostics" />
+    <PageHeader title="Diagnostic" />
   </div>
 </template>
 

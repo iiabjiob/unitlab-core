@@ -16,6 +16,8 @@
 
         <NavlinkComponent  to="/settings">Settings</NavlinkComponent>
 
+        <NavlinkComponent  to="/system">System</NavlinkComponent>
+
       </nav>
     </header>
 </template>

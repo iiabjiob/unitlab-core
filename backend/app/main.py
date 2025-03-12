@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.api import wifi
+from app.api import wifi, system
 from contextlib import asynccontextmanager
 from app.core.config import get_settings
 
@@ -17,5 +17,6 @@ app = FastAPI(
     lifespan=lifespan
     )
 
-# Подключаем роутер Wi-Fi
+# Подключаем роутеры
 app.include_router(wifi.router)
+app.include_router(system.router)
