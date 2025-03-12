@@ -50,3 +50,26 @@ class WifiService:
 
         except Exception as e:
             return {"error": str(e)}
+        
+    @staticmethod
+    def get_wifi_ssid():
+        try:
+            result = subprocess.run(["nmcli", "-t", "-f", "SSID", "dev", "wifi"], capture_output=True, text=True)
+            return result.stdout.strip() if result.stdout.strip() else "Not connected"
+        except Exception:
+            return "Not connected"
+
+    @staticmethod
+    def get_wifi_signal():
+        try:
+            result = subprocess.run(["nmcli", "-t", "-f", "SIGNAL", "dev", "wifi"], capture_output=True, text=True)
+            return f"{result.stdout.strip()}%" if result.stdout.strip() else "N/A"
+        except Exception:
+            return "N/A"
+    
+    @staticmethod
+    def get_wifi_info():
+        return {
+            "ssid": WifiService.get_wifi_ssid(),
+            "signal": WifiService.get_wifi_signal(),
+        }

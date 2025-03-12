@@ -12,8 +12,6 @@
 
         <NavlinkComponent  to="/events">Events</NavlinkComponent>
 
-        <NavlinkComponent  to="/diagnostic">Diagnostic</NavlinkComponent>
-
         <NavlinkComponent  to="/settings">Settings</NavlinkComponent>
 
         <NavlinkComponent  to="/system">System</NavlinkComponent>

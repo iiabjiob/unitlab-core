@@ -3,8 +3,10 @@ import { ref, onMounted } from "vue";
 import axios from "axios";
 import PageHeader from '@/components/PageHeader.vue';
 import LoadingSpinner from "@/components/LoadingSpinner.vue";
+import AlertComponent from "@/components/AlertComponent.vue";
 
 const systemInfo = ref(null);
+const appVersion = ref(null);
 const message = ref("");
 const isLoading = ref(true);
 
@@ -13,30 +15,44 @@ const fetchSystemInfo = async () => {
     const response = await axios.get("/api/system/info", { baseURL: "/" });
     systemInfo.value = response.data;
   } catch {
-    message.value = "Ошибка загрузки информации о системе";
+    message.value = "Failed to load system information.";
   } finally {
-      isLoading.value = false;
-    }
+    isLoading.value = false;
+  }
 };
 
-onMounted(fetchSystemInfo);
+const fetchAppVersion = async () => {
+  try {
+    const response = await axios.get("/api/system/version", { baseURL: "/" });
+    appVersion.value = response.data;
+  } catch {
+    message.value = "Failed to load application version.";
+  }
+};
+
+onMounted(() => {
+  fetchSystemInfo();
+  fetchAppVersion();
+});
 </script>
 
 <template>
   <div>
-    <PageHeader title="System info" />
+    <PageHeader title="System Information" />
 
-    <p v-if="message" class="text-red-500">{{ message }}</p>
+    <!-- Error message -->
+    <AlertComponent v-if="message" :message="message" type="error" icon="⚠️" />
 
-    <!-- Индикатор загрузки -->
+    <!-- Loading indicator -->
     <LoadingSpinner v-if="isLoading" size="small"/>
 
-    <!-- Информация -->
+    <!-- System Info -->
     <div v-if="!isLoading && systemInfo">
+      <p><strong>App Version:</strong> {{ appVersion.version }}</p>
       <p><strong>Hostname:</strong> {{ systemInfo.hostname }}</p>
       <p><strong>IP Address:</strong> {{ systemInfo.ip_address }}</p>
-      <p><strong>OS:</strong> {{ systemInfo.os }}</p>
-      <p><strong>Uptime:</strong> {{ systemInfo.uptime }} sec</p>
+      <p><strong>Operating System:</strong> {{ systemInfo.os }}</p>
+      <p><strong>Uptime:</strong> {{ systemInfo.uptime }}</p>
       <p><strong>CPU Load:</strong> {{ systemInfo.cpu_usage }}</p>
       <p><strong>Temperature:</strong> {{ systemInfo.temperature }}</p>
 
@@ -52,8 +68,7 @@ onMounted(fetchSystemInfo);
 
       <h2 class="mt-4 font-semibold">Wi-Fi</h2>
       <p><strong>SSID:</strong> {{ systemInfo.wifi.ssid }}</p>
-      <p><strong>Signal:</strong> {{ systemInfo.wifi.signal }}</p>
+      <p><strong>Signal Strength:</strong> {{ systemInfo.wifi.signal }}</p>
     </div>
-
   </div>
 </template>
