@@ -1,10 +1,13 @@
 import subprocess
+import platform
 
 class WifiService:
 
     @staticmethod
     def scan_wifi_linux():
         """Сканирует доступные Wi-Fi сети с помощью nmcli."""
+        if platform.system() != "Linux":
+            return {"error": "System not supported. Only Linux is supported for Wi-Fi scanning."}
         try:
             result = subprocess.run(
                 ["nmcli", "-t", "-f", "SSID,SIGNAL", "dev", "wifi"],
@@ -31,6 +34,8 @@ class WifiService:
     @staticmethod
     def connect_to_wifi(ssid: str, password: str):
         """Подключается к указанной Wi-Fi сети с помощью nmcli."""
+        if platform.system() != "Linux":
+            return {"error": "System not supported. Only Linux is supported for Wi-Fi connections."}
         try:
             result = subprocess.run(
                 ["nmcli", "dev", "wifi", "connect", ssid, "password", password],

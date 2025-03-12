@@ -14,8 +14,13 @@ const fetchNetworks = async () => {
   try {
     isLoading.value = true;
     const response = await axios.get("/api/wifi/scan", { baseURL: "/" });
-    console.log(response.data);
-    networks.value = response.data;
+    if (response.data.error) {
+      message.value = response.data.error; // Выводим ошибку
+      networks.value = []; // Очищаем список
+    } else {
+      networks.value = response.data; // Записываем список сетей
+      message.value = ""; // Очищаем возможные прошлые ошибки
+    }
   } catch (error) {
     console.error("Ошибка загрузки Wi-Fi сетей:", error);
   } finally {
@@ -53,7 +58,7 @@ onMounted(fetchNetworks);
     <ButtonComponent @click="fetchNetworks">{{ isLoading ? "Scanning..." : "Scan Wi-Fi" }}</ButtonComponent>
 
     <!-- Вывод списка сетей -->
-    <div v-if="networks.length" class="w-full max-w-md">
+    <div v-if="networks.length && !message" class="w-full max-w-md">
       <p class="mb-2 text-gray-600">Chose network:</p>
       <ul class="space-y-2">
         <li v-for="network in networks" :key="network.ssid"
@@ -72,12 +77,12 @@ onMounted(fetchNetworks);
       <input v-model="password" type="password" placeholder="Enter password"
              class="w-full p-2 border rounded-lg focus:outline-none focus:ring focus:ring-blue-300">
 
-      <ButtonComponent @click="connectToWifi">{{ isLoading ? "Scanning..." : "Scan Wi-Fi" }}</ButtonComponent>
+      <ButtonComponent @click="connectToWifi">{{ isLoading ? "Connecting..." : "Connect" }}</ButtonComponent>
 
     </div>
 
     <!-- Сообщение об ошибке или статусе -->
-     <!-- TODO: use vue component for input -->
-    <p v-if="message" class="mt-4 text-lg font-semibold text-gray-800">{{ message }}</p>
+    <!-- TODO: use vue component for input -->
+    <p v-if="message" >{{ message }}</p>
   </div>
 </template>
