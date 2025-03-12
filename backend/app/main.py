@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from api import wifi
+from app.api import wifi
 from contextlib import asynccontextmanager
 from app.core.config import get_settings
 
