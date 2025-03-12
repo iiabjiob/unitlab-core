@@ -13,7 +13,8 @@ const message = ref("");
 const fetchNetworks = async () => {
   try {
     isLoading.value = true;
-    const response = await axios.get("api/wifi/scan");
+    const response = await axios.get("/api/wifi/scan");
+    console.log(response.data);
     networks.value = response.data;
   } catch (error) {
     console.error("Ошибка загрузки Wi-Fi сетей:", error);
@@ -27,7 +28,7 @@ const connectToWifi = async () => {
   if (!selectedNetwork.value) return;
   try {
     isLoading.value = true;
-    await axios.post("api/wifi/connect", {
+    await axios.post("/api/wifi/connect", {
       ssid: selectedNetwork.value,
       password: password.value,
     });
