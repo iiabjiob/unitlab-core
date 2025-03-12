@@ -1,15 +1,26 @@
 <template>
   <header class="flex justify-between items-center p-5">
-      <span class="text-xl font-bold">FAT-Simulator</span>
+      <RouterLink
+        to="/"
+        class="text-xl font-bold text-emerald-500">
+        FAT Simulator
+      </RouterLink>
+
       <nav class="space-x-5">
-        <RouterLink to="/">Dashboard</RouterLink>
-        <RouterLink to="/event-log">Events</RouterLink>
-        <RouterLink to="/diagnostics">Diagnostics</RouterLink>
-        <RouterLink to="/settings">Settings</RouterLink>
+
+        <NavlinkComponent  to="/">Dashboard</NavlinkComponent>
+
+        <NavlinkComponent  to="/events">Events</NavlinkComponent>
+
+        <NavlinkComponent  to="/diagnostic">Diagnostic</NavlinkComponent>
+
+        <NavlinkComponent  to="/settings">Settings</NavlinkComponent>
+
       </nav>
     </header>
 </template>
 
 <script setup>
 import { RouterLink } from 'vue-router';
+import NavlinkComponent from './NavlinkComponent.vue';
 </script>
