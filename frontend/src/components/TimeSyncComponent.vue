@@ -14,6 +14,8 @@ import axios from 'axios';
 const syncSource = ref('');
 const currentTime = ref(new Date());
 
+const syncIntervalTime = import.meta.env.VITE_TIME_SYNC_INTERVAL || 60000;
+
 const fetchTimeStatus = async () => {
   try {
     const response = await axios.get('/api/time/status');
@@ -30,7 +32,7 @@ const fetchTimeStatus = async () => {
       currentTime.value = new Date(data.ntp.current_time || data.ptp.current_time);
     }
   } catch (error) {
-    console.error('Ошибка получения данных о времени:', error);
+    console.error('Error retrieving time data:', error);
   }
 };
 
@@ -38,14 +40,15 @@ const fetchTimeStatus = async () => {
 const formattedDate = ref('');
 const formattedTime = ref('');
 
+
 const updateFormattedTime = () => {
-  formattedDate.value = currentTime.value.toLocaleDateString('ru-RU', {
+  formattedDate.value = currentTime.value.toLocaleDateString('en-GB', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
   });
 
-  formattedTime.value = currentTime.value.toLocaleTimeString('ru-RU', {
+  formattedTime.value = currentTime.value.toLocaleTimeString('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit'
@@ -56,7 +59,7 @@ const updateFormattedTime = () => {
 let syncInterval, clockInterval;
 onMounted(() => {
   fetchTimeStatus();
-  syncInterval = setInterval(fetchTimeStatus, 10000);
+  syncInterval = setInterval(fetchTimeStatus, syncIntervalTime);
 
   clockInterval = setInterval(() => {
     currentTime.value = new Date(currentTime.value.getTime() + 1000);
