@@ -1,26 +1,35 @@
 <template>
-  <header class="flex justify-between items-center p-5">
-      <RouterLink
-        to="/"
-        class="text-xl font-bold text-emerald-500">
-        FAT Simulator
-      </RouterLink>
+  <header class="p-5 flex flex-col gap-1">
 
-      <nav class="space-x-5">
+    <div class="flex justify-between items-center">
+        <!-- Logo -->
+        <RouterLink
+          to="/"
+          class="text-xl font-bold text-emerald-500">
+          FAT Simulator
+        </RouterLink>
 
-        <NavlinkComponent  to="/">Dashboard</NavlinkComponent>
+        <!-- Navigation -->
+        <nav class="inline-flex items-center gap-x-5">
 
-        <NavlinkComponent  to="/events">Events</NavlinkComponent>
+          <TimeSyncComponent/>
 
-        <NavlinkComponent  to="/settings">Settings</NavlinkComponent>
+          <NavlinkComponent  to="/">Dashboard</NavlinkComponent>
 
-        <NavlinkComponent  to="/system">System</NavlinkComponent>
+          <NavlinkComponent  to="/events">Events</NavlinkComponent>
 
-      </nav>
+          <NavlinkComponent  to="/settings">Settings</NavlinkComponent>
+
+          <NavlinkComponent  to="/system">System</NavlinkComponent>
+
+        </nav>
+    </div>
+
     </header>
 </template>
 
 <script setup>
 import { RouterLink } from 'vue-router';
 import NavlinkComponent from './NavlinkComponent.vue';
+import TimeSyncComponent from './TimeSyncComponent.vue';
 </script>

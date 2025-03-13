@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.api import wifi, system
+from app.api import wifi, system, time_sync
 from contextlib import asynccontextmanager
 from app.core.config import get_settings
 
@@ -20,3 +20,4 @@ app = FastAPI(
 # Подключаем роутеры
 app.include_router(wifi.router)
 app.include_router(system.router)
+app.include_router(time_sync.router)
