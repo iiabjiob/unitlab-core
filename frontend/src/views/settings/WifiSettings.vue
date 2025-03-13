@@ -58,9 +58,10 @@ onMounted(fetchNetworks);
 <template>
   <div>
     <!-- Scan Wi-Fi button -->
-    <ButtonComponent @click="fetchNetworks" v-if="!message">
+    <ButtonComponent @click="fetchNetworks">
       {{ isLoading ? "Scanning..." : "Scan Wi-Fi" }}
     </ButtonComponent>
+
 
     <!-- Wi-Fi network list -->
     <div v-if="networks.length && !message" class="w-full max-w-md">
