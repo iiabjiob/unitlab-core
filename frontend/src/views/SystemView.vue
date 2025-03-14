@@ -47,7 +47,7 @@ onMounted(() => {
       <p><strong>Operating System:</strong> {{ systemInfo.os }}</p>
       <p><strong>Uptime:</strong> {{ systemInfo.uptime }}</p>
       <p><strong>CPU Load:</strong> {{ systemInfo.cpu_usage }}</p>
-      <p><strong>Temperature:</strong> {{ systemInfo.temperature }}°C</p>
+      <p><strong>Temperature:</strong> {{ systemInfo.temperature }}</p>
 
       <h2 class="mt-4 font-semibold">Memory</h2>
       <p><strong>Total:</strong> {{ systemInfo.ram.total }} GB</p>
