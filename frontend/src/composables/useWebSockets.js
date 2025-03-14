@@ -27,7 +27,7 @@ export function useWebSockets(topic) {
     };
 
     socket.onclose = () => {
-      console.warn("⚠️ WebSocket disconnected.");
+      if (isDev) console.warn("⚠️ WebSocket disconnected.");
       if (!manuallyClosed) {
         if (isDev) console.log("🔄 Attempting to reconnect in 5 seconds...");
         setTimeout(connectWebSocket, 5000);
