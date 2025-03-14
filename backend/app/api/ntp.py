@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.services.ntp_service import NTPService
 
-router = APIRouter(prefix="/ntp", tags=["NTP Settings"])
+router = APIRouter(prefix="/api/ntp", tags=["NTP Settings"])
 
 @router.get("/servers")
 def get_ntp_servers():

@@ -2,30 +2,58 @@ import platform
 import socket
 import psutil
 import datetime
+from app.core.logger import logger
 
 class SystemInfoService:
-    """ Получает информацию о системе """
+    """ Retrieves system information """
 
     @staticmethod
     def get_hostname():
-        return socket.gethostname()
+        """ Returns the system hostname """
+        hostname = socket.gethostname()
+        logger.debug(f"🖥️ Hostname: {hostname}")
+        return hostname
 
     @staticmethod
     def get_ip_address():
-        return socket.gethostbyname(socket.gethostname())
+        """ Returns the system's primary IPv4 address used for FastAPI (without internet check). """
+        try:
+            # ✅ Проверяем все сетевые интерфейсы
+            for interface, addrs in psutil.net_if_addrs().items():
+                for addr in addrs:
+                    if addr.family == socket.AF_INET and not addr.address.startswith("127."):
+                        logger.debug(f"🌐 Local network IP found: {addr.address} (Interface: {interface})")
+                        return addr.address
+
+        except Exception as e:
+            logger.exception(f"❌ Failed to retrieve local IP address: {e}")
+
+        # ❌ Если ничего не нашли, возвращаем 127.0.0.1
+        logger.warning("⚠️ No valid network interface found. Returning 127.0.0.1")
+        return "127.0.0.1"
 
     @staticmethod
     def get_os():
-        return f"{platform.system()} {platform.version()}"
+        """ Returns the OS name and version """
+        os_info = f"{platform.system()} {platform.version()}"
+        logger.debug(f"🖥️ OS: {os_info}")
+        return os_info
 
     @staticmethod
     def get_uptime():
-        """ Возвращает аптайм в формате DD:HH:MM:SS """
-        uptime_seconds = int(psutil.boot_time())
-        uptime_timedelta = datetime.datetime.now() - datetime.datetime.fromtimestamp(uptime_seconds)
+        """ Returns system uptime in format DD:HH:MM:SS """
+        try:
+            uptime_seconds = int(psutil.boot_time())
+            uptime_timedelta = datetime.datetime.now() - datetime.datetime.fromtimestamp(uptime_seconds)
 
-        days = uptime_timedelta.days
-        hours, remainder = divmod(uptime_timedelta.seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
+            days = uptime_timedelta.days
+            hours, remainder = divmod(uptime_timedelta.seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
 
-        return f"{days}d {hours}h {minutes}m {seconds}s"
+            uptime_str = f"{days}d {hours}h {minutes}m"
+            logger.debug(f"⏳ System Uptime: {uptime_str}")
+            return uptime_str
+
+        except Exception as e:
+            logger.exception(f"❌ Failed to get system uptime: {e}")
+            return "Error retrieving uptime"

@@ -13,33 +13,28 @@ import axios from 'axios';
 
 const syncSource = ref('');
 const currentTime = ref(new Date());
-
-const syncIntervalTime = import.meta.env.VITE_TIME_SYNC_INTERVAL || 60000;
+const syncIntervalTime = import.meta.env.VITE_TIME_SYNC_INTERVAL || 60000; // From frontend/.env or 60s
 
 const fetchTimeStatus = async () => {
   try {
     const response = await axios.get('/api/time/status');
     const data = response.data;
 
-    if (data.ntp.synchronized) {
-      syncSource.value = 'NTP';
-      currentTime.value = new Date(data.ntp.current_time);
-    } else if (data.ptp.synchronized) {
-      syncSource.value = 'PTP';
-      currentTime.value = new Date(data.ptp.current_time);
+    if (data.synchronized) {
+      syncSource.value = data.source;
+      currentTime.value = new Date(data.current_time);
     } else {
-      syncSource.value = '';
-      currentTime.value = new Date(data.ntp.current_time || data.ptp.current_time);
+      syncSource.value = '*';
+      currentTime.value = new Date(data.current_time || new Date()); // Default to local time if missing
     }
   } catch (error) {
     console.error('Error retrieving time data:', error);
   }
 };
 
-// Форматируем дату и время
+// Formatting functions
 const formattedDate = ref('');
 const formattedTime = ref('');
-
 
 const updateFormattedTime = () => {
   formattedDate.value = currentTime.value.toLocaleDateString('en-GB', {
@@ -55,7 +50,7 @@ const updateFormattedTime = () => {
   });
 };
 
-// Запуск таймеров
+// Timers
 let syncInterval, clockInterval;
 onMounted(() => {
   fetchTimeStatus();
@@ -67,7 +62,7 @@ onMounted(() => {
   }, 1000);
 });
 
-// Очищаем интервалы
+// Cleanup
 onUnmounted(() => {
   clearInterval(syncInterval);
   clearInterval(clockInterval);
