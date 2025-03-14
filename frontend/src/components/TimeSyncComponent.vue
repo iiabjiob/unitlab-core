@@ -10,6 +10,9 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue';
 import axios from 'axios';
+import { useServerStatus } from '@/composables/useServerStatus';
+
+const { serverAvailable } = useServerStatus(); // 🔄 Глобальный статус сервера
 
 const syncSource = ref('');
 const currentTime = ref(new Date());
@@ -17,6 +20,7 @@ const syncIntervalTime = import.meta.env.VITE_TIME_SYNC_INTERVAL || 60000; // Fr
 
 const fetchTimeStatus = async () => {
   try {
+    if (!serverAvailable.value) return; // ⛔ Отключаем API-запросы, если сервер недоступен
     const response = await axios.get('/api/time/status');
     const data = response.data;
 
