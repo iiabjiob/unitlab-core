@@ -61,7 +61,7 @@ onMounted(() => {
 
       <h2 class="mt-4 font-semibold">Wi-Fi</h2>
       <p><strong>SSID:</strong> {{ systemInfo.wifi.ssid }}</p>
-      <p><strong>Signal Strength:</strong> {{ systemInfo.wifi.signal }}%</p>
+      <p><strong>Signal Strength:</strong> {{ systemInfo.wifi.signal }}</p>
     </div>
   </div>
 </template>
