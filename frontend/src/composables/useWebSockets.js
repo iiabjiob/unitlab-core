@@ -1,11 +1,12 @@
 import { ref, onMounted, onUnmounted } from "vue";
+import { config } from "@/config"; // Используем загруженный конфиг
 
 export function useWebSockets(topic) {
   const data = ref(null);
   let socket = null;
   let manuallyClosed = false;
 
-  const isDev = Boolean(import.meta.env.VITE_APP_DEBUG );
+  const isDev = config.debug === "true";
 
   const connectWebSocket = () => {
     if (manuallyClosed) return;

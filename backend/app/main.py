@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import asyncio
 
-from app.api import wifi, system, time_sync, ntp, health
+from app.api import wifi, system, time_sync, ntp, health, config
 from app.ws.websocket import router as websocket_router
 from app.ws.health import health_status_updater
 from app.ws.system_ws import system_info_updater
@@ -50,6 +50,7 @@ app.include_router(system.router)
 app.include_router(time_sync.router)
 app.include_router(ntp.router)
 app.include_router(health.router)
+app.include_router(config.router)
 
 # Register websockets
 logger.info("🔗 Registering WebSocket routers...")

@@ -1,4 +1,5 @@
 import { ref, onMounted, onUnmounted } from "vue";
+import { config } from "@/config"; // Используем загруженный конфиг
 import axios from "axios";
 
 export function useHealthCheck() {
@@ -7,7 +8,7 @@ export function useHealthCheck() {
   let healthInterval = null;
   let manuallyClosed = false;
 
-  const isDev = Boolean(import.meta.env.VITE_APP_DEBUG );
+  const isDev = config.debug === "true";
 
   const checkServerViaAPI = async () => {
     try {
