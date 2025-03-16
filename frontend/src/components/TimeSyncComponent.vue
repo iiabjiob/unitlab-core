@@ -9,9 +9,10 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watchEffect } from "vue";
-import { useWebSockets } from "@/composables/useWebSockets"; // Используем WebSocket-компосабл
+import { useWebSockets } from "@/composables/useWebSockets"; // WebSocket-компосабл
+import axios from "axios"; // Для запроса API
 
-// Используем WebSocket для получения данных о синхронизации времени
+// WebSocket для получения данных о синхронизации времени
 const { data: timeSync } = useWebSockets("time_sync");
 
 // Локальное время (обновляется между обновлениями с сервера)
@@ -34,10 +35,24 @@ const formattedTime = computed(() =>
   })
 );
 
+// Функция для получения времени с API
+const fetchCurrentTime = async () => {
+  try {
+    const response = await axios.get("/api/time/status"); // Запрос к API
+    if (response.data.current_time) {
+      currentTime.value = new Date(response.data.current_time);
+    }
+  } catch (error) {
+    console.error("Failed to fetch time from API:", error);
+  }
+};
+
 // Интервал для плавного обновления локального времени
 let clockInterval;
 
-onMounted(() => {
+onMounted(async () => {
+  await fetchCurrentTime(); // Загружаем время при старте компонента
+
   // Если приходит новое время с WebSocket, обновляем локальное время
   watchEffect(() => {
     if (timeSync?.value?.synchronized && timeSync.value.current_time) {
