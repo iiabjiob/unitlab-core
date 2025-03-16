@@ -24,9 +24,6 @@
 
         </nav>
     </div>
-    <div>
-      <ServerStatusComponent/>
-    </div>
 
     </header>
 </template>
@@ -35,5 +32,4 @@
 import { RouterLink } from 'vue-router';
 import NavlinkComponent from './NavlinkComponent.vue';
 import TimeSyncComponent from './TimeSyncComponent.vue';
-import ServerStatusComponent from './ServerStatusComponent.vue';
 </script>

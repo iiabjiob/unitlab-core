@@ -8,9 +8,6 @@ from app.ws.system_ws import system_info_updater
 from app.core.config import get_settings
 from app.core.logger import logger
 
-from app.middleware.error_handler import ExceptionMiddleware
-from app.middleware.server_check import ServerCheckerMiddleware
-
 settings = get_settings()
 
 @asynccontextmanager
@@ -36,11 +33,6 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan
 )
-
-# Add middleware properly
-logger.info("🔗 Adding midleware...")
-app.add_middleware(ExceptionMiddleware)
-app.add_middleware(ServerCheckerMiddleware)
 
 # Logging the router setup
 logger.info("🔗 Registering REST API routers...")
