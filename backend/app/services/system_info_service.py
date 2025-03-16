@@ -2,10 +2,19 @@ import platform
 import socket
 import psutil
 import datetime
+from urllib.parse import urlparse
 from app.core.logger import logger
+from app.core.config import get_settings
+
+settings = get_settings()
 
 class SystemInfoService:
     """ Retrieves system information """
+
+    @staticmethod
+    def get_app_version():
+        """ Returns the app version """
+        return settings.version
 
     @staticmethod
     def get_hostname():
@@ -16,21 +25,8 @@ class SystemInfoService:
 
     @staticmethod
     def get_ip_address():
-        """ Returns the system's primary IPv4 address used for FastAPI (without internet check). """
-        try:
-            # ✅ Проверяем все сетевые интерфейсы
-            for interface, addrs in psutil.net_if_addrs().items():
-                for addr in addrs:
-                    if addr.family == socket.AF_INET and not addr.address.startswith("127."):
-                        logger.debug(f"🌐 Local network IP found: {addr.address} (Interface: {interface})")
-                        return addr.address
-
-        except Exception as e:
-            logger.exception(f"❌ Failed to retrieve local IP address: {e}")
-
-        # ❌ Если ничего не нашли, возвращаем 127.0.0.1
-        logger.warning("⚠️ No valid network interface found. Returning 127.0.0.1")
-        return "127.0.0.1"
+        parsed_url = urlparse(settings.base_url)  # ✅ Разбираем URL
+        return parsed_url.hostname  # ✅ Возвращаем только hostname
 
     @staticmethod
     def get_os():

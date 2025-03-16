@@ -6,24 +6,24 @@ import PageHeader from "@/components/PageHeader.vue";
 import LoadingSpinner from "@/components/LoadingSpinner.vue";
 import AlertComponent from "@/components/AlertComponent.vue";
 
-const appVersion = ref(null);
+const apiSystemInfo = ref(null);
 const message = ref("");
 
 // Используем `useWebSockets` для получения данных о системе
 const { data: systemInfo } = useWebSockets("system_info");
 
 // Функция загрузки API-версии
-const fetchAppVersion = async () => {
+const fetchSysInfo = async () => {
   try {
-    const response = await axios.get("/api/system/version", { baseURL: "/" });
-    appVersion.value = response.data;
+    const response = await axios.get("/api/system/info", { baseURL: "/" });
+    apiSystemInfo.value = response.data;
   } catch {
-    message.value = "Failed to load application version.";
+    message.value = "Failed to load system information.";
   }
 };
 
 onMounted(() => {
-  fetchAppVersion();
+  fetchSysInfo();
 });
 
 
@@ -41,10 +41,11 @@ onMounted(() => {
 
     <!-- System Info -->
     <div v-if="systemInfo">
-      <p><strong>App Version:</strong> {{ appVersion?.version || "Loading..." }}</p>
-      <p><strong>Hostname:</strong> {{ systemInfo.hostname }}</p>
-      <p><strong>IP Address:</strong> {{ systemInfo.ip_address }}</p>
-      <p><strong>Operating System:</strong> {{ systemInfo.os }}</p>
+      <p><strong>App Version:</strong> {{ apiSystemInfo?.version || "Loading..." }}</p>
+      <p><strong>Hostname:</strong> {{ apiSystemInfo.hostname }}</p>
+      <p><strong>IP Address:</strong> {{ apiSystemInfo.ip_address }}</p>
+      <p><strong>Operating System:</strong> {{ apiSystemInfo.os }}</p>
+
       <p><strong>Uptime:</strong> {{ systemInfo.uptime }}</p>
       <p><strong>CPU Load:</strong> {{ systemInfo.cpu_usage }}</p>
       <p><strong>Temperature:</strong> {{ systemInfo.temperature }}</p>

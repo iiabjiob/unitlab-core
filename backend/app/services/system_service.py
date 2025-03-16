@@ -9,15 +9,10 @@ class SystemService:
     @staticmethod
     def get_system_info():
         return {
+            "version": SystemInfoService.get_app_version(),
             "hostname": SystemInfoService.get_hostname(),
             "ip_address": SystemInfoService.get_ip_address(),
             "os": SystemInfoService.get_os(),
-            "uptime": SystemInfoService.get_uptime(),
-            "cpu_usage": ResourceUsageService.get_cpu_usage(),
-            "ram": ResourceUsageService.get_ram_usage(),
-            "disk": ResourceUsageService.get_disk_usage(),
-            "temperature": TemperatureService.get_temperature(),
-            "wifi": WifiService.get_wifi_info(),
         }
 
     @staticmethod

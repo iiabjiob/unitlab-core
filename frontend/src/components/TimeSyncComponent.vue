@@ -1,6 +1,6 @@
 <template>
   <div class="inline-flex gap-1 items-center text-sm text-gray-500">
-    <span v-if="syncSource">{{ syncSource }}</span>
+    <span v-if="timeSync?.synchronized">{{ timeSync.source }}</span>
     <span v-else>*</span>
     <span>{{ formattedDate }}</span>
     <span class="tabular-nums">{{ formattedTime }}</span>
@@ -8,63 +8,50 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
-import axios from 'axios';
+import { ref, computed, onMounted, onUnmounted, watchEffect } from "vue";
+import { useWebSockets } from "@/composables/useWebSockets"; // Используем WebSocket-компосабл
 
-const syncSource = ref('');
+// Используем WebSocket для получения данных о синхронизации времени
+const { data: timeSync } = useWebSockets("time_sync");
+
+// Локальное время (обновляется между обновлениями с сервера)
 const currentTime = ref(new Date());
-const syncIntervalTime = import.meta.env.VITE_TIME_SYNC_INTERVAL || 60000; // From frontend/.env or 60s
 
-const fetchTimeStatus = async () => {
-  try {
-    const response = await axios.get('/api/time/status');
-    const data = response.data;
+// Функция обновления отображаемого времени
+const formattedDate = computed(() =>
+  currentTime.value.toLocaleDateString("en-GB", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+);
 
-    if (data.synchronized) {
-      syncSource.value = data.source;
-      currentTime.value = new Date(data.current_time);
-    } else {
-      syncSource.value = '*';
-      currentTime.value = new Date(data.current_time || new Date()); // Default to local time if missing
-    }
-  } catch (error) {
-    console.error('Error retrieving time data:', error);
-  }
-};
+const formattedTime = computed(() =>
+  currentTime.value.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+);
 
-// Formatting functions
-const formattedDate = ref('');
-const formattedTime = ref('');
+// Интервал для плавного обновления локального времени
+let clockInterval;
 
-const updateFormattedTime = () => {
-  formattedDate.value = currentTime.value.toLocaleDateString('en-GB', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-
-  formattedTime.value = currentTime.value.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
-};
-
-// Timers
-let syncInterval, clockInterval;
 onMounted(() => {
-  fetchTimeStatus();
-  syncInterval = setInterval(fetchTimeStatus, syncIntervalTime);
+  // Если приходит новое время с WebSocket, обновляем локальное время
+  watchEffect(() => {
+    if (timeSync?.value?.synchronized && timeSync.value.current_time) {
+      currentTime.value = new Date(timeSync.value.current_time);
+    }
+  });
 
+  // Каждую секунду увеличиваем локальное время на 1 сек.
   clockInterval = setInterval(() => {
     currentTime.value = new Date(currentTime.value.getTime() + 1000);
-    updateFormattedTime();
   }, 1000);
 });
 
-// Cleanup
 onUnmounted(() => {
-  clearInterval(syncInterval);
   clearInterval(clockInterval);
 });
 </script>

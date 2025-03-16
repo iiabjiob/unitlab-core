@@ -27,8 +27,9 @@ class WebSocketManager:
                 except WebSocketDisconnect:
                     self.active_connections[topic].remove(connection)
     
-    def has_active_connections(self) -> bool:
-        """ Checks if there are any active WebSocket clients """
-        return any(self.active_connections.values())  # True if any topic has clients
+    def has_active_connections(self, topic: str) -> bool:
+        """ Проверяет, есть ли активные WebSocket-клиенты для данной темы """
+        return topic in self.active_connections and len(self.active_connections[topic]) > 0
+
 
 ws_manager = WebSocketManager()

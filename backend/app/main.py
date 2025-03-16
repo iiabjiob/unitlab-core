@@ -4,7 +4,9 @@ import asyncio
 
 from app.api import wifi, system, time_sync, ntp, health
 from app.ws.websocket import router as websocket_router
+from app.ws.health import health_status_updater
 from app.ws.system_ws import system_info_updater
+from app.ws.time_ws import time_sync_updater
 from app.core.config import get_settings
 from app.core.logger import logger
 
@@ -18,7 +20,9 @@ async def lifespan(app: FastAPI):
 
     # ✅ Safe startup of the background task
     try:
-        task = asyncio.create_task(system_info_updater())
+        asyncio.create_task(health_status_updater())
+        asyncio.create_task(system_info_updater())
+        asyncio.create_task(time_sync_updater())
     except Exception as e:
         logger.error(f"❌ Failed to start 'system_info_updater': {e}")
 

@@ -11,12 +11,11 @@ async def system_info_updater():
 
     logger.info("✅ Background task 'system_info_updater' started successfully.")
 
+    last_sent_data = None  # ✅ Запоминаем последнее отправленное сообщение
+
     while True:
-        if ws_manager.has_active_connections():
+        if ws_manager.has_active_connections('system_info'):
             data = {
-                "hostname": SystemInfoService.get_hostname(),
-                "ip_address": SystemInfoService.get_ip_address(),
-                "os": SystemInfoService.get_os(),
                 "uptime": SystemInfoService.get_uptime(),
                 "cpu_usage": ResourceUsageService.get_cpu_usage(),
                 "ram": ResourceUsageService.get_ram_usage(),
@@ -25,8 +24,13 @@ async def system_info_updater():
                 "wifi": WifiService.get_wifi_info(),
             }
 
-            await ws_manager.send_data("system_info", data)
-            logger.debug("📡 System info sent to WebSocket clients.")
+            # ✅ Отправляем только если данные изменились
+            if data != last_sent_data:
+                await ws_manager.send_data("system_info", data)
+                last_sent_data = data  # ✅ Запоминаем последние данные
+                logger.debug(f"📡 System info sent to WebSocket clients: {data}")
+            else:
+                logger.debug("⏳ System info has not changed, skipping update.")
 
         else:
             logger.debug("⏳ No WebSocket clients connected. Waiting...")

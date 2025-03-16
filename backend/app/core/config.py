@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
-
+    
 @lru_cache
 def get_settings():
     return Settings()
