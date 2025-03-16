@@ -24,10 +24,7 @@ class SystemInfoService:
 
     @staticmethod
     def get_ip_address():
-        """ Returns the host """
-        host = settings.host
-        logger.debug(f"🖥️ Host: {host}")
-        return host
+        return 'TBD'
 
     @staticmethod
     def get_os():

@@ -37,6 +37,11 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan
 )
+# Добавляем `app_env` в state, чтобы его можно было использовать внутри приложения
+app.state.env = settings.app_env
+
+if app.state.env == "production":
+    app.openapi_url = None  # Отключаем Swagger UI
 
 # Logging the router setup
 logger.info("🔗 Registering REST API routers...")
@@ -50,4 +55,4 @@ app.include_router(health.router)
 logger.info("🔗 Registering WebSocket routers...")
 app.include_router(websocket_router)
 
-logger.info("✅ FastAPI application is up and running.")
+logger.info(f"✅ FastAPI application is up and running in {app.state.env} mode.")

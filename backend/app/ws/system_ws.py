@@ -32,7 +32,4 @@ async def system_info_updater():
             else:
                 logger.debug("⏳ System info has not changed, skipping update.")
 
-        else:
-            logger.debug("⏳ No WebSocket clients connected. Waiting...")
-
         await asyncio.sleep(2)  # Update every 2 seconds
