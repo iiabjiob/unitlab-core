@@ -2,7 +2,6 @@ import platform
 import socket
 import psutil
 import datetime
-from urllib.parse import urlparse
 from app.core.logger import logger
 from app.core.config import get_settings
 
@@ -14,7 +13,7 @@ class SystemInfoService:
     @staticmethod
     def get_app_version():
         """ Returns the app version """
-        return settings.version
+        return settings.app_version
 
     @staticmethod
     def get_hostname():
@@ -25,8 +24,10 @@ class SystemInfoService:
 
     @staticmethod
     def get_ip_address():
-        parsed_url = urlparse(settings.base_url)  # ✅ Разбираем URL
-        return parsed_url.hostname  # ✅ Возвращаем только hostname
+        """ Returns the host """
+        host = settings.host
+        logger.debug(f"🖥️ Host: {host}")
+        return host
 
     @staticmethod
     def get_os():
