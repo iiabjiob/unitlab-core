@@ -8,6 +8,8 @@ from app.ws.health import health_status_updater
 from app.ws.system_ws import system_info_updater
 from app.ws.time_ws import time_sync_updater
 from app.core.config import get_settings
+from app.db.database import engine
+from sqlalchemy.sql import text
 from app.core.logger import logger
 
 settings = get_settings()
@@ -17,6 +19,14 @@ async def lifespan(app: FastAPI):
     """ Manages FastAPI application lifecycle """
 
     logger.info("🚀 Starting FastAPI application...")
+
+    # Проверка соединения с БД при запуске
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))  # Исправленный запрос
+            logger.info("✅ Connected to the database!")
+    except Exception as e:
+        logger.error(f"❌ Database connection failed: {e}")
 
     # ✅ Safe startup of the background task
     try:

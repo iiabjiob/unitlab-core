@@ -1,0 +1,46 @@
+# 🚫 Игнорируем Git и системные файлы
+.git/
+.DS_Store
+.vscode/
+.idea/
+
+# 🚫 Игнорируем логи и временные файлы
+logs/
+*.log
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.swp
+
+# 🚫 Игнорируем файлы разработки фронтенда
+frontend/node_modules/
+frontend/src/
+frontend/public/
+frontend/vite.config.js
+frontend/package.json
+frontend/package-lock.json
+frontend/jsconfig.json
+frontend/eslint.config.js
+frontend/.eslintrc.js
+frontend/index.html
+
+# 🚫 Игнорируем файлы разработки бэкенда
+backend/.venv/
+backend/tests/
+backend/.pytest_cache/
+backend/db/migrations/
+backend/.mypy_cache/
+
+# 🚫 Исключаем файлы Docker (если не используем на сервере)
+docker-compose*.yml
+
+# 🚫 Исключаем файлы Nginx
+nginx/
+
+# 🚫 Лишние файлы
+.editorconfig
+.gitattributes
+.gitignore
+README.md
+LICENSE
