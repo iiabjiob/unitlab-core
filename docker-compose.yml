@@ -42,28 +42,9 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - app_network
-    
-  mosquitto:
-    image: eclipse-mosquitto:latest
-    container_name: fat-simulator-mosquitto
-    restart: unless-stopped
-    ports:
-      - "1883:1883"  # Основной MQTT-порт
-      - "9001:9001"  # WebSockets (если используешь)
-    volumes:
-      - ./config:/mosquitto/config:rw
-      - ./data:/mosquitto/data:rw
-      - ./log:/mosquitto/log:rw
-    stdin_open: true
-    tty: true
-    networks:
-      - app_network
 
 volumes:
   db_data:
-  config:
-  data:
-  log:
 
 networks:
   app_network:
