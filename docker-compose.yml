@@ -4,7 +4,7 @@ services:
     container_name: fat-simulator-db
     restart: unless-stopped
     env_file:
-      - backend/.env
+      - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -23,8 +23,7 @@ services:
     ports:
       - "8081:8080"
     depends_on:
-      db:
-        condition: service_healthy
+      - db
 
   nginx:
     image: nginx:latest  # или build: ./nginx если используем Dockerfile
@@ -43,9 +42,28 @@ services:
       - "host.docker.internal:host-gateway"
     networks:
       - app_network
+    
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: fat-simulator-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"  # Основной MQTT-порт
+      - "9001:9001"  # WebSockets (если используешь)
+    volumes:
+      - ./config:/mosquitto/config:rw
+      - ./data:/mosquitto/data:rw
+      - ./log:/mosquitto/log:rw
+    stdin_open: true
+    tty: true
+    networks:
+      - app_network
 
 volumes:
   db_data:
+  config:
+  data:
+  log:
 
 networks:
   app_network:
