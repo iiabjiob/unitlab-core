@@ -1,11 +1,7 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import asyncio
-
 from app.api import wifi, system, time_sync, ntp, health, config
-from app.services.mqtt.health_status import health_status_updater
-from app.services.mqtt.time_sync import time_sync_updater
-from app.services.mqtt.system_info import system_info_updater
 from app.core.config import get_settings
 from app.db.database import engine
 from sqlalchemy.sql import text
@@ -22,18 +18,16 @@ async def lifespan(app: FastAPI):
     # Проверка соединения с БД при запуске
     try:
         async with engine.begin() as conn:
-            await conn.execute(text("SELECT 1"))  # Исправленный запрос
+            await conn.execute(text("SELECT 1"))
             logger.info("✅ Connected to the database!")
     except Exception as e:
         logger.error(f"❌ Database connection failed: {e}")
 
     # ✅ Safe startup of the background task
-    try:
-        asyncio.create_task(health_status_updater())
-        asyncio.create_task(system_info_updater())
-        asyncio.create_task(time_sync_updater(5))
-    except Exception as e:
-        logger.error(f"❌ Failed to start background tasks: {e}")
+    # try:
+
+    # except Exception as e:
+    #     logger.error(f"❌ Failed to start background tasks: {e}")
 
     yield
 
