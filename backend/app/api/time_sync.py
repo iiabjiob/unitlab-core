@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.services.time_service import TimeSyncService
+from app.services.system.time_service import TimeSyncService
 from app.core.logger import logger
 
 router = APIRouter(prefix="/api/time", tags=["Time Synchronization"])

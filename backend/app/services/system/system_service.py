@@ -1,4 +1,4 @@
-from app.services.system_info_service import SystemInfoService
+from app.services.system.system_info_service import SystemInfoService
 
 class SystemService:
     """ Главный сервис, объединяющий все данные """

@@ -9,9 +9,11 @@ router = APIRouter(prefix="/api", tags=["Config"])
 async def get_config():
     """ Return settings from .env """
     return {
+        "host": settings.host,
         "app_name": settings.app_name,
         "app_version": settings.app_version,
         "app_env": settings.app_env,
         "description": settings.description,
         "debug": settings.debug,
+        "health_check_interval": settings.health_check_interval,
     }

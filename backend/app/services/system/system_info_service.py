@@ -14,6 +14,10 @@ class SystemInfoService:
     def get_app_version():
         """ Returns the app version """
         return settings.app_version
+    
+    def get_host():
+        """ Returns the host """
+        return settings.host
 
     @staticmethod
     def get_hostname():

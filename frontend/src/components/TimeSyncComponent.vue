@@ -1,3 +1,48 @@
+<script setup>
+import { ref, computed, onMounted, onUnmounted, watchEffect } from "vue";
+import { useMqtt } from "@/composables/useMqtt";
+
+const { data: timeSync } = useMqtt("time_sync"); // Subscribe to MQTT topic
+const currentTime = ref(new Date()); // Local time
+let syncAvailable = ref(false); // Is external sync available?
+let clockInterval = null; // Interval for incrementing time
+
+// Formatting functions
+const formattedDate = computed(() =>
+  currentTime.value.toLocaleDateString("en-GB", { year: "numeric", month: "2-digit", day: "2-digit" })
+);
+const formattedTime = computed(() =>
+  currentTime.value.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+);
+
+// Function to increment time if no sync source
+const incrementTime = () => {
+  if (!syncAvailable.value) {
+    currentTime.value = new Date(currentTime.value.getTime() + 1000); // +1 second
+  }
+};
+
+// Watch for MQTT messages
+watchEffect(() => {
+  if (timeSync.value?.synchronized && timeSync.value.current_time) {
+    currentTime.value = new Date(timeSync.value.current_time);
+    syncAvailable.value = true; // External sync is available
+  } else {
+    syncAvailable.value = false; // No sync source
+  }
+});
+
+// Start local clock update every second
+onMounted(() => {
+  clockInterval = setInterval(incrementTime, 1000);
+});
+
+// Cleanup
+onUnmounted(() => {
+  clearInterval(clockInterval);
+});
+</script>
+
 <template>
   <div class="inline-flex gap-1 items-center text-sm text-gray-500">
     <span v-if="timeSync?.synchronized">{{ timeSync.source }}</span>
@@ -6,67 +51,3 @@
     <span class="tabular-nums">{{ formattedTime }}</span>
   </div>
 </template>
-
-<script setup>
-import { ref, computed, onMounted, onUnmounted, watchEffect } from "vue";
-import { useWebSockets } from "@/composables/useWebSockets"; // WebSocket-компосабл
-import axios from "axios"; // Для запроса API
-
-// WebSocket для получения данных о синхронизации времени
-const { data: timeSync } = useWebSockets("time_sync");
-
-// Локальное время (обновляется между обновлениями с сервера)
-const currentTime = ref(new Date());
-
-// Функция обновления отображаемого времени
-const formattedDate = computed(() =>
-  currentTime.value.toLocaleDateString("en-GB", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  })
-);
-
-const formattedTime = computed(() =>
-  currentTime.value.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  })
-);
-
-// Функция для получения времени с API
-const fetchCurrentTime = async () => {
-  try {
-    const response = await axios.get("/api/time/status"); // Запрос к API
-    if (response.data.current_time) {
-      currentTime.value = new Date(response.data.current_time);
-    }
-  } catch (error) {
-    console.error("Failed to fetch time from API:", error);
-  }
-};
-
-// Интервал для плавного обновления локального времени
-let clockInterval;
-
-onMounted(async () => {
-  await fetchCurrentTime(); // Загружаем время при старте компонента
-
-  // Если приходит новое время с WebSocket, обновляем локальное время
-  watchEffect(() => {
-    if (timeSync?.value?.synchronized && timeSync.value.current_time) {
-      currentTime.value = new Date(timeSync.value.current_time);
-    }
-  });
-
-  // Каждую секунду увеличиваем локальное время на 1 сек.
-  clockInterval = setInterval(() => {
-    currentTime.value = new Date(currentTime.value.getTime() + 1000);
-  }, 1000);
-});
-
-onUnmounted(() => {
-  clearInterval(clockInterval);
-});
-</script>

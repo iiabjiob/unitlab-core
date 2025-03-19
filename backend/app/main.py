@@ -3,10 +3,9 @@ from contextlib import asynccontextmanager
 import asyncio
 
 from app.api import wifi, system, time_sync, ntp, health, config
-from app.ws.websocket import router as websocket_router
-from app.ws.health import health_status_updater
-from app.ws.system_ws import system_info_updater
-from app.ws.time_ws import time_sync_updater
+from app.services.mqtt.health_status import health_status_updater
+from app.services.mqtt.time_sync import time_sync_updater
+from app.services.mqtt.system_info import system_info_updater
 from app.core.config import get_settings
 from app.db.database import engine
 from sqlalchemy.sql import text
@@ -32,9 +31,9 @@ async def lifespan(app: FastAPI):
     try:
         asyncio.create_task(health_status_updater())
         asyncio.create_task(system_info_updater())
-        asyncio.create_task(time_sync_updater())
+        asyncio.create_task(time_sync_updater(5))
     except Exception as e:
-        logger.error(f"❌ Failed to start 'system_info_updater': {e}")
+        logger.error(f"❌ Failed to start background tasks: {e}")
 
     yield
 
@@ -61,9 +60,5 @@ app.include_router(time_sync.router)
 app.include_router(ntp.router)
 app.include_router(health.router)
 app.include_router(config.router)
-
-# Register websockets
-logger.info("🔗 Registering WebSocket routers...")
-app.include_router(websocket_router)
 
 logger.info(f"✅ FastAPI application is up and running in {app.state.env} mode.")

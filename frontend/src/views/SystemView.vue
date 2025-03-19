@@ -1,18 +1,17 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import axios from "axios";
-import { useWebSockets } from "@/composables/useWebSockets"; // Импорт WebSocket-компосабла
+import { useMqtt } from "@/composables/useMqtt";
 import PageHeader from "@/components/PageHeader.vue";
 import LoadingSpinner from "@/components/LoadingSpinner.vue";
 import AlertComponent from "@/components/AlertComponent.vue";
+import SystemInfoItemComponent from "@/components/SystemInfoItemComponent.vue";
 
+const { data: systemInfo } = useMqtt("system_info");
 const apiSystemInfo = ref(null);
 const message = ref("");
 
-// Используем `useWebSockets` для получения данных о системе
-const { data: systemInfo } = useWebSockets("system_info");
-
-// Функция загрузки API-версии
+// Fetch static system info via API
 const fetchSysInfo = async () => {
   try {
     const response = await axios.get("/api/system/info", { baseURL: "/" });
@@ -22,47 +21,71 @@ const fetchSysInfo = async () => {
   }
 };
 
-onMounted(() => {
-  fetchSysInfo();
-});
-
-
+onMounted(fetchSysInfo);
 </script>
 
 <template>
   <div>
     <PageHeader title="System Information" />
-
-    <!-- Error message -->
     <AlertComponent v-if="message" :message="message" type="error" icon="⚠️" />
 
-    <!-- Loading indicator -->
-    <LoadingSpinner v-if="!systemInfo" size="small"/>
+    <div v-if="apiSystemInfo">
+      <SystemInfoItemComponent label="App Version">
+        {{ apiSystemInfo.version || "Loading..." }}
+      </SystemInfoItemComponent>
+      <SystemInfoItemComponent label="Hostname">
+        {{ apiSystemInfo.hostname }}
+      </SystemInfoItemComponent>
+      <SystemInfoItemComponent label="IP Address">
+        {{ apiSystemInfo.ip_address }}
+      </SystemInfoItemComponent>
+      <SystemInfoItemComponent label="Operating System">
+        {{ apiSystemInfo.os }}
+      </SystemInfoItemComponent>
+    </div>
 
-    <!-- System Info -->
     <div v-if="systemInfo">
-      <p><strong>App Version:</strong> {{ apiSystemInfo?.version || "Loading..." }}</p>
-      <p><strong>Hostname:</strong> {{ apiSystemInfo.hostname }}</p>
-      <p><strong>IP Address:</strong> {{ apiSystemInfo.ip_address }}</p>
-      <p><strong>Operating System:</strong> {{ apiSystemInfo.os }}</p>
-
-      <p><strong>Uptime:</strong> {{ systemInfo.uptime }}</p>
-      <p><strong>CPU Load:</strong> {{ systemInfo.cpu_usage }}</p>
-      <p><strong>Temperature:</strong> {{ systemInfo.temperature }}</p>
+      <SystemInfoItemComponent label="Uptime">
+        {{ systemInfo.uptime }}
+      </SystemInfoItemComponent>
+      <SystemInfoItemComponent label="CPU Load">
+        {{ systemInfo.cpu_usage }}%
+      </SystemInfoItemComponent>
+      <SystemInfoItemComponent label="Temperature">
+        {{ systemInfo.temperature }}°C
+      </SystemInfoItemComponent>
 
       <h2 class="mt-4 font-semibold">Memory</h2>
-      <p><strong>Total:</strong> {{ systemInfo.ram.total }} GB</p>
-      <p><strong>Used:</strong> {{ systemInfo.ram.used }} GB</p>
-      <p><strong>Available:</strong> {{ systemInfo.ram.available }} GB</p>
+      <SystemInfoItemComponent label="Total">
+        {{ systemInfo.ram.total }} GB
+      </SystemInfoItemComponent>
+      <SystemInfoItemComponent label="Used">
+        {{ systemInfo.ram.used }} GB
+      </SystemInfoItemComponent>
+      <SystemInfoItemComponent label="Available">
+        {{ systemInfo.ram.available }} GB
+      </SystemInfoItemComponent>
 
       <h2 class="mt-4 font-semibold">Disk</h2>
-      <p><strong>Total:</strong> {{ systemInfo.disk.total }} GB</p>
-      <p><strong>Used:</strong> {{ systemInfo.disk.used }} GB</p>
-      <p><strong>Free:</strong> {{ systemInfo.disk.free }} GB</p>
+      <SystemInfoItemComponent label="Total">
+        {{ systemInfo.disk.total }} GB
+      </SystemInfoItemComponent>
+      <SystemInfoItemComponent label="Used">
+        {{ systemInfo.disk.used }} GB
+      </SystemInfoItemComponent>
+      <SystemInfoItemComponent label="Free">
+        {{ systemInfo.disk.free }} GB
+      </SystemInfoItemComponent>
 
       <h2 class="mt-4 font-semibold">Wi-Fi</h2>
-      <p><strong>SSID:</strong> {{ systemInfo.wifi.ssid }}</p>
-      <p><strong>Signal Strength:</strong> {{ systemInfo.wifi.signal }}</p>
+      <SystemInfoItemComponent label="SSID">
+        {{ systemInfo.wifi.ssid }}
+      </SystemInfoItemComponent>
+      <SystemInfoItemComponent label="Signal Strength">
+        {{ systemInfo.wifi.signal }}%
+      </SystemInfoItemComponent>
     </div>
+
+    <LoadingSpinner v-if="!apiSystemInfo || !systemInfo" size="small"/>
   </div>
 </template>

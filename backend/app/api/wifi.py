@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from app.services.wifi_service import WifiService
+from app.services.system.wifi_service import WifiService
 
 router = APIRouter(prefix="/api/wifi", tags=["Wi-Fi"])
 

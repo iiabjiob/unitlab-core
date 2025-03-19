@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.services.system_service import SystemService
+from app.services.system.system_service import SystemService
 
 router = APIRouter(prefix="/api/system", tags=["System Info"])
 
