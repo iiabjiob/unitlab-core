@@ -49,10 +49,10 @@ onMounted(fetchSysInfo);
         {{ systemInfo.uptime }}
       </SystemInfoItemComponent>
       <SystemInfoItemComponent label="CPU Load">
-        {{ systemInfo.cpu_usage }}%
+        {{ systemInfo.cpu_usage }}
       </SystemInfoItemComponent>
       <SystemInfoItemComponent label="Temperature">
-        {{ systemInfo.temperature }}°C
+        {{ systemInfo.temperature }}
       </SystemInfoItemComponent>
 
       <h2 class="mt-4 font-semibold">Memory</h2>
@@ -82,7 +82,7 @@ onMounted(fetchSysInfo);
         {{ systemInfo.wifi.ssid }}
       </SystemInfoItemComponent>
       <SystemInfoItemComponent label="Signal Strength">
-        {{ systemInfo.wifi.signal }}%
+        {{ systemInfo.wifi.signal }}
       </SystemInfoItemComponent>
     </div>
 
