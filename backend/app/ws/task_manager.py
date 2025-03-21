@@ -1,5 +1,6 @@
 import asyncio
 from app.ws.tasks.send_time_sync import send_time_sync
+from app.ws.tasks.send_system_info import send_system_info
 from app.core.logger import logger
 
 class TaskManager:
@@ -12,6 +13,7 @@ class TaskManager:
         """ Starts all background tasks """
         logger.info("🚀 Starting all background tasks...")
         self.tasks.append(asyncio.create_task(send_time_sync()))
+        self.tasks.append(asyncio.create_task(send_system_info()))
 
     def stop_tasks(self):
         """ Stops all background tasks """

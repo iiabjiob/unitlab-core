@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from app.api import wifi, system, time_sync, ntp, health, config
+from app.api import wifi, time_sync, ntp, health, config
 from app.ws.ws_router import router as ws_router
 from app.ws.task_manager import task_manager
 from app.core.config import get_settings
@@ -45,7 +45,6 @@ app = FastAPI(
 # Logging the router setup
 logger.info("🔗 Registering REST API routers...")
 app.include_router(wifi.router)
-app.include_router(system.router)
 app.include_router(time_sync.router)
 app.include_router(ntp.router)
 app.include_router(health.router)

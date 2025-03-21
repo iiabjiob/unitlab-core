@@ -76,6 +76,24 @@ export const useWebSocketStore = defineStore("websocket", {
     },
 
     /**
+     * Unsubscribes from the specified WebSocket data types.
+     *
+     * - Removes the subscription from `activeSubscriptions`.
+     * - Sends an `unsubscribe` request to the server.
+     * - Prevents receiving unnecessary WebSocket updates.
+     *
+     * @param {string[]} dataTypes - Array of data types to unsubscribe from.
+     */
+    unsubscribe(dataTypes) {
+      dataTypes.forEach((type) => this.activeSubscriptions.delete(type));
+
+      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        console.log("📤 Unsubscribing from:", dataTypes);
+        this.socket.send(JSON.stringify({ action: "unsubscribe", data_types: dataTypes }));
+      }
+    },
+
+    /**
      * Handles reconnection logic using exponential backoff,
      * switching to fixed delay after reaching the max attempt limit.
      */

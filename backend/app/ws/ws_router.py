@@ -19,6 +19,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 data_types = message.get("data_types", [])
                 await ws_manager.subscribe(websocket, data_types)
 
+            elif action == "unsubscribe":
+                data_types = message.get("data_types", [])
+                await ws_manager.unsubscribe(websocket, data_types)
+
     except WebSocketDisconnect:
         logger.debug("❌ Client disconnected")  # Disconnection log
         ws_manager.disconnect(websocket)

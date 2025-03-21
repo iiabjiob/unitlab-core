@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     host: str
     mqtt_port: int
     time_sync_interval: int
-    health_check_interval: int
+    system_info_interval: int
 
     @property
     def database_url(self) -> str:
