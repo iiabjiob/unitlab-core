@@ -1,6 +1,7 @@
 import platform
 import socket
 import psutil
+import netifaces
 import datetime
 from app.core.logger import logger
 from app.core.config import get_settings
@@ -14,10 +15,6 @@ class SystemInfoService:
     def get_app_version():
         """ Returns the app version """
         return settings.app_version
-    
-    def get_host():
-        """ Returns the host """
-        return settings.host
 
     @staticmethod
     def get_hostname():
@@ -28,7 +25,21 @@ class SystemInfoService:
 
     @staticmethod
     def get_ip_address():
-        return 'TBD'
+        """Automatically retrieves the IP address from available interfaces"""
+        interfaces = ['eth0', 'wlan0']
+        for iface in interfaces:
+            try:
+                addresses = netifaces.ifaddresses(iface)
+                ip_info = addresses.get(netifaces.AF_INET)
+                if ip_info:
+                    ip_address = ip_info[0]['addr']
+                    logger.debug(f"🌐 IP Address [{iface}]: {ip_address}")
+                    return ip_address
+            except Exception as e:
+                logger.warning(f"⚠️ Unable to get IP for '{iface}': {e}")
+
+        logger.error("❌ No IP address found on available interfaces.")
+        return "No IP assigned"
 
     @staticmethod
     def get_os():

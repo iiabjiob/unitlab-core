@@ -10,7 +10,7 @@ export const useWebSocketStore = defineStore("websocket", {
     receivedData: {},                    // Universal storage for all incoming data
 
     reconnectAttempts: 0,                // Number of current reconnect attempts
-    maxReconnectAttempts: 10,            // Max attempts before switching to fixed delay
+    maxReconnectAttempts: 5,             // Max attempts before switching to fixed delay
     reconnectDelay: 1000,                // Base delay for exponential backoff (in ms)
     maxReconntetDelay: 30000             // Constant delay after maxReconnectAttempts (in ms)
   }),

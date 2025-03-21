@@ -10,14 +10,18 @@ settings = get_settings()
 
 CHANNEL_NAME = "system_info"
 INTERVAL = settings.system_info_interval  # Update interval in seconds
+SUBSCRIBE_INTERVAL = 1
 
 async def send_system_info():
     """Send periodic system information via WebSocket"""
     last_sent = None  # Cache to avoid redundant updates
 
     while True:
-        # if ws_manager.has_subscribers(CHANNEL_NAME):
+        if ws_manager.has_subscribers(CHANNEL_NAME):
             system_info = {
+                "app_version": SystemInfoService.get_app_version(),
+                "host_name": SystemInfoService.get_hostname(),
+                "ip_address": SystemInfoService.get_ip_address(),
                 "cpu": ResourceUsageService.get_cpu_usage(),
                 "ram": ResourceUsageService.get_ram_usage(),
                 "disk": ResourceUsageService.get_disk_usage(),
@@ -30,5 +34,9 @@ async def send_system_info():
             if system_info != last_sent:  # Avoid redundant sends
                 await ws_manager.broadcast(CHANNEL_NAME, system_info)
                 last_sent = system_info
-
+        
             await asyncio.sleep(INTERVAL)
+        
+        else:
+            
+            await asyncio.sleep(SUBSCRIBE_INTERVAL)

@@ -22,6 +22,8 @@ const systemInfo = computed(() => wsStore.receivedData["system_info"] ?? {});
 const isLoaded = computed(() => {
   const info = systemInfo.value;
   return (
+    info.host_name &&
+    info.ip_address &&
     info.cpu &&
     info.ram &&
     info.disk &&
@@ -43,6 +45,19 @@ const isLoaded = computed(() => {
 
     <!-- Когда данные готовы, показываем всю страницу -->
     <div v-else class="space-y-3 text-sm">
+
+      <!-- APP Version -->
+      <div>
+        <InfoRowComponent label="Version">{{ systemInfo.app_version }}</InfoRowComponent>
+      </div>
+
+      <!-- Network -->
+      <div>
+        <h2 class="font-bold mb-2">Network</h2>
+        <InfoRowComponent label="Host">{{ systemInfo.host_name }}</InfoRowComponent>
+        <InfoRowComponent label="IP address">{{ systemInfo.ip_address }}</InfoRowComponent>
+      </div>
+
       <!-- CPU -->
       <div>
         <h2 class="font-bold mb-2">CPU</h2>
