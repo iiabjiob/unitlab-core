@@ -8,7 +8,7 @@ class ResourceUsageService:
     def get_cpu_usage():
         """Returns the current CPU usage percentage"""
         try:
-            cpu_usage = psutil.cpu_percent(interval=1)
+            cpu_usage = psutil.cpu_percent(interval=None)
             logger.debug(f"🖥️ CPU Usage: {cpu_usage}%")
             return f"{cpu_usage}%"
         except Exception as e:

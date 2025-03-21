@@ -1,5 +1,6 @@
 from typing import Dict, Set, List
 from fastapi import WebSocket
+from app.core.logger import logger
 
 class WebSocketManager:
     def __init__(self):
@@ -32,6 +33,12 @@ class WebSocketManager:
         """
         if websocket in self.subscriptions:
             self.subscriptions[websocket].difference_update(data_types)
-            print(f"🚫 Unsubscribed: {data_types} → Remaining: {self.subscriptions[websocket]}")
+            logger.info(f"🚫 Unsubscribed: {data_types} → Remaining: {self.subscriptions[websocket]}")
+    
+    def has_subscribers(self, data_type: str) -> bool:
+        """ Checks if at least one client is subscribed to the given data type """
+        if not self.subscriptions:  # ✅ Быстрая проверка, есть ли клиенты вообще
+            return False
+        return any(data_type in subs for subs in self.subscriptions.values())
 
 ws_manager = WebSocketManager()

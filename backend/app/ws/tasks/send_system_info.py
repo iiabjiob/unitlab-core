@@ -16,18 +16,19 @@ async def send_system_info():
     last_sent = None  # Cache to avoid redundant updates
 
     while True:
-        system_info = {
-            "cpu": ResourceUsageService.get_cpu_usage(),
-            "ram": ResourceUsageService.get_ram_usage(),
-            "disk": ResourceUsageService.get_disk_usage(),
-            "os": SystemInfoService.get_os(),
-            "uptime": SystemInfoService.get_uptime(),
-            "temperature": TemperatureService.get_temperature(),
-            "wifi": WifiService.get_wifi_info(),
-        }
+        # if ws_manager.has_subscribers(CHANNEL_NAME):
+            system_info = {
+                "cpu": ResourceUsageService.get_cpu_usage(),
+                "ram": ResourceUsageService.get_ram_usage(),
+                "disk": ResourceUsageService.get_disk_usage(),
+                "os": SystemInfoService.get_os(),
+                "uptime": SystemInfoService.get_uptime(),
+                "temperature": TemperatureService.get_temperature(),
+                "wifi": WifiService.get_wifi_info(),
+            }
 
-        if system_info != last_sent:  # Avoid redundant sends
-            await ws_manager.broadcast(CHANNEL_NAME, system_info)
-            last_sent = system_info
+            if system_info != last_sent:  # Avoid redundant sends
+                await ws_manager.broadcast(CHANNEL_NAME, system_info)
+                last_sent = system_info
 
-        await asyncio.sleep(INTERVAL)
+            await asyncio.sleep(INTERVAL)
