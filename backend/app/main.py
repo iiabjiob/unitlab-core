@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-import asyncio
 from app.api import wifi, system, time_sync, ntp, health, config
+from app.ws.ws_router import router as ws_router
+from app.ws.task_manager import task_manager
 from app.core.config import get_settings
 from app.db.database import engine
 from sqlalchemy.sql import text
@@ -23,11 +24,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ Database connection failed: {e}")
 
-    # ✅ Safe startup of the background task
-    # try:
-
-    # except Exception as e:
-    #     logger.error(f"❌ Failed to start background tasks: {e}")
+    # Safe startup of the background task
+    try:
+        task_manager.start_tasks()
+    except Exception as e:
+        logger.error(f"❌ Failed to start background tasks: {e}")
 
     yield
 
@@ -40,11 +41,6 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan
 )
-# Добавляем `app_env` в state, чтобы его можно было использовать внутри приложения
-app.state.env = settings.app_env
-
-if app.state.env == "production":
-    app.openapi_url = None  # Отключаем Swagger UI
 
 # Logging the router setup
 logger.info("🔗 Registering REST API routers...")
@@ -55,4 +51,8 @@ app.include_router(ntp.router)
 app.include_router(health.router)
 app.include_router(config.router)
 
-logger.info(f"✅ FastAPI application is up and running in {app.state.env} mode.")
+# Logging the websockets
+logger.info("🔗 Registering websockets...")
+app.include_router(ws_router)
+
+logger.info(f"✅ FastAPI application is up.")

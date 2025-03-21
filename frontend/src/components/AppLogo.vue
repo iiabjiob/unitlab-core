@@ -7,11 +7,9 @@
       FAT Simulator
     </RouterLink>
 
-    <HealthStatusComponent/>
   </div>
 </template>
 
 <script setup>
 import { RouterLink } from 'vue-router';
-import HealthStatusComponent from './HealthStatusComponent.vue';
 </script>

@@ -1,5 +1,14 @@
+<script setup>
+
+import { useWebSocketStore } from "@/stores/websocket";
+
+const wsStore = useWebSocketStore();
+
+</script>
+
 <template>
-  <div class="inline-flex gap-1 items-center text-sm">
-    backend status
+  <div class="text-xs">
+    <span v-if="wsStore.isConnected" class="text-green-500">🟢 Online</span>
+    <span v-else class="text-red-500">🔴 Offline</span>
   </div>
 </template>

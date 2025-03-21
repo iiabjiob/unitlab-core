@@ -90,3 +90,13 @@ class TimeSyncService:
             logger.exception(f"⚠️ Unexpected error in `get_ptp_time`: {e}")
 
         return "Failed to retrieve PTP time"
+
+    @staticmethod
+    def get_time_sync_info() -> dict:
+        """Returns the current synchronization source and time."""
+        if TimeSyncService.get_ptp_status():
+            return {"time_source": "PTP", "time": TimeSyncService.get_ptp_time()}
+        elif TimeSyncService.get_ntp_status():
+            return {"time_source": "NTP", "time": TimeSyncService.get_ntp_time()}
+        else:
+            return {"time_source": "*", "time": "Unknown"}
