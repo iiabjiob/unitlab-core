@@ -4,8 +4,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
-    host: str
-    mqtt_port: int
+    app_version: str
+    app_name: str
+    description: str
+
+    app_env: str
+    debug: bool
+    debug_level: str
     time_sync_interval: int
     system_info_interval: int
 

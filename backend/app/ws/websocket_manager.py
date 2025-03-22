@@ -16,24 +16,32 @@ class WebSocketManager:
         self.active_connections.remove(websocket)
         self.subscriptions.pop(websocket, None)
 
-    async def send_data(self, websocket: WebSocket, data_type: str, data: dict):
-        if data_type in self.subscriptions.get(websocket, set()):
-            await websocket.send_json({"type": data_type, "data": data})
-
-    async def broadcast(self, data_type: str, data: dict):
-        for websocket in self.active_connections:
-            await self.send_data(websocket, data_type, data)
-
-    async def subscribe(self, websocket: WebSocket, data_types: List[str]):
-        self.subscriptions.setdefault(websocket, set()).update(data_types)
+    async def send_data(self, websocket: WebSocket, channel: str, payload: dict):
+        if channel in self.subscriptions.get(websocket, set()):
+            await websocket.send_json({
+                "channel": channel,
+                "payload": payload
+            })
     
-    async def unsubscribe(self, websocket: WebSocket, data_types: List[str]):
+    async def send_to(self, websocket: WebSocket, channel: str, payload: dict):
+        await self.send_data(websocket, channel, payload)
+
+
+    async def broadcast(self, channel: str, payload: dict):
+        for websocket in self.active_connections:
+            await self.send_data(websocket, channel, payload)
+
+
+    async def subscribe(self, websocket: WebSocket, channels: List[str]):
+        self.subscriptions.setdefault(websocket, set()).update(channels)
+    
+    async def unsubscribe(self, websocket: WebSocket, channels: List[str]):
         """
         Removes specified data types from the client's subscription list.
         """
         if websocket in self.subscriptions:
-            self.subscriptions[websocket].difference_update(data_types)
-            logger.info(f"🚫 Unsubscribed: {data_types} → Remaining: {self.subscriptions[websocket]}")
+            self.subscriptions[websocket].difference_update(channels)
+            logger.info(f"🚫 Unsubscribed: {channels} → Remaining: {self.subscriptions[websocket]}")
     
     def has_subscribers(self, data_type: str) -> bool:
         """ Checks if at least one client is subscribed to the given data type """

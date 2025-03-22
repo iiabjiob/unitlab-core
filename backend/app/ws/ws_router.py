@@ -1,8 +1,9 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.ws.websocket_manager import ws_manager
+from app.ws.channel_registry import CHANNELS
 from app.core.logger import logger
 
-router = APIRouter()
+router = APIRouter(prefix="/ws", tags=["Websocket"])
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -16,12 +17,18 @@ async def websocket_endpoint(websocket: WebSocket):
             action = message.get("action")
             
             if action == "subscribe":
-                data_types = message.get("data_types", [])
-                await ws_manager.subscribe(websocket, data_types)
+                channels = message.get("channels", [])
+                await ws_manager.subscribe(websocket, channels)
+
+                # Отправка данных сразу после подписки
+                for channel in channels:
+                    if channel in CHANNELS:
+                        data = CHANNELS[channel]["provider"]()
+                        await ws_manager.send_to(websocket, channel, data)
 
             elif action == "unsubscribe":
-                data_types = message.get("data_types", [])
-                await ws_manager.unsubscribe(websocket, data_types)
+                channels = message.get("channels", [])
+                await ws_manager.unsubscribe(websocket, channels)
 
     except WebSocketDisconnect:
         logger.debug("❌ Client disconnected")  # Disconnection log

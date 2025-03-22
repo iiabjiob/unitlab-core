@@ -20,8 +20,14 @@ export const useWebSocketStore = defineStore("websocket", {
      * Initiates a WebSocket connection and sets up handlers.
      */
     connect() {
+
+      const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+      const wsUrl = `${wsProtocol}://${window.location.host}/ws/ws`;
+
       console.log("🔌 Connecting to WebSocket...");
-      this.socket = new WebSocket("ws://localhost:8000/ws");
+
+      this.socket = new WebSocket(wsUrl);
+
 
       this.socket.onopen = () => {
         console.log("✅ WebSocket connected!");
@@ -46,10 +52,10 @@ export const useWebSocketStore = defineStore("websocket", {
       };
 
       this.socket.onmessage = (event) => {
-        const { type, data } = JSON.parse(event.data);
-
-        // 📨 Store received data in a universal object by type
-        this.receivedData[type] = data;
+        const { channel, payload } = JSON.parse(event.data);
+        if (channel && payload) {
+          this.receivedData[channel] = payload;
+        }
       };
 
       this.socket.onerror = (error) => {
@@ -68,7 +74,7 @@ export const useWebSocketStore = defineStore("websocket", {
 
       if (this.socket && this.socket.readyState === WebSocket.OPEN) {
         console.log("📤 Sending subscription request to the server:", dataTypes);
-        this.socket.send(JSON.stringify({ action: "subscribe", data_types: dataTypes }));
+        this.socket.send(JSON.stringify({ action: "subscribe", channels: dataTypes }));
       } else {
         console.log("🕐 WebSocket not connected yet, saving subscription request:", dataTypes);
         this.pendingSubscriptions.push(dataTypes);
@@ -89,7 +95,7 @@ export const useWebSocketStore = defineStore("websocket", {
 
       if (this.socket && this.socket.readyState === WebSocket.OPEN) {
         console.log("📤 Unsubscribing from:", dataTypes);
-        this.socket.send(JSON.stringify({ action: "unsubscribe", data_types: dataTypes }));
+        this.socket.send(JSON.stringify({ action: "unsubscribe", channels: dataTypes }));
       }
     },
 
