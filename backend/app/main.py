@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from app.api import wifi, time_sync, ntp, health, config
 from app.ws.ws_router import router as ws_router
 from app.ws.task_manager import task_manager
+from app.api.api_manager import register_routers
 from app.core.config import get_settings
 from app.db.database import engine
 from sqlalchemy.sql import text
@@ -44,11 +44,7 @@ app = FastAPI(
 
 # Logging the router setup
 logger.info("🔗 Registering REST API routers...")
-app.include_router(wifi.router)
-app.include_router(time_sync.router)
-app.include_router(ntp.router)
-app.include_router(health.router)
-app.include_router(config.router)
+register_routers(app)
 
 # Logging the websockets
 logger.info("🔗 Registering websockets...")
