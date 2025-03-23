@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from app.ws.ws_router import router as ws_router
-from app.ws.task_manager import task_manager
-from app.api.api_manager import register_routers
+
 from app.core.config import get_settings
-from app.db.database import engine
-from sqlalchemy.sql import text
 from app.core.logger import logger
+
+from app.api.api_manager import register_routers
+from app.ws.ws_router import router as ws_router
+from app.core.startup import check_database_connection, start_background_tasks
 
 settings = get_settings()
 
@@ -16,19 +16,8 @@ async def lifespan(app: FastAPI):
 
     logger.info("🚀 Starting FastAPI application...")
 
-    # Проверка соединения с БД при запуске
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("SELECT 1"))
-            logger.info("✅ Connected to the database!")
-    except Exception as e:
-        logger.error(f"❌ Database connection failed: {e}")
-
-    # Safe startup of the background task
-    try:
-        task_manager.start_tasks()
-    except Exception as e:
-        logger.error(f"❌ Failed to start background tasks: {e}")
+    await check_database_connection()
+    start_background_tasks()
 
     yield
 
@@ -50,4 +39,5 @@ register_routers(app)
 logger.info("🔗 Registering websockets...")
 app.include_router(ws_router)
 
-logger.info(f"✅ FastAPI application is up.")
+logger.info(f"✅ FastAPI application is up and running at version {settings.app_version}")
+
