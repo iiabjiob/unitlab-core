@@ -1,0 +1,16 @@
+.link {
+    @apply text-emerald-600 hover:underline font-medium 
+           dark:text-emerald-400 dark:hover:text-emerald-300;
+}
+
+/* Навигационные ссылки */
+.nav-link {
+    @apply text-gray-700 font-medium
+           dark:text-gray-300;
+}
+
+/* Активная ссылка */
+.nav-link-active {
+    @apply text-emerald-600
+           dark:text-emerald-400;
+}
