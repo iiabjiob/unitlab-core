@@ -1,43 +1,39 @@
-# 🚫 Игнорируем Git и системные файлы
+# 🚫 Git и системные файлы
 .git/
 .DS_Store
 .vscode/
 .idea/
 
-# 🚫 Игнорируем логи и временные файлы
-logs/
-*.log
-.env
-__pycache__/
-*.pyc
-*.pyo
+# 🚫 Общие временные и Python-кеши (рекурсивно)
+**/__pycache__/
+**/*.pyc
+**/*.pyo
 *.swp
+*.log
 
-# 🚫 Игнорируем файлы разработки фронтенда
-node_modules/
-src/
-public/
-vite.config.js
-package.json
-package-lock.json
-jsconfig.json
-eslint.config.js
-.eslintrc.js
+# 🚫 Бэкенд: логи, окружение, тесты и кэш
+backend/.venv/
+backend/.env
+backend/logs/
+backend/tests/
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/app/db/migrations/
+backend/docker-compose*.yml
 
-# 🚫 Игнорируем файлы разработки бэкенда
-.venv/
-tests/
-.pytest_cache/
-db/migrations/
-.mypy_cache/
+# 🚫 Фронтенд: dev-файлы
+frontend/node_modules/
+frontend/src/
+frontend/public/
+frontend/vite.config.js
+frontend/package.json
+frontend/package-lock.json
+frontend/jsconfig.json
+frontend/eslint.config.js
+frontend/.eslintrc.js
+frontend/index.html
 
-# 🚫 Исключаем файлы Docker (если не используем на сервере)
-docker-compose*.yml
-
-# 🚫 Исключаем файлы Nginx
-nginx/
-
-# 🚫 Лишние файлы
+# 🚫 Документация и конфиги
 .editorconfig
 .gitattributes
 .gitignore

@@ -171,8 +171,8 @@ touch fat-simulator/backend/.env
 Перенесите файлы backend и frontend в папку проекта через rsync:
 
 ```bash
-rsync -avz --delete --exclude-from=.rsync-exclude backend/ pi@fat-simulator.local:~/fat-simulator/backend/
-rsync -avz --delete --exclude-from=.rsync-exclude frontend/ pi@fat-simulator.local:~/fat-simulator/frontend/
+rsync -avz --delete --exclude-from=.rsync-exclude ./ pi@fat-simulator.local:~/fat-simulator/
+
 ```
 
 ### 📦 Создание виртуального окружения и установка зависимостей
