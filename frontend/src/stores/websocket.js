@@ -99,6 +99,15 @@ export const useWebSocketStore = defineStore("websocket", {
       }
     },
 
+    send(message) {
+      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        this.socket.send(JSON.stringify(message));
+        console.log("📤 Sent message to WS:", message);
+      } else {
+        console.warn("⚠️ WebSocket not connected, message not sent:", message);
+      }
+    },
+
     /**
      * Handles reconnection logic using exponential backoff,
      * switching to fixed delay after reaching the max attempt limit.

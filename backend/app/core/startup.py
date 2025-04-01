@@ -1,5 +1,6 @@
 from sqlalchemy.sql import text
 from app.db.database import engine
+from app.mqtt.client import start_mqtt
 from app.ws.task_manager import task_manager
 from app.core.logger import logger
 
@@ -10,6 +11,13 @@ async def check_database_connection():
             logger.info("✅ Connected to the database!")
     except Exception as e:
         logger.error(f"❌ Database connection failed: {e}")
+
+def mqtt_connect():
+    try:
+        start_mqtt()
+    except Exception as e:
+        logger.error(f"❌ Failed to start mqtt: {e}")
+
 
 def start_background_tasks():
     try:

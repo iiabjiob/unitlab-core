@@ -1,6 +1,7 @@
 import platform
 import subprocess
 from app.core.logger import logger
+from app.core.utils import ensure_linux
 
 class TemperatureService:
     """ Retrieves CPU temperature (Linux only) """
@@ -8,8 +9,8 @@ class TemperatureService:
     @staticmethod
     def get_temperature():
         """Returns the CPU temperature in °C (Linux only)"""
-        if platform.system() != "Linux":
-            logger.warning("⚠️ CPU temperature check is only supported on Linux. Skipping...")
+
+        if not ensure_linux("CPU temperature"):
             return "N/A"
 
         try:

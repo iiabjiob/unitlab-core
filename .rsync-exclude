@@ -33,6 +33,8 @@ frontend/eslint.config.js
 frontend/.eslintrc.js
 frontend/index.html
 
+config/
+
 # 🚫 Документация и конфиги
 .editorconfig
 .gitattributes

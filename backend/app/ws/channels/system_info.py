@@ -13,7 +13,7 @@ def get_channel_config():
         "provider": lambda: {
             "app_version": SystemInfoService.get_app_version(),
             "host_name": SystemInfoService.get_hostname(),
-            "ip_address": SystemInfoService.get_ip_address(),
+            "ip_address": SystemInfoService.get_ip_addresses(),
             "cpu": ResourceUsageService.get_cpu_usage(),
             "ram": ResourceUsageService.get_ram_usage(),
             "disk": ResourceUsageService.get_disk_usage(),

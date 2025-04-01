@@ -6,7 +6,7 @@ from app.core.logger import logger
 
 from app.api.api_manager import register_routers
 from app.ws.ws_router import router as ws_router
-from app.core.startup import check_database_connection, start_background_tasks
+from app.core.startup import check_database_connection, start_background_tasks, start_mqtt
 
 settings = get_settings()
 
@@ -17,6 +17,7 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting FastAPI application...")
 
     await check_database_connection()
+    start_mqtt()
     start_background_tasks()
 
     yield

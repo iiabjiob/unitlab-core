@@ -20,11 +20,39 @@ async def websocket_endpoint(websocket: WebSocket):
                 channels = message.get("channels", [])
                 await ws_manager.subscribe(websocket, channels)
 
-                # Отправка данных сразу после подписки
                 for channel in channels:
-                    if channel in CHANNELS:
-                        data = CHANNELS[channel]["provider"]()
+                    config = CHANNELS.get(channel)
+                    if config and callable(config.get("on_subscribe")):
+                        config["on_subscribe"](websocket)
+
+                    provider = config.get("provider")
+                    if callable(provider):
+                        data = provider()
                         await ws_manager.send_to(websocket, channel, data)
+                    else:
+                        logger.debug(f"⏩ Channel '{channel}' is push-only, skipping initial send.")
+            
+            elif action == "publish":
+                topic = message.get("topic")
+                payload = message.get("payload")
+
+                if not topic or payload is None:
+                    logger.warning(f"❌ Invalid publish request: {message}")
+                    return
+
+                # TODO: Подумать как лучше вынести
+                # Безопасность: только разрешённые топики
+                if not topic.startswith(("do-board-", "di-board-")):
+                    logger.warning(f"🚫 Blocked publish to unsafe topic: {topic}")
+                    return
+
+                import json
+                from app.mqtt.client import client
+
+                payload_str = json.dumps(payload)
+                client.publish(topic, payload_str)
+
+                logger.info(f"📡 MQTT publish from WS: {topic} → {payload_str}")
 
             elif action == "unsubscribe":
                 channels = message.get("channels", [])

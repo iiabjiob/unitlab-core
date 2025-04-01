@@ -23,9 +23,38 @@ class SystemInfoService:
         return hostname
 
     @staticmethod
-    def get_ip_address():
-        """Automatically retrieves the IP address from available interfaces"""
-        return "No IP assigned"
+    def get_active_interfaces():
+        """Returns a list of active (UP) network interfaces, excluding loopback."""
+        active = []
+        stats = psutil.net_if_stats()
+        for iface, info in stats.items():
+            if info.isup and iface != 'lo':
+                active.append(iface)
+        logger.debug(f"🔌 Active interfaces: {active}")
+        return active
+
+    @staticmethod
+    def get_ip_addresses(interfaces=None):
+        """Returns IP addresses for given or active interfaces."""
+        ip_addresses = {}
+        all_addrs = psutil.net_if_addrs()
+
+        if interfaces is None:
+            interfaces = SystemInfoService.get_active_interfaces()
+
+        for iface in interfaces:
+            iface_addrs = all_addrs.get(iface)
+            if iface_addrs:
+                ipv4 = next((addr.address for addr in iface_addrs if addr.family == socket.AF_INET), None)
+                if ipv4:
+                    ip_addresses[iface] = ipv4
+                    logger.debug(f"📡 {iface}: {ipv4}")
+                else:
+                    ip_addresses[iface] = "No IP assigned"
+            else:
+                ip_addresses[iface] = "Interface not found"
+
+        return ip_addresses
 
     @staticmethod
     def get_os():
@@ -38,8 +67,8 @@ class SystemInfoService:
     def get_uptime():
         """ Returns system uptime in format DD:HH:MM:SS """
         try:
-            uptime_seconds = int(psutil.boot_time())
-            uptime_timedelta = datetime.datetime.now() - datetime.datetime.fromtimestamp(uptime_seconds)
+            boot_time = datetime.datetime.fromtimestamp(psutil.boot_time())
+            uptime_timedelta = datetime.datetime.now() - boot_time
 
             days = uptime_timedelta.days
             hours, remainder = divmod(uptime_timedelta.seconds, 3600)
