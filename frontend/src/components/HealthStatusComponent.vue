@@ -1,6 +1,7 @@
 <script setup>
 
 import { useWebSocketStore } from "@/stores/websocket";
+import AlertComponent from "./ui/AlertComponent.vue";
 
 const wsStore = useWebSocketStore();
 
@@ -8,7 +9,10 @@ const wsStore = useWebSocketStore();
 
 <template>
   <div class="text-xs">
-    <span v-if="wsStore.isConnected" class="text-green-500">🟢 Online</span>
-    <span v-else class="text-red-500">🔴 Offline</span>
+    <AlertComponent
+        :type="wsStore.isConnected ? 'success' : 'error'"
+        :icon="wsStore.isConnected ? '🟢' : '🔴'"
+        :message="wsStore.isConnected ? 'Online' : 'Offline'"
+      />
   </div>
 </template>

@@ -3,7 +3,7 @@
 
     <RouterLink
       to="/"
-      class="text-xl font-bold text-emerald-500">
+      class="text-xl font-bold text-gray-800 dark:text-gray-200">
       FAT Simulator
     </RouterLink>
 

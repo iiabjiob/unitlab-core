@@ -33,7 +33,10 @@ watch(
 );
 
 // Источник времени
-const timeSource = computed(() => wsStore.receivedData["time_status"]?.source ?? "LOCAL");
+const timeSource = computed(() => {
+  if (!wsStore.isConnected) return "LOCAL";
+  return wsStore.receivedData["time_status"]?.source ?? "LOCAL";
+});
 
 const tick = ref(0);
 setInterval(() => tick.value++, 1000);
@@ -54,12 +57,12 @@ const sourceLabels = {
   LOCAL: "Local Time",
 };
 
-const timeSourceLabel = computed(() => sourceLabels[timeSource.value] ?? "Неизвестно");
+const timeSourceLabel = computed(() => sourceLabels[timeSource.value] ?? "Unknown");
 
 </script>
 
 <template>
-  <div class="flex flex-wrap text-xs text-gray-500 gap-x-2">
+  <div class="flex flex-wrap text-xs gap-x-2 border border-gray-300 dark:border-gray-700 rounded px-2 py-0.5 text-gray-600 dark:text-gray-400">
     <span>{{ timeSourceLabel }}</span>
     <span class="tabular-nums font-mono text-right">{{ formattedTime }}</span>
   </div>
