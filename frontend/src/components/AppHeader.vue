@@ -17,7 +17,7 @@
         <TimeSyncComponent class="me-5"/>
 
         <!-- Navigation -->
-        <NavlinkComponent to="/">Dashboard</NavlinkComponent>
+        <NavlinkComponent to="/">IO</NavlinkComponent>
         <NavlinkComponent to="/events">Events</NavlinkComponent>
         <NavlinkComponent to="/settings">Settings</NavlinkComponent>
         <NavlinkComponent to="/system">System</NavlinkComponent>

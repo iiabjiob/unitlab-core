@@ -1,7 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.ws.websocket_manager import ws_manager
-from app.ws.channel_registry import CHANNELS
 from app.core.logger import logger
+from app.ws.channel_registry import get_channel
 
 router = APIRouter(prefix="/ws", tags=["Websocket"])
 
@@ -21,7 +21,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 await ws_manager.subscribe(websocket, channels)
 
                 for channel in channels:
-                    config = CHANNELS.get(channel)
+                    config = get_channel(channel)
                     if config and callable(config.get("on_subscribe")):
                         config["on_subscribe"](websocket)
 

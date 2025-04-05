@@ -8,7 +8,8 @@
 import { computed } from "vue";
 
 const props = defineProps({
-  type: { type: String, default: "primary" }, // primary, secondary, danger
+  type: { type: String, default: "primary" }, // primary, secondary, danger, outline-primary, outline-secondary, outline-danger
+  size: { type: String, default: "base" }, // xs, sm, base, lg
   disabled: { type: Boolean, default: false },
 });
 
@@ -21,6 +22,13 @@ const computedClass = computed(() => {
     danger: "btn-danger",
   };
 
-  return `${base} ${types[props.type] || types.primary} ${props.disabled ? "opacity-50 cursor-not-allowed" : ""}`;
+  const sizes = {
+    xs: "btn-xs",
+    sm: "btn-sm",
+    base: "btn-base",
+    lg: "btn-lg",
+  };
+
+  return `${base} ${types[props.type] || types.primary} ${sizes[props.size] || sizes.base}`;
 });
 </script>

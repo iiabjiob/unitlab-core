@@ -34,7 +34,7 @@ const reconnect = () => {
             icon="🔌"
             message="Connection lost. Check your network or try again later."
           />
-          <ButtonComponent @click="reconnect">Reconnect</ButtonComponent>
+          <ButtonComponent @click="reconnect">RECONNECT</ButtonComponent>
         </div>
       </template>
     </main>

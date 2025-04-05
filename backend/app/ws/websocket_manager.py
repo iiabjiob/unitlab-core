@@ -18,17 +18,21 @@ class WebSocketManager:
 
     async def send_data(self, websocket: WebSocket, channel: str, payload: dict):
         if channel in self.subscriptions.get(websocket, set()):
-            await websocket.send_json({
-                "channel": channel,
-                "payload": payload
-            })
+            try:
+                await websocket.send_json({
+                    "channel": channel,
+                    "payload": payload
+                })
+            except RuntimeError as e:
+                logger.warning(f"❌ Failed to send to WS client: {e}")
+                self.disconnect(websocket)
     
     async def send_to(self, websocket: WebSocket, channel: str, payload: dict):
         await self.send_data(websocket, channel, payload)
 
 
     async def broadcast(self, channel: str, payload: dict):
-        for websocket in self.active_connections:
+        for websocket in list(self.active_connections):
             await self.send_data(websocket, channel, payload)
 
 
