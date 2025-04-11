@@ -8,44 +8,42 @@
   </div>
 </template>
 
-<script setup>
-import { computed } from "vue";
+<script setup lang="ts">
+import { computed } from 'vue'
 
-const props = defineProps({
-  text: {
-    type: String,
-    default: "Loading...",
-  },
-  color: {
-    type: String,
-    default: "emerald", // Цвет по умолчанию
-  },
-  size: {
-    type: String,
-    default: "medium", // Размер по умолчанию
-    validator: (value) => ["small", "medium", "large"].includes(value),
-  },
-  position: {
-    type: String,
-    default: "left",
-    validator: (value) => ["center", "left", "right"].includes(value),
-  },
-  customClass: {
-    type: String,
-    default: "",
-  },
-});
+// ✅ Явно определяем интерфейс Props
+interface SpinnerProps {
+  text?: string
+  color?: string
+  size?: 'small' | 'medium' | 'large'
+  position?: 'left' | 'center' | 'right'
+  customClass?: string
+}
 
-// Определяем классы для цвета, размера и позиции
-const colorClass = computed(() => `text-${props.color}-500`);
+const props = defineProps<SpinnerProps>()
+
+// ✅ Классы цвета, размера и позиции с тайпсейфти
+const colorClass = computed(() => `text-${props.color ?? 'gray'}-500`)
+
 const sizeClass = computed(() => {
-  return props.size === "small" ? "h-5 w-5" :
-         props.size === "large" ? "h-12 w-12" :
-         "h-8 w-8"; // Default (medium)
-});
+  switch (props.size) {
+    case 'small':
+      return 'h-5 w-5'
+    case 'large':
+      return 'h-12 w-12'
+    default:
+      return 'h-8 w-8' // medium (или undefined)
+  }
+})
+
 const positionClass = computed(() => {
-  return props.position === "left" ? "justify-start" :
-         props.position === "right" ? "justify-end" :
-         "justify-center"; // Default (center)
-});
+  switch (props.position) {
+    case 'left':
+      return 'justify-start'
+    case 'right':
+      return 'justify-end'
+    default:
+      return 'justify-center'
+  }
+})
 </script>

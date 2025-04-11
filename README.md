@@ -19,6 +19,12 @@
 sudo apt update && sudo apt upgrade -y
 ```
 
+Проверка IP:
+
+```bash
+hostname -I
+```
+
 ---
 
 ## 🔧 Установка Nginx
@@ -129,23 +135,16 @@ sudo systemctl enable chrony
 chronyc tracking
 ```
 
-### 🛠️ Настройка Chrony для локальной сети (опционально)
+### 🛠️ Настройка Chrony для локальной сети
 
-Если вы используете локальный сервер NTP, отредактируйте конфигурацию:
+### 🛰️ Добавление локального NTP-сервера в chrony
 
-```bash
-sudo nano /etc/chrony/chrony.conf
-```
+Чтобы использовать локальный сервер времени (например, `192.168.10.1`), создайте отдельный файл в каталоге `/etc/chrony/sources.d/`.
 
-Добавьте адрес локального сервера NTP:
-
-```
-server 192.168.1.1 iburst prefer
-```
-
-Перезапуск Chrony для применения настроек:
+> 📁 В этот каталог можно добавлять только источники времени: `server`, `pool`, `peer`.
 
 ```bash
+echo 'server 192.168.10.1 iburst prefer' | sudo tee /etc/chrony/sources.d/unitlab.sources
 sudo systemctl restart chrony
 ```
 
@@ -162,8 +161,8 @@ chronyc sources -v
 Создайте структуру проекта:
 
 ```bash
-mkdir -p fat-simulator/{backend,frontend}
-touch fat-simulator/backend/.env
+mkdir -p unitlab/{backend,frontend}
+touch unitlab/backend/.env
 ```
 
 ### 🔄 Перенос файлов проекта
@@ -171,7 +170,7 @@ touch fat-simulator/backend/.env
 Перенесите файлы backend и frontend в папку проекта через rsync:
 
 ```bash
-rsync -avz --delete --exclude-from=.rsync-exclude ./ pi@fat-simulator.local:~/fat-simulator/
+rsync -avz --delete --exclude-from=.rsync-exclude ./ pi@unitlab.local:~/unitlab/
 
 ```
 
@@ -180,11 +179,25 @@ rsync -avz --delete --exclude-from=.rsync-exclude ./ pi@fat-simulator.local:~/fa
 Перейдите в папку backend и создайте окружение Python:
 
 ```bash
-cd fat-simulator/backend
+cd unitlab/backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
+```
+
+### Запуск в ручном режиме FastAPI
+
+Для продакшин не использовать --reload
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Создайте файл сервиса:
+
+```bash
+sudo nano /etc/systemd/system/fastapi.service
 ```
 
 ### 🚀 Создание сервиса для автозапуска FastAPI
@@ -192,23 +205,23 @@ pip install -r requirements.txt
 Создайте файл сервиса:
 
 ```bash
-sudo nano /etc/systemd/system/fat-simulator.service
+sudo nano /etc/systemd/system/fastapi.service
 ```
 
-Добавьте конфиг из /config/fat-simulator.service
+Добавьте конфиг из /config/unitlab.service
 
 Примените изменения и запустите сервис:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable fat-simulator
-sudo systemctl start fat-simulator
+sudo systemctl enable fastapi
+sudo systemctl start fastapi
 ```
 
 Проверьте статус работы:
 
 ```bash
-sudo systemctl status fat-simulator
+sudo systemctl status fastapi
 ```
 
 ### 🛠️ Настройка Nginx для работы с FastAPI
@@ -216,7 +229,8 @@ sudo systemctl status fat-simulator
 Создайте конфигурационный файл:
 
 ```bash
-sudo nano /etc/fat-simulator/nginx.conf
+sudo mkdir -p /etc/unitlab
+sudo nano /etc/unitlab/nginx.conf
 ```
 
 Скопируйте и вставьте конфигурацию из /config/nginx_prod.conf
@@ -225,8 +239,8 @@ sudo nano /etc/fat-simulator/nginx.conf
 
 ```bash
 sudo rm /etc/nginx/sites-enabled/default
-sudo ln -s /etc/fat-simulator/nginx.conf /etc/nginx/sites-enabled/fat-simulator.conf
-sudo chmod o+x /home/pi /home/pi/fat-simulator /home/pi/fat-simulator/frontend
+sudo ln -s /etc/unitlab/nginx.conf /etc/nginx/sites-enabled/unitlab.conf
+sudo chmod o+x /home/pi /home/pi/unitlab /home/pi/unitlab/frontend
 sudo nginx -t
 sudo systemctl restart nginx
 ```
@@ -236,11 +250,18 @@ sudo systemctl restart nginx
 ## ✅ Проверка состояния всех сервисов
 
 ```bash
-sudo systemctl status nginx postgresql chrony fat-simulator
+sudo systemctl status nginx postgresql chrony fastapi
 ```
 
 Вы должны увидеть статус **active (running)** у каждой службы.
 
+Варианты команд для логов:
+
+```bash
+journalctl -u fastapi -f
+journalctl -u fastapi -f -n 50 --no-pager
+
+```
 ---
 
 ✅ **Готово!** Компоненты успешно установлены и настроены на Raspberry Pi 5.

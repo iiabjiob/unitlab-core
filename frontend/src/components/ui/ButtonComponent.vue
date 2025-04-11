@@ -4,31 +4,41 @@
   </button>
 </template>
 
-<script setup>
-import { computed } from "vue";
+<script setup lang="ts">
+import { computed } from 'vue'
 
-const props = defineProps({
-  type: { type: String, default: "primary" }, // primary, secondary, danger, outline-primary, outline-secondary, outline-danger
-  size: { type: String, default: "base" }, // xs, sm, base, lg
-  disabled: { type: Boolean, default: false },
-});
+type ButtonType = 'primary' | 'secondary' | 'danger'
+type ButtonSize = 'xs' | 'sm' | 'base' | 'lg'
+
+const props = withDefaults(
+  defineProps<{
+    type?: ButtonType
+    size?: ButtonSize
+    disabled?: boolean
+  }>(),
+  {
+    type: 'primary',
+    size: 'base',
+    disabled: false
+  }
+)
 
 const computedClass = computed(() => {
-  const base = "btn";
+  const base = 'btn'
 
-  const types = {
-    primary: "btn-primary",
-    secondary: "btn-secondary",
-    danger: "btn-danger",
-  };
+  const types: Record<ButtonType, string> = {
+    primary: 'btn-primary',
+    secondary: 'btn-secondary',
+    danger: 'btn-danger',
+  }
 
-  const sizes = {
-    xs: "btn-xs",
-    sm: "btn-sm",
-    base: "btn-base",
-    lg: "btn-lg",
-  };
+  const sizes: Record<ButtonSize, string> = {
+    xs: 'btn-xs',
+    sm: 'btn-sm',
+    base: 'btn-base',
+    lg: 'btn-lg'
+  }
 
-  return `${base} ${types[props.type] || types.primary} ${sizes[props.size] || sizes.base}`;
-});
+  return `${base} ${types[props.type]} ${sizes[props.size]}`
+})
 </script>

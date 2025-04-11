@@ -1,24 +1,3 @@
-<script setup>
-
-import AppFooter from "@/components/AppFooter.vue";
-import AppHeader from "@/components/AppHeader.vue";
-import { onMounted } from 'vue';
-import { useWebSocketStore } from '@/stores/websocket';
-import AlertComponent from "./components/ui/AlertComponent.vue";
-import ButtonComponent from "./components/ui/ButtonComponent.vue";
-
-const wsStore = useWebSocketStore();
-
-onMounted(() => {
-  wsStore.connect();
-});
-
-const reconnect = () => {
-  wsStore.connect();
-};
-
-</script>
-
 <template>
   <div class="h-dvh flex flex-col text-base text-gray-800 dark:text-gray-200 bg-gray-100 dark:bg-gray-900 font-mono">
     <AppHeader class="border-b border-gray-200 dark:border-gray-800"/>
@@ -39,6 +18,32 @@ const reconnect = () => {
       </template>
     </main>
 
+    <!-- <main class="flex-grow overflow-auto p-5">
+        <RouterView />
+    </main> -->
+
     <AppFooter/>
   </div>
 </template>
+
+<script setup lang="ts">
+
+import { onMounted } from 'vue';
+import { useWebSocketStore } from '@/stores/websocket';
+
+import AppFooter from "@/components/AppFooter.vue";
+import AppHeader from "@/components/AppHeader.vue";
+import AlertComponent from "@/components/ui/AlertComponent.vue";
+import ButtonComponent from "@/components/ui/ButtonComponent.vue";
+
+const wsStore = useWebSocketStore();
+
+onMounted(() => {
+  wsStore.connect();
+});
+
+const reconnect = () => {
+  wsStore.connect();
+};
+
+</script>

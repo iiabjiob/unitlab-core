@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:latest
-    container_name: fat-simulator-db
+    container_name: unitlab-db
     restart: unless-stopped
     env_file:
       - .env
@@ -18,7 +18,7 @@ services:
   
   adminer:
     image: adminer
-    container_name: fat-simulator-adminer
+    container_name: unitlab-adminer
     restart: unless-stopped
     ports:
       - "8081:8080"
@@ -27,7 +27,7 @@ services:
 
   nginx:
     image: nginx:latest  # или build: ./nginx если используем Dockerfile
-    container_name: fat-simulator-nginx
+    container_name: unitlab-nginx
     restart: unless-stopped
     ports:
       - "80:80"

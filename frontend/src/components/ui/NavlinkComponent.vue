@@ -4,7 +4,11 @@
   </router-link>
 </template>
 
-<script setup>
-defineProps({ to: String });
-</script>
+<script setup lang="ts">
+import type { RouteLocationRaw } from 'vue-router'
 
+// Типизация пропса `to`
+const props = defineProps<{
+  to: RouteLocationRaw
+}>()
+</script>

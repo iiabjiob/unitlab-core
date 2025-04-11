@@ -4,14 +4,14 @@
     <div class="flex items-center justify-between">
       <div>
         <div class="text-sm text-gray-500 dark:text-gray-400">Digital Inputs Board</div>
-        <div class="font-bold text-lg">{{ boardName }}</div>
+        <div class="font-bold text-lg">{{ props.boardName }}</div>
       </div>
     </div>
 
     <!-- Body -->
     <div class="divide-y divide-gray-300 dark:divide-gray-700">
       <!-- Signal Rows -->
-      <div v-for="(signal, index) in signals" :key="index" class="flex items-center justify-between py-1">
+      <div v-for="(signal, index) in props.signals" :key="index" class="flex items-center justify-between py-1">
         <!-- Signal Name -->
         <div>{{ signal.name }}</div>
 
@@ -27,9 +27,13 @@
   </div>
 </template>
 
-<script setup>
-const { boardName, signals } = defineProps({
-  boardName: String,
-  signals: Array
-})
+
+<script setup lang="ts">
+
+import type { Signal } from '@/types/signal'
+
+const props = defineProps<{
+  boardName: string
+  signals: Signal[]
+}>()
 </script>

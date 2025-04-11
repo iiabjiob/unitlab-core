@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     time_sync_interval: int
     system_info_interval: int
 
+    wifi_prefix: str
+
     @property
     def database_url(self) -> str:
         return f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"

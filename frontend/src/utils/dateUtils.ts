@@ -1,4 +1,4 @@
-export const formatDate = (date) => {
+export const formatDate = (date: Date): string => {
   return new Intl.DateTimeFormat("en-GB", {
     year: "numeric",
     month: "2-digit",
@@ -6,7 +6,6 @@ export const formatDate = (date) => {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hour12: false, // 24-hour format (24-часовой формат)
-  })
-    .format(date)
-};
+    hour12: false, // 24-hour format
+  }).format(date)
+}

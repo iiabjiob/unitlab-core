@@ -28,10 +28,11 @@
 
 </template>
 
-<script setup>
+<script setup lang="ts">
 
 import TimeSyncComponent from './TimeSyncComponent.vue';
 import AppLogo from './AppLogo.vue';
 import HealthStatusComponent from './HealthStatusComponent.vue';
 import NavlinkComponent from './ui/NavlinkComponent.vue';
+
 </script>

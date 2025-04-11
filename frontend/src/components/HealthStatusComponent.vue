@@ -1,18 +1,24 @@
-<script setup>
+<template>
+  <div class="text-xs">
+    <AlertComponent
+        :type="alertType"
+        :icon="alertIcon"
+        :message="alertMessage"
+      />
+  </div>
 
+</template>
+
+<script setup lang="ts">
+
+import { computed } from 'vue'
 import { useWebSocketStore } from "@/stores/websocket";
 import AlertComponent from "./ui/AlertComponent.vue";
 
 const wsStore = useWebSocketStore();
 
-</script>
+const alertType = computed(() => wsStore.isConnected ? 'success' : 'error')
+const alertIcon = computed(() => wsStore.isConnected ? '🟢' : '🔴')
+const alertMessage = computed(() => wsStore.isConnected ? 'Online' : 'Offline')
 
-<template>
-  <div class="text-xs">
-    <AlertComponent
-        :type="wsStore.isConnected ? 'success' : 'error'"
-        :icon="wsStore.isConnected ? '🟢' : '🔴'"
-        :message="wsStore.isConnected ? 'Online' : 'Offline'"
-      />
-  </div>
-</template>
+</script>

@@ -1,47 +1,9 @@
-<script setup>
-import { computed, onMounted, onUnmounted } from "vue";
-import PageHeader from "@/components/PageHeader.vue";
-import LoadingSpinner from "@/components/LoadingSpinner.vue";
-import { useWebSocketStore } from "@/stores/websocket";
-import InfoRowComponent from "@/components/InfoRowComponent.vue";
-
-const wsStore = useWebSocketStore();
-
-onMounted(() => {
-  wsStore.subscribe(["system_info"]);
-});
-
-onUnmounted(() => {
-  wsStore.unsubscribe(["system_info"]); // ⬅ Отписываемся при уходе со страницы
-});
-
-// Полные данные
-const systemInfo = computed(() => wsStore.receivedData["system_info"] ?? {});
-
-// Загрузка считается завершённой, когда пришли все ключевые поля
-const isLoaded = computed(() => {
-  const info = systemInfo.value;
-  return (
-    info.host_name &&
-    info.ip_address &&
-    info.cpu &&
-    info.ram &&
-    info.disk &&
-    info.os &&
-    info.uptime &&
-    info.temperature &&
-    info.wifi
-  );
-});
-
-</script>
-
 <template>
   <div>
     <PageHeader title="System Information" />
 
     <!-- Показываем спинер, пока не загружены все ключевые данные -->
-    <LoadingSpinner size="small" v-if="!isLoaded" />
+    <LoadingSpinner size="small" position="left" v-if="!isLoaded" />
 
     <!-- Когда данные готовы, показываем всю страницу -->
     <div v-else class="space-y-3 text-sm">
@@ -97,3 +59,57 @@ const isLoaded = computed(() => {
     </div>
   </div>
 </template>
+
+<script setup lang="ts">
+import { computed, onMounted, onUnmounted } from 'vue'
+import PageHeader from '@/components/PageHeader.vue'
+import LoadingSpinner from '@/components/LoadingSpinner.vue'
+import { useWebSocketStore } from '@/stores/websocket'
+import InfoRowComponent from '@/components/InfoRowComponent.vue'
+
+// Типизация структуры system_info (можно вынести в /types)
+interface SystemInfo {
+  host_name: string
+  ip_address: string
+  cpu: string
+  ram: string
+  disk: string
+  os: string
+  uptime: string
+  temperature: string
+  wifi: string
+  [key: string]: any // если могут быть доп. поля
+}
+
+const wsStore = useWebSocketStore()
+
+// 📡 Подписка/отписка
+onMounted(() => {
+  wsStore.subscribe(['system_info'])
+})
+
+onUnmounted(() => {
+  wsStore.unsubscribe(['system_info'])
+})
+
+// 🧠 Данные с проверкой
+const systemInfo = computed<SystemInfo | Record<string, any>>(() =>
+  wsStore.receivedData['system_info'] ?? {}
+)
+
+// ✅ Готовность к отображению
+const isLoaded = computed<boolean>(() => {
+  const info = systemInfo.value
+  return (
+    !!info.host_name &&
+    !!info.ip_address &&
+    !!info.cpu &&
+    !!info.ram &&
+    !!info.disk &&
+    !!info.os &&
+    !!info.uptime &&
+    !!info.temperature &&
+    !!info.wifi
+  )
+})
+</script>

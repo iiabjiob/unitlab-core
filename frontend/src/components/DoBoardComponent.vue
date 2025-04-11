@@ -43,7 +43,7 @@
             <ButtonComponent
               type="secondary"
               size="xs"
-              :disabled="outputStore.states[`${boardName}/${signal.name}`] || outputStore.pending[`${boardName}/${signal.name}`]"
+              :disabled="Boolean(outputStore.states[`${boardName}/${signal.name}`]) || Boolean(outputStore.pending[`${boardName}/${signal.name}`])"
               @click="toggleSignal(signal, true)"
               >
               ON
@@ -51,7 +51,7 @@
             <ButtonComponent
               type="secondary"
               size="xs"
-              :disabled="!outputStore.states[`${boardName}/${signal.name}`] || outputStore.pending[`${boardName}/${signal.name}`]"
+              :disabled="Boolean(outputStore.states[`${boardName}/${signal.name}`]) || Boolean(outputStore.pending[`${boardName}/${signal.name}`])"
               @click="toggleSignal(signal, false)"
             >
             OFF
@@ -67,7 +67,7 @@
                 ? 'ON'
                 : 'OFF'">
             <template v-if="outputStore.failed?.[`${boardName}/${signal.name}`]">❌</template>
-            <template v-else-if="visiblePending[key]">⏳</template>
+            <template v-else-if="visiblePending[`${boardName}/${signal.name}`]">⏳</template>
             <template v-else>{{ outputStore.states[`${boardName}/${signal.name}`] ? '🟢' : '⚪' }}</template>
           </span>
 
@@ -77,7 +77,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useOutputStore } from '@/stores/output'
 import { useWebSocketStore } from '@/stores/websocket'
@@ -85,21 +85,26 @@ import ButtonComponent from '@/components/ui/ButtonComponent.vue'
 import {
   getDoGroupTopic,
   getDoSetTopic
-} from '@/utils/topics' // подключаем централизованные топики
+} from '@/utils/topics'
 
-const props = defineProps({
-  boardName: String,
-  signals: Array
-})
+import type { Signal } from '@/types/signal'
 
-const delay = ref(50)
-const visiblePending = ref({})
-const groupPending = ref(false)
+
+const props = defineProps<{
+  boardName: string
+  signals: Signal[]
+}>()
+
+// ✅ refs
+const delay = ref<number>(50)
+const visiblePending = ref<Record<string, boolean>>({})
+const groupPending = ref<boolean>(false)
 
 const wsStore = useWebSocketStore()
 const outputStore = useOutputStore()
 
-function toggleAll(state) {
+// ✅ Типизация параметров
+function toggleAll(state: boolean) {
   groupPending.value = true
 
   const actions = props.signals.map(signal => ({
@@ -108,7 +113,6 @@ function toggleAll(state) {
     key: `${props.boardName}/${signal.name}`
   }))
 
-  // 1️⃣ MQTT-публикация через топик
   const payload = outputStore.buildGroupPayload(props.signals, state, delay.value)
   wsStore.send({
     action: 'publish',
@@ -116,21 +120,19 @@ function toggleAll(state) {
     payload
   })
 
-  // 2️⃣ Отображаем ⏳ локально
   actions.forEach(({ key }, i) => {
     setTimeout(() => {
       outputStore.requestToggle(key, state)
     }, i * delay.value)
   })
 
-  // 3️⃣ Сброс блокировки по таймеру
   const totalDelay = delay.value * (actions.length - 1) + 2000
   setTimeout(() => {
     groupPending.value = false
   }, totalDelay)
 }
 
-function toggleSignal(signal, state) {
+function toggleSignal(signal: Signal, state: boolean) {
   const key = `${props.boardName}/${signal.name}`
   if (outputStore.states[key] === state) return
 
@@ -143,6 +145,7 @@ function toggleSignal(signal, state) {
   })
 }
 
+// ✅ Автоотображение ⏳
 watch(
   () => outputStore.pending,
   (newPending) => {
