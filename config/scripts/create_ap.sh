@@ -22,4 +22,4 @@ nmcli connection delete "$CON_NAME" 2>/dev/null
 sudo nmcli dev wifi hotspot ifname "$INTERFACE" con-name "$CON_NAME" ssid "$ssid" password "$password"
 
 # Выводим результат
-echo "✅ AP started: SSID=$ssid
+echo "✅ AP started: SSID=$ssid"
