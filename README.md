@@ -208,7 +208,7 @@ sudo nano /etc/systemd/system/fastapi.service
 sudo nano /etc/systemd/system/fastapi.service
 ```
 
-Добавьте конфиг из /config/unitlab.service
+Добавьте конфиг из /config/fastapi.service
 
 Примените изменения и запустите сервис:
 
