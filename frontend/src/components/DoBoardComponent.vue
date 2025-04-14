@@ -83,8 +83,8 @@ import { useOutputStore } from '@/stores/output'
 import { useWebSocketStore } from '@/stores/websocket'
 import ButtonComponent from '@/components/ui/ButtonComponent.vue'
 import {
-  getDoGroupTopic,
-  getDoSetTopic
+  getGroupTopic,
+  getSetTopic
 } from '@/utils/topics'
 
 import type { Signal } from '@/types/signal'
@@ -116,7 +116,7 @@ function toggleAll(state: boolean) {
   const payload = outputStore.buildGroupPayload(props.signals, state, delay.value)
   wsStore.send({
     action: 'publish',
-    topic: getDoGroupTopic(props.boardName),
+    topic: getGroupTopic(props.boardName),
     payload
   })
 
@@ -140,7 +140,7 @@ function toggleSignal(signal: Signal, state: boolean) {
 
   wsStore.send({
     action: 'publish',
-    topic: getDoSetTopic(parseInt(signal.name.replace(/\D/g, '')), props.boardName),
+    topic: getSetTopic(signal.index, props.boardName),
     payload: { state }
   })
 }

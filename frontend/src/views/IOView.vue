@@ -10,7 +10,7 @@
             v-for="boardId in doBoardIds"
             :key="boardId"
             :board-name="boardId"
-            :signals="getDoStatuses(boardId)"
+            :signals="getStatuses(boardId)"
           />
         </div>
 
@@ -20,7 +20,7 @@
             v-for="boardId in diBoardIds"
             :key="boardId"
             :board-name="boardId"
-            :signals="getDiStatuses(boardId)"
+            :signals="getStatuses(boardId)"
           />
         </div>
       </div>
@@ -37,9 +37,9 @@ import { useWebSocketStore } from '@/stores/websocket'
 
 import { Signal } from '@/types/signal'
 
-// ✅ ID плат (пока статично, позже будет динамика)
-const doBoardIds: string[] = ['do-board-1']
-const diBoardIds: string[] = ['di-board-1']
+// TODO: ID плат (пока статично, позже будет динамика)
+const doBoardIds: string[] = ['do-unit-58EC']
+const diBoardIds: string[] = ['di-board-XXXX']
 
 const wsStore = useWebSocketStore()
 
@@ -61,23 +61,18 @@ onUnmounted(() => {
   wsStore.unsubscribe(channels)
 })
 
-// ✅ Получить статусы DO
-function getDoStatuses(boardId: string): Signal[] {
-  return Object.entries(wsStore.receivedData)
+// ✅ Получить статусы
+function getStatuses(boardId: string): Signal[] {
+  return Object.entries(wsStore.receivedData.value)
     .filter(([key]) => key.startsWith(`${boardId}/status/`))
-    .map(([key, value]) => ({
-      name: key.split('/').pop() || '',
-      state: value === 'true'
-    }))
+    .map(([key, value]) => {
+      const index = parseInt(key.split('/').pop() || '')
+      return {
+        index,
+        name: `DO${index + 1}`, // пока временное имя, можно заменить позже
+        state: value === 'true'
+      }
+    })
 }
 
-// ✅ Получить статусы DI
-function getDiStatuses(boardId: string): Signal[] {
-  return Object.entries(wsStore.receivedData)
-    .filter(([key]) => key.startsWith(`${boardId}/status/`))
-    .map(([key, value]) => ({
-      name: key.split('/').pop() || '',
-      state: value === 'true'
-    }))
-}
 </script>
