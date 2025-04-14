@@ -1,65 +1,65 @@
 /**
  * Centralized MQTT topic builder for FAT-Simulator
- * Supports DO, DI, AI boards
+ * Supports DO, DI, AI units
  */
 
-// 🧩 Utility: returns the board name as-is (placeholder for future logic if needed)
-const moduleId = (boardName: string): string => boardName
+// 🧩 Utility: returns the unit name as-is (placeholder for future logic if needed)
+const moduleId = (unitName: string): string => unitName
 
 // -------------------------
 // ✅ Digital Outputs (DO)
 // -------------------------
 
-export const getDoSetTopic = (index: number, board: string = 'do-board-1'): string =>
-  `${moduleId(board)}/set/do${index}`
+export const getDoSetTopic = (index: number, unit: string = 'do-unix-XXXX'): string =>
+  `${moduleId(unit)}/set/do${index}`
 
-export const getDoGroupTopic = (board: string = 'do-board-1'): string =>
-  `${moduleId(board)}/set/do`
+export const getDoGroupTopic = (unit: string = 'do-unix-XXXX'): string =>
+  `${moduleId(unit)}/set/do`
 
-export const getDoStatusTopic = (index: number, board: string = 'do-board-1'): string =>
-  `${moduleId(board)}/status/do${index}`
+export const getDoStatusTopic = (index: number, unit: string = 'do-unix-XXXX'): string =>
+  `${moduleId(unit)}/status/do${index}`
 
-export const getDoStatusBase = (board: string = 'do-board-1'): string =>
-  `${moduleId(board)}/status/`
+export const getDoStatusBase = (unit: string = 'do-unix-XXXX'): string =>
+  `${moduleId(unit)}/status/`
 
-export const getDoStatusSubscription = (board: string = 'do-board-1'): string =>
-  `${moduleId(board)}/status/#`
+export const getDoStatusSubscription = (unit: string = 'do-unix-XXXX'): string =>
+  `${moduleId(unit)}/status/#`
 
-export const getDoRequestStatusTopic = (board: string = 'do-board-1'): string =>
-  `${moduleId(board)}/get/status`
+export const getDoRequestStatusTopic = (unit: string = 'do-unix-XXXX'): string =>
+  `${moduleId(unit)}/get/status`
 
 // -------------------------
 // ✅ Digital Inputs (DI)
 // -------------------------
 
-export const getDiStatusTopic = (index: number, board: string = 'di-board-1'): string =>
-  `${moduleId(board)}/status/di${index}`
+export const getDiStatusTopic = (index: number, unit: string = 'di-unit-XXXX'): string =>
+  `${moduleId(unit)}/status/di${index}`
 
-export const getDiStatusBase = (board: string = 'di-board-1'): string =>
-  `${moduleId(board)}/status/`
+export const getDiStatusBase = (unit: string = 'di-unit-XXXX'): string =>
+  `${moduleId(unit)}/status/`
 
-export const getDiStatusSubscription = (board: string = 'di-board-1'): string =>
-  `${moduleId(board)}/status/#`
+export const getDiStatusSubscription = (unit: string = 'di-unit-XXXX'): string =>
+  `${moduleId(unit)}/status/#`
 
-export const getDiRequestStatusTopic = (board: string = 'di-board-1'): string =>
-  `${moduleId(board)}/get/status`
+export const getDiRequestStatusTopic = (unit: string = 'di-unit-XXXX'): string =>
+  `${moduleId(unit)}/get/status`
 
 // -------------------------
 // 🔧 Analog Inputs (AI)
 // -------------------------
 
-export const getAiStatusTopic = (index: number, board: string = 'ai-board-1'): string =>
-  `${moduleId(board)}/status/ai${index}`
+export const getAiStatusTopic = (index: number, unit: string = 'ai-unit-XXXX'): string =>
+  `${moduleId(unit)}/status/ai${index}`
 
-export const getAiStatusSubscription = (board: string = 'ai-board-1'): string =>
-  `${moduleId(board)}/status/#`
+export const getAiStatusSubscription = (unit: string = 'ai-unit-XXXX'): string =>
+  `${moduleId(unit)}/status/#`
 
 // -------------------------
 // 🎛️ Common patterns
 // -------------------------
 
-export const getAnyBoardStatusSubscription = (board: string = 'BOARD-ID'): string =>
-  `${moduleId(board)}/status/#`
+export const getAnyUnitStatusSubscription = (unit: string = 'unit-id'): string =>
+  `${moduleId(unit)}/status/#`
 
-export const getAnyBoardSetTopic = (board: string = 'BOARD-ID'): string =>
-  `${moduleId(board)}/set/#`
+export const getAnyUnitSetTopic = (unit: string = 'unit-id'): string =>
+  `${moduleId(unit)}/set/#`

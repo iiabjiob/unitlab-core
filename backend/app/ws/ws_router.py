@@ -42,7 +42,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 # TODO: Подумать как лучше вынести
                 # Безопасность: только разрешённые топики
-                if not topic.startswith(("do-board-", "di-board-")):
+                if not topic.startswith(("do-unit-", "di-unit-")):
                     logger.warning(f"🚫 Blocked publish to unsafe topic: {topic}")
                     return
 

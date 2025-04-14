@@ -3,7 +3,7 @@ set -e
 
 INTERFACE="wlan0"
 PROFILE_NAME="core-unit-hotspot"
-SSID_PREFIX="[unitLab]_core-"
+SSID_PREFIX="[unitLab]_core-unit-"
 PASSWORD_PREFIX="pwd!"
 
 # DHCP settings
