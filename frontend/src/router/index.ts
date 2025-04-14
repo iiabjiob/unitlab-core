@@ -5,7 +5,6 @@ import EventsView from '@/views/EventsView.vue'
 import SystemView from '@/views/SystemView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import ProjectView from '@/views/settings/ProjectView.vue'
-import DevicesView from '@/views/settings/DevicesView.vue'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', component: IOView },
@@ -17,7 +16,6 @@ const routes: RouteRecordRaw[] = [
     children: [
       { path: '', redirect: 'settings/project' },
       { path: 'project', component: ProjectView },
-      { path: 'devices', component: DevicesView }
     ]
   }
 ]

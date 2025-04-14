@@ -29,7 +29,7 @@
 <script setup lang="ts">
 
 import { onMounted } from 'vue';
-import { useWebSocketStore } from '@/stores/websocket';
+import { useWebSocketStore } from '@/stores/useWebsocketStore';
 
 import AppFooter from "@/components/AppFooter.vue";
 import AppHeader from "@/components/AppHeader.vue";

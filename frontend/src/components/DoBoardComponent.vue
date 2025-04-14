@@ -43,7 +43,7 @@
             <ButtonComponent
               type="secondary"
               size="xs"
-              :disabled="Boolean(outputStore.states[`${boardName}/${signal.name}`]) || Boolean(outputStore.pending[`${boardName}/${signal.name}`])"
+              :disabled="Boolean(signalStore.states[`${boardName}/${signal.name}`]) || Boolean(signalStore.pending[`${boardName}/${signal.name}`])"
               @click="toggleSignal(signal, true)"
               >
               ON
@@ -51,7 +51,7 @@
             <ButtonComponent
               type="secondary"
               size="xs"
-              :disabled="Boolean(outputStore.states[`${boardName}/${signal.name}`]) || Boolean(outputStore.pending[`${boardName}/${signal.name}`])"
+              :disabled="Boolean(signalStore.states[`${boardName}/${signal.name}`]) || Boolean(signalStore.pending[`${boardName}/${signal.name}`])"
               @click="toggleSignal(signal, false)"
             >
             OFF
@@ -59,16 +59,16 @@
           </div>
 
           <!-- Status -->
-          <span class="cursor-default" :title="outputStore.failed?.[`${boardName}/${signal.name}`]
+          <span class="cursor-default" :title="signalStore.failed?.[`${boardName}/${signal.name}`]
             ? 'FAILED'
-            : outputStore.pending[`${boardName}/${signal.name}`]
+            : signalStore.pending[`${boardName}/${signal.name}`]
               ? 'WAITING'
-              : outputStore.states[`${boardName}/${signal.name}`]
+              : signalStore.states[`${boardName}/${signal.name}`]
                 ? 'ON'
                 : 'OFF'">
-            <template v-if="outputStore.failed?.[`${boardName}/${signal.name}`]">❌</template>
+            <template v-if="signalStore.failed?.[`${boardName}/${signal.name}`]">❌</template>
             <template v-else-if="visiblePending[`${boardName}/${signal.name}`]">⏳</template>
-            <template v-else>{{ outputStore.states[`${boardName}/${signal.name}`] ? '🟢' : '⚪' }}</template>
+            <template v-else>{{ signalStore.states[`${boardName}/${signal.name}`] ? '🟢' : '⚪' }}</template>
           </span>
 
         </div>
@@ -79,8 +79,8 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { useOutputStore } from '@/stores/output'
-import { useWebSocketStore } from '@/stores/websocket'
+import { useSignalStore } from '@/stores/useSignalStore'
+import { useWebSocketStore } from '@/stores/useWebsocketStore'
 import ButtonComponent from '@/components/ui/ButtonComponent.vue'
 import {
   getGroupTopic,
@@ -101,7 +101,7 @@ const visiblePending = ref<Record<string, boolean>>({})
 const groupPending = ref<boolean>(false)
 
 const wsStore = useWebSocketStore()
-const outputStore = useOutputStore()
+const signalStore = useSignalStore()
 
 // ✅ Типизация параметров
 function toggleAll(state: boolean) {
@@ -113,7 +113,7 @@ function toggleAll(state: boolean) {
     key: `${props.boardName}/${signal.name}`
   }))
 
-  const payload = outputStore.buildGroupPayload(props.signals, state, delay.value)
+  const payload = signalStore.buildGroupPayload(props.signals, state, delay.value)
   wsStore.send({
     action: 'publish',
     topic: getGroupTopic(props.boardName),
@@ -122,7 +122,7 @@ function toggleAll(state: boolean) {
 
   actions.forEach(({ key }, i) => {
     setTimeout(() => {
-      outputStore.requestToggle(key, state)
+      signalStore.requestToggle(key, state)
     }, i * delay.value)
   })
 
@@ -133,10 +133,10 @@ function toggleAll(state: boolean) {
 }
 
 function toggleSignal(signal: Signal, state: boolean) {
-  const key = `${props.boardName}/${signal.name}`
-  if (outputStore.states[key] === state) return
+  const key = `${props.boardName}/${signal.index}`
+  if (signalStore.states[key] === state) return
 
-  outputStore.requestToggle(key, state)
+  signalStore.requestToggle(key, state)
 
   wsStore.send({
     action: 'publish',
@@ -147,13 +147,13 @@ function toggleSignal(signal: Signal, state: boolean) {
 
 // ✅ Автоотображение ⏳
 watch(
-  () => outputStore.pending,
+  () => signalStore.pending,
   (newPending) => {
     for (const key in newPending) {
       if (!visiblePending.value[key]) {
         visiblePending.value[key] = false
         setTimeout(() => {
-          if (outputStore.pending[key]) {
+          if (signalStore.pending[key]) {
             visiblePending.value[key] = true
           }
         }, 100)

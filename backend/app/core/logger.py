@@ -24,6 +24,22 @@ LOG_LEVELS = {
 log_level = LOG_LEVELS.get(settings.debug_level.lower(), logging.INFO)
 logger.setLevel(log_level)
 
+# 🧩 Кастомный форматтер с выравниванием уровня логов
+class AlignedFormatter(logging.Formatter):
+    LEVEL_FORMATS = {
+        logging.DEBUG:    "DEBUG",
+        logging.INFO:     "INFO ",
+        logging.WARNING:  "WARN ",
+        logging.ERROR:    "ERROR",
+        logging.CRITICAL: "CRIT "
+    }
+
+    def format(self, record):
+        record.levelname = self.LEVEL_FORMATS.get(record.levelno, record.levelname)
+        return super().format(record)
+
+formatter = AlignedFormatter("%(asctime)s - %(levelname)s - %(message)s")
+
 # Создаем обработчик для записи логов в файл
 log_filename = os.path.join(LOG_DIR, f"{settings.app_env}.log")  # Файл зависит от окружения
 file_handler = logging.FileHandler(log_filename, encoding="utf-8")
@@ -31,10 +47,9 @@ file_handler.setLevel(log_level)  # Логируем в файл всё от DEB
 
 # Создаем обработчик для вывода логов в консоль
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO if settings.app_env == "production" else log_level)  
+console_handler.setLevel(logging.INFO if settings.app_env == "production" else log_level)
 
 # Формат логов
-formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 file_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
 

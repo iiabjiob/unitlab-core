@@ -33,7 +33,7 @@ import { onMounted, onUnmounted } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
 import DoBoardComponent from '@/components/DoBoardComponent.vue'
 import DiBoardComponent from '@/components/DiBoardComponent.vue'
-import { useWebSocketStore } from '@/stores/websocket'
+import { useWebSocketStore } from '@/stores/useWebsocketStore'
 
 import { Signal } from '@/types/signal'
 

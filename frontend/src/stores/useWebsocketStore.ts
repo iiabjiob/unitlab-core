@@ -17,7 +17,7 @@ interface WebSocketStoreState {
   maxReconnectDelay: number
 }
 
-export const useWebSocketStore = defineStore('websocket', {
+export const useWebSocketStore = defineStore('websocketStore', {
   state: (): WebSocketStoreState => ({
     socket: null,
     isConnected: false,

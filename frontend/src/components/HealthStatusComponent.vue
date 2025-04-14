@@ -12,7 +12,7 @@
 <script setup lang="ts">
 
 import { computed } from 'vue'
-import { useWebSocketStore } from "@/stores/websocket";
+import { useWebSocketStore } from "@/stores/useWebsocketStore";
 import AlertComponent from "./ui/AlertComponent.vue";
 
 const wsStore = useWebSocketStore();

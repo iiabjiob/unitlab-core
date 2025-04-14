@@ -64,7 +64,7 @@
 import { computed, onMounted, onUnmounted } from 'vue'
 import PageHeader from '@/components/PageHeader.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
-import { useWebSocketStore } from '@/stores/websocket'
+import { useWebSocketStore } from '@/stores/useWebsocketStore'
 import InfoRowComponent from '@/components/InfoRowComponent.vue'
 
 // Типизация структуры system_info (можно вынести в /types)

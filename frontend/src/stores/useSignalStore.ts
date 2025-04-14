@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
-import { useWebSocketStore } from './websocket'
+import { useWebSocketStore } from './useWebsocketStore'
 
-type OutputKey = string // e.g., "do-board-1/do1"
-type OutputState = Record<OutputKey, boolean>
-type PendingTimeouts = Record<OutputKey, ReturnType<typeof setTimeout>>
-type FailedStates = Record<OutputKey, boolean>
+type SignalKey = string // e.g., "dX-module-XXXX/<index>"
+type SignalState = Record<SignalKey, boolean>
+type PendingTimeouts = Record<SignalKey, ReturnType<typeof setTimeout>>
+type FailedStates = Record<SignalKey, boolean>
 
 interface GroupAction {
   index: number
@@ -17,8 +17,8 @@ interface GroupPayload {
   actions: GroupAction[]
 }
 
-export const useOutputStore = defineStore('output', () => {
-  const states = ref<OutputState>({})
+export const useSignalStore = defineStore('signalStore', () => {
+  const states = ref<SignalState>({})
   const pending = ref<PendingTimeouts>({})
   const failed = ref<FailedStates>({})
 
@@ -29,7 +29,7 @@ export const useOutputStore = defineStore('output', () => {
     () => wsStore.receivedData,
     (newData: Record<string, string>) => {
       for (const [channel, value] of Object.entries(newData)) {
-        if (channel.startsWith('do-board-') && channel.includes('/status/')) {
+        if (channel.includes('/status/')) {
           const key = channel.replace('/status/', '/')
           handleMqttUpdate(key, value === 'true')
         }
@@ -38,11 +38,7 @@ export const useOutputStore = defineStore('output', () => {
     { deep: true }
   )
 
-  function setState(key: OutputKey, value: boolean) {
-    states.value[key] = value
-  }
-
-  function handleMqttUpdate(key: OutputKey, value: boolean) {
+  function setState(key: SignalKey, value: boolean) {
     states.value[key] = value
     if (pending.value[key]) {
       clearTimeout(pending.value[key])
@@ -51,7 +47,11 @@ export const useOutputStore = defineStore('output', () => {
     }
   }
 
-  function requestToggle(key: OutputKey, value: boolean, timeout = 3000) {
+  function handleMqttUpdate(key: SignalKey, value: boolean) {
+    setState(key, value)
+  }
+
+  function requestToggle(key: SignalKey, value: boolean, timeout = 3000) {
     const previous = states.value[key]
     states.value[key] = value
 
@@ -67,10 +67,10 @@ export const useOutputStore = defineStore('output', () => {
     pending.value[key] = id
   }
 
-  function buildGroupPayload(signals: { name: string }[], state: boolean, delay: number): GroupPayload {
+  function buildGroupPayload(signals: { index: number }[], state: boolean, delay: number): GroupPayload {
     return {
       actions: signals.map(signal => ({
-        index: parseInt(signal.name.replace(/\D/g, '')),
+        index: signal.index,
         state,
         delay_ms: delay
       }))
