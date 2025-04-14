@@ -4,7 +4,7 @@
     <div class="flex items-center justify-between mb-4">
       <div>
         <div class="text-sm text-gray-500 dark:text-gray-400">Digital Outputs Board</div>
-        <div class="font-bold text-lg">{{ boardName }}</div>
+        <div class="font-bold text-lg">{{ unitId }}</div>
         <div class="flex items-center gap-2 text-sm mt-1">
           <!-- Group ON/OFF -->
           <div class="flex gap-1">
@@ -43,7 +43,7 @@
             <ButtonComponent
               type="secondary"
               size="xs"
-              :disabled="Boolean(signalStore.states[`${boardName}/${signal.name}`]) || Boolean(signalStore.pending[`${boardName}/${signal.name}`])"
+              :disabled="Boolean(signalStore.states[`${unitId}/${signal.index}`]) || Boolean(signalStore.pending[`${unitId}/${signal.index}`])"
               @click="toggleSignal(signal, true)"
               >
               ON
@@ -51,7 +51,7 @@
             <ButtonComponent
               type="secondary"
               size="xs"
-              :disabled="Boolean(signalStore.states[`${boardName}/${signal.name}`]) || Boolean(signalStore.pending[`${boardName}/${signal.name}`])"
+              :disabled="Boolean(signalStore.states[`${unitId}/${signal.index}`]) || Boolean(signalStore.pending[`${unitId}/${signal.index}`])"
               @click="toggleSignal(signal, false)"
             >
             OFF
@@ -59,16 +59,16 @@
           </div>
 
           <!-- Status -->
-          <span class="cursor-default" :title="signalStore.failed?.[`${boardName}/${signal.name}`]
+          <span class="cursor-default" :title="signalStore.failed?.[`${unitId}/${signal.index}`]
             ? 'FAILED'
-            : signalStore.pending[`${boardName}/${signal.name}`]
+            : signalStore.pending[`${unitId}/${signal.index}`]
               ? 'WAITING'
-              : signalStore.states[`${boardName}/${signal.name}`]
+              : signalStore.states[`${unitId}/${signal.index}`]
                 ? 'ON'
                 : 'OFF'">
-            <template v-if="signalStore.failed?.[`${boardName}/${signal.name}`]">❌</template>
-            <template v-else-if="visiblePending[`${boardName}/${signal.name}`]">⏳</template>
-            <template v-else>{{ signalStore.states[`${boardName}/${signal.name}`] ? '🟢' : '⚪' }}</template>
+            <template v-if="signalStore.failed?.[`${unitId}/${signal.index}`]">❌</template>
+            <template v-else-if="visiblePending[`${unitId}/${signal.index}`]">⏳</template>
+            <template v-else>{{ signalStore.states[`${unitId}/${signal.index}`] ? '🟢' : '⚪' }}</template>
           </span>
 
         </div>
@@ -91,7 +91,7 @@ import type { Signal } from '@/types/signal'
 
 
 const props = defineProps<{
-  boardName: string
+  unitId: string
   signals: Signal[]
 }>()
 
@@ -108,15 +108,15 @@ function toggleAll(state: boolean) {
   groupPending.value = true
 
   const actions = props.signals.map(signal => ({
-    index: parseInt(signal.name.replace(/\D/g, '')),
-    name: signal.name,
-    key: `${props.boardName}/${signal.name}`
-  }))
+  index: signal.index,
+  name: signal.name,
+  key: `${props.unitId}/${signal.index}`
+}))
 
   const payload = signalStore.buildGroupPayload(props.signals, state, delay.value)
   wsStore.send({
     action: 'publish',
-    topic: getGroupTopic(props.boardName),
+    topic: getGroupTopic(props.unitId),
     payload
   })
 
@@ -133,40 +133,37 @@ function toggleAll(state: boolean) {
 }
 
 function toggleSignal(signal: Signal, state: boolean) {
-  const key = `${props.boardName}/${signal.index}`
+  const key = `${props.unitId}/${signal.index}`
   if (signalStore.states[key] === state) return
 
   signalStore.requestToggle(key, state)
 
   wsStore.send({
     action: 'publish',
-    topic: getSetTopic(signal.index, props.boardName),
+    topic: getSetTopic(signal.index, props.unitId),
     payload: { state }
   })
 }
 
 // ✅ Автоотображение ⏳
-watch(
-  () => signalStore.pending,
-  (newPending) => {
-    for (const key in newPending) {
-      if (!visiblePending.value[key]) {
-        visiblePending.value[key] = false
-        setTimeout(() => {
-          if (signalStore.pending[key]) {
-            visiblePending.value[key] = true
-          }
-        }, 100)
-      }
+watch(() => signalStore.pending, (newPending) => {
+  Object.keys(newPending).forEach((key) => {
+    if (!(key in visiblePending.value)) {
+      visiblePending.value[key] = false
+      setTimeout(() => {
+        if (signalStore.pending[key]) {
+          visiblePending.value[key] = true
+        }
+      }, 100)
     }
+  })
 
-    for (const key in visiblePending.value) {
-      if (!newPending[key]) {
-        delete visiblePending.value[key]
-      }
+  Object.keys(visiblePending.value).forEach((key) => {
+    if (!newPending[key]) {
+      delete visiblePending.value[key]
     }
-  },
-  { deep: true }
-)
+  })
+}, { deep: true })
+
 </script>
 

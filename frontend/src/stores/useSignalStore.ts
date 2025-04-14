@@ -2,20 +2,13 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { useWebSocketStore } from './useWebsocketStore'
 
+import type { Signal } from '@/types/signal'
+
 type SignalKey = string // e.g., "dX-module-XXXX/<index>"
 type SignalState = Record<SignalKey, boolean>
 type PendingTimeouts = Record<SignalKey, ReturnType<typeof setTimeout>>
 type FailedStates = Record<SignalKey, boolean>
 
-interface GroupAction {
-  index: number
-  state: boolean
-  delay_ms: number
-}
-
-interface GroupPayload {
-  actions: GroupAction[]
-}
 
 export const useSignalStore = defineStore('signalStore', () => {
   const states = ref<SignalState>({})
@@ -23,6 +16,18 @@ export const useSignalStore = defineStore('signalStore', () => {
   const failed = ref<FailedStates>({})
 
   const wsStore = useWebSocketStore()
+
+  interface GroupAction {
+    index: number
+    state: boolean
+    delay_ms: number
+    is_pulse: boolean
+    pulse_duration: number
+  }
+
+  interface GroupPayload {
+    actions: GroupAction[]
+  }
 
   // ✅ Listen to WebSocket updates and handle incoming DO state changes
   watch(
@@ -67,12 +72,14 @@ export const useSignalStore = defineStore('signalStore', () => {
     pending.value[key] = id
   }
 
-  function buildGroupPayload(signals: { index: number }[], state: boolean, delay: number): GroupPayload {
+  function buildGroupPayload(signals: Signal[], state: boolean, delay = 0): GroupPayload {
     return {
       actions: signals.map(signal => ({
         index: signal.index,
         state,
-        delay_ms: delay
+        delay_ms: signal.delayMs ?? delay,
+        is_pulse: signal.isPulse ?? false,
+        pulse_duration: signal.pulseDurationMs ?? 200 // по умолчанию 200мс
       }))
     }
   }
