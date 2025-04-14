@@ -63,7 +63,7 @@ onUnmounted(() => {
 
 // ✅ Получить статусы
 function getStatuses(boardId: string): Signal[] {
-  return Object.entries(wsStore.receivedData.value)
+  return Object.entries(wsStore.receivedData)
     .filter(([key]) => key.startsWith(`${boardId}/status/`))
     .map(([key, value]) => {
       const index = parseInt(key.split('/').pop() || '')
