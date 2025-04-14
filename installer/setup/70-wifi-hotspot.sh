@@ -3,7 +3,7 @@ set -e
 
 INTERFACE="wlan0"
 PROFILE_NAME="core-unit-hotspot"
-SSID_PREFIX="[unitLab]_core-unit-"
+SSID_PREFIX="[unitLab]_core-"
 PASSWORD_PREFIX="pwd!"
 
 # DHCP settings
@@ -42,10 +42,13 @@ nmcli connection delete "$PROFILE_NAME" 2>/dev/null || true
 nmcli connection add type wifi ifname "$INTERFACE" con-name "$PROFILE_NAME" autoconnect yes ssid "$SSID"
 nmcli connection modify "$PROFILE_NAME" 802-11-wireless.mode ap
 nmcli connection modify "$PROFILE_NAME" 802-11-wireless.band bg
+nmcli connection modify "$PROFILE_NAME" 802-11-wireless.channel 6
 nmcli connection modify "$PROFILE_NAME" ipv4.method manual ipv4.addresses "$CORE_IP/24"
 nmcli connection modify "$PROFILE_NAME" ipv4.never-default true
 nmcli connection modify "$PROFILE_NAME" connection.autoconnect yes
+nmcli connection modify "$PROFILE_NAME" 802-11-wireless.hidden no
 nmcli connection modify "$PROFILE_NAME" wifi-sec.key-mgmt wpa-psk
+nmcli connection modify "$PROFILE_NAME" 802-11-wireless-security.proto rsn
 nmcli connection modify "$PROFILE_NAME" wifi-sec.psk "$PASSWORD"
 
 
