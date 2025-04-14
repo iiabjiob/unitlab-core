@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div>
-        <div class="text-sm text-gray-500 dark:text-gray-400">Digital Inputs Board</div>
+        <div class="text-sm text-gray-500 dark:text-gray-400">Digital Inputs Unit</div>
         <div class="font-bold text-lg">{{ props.unitId }}</div>
       </div>
     </div>

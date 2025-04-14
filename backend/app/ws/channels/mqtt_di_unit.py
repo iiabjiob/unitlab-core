@@ -2,7 +2,7 @@ from app.mqtt.subscription_manager import subscription_manager
 
 def get_channel_config(channel_name: str):
     """
-    Обработка каналов вида mqtt_di_unit/di-unit-1
+    Обработка каналов вида mqtt_di_unit/di-unit-XXXX
     """
     unit_id = channel_name.split("/", 1)[1]
     topic = f"{unit_id}/status/#"

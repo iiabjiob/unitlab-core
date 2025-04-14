@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="flex items-center justify-between mb-4">
       <div>
-        <div class="text-sm text-gray-500 dark:text-gray-400">Digital Outputs Board</div>
+        <div class="text-sm text-gray-500 dark:text-gray-400">Digital Outputs Unit</div>
         <div class="font-bold text-lg">{{ unitId }}</div>
         <div class="flex items-center gap-2 text-sm mt-1">
           <!-- Group ON/OFF -->
