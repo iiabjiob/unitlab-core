@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { useWebSocketStore } from './useWebsocketStore'
 
+import { TopicBuilder } from '@/utils/topics'
+
 import type { Signal } from '@/types/signal'
 
 type SignalKey = string // e.g., "dX-module-XXXX/<index>"
@@ -84,6 +86,49 @@ export const useSignalStore = defineStore('signalStore', () => {
     }
   }
 
+  // ✅ Публичные методы для компонентов:
+
+  function requestStatus(unitId: string) {
+    wsStore.send({
+      action: 'publish',
+      topic: TopicBuilder.getStatus(unitId),
+      payload: {}
+    })
+  }
+
+  function toggleSignal(unitId: string, signal: Signal, state: boolean) {
+    const key = `${unitId}/${signal.index}`
+    if (states.value[key] === state) return
+
+    requestToggle(key, state)
+
+    wsStore.send({
+      action: 'publish',
+      topic: TopicBuilder.set(signal.index, unitId),
+      payload: { state }
+    })
+  }
+
+  function toggleAll(unitId: string, signals: Signal[], state: boolean, delay = 50, callback?: () => void) {
+    const payload = buildGroupPayload(signals, state, delay)
+
+    wsStore.send({
+      action: 'publish',
+      topic: TopicBuilder.group(unitId),
+      payload
+    })
+
+    signals.forEach((signal, i) => {
+      const key = `${unitId}/${signal.index}`
+      setTimeout(() => requestToggle(key, state), i * delay)
+    })
+
+    if (callback) {
+      const totalDelay = delay * (signals.length - 1) + 1000
+      setTimeout(() => callback(), totalDelay)
+    }
+  }
+
   return {
     states,
     pending,
@@ -91,6 +136,9 @@ export const useSignalStore = defineStore('signalStore', () => {
     setState,
     requestToggle,
     handleMqttUpdate,
-    buildGroupPayload
+    buildGroupPayload,
+    requestStatus,
+    toggleSignal,
+    toggleAll
   }
 })

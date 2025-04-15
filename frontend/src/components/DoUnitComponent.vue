@@ -78,14 +78,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useSignalStore } from '@/stores/useSignalStore'
-import { useWebSocketStore } from '@/stores/useWebsocketStore'
 import ButtonComponent from '@/components/ui/ButtonComponent.vue'
-import {
-  getGroupTopic,
-  getSetTopic
-} from '@/utils/topics'
 
 import type { Signal } from '@/types/signal'
 
@@ -100,49 +95,21 @@ const delay = ref<number>(50)
 const visiblePending = ref<Record<string, boolean>>({})
 const groupPending = ref<boolean>(false)
 
-const wsStore = useWebSocketStore()
 const signalStore = useSignalStore()
 
-// ✅ Типизация параметров
+onMounted(() => {
+  signalStore.requestStatus(props.unitId)
+})
+
 function toggleAll(state: boolean) {
   groupPending.value = true
-
-  const actions = props.signals.map(signal => ({
-  index: signal.index,
-  name: signal.name,
-  key: `${props.unitId}/${signal.index}`
-}))
-
-  const payload = signalStore.buildGroupPayload(props.signals, state, delay.value)
-  wsStore.send({
-    action: 'publish',
-    topic: getGroupTopic(props.unitId),
-    payload
-  })
-
-  actions.forEach(({ key }, i) => {
-    setTimeout(() => {
-      signalStore.requestToggle(key, state)
-    }, i * delay.value)
-  })
-
-  const totalDelay = delay.value * (actions.length - 1) + 2000
-  setTimeout(() => {
+  signalStore.toggleAll(props.unitId, props.signals, state, delay.value, () => {
     groupPending.value = false
-  }, totalDelay)
+  })
 }
 
 function toggleSignal(signal: Signal, state: boolean) {
-  const key = `${props.unitId}/${signal.index}`
-  if (signalStore.states[key] === state) return
-
-  signalStore.requestToggle(key, state)
-
-  wsStore.send({
-    action: 'publish',
-    topic: getSetTopic(signal.index, props.unitId),
-    payload: { state }
-  })
+  signalStore.toggleSignal(props.unitId, signal, state)
 }
 
 // ✅ Автоотображение ⏳
