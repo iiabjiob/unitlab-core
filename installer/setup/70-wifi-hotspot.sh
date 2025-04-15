@@ -74,10 +74,9 @@ bogus-priv
 dhcp-range=$DHCP_RANGE_START,$DHCP_RANGE_END,$DHCP_LEASE
 EOF
 
-# Restart dnsmasq
-echo "🔄 Restarting dnsmasq..."
-sudo systemctl restart dnsmasq
-sudo systemctl enable dnsmasq
+# Bring up the hotspot (assign IP first)
+echo "🚀 Bringing up hotspot interface with static IP..."
+nmcli connection up "$PROFILE_NAME"
 
 # Final check
 echo
@@ -87,6 +86,7 @@ echo "   ➤ Password: $PASSWORD"
 echo "   ➤ IP:       $CORE_IP"
 echo "   ➤ DHCP:     $DHCP_RANGE_START → $DHCP_RANGE_END"
 
-# Bring up the hotspot (assign IP first)
-echo "🚀 Bringing up hotspot interface with static IP..."
-nmcli connection up "$PROFILE_NAME"
+# Restart dnsmasq
+echo "🔄 Restarting dnsmasq..."
+sudo systemctl restart dnsmasq
+sudo systemctl enable dnsmasq

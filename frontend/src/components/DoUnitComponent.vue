@@ -43,7 +43,7 @@
             <ButtonComponent
               type="secondary"
               size="xs"
-              :disabled="Boolean(signalStore.states[`${unitId}/${signal.index}`]) || Boolean(signalStore.pending[`${unitId}/${signal.index}`])"
+              :disabled="isOnDisabled(`${unitId}/${signal.index}`)"
               @click="toggleSignal(signal, true)"
               >
               ON
@@ -51,7 +51,7 @@
             <ButtonComponent
               type="secondary"
               size="xs"
-              :disabled="Boolean(signalStore.states[`${unitId}/${signal.index}`]) || Boolean(signalStore.pending[`${unitId}/${signal.index}`])"
+              :disabled="isOffDisabled(`${unitId}/${signal.index}`)"
               @click="toggleSignal(signal, false)"
             >
             OFF
@@ -110,6 +110,14 @@ function toggleAll(state: boolean) {
 
 function toggleSignal(signal: Signal, state: boolean) {
   signalStore.toggleSignal(props.unitId, signal, state)
+}
+
+function isOnDisabled(key: string): boolean {
+  return signalStore.states[key] || key in signalStore.pending
+}
+
+function isOffDisabled(key: string): boolean {
+  return !signalStore.states[key] || key in signalStore.pending
 }
 
 // ✅ Автоотображение ⏳
