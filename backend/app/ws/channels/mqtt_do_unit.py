@@ -1,5 +1,5 @@
 from app.mqtt.subscription_manager import subscription_manager
-from app.mqtt.client import mqtt_client
+from app.mqtt.client import publish_mqtt
 
 def get_channel_config(channel_name: str):
     """
@@ -23,4 +23,4 @@ def handle_subscribe(ws, status_topic: str, request_topic: str):
     subscription_manager.subscribe(status_topic, ws)
 
     # 📡 Отправка MQTT-запроса на получение текущих статусов
-    mqtt_client.publish(request_topic, payload="{}", qos=0, retain=False)
+    publish_mqtt(request_topic, payload="{}", qos=0, retain=False)

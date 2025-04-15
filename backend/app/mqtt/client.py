@@ -43,3 +43,10 @@ def start_mqtt():
         logger.info("🚀 MQTT client started")
     except Exception as e:
         logger.error(f"❌ MQTT startup error: {e}")
+
+def publish_mqtt(topic: str, payload: str = "{}", qos: int = 0, retain: bool = False):
+    try:
+        client.publish(topic, payload=payload, qos=qos, retain=retain)
+        logger.debug(f"[MQTT →] {topic} ← {payload}")
+    except Exception as e:
+        logger.error(f"❌ MQTT publish error to {topic}: {e}")
