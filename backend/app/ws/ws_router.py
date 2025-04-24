@@ -1,7 +1,9 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.ws.websocket_manager import ws_manager
-from app.core.logger import logger
 from app.ws.channel_registry import get_channel
+from app.core.logger import get_logger
+
+logger = get_logger("ws")
 
 router = APIRouter(prefix="/ws", tags=["Websocket"])
 
@@ -52,7 +54,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 payload_str = json.dumps(payload)
                 client.publish(topic, payload_str)
 
-                logger.info(f"📡 MQTT publish from WS: {topic} → {payload_str}")
+                logger.info(f"📡 Publish MQTT from WS: {topic} → {payload_str}")
 
             elif action == "unsubscribe":
                 channels = message.get("channels", [])

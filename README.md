@@ -265,3 +265,6 @@ journalctl -u fastapi -f -n 50 --no-pager
 ---
 
 ✅ **Готово!** Компоненты успешно установлены и настроены на Raspberry Pi 5.
+
+
+$ sudo nmcli device wifi hotspot ssid <hotspot name> password <hotspot password> ifname wlan0

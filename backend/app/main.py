@@ -2,7 +2,9 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
 from app.core.config import get_settings
-from app.core.logger import logger
+from app.core.logger import get_logger
+
+logger = get_logger("core")
 
 from app.api.api_manager import register_routers
 from app.ws.ws_router import router as ws_router

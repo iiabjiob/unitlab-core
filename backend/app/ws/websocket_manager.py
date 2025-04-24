@@ -1,6 +1,8 @@
 from typing import Dict, Set, List
 from fastapi import WebSocket
-from app.core.logger import logger
+from app.core.logger import get_logger
+
+logger = get_logger("ws")
 
 class WebSocketManager:
     def __init__(self):

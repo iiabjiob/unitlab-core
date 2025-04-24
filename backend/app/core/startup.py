@@ -2,7 +2,9 @@ from sqlalchemy.sql import text
 from app.db.database import engine
 from app.mqtt.client import start_mqtt
 from app.ws.task_manager import task_manager
-from app.core.logger import logger
+from app.core.logger import get_logger
+
+logger = get_logger("core")
 
 async def check_database_connection():
     try:

@@ -4,7 +4,6 @@
 
     <nav class="flex mb-4">
       <NavlinkComponent to="/settings/project">Project</NavlinkComponent>
-      <NavlinkComponent to="/settings/devices">Devices</NavlinkComponent>
     </nav>
 
     <!-- Здесь будут загружаться дочерние маршруты -->

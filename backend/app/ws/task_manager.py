@@ -2,7 +2,9 @@ import asyncio
 from app.ws.channel_registry import CHANNELS
 from app.ws.send_channel_task import send_channel_task 
 from app.core.config import get_settings
-from app.core.logger import logger
+from app.core.logger import get_logger
+
+logger = get_logger("ws")
 
 settings = get_settings()
 

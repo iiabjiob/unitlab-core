@@ -1,18 +1,17 @@
 import logging
 import os
-from app.core.config import get_settings  # Импорт конфигурации
+from logging import LoggerAdapter
+from app.core.config import get_settings  # Конфигурация проекта
 
 # Получаем настройки из .env
 settings = get_settings()
 LOG_DIR = "logs"
-
-# Создаём папку для логов, если её нет
 os.makedirs(LOG_DIR, exist_ok=True)
 
-# Создаём логгер
-logger = logging.getLogger("app")
+# ───── Основной логгер ────────────────────────────────────────────────
+base_logger = logging.getLogger("app")
 
-# Устанавливаем уровень логирования
+# Уровень логирования из ENV
 LOG_LEVELS = {
     "debug": logging.DEBUG,
     "info": logging.INFO,
@@ -20,11 +19,10 @@ LOG_LEVELS = {
     "error": logging.ERROR,
     "critical": logging.CRITICAL
 }
-
 log_level = LOG_LEVELS.get(settings.debug_level.lower(), logging.INFO)
-logger.setLevel(log_level)
+base_logger.setLevel(log_level)
 
-# 🧩 Кастомный форматтер с выравниванием уровня логов
+# ───── Кастомный форматтер с выравниванием уровня и источником ────────
 class AlignedFormatter(logging.Formatter):
     LEVEL_FORMATS = {
         logging.DEBUG:    "DEBUG",
@@ -38,27 +36,40 @@ class AlignedFormatter(logging.Formatter):
         record.levelname = self.LEVEL_FORMATS.get(record.levelno, record.levelname)
         return super().format(record)
 
-formatter = AlignedFormatter("%(asctime)s - %(levelname)s - %(message)s")
+class SourceAwareFormatter(AlignedFormatter):
+    def format(self, record):
+        source = getattr(record, "source", "")
+        if source:
+            source_tag = f"[{source.upper()}]"
+            if not str(record.msg).startswith(source_tag):
+                record.msg = f"{source_tag} {record.msg}"
+        return super().format(record)
 
-# Создаем обработчик для записи логов в файл
-log_filename = os.path.join(LOG_DIR, f"{settings.app_env}.log")  # Файл зависит от окружения
+formatter = SourceAwareFormatter("%(asctime)s - %(levelname)s - %(message)s")
+
+# ───── Обработчики: файл и консоль ─────────────────────────────────────
+log_filename = os.path.join(LOG_DIR, f"{settings.app_env}.log")
+
 file_handler = logging.FileHandler(log_filename, encoding="utf-8")
-file_handler.setLevel(log_level)  # Логируем в файл всё от DEBUG и выше
+file_handler.setLevel(log_level)
+file_handler.setFormatter(formatter)
 
-# Создаем обработчик для вывода логов в консоль
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO if settings.app_env == "production" else log_level)
-
-# Формат логов
-file_handler.setFormatter(formatter)
 console_handler.setFormatter(formatter)
 
-# Добавляем обработчики к логгеру
-logger.addHandler(file_handler)
-logger.addHandler(console_handler)
+base_logger.addHandler(file_handler)
+base_logger.addHandler(console_handler)
 
-# Отключаем дублирование логов, если FastAPI использует root-логгер
-logger.propagate = False
+# Отключаем проброс логов на root (если используется FastAPI/Uvicorn)
+base_logger.propagate = False
 
-# Пример тестового лога
-logger.info(f"Logger initialized with level: {settings.debug_level} (Environment: {settings.app_env})")
+# ───── Утилита для получения логгера с контекстом источника ───────────
+def get_logger(source: str = "") -> LoggerAdapter:
+    return LoggerAdapter(base_logger, {"source": source})
+
+# ───── Глобальный логгер по умолчанию ──────────────────────────────────
+logger = get_logger()
+
+# Пример логов на старте
+logger.info(f"Logger initialized with level: {settings.debug_level} (env: {settings.app_env})")

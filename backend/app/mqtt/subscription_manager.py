@@ -1,5 +1,8 @@
 
 import fnmatch
+from app.core.logger import get_logger
+
+logger = get_logger("mqtt")
 
 class SubscriptionManager:
     def __init__(self):
@@ -11,8 +14,8 @@ class SubscriptionManager:
         from app.mqtt.client import client
         client.subscribe(topic)
 
-        from app.core.logger import logger
-        logger.info(f"📡 MQTT subscribed: topic='{topic}', total_clients={len(self.topic_subscribers[topic])}")
+        
+        logger.info(f"📡 Subscribed: topic='{topic}', total_clients={len(self.topic_subscribers[topic])}")
 
     def unsubscribe(self, topic: str, ws):
         if topic in self.topic_subscribers:
@@ -30,6 +33,9 @@ class SubscriptionManager:
             if fnmatch.fnmatch(topic, mqtt_pattern):
                 matched.update(subscribers)
         return matched
+    
+    def is_subscribed(self, topic: str, ws) -> bool:
+        return ws in self.topic_subscribers.get(topic, set())
 
 
 # Экземпляр, который можно импортировать

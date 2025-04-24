@@ -18,6 +18,7 @@
 
         <!-- Navigation -->
         <NavlinkComponent to="/">IO</NavlinkComponent>
+        <NavlinkComponent to="/devices">Devices</NavlinkComponent>
         <NavlinkComponent to="/events">Events</NavlinkComponent>
         <NavlinkComponent to="/settings">Settings</NavlinkComponent>
         <NavlinkComponent to="/system">System</NavlinkComponent>

@@ -40,6 +40,18 @@ export const useSignalStore = defineStore('signalStore', () => {
           const key = channel.replace('/status/', '/')
           handleMqttUpdate(key, value === 'true')
         }
+        else if (channel.endsWith('/state/group')) {
+          try {
+            const parsed = JSON.parse(value)
+            const outputs: boolean[] = parsed.outputs ?? []
+            outputs.forEach((val, index) => {
+              const key = `${channel.split('/')[0]}/${index}`
+              handleMqttUpdate(key, val)
+            })
+          } catch (e) {
+            console.warn('Failed to parse state/group payload:', value)
+          }
+        }
       }
     },
     { deep: true }

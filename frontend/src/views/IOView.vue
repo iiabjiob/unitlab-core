@@ -35,7 +35,7 @@ import DoUnitComponent from '@/components/DoUnitComponent.vue'
 import DiUnitComponent from '@/components/DiUnitComponent.vue'
 import { useWebSocketStore } from '@/stores/useWebsocketStore'
 
-import { Signal } from '@/types/signal'
+import { Signal } from '@/types/signal.d'
 
 // TODO: ID плат (пока статично, позже будет динамика)
 const doUnitIds: string[] = ['do-unit-58EC']
@@ -50,6 +50,7 @@ onMounted(() => {
     ...diunitIds.map((id) => `mqtt_di_unit/${id}`)
   ]
   wsStore.subscribe(channels)
+
 })
 
 // ✅ Отписка при размонтировании
@@ -63,16 +64,22 @@ onUnmounted(() => {
 
 // ✅ Получить статусы
 function getStatuses(unitId: string): Signal[] {
-  return Object.entries(wsStore.receivedData)
-    .filter(([key]) => key.startsWith(`${unitId}/status/`))
-    .map(([key, value]) => {
-      const index = parseInt(key.split('/').pop() || '')
-      return {
-        index,
-        name: `DO${index + 1}`, // пока временное имя, можно заменить позже
-        state: value === 'true'
-      }
-    })
+  const raw = wsStore.receivedData[`${unitId}/state/group`]
+  if (!raw) return []
+
+  try {
+    const parsed = JSON.parse(raw)
+    const outputs: boolean[] = parsed.outputs ?? []
+
+    return outputs.map((state, index) => ({
+      index,
+      name: `DO${index + 1}`,
+      state
+    }))
+  } catch (e) {
+    console.warn('❌ Failed to parse state/group payload:', raw)
+    return []
+  }
 }
 
 </script>

@@ -1,7 +1,10 @@
 import paho.mqtt.client as mqtt
 import asyncio
 from app.mqtt.dispatcher import dispatch
-from app.core.logger import logger
+from app.mqtt.publisher import init_mqtt_client
+from app.core.logger import get_logger
+
+logger = get_logger("mqtt")
 
 event_loop = None  # будет установлен при запуске
 
@@ -9,17 +12,18 @@ MQTT_HOST = "localhost"
 MQTT_PORT = 1883
 
 client = mqtt.Client()
+init_mqtt_client(client)
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        logger.info("✅ MQTT connected successfully")
+        logger.info("✅ Сonnected successfully")
     else:
-        logger.error(f"❌ MQTT connection failed with code {rc}")
+        logger.error(f"❌ Сonnection failed with code {rc}")
 
 def on_message(client, userdata, msg):
     topic = msg.topic
     payload = msg.payload.decode()
-    logger.debug(f"[MQTT] {topic} → {payload}")
+    logger.debug(f"{topic} → {payload}")
 
     # Асинхронная пересылка по WebSocket в event_loop
     from app.mqtt.client import event_loop  # импортируем глобальный loop
@@ -27,11 +31,8 @@ def on_message(client, userdata, msg):
     if event_loop:
         asyncio.run_coroutine_threadsafe(dispatch(topic, payload), event_loop)
     else:
-        logger.warning("⚠️ No event loop available for MQTT dispatch!")
-
-client.on_connect = on_connect
-client.on_message = on_message
-
+        logger.warning("⚠️ No event loop available for dispatch!")
+        
 def start_mqtt():
     try:
         global event_loop
@@ -40,13 +41,9 @@ def start_mqtt():
         client.connect(MQTT_HOST, MQTT_PORT, 60)
         client.loop_start()
 
-        logger.info("🚀 MQTT client started")
+        logger.info("🚀 Client started")
     except Exception as e:
-        logger.error(f"❌ MQTT startup error: {e}")
+        logger.error(f"❌ Startup error: {e}")
 
-def publish_mqtt(topic: str, payload: str = "{}", qos: int = 0, retain: bool = False):
-    try:
-        client.publish(topic, payload=payload, qos=qos, retain=retain)
-        logger.debug(f"[MQTT →] {topic} ← {payload}")
-    except Exception as e:
-        logger.error(f"❌ MQTT publish error to {topic}: {e}")
+client.on_connect = on_connect
+client.on_message = on_message

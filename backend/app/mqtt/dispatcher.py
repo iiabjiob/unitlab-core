@@ -1,11 +1,13 @@
 import asyncio
+from typing import Set
 from app.mqtt.subscription_manager import subscription_manager
-from app.core.logger import logger
+from app.core.logger import get_logger
+
+logger = get_logger("mqtt")
 
 async def dispatch(topic: str, payload: str):
     """
-    Отправляет MQTT-сообщение по WebSocket всем подписанным клиентам.
-    Удаляет неактивные WebSocket из подписчиков.
+    Рассылает MQTT-сообщение всем WS-подписчикам и чистит мёртвые сокеты.
     """
     subscribers = subscription_manager.get_ws_subscribers(topic)
 
@@ -13,30 +15,40 @@ async def dispatch(topic: str, payload: str):
         logger.debug(f"🕸️ No WS subscribers for topic: {topic}")
         return
 
-    logger.debug(f"📤 Dispatching MQTT to {len(subscribers)} WS clients: {topic} = {payload}")
+    logger.debug(f"📤 Dispatching to {len(subscribers)} WS clients: {topic} = {payload}")
 
-    dead_clients = set()
+    dead_clients: Set = set()
 
     for ws in subscribers:
         try:
-            await ws.send_json({
-                "channel": topic,
-                "payload": payload
-            })
+            await asyncio.wait_for(
+                ws.send_json({
+                    "type": "mqtt",
+                    "channel": topic,
+                    "payload": payload,
+                }),
+                timeout=1.5  # Защита от зависших сокетов
+            )
         except Exception as e:
             logger.warning(f"❌ Failed to send WS message: {e}")
             dead_clients.add(ws)
 
-    # Удаляем умершие сокеты
     if dead_clients:
-        for topic_key, subs in subscription_manager.topic_subscribers.items():
-            before = len(subs)
-            subs.difference_update(dead_clients)
-            after = len(subs)
-            if before != after:
-                logger.debug(f"🧹 Removed {before - after} dead WS from topic='{topic_key}'")
+        _remove_dead_clients(dead_clients)
 
-        # Также удалить пустые ключи
-        empty_keys = [k for k, v in subscription_manager.topic_subscribers.items() if not v]
-        for k in empty_keys:
-            del subscription_manager.topic_subscribers[k]
+
+def _remove_dead_clients(dead_clients: Set):
+    """
+    Удаляет умершие WebSocket'ы из всех подписок.
+    """
+    for topic_key, subscribers in subscription_manager.topic_subscribers.items():
+        before = len(subscribers)
+        subscribers.difference_update(dead_clients)
+        after = len(subscribers)
+        if before != after:
+            logger.debug(f"🧹 Removed {before - after} dead WS from topic='{topic_key}'")
+
+    # Удаляем пустые ключи
+    empty_topics = [key for key, subs in subscription_manager.topic_subscribers.items() if not subs]
+    for key in empty_topics:
+        del subscription_manager.topic_subscribers[key]
