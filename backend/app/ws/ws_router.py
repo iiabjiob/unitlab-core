@@ -1,6 +1,7 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.ws.websocket_manager import ws_manager
 from app.ws.channel_registry import get_channel
+from app.mqtt.topics import is_allowed_publish_topic
 from app.core.logger import get_logger
 
 logger = get_logger("ws")
@@ -42,19 +43,15 @@ async def websocket_endpoint(websocket: WebSocket):
                     logger.warning(f"❌ Invalid publish request: {message}")
                     return
 
-                # TODO: Подумать как лучше вынести
                 # Безопасность: только разрешённые топики
-                if not topic.startswith(("do-unit-", "di-unit-")):
+                if not is_allowed_publish_topic(topic):
                     logger.warning(f"🚫 Blocked publish to unsafe topic: {topic}")
                     return
 
-                import json
-                from app.mqtt.client import client
+                from app.mqtt.publisher import publish_json
+                publish_json(topic, payload)
 
-                payload_str = json.dumps(payload)
-                client.publish(topic, payload_str)
-
-                logger.info(f"📡 Publish MQTT from WS: {topic} → {payload_str}")
+                logger.info(f"📡 Publish MQTT from WS: {topic} → {payload}")
 
             elif action == "unsubscribe":
                 channels = message.get("channels", [])

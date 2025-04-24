@@ -1,15 +1,17 @@
-import paho.mqtt.client as mqtt
 import asyncio
+import paho.mqtt.client as mqtt
 from app.mqtt.dispatcher import dispatch
 from app.mqtt.publisher import init_mqtt_client
+from app.core.config import get_settings
 from app.core.logger import get_logger
 
+settings = get_settings()
 logger = get_logger("mqtt")
 
 event_loop = None  # будет установлен при запуске
 
-MQTT_HOST = "localhost"
-MQTT_PORT = 1883
+MQTT_HOST = settings.mqtt_host
+MQTT_PORT = settings.mqtt_port
 
 client = mqtt.Client()
 init_mqtt_client(client)

@@ -1,3 +1,10 @@
+ALLOWED_PUBLISH_PREFIXES = (
+    "do-unit-",
+    "di-unit-",
+)
+def is_allowed_publish_topic(topic: str) -> bool:
+    return topic.startswith(ALLOWED_PUBLISH_PREFIXES)
+
 # device registration
 REGISTER_ROOT = "device/register"
 def register_announce(unit_id: str) -> str:

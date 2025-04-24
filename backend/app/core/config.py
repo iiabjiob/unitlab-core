@@ -16,6 +16,9 @@ class Settings(BaseSettings):
 
     wifi_prefix: str
 
+    mqtt_host: str
+    mqtt_port: int
+
     @property
     def database_url(self) -> str:
         return f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
