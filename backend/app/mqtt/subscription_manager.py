@@ -28,7 +28,10 @@ class SubscriptionManager:
     def get_ws_subscribers(self, topic: str) -> set:
         matched = set()
         for pattern, subscribers in self.topic_subscribers.items():
-            # Поддержка # как в MQTT
+            # точное совпадение
+            if pattern == topic:
+                matched.update(subscribers)
+            # поддержка #
             mqtt_pattern = pattern.replace("#", "*")
             if fnmatch.fnmatch(topic, mqtt_pattern):
                 matched.update(subscribers)
