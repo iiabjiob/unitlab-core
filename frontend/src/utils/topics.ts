@@ -7,4 +7,8 @@ export const TopicBuilder = {
   statusAll:(unit: string)                => `${moduleId(unit)}/status/`,
   subscribe:(unit: string)                => `${moduleId(unit)}/status/#`,
   getStatus:(unit: string)                => `${moduleId(unit)}/get/status`,
+
+  deviceRegister:()                       => `device/register`,
+  deviceRegisterAnnounce:(unit: string)   => `device/register/${moduleId(unit)}`, // Кто зарегистрировался
+  deviceScan:()                           => `device/scan`,
 }

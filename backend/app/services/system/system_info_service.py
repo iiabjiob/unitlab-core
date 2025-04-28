@@ -55,6 +55,23 @@ class SystemInfoService:
                 ip_addresses[iface] = "Interface not found"
 
         return ip_addresses
+    
+    @staticmethod
+    def get_local_ip_from_active_interface() -> str:
+        """Возвращает IP-адрес первого активного интерфейса с корректным IPv4."""
+        ip_addresses = SystemInfoService.get_ip_addresses()
+        for iface, ip in ip_addresses.items():
+            if SystemInfoService._is_valid_ipv4(ip):
+                return ip
+        return "127.0.0.1"
+
+    @staticmethod
+    def _is_valid_ipv4(ip: str) -> bool:
+        try:
+            socket.inet_aton(ip)
+            return True
+        except socket.error:
+            return False
 
     @staticmethod
     def get_os():

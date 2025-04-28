@@ -19,19 +19,28 @@ async def dispatch(topic: str, payload: str):
 
     dead_clients: Set = set()
 
-    for ws in subscribers:
+    for subscriber in subscribers:
         try:
-            await asyncio.wait_for(
-                ws.send_json({
-                    "type": "mqtt",
-                    "channel": topic,
-                    "payload": payload,
-                }),
-                timeout=1.5  # Защита от зависших сокетов
-            )
+            if hasattr(subscriber, "send_json"):
+                # Это WebSocket
+                await asyncio.wait_for(
+                    subscriber.send_json({
+                        "type": "mqtt",
+                        "channel": topic,
+                        "payload": payload,
+                    }),
+                    timeout=1.5
+                )
+            elif callable(subscriber):
+                # Это async функция
+                await asyncio.wait_for(
+                    subscriber(topic, payload),
+                    timeout=1.5
+                )
         except Exception as e:
-            logger.warning(f"❌ Failed to send WS message: {e}")
-            dead_clients.add(ws)
+            logger.warning(f"❌ Failed to dispatch message: {e}")
+            if hasattr(subscriber, "send_json"):
+                dead_clients.add(subscriber)
 
     if dead_clients:
         _remove_dead_clients(dead_clients)

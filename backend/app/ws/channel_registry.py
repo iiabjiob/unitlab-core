@@ -25,6 +25,7 @@ for file in os.listdir(channels_dir):
                 else:
                     # dynamic: канал начинается с имени файла
                     DYNAMIC_CHANNELS.append((prefix, func))
+            
         except Exception as e:
             print(f"❌ Failed to load channel module {module_name}: {e}")
 

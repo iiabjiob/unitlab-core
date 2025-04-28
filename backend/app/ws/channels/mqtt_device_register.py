@@ -1,6 +1,6 @@
 from app.mqtt.subscription_manager import subscription_manager
-from app.mqtt.publisher import publish  # или publish_json, если нужно
-from app.mqtt.topics import device_register, device_scan
+from app.mqtt.topics import device_register
+from app.mqtt.handlers.device_register_handler import handle_device_register_message
 
 def get_channel_config():
     return {
@@ -8,8 +8,8 @@ def get_channel_config():
         "enabled": False,  # Не стартует как таск
         "provider": None,  # Push-only
         "on_subscribe": lambda ws: (
-            subscription_manager.subscribe(device_register(), ws) or
-            publish(device_scan())
+            subscription_manager.subscribe(device_register(), ws),
+            subscription_manager.subscribe(device_register(), handle_device_register_message)
         ),
         "on_unsubscribe": lambda ws: subscription_manager.unsubscribe(device_register(), ws),
     }

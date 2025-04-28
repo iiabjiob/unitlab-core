@@ -16,7 +16,7 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             message = await websocket.receive_json()
-            logger.debug("📩 Received message from client:", message)  # Log received message
+            logger.debug("📩 Received message from client: %s", message)
             action = message.get("action")
             
             if action == "subscribe":
@@ -25,6 +25,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 for channel in channels:
                     config = get_channel(channel)
+                    if config is None:
+                        logger.warning(f"⚠️ No config found for channel '{channel}', skipping.")
+                        continue  # Просто пропускаем несуществующие каналы
+
                     if config and callable(config.get("on_subscribe")):
                         config["on_subscribe"](websocket)
 
