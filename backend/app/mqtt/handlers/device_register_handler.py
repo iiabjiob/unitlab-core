@@ -1,5 +1,3 @@
-# app/mqtt/handlers/device_register_handler.py
-
 from app.db.database import AsyncSessionLocal
 from app.services.db.device import register_if_not_exists
 from app.core.logger import get_logger
