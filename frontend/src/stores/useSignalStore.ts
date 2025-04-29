@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { useWebSocketStore } from './useWebsocketStore'
 
-import { TopicBuilder } from '@/utils/topics'
+import { TopicBuilder } from '@/utils/mqtt'
 
 import type { Signal } from '@/types/signal'
 
@@ -31,32 +31,6 @@ export const useSignalStore = defineStore('signalStore', () => {
     actions: GroupAction[]
   }
 
-  // ✅ Listen to WebSocket updates and handle incoming DO state changes
-  watch(
-    () => wsStore.receivedData,
-    (newData: Record<string, string>) => {
-      for (const [channel, value] of Object.entries(newData)) {
-        if (channel.includes('/status/')) {
-          const key = channel.replace('/status/', '/')
-          handleMqttUpdate(key, value === 'true')
-        }
-        else if (channel.endsWith('/state/group')) {
-          try {
-            const parsed = JSON.parse(value)
-            const outputs: boolean[] = parsed.outputs ?? []
-            outputs.forEach((val, index) => {
-              const key = `${channel.split('/')[0]}/${index}`
-              handleMqttUpdate(key, val)
-            })
-          } catch (e) {
-            console.warn('Failed to parse state/group payload:', value)
-          }
-        }
-      }
-    },
-    { deep: true }
-  )
-
   function setState(key: SignalKey, value: boolean) {
     states.value[key] = value
     if (pending.value[key]) {
@@ -68,6 +42,13 @@ export const useSignalStore = defineStore('signalStore', () => {
 
   function handleMqttUpdate(key: SignalKey, value: boolean) {
     setState(key, value)
+  }
+
+  function handleFullStateUpdate(unitId: string, outputs: Record<string, boolean>) {
+    for (const [index, value] of Object.entries(outputs)) {
+      const key = `${unitId}/${index}`
+      setState(key, value)
+    }
   }
 
   function requestToggle(key: SignalKey, value: boolean, timeout = 3000) {
@@ -100,10 +81,10 @@ export const useSignalStore = defineStore('signalStore', () => {
 
   // ✅ Публичные методы для компонентов:
 
-  function requestStatus(unitId: string) {
+  function requestStates(unitId: string) {
     wsStore.send({
       action: 'publish',
-      topic: TopicBuilder.getStatus(unitId),
+      topic: TopicBuilder.getStates(unitId),
       payload: {}
     })
   }
@@ -121,24 +102,39 @@ export const useSignalStore = defineStore('signalStore', () => {
     })
   }
 
-  function toggleAll(unitId: string, signals: Signal[], state: boolean, delay = 50, callback?: () => void) {
-    const payload = buildGroupPayload(signals, state, delay)
+  // function toggleAll(unitId: string, signals: Signal[], state: boolean, delay = 50, callback?: () => void) {
+  //   const payload = buildGroupPayload(signals, state, delay)
 
-    wsStore.send({
-      action: 'publish',
-      topic: TopicBuilder.group(unitId),
-      payload
+  //   wsStore.send({
+  //     action: 'publish',
+  //     topic: TopicBuilder.group(unitId),
+  //     payload
+  //   })
+
+  //   signals.forEach((signal, i) => {
+  //     const key = `${unitId}/${signal.index}`
+  //     setTimeout(() => requestToggle(key, state), i * delay)
+  //   })
+
+  //   if (callback) {
+  //     const totalDelay = delay * (signals.length - 1) + 1000
+  //     setTimeout(() => callback(), totalDelay)
+  //   }
+  // }
+
+  function subscribeToUnitStates(unitId: string) {
+    wsStore.subscribeToChannel(`${unitId}/states`, (outputs: Record<string, boolean>) => {
+      handleFullStateUpdate(unitId, outputs)
     })
+  }
 
-    signals.forEach((signal, i) => {
-      const key = `${unitId}/${signal.index}`
-      setTimeout(() => requestToggle(key, state), i * delay)
+  function subscribeToSignalUpdates(unitId: string, signals: Signal[]) {
+    signals.forEach(signal => {
+      const topic = `${unitId}/state/${signal.index}`
+      wsStore.subscribeToChannel(topic, (value: boolean) => {
+        handleMqttUpdate(`${unitId}/${signal.index}`, value)
+      })
     })
-
-    if (callback) {
-      const totalDelay = delay * (signals.length - 1) + 1000
-      setTimeout(() => callback(), totalDelay)
-    }
   }
 
   return {
@@ -147,10 +143,11 @@ export const useSignalStore = defineStore('signalStore', () => {
     failed,
     setState,
     requestToggle,
-    handleMqttUpdate,
     buildGroupPayload,
-    requestStatus,
+    requestStates,
     toggleSignal,
-    toggleAll
+    // toggleAll,
+    subscribeToUnitStates,
+    subscribeToSignalUpdates,
   }
 })

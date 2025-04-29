@@ -6,38 +6,46 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useWebSocketStore } from '@/stores/useWebsocketStore'
+import { WsTopicBuilder } from '@/utils/ws'
 
 const wsStore = useWebSocketStore()
 
-// 🕒 Local time
+const topicTimeStatus = WsTopicBuilder.timeStatus()
+
+// Local time
 const localTime = ref<Date>(new Date())
 
-// 🕒 Synchronized time (received via WebSocket)
+// Synchronized time (received via WebSocket)
 const syncBaseTime = ref<Date | null>(null)
 const syncStartTime = ref<Date | null>(null)
 
-// ⏱ Update local clock every second
-onMounted(() => {
-  wsStore.subscribe(['time_status'])
+// Callback when "time_status" arrives
+const handleTimeStatus = (newData: { timestamp?: string; source?: string }) => {
+  if (newData?.timestamp) {
+    syncBaseTime.value = new Date(newData.timestamp)
+    syncStartTime.value = new Date()
+  }
+}
 
+// Подписка при монтировании
+onMounted(() => {
+  wsStore.subscribe([topicTimeStatus])
+  wsStore.subscribeToChannel(topicTimeStatus, handleTimeStatus)
+
+  // ⏱ Update local clock every second
   setInterval(() => {
     localTime.value = new Date()
   }, 1000)
 })
 
-// 📡 Watch for time_status messages
-watch(
-  () => wsStore.receivedData['time_status'],
-  (newData: { timestamp?: string; source?: string } | undefined) => {
-    if (newData?.timestamp) {
-      syncBaseTime.value = new Date(newData.timestamp)
-      syncStartTime.value = new Date()
-    }
-  },
-  { immediate: true }
-)
+// Отписка при размонтировании
+onUnmounted(() => {
+  wsStore.unsubscribe([topicTimeStatus])
+  wsStore.unsubscribeFromChannel(topicTimeStatus, handleTimeStatus)
+})
+
 
 // 🧭 Time source (LOCAL / NTP / PTP)
 const timeSource = computed<'LOCAL' | 'NTP' | 'PTP'>(() => {

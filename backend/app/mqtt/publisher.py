@@ -17,7 +17,7 @@ def publish(topic: str, payload: str = "{}", qos: int = 0, retain: bool = False)
             raise RuntimeError("Client is not initialized")
 
         mqtt_client.publish(topic, payload=payload, qos=qos, retain=retain)
-        logger.debug(f"→ {topic} ← {payload}")
+        logger.debug(f"→ {topic} {payload}")
     except Exception as e:
         logger.error(f"❌ Publish error to {topic}: {e}")
 

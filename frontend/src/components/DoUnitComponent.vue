@@ -7,7 +7,7 @@
         <div class="font-bold text-lg">{{ unitId }}</div>
         <div class="flex items-center gap-2 text-sm mt-1">
           <!-- Group ON/OFF -->
-          <div class="flex gap-1">
+          <!-- <div class="flex gap-1">
             <ButtonComponent type="secondary"
             size="xs"
             :disabled="groupPending"
@@ -18,12 +18,12 @@
             :disabled="groupPending"
             @click="toggleAll(false)">
             OFF</ButtonComponent>
-          </div>
-          <div class="flex items-center gap-1">
+          </div> -->
+          <!-- <div class="flex items-center gap-1">
             <input type="number" name="delay_ms" class="w-16 px-1 py-0.5 rounded border border-gray-500 text-xs" v-model.number="delay" min="0"
               title="Delay between outputs (ms)" />
             <span>ms</span>
-          </div>
+          </div> -->
         </div>
       </div>
     </div>
@@ -78,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { useSignalStore } from '@/stores/useSignalStore'
 import ButtonComponent from '@/components/ui/ButtonComponent.vue'
 
@@ -91,22 +91,18 @@ const props = defineProps<{
 }>()
 
 // ✅ refs
-const delay = ref<number>(50)
+// const delay = ref<number>(50)
 const visiblePending = ref<Record<string, boolean>>({})
-const groupPending = ref<boolean>(false)
+// const groupPending = ref<boolean>(false)
 
 const signalStore = useSignalStore()
 
-onMounted(() => {
-  signalStore.requestStatus(props.unitId)
-})
-
-function toggleAll(state: boolean) {
-  groupPending.value = true
-  signalStore.toggleAll(props.unitId, props.signals, state, delay.value, () => {
-    groupPending.value = false
-  })
-}
+// function toggleAll(state: boolean) {
+//   groupPending.value = true
+//   signalStore.toggleAll(props.unitId, props.signals, state, delay.value, () => {
+//     groupPending.value = false
+//   })
+// }
 
 function toggleSignal(signal: Signal, state: boolean) {
   signalStore.toggleSignal(props.unitId, signal, state)

@@ -15,6 +15,7 @@ interface WebSocketStoreState {
   maxReconnectAttempts: number
   reconnectDelay: number
   maxReconnectDelay: number
+  listeners: Map<string, Set<(payload: any) => void>>
 }
 
 export const useWebSocketStore = defineStore('websocketStore', {
@@ -27,7 +28,8 @@ export const useWebSocketStore = defineStore('websocketStore', {
     reconnectAttempts: 0,
     maxReconnectAttempts: 5,
     reconnectDelay: 1000,
-    maxReconnectDelay: 30000
+    maxReconnectDelay: 30000,
+    listeners: new Map<string, Set<(payload: any) => void>>()
   }),
 
   actions: {
@@ -55,6 +57,7 @@ export const useWebSocketStore = defineStore('websocketStore', {
         console.log('❌ WebSocket disconnected!', event)
         this.isConnected = false
         this.socket = null
+        this.receivedData = {}
         this.reconnect()
       }
 
@@ -62,6 +65,14 @@ export const useWebSocketStore = defineStore('websocketStore', {
         const { channel, payload }: WebSocketMessage = JSON.parse(event.data)
         if (channel && payload !== undefined) {
           this.receivedData[channel] = payload
+        }
+
+        // ✅ Оповестить всех слушателей канала
+        const channelListeners = this.listeners.get(channel)
+        if (channelListeners) {
+          for (const listener of channelListeners) {
+            listener(payload)
+          }
         }
       }
 
@@ -118,6 +129,17 @@ export const useWebSocketStore = defineStore('websocketStore', {
         console.log(`🔄 Reconnect attempt #${this.reconnectAttempts}...`)
         this.connect()
       }, delay)
-    }
+    },
+
+    subscribeToChannel(channel: string, callback: (payload: any) => void): void {
+      if (!this.listeners.has(channel)) {
+        this.listeners.set(channel, new Set())
+      }
+      this.listeners.get(channel)!.add(callback)
+    },
+
+    unsubscribeFromChannel(channel: string, callback: (payload: any) => void): void {
+      this.listeners.get(channel)?.delete(callback)
+    },
   }
 })
