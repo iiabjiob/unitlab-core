@@ -39,4 +39,4 @@ __pycache__/
 *.pyc
 
 .venv/
-backend/.python-version
+.python-version
