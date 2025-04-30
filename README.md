@@ -170,7 +170,7 @@ touch unitlab/backend/.env
 Перенесите файлы backend и frontend в папку проекта через rsync:
 
 ```bash
-rsync -avz --delete --exclude-from=.rsync-exclude ./ pi@unitlab.local:~/unitlab/
+rsync -avz --delete --exclude-from=.rsyncignore ./ pi@unitlab.local:~/unitlab/
 
 ```
 
