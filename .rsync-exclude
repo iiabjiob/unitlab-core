@@ -12,10 +12,15 @@
 *.log
 
 # 🚫 Бэкенд: логи, окружение, тесты и кэш
+backend/.python-version
+backend/alembic.ini
+backend/requirements.in
 backend/.venv/
 backend/.env
 backend/logs/
 backend/tests/
+backend/seeds/
+backend/alembic/
 backend/.pytest_cache/
 backend/.mypy_cache/
 backend/app/db/migrations/

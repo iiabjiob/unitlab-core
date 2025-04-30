@@ -3,7 +3,11 @@
     <AppHeader class="border-b border-gray-200 dark:border-gray-800"/>
 
     <main class="flex-grow overflow-auto p-5">
-      <template v-if="wsStore.isConnected">
+
+      <template v-if="!wsStore.isInitialized">
+        <div class="h-full flex items-center justify-center text-gray-500"></div>
+      </template>
+      <template v-else-if="wsStore.isConnected">
         <RouterView />
       </template>
       <template v-else>

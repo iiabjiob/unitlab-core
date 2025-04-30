@@ -3,7 +3,7 @@
     <PageHeader title="Devices" />
 
     <!-- Индикатор загрузки -->
-    <div v-if="deviceStore.isLoading" class="text-gray-500 mt-4">Loading...</div>
+    <LoadingSpinner size="small" position="left" v-if="deviceStore.isLoading" />
 
     <!-- Если устройств нет -->
     <AlertComponent v-else-if="!deviceStore.devices.length" type="warning" message="No devices found." />
@@ -27,6 +27,7 @@ import { useDeviceStore } from '@/stores/useDeviceStore'
 import AlertComponent from '@/components/ui/AlertComponent.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import DeviceList from '@/components/DeviceList.vue'
+import LoadingSpinner from '@/components/LoadingSpinner.vue'
 
 const deviceStore = useDeviceStore()
 

@@ -2,7 +2,10 @@
   <div>
     <PageHeader title="IO" />
 
-    <div v-if="noUnits" class="mt-4">
+    <!-- Индикатор загрузки -->
+    <LoadingSpinner size="small" position="left" v-if="deviceStore.isLoading" />
+
+    <div v-else-if="noUnits" class="mt-4">
       <AlertComponent type="warning" message="No active IO units found." />
     </div>
 
@@ -40,6 +43,7 @@ import { useDeviceStore } from '@/stores/useDeviceStore'
 import { useSignalStore } from '@/stores/useSignalStore'
 import { useWebSocketStore } from '@/stores/useWebsocketStore'
 import AlertComponent from '@/components/ui/AlertComponent.vue'
+import LoadingSpinner from '@/components/LoadingSpinner.vue'
 
 const deviceStore = useDeviceStore()
 const signalStore = useSignalStore()
@@ -57,6 +61,10 @@ const noUnits = computed(() => doUnits.value.length === 0 && diUnits.value.lengt
 onMounted(() => {
 
   wsStore.subscribe([...doChannels, ... diChannels])
+
+  if (!deviceStore.devices.length) {
+    deviceStore.fetchDevices()
+  }
 
   doUnits.value.forEach(unit => {
     // signalStore.requestStates(unit.unit_id)

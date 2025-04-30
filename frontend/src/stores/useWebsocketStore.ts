@@ -8,6 +8,7 @@ interface WebSocketMessage {
 interface WebSocketStoreState {
   socket: WebSocket | null
   isConnected: boolean
+  isInitialized: boolean
   pendingSubscriptions: string[][]
   activeSubscriptions: Set<string>
   receivedData: Record<string, any>
@@ -22,6 +23,7 @@ export const useWebSocketStore = defineStore('websocketStore', {
   state: (): WebSocketStoreState => ({
     socket: null,
     isConnected: false,
+    isInitialized: false,
     pendingSubscriptions: [],
     activeSubscriptions: new Set(),
     receivedData: {},
@@ -37,12 +39,15 @@ export const useWebSocketStore = defineStore('websocketStore', {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
       const wsUrl = `${wsProtocol}://${window.location.host}/ws/ws`
 
+      this.isInitialized = false
+
       console.log('🔌 Connecting to WebSocket...')
       this.socket = new WebSocket(wsUrl)
 
       this.socket.onopen = () => {
         console.log('✅ WebSocket connected!')
         this.isConnected = true
+        this.isInitialized = true
         this.reconnectAttempts = 0
 
         if (this.activeSubscriptions.size > 0) {
