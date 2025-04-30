@@ -14,7 +14,8 @@ class Settings(BaseSettings):
     time_sync_interval: int
     system_info_interval: int
 
-    wifi_prefix: str
+    ap_ssid_prefix: str
+    ap_password_prefix: str
 
     mqtt_host: str
     mqtt_port: int

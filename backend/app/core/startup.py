@@ -2,6 +2,7 @@ from sqlalchemy.sql import text
 from app.db.database import engine
 from app.mqtt.client import start_mqtt
 from app.ws.task_manager import task_manager
+from app.core.utils import enable_ap_mode
 from app.core.logger import get_logger
 
 logger = get_logger("core")
@@ -23,6 +24,7 @@ def mqtt_connect():
 
 def start_background_tasks():
     try:
+        enable_ap_mode()
         task_manager.start_tasks()
         logger.info("✅ Background tasks started.")
     except Exception as e:
