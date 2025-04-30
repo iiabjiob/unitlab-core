@@ -12,7 +12,7 @@
       </div>
 
       <!-- Navigation & Time -->
-      <nav class="flex flex-wrap items-center gap-x-2">
+      <nav class="flex flex-wrap items-center gap-2">
         <!-- Time -->
         <TimeSyncComponent class="me-5"/>
 

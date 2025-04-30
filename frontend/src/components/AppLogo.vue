@@ -4,7 +4,7 @@
     <RouterLink
       to="/"
       class="text-xl font-bold text-gray-800 dark:text-gray-200">
-      FAT Simulator
+      UnitLab
     </RouterLink>
 
   </div>

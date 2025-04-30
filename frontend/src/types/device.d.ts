@@ -3,7 +3,4 @@ export interface Device {
   type: string
   is_active: boolean
   isNew?: boolean
-
-  // Дополнительно:
-  type?: 'DO' | 'DI' | 'AI' | 'AO'             // тип сигнала
 }

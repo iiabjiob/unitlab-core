@@ -122,18 +122,47 @@ export const useSignalStore = defineStore('signalStore', () => {
   //   }
   // }
 
+  const unitStateHandlers = new Map<string, (payload: any) => void>()
+  const signalHandlers = new Map<string, (value: boolean) => void>() // key: `${unitId}/state/${index}`
+
   function subscribeToUnitStates(unitId: string) {
-    wsStore.subscribeToChannel(`${unitId}/states`, (outputs: Record<string, boolean>) => {
+    const topic = `${unitId}/states`
+    const handler = (outputs: Record<string, boolean>) => {
       handleFullStateUpdate(unitId, outputs)
-    })
+    }
+    unitStateHandlers.set(topic, handler)
+    wsStore.subscribeToChannel(topic, handler)
+  }
+
+  function unsubscribeFromUnitStates(unitId: string) {
+    const topic = `${unitId}/states`
+    const handler = unitStateHandlers.get(topic)
+    if (handler) {
+      wsStore.unsubscribeFromChannel(topic, handler)
+      unitStateHandlers.delete(topic)
+    }
   }
 
   function subscribeToSignalUpdates(unitId: string, signals: Signal[]) {
     signals.forEach(signal => {
+
       const topic = `${unitId}/state/${signal.index}`
-      wsStore.subscribeToChannel(topic, (value: boolean) => {
-        handleMqttUpdate(`${unitId}/${signal.index}`, value)
-      })
+      const key = `${unitId}/${signal.index}`
+
+      const handler = (value: boolean) => handleMqttUpdate(key, value)
+      signalHandlers.set(topic, handler)
+      wsStore.subscribeToChannel(topic, handler)
+    })
+  }
+
+  function unsubscribeFromSignalUpdates(unitId: string, signals: Signal[]) {
+    signals.forEach(signal => {
+      const topic = `${unitId}/state/${signal.index}`
+      const handler = signalHandlers.get(topic)
+      if (handler) {
+        wsStore.unsubscribeFromChannel(topic, handler)
+        signalHandlers.delete(topic)
+      }
     })
   }
 
@@ -149,5 +178,7 @@ export const useSignalStore = defineStore('signalStore', () => {
     // toggleAll,
     subscribeToUnitStates,
     subscribeToSignalUpdates,
+    unsubscribeFromUnitStates,
+    unsubscribeFromSignalUpdates,
   }
 })

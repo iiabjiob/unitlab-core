@@ -2,43 +2,58 @@
   <div>
     <PageHeader title="Devices" />
 
-    Hi there
+    <!-- Индикатор загрузки -->
+    <div v-if="deviceStore.isLoading" class="text-gray-500 mt-4">Loading...</div>
+
+    <!-- Если устройств нет -->
+    <AlertComponent v-else-if="!deviceStore.devices.length" type="warning" message="No devices found." />
+
+    <!-- Таблица устройств -->
+    <DeviceList
+      v-else
+      :devices="deviceStore.devices"
+      @toggle="toggle"
+      @delete="confirmDelete"
+      @delete-multiple="confirmDeleteMultiple"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 
 import { onMounted, onUnmounted } from 'vue'
-import { useWebSocketStore } from '@/stores/useWebsocketStore'
+
 import { useDeviceStore } from '@/stores/useDeviceStore'
+import AlertComponent from '@/components/ui/AlertComponent.vue'
+import PageHeader from '@/components/PageHeader.vue'
+import DeviceList from '@/components/DeviceList.vue'
 
-import { WsTopicBuilder } from '@/utils/ws'
-
-const wsStore = useWebSocketStore()
 const deviceStore = useDeviceStore()
 
-const topic_mqtt_device_register = WsTopicBuilder.mqttDeviceRegister()
-const topic_device_registred = WsTopicBuilder.deviceRegistered()
+function toggle(unitId: string) {
+  deviceStore.toggleDeviceActive(unitId)
+}
 
-const handleDeviceRegistered = (payload: any) => {
-  deviceStore.upsertDevice({
-    unit_id: payload.unit_id,
-    type: payload.type ?? 'unknown',
-    is_active: payload.is_active ?? true
-  })
+function confirmDelete(unitId: string) {
+  if (confirm(`Delete Device ${unitId}?`)) {
+    deviceStore.deleteDevice(unitId)
+  }
+}
+
+function confirmDeleteMultiple(unitIds: string[]) {
+  if (confirm(`Delete selected devices (${unitIds.length})?`)) {
+    unitIds.forEach(deviceStore.deleteDevice)
+  }
 }
 
 onMounted(() => {
-
-  deviceStore.requestScan();
-  wsStore.subscribe([topic_mqtt_device_register])
-  wsStore.subscribeToChannel(topic_device_registred, handleDeviceRegistered)
-
+  deviceStore.fetchDevices()
+  deviceStore.requestScan()
+  deviceStore.subscribeToDeviceEvents()
 })
 
 onUnmounted(() => {
-  wsStore.unsubscribe([topic_mqtt_device_register])
-  wsStore.unsubscribeFromChannel(topic_device_registred, handleDeviceRegistered)
+  deviceStore.unsubscribeFromDeviceEvents()
 })
 
 </script>

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { useWebSocketStore } from './useWebsocketStore'
 import { ref, watch } from 'vue'
 import axios from 'axios'
+import { WsTopicBuilder } from '@/utils/ws'
 import type { Device } from '@/types/device'
 
 import { TopicBuilder } from '@/utils/mqtt'
@@ -15,6 +16,27 @@ export const useDeviceStore = defineStore('deviceStore', () => {
   const isLoading = ref<boolean>(false)
 
   // ✅ Публичные методы для компонентов:
+
+  const topicDeviceRegister = WsTopicBuilder.mqttDeviceRegister()
+  const topicDeviceRegistered = WsTopicBuilder.deviceRegistered()
+
+  const handleDeviceRegistered = (payload: any) => {
+    upsertDevice({
+      unit_id: payload.unit_id,
+      type: payload.type ?? 'unknown',
+      is_active: payload.is_active ?? true
+    })
+  }
+
+  function subscribeToDeviceEvents() {
+    wsStore.subscribe([topicDeviceRegister])
+    wsStore.subscribeToChannel(topicDeviceRegistered, handleDeviceRegistered)
+  }
+
+  function unsubscribeFromDeviceEvents() {
+    wsStore.unsubscribe([topicDeviceRegister])
+    wsStore.unsubscribeFromChannel(topicDeviceRegistered, handleDeviceRegistered)
+  }
 
   async function fetchDevices() {
     isLoading.value = true  // ✅ старт загрузки
@@ -91,6 +113,8 @@ export const useDeviceStore = defineStore('deviceStore', () => {
     fetchDevices,
     toggleDeviceActive,
     deleteDevice,
+    subscribeToDeviceEvents,
+    unsubscribeFromDeviceEvents,
   }
 
 })

@@ -1,5 +1,5 @@
 from app.db.database import Base
-from app.db.models import device
+from app.models import device
 
 from logging.config import fileConfig
 

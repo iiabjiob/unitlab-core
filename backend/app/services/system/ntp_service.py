@@ -9,7 +9,7 @@ class NTPService:
     """Service for managing NTP servers"""
 
     CHRONY_SOURCES_DIR = "/etc/chrony/sources.d"
-    CHRONY_SOURCE_FILE = os.path.join(CHRONY_SOURCES_DIR, "fat-simulator-ntp.sources")
+    CHRONY_SOURCE_FILE = os.path.join(CHRONY_SOURCES_DIR, "unitlab-ntp.sources")
 
     @staticmethod
     def apply_ntp_config():
