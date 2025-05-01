@@ -149,5 +149,6 @@ export const useWebSocketStore = defineStore('websocketStore', {
     unsubscribeFromChannel(channel: string, callback: (payload: any) => void): void {
       this.listeners.get(channel)?.delete(callback)
     },
+
   }
 })

@@ -22,10 +22,6 @@
       </template>
     </main>
 
-    <!-- <main class="flex-grow overflow-auto p-5">
-        <RouterView />
-    </main> -->
-
     <AppFooter/>
   </div>
 </template>
@@ -43,11 +39,11 @@ import ButtonComponent from "@/components/ui/ButtonComponent.vue";
 const wsStore = useWebSocketStore();
 
 onMounted(() => {
-  wsStore.connect();
+  wsStore.connect()
 });
 
 const reconnect = () => {
-  wsStore.connect();
+  wsStore.connect()
 };
 
 </script>

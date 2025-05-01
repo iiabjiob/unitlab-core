@@ -15,7 +15,3 @@ app.use(pinia)
 app.use(router)
 
 app.mount('#app')
-
-
-import { useTimeStore } from '@/stores/useTimeStore'
-void useTimeStore()

@@ -8,6 +8,7 @@ export const useTimeStore = defineStore('timeStore', () => {
   const topic         = WsTopicBuilder.timeStatus()
   const syncBaseTime  = ref<Date|null>(null)
   const syncStartTime = ref<number>(0)
+  const syncSource = ref<string | undefined>('Local')
 
   // Handler при получении сообщения
   function handle(payload: { timestamp: string; source?: string }) {
@@ -35,8 +36,7 @@ export const useTimeStore = defineStore('timeStore', () => {
   })
 
   const sourceLabel = computed(() => {
-    const s = wsStore.receivedData['time_status']?.source
-    switch (s) {
+    switch (syncSource.value) {
       case 'NTP': return 'NTP'
       case 'PTP': return 'PTP'
       default:    return 'Local'
