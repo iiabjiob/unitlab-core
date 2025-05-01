@@ -1,5 +1,8 @@
 <template>
-  <div class="text-xs">
+  <template v-if="!wsStore.isInitialized">
+    <div></div>
+  </template>
+  <div v-else class="text-xs">
     <AlertComponent
         :type="alertType"
         :icon="alertIcon"

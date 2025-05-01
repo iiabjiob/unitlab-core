@@ -55,17 +55,28 @@ export const useSignalStore = defineStore('signalStore', () => {
     const previous = states.value[key]
     states.value[key] = value
 
-    // Clear any previous failure status
-    delete failed.value[key]
+    // Очистить прошлые таймеры, если были
+    if (pending.value[key]) {
+      clearTimeout(pending.value[key])
+      delete pending.value[key]
+    }
 
     const id = setTimeout(() => {
       states.value[key] = previous
       failed.value[key] = true
-      delete pending.value[key]
+
+      // ❗ Показываем крест на 2 секунды
+      const failureTimeout = setTimeout(() => {
+        delete failed.value[key]
+      }, 2000)
+
+      // Если нужно, можешь сохранить его тоже в pending
+      pending.value[key] = failureTimeout
     }, timeout)
 
     pending.value[key] = id
   }
+
 
   function buildGroupPayload(signals: Signal[], state: boolean, delay = 0): GroupPayload {
     return {

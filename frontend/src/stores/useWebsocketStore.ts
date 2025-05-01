@@ -88,6 +88,9 @@ export const useWebSocketStore = defineStore('websocketStore', {
     },
 
     subscribe(dataTypes: string[]): void {
+
+      if (dataTypes.length === 0) return
+
       dataTypes.forEach((type) => this.activeSubscriptions.add(type))
 
       if (this.socket && this.socket.readyState === WebSocket.OPEN) {

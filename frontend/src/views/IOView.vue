@@ -17,7 +17,7 @@
           v-for="unit in doUnits"
           :key="unit.unit_id"
           :unitId="unit.unit_id"
-          :signals="getStatuses(unit.unit_id)"
+          :signals="getStates(unit.unit_id)"
         />
       </div>
 
@@ -27,7 +27,7 @@
           v-for="unit in diUnits"
           :key="unit.unit_id"
           :unit-id="unit.unit_id"
-          :signals="getStatuses(unit.unit_id)"
+          :signals="getStates(unit.unit_id)"
         />
       </div>
     </div>
@@ -53,47 +53,36 @@ const wsStore     = useWebSocketStore()
 const doUnits = computed(() => deviceStore.devices.filter(d => d.type === 'DO' && d.is_active))
 const diUnits = computed(() => deviceStore.devices.filter(d => d.type === 'DI' && d.is_active))
 
-const doChannels = doUnits.value.map(unit => `mqtt_unit_states/${unit.unit_id}`)
-const diChannels = diUnits.value.map(unit => `mqtt_unit_states/${unit.unit_id}`)
-
 const noUnits = computed(() => doUnits.value.length === 0 && diUnits.value.length === 0)
 
-onMounted(() => {
+onMounted(async() => {
 
-  wsStore.subscribe([...doChannels, ... diChannels])
+  await deviceStore.fetchDevices()
 
-  if (!deviceStore.devices.length) {
-    deviceStore.fetchDevices()
-  }
+  const allUnits = [...doUnits.value, ...diUnits.value]
+  const channels = allUnits.map(u => `mqtt_unit_states/${u.unit_id}`)
 
-  doUnits.value.forEach(unit => {
-    // signalStore.requestStates(unit.unit_id)
+  wsStore.subscribe(channels)
+
+  allUnits.forEach(unit => {
     signalStore.subscribeToUnitStates(unit.unit_id)
-    signalStore.subscribeToSignalUpdates(unit.unit_id, getStatuses(unit.unit_id))
-  })
-  diUnits.value.forEach(unit => {
-    // signalStore.requestStates(unit.unit_id)
-    signalStore.subscribeToUnitStates(unit.unit_id)
-    signalStore.subscribeToSignalUpdates(unit.unit_id, getStatuses(unit.unit_id))
+    signalStore.subscribeToSignalUpdates(unit.unit_id, getStates(unit.unit_id))
   })
 })
 
 onUnmounted(() => {
-  wsStore.unsubscribe([...doChannels, ... diChannels])
+  const allUnits = [...doUnits.value, ...diUnits.value]
+  const channels = allUnits.map(u => `mqtt_unit_states/${u.unit_id}`)
 
-  doUnits.value.forEach(unit => {
-    signalStore.unsubscribeFromSignalUpdates(unit.unit_id, getStatuses(unit.unit_id))
-    signalStore.unsubscribeFromUnitStates(unit.unit_id)
-  })
-
-  diUnits.value.forEach(unit => {
-    signalStore.unsubscribeFromSignalUpdates(unit.unit_id, getStatuses(unit.unit_id))
+  wsStore.unsubscribe(channels)
+  allUnits.forEach(unit => {
+    signalStore.unsubscribeFromSignalUpdates(unit.unit_id, getStates(unit.unit_id))
     signalStore.unsubscribeFromUnitStates(unit.unit_id)
   })
 
 })
 
-function getStatuses(unitId: string) {
+function getStates(unitId: string) {
   const result: { index: number, name: string, state: boolean }[] = []
 
   for (const key in signalStore.states) {

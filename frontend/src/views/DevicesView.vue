@@ -47,10 +47,15 @@ function confirmDeleteMultiple(unitIds: string[]) {
   }
 }
 
-onMounted(() => {
-  deviceStore.fetchDevices()
-  deviceStore.requestScan()
+onMounted(async () => {
+  // Subscribe to device events via WebSocket (to catch new registrations)
   deviceStore.subscribeToDeviceEvents()
+
+  // Fetch initial list of devices via REST API
+  await deviceStore.fetchDevices()
+
+  // Trigger a scan to discover devices via WS (will call upsertDevice)
+  deviceStore.requestScan()
 })
 
 onUnmounted(() => {
