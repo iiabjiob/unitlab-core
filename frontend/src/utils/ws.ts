@@ -1,6 +1,7 @@
 export const WsTopicBuilder = {
   timeStatus: () => 'time_status',
   systemInfo: () => 'system_info',
-  mqttDeviceRegister: () => 'mqtt_device_register',
-  deviceRegistered: () => 'device/registered',
+  deviceRegister: () => 'devices/register',
+  unitStates: (unitId: string) => `devices/${unitId}/states`,
+  getStates: (unitId: string) => `${unitId}/get/states`,
 }

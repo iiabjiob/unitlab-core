@@ -17,7 +17,7 @@
           v-for="unit in doUnits"
           :key="unit.unit_id"
           :unitId="unit.unit_id"
-          :signals="getStates(unit.unit_id)"
+          :signals="signalStore.getUnitSignals(unit.unit_id)"
         />
       </div>
 
@@ -27,7 +27,7 @@
           v-for="unit in diUnits"
           :key="unit.unit_id"
           :unit-id="unit.unit_id"
-          :signals="getStates(unit.unit_id)"
+          :signals="signalStore.getUnitSignals(unit.unit_id)"
         />
       </div>
     </div>
@@ -44,6 +44,7 @@ import { useSignalStore } from '@/stores/useSignalStore'
 import { useWebSocketStore } from '@/stores/useWebsocketStore'
 import AlertComponent from '@/components/ui/AlertComponent.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
+import { WsTopicBuilder } from '@/utils/ws'
 
 const deviceStore = useDeviceStore()
 const signalStore = useSignalStore()
@@ -60,45 +61,27 @@ onMounted(async() => {
   await deviceStore.fetchDevices()
 
   const allUnits = [...doUnits.value, ...diUnits.value]
-  const channels = allUnits.map(u => `mqtt_unit_states/${u.unit_id}`)
-
+  const channels = allUnits.map(u => WsTopicBuilder.unitStates(u.unit_id))
   wsStore.subscribe(channels)
 
   allUnits.forEach(unit => {
     signalStore.subscribeToUnitStates(unit.unit_id)
-    signalStore.subscribeToSignalUpdates(unit.unit_id, getStates(unit.unit_id))
+    signalStore.subscribeToSignalUpdates(unit.unit_id, signalStore.getUnitSignals(unit.unit_id))
+
+    signalStore.requestStates(unit.unit_id)
   })
 })
 
 onUnmounted(() => {
   const allUnits = [...doUnits.value, ...diUnits.value]
-  const channels = allUnits.map(u => `mqtt_unit_states/${u.unit_id}`)
-
+  const channels = allUnits.map(u => WsTopicBuilder.unitStates(u.unit_id))
   wsStore.unsubscribe(channels)
+
   allUnits.forEach(unit => {
-    signalStore.unsubscribeFromSignalUpdates(unit.unit_id, getStates(unit.unit_id))
+    signalStore.unsubscribeFromSignalUpdates(unit.unit_id, signalStore.getUnitSignals(unit.unit_id))
     signalStore.unsubscribeFromUnitStates(unit.unit_id)
   })
 
 })
 
-function getStates(unitId: string) {
-  const result: { index: number, name: string, state: boolean }[] = []
-
-  for (const key in signalStore.states) {
-    if (key.startsWith(`${unitId}/`)) {
-      const index = parseInt(key.split('/')[1])
-      result.push({
-        index,
-        name: `DO${index + 1}`,
-        state: signalStore.states[key]
-      })
-    }
-  }
-
-  // отсортируем по индексу на всякий случай
-  result.sort((a, b) => a.index - b.index)
-
-  return result
-}
 </script>

@@ -35,7 +35,11 @@ class WebSocketManager:
 
     async def broadcast(self, channel: str, payload: dict):
         for websocket in list(self.active_connections):
-            await self.send_data(websocket, channel, payload)
+            try:
+                await self.send_data(websocket, channel, payload)
+                logger.debug(f"Broadcast: {channel}: {payload}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to broadcast to one client: {e}")
 
 
     async def subscribe(self, websocket: WebSocket, channels: List[str]):
@@ -54,5 +58,8 @@ class WebSocketManager:
         if not self.subscriptions:  # ✅ Быстрая проверка, есть ли клиенты вообще
             return False
         return any(data_type in subs for subs in self.subscriptions.values())
+    
+    def unsubscribe_all(self, websocket: WebSocket):
+        self.subscriptions.pop(websocket, None)
 
 ws_manager = WebSocketManager()

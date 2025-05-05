@@ -1,3 +1,4 @@
+import { WSCommand } from '@/types/ws-commnad'
 import { defineStore } from 'pinia'
 
 interface WebSocketMessage {
@@ -18,6 +19,8 @@ interface WebSocketStoreState {
   maxReconnectDelay: number
   listeners: Map<string, Set<(payload: any) => void>>
 }
+
+
 
 export const useWebSocketStore = defineStore('websocketStore', {
   state: (): WebSocketStoreState => ({
@@ -51,7 +54,7 @@ export const useWebSocketStore = defineStore('websocketStore', {
         this.reconnectAttempts = 0
 
         if (this.activeSubscriptions.size > 0) {
-          console.log('🔄 Resubscribing to:', [...this.activeSubscriptions])
+          console.log('🔄 Subscribing to:', [...this.activeSubscriptions])
           this.subscribe([...this.activeSubscriptions])
         }
 
@@ -87,36 +90,32 @@ export const useWebSocketStore = defineStore('websocketStore', {
       }
     },
 
-    subscribe(dataTypes: string[]): void {
-
-      if (dataTypes.length === 0) return
-
-      dataTypes.forEach((type) => this.activeSubscriptions.add(type))
-
-      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-        console.log('📤 Sending subscription request to the server:', dataTypes)
-        this.socket.send(JSON.stringify({ action: 'subscribe', channels: dataTypes }))
-      } else {
-        console.log('🕐 WebSocket not connected yet, saving subscription request:', dataTypes)
-        this.pendingSubscriptions.push(dataTypes)
-      }
-    },
-
-    unsubscribe(dataTypes: string[]): void {
-      dataTypes.forEach((type) => this.activeSubscriptions.delete(type))
-
-      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-        console.log('📤 Unsubscribing from:', dataTypes)
-        this.socket.send(JSON.stringify({ action: 'unsubscribe', channels: dataTypes }))
-      }
-    },
-
-    send(message: any): void {
+    // ✅ Унифицированная отправка
+    send(message: WSCommand): void {
       if (this.socket && this.socket.readyState === WebSocket.OPEN) {
         this.socket.send(JSON.stringify(message))
         console.log('📤 Sent message to WS:', message)
       } else {
         console.warn('⚠️ WebSocket not connected, message not sent:', message)
+      }
+    },
+
+    subscribe(channels: string[]): void {
+      if (channels.length === 0) return
+      channels.forEach((ch) => this.activeSubscriptions.add(ch))
+
+      if (this.isConnected) {
+        this.send({ action: 'subscribe', channels })
+      } else {
+        this.pendingSubscriptions.push(channels)
+      }
+    },
+
+    unsubscribe(channels: string[]): void {
+      channels.forEach((ch) => this.activeSubscriptions.delete(ch))
+
+      if (this.isConnected) {
+        this.send({ action: 'unsubscribe', channels })
       }
     },
 
@@ -148,7 +147,7 @@ export const useWebSocketStore = defineStore('websocketStore', {
 
     unsubscribeFromChannel(channel: string, callback: (payload: any) => void): void {
       this.listeners.get(channel)?.delete(callback)
-    },
+    }
 
   }
 })

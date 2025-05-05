@@ -34,6 +34,7 @@ frontend/package-lock.json
 frontend/jsconfig.json
 frontend/eslint.config.js
 frontend/.eslintrc.js
+frontend/tsconfig.json
 frontend/index.html
 
 config/
@@ -42,5 +43,6 @@ config/
 .editorconfig
 .gitattributes
 .gitignore
+.rsyncignore
 README.md
 LICENSE

@@ -2,34 +2,33 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useWebSocketStore } from './useWebsocketStore'
 
-import { TopicBuilder } from '@/utils/mqtt'
-
 import type { Signal } from '@/types/signal'
+import { WsTopicBuilder } from '@/utils/ws'
 
-type SignalKey = string // e.g., "dX-module-XXXX/<index>"
-type SignalState = Record<SignalKey, boolean>
+type SignalKey       = string // e.g., "dX-module-XXXX/<index>"
+type SignalState     = Record<SignalKey, boolean>
 type PendingTimeouts = Record<SignalKey, ReturnType<typeof setTimeout>>
-type FailedStates = Record<SignalKey, boolean>
+type FailedStates    = Record<SignalKey, boolean>
 
 
 export const useSignalStore = defineStore('signalStore', () => {
-  const states = ref<SignalState>({})
-  const pending = ref<PendingTimeouts>({})
-  const failed = ref<FailedStates>({})
-
   const wsStore = useWebSocketStore()
 
-  interface GroupAction {
-    index: number
-    state: boolean
-    delay_ms: number
-    is_pulse: boolean
-    pulse_duration: number
-  }
+  const states  = ref<SignalState>({})
+  const pending = ref<PendingTimeouts>({})
+  const failed  = ref<FailedStates>({})
 
-  interface GroupPayload {
-    actions: GroupAction[]
-  }
+  // interface GroupAction {
+  //   index: number
+  //   state: boolean
+  //   delay_ms: number
+  //   is_pulse: boolean
+  //   pulse_duration: number
+  // }
+
+  // interface GroupPayload {
+  //   actions: GroupAction[]
+  // }
 
   function setState(key: SignalKey, value: boolean) {
     states.value[key] = value
@@ -78,25 +77,24 @@ export const useSignalStore = defineStore('signalStore', () => {
   }
 
 
-  function buildGroupPayload(signals: Signal[], state: boolean, delay = 0): GroupPayload {
-    return {
-      actions: signals.map(signal => ({
-        index: signal.index,
-        state,
-        delay_ms: signal.delayMs ?? delay,
-        is_pulse: signal.isPulse ?? false,
-        pulse_duration: signal.pulseDurationMs ?? 200 // по умолчанию 200мс
-      }))
-    }
-  }
+  // function buildGroupPayload(signals: Signal[], state: boolean, delay = 0): GroupPayload {
+  //   return {
+  //     actions: signals.map(signal => ({
+  //       index: signal.index,
+  //       state,
+  //       delay_ms: signal.delayMs ?? delay,
+  //       is_pulse: signal.isPulse ?? false,
+  //       pulse_duration: signal.pulseDurationMs ?? 200 // по умолчанию 200мс
+  //     }))
+  //   }
+  // }
 
   // ✅ Публичные методы для компонентов:
 
   function requestStates(unitId: string) {
     wsStore.send({
-      action: 'publish',
-      topic: TopicBuilder.getStates(unitId),
-      payload: {}
+      action: 'request_states',
+      unitId,
     })
   }
 
@@ -107,9 +105,10 @@ export const useSignalStore = defineStore('signalStore', () => {
     requestToggle(key, state)
 
     wsStore.send({
-      action: 'publish',
-      topic: TopicBuilder.set(signal.index, unitId),
-      payload: { state }
+      action: 'set_pin',
+      unitId,
+      index: signal.index,
+      value: state
     })
   }
 
@@ -137,7 +136,7 @@ export const useSignalStore = defineStore('signalStore', () => {
   const signalHandlers = new Map<string, (value: boolean) => void>() // key: `${unitId}/state/${index}`
 
   function subscribeToUnitStates(unitId: string) {
-    const topic = `${unitId}/states`
+    const topic = WsTopicBuilder.unitStates(unitId)
     const handler = (outputs: Record<string, boolean>) => {
       handleFullStateUpdate(unitId, outputs)
     }
@@ -146,7 +145,7 @@ export const useSignalStore = defineStore('signalStore', () => {
   }
 
   function unsubscribeFromUnitStates(unitId: string) {
-    const topic = `${unitId}/states`
+    const topic = WsTopicBuilder.unitStates(unitId)
     const handler = unitStateHandlers.get(topic)
     if (handler) {
       wsStore.unsubscribeFromChannel(topic, handler)
@@ -177,16 +176,36 @@ export const useSignalStore = defineStore('signalStore', () => {
     })
   }
 
+  function getUnitSignals(unitId: string): { index: number; name: string; state: boolean }[] {
+    const result: { index: number; name: string; state: boolean }[] = []
+
+    for (const key in states.value) {
+      if (key.startsWith(`${unitId}/`)) {
+        const index = parseInt(key.split('/')[1])
+        result.push({
+          index,
+          name: `DO${index + 1}`, // Если нужно, можно поменять на универсальное имя
+          state: states.value[key]
+        })
+      }
+    }
+
+    result.sort((a, b) => a.index - b.index)
+    return result
+  }
+
+
   return {
     states,
     pending,
     failed,
+    toggleSignal,
     setState,
     requestToggle,
-    buildGroupPayload,
     requestStates,
-    toggleSignal,
     // toggleAll,
+    // buildGroupPayload,
+    getUnitSignals,
     subscribeToUnitStates,
     subscribeToSignalUpdates,
     unsubscribeFromUnitStates,

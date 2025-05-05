@@ -11,8 +11,6 @@ class Settings(BaseSettings):
     app_env: str
     debug: bool
     debug_level: str
-    time_sync_interval: int
-    system_info_interval: int
 
     ap_ssid_prefix: str
     ap_password_prefix: str
@@ -24,6 +22,6 @@ class Settings(BaseSettings):
     def database_url(self) -> str:
         return f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
     
-# @lru_cache
+@lru_cache
 def get_settings():
     return Settings()

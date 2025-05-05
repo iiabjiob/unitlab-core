@@ -1,51 +1,55 @@
 import asyncio
 import paho.mqtt.client as mqtt
-from app.mqtt.dispatcher import dispatch
-from app.mqtt.publisher import init_mqtt_client
 from app.core.config import get_settings
 from app.core.logger import get_logger
 
 settings = get_settings()
 logger = get_logger("mqtt")
 
-event_loop = None  # будет установлен при запуске
-
 MQTT_HOST = settings.mqtt_host
 MQTT_PORT = settings.mqtt_port
 
 client = mqtt.Client()
-init_mqtt_client(client)
+_loop = None  # Приватный event loop внутри модуля
+
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
-        logger.info("✅ Сonnected successfully")
+        logger.info("✅ Connected successfully")
     else:
-        logger.error(f"❌ Сonnection failed with code {rc}")
+        logger.error(f"❌ Connection failed with code {rc}")
+
 
 def on_message(client, userdata, msg):
     topic = msg.topic
     payload = msg.payload.decode()
-    logger.debug(f"{topic} → {payload}")
 
-    # Асинхронная пересылка по WebSocket в event_loop
-    from app.mqtt.client import event_loop  # импортируем глобальный loop
+    logger.debug(f"📥 Received: {topic} → {payload}")
 
-    if event_loop:
-        asyncio.run_coroutine_threadsafe(dispatch(topic, payload), event_loop)
-    else:
-        logger.warning("⚠️ No event loop available for dispatch!")
-        
-def start_mqtt():
+
+def start_mqtt(loop: asyncio.AbstractEventLoop):
+    """
+    Инициализация MQTT клиента и установка внешнего event loop для асинхронной доставки.
+    """
+    global _loop
+    _loop = loop
+
     try:
-        global event_loop
-        event_loop = asyncio.get_event_loop()  # сохранить текущий loop
+        client.on_connect = on_connect
+        client.on_message = on_message
 
-        client.connect(MQTT_HOST, MQTT_PORT, 60)
+        client.connect(MQTT_HOST, MQTT_PORT, keepalive=60)
         client.loop_start()
 
         logger.info("🚀 Client started")
     except Exception as e:
-        logger.error(f"❌ Startup error: {e}")
+        logger.exception(f"❌ Startup error: {e}")
 
-client.on_connect = on_connect
-client.on_message = on_message
+
+def stop_mqtt():
+    try:
+        client.loop_stop()
+        client.disconnect()
+        logger.info("🛑 Client stopped")
+    except Exception as e:
+        logger.exception(f"❌ Shutdown error: {e}")

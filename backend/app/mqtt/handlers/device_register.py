@@ -1,10 +1,13 @@
+from app.mqtt import router
 from app.db.database import AsyncSessionLocal
 from app.services.db.device import register_if_not_exists
+from app.mqtt.topics import device_register_topic
 from app.core.logger import get_logger
 
 logger = get_logger("device")
 
-async def handle_device_register_message(topic: str, payload: dict):
+@router.route(device_register_topic())
+async def handle_device_register(topic: str, payload: dict):
     """
     Обрабатывает регистрацию устройства из MQTT.
     """

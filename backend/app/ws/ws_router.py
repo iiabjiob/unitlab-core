@@ -1,66 +1,46 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError, TypeAdapter
 from app.ws.websocket_manager import ws_manager
-from app.ws.channel_registry import get_channel
-from app.mqtt.topics import is_allowed_publish_topic
+from app.models.ws_message import WSMessage
+from app.ws.actions import ACTION_HANDLERS
 from app.core.logger import get_logger
 
 logger = get_logger("ws")
 
 router = APIRouter(prefix="/ws", tags=["Websocket"])
+adapter = TypeAdapter(WSMessage)
 
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await ws_manager.connect(websocket)
-    logger.debug("✅ New WebSocket client connected!")  # Connection log
+    logger.info("✅ WS client connected")
 
     try:
         while True:
-            message = await websocket.receive_json()
-            logger.debug("📩 Received message from client: %s", message)
-            action = message.get("action")
-            
-            if action == "subscribe":
-                channels = message.get("channels", [])
-                await ws_manager.subscribe(websocket, channels)
+            try:
+                raw = await websocket.receive_json()
+                message = adapter.validate_python(raw)
+            except WebSocketDisconnect:
+                logger.info("❌ Client disconnected cleanly")
+                break
+            except ValidationError as e:
+                logger.warning(f"❌ Invalid WS message: {e}")
+                continue
+            except Exception as e:
+                logger.exception(f"💥 Error while receiving or validating message: {e}")
+                break
 
-                for channel in channels:
-                    config = get_channel(channel)
-                    if config is None:
-                        logger.warning(f"⚠️ No config found for channel '{channel}', skipping.")
-                        continue  # Просто пропускаем несуществующие каналы
+            handler = ACTION_HANDLERS.get(message.action)
+            if handler:
+                try:
+                    await handler(websocket, message)
+                except Exception as e:
+                    logger.exception(f"💥 Handler error for action '{message.action}': {e}")
+            else:
+                logger.warning(f"🚫 Unknown action: {message.action}")
 
-                    if config and callable(config.get("on_subscribe")):
-                        config["on_subscribe"](websocket)
-
-                    provider = config.get("provider")
-                    if callable(provider):
-                        data = provider()
-                        await ws_manager.send_to(websocket, channel, data)
-                    else:
-                        logger.debug(f"⏩ Channel '{channel}' is push-only, skipping initial send.")
-            
-            elif action == "publish":
-                topic = message.get("topic")
-                payload = message.get("payload")
-
-                if not topic or payload is None:
-                    logger.warning(f"❌ Invalid publish request: {message}")
-                    return
-
-                # Безопасность: только разрешённые топики
-                if not is_allowed_publish_topic(topic):
-                    logger.warning(f"🚫 Blocked publish to unsafe topic: {topic}")
-                    return
-
-                from app.mqtt.publisher import publish_json
-                publish_json(topic, payload)
-
-                logger.info(f"📡 Publish MQTT from WS: {topic} → {payload}")
-
-            elif action == "unsubscribe":
-                channels = message.get("channels", [])
-                await ws_manager.unsubscribe(websocket, channels)
-
-    except WebSocketDisconnect:
-        logger.debug("❌ Client disconnected")  # Disconnection log
+    except Exception as e:
+        logger.exception(f"💥 Unexpected WS error: {e}")
+    finally:
+        ws_manager.unsubscribe_all(websocket)
         ws_manager.disconnect(websocket)

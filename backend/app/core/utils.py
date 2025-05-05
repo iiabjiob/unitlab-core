@@ -29,14 +29,14 @@ def enable_ap_mode():
         logger.info(f"🔧 Setting up Access Point: SSID={ssid}")
         
         # Сначала убедимся, что NetworkManager активен
-        subprocess.run(["nmcli", "radio", "wifi", "on"], check=True)
+        subprocess.run(["sudo", "nmcli", "radio", "wifi", "on"], check=True)
 
         # Удалим возможный конфликтующий hotspot
-        subprocess.run(["nmcli", "connection", "delete", "Hotspot"], check=False)
+        subprocess.run(["sudo", "nmcli", "connection", "delete", "Hotspot"], check=False)
 
         # Создадим новый hotspot
         subprocess.run([
-            "nmcli", "device", "wifi", "hotspot",
+            "sudo", "nmcli", "device", "wifi", "hotspot",
             "ifname", "wlan0",
             "con-name", "Hotspot",
             "ssid", ssid,

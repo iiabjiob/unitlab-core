@@ -1,24 +1,22 @@
 import { defineStore } from 'pinia'
 import { useWebSocketStore } from './useWebsocketStore'
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import axios from 'axios'
-import { WsTopicBuilder } from '@/utils/ws'
-import type { Device } from '@/types/device'
+import type { Device }    from '@/types/device'
 
-import { TopicBuilder } from '@/utils/mqtt'
-import { ApiBuilder } from '@/utils/api'
+import { ApiBuilder }     from '@/utils/api'
+import { WsTopicBuilder } from '@/utils/ws'
 
 export const useDeviceStore = defineStore('deviceStore', () => {
 
   const wsStore = useWebSocketStore()
 
-  const devices = ref<Device[]>([])
+  const devices   = ref<Device[]>([])
   const isLoading = ref<boolean>(false)
 
   // ✅ Публичные методы для компонентов:
 
-  const topicDeviceRegister = WsTopicBuilder.mqttDeviceRegister()
-  const topicDeviceRegistered = WsTopicBuilder.deviceRegistered()
+  const topic = WsTopicBuilder.deviceRegister()
 
   const handleDeviceRegistered = (payload: any) => {
     upsertDevice({
@@ -29,13 +27,13 @@ export const useDeviceStore = defineStore('deviceStore', () => {
   }
 
   function subscribeToDeviceEvents() {
-    wsStore.subscribe([topicDeviceRegister])
-    wsStore.subscribeToChannel(topicDeviceRegistered, handleDeviceRegistered)
+    wsStore.subscribe([topic])
+    wsStore.subscribeToChannel(topic, handleDeviceRegistered)
   }
 
   function unsubscribeFromDeviceEvents() {
-    wsStore.unsubscribe([topicDeviceRegister])
-    wsStore.unsubscribeFromChannel(topicDeviceRegistered, handleDeviceRegistered)
+    wsStore.unsubscribe([topic])
+    wsStore.unsubscribeFromChannel(topic, handleDeviceRegistered)
   }
 
   async function fetchDevices() {
@@ -79,9 +77,7 @@ export const useDeviceStore = defineStore('deviceStore', () => {
 
   function requestScan() {
     wsStore.send({
-      action: 'publish',
-      topic: TopicBuilder.deviceScan(),
-      payload: {}
+      action: 'scan_devices'
     })
   }
 
@@ -106,10 +102,10 @@ export const useDeviceStore = defineStore('deviceStore', () => {
   }
 
   return {
-    requestScan,
-    upsertDevice,
     devices,
     isLoading,
+    requestScan,
+    upsertDevice,
     fetchDevices,
     toggleDeviceActive,
     deleteDevice,
