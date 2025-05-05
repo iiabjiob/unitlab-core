@@ -16,6 +16,10 @@ class SetPinMessage(BaseModel):
     unitId: str
     index: int
     value: bool
+    value: bool
+    delay_ms: int
+    is_pulse: bool
+    pulse_duration: int
 
 class SetGroupMessage(BaseModel):
     action: Literal["set_group"]

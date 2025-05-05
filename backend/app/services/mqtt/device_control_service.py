@@ -16,8 +16,13 @@ def request_states_now(unit_id: str):
     logger.info(f"📤 OUT → {topic} | payload={{}}")
     client.publish(topic, "{}")
 
-def set_pin_now(unit_id: str, index: int, value: bool):
+def set_pin_now(unit_id: str, index: int, value: bool, delay_ms: int = 0, is_pulse: bool = False, pulse_duration: int = 200):
     topic = set_pin(unit_id, index)
-    payload = {"state": value}
+    payload = {
+        "state": value,
+        "delay_ms": delay_ms,
+        "is_pulse": is_pulse,
+        "pulse_duration": pulse_duration
+    }
     logger.info(f"📤 OUT → {topic} | payload={payload}")
     client.publish(topic, json.dumps(payload))

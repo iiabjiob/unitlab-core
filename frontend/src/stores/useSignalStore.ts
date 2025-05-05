@@ -154,13 +154,14 @@ export const useSignalStore = defineStore('signalStore', () => {
 
   function getUnitSignals(unitId: string): { index: number; name: string; state: boolean }[] {
     const result: { index: number; name: string; state: boolean }[] = []
+    const type = unitId.split('-')[0].toUpperCase() || 'IO'
 
     for (const key in states.value) {
       if (key.startsWith(`${unitId}/`)) {
         const index = parseInt(key.split('/')[1])
         result.push({
           index,
-          name: `DO${index + 1}`, // Если нужно, можно поменять на универсальное имя
+          name: `${type}${index + 1}`,
           state: states.value[key]
         })
       }
