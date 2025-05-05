@@ -1,10 +1,10 @@
 from fastapi import WebSocket
 from app.ws.websocket_manager import ws_manager
 from app.ws.channel_registry import get_channel
-from app.services.mqtt.device_control_service import scan_devices_now, request_states_now, set_pin_now
+from app.services.mqtt.device_control_service import scan_devices_now, request_states_now, set_pin_now, set_group_now
 from inspect import iscoroutinefunction
 
-from app.models.ws_message import WsSubscribeMessage, WsUnsubscribeMessage, ScanDevicesMessage, RequestStatesMessage, SetPinMessage
+from app.models.ws_message import WsSubscribeMessage, WsUnsubscribeMessage, ScanDevicesMessage, RequestStatesMessage, SetPinMessage, SetGroupMessage
 
 async def handle_subscribe(ws: WebSocket, msg: WsSubscribeMessage):
     await ws_manager.subscribe(ws, msg.channels)
@@ -40,6 +40,9 @@ async def handle_request_states(ws: WebSocket, msg: RequestStatesMessage):
 async def handle_set_pin(ws: WebSocket, msg: SetPinMessage):
     set_pin_now(msg.unitId, msg.index, msg.value)
 
+async def handle_set_group(ws: WebSocket, msg: SetGroupMessage):
+    set_group_now(msg.unitId, [action.dict() for action in msg.actions])
+
 # Регистрация хендлеров
 ACTION_HANDLERS = {
     "subscribe": handle_subscribe,
@@ -47,5 +50,6 @@ ACTION_HANDLERS = {
     "scan_devices": handle_scan_devices,
     "request_states": handle_request_states,
     "set_pin": handle_set_pin,
+    "set_group": handle_set_group,
     # сюда можно добавить другие: "set_pin": handle_set_pin, ...
 }

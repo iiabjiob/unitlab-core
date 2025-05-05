@@ -1,6 +1,14 @@
 from pydantic import BaseModel
-from typing import Literal, Union
+from typing import Literal, Union, List
 
+# Тип действия в группе
+class GroupAction(BaseModel):
+    index: int
+    state: bool
+    delay_ms: int = 0
+    is_pulse: bool = False
+    pulse_duration: int = 200
+    
 # Подписка
 class WsSubscribeMessage(BaseModel):
     action: Literal["subscribe"]
@@ -24,7 +32,7 @@ class SetPinMessage(BaseModel):
 class SetGroupMessage(BaseModel):
     action: Literal["set_group"]
     unitId: str
-    group: list[int]
+    actions: List[GroupAction]
 
 # Команды системы
 class ScanDevicesMessage(BaseModel):

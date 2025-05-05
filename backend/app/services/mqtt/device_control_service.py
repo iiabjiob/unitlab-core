@@ -1,6 +1,6 @@
 import json
 from app.mqtt.client import client
-from app.mqtt.topics import set_pin, get_states, device_scan
+from app.mqtt.topics import set_pin, set_group, get_states, device_scan
 from app.core.logger import get_logger
 
 logger = get_logger("mqtt")
@@ -23,6 +23,14 @@ def set_pin_now(unit_id: str, index: int, value: bool, delay_ms: int = 0, is_pul
         "delay_ms": delay_ms,
         "is_pulse": is_pulse,
         "pulse_duration": pulse_duration
+    }
+    logger.info(f"📤 OUT → {topic} | payload={payload}")
+    client.publish(topic, json.dumps(payload))
+
+def set_group_now(unit_id: str, actions: list[dict]):
+    topic = set_group(unit_id)
+    payload = {
+        "actions": actions
     }
     logger.info(f"📤 OUT → {topic} | payload={payload}")
     client.publish(topic, json.dumps(payload))

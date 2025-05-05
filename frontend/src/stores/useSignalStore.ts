@@ -5,6 +5,7 @@ import { useWebSocketStore } from './useWebsocketStore'
 import type { Signal } from '@/types/signal'
 import { WsTopicBuilder } from '@/utils/ws'
 import { buildSetPinCommand } from '@/utils/buildSetPinCommand'
+import { buildGroupCommand } from '@/utils/buildGroupCommand'
 
 type SignalKey       = string // e.g., "dX-module-XXXX/<index>"
 type SignalState     = Record<SignalKey, boolean>
@@ -88,25 +89,19 @@ export const useSignalStore = defineStore('signalStore', () => {
 
   }
 
-  // function toggleAll(unitId: string, signals: Signal[], state: boolean, delay = 50, callback?: () => void) {
-  //   const payload = buildGroupPayload(signals, state, delay)
+  function toggleAll(unitId: string, signals: Signal[], state: boolean, callback?: () => void) {
+    const command = buildGroupCommand(unitId, signals, state)
+    wsStore.send(command)
 
-  //   wsStore.send({
-  //     action: 'publish',
-  //     topic: TopicBuilder.group(unitId),
-  //     payload
-  //   })
+    signals.forEach(signal => {
+      const key = `${unitId}/${signal.index}`
+      requestToggle(key, state)
+    })
 
-  //   signals.forEach((signal, i) => {
-  //     const key = `${unitId}/${signal.index}`
-  //     setTimeout(() => requestToggle(key, state), i * delay)
-  //   })
-
-  //   if (callback) {
-  //     const totalDelay = delay * (signals.length - 1) + 1000
-  //     setTimeout(() => callback(), totalDelay)
-  //   }
-  // }
+    if (callback) {
+      setTimeout(callback, 1000)
+    }
+  }
 
   const unitStateHandlers = new Map<string, (payload: any) => void>()
   const signalHandlers = new Map<string, (value: boolean) => void>() // key: `${unitId}/state/${index}`
@@ -180,7 +175,7 @@ export const useSignalStore = defineStore('signalStore', () => {
     setState,
     requestToggle,
     requestStates,
-    // toggleAll,
+    toggleAll,
     getUnitSignals,
     subscribeToUnitStates,
     subscribeToSignalUpdates,
