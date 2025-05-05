@@ -1,4 +1,4 @@
-import { WSCommand } from '@/types/ws-commnad'
+import { WSCommand } from '@/types/ws'
 import { defineStore } from 'pinia'
 
 interface WebSocketMessage {

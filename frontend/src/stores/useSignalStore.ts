@@ -4,6 +4,7 @@ import { useWebSocketStore } from './useWebsocketStore'
 
 import type { Signal } from '@/types/signal'
 import { WsTopicBuilder } from '@/utils/ws'
+import { buildSetPinCommand } from '@/utils/buildSetPinCommand'
 
 type SignalKey       = string // e.g., "dX-module-XXXX/<index>"
 type SignalState     = Record<SignalKey, boolean>
@@ -18,25 +19,13 @@ export const useSignalStore = defineStore('signalStore', () => {
   const pending = ref<PendingTimeouts>({})
   const failed  = ref<FailedStates>({})
 
-  // interface GroupAction {
-  //   index: number
-  //   state: boolean
-  //   delay_ms: number
-  //   is_pulse: boolean
-  //   pulse_duration: number
-  // }
-
-  // interface GroupPayload {
-  //   actions: GroupAction[]
-  // }
-
   function setState(key: SignalKey, value: boolean) {
     states.value[key] = value
     if (pending.value[key]) {
       clearTimeout(pending.value[key])
       delete pending.value[key]
-      delete failed.value[key]
     }
+    delete failed.value[key]
   }
 
   function handleMqttUpdate(key: SignalKey, value: boolean) {
@@ -60,34 +49,24 @@ export const useSignalStore = defineStore('signalStore', () => {
       delete pending.value[key]
     }
 
-    const id = setTimeout(() => {
+    // Ставим таймер ожидания подтверждения
+    const confirmTimeout = setTimeout(() => {
+      // Подтверждение не пришло — возвращаем предыдущее состояние
       states.value[key] = previous
       failed.value[key] = true
 
-      // ❗ Показываем крест на 2 секунды
-      const failureTimeout = setTimeout(() => {
+      // Через 2 секунды убираем крест (ошибку)
+      setTimeout(() => {
         delete failed.value[key]
       }, 2000)
 
-      // Если нужно, можешь сохранить его тоже в pending
-      pending.value[key] = failureTimeout
+      // Удаляем из pending (чтобы isWaiting стал false)
+      delete pending.value[key]
     }, timeout)
 
-    pending.value[key] = id
+    // Сохраняем таймер ожидания
+    pending.value[key] = confirmTimeout
   }
-
-
-  // function buildGroupPayload(signals: Signal[], state: boolean, delay = 0): GroupPayload {
-  //   return {
-  //     actions: signals.map(signal => ({
-  //       index: signal.index,
-  //       state,
-  //       delay_ms: signal.delayMs ?? delay,
-  //       is_pulse: signal.isPulse ?? false,
-  //       pulse_duration: signal.pulseDurationMs ?? 200 // по умолчанию 200мс
-  //     }))
-  //   }
-  // }
 
   // ✅ Публичные методы для компонентов:
 
@@ -104,12 +83,9 @@ export const useSignalStore = defineStore('signalStore', () => {
 
     requestToggle(key, state)
 
-    wsStore.send({
-      action: 'set_pin',
-      unitId,
-      index: signal.index,
-      value: state
-    })
+    const command = buildSetPinCommand(signal, unitId, state)
+    wsStore.send(command)
+
   }
 
   // function toggleAll(unitId: string, signals: Signal[], state: boolean, delay = 50, callback?: () => void) {
@@ -204,7 +180,6 @@ export const useSignalStore = defineStore('signalStore', () => {
     requestToggle,
     requestStates,
     // toggleAll,
-    // buildGroupPayload,
     getUnitSignals,
     subscribeToUnitStates,
     subscribeToSignalUpdates,
