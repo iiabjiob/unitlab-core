@@ -28,17 +28,20 @@ async def handle_device_register(topic: str, payload, match):
                 logger.error(f"❌ Invalid payload: {payload}")
                 return
 
-    device_type = payload.get("type", "test" if settings.debug else None)
-    logger.debug(f"Registering device {unit_id} with type: {device_type}, payload: {payload}")
+    type = payload.get("type", "test" if settings.debug else None)
+    channels = payload.get("channels")
+    firmvare_version = payload.get("firmvare_version")
 
+    logger.debug(f"Registering device {unit_id} with type: {type}, payload: {payload}")
 
     async with AsyncSessionLocal() as session:
         try:
-            
             device = await register_if_not_exists(
-                db=session,
-                unit_id=unit_id,
-                type_=device_type,
+                db = session,
+                unit_id = unit_id,
+                channels = channels,
+                firmvare_version = firmvare_version,
+                type = type,
                 is_active=True
             )
             logger.info(f"✅ Registered device: {device.unit_id}")

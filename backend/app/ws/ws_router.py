@@ -1,6 +1,6 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError, TypeAdapter
-from app.ws.websocket_manager import ws_manager
+from app.ws.manager import ws_manager
 from app.models.ws_message import WSMessage
 from app.ws.actions import ACTION_HANDLERS
 from app.core.logger import get_logger

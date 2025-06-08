@@ -1,5 +1,5 @@
 from fastapi import WebSocket
-from app.ws.websocket_manager import ws_manager
+from app.ws.manager import ws_manager
 from app.ws.channel_registry import get_channel
 from app.services.mqtt.device_control_service import scan_devices_now, request_state_now, set_do_command_now
 from inspect import iscoroutinefunction
@@ -59,7 +59,6 @@ async def handle_set_do_command(ws: WebSocket, msg: SetDoCommandMessage):
         repeat=msg.repeat,
         bitmask=msg.bitmask
     )
-
 
 # Регистрация хендлеров
 ACTION_HANDLERS = {

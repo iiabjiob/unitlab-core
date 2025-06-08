@@ -1,5 +1,5 @@
 from app.mqtt.handler_registry import registry
-from app.ws.websocket_manager import ws_manager
+from app.ws.manager import ws_manager
 from app.ws.ws_channels import unit_states_channel
 from app.core.protocol import parse_state_payload
 from app.core.logger import get_logger

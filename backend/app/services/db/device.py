@@ -8,7 +8,9 @@ from datetime import datetime, timezone
 async def register_if_not_exists(
     db: AsyncSession,
     unit_id: str,
-    type_: str | None = None,
+    channels : int,
+    firmvare_version : str | None = None,
+    type: str | None = None,
     is_active: bool = True,
 ) -> Device:
     try:
@@ -19,13 +21,12 @@ async def register_if_not_exists(
         if device:
             return device  # Уже зарегистрировано
         
-        # 2. Парсим тип устройства
-        device_type = parse_device_type(unit_id)
-
         # 3. Создаём новое
         new_device = Device(
             unit_id=unit_id,
-            type=device_type,
+            type=type,
+            channels=channels,
+            firmvare_version=firmvare_version,
             is_active=is_active,
             created_at=datetime.now(timezone.utc)
         )
@@ -39,20 +40,11 @@ async def register_if_not_exists(
     except SQLAlchemyError as e:
         await db.rollback()
         raise RuntimeError(f"Database error during registration: {e}")
-
-def parse_device_type(unit_id: str) -> str:
+    
+async def get_all_unit_ids(db: AsyncSession) -> list[str]:
     """
-    Извлекает тип устройства из unit_id.
-    Например:
-    do-unit-XXXX -> DO
-    di-unit-YYYY -> DI
+    Возвращает список всех unit_id из таблицы устройств.
     """
-    if unit_id.startswith("do-unit-"):
-        return "DO"
-    elif unit_id.startswith("di-unit-"):
-        return "DI"
-    # Можно расширить другие типы:
-    # elif unit_id.startswith("ai-unit-"):
-    #     return "AI"
-    else:
-        return "UNKNOWN"  # если не распознали
+    result = await db.execute(select(Device.unit_id))
+    unit_ids = [row[0] for row in result.fetchall()]
+    return unit_ids

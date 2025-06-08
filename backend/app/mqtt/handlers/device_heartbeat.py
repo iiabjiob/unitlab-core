@@ -1,7 +1,8 @@
+import time
 from app.mqtt.handler_registry import registry
-from app.ws.websocket_manager import ws_manager
+from app.ws.manager import ws_manager
+from app.redis.manager import RedisManager
 from app.ws.ws_channels import unit_states_channel
-from app.core.protocol import parse_state_payload
 from app.core.logger import get_logger
 
 logger = get_logger("mqtt")
@@ -12,14 +13,18 @@ async def handle_device_heartbeat(topic: str, payload: bytes, match):
     
     logger.info(f"Handle state: {topic}")
 
-    # 
+    # Сохраняем онлайн-статус в Redis с TTL
+    redis_client = RedisManager.get_client()
+    await redis_client.set(f"device:{unit_id}:online", int(time.time()), ex=60)
 
     logger.debug(
         f"IN ← {device_type.upper()} {unit_id}: "
         f"heartbeat"
     )
+    # Пушим на фронт (всем подписчикам на этот канал)
     await ws_manager.broadcast(unit_states_channel(unit_id, device_type), {
         "unit_id": unit_id,
         "device_type": device_type,
-        
+        "status": "online",
+        "timestamp": int(time.time()),
     })
