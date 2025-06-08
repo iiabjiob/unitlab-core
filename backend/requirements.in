@@ -1,11 +1,14 @@
+# Запуск через pip-tools
+# Для установки нужен будет pip install pip-tools
+
 fastapi
 uvicorn[standard]
-SQLAlchemy
-alembic
-asyncpg
+SQLAlchemy 
+asyncpg # асинхронная работа с бд
+alembic # для миграций
+psycopg2-binary # для синхронных миграций alembic 
 gmqtt
 redis
 pydantic
 pydantic-settings
-psycopg2-binary
-psutil
+psutil # будет удален поле мигнации в host-agent
