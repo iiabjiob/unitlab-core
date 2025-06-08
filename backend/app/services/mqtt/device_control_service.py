@@ -1,36 +1,38 @@
-import json
-from app.mqtt.client import client
-from app.mqtt.topics import set_pin, set_group, get_states, device_scan
+from app.mqtt.gmqtt_client import UnitLabMqttClient
+from app.mqtt.topics import set_do_command, request_state, device_scan
 from app.core.logger import get_logger
+from app.core.protocol import build_do_command_packet
 
 logger = get_logger("mqtt")
 
 def scan_devices_now():
     topic = device_scan()
-    payload = "{}"
-    logger.info(f"📤 OUT → {topic} | payload={payload}")
-    client.publish(topic, payload)
+    logger.info(f"📤 OUT → {topic} | payload=(empty)")
+    
+    mqtt_client = UnitLabMqttClient.get_instance()
+    mqtt_client.publish(topic, b"")
 
-def request_states_now(unit_id: str):
-    topic = get_states(unit_id)
-    logger.info(f"📤 OUT → {topic} | payload={{}}")
-    client.publish(topic, "{}")
+def request_state_now(device_type: str, unit_id: str):
+    topic = request_state(device_type, unit_id,)
+    logger.info(f"📤 OUT → {topic} | payload=(empty)")
 
-def set_pin_now(unit_id: str, index: int, value: bool, delay_ms: int = 0, is_pulse: bool = False, pulse_duration: int = 200):
-    topic = set_pin(unit_id, index)
-    payload = {
-        "state": value,
-        "delay_ms": delay_ms,
-        "is_pulse": is_pulse,
-        "pulse_duration": pulse_duration
-    }
-    logger.info(f"📤 OUT → {topic} | payload={payload}")
-    client.publish(topic, json.dumps(payload))
+    mqtt_client = UnitLabMqttClient.get_instance()
+    mqtt_client.publish(topic, b"")
 
-def set_group_now(unit_id: str, actions: list[dict]):
-    topic = set_group(unit_id)
-    payload = {
-        "actions": actions
-    }
-    logger.info(f"📤 OUT → {topic} | payload={payload}")
-    client.publish(topic, json.dumps(payload))
+def set_do_command_now(
+    unit_id: str,
+    mode: int,
+    delay_before_ms: int,
+    pulse_ms: int,
+    repeat: int,
+    bitmask: int,
+):
+    topic = set_do_command(unit_id)  # например: unitlab/devices/do/<unit_id>/set
+    payload = build_do_command_packet(mode, delay_before_ms, pulse_ms, repeat, bitmask)
+    logger.info(
+        f"📤 OUT → {topic} | payload={payload.hex().upper()} "
+        f"(mode={mode}, delay={delay_before_ms}, pulse={pulse_ms}, repeat={repeat}, bitmask=0x{bitmask:08X})"
+    )
+    
+    mqtt_client = UnitLabMqttClient.get_instance()
+    mqtt_client.publish(topic, payload)

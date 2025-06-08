@@ -1,13 +1,5 @@
-from pydantic import BaseModel
-from typing import Literal, Union, List
-
-# Тип действия в группе
-class GroupAction(BaseModel):
-    index: int
-    state: bool
-    delay_ms: int = 0
-    is_pulse: bool = False
-    pulse_duration: int = 200
+from pydantic import BaseModel, Field
+from typing import Literal, Union
     
 # Подписка
 class WsSubscribeMessage(BaseModel):
@@ -19,35 +11,29 @@ class WsUnsubscribeMessage(BaseModel):
     channels: list[str]
 
 # Управление устройствами
-class SetPinMessage(BaseModel):
-    action: Literal["set_pin"]
-    unitId: str
-    index: int
-    value: bool
-    value: bool
-    delay_ms: int
-    is_pulse: bool
-    pulse_duration: int
+class SetDoCommandMessage(BaseModel):
+    action: Literal["set_do_command"]
+    unit_id: str
+    mode: int = Field(..., description="0x04=latch, 0x01=pulse")
+    delay_before_ms: int = Field(..., description="Delay before, ms")
+    pulse_ms: int = Field(..., description="Pulse duration, ms (ignored for latch)")
+    repeat: int = Field(..., description="Repeat count (ignored for latch)")
+    bitmask: int = Field(..., description="Which DO (bitmask, 4 bytes unsigned)")
 
-class SetGroupMessage(BaseModel):
-    action: Literal["set_group"]
-    unitId: str
-    actions: List[GroupAction]
+class RequestStateMessage(BaseModel):
+    action: Literal["get_states"]
+    unit_id: str
+    type: str  # "do", "di", "ao"
 
 # Команды системы
 class ScanDevicesMessage(BaseModel):
     action: Literal["scan_devices"]
 
-class RequestStatesMessage(BaseModel):
-    action: Literal["request_states"]
-    unitId: str
-
 # Унифицированное сообщение
 WSMessage = Union[
     WsSubscribeMessage,
     WsUnsubscribeMessage,
-    SetPinMessage,
-    SetGroupMessage,
+    SetDoCommandMessage,
+    RequestStateMessage,
     ScanDevicesMessage,
-    RequestStatesMessage,
 ]

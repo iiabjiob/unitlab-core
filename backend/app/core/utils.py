@@ -1,4 +1,4 @@
-# app/core/system_utils.py
+# app/core/utils.py
 import platform
 import subprocess
 from app.core.logger import get_logger
@@ -47,12 +47,26 @@ def enable_ap_mode():
     except subprocess.CalledProcessError as e:
         logger.error(f"❌ Failed to enable Access Point: {e}")
 
-def get_mac_suffix(interface: str = "wlan0") -> str:
+def get_mac_suffix(interface: str = "wlan0", bytes_count: int = 2) -> str:
+    """
+    Returns MAC address suffix for device naming.
+    :param interface: network interface (default 'wlan0')
+    :param bytes_count: how many last bytes to use (default 2)
+    :return: MAC suffix (e.g. 'ABCD')
+    """
     try:
-        mac = open(f"/sys/class/net/{interface}/address").read().strip()
-        # Возьмём последние 2 байта MAC без двоеточий (например, ABCD)
-        parts = mac.split(":")[-2:]
+        with open(f"/sys/class/net/{interface}/address") as f:
+            mac = f.read().strip()
+        parts = mac.split(":")[-bytes_count:]
         return ''.join(part.upper() for part in parts)
     except Exception as e:
-        logger.warning(f"⚠️ Failed to read MAC address: {e}")
-        return "XXXX"
+        logger.warning(f"⚠️ Failed to read MAC address from {interface}: {e}")
+        return 'X' * (bytes_count * 2)
+
+
+def get_unit_id(interface: str = "wlan0", bytes_count: int = 2) -> str:
+    """
+    Returns unitId for this device, e.g., coreUnit-ABCD.
+    """
+    suffix = get_mac_suffix(interface, bytes_count)
+    return f"coreUnit-{suffix}"

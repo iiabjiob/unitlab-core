@@ -9,25 +9,23 @@ logger = get_logger("core")
 
 from app.api.api_manager import register_routers
 from app.ws.ws_router import router as ws_router
-from app.core.startup import check_database_connection, start_background_tasks, start_mqtt_client, stop_mqtt_client
+from app.core.startup import check_database_connection, start_mqtt_client, stop_mqtt_client, start_redis, stop_redis
 
 settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """ Manages FastAPI application lifecycle """
-
     logger.info("🚀 Starting FastAPI application...")
 
     await check_database_connection()
-    loop = asyncio.get_running_loop()
-    start_mqtt_client(loop)
-    start_background_tasks()
+    await start_redis()
+    await start_mqtt_client()
 
     yield
 
     logger.info("🛑 Shutting down FastAPI application...")
-    stop_mqtt_client()
+    await stop_redis()
+    await stop_mqtt_client()
 
 app = FastAPI(
     title=settings.app_name,

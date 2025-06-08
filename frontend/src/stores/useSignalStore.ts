@@ -1,185 +1,83 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { useWebSocketStore } from './useWebsocketStore'
-
-import type { Signal } from '@/types/signal'
 import { WsTopicBuilder } from '@/utils/ws'
-import { buildSetPinCommand } from '@/utils/buildSetPinCommand'
-import { buildGroupCommand } from '@/utils/buildGroupCommand'
+import { Signal } from '@/types/signal'
 
-type SignalKey       = string // e.g., "dX-module-XXXX/<index>"
-type SignalState     = Record<SignalKey, boolean>
-type PendingTimeouts = Record<SignalKey, ReturnType<typeof setTimeout>>
-type FailedStates    = Record<SignalKey, boolean>
-
+type SignalKey = string  // e.g. "942c14/do/5" или "942c14/ao/2"
+type SignalState = Record<SignalKey, boolean | number>
 
 export const useSignalStore = defineStore('signalStore', () => {
   const wsStore = useWebSocketStore()
 
-  const states  = ref<SignalState>({})
-  const pending = ref<PendingTimeouts>({})
-  const failed  = ref<FailedStates>({})
+  // Сохраняем состояния по ключу `${unitId}/${deviceType}/${index}`
+  const states = ref<SignalState>({})
 
-  function setState(key: SignalKey, value: boolean) {
-    states.value[key] = value
-    if (pending.value[key]) {
-      clearTimeout(pending.value[key])
-      delete pending.value[key]
-    }
-    delete failed.value[key]
-  }
-
-  function handleMqttUpdate(key: SignalKey, value: boolean) {
-    setState(key, value)
-  }
-
-  function handleFullStateUpdate(unitId: string, outputs: Record<string, boolean>) {
-    for (const [index, value] of Object.entries(outputs)) {
-      const key = `${unitId}/${index}`
-      setState(key, value)
-    }
-  }
-
-  function requestToggle(key: SignalKey, value: boolean, timeout = 3000) {
-    const previous = states.value[key]
-    states.value[key] = value
-
-    // Очистить прошлые таймеры, если были
-    if (pending.value[key]) {
-      clearTimeout(pending.value[key])
-      delete pending.value[key]
-    }
-
-    // Ставим таймер ожидания подтверждения
-    const confirmTimeout = setTimeout(() => {
-      // Подтверждение не пришло — возвращаем предыдущее состояние
-      states.value[key] = previous
-      failed.value[key] = true
-
-      // Через 2 секунды убираем крест (ошибку)
-      setTimeout(() => {
-        delete failed.value[key]
-      }, 2000)
-
-      // Удаляем из pending (чтобы isWaiting стал false)
-      delete pending.value[key]
-    }, timeout)
-
-    // Сохраняем таймер ожидания
-    pending.value[key] = confirmTimeout
-  }
-
-  // ✅ Публичные методы для компонентов:
-
-  function requestStates(unitId: string) {
-    wsStore.send({
-      action: 'request_states',
-      unitId,
+  // Для DO и DI
+  function handleDoDiState(payload: { unit_id: string, device_type: string, states: number[] }) {
+    const { unit_id, device_type, states: bits } = payload
+    bits.forEach((bit, index) => {
+      const key = `${unit_id}/${device_type}/${index}`
+      states.value[key] = Boolean(bit)
     })
   }
 
-  function toggleSignal(unitId: string, signal: Signal, state: boolean) {
-    const key = `${unitId}/${signal.index}`
-    if (states.value[key] === state) return
-
-    requestToggle(key, state)
-
-    const command = buildSetPinCommand(signal, unitId, state)
-    wsStore.send(command)
-
-  }
-
-  function toggleAll(unitId: string, signals: Signal[], state: boolean, callback?: () => void) {
-    const command = buildGroupCommand(unitId, signals, state)
-    wsStore.send(command)
-
-    signals.forEach(signal => {
-      const key = `${unitId}/${signal.index}`
-      requestToggle(key, state)
-    })
-
-    if (callback) {
-      setTimeout(callback, 1000)
-    }
-  }
-
-  const unitStateHandlers = new Map<string, (payload: any) => void>()
-  const signalHandlers = new Map<string, (value: boolean) => void>() // key: `${unitId}/state/${index}`
-
-  function subscribeToUnitStates(unitId: string) {
-    const topic = WsTopicBuilder.unitStates(unitId)
-    const handler = (outputs: Record<string, boolean>) => {
-      handleFullStateUpdate(unitId, outputs)
-    }
-    unitStateHandlers.set(topic, handler)
-    wsStore.subscribeToChannel(topic, handler)
-  }
-
-  function unsubscribeFromUnitStates(unitId: string) {
-    const topic = WsTopicBuilder.unitStates(unitId)
-    const handler = unitStateHandlers.get(topic)
-    if (handler) {
-      wsStore.unsubscribeFromChannel(topic, handler)
-      unitStateHandlers.delete(topic)
-    }
-  }
-
-  function subscribeToSignalUpdates(unitId: string, signals: Signal[]) {
-    signals.forEach(signal => {
-
-      const topic = `${unitId}/state/${signal.index}`
-      const key = `${unitId}/${signal.index}`
-
-      const handler = (value: boolean) => handleMqttUpdate(key, value)
-      signalHandlers.set(topic, handler)
-      wsStore.subscribeToChannel(topic, handler)
+  // Для AO
+  function handleAoState(payload: { unit_id: string, device_type: string, values: number[] }) {
+    const { unit_id, device_type, values } = payload
+    values.forEach((val, index) => {
+      const key = `${unit_id}/${device_type}/${index}`
+      states.value[key] = val
     })
   }
 
-  function unsubscribeFromSignalUpdates(unitId: string, signals: Signal[]) {
-    signals.forEach(signal => {
-      const topic = `${unitId}/state/${signal.index}`
-      const handler = signalHandlers.get(topic)
-      if (handler) {
-        wsStore.unsubscribeFromChannel(topic, handler)
-        signalHandlers.delete(topic)
-      }
-    })
-  }
+  // Универсальный обработчик (автоопределение типа)
+  function handleUnitState(payload: any) {
+    console.log(payload);
 
-  function getUnitSignals(unitId: string): { index: number; name: string; state: boolean }[] {
-    const result: { index: number; name: string; state: boolean }[] = []
-    const type = unitId.split('-')[0].toUpperCase() || 'IO'
-
-    for (const key in states.value) {
-      if (key.startsWith(`${unitId}/`)) {
-        const index = parseInt(key.split('/')[1])
-        result.push({
-          index,
-          name: `${type}${index + 1}`,
-          state: states.value[key]
-        })
-      }
+    if (payload.device_type === 'ao' && Array.isArray(payload.values)) {
+      handleAoState(payload)
+    } else if (['do', 'di'].includes(payload.device_type) && Array.isArray(payload.states)) {
+      handleDoDiState(payload)
     }
-
-    result.sort((a, b) => a.index - b.index)
-    return result
+    // можно добавить else — логирование ошибочного payload
   }
 
+  // Подписка на канал состояния по unit_id + device_type
+  function subscribeToUnitStates(unitId: string, deviceType: string) {
+    const topic = WsTopicBuilder.unitStates(unitId, deviceType)
+    wsStore.subscribeToChannel(topic, handleUnitState)
+  }
+
+  function unsubscribeFromUnitStates(unitId: string, deviceType: string) {
+    const topic = WsTopicBuilder.unitStates(unitId, deviceType)
+    wsStore.unsubscribeFromChannel(topic, handleUnitState)
+  }
+
+  // Получить все сигналы определенного типа и устройства (например, для таблицы)
+  function getSignals(unitId: string, deviceType: string): Signal[] {
+  const result: Signal[] = []
+  const typeUpper = deviceType.toUpperCase() as Signal['type'] // 'DO', 'DI', 'AO', 'AI'
+  for (const key in states.value) {
+    if (key.startsWith(`${unitId}/${deviceType}/`)) {
+      const parts = key.split('/')
+      const index = parseInt(parts[2])
+      result.push({
+        index,
+        name: `${typeUpper}${index + 1}`,   // Будет браться из сигнал листа
+        state: states.value[key],
+        type: typeUpper
+      })
+    }
+  }
+  result.sort((a, b) => a.index - b.index)
+  return result
+}
 
   return {
     states,
-    pending,
-    failed,
-    toggleSignal,
-    setState,
-    requestToggle,
-    requestStates,
-    toggleAll,
-    getUnitSignals,
     subscribeToUnitStates,
-    subscribeToSignalUpdates,
     unsubscribeFromUnitStates,
-    unsubscribeFromSignalUpdates,
+    getSignals,
   }
 })

@@ -1,7 +1,7 @@
 <template>
   <div class="border border-gray-300 dark:border-gray-700 rounded p-4 bg-white dark:bg-gray-800 shadow w-full space-y-3">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-4">
+    <div class="flex items-center justify-between mb-2">
       <div>
         <div class="text-sm text-gray-500 dark:text-gray-400">Digital Outputs Unit</div>
         <div class="font-bold text-lg">{{ unitId }}</div>
@@ -10,17 +10,14 @@
           <div class="flex gap-1 items-center">
             <ButtonComponent type="secondary"
             size="xs"
-            :disabled="groupPending"
-            @click="toggleAll(true)">
+
+            >
             ON</ButtonComponent>
             <ButtonComponent type="secondary"
             size="xs"
-            :disabled="groupPending"
-            @click="toggleAll(false)">
+            >
             OFF</ButtonComponent>
-            <div v-if="groupPending" class="text-xs text-gray-500 dark:text-gray-400">
-              ⏳ Group in progress...
-            </div>
+
           </div>
 
         </div>
@@ -42,23 +39,21 @@
             <ButtonComponent
               type="secondary"
               size="xs"
-              :disabled="isOnDisabled(`${unitId}/${signal.index}`)"
-              @click="toggleSignal(signal, true)"
+
               >
               ON
             </ButtonComponent>
             <ButtonComponent
               type="secondary"
               size="xs"
-              :disabled="isOffDisabled(`${unitId}/${signal.index}`)"
-              @click="toggleSignal(signal, false)"
+
             >
             OFF
             </ButtonComponent>
           </div>
 
           <!-- Status -->
-          <span class="cursor-default" :title="signalStore.failed?.[`${unitId}/${signal.index}`]
+          <!-- <span class="cursor-default" :title="signalStore.failed?.[`${unitId}/${signal.index}`]
             ? 'FAILED'
             : signalStore.pending[`${unitId}/${signal.index}`]
               ? 'WAITING'
@@ -66,9 +61,15 @@
                 ? 'ON'
                 : 'OFF'">
             <template v-if="signalStore.failed?.[`${unitId}/${signal.index}`]">❌</template>
-            <template v-else-if="visiblePending[`${unitId}/${signal.index}`]">⏳</template>
-            <template v-else>{{ signalStore.states[`${unitId}/${signal.index}`] ? '🟢' : '⚪' }}</template>
-          </span>
+            <template v-else-if="visiblePending[`${unitId}/${signal.index}`]">⏳</template> -->
+            <!-- Status Only -->
+        <span
+          class="cursor-default"
+          :title="signal.state ? 'ON' : 'OFF'"
+        >
+          {{ signal.state ? '🟢' : '⚪' }}
+        </span>
+          <!-- </span> -->
 
         </div>
       </div>
@@ -95,52 +96,52 @@ const groupPending = ref(false)
 
 const signalStore = useSignalStore()
 
-function toggleSignal(signal: Signal, state: boolean) {
-  signalStore.toggleSignal(props.unitId, signal, state)
-}
+// function toggleSignal(signal: Signal, state: boolean) {
+//   signalStore.toggleSignal(props.unitId, signal, state)
+// }
 
-function toggleAll(state: boolean) {
-  groupPending.value = true
+// function toggleAll(state: boolean) {
+//   groupPending.value = true
 
-  props.signals.forEach(signal => {
-    signalStore.toggleSignal(props.unitId, signal, state)
-  })
+//   props.signals.forEach(signal => {
+//     signalStore.toggleSignal(props.unitId, signal, state)
+//   })
 
-  const maxDelay = Math.max(...props.signals.map(s => s.delayMs ?? 0))
-  const totalDelay = maxDelay + 1000
+//   const maxDelay = Math.max(...props.signals.map(s => s.delayMs ?? 0))
+//   const totalDelay = maxDelay + 1000
 
-  setTimeout(() => {
-    groupPending.value = false
-  }, totalDelay)
-}
+//   setTimeout(() => {
+//     groupPending.value = false
+//   }, totalDelay)
+// }
 
-function isOnDisabled(key: string): boolean {
-  return groupPending.value || signalStore.states[key] || key in signalStore.pending
-}
+// function isOnDisabled(key: string): boolean {
+//   return groupPending.value || signalStore.states[key] || key in signalStore.pending
+// }
 
-function isOffDisabled(key: string): boolean {
-  return groupPending.value || !signalStore.states[key] || key in signalStore.pending
-}
+// function isOffDisabled(key: string): boolean {
+//   return groupPending.value || !signalStore.states[key] || key in signalStore.pending
+// }
 
 // ✅ Автоотображение ⏳
-watch(() => signalStore.pending, (newPending) => {
-  Object.keys(newPending).forEach((key) => {
-    if (!(key in visiblePending.value)) {
-      visiblePending.value[key] = false
-      setTimeout(() => {
-        if (signalStore.pending[key]) {
-          visiblePending.value[key] = true
-        }
-      }, 100)
-    }
-  })
+// watch(() => signalStore.pending, (newPending) => {
+//   Object.keys(newPending).forEach((key) => {
+//     if (!(key in visiblePending.value)) {
+//       visiblePending.value[key] = false
+//       setTimeout(() => {
+//         if (signalStore.pending[key]) {
+//           visiblePending.value[key] = true
+//         }
+//       }, 100)
+//     }
+//   })
 
-  Object.keys(visiblePending.value).forEach((key) => {
-    if (!newPending[key]) {
-      delete visiblePending.value[key]
-    }
-  })
-}, { deep: true })
+//   Object.keys(visiblePending.value).forEach((key) => {
+//     if (!newPending[key]) {
+//       delete visiblePending.value[key]
+//     }
+//   })
+// }, { deep: true })
 
 </script>
 

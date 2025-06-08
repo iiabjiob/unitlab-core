@@ -1,0 +1,77 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: unitlab-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+      - mosquitto
+    networks:
+      - app_network
+  db:
+    image: postgres:latest
+    container_name: unitlab-db
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - app_network
+  
+  nginx:
+    image: nginx:latest  # или build: ./nginx если используем Dockerfile
+    container_name: unitlab-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      # Монтируем нашу собранную статику (dist) в html-папку Nginx:
+      - ./frontend/dist:/usr/share/nginx/html
+      # Монтируем конфиг Nginx (см. nginx.conf ниже)
+      - ./config/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - app_network
+  
+  redis:
+    image: redis:latest
+    container_name: unitlab-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - app_network
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: unitlab-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf   # если хочешь свой конфиг
+    # или просто не указывай volumes — Mosquitto будет работать с дефолтом
+    networks:
+      - app_network
+
+volumes:
+  db_data:
+
+networks:
+  app_network:

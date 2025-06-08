@@ -1,44 +1,22 @@
-ALLOWED_PUBLISH_PREFIXES = (
-    "do-unit-",
-    "di-unit-",
-    "devices/scan",
-)
+# app/mqtt/topics.py
 
-def is_allowed_publish_topic(topic: str) -> bool:
-    return topic.startswith(ALLOWED_PUBLISH_PREFIXES)
+DEVICE_STATE = "unitlab/devices/+/+/state"
+DEVICE_HEARTBEAT = "unitlab/devices/+/+/heartbeat"
+DEVICE_REGISTER = "unitlab/device/register/#"
 
-# --- 🚀 Устройство: сканирование и регистрация ---
+DEFAULT_TOPICS = [
+    DEVICE_STATE,
+    DEVICE_HEARTBEAT,
+    DEVICE_REGISTER,
+    # Добавь любые новые топики здесь!
+]
+
+# Генераторы конкретных топиков
+def set_do_command(unit_id: str) -> str:
+    return f"unitlab/devices/do/{unit_id}/set"
+
+def request_state(device_type: str, unit_id: str) -> str:
+    return f"unitlab/devices/{device_type}/{unit_id}/requeststate"
+
 def device_scan() -> str:
-    return "devices/scan"
-
-def device_register_topic() -> str:
-    return "device/register/#"  # для подписки на регистрацию
-
-def device_register() -> str:
-    return "device/register/"  # для подписки на регистрацию
-
-def states_all() -> str:
-    return "+/states"
-
-def state_all() -> str:
-    return "+/state/#"
-
-# --- 🎛 Управление состоянием (DO / Group) ---
-def set_pin(unit_id: str, index: int) -> str:
-    return f"{unit_id}/set/{index}"
-
-def set_group(unit_id: str) -> str:
-    return f"{unit_id}/set/group"
-
-
-# --- 📤 Публикация состояний (например, от устройства) ---
-def state(unit_id: str, index: int) -> str:
-    return f"{unit_id}/state/{index}"
-
-def states(unit_id: str) -> str:
-    return f"{unit_id}/states"
-
-
-# --- 📥 Запрос текущих состояний ---
-def get_states(unit_id: str) -> str:
-    return f"{unit_id}/get/states"
+    return "unitlab/devices/scan"

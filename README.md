@@ -268,3 +268,14 @@ journalctl -u fastapi -f -n 50 --no-pager
 
 
 $ sudo nmcli device wifi hotspot ssid <hotspot name> password <hotspot password> ifname wlan0
+
+**Работа с Postgres!**
+
+docker exec -it unitlab-db psql -U admin unitlab_db
+\dt
+\d devices
+
+docker exec -it unitlab-backend bash
+
+pip install pip-tools
+pip-compile requirements.in

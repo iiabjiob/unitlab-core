@@ -7,5 +7,5 @@ def time_status_channel() -> str:
 def device_register_channel() -> str:
     return "devices/register"
 
-def unit_states_channel(unit_id: str) -> str:
-    return f"devices/{unit_id}/states"
+def unit_states_channel(unit_id: str, type: str) -> str:
+    return f"devices/{unit_id}/{type}/states"

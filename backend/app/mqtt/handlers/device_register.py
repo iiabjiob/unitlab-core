@@ -1,17 +1,36 @@
-from app.mqtt import router
+import json
+from app.mqtt.handler_registry import registry
 from app.db.database import AsyncSessionLocal
 from app.services.db.device import register_if_not_exists
-from app.mqtt.topics import device_register_topic
 from app.core.logger import get_logger
+from app.core.config import get_settings
+
+settings = get_settings()
 
 logger = get_logger("device")
 
-@router.route(device_register_topic())
-async def handle_device_register(topic: str, payload: dict):
+@registry.mqtt_handler("unitlab/device/register/+")
+async def handle_device_register(topic: str, payload, match):
     """
     Обрабатывает регистрацию устройства из MQTT.
     """
     unit_id = topic.split("/")[-1]
+
+    # Always decode payload to dict
+    if isinstance(payload, bytes):
+        try:
+            payload = json.loads(payload.decode())
+        except Exception:
+            # Если payload пустой — делаем дефолтный dict для теста
+            if not payload.strip() and settings.debug:
+                payload = {}
+            else:
+                logger.error(f"❌ Invalid payload: {payload}")
+                return
+
+    device_type = payload.get("type", "test" if settings.debug else None)
+    logger.debug(f"Registering device {unit_id} with type: {device_type}, payload: {payload}")
+
 
     async with AsyncSessionLocal() as session:
         try:
@@ -19,7 +38,7 @@ async def handle_device_register(topic: str, payload: dict):
             device = await register_if_not_exists(
                 db=session,
                 unit_id=unit_id,
-                type_=payload.get("type"),
+                type_=device_type,
                 is_active=True
             )
             logger.info(f"✅ Registered device: {device.unit_id}")

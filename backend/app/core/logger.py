@@ -8,7 +8,7 @@ settings = get_settings()
 LOG_DIR = "logs"
 os.makedirs(LOG_DIR, exist_ok=True)
 
-# ───── Основной логгер ────────────────────────────────────────────────
+# Основной логгер
 base_logger = logging.getLogger("app")
 
 # Уровень логирования из ENV
@@ -22,7 +22,7 @@ LOG_LEVELS = {
 log_level = LOG_LEVELS.get(settings.debug_level.lower(), logging.INFO)
 base_logger.setLevel(log_level)
 
-# ───── Кастомный форматтер с выравниванием уровня и источником ────────
+# Кастомный форматтер с выравниванием уровня и источником
 class AlignedFormatter(logging.Formatter):
     LEVEL_FORMATS = {
         logging.DEBUG:    "DEBUG",
@@ -47,28 +47,21 @@ class SourceAwareFormatter(AlignedFormatter):
 
 formatter = SourceAwareFormatter("%(asctime)s - %(levelname)s - %(message)s")
 
-# ───── Обработчики: файл и консоль ─────────────────────────────────────
-log_filename = os.path.join(LOG_DIR, f"{settings.app_env}.log")
-
-file_handler = logging.FileHandler(log_filename, encoding="utf-8")
-file_handler.setLevel(log_level)
-file_handler.setFormatter(formatter)
-
+# Обработчики: консоль
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.INFO if settings.app_env == "production" else log_level)
 console_handler.setFormatter(formatter)
 
-base_logger.addHandler(file_handler)
 base_logger.addHandler(console_handler)
 
 # Отключаем проброс логов на root (если используется FastAPI/Uvicorn)
 base_logger.propagate = False
 
-# ───── Утилита для получения логгера с контекстом источника ───────────
+# Утилита для получения логгера с контекстом источника
 def get_logger(source: str = "") -> LoggerAdapter:
     return LoggerAdapter(base_logger, {"source": source})
 
-# ───── Глобальный логгер по умолчанию ──────────────────────────────────
+# Глобальный логгер по умолчанию
 logger = get_logger()
 
 # Пример логов на старте

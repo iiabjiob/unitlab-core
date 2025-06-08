@@ -1,6 +1,6 @@
 <template>
   <div>
-    <PageHeader title="System Information" />
+    <!-- <PageHeader title="System Information" /> -->
 
     <!-- Показываем спиннер, пока нет данных -->
     <LoadingSpinner size="small" position="left" v-if="!isLoaded" />

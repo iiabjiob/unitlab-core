@@ -1,10 +1,16 @@
 from fastapi import WebSocket
 from app.ws.websocket_manager import ws_manager
 from app.ws.channel_registry import get_channel
-from app.services.mqtt.device_control_service import scan_devices_now, request_states_now, set_pin_now, set_group_now
+from app.services.mqtt.device_control_service import scan_devices_now, request_state_now, set_do_command_now
 from inspect import iscoroutinefunction
 
-from app.models.ws_message import WsSubscribeMessage, WsUnsubscribeMessage, ScanDevicesMessage, RequestStatesMessage, SetPinMessage, SetGroupMessage
+from app.models.ws_message import (
+    WsSubscribeMessage,
+    WsUnsubscribeMessage,
+    ScanDevicesMessage,
+    RequestStateMessage,
+    SetDoCommandMessage,
+)
 
 async def handle_subscribe(ws: WebSocket, msg: WsSubscribeMessage):
     await ws_manager.subscribe(ws, msg.channels)
@@ -34,22 +40,33 @@ async def handle_unsubscribe(ws: WebSocket, msg: WsUnsubscribeMessage):
 async def handle_scan_devices(ws: WebSocket, msg: ScanDevicesMessage):
     scan_devices_now()
 
-async def handle_request_states(ws: WebSocket, msg: RequestStatesMessage):
-    request_states_now(msg.unitId)
+# Сканирование устройств
+async def handle_scan_devices(ws: WebSocket, msg: ScanDevicesMessage):
+    scan_devices_now()
 
-async def handle_set_pin(ws: WebSocket, msg: SetPinMessage):
-    set_pin_now(msg.unitId, msg.index, msg.value)
+# Запрос состояния устройства (универсально для DO/DI/AO)
+async def handle_get_states(ws: WebSocket, msg: RequestStateMessage):
+    # type может быть None, тогда логика определяет тип по unit_id
+    request_state_now(msg.type, msg.unit_id)
 
-async def handle_set_group(ws: WebSocket, msg: SetGroupMessage):
-    set_group_now(msg.unitId, [action.dict() for action in msg.actions])
+# Управление DO (через новый бинарный протокол)
+async def handle_set_do_command(ws: WebSocket, msg: SetDoCommandMessage):
+    set_do_command_now(
+        unit_id=msg.unit_id,
+        mode=msg.mode,
+        delay_before_ms=msg.delay_before_ms,
+        pulse_ms=msg.pulse_ms,
+        repeat=msg.repeat,
+        bitmask=msg.bitmask
+    )
+
 
 # Регистрация хендлеров
 ACTION_HANDLERS = {
     "subscribe": handle_subscribe,
     "unsubscribe": handle_unsubscribe,
     "scan_devices": handle_scan_devices,
-    "request_states": handle_request_states,
-    "set_pin": handle_set_pin,
-    "set_group": handle_set_group,
+    "get_states": handle_get_states,
+    "set_do_command": handle_set_do_command,
     # сюда можно добавить другие: "set_pin": handle_set_pin, ...
 }

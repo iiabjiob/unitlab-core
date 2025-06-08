@@ -1,6 +1,6 @@
 <template>
   <div>
-    <PageHeader title="IO" />
+    <!-- <PageHeader title="IO" /> -->
 
     <!-- Индикатор загрузки -->
     <LoadingSpinner size="small" position="left" v-if="deviceStore.isLoading" />
@@ -17,19 +17,26 @@
           v-for="unit in doUnits"
           :key="unit.unit_id"
           :unitId="unit.unit_id"
-          :signals="signalStore.getUnitSignals(unit.unit_id)"
+          :signals="signalStore.getSignals(unit.unit_id, unit.type)"
         />
-      </div>
 
-      <!-- Digital Inputs -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         <DiUnitComponent
           v-for="unit in diUnits"
           :key="unit.unit_id"
           :unit-id="unit.unit_id"
-          :signals="signalStore.getUnitSignals(unit.unit_id)"
+          :signals="signalStore.getSignals(unit.unit_id, unit.type)"
         />
       </div>
+
+      <!-- Digital Inputs -->
+      <!-- <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        <DiUnitComponent
+          v-for="unit in diUnits"
+          :key="unit.unit_id"
+          :unit-id="unit.unit_id"
+          :signals="signalStore.getSignals(unit.unit_id, unit.type)"
+        />
+      </div> -->
     </div>
   </div>
 </template>
@@ -51,36 +58,56 @@ const signalStore = useSignalStore()
 const wsStore     = useWebSocketStore()
 
 // Группировка
-const doUnits = computed(() => deviceStore.devices.filter(d => d.type === 'DO' && d.is_active))
-const diUnits = computed(() => deviceStore.devices.filter(d => d.type === 'DI' && d.is_active))
+// const doUnits = computed(() => deviceStore.devices.filter(d => d.type === 'DO' && d.is_active))
+// const diUnits = computed(() => deviceStore.devices.filter(d => d.type === 'DI' && d.is_active))
 
-const noUnits = computed(() => doUnits.value.length === 0 && diUnits.value.length === 0)
+// TODO: заглушка для тестов
+const doUnits = [
+  { unit_id: 'dev-001', type: 'do', name: 'DO Unit 1' },
+  { unit_id: 'dev-002', type: 'do', name: 'DO Unit 2' },
+]
+const diUnits = [
+  { unit_id: 'dev-001', type: 'di', name: 'DI Unit 1' },
+]
+const aoUnits = [
+  { unit_id: 'dev-003', type: 'ao', name: 'AO Unit 1' },
+]
+
+const noUnits = computed(() => doUnits.length === 0 && diUnits.length === 0)
 
 onMounted(async() => {
 
   await deviceStore.fetchDevices()
 
-  const allUnits = [...doUnits.value, ...diUnits.value]
-  const channels = allUnits.map(u => WsTopicBuilder.unitStates(u.unit_id))
+  doUnits.forEach(unit => signalStore.subscribeToUnitStates(unit.unit_id, unit.type))
+  diUnits.forEach(unit => signalStore.subscribeToUnitStates(unit.unit_id, unit.type))
+  aoUnits.forEach(unit => signalStore.subscribeToUnitStates(unit.unit_id, unit.type))
+
+  const allUnits = [...doUnits, ...diUnits]
+  const channels = allUnits.map(u => WsTopicBuilder.unitStates(u.unit_id, u.type))
+
+  // const allUnits = [...doUnits.value, ...diUnits.value]
+  // const channels = allUnits.map(u => WsTopicBuilder.unitStates(u.unit_id, u.type))
   wsStore.subscribe(channels)
 
-  allUnits.forEach(unit => {
-    signalStore.subscribeToUnitStates(unit.unit_id)
-    signalStore.subscribeToSignalUpdates(unit.unit_id, signalStore.getUnitSignals(unit.unit_id))
+  // allUnits.forEach(unit => {
+  //   signalStore.subscribeToUnitStates(unit.unit_id, unit.type)
 
-    signalStore.requestStates(unit.unit_id)
-  })
+  // })
 })
 
 onUnmounted(() => {
-  const allUnits = [...doUnits.value, ...diUnits.value]
-  const channels = allUnits.map(u => WsTopicBuilder.unitStates(u.unit_id))
+
+  doUnits.forEach(unit => signalStore.unsubscribeFromUnitStates(unit.unit_id, unit.type))
+  diUnits.forEach(unit => signalStore.unsubscribeFromUnitStates(unit.unit_id, unit.type))
+  aoUnits.forEach(unit => signalStore.unsubscribeFromUnitStates(unit.unit_id, unit.type))
+  const allUnits = [...doUnits, ...diUnits]
+  const channels = allUnits.map(u => WsTopicBuilder.unitStates(u.unit_id, u.type))
   wsStore.unsubscribe(channels)
 
-  allUnits.forEach(unit => {
-    signalStore.unsubscribeFromSignalUpdates(unit.unit_id, signalStore.getUnitSignals(unit.unit_id))
-    signalStore.unsubscribeFromUnitStates(unit.unit_id)
-  })
+  // allUnits.forEach(unit => {
+  //   signalStore.unsubscribeFromUnitStates(unit.unit_id, unit.type)
+  // })
 
 })
 

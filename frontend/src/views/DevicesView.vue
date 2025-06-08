@@ -1,6 +1,6 @@
 <template>
   <div>
-    <PageHeader title="Devices" />
+    <!-- <PageHeader title="Devices" /> -->
 
     <!-- Индикатор загрузки -->
     <LoadingSpinner size="small" position="left" v-if="deviceStore.isLoading" />

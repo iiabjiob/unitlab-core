@@ -1,6 +1,6 @@
 <template>
   <div>
-    <PageHeader title="Events" />
+    <!-- <PageHeader title="Events" /> -->
   </div>
 </template>
 
