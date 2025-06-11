@@ -1,9 +1,7 @@
 <template>
-  <div>
-    <!-- <PageHeader title="Events" /> -->
-  </div>
+  <SheetComponent/>
 </template>
 
-<script setup>
-  import PageHeader from '@/components/PageHeader.vue';
+<script setup lang="ts">
+import SheetComponent from '@/components/SheetComponent.vue';
 </script>

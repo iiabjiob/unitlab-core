@@ -1,6 +1,6 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError, TypeAdapter
-from app.ws.manager import ws_manager
+from app.ws.ws_manager import WebSocketManager
 from app.models.ws_message import WSMessage
 from app.ws.actions import ACTION_HANDLERS
 from app.core.logger import get_logger
@@ -10,8 +10,11 @@ logger = get_logger("ws")
 router = APIRouter(prefix="/ws", tags=["Websocket"])
 adapter = TypeAdapter(WSMessage)
 
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    ws_manager = WebSocketManager.get_instance()
+    
     await ws_manager.connect(websocket)
     logger.info("✅ WS client connected")
 
@@ -42,5 +45,4 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.exception(f"💥 Unexpected WS error: {e}")
     finally:
-        ws_manager.unsubscribe_all(websocket)
         ws_manager.disconnect(websocket)

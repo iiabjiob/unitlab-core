@@ -1,5 +1,5 @@
 from app.mqtt.handler_registry import registry
-from app.ws.manager import ws_manager
+from app.ws.ws_manager import WebSocketManager
 from app.ws.ws_channels import unit_states_channel
 from app.core.protocol import parse_state_payload
 from app.core.logger import get_logger
@@ -12,6 +12,8 @@ async def handle_unit_state(topic: str, payload: bytes, match):
     payload_str = payload.decode() if isinstance(payload, bytes) else str(payload)
     logger.info(f"Handle state: {topic} | payload: {payload_str}")
 
+    ws_manager = WebSocketManager.get_instance()
+    
     try:
         parsed = parse_state_payload(payload_str)
     except Exception as e:

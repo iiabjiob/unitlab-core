@@ -2,13 +2,14 @@ import asyncio
 from fastapi import FastAPI
 from contextlib import asynccontextmanager, suppress
 
-from app.api.api_manager import register_routers
+from app.api.devices import router as devices_router
+
 from app.ws.ws_router import router as ws_router
 
 from app.core.startup import check_database_connection
 
-from app.redis.manager import RedisManager
-from app.mqtt.manager import MqttManager
+from app.redis.redis_manager import RedisManager
+from app.mqtt.mqtt_manager import MqttManager
 
 from app.background.device_offline import device_offline_checker
 
@@ -53,7 +54,7 @@ app = FastAPI(
 
 # Logging the router setup
 logger.info("🔗 Registering REST API routers...")
-register_routers(app)
+app.include_router(devices_router)
 
 # Logging the websockets
 logger.info("🔗 Registering websockets...")

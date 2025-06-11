@@ -1,5 +1,5 @@
 from fastapi import WebSocket
-from app.ws.manager import ws_manager
+from app.ws.ws_manager import WebSocketManager
 from app.ws.channel_registry import get_channel
 from app.services.mqtt.device_control_service import scan_devices_now, request_state_now, set_do_command_now
 from inspect import iscoroutinefunction
@@ -12,7 +12,10 @@ from app.models.ws_message import (
     SetDoCommandMessage,
 )
 
+ws_manager = WebSocketManager.get_instance()
+
 async def handle_subscribe(ws: WebSocket, msg: WsSubscribeMessage):
+    
     await ws_manager.subscribe(ws, msg.channels)
 
     for channel in msg.channels:

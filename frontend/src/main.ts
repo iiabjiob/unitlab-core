@@ -8,6 +8,9 @@ import App from './App.vue'
 
 import router from './router';
 
+import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
+ModuleRegistry.registerModules([AllCommunityModule]);
+
 const pinia = createPinia()
 const app = createApp(App)
 
