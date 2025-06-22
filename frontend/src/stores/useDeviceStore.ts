@@ -1,50 +1,23 @@
 import { defineStore } from 'pinia'
-import { useWebSocketStore } from './useWebsocketStore'
 import { ref } from 'vue'
 import axios from 'axios'
-import type { Device }    from '@/types/device'
-
-import { ApiBuilder }     from '@/utils/api'
-import { WsTopicBuilder } from '@/utils/ws'
+import type { Device } from '@/types/device'
+import { ApiBuilder } from '@/utils/api'
 
 export const useDeviceStore = defineStore('deviceStore', () => {
-
-  const wsStore = useWebSocketStore()
 
   const devices   = ref<Device[]>([])
   const isLoading = ref<boolean>(false)
 
-  // ✅ Публичные методы для компонентов:
-
-  const topic = WsTopicBuilder.deviceRegister()
-
-  const handleDeviceRegistered = (payload: any) => {
-    upsertDevice({
-      unit_id: payload.unit_id,
-      type: payload.type ?? 'unknown',
-      is_active: payload.is_active ?? true
-    })
-  }
-
-  function subscribeToDeviceEvents() {
-    wsStore.subscribe([topic])
-    wsStore.subscribeToChannel(topic, handleDeviceRegistered)
-  }
-
-  function unsubscribeFromDeviceEvents() {
-    wsStore.unsubscribe([topic])
-    wsStore.unsubscribeFromChannel(topic, handleDeviceRegistered)
-  }
-
   async function fetchDevices() {
-    isLoading.value = true  // ✅ старт загрузки
+    isLoading.value = true
     try {
       const response = await axios.get(ApiBuilder.devices())
       devices.value = response.data
     } catch (error) {
       console.error('❌ Failed to fetch devices:', error)
     } finally {
-      isLoading.value = false  // ✅ конец загрузки
+      isLoading.value = false
     }
   }
 
@@ -75,42 +48,12 @@ export const useDeviceStore = defineStore('deviceStore', () => {
     }
   }
 
-  function requestScan() {
-    wsStore.send({
-      action: 'scan_devices'
-    })
-  }
-
-  function upsertDevice(newDevice: Device) {
-    const index = devices.value.findIndex(d => d.unit_id === newDevice.unit_id)
-    if (index !== -1) {
-      // Обновляем существующее устройство
-      devices.value[index] = { ...devices.value[index], ...newDevice }
-    } else {
-      // Добавляем новое устройство
-      const deviceWithNewFlag = { ...newDevice, isNew: true }
-      devices.value.push(deviceWithNewFlag)
-
-      // Через 3 секунды убрать подсветку нового устройства
-      setTimeout(() => {
-        const found = devices.value.find(d => d.unit_id === deviceWithNewFlag.unit_id)
-        if (found) {
-          found.isNew = false
-        }
-      }, 3000)
-    }
-  }
-
   return {
     devices,
     isLoading,
-    requestScan,
-    upsertDevice,
     fetchDevices,
     toggleDeviceActive,
     deleteDevice,
-    subscribeToDeviceEvents,
-    unsubscribeFromDeviceEvents,
   }
 
 })

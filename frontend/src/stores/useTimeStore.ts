@@ -1,26 +1,19 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { useWebSocketStore } from './useWebsocketStore'
-import { WsTopicBuilder } from '@/utils/ws'
 
 export const useTimeStore = defineStore('timeStore', () => {
-  const wsStore       = useWebSocketStore()
-  const topic         = WsTopicBuilder.timeStatus()
+
   const syncBaseTime  = ref<Date|null>(null)
   const syncStartTime = ref<number>(0)
   const syncSource = ref<string | undefined>('Local')
 
   // Handler при получении сообщения
-  function handle(payload: { timestamp: string; source?: string }) {
+  function updateFromSync(payload: { timestamp: string; source?: string }) {
     if (payload.timestamp) {
       syncBaseTime.value  = new Date(payload.timestamp)
       syncStartTime.value = Date.now()
     }
   }
-
-  // Подключаемся один раз
-  wsStore.subscribe([topic])
-  wsStore.subscribeToChannel(topic, handle)
 
   // Тик для обновления каждые 1с
   const now = ref<number>(Date.now())
@@ -43,5 +36,5 @@ export const useTimeStore = defineStore('timeStore', () => {
     }
   })
 
-  return { formatted, sourceLabel }
+  return { updateFromSync, formatted, sourceLabel }
 })

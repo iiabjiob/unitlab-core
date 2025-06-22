@@ -20,8 +20,6 @@ interface WebSocketStoreState {
   listeners: Map<string, Set<(payload: any) => void>>
 }
 
-
-
 export const useWebSocketStore = defineStore('websocketStore', {
   state: (): WebSocketStoreState => ({
     socket: null,
