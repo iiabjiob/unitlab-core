@@ -29,7 +29,7 @@
         @blur="onAoConfirm"
         @keyup.enter="onAoConfirm"
         @keyup.tab="onAoConfirm"
-        class="flex-1 min-w-0 text-right px-1 border rounded text-xs max-w-[80px] ml-3"
+        class="flex-1 min-w-0 text-right px-1 border border-gray-300 dark:border-gray-700 rounded text-xs max-w-[80px] ml-3 bg-gray-100 dark:bg-gray-900 p-0.5 "
       />
       <input
         type="range"
@@ -99,7 +99,7 @@ function onAoSliderChange(event: Event) {
   aoValue.value = val
   inputValue.value = val
   emit('ao-change', val)
-  console.log('Send to device:', val)
+  console.log(val)
 }
 
 // Когда меняем инпут — только inputValue, но не отправляем наверх!
@@ -109,9 +109,11 @@ function onAoInput(event: Event) {
 
 // Только на blur/Enter/Tab реально меняем значение (и slider)
 function onAoConfirm() {
-  aoValue.value = inputValue.value
-  emit('ao-change', inputValue.value)
-  console.log(inputValue.value)
+  if (inputValue.value !== aoValue.value) {
+    aoValue.value = inputValue.value
+    emit('ao-change', inputValue.value)
+    console.log(inputValue.value)
+  }
 }
 
 </script>

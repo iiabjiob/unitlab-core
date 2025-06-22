@@ -1,6 +1,6 @@
 <template>
   <div
-    class="rounded shadow bg-white dark:bg-gray-900 p-4 flex flex-col gap-3 transition-opacity duration-200"
+    class="rounded shadow bg-white dark:bg-gray-800 p-4 flex flex-col gap-3 transition-opacity duration-200"
     :class="{
       'opacity-40 pointer-events-none select-none': !device.is_online, // офлайн
       'bg-gray-50 dark:bg-gray-800': !device.is_active,               // неактивно
@@ -23,7 +23,7 @@
     </div>
 
     <!-- Channels list -->
-    <div v-if="channels.length" class="flex flex-col gap-2">
+    <div v-if="channels.length" class="flex flex-col">
       <DeviceChannelRow
         v-for="channel in channels"
         :key="channel.index"
