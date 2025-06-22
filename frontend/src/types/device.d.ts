@@ -1,4 +1,5 @@
 export interface Device {
+  index: number
   unit_id: string             // Уникальный ID устройства (обычно MAC)
   type: string                // Тип (например: 'core', 'do', 'di', 'ao')
   channels: number            // Количество каналов (выходов/входов)

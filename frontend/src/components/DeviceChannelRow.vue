@@ -1,5 +1,5 @@
 <template>
-  <div class="flex items-center px-2 py-1 w-full border-b border-gray-300 dark:border-gray-700 last:border-0 text-xs">
+  <div class="flex items-center min-h-[30px] px-2 py-1 w-full border-b border-gray-300 dark:border-gray-700 last:border-0 text-xs">
     <!-- Имя канала -->
     <span>{{ channel.name || ('CH' + (channel.index + 1)) }}</span>
 

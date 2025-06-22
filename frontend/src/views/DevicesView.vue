@@ -20,6 +20,7 @@ import { Device } from '@/types/device'
 
 const devices = ref<Device[]>([
     {
+      index: 1,
       unit_id: 'DO-unit-ABCD',
       name: 'DO Unit #1',
       type: 'DO',
@@ -28,6 +29,7 @@ const devices = ref<Device[]>([
       channels: 4,
     },
     {
+      index: 2,
       unit_id: 'AO-unit-XYZ',
       name: 'AO Module #1',
       type: 'AO',
@@ -36,6 +38,7 @@ const devices = ref<Device[]>([
       channels: 2,
     },
     {
+      index: 3,
       unit_id: 'DI-unit-QWER',
       name: 'DI Board #1',
       type: 'DI',

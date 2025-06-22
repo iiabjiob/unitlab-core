@@ -27,6 +27,7 @@
 </template>
 
 <script setup lang="ts">
+import { Channel } from '@/types/channel';
 import DeviceCard from './DeviceCard.vue'
 import { Device } from '@/types/device'
 
@@ -37,29 +38,29 @@ function getChannelsForDevice(unitId: string) {
   // Здесь можешь интегрировать с signalStore, пока отдаём мок:
   if (unitId === 'DO-unit-ABCD') {
     return [
-      { index: 0, name: 'DO1', type: 'DO', state: false },
-      { index: 1, name: 'DO2', type: 'DO', state: true },
-      { index: 2, name: 'DO3', type: 'DO', state: false },
-      { index: 3, name: 'DO4', type: 'DO', state: true }
-    ]
+      { index: 0, device_id: unitId, name: 'DO1', type: 'DO', state: false },
+      { index: 1, device_id: unitId, name: 'DO2', type: 'DO', state: true },
+      { index: 2, device_id: unitId, name: 'DO3', type: 'DO', state: false },
+      { index: 3, device_id: unitId, name: 'DO4', type: 'DO', state: true }
+    ] as Channel[]
   }
   if (unitId === 'AO-unit-XYZ') {
     return [
-      { index: 0, name: 'AO1', type: 'AO', state: 12.5 },
-      { index: 1, name: 'AO2', type: 'AO', state: 4.0 }
-    ]
+      { index: 0, device_id: unitId, name: 'AO1', type: 'AO', state: 12.5 },
+      { index: 1, device_id: unitId, name: 'AO2', type: 'AO', state: 4.0 }
+    ] as Channel[]
   }
   if (unitId === 'DI-unit-QWER') {
     return [
-      { index: 0, name: 'DI1', type: 'DI', state: true },
-      { index: 1, name: 'DI2', type: 'DI', state: false },
-      { index: 2, name: 'DI3', type: 'DI', state: false },
-      { index: 3, name: 'DI4', type: 'DI', state: true },
-      { index: 4, name: 'DI5', type: 'DI', state: false },
-      { index: 5, name: 'DI6', type: 'DI', state: true },
-      { index: 6, name: 'DI7', type: 'DI', state: false },
-      { index: 7, name: 'DI8', type: 'DI', state: true }
-    ]
+      { index: 0, device_id: unitId, name: 'DI1', type: 'DI', state: true },
+      { index: 1, device_id: unitId, name: 'DI2', type: 'DI', state: false },
+      { index: 2, device_id: unitId, name: 'DI3', type: 'DI', state: false },
+      { index: 3, device_id: unitId, name: 'DI4', type: 'DI', state: true },
+      { index: 4, device_id: unitId, name: 'DI5', type: 'DI', state: false },
+      { index: 5, device_id: unitId, name: 'DI6', type: 'DI', state: true },
+      { index: 6, device_id: unitId, name: 'DI7', type: 'DI', state: false },
+      { index: 7, device_id: unitId, name: 'DI8', type: 'DI', state: true }
+    ] as Channel[]
   }
   return []
 }
