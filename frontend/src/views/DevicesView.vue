@@ -1,6 +1,5 @@
 <template>
-  <div>
-    <!-- <PageHeader title="Devices" /> -->
+  <div class="p-5">
 
     <!-- Индикатор загрузки -->
     <LoadingSpinner size="small" position="left" v-if="deviceStore.isLoading" />
@@ -25,7 +24,6 @@ import { onMounted, onUnmounted } from 'vue'
 
 import { useDeviceStore } from '@/stores/useDeviceStore'
 import AlertComponent from '@/components/ui/AlertComponent.vue'
-import PageHeader from '@/components/PageHeader.vue'
 import DeviceList from '@/components/DeviceList.vue'
 import LoadingSpinner from '@/components/LoadingSpinner.vue'
 
