@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" {{ $attributes }} viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+    <path fill-rule="evenodd" d="M33.707,8,40.854.854a.5.5,0,0,0-.708-.708L33,7.293,25.854.146a.5.5,0,0,0-.708.708L32.293,8l-7.147,7.146a.5.5,0,0,0,.708.708L33,8.707l7.146,7.147a.5.5,0,0,0,.708-.708Z" transform="translate(-23 2)" clip-rule="evenodd"/>
+</svg>

@@ -1,13 +1,9 @@
 <template>
   <Menu as="div" class="relative inline-block text-left">
-    <MenuButton class="flex items-center px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-xs text-gray-600 dark:text-gray-300 font-medium focus:outline-none">
+
+    <MenuButton class="btn btn-secondary p-0">
       <span class="sr-only">Open actions</span>
-      <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2"
-        viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="12" r="1.5"/>
-        <circle cx="19.5" cy="12" r="1.5"/>
-        <circle cx="4.5" cy="12" r="1.5"/>
-      </svg>
+      <EllipsisVerticalIcon size="24"/>
     </MenuButton>
 
     <transition
@@ -67,6 +63,7 @@
 
 <script setup lang="ts">
 import { Menu, MenuButton, MenuItems, MenuItem } from '@headlessui/vue'
+import EllipsisVerticalIcon from './icons/EllipsisVerticalIcon.vue';
 
 defineProps<{ isActive: boolean }>()
 defineEmits(['toggle', 'delete'])

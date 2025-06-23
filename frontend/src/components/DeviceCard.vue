@@ -13,7 +13,8 @@
           {{ device.is_online ? '🟢' : '⚪️' }}
         </span>
         <span class="font-bold text-base">{{ device.name || device.unit_id }}</span>
-        <BadgeComponent>{{ device.type.toUpperCase() }}</BadgeComponent>
+        <BadgeComponent variant="success" v-if="device.is_active">active</BadgeComponent>
+        <BadgeComponent variant="neutral" v-else>disabled</BadgeComponent>
       </div>
       <DeviceActionsMenu
         :is-active="device.is_active"
