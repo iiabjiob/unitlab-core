@@ -1,20 +1,18 @@
-import './assets/base.css'
-import './assets/tailwind.css'
+import './assets/main.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 
+import FloatingVue from 'floating-vue'
+import 'floating-vue/dist/style.css'
+
 import App from './App.vue'
+import router from './router'
 
-import router from './router';
-
-import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
-ModuleRegistry.registerModules([AllCommunityModule]);
-
-const pinia = createPinia()
 const app = createApp(App)
 
-app.use(pinia)
+app.use(createPinia())
 app.use(router)
+app.use(FloatingVue)
 
 app.mount('#app')

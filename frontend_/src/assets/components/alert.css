@@ -1,0 +1,20 @@
+.alert {
+@apply flex items-center gap-2 leading-snug;
+}
+
+.alert-error {
+@apply text-red-500 dark:text-red-400;
+}
+
+.alert-warning {
+@apply text-yellow-600 dark:text-yellow-400;
+}
+
+.alert-info {
+@apply text-blue-600 dark:text-blue-300;
+}
+
+.alert-success {
+@apply text-green-600 dark:text-green-400;
+}
+  

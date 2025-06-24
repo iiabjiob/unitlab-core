@@ -1,34 +1,35 @@
 {
-  "name": "unitlab-ui",
-  "version": "1.0.0",
+  "name": "frontend",
+  "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
-    "lint": "eslint . --fix"
+    "build-only": "vite build",
+    "type-check": "vue-tsc --build"
   },
   "dependencies": {
     "@headlessui/vue": "^1.7.23",
-    "@heroicons/vue": "^2.2.0",
-    "@tailwindcss/vite": "^4.0.11",
-    "@vueuse/core": "^13.4.0",
+    "@tailwindcss/vite": "^4.1.10",
     "ag-grid-vue3": "^33.3.2",
-    "axios": "^1.8.2",
-    "mqtt": "^5.10.4",
+    "axios": "^1.10.0",
+    "floating-vue": "^5.2.2",
     "pinia": "^3.0.1",
-    "tailwindcss": "^4.0.11",
+    "tailwindcss": "^4.1.10",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.20.0",
-    "@vitejs/plugin-vue": "^5.2.1",
-    "eslint": "^9.20.1",
-    "eslint-plugin-vue": "^9.32.0",
-    "typescript": "^5.8.3",
-    "vite": "^6.1.0",
-    "vite-plugin-vue-devtools": "^7.7.2"
+    "@tsconfig/node22": "^22.0.1",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-vue": "^5.2.3",
+    "@vue/tsconfig": "^0.7.0",
+    "npm-run-all2": "^7.0.2",
+    "typescript": "~5.8.0",
+    "vite": "^6.2.4",
+    "vite-plugin-vue-devtools": "^7.7.2",
+    "vue-tsc": "^2.2.8"
   }
 }

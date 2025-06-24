@@ -7,11 +7,12 @@
 <script setup lang="ts">
 
 import { computed, ref } from 'vue'
-import { useDeviceStore } from '@/stores/useDeviceStore'
+import { useDeviceStore } from '@/stores/deviceStore'
 // import { useSignalStore } from '@/stores/useSignalStore' // если будешь получать каналы из стора
 
 import DeviceList from '@/components/DeviceList.vue'
-import { Device } from '@/types/device'
+import type { Device } from '@/types/device'
+
 
 // TODO: Временно для мокирования
 // const deviceStore = useDeviceStore()

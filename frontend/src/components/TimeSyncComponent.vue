@@ -8,8 +8,8 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted } from 'vue'
-import { useWebSocketStore } from '@/stores/useWebsocketStore'
-import { useTimeStore } from '@/stores/useTimeStore'
+import { useWebSocketStore } from '@/stores/websocketStore'
+import { useTimeStore } from '@/stores/timeStore'
 
 const wsStore  = useWebSocketStore()
 const timeStore = useTimeStore()
@@ -21,13 +21,13 @@ function handle(payload: { timestamp: string; source?: string }) {
 }
 
 onMounted(() => {
-  wsStore.subscribe([WS_CHANNEL])
-  wsStore.subscribeToChannel(WS_CHANNEL, handle)
+  // wsStore.subscribe([WS_CHANNEL])
+  // wsStore.subscribeToChannel(WS_CHANNEL, handle)
 })
 
 onUnmounted(() => {
-  wsStore.unsubscribe([WS_CHANNEL])
-  wsStore.unsubscribeFromChannel(WS_CHANNEL, handle)
+  // wsStore.unsubscribe([WS_CHANNEL])
+  // wsStore.unsubscribeFromChannel(WS_CHANNEL, handle)
 })
 
 </script>
