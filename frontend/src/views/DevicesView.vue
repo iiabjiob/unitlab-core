@@ -1,5 +1,5 @@
 <template>
-  <div class="p-5">
+  <div class="p-2">
     <DeviceList :devices="devices" />
   </div>
 </template>

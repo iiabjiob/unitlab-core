@@ -2,19 +2,19 @@
   <div
     class="rounded shadow bg-white dark:bg-gray-800 p-4 flex flex-col gap-3 transition-opacity duration-200"
     :class="{
-      'opacity-40 pointer-events-none select-none': !device.is_online, // офлайн
+      'opacity-40 pointer-events-none select-none': !device.is_online,    // офлайн
       'bg-gray-50 dark:bg-gray-800': !device.is_active,               // неактивно
     }"
   >
     <!-- Header -->
-    <div class="flex flex-wrap items-center justify-between mb-2">
+    <div class="flex flex-wrap items-center justify-between">
       <div class="flex items-center gap-2">
-        <span class="ml-2 text-xs font-mono">
+        <span class="ml-2 text-xs">
           {{ device.is_online ? '🟢' : '⚪️' }}
         </span>
-        <span class="font-bold text-base">{{ device.name || device.unit_id }}</span>
-        <BadgeComponent variant="success" v-if="device.is_active">active</BadgeComponent>
-        <BadgeComponent variant="neutral" v-else>disabled</BadgeComponent>
+        <!-- <span class="font-bold text-base">{{ device.name || device.unit_id }}</span> -->
+        <BadgeComponent v-tooltip="'active'" variant="success" v-if="device.is_active">{{ device.name || device.unit_id }}</BadgeComponent>
+        <BadgeComponent v-tooltip="'disabled.'"variant="neutral" v-else>{{ device.name || device.unit_id }}</BadgeComponent>
       </div>
       <DeviceActionsMenu
         :is-active="device.is_active"

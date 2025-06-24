@@ -1,15 +1,15 @@
 <template>
-  <div class="flex items-center min-h-[30px] px-2 py-1 w-full border-b border-gray-300 dark:border-gray-700 last:border-0 text-xs">
+  <div class="flex items-center px-2 py-1 w-full border-b border-gray-300 dark:border-gray-700 last:border-0 text-xs">
     <!-- Имя канала -->
     <span>{{ channel.name || ('CH' + (channel.index + 1)) }}</span>
 
     <!-- Управление (DO) -->
     <div v-if="channel.type === 'DO'" class="flex flex-1 items-center justify-end gap-2">
-      <ButtonComponent size="xs" type="secondary" class="min-w-[44px]" :disabled="channel.state"
+      <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="channel.state"
         @click="$emit('toggle', false)">
         Off
       </ButtonComponent>
-      <ButtonComponent size="xs" type="secondary" class="min-w-[44px]" :disabled="!channel.state"
+      <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="!channel.state"
         @click="$emit('toggle', true)">
         On
       </ButtonComponent>
@@ -29,7 +29,7 @@
         @blur="onAoConfirm"
         @keyup.enter="onAoConfirm"
         @keyup.tab="onAoConfirm"
-        class="flex-1 min-w-0 text-right px-1 border border-gray-300 dark:border-gray-700 rounded text-xs max-w-[80px] ml-3 bg-gray-100 dark:bg-gray-900 p-0.5 "
+        class="flex-1 min-w-[60px] text-right px-1 border border-gray-300 dark:border-gray-700 rounded text-xs max-w-[60px] ml-3 bg-gray-100 dark:bg-gray-900 p-0.5 "
       />
       <input
         type="range"
@@ -40,10 +40,8 @@
         :value="aoValue"
         @input="onAoSliderMove"
         @change="onAoSliderChange"
-        class="flex-1 min-w-0 h-1 accent-gray-500"
+        class="w-full h-1 accent-gray-500"
       />
-      <span class="text-xs text-gray-400 ml-1">mA</span>
-
     </div>
 
     <!-- DI -->

@@ -1,6 +1,6 @@
 <template>
 
-  <header class="px-5 py-2 flex flex-col gap-1">
+  <header class="px-5 py-2 flex flex-col gap-1 bg-white dark:bg-gray-950">
 
     <!-- Main Navigation -->
     <div class="flex flex-wrap justify-between items-center gap-y-2">

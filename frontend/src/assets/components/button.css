@@ -1,6 +1,6 @@
 /* Базовый класс */
 .btn {
-  @apply font-mono font-medium text-sm cursor-pointer rounded-sm;
+  @apply font-mono font-medium cursor-pointer rounded-sm;
 }
 
 .btn:disabled {
@@ -9,7 +9,7 @@
 
 /* Размеры */
 .btn-xs {
-  @apply px-2 py-0.5 text-xs;
+  @apply px-1 py-0 text-xs;
 }
 
 .btn-sm {
