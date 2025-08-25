@@ -5,6 +5,8 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 
 import FloatingVue from 'floating-vue'
+import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 import App from './App.vue'
 import router from './router'

@@ -1,10 +1,12 @@
+export type ChannelType = 'DO' | 'DI' | 'AO' | 'AI' | 'VIRTUAL'
+
 export interface ChannelBase {
   device_id: string
   index: number
   name?: string
   is_allocated?: boolean
-  last_updated?: string
-  type: 'DO' | 'DI' | 'AO' | 'AI'
+  lastUpdated?: string | null // ISO8601
+  type: ChannelType
 }
 
 export interface ChannelDO extends ChannelBase {
@@ -12,7 +14,7 @@ export interface ChannelDO extends ChannelBase {
   state: boolean
   delayBeforeMs?: number
   isPulse?: boolean
-  pulseDurationMs?: number
+  pulseMs?: number
 }
 
 export interface ChannelDI extends ChannelBase {
@@ -25,6 +27,15 @@ export interface ChannelAO extends ChannelBase {
   state: number
   minValue?: number
   maxValue?: number
+  unit?: 'mA' | 'V'
 }
 
-export type Channel = ChannelDO | ChannelDI | ChannelAO
+export interface ChannelAI extends ChannelBase {
+  type: 'AI'
+  state: number
+  minValue?: number
+  maxValue?: number
+  unit?: 'mA' | 'V'
+}
+
+export type Channel = ChannelDO | ChannelDI | ChannelAO | ChannelAI
