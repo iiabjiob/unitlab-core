@@ -1,14 +1,16 @@
-import app.mqtt.handlers  # ← импортируем все хандлеры
-import asyncio
+# Import all MQTT handlers to ensure they register themselves in the router.
+# This line is required for side-effects (do not remove).
+from app.infrastructure.mqtt.handlers import bootstrap  # noqa: F401
+import asyncio  # used for background tasks inside lifespan
 from sqlalchemy import text
-from app.db.database import engine
+from app.infrastructure.db.database import engine
 
 from app.core.logger import get_logger
 from app.core.config import get_settings
 
 import redis.asyncio as redis
 
-from app.mqtt.gmqtt_client import UnitLabMqttClient
+from app.infrastructure.mqtt.gmqtt_client import UnitLabMqttClient
 
 settings = get_settings()
 

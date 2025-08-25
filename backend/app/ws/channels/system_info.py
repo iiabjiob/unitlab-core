@@ -1,12 +1,12 @@
 # app/ws/channels/system_info.py
 
-from app.services.system.system_info_service import SystemInfoService
-from app.services.system.resource_service import ResourceUsageService
-from app.services.system.temperature_service import TemperatureService
-from app.services.system.wifi_service import WifiService
-from app.ws.ws_channels import system_info_channel
+from app.services.system_info_service import SystemInfoService
+from app.services.resource_service import ResourceUsageService
+from app.services.temperature_service import TemperatureService
+from app.services.wifi_service import WifiService
+from app.ws.channels.names import SYSTEM_INFO
 
-channel = system_info_channel()
+channel = SYSTEM_INFO
 
 def get_channel_config():
     return {

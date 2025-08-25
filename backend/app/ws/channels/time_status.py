@@ -1,8 +1,8 @@
-from app.services.system.time_sync_service import TimeSyncService
+from app.services.time_sync_service import TimeSyncService
 
-from app.ws.ws_channels import time_status_channel
+from app.ws.channels.names import TIME_STATUS
 
-channel = time_status_channel()
+channel = TIME_STATUS
 
 def get_channel_config():
     return {

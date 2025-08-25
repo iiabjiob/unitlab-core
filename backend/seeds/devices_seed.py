@@ -2,7 +2,7 @@
 import asyncio
 from datetime import datetime, timezone
 
-from app.db.database import Base, engine, AsyncSessionLocal
+from app.infrastructure.db.database import Base, engine, AsyncSessionLocal
 from app.models.device import Device
 
 

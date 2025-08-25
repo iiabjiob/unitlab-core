@@ -4,14 +4,14 @@ from contextlib import asynccontextmanager, suppress
 
 from app.api.devices import router as devices_router
 
-from app.ws.ws_router import router as ws_router
+from app.ws.router import router as ws_router
 
 from app.core.startup import check_database_connection
 
-from app.redis.redis_manager import RedisManager
-from app.mqtt.mqtt_manager import MqttManager
+from app.infrastructure.redis.manager import RedisManager
+from app.infrastructure.mqtt.manager import MqttManager
 
-from app.background.device_offline import device_offline_checker
+from app.tasks.device_offline_task import device_offline_checker
 
 from app.core.config import get_settings
 from app.core.logger import get_logger

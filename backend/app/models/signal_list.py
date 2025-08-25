@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-from app.db.database import Base
+from app.infrastructure.db.database import Base
 from datetime import datetime
 
 class SignalListRevision(Base):

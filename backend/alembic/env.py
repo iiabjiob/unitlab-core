@@ -1,4 +1,4 @@
-from app.db.database import Base
+from app.infrastructure.db.database import Base
 from app.models import device
 
 from logging.config import fileConfig

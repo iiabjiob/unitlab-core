@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from datetime import datetime, timezone
-from app.db.database import Base  # лучше использовать твой Base, а не создавать новый
+from app.infrastructure.db.database import Base
 
 class Device(Base):
     __tablename__ = "devices"
