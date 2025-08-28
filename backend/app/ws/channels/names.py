@@ -1,6 +1,6 @@
 # Статичные каналы (глобальные)
-SYSTEM_INFO     = "system_info"
-TIME_STATUS     = "time_status"
+SYSTEM_INFO     = "system/info"
+TIME_STATUS     = "time/status"
 
 DEVICES_RESP     = "devices/resp"
 DEVICES_STATUS   = "devices/status"         # online/offline событий всех устройств

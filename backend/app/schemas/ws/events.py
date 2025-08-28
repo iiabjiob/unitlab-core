@@ -10,6 +10,7 @@ class WSChannel(str, Enum):
     DEVICE_REGISTER = "devices/register"
     DEVICE_RESP     = "devices/resp"
     DEVICE_STATUS   = "devices/status"
+    TIME_STATUS     = "time/status"
 
 
 # ---------------------------------------------------------------------
@@ -65,6 +66,13 @@ class DeviceHeartbeatEvent(BaseModel):
     last_seen: int
 
 
+class TimeStatusEvent(BaseModel):
+    channel: Literal[WSChannel.TIME_STATUS] = WSChannel.TIME_STATUS
+    timestamp: str            # ISO8601 строка (UTC)
+    status: str               # напр. "synced" / "unsynced"
+    source: str | None = None
+    offset_us: int | None = None
+
 # ---------------------------------------------------------------------
 # Union для всех событий
 # ---------------------------------------------------------------------
@@ -74,4 +82,5 @@ WSEvent = Union[
     DeviceRegisterEvent,
     DeviceRespEvent,
     DeviceHeartbeatEvent,
+    TimeStatusEvent,
 ]

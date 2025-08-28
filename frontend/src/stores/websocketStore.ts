@@ -1,14 +1,16 @@
 import { defineStore } from 'pinia'
+import { handleWsEvent } from '@/services/wsHandler'
+import type { WSEvent } from '@/types/ws/events'
 
-interface WebSocketMessage {
-  channel: string
-  payload: any
-}
+// interface WebSocketMessage {
+//   channel: string
+//   payload: any
+// }
 
 interface WebSocketStoreState {
   socket: WebSocket | null
   isConnected: boolean
-  isInitialized: boolean
+  // isInitialized: boolean
   pendingSubscriptions: string[][]
   activeSubscriptions: Set<string>
   receivedData: Record<string, any>
@@ -23,7 +25,7 @@ export const useWebSocketStore = defineStore('websocketStore', {
   state: (): WebSocketStoreState => ({
     socket: null,
     isConnected: false,
-    isInitialized: false,
+    // isInitialized: false,
     pendingSubscriptions: [],
     activeSubscriptions: new Set(),
     receivedData: {},
@@ -39,7 +41,7 @@ export const useWebSocketStore = defineStore('websocketStore', {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
       const wsUrl = `${wsProtocol}://${window.location.host}/ws/ws`
 
-      this.isInitialized = false
+      // this.isInitialized = false
 
       console.log('🔌 Connecting to WebSocket...')
       this.socket = new WebSocket(wsUrl)
@@ -47,7 +49,7 @@ export const useWebSocketStore = defineStore('websocketStore', {
       this.socket.onopen = () => {
         console.log('✅ WebSocket connected!')
         this.isConnected = true
-        this.isInitialized = true
+        // this.isInitialized = true
         this.reconnectAttempts = 0
 
         if (this.activeSubscriptions.size > 0) {
@@ -67,16 +69,29 @@ export const useWebSocketStore = defineStore('websocketStore', {
       }
 
       this.socket.onmessage = (event: MessageEvent) => {
-        const { channel, payload }: WebSocketMessage = JSON.parse(event.data)
-        if (channel && payload !== undefined) {
-          this.receivedData[channel] = payload
-        }
+        // const { channel, payload }: WebSocketMessage = JSON.parse(event.data)
+        // if (channel && payload !== undefined) {
+        //   this.receivedData[channel] = payload
+        // }
 
-        // ✅ Оповестить всех слушателей канала
-        const channelListeners = this.listeners.get(channel)
-        if (channelListeners) {
-          for (const listener of channelListeners) {
-            listener(payload)
+        // // ✅ Оповестить всех слушателей канала
+        // const channelListeners = this.listeners.get(channel)
+        // if (channelListeners) {
+        //   for (const listener of channelListeners) {
+        //     listener(payload)
+        //   }
+        // }
+
+        const data: WSEvent = JSON.parse(event.data)
+
+        // обновляем pinia-сторы (devices, signals и т.д.)
+        handleWsEvent(data)
+
+        // если компонент подписался — пробрасываем ему весь event
+        const listeners = this.listeners.get(data.channel)
+        if (listeners) {
+          for (const listener of listeners) {
+            listener(data)
           }
         }
       }

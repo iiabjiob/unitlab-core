@@ -1,40 +1,34 @@
+// stores/timeStore.ts
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 export const useTimeStore = defineStore('timeStore', () => {
+  const timestamp = ref<string | null>(null)
+  const source = ref<string | null>(null)
 
-  const syncBaseTime  = ref<Date|null>(null)
-  const syncStartTime = ref<number>(0)
-  const syncSource = ref<string | undefined>('Local')
-
-  // Handler при получении сообщения
-  function updateFromSync(payload: { timestamp: string; source?: string }) {
-    if (payload.timestamp) {
-      syncBaseTime.value  = new Date(payload.timestamp)
-      syncStartTime.value = Date.now()
-    }
+  function updateFromSync(event: { timestamp: string; source?: string }) {
+    timestamp.value = event.timestamp
+    source.value = event.source ?? null
   }
 
-  // Тик для обновления каждые 1с
-  const now = ref<number>(Date.now())
-  setInterval(() => { now.value = Date.now() }, 1000)
-
   const formatted = computed(() => {
-    if (syncBaseTime.value) {
-      const elapsed = now.value - syncStartTime.value
-      return new Date(syncBaseTime.value.getTime() + elapsed)
-        .toLocaleString()
+    if (!timestamp.value) return '--'
+    try {
+      const date = new Date(timestamp.value)
+      return new Intl.DateTimeFormat('en-GB', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      }).format(date)
+    } catch {
+      return '--'
     }
-    return new Date().toLocaleString()
   })
 
-  const sourceLabel = computed(() => {
-    switch (syncSource.value) {
-      case 'NTP': return 'NTP'
-      case 'PTP': return 'PTP'
-      default:    return 'Local'
-    }
-  })
+  const sourceLabel = computed(() => source.value ?? 'unsynced')
 
-  return { updateFromSync, formatted, sourceLabel }
+  return { timestamp, source, formatted, sourceLabel, updateFromSync }
 })

@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import axios from 'axios'
 import { ApiBuilder } from '@/utils/api'
 import type { Device } from '@/types/device'
+import type { DeviceRegisterEvent, DeviceHeartbeatEvent } from '@/types/ws/events'
 
 export const useDeviceStore = defineStore('deviceStore', () => {
 
@@ -48,12 +49,31 @@ export const useDeviceStore = defineStore('deviceStore', () => {
     }
   }
 
+  function upsertDevice(event: DeviceRegisterEvent) {
+    const idx = devices.value.findIndex(d => d.unit_id === event.unit_id)
+    if (idx !== -1) {
+      devices.value[idx] = { ...devices.value[idx], ...event }
+    } else {
+      devices.value.push(event)
+    }
+  }
+
+  function updateStatus(event: DeviceHeartbeatEvent) {
+    const dev = devices.value.find(d => d.unit_id === event.unit_id)
+    if (dev) {
+      dev.status = event.status
+      dev.last_seen = event.last_seen
+    }
+  }
+
   return {
     devices,
     isLoading,
     fetchDevices,
     toggleDeviceActive,
     deleteDevice,
+    upsertDevice,
+    updateStatus,
   }
 
 })

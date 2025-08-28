@@ -1,52 +1,39 @@
+<!-- pages/DevicesPage.vue -->
 <template>
-  <div class="p-2">
-    <DeviceList :devices="devices" />
+  <div class="p-4">
+    <h1 class="text-xl mb-4">Devices</h1>
+
+    <div v-if="deviceStore.isLoading">Loading...</div>
+    <div v-else-if="!deviceStore.devices.length" class="text-gray-400">
+      No devices yet. Try scanning...
+    </div>
+    <ul>
+      <li v-for="d in deviceStore.devices" :key="d.unit_id">
+        {{ d.unit_id }} - {{ d.device_type }} - {{ d.status }}
+      </li>
+    </ul>
+
+    <button class="mt-4 px-3 py-1 bg-blue-500 text-white rounded"
+            @click="scanDevices">
+      Scan devices
+    </button>
   </div>
 </template>
 
 <script setup lang="ts">
-
-import { computed, ref } from 'vue'
+import { onMounted } from 'vue'
 import { useDeviceStore } from '@/stores/deviceStore'
-// import { useSignalStore } from '@/stores/useSignalStore' // если будешь получать каналы из стора
+import { useWebSocketStore } from '@/stores/websocketStore'
+import { WSAction } from '@/types/ws/messages'
 
-import DeviceList from '@/components/DeviceList.vue'
-import type { Device } from '@/types/device'
+const deviceStore = useDeviceStore()
+const wsStore = useWebSocketStore()
 
+onMounted(async () => {
+  await deviceStore.fetchDevices()
+})
 
-// TODO: Временно для мокирования
-// const deviceStore = useDeviceStore()
-// const devices = computed(() => deviceStore.devices)
-// const { devices } = useDeviceStore()
-
-const devices = ref<Device[]>([
-    {
-      index: 1,
-      unit_id: 'DO-unit-ABCD',
-      name: 'DO Unit #1',
-      type: 'DO',
-      is_active: true,
-      is_online: true,
-      channels: 4,
-    },
-    {
-      index: 2,
-      unit_id: 'AO-unit-XYZ',
-      name: 'AO Module #1',
-      type: 'AO',
-      is_active: true,
-      is_online: true,
-      channels: 2,
-    },
-    {
-      index: 3,
-      unit_id: 'DI-unit-QWER',
-      name: 'DI Board #1',
-      type: 'DI',
-      is_active: false,
-      is_online: false,
-      channels: 8,
-    }
-  ])
-
+function scanDevices() {
+  wsStore.send({ action: WSAction.SCAN_DEVICES })
+}
 </script>

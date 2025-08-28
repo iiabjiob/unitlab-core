@@ -6,6 +6,7 @@ export enum WSChannel {
   DEVICE_REGISTER = "devices/register",
   DEVICE_RESP     = "devices/resp",
   DEVICE_STATUS   = "devices/status",
+  TIME_STATUS     = "time/status",
 }
 
 // ---------------------------------------------------------------------
@@ -82,8 +83,17 @@ export interface DeviceHeartbeatEvent {
   last_seen: number
 }
 
+export interface TimeStatusEvent {
+  channel: WSChannel.TIME_STATUS
+  timestamp: string
+  status: string
+  source?: string
+  offset_us?: number
+}
+
 export type WSEvent =
   | DeviceStateEvent
   | DeviceRegisterEvent
   | DeviceRespEvent
   | DeviceHeartbeatEvent
+  | TimeStatusEvent

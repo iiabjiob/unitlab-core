@@ -20,7 +20,7 @@
 
     <!-- Menu -->
     <nav class="flex-1 py-2 space-y-1">
-      <RouterLink
+      <!-- <RouterLink
         to="/signal-list"
         class="flex items-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 h-8"
       >
@@ -28,7 +28,7 @@
           <ClockIcon size="20" />
         </div>
         <span v-if="!isCollapsed" class="truncate">Signal List</span>
-      </RouterLink>
+      </RouterLink> -->
 
       <RouterLink
         to="/devices"
@@ -55,7 +55,6 @@ import ChevronLeftIcon from "./icons/ChevronLeftIcon.vue";
 import DraftIcon from "./icons/DraftIcon.vue";
 import ClockIcon from "./icons/ClockIcon.vue";
 import AppLogo from "./AppLogo.vue";
-import EventLogAside from "./EventLogAside.vue";
 
 const isCollapsed = ref(false);
 const toggle = () => (isCollapsed.value = !isCollapsed.value);
