@@ -1,4 +1,4 @@
-from app.services.time_sync_service import TimeSyncService
+from app.services.system.time_sync_service import TimeSyncService
 
 from app.ws.channels.names import TIME_STATUS
 

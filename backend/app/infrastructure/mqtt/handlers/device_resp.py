@@ -1,6 +1,6 @@
-from protocol.packet_io import PacketParser
-from protocol.decode import sys as sys_decode
-from protocol.packet_structures import RespStatus, RespError
+from app.infrastructure.protocol.packet_io import PacketParser
+from app.infrastructure.protocol.decode import sys as sys_decode
+from app.infrastructure.protocol.packet_structures import RespStatus, RespError
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.mqtt import topics
 from app.ws.manager import WebSocketManager

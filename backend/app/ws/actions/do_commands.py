@@ -1,5 +1,5 @@
 from fastapi import WebSocket
-from app.services.device_control_service import set_do_command_now
+from app.services.device_control_service.do import set_do_command_now
 from app.schemas.ws.messages import SetDoCommandMessage
 
 async def handle_set_do_command(ws: WebSocket, msg: SetDoCommandMessage):

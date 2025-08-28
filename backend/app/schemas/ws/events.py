@@ -41,7 +41,7 @@ class DeviceRegisterEvent(DeviceOut):
 # ---------------------------------------------------------------------
 
 class DeviceRespEvent(BaseModel):
-    channel: Literal[WSChannel.DEVICE_RESP] = WSChannel.DEVICE_RES
+    channel: Literal[WSChannel.DEVICE_RESP] = WSChannel.DEVICE_RESP
     unit_id: str
     device_type: str
     packet_id: int

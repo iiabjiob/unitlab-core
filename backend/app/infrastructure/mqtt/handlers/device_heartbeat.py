@@ -1,6 +1,6 @@
 from app.infrastructure.mqtt.handler_registry import registry
 from app.ws.manager import WebSocketManager
-from protocol.header import unpack_header
+from app.infrastructure.protocol.header import unpack_header
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.mqtt import topics
 from app.ws.channels.names import DEVICES_STATUS

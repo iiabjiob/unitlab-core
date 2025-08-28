@@ -1,7 +1,7 @@
 from dataclasses import asdict
-from protocol.packet_io import PacketParser
-from protocol.decode import bit as bit_decode, afloat as float_decode
-from protocol.modes import State
+from app.infrastructure.protocol.packet_io import PacketParser
+from app.infrastructure.protocol.decode import bit as bit_decode, afloat as float_decode
+from app.infrastructure.protocol.modes import State
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.mqtt import topics
 from app.ws.manager import WebSocketManager
