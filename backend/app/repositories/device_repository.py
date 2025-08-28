@@ -9,7 +9,7 @@ async def register_if_not_exists(
     db: AsyncSession,
     unit_id: str,
     channels : int,
-    firmvare_version : str | None = None,
+    firmware_version : str | None = None,
     type: str | None = None,
     is_active: bool = True,
 ) -> Device:
@@ -26,7 +26,7 @@ async def register_if_not_exists(
             unit_id=unit_id,
             type=type,
             channels=channels,
-            firmvare_version=firmvare_version,
+            firmware_version=firmware_version,
             is_active=is_active,
             created_at=datetime.now(timezone.utc)
         )

@@ -1,5 +1,6 @@
 # Шаблоны подписок
 DEVICE_STATE     = "unitlab/devices/+/+/state"
+DEVICE_REQ_STATE = "unitlab/devices/+/+/req/state"
 DEVICE_HEARTBEAT = "unitlab/devices/+/+/heartbeat"
 DEVICE_CMD       = "unitlab/devices/+/+/cmd"
 DEVICE_RESP      = "unitlab/devices/+/+/resp"
@@ -17,6 +18,7 @@ CORE_TOPICS = [
 # Эти только для публикации Core → периферия
 PUBLISH_ONLY_TOPICS = [
     DEVICE_CMD,
+    DEVICE_REQ_STATE,
     DEVICE_SCAN,
 ]
 
@@ -35,6 +37,9 @@ def state_channel(device_type: str, unit_id: str, ch: int, namespace: str = "uni
 
 def cmd(device_type: str, unit_id: str, namespace: str = "unitlab") -> str:
     return f"{base(device_type, unit_id, namespace)}/cmd"
+
+def req_state(device_type: str, unit_id: str, namespace: str = "unitlab") -> str:
+    return f"{base(device_type, unit_id, namespace)}/req/state"
 
 def resp(device_type: str, unit_id: str, namespace: str = "unitlab") -> str:
     return f"{base(device_type, unit_id, namespace)}/resp"

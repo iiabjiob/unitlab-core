@@ -1,25 +1,85 @@
+# protocol/packet.py
+# Mirror of C++ PacketBuilder / PacketParser
 
-import time
-from .header import PacketHeader, pack_header, PROTOCOL_VERSION
+from typing import Optional
+from .header import (
+    HEADER_SIZE,
+    MAX_PAYLOAD,
+    PacketHeader,
+    pack_header,
+    unpack_header,
+)
+
 
 class PacketBuilder:
-    """Builds a full packet (header + payload)."""
-    def __init__(self, mode: int, packet_id: int | None = None, timestamp_ms: int | None = None):
-        self.mode = mode
-        self.packet_id = int(packet_id if packet_id is not None else 0)
-        self.timestamp_ms = int(timestamp_ms if timestamp_ms is not None else int(time.time() * 1000))
-        self.payload_chunks: list[bytes] = []
+    """Helper to build packets (header + payload)."""
 
-    def add(self, payload: bytes) -> None:
-        self.payload_chunks.append(payload or b"")
+    def __init__(self, capacity: int = HEADER_SIZE + MAX_PAYLOAD):
+        self.buf = bytearray(capacity)
+        self.cap = capacity
+        self.len = 0
 
-    def build(self) -> bytes:
-        payload = b"".join(self.payload_chunks)
+    def build(self, mode: int, packet_id: int, ts: int, payload: bytes) -> bool:
+        """Build full packet with header + payload into self.buf."""
+        payload_len = len(payload)
+        if payload_len > MAX_PAYLOAD:
+            return False
+        if self.cap < HEADER_SIZE + payload_len:
+            return False
+
+        # Create header
         hdr = PacketHeader(
-            mode=self.mode,
-            version=PROTOCOL_VERSION,
-            packet_id=self.packet_id & 0xFFFF,
-            timestamp_ms=self.timestamp_ms & ((1<<64)-1),
-            payload_len=len(payload) & 0xFFFF,
+            mode=mode,
+            version=1,  # PROTOCOL_VERSION
+            packet_id=packet_id,
+            timestamp_ms=ts,
+            payload_len=payload_len,
         )
-        return pack_header(hdr) + payload
+
+        # Write header
+        self.buf[0:HEADER_SIZE] = pack_header(hdr)
+        # Write payload
+        self.buf[HEADER_SIZE : HEADER_SIZE + payload_len] = payload
+
+        self.len = HEADER_SIZE + payload_len
+        return True
+
+    def payload_view(self) -> memoryview:
+        return memoryview(self.buf)[HEADER_SIZE:self.len]
+
+    def total_size(self) -> int:
+        return self.len
+
+    def to_bytes(self) -> bytes:
+        return bytes(self.buf[:self.len])
+
+
+class PacketParser:
+    """Helper to parse a raw packet (header + payload)."""
+
+    def __init__(self, data: bytes):
+        self.buf = data
+        self.len = len(data)
+        self.hdr: Optional[PacketHeader] = None
+
+    def parse_header(self) -> bool:
+        """Parse header, validate size, store in self.hdr."""
+        if self.len < HEADER_SIZE:
+            return False
+        hdr = unpack_header(self.buf[0:HEADER_SIZE])
+        if hdr.payload_len > MAX_PAYLOAD:
+            return False
+        if self.len < HEADER_SIZE + hdr.payload_len:
+            return False
+        self.hdr = hdr
+        return True
+
+    def payload(self) -> bytes:
+        if self.hdr is None:
+            raise ValueError("Header not parsed yet")
+        return self.buf[HEADER_SIZE : HEADER_SIZE + self.hdr.payload_len]
+
+    def payload_len(self) -> int:
+        if self.hdr is None:
+            raise ValueError("Header not parsed yet")
+        return self.hdr.payload_len

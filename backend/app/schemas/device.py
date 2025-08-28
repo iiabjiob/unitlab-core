@@ -1,11 +1,16 @@
 from pydantic import BaseModel, ConfigDict
+from typing import Optional
 
 class DeviceOut(BaseModel):
     unit_id: str
     type: str
-    is_active: bool
     channels: int
-    location: str
-    firmware_version: str
+    location: Optional[str] = None
+    firmware_version: Optional[str] = None
+    is_active: bool
+
+    # динамика
+    status: Optional[str] = None
+    last_seen: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
