@@ -2,6 +2,7 @@ import type { TimeStatus } from "../time"
 // ---------------------------------------------------------------------
 // Каналы WS (Backend → Frontend)
 // ---------------------------------------------------------------------
+
 export enum WSChannel {
   DEVICE_STATE    = "devices/state",
   DEVICE_REGISTER = "devices/register",
