@@ -132,7 +132,7 @@ export const useWebSocketStore = defineStore('websocketStore', {
     onChannel(channel: string, callback: (event: any) => void): void {
       if (!this.localListeners.has(channel)) this.localListeners.set(channel, new Set())
       this.localListeners.get(channel)!.add(callback)
-      logger.debug(`🧩 local on("${channel}") (listeners=${this.localListeners.get(channel)!.size})`)
+      logger.debug(`📡 local on("${channel}") (listeners=${this.localListeners.get(channel)!.size})`)
     },
 
     offChannel(channel: string, callback: (event: any) => void): void {
