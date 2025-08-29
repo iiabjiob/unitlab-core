@@ -6,7 +6,7 @@ import type { TimeStatus } from "@/types/time"
 import type { TimeStatusEvent } from "@/types/ws/events"
 import { getLogger } from "@/utils/logger"
 
-const logger = getLogger("TIME")
+const logger = getLogger("TS")
 
 export const useTimeStore = defineStore("timeStore", () => {
   const serverTime = ref<Date | null>(null)

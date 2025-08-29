@@ -45,7 +45,7 @@ class UnitLabMqttClient:
             """
             for topic in CORE_TOPICS:
                 self.client.subscribe(topic)
-                logger.info(f"📡 Subscribed to topic: {topic}")
+                logger.info(f"📡 Subscribing to topic: {topic}")
 
     async def connect(self, host: str, port: int):
         """
@@ -80,7 +80,7 @@ class UnitLabMqttClient:
         """
         Called when the client successfully subscribes to a topic.
         """
-        logger.info(f"📡 Subscribed (mid={mid}, qos={qos})")
+        logger.info(f"✅ Subscribed (mid={mid}, qos={qos})")
 
     def on_message(self, client, topic, payload, qos, properties):
         """

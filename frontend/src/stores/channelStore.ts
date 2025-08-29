@@ -2,8 +2,20 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { Channel } from '@/types/channel'
-import { StateMode, type DeviceStateEvent, type DeviceRespEvent } from '@/types/ws/events'
-import {  WSAction, CmdMode, type SetDoCommandMessage, type SetAoCommandMessage } from '@/types/ws/messages'
+
+import {
+  StateMode,
+  type DeviceStateEvent,
+  type DeviceRespEvent } from '@/types/ws/events'
+
+import {
+  WSAction,
+  CmdMode,
+  ReqStateMode,
+  type SetDoCommandMessage,
+  type SetAoCommandMessage,
+  type RequestStateMessage } from '@/types/ws/messages'
+
 import { useWebSocketStore } from "@/stores/websocketStore"
 import { useDeviceStore } from '@/stores/deviceStore'
 import { getLogger } from '@/utils/logger'
@@ -101,6 +113,21 @@ export const useChannelStore = defineStore('channelStore', () => {
     }
   }
 
+  function requestStates(unitId: string, deviceType: string) {
+    const ws = useWebSocketStore()
+    const msg: RequestStateMessage = {
+      action: WSAction.GET_STATES,
+      unit_id: unitId,
+      device_type: deviceType.toLowerCase() as "di" | "do" | "ao",
+      mode:
+        deviceType.toLowerCase() === "ao"
+          ? ReqStateMode.REQ_ALL_FLOAT
+          : ReqStateMode.REQ_ALL_BIT,
+    }
+    ws.send(msg)
+    logger.info(`📨 Requested states from ${unitId} (${deviceType})`)
+  }
+
   // ---- Команды ----
 
   function sendDoCommand(unitId: string, ch: number, state: boolean) {
@@ -131,6 +158,7 @@ export const useChannelStore = defineStore('channelStore', () => {
   return {
     channels,
     responses,
+    requestStates,
     setSignals,
     setResponse,
     sendDoCommand,

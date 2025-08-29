@@ -31,11 +31,23 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from "vue"
-import { useDeviceStore } from "@/stores/deviceStore"
 import ChannelsComponent from "@/components/ChannelsComponent.vue"
+import { onMounted, reactive } from "vue"
+import { useDeviceStore } from "@/stores/deviceStore"
+import { useChannelStore } from "@/stores/channelStore"
 
 const deviceStore = useDeviceStore()
+const channelStore = useChannelStore()
+
+onMounted(() => {
+  // deviceStore.devices.forEach((dev) => {
+  //   channelStore.requestStates(dev.unit_id, dev.device_type)
+  // })
+
+  mockDevices.forEach((dev) => {
+    channelStore.requestStates(dev.unit_id, dev.device_type)
+  })
+})
 
 const mockDevices = reactive([
   { unit_id: "mock-di-1", device_type: "DI", channels: 5 },

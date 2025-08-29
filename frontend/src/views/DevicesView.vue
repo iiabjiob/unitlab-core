@@ -26,8 +26,8 @@ import { useDeviceStore } from '@/stores/deviceStore'
 import { useWebSocketStore } from '@/stores/websocketStore'
 import { WSAction } from '@/types/ws/messages'
 
-const deviceStore = useDeviceStore()
 const wsStore = useWebSocketStore()
+const deviceStore = useDeviceStore()
 
 onMounted(async () => {
   await deviceStore.fetchDevices()
@@ -36,4 +36,5 @@ onMounted(async () => {
 function scanDevices() {
   wsStore.send({ action: WSAction.SCAN_DEVICES })
 }
+
 </script>

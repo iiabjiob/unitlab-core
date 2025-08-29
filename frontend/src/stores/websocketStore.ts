@@ -1,163 +1,191 @@
-// src/stores/websocketStore.ts
-import { defineStore } from 'pinia'
-import { handleWsEvent } from '@/services/wsHandler'
-import type { WSEvent } from '@/types/ws/events'
-import { WSAction } from "@/types/ws/messages"
-import { getLogger } from '@/utils/logger'
+import { defineStore } from "pinia"
+import { ref } from "vue"
+import { handleWsEvent } from "@/services/wsHandler"
+import type { WSEvent } from "@/types/ws/events"
+import { WSAction, type WSMessage } from "@/types/ws/messages"
+import { getLogger } from "@/utils/logger"
 
 const logger = getLogger("WS")
 
-interface WebSocketStoreState {
-  socket: WebSocket | null
-  isConnected: boolean
-  pendingServerSubs: string[][]             // batched pending subs to request on connect
-  activeServerSubs: Set<string>             // channels requested from server
-  receivedData: Record<string, any>
-  reconnectAttempts: number
-  maxReconnectAttempts: number
-  reconnectDelay: number
-  maxReconnectDelay: number
-  localListeners: Map<string, Set<(event: any) => void>> // local callbacks by channel
-}
+export const useWebSocketStore = defineStore("websocketStore", () => {
+  const socket = ref<WebSocket | null>(null)
+  const isConnected = ref(false)
 
-export const useWebSocketStore = defineStore('websocketStore', {
-  state: (): WebSocketStoreState => ({
-    socket: null,
-    isConnected: false,
-    pendingServerSubs: [],
-    activeServerSubs: new Set(),
-    receivedData: {},
-    reconnectAttempts: 0,
-    maxReconnectAttempts: 5,
-    reconnectDelay: 1000,
-    maxReconnectDelay: 30000,
-    localListeners: new Map()
-  }),
+  // очередь всех сообщений, пока сокет не открыт
+  const messageQueue: WSMessage[] = []
 
-  actions: {
-    connect(): void {
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-      const wsUrl = `${wsProtocol}://${window.location.host}/ws/ws`
+  // server subscriptions
+  const activeServerSubs = ref<Set<string>>(new Set())
+  const pendingServerSubs: string[][] = []
 
-      logger.info('🔌 Connecting')
+  // local listeners
+  const localListeners = new Map<string, Set<(event: any) => void>>()
 
-      this.socket = new WebSocket(wsUrl)
+  // reconnect backoff
+  const reconnectAttempts = ref(0)
+  const maxReconnectAttempts = 5
+  const reconnectDelay = 1000
+  const maxReconnectDelay = 30000
 
-      this.socket.onopen = () => {
-        this.isConnected = true
-        this.reconnectAttempts = 0
-        logger.info('✅ Connected')
+  // ---------------- connect ----------------
+  function connect() {
+    if (
+      socket.value &&
+      (socket.value.readyState === WebSocket.OPEN ||
+        socket.value.readyState === WebSocket.CONNECTING)
+    ) {
+      return
+    }
 
-        // re-request server subscriptions
-        if (this.activeServerSubs.size > 0) {
-          const channels = [...this.activeServerSubs]
-          logger.info('🔄 Re-requesting server subs:', channels)
-          this.requestServerSubscribe(channels)
+    const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws"
+    const wsUrl = `${wsProtocol}://${window.location.host}/ws/ws`
+
+    logger.info("🔌 Connecting")
+    socket.value = new WebSocket(wsUrl)
+
+    socket.value.onopen = () => {
+      isConnected.value = true
+      reconnectAttempts.value = 0
+      logger.info("✅ Connected")
+
+      // flush queued messages
+      while (messageQueue.length > 0) {
+        const msg = messageQueue.shift()!
+        _sendNow(msg)
+      }
+
+      // re-subscribe to server channels
+      if (activeServerSubs.value.size > 0) {
+        const channels = [...activeServerSubs.value]
+        logger.info("🔄 Re-requesting server subs:", channels)
+        requestServerSubscribe(channels)
+      }
+
+      // flush delayed sub requests
+      if (pendingServerSubs.length > 0) {
+        for (const batch of pendingServerSubs) {
+          logger.info("⏩ Flushing pending server subs:", batch)
+          requestServerSubscribe(batch)
         }
-
-        // flush delayed sub-requests
-        if (this.pendingServerSubs.length > 0) {
-          for (const batch of this.pendingServerSubs) {
-            logger.info('⏩ Flushing pending server subs:', batch)
-            this.requestServerSubscribe(batch)
-          }
-          this.pendingServerSubs = []
-        }
+        pendingServerSubs.length = 0
       }
+    }
 
-      this.socket.onclose = (event: CloseEvent) => {
-        logger.warn('💥 Disconnected', event)
-        this.isConnected = false
-        this.socket = null
-        this.receivedData = {}
-        this._scheduleReconnect()
+    socket.value.onclose = (event: CloseEvent) => {
+      logger.warn("💥 Disconnected", event)
+      isConnected.value = false
+      socket.value = null
+      _scheduleReconnect()
+    }
+
+    socket.value.onmessage = (event: MessageEvent) => {
+      const data: WSEvent = JSON.parse(event.data)
+
+      // dispatch to domain stores
+      handleWsEvent(data)
+
+      // fan-out to local listeners
+      const listeners = localListeners.get(data.channel)
+      if (listeners?.size) {
+        for (const listener of listeners) listener(data)
       }
+    }
 
-      this.socket.onmessage = (event: MessageEvent) => {
-        const data: WSEvent = JSON.parse(event.data)
-        // dispatch to domain stores
-        handleWsEvent(data)
+    socket.value.onerror = (error: Event) => {
+      logger.error("⚠️ Error", error)
+      socket.value?.close()
+    }
+  }
 
-        // fan-out to local listeners (components)
-        const listeners = this.localListeners.get(data.channel)
-        if (listeners?.size) {
-          // Note: we pass the whole event so listeners can discriminate by channel
-          for (const listener of listeners) listener(data)
-        }
-      }
+  // ---------------- send with queue ----------------
+  function _sendNow(message: WSMessage) {
+    if (socket.value && socket.value.readyState === WebSocket.OPEN) {
+      socket.value.send(JSON.stringify(message))
+      logger.debug("📤 Sent", message)
+    } else {
+      logger.warn("💤 Tried to send but socket not open", message)
+    }
+  }
 
-      this.socket.onerror = (error: Event) => {
-        logger.error('⚠️ Error', error)
-        this.socket?.close()
-      }
-    },
+  function send(message: WSMessage) {
+    if (isConnected.value) {
+      _sendNow(message)
+    } else {
+      messageQueue.push(message)
+      logger.info("💤 Message queued", message)
+    }
+  }
 
-    // -------- low-level send ----------
-    send(message: Record<string, any>): void {
-      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-        logger.debug('📤 Send', message)
-        this.socket.send(JSON.stringify(message))
-      } else {
-        logger.warn('💤 Not connected, dropped', message)
-      }
-    },
+  // ---------------- server subscriptions ----------------
+  function requestServerSubscribe(channels: string[]) {
+    if (!channels?.length) return
+    channels.forEach((ch) => activeServerSubs.value.add(ch))
 
-    // -------- SERVER subscription API (request server to filter / push) ----------
-    requestServerSubscribe(channels: string[]): void {
-      if (!channels?.length) return
-      channels.forEach((ch) => this.activeServerSubs.add(ch))
+    if (isConnected.value) {
+      logger.info("📡 Request SUB →", channels)
+      send({ action: WSAction.SUBSCRIBE, channels })
+    } else {
+      logger.info("⏳ Queue SUB (offline) →", channels)
+      pendingServerSubs.push(channels)
+    }
+  }
 
-      if (this.isConnected) {
-        logger.info(`📡 Request SUB →`, channels)
-        this.send({ action: WSAction.SUBSCRIBE, channels })
-      } else {
-        logger.info(`⏳ Queue SUB (offline) →`, channels)
-        this.pendingServerSubs.push(channels)
-      }
-    },
+  function requestServerUnsubscribe(channels: string[]) {
+    if (!channels?.length) return
+    channels.forEach((ch) => activeServerSubs.value.delete(ch))
 
-    requestServerUnsubscribe(channels: string[]): void {
-      if (!channels?.length) return
-      channels.forEach((ch) => this.activeServerSubs.delete(ch))
+    if (isConnected.value) {
+      logger.info("📴 Request UNSUB →", channels)
+      send({ action: WSAction.UNSUBSCRIBE, channels })
+    } else {
+      logger.info("(Offline) UNSUB ignored →", channels)
+    }
+  }
 
-      if (this.isConnected) {
-        logger.info(`📴 Request UNSUB →`, channels)
-        this.send({ action: WSAction.UNSUBSCRIBE, channels })
-      } else {
-        logger.info(`(Offline) UNSUB ignored →`, channels)
-      }
-    },
+  // ---------------- local listeners ----------------
+  function onChannel(channel: string, callback: (event: any) => void) {
+    if (!localListeners.has(channel)) localListeners.set(channel, new Set())
+    localListeners.get(channel)!.add(callback)
+    logger.debug(
+      `📡 local on("${channel}") (listeners=${localListeners.get(channel)!.size})`
+    )
+  }
 
-    // -------- LOCAL subscription API (components register callbacks) ----------
-    onChannel(channel: string, callback: (event: any) => void): void {
-      if (!this.localListeners.has(channel)) this.localListeners.set(channel, new Set())
-      this.localListeners.get(channel)!.add(callback)
-      logger.debug(`📡 local on("${channel}") (listeners=${this.localListeners.get(channel)!.size})`)
-    },
+  function offChannel(channel: string, callback: (event: any) => void) {
+    const set = localListeners.get(channel)
+    if (!set) return
+    set.delete(callback)
+    logger.debug(
+      `🧹 Local off("${channel}") (listeners=${set.size})`
+    )
+    if (set.size === 0) localListeners.delete(channel)
+  }
 
-    offChannel(channel: string, callback: (event: any) => void): void {
-      const set = this.localListeners.get(channel)
-      if (!set) return
-      set.delete(callback)
-      logger.debug(`🧹 Local off("${channel}") (listeners=${set.size})`)
-      if (set.size === 0) this.localListeners.delete(channel)
-    },
+  // ---------------- reconnect backoff ----------------
+  function _scheduleReconnect() {
+    let delay: number
+    if (reconnectAttempts.value < maxReconnectAttempts) {
+      reconnectAttempts.value++
+      delay = reconnectDelay * Math.pow(2, reconnectAttempts.value - 1)
+    } else {
+      delay = maxReconnectDelay
+    }
+    const seconds = (delay / 1000).toFixed(1)
+    logger.info(`⏳ Reconnect in ${seconds}s (attempt #${reconnectAttempts.value})`)
+    setTimeout(() => {
+      logger.info(`🔄 Reconnect attempt #${reconnectAttempts.value}`)
+      connect()
+    }, delay)
+  }
 
-    // -------- reconnect backoff ----------
-    _scheduleReconnect(): void {
-      let delay: number
-      if (this.reconnectAttempts < this.maxReconnectAttempts) {
-        this.reconnectAttempts++
-        delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1)
-      } else {
-        delay = this.maxReconnectDelay
-      }
-      const seconds = (delay / 1000).toFixed(1)
-      logger.info(`⏳ Reconnect in ${seconds}s (attempt #${this.reconnectAttempts})`)
-      setTimeout(() => {
-        logger.info(`🔄 Reconnect attempt #${this.reconnectAttempts}`)
-        this.connect()
-      }, delay)
-    },
+  return {
+    socket,
+    isConnected,
+    connect,
+    send,
+    requestServerSubscribe,
+    requestServerUnsubscribe,
+    onChannel,
+    offChannel,
   }
 })
