@@ -34,13 +34,13 @@ async def time_status_broadcaster():
                 await ws_manager.broadcast(event.channel, event.dict())
                 last_event = event
                 last_forced_broadcast = asyncio.get_event_loop().time()
-                logger.info(f"⏰ TimeStatus update: {event.status} via {event.source}")
+                logger.info(f"TimeStatus update: {event.status} via {event.source}")
 
             # force once a day
             elif asyncio.get_event_loop().time() - last_forced_broadcast > DAILY_BROADCAST:
                 await ws_manager.broadcast(event.channel, event.dict())
                 last_forced_broadcast = asyncio.get_event_loop().time()
-                logger.debug("⏰ TimeStatus daily refresh broadcast")
+                logger.debug("TimeStatus daily refresh broadcast")
 
         except Exception as e:
             logger.error(f"💥 TimeStatus broadcaster error: {e}")

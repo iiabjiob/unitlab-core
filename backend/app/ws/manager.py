@@ -45,7 +45,7 @@ class WebSocketManager:
         for websocket in list(self.active_connections):
             try:
                 await self.send_data(websocket, channel, payload)
-                logger.debug(f"Broadcast: {channel}: {payload}")
+                logger.debug(f"📡 Broadcast: {channel}: {payload}")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to broadcast to one client: {e}")
 
@@ -55,7 +55,7 @@ class WebSocketManager:
     async def unsubscribe(self, websocket: WebSocket, channels: List[str]):
         if websocket in self.subscriptions:
             self.subscriptions[websocket].difference_update(channels)
-            logger.info(f"🚫 Unsubscribed: {channels} → Remaining: {self.subscriptions[websocket]}")
+            logger.info(f"✅ Unsubscribed: {channels} → Remaining: {self.subscriptions[websocket]}")
 
     def has_subscribers(self, channel: str) -> bool:
         return any(channel in subs for subs in self.subscriptions.values())

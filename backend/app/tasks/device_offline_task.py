@@ -39,7 +39,7 @@ async def device_offline_checker():
                             last_seen=int(time.time() * 1000),
                         )
                         await ws_manager.broadcast(WSChannel.DEVICE_STATUS, event.model_dump())
-                        logger.info(f"💥 Device {unit_id} ({device_type}) went offline")
+                        logger.info(f"Device {unit_id} ({device_type}) went offline")
 
         except Exception as e:
             logger.error(f"💥 Offline checker error: {e}")

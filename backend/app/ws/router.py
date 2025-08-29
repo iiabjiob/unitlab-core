@@ -24,7 +24,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 raw = await websocket.receive_json()
                 message = adapter.validate_python(raw)
             except WebSocketDisconnect:
-                logger.info("💥 Client disconnected cleanly")
+                logger.info("✅ Client disconnected cleanly")
                 break
             except ValidationError as e:
                 logger.warning(f"⚠️ Invalid WS message: {e}")

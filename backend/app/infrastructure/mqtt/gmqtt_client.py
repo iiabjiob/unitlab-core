@@ -52,7 +52,7 @@ class UnitLabMqttClient:
         Connect to the MQTT broker.
         """
         await self.client.connect(host, port)
-        logger.info("🚀 MQTT client started")
+        logger.info("✅ MQTT client started")
 
     async def disconnect(self):
         """

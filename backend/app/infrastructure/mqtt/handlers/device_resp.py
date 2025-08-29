@@ -43,7 +43,7 @@ async def handle_device_resp(topic: str, payload: bytes, match):
         return
 
     logger.debug(
-        f"IN ← {device_type.upper()} {unit_id}: RESP packetId={parser.hdr.packet_id} "
+        f"📤 IN ← {device_type.upper()} {unit_id}: RESP packetId={parser.hdr.packet_id} "
         f"status={status.name} err={error.name}"
     )
 

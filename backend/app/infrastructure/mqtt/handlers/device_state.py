@@ -44,7 +44,7 @@ async def handle_device_state(topic: str, payload: bytes, match):
         payload=asdict(decoded),
     )
 
-    logger.debug(f"IN ← {device_type.upper()} {unit_id}: {event.model_dump()}")
+    logger.debug(f"📤 IN ← {device_type.upper()} {unit_id}: {event.model_dump()}")
 
     ws_manager = WebSocketManager.get_instance()
     await ws_manager.broadcast(device_state(device_type, unit_id), event.model_dump())
