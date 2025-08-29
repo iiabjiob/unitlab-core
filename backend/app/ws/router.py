@@ -33,7 +33,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 logger.exception(f"💥 Error while receiving or validating message: {e}")
                 break
 
-            logger.debug(f"📨 IN ← {message.action} | {message.model_dump_json()}")
+            logger.info(f"📨 IN ← {message.action} | {message.model_dump_json()}")
             
             handler = ACTION_HANDLERS.get(message.action)
             if handler:
