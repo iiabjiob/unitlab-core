@@ -40,7 +40,10 @@ class SourceAwareFormatter(AlignedFormatter):
     def format(self, record):
         source = getattr(record, "source", "")
         if source:
-            source_tag = f"[{source.upper()}]"
+            src = str(source).upper()
+            # ограничиваем до 4 символов, если меньше — дополняем
+            src = src[:4].ljust(4)
+            source_tag = f"[{src}]"
             if not str(record.msg).startswith(source_tag):
                 record.msg = f"{source_tag} {record.msg}"
         return super().format(record)

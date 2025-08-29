@@ -6,13 +6,39 @@ from app.schemas.device import DeviceOut
 from app.schemas.time import TimeStatus
 from enum import Enum
 
+# -----------------------------------------------------------------
+    # NOTE:
+    # Каналы WebSocket намеренно названы во множественном числе ("devices/..."),
+    # чтобы сохранить консистентность с MQTT-топиками:
+    #
+    #   MQTT:    devices/+/state
+    #   WS:      devices/state
+    #
+    # В обоих случаях это означает "события для множества устройств",
+    # а само сообщение внутри содержит unit_id, device_type и т.д.
+    #
+    # Даже если WebSocket сообщение всегда описывает одно устройство,
+    # мы НЕ переключаемся на "device/...", чтобы не плодить два разных
+    # пространства имен для одинаковых событий.
+    # -----------------------------------------------------------------
 class WSChannel(str, Enum):
+    SYSTEM_INFO     = "system/info"
+    TIME_STATUS     = "time/status"
+
     DEVICE_STATE    = "devices/state"
     DEVICE_REGISTER = "devices/register"
     DEVICE_RESP     = "devices/resp"
-    DEVICE_STATUS   = "devices/status"
-    TIME_STATUS     = "time/status"
+    DEVICE_STATUS   = "devices/status"  # online/offline heartbeat
 
+# ---------------------------------------------------------------------
+# Динамические каналы (по устройствам)
+# ---------------------------------------------------------------------
+def device_state(device_type: str, unit_id: str) -> str:
+    return f"devices/{device_type}/{unit_id}/state"
+
+# ---------------------------------------------------------------------
+# Event модели
+# ---------------------------------------------------------------------
 
 # ---------------------------------------------------------------------
 # Состояния (DI/DO/AO)

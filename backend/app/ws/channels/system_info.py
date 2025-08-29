@@ -4,13 +4,11 @@ from app.services.system.system_info_service import SystemInfoService
 from app.services.system.resource_usage_service import ResourceUsageService
 from app.services.system.temperature_service import TemperatureService
 from app.services.system.wifi_service import WifiService
-from app.ws.channels.names import SYSTEM_INFO
-
-channel = SYSTEM_INFO
+from app.schemas.ws.events import WSChannel
 
 def get_channel_config():
     return {
-        "name": channel,
+        "name": WSChannel.SYSTEM_INFO,
         "enabled": True,
         "interval": 5,
         "provider": lambda: {

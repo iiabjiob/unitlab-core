@@ -6,8 +6,7 @@ from app.repositories.device_repository import register_if_not_exists
 from app.infrastructure.mqtt import topics
 from app.infrastructure.redis.manager import RedisManager
 from app.ws.manager import WebSocketManager
-from app.ws.channels.names import DEVICES_REGISTER
-from app.schemas.ws.events import DeviceRegisterEvent
+from app.schemas.ws.events import DeviceRegisterEvent, WSChannel
 from app.core.logger import get_logger
 
 logger = get_logger("device")
@@ -75,4 +74,4 @@ async def handle_device_register(topic: str, payload: bytes, match):
     )
 
     ws_manager = WebSocketManager.get_instance()
-    await ws_manager.broadcast(DEVICES_REGISTER, event.model_dump())
+    await ws_manager.broadcast(WSChannel.DEVICE_REGISTER, event.model_dump())

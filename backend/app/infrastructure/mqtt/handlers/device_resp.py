@@ -4,8 +4,7 @@ from app.infrastructure.protocol.packet_structures import RespStatus, RespError
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.mqtt import topics
 from app.ws.manager import WebSocketManager
-from app.ws.channels.names import DEVICES_RESP
-from app.schemas.ws.events import DeviceRespEvent
+from app.schemas.ws.events import DeviceRespEvent, WSChannel
 from app.core.logger import get_logger
 
 logger = get_logger("mqtt")
@@ -49,4 +48,4 @@ async def handle_device_resp(topic: str, payload: bytes, match):
     )
 
     ws_manager = WebSocketManager.get_instance()
-    await ws_manager.broadcast(DEVICES_RESP, event.model_dump())
+    await ws_manager.broadcast(WSChannel.DEVICE_RESP, event.model_dump())

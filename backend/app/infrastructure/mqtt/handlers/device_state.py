@@ -5,8 +5,7 @@ from app.infrastructure.protocol.modes import State
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.mqtt import topics
 from app.ws.manager import WebSocketManager
-from app.schemas.ws.events import DeviceStateEvent
-from app.ws.channels.names import device_state
+from app.schemas.ws.events import DeviceStateEvent, device_state
 from app.core.logger import get_logger
 
 logger = get_logger("mqtt")

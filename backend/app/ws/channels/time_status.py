@@ -1,12 +1,11 @@
 from app.services.system.time_sync_service import TimeSyncService
 
-from app.ws.channels.names import TIME_STATUS
+from app.schemas.ws.events import WSChannel
 
-channel = TIME_STATUS
 
 def get_channel_config():
     return {
-        "name": channel,
+        "name": WSChannel.TIME_STATUS,
         "enabled": True,
         "interval": 30,
         "provider": lambda: {

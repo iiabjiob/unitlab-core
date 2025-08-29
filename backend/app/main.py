@@ -13,6 +13,7 @@ from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.mqtt.manager import MqttManager
 
 from app.tasks.device_offline_task import device_offline_checker
+from app.tasks.tyme_sync_task import time_status_broadcaster
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -32,6 +33,8 @@ async def lifespan(app: FastAPI):
     # Logging backgroung tasks
     logger.info("🔗 Registering background tasks...")
     checker_task = asyncio.create_task(device_offline_checker())
+    time_task = asyncio.create_task(time_status_broadcaster())
+    logger.info("✅ Background tasks registered")
 
     try:
         yield
@@ -39,8 +42,10 @@ async def lifespan(app: FastAPI):
         logger.info("🛑 Shutting down FastAPI application...")
         
         checker_task.cancel()
+        time_task.cancel()
         with suppress(asyncio.CancelledError):
             await checker_task
+            await time_task
 
         await RedisManager.stop()
         await MqttManager.stop()
@@ -57,10 +62,12 @@ app = FastAPI(
 logger.info("🔗 Registering REST API routers...")
 app.include_router(devices_router)
 app.include_router(time_router)
+logger.info("✅ REST API routers registered")
 
 # Logging the websockets
 logger.info("🔗 Registering websockets...")
 app.include_router(ws_router)
+logger.info("✅ Websockets registered")
 
 logger.info(f"✅ FastAPI application is up and running at version {settings.app_version}")
 

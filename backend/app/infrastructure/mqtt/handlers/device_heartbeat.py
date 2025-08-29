@@ -3,8 +3,7 @@ from app.ws.manager import WebSocketManager
 from app.infrastructure.protocol.header import unpack_header
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.mqtt import topics
-from app.ws.channels.names import DEVICES_STATUS
-from app.schemas.ws.events import DeviceHeartbeatEvent
+from app.schemas.ws.events import DeviceHeartbeatEvent, WSChannel
 from app.core.logger import get_logger
 
 logger = get_logger("mqtt")
@@ -37,4 +36,4 @@ async def handle_device_heartbeat(topic: str, payload: bytes, match):
     )
 
     # Broadcast WS
-    await ws_manager.broadcast(DEVICES_STATUS, event.model_dump())
+    await ws_manager.broadcast(WSChannel.DEVICE_STATE, event.model_dump())

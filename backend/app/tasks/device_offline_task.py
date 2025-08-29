@@ -2,7 +2,7 @@ import asyncio
 import time
 from app.ws.manager import WebSocketManager
 from app.infrastructure.redis.manager import RedisManager
-from app.ws.channels.names import device_state
+from app.schemas.ws.events import DeviceHeartbeatEvent, WSChannel
 from app.core.logger import get_logger
 
 logger = get_logger("offline_checker")
@@ -28,15 +28,13 @@ async def device_offline_checker():
                     await redis_client.srem("devices:online", unit_id)
                     device_type = await redis_client.get(f"device:{unit_id}:type") or "unknown"
 
-                    await ws_manager.broadcast(
-                        device_state(unit_id, device_type),
-                        {
-                            "unit_id": unit_id,
-                            "device_type": device_type,
-                            "status": "offline",
-                            "timestamp": int(time.time())
-                        }
+                    event = DeviceHeartbeatEvent(
+                        unit_id=unit_id,
+                        device_type=device_type,
+                        status="offline",
+                        last_seen=int(time.time() * 1000),
                     )
+                    await ws_manager.broadcast(WSChannel.DEVICE_STATE, event.model_dump())
                     logger.info(f"❌ Device {unit_id} ({device_type}) went offline")
 
         except Exception as e:
