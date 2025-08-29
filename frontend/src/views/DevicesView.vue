@@ -8,8 +8,8 @@
       No devices yet. Try scanning...
     </div>
     <ul>
-      <li v-for="d in deviceStore.devices" :key="d.unit_id">
-        {{ d.unit_id }} - {{ d.device_type }} - {{ d.status }}
+      <li v-for="device in deviceStore.devices" :key="device.unit_id">
+        {{ device.unit_id }} - {{ device.device_type }} - {{ device.status }}
       </li>
     </ul>
 

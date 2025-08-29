@@ -3,6 +3,7 @@ from typing import Literal, Union, Dict, Any
 from app.infrastructure.protocol.modes import State
 from app.infrastructure.protocol.packet_structures import RespStatus, RespError
 from app.schemas.device import DeviceOut
+from app.schemas.time import TimeStatus
 from enum import Enum
 
 class WSChannel(str, Enum):
@@ -66,12 +67,8 @@ class DeviceHeartbeatEvent(BaseModel):
     last_seen: int
 
 
-class TimeStatusEvent(BaseModel):
+class TimeStatusEvent(TimeStatus):
     channel: Literal[WSChannel.TIME_STATUS] = WSChannel.TIME_STATUS
-    timestamp: str            # ISO8601 строка (UTC)
-    status: str               # напр. "synced" / "unsynced"
-    source: str | None = None
-    offset_us: int | None = None
 
 # ---------------------------------------------------------------------
 # Union для всех событий

@@ -19,15 +19,8 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from "vue";
 import AppHeader from "./components/AppHeader.vue";
 import AppAside from "./components/AppAside.vue";
 // import AppFooter from "./components/AppFooter.vue";
-import { useWebSocketStore } from "./stores/websocketStore";
 
-const wsStore = useWebSocketStore();
-
-onMounted(() => {
-  wsStore.connect();
-});
 </script>

@@ -4,6 +4,9 @@ import axios from 'axios'
 import { ApiBuilder } from '@/utils/api'
 import type { Device } from '@/types/device'
 import type { DeviceRegisterEvent, DeviceHeartbeatEvent } from '@/types/ws/events'
+import { getLogger } from '@/utils/logger'
+
+const logger = getLogger('DEV')
 
 export const useDeviceStore = defineStore('deviceStore', () => {
 
@@ -13,10 +16,12 @@ export const useDeviceStore = defineStore('deviceStore', () => {
   async function fetchDevices() {
     isLoading.value = true
     try {
+      logger.debug("⏳ Fetching /api/devices ...")
       const response = await axios.get(ApiBuilder.devices())
+      logger.debug("✅ Fetched:", response.data)
       devices.value = response.data
     } catch (error) {
-      console.error('❌ Failed to fetch devices:', error)
+      logger.error('❌ Failed to fetch devices:', error)
     } finally {
       isLoading.value = false
     }
@@ -30,7 +35,7 @@ export const useDeviceStore = defineStore('deviceStore', () => {
         devices.value[index].is_active = data.is_active
       }
     } catch (error) {
-      console.error('❌ Failed to toggle device active status:', error)
+      logger.error('❌ Failed to toggle device active status:', error)
     }
   }
 
@@ -45,7 +50,7 @@ export const useDeviceStore = defineStore('deviceStore', () => {
       }
 
     } catch (error) {
-      console.error('❌ Failed to delete device:', error)
+      logger.error('❌ Failed to delete device:', error)
     }
   }
 

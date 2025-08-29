@@ -1,13 +1,11 @@
-from app.ws.channels import time_status
-from app.ws.channels import system_info
+# from app.ws.channels import time_status
 
 # Собираем конфиги только один раз
-time_status_config = time_status.get_channel_config()
-system_info_config = system_info.get_channel_config()
+# time_status_config = time_status.get_channel_config()
+# сюда можно руками добавить другие каналы
 
 CHANNELS = {
-    time_status_config["name"]: time_status_config,
-    system_info_config["name"]: system_info_config,
+    # time_status_config["name"]: time_status_config,
     # сюда можно руками добавить другие каналы
 }
 

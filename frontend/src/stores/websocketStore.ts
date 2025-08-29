@@ -1,39 +1,37 @@
+// src/stores/websocketStore.ts
 import { defineStore } from 'pinia'
 import { handleWsEvent } from '@/services/wsHandler'
 import type { WSEvent } from '@/types/ws/events'
+import { WSAction } from "@/types/ws/messages"
+import { getLogger } from '@/utils/logger'
 
-// interface WebSocketMessage {
-//   channel: string
-//   payload: any
-// }
+const logger = getLogger("WS")
 
 interface WebSocketStoreState {
   socket: WebSocket | null
   isConnected: boolean
-  // isInitialized: boolean
-  pendingSubscriptions: string[][]
-  activeSubscriptions: Set<string>
+  pendingServerSubs: string[][]             // batched pending subs to request on connect
+  activeServerSubs: Set<string>             // channels requested from server
   receivedData: Record<string, any>
   reconnectAttempts: number
   maxReconnectAttempts: number
   reconnectDelay: number
   maxReconnectDelay: number
-  listeners: Map<string, Set<(payload: any) => void>>
+  localListeners: Map<string, Set<(event: any) => void>> // local callbacks by channel
 }
 
 export const useWebSocketStore = defineStore('websocketStore', {
   state: (): WebSocketStoreState => ({
     socket: null,
     isConnected: false,
-    // isInitialized: false,
-    pendingSubscriptions: [],
-    activeSubscriptions: new Set(),
+    pendingServerSubs: [],
+    activeServerSubs: new Set(),
     receivedData: {},
     reconnectAttempts: 0,
     maxReconnectAttempts: 5,
     reconnectDelay: 1000,
     maxReconnectDelay: 30000,
-    listeners: new Map<string, Set<(payload: any) => void>>()
+    localListeners: new Map()
   }),
 
   actions: {
@@ -41,125 +39,125 @@ export const useWebSocketStore = defineStore('websocketStore', {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
       const wsUrl = `${wsProtocol}://${window.location.host}/ws/ws`
 
-      // this.isInitialized = false
+      logger.info('🔌 Connecting')
 
-      console.log('🔌 Connecting to WebSocket...')
       this.socket = new WebSocket(wsUrl)
 
       this.socket.onopen = () => {
-        console.log('✅ WebSocket connected!')
         this.isConnected = true
-        // this.isInitialized = true
         this.reconnectAttempts = 0
+        logger.info('✅ Connected')
 
-        if (this.activeSubscriptions.size > 0) {
-          console.log('🔄 Subscribing to:', [...this.activeSubscriptions])
-          // this.subscribe([...this.activeSubscriptions])
+        // re-request server subscriptions
+        if (this.activeServerSubs.size > 0) {
+          const channels = [...this.activeServerSubs]
+          logger.info('🔄 Re-requesting server subs:', channels)
+          this.requestServerSubscribe(channels)
         }
 
-        this.pendingSubscriptions = []
+        // flush delayed sub-requests
+        if (this.pendingServerSubs.length > 0) {
+          for (const batch of this.pendingServerSubs) {
+            logger.info('⏩ Flushing pending server subs:', batch)
+            this.requestServerSubscribe(batch)
+          }
+          this.pendingServerSubs = []
+        }
       }
 
       this.socket.onclose = (event: CloseEvent) => {
-        console.log('❌ WebSocket disconnected!', event)
+        logger.warn('❌ Disconnected', event)
         this.isConnected = false
         this.socket = null
         this.receivedData = {}
-        this.reconnect()
+        this._scheduleReconnect()
       }
 
       this.socket.onmessage = (event: MessageEvent) => {
-        // const { channel, payload }: WebSocketMessage = JSON.parse(event.data)
-        // if (channel && payload !== undefined) {
-        //   this.receivedData[channel] = payload
-        // }
-
-        // // ✅ Оповестить всех слушателей канала
-        // const channelListeners = this.listeners.get(channel)
-        // if (channelListeners) {
-        //   for (const listener of channelListeners) {
-        //     listener(payload)
-        //   }
-        // }
-
         const data: WSEvent = JSON.parse(event.data)
-
-        // обновляем pinia-сторы (devices, signals и т.д.)
+        // dispatch to domain stores
         handleWsEvent(data)
 
-        // если компонент подписался — пробрасываем ему весь event
-        const listeners = this.listeners.get(data.channel)
-        if (listeners) {
-          for (const listener of listeners) {
-            listener(data)
-          }
+        // fan-out to local listeners (components)
+        const listeners = this.localListeners.get(data.channel)
+        if (listeners?.size) {
+          // Note: we pass the whole event so listeners can discriminate by channel
+          for (const listener of listeners) listener(data)
         }
       }
 
       this.socket.onerror = (error: Event) => {
-        console.error('⚠️ WebSocket error:', error)
+        logger.error('⚠️ Error', error)
         this.socket?.close()
       }
     },
 
-    // ✅ Унифицированная отправка
+    // -------- low-level send ----------
     send(message: Record<string, any>): void {
       if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        logger.debug('📤 Send', message)
         this.socket.send(JSON.stringify(message))
-        console.log('📤 Sent message to WS:', message)
       } else {
-        console.warn('⚠️ WebSocket not connected, message not sent:', message)
+        logger.warn('💤 Not connected, dropped', message)
       }
     },
 
-    subscribe(channels: string[]): void {
-      if (channels.length === 0) return
-      channels.forEach((ch) => this.activeSubscriptions.add(ch))
+    // -------- SERVER subscription API (request server to filter / push) ----------
+    requestServerSubscribe(channels: string[]): void {
+      if (!channels?.length) return
+      channels.forEach((ch) => this.activeServerSubs.add(ch))
 
       if (this.isConnected) {
-        this.send({ action: 'subscribe', channels })
+        logger.info(`📡 Request SUB →`, channels)
+        this.send({ action: WSAction.SUBSCRIBE, channels })
       } else {
-        this.pendingSubscriptions.push(channels)
+        logger.info(`⏳ Queue SUB (offline) →`, channels)
+        this.pendingServerSubs.push(channels)
       }
     },
 
-    unsubscribe(channels: string[]): void {
-      channels.forEach((ch) => this.activeSubscriptions.delete(ch))
+    requestServerUnsubscribe(channels: string[]): void {
+      if (!channels?.length) return
+      channels.forEach((ch) => this.activeServerSubs.delete(ch))
 
       if (this.isConnected) {
-        this.send({ action: 'unsubscribe', channels })
+        logger.info(`📴 Request UNSUB →`, channels)
+        this.send({ action: WSAction.UNSUBSCRIBE, channels })
+      } else {
+        logger.info(`(Offline) UNSUB ignored →`, channels)
       }
     },
 
-    reconnect(): void {
+    // -------- LOCAL subscription API (components register callbacks) ----------
+    onChannel(channel: string, callback: (event: any) => void): void {
+      if (!this.localListeners.has(channel)) this.localListeners.set(channel, new Set())
+      this.localListeners.get(channel)!.add(callback)
+      logger.debug(`🧩 local on("${channel}") (listeners=${this.localListeners.get(channel)!.size})`)
+    },
+
+    offChannel(channel: string, callback: (event: any) => void): void {
+      const set = this.localListeners.get(channel)
+      if (!set) return
+      set.delete(callback)
+      logger.debug(`🧹 Local off("${channel}") (listeners=${set.size})`)
+      if (set.size === 0) this.localListeners.delete(channel)
+    },
+
+    // -------- reconnect backoff ----------
+    _scheduleReconnect(): void {
       let delay: number
-
       if (this.reconnectAttempts < this.maxReconnectAttempts) {
         this.reconnectAttempts++
         delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1)
       } else {
         delay = this.maxReconnectDelay
       }
-
       const seconds = (delay / 1000).toFixed(1)
-      console.log(`⏳ Waiting ${seconds}s before reconnect attempt #${this.reconnectAttempts}...`)
-
+      logger.info(`⏳ Reconnect in ${seconds}s (attempt #${this.reconnectAttempts})`)
       setTimeout(() => {
-        console.log(`🔄 Reconnect attempt #${this.reconnectAttempts}...`)
+        logger.info(`🔄 Reconnect attempt #${this.reconnectAttempts}`)
         this.connect()
       }, delay)
     },
-
-    subscribeToChannel(channel: string, callback: (payload: any) => void): void {
-      if (!this.listeners.has(channel)) {
-        this.listeners.set(channel, new Set())
-      }
-      this.listeners.get(channel)!.add(callback)
-    },
-
-    unsubscribeFromChannel(channel: string, callback: (payload: any) => void): void {
-      this.listeners.get(channel)?.delete(callback)
-    }
-
   }
 })

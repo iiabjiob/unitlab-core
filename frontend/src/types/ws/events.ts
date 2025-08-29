@@ -1,3 +1,4 @@
+import type { TimeStatus } from "../time"
 // ---------------------------------------------------------------------
 // Каналы WS (Backend → Frontend)
 // ---------------------------------------------------------------------
@@ -83,12 +84,8 @@ export interface DeviceHeartbeatEvent {
   last_seen: number
 }
 
-export interface TimeStatusEvent {
+export interface TimeStatusEvent extends TimeStatus {
   channel: WSChannel.TIME_STATUS
-  timestamp: string
-  status: string
-  source?: string
-  offset_us?: number
 }
 
 export type WSEvent =
