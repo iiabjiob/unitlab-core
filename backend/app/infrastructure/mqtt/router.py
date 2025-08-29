@@ -12,7 +12,8 @@ class MqttRouter:
         # compile all topic patterns
         self._routes = []
         for pattern, handler in registry.handlers:
-            print(f"[DEBUG] Registered handler: {pattern} -> {handler.__name__}")   
+            
+            logger.debug(f"🔗 Registered handler: {pattern} -> {handler.__name__}")
             
             # Convert MQTT wildcards to regex: + => ([^/]+), # => .*
             regex = re.compile("^" + pattern.replace("+", r"([^/]+)").replace("#", r".*") + "$")

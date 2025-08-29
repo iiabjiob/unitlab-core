@@ -18,7 +18,7 @@ class MqttManager:
                 port=settings.mqtt_port
             )
             await cls._instance.connected.wait()
-            logger.info(f"📡 MQTT client '{client_id}' connected and subscribed.")
+            logger.info(f"✅ MQTT client '{client_id}' connected and subscribed.")
 
     @classmethod
     async def stop(cls):
