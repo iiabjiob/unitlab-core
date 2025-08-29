@@ -25,7 +25,7 @@ export const useTimeStore = defineStore("timeStore", () => {
       applyUpdate(data)
       startTicker()
     } catch (err) {
-      logger.error("❌ Failed to fetch time from server:", err)
+      logger.error("💥 Failed to fetch time from server:", err)
     }
   }
 

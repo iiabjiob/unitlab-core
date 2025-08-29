@@ -33,9 +33,9 @@ class WifiService:
             return {"error": "No networks found"}
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"❌ nmcli error: {e.stderr.strip()}")
+            logger.error(f"💥 nmcli error: {e.stderr.strip()}")
         except FileNotFoundError:
-            logger.error("❌ nmcli command not found.")
+            logger.error("💥 nmcli command not found.")
         except Exception as e:
             logger.exception(f"⚠️ Unexpected error during Wi-Fi scan: {e}")
 
@@ -59,10 +59,10 @@ class WifiService:
 
         except subprocess.CalledProcessError as e:
             error_msg = e.stderr.strip()
-            logger.error(f"❌ Failed to connect to Wi-Fi `{ssid}`: {error_msg}")
+            logger.error(f"💥 Failed to connect to Wi-Fi `{ssid}`: {error_msg}")
             return {"error": error_msg}
         except FileNotFoundError:
-            logger.error("❌ nmcli command not found.")
+            logger.error("💥 nmcli command not found.")
         except Exception as e:
             logger.exception(f"⚠️ Unexpected error during Wi-Fi connection: {e}")
 
@@ -88,9 +88,9 @@ class WifiService:
             return "Not connected"
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"❌ nmcli error: {e.stderr.strip()}")
+            logger.error(f"💥 nmcli error: {e.stderr.strip()}")
         except FileNotFoundError:
-            logger.error("❌ nmcli command not found.")
+            logger.error("💥 nmcli command not found.")
         except Exception as e:
             logger.exception(f"⚠️ Unexpected error getting SSID: {e}")
 
@@ -116,9 +116,9 @@ class WifiService:
             return "N/A"
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"❌ nmcli error: {e.stderr.strip()}")
+            logger.error(f"💥 nmcli error: {e.stderr.strip()}")
         except FileNotFoundError:
-            logger.error("❌ nmcli command not found.")
+            logger.error("💥 nmcli command not found.")
         except Exception as e:
             logger.exception(f"⚠️ Unexpected error getting signal strength: {e}")
 

@@ -21,7 +21,7 @@ export const useDeviceStore = defineStore('deviceStore', () => {
       logger.debug("✅ Fetched:", response.data)
       devices.value = response.data
     } catch (error) {
-      logger.error('❌ Failed to fetch devices:', error)
+      logger.error('💥 Failed to fetch devices:', error)
     } finally {
       isLoading.value = false
     }
@@ -35,7 +35,7 @@ export const useDeviceStore = defineStore('deviceStore', () => {
         devices.value[index].is_active = data.is_active
       }
     } catch (error) {
-      logger.error('❌ Failed to toggle device active status:', error)
+      logger.error('💥 Failed to toggle device active status:', error)
     }
   }
 
@@ -50,7 +50,7 @@ export const useDeviceStore = defineStore('deviceStore', () => {
       }
 
     } catch (error) {
-      logger.error('❌ Failed to delete device:', error)
+      logger.error('💥 Failed to delete device:', error)
     }
   }
 

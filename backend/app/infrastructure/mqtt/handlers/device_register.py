@@ -20,15 +20,15 @@ async def handle_device_register(topic: str, payload: bytes, match):
     try:
         parser = PacketParser(payload)
         if not parser.parse_header():
-            logger.error(f"❌ Invalid packet header in {topic}")
+            logger.error(f"💥 Invalid packet header in {topic}")
             return
 
         reg = sys_decode.register_msg(parser.payload())
         if not reg:
-            logger.error(f"❌ Failed to decode REGISTER payload from {topic}")
+            logger.error(f"💥 Failed to decode REGISTER payload from {topic}")
             return
     except Exception as e:
-        logger.error(f"❌ Exception while decoding REGISTER: {e}")
+        logger.error(f"💥 Exception while decoding REGISTER: {e}")
         return
 
     unit_id = reg["device_id"]
@@ -53,7 +53,7 @@ async def handle_device_register(topic: str, payload: bytes, match):
             logger.info(f"✅ Registered device: {device.unit_id}")
         except Exception as e:
             await session.rollback()
-            logger.error(f"❌ DB error registering device '{unit_id}': {e}")
+            logger.error(f"💥 DB error registering device '{unit_id}': {e}")
             return
 
     # enrich with Redis dynamic info

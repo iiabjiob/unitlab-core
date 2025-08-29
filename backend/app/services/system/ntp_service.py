@@ -27,7 +27,7 @@ class NTPService:
 
         # Ensure `/etc/chrony/sources.d/` exists
         if not os.path.exists(NTPService.CHRONY_SOURCES_DIR):
-            logger.error(f"❌ Directory {NTPService.CHRONY_SOURCES_DIR} not found. Ensure Chrony is installed.")
+            logger.error(f"💥 Directory {NTPService.CHRONY_SOURCES_DIR} not found. Ensure Chrony is installed.")
             raise FileNotFoundError(f"Directory {NTPService.CHRONY_SOURCES_DIR} not found. Install Chrony.")
 
         # Write NTP servers to the configuration file
@@ -41,7 +41,7 @@ class NTPService:
             logger.info("🔄 NTP sources reloaded successfully.")
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"❌ Failed to reload NTP sources: {e}")
+            logger.error(f"💥 Failed to reload NTP sources: {e}")
         except Exception as e:
             logger.exception(f"⚠️ Unexpected error while updating NTP configuration: {e}")
 

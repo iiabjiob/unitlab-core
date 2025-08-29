@@ -15,27 +15,31 @@ async def device_offline_checker():
 
     while True:
         try:
-            # Все unit_id, которые когда-то отмечались онлайн
             online_units = await redis_client.smembers("devices:online")
 
             for raw_id in online_units:
                 unit_id = raw_id.decode() if isinstance(raw_id, (bytes, bytearray)) else str(raw_id)
 
-                # Проверяем TTL у last_seen
+                # Проверяем TTL
                 last_seen = await redis_client.get(f"device:{unit_id}:last_seen")
                 if not last_seen:
                     # expired → offline
-                    await redis_client.srem("devices:online", unit_id)
-                    device_type = await redis_client.get(f"device:{unit_id}:type") or "unknown"
+                    prev_status = await redis_client.get(f"device:{unit_id}:status")
 
-                    event = DeviceHeartbeatEvent(
-                        unit_id=unit_id,
-                        device_type=device_type,
-                        status="offline",
-                        last_seen=int(time.time() * 1000),
-                    )
-                    await ws_manager.broadcast(WSChannel.DEVICE_STATE, event.model_dump())
-                    logger.info(f"❌ Device {unit_id} ({device_type}) went offline")
+                    if prev_status != b"offline":  # только при изменении
+                        await redis_client.srem("devices:online", unit_id)
+                        await redis_client.set(f"device:{unit_id}:status", "offline")
+
+                        device_type = await redis_client.get(f"device:{unit_id}:type") or "unknown"
+
+                        event = DeviceHeartbeatEvent(
+                            unit_id=unit_id,
+                            device_type=device_type.decode() if isinstance(device_type, (bytes, bytearray)) else str(device_type),
+                            status="offline",
+                            last_seen=int(time.time() * 1000),
+                        )
+                        await ws_manager.broadcast(WSChannel.DEVICE_STATUS, event.model_dump())
+                        logger.info(f"💥 Device {unit_id} ({device_type}) went offline")
 
         except Exception as e:
             logger.error(f"💥 Offline checker error: {e}")

@@ -66,7 +66,7 @@ export const useWebSocketStore = defineStore('websocketStore', {
       }
 
       this.socket.onclose = (event: CloseEvent) => {
-        logger.warn('❌ Disconnected', event)
+        logger.warn('💥 Disconnected', event)
         this.isConnected = false
         this.socket = null
         this.receivedData = {}

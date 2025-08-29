@@ -35,7 +35,7 @@ class WebSocketManager:
                     "payload": payload
                 })
             except RuntimeError as e:
-                logger.warning(f"❌ Failed to send to WS client: {e}")
+                logger.warning(f"⚠️ Failed to send to WS client: {e}")
                 self.disconnect(websocket)
 
     async def send_to(self, websocket: WebSocket, channel: str, payload: dict):

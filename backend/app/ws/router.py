@@ -24,10 +24,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 raw = await websocket.receive_json()
                 message = adapter.validate_python(raw)
             except WebSocketDisconnect:
-                logger.info("❌ Client disconnected cleanly")
+                logger.info("💥 Client disconnected cleanly")
                 break
             except ValidationError as e:
-                logger.warning(f"❌ Invalid WS message: {e}")
+                logger.warning(f"⚠️ Invalid WS message: {e}")
                 continue
             except Exception as e:
                 logger.exception(f"💥 Error while receiving or validating message: {e}")
@@ -40,7 +40,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 except Exception as e:
                     logger.exception(f"💥 Handler error for action '{message.action}': {e}")
             else:
-                logger.warning(f"🚫 Unknown action: {message.action}")
+                logger.warning(f"⚠️ Unknown action: {message.action}")
 
     except Exception as e:
         logger.exception(f"💥 Unexpected WS error: {e}")

@@ -17,7 +17,7 @@ async def handle_device_state(topic: str, payload: bytes, match):
 
     parser = PacketParser(payload)
     if not parser.parse_header():
-        logger.error(f"❌ Invalid STATE packet from {unit_id}")
+        logger.error(f"💥 Invalid STATE packet from {unit_id}")
         return
 
     hdr = parser.hdr
@@ -32,7 +32,7 @@ async def handle_device_state(topic: str, payload: bytes, match):
         decoded = float_decode.state_single(body)
 
     if not decoded:
-        logger.error(f"❌ Failed to decode STATE from {unit_id}, mode=0x{hdr.mode:02X}")
+        logger.error(f"💥 Failed to decode STATE from {unit_id}, mode=0x{hdr.mode:02X}")
         return
 
     # Build WS event

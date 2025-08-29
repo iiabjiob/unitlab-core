@@ -96,5 +96,5 @@ class SystemInfoService:
             return uptime_str
 
         except Exception as e:
-            logger.exception(f"❌ Failed to get system uptime: {e}")
+            logger.exception(f"💥 Failed to get system uptime: {e}")
             return "Error retrieving uptime"

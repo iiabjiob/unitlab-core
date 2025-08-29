@@ -9,11 +9,11 @@ logger = get_logger("TS")
 CHECK_INTERVAL = 30  # сек
 DAILY_BROADCAST = 24 * 60 * 60
 
-last_event: TimeStatusEvent | None = None
-last_forced_broadcast = 0
-
 async def time_status_broadcaster():
     ws_manager = WebSocketManager.get_instance()
+    last_event: TimeStatusEvent | None = None
+    last_forced_broadcast = 0
+    
     while True:
         try:
             now = datetime.now(timezone.utc).isoformat()

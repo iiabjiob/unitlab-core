@@ -20,13 +20,13 @@ class TemperatureService:
             return f"{temperature}°C"
 
         except FileNotFoundError:
-            logger.error("❌ Temperature file `/sys/class/thermal/thermal_zone0/temp` not found. CPU temperature unavailable.")
+            logger.error("💥 Temperature file `/sys/class/thermal/thermal_zone0/temp` not found. CPU temperature unavailable.")
         except PermissionError:
-            logger.error("❌ Permission denied when accessing `/sys/class/thermal/thermal_zone0/temp`. Try running as root.")
+            logger.error("💥 Permission denied when accessing `/sys/class/thermal/thermal_zone0/temp`. Try running as root.")
         except ValueError:
             logger.error(f"⚠️ Invalid data in temperature file: {result.stdout.strip()}")
         except subprocess.CalledProcessError as e:
-            logger.error(f"❌ Failed to execute command: {e}")
+            logger.error(f"💥 Failed to execute command: {e}")
         except Exception as e:
             logger.exception(f"⚠️ Unexpected error in `get_temperature`: {e}")
 

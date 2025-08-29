@@ -20,9 +20,9 @@ class RedisManager:
                 if await cls._instance.ping():
                     logger.info("✅ Connected to Redis!")
                 else:
-                    logger.error("❌ Redis ping failed!")
+                    logger.error("💥 Redis ping failed!")
             except Exception as e:
-                logger.error(f"❌ Redis connection failed: {e}")
+                logger.error(f"💥 Redis connection failed: {e}")
                 cls._instance = None
 
     @classmethod

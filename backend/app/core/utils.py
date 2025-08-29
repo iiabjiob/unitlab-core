@@ -45,7 +45,7 @@ def enable_ap_mode():
 
         logger.info("✅ Access Point enabled.")
     except subprocess.CalledProcessError as e:
-        logger.error(f"❌ Failed to enable Access Point: {e}")
+        logger.error(f"💥 Failed to enable Access Point: {e}")
 
 def get_mac_suffix(interface: str = "wlan0", bytes_count: int = 2) -> str:
     """

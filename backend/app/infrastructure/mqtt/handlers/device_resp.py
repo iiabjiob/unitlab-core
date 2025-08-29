@@ -17,12 +17,12 @@ async def handle_device_resp(topic: str, payload: bytes, match):
     try:
         parser = PacketParser(payload)
         if not parser.parse_header():
-            logger.error(f"❌ Invalid RESP packet from {unit_id}")
+            logger.error(f"💥 Invalid RESP packet from {unit_id}")
             return
 
         resp = sys_decode.resp(parser.payload())
         if not resp:
-            logger.error(f"❌ Failed to decode RESP from {unit_id}")
+            logger.error(f"💥 Failed to decode RESP from {unit_id}")
             return
 
         status = RespStatus(resp.status)
@@ -39,7 +39,7 @@ async def handle_device_resp(topic: str, payload: bytes, match):
         )
 
     except Exception as e:
-        logger.error(f"❌ Exception while decoding RESP from {unit_id}: {e}")
+        logger.error(f"💥 Exception while decoding RESP from {unit_id}: {e}")
         return
 
     logger.debug(

@@ -26,4 +26,4 @@ async def check_database_connection():
             await conn.execute(text("SELECT 1"))
             logger.info("✅ Connected to the database!")
     except Exception as e:
-        logger.error(f"❌ Database connection failed: {e}")
+        logger.error(f"💥 Database connection failed: {e}")
