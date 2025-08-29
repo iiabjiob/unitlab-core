@@ -10,18 +10,18 @@ export enum WSAction {
   SCAN_DEVICES = "scan_devices",
 }
 
-export enum CmdMode {
-  SET_SINGLE_BIT = "SET_SINGLE_BIT",
-  SET_ALL_BIT = "SET_ALL_BIT",
-  SET_PAIR_BIT = "SET_PAIR_BIT",
-  SET_SINGLE_FLOAT = "SET_SINGLE_FLOAT",
+export enum ReqStateMode {
+  REQ_SINGLE_BIT   = 0x10,
+  REQ_ALL_BIT      = 0x11,
+  REQ_SINGLE_FLOAT = 0x14,
+  REQ_ALL_FLOAT    = 0x15,
 }
 
-export enum ReqStateMode {
-  REQ_SINGLE_BIT = "REQ_SINGLE_BIT",
-  REQ_ALL_BIT = "REQ_ALL_BIT",
-  REQ_SINGLE_FLOAT = "REQ_SINGLE_FLOAT",
-  REQ_ALL_FLOAT = "REQ_ALL_FLOAT",
+export enum CmdMode {
+  SET_SINGLE_BIT   = 0x20,
+  SET_ALL_BIT      = 0x21,
+  SET_PAIR_BIT     = 0x22,
+  SET_SINGLE_FLOAT = 0x30,
 }
 
 // ---------------------------------------------------------------------

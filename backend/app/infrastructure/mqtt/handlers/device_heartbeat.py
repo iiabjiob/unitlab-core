@@ -17,7 +17,7 @@ async def handle_device_heartbeat(topic: str, payload: bytes, match):
     hdr = unpack_header(payload)
     ts = hdr.timestamp_ms
 
-    logger.debug(f"📤 IN ← {device_type.upper()} {unit_id}: heartbeat @ {ts}")
+    logger.debug(f"📥 IN ← {device_type.upper()} {unit_id}: heartbeat @ {ts}")
 
     redis_client = RedisManager.get_instance()
     ws_manager = WebSocketManager.get_instance()

@@ -6,24 +6,15 @@ from app.core.logger import get_logger
 
 logger = get_logger("mqtt")
 
-def request_state_now(device_type: str, unit_id: str, ch: int = None, float_type=False):
-    
+def request_state_now(device_type: str, unit_id: str, mode: State, ch: int | None = None):
     topic = topics.req_state(device_type, unit_id)
-    
-    if float_type:
+
+    if mode in (State.REQ_SINGLE_BIT, State.REQ_SINGLE_FLOAT):
         if ch is None:
-            mode = State.REQ_ALL_FLOAT
-            payload = b""
-        else:
-            mode = State.REQ_SINGLE_FLOAT
-            payload = bytes([ch])
+            raise ValueError(f"{mode.name} requires channel number")
+        payload = bytes([ch])
     else:
-        if ch is None:
-            mode = State.REQ_ALL_BIT
-            payload = b""
-        else:
-            mode = State.REQ_SINGLE_BIT
-            payload = bytes([ch])
+        payload = b""
 
     builder = PacketBuilder()
     builder.build(mode, packet_id=0, ts=0, payload=payload)
