@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     @property
     def redis_url(self) -> str:
         return f"redis://{self.redis_host}:{self.redis_port}/0"
+    
+    heartbeat_ttl: int = 10  # seconds
+    check_heartbeat_interval: int = 5 # seconds
 
 
 @lru_cache

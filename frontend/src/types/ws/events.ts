@@ -15,9 +15,9 @@ export enum WSChannel {
 // Протокол (Modes, Cmd, State) — зеркалит backend/protocol/modes.py
 // ---------------------------------------------------------------------
 export enum StateMode {
-  STATE_SINGLE_BIT    = "STATE_SINGLE_BIT",
-  STATE_ALL_BIT       = "STATE_ALL_BIT",
-  STATE_SINGLE_FLOAT  = "STATE_SINGLE_FLOAT",
+  STATE_SINGLE_BIT   = 0x12,
+  STATE_ALL_BIT      = 0x13,
+  STATE_SINGLE_FLOAT = 0x16,
 }
 
 // ---------------------------------------------------------------------
@@ -50,7 +50,7 @@ export enum RespError {
 export interface DeviceStateEvent {
   channel: WSChannel.DEVICE_STATE
   unit_id: string
-  device_type: string
+  type: string
   timestamp: number
   mode: StateMode
   payload: Record<string, any>
@@ -59,7 +59,7 @@ export interface DeviceStateEvent {
 export interface DeviceRegisterEvent {
   channel: WSChannel.DEVICE_REGISTER
   unit_id: string
-  device_type: string
+  type: string
   channels: number
   firmware_version: number
   is_active: boolean
@@ -70,7 +70,7 @@ export interface DeviceRegisterEvent {
 export interface DeviceRespEvent {
   channel: WSChannel.DEVICE_RESP
   unit_id: string
-  device_type: string
+  type: string
   packet_id: number
   status: RespStatus
   error: RespError
@@ -80,7 +80,7 @@ export interface DeviceRespEvent {
 export interface DeviceHeartbeatEvent {
   channel: WSChannel.DEVICE_STATUS
   unit_id: string
-  device_type: string
+  type: string
   status: "online" | "offline"
   last_seen: number
 }

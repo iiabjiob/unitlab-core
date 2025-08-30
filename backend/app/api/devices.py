@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.db.database import get_db
 from app.models.device import Device
 from app.schemas.device import DeviceOut
+from app.infrastructure.redis.manager import RedisManager
 
 router = APIRouter(prefix="/api", tags=["Devices"])
 
@@ -24,7 +25,25 @@ async def get_devices(
     result = await db.execute(query)
     devices = result.scalars().all()
     
-    return devices
+    redis_client = RedisManager.get_instance()
+
+    enriched: list[DeviceOut] = []
+    for dev in devices:
+        # достаём статус из Redis
+        status = await redis_client.get(f"device:{dev.unit_id}:status")
+        last_seen = await redis_client.get(f"device:{dev.unit_id}:last_seen")
+
+        enriched.append(DeviceOut(
+            unit_id=dev.unit_id,
+            type=dev.type,
+            channels=dev.channels,
+            firmware_version=dev.firmware_version,
+            is_active=dev.is_active,
+            status=(status.decode() if status else "offline"),
+            last_seen=int(last_seen) if last_seen else None,
+        ))
+
+    return enriched
 
 @router.patch("/devices/{unit_id}", summary="Toggle device is_active status")
 async def toggle_device_is_active(unit_id: str, db: AsyncSession = Depends(get_db)):

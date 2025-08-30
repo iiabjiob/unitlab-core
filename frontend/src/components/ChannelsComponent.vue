@@ -10,13 +10,13 @@
     />
 
     <!-- Заглушки -->
-    <ChannelComponent
+    <!-- <ChannelComponent
       v-for="ch in placeholderChannels"
       :key="`${unitId}-ph-${ch.index}`"
       :channel="ch"
       :disabled="true"
       class="opacity-50"
-    />
+    /> -->
   </div>
 </template>
 
@@ -42,25 +42,25 @@ const realChannels = computed<Channel[]>(() => {
 })
 
 // заглушки
-const placeholderChannels = computed<Channel[]>(() => {
-  if (realChannels.value.length > 0) return []
+// const placeholderChannels = computed<Channel[]>(() => {
+//   if (realChannels.value.length > 0) return []
 
-  // пробуем взять из props → иначе из deviceStore
-  const devType = props.deviceType ?? deviceStore.devices.find(d => d.unit_id === props.unitId)?.device_type ?? "DI"
-  const totalChannels = props.channels ?? deviceStore.devices.find(d => d.unit_id === props.unitId)?.channels ?? 0
+//   // пробуем взять из props → иначе из deviceStore
+//   const devType = props.deviceType ?? deviceStore.devices.find(d => d.unit_id === props.unitId)?.type ?? "DI"
+//   const totalChannels = props.channels ?? deviceStore.devices.find(d => d.unit_id === props.unitId)?.channels ?? 0
 
-  const mock: Channel[] = []
-  for (let i = 0; i < totalChannels; i++) {
-    if (devType.toUpperCase() === "DO") {
-      mock.push({ index: i, device_id: props.unitId, type: "DO", state: false, name: `DO${i+1}` })
-    } else if (devType.toUpperCase() === "AO") {
-      mock.push({ index: i, device_id: props.unitId, type: "AO", state: 4+i, name: `AO${i+1}` })
-    } else {
-      mock.push({ index: i, device_id: props.unitId, type: "DI", state: i % 2 === 0, name: `DI${i+1}` })
-    }
-  }
-  return mock
-})
+//   const mock: Channel[] = []
+//   for (let i = 0; i < totalChannels; i++) {
+//     if (devType.toUpperCase() === "DO") {
+//       mock.push({ index: i, device_id: props.unitId, type: "DO", state: false, name: `DO${i+1}` })
+//     } else if (devType.toUpperCase() === "AO") {
+//       mock.push({ index: i, device_id: props.unitId, type: "AO", state: 4+i, name: `AO${i+1}` })
+//     } else {
+//       mock.push({ index: i, device_id: props.unitId, type: "DI", state: i % 2 === 0, name: `DI${i+1}` })
+//     }
+//   }
+//   return mock
+// })
 
 // обработчики
 function onToggle(ch: Channel, state: boolean) {

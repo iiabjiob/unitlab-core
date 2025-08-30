@@ -6,8 +6,8 @@ from app.core.logger import get_logger
 
 logger = get_logger("mqtt")
 
-def request_state_now(device_type: str, unit_id: str, mode: State, ch: int | None = None):
-    topic = topics.req_state(device_type, unit_id)
+def request_state_now(type: str, unit_id: str, mode: State, ch: int | None = None):
+    topic = topics.req_state(type, unit_id)
 
     if mode in (State.REQ_SINGLE_BIT, State.REQ_SINGLE_FLOAT):
         if ch is None:

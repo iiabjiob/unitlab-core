@@ -13,7 +13,7 @@ logger = get_logger("mqtt")
 
 @registry.mqtt_handler(topics.DEVICE_STATE)
 async def handle_device_state(topic: str, payload: bytes, match):
-    device_type, unit_id = match.group(1), match.group(2)
+    type, unit_id = match.group(1), match.group(2)
 
     parser = PacketParser(payload)
     if not parser.parse_header():
@@ -38,13 +38,13 @@ async def handle_device_state(topic: str, payload: bytes, match):
     # Build WS event
     event = DeviceStateEvent(
         unit_id=unit_id,
-        device_type=device_type,
+        type=type,
         timestamp=hdr.timestamp_ms,
         mode=State(hdr.mode),
         payload=asdict(decoded),
     )
 
-    logger.debug(f"📥 IN ← {device_type.upper()} {unit_id}: {event.model_dump()}")
+    logger.debug(f"📥 IN ← {type.upper()} {unit_id}: {event.model_dump()}")
 
     ws_manager = WebSocketManager.get_instance()
     await ws_manager.broadcast(event)

@@ -12,7 +12,7 @@ logger = get_logger("mqtt")
 
 @registry.mqtt_handler(topics.DEVICE_RESP)
 async def handle_device_resp(topic: str, payload: bytes, match):
-    device_type, unit_id = match.group(1), match.group(2)
+    type, unit_id = match.group(1), match.group(2)
 
     try:
         parser = PacketParser(payload)
@@ -31,7 +31,7 @@ async def handle_device_resp(topic: str, payload: bytes, match):
         # Build WS event
         event = DeviceRespEvent(
             unit_id=unit_id,
-            device_type=device_type,
+            type=type,
             packet_id=parser.hdr.packet_id,
             status=status,
             error=error,
@@ -43,7 +43,7 @@ async def handle_device_resp(topic: str, payload: bytes, match):
         return
 
     logger.debug(
-        f"📥 IN ← {device_type.upper()} {unit_id}: RESP packetId={parser.hdr.packet_id} "
+        f"📥 IN ← {type.upper()} {unit_id}: RESP packetId={parser.hdr.packet_id} "
         f"status={status.name} err={error.name}"
     )
 

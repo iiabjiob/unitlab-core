@@ -15,7 +15,7 @@ from enum import Enum
     #   WS:      devices/state
     #
     # В обоих случаях это означает "события для множества устройств",
-    # а само сообщение внутри содержит unit_id, device_type и т.д.
+    # а само сообщение внутри содержит unit_id, type и т.д.
     #
     # Даже если WebSocket сообщение всегда описывает одно устройство,
     # мы НЕ переключаемся на "device/...", чтобы не плодить два разных
@@ -33,8 +33,8 @@ class WSChannel(str, Enum):
 # ---------------------------------------------------------------------
 # Динамические каналы (по устройствам)
 # ---------------------------------------------------------------------
-def device_state(device_type: str, unit_id: str) -> str:
-    return f"devices/{device_type}/{unit_id}/state"
+def device_state(type: str, unit_id: str) -> str:
+    return f"devices/{type}/{unit_id}/state"
 
 # ---------------------------------------------------------------------
 # Event модели
@@ -47,7 +47,7 @@ def device_state(device_type: str, unit_id: str) -> str:
 class DeviceStateEvent(BaseModel):
     channel: Literal[WSChannel.DEVICE_STATE] = WSChannel.DEVICE_STATE
     unit_id: str
-    device_type: str
+    type: str
     timestamp: int
     mode: State                   # Enum из protocol.modes
     payload: Dict[str, Any]
@@ -70,7 +70,7 @@ class DeviceRegisterEvent(DeviceOut):
 class DeviceRespEvent(BaseModel):
     channel: Literal[WSChannel.DEVICE_RESP] = WSChannel.DEVICE_RESP
     unit_id: str
-    device_type: str
+    type: str
     packet_id: int
     status: RespStatus
     error: RespError
@@ -86,7 +86,7 @@ class DeviceRespEvent(BaseModel):
 class DeviceHeartbeatEvent(BaseModel):
     channel: Literal[WSChannel.DEVICE_STATUS] = WSChannel.DEVICE_STATUS
     unit_id: str
-    device_type: str
+    type: str
     status: Literal["online", "offline"]
     last_seen: int
 

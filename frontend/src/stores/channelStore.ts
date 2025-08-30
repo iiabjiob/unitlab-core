@@ -31,75 +31,65 @@ export const useChannelStore = defineStore('channelStore', () => {
 
   // Обновление от backend (DeviceStateEvent → Channels)
   function setSignals(event: DeviceStateEvent) {
-    const unitId = event.unit_id
+  const unitId = event.unit_id
+  const prev = channels.value[unitId] ?? []
+  let updated = [...prev]
 
-    // Пример: маппинг из payload в Channel[]
-    const mapped: Channel[] = []
-    switch (event.mode) {
-      case StateMode.STATE_SINGLE_BIT: {
-        const { ch, value } = event.payload
-        const deviceStore = useDeviceStore()
-        const dev = deviceStore.devices.find(d => d.unit_id === unitId)
-
-        const totalChannels = dev?.channels ?? 32
-        const deviceType = dev?.device_type?.toUpperCase() ?? event.device_type.toUpperCase()
-
-        if (ch < totalChannels) {
-          mapped.push({
-            index: ch,
-            device_id: unitId,
-            type: deviceType === 'DI' ? 'DI' : 'DO',
-            state: !!value,
-            name: `CH${ch + 1}`,
-          })
-        }
-        break
+  switch (event.mode) {
+    case StateMode.STATE_SINGLE_BIT: {
+      const { ch, value } = event.payload
+      const idx = updated.findIndex(c => c.index === ch)
+      if (idx !== -1) {
+        updated[idx].state = !!value
+      } else {
+        updated.push({
+          index: ch,
+          device_id: unitId,
+          type: event.type.toUpperCase() as "DI" | "DO",
+          state: !!value,
+          name: `CH${ch + 1}`,
+        })
       }
-
-      case StateMode.STATE_ALL_BIT: {
-        const { bitmask } = event.payload
-        const deviceStore = useDeviceStore()
-        const dev = deviceStore.devices.find(d => d.unit_id === unitId)
-
-        const totalChannels = dev?.channels ?? 32   // берём из БД/стора
-        const deviceType = dev?.device_type?.toUpperCase() ?? event.device_type.toUpperCase()
-
-        for (let i = 0; i < totalChannels; i++) {
-          mapped.push({
-            index: i,
-            device_id: unitId,
-            type: deviceType === 'DI' ? 'DI' : 'DO',  // тип тоже из БД
-            state: (bitmask >> i) & 1 ? true : false,
-            name: `CH${i + 1}`,
-          })
-        }
-        break
-      }
-
-      case StateMode.STATE_SINGLE_FLOAT: {
-        const { ch, value } = event.payload
-        const deviceStore = useDeviceStore()
-        const dev = deviceStore.devices.find(d => d.unit_id === unitId)
-
-        const totalChannels = dev?.channels ?? 4
-        const deviceType = dev?.device_type?.toUpperCase() ?? event.device_type.toUpperCase()
-
-        if (deviceType === 'AO' && ch < totalChannels) {
-          mapped.push({
-            index: ch,
-            device_id: unitId,
-            type: 'AO',
-            state: value,
-            name: `AO${ch + 1}`,
-          })
-        }
-        break
-      }
+      break
     }
 
-    channels.value[unitId] = mapped
-    logger.debug(`📡 Updated channels for ${unitId}`, mapped)
+    case StateMode.STATE_ALL_BIT: {
+      const { bitmask } = event.payload
+      const total = (useDeviceStore().devices.find(d => d.unit_id === unitId)?.channels) ?? 32
+      updated = []
+      for (let i = 0; i < total; i++) {
+        updated.push({
+          index: i,
+          device_id: unitId,
+          type: event.type.toUpperCase()  as "DI" | "DO",
+          state: (bitmask >> i) & 1 ? true : false,
+          name: `CH${i + 1}`,
+        })
+      }
+      break
+    }
+
+    case StateMode.STATE_SINGLE_FLOAT: {
+      const { ch, value } = event.payload
+      const idx = updated.findIndex(c => c.index === ch)
+      if (idx !== -1) {
+        updated[idx].state = value
+      } else {
+        updated.push({
+          index: ch,
+          device_id: unitId,
+          type: "AO",
+          state: value,
+          name: `AO${ch + 1}`,
+        })
+      }
+      break
+    }
   }
+
+  channels.value[unitId] = updated
+  logger.debug(`📡 Updated channels for ${unitId}`, updated)
+}
 
   // ---- RESP обработка ----
   function setResponse(resp: DeviceRespEvent) {
@@ -118,7 +108,7 @@ export const useChannelStore = defineStore('channelStore', () => {
     const msg: RequestStateMessage = {
       action: WSAction.GET_STATES,
       unit_id: unitId,
-      device_type: deviceType.toLowerCase() as "di" | "do" | "ao",
+      type: deviceType.toLowerCase() as "di" | "do" | "ao",
       mode:
         deviceType.toLowerCase() === "ao"
           ? ReqStateMode.REQ_ALL_FLOAT

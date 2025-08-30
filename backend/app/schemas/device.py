@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-from typing import Optional
+from typing import Optional, Literal
 
 class DeviceOut(BaseModel):
     unit_id: str
@@ -10,7 +10,7 @@ class DeviceOut(BaseModel):
     is_active: bool
 
     # динамика
-    status: Optional[str] = None
+    status: Optional[Literal["online", "offline"]] = None
     last_seen: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)

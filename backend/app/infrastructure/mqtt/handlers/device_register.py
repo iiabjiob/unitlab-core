@@ -32,12 +32,12 @@ async def handle_device_register(topic: str, payload: bytes, match):
         return
 
     unit_id = reg.id
-    device_type = reg.type.strip()   # 4-char code, лучше str.strip()
+    type = reg.type.strip()   # 4-char code, лучше str.strip()
     channels = reg.channels
     firmware_version = str(reg.fwVersion)
 
     logger.debug(
-        f"Registering device {unit_id} (type={device_type}, ch={channels}, fw={firmware_version})"
+        f"Registering device {unit_id} (type={type}, ch={channels}, fw={firmware_version})"
     )
 
     async with AsyncSessionLocal() as session:
@@ -47,7 +47,7 @@ async def handle_device_register(topic: str, payload: bytes, match):
                 unit_id=unit_id,
                 channels=channels,
                 firmware_version=firmware_version,
-                type=device_type,
+                type=type,
                 is_active=True,
             )
             logger.info(f"✅ Registered device: {device.unit_id}")

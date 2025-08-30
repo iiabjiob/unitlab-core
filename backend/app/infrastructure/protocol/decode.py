@@ -88,7 +88,12 @@ class sys:
             return None
         type_str = data[0:4].rstrip(b"\x00").decode("ascii", errors="ignore")
         id_str = data[4:36].rstrip(b"\x00").decode("ascii", errors="ignore")
-        fw_version = endian.read_u16_be(data, 36)
+        
+        fw_num = endian.read_u16_be(data, 36)
+        major = (fw_num >> 8) & 0xFF
+        minor = fw_num & 0xFF
+        fw_version = f"{major}.{minor}"
+        
         channels = endian.read_u16_be(data, 38)
         return Register(
             type=type_str,

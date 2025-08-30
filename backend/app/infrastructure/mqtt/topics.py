@@ -23,26 +23,26 @@ PUBLISH_ONLY_TOPICS = [
 ]
 
 # Генераторы конкретных топиков
-def base(device_type: str, unit_id: str, namespace: str = "unitlab") -> str:
-    return f"{namespace}/devices/{device_type}/{unit_id}"
+def base(type: str, unit_id: str, namespace: str = "unitlab") -> str:
+    return f"{namespace}/devices/{type}/{unit_id}"
 
-def heartbeat(device_type: str, unit_id: str, namespace: str = "unitlab") -> str:
-    return f"{base(device_type, unit_id, namespace)}/heartbeat"
+def heartbeat(type: str, unit_id: str, namespace: str = "unitlab") -> str:
+    return f"{base(type, unit_id, namespace)}/heartbeat"
 
-def state(device_type: str, unit_id: str, namespace: str = "unitlab") -> str:
-    return f"{base(device_type, unit_id, namespace)}/state"
+def state(type: str, unit_id: str, namespace: str = "unitlab") -> str:
+    return f"{base(type, unit_id, namespace)}/state"
 
-def state_channel(device_type: str, unit_id: str, ch: int, namespace: str = "unitlab") -> str:
-    return f"{base(device_type, unit_id, namespace)}/state/ch/{ch}"
+def state_channel(type: str, unit_id: str, ch: int, namespace: str = "unitlab") -> str:
+    return f"{base(type, unit_id, namespace)}/state/ch/{ch}"
 
-def cmd(device_type: str, unit_id: str, namespace: str = "unitlab") -> str:
-    return f"{base(device_type, unit_id, namespace)}/cmd"
+def cmd(type: str, unit_id: str, namespace: str = "unitlab") -> str:
+    return f"{base(type, unit_id, namespace)}/cmd"
 
-def req_state(device_type: str, unit_id: str, namespace: str = "unitlab") -> str:
-    return f"{base(device_type, unit_id, namespace)}/req/state"
+def req_state(type: str, unit_id: str, namespace: str = "unitlab") -> str:
+    return f"{base(type, unit_id, namespace)}/req/state"
 
-def resp(device_type: str, unit_id: str, namespace: str = "unitlab") -> str:
-    return f"{base(device_type, unit_id, namespace)}/resp"
+def resp(type: str, unit_id: str, namespace: str = "unitlab") -> str:
+    return f"{base(type, unit_id, namespace)}/resp"
 
 def register(unit_id: str, namespace: str = "unitlab") -> str:
     return f"{namespace}/device/register/{unit_id}"

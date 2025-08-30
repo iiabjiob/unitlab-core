@@ -46,7 +46,7 @@ export interface ScanDevicesMessage {
 export interface RequestStateMessage {
   action: WSAction.GET_STATES
   unit_id: string
-  device_type: "do" | "di" | "ao"
+  type: "do" | "di" | "ao"
   mode: ReqStateMode
   ch?: number
 }
