@@ -47,7 +47,9 @@ class SetDoCommandMessage(BaseModel):
     chA: Optional[int] = None
     chB: Optional[int] = None
     state2b: Optional[int] = None
-
+    delay_before_ms: int = 0
+    pulse_ms: int = 0
+    repeat: int = 0
 
 class SetAoCommandMessage(BaseModel):
     """

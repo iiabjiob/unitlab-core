@@ -55,7 +55,7 @@ export const useChannelStore = defineStore('channelStore', () => {
 
     case StateMode.STATE_ALL_BIT: {
       const { bitmask } = event.payload
-      const total = (useDeviceStore().devices.find(d => d.unit_id === unitId)?.channels) ?? 32
+      const total = (useDeviceStore().devices.find(d => d.unit_id === unitId)?.channels) ?? 0
       updated = []
       for (let i = 0; i < total; i++) {
         updated.push({

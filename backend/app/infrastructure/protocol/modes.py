@@ -3,7 +3,6 @@
 
 from enum import IntEnum
 
-
 class State(IntEnum):
     # Digital (bit-based)
     REQ_SINGLE_BIT     = 0x10  # [ch]

@@ -1,3 +1,4 @@
+<!-- DeviceComponent.vue -->
 <template>
   <li
     class="flex flex-col p-3 rounded-md bg-white dark:bg-gray-800 shadow-sm"
@@ -31,8 +32,17 @@
       <span v-if="device.location">Location: {{ device.location }}</span>
     </div>
 
+    <!-- Каналы -->
+    <div class="mt-3">
+      <ChannelsComponent
+        :unit-id="device.unit_id"
+        :device-type="device.type"
+        :channels="device.channels"
+      />
+    </div>
+
     <!-- Действия -->
-    <div class="mt-2 flex gap-2">
+    <div class="mt-3 flex gap-2">
       <button
         class="px-2 py-1 text-xs rounded border bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
         @click="toggleActive"
@@ -50,14 +60,19 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
+import { useChannelStore } from "@/stores/channelStore"
 import type { Device } from "@/types/device"
+import ChannelsComponent from "./ChannelsComponent.vue"
 
-const props = defineProps<{
-  device: Device
-}>()
-
+const props = defineProps<{ device: Device }>()
 const deviceStore = useDeviceStore()
+const channelStore = useChannelStore()
+
+onMounted(() => {
+  channelStore.requestStates(props.device.unit_id, props.device.type)
+})
 
 async function toggleActive() {
   await deviceStore.toggleDeviceActive(props.device.unit_id)

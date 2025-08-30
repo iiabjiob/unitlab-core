@@ -31,5 +31,6 @@ const deviceStore = useDeviceStore()
 onMounted(async () => {
   await deviceStore.fetchDevices()
   wsStore.send({ action: WSAction.SCAN_DEVICES })
+
 })
 </script>

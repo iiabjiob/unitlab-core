@@ -52,10 +52,6 @@ class DeviceStateEvent(BaseModel):
     mode: State                   # Enum из protocol.modes
     payload: Dict[str, Any]
 
-    class Config:
-        use_enum_values = False   # сериализация Enum → .name (строка)
-
-
 # ---------------------------------------------------------------------
 # Регистрация устройства
 # ---------------------------------------------------------------------
@@ -76,8 +72,12 @@ class DeviceRespEvent(BaseModel):
     error: RespError
     timestamp: int
 
-    class Config:
-        use_enum_values = False  # сериализация как .name
+    model_config = {
+        "json_encoders": {
+            RespStatus: lambda v: v.name,
+            RespError: lambda v: v.name,
+        }
+    }
 
 # ---------------------------------------------------------------------
 # Heartbeat

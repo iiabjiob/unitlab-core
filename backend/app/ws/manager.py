@@ -33,7 +33,7 @@ class WebSocketManager:
         channel = event.channel
         if channel in self.subscriptions.get(websocket, set()):
             try:
-                await websocket.send_json(event.model_dump())
+                await websocket.send_json(event.model_dump(mode="json"))
             except RuntimeError as e:
                 logger.warning(f"⚠️ Failed to send to WS client: {e}")
                 self.disconnect(websocket)
