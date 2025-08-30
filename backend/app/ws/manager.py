@@ -1,4 +1,5 @@
 from typing import Dict, Set, List
+from pydantic import BaseModel
 from fastapi import WebSocket
 from app.core.logger import get_logger
 
@@ -27,25 +28,25 @@ class WebSocketManager:
             self.active_connections.remove(websocket)
             self.subscriptions.pop(websocket, None)
 
-    async def send_data(self, websocket: WebSocket, channel: str, payload: dict):
+    async def send_event(self, websocket: WebSocket, event: BaseModel):
+        """Отправка Pydantic-события конкретному клиенту"""
+        channel = event.channel
         if channel in self.subscriptions.get(websocket, set()):
             try:
-                await websocket.send_json({
-                    "channel": channel,
-                    "payload": payload
-                })
+                await websocket.send_json(event.model_dump())
             except RuntimeError as e:
                 logger.warning(f"⚠️ Failed to send to WS client: {e}")
                 self.disconnect(websocket)
 
-    async def send_to(self, websocket: WebSocket, channel: str, payload: dict):
-        await self.send_data(websocket, channel, payload)
+    async def send_to(self, websocket: WebSocket, event: BaseModel):
+        await self.send_event(websocket, event)
 
-    async def broadcast(self, channel: str, payload: dict):
+    async def broadcast(self, event: BaseModel):
+        """Рассылка Pydantic-события всем подписчикам"""
         for websocket in list(self.active_connections):
             try:
-                await self.send_data(websocket, channel, payload)
-                logger.debug(f"📡 Broadcast: {channel}: {payload}")
+                await self.send_event(websocket, event)
+                logger.debug(f"📡 Broadcast: {event.channel}: {event.model_dump()}")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to broadcast to one client: {e}")
 

@@ -31,14 +31,14 @@ async def time_status_broadcaster():
             # send only if changed
             if event.status != getattr(last_event, "status", None) \
                or event.source != getattr(last_event, "source", None):
-                await ws_manager.broadcast(event.channel, event.dict())
+                await ws_manager.broadcast(event)
                 last_event = event
                 last_forced_broadcast = asyncio.get_event_loop().time()
                 logger.info(f"TimeStatus update: {event.status} via {event.source}")
 
             # force once a day
             elif asyncio.get_event_loop().time() - last_forced_broadcast > DAILY_BROADCAST:
-                await ws_manager.broadcast(event.channel, event.dict())
+                await ws_manager.broadcast(event)
                 last_forced_broadcast = asyncio.get_event_loop().time()
                 logger.debug("TimeStatus daily refresh broadcast")
 

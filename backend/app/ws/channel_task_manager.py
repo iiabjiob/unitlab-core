@@ -29,8 +29,8 @@ class ChannelTaskManager:
                         break
 
                     try:
-                        data = provider()
-                        await ws_manager.broadcast(channel, data)
+                        event = provider()
+                        await ws_manager.broadcast(event)
                     except Exception as e:
                         logger.error(f"⚠️ Error in provider for {channel}: {e}")
 

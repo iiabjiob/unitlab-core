@@ -74,4 +74,4 @@ async def handle_device_register(topic: str, payload: bytes, match):
     )
 
     ws_manager = WebSocketManager.get_instance()
-    await ws_manager.broadcast(event.channel, event.model_dump())
+    await ws_manager.broadcast(event)
