@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from typing import Literal, Union, Dict, Any
 from app.infrastructure.protocol.modes import State
 from app.infrastructure.protocol.packet_structures import RespStatus, RespError
@@ -63,7 +63,6 @@ class DeviceStateEvent(BaseModel):
 class DeviceRegisterEvent(DeviceOut):
     channel: Literal[WSChannel.DEVICE_REGISTER] = WSChannel.DEVICE_REGISTER
 
-
 # ---------------------------------------------------------------------
 # RESP (ответы на команды)
 # ---------------------------------------------------------------------
@@ -80,7 +79,6 @@ class DeviceRespEvent(BaseModel):
     class Config:
         use_enum_values = False  # сериализация как .name
 
-
 # ---------------------------------------------------------------------
 # Heartbeat
 # ---------------------------------------------------------------------
@@ -92,6 +90,9 @@ class DeviceHeartbeatEvent(BaseModel):
     status: Literal["online", "offline"]
     last_seen: int
 
+# ---------------------------------------------------------------------
+# TimeStatus
+# ---------------------------------------------------------------------
 
 class TimeStatusEvent(TimeStatus):
     channel: Literal[WSChannel.TIME_STATUS] = WSChannel.TIME_STATUS

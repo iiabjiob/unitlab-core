@@ -8,15 +8,19 @@
       No devices yet. Try scanning...
     </div>
     <ul>
-      <li v-for="device in deviceStore.devices" :key="device.unit_id">
-        {{ device.unit_id }} - {{ device.device_type }} - {{ device.status }}
-      </li>
-    </ul>
+    <li v-for="device in deviceStore.devices" :key="device.unit_id"
+        class="flex items-center gap-2">
+      <span class="font-mono">{{ device.unit_id }}</span>
+      <span class="text-sm text-gray-500">{{ device.device_type }}</span>
+      <span :class="device.status === 'online' ? 'text-green-500' : 'text-red-500'">
+        {{ device.status }}
+      </span>
+      <span class="text-xs text-gray-400">
+        last seen: {{ device.last_seen ? new Date(device.last_seen).toLocaleTimeString() : 'never' }}
+      </span>
+    </li>
+</ul>
 
-    <button class="mt-4 px-3 py-1 bg-blue-500 text-white rounded"
-            @click="scanDevices">
-      Scan devices
-    </button>
   </div>
 </template>
 
@@ -31,10 +35,7 @@ const deviceStore = useDeviceStore()
 
 onMounted(async () => {
   await deviceStore.fetchDevices()
-})
-
-function scanDevices() {
   wsStore.send({ action: WSAction.SCAN_DEVICES })
-}
+})
 
 </script>

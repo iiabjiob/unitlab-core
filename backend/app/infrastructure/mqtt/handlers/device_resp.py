@@ -48,4 +48,4 @@ async def handle_device_resp(topic: str, payload: bytes, match):
     )
 
     ws_manager = WebSocketManager.get_instance()
-    await ws_manager.broadcast(WSChannel.DEVICE_RESP, event.model_dump())
+    await ws_manager.broadcast(event.channel, event.model_dump())

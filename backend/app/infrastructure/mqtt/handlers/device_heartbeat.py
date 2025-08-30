@@ -35,4 +35,4 @@ async def handle_device_heartbeat(topic: str, payload: bytes, match):
     )
 
     # Broadcast WS
-    await ws_manager.broadcast(WSChannel.DEVICE_STATE, event.model_dump())
+    await ws_manager.broadcast(event.channel, event.model_dump())
