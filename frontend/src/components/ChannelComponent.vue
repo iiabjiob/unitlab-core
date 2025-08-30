@@ -11,7 +11,7 @@
         size="xs"
         type="secondary"
         class="min-w-[40px]"
-        :disabled="channel.state"
+        :disabled="!channel.state"
         @click="$emit('toggle', false)"
       >
         Off
@@ -20,7 +20,7 @@
         size="xs"
         type="secondary"
         class="min-w-[40px]"
-        :disabled="!channel.state"
+        :disabled="channel.state"
         @click="$emit('toggle', true)"
       >
         On

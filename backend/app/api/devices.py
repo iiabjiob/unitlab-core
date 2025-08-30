@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.db.database import get_db
 from app.models.device import Device
 from app.schemas.device import DeviceOut
+from app.core.utils import to_str
 from app.infrastructure.redis.manager import RedisManager
 
 router = APIRouter(prefix="/api", tags=["Devices"])
@@ -32,14 +33,14 @@ async def get_devices(
         # достаём статус из Redis
         status = await redis_client.get(f"device:{dev.unit_id}:status")
         last_seen = await redis_client.get(f"device:{dev.unit_id}:last_seen")
-
+      
         enriched.append(DeviceOut(
             unit_id=dev.unit_id,
             type=dev.type,
             channels=dev.channels,
             firmware_version=dev.firmware_version,
             is_active=dev.is_active,
-            status=(status.decode() if status else "offline"),
+            status = to_str(status, "offline"),
             last_seen=int(last_seen) if last_seen else None,
         ))
 

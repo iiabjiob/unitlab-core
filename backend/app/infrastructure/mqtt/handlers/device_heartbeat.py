@@ -24,9 +24,23 @@ async def handle_device_heartbeat(topic: str, payload: bytes, match):
     ws_manager = WebSocketManager.get_instance()
 
     # Update status in Redis
-    await redis_client.sadd("devices:online", unit_id)
-    await redis_client.set(f"device:{unit_id}:last_seen", ts, ex=settings.heartbeat_ttl)
-    await redis_client.set(f"device:{unit_id}:type", type)
+    await redis_client.sadd("devices:online", unit_id.encode())
+
+    await redis_client.set(
+        f"device:{unit_id}:last_seen",
+        str(ts).encode(),
+        ex=settings.heartbeat_ttl
+    )
+
+    await redis_client.set(
+        f"device:{unit_id}:type",
+        type.encode()
+    )
+    await redis_client.set(
+        f"device:{unit_id}:status",
+        b"online",
+        ex=settings.heartbeat_ttl
+    )
 
     # Build WS event
     event = DeviceHeartbeatEvent(

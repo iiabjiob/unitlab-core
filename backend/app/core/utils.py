@@ -70,3 +70,16 @@ def get_unit_id(interface: str = "wlan0", bytes_count: int = 2) -> str:
     """
     suffix = get_mac_suffix(interface, bytes_count)
     return f"coreUnit-{suffix}"
+
+def to_str(val, default=None) -> str | None:
+    if isinstance(val, (bytes, bytearray)):
+        return val.decode()
+    if isinstance(val, str):
+        return val
+    return default
+
+def to_int(val, default=None) -> int | None:
+    s = to_str(val)
+    if s and s.isdigit():
+        return int(s)
+    return default
