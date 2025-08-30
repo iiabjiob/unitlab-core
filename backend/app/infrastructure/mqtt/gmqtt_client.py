@@ -87,6 +87,6 @@ class UnitLabMqttClient:
         Called for every incoming MQTT message.
         Will add message routing in the next step.
         """
-        logger.debug(f"📥 Received: {topic} → {payload.decode(errors='replace')}")
+        logger.debug(f"📥 Received: {topic} → {payload.hex(' ')}")
         asyncio.create_task(self.router.route(topic, payload))
 

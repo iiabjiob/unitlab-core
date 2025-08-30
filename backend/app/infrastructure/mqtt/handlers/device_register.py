@@ -2,14 +2,14 @@ from app.infrastructure.protocol.packet_io import PacketParser
 from app.infrastructure.protocol.decode import sys as sys_decode
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.db.database import AsyncSessionLocal
-from app.repositories.device_repository import register_if_not_exists
+from app.repositories.device_repository import register_or_update
 from app.infrastructure.mqtt import topics
 from app.infrastructure.redis.manager import RedisManager
 from app.ws.manager import WebSocketManager
 from app.schemas.ws.events import DeviceRegisterEvent, WSChannel
 from app.core.logger import get_logger
 
-logger = get_logger("device")
+logger = get_logger("dev")
 
 
 @registry.mqtt_handler(topics.DEVICE_REGISTER)
@@ -31,10 +31,10 @@ async def handle_device_register(topic: str, payload: bytes, match):
         logger.error(f"💥 Exception while decoding REGISTER: {e}")
         return
 
-    unit_id = reg["device_id"]
-    device_type = reg["device_type"]
-    channels = reg["channels"]
-    firmware_version = reg["fw_version"]
+    unit_id = reg.id
+    device_type = reg.type.strip()   # 4-char code, лучше str.strip()
+    channels = reg.channels
+    firmware_version = str(reg.fwVersion)
 
     logger.debug(
         f"Registering device {unit_id} (type={device_type}, ch={channels}, fw={firmware_version})"
@@ -42,7 +42,7 @@ async def handle_device_register(topic: str, payload: bytes, match):
 
     async with AsyncSessionLocal() as session:
         try:
-            device = await register_if_not_exists(
+            device = await register_or_update(
                 db=session,
                 unit_id=unit_id,
                 channels=channels,

@@ -41,6 +41,41 @@ async def register_if_not_exists(
         await db.rollback()
         raise RuntimeError(f"Database error during registration: {e}")
     
+async def register_or_update(
+    db: AsyncSession,
+    unit_id: str,
+    channels: int,
+    firmware_version: str,
+    type: str,
+    is_active: bool = True,
+) -> Device:
+    result = await db.execute(select(Device).where(Device.unit_id == unit_id))
+    device = result.scalar_one_or_none()
+
+    if device is None:
+        # create
+        device = Device(
+            unit_id=unit_id,
+            channels=channels,
+            firmware_version=firmware_version,
+            type=type,
+            is_active=is_active,
+        )
+        db.add(device)
+        await db.commit()
+        await db.refresh(device)
+    else:
+        # update
+        device.channels = channels
+        device.firmware_version = firmware_version
+        device.type = type
+        device.is_active = is_active
+
+        await db.commit()
+        await db.refresh(device)
+
+    return device
+
 async def get_all_unit_ids(db: AsyncSession) -> list[str]:
     """
     Возвращает список всех unit_id из таблицы устройств.
@@ -48,3 +83,4 @@ async def get_all_unit_ids(db: AsyncSession) -> list[str]:
     result = await db.execute(select(Device.unit_id))
     unit_ids = [row[0] for row in result.fetchall()]
     return unit_ids
+
