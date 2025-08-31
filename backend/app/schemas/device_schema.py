@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, Literal
 
-class DeviceOut(BaseModel):
+class DeviceSchema(BaseModel):
     unit_id: str
     type: str
     channels: int

@@ -2,6 +2,7 @@ import { WSChannel } from '@/types/ws/events'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { useChannelStore } from '@/stores/channelStore'
 import { useTimeStore } from '@/stores/timeStore'
+import { useEventLogStore } from '@/stores/eventLogStore'
 import { getLogger } from '@/utils/logger'
 
 const logger = getLogger('ws')
@@ -12,13 +13,15 @@ import type {
   DeviceHeartbeatEvent,
   DeviceStateEvent,
   DeviceRespEvent,
-  TimeStatusEvent
+  TimeStatusEvent,
+  EventLogEvent
 } from '@/types/ws/events'
 
 export function handleWsEvent(event: WSEvent) {
   const deviceStore = useDeviceStore()
   const channelStore = useChannelStore()
   const timeStore = useTimeStore()
+  const eventLogStore = useEventLogStore();
 
   switch (event.channel) {
 
@@ -32,7 +35,6 @@ export function handleWsEvent(event: WSEvent) {
     // --- статус (онлайн/оффлайн) ---
     case WSChannel.DEVICE_STATUS:{
       logger.debug("📡 IN ← DEVICE_STATUS:", event)
-
       deviceStore.updateStatus(event as DeviceHeartbeatEvent)
       break
     }
@@ -52,6 +54,12 @@ export function handleWsEvent(event: WSEvent) {
     case WSChannel.TIME_STATUS:{
       logger.debug("📡 IN ← TIME_STATUS:", event)
       timeStore.updateFromSync(event as TimeStatusEvent)
+      break
+    }
+    // --- События ---
+    case WSChannel.EVENT_LOG: {
+      const e = event as EventLogEvent
+      eventLogStore.add(e)
       break
     }
   }

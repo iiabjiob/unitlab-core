@@ -9,6 +9,7 @@ export enum WSChannel {
   DEVICE_RESP     = "devices/resp",
   DEVICE_STATUS   = "devices/status",
   TIME_STATUS     = "time/status",
+  EVENT_LOG       = "events/log",
 }
 
 // ---------------------------------------------------------------------
@@ -89,9 +90,24 @@ export interface TimeStatusEvent extends TimeStatus {
   channel: WSChannel.TIME_STATUS
 }
 
+export interface EventLogEvent {
+  channel: WSChannel.EVENT_LOG   // new channel
+  id: string                     // UUID or server-side sequence
+  ts: number                     // unix ms
+  dir: "IN" | "OUT"              // direction
+  source: "WS_DEVICE" | "WS_COMMAND"
+  channelOrAction: string
+  unit_id?: string
+  type?: string
+  summary: string
+  payload?: Record<string, any>
+}
+
+
 export type WSEvent =
   | DeviceStateEvent
   | DeviceRegisterEvent
   | DeviceRespEvent
   | DeviceHeartbeatEvent
   | TimeStatusEvent
+  | EventLogEvent

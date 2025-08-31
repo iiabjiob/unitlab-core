@@ -1,8 +1,8 @@
-from pydantic import BaseModel, field_serializer
-from typing import Literal, Union, Dict, Any
+from pydantic import BaseModel
+from typing import Literal, Union, Dict, Any, Optional
 from app.infrastructure.protocol.modes import State
 from app.infrastructure.protocol.packet_structures import RespStatus, RespError
-from app.schemas.device import DeviceOut
+from app.schemas.device_schema import DeviceSchema
 from app.schemas.time import TimeStatus
 from enum import Enum
 
@@ -28,13 +28,22 @@ class WSChannel(str, Enum):
     DEVICE_STATE    = "devices/state"
     DEVICE_REGISTER = "devices/register"
     DEVICE_RESP     = "devices/resp"
-    DEVICE_STATUS   = "devices/status"  # online/offline heartbeat
+    DEVICE_STATUS   = "devices/status"
+    EVENT_LOG = "events/log"
+
+class EventDirection(str, Enum):
+    IN = "IN"
+    OUT = "OUT"
+
+class EventSource(str, Enum):
+    WS_DEVICE = "WS_DEVICE"
+    WS_COMMAND = "WS_COMMAND"
 
 # ---------------------------------------------------------------------
 # Динамические каналы (по устройствам)
 # ---------------------------------------------------------------------
-def device_state(type: str, unit_id: str) -> str:
-    return f"devices/{type}/{unit_id}/state"
+# def device_state(type: str, unit_id: str) -> str:
+#     return f"devices/{type}/{unit_id}/state"
 
 # ---------------------------------------------------------------------
 # Event модели
@@ -56,7 +65,7 @@ class DeviceStateEvent(BaseModel):
 # Регистрация устройства
 # ---------------------------------------------------------------------
 
-class DeviceRegisterEvent(DeviceOut):
+class DeviceRegisterEvent(DeviceSchema):
     channel: Literal[WSChannel.DEVICE_REGISTER] = WSChannel.DEVICE_REGISTER
 
 # ---------------------------------------------------------------------
@@ -98,6 +107,28 @@ class TimeStatusEvent(TimeStatus):
     channel: Literal[WSChannel.TIME_STATUS] = WSChannel.TIME_STATUS
 
 # ---------------------------------------------------------------------
+# EventLog
+# ---------------------------------------------------------------------
+class EventLogEvent(BaseModel):
+    channel: Literal[WSChannel.EVENT_LOG] = WSChannel.EVENT_LOG
+    id: str
+    ts: int
+    dir: EventDirection
+    source: EventSource
+    channel_or_action: str
+    unit_id: Optional[str]
+    type: Optional[str]
+    summary: str
+    payload: Optional[Any]
+
+    model_config = {
+        "json_encoders": {
+            EventDirection: lambda v: v.name,
+            EventSource: lambda v: v.name,
+        }
+    }
+
+# ---------------------------------------------------------------------
 # Union для всех событий
 # ---------------------------------------------------------------------
 
@@ -107,4 +138,5 @@ WSEvent = Union[
     DeviceRespEvent,
     DeviceHeartbeatEvent,
     TimeStatusEvent,
+    EventLogEvent,
 ]

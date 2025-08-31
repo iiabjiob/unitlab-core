@@ -4,13 +4,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.db.database import get_db
 from app.models.device import Device
-from app.schemas.device import DeviceOut
+from app.schemas.device_schema import DeviceSchema
 from app.core.utils import to_str
 from app.infrastructure.redis.manager import RedisManager
 
 router = APIRouter(prefix="/api", tags=["Devices"])
 
-@router.get("/devices", response_model=list[DeviceOut])
+@router.get("/devices", response_model=list[DeviceSchema])
 async def get_devices(
     db: AsyncSession = Depends(get_db),
     is_active: Optional[bool] = Query(None),
@@ -28,13 +28,13 @@ async def get_devices(
     
     redis_client = RedisManager.get_instance()
 
-    enriched: list[DeviceOut] = []
+    enriched: list[DeviceSchema] = []
     for dev in devices:
         # достаём статус из Redis
         status = await redis_client.get(f"device:{dev.unit_id}:status")
         last_seen = await redis_client.get(f"device:{dev.unit_id}:last_seen")
       
-        enriched.append(DeviceOut(
+        enriched.append(DeviceSchema(
             unit_id=dev.unit_id,
             type=dev.type,
             channels=dev.channels,

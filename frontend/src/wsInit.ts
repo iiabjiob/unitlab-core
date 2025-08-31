@@ -12,6 +12,7 @@ export function initWebSocket() {
     WSChannel.DEVICE_STATE,
     WSChannel.DEVICE_RESP,
     WSChannel.TIME_STATUS,
+    WSChannel.EVENT_LOG,
   ])
 
 }

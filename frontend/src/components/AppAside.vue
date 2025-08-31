@@ -8,26 +8,34 @@
 
     <!-- Menu -->
     <nav class="flex-1 py-2 space-y-1 px-2">
-
       <RouterLink
         to="/devices"
         class="flex items-center rounded hover:bg-gray-100 dark:hover:bg-gray-700 h-8"
       >
-
         <DraftIcon class="w-16" size="20" />
-
         <span>Devices</span>
       </RouterLink>
     </nav>
 
+    <!-- Event Log (footer) -->
+     <AsideEventLogComponent/>
 
   </aside>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
 import DraftIcon from "./icons/DraftIcon.vue";
 import AppLogo from "./AppLogo.vue";
 import HealthStatusComponent from "./HealthStatusComponent.vue";
+import { onMounted } from "vue"
+import { useEventLogStore } from "@/stores/eventLogStore";
+import AsideEventLogComponent from "./AsideEventLogComponent.vue";
 
+const eventLogStore = useEventLogStore();
+
+onMounted(() => {
+  if (!eventLogStore.items.length) {
+    eventLogStore.fetchEvents() // загружаем историю
+  }
+})
 </script>

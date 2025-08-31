@@ -13,4 +13,5 @@ export const ApiBuilder = {
   devices: (params?: Record<string, any>) => buildQuery('/api/devices', params),
   device: (unitId: string) => `/api/devices/${unitId}`,
   time: (params?: Record<string, any>) => buildQuery('/api/time', params),
+  events: (params?: Record<string, any>) => buildQuery('/api/events', params),
 }
