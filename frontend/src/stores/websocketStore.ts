@@ -17,6 +17,7 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
   // server subscriptions
   const activeServerSubs = ref<Set<string>>(new Set())
   const pendingServerSubs: string[][] = []
+  const serverSyncedSubs = new Set<string>()
 
   // local listeners
   const localListeners = new Map<string, Set<(event: any) => void>>()
@@ -46,28 +47,32 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
     socket.value.onopen = () => {
       isConnected.value = true
       reconnectAttempts.value = 0
+      serverSyncedSubs.clear()
       logger.info("✅ Connected")
 
-      // flush queued messages
+      // Flush queued messages first
       while (messageQueue.length > 0) {
         const msg = messageQueue.shift()!
         _sendNow(msg)
       }
 
-      // re-subscribe to server channels
-      if (activeServerSubs.value.size > 0) {
+      // Prefer flushing pending requests if they exist
+      if (pendingServerSubs.length > 0) {
+        // Merge all pending batches & de-dup
+        const merged = Array.from(
+          new Set(pendingServerSubs.flat())
+        )
+        logger.info("⏩ Flushing pending server subs:", merged)
+        // Now that we're going to send them to server, reflect them in "active"
+        merged.forEach((ch) => activeServerSubs.value.add(ch))
+        requestServerSubscribe(merged)
+        pendingServerSubs.length = 0
+
+      } else if (activeServerSubs.value.size > 0) {
+        // No pendings → we re-request what we believe should be active (reconnect case)
         const channels = [...activeServerSubs.value]
         logger.info("🔄 Re-requesting server subs:", channels)
         requestServerSubscribe(channels)
-      }
-
-      // flush delayed sub requests
-      if (pendingServerSubs.length > 0) {
-        for (const batch of pendingServerSubs) {
-          logger.info("⏩ Flushing pending server subs:", batch)
-          requestServerSubscribe(batch)
-        }
-        pendingServerSubs.length = 0
       }
     }
 
@@ -119,14 +124,20 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
   // ---------------- server subscriptions ----------------
   function requestServerSubscribe(channels: string[]) {
     if (!channels?.length) return
-    channels.forEach((ch) => activeServerSubs.value.add(ch))
 
     if (isConnected.value) {
-      logger.info("📡 Request SUB →", channels)
-      send({ action: WSAction.SUBSCRIBE, channels })
+      const toSend = channels.filter((ch) => !serverSyncedSubs.has(ch))
+      if (toSend.length) {
+        toSend.forEach((ch) => {
+          activeServerSubs.value.add(ch)
+          serverSyncedSubs.add(ch)
+        })
+        logger.info("📡 Request SUB →", toSend)
+        send({ action: WSAction.SUBSCRIBE, channels: toSend })
+      }
     } else {
       logger.info("⏳ Queue SUB (offline) →", channels)
-      pendingServerSubs.push(channels)
+      pendingServerSubs.push(Array.from(new Set(channels)))
     }
   }
 
