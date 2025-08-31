@@ -32,15 +32,8 @@ export function handleWsEvent(event: WSEvent) {
     // --- статус (онлайн/оффлайн) ---
     case WSChannel.DEVICE_STATUS:{
       logger.debug("📡 IN ← DEVICE_STATUS:", event)
-      const e = event as DeviceHeartbeatEvent
 
-      const prev = deviceStore.devices.find(d => d.unit_id === e.unit_id)?.status
-      deviceStore.updateStatus(e)
-
-      // запросим состояния только при переходе offline → online
-      if (prev !== "online" && e.status === "online") {
-        channelStore.requestStates(e.unit_id, e.type)
-      }
+      deviceStore.updateStatus(event as DeviceHeartbeatEvent)
       break
     }
     // --- состояние сигналов ---
