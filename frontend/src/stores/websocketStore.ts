@@ -47,7 +47,7 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
     socket.value.onopen = () => {
       isConnected.value = true
       reconnectAttempts.value = 0
-      serverSyncedSubs.clear()
+
       logger.info("✅ Connected")
 
       // Flush queued messages first

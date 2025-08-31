@@ -38,6 +38,7 @@
         :unit-id="device.unit_id"
         :device-type="device.type"
         :channels="device.channels"
+        :disabled="device.status !== 'online'"
       />
     </div>
 
@@ -60,19 +61,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
-import { useChannelStore } from "@/stores/channelStore"
 import type { Device } from "@/types/device"
 import ChannelsComponent from "./ChannelsComponent.vue"
 
 const props = defineProps<{ device: Device }>()
 const deviceStore = useDeviceStore()
-const channelStore = useChannelStore()
-
-onMounted(() => {
-  channelStore.requestStates(props.device.unit_id, props.device.type)
-})
 
 async function toggleActive() {
   await deviceStore.toggleDeviceActive(props.device.unit_id)
