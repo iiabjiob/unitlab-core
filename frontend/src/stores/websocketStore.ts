@@ -10,6 +10,7 @@ const logger = getLogger("WS")
 export const useWebSocketStore = defineStore("websocketStore", () => {
   const socket = ref<WebSocket | null>(null)
   const isConnected = ref(false)
+  const everConnected = ref(false)
 
   // очередь всех сообщений, пока сокет не открыт
   const messageQueue: WSMessage[] = []
@@ -47,7 +48,7 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
     socket.value.onopen = () => {
       isConnected.value = true
       reconnectAttempts.value = 0
-
+      everConnected.value = true // было соединение хоть раз
       logger.info("✅ Connected")
 
       // Flush queued messages first
@@ -192,6 +193,7 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
   return {
     socket,
     isConnected,
+    everConnected,
     connect,
     send,
     requestServerSubscribe,
