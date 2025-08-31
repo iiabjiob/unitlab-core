@@ -1,9 +1,7 @@
 import time
 from app.infrastructure.mqtt.handler_registry import registry
-from app.ws.manager import WebSocketManager
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.mqtt import topics
-from app.schemas.ws.events import DeviceHeartbeatEvent
 from app.core.config import get_settings
 from app.core.logger import get_logger
 
@@ -21,7 +19,6 @@ async def handle_device_heartbeat(topic: str, payload: bytes, match):
     logger.debug(f"📥 IN ← {type.upper()} {unit_id}: heartbeat @ {ts}")
 
     redis_client = RedisManager.get_instance()
-    ws_manager = WebSocketManager.get_instance()
 
     # Update status in Redis
     await redis_client.sadd("devices:online", unit_id.encode())
@@ -41,14 +38,3 @@ async def handle_device_heartbeat(topic: str, payload: bytes, match):
         b"online",
         ex=settings.heartbeat_ttl
     )
-
-    # Build WS event
-    event = DeviceHeartbeatEvent(
-        unit_id=unit_id,
-        type=type,
-        status="online",
-        last_seen=ts,
-    )
-
-    # Broadcast WS
-    await ws_manager.broadcast(event)
