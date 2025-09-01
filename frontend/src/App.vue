@@ -5,7 +5,6 @@
       <div class="flex flex-1 overflow-hidden">
         <AppAside />
         <main class="flex-1 overflow-auto">
-          <AppHeader class="border-b border-gray-200 dark:border-gray-800" />
           <RouterView />
         </main>
       </div>
@@ -22,15 +21,18 @@
     </template>
 
     <template v-else-if="wsStatus === 'lost'">
-      <!-- Сервер упал во время работы -->
-      <div class="flex flex-col flex-1">
-        <AppHeader />
-        <div class="flex-1 flex items-center justify-center">
-          <div class="text-center">
-            <p class="text-lg font-semibold">⚠️ Lost connection</p>
-            <p class="text-sm text-gray-500 mt-2">Trying to reconnect…</p>
+
+      <div class="flex flex-1 overflow-hidden">
+        <AppAside />
+        <main class="flex-1 flex flex-col overflow-hidden">
+          <!-- <AppHeader class="border-b border-gray-200 dark:border-gray-800" /> -->
+          <div class="flex-1 flex items-center justify-center">
+            <div class="text-center">
+              <p class="text-lg font-semibold">⚠️ Lost connection</p>
+              <p class="text-sm text-gray-500 mt-2">Trying to reconnect…</p>
+            </div>
           </div>
-        </div>
+        </main>
       </div>
     </template>
   </div>
@@ -38,7 +40,6 @@
 
 <script setup lang="ts">
 import { computed } from "vue"
-import AppHeader from "./components/AppHeader.vue"
 import AppAside from "./components/AppAside.vue"
 import { useWebSocketStore } from "@/stores/websocketStore"
 

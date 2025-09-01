@@ -21,14 +21,8 @@
       >
         <!-- Row 1: timestamp + device -->
         <div class="flex items-center gap-2">
-          <span
-            class="shrink-0 inline-flex items-center justify-center w-4 h-4 rounded-full border text-[10px]"
-            :class="e.dir === 'IN'
-              ? 'border-green-400 text-green-600'
-              : 'border-blue-400 text-blue-600'"
-            :title="e.dir"
-          >
-            {{ e.dir === 'IN' ? '⬇' : '⬆' }}
+          <span :title="e.dir">
+            {{ e.dir === 'IN' ? '📥' : '➡️' }}
           </span>
 
           <span class="font-mono text-gray-500 dark:text-gray-400 text-xs">
@@ -52,46 +46,9 @@
 </template>
 
 <script lang="ts" setup>
-// import { computed } from "vue";
 import { useEventLogStore } from "@/stores/eventLogStore";
-import { formatTs } from "@/types/eventLog";
+import { formatTs } from "@/utils/datetime";
 
 const store = useEventLogStore();
-// const lastSix = computed(() => store.lastN(6));
-
-/**
- * Build a compact summary for display in aside.
- */
-// function formatSummary(e: any): string {
-//   // DO single bit command
-//   if (e.summary?.startsWith("DO SET_SINGLE_BIT")) {
-//     const ch = e.payload?.ch ?? "?"
-//     const val = e.payload?.value ? "On" : "Off"
-//     return `DO${ch} → ${val}`
-//   }
-
-//   // DO all bits
-//   if (e.summary?.startsWith("DO SET_ALL_BIT")) {
-//     return `DO all → bitmask=0x${e.payload?.bitmask?.toString(16).toUpperCase()}`
-//   }
-
-//   // Device registered
-//   if (e.summary?.toLowerCase().includes("registered")) {
-//     return "Device registered"
-//   }
-
-//   // RESP ack
-//   if (e.summary?.includes("RESP")) {
-//     return "Command ack"
-//   }
-
-//   // STATE updates
-//   if (e.summary?.startsWith("STATE update")) {
-//     return "State update"
-//   }
-
-//   // Fallback
-//   return e.summary || e.channelOrAction
-// }
 
 </script>

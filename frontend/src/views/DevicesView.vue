@@ -1,6 +1,7 @@
 <template>
-  <div class="p-4">
-    <h1 class="text-xl mb-4">Devices</h1>
+  <div class="p-5">
+    <!-- Keep title only on small screens -->
+    <h1 class="text-xl mb-4 md:hidden">Devices</h1>
 
     <div v-if="deviceStore.isLoading">Loading...</div>
 
@@ -8,15 +9,29 @@
       No devices yet. Try scanning...
     </div>
 
-    <ul v-else class="space-y-2">
-      <DeviceComponent
-        v-for="device in deviceStore.devices"
-        :key="device.unit_id"
-        :device="device"
-      />
+    <!-- Grid on md+; simple list on mobile -->
+    <ul
+      v-else
+      class="
+        grid gap-5
+        grid-cols-1
+        sm:grid-cols-1
+        lg:grid-cols-2
+        xl:grid-cols-3
+        2xl:grid-cols-4
+        3xl:grid-cols-5
+      "
+    >
+      <li v-for="device in deviceStore.devices" :key="device.unit_id">
+        <DeviceComponent
+          :key="device.unit_id"
+          :device="device"
+          />
+      </li>
     </ul>
   </div>
 </template>
+
 
 <script setup lang="ts">
 import { onMounted } from "vue"

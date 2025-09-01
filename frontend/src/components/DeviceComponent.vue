@@ -6,14 +6,10 @@
     <div class="flex items-center justify-between">
       <!-- ID + статус + Active -->
       <div class="flex items-center gap-2 flex-wrap">
-        <!-- Status -->
-        <span class="text-[6px]">{{ device.status === 'online' ? '🟢' : '🔴' }}</span>
         <!-- ID -->
         <span class="font-mono font-semibold">{{ device.unit_id }}</span>
-        <!-- isActive -->
-        <BadgeComponent class="text-xs">
-            {{ device.is_active ? 'Active' : 'Inactive' }}
-          </BadgeComponent>
+
+        <OnlineStatusComponent :status="device.status"/>
 
       </div>
 
@@ -21,7 +17,7 @@
       <Menu as="div" class="relative inline-block text-left">
         <div>
           <MenuButton
-            class="flex items-center justify-center rounded-full w-6 h-6 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer"
+            class="flex items-center justify-center rounded-full w-6 h-6 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer text-xl font-bold"
           >
             ⋮
           </MenuButton>
@@ -36,7 +32,7 @@
           leave-to="transform opacity-0 scale-95"
         >
           <MenuItems
-            class="absolute right-0 mt-2 w-40 origin-top-right rounded-md bg-white dark:bg-gray-700 shadow-lg ring-1 ring-gray-200 ring-opacity-5 focus:outline-none z-10"
+            class="absolute right-0 mt-2 w-40 origin-top-right rounded-md bg-white dark:bg-gray-700 shadow-lg ring-1 ring-gray-200 dark:ring-gray-600 ring-opacity-5 focus:outline-none z-10"
           >
             <div class="py-1">
               <MenuItem v-slot="{ active }">
@@ -69,15 +65,26 @@
 
     <!-- Информация -->
     <div
-      class="mt-1 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1"
+      class="mt-1 text-xs text-gray-500 flex flex-wrap gap-x-1 gap-y-1"
     >
-      <span>Type: {{ device.type }}</span>
-      <span>Channels: {{ device.channels }}</span>
-      <span>FW: {{ device.firmware_version || 'n/a' }}</span>
-      <span v-if="device.last_seen">
-        Last seen: {{ new Date(device.last_seen).toLocaleTimeString() }}
-      </span>
-      <span v-if="device.location">Location: {{ device.location }}</span>
+      <!-- isActive -->
+      <BadgeComponent class="text-xs"
+        :variant="device.is_active ? 'success' : 'neutral'"
+        >
+        {{ device.is_active ? 'Active' : 'Inactive' }}
+      </BadgeComponent>
+
+      <!-- Type -->
+      <BadgeComponent class="text-xs">Type: {{ device.type }}</BadgeComponent>
+      <!-- Channels -->
+      <BadgeComponent class="text-xs">Channels: {{ device.channels }}</BadgeComponent>
+      <!-- Firmware version -->
+      <BadgeComponent class="text-xs">FW: {{ device.firmware_version || 'n/a' }}</BadgeComponent>
+      <!-- Location (optional) -->
+      <BadgeComponent class="text-xs" v-if="device.location">Location: {{ device.location }}</BadgeComponent>
+      <!-- Last seen -->
+      <BadgeComponent class="text-xs" v-if="device.last_seen">Last seen: {{ new Date(device.last_seen).toLocaleTimeString() }}</BadgeComponent>
+
     </div>
 
     <!-- Каналы -->
@@ -98,6 +105,7 @@ import { useDeviceStore } from "@/stores/deviceStore"
 import type { Device } from "@/types/device"
 import ChannelsComponent from "./ChannelsComponent.vue"
 import BadgeComponent from "./ui/BadgeComponent.vue"
+import OnlineStatusComponent from "./OnlineStatusComponent.vue"
 
 const props = defineProps<{ device: Device }>()
 const deviceStore = useDeviceStore()
