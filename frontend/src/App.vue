@@ -14,7 +14,6 @@
       <!-- Заглушка при первом запуске -->
       <div class="flex-1 flex items-center justify-center">
         <div class="text-center">
-          <!-- <img src="/logo.svg" class="h-16 w-16 mx-auto mb-4" /> -->
           <p class="text-lg font-semibold">🔌 Connecting to server...</p>
         </div>
       </div>
@@ -25,7 +24,6 @@
       <div class="flex flex-1 overflow-hidden">
         <AppAside />
         <main class="flex-1 flex flex-col overflow-hidden">
-          <!-- <AppHeader class="border-b border-neutral-200 dark:border-neutral-800" /> -->
           <div class="flex-1 flex items-center justify-center">
             <div class="text-center">
               <p class="text-lg font-semibold">⚠️ Lost connection</p>

@@ -1,5 +1,9 @@
 <template>
-  <aside class="bg-white dark:bg-neutral-800 flex flex-col w-80 border-r border-neutral-200 dark:border-neutral-700">
+  <aside
+    class="bg-white dark:bg-neutral-800 flex flex-col w-80 border-r border-neutral-200 dark:border-neutral-700"
+    :class="wsStatus==='offline' ? 'opacity-60 pointer-events-none select-none' : ''"
+    :aria-disabled="wsStatus==='offline'"
+    >
 
     <div class="flex flex-col px-5 py-3 border-b border-neutral-200 dark:border-neutral-700">
 

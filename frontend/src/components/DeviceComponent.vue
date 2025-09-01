@@ -1,6 +1,7 @@
 <template>
   <li
-    class="flex flex-col p-3 rounded-md bg-white dark:bg-neutral-800 shadow-sm"
+    class="flex flex-col p-3 rounded-md bg-white dark:bg-neutral-800 shadow-sm border dark:border-neutral-700 border-neutral-200"
+    :class="device.status==='offline' ? 'opacity-60' : ''"
   >
     <!-- Верхняя строка -->
     <div class="flex items-center justify-between">
