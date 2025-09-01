@@ -1,6 +1,6 @@
 <template>
   <li
-    class="flex flex-col p-3 rounded-md bg-white dark:bg-neutral-800 shadow-sm border dark:border-neutral-700 border-neutral-200"
+    class="flex flex-col h-full p-3 rounded-md bg-white dark:bg-neutral-800 shadow-sm border dark:border-neutral-700 border-neutral-200"
     :class="device.status==='offline' ? 'opacity-60' : ''"
   >
     <!-- Верхняя строка -->
@@ -91,10 +91,17 @@
     <!-- Каналы -->
     <div class="mt-3">
       <ChannelsComponent
+        v-if="device.status === 'online'"
         :unit-id="device.unit_id"
         :device-type="device.type"
         :channels="device.channels"
-        :disabled="device.status !== 'online'"
+      />
+
+      <ChannelsPlaceholder
+        v-else
+        :unit-id="device.unit_id"
+        :device-type="device.type"
+        :channels="device.channels"
       />
     </div>
   </li>
@@ -107,6 +114,7 @@ import type { Device } from "@/types/device"
 import ChannelsComponent from "./ChannelsComponent.vue"
 import BadgeComponent from "./ui/BadgeComponent.vue"
 import OnlineStatusComponent from "./OnlineStatusComponent.vue"
+import ChannelsPlaceholder from "./ChannelsPlaceholder.vue"
 
 const props = defineProps<{ device: Device }>()
 const deviceStore = useDeviceStore()

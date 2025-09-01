@@ -20,9 +20,10 @@
         xl:grid-cols-3
         2xl:grid-cols-4
         3xl:grid-cols-5
+        items-stretch
       "
     >
-      <li v-for="device in deviceStore.devices" :key="device.unit_id">
+      <li v-for="device in deviceStore.devices" :key="device.unit_id" class="h-full">
         <DeviceComponent
           :key="device.unit_id"
           :device="device"
