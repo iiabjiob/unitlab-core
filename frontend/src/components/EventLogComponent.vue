@@ -3,6 +3,14 @@
     <!-- Grid container (fills remaining space) -->
       <div class="h-dvh w-full">
 
+        <!-- Toolbar -->
+        <div class="p-2 flex gap-2 justify-end">
+          <ButtonComponent type="secondary" @click="exportCsv"
+          >
+            Export CSV
+          </ButtonComponent>
+        </div>
+
         <AgGridVue
           style="height: 100%; width: 100%;"
           :rowData="rows"
@@ -16,6 +24,7 @@
           :domLayout="'normal'"
           :pagination="false"
           :theme="theme"
+          @grid-ready="onGridReady"
         />
       </div>
 
@@ -28,14 +37,23 @@ import { AgGridVue } from "ag-grid-vue3"
 import type {
   ColDef,
   GetRowIdParams,
+  GridApi,
+  GridReadyEvent,
 } from "ag-grid-community"
 import { themeBalham } from "ag-grid-community"
 
 const theme = themeBalham
 
+let gridApi: GridApi | null = null
+
+function onGridReady(params: GridReadyEvent) {
+  gridApi = params.api
+}
+
 import { useEventLogStore } from "@/stores/eventLogStore"
 import type { EventLogEntry } from "@/types/eventLog"
 import { formatTsFull } from "@/utils/datetime"
+import ButtonComponent from "./ui/ButtonComponent.vue"
 
 
 onMounted(() => {
@@ -52,6 +70,31 @@ onMounted(() => {
     )
   })
 })
+
+function exportCsv() {
+  gridApi?.exportDataAsCsv({
+    fileName: "event-log.csv",
+    exportedRows: "filteredAndSorted", // 👈 учесть фильтры и сортировку
+    allColumns: false,                 // только видимые колонки
+    columnSeparator: ";",              // если нужен ; вместо ,
+    prependContent: [
+      [
+        { data: { value: "UnitLab Event Log Export" }, mergeAcross: 3 }
+      ],
+      [
+        { data: { value: "Generated: " + new Date().toLocaleString() } }
+      ]
+    ],
+    appendContent: "\n--- End of Report ---",
+    processCellCallback: params => {
+      if (params.column.getColId() === "time") {
+        // Пример: выгружать timestamp вместо formatTsFull
+        return params.node?.data?.ts?.toString() ?? ""
+      }
+      return params.value
+    }
+  })
+}
 
 // ---- Store ----
 const store = useEventLogStore()
