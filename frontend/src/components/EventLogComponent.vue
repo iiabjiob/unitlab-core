@@ -23,7 +23,7 @@
 
 <script setup lang="ts">
 
-import { ref, computed} from "vue"
+import { ref, computed, onMounted} from "vue"
 import { AgGridVue } from "ag-grid-vue3"
 import type {
   ColDef,
@@ -36,6 +36,22 @@ const theme = themeBalham
 import { useEventLogStore } from "@/stores/eventLogStore"
 import type { EventLogEntry } from "@/types/eventLog"
 import { formatTsFull } from "@/utils/datetime"
+
+
+onMounted(() => {
+  // синхронизация с системной темой
+  const mql = window.matchMedia("(prefers-color-scheme: dark)")
+  document.documentElement.setAttribute(
+    "data-ag-theme-mode",
+    mql.matches ? "dark" : "light"
+  )
+  mql.addEventListener("change", e => {
+    document.documentElement.setAttribute(
+      "data-ag-theme-mode",
+      e.matches ? "dark" : "light"
+    )
+  })
+})
 
 // ---- Store ----
 const store = useEventLogStore()
