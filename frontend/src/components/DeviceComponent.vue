@@ -1,6 +1,6 @@
 <template>
   <li
-    class="flex flex-col p-3 rounded-md bg-white dark:bg-gray-800 shadow-sm"
+    class="flex flex-col p-3 rounded-md bg-white dark:bg-neutral-800 shadow-sm"
   >
     <!-- Верхняя строка -->
     <div class="flex items-center justify-between">
@@ -17,7 +17,7 @@
       <Menu as="div" class="relative inline-block text-left">
         <div>
           <MenuButton
-            class="flex items-center justify-center rounded-full w-6 h-6 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer text-xl font-bold"
+            class="flex items-center justify-center rounded-full w-6 h-6 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer text-xl font-bold"
           >
             ⋮
           </MenuButton>
@@ -32,15 +32,15 @@
           leave-to="transform opacity-0 scale-95"
         >
           <MenuItems
-            class="absolute right-0 mt-2 w-40 origin-top-right rounded-md bg-white dark:bg-gray-700 shadow-lg ring-1 ring-gray-200 dark:ring-gray-600 ring-opacity-5 focus:outline-none z-10"
+            class="absolute right-0 mt-2 w-40 origin-top-right rounded-md bg-white dark:bg-neutral-700 shadow-lg ring-1 ring-neutral-200 dark:ring-neutral-600 ring-opacity-5 focus:outline-none z-10"
           >
             <div class="py-1">
               <MenuItem v-slot="{ active }">
                 <button
                   @click="toggleActive"
                   :class="[
-                    active ? 'bg-gray-100 dark:bg-gray-600' : '',
-                    'block w-full px-4 py-2 text-sm text-left text-gray-700 dark:text-gray-200'
+                    active ? 'bg-neutral-100 dark:bg-neutral-600' : '',
+                    'block w-full px-4 py-2 text-sm text-left text-neutral-700 dark:text-neutral-200'
                   ]"
                 >
                   {{ device.is_active ? 'Deactivate' : 'Activate' }}
@@ -50,7 +50,7 @@
                 <button
                   @click="deleteDev"
                   :class="[
-                    active ? 'bg-gray-100 dark:bg-gray-600' : '',
+                    active ? 'bg-neutral-100 dark:bg-neutral-600' : '',
                     'block w-full px-4 py-2 text-sm text-left text-red-600 dark:text-red-400'
                   ]"
                 >
@@ -65,7 +65,7 @@
 
     <!-- Информация -->
     <div
-      class="mt-1 text-xs text-gray-500 flex flex-wrap gap-x-1 gap-y-1"
+      class="mt-1 text-xs text-neutral-500 flex flex-wrap gap-x-1 gap-y-1"
     >
       <!-- isActive -->
       <BadgeComponent class="text-xs"

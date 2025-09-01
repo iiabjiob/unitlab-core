@@ -1,16 +1,16 @@
 <template>
-  <aside class="p-3 border-t border-gray-200 dark:border-gray-700">
+  <aside class="p-3 border-t border-neutral-200 dark:border-neutral-700">
     <div class="flex items-center justify-between mb-2">
-      <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-200">Event Log</h3>
+      <h3 class="text-sm font-semibold text-neutral-700 dark:text-neutral-200">Event Log</h3>
       <RouterLink
         to="/events"
-        class="text-xs underline text-gray-600 dark:text-gray-300 hover:opacity-80"
+        class="text-xs underline text-neutral-600 dark:text-neutral-300 hover:opacity-80"
       >
         More
       </RouterLink>
     </div>
 
-    <ul class="space-y-2 divide-y divide-gray-200 dark:divide-gray-700 max-h-48 overflow-y-auto">
+    <ul class="space-y-2 divide-y divide-neutral-200 dark:divide-neutral-700 max-h-48 overflow-y-auto">
       <li
         v-for="e in store.items"
         :key="e.id"
@@ -25,18 +25,18 @@
             {{ e.dir === 'IN' ? '📥' : '➡️' }}
           </span>
 
-          <span class="font-mono text-gray-500 dark:text-gray-400 text-xs">
+          <span class="font-mono text-neutral-500 dark:text-neutral-400 text-xs">
             {{ formatTs(e.ts) }}
           </span>
 
-          <span v-if="e.unit_id" class="text-gray-600 dark:text-gray-300 text-xs">
+          <span v-if="e.unit_id" class="text-neutral-600 dark:text-neutral-300 text-xs">
             {{ e.unit_id }}
           </span>
         </div>
 
         <!-- Row 2: short description -->
         <div class="pl-6 truncate">
-          <span class="font-medium text-gray-800 dark:text-gray-100">
+          <span class="font-medium text-neutral-800 dark:text-neutral-100">
             {{ e.summary }}
           </span>
         </div>

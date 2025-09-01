@@ -5,7 +5,7 @@
 
     <div v-if="deviceStore.isLoading">Loading...</div>
 
-    <div v-else-if="!deviceStore.devices.length" class="text-gray-400">
+    <div v-else-if="!deviceStore.devices.length" class="text-neutral-400">
       No devices yet. Try scanning...
     </div>
 

@@ -17,8 +17,8 @@
     </div>
 
     <!-- Progress bar -->
-    <div class="h-2 rounded bg-gray-200 dark:bg-gray-700 overflow-hidden">
-      <div class="h-full bg-gray-600" :style="{ width: store.progress + '%' }"></div>
+    <div class="h-2 rounded bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
+      <div class="h-full bg-neutral-600" :style="{ width: store.progress + '%' }"></div>
     </div>
 
 
@@ -26,10 +26,10 @@
     <ol class="mt-2 space-y-1 text-sm">
       <li v-for="(s, i) in store.active?.steps || []" :key="i" class="flex items-center gap-2">
         <span class="inline-flex h-4 w-4 items-center justify-center rounded border"
-          :class="store.completed[i] ? 'bg-green-500 border-green-500' : 'bg-white dark:bg-gray-900'">
+          :class="store.completed[i] ? 'bg-green-500 border-green-500' : 'bg-white dark:bg-neutral-900'">
           <span v-if="store.completed[i]" class="text-[10px] text-white">✓</span>
         </span>
-        <span class="font-mono text-xs text-gray-500">#{{ i + 1 }}</span>
+        <span class="font-mono text-xs text-neutral-500">#{{ i + 1 }}</span>
         <span>{{ store.debugDescribe(i) }}</span>
       </li>
     </ol>

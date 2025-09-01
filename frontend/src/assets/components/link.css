@@ -1,18 +1,18 @@
 /* Общий стиль для обычных ссылок */
 .link {
-    @apply text-gray-700 hover:underline font-medium 
-           dark:text-gray-300 dark:hover:text-gray-100;
+    @apply text-neutral-700 hover:underline font-medium 
+           dark:text-neutral-300 dark:hover:text-neutral-100;
   }
   
   /* Навигационные ссылки */
   .nav-link {
-    @apply text-gray-700 rounded font-medium px-2 py-0.5
-           dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-800;
+    @apply text-neutral-700 rounded font-medium px-2 py-0.5
+           dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800;
   }
   
   /* Активная навигационная ссылка */
   .nav-link-active {
-    @apply bg-gray-200 text-gray-900
-           dark:bg-gray-800 dark:text-white;
+    @apply bg-neutral-200 text-neutral-900
+           dark:bg-neutral-800 dark:text-white;
   }
   

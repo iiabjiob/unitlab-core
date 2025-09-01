@@ -1,5 +1,5 @@
 <template>
-  <div class="h-dvh flex flex-col text-base text-gray-800 dark:text-gray-200 bg-gray-50 dark:bg-gray-900 font-mono">
+  <div class="h-dvh flex flex-col text-base text-neutral-800 dark:text-neutral-200 bg-neutral-50 dark:bg-neutral-900 font-mono">
     <template v-if="wsStatus === 'connected'">
       <!-- Нормальный UI -->
       <div class="flex flex-1 overflow-hidden">
@@ -25,11 +25,11 @@
       <div class="flex flex-1 overflow-hidden">
         <AppAside />
         <main class="flex-1 flex flex-col overflow-hidden">
-          <!-- <AppHeader class="border-b border-gray-200 dark:border-gray-800" /> -->
+          <!-- <AppHeader class="border-b border-neutral-200 dark:border-neutral-800" /> -->
           <div class="flex-1 flex items-center justify-center">
             <div class="text-center">
               <p class="text-lg font-semibold">⚠️ Lost connection</p>
-              <p class="text-sm text-gray-500 mt-2">Trying to reconnect…</p>
+              <p class="text-sm text-neutral-500 mt-2">Trying to reconnect…</p>
             </div>
           </div>
         </main>

@@ -3,7 +3,7 @@
 
     <RouterLink
       to="/"
-      class="text-xl font-bold text-gray-800 dark:text-gray-200">
+      class="text-xl font-bold text-neutral-800 dark:text-neutral-200">
       UnitLab
     </RouterLink>
 

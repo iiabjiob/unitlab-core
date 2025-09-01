@@ -1,7 +1,7 @@
 <template>
-  <aside class="bg-white dark:bg-gray-800 flex flex-col w-80 border-r border-gray-200 dark:border-gray-700">
+  <aside class="bg-white dark:bg-neutral-800 flex flex-col w-80 border-r border-neutral-200 dark:border-neutral-700">
 
-    <div class="flex flex-col px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+    <div class="flex flex-col px-5 py-3 border-b border-neutral-200 dark:border-neutral-700">
 
       <div class="flex items-center justify-between gap-3">
         <AppLogo/>
@@ -15,8 +15,8 @@
       <!-- Devices -->
       <RouterLink
         to="/devices"
-        class="flex items-center rounded h-8 px-2 transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-        active-class="bg-gray-100 dark:bg-gray-700 font-semibold text-gray-900 dark:text-white"
+        class="flex items-center rounded h-8 px-2 transition-colors text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+        active-class="bg-neutral-100 dark:bg-neutral-700 font-semibold text-neutral-900 dark:text-white"
       >
         <DraftIcon class="w-16" size="20" />
         <span>Devices</span>
@@ -25,8 +25,8 @@
       <!-- Switchgear -->
       <RouterLink
         to="/switchgear"
-        class="flex items-center rounded h-8 px-2 transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-        active-class="bg-gray-100 dark:bg-gray-700 font-semibold text-gray-900 dark:text-white"
+        class="flex items-center rounded h-8 px-2 transition-colors text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+        active-class="bg-neutral-100 dark:bg-neutral-700 font-semibold text-neutral-900 dark:text-white"
       >
         <DraftIcon class="w-16" size="20" />
         <span>Switchgear</span>
@@ -35,8 +35,8 @@
       <!-- SignalList -->
       <RouterLink
         to="/signal-list"
-        class="flex items-center rounded h-8 px-2 transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-        active-class="bg-gray-100 dark:bg-gray-700 font-semibold text-gray-900 dark:text-white"
+        class="flex items-center rounded h-8 px-2 transition-colors text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+        active-class="bg-neutral-100 dark:bg-neutral-700 font-semibold text-neutral-900 dark:text-white"
       >
         <DraftIcon class="w-16" size="20" />
         <span>Signal List</span>
@@ -45,8 +45,8 @@
       <!-- Sequences -->
       <RouterLink
         to="/sequences"
-        class="flex items-center rounded h-8 px-2 transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-        active-class="bg-gray-100 dark:bg-gray-700 font-semibold text-gray-900 dark:text-white"
+        class="flex items-center rounded h-8 px-2 transition-colors text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+        active-class="bg-neutral-100 dark:bg-neutral-700 font-semibold text-neutral-900 dark:text-white"
       >
         <DraftIcon class="w-16" size="20" />
         <span>Sequences</span>
@@ -55,8 +55,8 @@
       <!-- Events -->
       <RouterLink
         to="/events"
-        class="flex items-center rounded h-8 px-2 transition-colors text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-        active-class="bg-gray-100 dark:bg-gray-700 font-semibold text-gray-900 dark:text-white"
+        class="flex items-center rounded h-8 px-2 transition-colors text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
+        active-class="bg-neutral-100 dark:bg-neutral-700 font-semibold text-neutral-900 dark:text-white"
       >
         <DraftIcon class="w-16" size="20" />
         <span>Events</span>

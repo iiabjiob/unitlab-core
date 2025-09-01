@@ -13,7 +13,7 @@ const { status } = defineProps<{
       class="text-sm"
       :class="status === 'online'
         ? 'text-green-500'
-        : 'text-gray-500'"
+        : 'text-neutral-500'"
     >
       {{ status }}
     </span>

@@ -18,7 +18,7 @@ const colorClass = computed(() => {
     case 'danger':
       return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
     default:
-      return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+      return 'bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200'
   }
 })
 </script>

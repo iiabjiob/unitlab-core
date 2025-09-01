@@ -1,6 +1,6 @@
 <template>
   <div
-    class="flex flex-col divide-y divide-gray-300 dark:divide-gray-700"
+    class="flex flex-col divide-y divide-neutral-300 dark:divide-neutral-700"
     :class="{ 'opacity-50 pointer-events-none': disabled }"
   >
     <!-- Реальные каналы -->

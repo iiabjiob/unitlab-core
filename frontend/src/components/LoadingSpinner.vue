@@ -4,7 +4,7 @@
       <circle cx="12" cy="12" r="10" stroke-opacity="0.3"></circle>
       <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"></path>
     </svg>
-    <p v-if="text" class="ml-2 text-gray-500">{{ text }}</p>
+    <p v-if="text" class="ml-2 text-neutral-500">{{ text }}</p>
   </div>
 </template>
 
