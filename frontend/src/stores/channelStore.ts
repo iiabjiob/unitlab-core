@@ -133,6 +133,20 @@ export const useChannelStore = defineStore('channelStore', () => {
     logger.info(`➡️ DO cmd ${unitId} ch=${ch} → ${state}`)
   }
 
+  function sendDoPairCommand(unitId: string, chA: number, chB: number, state2b: 0|1|2|3) {
+    const ws = useWebSocketStore()
+    const msg: SetDoCommandMessage = {
+      action: WSAction.SET_DO_COMMAND,
+      unit_id: unitId,
+      mode: CmdMode.SET_PAIR_BIT, // <- atomic pair
+      chA,
+      chB,
+      state2b,
+    }
+    ws.send(msg)
+    logger.info(`➡️ DO pair cmd ${unitId} [${chA}/${chB}] → state2b=${state2b}`)
+  }
+
   function sendAoCommand(unitId: string, ch: number, value: number) {
     const ws = useWebSocketStore()
     const msg: SetAoCommandMessage = {
@@ -152,6 +166,7 @@ export const useChannelStore = defineStore('channelStore', () => {
     setSignals,
     setResponse,
     sendDoCommand,
+    sendDoPairCommand,
     sendAoCommand,
   }
 })
