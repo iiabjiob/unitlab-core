@@ -36,22 +36,22 @@
     <!-- Buttons (send commands only) -->
     <div class="grid grid-cols-2 gap-2">
       <ButtonComponent type="secondary"
-              :disabled="!ws.isConnected || busy"
+              :disabled="isCmdDisabled('OPEN')"
               @click="cmdOpen">
         Open
       </ButtonComponent>
       <ButtonComponent type="secondary"
-              :disabled="!ws.isConnected || busy"
+              :disabled="isCmdDisabled('CLOSED')"
               @click="cmdClose">
         Close
       </ButtonComponent>
       <ButtonComponent type="secondary"
-              :disabled="!ws.isConnected || busy"
+              :disabled="isCmdDisabled('UNKNOWN')"
               @click="cmdUnknown">
         Unknown
       </ButtonComponent>
       <ButtonComponent type="secondary"
-              :disabled="!ws.isConnected || busy"
+              :disabled="isCmdDisabled('INTERMEDIATE')"
               @click="cmdIntermediate">
         Intermediate
       </ButtonComponent>
@@ -130,6 +130,12 @@ function getDiState(unitId: string, ch: number): boolean | null {
   if (!arr) return null
   const c = arr.find(x => x.type === "DI" && x.index === ch)
   return (c && typeof (c as any).state === "boolean") ? (c as any).state as boolean : null
+}
+
+const isCmdDisabled = (target: SwitchgearState) => {
+  // Disable if busy, disconnected, or already in that state
+  if (!ws.isConnected || busy.value) return true
+  return effectiveState.value === target
 }
 
 // Derive UI state only from DO feedback:
