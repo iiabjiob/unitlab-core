@@ -1,5 +1,6 @@
 <template>
-  <div class="flex flex-col gap-3 p-4 rounded-xl bg-white dark:bg-neutral-800 shadow-md border border-neutral-200 dark:border-neutral-700 w-[300px]">
+  <div
+    class="flex flex-col gap-3 p-4 rounded-xl bg-white dark:bg-neutral-800 shadow-md border border-neutral-200 dark:border-neutral-700 w-[300px]">
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div class="text-sm font-medium text-neutral-700 dark:text-neutral-200">
@@ -13,9 +14,7 @@
     <!-- Visual cube driven by DO feedback only -->
     <div
       class="h-28 w-28 mx-auto rounded-lg transition-all duration-200 border-2 flex items-center justify-center select-none relative"
-      :class="cubeClass"
-      :title="`State (by DO): ${effectiveState}`"
-    >
+      :class="cubeClass" :title="`State (by DO): ${effectiveState}`">
       <template v-if="effectiveState === 'UNKNOWN'">
         <span class="text-3xl font-bold">?</span>
       </template>
@@ -26,33 +25,22 @@
       </template>
 
       <!-- Pending target hint -->
-      <div
-        v-if="pendingTarget !== null"
-        class="pointer-events-none absolute inset-0 rounded-lg border-2 animate-pulse"
-        :class="pendingBorderClass"
-      />
+      <div v-if="pendingTarget !== null" class="pointer-events-none absolute inset-0 rounded-lg border-2 animate-pulse"
+        :class="pendingBorderClass" />
     </div>
 
     <!-- Buttons (send commands only) -->
     <div class="grid grid-cols-2 gap-2">
-      <ButtonComponent type="secondary"
-              :disabled="isCmdDisabled('OPEN')"
-              @click="cmdOpen">
+      <ButtonComponent type="secondary" :disabled="isCmdDisabled('OPEN')" @click="cmdOpen">
         Open
       </ButtonComponent>
-      <ButtonComponent type="secondary"
-              :disabled="isCmdDisabled('CLOSED')"
-              @click="cmdClose">
+      <ButtonComponent type="secondary" :disabled="isCmdDisabled('CLOSED')" @click="cmdClose">
         Close
       </ButtonComponent>
-      <ButtonComponent type="secondary"
-              :disabled="isCmdDisabled('UNKNOWN')"
-              @click="cmdUnknown">
+      <ButtonComponent type="secondary" :disabled="isCmdDisabled('UNKNOWN')" @click="cmdUnknown">
         Unknown
       </ButtonComponent>
-      <ButtonComponent type="secondary"
-              :disabled="isCmdDisabled('INTERMEDIATE')"
-              @click="cmdIntermediate">
+      <ButtonComponent type="secondary" :disabled="isCmdDisabled('INTERMEDIATE')" @click="cmdIntermediate">
         Intermediate
       </ButtonComponent>
     </div>
@@ -61,6 +49,12 @@
     <div class="text-xs text-neutral-500 dark:text-neutral-400">
       <div>DO: {{ doUnitId }} [{{ doOpenCh }}|{{ doCloseCh }}]</div>
       <div>DI: {{ diUnitId }} [{{ diOpenPulseCh }}|{{ diClosePulseCh }}]</div>
+      <div class="flex items-center gap-2">
+        <span>Feedback delay:</span>
+        <input type="number" min="0" step="100" v-model.number="feedbackDelayMs" class="w-16 px-1 py-0.5 text-xs rounded border border-neutral-300 dark:border-neutral-600
+             bg-white dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200" />
+        <span>ms</span>
+      </div>
     </div>
   </div>
 </template>
@@ -80,7 +74,7 @@ type SwitchgearState = "CLOSED" | "OPEN" | "UNKNOWN" | "INTERMEDIATE"
 //   01 -> OPEN
 //   10 -> CLOSED
 //   11 -> INTERMEDIATE
-const PAIR_CODE: Record<SwitchgearState, 0|1|2|3> = {
+const PAIR_CODE: Record<SwitchgearState, 0 | 1 | 2 | 3> = {
   UNKNOWN: 0b00,
   OPEN: 0b01,
   CLOSED: 0b10,
@@ -138,15 +132,34 @@ const isCmdDisabled = (target: SwitchgearState) => {
   return effectiveState.value === target
 }
 
+// configurable delay for feedback (ms)
+const feedbackDelayMs = ref(500) // default 500ms, можно менять через UI
+
+function scheduleDoPair(target: SwitchgearState) {
+  if (doUnitId.value.startsWith("unknown")) return
+  pendingTarget.value = target
+  busy.value = true
+
+  setTimeout(() => {
+    channelStore.sendDoPairCommand(
+      doUnitId.value,
+      props.doOpenCh,
+      props.doCloseCh,
+      PAIR_CODE[target],
+    )
+    busy.value = false
+  }, feedbackDelayMs.value)
+}
+
 // Derive UI state only from DO feedback:
 const effectiveState = computed<SwitchgearState>(() => {
   const a = getDoState(doUnitId.value, props.doOpenCh)
   const b = getDoState(doUnitId.value, props.doCloseCh)
   if (a === null || b === null) return "UNKNOWN"
-  if (a === true  && b === false) return "OPEN"
-  if (a === false && b === true)  return "CLOSED"
+  if (a === true && b === false) return "OPEN"
+  if (a === false && b === true) return "CLOSED"
   if (a === false && b === false) return "UNKNOWN"
-  if (a === true  && b === true)  return "INTERMEDIATE"
+  if (a === true && b === true) return "INTERMEDIATE"
   return "UNKNOWN"
 })
 
@@ -205,9 +218,9 @@ async function setDoPair(expected: SwitchgearState) {
 }
 
 // Buttons -> only send commands; UI updates on DO feedback
-function cmdOpen()         { setDoPair("OPEN") }
-function cmdClose()        { setDoPair("CLOSED") }
-function cmdUnknown()      { setDoPair("UNKNOWN") }
+function cmdOpen() { setDoPair("OPEN") }
+function cmdClose() { setDoPair("CLOSED") }
+function cmdUnknown() { setDoPair("UNKNOWN") }
 function cmdIntermediate() { setDoPair("INTERMEDIATE") }
 
 // DI pulse → drive DO via pair command, UI still from DO feedback
@@ -222,13 +235,13 @@ watch(
   ({ diOpen, diClose }) => {
     if (diOpen !== null) {
       if (lastDiOpen.value === false && diOpen === true) {
-        setDoPair("OPEN")
+        scheduleDoPair("OPEN")
       }
       lastDiOpen.value = diOpen
     }
     if (diClose !== null) {
       if (lastDiClose.value === false && diClose === true) {
-        setDoPair("CLOSED")
+        scheduleDoPair("CLOSED")
       }
       lastDiClose.value = diClose
     }
