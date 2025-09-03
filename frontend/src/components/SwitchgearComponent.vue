@@ -51,7 +51,7 @@
       <div>DI: {{ diUnitId }} [{{ diOpenPulseCh }}|{{ diClosePulseCh }}]</div>
       <div class="flex items-center gap-2">
         <span>Feedback delay:</span>
-        <input type="number" min="0" step="100" v-model.number="feedbackDelayMs" class="w-16 px-1 py-0.5 text-xs rounded border border-neutral-300 dark:border-neutral-600
+        <input name="feedbackDelayMs" type="number" min="0" step="100" v-model.number="feedbackDelayMs" class="w-16 px-1 py-0.5 text-xs rounded border border-neutral-300 dark:border-neutral-600
              bg-white dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200" />
         <span>ms</span>
       </div>
@@ -133,7 +133,7 @@ const isCmdDisabled = (target: SwitchgearState) => {
 }
 
 // configurable delay for feedback (ms)
-const feedbackDelayMs = ref(500) // default 500ms, можно менять через UI
+const feedbackDelayMs = ref(0) // default 0ms, можно менять через UI
 
 function scheduleDoPair(target: SwitchgearState) {
   if (doUnitId.value.startsWith("unknown")) return
