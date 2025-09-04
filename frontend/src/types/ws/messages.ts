@@ -2,8 +2,6 @@
 // Actions (WS → Backend)
 // ---------------------------------------------------------------------
 export enum WSAction {
-  SUBSCRIBE = "subscribe",
-  UNSUBSCRIBE = "unsubscribe",
   SET_DO_COMMAND = "set_do_command",
   SET_AO_COMMAND = "set_ao_command",
   GET_STATES = "get_states",
@@ -22,18 +20,6 @@ export enum CmdMode {
   SET_ALL_BIT      = 0x21,
   SET_PAIR_BIT     = 0x22,
   SET_SINGLE_FLOAT = 0x30,
-}
-
-// ---------------------------------------------------------------------
-// Subscribe / Unsubscribe
-// ---------------------------------------------------------------------
-export interface WsSubscribeMessage {
-  action: WSAction.SUBSCRIBE
-  channels: string[]
-}
-export interface WsUnsubscribeMessage {
-  action: WSAction.UNSUBSCRIBE
-  channels: string[]
 }
 
 // ---------------------------------------------------------------------
@@ -77,8 +63,6 @@ export interface SetAoCommandMessage {
 // Union
 // ---------------------------------------------------------------------
 export type WSMessage =
-  | WsSubscribeMessage
-  | WsUnsubscribeMessage
   | ScanDevicesMessage
   | RequestStateMessage
   | SetDoCommandMessage
