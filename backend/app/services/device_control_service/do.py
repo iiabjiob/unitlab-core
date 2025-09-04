@@ -3,7 +3,7 @@ from app.infrastructure.protocol.modes import Cmd
 from app.infrastructure.protocol.encode import bit as bit_encode
 from app.infrastructure.protocol.packet_io import PacketBuilder
 from app.infrastructure.protocol.packet_structures import CmdSetSingleBit, CmdSetAllBit, CmdSetPairBit
-from app.infrastructure.mqtt.gmqtt_client import UnitLabMqttClient
+from app.infrastructure.mqtt.manager import MqttManager
 from app.core.logger import get_logger
 
 logger = get_logger("mqtt")
@@ -46,4 +46,4 @@ def set_do_command_now(
     data = builder.to_bytes()
 
     logger.info(f"📤 OUT → {topic} | payload={data.hex().upper()} ({mode.name})")
-    UnitLabMqttClient.get_instance().publish(topic, data)
+    MqttManager.get_instance().publish(topic, data)

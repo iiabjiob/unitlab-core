@@ -1,7 +1,7 @@
 from app.infrastructure.mqtt import topics
 from app.infrastructure.protocol.packet_io import PacketBuilder
 from app.infrastructure.protocol.modes import State
-from app.infrastructure.mqtt.gmqtt_client import UnitLabMqttClient
+from app.infrastructure.mqtt.manager import MqttManager
 from app.core.logger import get_logger
 
 logger = get_logger("mqtt")
@@ -21,4 +21,4 @@ def request_state_now(type: str, unit_id: str, mode: State, ch: int | None = Non
     data = builder.to_bytes()
 
     logger.info(f"📤 OUT → {topic} | payload={data.hex().upper()} ({mode.name})")
-    UnitLabMqttClient.get_instance().publish(topic, data)
+    MqttManager.get_instance().publish(topic, data)
