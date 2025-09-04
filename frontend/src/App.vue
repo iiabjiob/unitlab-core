@@ -43,6 +43,8 @@ import { useWebSocketStore } from "@/stores/websocketStore"
 
 const wsStore = useWebSocketStore()
 
+wsStore.connect()
+
 const wsStatus = computed(() => {
   if (!wsStore.isConnected && !wsStore.everConnected) return "initial"
   if (wsStore.isConnected) return "connected"

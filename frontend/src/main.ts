@@ -9,8 +9,6 @@ import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
 // Register all Community features
 ModuleRegistry.registerModules([AllCommunityModule]);
 
-import { initWebSocket } from './wsInit'
-
 import App from './App.vue'
 import router from './router'
 import { logger } from './utils/logger'
@@ -23,7 +21,5 @@ app.use(router)
 logger.info('🚀 Starting frontend application')
 
 app.mount('#app')
-
-initWebSocket()
 
 logger.info('✅ Frontend application is up')

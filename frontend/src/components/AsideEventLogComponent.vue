@@ -10,7 +10,7 @@
       </RouterLink>
     </div>
 
-    <ul class="space-y-2 divide-y divide-neutral-200 dark:divide-neutral-700 max-h-48 overflow-y-auto">
+    <ul class="log-list space-y-2 divide-y divide-neutral-200 dark:divide-neutral-700 max-h-48 overflow-y-auto">
       <li
         v-for="e in store.items"
         :key="e.id"
@@ -52,3 +52,16 @@ import { formatTs } from "@/utils/datetime";
 const store = useEventLogStore();
 
 </script>
+
+<style scoped>
+/* apply only inside this component */
+.log-list {
+
+  /* hide scrollbars but keep scroll working */
+  scrollbar-width: none;       /* Firefox */
+  -ms-overflow-style: none;    /* IE/Edge */
+}
+.log-list::-webkit-scrollbar {
+  display: none;               /* Chrome, Safari, Edge */
+}
+</style>
