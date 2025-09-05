@@ -5,26 +5,10 @@ from app.infrastructure.protocol.modes import State
 from enum import Enum
 
 class WSAction(str, Enum):
-    SUBSCRIBE       = "subscribe"
-    UNSUBSCRIBE     = "unsubscribe"
     SET_DO_COMMAND  = "set_do_command"
     SET_AO_COMMAND  = "set_ao_command"
     GET_STATES      = "get_states"
     SCAN_DEVICES    = "scan_devices"
-
-# ---------------------------------------------------------------------
-# Подписка на каналы
-# ---------------------------------------------------------------------
-
-class WsSubscribeMessage(BaseModel):
-    action: Literal[WSAction.SUBSCRIBE]
-    channels: list[str]
-
-
-class WsUnsubscribeMessage(BaseModel):
-    action: Literal[WSAction.UNSUBSCRIBE]
-    channels: list[str]
-
 
 # ---------------------------------------------------------------------
 # Управление выходами (DO / AO)
@@ -37,6 +21,7 @@ class SetDoCommandMessage(BaseModel):
         - SET_SINGLE_BIT
         - SET_ALL_BIT
         - SET_PAIR_BIT
+        - SET_PULSE_BIT
     """
     action: Literal[WSAction.SET_DO_COMMAND]
     unit_id: str
@@ -47,9 +32,7 @@ class SetDoCommandMessage(BaseModel):
     chA: Optional[int] = None
     chB: Optional[int] = None
     state2b: Optional[int] = None
-    delay_before_ms: int = 0
     pulse_ms: int = 0
-    repeat: int = 0
 
 class SetAoCommandMessage(BaseModel):
     """
@@ -92,8 +75,6 @@ class ScanDevicesMessage(BaseModel):
 # ---------------------------------------------------------------------
 
 WSMessage = Union[
-    WsSubscribeMessage,
-    WsUnsubscribeMessage,
     SetDoCommandMessage,
     SetAoCommandMessage,
     RequestStateMessage,

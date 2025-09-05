@@ -1,6 +1,5 @@
 import { CmdMode } from "@/types/ws/messages"
 import type { SequenceDef } from "@/types/sequences"
-import { toResetAllCmd } from "@/types/sequences"
 
 
 // Helper builders

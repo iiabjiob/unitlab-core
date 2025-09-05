@@ -1,6 +1,7 @@
 import time, uuid
 from app.infrastructure.protocol.packet_io import PacketParser
 from app.infrastructure.protocol.decode import sys as sys_decode
+from app.infrastructure.protocol.utils import fw_u16_to_str
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.repositories.device_repository import register_or_update
@@ -37,7 +38,7 @@ async def handle_device_register(topic: str, payload: bytes, match):
     unit_id = reg.id
     type = reg.type.strip()   # 4-char code, лучше str.strip()
     channels = reg.channels
-    firmware_version = str(reg.fwVersion)
+    firmware_version = fw_u16_to_str(reg.fwVersion)
 
     logger.debug(
         f"Registering device {unit_id} (type={type}, ch={channels}, fw={firmware_version})"

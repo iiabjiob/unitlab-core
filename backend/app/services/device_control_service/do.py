@@ -2,7 +2,7 @@ from app.infrastructure.mqtt import topics
 from app.infrastructure.protocol.modes import Cmd
 from app.infrastructure.protocol.encode import bit as bit_encode
 from app.infrastructure.protocol.packet_io import PacketBuilder
-from app.infrastructure.protocol.packet_structures import CmdSetSingleBit, CmdSetAllBit, CmdSetPairBit
+from app.infrastructure.protocol.packet_structures import CmdSetSingleBit, CmdSetAllBit, CmdSetPairBit, CmdSetPulseBit
 from app.infrastructure.mqtt.manager import MqttManager
 from app.core.logger import get_logger
 
@@ -17,9 +17,7 @@ def set_do_command_now(
     chA: int | None = None,
     chB: int | None = None,
     state2b: int | None = None,
-    delay_before_ms: int = 0,
     pulse_ms: int = 0,
-    repeat: int = 0,
 ):
     topic = topics.cmd("do", unit_id)
 
@@ -38,6 +36,10 @@ def set_do_command_now(
             raise ValueError("SET_PAIR_BIT requires chA, chB, state2b")
         payload = bit_encode.cmd_set_pair(CmdSetPairBit(chA=chA, chB=chB, state2b=state2b))
 
+    elif mode == Cmd.SET_PULSE_BIT:
+        if ch is None or value is None:
+            raise ValueError("SET_PULSE_BIT requires ch, value and pulse_ms")
+        payload = bit_encode.cmd_set_pulse(CmdSetPulseBit(ch=ch, value=value, pulse_ms=pulse_ms))
     else:
         raise ValueError(f"Unsupported DO command mode {mode}")
 

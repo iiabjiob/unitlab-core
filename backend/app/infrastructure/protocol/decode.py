@@ -10,6 +10,7 @@ from .packet_structures import (
     CmdSetSingleBit,
     CmdSetAllBit,
     CmdSetPairBit,
+    CmdSetPulseBit,
     StateSingleFloat,
     CmdSetSingleFloat,
     Resp,
@@ -26,7 +27,10 @@ class bit:
     def state_single(data: bytes) -> Optional[StateSingleBit]:
         if len(data) != 2:
             return None
-        return StateSingleBit(ch=data[0], value=data[1])
+        return StateSingleBit(
+            ch=data[0], 
+            value=data[1]
+        )
 
     @staticmethod
     def state_all(data: bytes) -> Optional[StateAllBit]:
@@ -38,7 +42,10 @@ class bit:
     def cmd_set_single(data: bytes) -> Optional[CmdSetSingleBit]:
         if len(data) != 2:
             return None
-        return CmdSetSingleBit(ch=data[0], value=data[1])
+        return CmdSetSingleBit(
+            ch=data[0], 
+            value=data[1]
+        )
 
     @staticmethod
     def cmd_set_all(data: bytes) -> Optional[CmdSetAllBit]:
@@ -50,7 +57,22 @@ class bit:
     def cmd_set_pair(data: bytes) -> Optional[CmdSetPairBit]:
         if len(data) != 3:
             return None
-        return CmdSetPairBit(chA=data[0], chB=data[1], state2b=data[2] & PairStateMask)
+        return CmdSetPairBit(
+            chA=data[0], 
+            chB=data[1], 
+            state2b=data[2] & PairStateMask
+        )
+
+    @staticmethod
+    def cmd_set_pulse(data: bytes) -> Optional[CmdSetPulseBit]:
+        if len(data) != 4:
+            return None
+
+        return CmdSetPulseBit(
+            ch=data[0],
+            value=data[1] & 0x01,
+            pulse_ms=endian.read_u16_be(data, 2),
+        )
 
 
 # ------------------------------------------------------
@@ -84,20 +106,17 @@ class sys:
 
     @staticmethod
     def register_msg(data: bytes) -> Optional[Register]:
-        if len(data) != 40:  # 4 + 32 + 2 + 2
+        if len(data) != 40:
             return None
         type_str = data[0:4].rstrip(b"\x00").decode("ascii", errors="ignore")
-        id_str = data[4:36].rstrip(b"\x00").decode("ascii", errors="ignore")
-        
-        fw_num = endian.read_u16_be(data, 36)
-        major = (fw_num >> 8) & 0xFF
-        minor = fw_num & 0xFF
-        fw_version = f"{major}.{minor}"
-        
+        id_str   = data[4:36].rstrip(b"\x00").decode("ascii", errors="ignore")
+
+        fw_num   = endian.read_u16_be(data, 36)   # u16 raw
         channels = endian.read_u16_be(data, 38)
+
         return Register(
             type=type_str,
             id=id_str,
-            fwVersion=fw_version,
+            fwVersion=fw_num,   # keep as int (u16)
             channels=channels,
         )

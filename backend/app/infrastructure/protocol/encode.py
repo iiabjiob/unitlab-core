@@ -8,6 +8,7 @@ from .packet_structures import (
     CmdSetSingleBit,
     CmdSetAllBit,
     CmdSetPairBit,
+    CmdSetPulseBit,
     StateSingleFloat,
     CmdSetSingleFloat,
     Resp,
@@ -40,6 +41,14 @@ class bit:
     @staticmethod
     def cmd_set_pair(p: CmdSetPairBit) -> bytes:
         return bytes([p.chA, p.chB, p.state2b & PairStateMask])
+    
+    @staticmethod
+    def cmd_set_pulse(p: CmdSetPulseBit) -> bytes:
+        out = bytearray(4)
+        out[0] = p.ch & 0xFF
+        out[1] = p.value & 0x01
+        endian.write_u16_be(p.pulse_ms & 0xFFFF, into=out, offset=2)
+        return bytes(out)
 
 
 # ------------------------------------------------------

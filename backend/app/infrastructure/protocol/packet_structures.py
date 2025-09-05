@@ -45,6 +45,12 @@ class CmdSetPairBit:
     chB: int
     state2b: int  # lowest 2 bits
 
+@dataclass
+class CmdSetPulseBit:
+    ch: int
+    value: int
+    pulse_ms: int  # u16 (big-endian)
+
 
 class PairState2b(IntEnum):
     INTERMEDIATE = 0b00
@@ -97,7 +103,6 @@ class Register:
     fwVersion: int  # u16
     channels: int   # u16
 
-
 # ------------------------------------------------------------------------
 # System enums (high-level status & errors)
 # ------------------------------------------------------------------------
@@ -120,4 +125,4 @@ class RespError(IntEnum):
     STORAGE_FAIL   = 0x04
     TRANSPORT_FAIL = 0x05
     PERMISSION     = 0x06
-    # 0x07..0xFF reserved
+    HW_FAILURE     = 0x07

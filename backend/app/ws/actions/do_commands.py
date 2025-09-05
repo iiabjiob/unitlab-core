@@ -18,9 +18,7 @@ async def handle_set_do_command(ws: WebSocket, msg: SetDoCommandMessage):
         chA=msg.chA,
         chB=msg.chB,
         state2b=msg.state2b,
-        delay_before_ms=msg.delay_before_ms,
         pulse_ms=msg.pulse_ms,
-        repeat=msg.repeat,
     )
 
     # формируем summary по mode
@@ -30,6 +28,8 @@ async def handle_set_do_command(ws: WebSocket, msg: SetDoCommandMessage):
         summary = f"DO SET_ALL_BIT bitmask=0x{msg.bitmask:X}"
     elif msg.mode == Cmd.SET_PAIR_BIT:
         summary = f"DO SET_PAIR_BIT chA={msg.chA}, chB={msg.chB}, state2b={msg.state2b}"
+    elif msg.mode == Cmd.SET_PULSE_BIT:
+        summary = f"DO SET_PULSE_BIT ch={msg.ch}, val={msg.value}, pulse_ms={msg.pulse_ms}"
     else:
         summary = f"DO command mode={msg.mode.name}"
 

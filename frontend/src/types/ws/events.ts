@@ -42,6 +42,7 @@ export enum RespError {
   STORAGE_FAIL = "STORAGE_FAIL",
   TRANSPORT_FAIL = "TRANSPORT_FAIL",
   PERMISSION = "PERMISSION",
+  HW_FAILURE = "HW_FAILURE",
 }
 
 // ---------------------------------------------------------------------

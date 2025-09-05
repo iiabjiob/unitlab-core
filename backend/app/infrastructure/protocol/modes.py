@@ -21,6 +21,7 @@ class Cmd(IntEnum):
     SET_SINGLE_BIT   = 0x20  # [ch][val:u8]
     SET_ALL_BIT      = 0x21  # [bitmap:u32 BE]
     SET_PAIR_BIT     = 0x22  # [chA][chB][state2b]
+    SET_PULSE_BIT    = 0x23  # [ch][val:u8][pulse_ms:u16]
 
     # Analog Outputs
     SET_SINGLE_FLOAT = 0x30  # [ch][value:floatBE]

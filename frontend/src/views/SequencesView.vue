@@ -47,6 +47,7 @@ import { computed, onMounted, ref, watch } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { buildPilotSequence } from "@/sequences/demoSequences"
+import { buildPulseDemoSequence } from "@/sequences/demoPulseSequences"
 import ButtonComponent from "@/components/ui/ButtonComponent.vue"
 
 
@@ -60,7 +61,8 @@ const doDevices = computed(() => deviceStore.devices
 
 function refreshSeq() {
   if (!unitId.value) return
-  store.setSequence(buildPilotSequence(unitId.value))
+  // store.setSequence(buildPilotSequence(unitId.value))
+  store.setSequence(buildPulseDemoSequence(unitId.value))
 }
 
 
