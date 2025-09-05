@@ -17,7 +17,7 @@
     <AppMenu class="text-base flex-1 overflow-auto" />
 
     <!-- Event log прижат вниз -->
-    <div class="border-t border-neutral-200 dark:border-neutral-700 mt-auto">
+    <div class="border-t border-neutral-200 dark:border-neutral-700 mt-auto" v-if="meta.globalEventLog">
       <EventLog />
     </div>
   </aside>
@@ -26,6 +26,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from "vue"
+import { useRoute } from "vue-router"
 import { useWebSocketStore } from "@/stores/websocketStore"
 import { useEventLogStore } from "@/stores/eventLogStore"
 import AppMenu from "./AppMenu.vue"
@@ -36,6 +37,7 @@ import OnlineStatusComponent from "../OnlineStatusComponent.vue"
 
 const wsStore = useWebSocketStore()
 const eventLogStore = useEventLogStore()
+const route = useRoute()
 
 const status = computed(() => {
   if (wsStore.isConnected){ console.log(status); return "online"}
@@ -43,8 +45,13 @@ const status = computed(() => {
   return "offline"
 })
 
+// Meta flags (local read)
+const meta = computed(() => ({
+  globalEventLog: route.meta.globalEventLog ?? true,
+}))
+
 onMounted(() => {
-  if (!eventLogStore.items.length) {
+  if (meta.value.globalEventLog && !eventLogStore.items.length) {
     eventLogStore.fetchEvents()
   }
 })
