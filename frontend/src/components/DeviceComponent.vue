@@ -69,11 +69,11 @@
       class="mt-1 text-xs text-neutral-500 flex flex-wrap gap-x-1 gap-y-1"
     >
       <!-- isActive -->
-      <BadgeComponent class="text-xs"
+      <!-- <BadgeComponent class="text-xs"
         :variant="device.is_active ? 'success' : 'neutral'"
         >
         {{ device.is_active ? 'Active' : 'Inactive' }}
-      </BadgeComponent>
+      </BadgeComponent> -->
 
       <!-- Type -->
       <BadgeComponent class="text-xs">Type: {{ device.type }}</BadgeComponent>
