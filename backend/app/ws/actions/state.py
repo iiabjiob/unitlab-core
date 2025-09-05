@@ -1,6 +1,7 @@
-import uuid, time
+# ws/actions/state.py
+import time, uuid
 from fastapi import WebSocket
-from app.services.device_control_service.state import request_state_now
+from app.services.command_queue_service import enqueue_request_state
 from app.schemas.ws.messages import RequestStateMessage
 from app.services.event_log_service import EventLogService
 from app.infrastructure.db.database import AsyncSessionLocal
@@ -8,8 +9,16 @@ from app.schemas.ws.events import EventDirection, EventSource
 from app.schemas.ws.messages import WSAction
 
 async def handle_get_states(ws: WebSocket, msg: RequestStateMessage):
-    request_state_now(msg.type, msg.unit_id, msg.mode, msg.ch)
+    # Кладём запрос состояния в outbound очередь
+    await enqueue_request_state(
+        type=msg.type,
+        unit_id=msg.unit_id,
+        mode=msg.mode,
+        ch=msg.ch,
+        correlation_id=str(uuid.uuid4()),
+    )
 
+    # Log 
     if msg.ch is not None:
         summary = f"REQ state type={msg.type}, mode={msg.mode.name}, ch={msg.ch}"
     else:

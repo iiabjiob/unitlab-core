@@ -9,13 +9,19 @@ settings = get_settings()
 logger = get_logger("mqtt")
 
 @registry.mqtt_handler(topics.DEVICE_HEARTBEAT)
-async def handle_device_heartbeat(topic: str, payload: bytes, match):
-    type, unit_id = match.group(1), match.group(2)
+async def handle_device_heartbeat(topic: str, payload: bytes, match=None):
+    if match:
+        dev_type, unit_id = match.group(1), match.group(2)
+    else:
+        # manual parse for fast-path
+        parts = topic.split("/")
+        # unitlab/devices/<type>/<unit_id>/heartbeat
+        dev_type, unit_id = parts[2], parts[3]
 
     # Use server timestamp (ms since epoch)
     ts = int(time.time() * 1000)
 
-    logger.debug(f"📥 IN ← {type.upper()} {unit_id}: heartbeat @ {ts}")
+    logger.debug(f"📥 IN ← {dev_type.upper()} {unit_id}: heartbeat @ {ts}")
 
     redis_client = RedisManager.get_instance()
     
@@ -30,7 +36,7 @@ async def handle_device_heartbeat(topic: str, payload: bytes, match):
 
     await redis_client.set(
         f"device:{unit_id}:type",
-        type.encode()
+        dev_type.encode()
     )
     await redis_client.set(
         f"device:{unit_id}:status",

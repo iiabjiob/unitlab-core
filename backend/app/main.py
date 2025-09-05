@@ -16,6 +16,10 @@ from app.infrastructure.mqtt.manager import MqttManager
 from app.tasks.device_offline_task import device_offline_checker
 from app.tasks.tyme_sync_task import time_status_broadcaster
 
+from app.core.message_bus import MessageBus
+from app.infrastructure.mqtt.inbound_worker import run_inbound_router_worker
+from app.infrastructure.mqtt.outbound_worker import run_outbound_publisher_worker
+
 from app.core.config import get_settings
 from app.core.logger import get_logger
 
@@ -55,6 +59,10 @@ async def lifespan(app: FastAPI):
     time_task = asyncio.create_task(time_status_broadcaster())
     logger.info("✅ Background tasks registered")
 
+    bus = MessageBus.get_instance()
+    bus.register_task(asyncio.create_task(run_inbound_router_worker()))
+    bus.register_task(asyncio.create_task(run_outbound_publisher_worker()))
+    logger.info("✅ Queued workers started")
     try:
         yield
     finally:
@@ -68,6 +76,7 @@ async def lifespan(app: FastAPI):
             await time_task
 
         # Stop infrastructure services
+        await MessageBus.get_instance().shutdown()
         await RedisManager.stop()
         await MqttManager.stop()
 
