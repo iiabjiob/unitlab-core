@@ -2,8 +2,6 @@
 # Mirror of C++ protocol/PacketStructures.h
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Optional
-
 
 # ------------------------------------------------------------------------
 # Digital (DI/DO) state
