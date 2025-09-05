@@ -10,24 +10,15 @@
     </div>
 
     <!-- Grid on md+; simple list on mobile -->
-    <ul
-      v-else
-      class="
-        grid gap-5
-        grid-cols-1
-        sm:grid-cols-1
-        lg:grid-cols-2
-        xl:grid-cols-3
-        2xl:grid-cols-4
-        3xl:grid-cols-5
-        items-stretch
-      "
-    >
+    <ul v-else class="
+    grid gap-5
+    grid-cols-1
+    sm:grid-cols-2
+    lg:grid-cols-[repeat(auto-fill,minmax(300px,1fr))]
+    items-stretch
+  ">
       <li v-for="device in deviceStore.devices" :key="device.unit_id" class="h-full">
-        <DeviceComponent
-          :key="device.unit_id"
-          :device="device"
-          />
+        <DeviceComponent :device="device" />
       </li>
     </ul>
   </div>

@@ -1,38 +1,26 @@
 <template>
 
-    <!-- Grid container (fills remaining space) -->
-      <div class="h-dvh w-full">
+  <!-- Grid container (fills remaining space) -->
+  <div class="h-dvh w-full">
 
-        <!-- Toolbar -->
-        <div class="p-2 flex gap-2 justify-end">
-          <ButtonComponent type="secondary" @click="exportCsv"
-          >
-            Export CSV
-          </ButtonComponent>
-        </div>
+    <!-- Toolbar -->
+    <div class="p-2 flex gap-2 justify-end">
+      <ButtonComponent type="secondary" @click="exportCsv">
+        Export CSV
+      </ButtonComponent>
+    </div>
 
-        <AgGridVue
-          style="height: 100%; width: 100%;"
-          :rowData="rows"
-          :columnDefs="columnDefs"
-          :defaultColDef="defaultColDef"
-          :getRowId="getRowId"
-          :enableCellTextSelection="true"
-          :suppressDragLeaveHidesColumns="true"
-          :animateRows="false"
-          :autoSizeStrategy="autoSizeStrategy"
-          :domLayout="'normal'"
-          :pagination="false"
-          :theme="theme"
-          @grid-ready="onGridReady"
-        />
-      </div>
+    <AgGridVue style="height: 100%; width: 100%;" :rowData="rows" :columnDefs="columnDefs"
+      :defaultColDef="defaultColDef" :getRowId="getRowId" :enableCellTextSelection="true"
+      :suppressDragLeaveHidesColumns="true" :animateRows="false" :autoSizeStrategy="autoSizeStrategy"
+      :domLayout="'normal'" :pagination="false" :theme="theme" @grid-ready="onGridReady" />
+  </div>
 
 </template>
 
 <script setup lang="ts">
 
-import { ref, computed, onMounted} from "vue"
+import { ref, computed, onMounted, watch } from "vue"
 import { AgGridVue } from "ag-grid-vue3"
 import type {
   ColDef,
@@ -45,10 +33,45 @@ import { themeBalham } from "ag-grid-community"
 const theme = themeBalham
 
 let gridApi: GridApi | null = null
+const autoScroll = ref(true)
 
 function onGridReady(params: GridReadyEvent) {
   gridApi = params.api
+
+  // слушаем скролл
+  gridApi.addEventListener("bodyScroll", () => {
+    if (!gridApi) return
+
+    const vRange = gridApi.getVerticalPixelRange()
+    const rowCount = gridApi.getDisplayedRowCount()
+    if (rowCount === 0) {
+      autoScroll.value = true
+      return
+    }
+
+    // Получаем последний ряд
+    const lastRow = gridApi.getDisplayedRowAtIndex(rowCount - 1)
+    if (!lastRow) return
+
+    const rowHeight = gridApi.getSizesForCurrentTheme().rowHeight ?? 28
+    const totalHeight = rowCount * rowHeight
+
+    // Проверяем: нижняя граница видимой области ≈ общая высота
+    autoScroll.value = vRange.bottom >= totalHeight - 20
+  })
 }
+
+watch(
+  () => rows.value.length,
+  () => {
+    if (autoScroll.value && gridApi) {
+      const lastIndex = rows.value.length - 1
+      if (lastIndex >= 0) {
+        gridApi.ensureIndexVisible(lastIndex, "bottom")
+      }
+    }
+  }
+)
 
 import { useEventLogStore } from "@/stores/eventLogStore"
 import type { EventLogEntry } from "@/types/eventLog"

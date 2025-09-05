@@ -7,7 +7,7 @@
       class="flex items-center rounded h-8 px-2 transition-colors text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
       active-class="bg-neutral-100 dark:bg-neutral-700 font-semibold text-neutral-900 dark:text-white"
     >
-      <!-- <DraftIcon class="w-16" size="20" /> -->
+      <DraftIcon class="w-10" size="15" />
       <span>{{ item.label }}</span>
     </RouterLink>
   </nav>
