@@ -25,10 +25,11 @@ class MqttManager:
         async def _enqueue_inbound(topic: str, payload: bytes, qos: int, properties: object):
             
             # быстрый путь для heartbeat
-            if topic.startswith("unitlab/devices/") and topic.endswith("/heartbeat"):
-                from app.infrastructure.mqtt.handlers import device_heartbeat
-                await device_heartbeat.handle_device_heartbeat(topic, payload, None)
-                return
+            # if topic.endswith("/h"):
+            #     unit_id = topic.split("/", 1)[0]
+            #     from app.infrastructure.mqtt.handlers import device_heartbeat
+            #     await device_heartbeat.handle_device_heartbeat(topic, payload, unit_id)
+            #     return
             
             """Manager-owned async handler that pushes messages into inbound queue."""
             bus = MessageBus.get_instance()

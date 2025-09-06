@@ -18,13 +18,16 @@ async def run_inbound_router_worker():
 
             # 2) routing latency (regex match)
             start_route = time.perf_counter()
-            match, handler = router.find_handler(msg.topic)
+            
+            handler, pattern = router.find_handler(msg.topic)
+            unit_id = router.extract_unit_id(msg.topic)
+
             route_latency = (time.perf_counter() - start_route) * 1000
 
             # 3) handler latency
             start_handler = time.perf_counter()
             if handler:
-                await handler(msg.topic, msg.payload, match)
+                await handler(msg.topic, msg.payload, unit_id)
             else:
                 logger.warning(f"[INBO] No handler found for {msg.topic}")
             handler_latency = (time.perf_counter() - start_handler) * 1000

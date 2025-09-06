@@ -1,3 +1,4 @@
+import type { ChannelType } from "../channel"
 import type { TimeStatus } from "../time"
 // ---------------------------------------------------------------------
 // Каналы WS (Backend → Frontend)
@@ -52,7 +53,6 @@ export enum RespError {
 export interface DeviceStateEvent {
   channel: WSChannel.DEVICE_STATE
   unit_id: string
-  type: string
   timestamp: number
   mode: StateMode
   payload: Record<string, any>
@@ -61,7 +61,7 @@ export interface DeviceStateEvent {
 export interface DeviceRegisterEvent {
   channel: WSChannel.DEVICE_REGISTER
   unit_id: string
-  type: string
+  type: ChannelType
   channels: number
   firmware_version: number
   is_active: boolean
@@ -72,7 +72,6 @@ export interface DeviceRegisterEvent {
 export interface DeviceRespEvent {
   channel: WSChannel.DEVICE_RESP
   unit_id: string
-  type: string
   packet_id: number
   status: RespStatus
   error: RespError

@@ -11,9 +11,6 @@
         Reset state
       </ButtonComponent>
 
-      <ButtonComponent type="secondary" @click="store.resetAllDos(unitId)" :disabled="!unitId">
-        Reset all DOs
-      </ButtonComponent>
     </div>
 
     <!-- Progress bar -->
@@ -43,26 +40,17 @@
 
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue"
-import { useDeviceStore } from "@/stores/deviceStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { buildPilotSequence } from "@/sequences/demoSequences"
 import { buildPulseDemoSequence } from "@/sequences/demoPulseSequences"
 import ButtonComponent from "@/components/ui/ButtonComponent.vue"
 
 
-const deviceStore = useDeviceStore()
 const store = useSequenceStore()
-const unitId = ref<string>("")
-
-
-const doDevices = computed(() => deviceStore.devices
-  .filter(d => d.type === 'do' && d.status === 'online'))
 
 function refreshSeq() {
-  if (!unitId.value) return
-  // store.setSequence(buildPilotSequence(unitId.value))
-  store.setSequence(buildPulseDemoSequence(unitId.value))
+  // store.setSequence(buildPilotSequence())
+  store.setSequence(buildPulseDemoSequence())
 }
 
 
@@ -71,16 +59,4 @@ async function onStart() {
   await store.start()
 }
 
-
-// Auto-select first available DO device
-onMounted(() => {
-  if (!unitId.value && doDevices.value.length) {
-    unitId.value = doDevices.value[0].unit_id
-    refreshSeq()
-  }
-})
-
-
-// Rebuild sequence when the unit changes
-watch(unitId, () => refreshSeq())
 </script>

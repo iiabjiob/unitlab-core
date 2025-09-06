@@ -68,14 +68,23 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     logger.warn("⏹️ Sequence stopped")
   }
 
-  async function resetAllDos(unit_id?: string) {
-    let uid = unit_id
-    if (!uid && active.value) {
-      const step = active.value.steps.find(s => s.kind === "DO_SET" || s.kind === "DO_RESET_ALL")
-      if (step?.kind === "DO_SET") uid = step.cmd.unit_id
-      if (step?.kind === "DO_RESET_ALL") uid = step.unit_id
+  async function resetAllDos() {
+    if (!active.value) return
+
+    // ищем первый шаг с unit_id
+    const step = active.value.steps.find(
+      s => s.kind === "DO_SET" || s.kind === "DO_RESET_ALL"
+    )
+
+    let uid: string | undefined
+    if (step?.kind === "DO_SET") uid = step.cmd.unit_id
+    if (step?.kind === "DO_RESET_ALL") uid = step.unit_id
+
+    if (!uid) {
+      logger.warn("⚠️ resetAllDos: no DO step with unit_id found in sequence")
+      return
     }
-    if (!uid) return
+
     const ws = useWebSocketStore()
     ws.send(toResetAllCmd(uid))
     logger.info(`🔄 Reset all DOs for ${uid}`)
@@ -97,12 +106,14 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
         logger.debug(`⏳ Wait ${step.ms} ms`)
         await sleep(step.ms)
         return
+
       case "DO_RESET_ALL":
         logger.debug(`🔄 Reset all DOs for ${step.unit_id}`)
         ws.send(toResetAllCmd(step.unit_id))
         return
+
       case "DO_SET":
-        logger.debug(`➡️ Send DO_SET: ${describeStep(step)}`)
+        logger.debug(`➡️ Send DO_SET for ${step.cmd.unit_id}: ${describeStep(step)}`)
         ws.send({ action: WSAction.SET_DO_COMMAND, ...step.cmd })
         return
     }

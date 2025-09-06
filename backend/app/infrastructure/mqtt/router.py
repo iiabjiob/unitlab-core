@@ -17,18 +17,26 @@ class MqttRouter:
             self._routes.append((regex, handler, pattern))
 
     def find_handler(self, topic: str):
-        """
-        Return (match, handler) for the given topic or (None, None).
-        """
         for regex, handler, pattern in self._routes:
-            match = regex.match(topic)
-            if match:
-                return match, handler
+            if regex.match(topic):
+                return handler, pattern
         return None, None
 
+    @staticmethod
+    def extract_unit_id(topic: str) -> str:
+        """Extract unit_id from topic (first segment)."""
+        return topic.split("/", 1)[0] if "/" in topic else topic
+    
     async def route(self, topic: str, payload: bytes):
-        match, handler = self.find_handler(topic)
-        if handler:
-            await handler(topic, payload, match)
-        else:
-            logger.warning(f"No handler found for topic: {topic}")
+        handler, pattern = self.find_handler(topic)
+        if not handler:
+            logger.warning(f"No handler for {topic}")
+            return
+
+        # unit_id всегда первая часть топика
+        unit_id = self.extract_unit_id(topic)
+
+        try:
+            await handler(topic, payload, unit_id=unit_id)
+        except Exception as e:
+            logger.error(f"💥 Error while handling {topic}: {e}")

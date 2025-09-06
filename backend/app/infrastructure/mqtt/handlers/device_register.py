@@ -17,7 +17,7 @@ logger = get_logger("dev")
 
 
 @registry.mqtt_handler(topics.DEVICE_REGISTER)
-async def handle_device_register(topic: str, payload: bytes, match):
+async def handle_device_register(topic: str, payload: bytes, unit_id: str):
     """
     Handle device registration messages from MQTT.
     """

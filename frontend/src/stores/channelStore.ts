@@ -45,7 +45,6 @@ export const useChannelStore = defineStore('channelStore', () => {
         updated.push({
           index: ch,
           device_id: unitId,
-          type: event.type.toUpperCase() as "DI" | "DO",
           state: !!value,
           name: `CH${ch + 1}`,
         })
@@ -61,7 +60,6 @@ export const useChannelStore = defineStore('channelStore', () => {
         updated.push({
           index: i,
           device_id: unitId,
-          type: event.type.toUpperCase()  as "DI" | "DO",
           state: (bitmask >> i) & 1 ? true : false,
           name: `CH${i + 1}`,
         })
@@ -78,7 +76,6 @@ export const useChannelStore = defineStore('channelStore', () => {
         updated.push({
           index: ch,
           device_id: unitId,
-          type: "AO",
           state: value,
           name: `AO${ch + 1}`,
         })
@@ -108,7 +105,6 @@ export const useChannelStore = defineStore('channelStore', () => {
     const msg: RequestStateMessage = {
       action: WSAction.GET_STATES,
       unit_id: unitId,
-      type: deviceType.toLowerCase() as "di" | "do" | "ao",
       mode:
         deviceType.toLowerCase() === "ao"
           ? ReqStateMode.REQ_ALL_FLOAT

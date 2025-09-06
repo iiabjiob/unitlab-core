@@ -113,18 +113,19 @@ const diUnitId = computed(() => {
   return deviceStore.devices.find(d => d.type?.toLowerCase() === "di")?.unit_id ?? "unknown-di"
 })
 
-function getDoState(unitId: string, ch: number): boolean | null {
+function getChannelState(unitId: string, ch: number, expectedType: "DO" | "DI"): boolean | null {
+  const dev = deviceStore.devices.find(d => d.unit_id === unitId)
+  if (!dev || dev.type !== expectedType) return null
+
   const arr = channelStore.channels[unitId]
   if (!arr) return null
-  const c = arr.find(x => x.type === "DO" && x.index === ch)
-  return (c && typeof (c as any).state === "boolean") ? (c as any).state as boolean : null
+  const c = arr.find(x => x.index === ch)
+  return typeof (c as any)?.state === "boolean" ? (c as any).state as boolean : null
 }
-function getDiState(unitId: string, ch: number): boolean | null {
-  const arr = channelStore.channels[unitId]
-  if (!arr) return null
-  const c = arr.find(x => x.type === "DI" && x.index === ch)
-  return (c && typeof (c as any).state === "boolean") ? (c as any).state as boolean : null
-}
+
+// теперь getDoState / getDiState = обёртки:
+const getDoState = (id: string, ch: number) => getChannelState(id, ch, "DO")
+const getDiState = (id: string, ch: number) => getChannelState(id, ch, "DI")
 
 const isCmdDisabled = (target: SwitchgearState) => {
   // Disable if busy, disconnected, or already in that state

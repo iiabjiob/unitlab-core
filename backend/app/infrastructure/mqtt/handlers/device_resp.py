@@ -14,9 +14,8 @@ logger = get_logger("mqtt")
 
 
 @registry.mqtt_handler(topics.DEVICE_RESP)
-async def handle_device_resp(topic: str, payload: bytes, match):
-    type, unit_id = match.group(1), match.group(2)
-
+async def handle_device_resp(topic: str, payload: bytes, unit_id: str):
+    
     try:
         parser = PacketParser(payload)
         if not parser.parse_header():
@@ -34,7 +33,6 @@ async def handle_device_resp(topic: str, payload: bytes, match):
         # Build WS event
         event = DeviceRespEvent(
             unit_id=unit_id,
-            type=type,
             packet_id=parser.hdr.packet_id,
             status=status,
             error=error,
@@ -46,7 +44,7 @@ async def handle_device_resp(topic: str, payload: bytes, match):
         return
 
     logger.debug(
-        f"📥 IN ← {type.upper()} {unit_id}: RESP packetId={parser.hdr.packet_id} "
+        f"📥 IN ← {unit_id}: RESP packetId={parser.hdr.packet_id} "
         f"status={status.name} err={error.name}"
     )
 
@@ -62,7 +60,6 @@ async def handle_device_resp(topic: str, payload: bytes, match):
             "source": EventSource.WS_DEVICE,
             "channel_or_action": WSChannel.DEVICE_RESP,
             "unit_id": unit_id,
-            "type": type,
             "summary": f"RESP packetId={parser.hdr.packet_id} status={status.name} err={error.name}",
             "payload": event.model_dump(),
         })

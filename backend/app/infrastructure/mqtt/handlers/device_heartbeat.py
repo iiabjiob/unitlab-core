@@ -11,15 +11,10 @@ settings = get_settings()
 logger = get_logger("mqtt")
 
 @registry.mqtt_handler(topics.DEVICE_HEARTBEAT)
-async def handle_device_heartbeat(topic: str, payload: bytes, match=None):
-    if match:
-        dev_type, unit_id = match.group(1), match.group(2)
-    else:
-        parts = topic.split("/")
-        dev_type, unit_id = parts[2], parts[3]
-
+async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
+    
     ts = int(time.time() * 1000)
-    logger.debug(f"📥 IN ← {dev_type.upper()} {unit_id}: heartbeat @ {ts}")
+    logger.debug(f"📥 IN ← {unit_id}: heartbeat @ {ts}")
 
     redis = RedisManager.get_instance()
 
@@ -30,14 +25,14 @@ async def handle_device_heartbeat(topic: str, payload: bytes, match=None):
         ex=settings.heartbeat_ttl
     )
 
-    # сохраняем тип
-    await redis.set(f"device:{unit_id}:type", dev_type.encode())
-
     # регистрируем девайс в all (если впервые)
     await redis.sadd("devices:all", unit_id.encode())
 
     # проверяем статус
     prev_status = await redis.get(f"device:{unit_id}:status")
+    if prev_status is not None:
+        prev_status = prev_status.decode() if isinstance(prev_status, (bytes, bytearray)) else str(prev_status)
+
     if prev_status != "online":
         await redis.set(f"device:{unit_id}:status", "online")
         
@@ -49,4 +44,4 @@ async def handle_device_heartbeat(topic: str, payload: bytes, match=None):
         ws_manager = WebSocketManager.get_instance()
         await ws_manager.broadcast(event)
 
-        logger.info(f"Device {unit_id} ({dev_type}) came online")
+        logger.info(f"Device {unit_id} came online")

@@ -13,7 +13,10 @@ const DO_PULSE = (unit_id: string, ch: number, value: 0 | 1, pulse_ms: number) =
 
 
 // --- Sequence definition ---
-export function buildPulseDemoSequence(unit_id: string): SequenceDef {
+export function buildPulseDemoSequence(): SequenceDef {
+
+  let unit_id = "9458EC";
+
   return {
     id: `pulse-demo-${unit_id}`,
     name: "Pilot Demo – Pulse / Latch / Mask",

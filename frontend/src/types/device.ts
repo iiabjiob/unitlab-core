@@ -1,6 +1,8 @@
+import type { ChannelType } from "./channel"
+
 export interface Device {
   unit_id: string
-  type: string   // DI | DO | AO
+  type: ChannelType
   channels: number
   firmware_version: number
   is_active: boolean

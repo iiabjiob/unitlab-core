@@ -56,7 +56,6 @@ class EventSource(str, Enum):
 class DeviceStateEvent(BaseModel):
     channel: Literal[WSChannel.DEVICE_STATE] = WSChannel.DEVICE_STATE
     unit_id: str
-    type: str
     timestamp: int
     mode: State                   # Enum из protocol.modes
     payload: Dict[str, Any]
@@ -75,7 +74,6 @@ class DeviceRegisterEvent(DeviceSchema):
 class DeviceRespEvent(BaseModel):
     channel: Literal[WSChannel.DEVICE_RESP] = WSChannel.DEVICE_RESP
     unit_id: str
-    type: str
     packet_id: int
     status: RespStatus
     error: RespError

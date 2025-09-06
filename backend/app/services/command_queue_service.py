@@ -39,7 +39,7 @@ async def enqueue_do_command(
     pulse_ms: int = 0,
     correlation_id: str | None = None,
 ):
-    topic = topics.cmd("do", unit_id)
+    topic = topics.cmd(unit_id)
 
     if mode == Cmd.SET_SINGLE_BIT:
         payload = bit_encode.cmd_set_single(CmdSetSingleBit(ch=ch, value=value))  # type: ignore
@@ -73,7 +73,7 @@ async def enqueue_do_command(
 
 # ---------------- AO Commands ----------------
 async def enqueue_ao_command(unit_id: str, ch: int, value: float, correlation_id: str | None = None):
-    topic = topics.cmd("ao", unit_id)
+    topic = topics.cmd(unit_id)
 
     mode = Cmd.SET_SINGLE_FLOAT
     payload = float_encode.cmd_set_single(CmdSetSingleFloat(ch=ch, value=value))
@@ -99,13 +99,12 @@ async def enqueue_ao_command(unit_id: str, ch: int, value: float, correlation_id
 
 # ---------------- STATE Requests ----------------
 async def enqueue_request_state(
-    type: str,
     unit_id: str,
     mode: State,
     ch: int | None = None,
     correlation_id: str | None = None,
 ):
-    topic = topics.req_state(type, unit_id)
+    topic = topics.req_state(unit_id)
 
     if mode in (State.REQ_SINGLE_BIT, State.REQ_SINGLE_FLOAT):
         if ch is None:

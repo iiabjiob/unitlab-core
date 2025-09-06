@@ -4,19 +4,19 @@
     <span>{{ channel.name || ("CH" + (channel.index + 1)) }}</span>
 
     <!-- Управление DO -->
-    <div v-if="channel.type === 'DO'" class="flex flex-1 items-center justify-end gap-2">
-      <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="!channel.state"
+    <div v-if="props.type === 'DO'" class="flex flex-1 items-center justify-end gap-2">
+      <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="Boolean(!channel.state)"
         @click="$emit('toggle', false)">
         Off
       </ButtonComponent>
-      <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="channel.state"
+      <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="Boolean(channel.state)"
         @click="$emit('toggle', true)">
         On
       </ButtonComponent>
     </div>
 
     <!-- AO -->
-    <div v-else-if="channel.type === 'AO'" class="flex flex-1 items-center justify-end gap-2">
+    <div v-else-if="props.type === 'AO'" class="flex flex-1 items-center justify-end gap-2">
       <div class="flex items-center gap-1">
         <input type="number" min="0" max="24" step="0.01" v-model="inputValue" @input="onInput" @blur="onBlur"
           @keyup.enter="onConfirm"
@@ -30,16 +30,16 @@
 
 
     <!-- DI -->
-    <div v-else-if="channel.type === 'DI'" class="flex flex-1 items-center justify-end gap-2">
+    <div v-else-if="props.type === 'DI'" class="flex flex-1 items-center justify-end gap-2">
       <!-- Только статус -->
     </div>
 
     <!-- Статус -->
     <span class="ml-4 pl-4 border-l border-neutral-300 dark:border-neutral-700 text-right">
-      <template v-if="channel.type === 'DO' || channel.type === 'DI'">
+      <template v-if="props.type === 'DO' || props.type === 'DI'">
         {{ channel.state ? "🟢" : "⚪️" }}
       </template>
-      <template v-else-if="channel.type === 'AO'">
+      <template v-else-if="props.type === 'AO'">
         <div class="min-w-[50px] text-nowrap">
           {{ channel.state }}
           <span class="text-xs text-neutral-400 ml-1">mA</span>
@@ -51,11 +51,12 @@
 </template>
 
 <script setup lang="ts">
-import type { Channel } from "@/types/channel"
+import type { Channel, ChannelType } from "@/types/channel"
 import ButtonComponent from "./ui/ButtonComponent.vue"
-import { ref, watch } from "vue"
+import { ref } from "vue"
 
 const props = defineProps<{
+  type: ChannelType
   channel: Channel
   disabled?: boolean
 }>()

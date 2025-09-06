@@ -57,7 +57,6 @@ class RequestStateMessage(BaseModel):
     """
     action: Literal[WSAction.GET_STATES]
     unit_id: str
-    type: str  # "di" | "do" | "ao"
     mode: State
     ch: Optional[int] = None
 

@@ -7,7 +7,10 @@ const DO_SINGLE = (unit_id: string, ch: number, value: 0 | 1) => ({ unit_id, mod
 const DO_MASK = (unit_id: string, bitmask: number) => ({ unit_id, mode: CmdMode.SET_ALL_BIT, bitmask } as const)
 
 
-export function buildPilotSequence(unit_id: string): SequenceDef {
+export function buildPilotSequence(): SequenceDef {
+
+  let unit_id = "9458EC";
+
   // Channels assumed 0-based; adjust to your hardware mapping as needed.
   return {
     id: `pilot-basic-${unit_id}`,

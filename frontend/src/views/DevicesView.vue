@@ -28,16 +28,11 @@
 <script setup lang="ts">
 import { onMounted } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
-import { useWebSocketStore } from "@/stores/websocketStore"
-import { WSAction } from "@/types/ws/messages"
 import DeviceComponent from "@/components/DeviceComponent.vue"
 
-const wsStore = useWebSocketStore()
 const deviceStore = useDeviceStore()
 
 onMounted(async () => {
   await deviceStore.fetchDevices()
-  wsStore.send({ action: WSAction.SCAN_DEVICES })
-
 })
 </script>

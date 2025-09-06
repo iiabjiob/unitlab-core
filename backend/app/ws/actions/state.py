@@ -11,7 +11,6 @@ from app.schemas.ws.messages import WSAction
 async def handle_get_states(ws: WebSocket, msg: RequestStateMessage):
     # Кладём запрос состояния в outbound очередь
     await enqueue_request_state(
-        type=msg.type,
         unit_id=msg.unit_id,
         mode=msg.mode,
         ch=msg.ch,
@@ -20,9 +19,9 @@ async def handle_get_states(ws: WebSocket, msg: RequestStateMessage):
 
     # Log 
     if msg.ch is not None:
-        summary = f"REQ state type={msg.type}, mode={msg.mode.name}, ch={msg.ch}"
+        summary = f"REQ state, mode={msg.mode.name}, ch={msg.ch}"
     else:
-        summary = f"REQ state type={msg.type}, mode={msg.mode.name}"
+        summary = f"REQ state, mode={msg.mode.name}"
     
     async with AsyncSessionLocal() as session:
         await EventLogService.log_and_broadcast(session, {
@@ -32,7 +31,6 @@ async def handle_get_states(ws: WebSocket, msg: RequestStateMessage):
             "source": EventSource.WS_COMMAND,
             "channel_or_action": WSAction.GET_STATES,
             "unit_id": msg.unit_id,
-            "type": msg.type,
             "summary": summary,
             "payload": msg.model_dump(),
         })

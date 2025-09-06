@@ -8,6 +8,7 @@
       v-for="ch in realChannels"
       :key="`${unitId}-${ch.index}`"
       :channel="ch"
+      :type="deviceType"
       @toggle="state => onToggle(ch, state)"
       @ao-change="val => onAoChange(ch, val)"
     />
@@ -18,11 +19,11 @@
 import { computed } from "vue"
 import { useChannelStore } from "@/stores/channelStore"
 import ChannelComponent from "./ChannelComponent.vue"
-import type { Channel } from "@/types/channel"
+import type { Channel, ChannelType } from "@/types/channel"
 
 const props = defineProps<{
   unitId: string
-  deviceType?: string
+  deviceType: ChannelType
   channels?: number
   disabled?: boolean
 }>()
@@ -37,13 +38,13 @@ const realChannels = computed<Channel[]>(() => {
 // обработчики
 function onToggle(ch: Channel, state: boolean) {
   if (props.disabled) return
-  if (ch.type === "DO") {
+  if (props.deviceType === "DO") {
     channelStore.sendDoCommand(props.unitId, ch.index, state)
   }
 }
 function onAoChange(ch: Channel, value: number) {
   if (props.disabled) return
-  if (ch.type === "AO") {
+  if (props.deviceType === "AO") {
     channelStore.sendAoCommand(props.unitId, ch.index, value)
   }
 }
