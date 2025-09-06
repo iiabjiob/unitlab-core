@@ -2,10 +2,12 @@ import asyncio
 from fastapi import FastAPI
 from contextlib import asynccontextmanager, suppress
 
-from app.api.devices   import router as devices_router
-from app.api.time      import router as time_router
+from app.api.devices import router as devices_router
 from app.api.event_log import router as event_log_router
-from app.ws.router     import router as ws_router
+from app.api.time import router as time_router
+from app.api.settings import router as settings_router
+
+from app.ws.router import router as ws_router
 
 from app.infrastructure.db.database import engine
 from sqlalchemy import text
@@ -94,6 +96,8 @@ logger.info("🔗 Registering REST API routers...")
 app.include_router(devices_router)
 app.include_router(time_router)
 app.include_router(event_log_router)
+app.include_router(settings_router)
+
 logger.info("✅ REST API routers registered")
 
 # Websockets

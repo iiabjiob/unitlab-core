@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 from app.ws.manager import WebSocketManager
 from app.schemas.ws.events import TimeStatusEvent
+from app.services.time_sync import get_chrony_status
 from app.core.logger import get_logger
 
 logger = get_logger("TS")
@@ -17,12 +18,9 @@ async def time_status_broadcaster():
     while True:
         try:
             now = datetime.now(timezone.utc).isoformat()
-            status = "unsynced"   # TODO: брать из агента/Redis
-            source = "local"
-            offset_us = None
-
+            status, source, offset_us = get_chrony_status()
             event = TimeStatusEvent(
-                timestamp=now,
+                timestamp=datetime.now(timezone.utc).isoformat(),
                 status=status,
                 source=source,
                 offset_us=offset_us,

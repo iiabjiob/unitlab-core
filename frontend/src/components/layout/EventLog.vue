@@ -11,23 +11,20 @@
     </div>
 
     <ul
-      ref="logList"
       class="log-list space-y-2 divide-y divide-neutral-200 dark:divide-neutral-700 max-h-48 overflow-y-auto"
-      @scroll="handleScroll"
     >
       <li
         v-for="e in store.items"
         :key="e.id"
-        class="text-xs"
+        class="text-xs transition-colors"
         :class="e.highlight
-          ? 'bg-yellow-100 dark:bg-yellow-900'
+          ? 'bg-yellow-50 dark:bg-yellow-950'
           : ''"
       >
         <!-- Row 1: timestamp + device -->
         <div class="flex items-center gap-2">
-          <span :title="e.dir">
-            {{ e.dir === 'IN' ? '📥' : '➡️' }}
-          </span>
+          <span v-if="e.dir === 'IN'">⬅️</span>
+          <span v-else-if="e.dir === 'OUT'">➡️</span>
 
           <span class="font-mono text-neutral-500 dark:text-neutral-400 text-xs">
             {{ formatTs(e.ts) }}
@@ -50,41 +47,15 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, watch, nextTick } from "vue"
 import { useEventLogStore } from "@/stores/eventLogStore"
+import { WSChannel } from "@/types/ws/events";
 import { formatTs } from "@/utils/datetime"
 
 const store = useEventLogStore()
-const logList = ref<HTMLElement | null>(null)
-
-// whether to auto-scroll to bottom
-const autoScroll = ref(true)
-
-function handleScroll() {
-  if (!logList.value) return
-  const { scrollTop, scrollHeight, clientHeight } = logList.value
-
-  // если мы близко к низу (±5px), включаем автоскролл
-  autoScroll.value = scrollTop + clientHeight >= scrollHeight - 5
-}
-
-// следим за изменением списка
-watch(
-  () => store.items.length,
-  async () => {
-    if (autoScroll.value && logList.value) {
-      await nextTick()
-      logList.value.scrollTop = logList.value.scrollHeight
-    }
-  }
-)
 </script>
 
 <style scoped>
-/* apply only inside this component */
 .log-list {
-
-  /* hide scrollbars but keep scroll working */
   scrollbar-width: none;       /* Firefox */
   -ms-overflow-style: none;    /* IE/Edge */
 }

@@ -60,7 +60,11 @@ export const useTimeStore = defineStore("timeStore", () => {
       : "—"
   )
 
-  const sourceLabel = computed(() => source.value ?? "unknown")
+  const sourceLabel = computed(() => {
+    if (status.value === "unsynced") return "local"
+    if (status.value === "synced") return "ntp"
+    return source.value ?? "unknown"
+  })
 
   return {
     serverTime,

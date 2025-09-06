@@ -14,4 +14,5 @@ export const ApiBuilder = {
   device: (unitId: string) => `/api/devices/${unitId}`,
   time: (params?: Record<string, any>) => buildQuery('/api/time', params),
   events: (params?: Record<string, any>) => buildQuery('/api/events', params),
+  timeSync: () => `/api/settings/timesync`,
 }

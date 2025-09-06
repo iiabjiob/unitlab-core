@@ -21,5 +21,6 @@ const items = [
   { to: "/switchgear", label: "Switchgear" },
   { to: "/signal-list", label: "Signal List" },
   { to: "/sequences", label: "Sequences" },
+  { to: "/settings", label: "Settings" },
 ]
 </script>
