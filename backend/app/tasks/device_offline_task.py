@@ -12,51 +12,39 @@ logger = get_logger("offline_checker")
 
 
 async def device_offline_checker():
-    redis_client = RedisManager.get_instance()
+    redis = RedisManager.get_instance()
     ws_manager = WebSocketManager.get_instance()
 
     while True:
         try:
-            online_units = await redis_client.smembers("devices:online")
+            all_units = await redis.smembers("devices:all")
 
-            for raw_id in online_units:
-                unit_id = to_str(raw_id, "")
-
-                # Проверяем TTL
-                last_seen = await redis_client.get(f"device:{unit_id}:last_seen")
-                if not last_seen:
-                    # expired → offline
-                    prev_status = await redis_client.get(f"device:{unit_id}:status")
-
-                    if prev_status != b"offline":  # только при изменении
-                        await redis_client.srem("devices:online", unit_id.encode())
-                        await redis_client.set(f"device:{unit_id}:status", b"offline")
-
-                        type_raw = await redis_client.get(f"device:{unit_id}:type")
-                        type_str = to_str(type_raw, "unknown")
-
-                        event = DeviceHeartbeatEvent(
-                            unit_id=unit_id,
-                            type=type_str,
-                            status="offline",
-                            last_seen=int(time.time() * 1000),
-                        )
-                        await ws_manager.broadcast(event)
-                        logger.info(f"Device {unit_id} ({type_str}) went offline")
-
-            # теперь обратная логика: кто-то мог появиться снова (по last_seen обновился)
-            all_units = await redis_client.smembers("devices:all")  # множество всех известных
             for raw_id in all_units:
                 unit_id = to_str(raw_id, "")
-                status = await redis_client.get(f"device:{unit_id}:status")
-                last_seen = await redis_client.get(f"device:{unit_id}:last_seen")
+                status = await redis.get(f"device:{unit_id}:status")
+                last_seen = await redis.get(f"device:{unit_id}:last_seen")
 
-                if status == b"offline" and last_seen:
-                    # значит устройство снова "ожило"
-                    await redis_client.sadd("devices:online", unit_id.encode())
-                    await redis_client.set(f"device:{unit_id}:status", b"online")
+                # --- OFFLINE ---
+                if not last_seen and status != "offline":
+                    await redis.set(f"device:{unit_id}:status", "offline")
 
-                    type_raw = await redis_client.get(f"device:{unit_id}:type")
+                    type_raw = await redis.get(f"device:{unit_id}:type")
+                    type_str = to_str(type_raw, "unknown")
+
+                    event = DeviceHeartbeatEvent(
+                        unit_id=unit_id,
+                        type=type_str,
+                        status="offline",
+                        last_seen=int(time.time() * 1000),
+                    )
+                    await ws_manager.broadcast(event)
+                    logger.info(f"Device {unit_id} ({type_str}) went offline")
+
+                # --- ONLINE (оживление) ---
+                elif status == "offline" and last_seen:
+                    await redis.set(f"device:{unit_id}:status", "online")
+
+                    type_raw = await redis.get(f"device:{unit_id}:type")
                     type_str = to_str(type_raw, "unknown")
 
                     event = DeviceHeartbeatEvent(
