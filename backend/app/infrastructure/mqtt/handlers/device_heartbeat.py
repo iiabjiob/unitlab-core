@@ -2,6 +2,8 @@ import time
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.mqtt import topics
+from app.ws.manager import WebSocketManager
+from app.schemas.ws.events import DeviceHeartbeatEvent
 from app.core.config import get_settings
 from app.core.logger import get_logger
 
@@ -38,6 +40,13 @@ async def handle_device_heartbeat(topic: str, payload: bytes, match=None):
     prev_status = await redis.get(f"device:{unit_id}:status")
     if prev_status != "online":
         await redis.set(f"device:{unit_id}:status", "online")
+        
+        event = DeviceHeartbeatEvent(
+                unit_id=unit_id,
+                status="online",
+                last_seen=int(time.time() * 1000),
+            )
+        ws_manager = WebSocketManager.get_instance()
+        await ws_manager.broadcast(event)
+
         logger.info(f"Device {unit_id} ({dev_type}) came online")
-    
-        # TODO: записываем снапшот. Пока этого механизма нет

@@ -27,34 +27,26 @@ async def device_offline_checker():
                 # --- OFFLINE ---
                 if not last_seen and status != "offline":
                     await redis.set(f"device:{unit_id}:status", "offline")
-
-                    type_raw = await redis.get(f"device:{unit_id}:type")
-                    type_str = to_str(type_raw, "unknown")
-
+ 
                     event = DeviceHeartbeatEvent(
                         unit_id=unit_id,
-                        type=type_str,
                         status="offline",
                         last_seen=int(time.time() * 1000),
                     )
                     await ws_manager.broadcast(event)
-                    logger.info(f"Device {unit_id} ({type_str}) went offline")
+                    logger.info(f"Device {unit_id} went offline")
 
                 # --- ONLINE (оживление) ---
                 elif status == "offline" and last_seen:
                     await redis.set(f"device:{unit_id}:status", "online")
 
-                    type_raw = await redis.get(f"device:{unit_id}:type")
-                    type_str = to_str(type_raw, "unknown")
-
                     event = DeviceHeartbeatEvent(
                         unit_id=unit_id,
-                        type=type_str,
                         status="online",
                         last_seen=int(time.time() * 1000),
                     )
                     await ws_manager.broadcast(event)
-                    logger.info(f"Device {unit_id} ({type_str}) came online")
+                    logger.info(f"Device {unit_id} came online")
 
         except Exception as e:
             logger.error(f"💥 Offline checker error: {e}")

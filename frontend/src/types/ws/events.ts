@@ -82,7 +82,6 @@ export interface DeviceRespEvent {
 export interface DeviceHeartbeatEvent {
   channel: WSChannel.DEVICE_STATUS
   unit_id: string
-  type: string
   status: "online" | "offline"
   last_seen: number
 }

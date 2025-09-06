@@ -95,7 +95,6 @@ class DeviceRespEvent(BaseModel):
 class DeviceHeartbeatEvent(BaseModel):
     channel: Literal[WSChannel.DEVICE_STATUS] = WSChannel.DEVICE_STATUS
     unit_id: str
-    type: str
     status: Literal["online", "offline"]
     last_seen: int
 

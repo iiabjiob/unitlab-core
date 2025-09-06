@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import axios from 'axios'
 import { ApiBuilder } from '@/utils/api'
 import type { Device } from '@/types/device'
@@ -58,21 +58,24 @@ export const useDeviceStore = defineStore('deviceStore', () => {
     const idx = devices.value.findIndex(d => d.unit_id === event.unit_id)
     if (idx !== -1) {
       devices.value[idx] = { ...devices.value[idx], ...event }
-    } else {
-      devices.value.push(event)
     }
   }
 
   function updateStatus(event: DeviceHeartbeatEvent) {
-    const dev = devices.value.find(d => d.unit_id === event.unit_id)
-    if (dev) {
-      dev.status = event.status
-      dev.last_seen = event.last_seen
+    const idx = devices.value.findIndex(d => d.unit_id === event.unit_id)
+    if (idx !== -1) {
+      devices.value[idx].status = event.status
+      devices.value[idx].last_seen = event.last_seen
     }
   }
 
+  const onlineDevices = computed(() => devices.value.filter(d => d.status === "online"))
+  const offlineDevices = computed(() => devices.value.filter(d => d.status === "offline"))
+
   return {
     devices,
+    onlineDevices,
+    offlineDevices,
     isLoading,
     fetchDevices,
     toggleDeviceActive,
