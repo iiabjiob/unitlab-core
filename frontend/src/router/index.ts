@@ -1,5 +1,6 @@
 // src/router/index.ts
 import { createRouter, createWebHistory } from "vue-router"
+import { h } from "vue"
 
 // Views
 import HomeView from "@/views/HomeView.vue"
@@ -43,7 +44,9 @@ const router = createRouter({
       component: DevicesView,
       meta: {
         ...defaultMeta,
+        headerBulkActions: true,
       },
+
     },
     {
       path: "/switchgear",

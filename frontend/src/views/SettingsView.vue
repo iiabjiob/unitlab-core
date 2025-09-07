@@ -1,7 +1,7 @@
 <template>
   <div class="p-5">
 
-    <div>Hi Home view</div>
+    <div>Hi Settings view</div>
   </div>
 </template>
 

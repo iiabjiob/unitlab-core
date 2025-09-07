@@ -13,6 +13,11 @@
       </template>
     </AppHeader>
 
+    <!-- Header bulk actions -->
+    <div v-if="meta.headerBulkActions" class="shrink-0">
+      <slot name="header-bulk-actions" />
+    </div>
+
     <!-- Main content -->
     <main class="flex-1 overflow-auto relative">
       <RouterView />
@@ -92,5 +97,6 @@ const meta = computed(() => ({
   rightAside: route.meta.rightAside ?? true,
   bottomValidator: route.meta.bottomValidator ?? true,
   globalEventLog: route.meta.globalEventLog ?? true,
+  headerBulkActions: route.meta.headerBulkActions ?? false,
 }))
 </script>

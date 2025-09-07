@@ -8,6 +8,10 @@
 
       <!-- Workspace -->
       <div class="flex-1 flex flex-col overflow-hidden relative">
+        <!-- Header bulk actions -->
+        <div v-if="meta.headerBulkActions" class="shrink-0">
+          <slot name="header-bulk-actions" />
+        </div>
         <div class="flex flex-1 overflow-hidden">
           <main class="flex-1 overflow-auto">
             <RouterView />
@@ -63,5 +67,6 @@ const meta = computed(() => ({
   leftAside: route.meta.leftAside ?? true,
   rightAside: route.meta.rightAside ?? true,
   bottomValidator: route.meta.bottomValidator ?? true,
+  headerBulkActions: route.meta.headerBulkActions ?? false,
 }))
 </script>
