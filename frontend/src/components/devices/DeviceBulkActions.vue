@@ -1,6 +1,6 @@
 <template>
   <div
-    class="flex flex-wrap gap-3 items-center px-4 py-2 border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 rounded">
+    class="flex flex-wrap justify-end gap-3 items-center px-4 py-2 border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 rounded">
     <!-- Bulk actions -->
     <div v-if="selectedIds.length" class="flex gap-2">
       <button
@@ -20,8 +20,8 @@
     <!-- Online only toggle -->
     <button
       type="button"
-      class="flex items-center gap-2 text-sm px-3 py-1 rounded border border-neutral-300 dark:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-700"
-      :class="onlyOnline ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300' : ''"
+      class="flex items-center gap-2 text-sm px-3 py-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer"
+      :class="onlyOnline ? ' text-green-700 dark:text-green-300' : ''"
       @click="toggleOnline"
     >
       <span
@@ -35,12 +35,13 @@
     <Listbox v-model="selectedTypes" multiple>
       <div class="relative">
         <ListboxButton
-          class="border rounded px-3 py-1 text-sm bg-white dark:bg-neutral-700 dark:text-white flex items-center gap-2"
+          class="border rounded px-3 py-1 text-sm bg-white dark:bg-neutral-700 dark:text-white flex items-center gap-2 border-neutral-200 dark:border-neutral-800 cursor-pointer"
         >
           <span v-if="selectedTypes.length">
             {{ selectedTypes.join(", ") }}
           </span>
-          <span v-else class="text-neutral-400">All types</span>
+          <span v-else class="text-neutral-800 dark:text-neutral-200">All types</span>
+          <ChevronDownIcon size="20"/>
         </ListboxButton>
 
         <ListboxOptions
@@ -64,6 +65,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue"
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from "@headlessui/vue"
+import ChevronDownIcon from "../icons/ChevronDownIcon.vue";
 
 // --- Emits ---
 const emit = defineEmits<{
