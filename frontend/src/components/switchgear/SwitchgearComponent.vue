@@ -65,7 +65,7 @@ import { computed, onMounted, ref, watch } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useChannelStore } from "@/stores/channelStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
-import ButtonComponent from "./ui/ButtonComponent.vue"
+import ButtonComponent from "../ui/ButtonComponent.vue"
 
 type SwitchgearState = "CLOSED" | "OPEN" | "UNKNOWN" | "INTERMEDIATE"
 

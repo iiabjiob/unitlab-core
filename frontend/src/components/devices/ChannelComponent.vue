@@ -52,7 +52,7 @@
 
 <script setup lang="ts">
 import type { Channel, ChannelType } from "@/types/channel"
-import ButtonComponent from "./ui/ButtonComponent.vue"
+import ButtonComponent from "../ui/ButtonComponent.vue"
 import { ref } from "vue"
 
 const props = defineProps<{

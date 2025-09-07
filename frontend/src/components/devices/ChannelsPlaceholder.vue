@@ -10,7 +10,7 @@
 </template>
 
 <script setup lang="ts">
-import ChannelPlaceholder from '@/components/ChannelPlaceholder.vue';
+import ChannelPlaceholder from '@/components/devices/ChannelPlaceholder.vue';
 import type { ChannelType } from '@/types/channel';
 
 const props = defineProps<{

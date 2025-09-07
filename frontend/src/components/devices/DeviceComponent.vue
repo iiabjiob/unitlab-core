@@ -111,8 +111,8 @@ import { Menu, MenuButton, MenuItems, MenuItem } from "@headlessui/vue"
 import { useDeviceStore } from "@/stores/deviceStore"
 import type { Device } from "@/types/device"
 import ChannelsComponent from "./ChannelsComponent.vue"
-import BadgeComponent from "./ui/BadgeComponent.vue"
-import OnlineStatusComponent from "./OnlineStatusComponent.vue"
+import BadgeComponent from "../ui/BadgeComponent.vue"
+import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
 import ChannelsPlaceholder from "./ChannelsPlaceholder.vue"
 
 const props = defineProps<{ device: Device }>()

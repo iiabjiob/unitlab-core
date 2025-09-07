@@ -37,7 +37,7 @@ import { computed, ref } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useChannelStore } from "@/stores/channelStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
-import ButtonComponent from "./ui/ButtonComponent.vue";
+import ButtonComponent from "../ui/ButtonComponent.vue";
 
 const props = withDefaults(defineProps<{
   title?: string

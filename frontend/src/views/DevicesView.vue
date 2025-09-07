@@ -24,7 +24,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
-import DeviceComponent from "@/components/DeviceComponent.vue"
+import DeviceComponent from "@/components/devices/DeviceComponent.vue"
 import DeviceBulkActions from "@/components/devices/DeviceBulkActions.vue"
 
 const deviceStore = useDeviceStore()

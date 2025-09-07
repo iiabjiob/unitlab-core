@@ -1,12 +1,12 @@
 <template>
 
-  <div class="flex flex-1 overflow-hidden dark:bg-neutral-800">
+  <div class="h-dvh overflow-hidden p-5 flex flex-col">
     <EventLogComponent/>
   </div>
 
 </template>
 
 <script setup lang="ts">
-import EventLogComponent from '@/components/EventLogComponent.vue';
+import EventLogComponent from '@/components/eventLog/EventLogComponent.vue';
 
 </script>

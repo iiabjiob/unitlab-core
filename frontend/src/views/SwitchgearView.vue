@@ -25,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-import DoPulseTester from '@/components/DoPulseTester.vue';
-import SwitchgearComponent from '@/components/SwitchgearComponent.vue';
+import DoPulseTester from '@/components/testers/DoPulseTester.vue';
+import SwitchgearComponent from '@/components/switchgear/SwitchgearComponent.vue';
 
 </script>

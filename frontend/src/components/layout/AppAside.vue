@@ -32,8 +32,8 @@ import { useEventLogStore } from "@/stores/eventLogStore"
 import AppMenu from "./AppMenu.vue"
 import EventLog from "./EventLog.vue"
 import AppLogo from "./AppLogo.vue"
-import TimeComponent from "../TimeComponent.vue"
-import OnlineStatusComponent from "../OnlineStatusComponent.vue"
+import TimeComponent from "../misc/TimeComponent.vue"
+import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
 
 const wsStore = useWebSocketStore()
 const eventLogStore = useEventLogStore()

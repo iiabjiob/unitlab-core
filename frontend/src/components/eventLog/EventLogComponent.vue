@@ -1,7 +1,7 @@
 <template>
 
   <!-- Grid container (fills remaining space) -->
-  <div class="h-dvh w-full">
+
 
     <!-- Toolbar -->
     <div class="p-2 flex gap-2 justify-end">
@@ -10,11 +10,21 @@
       </ButtonComponent>
     </div>
 
-    <AgGridVue style="height: 100%; width: 100%;" :rowData="rows" :columnDefs="columnDefs"
-      :defaultColDef="defaultColDef" :getRowId="getRowId" :enableCellTextSelection="true"
-      :suppressDragLeaveHidesColumns="true" :animateRows="false" :autoSizeStrategy="autoSizeStrategy"
-      :domLayout="'normal'" :pagination="false" :theme="theme" @grid-ready="onGridReady" />
-  </div>
+    <AgGridVue class="flex-1 w-full"
+      :rowData="rows"
+      :columnDefs="columnDefs"
+      :defaultColDef="defaultColDef"
+      :getRowId="getRowId"
+      :enableCellTextSelection="true"
+      :suppressDragLeaveHidesColumns="true"
+      :animateRows="false"
+      :autoSizeStrategy="autoSizeStrategy"
+      :domLayout="'normal'"
+      :pagination="false"
+      :theme="theme"
+      @grid-ready="onGridReady"
+    />
+
 
 </template>
 
@@ -41,7 +51,7 @@ function onGridReady(params: GridReadyEvent) {
 import { useEventLogStore } from "@/stores/eventLogStore"
 import type { EventLogEntry } from "@/types/eventLog"
 import { formatTsFull } from "@/utils/datetime"
-import ButtonComponent from "./ui/ButtonComponent.vue"
+import ButtonComponent from "../ui/ButtonComponent.vue"
 
 
 onMounted(() => {
