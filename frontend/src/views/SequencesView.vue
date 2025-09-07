@@ -12,7 +12,7 @@
 </template>
 
 <script setup lang="ts">
-import SequenceCard from "@/components/SequenceCard.vue"
+import SequenceCard from "@/components/sequences/SequenceCard.vue"
 import { buildPulseDemoSequence } from "@/sequences/demoPulseSequences"
 import { buildPilotSequence } from "@/sequences/demoSequences"
 

@@ -101,7 +101,7 @@ import { computed } from "vue"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import type { SequenceDef } from "@/types/sequences"
 import BadgeComponent from "@/components/ui/BadgeComponent.vue"
-import ButtonComponent from "./ui/ButtonComponent.vue"
+import ButtonComponent from "../ui/ButtonComponent.vue"
 
 const props = defineProps<{ sequence: SequenceDef }>()
 const store = useSequenceStore()
