@@ -5,12 +5,18 @@ class DeviceSchema(BaseModel):
     unit_id: str
     type: str
     channels: int
+
+    # user-friendly поля
+    name: Optional[str] = None
     location: Optional[str] = None
-    firmware_version: Optional[str] = None
+
+    # версия прошивки как число
+    firmware_version: Optional[float] = None
+
     is_active: bool
 
-    # динамика
-    status: Optional[Literal["online", "offline"]] = None
+    # динамические поля
+    status: Literal["online", "offline"] = "offline"
     last_seen: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)

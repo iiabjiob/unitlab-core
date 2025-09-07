@@ -1,11 +1,11 @@
-# Подписки для Core (только входящие от периферии)
 DEVICE_STATE     = "+/s"
 DEVICE_REQ_STATE = "+/q"
 DEVICE_HEARTBEAT = "+/h"
-DEVICE_CMD       = "+/c"   # Core → device, поэтому publish-only
+DEVICE_CMD       = "+/c"
 DEVICE_RESP      = "+/r"
+DEVICE_INFO      = "+/i"
 DEVICE_REGISTER  = "+/reg"
-DEVICE_SCAN      = "scan"  # broadcast от Core → всем
+DEVICE_SCAN      = "scan"
 
 CORE_TOPICS = [
     DEVICE_STATE,
@@ -19,6 +19,7 @@ PUBLISH_ONLY_TOPICS = [
     DEVICE_CMD,
     DEVICE_REQ_STATE,
     DEVICE_SCAN,
+    DEVICE_INFO,
 ]
 
 # Генераторы конкретных топиков
@@ -43,5 +44,5 @@ def req_state(unit_id: str) -> str:
 def resp(unit_id: str) -> str:
     return f"{unit_id}/r"
 
-def scan() -> str:
-    return "scan"
+def info(unit_id: str) -> str:
+    return f"{unit_id}/i"

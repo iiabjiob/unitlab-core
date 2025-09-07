@@ -1,17 +1,20 @@
 <template>
   <li
     class="flex flex-col h-full p-3 rounded-md bg-white dark:bg-neutral-800 shadow-sm border dark:border-neutral-700 border-neutral-200"
-    :class="device.status==='offline' ? 'opacity-60' : ''"
   >
     <!-- Верхняя строка -->
     <div class="flex items-center justify-between">
-      <!-- ID + статус + Active -->
+      <!-- ID/Name + статус + location -->
       <div class="flex items-center gap-2 flex-wrap">
-        <!-- ID -->
-        <span class="font-mono font-semibold">{{ device.unit_id }}</span>
+
+        <span class="font-mono font-semibold">
+          {{ device.name?.trim() || device.unit_id }}
+        </span>
 
         <OnlineStatusComponent :status="device.status"/>
 
+        <!-- Location (optional) -->
+        <BadgeComponent class="text-xs" v-if="device.location">Location: {{ device.location }}</BadgeComponent>
       </div>
 
       <!-- меню действий -->
@@ -81,10 +84,6 @@
       <BadgeComponent class="text-xs">Channels: {{ device.channels }}</BadgeComponent>
       <!-- Firmware version -->
       <BadgeComponent class="text-xs">FW: {{ device.firmware_version || 'n/a' }}</BadgeComponent>
-      <!-- Location (optional) -->
-      <BadgeComponent class="text-xs" v-if="device.location">Location: {{ device.location }}</BadgeComponent>
-      <!-- Last seen -->
-      <BadgeComponent class="text-xs" v-if="device.last_seen">Last seen: {{ new Date(device.last_seen).toLocaleTimeString() }}</BadgeComponent>
 
     </div>
 

@@ -133,8 +133,13 @@ async def enqueue_request_state(
 
 
 # ---------------- SCAN ----------------
-async def enqueue_scan_devices(correlation_id: str | None = None):
-    topic = topics.scan()
+async def enqueue_scan_devices(correlation_id: str | None = None, unit_id: str | None = None):
+    
+    # decide topic: broadcast vs unicast
+    if unit_id:
+        topic = topics.info(unit_id)
+    else:
+        topic = topics.DEVICE_SCAN
 
     pid = next_packet_id()
     builder = PacketBuilder()

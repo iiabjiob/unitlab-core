@@ -1,62 +1,23 @@
 <template>
   <div class="p-5">
 
-    <div class="flex gap-5 mb-5">
-
-      <ButtonComponent @click="onStart" :disabled="!store.active || store.status === 'running'">
-        Start
-      </ButtonComponent>
-
-      <ButtonComponent type="secondary" @click="store.resetState" :disabled="!store.active">
-        Reset state
-      </ButtonComponent>
-
-    </div>
-
-    <!-- Progress bar -->
-    <div class="h-2 rounded bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
-      <div class="h-full bg-neutral-600" :style="{ width: store.progress + '%' }"></div>
-    </div>
-
-
-    <!-- Steps checklist -->
-    <ol class="mt-2 space-y-1 text-sm">
-      <li v-for="(s, i) in store.active?.steps || []" :key="i" class="flex items-center gap-2">
-        <span class="inline-flex h-4 w-4 items-center justify-center rounded border"
-          :class="store.completed[i] ? 'bg-green-500 border-green-500' : 'bg-white dark:bg-neutral-900'">
-          <span v-if="store.completed[i]" class="text-[10px] text-white">✓</span>
-        </span>
-        <span class="font-mono text-xs text-neutral-500">#{{ i + 1 }}</span>
-        <span>{{ store.debugDescribe(i) }}</span>
-      </li>
-    </ol>
-
-
-    <!-- Error note -->
-    <p v-if="store.lastError" class="text-xs text-red-600">Error: {{ store.lastError }}</p>
-
+    <ul class="grid gap-4 grid-cols-1 md:grid-cols-2">
+      <SequenceCard
+        v-for="seq in sequences"
+        :key="seq.id"
+        :sequence="seq"
+      />
+    </ul>
   </div>
 </template>
 
-
 <script setup lang="ts">
-import { useSequenceStore } from "@/stores/sequenceStore"
-import { buildPilotSequence } from "@/sequences/demoSequences"
+import SequenceCard from "@/components/SequenceCard.vue"
 import { buildPulseDemoSequence } from "@/sequences/demoPulseSequences"
-import ButtonComponent from "@/components/ui/ButtonComponent.vue"
+import { buildPilotSequence } from "@/sequences/demoSequences"
 
-
-const store = useSequenceStore()
-
-function refreshSeq() {
-  // store.setSequence(buildPilotSequence())
-  store.setSequence(buildPulseDemoSequence())
-}
-
-
-async function onStart() {
-  if (!store.active) refreshSeq()
-  await store.start()
-}
-
+const sequences = [
+  buildPulseDemoSequence(),
+  buildPilotSequence()
+]
 </script>

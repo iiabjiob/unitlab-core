@@ -50,9 +50,4 @@ const meta = computed(() => ({
   globalEventLog: route.meta.globalEventLog ?? true,
 }))
 
-onMounted(() => {
-  if (meta.value.globalEventLog && !eventLogStore.items.length) {
-    eventLogStore.fetchEvents()
-  }
-})
 </script>

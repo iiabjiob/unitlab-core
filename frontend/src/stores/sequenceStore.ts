@@ -1,5 +1,5 @@
 import { defineStore } from "pinia"
-import { ref, computed } from "vue"
+import { ref } from "vue"
 import { useWebSocketStore } from "./websocketStore"
 import type { SequenceDef, SequenceStep } from "@/types/sequences"
 import { describeStep, toResetAllCmd } from "@/types/sequences"
@@ -14,67 +14,64 @@ function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
+type SeqState = {
+  status: SequenceStatus
+  index: number
+  completed: boolean[]
+  lastError: string | null
+  cancelToken: { cancelled: boolean }
+}
+
 export const useSequenceStore = defineStore("sequenceStore", () => {
-  const active = ref<SequenceDef | null>(null)
-  const status = ref<SequenceStatus>("idle")
-  const index = ref(0)
-  const completed = ref<boolean[]>([])
-  const lastError = ref<string | null>(null)
-  const cancelToken = ref({ cancelled: false })
+  const states = ref<Record<string, SeqState>>({})
 
-  const progress = computed(() => {
-    if (!active.value) return 0
-    const total = active.value.steps.length
-    const done = completed.value.filter(Boolean).length
-    return total === 0 ? 0 : Math.round((done / total) * 100)
-  })
-
-  function setSequence(seq: SequenceDef) {
-    active.value = seq
-    status.value = "idle"
-    index.value = 0
-    completed.value = new Array(seq.steps.length).fill(false)
-    lastError.value = null
-    cancelToken.value = { cancelled: false }
-    logger.info(`📋 Sequence set: ${seq.name}`)
+  function ensureState(seq: SequenceDef): SeqState {
+    if (!states.value[seq.id]) {
+      states.value[seq.id] = {
+        status: "idle",
+        index: 0,
+        completed: new Array(seq.steps.length).fill(false),
+        lastError: null,
+        cancelToken: { cancelled: false }
+      }
+    }
+    return states.value[seq.id]
   }
 
-  async function start() {
-    if (!active.value || status.value === "running") return
-    status.value = "running"
-    cancelToken.value.cancelled = false
+  async function start(seq: SequenceDef) {
+    const st = ensureState(seq)
+    if (st.status === "running") return
+
+    st.status = "running"
+    st.cancelToken.cancelled = false
     const ws = useWebSocketStore()
 
     try {
-      for (let i = index.value; i < active.value.steps.length; i++) {
-        if (cancelToken.value.cancelled) throw new Error("Sequence cancelled")
-        const step = active.value.steps[i]
+      for (let i = st.index; i < seq.steps.length; i++) {
+        if (st.cancelToken.cancelled) throw new Error("Sequence cancelled")
+        const step = seq.steps[i]
         await execStep(step, ws)
-        completed.value[i] = true
-        index.value = i + 1
+        st.completed[i] = true
+        st.index = i + 1
       }
-      status.value = "completed"
-      logger.info("✅ Sequence completed")
+      st.status = "completed"
+      logger.info(`✅ Sequence completed: ${seq.name}`)
     } catch (err: any) {
-      lastError.value = err?.message ?? String(err)
-      status.value = cancelToken.value.cancelled ? "stopped" : "idle"
-      logger.error("💥 Sequence failed:", err)
+      st.lastError = err?.message ?? String(err)
+      st.status = st.cancelToken.cancelled ? "stopped" : "idle"
+      logger.error(`💥 Sequence failed: ${seq.name}`, err)
     }
   }
 
-  function stop() {
-    cancelToken.value.cancelled = true
-    status.value = "stopped"
-    logger.warn("⏹️ Sequence stopped")
+  function stop(seq: SequenceDef) {
+    const st = ensureState(seq)
+    st.cancelToken.cancelled = true
+    st.status = "stopped"
+    logger.warn(`⏹️ Sequence stopped: ${seq.name}`)
   }
 
-  async function resetAllDos() {
-    if (!active.value) return
-
-    // ищем первый шаг с unit_id
-    const step = active.value.steps.find(
-      s => s.kind === "DO_SET" || s.kind === "DO_RESET_ALL"
-    )
+  async function resetAllDos(seq: SequenceDef) {
+    const step = seq.steps.find(s => s.kind === "DO_SET" || s.kind === "DO_RESET_ALL")
 
     let uid: string | undefined
     if (step?.kind === "DO_SET") uid = step.cmd.unit_id
@@ -90,14 +87,39 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     logger.info(`🔄 Reset all DOs for ${uid}`)
   }
 
-  function resetState() {
-    if (!active.value) return
-    status.value = "idle"
-    index.value = 0
-    completed.value = new Array(active.value.steps.length).fill(false)
-    lastError.value = null
-    cancelToken.value = { cancelled: false }
-    logger.debug("♻️ Sequence state reset")
+  function resetState(seq: SequenceDef) {
+    states.value[seq.id] = {
+      status: "idle",
+      index: 0,
+      completed: new Array(seq.steps.length).fill(false),
+      lastError: null,
+      cancelToken: { cancelled: false }
+    }
+    logger.debug(`♻️ Sequence state reset: ${seq.name}`)
+  }
+
+  // ---------- Helpers for UI ----------
+  function getProgress(seq: SequenceDef): number {
+    const st = ensureState(seq)
+    const total = seq.steps.length
+    const done = st.completed.filter(Boolean).length
+    return total === 0 ? 0 : Math.round((done / total) * 100)
+  }
+
+  function getStepDescription(seq: SequenceDef, stepIndex: number): string {
+    return describeStep(seq.steps[stepIndex])
+  }
+
+  function isRunning(seq: SequenceDef): boolean {
+    return ensureState(seq).status === "running"
+  }
+
+  function isCompleted(seq: SequenceDef): boolean {
+    return ensureState(seq).status === "completed"
+  }
+
+  function hasError(seq: SequenceDef): boolean {
+    return ensureState(seq).lastError !== null
   }
 
   async function execStep(step: SequenceStep, ws: ReturnType<typeof useWebSocketStore>) {
@@ -106,12 +128,10 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
         logger.debug(`⏳ Wait ${step.ms} ms`)
         await sleep(step.ms)
         return
-
       case "DO_RESET_ALL":
         logger.debug(`🔄 Reset all DOs for ${step.unit_id}`)
         ws.send(toResetAllCmd(step.unit_id))
         return
-
       case "DO_SET":
         logger.debug(`➡️ Send DO_SET for ${step.cmd.unit_id}: ${describeStep(step)}`)
         ws.send({ action: WSAction.SET_DO_COMMAND, ...step.cmd })
@@ -119,24 +139,17 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     }
   }
 
-  function debugDescribe(stepIndex: number): string {
-    if (!active.value) return "—"
-    const step = active.value.steps[stepIndex]
-    return describeStep(step)
-  }
-
   return {
-    active,
-    status,
-    index,
-    completed,
-    lastError,
-    progress,
-    setSequence,
+    states,
+    ensureState,
     start,
     stop,
     resetAllDos,
     resetState,
-    debugDescribe,
+    getProgress,
+    getStepDescription,
+    isRunning,
+    isCompleted,
+    hasError
   }
 })

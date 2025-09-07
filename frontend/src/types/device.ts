@@ -6,6 +6,7 @@ export interface Device {
   channels: number
   firmware_version: number
   is_active: boolean
+  name?: string
   location?: string
   status: "online" | "offline"
   last_seen?: number

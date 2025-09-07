@@ -39,7 +39,7 @@
     <BottomValidatorResizable v-if="meta.bottomValidator" :errors="3" :warnings="2">
       <BottomValidator
         :messages="[
-          '❌ Device ID not found',
+          '💥 Device ID not found',
           '⚠️ Signal name too long',
           '⚠️ Unused template reference'
         ]"

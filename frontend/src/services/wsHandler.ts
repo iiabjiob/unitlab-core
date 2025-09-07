@@ -27,9 +27,8 @@ export function handleWsEvent(event: WSEvent) {
 
     // --- регистрация устройства ---
     case WSChannel.DEVICE_REGISTER:{
-      logger.debug("📡 IN ← DEVICE_RESP:", event)
+      logger.debug("📡 IN ← DEVICE_REGISTER:", event)
       deviceStore.upsertDevice(event as DeviceRegisterEvent)
-      channelStore.requestStates(event.unit_id, event.type)
       break
     }
     // --- статус (онлайн/оффлайн) ---

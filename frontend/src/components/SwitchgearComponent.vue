@@ -249,15 +249,4 @@ watch(
   }
 )
 
-onMounted(async () => {
-  if (!deviceStore.devices.length) {
-    await deviceStore.fetchDevices()
-  }
-  if (!doUnitId.value.startsWith("unknown")) {
-    channelStore.requestStates(doUnitId.value, "DO")
-  }
-  if (!diUnitId.value.startsWith("unknown")) {
-    channelStore.requestStates(diUnitId.value, "DI")
-  }
-})
 </script>

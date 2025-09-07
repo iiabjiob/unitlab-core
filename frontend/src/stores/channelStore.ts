@@ -31,62 +31,72 @@ export const useChannelStore = defineStore('channelStore', () => {
 
   // Обновление от backend (DeviceStateEvent → Channels)
   function setSignals(event: DeviceStateEvent) {
-  const unitId = event.unit_id
-  const prev = channels.value[unitId] ?? []
-  let updated = [...prev]
+    const unitId = event.unit_id
+    const prev = channels.value[unitId] ?? []
+    let updated = [...prev]
 
-  switch (event.mode) {
-    case StateMode.STATE_SINGLE_BIT: {
-      const { ch, value } = event.payload
-      const idx = updated.findIndex(c => c.index === ch)
-      if (idx !== -1) {
-        updated[idx].state = !!value
-      } else {
-        updated.push({
-          index: ch,
-          device_id: unitId,
-          state: !!value,
-          name: `CH${ch + 1}`,
-        })
+    switch (event.mode) {
+      case StateMode.STATE_SINGLE_BIT: {
+        const { ch, value } = event.payload
+        const idx = updated.findIndex(c => c.index === ch)
+        if (idx !== -1) {
+          // пересоздаём объект вместо мутации
+          updated[idx] = {
+            ...updated[idx],
+            state: !!value,
+          }
+        } else {
+          updated.push({
+            index: ch,
+            device_id: unitId,
+            state: !!value,
+            name: `CH${ch + 1}`,
+          })
+        }
+        break
       }
-      break
+
+      case StateMode.STATE_ALL_BIT: {
+        const { bitmask } = event.payload
+        const total =
+          useDeviceStore().devices.find(d => d.unit_id === unitId)?.channels ?? 0
+        updated = []
+        for (let i = 0; i < total; i++) {
+          updated.push({
+            index: i,
+            device_id: unitId,
+            state: (bitmask >> i) & 1 ? true : false,
+            name: `CH${i + 1}`,
+          })
+        }
+        break
+      }
+
+      case StateMode.STATE_SINGLE_FLOAT: {
+        const { ch, value } = event.payload
+        const idx = updated.findIndex(c => c.index === ch)
+        if (idx !== -1) {
+          updated[idx] = {
+            ...updated[idx],
+            state: value,
+          }
+        } else {
+          updated.push({
+            index: ch,
+            device_id: unitId,
+            state: value,
+            name: `AO${ch + 1}`,
+          })
+        }
+        break
+      }
     }
 
-    case StateMode.STATE_ALL_BIT: {
-      const { bitmask } = event.payload
-      const total = (useDeviceStore().devices.find(d => d.unit_id === unitId)?.channels) ?? 0
-      updated = []
-      for (let i = 0; i < total; i++) {
-        updated.push({
-          index: i,
-          device_id: unitId,
-          state: (bitmask >> i) & 1 ? true : false,
-          name: `CH${i + 1}`,
-        })
-      }
-      break
-    }
+    // всегда присваиваем новый массив с новыми объектами
+    channels.value[unitId] = updated.map(c => ({ ...c }))
 
-    case StateMode.STATE_SINGLE_FLOAT: {
-      const { ch, value } = event.payload
-      const idx = updated.findIndex(c => c.index === ch)
-      if (idx !== -1) {
-        updated[idx].state = value
-      } else {
-        updated.push({
-          index: ch,
-          device_id: unitId,
-          state: value,
-          name: `AO${ch + 1}`,
-        })
-      }
-      break
-    }
+    logger.debug(`📡 Updated channels for ${unitId}`, channels.value[unitId])
   }
-
-  channels.value[unitId] = updated
-  logger.debug(`📡 Updated channels for ${unitId}`, updated)
-}
 
   // ---- RESP обработка ----
   function setResponse(resp: DeviceRespEvent) {

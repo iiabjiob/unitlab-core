@@ -1,15 +1,15 @@
 <template>
   <div class="flex items-center px-2 py-1 w-full border-b border-neutral-300 dark:border-neutral-700 last:border-0 text-xs">
     <!-- Имя канала -->
-    <span>{{ channel.name || ("CH" + (channel.index + 1)) }}</span>
+    <span>{{ channel.name || ("CH" + (props.channel.index + 1)) }}</span>
 
     <!-- Управление DO -->
     <div v-if="props.type === 'DO'" class="flex flex-1 items-center justify-end gap-2">
-      <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="Boolean(!channel.state)"
+      <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="Boolean(!props.channel.state)"
         @click="$emit('toggle', false)">
         Off
       </ButtonComponent>
-      <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="Boolean(channel.state)"
+      <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="Boolean(props.channel.state)"
         @click="$emit('toggle', true)">
         On
       </ButtonComponent>

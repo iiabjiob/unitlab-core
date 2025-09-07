@@ -5,6 +5,9 @@ import { ApiBuilder } from '@/utils/api'
 import type { Device } from '@/types/device'
 import type { DeviceRegisterEvent, DeviceHeartbeatEvent } from '@/types/ws/events'
 import { getLogger } from '@/utils/logger'
+import type { ChannelType } from '@/types/channel'
+import { useWebSocketStore } from './websocketStore'
+import { WSAction, type WSMessage } from '@/types/ws/messages'
 
 const logger = getLogger('DEV')
 
@@ -12,20 +15,6 @@ export const useDeviceStore = defineStore('deviceStore', () => {
 
   const devices   = ref<Device[]>([])
   const isLoading = ref<boolean>(false)
-
-  async function fetchDevices() {
-    isLoading.value = true
-    try {
-      logger.debug("⏳ Fetching /api/devices ...")
-      const response = await axios.get(ApiBuilder.devices())
-      logger.debug("✅ Fetched:", response.data)
-      devices.value = response.data
-    } catch (error) {
-      logger.error('💥 Failed to fetch devices:', error)
-    } finally {
-      isLoading.value = false
-    }
-  }
 
   async function toggleDeviceActive(unitId: string) {
     try {
@@ -56,8 +45,17 @@ export const useDeviceStore = defineStore('deviceStore', () => {
 
   function upsertDevice(event: DeviceRegisterEvent) {
     const idx = devices.value.findIndex(d => d.unit_id === event.unit_id)
+    const newDevice: Device = {
+      ...event,
+      type: normalizeType(event.type as unknown as string),
+    }
+
     if (idx !== -1) {
-      devices.value[idx] = { ...devices.value[idx], ...event }
+      // обновляем
+      devices.value[idx] = { ...devices.value[idx], ...newDevice }
+    } else {
+      // добавляем
+      devices.value.push(newDevice)
     }
   }
 
@@ -69,15 +67,26 @@ export const useDeviceStore = defineStore('deviceStore', () => {
     }
   }
 
+  function normalizeType(raw: string): ChannelType {
+    switch (raw.toLowerCase()) {
+      case "do": return "DO"
+      case "di": return "DI"
+      case "ao": return "AO"
+      default:
+        console.warn("⚠️ Unknown device type:", raw)
+        return "DO"
+    }
+  }
+
   const onlineDevices = computed(() => devices.value.filter(d => d.status === "online"))
   const offlineDevices = computed(() => devices.value.filter(d => d.status === "offline"))
+
 
   return {
     devices,
     onlineDevices,
     offlineDevices,
     isLoading,
-    fetchDevices,
     toggleDeviceActive,
     deleteDevice,
     upsertDevice,

@@ -4,6 +4,9 @@ from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.mqtt import topics
 from app.ws.manager import WebSocketManager
 from app.schemas.ws.events import DeviceHeartbeatEvent
+from app.services.ws_state_service import WsStateService
+from app.services.command_queue_service import enqueue_scan_devices
+from app.core.utils import to_str
 from app.core.config import get_settings
 from app.core.logger import get_logger
 
@@ -29,9 +32,8 @@ async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
     await redis.sadd("devices:all", unit_id.encode())
 
     # проверяем статус
-    prev_status = await redis.get(f"device:{unit_id}:status")
-    if prev_status is not None:
-        prev_status = prev_status.decode() if isinstance(prev_status, (bytes, bytearray)) else str(prev_status)
+    prev_status_raw = await redis.get(f"device:{unit_id}:status")
+    prev_status = to_str(prev_status_raw)
 
     if prev_status != "online":
         await redis.set(f"device:{unit_id}:status", "online")
@@ -39,9 +41,15 @@ async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
         event = DeviceHeartbeatEvent(
                 unit_id=unit_id,
                 status="online",
-                last_seen=int(time.time() * 1000),
+                last_seen=ts,
             )
         ws_manager = WebSocketManager.get_instance()
         await ws_manager.broadcast(event)
 
         logger.info(f"Device {unit_id} came online")
+        
+        # запрашиваем информацию об устройсве и его состояния
+        await enqueue_scan_devices(correlation_id=0, unit_id=unit_id)
+        
+        # восстановить состояние в UI
+        await WsStateService.send_cached_state_to_ui(unit_id)

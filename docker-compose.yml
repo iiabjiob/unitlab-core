@@ -62,6 +62,8 @@ services:
       - "6379"
     networks:
       - app_network
+    volumes:
+      - redis_data:/data
 
   mosquitto:
     image: eclipse-mosquitto:2
@@ -70,6 +72,8 @@ services:
     ports:
       - "1883:1883"
     volumes:
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
       - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
     networks:
       - app_network
@@ -88,6 +92,9 @@ services:
 
 volumes:
   db_data:
+  redis_data:
+  mosquitto_data:
+  mosquitto_log:
   ntp_run:
 
 networks:

@@ -26,13 +26,10 @@
 
 
 <script setup lang="ts">
-import { onMounted } from "vue"
+
 import { useDeviceStore } from "@/stores/deviceStore"
 import DeviceComponent from "@/components/DeviceComponent.vue"
 
 const deviceStore = useDeviceStore()
 
-onMounted(async () => {
-  await deviceStore.fetchDevices()
-})
 </script>

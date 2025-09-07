@@ -33,45 +33,10 @@ import { themeBalham } from "ag-grid-community"
 const theme = themeBalham
 
 let gridApi: GridApi | null = null
-const autoScroll = ref(true)
 
 function onGridReady(params: GridReadyEvent) {
   gridApi = params.api
-
-  // слушаем скролл
-  gridApi.addEventListener("bodyScroll", () => {
-    if (!gridApi) return
-
-    const vRange = gridApi.getVerticalPixelRange()
-    const rowCount = gridApi.getDisplayedRowCount()
-    if (rowCount === 0) {
-      autoScroll.value = true
-      return
-    }
-
-    // Получаем последний ряд
-    const lastRow = gridApi.getDisplayedRowAtIndex(rowCount - 1)
-    if (!lastRow) return
-
-    const rowHeight = gridApi.getSizesForCurrentTheme().rowHeight ?? 28
-    const totalHeight = rowCount * rowHeight
-
-    // Проверяем: нижняя граница видимой области ≈ общая высота
-    autoScroll.value = vRange.bottom >= totalHeight - 20
-  })
 }
-
-watch(
-  () => rows.value.length,
-  () => {
-    if (autoScroll.value && gridApi) {
-      const lastIndex = rows.value.length - 1
-      if (lastIndex >= 0) {
-        gridApi.ensureIndexVisible(lastIndex, "bottom")
-      }
-    }
-  }
-)
 
 import { useEventLogStore } from "@/stores/eventLogStore"
 import type { EventLogEntry } from "@/types/eventLog"
@@ -126,7 +91,8 @@ const store = useEventLogStore()
 const rows = computed(() => {
   // Map store items to rows consumable by the grid
   // Keep everything strongly typed and safe
-  return store.items.map((e: EventLogEntry) => ({
+  return store.items.map((e: EventLogEntry , idx: number) => ({
+    row_id: `${e.unit_id}-${e.ts}-${idx}`,
     id: e.id,
     ts: e.ts,
     time: formatTsFull(e.ts),
@@ -203,7 +169,7 @@ const autoSizeStrategy = {
 
 // ---- Helpers ----
 function getRowId(p: GetRowIdParams) {
-  return p.data.id as string
+  return p.data.row_id
 }
 
 </script>

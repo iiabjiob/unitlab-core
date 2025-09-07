@@ -48,10 +48,10 @@
 
 <script lang="ts" setup>
 import { useEventLogStore } from "@/stores/eventLogStore"
-import { WSChannel } from "@/types/ws/events";
 import { formatTs } from "@/utils/datetime"
 
 const store = useEventLogStore()
+
 </script>
 
 <style scoped>

@@ -4,26 +4,19 @@
       v-for="i in channels"
       :key="`ph-${unitId}-${i}`"
       :index="i - 1"
-      :type="resolveType(i - 1)"
+      :type="deviceType"
     />
   </div>
 </template>
 
 <script setup lang="ts">
 import ChannelPlaceholder from '@/components/ChannelPlaceholder.vue';
+import type { ChannelType } from '@/types/channel';
 
 const props = defineProps<{
   unitId: string
-  deviceType?: string
+  deviceType: ChannelType
   channels: number
 }>()
 
-function resolveType(index: number): "DO" | "DI" | "AO" {
-  // 📝 Здесь можно использовать deviceType или index, чтобы
-  // назначить тип канала (DO/DI/AO). Например:
-  if (props.deviceType === "do") return "DO"
-  if (props.deviceType === "di") return "DI"
-  if (props.deviceType === "ao") return "AO"
-  return "DI"
-}
 </script>

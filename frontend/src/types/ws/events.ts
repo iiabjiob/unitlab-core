@@ -66,6 +66,8 @@ export interface DeviceRegisterEvent {
   firmware_version: number
   is_active: boolean
   status: "online" | "offline"
+  name?: string
+  location?: string
   last_seen?: number
 }
 

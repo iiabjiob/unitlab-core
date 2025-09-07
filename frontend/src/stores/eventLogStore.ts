@@ -20,8 +20,8 @@ export const useEventLogStore = defineStore("eventLogStore", () => {
       const { data } = await axios.get<EventLogEntry[]>(ApiBuilder.events(), {
         params: { limit }
       })
-      logger.debug("✅ Fetched:", items.value.length)
       items.value = data
+      logger.debug("✅ Fetched:", items.value.length)
 
     } catch (err) {
       logger.error("💥 Failed to fetch events:", err)
