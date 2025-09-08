@@ -55,6 +55,8 @@ class WsStateService:
                     firmware_version=float(device.firmware_version) if device.firmware_version else None,
                     channels=device.channels,
                     is_active=device.is_active,
+                    name=device.name,
+                    location=device.location,
                     status=status if status in ("online", "offline") else "offline",
                     last_seen=last_seen,
                 )

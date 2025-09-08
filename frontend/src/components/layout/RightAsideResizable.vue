@@ -1,6 +1,6 @@
 <template>
   <div
-    class="relative h-full border-l border-neutral-200 dark:border-neutral-800 transition-[width] duration-200 ease-in-out overflow-hidden"
+    class="relative h-full border-l border-neutral-200 dark:border-neutral-800 transition-[width] duration-100 overflow-hidden"
     :style="{ width: collapsed ? '0px' : width + 'px' }"
   >
     <RightAside v-if="!collapsed" @collapse="collapsed = true" />
@@ -17,9 +17,11 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue"
 import RightAside from "./RightAside.vue"
+import { useSelectionStore } from "@/stores/selectionStore"
 
 const width = ref(280)
 const collapsed = ref(false)
+const selection = useSelectionStore()
 
 function startResize(e: MouseEvent) {
   const startX = e.clientX
@@ -56,10 +58,15 @@ onMounted(() => {
   if (savedWidth) width.value = parseInt(savedWidth, 10)
 })
 
+// сохраняем настройки
 watch([collapsed, width], ([c, w]) => {
   localStorage.setItem("right-aside-collapsed", String(c))
   if (!c) localStorage.setItem("right-aside-width", String(w))
 })
 
-defineExpose({ collapsed })
+// 👉 автооткрытие панели при выборе нода
+watch(() => selection.selected, (val) => {
+  if (val) collapsed.value = false
+})
 </script>
+

@@ -6,9 +6,6 @@ import type { Device } from '@/types/device'
 import type { DeviceRegisterEvent, DeviceHeartbeatEvent } from '@/types/ws/events'
 import { getLogger } from '@/utils/logger'
 import type { ChannelType } from '@/types/channel'
-import { useWebSocketStore } from './websocketStore'
-import { WSAction, type WSMessage } from '@/types/ws/messages'
-
 const logger = getLogger('DEV')
 
 export const useDeviceStore = defineStore('deviceStore', () => {
@@ -16,16 +13,25 @@ export const useDeviceStore = defineStore('deviceStore', () => {
   const devices   = ref<Device[]>([])
   const isLoading = ref<boolean>(false)
 
-  async function toggleDeviceActive(unitId: string) {
+  async function updateDeviceField(unitId: string, changes: Partial<Device>) {
     try {
-      const { data } = await axios.patch(ApiBuilder.device(unitId))
+      const { data } = await axios.patch(ApiBuilder.device(unitId), changes)
+
       const index = devices.value.findIndex(d => d.unit_id === unitId)
       if (index !== -1) {
-        devices.value[index].is_active = data.is_active
+        devices.value[index] = data
       }
+
+      logger.debug(`✅ Device ${unitId} updated with`, changes)
     } catch (error) {
-      logger.error('💥 Failed to toggle device active status:', error)
+      logger.error(`💥 Failed to update device ${unitId}:`, error)
     }
+  }
+
+  async function toggleDeviceActive(unitId: string) {
+    const index = devices.value.findIndex(d => d.unit_id === unitId)
+    if (index === -1) return
+    await updateDeviceField(unitId, { is_active: !devices.value[index].is_active })
   }
 
   async function deleteDevice(unitId: string) {
@@ -73,7 +79,7 @@ export const useDeviceStore = defineStore('deviceStore', () => {
       case "di": return "DI"
       case "ao": return "AO"
       default:
-        console.warn("⚠️ Unknown device type:", raw)
+        logger.warn("⚠️ Unknown device type:", raw)
         return "DO"
     }
   }
@@ -87,6 +93,7 @@ export const useDeviceStore = defineStore('deviceStore', () => {
     onlineDevices,
     offlineDevices,
     isLoading,
+    updateDeviceField,
     toggleDeviceActive,
     deleteDevice,
     upsertDevice,

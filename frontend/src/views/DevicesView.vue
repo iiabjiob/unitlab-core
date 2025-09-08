@@ -13,9 +13,18 @@
       <ul
         class="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fill,minmax(300px,1fr))] items-stretch"
       >
-        <li v-for="device in filteredDevices" :key="device.unit_id" class="h-full">
-          <DeviceComponent :device="device" />
+        <li
+          v-for="device in filteredDevices"
+          :key="device.unit_id"
+          class="h-full"
+        >
+          <DeviceComponent
+            :device="device"
+            :selected="selection.selected?.type === 'device' && selection.selected.item.unit_id === device.unit_id"
+            @select="selectDevice"
+          />
         </li>
+
       </ul>
     </div>
   </div>
@@ -24,10 +33,18 @@
 <script setup lang="ts">
 import { ref, computed } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
+import { useSelectionStore } from "@/stores/selectionStore"
 import DeviceComponent from "@/components/devices/DeviceComponent.vue"
 import DeviceBulkActions from "@/components/devices/DeviceBulkActions.vue"
 
 const deviceStore = useDeviceStore()
+
+
+const selection = useSelectionStore()
+
+function selectDevice(device: any) {
+  selection.select({ type: "device", item: device })
+}
 
 // локальное состояние фильтров
 const filters = ref<{ onlyOnline: boolean; types: string[] }>({

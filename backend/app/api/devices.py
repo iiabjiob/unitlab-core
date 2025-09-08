@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.db.database import get_db
 from app.models.device import Device
-from app.schemas.device_schema import DeviceSchema
+from app.schemas.device_schema import DeviceSchema, DeviceUpdateSchema
 from app.core.utils import to_str
 from app.infrastructure.redis.manager import RedisManager
 
@@ -46,22 +46,43 @@ async def get_devices(
 
     return enriched
 
-@router.patch("/devices/{unit_id}", summary="Toggle device is_active status")
-async def toggle_device_is_active(unit_id: str, db: AsyncSession = Depends(get_db)):
+@router.patch("/devices/{unit_id}", response_model=DeviceSchema)
+async def update_device(
+    unit_id: str,
+    patch: DeviceUpdateSchema,
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(Device).where(Device.unit_id == unit_id))
     device = result.scalar_one_or_none()
 
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
-    device.is_active = not device.is_active
+    # обновляем только переданные поля
+    for field, value in patch.dict(exclude_unset=True).items():
+        setattr(device, field, value)
+
     await db.commit()
     await db.refresh(device)
 
-    return {
-        "unit_id": device.unit_id,
-        "is_active": device.is_active
-    }
+    # enrich динамическими полями (status/last_seen)
+    redis_client = RedisManager.get_instance()
+    status = await redis_client.get(f"device:{device.unit_id}:status")
+    last_seen = await redis_client.get(f"device:{device.unit_id}:last_seen")
+
+    return DeviceSchema(
+        unit_id=device.unit_id,
+        type=device.type,
+        channels=device.channels,
+        name=device.name,
+        location=device.location,
+        firmware_version=device.firmware_version,
+        is_active=device.is_active,
+        status=to_str(status, "offline"),
+        last_seen=int(last_seen) if last_seen else None,
+    )
+
+
 
 @router.delete("/devices/{unit_id}", summary="Delete device")
 async def delete_device(unit_id: str, db: AsyncSession = Depends(get_db)):

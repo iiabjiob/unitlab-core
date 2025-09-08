@@ -1,6 +1,12 @@
 <template>
-  <li
-    class="flex flex-col h-full p-3 rounded-md bg-white dark:bg-neutral-800 shadow-sm border dark:border-neutral-700 border-neutral-200"
+  <div
+    class="device-card flex flex-col h-full p-3 rounded-md bg-white dark:bg-neutral-800 cursor-pointer shadow-sm border border-neutral-200 dark:border-neutral-700"
+    :class="[
+      selected
+        ? 'border-neutral-500 dark:border-neutral-500'
+        : '',
+    ]"
+    @click="$emit('select', device)"
   >
     <!-- Верхняя строка -->
     <div class="flex items-center justify-between">
@@ -11,16 +17,18 @@
           {{ device.name?.trim() || device.unit_id }}
         </span>
 
+        <!-- Location (optional) -->
+        <BadgeComponent v-if="device.location">Location: {{ device.location }}</BadgeComponent>
+
         <OnlineStatusComponent :status="device.status"/>
 
-        <!-- Location (optional) -->
-        <BadgeComponent class="text-xs" v-if="device.location">Location: {{ device.location }}</BadgeComponent>
       </div>
 
       <!-- меню действий -->
-      <Menu as="div" class="relative inline-block text-left">
+      <Menu as="div" class="relative inline-block text-left" @click.stop>
         <div>
           <MenuButton
+            @click.stop
             class="flex items-center justify-center rounded-full w-6 h-6 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer text-xl font-bold"
           >
             ⋮
@@ -36,12 +44,14 @@
           leave-to="transform opacity-0 scale-95"
         >
           <MenuItems
+            @click.stop
             class="absolute right-0 mt-2 w-40 origin-top-right rounded-md bg-white dark:bg-neutral-700 shadow-lg ring-1 ring-neutral-200 dark:ring-neutral-600 ring-opacity-5 focus:outline-none z-10"
           >
             <div class="py-1">
               <MenuItem v-slot="{ active }">
                 <button
                   @click="toggleActive"
+                  @click.stop="toggleActive"
                   :class="[
                     active ? 'bg-neutral-100 dark:bg-neutral-600' : '',
                     'block w-full px-4 py-2 text-sm text-left text-neutral-700 dark:text-neutral-200'
@@ -53,6 +63,7 @@
               <MenuItem v-slot="{ active }">
                 <button
                   @click="deleteDev"
+                  @click.stop="deleteDev"
                   :class="[
                     active ? 'bg-neutral-100 dark:bg-neutral-600' : '',
                     'block w-full px-4 py-2 text-sm text-left text-red-600 dark:text-red-400'
@@ -65,26 +76,6 @@
           </MenuItems>
         </Transition>
       </Menu>
-    </div>
-
-    <!-- Информация -->
-    <div
-      class="mt-1 text-xs text-neutral-500 flex flex-wrap gap-x-1 gap-y-1"
-    >
-      <!-- isActive -->
-      <!-- <BadgeComponent class="text-xs"
-        :variant="device.is_active ? 'success' : 'neutral'"
-        >
-        {{ device.is_active ? 'Active' : 'Inactive' }}
-      </BadgeComponent> -->
-
-      <!-- Type -->
-      <BadgeComponent class="text-xs">Type: {{ device.type }}</BadgeComponent>
-      <!-- Channels -->
-      <BadgeComponent class="text-xs">Channels: {{ device.channels }}</BadgeComponent>
-      <!-- Firmware version -->
-      <BadgeComponent class="text-xs">FW: {{ device.firmware_version || 'n/a' }}</BadgeComponent>
-
     </div>
 
     <!-- Каналы -->
@@ -103,7 +94,7 @@
         :channels="device.channels"
       />
     </div>
-  </li>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -115,8 +106,13 @@ import BadgeComponent from "../ui/BadgeComponent.vue"
 import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
 import ChannelsPlaceholder from "./ChannelsPlaceholder.vue"
 
-const props = defineProps<{ device: Device }>()
+const props = defineProps<{
+  device: Device
+  selected?: boolean
+}>()
 const deviceStore = useDeviceStore()
+
+const emit = defineEmits<{ (e: 'select', device: Device): void }>()
 
 async function toggleActive() {
   await deviceStore.toggleDeviceActive(props.device.unit_id)
