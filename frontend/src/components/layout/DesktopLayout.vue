@@ -21,7 +21,7 @@
           <RightAsideResizable
             v-if="meta.rightAside"
             ref="rightAside"
-            class="absolute top-0 right-0 h-full shadow-lg z-20"
+            class="h-full shadow-lg z-20"
           />
 
         </div>
@@ -45,31 +45,19 @@
 import { ref, computed } from "vue"
 import { useRoute } from "vue-router"
 
+import { useSelectionOutside } from "@/composables/useSelectionOutside"
+
 import AppAside from "./AppAside.vue"
 import BottomValidator from "./BottomValidator.vue"
 import LeftAsideResizable from "./LeftAsideResizable.vue"
 import RightAsideResizable from "./RightAsideResizable.vue"
 import BottomValidatorResizable from "./BottomValidatorResizable.vue"
-import { onMounted, onBeforeUnmount } from "vue"
-import { useSelectionStore } from "@/stores/selectionStore"
 
-const selection = useSelectionStore()
-
-function handleClickOutside(e: MouseEvent) {
-
-  const target = e.target as HTMLElement
-
-  if (target.closest(".device-card")) return
-
-  if (rightAside.value && rightAside.value.$el.contains(target)) return
-
-  selection.clear()
-}
-
-onMounted(() => document.addEventListener("click", handleClickOutside))
-onBeforeUnmount(() => document.removeEventListener("click", handleClickOutside))
 
 const rightAside = ref<InstanceType<typeof RightAsideResizable> | null>(null)
+
+// pass ref element to composable
+useSelectionOutside(() => rightAside.value?.$el ?? null)
 
 // Read meta flags from current route
 const route = useRoute()

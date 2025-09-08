@@ -21,15 +21,6 @@
     <!-- Main content -->
     <main class="flex-1 overflow-auto relative">
       <RouterView />
-
-      <!-- Floating handle to open properties -->
-      <button
-        v-if="meta.rightAside && !isPropsOpen"
-        class="absolute top-1/2 right-0 -translate-y-1/2 w-5 h-16 flex items-center justify-center bg-neutral-200 dark:bg-neutral-700 rounded-l cursor-pointer shadow"
-        @click="isPropsOpen = true"
-      >
-        ‹
-      </button>
     </main>
 
     <!-- Event log fixed at the bottom -->
@@ -51,24 +42,32 @@
       />
     </BottomValidatorResizable>
 
-    <!-- Drawer with navigation -->
-    <AppDrawer :open="isDrawerOpen" @close="isDrawerOpen = false">
+    <!-- Navigation -->
+    <SlideOver :open="isDrawerOpen" placement="right" title="Menu" :widthPx="360" @close="isDrawerOpen = false">
       <AppMenu />
-    </AppDrawer>
+    </SlideOver>
 
-    <!-- Drawer: properties -->
-    <AppDrawer v-if="meta.rightAside" :open="isPropsOpen" @close="isPropsOpen = false" side="right">
-      <RightAside />
-    </AppDrawer>
+    <!-- Properties -->
+    <SlideOver
+      v-if="meta.rightAside"
+      :open="isPropsOpen"
+      placement="bottom"
+      title="Properties"
+      :maxHeightVh="75"
+      @close="selection.clear()"
+    >
+      <RightAside :entity="selection.selected" />
+    </SlideOver>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue"
+import { ref, computed, watch } from "vue"
 import { useRoute } from "vue-router"
 
+import { useSelectionOutside } from "@/composables/useSelectionOutside"
+
 import AppHeader from "./AppHeader.vue"
-import AppDrawer from "./AppDrawer.vue"
 import EventLog from "./EventLog.vue"
 import AppMenu from "./AppMenu.vue"
 import AppLogo from "./AppLogo.vue"
@@ -78,10 +77,27 @@ import BottomValidator from "./BottomValidator.vue"
 import TimeComponent from "../misc/TimeComponent.vue"
 import RightAside from "./RightAside.vue"
 import { useWebSocketStore } from "@/stores/websocketStore"
+import SlideOver from "./SlideOver.vue"
+import { useSelectionStore } from "@/stores/selectionStore"
+
+
+const propsPanel = ref<InstanceType<typeof SlideOver> | null>(null)
+
+// also works for bottom sheet SlideOver
+useSelectionOutside(() => propsPanel.value?.$el ?? null)
 
 // Drawer state
 const isDrawerOpen = ref(false)
 const isPropsOpen = ref(false)
+
+const selection = useSelectionStore()
+
+watch(
+  () => selection.selected,
+  (val) => {
+    isPropsOpen.value = val !== null
+  }
+)
 
 // WebSocket connection status
 const wsStore = useWebSocketStore()
