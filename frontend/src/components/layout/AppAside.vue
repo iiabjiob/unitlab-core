@@ -1,6 +1,6 @@
 <template>
   <aside
-    class="bg-white dark:bg-neutral-800 flex flex-col h-full"
+    class="bg-white dark:bg-neutral-800 flex flex-col h-full relative"
     :class="status === 'offline' ? 'opacity-60 pointer-events-none select-none' : ''"
     :aria-disabled="status === 'offline'"
   >
