@@ -11,8 +11,16 @@
       </RouterLink>
     </div>
 
+    <!-- Empty state -->
+    <div
+      v-if="!store.items.length"
+      class="flex-1 flex items-center justify-center text-neutral-400 dark:text-neutral-500 text-sm"
+    >
+      No events yet
+    </div>
     <!-- List -->
     <ul
+      v-else
       class="log-list flex-1 overflow-y-auto space-y-2 divide-y divide-neutral-200 dark:divide-neutral-700"
     >
       <li
