@@ -1,6 +1,6 @@
 <template>
   <div
-    class="flex flex-wrap justify-end gap-3 items-center px-4 py-2 border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 rounded">
+    class="flex flex-wrap justify-start gap-3 items-center px-4 py-2 border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 rounded">
     <!-- Bulk actions -->
     <div v-if="selectedIds.length" class="flex gap-2">
       <button
@@ -18,18 +18,16 @@
     </div>
 
     <!-- Online only toggle -->
-    <button
-      type="button"
-      class="flex items-center gap-2 text-sm px-3 py-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 cursor-pointer"
-      :class="onlyOnline ? ' text-green-700 dark:text-green-300' : ''"
-      @click="toggleOnline"
-    >
-      <span
-        class="inline-block w-4 h-4 border rounded-sm"
-        :class="onlyOnline ? 'bg-green-600 border-green-600' : 'border-neutral-400 dark:border-neutral-500'"
-      ></span>
+    <label class="flex items-center gap-2 text-sm cursor-pointer select-none">
+      <input
+        type="checkbox"
+        v-model="onlyOnline"
+        name="online-only-checkbox"
+        class="h-4 w-4 rounded border-neutral-400 dark:border-neutral-500
+              focus:ring-neutral-600 dark:focus:ring-neutral-400 accent-neutral-600 dark:accent-neutral-400"
+      />
       Online only
-    </button>
+    </label>
 
     <!-- Device type filter -->
     <Listbox v-model="selectedTypes" multiple>
@@ -63,9 +61,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue"
+import { ref, watch, onMounted } from "vue"
 import { Listbox, ListboxButton, ListboxOptions, ListboxOption } from "@headlessui/vue"
-import ChevronDownIcon from "../icons/ChevronDownIcon.vue";
+import ChevronDownIcon from "../icons/ChevronDownIcon.vue"
 
 // --- Emits ---
 const emit = defineEmits<{
@@ -75,16 +73,40 @@ const emit = defineEmits<{
 }>()
 
 // --- State ---
-const selectedIds = ref<string[]>([]) // сюда будут попадать отмеченные карточки устройств
+const selectedIds = ref<string[]>([])
 const onlyOnline = ref(false)
 const selectedTypes = ref<string[]>([])
 const allTypes = ["DI", "DO", "AO"]
 
-// --- Methods ---
-function toggleOnline() {
-  onlyOnline.value = !onlyOnline.value
-}
+// --- Load saved filters on mount ---
+onMounted(() => {
+  const savedFilters = localStorage.getItem("device-filters")
+  if (savedFilters) {
+    try {
+      const parsed = JSON.parse(savedFilters)
+      onlyOnline.value = parsed.onlyOnline ?? false
+      selectedTypes.value = parsed.types ?? []
+    } catch (err) {
+      console.warn("Failed to parse saved filters", err)
+    }
+  }
+})
 
+// --- Watch filters (save + emit) ---
+watch([onlyOnline, selectedTypes], () => {
+  const filters = {
+    onlyOnline: onlyOnline.value,
+    types: selectedTypes.value,
+  }
+
+  // Save
+  localStorage.setItem("device-filters", JSON.stringify(filters))
+
+  // Emit
+  emit("update:filters", filters)
+}, { deep: true })
+
+// --- Methods ---
 function bulkDelete() {
   emit("bulk-delete", selectedIds.value)
   selectedIds.value = []
@@ -94,12 +116,4 @@ function bulkActivate() {
   emit("bulk-activate", selectedIds.value)
   selectedIds.value = []
 }
-
-// --- Watch filters ---
-watch([onlyOnline, selectedTypes], () => {
-  emit("update:filters", {
-    onlyOnline: onlyOnline.value,
-    types: selectedTypes.value,
-  })
-})
 </script>

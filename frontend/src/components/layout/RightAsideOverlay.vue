@@ -1,14 +1,38 @@
 <template>
   <div
-    class="relative h-full border-l border-neutral-200 dark:border-neutral-800 transition-[width] duration-100 overflow-hidden"
-    :style="{ width: collapsed ? '0px' : width + 'px' }"
+    class="absolute top-0 right-0 h-full shadow-lg z-20 overflow-hidden
+           transition-transform duration-100 ease-out"
+    :style="{ width: width + 'px' }"
+    :class="collapsed ? 'translate-x-full' : 'translate-x-0'"
   >
-    <RightAside v-if="!collapsed" @collapse="collapsed = true" />
+    <!-- Content -->
+    <div class="h-full w-full flex flex-col bg-neutral-100 dark:bg-neutral-800">
+      <!-- Header -->
+      <div class="flex items-center justify-end px-3 pt-3 font-semibold">
+        <button
+          class="w-6 h-6 flex items-center justify-center rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 cursor-pointer"
+          @click="collapsed = true"
+        >
+          ✖
+        </button>
+      </div>
+
+      <!-- Properties -->
+      <PropertyPanel
+        v-if="selection.selected"
+        :schema="resolveSchema(selection.selected.type)"
+        :item="selection.selected.item"
+        @update="onUpdate"
+      />
+      <div v-else class="flex-1 flex items-center justify-center text-xs text-neutral-500">
+        No item selected
+      </div>
+    </div>
 
     <!-- Resize handle -->
     <div
       v-if="!collapsed"
-      class="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:w-1 hover:bg-neutral-300 dark:hover:bg-neutral-600 transition-all"
+      class="absolute top-0 left-0 h-full w-1 cursor-col-resize hover:bg-neutral-300 dark:hover:bg-neutral-600 transition-all"
       @mousedown="startResize"
     ></div>
   </div>
@@ -16,8 +40,9 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue"
-import RightAside from "./RightAside.vue"
 import { useSelectionStore } from "@/stores/selectionStore"
+import { resolveSchema } from "@/property-schemas/propertySchemas"
+import PropertyPanel from "./PropertyPanel.vue"
 
 const width = ref(280)
 const collapsed = ref(false)
@@ -58,15 +83,22 @@ onMounted(() => {
   if (savedWidth) width.value = parseInt(savedWidth, 10)
 })
 
-// сохраняем настройки
 watch([collapsed, width], ([c, w]) => {
   localStorage.setItem("right-aside-collapsed", String(c))
   if (!c) localStorage.setItem("right-aside-width", String(w))
 })
 
-// 👉 автооткрытие панели при выборе нода
 watch(() => selection.selected, (val) => {
   if (val) collapsed.value = false
 })
-</script>
 
+async function onUpdate<T>(key: keyof T, value: any) {
+  if (!selection.selected) return
+  const schema = resolveSchema(selection.selected.type)
+  try {
+    await schema.update(selection.selected.item, key as any, value)
+  } catch (err) {
+    console.error("Update failed", err)
+  }
+}
+</script>

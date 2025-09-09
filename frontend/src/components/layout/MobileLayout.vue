@@ -1,7 +1,7 @@
 <template>
   <div class="h-dvh flex flex-col bg-neutral-50 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 font-mono">
     <!-- Header with burger + status -->
-    <AppHeader @open-drawer="isDrawerOpen = true">
+    <MobileHeader @open-drawer="isDrawerOpen = true">
       <template #left>
         <div class="flex gap-3 items-center">
           <AppLogo />
@@ -11,7 +11,7 @@
       <template #right>
         <TimeComponent />
       </template>
-    </AppHeader>
+    </MobileHeader>
 
     <!-- Header bulk actions -->
     <div v-if="meta.headerBulkActions" class="shrink-0">
@@ -50,13 +50,21 @@
     <!-- Properties -->
     <SlideOver
       v-if="meta.rightAside"
+      ref="propsPanel"
       :open="isPropsOpen"
       placement="bottom"
-      title="Properties"
       :maxHeightVh="75"
       @close="selection.clear()"
     >
-      <RightAside :entity="selection.selected" />
+    <div class="slide-over-content">
+      <PropertyPanel
+        class="text-neutral-900 dark:text-neutral-100"
+        v-if="selection.selected"
+        :schema="resolveSchema(selection.selected.type)"
+        :item="selection.selected.item"
+      />
+
+    </div>
     </SlideOver>
   </div>
 </template>
@@ -67,7 +75,6 @@ import { useRoute } from "vue-router"
 
 import { useSelectionOutside } from "@/composables/useSelectionOutside"
 
-import AppHeader from "./AppHeader.vue"
 import EventLog from "./EventLog.vue"
 import AppMenu from "./AppMenu.vue"
 import AppLogo from "./AppLogo.vue"
@@ -75,10 +82,12 @@ import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
 import BottomValidatorResizable from "./BottomValidatorResizable.vue"
 import BottomValidator from "./BottomValidator.vue"
 import TimeComponent from "../misc/TimeComponent.vue"
-import RightAside from "./RightAside.vue"
 import { useWebSocketStore } from "@/stores/websocketStore"
 import SlideOver from "./SlideOver.vue"
 import { useSelectionStore } from "@/stores/selectionStore"
+import PropertyPanel from "./PropertyPanel.vue"
+import { resolveSchema } from "@/property-schemas/propertySchemas"
+import MobileHeader from "./MobileHeader.vue"
 
 
 const propsPanel = ref<InstanceType<typeof SlideOver> | null>(null)

@@ -1,6 +1,7 @@
 <template>
-  <div class="p-3">
-    <div class="flex items-center justify-between mb-2">
+  <div class="p-3 h-full flex flex-col">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-2 shrink-0">
       <h3 class="text-sm font-semibold text-neutral-700 dark:text-neutral-200">Event Log</h3>
       <RouterLink
         to="/events"
@@ -10,16 +11,15 @@
       </RouterLink>
     </div>
 
+    <!-- List -->
     <ul
-      class="log-list space-y-2 divide-y divide-neutral-200 dark:divide-neutral-700 max-h-48 overflow-y-auto"
+      class="log-list flex-1 overflow-y-auto space-y-2 divide-y divide-neutral-200 dark:divide-neutral-700"
     >
       <li
         v-for="e in store.items"
         :key="e.id"
         class="text-xs transition-colors"
-        :class="e.highlight
-          ? 'bg-yellow-50 dark:bg-yellow-950'
-          : ''"
+        :class="e.highlight ? 'bg-yellow-50 dark:bg-yellow-950' : ''"
       >
         <!-- Row 1: timestamp + device -->
         <div class="flex items-center gap-2">

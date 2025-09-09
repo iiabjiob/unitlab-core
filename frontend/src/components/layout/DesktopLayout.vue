@@ -18,7 +18,7 @@
           </main>
 
           <!-- Right aside -->
-          <RightAsideResizable
+          <RightAsideOverlay
             v-if="meta.rightAside"
             ref="rightAside"
             class="h-full shadow-lg z-20"
@@ -50,11 +50,11 @@ import { useSelectionOutside } from "@/composables/useSelectionOutside"
 import AppAside from "./AppAside.vue"
 import BottomValidator from "./BottomValidator.vue"
 import LeftAsideResizable from "./LeftAsideResizable.vue"
-import RightAsideResizable from "./RightAsideResizable.vue"
 import BottomValidatorResizable from "./BottomValidatorResizable.vue"
+import RightAsideOverlay from "./RightAsideOverlay.vue"
 
 
-const rightAside = ref<InstanceType<typeof RightAsideResizable> | null>(null)
+const rightAside = ref<InstanceType<typeof RightAsideOverlay> | null>(null)
 
 // pass ref element to composable
 useSelectionOutside(() => rightAside.value?.$el ?? null)

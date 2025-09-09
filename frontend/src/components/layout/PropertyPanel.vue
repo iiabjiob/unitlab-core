@@ -1,6 +1,6 @@
 <template>
   <div class="p-2">
-    <h3 class="font-bold">Properties</h3>
+    <h3 class="font-bold mb-2">Properties</h3>
     <table class="w-full text-xs border-collapse">
       <tbody class="border border-neutral-200 dark:border-neutral-700">
         <tr
@@ -23,7 +23,7 @@
               class="w-full text-xs px-1 py-0.5 bg-transparent focus:outline-none"
               :class="field.editable
                 ? ['bg-white', 'dark:bg-neutral-900']
-                : ['bg-neutral-100', 'dark:bg-neutral-700']"
+                : ['bg-neutral-100', 'dark:bg-neutral-800']"
               :value="props.item[field.key] ?? ''"
               :disabled="!field.editable"
               @change="commitOnChange(field, $event)"
@@ -37,7 +37,7 @@
               class="w-full text-xs px-1 py-0.5 bg-transparent focus:outline-none"
               :class="field.editable
                 ? ['bg-white', 'dark:bg-neutral-900']
-                : ['bg-neutral-100', 'dark:bg-neutral-700']"
+                : ['bg-neutral-100', 'dark:bg-neutral-800']"
               :value="props.item[field.key] ?? ''"
               :disabled="!field.editable"
               @change="commitOnChange(field, $event)"

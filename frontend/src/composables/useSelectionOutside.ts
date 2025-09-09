@@ -10,6 +10,7 @@ export function useSelectionOutside(extraIgnore: () => HTMLElement | null = () =
 
     // if click inside device-card → keep selection
     if (target.closest(".device-card")) return
+    if (target.closest(".slide-over-content")) return
 
     // if click inside extra element (e.g. rightAside or SlideOver) → keep selection
     const ignore = extraIgnore()

@@ -1,9 +1,9 @@
 <template>
   <teleport to="body">
-    <div v-if="open" class="fixed inset-0 z-40">
+    <div v-if="open" class="fixed inset-0 z-40 ">
       <!-- Backdrop -->
       <div
-        class="absolute inset-0 bg-black/50"
+        class="absolute inset-0 bg-black/10"
         @click="onBackdropClick"
       />
 
@@ -11,8 +11,8 @@
       <transition :name="transitionName">
         <div
           v-if="isSide"
-          class="absolute top-0 h-full bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 shadow-xl
-                 transform will-change-transform"
+          class="absolute top-0 h-full border-neutral-200 dark:border-neutral-800 shadow-xl
+                 transform will-change-transform bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
           :class="sideClasses"
           :style="sideStyles"
           role="dialog"
@@ -43,8 +43,8 @@
       <transition name="slide-bottom">
         <div
           v-if="isBottom"
-          class="absolute left-0 right-0 bg-white dark:bg-neutral-900 rounded-t-2xl shadow-2xl border-t border-neutral-200 dark:border-neutral-800
-                 transform will-change-transform"
+          class="absolute left-0 right-0 rounded-t-2xl shadow-2xl border-t border-neutral-200 dark:border-neutral-800
+                 transform will-change-transform bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
           :style="bottomStyles"
           role="dialog"
           aria-modal="true"
