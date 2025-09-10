@@ -4,7 +4,7 @@
   <div class="flex-1 overflow-auto p-4">
     <div class="flex flex-wrap gap-4">
       <div v-for="item in editor.items" :key="item.id" class="relative w-[320px] flex-shrink-0">
-        <SwitchgearComponent
+        <SwitchgearCard
           class="cursor-pointer"
           :title="item.title"
           :do-unit-id="item.doUnitId ?? ''"
@@ -31,8 +31,8 @@
 
 import { useEditorStore } from "@/stores/editorStore"
 import { useSelectionStore } from "@/stores/selectionStore"
-import SwitchgearComponent from "@/components/switchgear/SwitchgearComponent.vue"
 import type { Switchgear } from "@/types/switchgear"
+import SwitchgearCard from "../switchgear/SwitchgearCard.vue"
 
 const editor = useEditorStore()
 const selection = useSelectionStore()
