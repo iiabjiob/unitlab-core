@@ -18,11 +18,18 @@
           :key="device.unit_id"
           class="h-full"
         >
-          <DeviceComponent
-            :device="device"
+          <SelectableCard
             :selected="selection.isSelected('device', device)"
-            @select="selectDevice"
-          />
+            @click="select(device)"
+            >
+
+            <DeviceCard
+              :device="device"
+              @toggle="onToggle"
+              @delete="onDelete"
+            />
+
+          </SelectableCard>
         </li>
 
       </ul>
@@ -34,16 +41,26 @@
 import { ref, computed } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useSelectionStore } from "@/stores/selectionStore"
-import DeviceComponent from "@/components/devices/DeviceComponent.vue"
 import DeviceBulkActions from "@/components/devices/DeviceBulkActions.vue"
+import DeviceCard from "@/components/devices/DeviceCard.vue"
+import SelectableCard from "@/components/ui/SelectableCard.vue"
+import type { Device } from "@/types/device"
 
 const deviceStore = useDeviceStore()
-
-
 const selection = useSelectionStore()
 
-function selectDevice(device: any) {
-  selection.select({ type: "device", id: device.unit_id })
+function select(item: Device) {
+  selection.select({ type: "device", id: item.unit_id })
+}
+
+async function onToggle(item: Device) {
+  await deviceStore.toggleDeviceActive(item.unit_id)
+}
+
+async function onDelete(item: Device) {
+  if (confirm(`Delete device ${item.unit_id}?`)) {
+    await deviceStore.deleteDevice(item.unit_id)
+  }
 }
 
 // локальное состояние фильтров

@@ -1,10 +1,7 @@
 <!-- src/components/switchgear/SwitchgearCard.vue -->
 <template>
-  <div
-    class="switchgear-card flex flex-col gap-3 p-4 rounded-xl bg-white dark:bg-neutral-800 shadow-md border border-neutral-200 dark:border-neutral-700 w-[300px]"
-    :class="[ selected ? 'border-neutral-500 dark:border-neutral-500' : '' ]"
-    @click="$emit('select')"
-  >
+
+  <div class="flex flex-col gap-3">
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div class="text-sm font-medium text-neutral-700 dark:text-neutral-200">
@@ -30,7 +27,6 @@
       :di-unit-id="diUnitId"
       :di-open-pulse-ch="diOpenPulseCh"
       :di-close-pulse-ch="diClosePulseCh"
-      v-model="feedbackDelayMs"
     />
   </div>
 </template>
@@ -62,7 +58,6 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{
-  (e: "select"): void
   (e: "delete"): void
 }>()
 

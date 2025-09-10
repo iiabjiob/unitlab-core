@@ -4,18 +4,23 @@
   <div class="flex-1 overflow-auto p-4">
     <div class="flex flex-wrap gap-4">
       <div v-for="item in editor.items" :key="item.id" class="relative w-[320px] flex-shrink-0">
-        <SwitchgearCard
-          class="cursor-pointer"
-          :title="item.title"
-          :do-unit-id="item.doUnitId ?? ''"
-          :do-open-ch="item.doOpenCh ?? 0"
-          :do-close-ch="item.doCloseCh ?? 1"
-          :di-unit-id="item.diUnitId ?? ''"
-          :di-open-pulse-ch="item.diOpenPulseCh ?? 0"
-          :di-close-pulse-ch="item.diClosePulseCh ?? 1"
+
+        <SelectableCard class="w-[320px]"
           :selected="selection.isSelected('switchgear', item)"
           @click="select(item)"
-        />
+          >
+
+          <SwitchgearCard
+            :title="item.title"
+            :do-unit-id="item.doUnitId ?? ''"
+            :do-open-ch="item.doOpenCh ?? 0"
+            :do-close-ch="item.doCloseCh ?? 1"
+            :di-unit-id="item.diUnitId ?? ''"
+            :di-open-pulse-ch="item.diOpenPulseCh ?? 0"
+            :di-close-pulse-ch="item.diClosePulseCh ?? 1"
+          />
+        </SelectableCard>
+
       </div>
     </div>
 
@@ -33,6 +38,7 @@ import { useEditorStore } from "@/stores/editorStore"
 import { useSelectionStore } from "@/stores/selectionStore"
 import type { Switchgear } from "@/types/switchgear"
 import SwitchgearCard from "../switchgear/SwitchgearCard.vue"
+import SelectableCard from "../ui/SelectableCard.vue"
 
 const editor = useEditorStore()
 const selection = useSelectionStore()

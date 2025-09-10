@@ -2,10 +2,7 @@
 <template>
   <div class="h-dvh flex bg-neutral-50 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200">
     <Palette />
-
-    <div class="flex-1 flex min-w-0">
-      <Workspace />
-    </div>
+    <Workspace />
   </div>
 </template>
 
