@@ -58,10 +58,10 @@
     >
     <div class="slide-over-content">
       <PropertyPanel
-        class="text-neutral-900 dark:text-neutral-100"
-        v-if="selection.selected"
-        :schema="resolveSchema(selection.selected.type)"
-        :item="selection.selected.item"
+        v-if="selection.selectedItem"
+        :schema="resolveSchema(selection.selected!.type)"
+        :item="selection.selectedItem!"
+        @update="onUpdate"
       />
 
     </div>
@@ -88,6 +88,7 @@ import { useSelectionStore } from "@/stores/selectionStore"
 import PropertyPanel from "./PropertyPanel.vue"
 import { resolveSchema } from "@/property-schemas/propertySchemas"
 import MobileHeader from "./MobileHeader.vue"
+import { updateEntity } from "@/utils/updateEntity"
 
 
 const propsPanel = ref<InstanceType<typeof SlideOver> | null>(null)
@@ -115,6 +116,12 @@ const status = computed(() => {
   if (!wsStore.isConnected && wsStore.everConnected) return "offline"
   return "offline"
 })
+
+async function onUpdate(key: any, value: any) {
+  if (!selection.selected || !selection.selectedItem) return
+  const { type } = selection.selected
+  await updateEntity(type as any, selection.selectedItem as any, key as any, value)
+}
 
 // Read route meta
 const route = useRoute()

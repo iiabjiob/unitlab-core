@@ -20,7 +20,7 @@
         >
           <DeviceComponent
             :device="device"
-            :selected="selection.selected?.type === 'device' && selection.selected.item.unit_id === device.unit_id"
+            :selected="selection.isSelected('device', device)"
             @select="selectDevice"
           />
         </li>
@@ -43,7 +43,7 @@ const deviceStore = useDeviceStore()
 const selection = useSelectionStore()
 
 function selectDevice(device: any) {
-  selection.select({ type: "device", item: device })
+  selection.select({ type: "device", id: device.unit_id })
 }
 
 // локальное состояние фильтров

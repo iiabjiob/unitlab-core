@@ -1,6 +1,12 @@
 <template>
   <div
-    class="flex flex-col gap-3 p-4 rounded-xl bg-white dark:bg-neutral-800 shadow-md border border-neutral-200 dark:border-neutral-700 w-[300px]">
+    class="switchgear-card flex flex-col gap-3 p-4 rounded-xl bg-white dark:bg-neutral-800 shadow-md border border-neutral-200 dark:border-neutral-700 w-[300px]"
+    :class="[
+      selected
+        ? 'border-neutral-500 dark:border-neutral-500'
+        : '',
+    ]"
+    >
     <!-- Header -->
     <div class="flex items-center justify-between">
       <div class="text-sm font-medium text-neutral-700 dark:text-neutral-200">
@@ -89,12 +95,14 @@ const props = withDefaults(defineProps<{
   diUnitId?: string
   diOpenPulseCh?: number
   diClosePulseCh?: number
+  selected?: boolean
 }>(), {
   title: "2-Pos Switchgear",
   doOpenCh: 0,
   doCloseCh: 1,
   diOpenPulseCh: 0,
   diClosePulseCh: 1,
+  selected: false,
 })
 
 const deviceStore = useDeviceStore()

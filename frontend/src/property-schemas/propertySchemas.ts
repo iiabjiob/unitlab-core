@@ -2,16 +2,20 @@
 import { devicePropertySchema } from "./devicePropertySchema"
 import type { PropertySchema } from "@/types/propertySchema"
 import type { Device } from "@/types/device"
+import type { Switchgear } from "@/types/switchgear"
+import { switchgearPropertySchema } from "./switchgearPropertySchema"
 
-export type EntityType = "device"
+export type EntityType = "device" | "switchgear"
 export type EntityMap = {
   device: Device
+  switchgear: Switchgear
 }
 
 export const propertySchemas: {
   [K in EntityType]: PropertySchema<EntityMap[K]>
 } = {
   device: devicePropertySchema,
+  switchgear: switchgearPropertySchema,
 }
 
 // fallback для неизвестного типа
@@ -20,6 +24,8 @@ export const emptySchema: PropertySchema<any> = {
   update: async () => {},
 }
 
-export function resolveSchema<T extends EntityType>(type: T): PropertySchema<EntityMap[T]> {
+export function resolveSchema<T extends EntityType>(
+  type: T
+): PropertySchema<EntityMap[T]> {
   return propertySchemas[type] ?? emptySchema
 }

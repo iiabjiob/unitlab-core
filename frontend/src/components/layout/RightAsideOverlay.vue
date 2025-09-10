@@ -19,9 +19,9 @@
 
       <!-- Properties -->
       <PropertyPanel
-        v-if="selection.selected"
-        :schema="resolveSchema(selection.selected.type)"
-        :item="selection.selected.item"
+        v-if="selection.selectedItem"
+        :schema="resolveSchema(selection.selected!.type)"
+        :item="selection.selectedItem!"
         @update="onUpdate"
       />
       <div v-else class="flex-1 flex items-center justify-center text-xs text-neutral-500">
@@ -43,6 +43,7 @@ import { ref, onMounted, watch } from "vue"
 import { useSelectionStore } from "@/stores/selectionStore"
 import { resolveSchema } from "@/property-schemas/propertySchemas"
 import PropertyPanel from "./PropertyPanel.vue"
+import { updateEntity } from "@/utils/updateEntity"
 
 const width = ref(280)
 const collapsed = ref(false)
@@ -92,13 +93,9 @@ watch(() => selection.selected, (val) => {
   if (val) collapsed.value = false
 })
 
-async function onUpdate<T>(key: keyof T, value: any) {
-  if (!selection.selected) return
-  const schema = resolveSchema(selection.selected.type)
-  try {
-    await schema.update(selection.selected.item, key as any, value)
-  } catch (err) {
-    console.error("Update failed", err)
-  }
+async function onUpdate(key: any, value: any) {
+  if (!selection.selected || !selection.selectedItem) return
+  const { type } = selection.selected
+  await updateEntity(type as any, selection.selectedItem as any, key as any, value)
 }
 </script>

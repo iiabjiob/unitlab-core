@@ -8,8 +8,9 @@ export function useSelectionOutside(extraIgnore: () => HTMLElement | null = () =
   function handleClickOutside(e: MouseEvent) {
     const target = e.target as HTMLElement
 
-    // if click inside device-card → keep selection
+    // if click inside special card → keep selection
     if (target.closest(".device-card")) return
+    if (target.closest(".switchgear-card")) return
     if (target.closest(".slide-over-content")) return
 
     // if click inside extra element (e.g. rightAside or SlideOver) → keep selection
