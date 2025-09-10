@@ -21,12 +21,10 @@
 
     <!-- Tech footer -->
     <SwitchgearTechFooter
-      :do-unit-id="doUnitId"
-      :do-open-ch="doOpenCh"
-      :do-close-ch="doCloseCh"
-      :di-unit-id="diUnitId"
-      :di-open-pulse-ch="diOpenPulseCh"
-      :di-close-pulse-ch="diClosePulseCh"
+      :do-open="doOpen"
+      :do-closed="doClosed"
+      :di-open="diOpen"
+      :di-close="diClose"
     />
   </div>
 </template>
@@ -41,19 +39,17 @@ import SwitchgearMenu from "./SwitchgearMenu.vue"
 
 const props = withDefaults(defineProps<{
   title?: string
-  doUnitId?: string
-  doOpenCh?: number
-  doCloseCh?: number
-  diUnitId?: string
-  diOpenPulseCh?: number
-  diClosePulseCh?: number
+  doOpen?: { unitId: string; channel: number } | null
+  doClosed?: { unitId: string; channel: number } | null
+  diOpen?: { unitId: string; channel: number } | null
+  diClose?: { unitId: string; channel: number } | null
   selected?: boolean
 }>(), {
   title: "2-Pos Switchgear",
-  doOpenCh: 0,
-  doCloseCh: 1,
-  diOpenPulseCh: 0,
-  diClosePulseCh: 1,
+  doOpen: null,
+  doClosed: null,
+  diOpen: null,
+  diClose: null,
   selected: false,
 })
 
@@ -62,16 +58,21 @@ const emit = defineEmits<{
 }>()
 
 const {
-  effectiveState, pendingTarget, busy, feedbackDelayMs,
-  doUnitId, diUnitId,
-  isCmdDisabled, setDoPair,
+  effectiveState,
+  pendingTarget,
+  busy,
+  feedbackDelayMs,
+  doOpen,
+  doClosed,
+  diOpen,
+  diClose,
+  isCmdDisabled,
+  setDoPair,
 } = useSwitchgear({
-  doUnitId: props.doUnitId,
-  doOpenCh: props.doOpenCh,
-  doCloseCh: props.doCloseCh,
-  diUnitId: props.diUnitId,
-  diOpenPulseCh: props.diOpenPulseCh,
-  diClosePulseCh: props.diClosePulseCh,
+  doOpen: props.doOpen,
+  doClosed: props.doClosed,
+  diOpen: props.diOpen,
+  diClose: props.diClose,
 })
 
 // Style helpers for state pill

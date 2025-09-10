@@ -3,23 +3,16 @@ import { computed, ref, watch } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useChannelStore } from "@/stores/channelStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
+import { codeToState, SWITCHGEAR_CODE } from "@/constants/switchgear"
 
 export type SwitchgearState = "CLOSED" | "OPEN" | "UNKNOWN" | "INTERMEDIATE"
 
-const PAIR_CODE: Record<SwitchgearState, 0 | 1 | 2 | 3> = {
-  UNKNOWN: 0b00,
-  OPEN: 0b01,
-  CLOSED: 0b10,
-  INTERMEDIATE: 0b11,
-}
-
 export interface UseSwitchgearOpts {
-  doUnitId?: string
-  doOpenCh: number
-  doCloseCh: number
-  diUnitId?: string
-  diOpenPulseCh: number
-  diClosePulseCh: number
+  doOpen: { unitId: string; channel: number } | null
+  doClosed: { unitId: string; channel: number } | null
+  diOpen: { unitId: string; channel: number } | null
+  diClose: { unitId: string; channel: number } | null
+  feedbackDelayMs?: number
 }
 
 export function useSwitchgear(opts: UseSwitchgearOpts) {
@@ -31,45 +24,40 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
   const busy = ref(false)
   const pendingTarget = ref<SwitchgearState | null>(null)
 
-  // Optional UI delay before sending a DO pair
-  const feedbackDelayMs = ref(0)
+  const feedbackDelayMs = ref(opts.feedbackDelayMs ?? 0)
 
-  // Resolve unit ids if not provided
-  const doUnitId = computed(() => {
-    if (opts.doUnitId) return opts.doUnitId
-    return deviceStore.devices.find(d => d.type?.toLowerCase() === "do")?.unit_id ?? "unknown-do"
-  })
-  const diUnitId = computed(() => {
-    if (opts.diUnitId) return opts.diUnitId
-    return deviceStore.devices.find(d => d.type?.toLowerCase() === "di")?.unit_id ?? "unknown-di"
-  })
+  // --- Helpers ---
 
-  // Helper to read channel boolean state
-  function getChannelState(unitId: string, ch: number, expectedType: "DO" | "DI"): boolean | null {
-    const dev = deviceStore.devices.find(d => d.unit_id === unitId)
+  function getChannelState(
+    signal: { unitId: string; channel: number } | null,
+    expectedType: "DO" | "DI"
+  ): boolean | null {
+    if (!signal) return null
+    const dev = deviceStore.devices.find(d => d.unit_id === signal.unitId)
     if (!dev || dev.type !== expectedType) return null
-    const arr = channelStore.channels[unitId]
-    const c = arr?.find(x => x.index === ch)
+    const arr = channelStore.channels[signal.unitId]
+    const c = arr?.find(x => x.index === signal.channel)
     return typeof (c as any)?.state === "boolean" ? (c as any).state as boolean : null
   }
-  const getDo = (id: string, ch: number) => getChannelState(id, ch, "DO")
-  const getDi = (id: string, ch: number) => getChannelState(id, ch, "DI")
 
-  // Effective state is determined by the DO pair only
-  const effectiveState = computed<SwitchgearState>(() => {
-    const a = getDo(doUnitId.value, opts.doOpenCh)
-    const b = getDo(doUnitId.value, opts.doCloseCh)
+  const getDo = (signal: { unitId: string; channel: number } | null) =>
+    getChannelState(signal, "DO")
+  const getDi = (signal: { unitId: string; channel: number } | null) =>
+    getChannelState(signal, "DI")
+
+  // --- Effective state from DO pair ---
+    const effectiveState = computed<SwitchgearState>(() => {
+    const a = getDo(opts.doOpen)
+    const b = getDo(opts.doClosed)
     if (a === null || b === null) return "UNKNOWN"
-    if (a && !b) return "OPEN"
-    if (!a && b) return "CLOSED"
-    if (!a && !b) return "UNKNOWN"
-    if (a && b) return "INTERMEDIATE"
-    return "UNKNOWN"
+    return codeToState(a, b)
   })
 
   // Clear pending when feedback matches target
   watch(effectiveState, (cur) => {
-    if (pendingTarget.value && cur === pendingTarget.value) pendingTarget.value = null
+    if (pendingTarget.value && cur === pendingTarget.value) {
+      pendingTarget.value = null
+    }
   })
 
   // Guard for buttons
@@ -78,18 +66,19 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
     return effectiveState.value === target
   }
 
+  // --- Commands ---
   function sendDoPair(target: SwitchgearState) {
-    if (doUnitId.value.startsWith("unknown")) return
+    if (!opts.doOpen || !opts.doClosed) return
     channelStore.sendDoPairCommand(
-      doUnitId.value,
-      opts.doOpenCh,
-      opts.doCloseCh,
-      PAIR_CODE[target],
+      opts.doOpen.unitId,
+      opts.doOpen.channel,
+      opts.doClosed.channel,
+      SWITCHGEAR_CODE[target],
     )
   }
 
   async function setDoPair(target: SwitchgearState) {
-    if (doUnitId.value.startsWith("unknown")) return
+    if (!opts.doOpen || !opts.doClosed) return
     pendingTarget.value = target
     busy.value = true
     try {
@@ -100,7 +89,7 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
   }
 
   function scheduleDoPair(target: SwitchgearState) {
-    if (doUnitId.value.startsWith("unknown")) return
+    if (!opts.doOpen || !opts.doClosed) return
     pendingTarget.value = target
     busy.value = true
     setTimeout(() => {
@@ -109,22 +98,26 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
     }, feedbackDelayMs.value)
   }
 
-  // DI rising-edge → schedule respective DO pair
+  // --- DI → DO trigger (auto open/close) ---
   const lastDiOpen = ref<boolean | null>(null)
   const lastDiClose = ref<boolean | null>(null)
 
   watch(
     () => ({
-      diOpen: getDi(diUnitId.value, opts.diOpenPulseCh),
-      diClose: getDi(diUnitId.value, opts.diClosePulseCh),
+      diOpen: getDi(opts.diOpen),
+      diClose: getDi(opts.diClose),
     }),
     ({ diOpen, diClose }) => {
       if (diOpen !== null) {
-        if (lastDiOpen.value === false && diOpen === true) scheduleDoPair("OPEN")
+        if (lastDiOpen.value === false && diOpen === true) {
+          scheduleDoPair("OPEN")
+        }
         lastDiOpen.value = diOpen
       }
       if (diClose !== null) {
-        if (lastDiClose.value === false && diClose === true) scheduleDoPair("CLOSED")
+        if (lastDiClose.value === false && diClose === true) {
+          scheduleDoPair("CLOSED")
+        }
         lastDiClose.value = diClose
       }
     }
@@ -132,9 +125,19 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
 
   return {
     // state
-    effectiveState, pendingTarget, busy, feedbackDelayMs,
-    doUnitId, diUnitId,
+    effectiveState,
+    pendingTarget,
+    busy,
+    feedbackDelayMs,
+
+    // expose signals (useful for footer/debug)
+    doOpen: opts.doOpen,
+    doClosed: opts.doClosed,
+    diOpen: opts.diOpen,
+    diClose: opts.diClose,
+
     // actions
-    isCmdDisabled, setDoPair,
+    isCmdDisabled,
+    setDoPair,
   }
 }

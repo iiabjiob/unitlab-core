@@ -5,14 +5,15 @@ import { useEditorStore } from "@/stores/editorStore"
 
 export const switchgearPropertySchema: PropertySchema<Switchgear> = {
   fields: [
-    { key: "title",           label: "Title",            editable: true,  type: "string" },
-    { key: "doUnitId",        label: "DO Unit ID",       editable: true,  type: "string" },   // tip: replace with select if your Properties supports it
-    { key: "doOpenCh",        label: "DO Open Ch",       editable: true,  type: "number" },
-    { key: "doCloseCh",       label: "DO Close Ch",      editable: true,  type: "number" },
-    { key: "diUnitId",        label: "DI Unit ID",       editable: true,  type: "string" },
-    { key: "diOpenPulseCh",   label: "DI Open Pulse Ch", editable: true,  type: "number" },
-    { key: "diClosePulseCh",  label: "DI Close Pulse Ch",editable: true,  type: "number" },
-    { key: "feedbackDelayMs", label: "Feedback Delay, ms",editable: true, type: "number" },
+    { key: "title", label: "Title", editable: true, type: "string" },
+
+    { key: "doOpen",   label: "DO Open",   editable: true, type: "signal", signalKind: "DO" },
+    { key: "doClosed", label: "DO Closed", editable: true, type: "signal", signalKind: "DO" },
+
+    { key: "diOpen",   label: "DI Open",   editable: true, type: "signal", signalKind: "DI" },
+    { key: "diClose",  label: "DI Close",  editable: true, type: "signal", signalKind: "DI" },
+
+    { key: "feedbackDelayMs", label: "Feedback Delay, ms", editable: true, type: "number" },
   ],
   async update(item, key, value) {
     const store = useEditorStore()

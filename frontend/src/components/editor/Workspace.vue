@@ -12,12 +12,10 @@
 
           <SwitchgearCard
             :title="item.title"
-            :do-unit-id="item.doUnitId ?? ''"
-            :do-open-ch="item.doOpenCh ?? 0"
-            :do-close-ch="item.doCloseCh ?? 1"
-            :di-unit-id="item.diUnitId ?? ''"
-            :di-open-pulse-ch="item.diOpenPulseCh ?? 0"
-            :di-close-pulse-ch="item.diClosePulseCh ?? 1"
+            :do-open="item.doOpen"
+            :do-closed="item.doClosed"
+            :di-open="item.diOpen"
+            :di-close="item.diClose"
           />
         </SelectableCard>
 

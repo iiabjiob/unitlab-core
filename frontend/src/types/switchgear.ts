@@ -1,13 +1,16 @@
-// src/types/switchgear.ts
 export interface Switchgear {
-  id: string;                 // internal editor id
-  kind: "switchgear";         // discriminator
-  title: string;              // "Switchgear #1"
-  doUnitId: string | null;
-  doOpenCh: number | null;
-  doCloseCh: number | null;
-  diUnitId: string | null;
-  diOpenPulseCh: number | null;
-  diClosePulseCh: number | null;
-  feedbackDelayMs: number;    // keep it here to bind two-way if needed
+  id: string
+  kind: "switchgear"
+  title: string
+
+  // Управляющие выходы (DO → устройство)
+  doOpen: { unitId: string; channel: number } | null
+  doClosed: { unitId: string; channel: number } | null
+
+  // Обратная связь (DI ← устройство)
+  diOpen: { unitId: string; channel: number } | null
+  diClose: { unitId: string; channel: number } | null
+
+  // Задержка подтверждения
+  feedbackDelayMs: number
 }

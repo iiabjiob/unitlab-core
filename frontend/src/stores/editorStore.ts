@@ -9,17 +9,18 @@ let seq = 1
 function nextTitle() {
   return `Switchgear #${seq++}`
 }
+
 function newSwitchgear(): Switchgear {
   return {
     id: crypto.randomUUID(),
     kind: "switchgear",
     title: nextTitle(),
-    doUnitId: null,
-    doOpenCh: null,
-    doCloseCh: null,
-    diUnitId: null,
-    diOpenPulseCh: null,
-    diClosePulseCh: null,
+
+    doOpen: null,
+    doClosed: null,
+    diOpen: null,
+    diClose: null,
+
     feedbackDelayMs: 0,
   }
 }
@@ -45,7 +46,7 @@ export const useEditorStore = defineStore("editorStore", () => {
   ) {
     const i = items.value.findIndex((x) => x.id === id)
     if (i !== -1) {
-      // ✅ мутируем существующий объект
+      // мутируем существующий объект
       items.value[i][key] = value
     }
   }
