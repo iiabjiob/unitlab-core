@@ -1,16 +1,16 @@
 """create signal_list tables
 
-Revision ID: 0003_create_signal_list
-Revises: 0002_create_event_log
-Create Date: 2025-09-07
+Revision ID: 0004_create_signal_list
+Revises: 0003_create_event_log
+Create Date: 2025-09-10
 """
 from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers
-revision: str = "0003_create_signal_list"
-down_revision: Union[str, None] = "0002_create_event_log"
+revision: str = "0004_create_signal_list"
+down_revision: Union[str, None] = "0003_create_event_log"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

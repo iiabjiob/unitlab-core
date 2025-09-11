@@ -9,7 +9,7 @@ export const devicePropertySchema: PropertySchema<Device> = {
     { key: "status", label: "Stauts", editable: false, type: "string" },
     { key: "firmware_version", label: "Firmware", editable: false, type: "number" },
     { key: "type", label: "Type", editable: false, type: "string" },
-    { key: "channels", label: "Channels", editable: false, type: "number" },
+    { key: "num_channels", label: "num_channels", editable: false, type: "number" },
     { key: "name", label: "Name", editable: true, type: "string" },
     { key: "location", label: "Location", editable: true, type: "string" },
   ],

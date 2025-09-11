@@ -11,7 +11,7 @@ class Device(Base):
     unit_id: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
 
     type: Mapped[str | None] = mapped_column(String, nullable=True)
-    channels: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    num_channels: Mapped[int | None] = mapped_column(Integer, nullable=True)
     firmware_version: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # новые user-friendly поля

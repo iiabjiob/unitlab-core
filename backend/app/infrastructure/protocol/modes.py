@@ -32,4 +32,4 @@ class Sys(IntEnum):
     SCAN       = 0xF1  # []
     DISCONNECT = 0xF2  # []
     RESP       = 0xF3  # [status:u8][errCode:u8]
-    REGISTER   = 0xF4  # [type[4]][id[32]][fwVersion:u16][channels:u16]
+    REGISTER   = 0xF4  # [type[4]][id[32]][fwVersion:u16][num_channels:u16]

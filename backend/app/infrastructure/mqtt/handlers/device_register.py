@@ -34,11 +34,11 @@ async def handle_device_register(topic: str, payload: bytes, unit_id: str):
 
     unit_id = reg.id
     type = reg.type.strip()   # 4-char code, лучше str.strip()
-    channels = reg.channels
+    num_channels = reg.num_channels
     firmware_version = fw_u16_to_str(reg.fwVersion)
 
     logger.debug(
-        f"Registering device {unit_id} (type={type}, ch={channels}, fw={firmware_version})"
+        f"Registering device {unit_id} (type={type}, ch={num_channels}, fw={firmware_version})"
     )
 
     async with AsyncSessionLocal() as session:
@@ -46,7 +46,7 @@ async def handle_device_register(topic: str, payload: bytes, unit_id: str):
             device = await register_or_update(
                 db=session,
                 unit_id=unit_id,
-                channels=channels,
+                num_channels=num_channels,
                 firmware_version=firmware_version,
                 type=type,
                 is_active=True,
@@ -66,7 +66,7 @@ async def handle_device_register(topic: str, payload: bytes, unit_id: str):
     event = DeviceRegisterEvent(
         unit_id=device.unit_id,
         type=device.type,
-        channels=device.channels,
+        num_channels=device.num_channels,
         location=device.location,
         firmware_version=device.firmware_version,
         is_active=device.is_active,

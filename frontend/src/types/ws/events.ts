@@ -62,7 +62,7 @@ export interface DeviceRegisterEvent {
   channel: WSChannel.DEVICE_REGISTER
   unit_id: string
   type: ChannelType
-  channels: number
+  num_channels: number
   firmware_version: number
   is_active: boolean
   status: "online" | "offline"

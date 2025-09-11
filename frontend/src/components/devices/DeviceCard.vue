@@ -28,14 +28,14 @@
         v-if="device.status === 'online'"
         :unit-id="device.unit_id"
         :device-type="device.type"
-        :channels="device.channels"
+        :num_channels="device.num_channels"
       />
 
       <ChannelsPlaceholder
         v-else
         :unit-id="device.unit_id"
         :device-type="device.type"
-        :channels="device.channels"
+        :num_channels="device.num_channels"
       />
     </div>
   </div>

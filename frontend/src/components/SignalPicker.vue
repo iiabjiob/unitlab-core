@@ -11,7 +11,7 @@
       :label="device.name || device.unit_id"
     >
       <option
-        v-for="(ch, idx) in device.channels"
+        v-for="(ch, idx) in device.num_channels"
         :key="idx"
         :value="`${device.unit_id}:${idx}`"
       >

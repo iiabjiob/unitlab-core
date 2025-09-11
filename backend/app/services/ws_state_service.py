@@ -53,7 +53,7 @@ class WsStateService:
                     unit_id=device.unit_id,
                     type=device.type,
                     firmware_version=float(device.firmware_version) if device.firmware_version else None,
-                    channels=device.channels,
+                    num_channels=device.num_channels,
                     is_active=device.is_active,
                     name=device.name,
                     location=device.location,

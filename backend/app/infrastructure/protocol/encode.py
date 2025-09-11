@@ -74,10 +74,10 @@ class sys:
 
     @staticmethod
     def register_msg(p: Register) -> bytes:
-        # type[4] + id[32] + fwVersion:u16 BE + channels:u16 BE
+        # type[4] + id[32] + fwVersion:u16 BE + num_channels:u16 BE
         out = bytearray(4 + 32 + 2 + 2)
         out[0:4] = p.type.encode("ascii")[:4].ljust(4, b"\x00")
         out[4:36] = p.id.encode("ascii")[:32].ljust(32, b"\x00")
         endian.write_u16_be(p.fwVersion, into=out, offset=36)
-        endian.write_u16_be(p.channels, into=out, offset=38)
+        endian.write_u16_be(p.num_channels, into=out, offset=38)
         return bytes(out)

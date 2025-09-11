@@ -99,7 +99,7 @@ class Register(BaseModel):
     type: str     # 4-char ASCII string
     id: str       # up to 32-char ASCII string
     fwVersion: int  # u16
-    channels: int   # u16
+    num_channels: int   # u16
 
 # ------------------------------------------------------------------------
 # System enums (high-level status & errors)

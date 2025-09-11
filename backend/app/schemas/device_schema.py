@@ -4,7 +4,7 @@ from typing import Optional, Literal
 class DeviceSchema(BaseModel):
     unit_id: str
     type: str
-    channels: int
+    num_channels: int
 
     # user-friendly поля
     name: Optional[str] = None
@@ -26,5 +26,5 @@ class DeviceUpdateSchema(BaseModel):
     location: Optional[str] = None
     firmware_version: Optional[float] = None
     is_active: Optional[bool] = None
-    channels: Optional[int] = None
+    num_channels: Optional[int] = None
     type: Optional[str] = None

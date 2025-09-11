@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 async def register_if_not_exists(
     db: AsyncSession,
     unit_id: str,
-    channels : int,
+    num_channels : int,
     firmware_version : str | None = None,
     type: str | None = None,
     is_active: bool = True,
@@ -25,7 +25,7 @@ async def register_if_not_exists(
         new_device = Device(
             unit_id=unit_id,
             type=type,
-            channels=channels,
+            num_channels=num_channels,
             firmware_version=firmware_version,
             is_active=is_active,
             created_at=datetime.now(timezone.utc)
@@ -44,7 +44,7 @@ async def register_if_not_exists(
 async def register_or_update(
     db: AsyncSession,
     unit_id: str,
-    channels: int,
+    num_channels: int,
     firmware_version: str,
     type: str,
     is_active: bool = True,
@@ -56,7 +56,7 @@ async def register_or_update(
         # create
         device = Device(
             unit_id=unit_id,
-            channels=channels,
+            num_channels=num_channels,
             firmware_version=firmware_version,
             type=type,
             is_active=is_active,
@@ -66,7 +66,7 @@ async def register_or_update(
         await db.refresh(device)
     else:
         # update
-        device.channels = channels
+        device.num_channels = num_channels
         device.firmware_version = firmware_version
         device.type = type
         device.is_active = is_active

@@ -112,11 +112,11 @@ class sys:
         id_str   = data[4:36].rstrip(b"\x00").decode("ascii", errors="ignore")
 
         fw_num   = endian.read_u16_be(data, 36)   # u16 raw
-        channels = endian.read_u16_be(data, 38)
+        num_channels = endian.read_u16_be(data, 38)
 
         return Register(
             type=type_str,
             id=id_str,
             fwVersion=fw_num,   # keep as int (u16)
-            channels=channels,
+            num_channels=num_channels,
         )

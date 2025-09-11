@@ -37,7 +37,7 @@ async def get_devices(
         enriched.append(DeviceSchema(
             unit_id=dev.unit_id,
             type=dev.type,
-            channels=dev.channels,
+            num_channels=dev.num_channels,
             firmware_version=dev.firmware_version,
             is_active=dev.is_active,
             status = to_str(status, "offline"),
@@ -73,7 +73,7 @@ async def update_device(
     return DeviceSchema(
         unit_id=device.unit_id,
         type=device.type,
-        channels=device.channels,
+        num_channels=device.num_channels,
         name=device.name,
         location=device.location,
         firmware_version=device.firmware_version,

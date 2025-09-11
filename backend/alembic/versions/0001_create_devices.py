@@ -2,7 +2,7 @@
 
 Revision ID: 0001_create_devices
 Revises: 
-Create Date: 2025-09-07
+Create Date: 2025-09-10
 """
 from typing import Sequence, Union
 from alembic import op
@@ -21,7 +21,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
         sa.Column("unit_id", sa.String, unique=True, index=True, nullable=False),
         sa.Column("type", sa.String, nullable=True),
-        sa.Column("channels", sa.Integer, nullable=True),
+        sa.Column("num_channels", sa.Integer, nullable=True),
         sa.Column("firmware_version", sa.String, nullable=True),
         sa.Column("name", sa.String, nullable=True),
         sa.Column("location", sa.String, nullable=True),
