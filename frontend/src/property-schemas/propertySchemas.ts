@@ -1,19 +1,15 @@
 // config/propertySchemas.ts
 import { devicePropertySchema } from "./devicePropertySchema"
 import type { PropertySchema } from "@/types/propertySchema"
-import type { Device } from "@/types/device"
-import type { Switchgear } from "@/types/switchgear"
 import { switchgearPropertySchema } from "./switchgearPropertySchema"
+import type { EntityMap, EntityType } from "@/types/entity"
+import { channelPropertySchema } from "./channelPropertySchema"
 
-export type EntityType = "device" | "switchgear"
-export type EntityMap = {
-  device: Device
-  switchgear: Switchgear
-}
 
 export const propertySchemas: {
   [K in EntityType]: PropertySchema<EntityMap[K]>
 } = {
+  channel: channelPropertySchema,
   device: devicePropertySchema,
   switchgear: switchgearPropertySchema,
 }

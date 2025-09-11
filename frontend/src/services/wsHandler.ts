@@ -35,7 +35,7 @@ export function handleWsEvent(event: WSEvent) {
 
       // 2. обновляем каналы (если они пришли в событии)
       if (devEvent.channels) {
-        channelStore.setBaseChannels(devEvent.unit_id, devEvent.channels)
+        channelStore.setBaseChannels(devEvent.id, devEvent.channels)
       }
       break
     }

@@ -53,6 +53,7 @@ class WsStateService:
 
                 # REGISTER
                 reg_event = DeviceRegisterEvent(
+                    id=device.id,
                     unit_id=device.unit_id,
                     type=device.type,
                     firmware_version=device.firmware_version,
@@ -104,6 +105,7 @@ class WsStateService:
             last_seen = int(to_str(last_seen_raw, "0")) if last_seen_raw else None
 
             reg_event = DeviceRegisterEvent(
+                id=device.id,
                 unit_id=device.unit_id,
                 type=device.type,
                 firmware_version=device.firmware_version,

@@ -1,0 +1,14 @@
+import type { Channel } from "@/types/channel"
+import { useChannelStore } from "@/stores/channelStore"
+import type { PropertySchema } from "@/types/propertySchema"
+
+export const channelPropertySchema: PropertySchema<Channel> = {
+  fields: [
+    { key: "name", label: "Name", editable: true, type: "string" },
+  ],
+
+  async update(item, key, value) {
+    const store = useChannelStore()
+    await store.updateChannelField(item.id, { [key]: value })
+  },
+}

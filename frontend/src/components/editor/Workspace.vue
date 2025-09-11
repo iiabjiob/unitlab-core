@@ -42,11 +42,11 @@ const editor = useEditorStore()
 const selection = useSelectionStore()
 
 function select(item: Switchgear) {
-  selection.select({ type: "switchgear", id: item.id })
+  selection.select({ type: "switchgear", key: item.id })
 }
 function remove(id: string) {
   editor.removeById(id)
-  if (selection.selected?.type === "switchgear" && selection.selected.id === id) {
+  if (selection.selected?.type === "switchgear" && selection.selected.key === id) {
     selection.clear()
   }
 }

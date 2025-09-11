@@ -64,6 +64,7 @@ async def handle_device_register(topic: str, payload: bytes, unit_id: str):
 
     # Build WS event
     event = DeviceRegisterEvent(
+        id=device.id,
         unit_id=device.unit_id,
         type=device.type,
         num_channels=device.num_channels,

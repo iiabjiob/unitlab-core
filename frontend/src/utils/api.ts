@@ -1,3 +1,4 @@
+
 function buildQuery(baseUrl: string, params?: Record<string, any>) {
   if (!params) return baseUrl
 
@@ -11,7 +12,8 @@ function buildQuery(baseUrl: string, params?: Record<string, any>) {
 
 export const ApiBuilder = {
   devices: (params?: Record<string, any>) => buildQuery('/api/devices', params),
-  device: (unitId: string) => `/api/devices/${unitId}`,
+  device: (id: number) => `/api/devices/${id}`,
+  channel: (id: number) => `/api/channels/${id}`,
   time: (params?: Record<string, any>) => buildQuery('/api/time', params),
   events: (params?: Record<string, any>) => buildQuery('/api/events', params),
   timeSync: () => `/api/settings/timesync`,

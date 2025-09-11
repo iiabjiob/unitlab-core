@@ -9,7 +9,7 @@ class ChannelSchema(BaseModel):
     type: str
     name: Optional[str] = None
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
 
 
 class ChannelCreateSchema(BaseModel):

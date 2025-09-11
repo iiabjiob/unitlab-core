@@ -10,9 +10,9 @@ from app.schemas.channel_schema import ChannelSchema
 from app.core.utils import to_str
 from app.infrastructure.redis.manager import RedisManager
 
-router = APIRouter(prefix="/api", tags=["Devices"])
+router = APIRouter(prefix="/api/devices", tags=["Devices"])
 
-@router.get("/devices", response_model=list[DeviceSchema])
+@router.get("", response_model=list[DeviceSchema])
 async def get_devices(
     db: AsyncSession = Depends(get_db),
     is_active: Optional[bool] = Query(None),
@@ -45,11 +45,11 @@ async def get_devices(
 
     return enriched
 
-@router.get("/devices/{unit_id}", response_model=DeviceSchema)
-async def get_device(unit_id: str, db: AsyncSession = Depends(get_db)):
+@router.get("/{id}", response_model=DeviceSchema)
+async def get_device(id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Device)
-        .where(Device.unit_id == unit_id)
+        .where(Device.id == id)
         .options(selectinload(Device.channels))
     )
     device = result.scalar_one_or_none()
@@ -68,38 +68,46 @@ async def get_device(unit_id: str, db: AsyncSession = Depends(get_db)):
 
     return schema
 
-@router.patch("/devices/{unit_id}", response_model=DeviceSchema)
+@router.patch("/{id}", response_model=DeviceSchema)
 async def update_device(
-    unit_id: str,
+    id: int,
     patch: DeviceUpdateSchema,
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Device).where(Device.unit_id == unit_id))
+    # загружаем устройство
+    result = await db.execute(
+        select(Device).where(Device.id == id)
+    )
     device = result.scalar_one_or_none()
 
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
 
     # обновляем только переданные поля
-    for field, value in patch.dict(exclude_unset=True).items():
+    for field, value in patch.model_dump(exclude_unset=True).items():
         setattr(device, field, value)
 
     await db.commit()
-    await db.refresh(device)
+
+    # перезагружаем устройство с каналами
+    result = await db.execute(
+        select(Device).options(selectinload(Device.channels)).where(Device.id == id)
+    )
+    device = result.scalar_one()
 
     # enrich динамическими полями (status/last_seen)
     redis_client = RedisManager.get_instance()
     status = await redis_client.get(f"device:{device.unit_id}:status")
     last_seen = await redis_client.get(f"device:{device.unit_id}:last_seen")
 
-    schema = DeviceSchema.model_validate(device)
+    schema = DeviceSchema.model_validate(device, from_attributes=True)
     schema.status = to_str(status, "offline")
     schema.last_seen = int(last_seen) if last_seen else None
     return schema
 
-@router.delete("/devices/{unit_id}", summary="Delete device")
-async def delete_device(unit_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Device).where(Device.unit_id == unit_id))
+@router.delete("/{id}", summary="Delete device")
+async def delete_device(id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Device).where(Device.id == id))
     device = result.scalar_one_or_none()
 
     if not device:

@@ -13,33 +13,36 @@ export const useDeviceStore = defineStore('deviceStore', () => {
   const devices   = ref<Device[]>([])
   const isLoading = ref<boolean>(false)
 
-  async function updateDeviceField(unitId: string, changes: Partial<Device>) {
+  async function updateDeviceField(deviceId: number, changes: Partial<Device>) {
     try {
-      const { data } = await axios.patch(ApiBuilder.device(unitId), changes)
+      const { data } = await axios.patch(ApiBuilder.device(deviceId), changes)
 
-      const index = devices.value.findIndex(d => d.unit_id === unitId)
+      const index = devices.value.findIndex(d => d.id === deviceId)
       if (index !== -1) {
-        devices.value[index] = data
+        devices.value[index] = {
+          ...data,
+          type: normalizeType(data.type),
+        }
       }
 
-      logger.debug(`✅ Device ${unitId} updated with`, changes)
+      logger.debug(`✅ Device ${deviceId} updated with`, changes)
     } catch (error) {
-      logger.error(`💥 Failed to update device ${unitId}:`, error)
+      logger.error(`💥 Failed to update device ${deviceId}:`, error)
     }
   }
 
-  async function toggleDeviceActive(unitId: string) {
-    const index = devices.value.findIndex(d => d.unit_id === unitId)
+  async function toggleDeviceActive(deviceId: number) {
+    const index = devices.value.findIndex(d => d.id === deviceId)
     if (index === -1) return
-    await updateDeviceField(unitId, { is_active: !devices.value[index].is_active })
+    await updateDeviceField(deviceId, { is_active: !devices.value[index].is_active })
   }
 
-  async function deleteDevice(unitId: string) {
+  async function deleteDevice(deviceId: number) {
     try {
-      await axios.delete(ApiBuilder.device(unitId))
+      await axios.delete(ApiBuilder.device(deviceId))
 
       // ✅ Успешно удалено на сервере — теперь удаляем локально
-      const index = devices.value.findIndex(d => d.unit_id === unitId)
+      const index = devices.value.findIndex(d => d.id === deviceId)
       if (index !== -1) {
         devices.value.splice(index, 1)  // Удаляем из массива
       }
@@ -50,7 +53,7 @@ export const useDeviceStore = defineStore('deviceStore', () => {
   }
 
   function upsertDevice(event: DeviceRegisterEvent) {
-    const idx = devices.value.findIndex(d => d.unit_id === event.unit_id)
+    const idx = devices.value.findIndex(d => d.id === event.id)
     const newDevice: Device = {
       ...event,
       type: normalizeType(event.type as unknown as string),

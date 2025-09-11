@@ -3,6 +3,7 @@ from typing import List, Optional, Literal
 from app.schemas.channel_schema import ChannelSchema
 
 class DeviceSchema(BaseModel):
+    id: int
     unit_id: str
     type: str
     num_channels: int

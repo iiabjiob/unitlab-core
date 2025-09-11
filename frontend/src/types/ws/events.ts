@@ -60,6 +60,7 @@ export interface DeviceStateEvent {
 
 export interface DeviceRegisterEvent {
   channel: WSChannel.DEVICE_REGISTER
+  id: number
   unit_id: string
   type: ChannelType
   num_channels: number

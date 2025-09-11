@@ -16,6 +16,6 @@ export const devicePropertySchema: PropertySchema<Device> = {
 
   async update(item, key, value) {
     const store = useDeviceStore()
-    await store.updateDeviceField(item.unit_id, { [key]: value })
+    await store.updateDeviceField(item.id, { [key]: value })
   },
 }

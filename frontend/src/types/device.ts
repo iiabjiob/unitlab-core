@@ -1,6 +1,7 @@
 import type { Channel, ChannelType } from "./channel"
 
 export interface Device {
+  id: number
   unit_id: string
   type: ChannelType
   num_channels: number

@@ -1,5 +1,6 @@
 // utils/updateEntity.ts
-import { type EntityMap, type EntityType, resolveSchema} from "@/property-schemas/propertySchemas"
+import { resolveSchema} from "@/property-schemas/propertySchemas"
+import type { EntityMap, EntityType } from "@/types/entity"
 
 export async function updateEntity<T extends EntityType, K extends keyof EntityMap[T]>(
   type: T,

@@ -50,16 +50,16 @@ const deviceStore = useDeviceStore()
 const selection = useSelectionStore()
 
 function select(item: Device) {
-  selection.select({ type: "device", id: item.unit_id })
+  selection.select({ type: "device", key: item.unit_id })
 }
 
 async function onToggle(item: Device) {
-  await deviceStore.toggleDeviceActive(item.unit_id)
+  await deviceStore.toggleDeviceActive(item.id)
 }
 
 async function onDelete(item: Device) {
   if (confirm(`Delete device ${item.unit_id}?`)) {
-    await deviceStore.deleteDevice(item.unit_id)
+    await deviceStore.deleteDevice(item.id)
   }
 }
 

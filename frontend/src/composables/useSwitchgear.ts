@@ -8,10 +8,10 @@ import { codeToState, SWITCHGEAR_CODE } from "@/constants/switchgear"
 export type SwitchgearState = "CLOSED" | "OPEN" | "UNKNOWN" | "INTERMEDIATE"
 
 export interface UseSwitchgearOpts {
-  doOpen: { unitId: string; channel: number } | null
+  doOpen:   { unitId: string; channel: number } | null
   doClosed: { unitId: string; channel: number } | null
-  diOpen: { unitId: string; channel: number } | null
-  diClose: { unitId: string; channel: number } | null
+  diOpen:   { unitId: string; channel: number } | null
+  diClose:  { unitId: string; channel: number } | null
   feedbackDelayMs?: number
 }
 
@@ -27,26 +27,27 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
   const feedbackDelayMs = ref(opts.feedbackDelayMs ?? 0)
 
   // --- Helpers ---
-
   function getChannelState(
-    signal: { unitId: string; channel: number } | null,
+    channel: { unitId: string; channel: number } | null,
     expectedType: "DO" | "DI"
   ): boolean | null {
-    if (!signal) return null
-    const dev = deviceStore.devices.find(d => d.unit_id === signal.unitId)
+    if (!channel) return null
+    const dev = deviceStore.devices.find(d => d.unit_id === channel.unitId)
     if (!dev || dev.type !== expectedType) return null
-    const arr = channelStore.channels[signal.unitId]
-    const c = arr?.find(x => x.index === signal.channel)
+
+    const arr = channelStore.channels.filter(c => c.device_id === dev.id)
+    const c = arr.find(x => x.index === channel.channel)
+
     return typeof (c as any)?.state === "boolean" ? (c as any).state as boolean : null
   }
 
-  const getDo = (signal: { unitId: string; channel: number } | null) =>
-    getChannelState(signal, "DO")
-  const getDi = (signal: { unitId: string; channel: number } | null) =>
-    getChannelState(signal, "DI")
+  const getDo = (channel: { unitId: string; channel: number } | null) =>
+    getChannelState(channel, "DO")
+  const getDi = (channel: { unitId: string; channel: number } | null) =>
+    getChannelState(channel, "DI")
 
   // --- Effective state from DO pair ---
-    const effectiveState = computed<SwitchgearState>(() => {
+  const effectiveState = computed<SwitchgearState>(() => {
     const a = getDo(opts.doOpen)
     const b = getDo(opts.doClosed)
     if (a === null || b === null) return "UNKNOWN"

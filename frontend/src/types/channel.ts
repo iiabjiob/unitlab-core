@@ -1,9 +1,10 @@
 export type ChannelType = "DI" | "DO" | "AO"
 
 export interface BaseChannel {
+  id: number
+  device_id: number
   index: number
   type: ChannelType
-  device_id: string
   name?: string
 }
 
