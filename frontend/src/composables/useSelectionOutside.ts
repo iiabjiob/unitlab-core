@@ -10,6 +10,7 @@ export function useSelectionOutside(extraIgnore: () => HTMLElement | null = () =
 
     // if click inside special card → keep selection
     if (target.closest(".selectable-card")) return
+    if (target.closest(".selectable-row")) return
 
 
     // if click inside extra element (e.g. rightAside or SlideOver) → keep selection

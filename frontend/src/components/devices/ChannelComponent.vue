@@ -1,26 +1,48 @@
 <template>
-  <div class="flex items-center px-2 py-1 w-full border-b border-neutral-300 dark:border-neutral-700 last:border-0 text-xs">
+  <div
+    class="selectable-row flex items-center w-full border-b border-neutral-300 dark:border-neutral-700 last:border-0 text-xs"
+    :class="selected ? 'selectable-row--selected' : 'selectable-row--idle'"
+    @click.stop="$emit('select', channel)"
+  >
     <!-- Имя канала -->
-    <span>{{ channel.name || ("CH" + (props.channel.index + 1)) }}</span>
+    <span>{{ channel.name || ("CH" + (channel.index + 1)) }}</span>
 
     <!-- Управление DO -->
-    <div v-if="props.type === 'DO'" class="flex flex-1 items-center justify-end gap-2">
-      <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="Boolean(!props.channel.state)"
-        @click.stop="$emit('toggle', false)">
+    <div v-if="type === 'DO'" class="flex flex-1 items-center justify-end gap-2">
+      <ButtonComponent
+        size="xs"
+        type="secondary"
+        class="min-w-[40px]"
+        :disabled="Boolean(!channel.state)"
+        @click.stop="$emit('toggle', false)"
+      >
         Off
       </ButtonComponent>
-      <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="Boolean(props.channel.state)"
-        @click.stop="$emit('toggle', true)">
+      <ButtonComponent
+        size="xs"
+        type="secondary"
+        class="min-w-[40px]"
+        :disabled="Boolean(channel.state)"
+        @click.stop="$emit('toggle', true)"
+      >
         On
       </ButtonComponent>
     </div>
 
     <!-- AO -->
-    <div v-else-if="props.type === 'AO'" class="flex flex-1 items-center justify-end gap-2">
+    <div v-else-if="type === 'AO'" class="flex flex-1 items-center justify-end gap-2">
       <div class="flex items-center gap-1">
-        <input type="number" min="0" max="24" step="0.01" v-model="inputValue" @input="onInput" @blur="onBlur"
+        <input
+          type="number"
+          min="0"
+          max="24"
+          step="0.01"
+          v-model="inputValue"
+          @input="onInput"
+          @blur="onBlur"
           @keyup.enter="onConfirm"
-          class="w-20 text-center px-1 border border-neutral-300 dark:border-neutral-700 rounded text-xs bg-neutral-100 dark:bg-neutral-900 p-0.5" />
+          class="w-20 text-center px-1 border border-neutral-300 dark:border-neutral-700 rounded text-xs bg-neutral-100 dark:bg-neutral-900 p-0.5"
+        />
         <span class="text-neutral-400 text-xs">mA</span>
       </div>
       <ButtonComponent size="xs" type="primary" @click.stop="onConfirm">
@@ -28,18 +50,17 @@
       </ButtonComponent>
     </div>
 
-
     <!-- DI -->
-    <div v-else-if="props.type === 'DI'" class="flex flex-1 items-center justify-end gap-2">
+    <div v-else-if="type === 'DI'" class="flex flex-1 items-center justify-end gap-2">
       <!-- Только статус -->
     </div>
 
     <!-- Статус -->
     <span class="ml-4 pl-4 border-l border-neutral-300 dark:border-neutral-700 text-right">
-      <template v-if="props.type === 'DO' || props.type === 'DI'">
+      <template v-if="type === 'DO' || type === 'DI'">
         {{ channel.state ? "🟢" : "⚪️" }}
       </template>
-      <template v-else-if="props.type === 'AO'">
+      <template v-else-if="type === 'AO'">
         <div class="min-w-[50px] text-nowrap">
           {{ channel.state }}
           <span class="text-xs text-neutral-400 ml-1">mA</span>
@@ -58,18 +79,16 @@ import { ref } from "vue"
 const props = defineProps<{
   type: ChannelType
   channel: Channel
+  selected?: boolean
   disabled?: boolean
 }>()
 
-const emit = defineEmits(["toggle", "ao-change"])
+const emit = defineEmits(["toggle", "ao-change", "select"])
 
 const inputValue = ref(
   typeof props.channel.state === "number" ? formatValue(props.channel.state) : "4.00"
 )
 
-/**
- * Ограничение и автоформат при вводе
- */
 function onInput(e: Event) {
   const target = e.target as HTMLInputElement
   let val = parseFloat(target.value)
@@ -78,17 +97,11 @@ function onInput(e: Event) {
     inputValue.value = "0.00"
     return
   }
-
-  // clamp
   if (val < 0) val = 0
   if (val > 24) val = 24
-
-  inputValue.value = target.value // не форматируем сразу, чтобы ввод был "живым"
+  inputValue.value = target.value
 }
 
-/**
- * При потере фокуса → формат в x.xx
- */
 function onBlur() {
   let val = parseFloat(inputValue.value)
   if (isNaN(val)) val = 0
@@ -97,21 +110,15 @@ function onBlur() {
   inputValue.value = formatValue(val)
 }
 
-/**
- * Подтверждение → эмитим число
- */
 function onConfirm() {
   let val = parseFloat(inputValue.value)
   if (isNaN(val)) val = 0
   if (val < 0) val = 0
   if (val > 24) val = 24
   emit("ao-change", val)
-  inputValue.value = formatValue(val) // автоформат после отправки
+  inputValue.value = formatValue(val)
 }
 
-/**
- * Утилита: формат до x.xx
- */
 function formatValue(num: number): string {
   return num.toFixed(2)
 }

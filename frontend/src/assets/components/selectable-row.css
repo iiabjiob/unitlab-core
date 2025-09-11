@@ -1,0 +1,13 @@
+@layer components {
+  .selectable-row {
+    @apply px-2 py-0.5 cursor-pointer rounded-sm;
+  }
+
+  .selectable-row--selected {
+    @apply bg-neutral-100 dark:bg-neutral-700;
+  }
+
+  .selectable-row--idle {
+    @apply hover:bg-neutral-100 dark:hover:bg-neutral-700;
+  }
+}
