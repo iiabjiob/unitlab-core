@@ -1,11 +1,9 @@
+export type ChannelType = "DI" | "DO" | "AO"
+
 export interface BaseChannel {
-  /** Номер канала в устройстве (с 0) */
   index: number
-
-  /** К какому устройству принадлежит */
+  type: ChannelType
   device_id: string
-
-  /** Имя канала (пользовательское или auto-generated) */
   name?: string
 }
 
@@ -30,4 +28,3 @@ export interface AoChannel extends BaseChannel {
 /** Универсальный канал */
 export type Channel = DiChannel | DoChannel | AoChannel
 
-export type ChannelType = "DI" | "DO" | "AO"

@@ -17,7 +17,6 @@ import {
   type RequestStateMessage } from '@/types/ws/messages'
 
 import { useWebSocketStore } from "@/stores/websocketStore"
-import { useDeviceStore } from '@/stores/deviceStore'
 import { getLogger } from '@/utils/logger'
 
 const logger = getLogger('CH')
@@ -29,9 +28,15 @@ export const useChannelStore = defineStore('channelStore', () => {
   // Последние RESP от устройств
   const responses = ref<Record<string, DeviceRespEvent>>({})
 
+  function setBaseChannels(unitId: string, base: Channel[]) {
+    // сохраняем каналы без состояния, только структура (index, name, type)
+    channels.value[unitId] = base.map(ch => ({ ...ch }))
+    logger.info(`📡 Base channels set for ${unitId}`, channels.value[unitId])
+  }
   // Обновление от backend (DeviceStateEvent → Channels)
-  function setSignals(event: DeviceStateEvent) {
+  function setChannels(event: DeviceStateEvent) {
     const unitId = event.unit_id
+    // базовые каналы уже есть после REGISTER
     const prev = channels.value[unitId] ?? []
     let updated = [...prev]
 
@@ -40,35 +45,17 @@ export const useChannelStore = defineStore('channelStore', () => {
         const { ch, value } = event.payload
         const idx = updated.findIndex(c => c.index === ch)
         if (idx !== -1) {
-          // пересоздаём объект вместо мутации
-          updated[idx] = {
-            ...updated[idx],
-            state: !!value,
-          }
-        } else {
-          updated.push({
-            index: ch,
-            device_id: unitId,
-            state: !!value,
-            name: `CH${ch + 1}`,
-          })
+          updated[idx] = { ...updated[idx], state: !!value }
         }
         break
       }
 
       case StateMode.STATE_ALL_BIT: {
         const { bitmask } = event.payload
-        const total =
-          useDeviceStore().devices.find(d => d.unit_id === unitId)?.num_channels ?? 0
-        updated = []
-        for (let i = 0; i < total; i++) {
-          updated.push({
-            index: i,
-            device_id: unitId,
-            state: (bitmask >> i) & 1 ? true : false,
-            name: `CH${i + 1}`,
-          })
-        }
+        updated = updated.map(c => ({
+          ...c,
+          state: (bitmask >> c.index) & 1 ? true : false,
+        }))
         break
       }
 
@@ -76,25 +63,13 @@ export const useChannelStore = defineStore('channelStore', () => {
         const { ch, value } = event.payload
         const idx = updated.findIndex(c => c.index === ch)
         if (idx !== -1) {
-          updated[idx] = {
-            ...updated[idx],
-            state: value,
-          }
-        } else {
-          updated.push({
-            index: ch,
-            device_id: unitId,
-            state: value,
-            name: `AO${ch + 1}`,
-          })
+          updated[idx] = { ...updated[idx], state: value }
         }
         break
       }
     }
 
-    // всегда присваиваем новый массив с новыми объектами
-    channels.value[unitId] = updated.map(c => ({ ...c }))
-
+    channels.value[unitId] = updated
     logger.debug(`📡 Updated channels for ${unitId}`, channels.value[unitId])
   }
 
@@ -169,7 +144,8 @@ export const useChannelStore = defineStore('channelStore', () => {
     channels,
     responses,
     requestStates,
-    setSignals,
+    setBaseChannels,
+    setChannels,
     setResponse,
     sendDoCommand,
     sendDoPairCommand,

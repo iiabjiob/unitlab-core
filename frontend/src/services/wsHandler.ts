@@ -27,8 +27,16 @@ export function handleWsEvent(event: WSEvent) {
 
     // --- регистрация устройства ---
     case WSChannel.DEVICE_REGISTER:{
-      logger.debug("📡 IN ← DEVICE_REGISTER:", event)
-      deviceStore.upsertDevice(event as DeviceRegisterEvent)
+      const devEvent = event as DeviceRegisterEvent
+      logger.debug("📡 IN ← DEVICE_REGISTER:", devEvent)
+
+      // 1. обновляем устройства
+      deviceStore.upsertDevice(devEvent)
+
+      // 2. обновляем каналы (если они пришли в событии)
+      if (devEvent.channels) {
+        channelStore.setBaseChannels(devEvent.unit_id, devEvent.channels)
+      }
       break
     }
     // --- статус (онлайн/оффлайн) ---
@@ -40,7 +48,7 @@ export function handleWsEvent(event: WSEvent) {
     // --- состояние сигналов ---
     case WSChannel.DEVICE_STATE:{
       logger.debug("📡 IN ← DEVICE_STATE:", event)
-      channelStore.setSignals(event as DeviceStateEvent)
+      channelStore.setChannels(event as DeviceStateEvent)
       break
     }
     // --- ответы на команды ---

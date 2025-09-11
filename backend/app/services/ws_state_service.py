@@ -7,6 +7,7 @@ from app.infrastructure.redis.manager import RedisManager
 from app.ws.manager import WebSocketManager
 from app.schemas.ws.events import DeviceRegisterEvent
 from app.services.device_state_service import DeviceStateService
+from app.schemas.channel_schema import ChannelSchema
 from app.schemas.ws.events import TimeStatusEvent
 from app.services.time_sync import get_chrony_status
 from datetime import datetime, timezone
@@ -52,13 +53,14 @@ class WsStateService:
                 reg_event = DeviceRegisterEvent(
                     unit_id=device.unit_id,
                     type=device.type,
-                    firmware_version=float(device.firmware_version) if device.firmware_version else None,
+                    firmware_version=device.firmware_version,
                     num_channels=device.num_channels,
                     is_active=device.is_active,
                     name=device.name,
                     location=device.location,
                     status=status if status in ("online", "offline") else "offline",
                     last_seen=last_seen,
+                    channels=[ChannelSchema.model_validate(ch) for ch in device.channels],
                 )
                 await ws_manager.send_event(ws, reg_event)
 

@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from app.infrastructure.db.database import get_db
 from app.models.device import Device
 from app.schemas.device_schema import DeviceSchema, DeviceUpdateSchema
+from app.schemas.channel_schema import ChannelSchema
 from app.core.utils import to_str
 from app.infrastructure.redis.manager import RedisManager
 
@@ -16,16 +18,16 @@ async def get_devices(
     is_active: Optional[bool] = Query(None),
     type_: Optional[str] = Query(None),
 ):
-    query = select(Device)
+    query = select(Device).options(selectinload(Device.channels))
 
     if is_active is not None:
         query = query.where(Device.is_active == is_active)
     if type_ is not None:
-        query = query.where(Device.type_ == type_)
+        query = query.where(Device.type == type_)
 
     result = await db.execute(query)
     devices = result.scalars().all()
-    
+
     redis_client = RedisManager.get_instance()
 
     enriched: list[DeviceSchema] = []
@@ -33,18 +35,38 @@ async def get_devices(
         # достаём статус из Redis
         status = await redis_client.get(f"device:{dev.unit_id}:status")
         last_seen = await redis_client.get(f"device:{dev.unit_id}:last_seen")
-      
-        enriched.append(DeviceSchema(
-            unit_id=dev.unit_id,
-            type=dev.type,
-            num_channels=dev.num_channels,
-            firmware_version=dev.firmware_version,
-            is_active=dev.is_active,
-            status = to_str(status, "offline"),
-            last_seen=int(last_seen) if last_seen else None,
-        ))
+
+        schema = DeviceSchema.model_validate(dev)
+        schema.status = to_str(status, "offline")
+        schema.last_seen = int(last_seen) if last_seen else None
+        schema.channels = [ChannelSchema.model_validate(ch) for ch in dev.channels]
+
+        enriched.append(schema)
 
     return enriched
+
+@router.get("/devices/{unit_id}", response_model=DeviceSchema)
+async def get_device(unit_id: str, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Device)
+        .where(Device.unit_id == unit_id)
+        .options(selectinload(Device.channels))
+    )
+    device = result.scalar_one_or_none()
+
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    redis_client = RedisManager.get_instance()
+    status = await redis_client.get(f"device:{device.unit_id}:status")
+    last_seen = await redis_client.get(f"device:{device.unit_id}:last_seen")
+
+    schema = DeviceSchema.model_validate(device)
+    schema.status = to_str(status, "offline")
+    schema.last_seen = int(last_seen) if last_seen else None
+    schema.channels = [ChannelSchema.model_validate(ch) for ch in device.channels]
+
+    return schema
 
 @router.patch("/devices/{unit_id}", response_model=DeviceSchema)
 async def update_device(
@@ -70,19 +92,10 @@ async def update_device(
     status = await redis_client.get(f"device:{device.unit_id}:status")
     last_seen = await redis_client.get(f"device:{device.unit_id}:last_seen")
 
-    return DeviceSchema(
-        unit_id=device.unit_id,
-        type=device.type,
-        num_channels=device.num_channels,
-        name=device.name,
-        location=device.location,
-        firmware_version=device.firmware_version,
-        is_active=device.is_active,
-        status=to_str(status, "offline"),
-        last_seen=int(last_seen) if last_seen else None,
-    )
-
-
+    schema = DeviceSchema.model_validate(device)
+    schema.status = to_str(status, "offline")
+    schema.last_seen = int(last_seen) if last_seen else None
+    return schema
 
 @router.delete("/devices/{unit_id}", summary="Delete device")
 async def delete_device(unit_id: str, db: AsyncSession = Depends(get_db)):

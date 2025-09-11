@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Integer, Boolean, DateTime
 from app.infrastructure.db.database import Base
 
@@ -21,4 +21,12 @@ class Device(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    # связь с каналами
+    channels = relationship(
+        "Channel",
+        back_populates="device",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )

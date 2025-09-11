@@ -3,6 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.device import Device  # или откуда у тебя модель
+from app.repositories.channel_repository import register_or_update_channels
 from datetime import datetime, timezone
 
 async def register_if_not_exists(
@@ -73,6 +74,9 @@ async def register_or_update(
 
         await db.commit()
         await db.refresh(device)
+
+    # синхронизируем каналы
+    await register_or_update_channels(db, device.id, num_channels, type)
 
     return device
 
