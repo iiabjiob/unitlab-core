@@ -1,5 +1,5 @@
-import time
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.models.device import Device
 
@@ -37,7 +37,9 @@ class WsStateService:
         redis = RedisManager.get_instance()
 
         async with AsyncSessionLocal() as db:
-            result = await db.execute(select(Device))
+            result = await db.execute(
+                select(Device).options(selectinload(Device.channels))
+            )
             devices = result.scalars().all()
             logger.info(f"🔄 Syncing WS client, devices={len(devices)}")
 
@@ -79,3 +81,44 @@ class WsStateService:
                 await ws_manager.send_event(ws, event)
             except Exception as e:
                 logger.error(f"💥 Failed to sync time status: {e}")
+
+    @staticmethod
+    async def sync_client_for_device(unit_id: str, target=None):
+        ws_manager = WebSocketManager.get_instance()
+        redis = RedisManager.get_instance()
+
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Device).options(selectinload(Device.channels))
+                .where(Device.unit_id == unit_id)
+            )
+            device = result.scalars().first()
+            if not device:
+                return
+
+            # статус/last_seen
+            status_raw = await redis.get(f"device:{device.unit_id}:status")
+            last_seen_raw = await redis.get(f"device:{device.unit_id}:last_seen")
+
+            status = to_str(status_raw, "offline")
+            last_seen = int(to_str(last_seen_raw, "0")) if last_seen_raw else None
+
+            reg_event = DeviceRegisterEvent(
+                unit_id=device.unit_id,
+                type=device.type,
+                firmware_version=device.firmware_version,
+                num_channels=device.num_channels,
+                is_active=device.is_active,
+                name=device.name,
+                location=device.location,
+                status=status,
+                last_seen=last_seen,
+                channels=[ChannelSchema.model_validate(ch) for ch in device.channels],
+            )
+            if target:
+                await ws_manager.send_event(target, reg_event)
+            else:
+                await ws_manager.broadcast(reg_event)
+
+            # STATE
+            await WsStateService.send_cached_state_to_ui(unit_id, target=target)

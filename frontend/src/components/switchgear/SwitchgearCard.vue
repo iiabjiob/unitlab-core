@@ -31,7 +31,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue"
-import { useSwitchgear, type SwitchgearState } from "@/composables/useSwitchgear"
+import { useSwitchgear } from "@/composables/useSwitchgear"
 import SwitchgearActions from "./SwitchgearActions.vue"
 import SwitchgearCube from "./SwitchgearCube.vue"
 import SwitchgearTechFooter from "./SwitchgearTechFooter.vue"

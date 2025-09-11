@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col h-full p-3">
+  <div class="flex flex-col h-full">
     <!-- Верхняя строка -->
     <div class="flex items-center justify-between">
       <!-- ID/Name + статус + location -->

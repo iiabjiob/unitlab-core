@@ -1,3 +1,4 @@
+import asyncio
 import time
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.redis.manager import RedisManager
@@ -50,6 +51,5 @@ async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
         
         # запрашиваем информацию об устройсве и его состояния
         await enqueue_scan_devices(correlation_id=0, unit_id=unit_id)
-        
-        # восстановить состояние в UI
-        await WsStateService.send_cached_state_to_ui(unit_id)
+
+        await WsStateService.sync_client_for_device(unit_id)

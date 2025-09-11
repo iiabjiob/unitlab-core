@@ -6,11 +6,11 @@
     <!-- Управление DO -->
     <div v-if="props.type === 'DO'" class="flex flex-1 items-center justify-end gap-2">
       <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="Boolean(!props.channel.state)"
-        @click="$emit('toggle', false)">
+        @click.stop="$emit('toggle', false)">
         Off
       </ButtonComponent>
       <ButtonComponent size="xs" type="secondary" class="min-w-[40px]" :disabled="Boolean(props.channel.state)"
-        @click="$emit('toggle', true)">
+        @click.stop="$emit('toggle', true)">
         On
       </ButtonComponent>
     </div>
@@ -23,7 +23,7 @@
           class="w-20 text-center px-1 border border-neutral-300 dark:border-neutral-700 rounded text-xs bg-neutral-100 dark:bg-neutral-900 p-0.5" />
         <span class="text-neutral-400 text-xs">mA</span>
       </div>
-      <ButtonComponent size="xs" type="primary" @click="onConfirm">
+      <ButtonComponent size="xs" type="primary" @click.stop="onConfirm">
         Set
       </ButtonComponent>
     </div>
