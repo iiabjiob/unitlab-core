@@ -28,7 +28,7 @@
                 : ['bg-neutral-100', 'dark:bg-neutral-800']"
               :value="props.item[field.key] ?? ''"
               :disabled="!field.editable"
-              @change="commitOnChange(field, $event)"
+              @change="e => commit(field, (e.target as HTMLInputElement).value)"
             />
 
             <!-- Editable number -->
@@ -42,7 +42,7 @@
                 : ['bg-neutral-100', 'dark:bg-neutral-800']"
               :value="props.item[field.key] ?? ''"
               :disabled="!field.editable"
-              @change="commitOnChange(field, $event)"
+              @change="e => commit(field, (e.target as HTMLInputElement).value)"
             />
 
             <!-- Editable boolean -->
@@ -53,7 +53,15 @@
               class="h-3 w-3"
               :checked="props.item[field.key] ?? false"
               :disabled="!field.editable"
-              @change="commitOnChange(field, $event)"
+              @change="e => commit(field, (e.target as HTMLInputElement).checked)"
+            />
+
+            <!-- Channel select -->
+            <ChannelSelect
+              v-else-if="field.type === 'channel'"
+              :model-value="props.item[field.key] as number | null"
+              :channel-type="field.channelType"
+              @update:modelValue="(val: number | null) => commit(field, val)"
             />
 
             <!-- fallback -->
@@ -76,6 +84,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import type { PropertyField, PropertySchema } from "@/types/propertySchema"
+import ChannelSelect from "../ui/ChannelSelect.vue";
 
 const props = defineProps<{
   schema: PropertySchema<any>
@@ -91,18 +100,16 @@ function getFieldName(field: PropertyField<any>) {
   return `prop-${props.itemId ?? "item"}-${field.key}`
 }
 
-function commitOnChange(field: PropertyField<any>, e: Event) {
-  const el = e.currentTarget as HTMLInputElement
-
+// универсальный commit для всех типов полей
+function commit(field: PropertyField<any>, raw: any) {
   let value: any
   if (field.type === "boolean") {
-    value = el.checked
+    value = !!raw
   } else if (field.type === "number") {
-    value = el.value === "" ? null : Number(el.value)
+    value = raw === "" ? null : Number(raw)
   } else {
-    value = el.value
+    value = raw
   }
-
   emit("update", field.key, value)
 }
 

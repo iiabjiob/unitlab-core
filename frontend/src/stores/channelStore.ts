@@ -200,9 +200,16 @@ export const useChannelStore = defineStore('channelStore', () => {
     logger.info(`➡️ AO cmd ${device.unit_id} ch=${ch} → ${value}`)
   }
 
+  function resolveUnitId(deviceId: number): string {
+    const deviceStore = useDeviceStore()
+    const dev = deviceStore.devices.find(d => d.id === deviceId)
+    return dev?.unit_id ?? `dev#${deviceId}`
+  }
+
   return {
     channels,
     responses,
+    resolveUnitId,
     channelsByDevice,
     updateChannelField,
     requestStates,
