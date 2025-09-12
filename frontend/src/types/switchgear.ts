@@ -1,16 +1,13 @@
 export interface Switchgear {
-  id: string
-  kind: "switchgear"
+  id: number
+  kind: "switchgear" | "disconnector" | "earthing"   // можно расширять
   title: string
 
-  // Управляющие выходы (DO → устройство)
-  doOpen: { unitId: string; channel: number } | null
-  doClosed: { unitId: string; channel: number } | null
+  // тут просто id канала, а детали резолвятся через channelStore
+  do_open: number | null
+  do_closed: number | null
+  di_open: number | null
+  di_close: number | null
 
-  // Обратная связь (DI ← устройство)
-  diOpen: { unitId: string; channel: number } | null
-  diClose: { unitId: string; channel: number } | null
-
-  // Задержка подтверждения
-  feedbackDelayMs: number
+  feedback_delay_ms: number
 }

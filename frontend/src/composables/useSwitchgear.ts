@@ -1,5 +1,5 @@
 // src/composables/useSwitchgear.ts
-import { computed, ref, watch } from "vue"
+import { computed, ref, watch, type Ref } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useChannelStore } from "@/stores/channelStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
@@ -7,11 +7,17 @@ import { codeToState, SWITCHGEAR_CODE } from "@/constants/switchgear"
 
 export type SwitchgearState = "CLOSED" | "OPEN" | "UNKNOWN" | "INTERMEDIATE"
 
+export interface ChannelRef {
+  unitId: string
+  channel: number
+  type?: string
+}
+
 export interface UseSwitchgearOpts {
-  doOpen:   { unitId: string; channel: number } | null
-  doClosed: { unitId: string; channel: number } | null
-  diOpen:   { unitId: string; channel: number } | null
-  diClose:  { unitId: string; channel: number } | null
+  doOpen: Ref<ChannelRef | null>
+  doClosed: Ref<ChannelRef | null>
+  diOpen: Ref<ChannelRef | null>
+  diClose: Ref<ChannelRef | null>
   feedbackDelayMs?: number
 }
 
@@ -28,7 +34,7 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
 
   // --- Helpers ---
   function getChannelState(
-    channel: { unitId: string; channel: number } | null,
+    channel: ChannelRef | null,
     expectedType: "do" | "di"
   ): boolean | null {
     if (!channel) return null
@@ -41,15 +47,13 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
     return typeof (c as any)?.state === "boolean" ? (c as any).state as boolean : null
   }
 
-  const getDo = (channel: { unitId: string; channel: number } | null) =>
-    getChannelState(channel, "do")
-  const getDi = (channel: { unitId: string; channel: number } | null) =>
-    getChannelState(channel, "di")
+  const getDo = (channel: ChannelRef | null) => getChannelState(channel, "do")
+  const getDi = (channel: ChannelRef | null) => getChannelState(channel, "di")
 
   // --- Effective state from DO pair ---
   const effectiveState = computed<SwitchgearState>(() => {
-    const a = getDo(opts.doOpen)
-    const b = getDo(opts.doClosed)
+    const a = getDo(opts.doOpen.value)
+    const b = getDo(opts.doClosed.value)
     if (a === null || b === null) return "UNKNOWN"
     return codeToState(a, b)
   })
@@ -69,17 +73,17 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
 
   // --- Commands ---
   function sendDoPair(target: SwitchgearState) {
-    if (!opts.doOpen || !opts.doClosed) return
+    if (!opts.doOpen.value || !opts.doClosed.value) return
     channelStore.sendDoPairCommand(
-      opts.doOpen.unitId,
-      opts.doOpen.channel,
-      opts.doClosed.channel,
+      opts.doOpen.value.unitId,
+      opts.doOpen.value.channel,
+      opts.doClosed.value.channel,
       SWITCHGEAR_CODE[target],
     )
   }
 
   async function setDoPair(target: SwitchgearState) {
-    if (!opts.doOpen || !opts.doClosed) return
+    if (!opts.doOpen.value || !opts.doClosed.value) return
     pendingTarget.value = target
     busy.value = true
     try {
@@ -90,7 +94,7 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
   }
 
   function scheduleDoPair(target: SwitchgearState) {
-    if (!opts.doOpen || !opts.doClosed) return
+    if (!opts.doOpen.value || !opts.doClosed.value) return
     pendingTarget.value = target
     busy.value = true
     setTimeout(() => {
@@ -105,8 +109,8 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
 
   watch(
     () => ({
-      diOpen: getDi(opts.diOpen),
-      diClose: getDi(opts.diClose),
+      diOpen: getDi(opts.diOpen.value),
+      diClose: getDi(opts.diClose.value),
     }),
     ({ diOpen, diClose }) => {
       if (diOpen !== null) {

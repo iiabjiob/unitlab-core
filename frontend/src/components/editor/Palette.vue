@@ -11,8 +11,24 @@
 </template>
 
 <script setup lang="ts">
-import { useEditorStore } from "@/stores/editorStore"
+
+import { useSwitchgearStore } from "@/stores/switchgearStore";
 import ButtonComponent from "../ui/ButtonComponent.vue";
-const editor = useEditorStore()
-function addSwitchgear() { editor.addSwitchgear() }
+
+const switchgearStore = useSwitchgearStore()
+async function addSwitchgear() {
+  try {
+    await switchgearStore.create({
+      title: "Switchgear",
+      kind: "switchgear",
+      do_open: null,
+      do_closed: null,
+      di_open: null,
+      di_close: null,
+      feedback_delay_ms: 0,
+    })
+  } catch (err) {
+    console.error("❌ Failed to add switchgear", err)
+  }
+}
 </script>

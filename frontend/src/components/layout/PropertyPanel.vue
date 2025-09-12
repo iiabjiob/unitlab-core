@@ -61,6 +61,7 @@
               v-else-if="field.type === 'channel'"
               :model-value="props.item[field.key] as number | null"
               :channel-type="field.channelType"
+              :name="field.key"
               @update:modelValue="(val: number | null) => commit(field, val)"
             />
 

@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager, suppress
 
 from app.api.devices import router as devices_router
 from app.api.channels import router as channels_router
+from app.api.switchgears import router as switchgears_router
 from app.api.event_log import router as event_log_router
 from app.api.time import router as time_router
 from app.api.settings import router as settings_router
@@ -96,6 +97,7 @@ app = FastAPI(
 logger.info("🔗 Registering REST API routers...")
 app.include_router(devices_router)
 app.include_router(channels_router)
+app.include_router(switchgears_router)
 app.include_router(time_router)
 app.include_router(event_log_router)
 app.include_router(settings_router)

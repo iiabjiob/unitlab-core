@@ -18,7 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.create_table(
         "devices",
-        sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
+        sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
         sa.Column("unit_id", sa.String, unique=True, index=True, nullable=False),
         sa.Column("type", sa.String, nullable=True),
         sa.Column("num_channels", sa.Integer, nullable=True),

@@ -1,13 +1,14 @@
-from datetime import datetime, timezone
+from datetime import datetime
+from sqlalchemy.sql import func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Integer, DateTime, ForeignKey
+from sqlalchemy import String, Integer, BigInteger, DateTime, ForeignKey
 from app.infrastructure.db.database import Base
 
 
 class Channel(Base):
     __tablename__ = "channels"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
 
     # связь с устройством
     device_id: Mapped[int] = mapped_column(
@@ -20,8 +21,7 @@ class Channel(Base):
     name: Mapped[str | None] = mapped_column(String, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc)
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     # ORM связь: один девайс → много каналов

@@ -1,6 +1,5 @@
 <!-- src/components/switchgear/SwitchgearCard.vue -->
 <template>
-
   <div class="flex flex-col gap-3">
     <!-- Header -->
     <div class="flex items-center justify-between">
@@ -8,80 +7,112 @@
         {{ title }}
       </div>
       <div class="flex items-center gap-2">
-        <span class="text-xs px-2 py-0.5 rounded-full" :class="statePillClass">{{ effectiveState }}</span>
+        <span class="text-xs px-2 py-0.5 rounded-full" :class="statePillClass">
+          {{ effectiveState }}
+        </span>
         <SwitchgearMenu @delete="$emit('delete')" />
       </div>
     </div>
 
     <!-- Visual cube -->
-    <SwitchgearCube :effective-state="effectiveState" :pending-target="pendingTarget" />
+    <SwitchgearCube
+      :effective-state="effectiveState"
+      :pending-target="pendingTarget"
+    />
 
     <!-- Actions -->
-    <SwitchgearActions :is-cmd-disabled="isCmdDisabled" :set-do-pair="setDoPair" />
+    <SwitchgearActions
+      :is-cmd-disabled="isCmdDisabled"
+      :set-do-pair="setDoPair"
+    />
 
     <!-- Tech footer -->
     <SwitchgearTechFooter
-      :do-open="doOpen"
-      :do-closed="doClosed"
-      :di-open="diOpen"
-      :di-close="diClose"
+      :do-open="doOpenResolved"
+      :do-closed="doClosedResolved"
+      :di-open="diOpenResolved"
+      :di-close="diCloseResolved"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue"
-import { useSwitchgear } from "@/composables/useSwitchgear"
+import { computed, type Ref } from "vue"
+import { useSwitchgear, type ChannelRef } from "@/composables/useSwitchgear"
+import { useChannelStore } from "@/stores/channelStore"
+
 import SwitchgearActions from "./SwitchgearActions.vue"
 import SwitchgearCube from "./SwitchgearCube.vue"
 import SwitchgearTechFooter from "./SwitchgearTechFooter.vue"
 import SwitchgearMenu from "./SwitchgearMenu.vue"
 
-const props = withDefaults(defineProps<{
-  title?: string
-  doOpen?: { unitId: string; channel: number } | null
-  doClosed?: { unitId: string; channel: number } | null
-  diOpen?: { unitId: string; channel: number } | null
-  diClose?: { unitId: string; channel: number } | null
-  selected?: boolean
-}>(), {
-  title: "2-Pos Switchgear",
-  doOpen: null,
-  doClosed: null,
-  diOpen: null,
-  diClose: null,
-  selected: false,
-})
+const props = withDefaults(
+  defineProps<{
+    id: number
+    title: string
+    do_open: number | null
+    do_closed: number | null
+    di_open: number | null
+    di_close: number | null
+    selected?: boolean
+  }>(),
+  {
+    title: "2-Pos Switchgear",
+    do_open: null,
+    do_closed: null,
+    di_open: null,
+    di_close: null,
+    selected: false,
+  }
+)
 
 const emit = defineEmits<{
   (e: "delete"): void
 }>()
 
+// Resolve channel details from IDs
+const channelStore = useChannelStore()
+
+function resolveChannel(chId: number | null): ChannelRef | null {
+  if (!chId) return null
+  const ch = channelStore.channels.find(c => c.id === chId)
+  if (!ch) return null
+  return {
+    unitId: channelStore.resolveUnitId(ch.device_id),
+    channel: ch.index,
+    type: ch.type, // ок, попадёт в optional
+  }
+}
+
+const doOpenResolved: Ref<ChannelRef | null> = computed(() => resolveChannel(props.do_open))
+const doClosedResolved: Ref<ChannelRef | null> = computed(() => resolveChannel(props.do_closed))
+const diOpenResolved: Ref<ChannelRef | null> = computed(() => resolveChannel(props.di_open))
+const diCloseResolved: Ref<ChannelRef | null> = computed(() => resolveChannel(props.di_close))
+
 const {
   effectiveState,
   pendingTarget,
   busy,
-  feedbackDelayMs,
-  doOpen,
-  doClosed,
-  diOpen,
-  diClose,
   isCmdDisabled,
   setDoPair,
 } = useSwitchgear({
-  doOpen: props.doOpen,
-  doClosed: props.doClosed,
-  diOpen: props.diOpen,
-  diClose: props.diClose,
+  doOpen: doOpenResolved,
+  doClosed: doClosedResolved,
+  diOpen: diOpenResolved,
+  diClose: diCloseResolved,
 })
 
 // Style helpers for state pill
 const statePillClass = computed(() => {
   switch (effectiveState.value) {
-    case "CLOSED": return "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
-    case "OPEN": return "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
-    case "UNKNOWN": return "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
-    case "INTERMEDIATE": return "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300"
+    case "CLOSED":
+      return "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+    case "OPEN":
+      return "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
+    case "UNKNOWN":
+      return "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+    case "INTERMEDIATE":
+      return "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300"
   }
 })
 </script>

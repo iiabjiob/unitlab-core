@@ -4,9 +4,10 @@ import type { Device } from "@/types/device"
 import type { Switchgear } from "@/types/switchgear"
 import type { Channel } from "@/types/channel"
 import { useDeviceStore } from "@/stores/deviceStore"
-import { useEditorStore } from "@/stores/editorStore"
+
 import { useChannelStore } from "@/stores/channelStore"
 import type { EntityMap, EntityType } from "@/types/entity"
+import { useSwitchgearStore } from "./switchgearStore"
 
 // 3. SelectedEntity
 export type SelectedEntity = {
@@ -55,8 +56,8 @@ export const useSelectionStore = defineStore("selectionStore", () => {
         return store.devices.find(d => d.unit_id === selected.value!.key)
       }
       case "switchgear": {
-        const editor = useEditorStore()
-        return editor.items.find(s => s.id === selected.value!.key)
+        const store = useSwitchgearStore()
+        return store.switchgears.find(s => s.id === selected.value!.key)
       }
     }
   })
