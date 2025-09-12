@@ -8,7 +8,7 @@
     <span>{{ channel.name || ("CH" + (channel.index + 1)) }}</span>
 
     <!-- Управление DO -->
-    <div v-if="type === 'DO'" class="flex flex-1 items-center justify-end gap-2">
+    <div v-if="channel.type === 'do'" class="flex flex-1 items-center justify-end gap-2">
       <ButtonComponent
         size="xs"
         type="secondary"
@@ -30,7 +30,7 @@
     </div>
 
     <!-- AO -->
-    <div v-else-if="type === 'AO'" class="flex flex-1 items-center justify-end gap-2">
+    <div v-else-if="channel.type === 'ao'" class="flex flex-1 items-center justify-end gap-2">
       <div class="flex items-center gap-1">
         <input
           type="number"
@@ -51,16 +51,16 @@
     </div>
 
     <!-- DI -->
-    <div v-else-if="type === 'DI'" class="flex flex-1 items-center justify-end gap-2">
+    <div v-else-if="channel.type === 'di'" class="flex flex-1 items-center justify-end gap-2">
       <!-- Только статус -->
     </div>
 
     <!-- Статус -->
     <span class="ml-4 pl-4 border-l border-neutral-300 dark:border-neutral-700 text-right">
-      <template v-if="type === 'DO' || type === 'DI'">
+      <template v-if="channel.type === 'do' || channel.type === 'di'">
         {{ channel.state ? "🟢" : "⚪️" }}
       </template>
-      <template v-else-if="type === 'AO'">
+      <template v-else-if="channel.type === 'ao'">
         <div class="min-w-[50px] text-nowrap">
           {{ channel.state }}
           <span class="text-xs text-neutral-400 ml-1">mA</span>
@@ -72,12 +72,11 @@
 </template>
 
 <script setup lang="ts">
-import type { Channel, ChannelType } from "@/types/channel"
+import type { Channel } from "@/types/channel"
 import ButtonComponent from "../ui/ButtonComponent.vue"
 import { ref } from "vue"
 
 const props = defineProps<{
-  type: ChannelType
   channel: Channel
   selected?: boolean
   disabled?: boolean

@@ -1,10 +1,12 @@
 <template>
   <div class="p-2">
     <h3 class="font-bold mb-2">Properties</h3>
+
+    <!-- Table для стандартных полей -->
     <table class="w-full text-xs border-collapse">
       <tbody class="border border-neutral-200 dark:border-neutral-700">
         <tr
-          v-for="field in props.schema.fields"
+          v-for="field in normalFields"
           :key="field.key"
           class="border-b border-neutral-200 dark:border-neutral-700"
         >
@@ -54,47 +56,26 @@
               @change="commitOnChange(field, $event)"
             />
 
-            <!-- <button
-              v-else-if="field.type === 'signal'"
-              type="button"
-              class="w-full text-left text-xs px-1 py-0.5 border rounded bg-white dark:bg-neutral-900"
-              @click="openSignalPicker(field)"
-              >
-              {{ displaySignal(field) }}
-            </button> -->
-
-            <!-- <SignalPicker
-              v-if="field.type === 'signal'"
-              :kind="field.signalKind!"
-              :model-unit-id="item[field.unitKey!]"
-              :model-channel="item[field.channelKey!]"
-              @update="v => {
-                emit('update', field.unitKey!, v.unitId)
-                emit('update', field.channelKey!, v.channel)
-              }"
-            /> -->
-
-            <!-- Fallback -->
+            <!-- fallback -->
             <span v-else class="italic text-neutral-400">n/a</span>
           </td>
         </tr>
       </tbody>
     </table>
-    <!-- <SignalPickerPanel
-      v-if="pickerField"
-      :kind="pickerField.signalKind!"
-      @pick="onSignalPicked"
-      @close="closeSignalPicker"
-    /> -->
+
+    <!-- Custom поля -->
+    <template v-for="field in customFields" :key="field.key">
+      <component
+        :is="field.component"
+        v-bind="typeof field.props === 'function' ? field.props(item) : field.props"
+      />
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue"
+import { computed } from "vue"
 import type { PropertyField, PropertySchema } from "@/types/propertySchema"
-// import SignalPickerPanel from "../SignalPickerPanel.vue";
-import SignalPicker from "../SignalPicker.vue";
-
 
 const props = defineProps<{
   schema: PropertySchema<any>
@@ -125,26 +106,11 @@ function commitOnChange(field: PropertyField<any>, e: Event) {
   emit("update", field.key, value)
 }
 
-// const pickerField = ref<PropertyField<any> | null>(null)
+const normalFields = computed(() =>
+  props.schema.fields.filter(f => f.type !== "custom")
+)
 
-// function openSignalPicker(field: PropertyField<any>) {
-//   pickerField.value = field
-// }
-
-// function closeSignalPicker() {
-//   pickerField.value = null
-// }
-
-// function onSignalPicked(value: { unitId: string; channel: number }) {
-//   if (!pickerField.value) return
-//   emit("update", pickerField.value.unitKey!, value.unitId)
-//   emit("update", pickerField.value.channelKey!, value.channel)
-//   pickerField.value = null
-// }
-
-// function displaySignal(field: PropertyField<any>) {
-//   const unitId = props.item[field.unitKey!]
-//   const ch = props.item[field.channelKey!]
-//   return unitId ? `${unitId} / Ch ${ch}` : "Select signal…"
-// }
+const customFields = computed(() =>
+  props.schema.fields.filter(f => f.type === "custom")
+)
 </script>

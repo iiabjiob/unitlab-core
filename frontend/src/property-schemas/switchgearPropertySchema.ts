@@ -7,11 +7,11 @@ export const switchgearPropertySchema: PropertySchema<Switchgear> = {
   fields: [
     { key: "title", label: "Title", editable: true, type: "string" },
 
-    { key: "doOpen",   label: "DO Open",   editable: true, type: "signal", signalKind: "DO" },
-    { key: "doClosed", label: "DO Closed", editable: true, type: "signal", signalKind: "DO" },
+    // { key: "doOpen",   label: "DO Open",   editable: true, type: "signal", signalKind: "do" },
+    // { key: "doClosed", label: "DO Closed", editable: true, type: "signal", signalKind: "do" },
 
-    { key: "diOpen",   label: "DI Open",   editable: true, type: "signal", signalKind: "DI" },
-    { key: "diClose",  label: "DI Close",  editable: true, type: "signal", signalKind: "DI" },
+    // { key: "diOpen",   label: "DI Open",   editable: true, type: "signal", signalKind: "di" },
+    // { key: "diClose",  label: "DI Close",  editable: true, type: "signal", signalKind: "di" },
 
     { key: "feedbackDelayMs", label: "Feedback Delay, ms", editable: true, type: "number" },
   ],

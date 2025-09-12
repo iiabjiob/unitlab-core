@@ -44,7 +44,6 @@
 <script setup lang="ts">
 import type { Device } from "@/types/device"
 import ChannelsComponent from "./ChannelsComponent.vue"
-import BadgeComponent from "../ui/BadgeComponent.vue"
 import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
 import ChannelsPlaceholder from "./ChannelsPlaceholder.vue"
 import DeviceMenu from "./DeviceMenu.vue"

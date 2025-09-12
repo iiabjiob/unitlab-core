@@ -29,7 +29,7 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
   // --- Helpers ---
   function getChannelState(
     channel: { unitId: string; channel: number } | null,
-    expectedType: "DO" | "DI"
+    expectedType: "do" | "di"
   ): boolean | null {
     if (!channel) return null
     const dev = deviceStore.devices.find(d => d.unit_id === channel.unitId)
@@ -42,9 +42,9 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
   }
 
   const getDo = (channel: { unitId: string; channel: number } | null) =>
-    getChannelState(channel, "DO")
+    getChannelState(channel, "do")
   const getDi = (channel: { unitId: string; channel: number } | null) =>
-    getChannelState(channel, "DI")
+    getChannelState(channel, "di")
 
   // --- Effective state from DO pair ---
   const effectiveState = computed<SwitchgearState>(() => {

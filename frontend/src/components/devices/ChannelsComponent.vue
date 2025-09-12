@@ -5,10 +5,9 @@
   >
 
       <ChannelComponent
-        v-for="ch in realChannels"
+        v-for="ch in channels"
         :key="`${unitId}-${ch.index}`"
         :channel="ch"
-        :type="deviceType"
         :selected="selection.isSelected('channel', ch)"
         @select="select(ch)"
         @toggle="state => onToggle(ch, state)"
@@ -41,10 +40,9 @@ function select(item: Channel) {
   selection.select({ type: "channel", key: item.id })
 }
 
-// реальные каналы (ищем device.id по unitId)
-const realChannels = computed<Channel[]>(() => {
+// каналы (ищем device.id по unitId)
+const channels = computed<Channel[]>(() => {
   const dev = deviceStore.devices.find(d => d.unit_id === props.unitId)
-  console.log("🔍 realChannels: dev=", dev, "channels=", channelStore.channels)
   if (!dev) return []
   return channelStore.channels.filter(c => c.device_id === dev.id)
 })
@@ -52,13 +50,13 @@ const realChannels = computed<Channel[]>(() => {
 // обработчики
 function onToggle(ch: Channel, state: boolean) {
   if (props.disabled) return
-  if (props.deviceType === "DO") {
+  if (props.deviceType === "do") {
     channelStore.sendDoCommand(props.unitId, ch.index, state)
   }
 }
 function onAoChange(ch: Channel, value: number) {
   if (props.disabled) return
-  if (props.deviceType === "AO") {
+  if (props.deviceType === "ao") {
     channelStore.sendAoCommand(props.unitId, ch.index, value)
   }
 }

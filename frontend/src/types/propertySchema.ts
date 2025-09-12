@@ -1,15 +1,24 @@
 // types/propertySchema.ts
-export interface PropertyField<T> {
+export interface BasePropertyField<T> {
   key: Extract<keyof T, string>
   label: string
   editable: boolean
   type: "string" | "number" | "boolean" | "enum" | "signal"
-  signalKind?: "DI" | "DO"
-  unitKey?: Extract<keyof T, string>   // куда писать unitId
-  channelKey?: Extract<keyof T, string> // куда писать номер канала
 }
+
+export interface CustomPropertyField {
+  key: string
+  label: string
+  editable: false   // кастомные поля сами управляют редактированием
+  type: "custom"
+  component: any
+  props?: Record<string, any> | ((item: any) => Record<string, any>)
+}
+
+export type PropertyField<T> = BasePropertyField<T> | CustomPropertyField
 
 export interface PropertySchema<T> {
   fields: PropertyField<T>[]
   update: (item: T, key: keyof T, value: any) => Promise<void>
 }
+

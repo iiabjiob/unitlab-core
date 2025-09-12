@@ -1,4 +1,4 @@
-export type ChannelType = "DI" | "DO" | "AO"
+export type ChannelType = "di" | "do" | "ao"
 
 export interface BaseChannel {
   id: number

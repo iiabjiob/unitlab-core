@@ -78,12 +78,12 @@ export const useDeviceStore = defineStore('deviceStore', () => {
 
   function normalizeType(raw: string): ChannelType {
     switch (raw.toLowerCase()) {
-      case "do": return "DO"
-      case "di": return "DI"
-      case "ao": return "AO"
+      case "do": return "do"
+      case "di": return "di"
+      case "ao": return "ao"
       default:
         logger.warn("⚠️ Unknown device type:", raw)
-        return "DO"
+        return "do"
     }
   }
 

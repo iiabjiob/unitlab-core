@@ -2,6 +2,7 @@
 import type { Device } from "@/types/device"
 import { useDeviceStore } from "@/stores/deviceStore"
 import type { PropertySchema } from "@/types/propertySchema"
+import ChannelsGrid from "@/components/devices/ChannelsGrid.vue"
 
 export const devicePropertySchema: PropertySchema<Device> = {
   fields: [
@@ -12,6 +13,14 @@ export const devicePropertySchema: PropertySchema<Device> = {
     { key: "num_channels", label: "num_channels", editable: false, type: "number" },
     { key: "name", label: "Name", editable: true, type: "string" },
     { key: "location", label: "Location", editable: true, type: "string" },
+    {
+      key: "channels",
+      label: "Channels",
+      type: "custom",
+      component: ChannelsGrid,
+      props: (device: Device) => ({ deviceId: device.id }),
+      editable: false,
+    },
   ],
 
   async update(item, key, value) {
