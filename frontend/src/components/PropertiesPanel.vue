@@ -85,7 +85,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import type { PropertyField, PropertySchema } from "@/types/propertySchema"
-import ChannelSelect from "../ui/ChannelSelect.vue";
+import ChannelSelect from "./ui/ChannelSelect.vue";
 
 const props = defineProps<{
   schema: PropertySchema<any>

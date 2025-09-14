@@ -57,7 +57,7 @@
       @close="selection.clear()"
     >
     <div class="slide-over-content">
-      <PropertyPanel
+      <PropertiesPanel
         v-if="selection.selectedItem"
         :schema="resolveSchema(selection.selected!.type)"
         :item="selection.selectedItem!"
@@ -85,10 +85,10 @@ import TimeComponent from "../misc/TimeComponent.vue"
 import { useWebSocketStore } from "@/stores/websocketStore"
 import SlideOver from "./SlideOver.vue"
 import { useSelectionStore } from "@/stores/selectionStore"
-import PropertyPanel from "./PropertyPanel.vue"
 import { resolveSchema } from "@/property-schemas/propertySchemas"
 import MobileHeader from "./MobileHeader.vue"
 import { updateEntity } from "@/utils/updateEntity"
+import PropertiesPanel from "../PropertiesPanel.vue"
 
 
 const propsPanel = ref<InstanceType<typeof SlideOver> | null>(null)

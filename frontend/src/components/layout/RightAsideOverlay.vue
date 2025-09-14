@@ -18,7 +18,7 @@
       </div>
 
       <!-- Properties -->
-      <PropertyPanel
+      <PropertiesPanel
         v-if="selection.selectedItem"
         :schema="resolveSchema(selection.selected!.type)"
         :item="selection.selectedItem!"
@@ -42,7 +42,7 @@
 import { ref, onMounted, watch } from "vue"
 import { useSelectionStore } from "@/stores/selectionStore"
 import { resolveSchema } from "@/property-schemas/propertySchemas"
-import PropertyPanel from "./PropertyPanel.vue"
+import PropertiesPanel from "../PropertiesPanel.vue"
 import { updateEntity } from "@/utils/updateEntity"
 
 const width = ref(280)
