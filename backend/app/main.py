@@ -2,13 +2,14 @@ import asyncio
 from fastapi import FastAPI
 from contextlib import asynccontextmanager, suppress
 
-from app.api.devices import router as devices_router
-from app.api.channels import router as channels_router
-from app.api.switchgears import router as switchgears_router
+from app.api.device_router import router as devices_router
+from app.api.channel_router import router as channels_router
+from app.api.switchgear_router import router as switchgears_router
 from app.api.sequence_router import router as sequence_router
-from app.api.event_log import router as event_log_router
-from app.api.time import router as time_router
-from app.api.settings import router as settings_router
+from app.api.sequence_step_router import router as sequence_step_router
+from app.api.event_log_router import router as event_log_router
+from app.api.time_router import router as time_router
+from app.api.setting_router import router as settings_router
 
 from app.ws.router import router as ws_router
 
@@ -100,6 +101,7 @@ app.include_router(devices_router)
 app.include_router(channels_router)
 app.include_router(switchgears_router)
 app.include_router(sequence_router)
+app.include_router(sequence_step_router)
 app.include_router(time_router)
 app.include_router(event_log_router)
 app.include_router(settings_router)

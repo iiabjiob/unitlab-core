@@ -61,5 +61,6 @@ export const useTimeStore = defineStore("timeStore", () => {
     formatted,
     sourceLabel,
     updateFromSync,
+    startTicker,
   }
 })

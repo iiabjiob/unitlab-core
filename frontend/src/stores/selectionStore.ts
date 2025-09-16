@@ -8,6 +8,8 @@ import { useDeviceStore } from "@/stores/deviceStore"
 import { useChannelStore } from "@/stores/channelStore"
 import type { EntityMap, EntityType } from "@/types/entity"
 import { useSwitchgearStore } from "./switchgearStore"
+import type { SequenceDef, SequenceStep } from "@/types/sequences"
+import { useSequenceStore } from "./sequenceStore"
 
 // 3. SelectedEntity
 export type SelectedEntity = {
@@ -39,11 +41,19 @@ export const useSelectionStore = defineStore("selectionStore", () => {
       return selected.value.key === (item as Switchgear).id
     }
 
+    if (type === "sequence") {
+      return selected.value.key === (item as SequenceDef).id
+    }
+    if (type === "sequence_step") {
+      // шаги обычно идентифицируем по id из БД или по индексу
+      return selected.value.key === (item as SequenceStep).id
+    }
+
     return false
   }
 
   // Получаем актуальный объект из стора
-  const selectedItem = computed((): Channel | Device | Switchgear | undefined => {
+  const selectedItem = computed((): Channel | Device | Switchgear | SequenceDef | SequenceStep | undefined => {
     if (!selected.value) return undefined
 
     switch (selected.value.type) {
@@ -58,6 +68,17 @@ export const useSelectionStore = defineStore("selectionStore", () => {
       case "switchgear": {
         const store = useSwitchgearStore()
         return store.switchgears.find(s => s.id === selected.value!.key)
+      }
+      case "sequence": {
+        const store = useSequenceStore()
+        return store.sequences.find(s => s.id === selected.value!.key)
+      }
+      case "sequence_step": {
+        const store = useSequenceStore()
+        for (const seq of store.sequences) {
+          const step = seq.steps.find(st => (st as any).id === selected.value!.key)
+          if (step) return step
+        }
       }
     }
   })

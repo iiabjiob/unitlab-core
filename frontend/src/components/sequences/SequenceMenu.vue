@@ -2,6 +2,9 @@
 
   <MenuComponent>
 
+    <MenuItemComponent @click="$emit('export')">
+      Export
+    </MenuItemComponent>
     <MenuItemComponent danger @click="$emit('delete')">
       Delete
     </MenuItemComponent>
@@ -16,6 +19,7 @@ import MenuComponent from "../ui/MenuComponent.vue";
 import MenuItemComponent from "../ui/MenuItemComponent.vue";
 
 const emit = defineEmits<{
+  (e: "export"): void
   (e: "delete"): void
 }>()
 </script>

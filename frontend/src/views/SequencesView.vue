@@ -1,23 +1,12 @@
 <template>
-  <div class="p-5">
-
-    <ul class="grid gap-4 grid-cols-1 md:grid-cols-2">
-      <SequenceCard
-        v-for="seq in sequences"
-        :key="seq.id"
-        :sequence="seq"
-      />
-    </ul>
+  <div class="h-dvh flex bg-neutral-50 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200">
+    <SequencePalette />
+    <SequenceWorkspace />
   </div>
 </template>
 
 <script setup lang="ts">
-import SequenceCard from "@/components/sequences/SequenceCard.vue"
-import { buildPulseDemoSequence } from "@/sequences/demoPulseSequences"
-import { buildPilotSequence } from "@/sequences/demoSequences"
+import SequencePalette from '@/components/editor/SequencePalette.vue';
+import SequenceWorkspace from '@/components/editor/SequenceWorkspace.vue';
 
-const sequences = [
-  buildPulseDemoSequence(),
-  buildPilotSequence()
-]
 </script>

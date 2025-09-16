@@ -9,4 +9,5 @@
 <script setup lang="ts">
 import { useTimeStore } from "@/stores/timeStore"
 const timeStore = useTimeStore()
+timeStore.startTicker()
 </script>

@@ -1,6 +1,6 @@
 <template>
   <li
-    class="flex flex-col h-full p-3 rounded-md bg-white dark:bg-neutral-800 shadow-sm border dark:border-neutral-700 border-neutral-200"
+    class="flex flex-col h-full"
   >
     <!-- Header -->
     <div class="flex items-center justify-between">
@@ -11,7 +11,10 @@
       </div>
 
       <!-- меню действий -->
-      <SequenceMenu @delete="deleteSequence" />
+      <SequenceMenu
+        @export="$emit('export')"
+        @delete="$emit('delete')"
+      />
     </div>
 
     <!-- Описание -->
@@ -20,9 +23,9 @@
     </p>
 
     <div class="flex gap-3 items-center py-3">
-      <ButtonComponent size="sm" type="primary" @click="onStart" :disabled="store.isRunning(sequence)">Start</ButtonComponent>
-      <ButtonComponent size="sm" type="secondary" @click="onStop" :disabled="!store.isRunning(sequence)">Stop</ButtonComponent>
-      <ButtonComponent size="sm" type="secondary" @click="onReset" :disabled="store.isRunning(sequence)">Reset</ButtonComponent>
+      <ButtonComponent size="sm" type="primary" @click.stop="onStart" :disabled="store.isRunning(sequence)">Start</ButtonComponent>
+      <ButtonComponent size="sm" type="secondary" @click.stop="onStop" :disabled="!store.isRunning(sequence)">Stop</ButtonComponent>
+      <ButtonComponent size="sm" type="secondary" @click.stop="onReset" :disabled="store.isRunning(sequence)">Reset</ButtonComponent>
 
       <BadgeComponent class="text-xs">{{ statusLabel }}</BadgeComponent>
     </div>
@@ -37,10 +40,11 @@
     <ol class="mt-3 space-y-1 text-sm">
       <SequenceStep
         v-for="(s, i) in sequence.steps"
-        :key="i"
+        :key="s.id ?? i"
         :index="i"
         :description="store.getStepDescription(sequence, i)"
         :completed="st.completed[i]"
+        :error="st.lastError"
       />
     </ol>
 
@@ -85,8 +89,6 @@ function onReset() {
   store.resetState(props.sequence)
 }
 function deleteSequence() {
-  store.resetAllDos(props.sequence)
+  store.deleteSequence(props.sequence.id)
 }
-
-
 </script>

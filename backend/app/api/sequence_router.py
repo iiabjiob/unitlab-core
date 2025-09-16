@@ -32,7 +32,8 @@ async def get_one(seq_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=SequenceSchema)
 async def create(data: SequenceCreateSchema, db: AsyncSession = Depends(get_db)):
-    return await create_sequence(db, data.model_dump(exclude={"steps"}), data.steps)
+    steps = [s.model_dump() for s in data.steps]
+    return await create_sequence(db, data.model_dump(exclude={"steps"}), steps)
 
 
 @router.patch("/{seq_id}", response_model=SequenceSchema)
@@ -94,5 +95,5 @@ async def import_sequence_file(file: UploadFile = File(...), db: AsyncSession = 
     return await create_sequence(
         db,
         {"name": seq.name, "description": seq.description},
-        [s.model_dump() for s in seq.steps],
+        [s.model_dump() for s in seq.steps],  # ✅
     )

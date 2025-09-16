@@ -12,3 +12,4 @@ redis
 pydantic
 pydantic-settings
 psutil # будет удален поле мигнации в host-agent
+python-multipart

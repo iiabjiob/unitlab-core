@@ -1,15 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List, Dict, Any
-
-
-class SequenceStepSchema(BaseModel):
-    id: int
-    order_index: int
-    kind: str
-    unit_id: Optional[str] = None
-    payload: Optional[Dict[str, Any]] = None
-
-    model_config = ConfigDict(from_attributes=True)
+from app.schemas.sequence_step_schema import SequenceStepSchema
 
 
 class SequenceSchema(BaseModel):

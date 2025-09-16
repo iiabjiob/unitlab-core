@@ -4,6 +4,8 @@ import type { PropertySchema } from "@/types/propertySchema"
 import { switchgearPropertySchema } from "./switchgearPropertySchema"
 import type { EntityMap, EntityType } from "@/types/entity"
 import { channelPropertySchema } from "./channelPropertySchema"
+import { sequencePropertySchema } from "./sequencePropertySchema"
+import { sequenceStepPropertySchema } from "./sequenceStepPropertySchema"
 
 
 export const propertySchemas: {
@@ -12,6 +14,8 @@ export const propertySchemas: {
   channel: channelPropertySchema,
   device: devicePropertySchema,
   switchgear: switchgearPropertySchema,
+  sequence: sequencePropertySchema,
+  sequence_step: sequenceStepPropertySchema,
 }
 
 // fallback для неизвестного типа
