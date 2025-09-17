@@ -7,9 +7,6 @@
         {{ title }}
       </div>
       <div class="flex items-center gap-2">
-        <span class="text-xs px-2 py-0.5 rounded-full" :class="statePillClass">
-          {{ effectiveState }}
-        </span>
         <SwitchgearMenu @delete="$emit('delete')" />
       </div>
     </div>
@@ -19,6 +16,12 @@
       :effective-state="effectiveState"
       :pending-target="pendingTarget"
     />
+    <div class="mx-auto">
+
+      <span class="text-xs px-2 py-0.5 rounded-full" :class="statePillClass">
+        {{ effectiveState }}
+      </span>
+    </div>
 
     <!-- Actions -->
     <SwitchgearActions

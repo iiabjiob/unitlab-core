@@ -29,6 +29,7 @@ const props = defineProps<{
   modelValue: number | null
   channelType: "do" | "di"
   name?: string
+  excludeIds?: number[]
 }>()
 const emit = defineEmits(["update:modelValue"])
 

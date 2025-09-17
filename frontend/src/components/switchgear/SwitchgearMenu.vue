@@ -2,7 +2,7 @@
 <template>
   <MenuComponent>
 
-    <MenuItemComponent danger @click="$emit('delete')">
+    <MenuItemComponent danger @click.stop="$emit('delete')">
       Delete
     </MenuItemComponent>
 

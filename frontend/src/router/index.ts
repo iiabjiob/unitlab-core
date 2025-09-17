@@ -1,6 +1,5 @@
 // src/router/index.ts
 import { createRouter, createWebHistory } from "vue-router"
-import { h } from "vue"
 
 // Views
 import HomeView from "@/views/HomeView.vue"
@@ -10,15 +9,21 @@ import SwitchgearView from "@/views/SwitchgearView.vue"
 import SignalListView from "@/views/SignalListView.vue"
 import SequencesView from "@/views/SequencesView.vue"
 import SettingsView from "@/views/SettingsView.vue"
+import DashboardToolbar from "@/components/toolbars/DashboardToolbar.vue"
+import DevicesToolbar from "@/components/toolbars/DevicesToolbar.vue"
+import SwitchgearsToolbar from "@/components/toolbars/SwitchgearsToolbar.vue"
+import SignalListToolbar from "@/components/toolbars/SignalListToolbar.vue"
+import SequencesToolbar from "@/components/toolbars/SequencesToolbar.vue"
+import SettingsToolbar from "@/components/toolbars/SettingsToolbar.vue"
+import EventsToolbar from "@/components/toolbars/EventsToolbar.vue"
 
 // Default layout meta (used by most screens)
 const defaultMeta = {
   // Layout chrome toggles
+  toolbar: true,
   leftAside: true,
   rightAside: true,
-  bottomValidator: true,
-  globalEventLog: true,
-  headerBulkActions: false,
+  bottomAside: true,
 
   // Layout selection (used by App.vue to swap desktop/mobile shells)
   // 'app' = desktop/regular shell, 'mobile' = force mobile shell;
@@ -35,6 +40,7 @@ const router = createRouter({
       component: HomeView,
       meta: {
         ...defaultMeta,
+        toolbarComponent: DashboardToolbar,
         // example: dashboard usually needs full chrome
       },
     },
@@ -44,16 +50,17 @@ const router = createRouter({
       component: DevicesView,
       meta: {
         ...defaultMeta,
-        headerBulkActions: true,
+        toolbarComponent: DevicesToolbar,
       },
 
     },
     {
-      path: "/switchgear",
-      name: "switchgear",
+      path: "/switchgears",
+      name: "switchgears",
       component: SwitchgearView,
       meta: {
         ...defaultMeta,
+        toolbarComponent: SwitchgearsToolbar,
       },
     },
     {
@@ -62,8 +69,7 @@ const router = createRouter({
       component: SignalListView,
       meta: {
         ...defaultMeta,
-        // optionally force mobile shell on phones only:
-        // layout: "auto",
+        toolbarComponent: SignalListToolbar,
       },
     },
     {
@@ -72,6 +78,7 @@ const router = createRouter({
       component: SequencesView,
       meta: {
         ...defaultMeta,
+        toolbarComponent: SequencesToolbar,
       },
     },
     {
@@ -80,6 +87,7 @@ const router = createRouter({
       component: SettingsView,
       meta: {
         ...defaultMeta,
+        toolbarComponent: SettingsToolbar,
       },
     },
 
@@ -92,11 +100,8 @@ const router = createRouter({
         ...defaultMeta,
         leftAside: true,
         rightAside: false,
-        bottomValidator: false,
-        globalEventLog: false,
-        headerBulkActions: false,
-        // keep 'auto' so phones still get the mobile shell
-        layout: "auto",
+        bottomAside: false,
+        toolbarComponent: EventsToolbar,
       },
     },
 

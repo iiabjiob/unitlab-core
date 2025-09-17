@@ -1,18 +1,18 @@
 <template>
-  <div class="p-2">
-    <h3 class="font-bold mb-2">Properties</h3>
-
+  <div>
     <!-- Table для стандартных полей -->
     <table class="w-full text-xs border-collapse">
       <tbody class="border border-neutral-200 dark:border-neutral-700">
         <tr
-          v-for="field in normalFields"
+          v-for="(field, fieldIdx) in normalFields"
           :key="field.key"
           class="border-b border-neutral-200 dark:border-neutral-700"
         >
           <!-- Label -->
           <td class="px-1 py-0.5 text-neutral-600 dark:text-neutral-400 w-1/3">
-            {{ field.label }}
+            {{ typeof field.label === "function"
+                ? field.label(props.item, fieldIdx)
+                : field.label }}
           </td>
 
           <!-- Value -->
@@ -85,7 +85,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import type { PropertyField, PropertySchema } from "@/types/propertySchema"
-import ChannelSelect from "./ui/ChannelSelect.vue";
+import ChannelSelect from "./ui/ChannelSelect.vue"
 
 const props = defineProps<{
   schema: PropertySchema<any>

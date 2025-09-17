@@ -1,7 +1,7 @@
 <!-- src/components/switchgear/SwitchgearCube.vue -->
 <template>
   <div
-    class="h-28 w-28 mx-auto rounded-lg transition-all duration-200 border-2 flex items-center justify-center select-none relative"
+    class="h-20 w-20 mx-auto rounded-lg duration-200 border-2 flex items-center justify-center select-none relative"
     :class="cubeClass"
     :title="`State (by DO): ${effectiveState}`"
   >
@@ -14,7 +14,7 @@
       </div>
     </template>
 
-    <div v-if="pendingTarget" class="pointer-events-none absolute inset-0 rounded-lg border-2 animate-pulse" :class="pendingBorderClass"/>
+    <div v-if="pendingTarget" class="pointer-events-none absolute inset-0 rounded-lg border-2" :class="pendingBorderClass"/>
   </div>
 </template>
 

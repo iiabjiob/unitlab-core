@@ -17,6 +17,7 @@ export type SelectedEntity = {
   key: string | number
 }
 
+// stores/selectionStore.ts
 export const useSelectionStore = defineStore("selectionStore", () => {
   const selected = ref<SelectedEntity | null>(null)
 
@@ -40,19 +41,16 @@ export const useSelectionStore = defineStore("selectionStore", () => {
     if (type === "switchgear") {
       return selected.value.key === (item as Switchgear).id
     }
-
     if (type === "sequence") {
       return selected.value.key === (item as SequenceDef).id
     }
     if (type === "sequence_step") {
-      // шаги обычно идентифицируем по id из БД или по индексу
       return selected.value.key === (item as SequenceStep).id
     }
 
     return false
   }
 
-  // Получаем актуальный объект из стора
   const selectedItem = computed((): Channel | Device | Switchgear | SequenceDef | SequenceStep | undefined => {
     if (!selected.value) return undefined
 
@@ -83,5 +81,19 @@ export const useSelectionStore = defineStore("selectionStore", () => {
     }
   })
 
-  return { selected, select, clear, isSelected, selectedItem }
+  /**
+   * Проверяет, должен ли клик сохранить выделение
+   */
+  function shouldKeepSelection(target: HTMLElement) {
+    // если внутри карточки
+    if (target.closest(".selectable-card")) return true
+    if (target.closest(".selectable-row")) return true
+
+    // если внутри панели с игнорированием
+    if (target.closest(".ignore-selection")) return true
+
+    return false
+  }
+
+  return { selected, select, clear, isSelected, selectedItem, shouldKeepSelection }
 })

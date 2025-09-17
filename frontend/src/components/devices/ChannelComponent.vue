@@ -9,7 +9,7 @@
 
     <!-- Управление DO -->
     <div v-if="channel.type === 'do'" class="flex flex-1 items-center justify-end gap-2">
-      <ButtonComponent
+      <UiButton
         size="xs"
         type="secondary"
         class="min-w-[40px]"
@@ -17,8 +17,8 @@
         @click.stop="$emit('toggle', false)"
       >
         Off
-      </ButtonComponent>
-      <ButtonComponent
+      </UiButton>
+      <UiButton
         size="xs"
         type="secondary"
         class="min-w-[40px]"
@@ -26,7 +26,7 @@
         @click.stop="$emit('toggle', true)"
       >
         On
-      </ButtonComponent>
+      </UiButton>
     </div>
 
     <!-- AO -->
@@ -45,9 +45,9 @@
         />
         <span class="text-neutral-400 text-xs">mA</span>
       </div>
-      <ButtonComponent size="xs" type="primary" @click.stop="onConfirm">
+      <UiButton size="xs" type="primary" @click.stop="onConfirm">
         Set
-      </ButtonComponent>
+      </UiButton>
     </div>
 
     <!-- DI -->
@@ -73,7 +73,7 @@
 
 <script setup lang="ts">
 import type { Channel } from "@/types/channel"
-import ButtonComponent from "../ui/ButtonComponent.vue"
+import UiButton from "../ui/UiButton.vue"
 import { ref } from "vue"
 
 const props = defineProps<{

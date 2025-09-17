@@ -1,52 +1,47 @@
 <template>
-  <div class="p-5">
-    <div v-if="deviceStore.isLoading">Loading...</div>
+  <div class="h-full flex flex-col">
+    <!-- Контент -->
+    <div class="flex-1 overflow-auto p-3">
+      <div v-if="deviceStore.isLoading">Loading...</div>
 
-    <div v-else-if="!deviceStore.devices.length" class="text-neutral-400">
-      No devices yet. Try scanning...
-    </div>
+      <div v-else-if="!filterStore.filteredDevices.length" class="text-neutral-400">
+        No devices yet. Try scanning...
+      </div>
 
-    <div v-else>
-      <!-- подписываемся на события фильтров -->
-      <DeviceBulkActions class="mb-4" @update:filters="filters = $event" />
-
-      <ul
-        class="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fill,minmax(300px,1fr))] items-stretch"
-      >
-        <li
-          v-for="device in filteredDevices"
-          :key="device.unit_id"
-          class="h-full"
-        >
-          <SelectableCard
-            :selected="selection.isSelected('device', device)"
-            @click="select(device)"
+      <div v-else>
+        <ul class="flex flex-wrap gap-5 justify-start">
+          <li
+            v-for="device in filterStore.filteredDevices"
+            :key="device.unit_id"
+            class="h-full w-[320px]"
+          >
+            <SelectableCard
+              :selected="selection.isSelected('device', device)"
+              @click="select(device)"
             >
-
-            <DeviceCard
-              :device="device"
-              @toggle="onToggle"
-              @delete="onDelete"
-            />
-
-          </SelectableCard>
-        </li>
-
-      </ul>
+              <DeviceCard
+                :device="device"
+                @toggle="onToggle"
+                @delete="onDelete"
+              />
+            </SelectableCard>
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
+import { useDeviceFilterStore } from "@/stores/deviceFilterStore"
 import { useSelectionStore } from "@/stores/selectionStore"
-import DeviceBulkActions from "@/components/devices/DeviceBulkActions.vue"
 import DeviceCard from "@/components/devices/DeviceCard.vue"
 import SelectableCard from "@/components/ui/SelectableCard.vue"
 import type { Device } from "@/types/device"
 
 const deviceStore = useDeviceStore()
+const filterStore = useDeviceFilterStore()
 const selection = useSelectionStore()
 
 function select(item: Device) {
@@ -62,19 +57,4 @@ async function onDelete(item: Device) {
     await deviceStore.deleteDevice(item.id)
   }
 }
-
-// локальное состояние фильтров
-const filters = ref<{ onlyOnline: boolean; types: string[] }>({
-  onlyOnline: false,
-  types: [],
-})
-
-// вычисляемый список устройств с фильтрами
-const filteredDevices = computed(() =>
-  deviceStore.devices.filter((d) => {
-    if (filters.value.onlyOnline && d.status !== "online") return false
-    if (filters.value.types.length && !filters.value.types.includes(d.type)) return false
-    return true
-  })
-)
 </script>

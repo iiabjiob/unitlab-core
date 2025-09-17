@@ -5,21 +5,21 @@
     </div>
 
     <div class="grid grid-cols-2 gap-2">
-      <ButtonComponent type="secondary"
+      <UiButton type="secondary"
         :disabled="!ws.isConnected || isBusyA"
         @click="pulseA"
         :title="`Pulse ${pulseMs}ms on CH${chA}`"
       >
         {{ labelA }}
-      </ButtonComponent>
+      </UiButton>
 
-      <ButtonComponent type="secondary"
+      <UiButton type="secondary"
         :disabled="!ws.isConnected || isBusyB"
         @click="pulseB"
         :title="`Pulse ${pulseMs}ms on CH${chB}`"
       >
         {{ labelB }}
-      </ButtonComponent>
+      </UiButton>
     </div>
 
     <div class="text-xs text-neutral-500 dark:text-neutral-400">
@@ -37,7 +37,7 @@ import { computed, ref } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useChannelStore } from "@/stores/channelStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
-import ButtonComponent from "../ui/ButtonComponent.vue";
+import UiButton from "../ui/UiButton.vue";
 
 const props = withDefaults(defineProps<{
   title?: string

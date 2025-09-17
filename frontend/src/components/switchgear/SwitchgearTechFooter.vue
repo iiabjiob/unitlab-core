@@ -1,22 +1,36 @@
-<!-- src/components/switchgear/SwitchgearTechFooter.vue -->
 <template>
-  <div class="text-xs text-neutral-500 dark:text-neutral-400 space-y-1">
+  <div class="text-xs text-neutral-600 dark:text-neutral-400 space-y-2">
+    <!-- Control (DO) -->
     <div>
-      DO:
-      <span v-if="doOpen">Open → {{ doOpen.unitId }} [Ch {{ doOpen.channel }}]</span>
-      <span v-else>Open → n/a</span>
-      |
-      <span v-if="doClosed">Closed → {{ doClosed.unitId }} [Ch {{ doClosed.channel }}]</span>
-      <span v-else>Closed → n/a</span>
+      <div class="font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+        Control
+      </div>
+      <div class="flex justify-between">
+        <span>Open</span>
+        <span v-if="doOpen">{{ doOpen.unitId }} [Ch {{ doOpen.channel }}]</span>
+        <span v-else class="italic text-neutral-400">n/a</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Close</span>
+        <span v-if="doClosed">{{ doClosed.unitId }} [Ch {{ doClosed.channel }}]</span>
+        <span v-else class="italic text-neutral-400">n/a</span>
+      </div>
     </div>
-
+    <!-- Indication (DI) -->
     <div>
-      DI:
-      <span v-if="diOpen">Open → {{ diOpen.unitId }} [Ch {{ diOpen.channel }}]</span>
-      <span v-else>Open → n/a</span>
-      |
-      <span v-if="diClose">Close → {{ diClose.unitId }} [Ch {{ diClose.channel }}]</span>
-      <span v-else>Close → n/a</span>
+      <div class="font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+        Indication
+      </div>
+      <div class="flex justify-between">
+        <span>Open</span>
+        <span v-if="diOpen">{{ diOpen.unitId }} [Ch {{ diOpen.channel }}]</span>
+        <span v-else class="italic text-neutral-400">n/a</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Close</span>
+        <span v-if="diClose">{{ diClose.unitId }} [Ch {{ diClose.channel }}]</span>
+        <span v-else class="italic text-neutral-400">n/a</span>
+      </div>
     </div>
   </div>
 </template>

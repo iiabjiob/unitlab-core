@@ -23,9 +23,9 @@
     </p>
 
     <div class="flex gap-3 items-center py-3">
-      <ButtonComponent size="sm" type="primary" @click.stop="onStart" :disabled="store.isRunning(sequence)">Start</ButtonComponent>
-      <ButtonComponent size="sm" type="secondary" @click.stop="onStop" :disabled="!store.isRunning(sequence)">Stop</ButtonComponent>
-      <ButtonComponent size="sm" type="secondary" @click.stop="onReset" :disabled="store.isRunning(sequence)">Reset</ButtonComponent>
+      <UiButton size="sm" type="primary" @click.stop="onStart" :disabled="store.isRunning(sequence)">Start</UiButton>
+      <UiButton size="sm" type="secondary" @click.stop="onStop" :disabled="!store.isRunning(sequence)">Stop</UiButton>
+      <UiButton size="sm" type="secondary" @click.stop="onReset" :disabled="store.isRunning(sequence)">Reset</UiButton>
 
       <BadgeComponent class="text-xs">{{ statusLabel }}</BadgeComponent>
     </div>
@@ -60,7 +60,7 @@ import { computed } from "vue"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import type { SequenceDef } from "@/types/sequences"
 import BadgeComponent from "@/components/ui/BadgeComponent.vue"
-import ButtonComponent from "../ui/ButtonComponent.vue"
+import UiButton from "../ui/UiButton.vue"
 import ProgressBar from "../ui/ProgressBar.vue"
 import SequenceMenu from "./SequenceMenu.vue"
 import SequenceStep from "./SequenceStep.vue"

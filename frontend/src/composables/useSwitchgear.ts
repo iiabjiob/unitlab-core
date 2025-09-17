@@ -67,12 +67,15 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
 
   // Guard for buttons
   const isCmdDisabled = (target: SwitchgearState) => {
+    if (!opts.doOpen.value || !opts.doClosed.value) return true
+
     if (!ws.isConnected || busy.value) return true
     return effectiveState.value === target
   }
 
   // --- Commands ---
   function sendDoPair(target: SwitchgearState) {
+    console.log(target)
     if (!opts.doOpen.value || !opts.doClosed.value) return
     channelStore.sendDoPairCommand(
       opts.doOpen.value.unitId,
@@ -83,6 +86,10 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
   }
 
   async function setDoPair(target: SwitchgearState) {
+    console.log("setDoPair called", target, {
+    doOpen: opts.doOpen.value,
+    doClosed: opts.doClosed.value,
+  })
     if (!opts.doOpen.value || !opts.doClosed.value) return
     pendingTarget.value = target
     busy.value = true

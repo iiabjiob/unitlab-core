@@ -4,11 +4,6 @@ import 'floating-vue/dist/style.css'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 
-import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
-
-// Register all Community features
-ModuleRegistry.registerModules([AllCommunityModule]);
-
 import App from './App.vue'
 import router from './router'
 import { logger } from './utils/logger'

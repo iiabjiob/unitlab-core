@@ -19,7 +19,7 @@
 </template>
 
 <script setup lang="ts">
-import AppAside from "./AppAside.vue"
+import AppAside from "./DesktopAside.vue"
 import { useWebSocketStore } from "@/stores/websocketStore"
 import { computed } from "vue"
 

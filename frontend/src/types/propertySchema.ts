@@ -1,7 +1,7 @@
 // базовые простые типы
 export interface BasePropertyField<T> {
   key: Extract<keyof T, string>
-  label: string
+  label: string | ((item: T, index?: number) => string)
   editable: boolean
   type: "string" | "number" | "boolean" | "enum"
 }
@@ -9,7 +9,7 @@ export interface BasePropertyField<T> {
 // новый интерфейс под каналы
 export interface ChannelPropertyField<T> {
   key: Extract<keyof T, string>
-  label: string
+  label: string | ((item: T, index?: number) => string)
   editable: true
   type: "channel"
   channelType: "do" | "di"
@@ -18,7 +18,7 @@ export interface ChannelPropertyField<T> {
 // кастомный (как у тебя было)
 export interface CustomPropertyField {
   key: string
-  label: string
+  label: string | ((item: any, index?: number) => string)
   editable: false
   type: "custom"
   component: any

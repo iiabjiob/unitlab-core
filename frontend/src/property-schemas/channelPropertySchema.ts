@@ -4,7 +4,12 @@ import type { PropertySchema } from "@/types/propertySchema"
 
 export const channelPropertySchema: PropertySchema<Channel> = {
   fields: [
-    { key: "name", label: "Name", editable: true, type: "string" },
+    {
+      key: "name",
+      label: (ch: Channel, idx?: number) => `CH${(ch.index ?? idx ?? 0) + 1}`,
+      editable: true,
+      type: "string",
+    },
   ],
 
   async update(item, key, value) {

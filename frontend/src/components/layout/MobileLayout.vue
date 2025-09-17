@@ -13,34 +13,12 @@
       </template>
     </MobileHeader>
 
-    <!-- Header bulk actions -->
-    <div v-if="meta.headerBulkActions" class="shrink-0">
-      <slot name="header-bulk-actions" />
-    </div>
 
     <!-- Main content -->
     <main class="flex-1 overflow-auto relative">
       <RouterView />
     </main>
 
-    <!-- Event log fixed at the bottom -->
-    <div
-      v-if="meta.globalEventLog"
-      class="h-40 overflow-y-auto border-t border-neutral-200 dark:border-neutral-700"
-    >
-      <EventLog />
-    </div>
-
-    <!-- Bottom validator -->
-    <BottomValidatorResizable v-if="meta.bottomValidator" :errors="3" :warnings="2">
-      <BottomValidator
-        :messages="[
-          '💥 Device ID not found',
-          '⚠️ Signal name too long',
-          '⚠️ Unused template reference'
-        ]"
-      />
-    </BottomValidatorResizable>
 
     <!-- Navigation -->
     <SlideOver :open="isDrawerOpen" placement="right" title="Menu" :widthPx="360" @close="isDrawerOpen = false">
@@ -57,12 +35,19 @@
       @close="selection.clear()"
     >
     <div class="slide-over-content">
+
       <PropertiesPanel
-        v-if="selection.selectedItem"
-        :schema="resolveSchema(selection.selected!.type)"
-        :item="selection.selectedItem!"
-        @update="onUpdate"
-      />
+          v-if="selection.selectedItem"
+          :schema="resolveSchema(selection.selected!.type)"
+          :item="selection.selectedItem!"
+          @update="onUpdate"
+        />
+        <div
+          v-else
+          class="flex-1 flex items-center justify-center text-xs text-neutral-500"
+        >
+          No item selected
+        </div>
 
     </div>
     </SlideOver>
@@ -75,39 +60,30 @@ import { useRoute } from "vue-router"
 
 import { useSelectionOutside } from "@/composables/useSelectionOutside"
 
-import EventLog from "./EventLog.vue"
+import EventLog from "../EventLog.vue"
 import AppMenu from "./AppMenu.vue"
 import AppLogo from "./AppLogo.vue"
 import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
-import BottomValidatorResizable from "./BottomValidatorResizable.vue"
-import BottomValidator from "./BottomValidator.vue"
 import TimeComponent from "../misc/TimeComponent.vue"
 import { useWebSocketStore } from "@/stores/websocketStore"
-import SlideOver from "./SlideOver.vue"
+import SlideOver from "../ui/SlideOver.vue"
 import { useSelectionStore } from "@/stores/selectionStore"
 import { resolveSchema } from "@/property-schemas/propertySchemas"
 import MobileHeader from "./MobileHeader.vue"
 import { updateEntity } from "@/utils/updateEntity"
 import PropertiesPanel from "../PropertiesPanel.vue"
 
+const selection = useSelectionStore()
 
-const propsPanel = ref<InstanceType<typeof SlideOver> | null>(null)
-
-// also works for bottom sheet SlideOver
-useSelectionOutside(() => propsPanel.value?.$el ?? null)
+async function onUpdate(key: string, value: any) {
+  if (!selection.selected || !selection.selectedItem) return
+  const { type } = selection.selected
+  await updateEntity(type as any, selection.selectedItem as any, key, value)
+}
 
 // Drawer state
 const isDrawerOpen = ref(false)
 const isPropsOpen = ref(false)
-
-const selection = useSelectionStore()
-
-watch(
-  () => selection.selected,
-  (val) => {
-    isPropsOpen.value = val !== null
-  }
-)
 
 // WebSocket connection status
 const wsStore = useWebSocketStore()
@@ -117,18 +93,13 @@ const status = computed(() => {
   return "offline"
 })
 
-async function onUpdate(key: any, value: any) {
-  if (!selection.selected || !selection.selectedItem) return
-  const { type } = selection.selected
-  await updateEntity(type as any, selection.selectedItem as any, key as any, value)
-}
-
 // Read route meta
 const route = useRoute()
 const meta = computed(() => ({
+  toolbar: route.meta.toolbar ?? true,
+  leftAside: route.meta.leftAside ?? true,
   rightAside: route.meta.rightAside ?? true,
-  bottomValidator: route.meta.bottomValidator ?? true,
-  globalEventLog: route.meta.globalEventLog ?? true,
-  headerBulkActions: route.meta.headerBulkActions ?? false,
+  bottomAside: route.meta.bottomAside ?? true,
+  toolbarComponent: route.meta.toolbarComponent ?? null,
 }))
 </script>

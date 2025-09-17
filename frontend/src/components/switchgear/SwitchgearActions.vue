@@ -1,15 +1,15 @@
 <!-- src/components/switchgear/SwitchgearActions.vue -->
 <template>
   <div class="grid grid-cols-2 gap-2">
-    <ButtonComponent type="secondary" :disabled="isCmdDisabled('OPEN')" @click="() => setDoPair('OPEN')">Open</ButtonComponent>
-    <ButtonComponent type="secondary" :disabled="isCmdDisabled('CLOSED')" @click="() => setDoPair('CLOSED')">Close</ButtonComponent>
-    <ButtonComponent type="secondary" :disabled="isCmdDisabled('UNKNOWN')" @click="() => setDoPair('UNKNOWN')">Unknown</ButtonComponent>
-    <ButtonComponent type="secondary" :disabled="isCmdDisabled('INTERMEDIATE')" @click="() => setDoPair('INTERMEDIATE')">Intermediate</ButtonComponent>
+    <UiButton type="secondary" size="sm" :disabled="isCmdDisabled('OPEN')" @click.stop="() => setDoPair('OPEN')">Open</UiButton>
+    <UiButton type="secondary" size="sm" :disabled="isCmdDisabled('CLOSED')" @click.stop="() => setDoPair('CLOSED')">Close</UiButton>
+    <UiButton type="secondary" size="sm" :disabled="isCmdDisabled('UNKNOWN')" @click.stop="() => setDoPair('UNKNOWN')">Unknown</UiButton>
+    <UiButton type="secondary" size="sm" :disabled="isCmdDisabled('INTERMEDIATE')" @click.stop="() => setDoPair('INTERMEDIATE')">Intermediate</UiButton>
   </div>
 </template>
 
 <script setup lang="ts">
-import ButtonComponent from "@/components/ui/ButtonComponent.vue"
+import UiButton from "@/components/ui/UiButton.vue"
 import type { SwitchgearState } from "@/composables/useSwitchgear"
 
 const props = defineProps<{

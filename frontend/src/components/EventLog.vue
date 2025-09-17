@@ -18,48 +18,46 @@
     >
       No events yet
     </div>
+
     <!-- List -->
     <ul
       v-else
-      class="log-list flex-1 overflow-y-auto space-y-2 divide-y divide-neutral-200 dark:divide-neutral-700"
+      class="log-list flex-1 overflow-y-auto divide-y divide-neutral-200 dark:divide-neutral-700"
     >
       <li
         v-for="e in store.items"
         :key="e.id"
-        class="text-xs transition-colors"
+        class="text-xs flex items-center gap-2 px-1 py-0.5 transition-colors truncate"
         :class="e.highlight ? 'bg-yellow-50 dark:bg-yellow-950' : ''"
       >
-        <!-- Row 1: timestamp + device -->
-        <div class="flex items-center gap-2">
-          <span v-if="e.dir === 'IN'">⬅️</span>
-          <span v-else-if="e.dir === 'OUT'">➡️</span>
+        <!-- Direction -->
+        <span v-if="e.dir === 'IN'">⬅️</span>
+        <span v-else-if="e.dir === 'OUT'">➡️</span>
 
-          <span class="font-mono text-neutral-500 dark:text-neutral-400 text-xs">
-            {{ formatTs(e.ts) }}
-          </span>
+        <!-- Timestamp -->
+        <span class="font-mono text-neutral-500 dark:text-neutral-400">
+          {{ formatTs(e.ts) }}
+        </span>
 
-          <span v-if="e.unit_id" class="text-neutral-600 dark:text-neutral-300 text-xs">
-            {{ e.unit_id }}
-          </span>
-        </div>
+        <!-- Device -->
+        <span v-if="e.unit_id" class="text-neutral-600 dark:text-neutral-300">
+          {{ e.unit_id }}
+        </span>
 
-        <!-- Row 2: short description -->
-        <div class="pl-6 truncate">
-          <span class="font-medium text-neutral-800 dark:text-neutral-100">
-            {{ e.summary }}
-          </span>
-        </div>
+        <!-- Summary -->
+        <span class="font-medium text-neutral-800 dark:text-neutral-100 truncate">
+          {{ e.summary }}
+        </span>
       </li>
     </ul>
   </div>
 </template>
 
-<script lang="ts" setup>
+<script setup lang="ts">
 import { useEventLogStore } from "@/stores/eventLogStore"
 import { formatTs } from "@/utils/datetime"
 
 const store = useEventLogStore()
-
 </script>
 
 <style scoped>

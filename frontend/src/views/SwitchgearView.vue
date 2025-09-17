@@ -1,13 +1,62 @@
-<!-- src/views/SwitchgearEditorView.vue -->
+<!-- src/components/editor/Workspace.vue -->
 <template>
-  <div class="h-dvh flex bg-neutral-50 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200">
-    <Palette />
-    <Workspace />
+  <div class="flex-1 overflow-auto p-3">
+    <div class="flex flex-wrap gap-4">
+      <div
+        v-for="item in switchgearStore.switchgears"
+        :key="item.id"
+        class="relative w-[280px] flex-shrink-0"
+      >
+        <SelectableCard
+          class="w-full"
+          :selected="selection.isSelected('switchgear', item)"
+          @click="select(item)"
+        >
+          <SwitchgearCard
+            :id="item.id"
+            :title="item.title"
+            :do_open="item.do_open"
+            :do_closed="item.do_closed"
+            :di_open="item.di_open"
+            :di_close="item.di_close"
+            @delete="remove(item.id)"
+          />
+        </SelectableCard>
+      </div>
+    </div>
+
+    <!-- empty state -->
+    <div v-if="!switchgearStore.switchgears.length" class="text-neutral-400">
+      Drop or add a Switchgear from the palette…
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import Palette from "@/components/editor/Palette.vue"
-import Workspace from "@/components/editor/Workspace.vue"
+import { onMounted } from "vue"
+import { useSwitchgearStore } from "@/stores/switchgearStore"
+import { useSelectionStore } from "@/stores/selectionStore"
+import type { Switchgear } from "@/types/switchgear"
 
+import SwitchgearCard from "@/components/switchgear/SwitchgearCard.vue"
+import SelectableCard from "@/components/ui/SelectableCard.vue"
+
+const switchgearStore = useSwitchgearStore()
+const selection = useSelectionStore()
+
+onMounted(() => {
+  // загружаем список при инициализации
+  switchgearStore.fetchAll()
+})
+
+function select(item: Switchgear) {
+  selection.select({ type: "switchgear", key: item.id })
+}
+
+function remove(id: number) {
+  switchgearStore.remove(id)
+  if (selection.selected?.type === "switchgear" && selection.selected.key === id) {
+    selection.clear()
+  }
+}
 </script>
