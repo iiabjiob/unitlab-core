@@ -44,3 +44,7 @@
   @apply text-neutral-700 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700
          px-2 py-1 text-sm rounded-sm;
 }
+
+.btn-toolbar-active {
+  @apply bg-neutral-200 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100;
+}

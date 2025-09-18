@@ -29,4 +29,6 @@ export const useDeviceFilterStore = defineStore("deviceFilter", () => {
     filters,
     filteredDevices,
   }
+},{
+  persist:true
 })
