@@ -17,7 +17,10 @@ class Sequence(Base):
     )
 
     steps: Mapped[list["SequenceStep"]] = relationship(
-        "SequenceStep", back_populates="sequence", cascade="all, delete-orphan"
+        "SequenceStep",
+        back_populates="sequence",
+        cascade="all, delete-orphan",
+        order_by="SequenceStep.order_index",
     )
 
 
@@ -34,3 +37,4 @@ class SequenceStep(Base):
     payload: Mapped[dict | None] = mapped_column(JSON)
 
     sequence: Mapped["Sequence"] = relationship("Sequence", back_populates="steps")
+

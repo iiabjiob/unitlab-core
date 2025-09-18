@@ -8,8 +8,14 @@ export enum StepKind {
 export type SequenceStatus = "idle" | "running" | "stopped" | "completed"
 
 export interface SequenceStep {
-  id?: number
+  id: number
   order_index: number
+  kind: StepKind
+  unit_id?: string | null
+  payload?: Record<string, any> | null
+}
+
+export interface SequenceStepCreate {
   kind: StepKind
   unit_id?: string | null
   payload?: Record<string, any> | null

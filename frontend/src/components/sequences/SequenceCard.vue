@@ -13,7 +13,7 @@
       <!-- меню действий -->
       <SequenceMenu
         @export="$emit('export')"
-        @delete="$emit('delete')"
+        @delete="onDelete"
       />
     </div>
 
@@ -23,47 +23,76 @@
     </p>
 
     <div class="flex gap-3 items-center py-3">
-      <UiButton size="sm" type="primary" @click.stop="onStart" :disabled="store.isRunning(sequence)">Start</UiButton>
-      <UiButton size="sm" type="secondary" @click.stop="onStop" :disabled="!store.isRunning(sequence)">Stop</UiButton>
-      <UiButton size="sm" type="secondary" @click.stop="onReset" :disabled="store.isRunning(sequence)">Reset</UiButton>
+      <UiButton
+        size="sm"
+        type="secondary"
+        @click.stop="onStartStop"
+        :disabled="!sequence.steps.length"
+      >
+        {{ st.status === "running" ? "Stop" : "Start" }}
+      </UiButton>
 
       <BadgeComponent class="text-xs">{{ statusLabel }}</BadgeComponent>
     </div>
 
     <!-- Progress bar -->
     <ProgressBar
-      class="mt-2"
+      class="my-2"
       :value="store.getProgress(sequence)"
+      :disabled="!sequence.steps.length"
     />
 
-    <!-- Steps checklist -->
-    <ol class="mt-3 space-y-1 text-sm">
-      <SequenceStep
-        v-for="(s, i) in sequence.steps"
-        :key="s.id ?? i"
-        :index="i"
-        :description="store.getStepDescription(sequence, i)"
-        :completed="st.completed[i]"
-        :error="st.lastError"
-      />
-    </ol>
+    <draggable
+      v-model="props.sequence.steps"
+      item-key="id"
+      handle=".drag-handle"
+      @end="onReorder"
+      ghost-class="dragging"
+    >
+      <template #item="{ element, index }">
+        <SequenceStep
+          :index="index"
+          @delete="store.deleteStep(sequence.id, element.id!)"
+          :description="store.getStepDescription(props.sequence, index)"
+          :completed="store.ensureState(props.sequence).completed[index]"
+          :error="store.ensureState(props.sequence).lastError &&
+                  store.ensureState(props.sequence).index === index"
+        >
+          <!-- Добавляем иконку для drag -->
+          <template #prefix>
+            <span class="drag-handle cursor-grab text-neutral-400 mr-1">⋮⋮</span>
+          </template>
+        </SequenceStep>
+      </template>
+    </draggable>
 
-    <!-- Error -->
-    <p v-if="st.lastError" class="text-xs text-red-600 mt-2">
-      Error: {{ st.lastError }}
+    <!-- Global error -->
+    <p v-if="st.lastError" class="mt-3 text-xs text-red-600 font-mono">
+      ⚠️ Error at step {{ st.index }}: {{ st.lastError }}
     </p>
   </li>
+
+  <!-- Add step control -->
+  <div class="mt-2 relative overflow-visible">
+    <AddStepButton
+      :kinds="availableKinds"
+      @add="addStep"
+    />
+  </div>
+
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue"
 import { useSequenceStore } from "@/stores/sequenceStore"
-import type { SequenceDef } from "@/types/sequences"
+import { type SequenceDef, type SequenceStepCreate, StepKind } from "@/types/sequences"
 import BadgeComponent from "@/components/ui/BadgeComponent.vue"
 import UiButton from "../ui/UiButton.vue"
 import ProgressBar from "../ui/ProgressBar.vue"
 import SequenceMenu from "./SequenceMenu.vue"
 import SequenceStep from "./SequenceStep.vue"
+import draggable from "vuedraggable"
+import AddStepButton from "./AddStepButton.vue"
 
 const props = defineProps<{ sequence: SequenceDef }>()
 const store = useSequenceStore()
@@ -79,16 +108,37 @@ const statusLabel = computed(() => {
   }
 })
 
-async function onStart() {
-  await store.start(props.sequence)
+async function onStartStop() {
+  if (st.value.status === "running") {
+    store.stop(props.sequence)
+  } else {
+    // сбрасываем перед запуском
+    store.resetState(props.sequence)
+    await store.start(props.sequence)
+  }
 }
-function onStop() {
-  store.stop(props.sequence)
+
+function onReorder() {
+  const newOrder = props.sequence.steps
+  .map(s => s.id)
+  .filter((id): id is number => id !== undefined)
+
+  store.reorderSteps(props.sequence.id, newOrder)
 }
-function onReset() {
-  store.resetState(props.sequence)
-}
-function deleteSequence() {
+
+function onDelete() {
   store.deleteSequence(props.sequence.id)
+}
+
+// доступные типы шагов (потом можно вынести в конфиг)
+const availableKinds: StepKind[] = Object.values(StepKind)
+
+async function addStep(kind: StepKind) {
+  const newStep: SequenceStepCreate = {
+    kind,
+    unit_id: null,
+    payload: {}
+  }
+  await store.addStep(props.sequence.id, newStep)
 }
 </script>

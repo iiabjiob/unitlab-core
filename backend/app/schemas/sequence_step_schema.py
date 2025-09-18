@@ -1,8 +1,7 @@
 from pydantic import BaseModel
-
+from typing import List
 
 class SequenceStepBase(BaseModel):
-    order_index: int
     kind: str
     unit_id: str | None = None
     payload: dict | None = None
@@ -22,6 +21,10 @@ class SequenceStepUpdateSchema(BaseModel):
 class SequenceStepSchema(SequenceStepBase):
     id: int
     sequence_id: int
+    order_index: int
 
     class Config:
         from_attributes = True
+
+class SequenceReorderSchema(BaseModel):
+    new_order: List[int]

@@ -81,19 +81,34 @@ async def export_sequence_file(seq_id: int, db: AsyncSession = Depends(get_db)):
     )
 
 
-@router.post("/import-file", response_model=SequenceSchema)
-async def import_sequence_file(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+@router.post("/import-file", response_model=list[SequenceSchema])
+async def import_sequences_file(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
     raw = await file.read()
     try:
         data = json.loads(raw)
-        seq = SequenceExportSchema.model_validate(data)
-    except ValidationError as e:
-        raise HTTPException(400, f"Validation error: {e.errors()}")
     except Exception as e:
         raise HTTPException(400, f"Invalid JSON file: {e}")
 
-    return await create_sequence(
-        db,
-        {"name": seq.name, "description": seq.description},
-        [s.model_dump() for s in seq.steps],  # ✅
-    )
+    # поддержка обертки {"sequences": [...]}
+    if "sequences" in data:
+        seqs_data = data["sequences"]
+    elif isinstance(data, list):
+        seqs_data = data
+    else:
+        seqs_data = [data]
+
+    try:
+        parsed = [SequenceExportSchema.model_validate(x) for x in seqs_data]
+    except ValidationError as e:
+        raise HTTPException(400, f"Validation error: {e.errors()}")
+
+    imported = []
+    for seq in parsed:
+        created = await create_sequence(
+            db,
+            {"name": seq.name, "description": seq.description},
+            [s.model_dump() for s in seq.steps],
+        )
+        imported.append(created)
+
+    return imported

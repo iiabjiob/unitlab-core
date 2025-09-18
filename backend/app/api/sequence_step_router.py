@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.infrastructure.db.database import get_db
 from app.repositories.sequence_step_repository import (
@@ -8,11 +9,11 @@ from app.repositories.sequence_step_repository import (
     update_step as update_step_repo,
     delete_step as delete_step_repo,
 )
-from app.services.sequence_service import reorder_steps as reorder_steps_service
 from app.schemas.sequence_step_schema import (
     SequenceStepSchema,
     SequenceStepCreateSchema,
     SequenceStepUpdateSchema,
+    SequenceReorderSchema,
 )
 from app.models.sequence import SequenceStep
 
@@ -61,10 +62,30 @@ async def delete_step(seq_id: int, step_id: int, db: AsyncSession = Depends(get_
     return {"detail": "Step deleted and order normalized"}
 
 
-@router.post("/reorder")
-async def reorder_steps(seq_id: int, new_order: list[int], db: AsyncSession = Depends(get_db)):
-    await reorder_steps_service(db, seq_id, new_order)
-    return {"detail": "Steps reordered"}
+@router.post("/reorder", response_model=list[SequenceStepSchema])
+async def reorder_steps(
+    seq_id: int,
+    payload: SequenceReorderSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(SequenceStep).where(SequenceStep.sequence_id == seq_id)
+    )
+    steps = {step.id: step for step in result.scalars().all()}
+
+    for idx, step_id in enumerate(payload.new_order):
+        if step_id in steps:
+            steps[step_id].order_index = idx
+
+    await db.commit()
+
+    # вернём уже отсортированный список
+    result = await db.execute(
+        select(SequenceStep)
+        .where(SequenceStep.sequence_id == seq_id)
+        .order_by(SequenceStep.order_index)
+    )
+    return result.scalars().all()
 
 
 @router.put("", response_model=list[SequenceStepSchema])

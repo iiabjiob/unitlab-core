@@ -1,7 +1,7 @@
 <template>
-  <div class="flex-1 overflow-auto p-3">
+  <div class="flex-1 p-3">
     <div class="flex flex-wrap gap-4">
-      <div v-for="seq in store.sequences" :key="seq.id" class="relative w-[420px] flex-shrink-0">
+      <div v-for="seq in store.sequences" :key="seq.id" class="relative w-[560px] flex-shrink-0">
         <SelectableCard :selected="selection.isSelected('sequence', seq)" @click="select(seq)">
           <SequenceCard
             :sequence="seq"

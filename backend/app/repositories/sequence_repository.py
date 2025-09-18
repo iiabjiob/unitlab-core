@@ -57,3 +57,26 @@ async def delete_sequence(db: AsyncSession, seq_id: int) -> bool:
     await db.delete(seq)
     await db.commit()
     return True
+
+async def register_sequence_if_not_exists(
+    db: AsyncSession,
+    seq_data: dict,
+    steps: list[dict]
+) -> Sequence:
+    # ищем по имени (можно расширить по имени+описанию)
+    result = await db.execute(
+        select(Sequence).where(Sequence.name == seq_data["name"])
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        return existing
+
+    # создаём новый
+    seq = Sequence(**seq_data)
+    for idx, step in enumerate(steps):
+        seq.steps.append(SequenceStep(order_index=idx, **step))
+
+    db.add(seq)
+    await db.commit()
+    await db.refresh(seq)
+    return seq

@@ -23,9 +23,11 @@ async def get_step(db: AsyncSession, step_id: int) -> SequenceStep | None:
 
 async def get_steps_for_sequence(db: AsyncSession, sequence_id: int) -> list[SequenceStep]:
     result = await db.execute(
-        select(SequenceStep).where(SequenceStep.sequence_id == sequence_id).order_by(SequenceStep.order_index)
+        select(SequenceStep)
+        .where(SequenceStep.sequence_id == sequence_id)
+        .order_by(SequenceStep.order_index)
     )
-    return list(result.scalars().all())
+    return result.scalars().all()
 
 
 async def update_step(db: AsyncSession, step_id: int, changes: dict) -> SequenceStep | None:

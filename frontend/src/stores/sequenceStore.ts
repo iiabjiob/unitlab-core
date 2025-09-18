@@ -1,7 +1,7 @@
 import { defineStore } from "pinia"
 import { ref } from "vue"
 import { useWebSocketStore } from "./websocketStore"
-import { StepKind, type SequenceDef, type SequenceStatus, type SequenceStep } from "@/types/sequences"
+import { StepKind, type SequenceDef, type SequenceStatus, type SequenceStep, type SequenceStepCreate } from "@/types/sequences"
 import { getLogger } from "@/utils/logger"
 import { describeStep, toWSMessage } from "@/utils/sequenceUtils"
 
@@ -163,7 +163,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   // -------- Step API integration --------
-  async function addStep(seqId: number, step: SequenceStep) {
+  async function addStep(seqId: number, step: SequenceStepCreate) {
     const res = await fetch(`/api/sequences/${seqId}/steps`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -216,16 +216,15 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     const res = await fetch(`/api/sequences/${seqId}/steps/reorder`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newOrder),
+      body: JSON.stringify({ new_order: newOrder }),
     })
     if (!res.ok) throw new Error("Failed to reorder steps")
+    const updated = await res.json()
 
-    // после reorder перезапрашиваем шаги с бэка
-    const reload = await fetch(`/api/sequences/${seqId}/steps`)
-    if (reload.ok) {
-      const steps = await reload.json()
-      const seq = sequences.value.find((s) => s.id === seqId)
-      if (seq) seq.steps = steps
+    const seq = sequences.value.find((s) => s.id === seqId)
+    if (seq) {
+      seq.steps = updated
+      ensureState(seq) // пересчёт completed[]
     }
   }
 
