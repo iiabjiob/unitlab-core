@@ -27,14 +27,16 @@
     <!-- Delete button (visible only on hover) -->
     <button
       @click="$emit('delete')"
-      class="opacity-0 group-hover:opacity-100 transition-opacity text-neutral-400 hover:text-red-600"
+      class="opacity-0 group-hover:opacity-100 transition-opacity text-neutral-400 hover:text-red-600 cursor-pointer"
     >
-      🗑
+      <TrashIcon size="14"/>
     </button>
   </li>
 </template>
 
 <script setup lang="ts">
+import TrashIcon from '../icons/TrashIcon.vue';
+
 const props = defineProps<{
   index: number
   description: string

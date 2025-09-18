@@ -9,5 +9,5 @@ export async function updateEntity<T extends EntityType, K extends keyof EntityM
   value: EntityMap[T][K]
 ) {
   const schema = resolveSchema(type)
-  await schema.update(entity, key, value)
+  await schema.update(entity, String(key), value)
 }

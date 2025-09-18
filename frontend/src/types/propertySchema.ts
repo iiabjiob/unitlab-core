@@ -1,37 +1,78 @@
+import type { ChannelType } from "./channel"
+
 // базовые простые типы
 export interface BasePropertyField<T> {
-  key: Extract<keyof T, string>
+  key: string
   label: string | ((item: T, index?: number) => string)
   editable: boolean
-  type: "string" | "number" | "boolean" | "enum"
+  type: "string" | "number" | "boolean"
+  visible?: (item: T) => boolean
+  display?: (item: T) => string | number
 }
 
-// новый интерфейс под каналы
+// select
+export interface SelectPropertyField<T> {
+  key: string
+  label: string | ((item: T, index?: number) => string)
+  editable: true
+  type: "select"
+  options: string[]
+  visible?: (item: T) => boolean
+  display?: (item: T) => string | number
+}
+
+// unit
+export interface UnitPropertyField<T> {
+  key: string
+  label: string | ((item: T, index?: number) => string)
+  editable: true
+  type: "unit"
+  visible?: (item: T) => boolean
+  display?: (item: T) => string | number
+}
+
+export interface BitmaskPropertyField<T> {
+  key: string
+  label: string
+  editable: true
+  type: "bitmask"
+  visible?: (item: T) => boolean
+  display?: (item: T) => string | number
+}
+
+// channel
 export interface ChannelPropertyField<T> {
-  key: Extract<keyof T, string>
+  key: string
   label: string | ((item: T, index?: number) => string)
   editable: true
   type: "channel"
-  channelType: "do" | "di"
+  channelType: ChannelType
+  visible?: (item: T) => boolean
+  display?: (item: T) => string | number
 }
 
-// кастомный (как у тебя было)
-export interface CustomPropertyField {
+// custom
+export interface CustomPropertyField<T> {
   key: string
-  label: string | ((item: any, index?: number) => string)
-  editable: false
+  label: string
+  editable: boolean
   type: "custom"
   component: any
-  props?: Record<string, any> | ((item: any) => Record<string, any>)
+  props?: Record<string, any> | ((item: T) => Record<string, any>)
+  visible?: (item: T) => boolean
+  display?: (item: T) => string | number
 }
 
-// общий union
+// Common union
 export type PropertyField<T> =
   | BasePropertyField<T>
+  | SelectPropertyField<T>
+  | UnitPropertyField<T>
+  | BitmaskPropertyField<T>
   | ChannelPropertyField<T>
-  | CustomPropertyField
+  | CustomPropertyField<T>
 
 export interface PropertySchema<T> {
   fields: PropertyField<T>[]
-  update: (item: T, key: keyof T, value: any) => Promise<void>
+  update: (item: T, key: string, value: any) => Promise<void>
 }

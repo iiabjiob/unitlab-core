@@ -4,6 +4,8 @@ import { useWebSocketStore } from "./websocketStore"
 import { StepKind, type SequenceDef, type SequenceStatus, type SequenceStep, type SequenceStepCreate } from "@/types/sequences"
 import { getLogger } from "@/utils/logger"
 import { describeStep, toWSMessage } from "@/utils/sequenceUtils"
+import axios from "axios"
+import { ApiBuilder } from "@/utils/api"
 
 const logger = getLogger("SEQ")
 
@@ -38,6 +40,20 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   // -------- API integration --------
+
+  async function updateSequenceField(id: number, changes: Partial<SequenceDef>) {
+    try {
+      const { data } = await axios.patch(ApiBuilder.sequence(id), changes)
+      const idx = sequences.value.findIndex(s => s.id === id)
+      if (idx !== -1) {
+        sequences.value[idx] = data
+      }
+      logger.debug(`✅ Sequence ${id} updated with`, changes)
+    } catch (error) {
+      logger.error(`💥 Failed to update sequence ${id}:`, error)
+    }
+  }
+
   async function fetchSequences() {
     const res = await fetch("/api/sequences")
     if (!res.ok) throw new Error("Failed to fetch sequences")
@@ -253,6 +269,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   return {
     sequences,
     states,
+    updateSequenceField,
     fetchSequences,
     createSequence,
     updateSequence,

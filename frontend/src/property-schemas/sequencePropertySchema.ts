@@ -2,17 +2,24 @@
 import type { PropertySchema } from "@/types/propertySchema"
 import type { SequenceDef } from "@/types/sequences"
 import { useSequenceStore } from "@/stores/sequenceStore"
+import SequenceStepsProperties from "@/components/sequences/SequenceStepsProperties.vue"
 
 export const sequencePropertySchema: PropertySchema<SequenceDef> = {
   fields: [
     { key: "name", label: "Name", editable: true, type: "string" },
     { key: "description", label: "Description", editable: true, type: "string" },
-    // steps сюда обычно не добавляем, потому что это массив сложных объектов
-    // их редактирование будет через отдельный редактор
+    {
+      key: "steps",
+      label: "Steps",
+      type: "custom",
+      component: SequenceStepsProperties,
+      props: (seq: SequenceDef) => ({ sequence: seq }),
+      editable: false,
+    },
   ],
 
   async update(item, key, value) {
     const store = useSequenceStore()
-    // await store.update(item.id as any, { [key]: value })
+    await store.updateSequenceField(item.id, { [key]: value })
   },
 }
