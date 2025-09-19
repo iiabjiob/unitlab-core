@@ -16,7 +16,7 @@
 
 <script setup lang="ts">
 import { sequenceStepPropertySchema } from "@/property-schemas/sequenceStepPropertySchema";
-import PropertiesPanel from "../PropertiesPanel.vue"
+import PropertiesPanel from "../properties/PropertiesPanel.vue";
 import type { SequenceDef, SequenceStep } from "@/types/sequences"
 
 const props = defineProps<{

@@ -1,6 +1,6 @@
 import type { Channel } from "@/types/channel"
 import { useChannelStore } from "@/stores/channelStore"
-import type { PropertySchema } from "@/types/propertySchema"
+import type { PropertySchema } from "@/property-schemas/types"
 
 export const channelPropertySchema: PropertySchema<Channel> = {
   fields: [

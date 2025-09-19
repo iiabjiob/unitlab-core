@@ -1,5 +1,5 @@
 // src/config/switchgearPropertySchema.ts
-import type { PropertySchema } from "@/types/propertySchema"
+import type { PropertySchema } from "@/property-schemas/types"
 import type { Switchgear } from "@/types/switchgear"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 

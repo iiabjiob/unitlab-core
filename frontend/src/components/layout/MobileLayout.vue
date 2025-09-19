@@ -55,12 +55,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue"
+import { ref, computed } from "vue"
 import { useRoute } from "vue-router"
 
-import { useSelectionOutside } from "@/composables/useSelectionOutside"
-
-import EventLog from "../EventLog.vue"
 import AppMenu from "./AppMenu.vue"
 import AppLogo from "./AppLogo.vue"
 import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
@@ -70,8 +67,8 @@ import SlideOver from "../ui/SlideOver.vue"
 import { useSelectionStore } from "@/stores/selectionStore"
 import { resolveSchema } from "@/property-schemas/propertySchemas"
 import MobileHeader from "./MobileHeader.vue"
-import { updateEntity } from "@/utils/updateEntity"
-import PropertiesPanel from "../PropertiesPanel.vue"
+import { updateEntity } from "@/property-schemas/updateEntity"
+import PropertiesPanel from "../properties/PropertiesPanel.vue"
 
 const selection = useSelectionStore()
 

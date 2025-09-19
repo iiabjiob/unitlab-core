@@ -1,5 +1,5 @@
 // src/config/sequencePropertySchema.ts
-import type { PropertySchema } from "@/types/propertySchema"
+import type { PropertySchema } from "@/property-schemas/types"
 import type { SequenceDef } from "@/types/sequences"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import SequenceStepsProperties from "@/components/sequences/SequenceStepsProperties.vue"

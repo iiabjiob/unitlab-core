@@ -1,4 +1,4 @@
-import type { ChannelType } from "./channel"
+import type { ChannelType } from "../types/channel"
 
 // базовые простые типы
 export interface BasePropertyField<T> {

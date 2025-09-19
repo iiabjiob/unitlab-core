@@ -1,6 +1,6 @@
 // config/propertySchemas.ts
 import { devicePropertySchema } from "./devicePropertySchema"
-import type { PropertySchema } from "@/types/propertySchema"
+import type { PropertySchema } from "@/property-schemas/types"
 import { switchgearPropertySchema } from "./switchgearPropertySchema"
 import type { EntityMap, EntityType } from "@/types/entity"
 import { channelPropertySchema } from "./channelPropertySchema"
