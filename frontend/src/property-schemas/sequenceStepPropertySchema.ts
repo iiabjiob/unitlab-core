@@ -1,7 +1,10 @@
-import type { PropertySchema } from "@/property-schemas/types"
+import { PROPERTY_FIELD_TYPES, type PropertySchema } from "@/property-schemas/types"
 import type { SequenceStep } from "@/types/sequences"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { StepKind } from "@/types/sequences"
+import { ON_OFF_OPTIONS } from "@/constants/option"
+import { splitKey } from "./utils"
+import { CHANNEL_TYPES } from "@/types/channel"
 
 export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
   fields: [
@@ -9,7 +12,7 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       key: "order_index",
       label: "Step",
       editable: false,
-      type: "string",
+      type: PROPERTY_FIELD_TYPES.STRING,
       display: (s) => String(s.order_index + 1),
     },
 
@@ -17,8 +20,8 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       key: "kind",
       label: "Kind",
       editable: true,
-      type: "select",
-      options: Object.values(StepKind),
+      type: PROPERTY_FIELD_TYPES.SELECT,
+      options: Object.values(StepKind) as StepKind[],
       display: (s) => s.kind ?? "n/a",
     },
 
@@ -27,56 +30,63 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       key: "payload.ms",
       label: "Delay (ms)",
       editable: true,
-      type: "number",
+      type: PROPERTY_FIELD_TYPES.NUMBER,
       visible: (s) => s.kind === StepKind.WAIT,
     },
 
     // --- DO_LATCH ---
-    {
-      key: "unit_id",
-      label: "Unit",
-      editable: true,
-      type: "unit",
-      visible: (s) => s.kind === StepKind.DO_LATCH,
-    },
+    // {
+    //   key: "unit_id",
+    //   label: "Unit",
+    //   editable: true,
+    //   type: PROPERTY_FIELD_TYPES.UNIT,
+    //   visible: (s) => s.kind === StepKind.DO_LATCH,
+    // },
     {
       key: "payload.ch",
       label: "Channel",
       editable: true,
-      type: "channel",
-      channelType: "do",
+      type: PROPERTY_FIELD_TYPES.CHANNEL,
+      channelType: CHANNEL_TYPES.DO,
       visible: (s) => s.kind === StepKind.DO_LATCH },
     {
       key: "payload.value",
       label: "Value",
       editable: true,
-      type: "select",
-      options: ["Off", "On"],
+      type: PROPERTY_FIELD_TYPES.SELECT,
+      options: ON_OFF_OPTIONS,
       visible: (s) => s.kind === StepKind.DO_LATCH,
     },
 
     // --- DO_PULSE ---
+    // {
+    //   key: "unit_id",
+    //   label: "Unit",
+    //   editable: true,
+    //   type: PROPERTY_FIELD_TYPES.UNIT,
+    //   visible: (s) => s.kind === StepKind.DO_PULSE,
+    // },
     {
-      key: "unit_id",
-      label: "Unit",
+      key: "payload.ch",
+      label: "Channel",
       editable: true,
-      type: "unit",
-      visible: (s) => s.kind === StepKind.DO_PULSE,
+      type: PROPERTY_FIELD_TYPES.CHANNEL,
+      channelType: CHANNEL_TYPES.DO,
+      visible: (s) => s.kind === StepKind.DO_PULSE
     },
-    { key: "payload.ch", label: "Channel", editable: true, type: "channel", channelType: "do", visible: (s) => s.kind === StepKind.DO_PULSE },
     {
       key: "payload.value",
       label: "Value",
       editable: true,
-      type: "select",
-      options: ["Off", "On"],
+      type: PROPERTY_FIELD_TYPES.SELECT,
+      options: ON_OFF_OPTIONS,
       visible: (s) => s.kind === StepKind.DO_PULSE,
     },
     {
       key: "payload.pulse_ms",
       label: "Pulse duration (ms)",
       editable: true,
-      type: "number",
+      type: PROPERTY_FIELD_TYPES.NUMBER,
       visible: (s) => s.kind === StepKind.DO_PULSE,
     },
 
@@ -85,55 +95,84 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       key: "unit_id",
       label: "Unit",
       editable: true,
-      type: "unit",
+      type: PROPERTY_FIELD_TYPES.UNIT,
       visible: (s) => s.kind === StepKind.DO_BITMASK,
     },
     {
       key: "payload.bitmask",
       label: "Bitmask",
       editable: true,
-      type: "bitmask",
+      type: PROPERTY_FIELD_TYPES.BITMASK,
       visible: (s) => s.kind === StepKind.DO_BITMASK,
     },
 
     // --- DO_PAIR ---
+    // {
+    //   key: "unit_id",
+    //   label: "Unit",
+    //   editable: true,
+    //   type: PROPERTY_FIELD_TYPES.UNIT,
+    //   visible: (s) => s.kind === StepKind.DO_PAIR,
+    // },
     {
-      key: "unit_id",
-      label: "Unit",
+      key: "payload.chA",
+      label: "Channel A",
       editable: true,
-      type: "unit",
-      visible: (s) => s.kind === StepKind.DO_PAIR,
+      type: PROPERTY_FIELD_TYPES.CHANNEL,
+      channelType: CHANNEL_TYPES.DO,
+      visible: (s) => s.kind === StepKind.DO_PAIR
     },
-    { key: "payload.chA", label: "Channel A", editable: true, type: "channel", channelType: "do", visible: (s) => s.kind === StepKind.DO_PAIR },
-    { key: "payload.chB", label: "Channel B", editable: true, type: "channel", channelType: "do", visible: (s) => s.kind === StepKind.DO_PAIR },
+    { key: "payload.chB",
+      label: "Channel B",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.CHANNEL,
+      channelType: CHANNEL_TYPES.DO,
+      visible: (s) => s.kind === StepKind.DO_PAIR
+    },
     {
       key: "payload.state2b",
       label: "State (2-bit)",
       editable: true,
-      type: "number",
+      type: PROPERTY_FIELD_TYPES.NUMBER,
       visible: (s) => s.kind === StepKind.DO_PAIR,
     },
 
     // --- AO_SET ---
+    // {
+    //   key: "unit_id",
+    //   label: "Unit",
+    //   editable: true,
+    //   type: PROPERTY_FIELD_TYPES.UNIT,
+    //   visible: (s) => s.kind === StepKind.AO_SET,
+    // },
     {
-      key: "unit_id",
-      label: "Unit",
+      key: "payload.ch",
+      label: "Channel",
       editable: true,
-      type: "unit",
-      visible: (s) => s.kind === StepKind.AO_SET,
+      type: PROPERTY_FIELD_TYPES.CHANNEL,
+      channelType: CHANNEL_TYPES.AO,
+      visible: (s) => s.kind === StepKind.AO_SET
     },
-    { key: "payload.ch", label: "Channel", editable: true, type: "channel", channelType: "ao", visible: (s) => s.kind === StepKind.AO_SET },
-    { key: "payload.value", label: "Value (4–20 mA)", editable: true, type: "number", visible: (s) => s.kind === StepKind.AO_SET },
+    {
+      key: "payload.value",
+      label: "Value (4–20 mA)",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.NUMBER,
+      visible: (s) => s.kind === StepKind.AO_SET
+    },
   ],
 
   async update(item, key, value) {
     const store = useSequenceStore()
-    if (key.toString().startsWith("payload.")) {
-      const payloadKey = key.toString().split(".")[1]
-      const newPayload = { ...(item.payload ?? {}), [payloadKey]: value }
+
+    const { root, sub } = splitKey(key.toString())
+
+    if (root === "payload") {
+      const newPayload = { ...(item.payload ?? {}), [sub]: value }
       await store.updateStep(item.sequence_id, item.id, { payload: newPayload })
     } else {
-      await store.updateStep(item.sequence_id, item.id, { [key]: value })
+      await store.updateStep(item.sequence_id, item.id, { [sub]: value })
     }
   },
+
 }

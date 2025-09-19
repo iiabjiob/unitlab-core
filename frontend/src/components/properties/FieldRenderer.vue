@@ -13,6 +13,10 @@
       v-else
       :is="editor"
       v-bind="inputProps"
+      class="w-full text-xs px-1 py-0.5 focus:outline-none
+        disabled:cursor-not-allowed
+        bg-white dark:bg-neutral-900
+        disabled:bg-neutral-100 disabled:dark:bg-neutral-800"
       @change="onChange"
       @update:modelValue="onUpdate"
     >

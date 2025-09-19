@@ -1,6 +1,6 @@
 import type { Channel } from "@/types/channel"
 import { useChannelStore } from "@/stores/channelStore"
-import type { PropertySchema } from "@/property-schemas/types"
+import { PROPERTY_FIELD_TYPES, type PropertySchema } from "@/property-schemas/types"
 
 export const channelPropertySchema: PropertySchema<Channel> = {
   fields: [
@@ -8,7 +8,7 @@ export const channelPropertySchema: PropertySchema<Channel> = {
       key: "name",
       label: (ch: Channel, idx?: number) => `CH${(ch.index ?? idx ?? 0) + 1}`,
       editable: true,
-      type: "string",
+      type: PROPERTY_FIELD_TYPES.STRING,
     },
   ],
 

@@ -1,7 +1,6 @@
 <template>
   <select
-    class="w-full px-2 py-0.5 text-xs border rounded-sm
-           border-neutral-300 dark:border-neutral-700
+    class="w-full px-2 py-0.5 text-xs
            bg-white dark:bg-neutral-800 focus:outline-none"
     :value="modelValue ?? ''"
     :name="name"

@@ -1,5 +1,11 @@
 export type ChannelType = "di" | "do" | "ao"
 
+export const CHANNEL_TYPES = {
+  DI: "di" as const,
+  DO: "do" as const,
+  AO: "ao" as const,
+}
+
 export interface BaseChannel {
   id: number
   device_id: number
