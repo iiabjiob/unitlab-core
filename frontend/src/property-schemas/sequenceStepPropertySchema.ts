@@ -5,6 +5,8 @@ import { StepKind } from "@/types/sequences"
 import { ON_OFF_OPTIONS } from "@/constants/option"
 import { splitKey } from "./utils"
 import { CHANNEL_TYPES } from "@/types/channel"
+import { useDeviceStore } from "@/stores/deviceStore"
+import { SWITCHGEAR_CODE, SWITCHGEAR_OPTIONS } from "@/constants/switchgear"
 
 export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
   fields: [
@@ -104,6 +106,11 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       editable: true,
       type: PROPERTY_FIELD_TYPES.BITMASK,
       visible: (s) => s.kind === StepKind.DO_BITMASK,
+      resolveChannelCount: (s) => {
+        const deviceStore = useDeviceStore()
+        const device = deviceStore.devices.find(d => d.unit_id === s.unit_id)
+        return device?.channels?.filter(ch => ch.type === CHANNEL_TYPES.DO).length ?? 0
+      }
     },
 
     // --- DO_PAIR ---
@@ -133,8 +140,13 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       key: "payload.state2b",
       label: "State (2-bit)",
       editable: true,
-      type: PROPERTY_FIELD_TYPES.NUMBER,
+      type: PROPERTY_FIELD_TYPES.SELECT,
+      options: SWITCHGEAR_OPTIONS,
       visible: (s) => s.kind === StepKind.DO_PAIR,
+      display: (s) => {
+        const entry = Object.entries(SWITCHGEAR_CODE).find(([_, v]) => v === s.payload?.state2b)
+        return entry?.[0] ?? "UNKNOWN"
+      }
     },
 
     // --- AO_SET ---

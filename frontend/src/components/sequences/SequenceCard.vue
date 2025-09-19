@@ -124,6 +124,8 @@ function onReorder() {
   .filter((id): id is number => id !== undefined)
 
   store.reorderSteps(props.sequence.id, newOrder)
+
+  store.resetState(props.sequence)
 }
 
 function onDelete() {

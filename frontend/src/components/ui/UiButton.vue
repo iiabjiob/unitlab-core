@@ -7,7 +7,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-type ButtonType = "primary" | "secondary" | "danger" | "toolbar"
+type ButtonType = "primary" | "secondary" | "danger" | "toolbar" | "dashed"
 type ButtonSize = 'xs' | 'sm' | 'base' | 'lg'
 
 const props = withDefaults(
@@ -31,6 +31,7 @@ const computedClass = computed(() => {
     secondary: 'btn-secondary',
     danger: 'btn-danger',
     toolbar: "btn-toolbar",
+    dashed: "btn-dashed",
   }
 
   const sizes: Record<ButtonSize, string> = {

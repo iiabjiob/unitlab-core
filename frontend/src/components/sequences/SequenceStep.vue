@@ -1,41 +1,42 @@
 <template>
-  <li
-    class="flex items-center gap-2 group"
-    :class="error ? 'text-red-600' : ''"
-  >
+  <li class="flex items-center gap-2 group py-1">
+    <!-- Drag handle -->
     <slot name="prefix" />
 
-    <!-- Completion marker -->
-    <span
-      class="inline-flex h-4 w-4 items-center justify-center rounded border flex-shrink-0"
-      :class="[
-        completed
-          ? 'bg-green-500 border-green-500'
-          : error
-            ? 'bg-red-100 border-red-500'
-            : 'bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600'
-      ]"
-    >
-      <span v-if="completed" class="text-[10px] text-white">✓</span>
-      <span v-else-if="error" class="text-[10px] text-red-600">!</span>
+    <!-- Step number -->
+    <span class="font-mono text-xs text-neutral-500 w-6 text-right">
+      {{ index + 1 }}
     </span>
 
-    <span class="font-mono text-xs text-neutral-500">#{{ index + 1 }}</span>
-    <span class="flex-1 text-sm">{{ description }}</span>
-    <span v-if="error" class="text-xs italic ml-2">({{ error }})</span>
+    <!-- Description -->
+    <span class="flex-1 text-sm">
+      {{ description }}
+    </span>
 
-    <!-- Delete button (visible only on hover) -->
+    <!-- Result icon -->
+    <span v-if="completed" class="text-green-600">
+      <!-- <SuccessIcon size="16" /> -->
+      ✅
+    </span>
+    <span v-else-if="error" class="text-red-600">
+      <!-- <FailIcon size="16" /> -->
+      ⚠️
+    </span>
+
+    <!-- Delete button (on hover only) -->
     <button
-      @click="$emit('delete')"
-      class="opacity-0 group-hover:opacity-100 transition-opacity text-neutral-400 hover:text-red-600 cursor-pointer"
+      @click.stop="$emit('delete')"
+      class="opacity-0 group-hover:opacity-100 transition-opacity text-neutral-400 hover:text-red-600 cursor-pointer ml-2"
     >
-      <TrashIcon size="14"/>
+      <TrashIcon size="14" />
     </button>
   </li>
 </template>
 
 <script setup lang="ts">
-import TrashIcon from '../icons/TrashIcon.vue';
+import TrashIcon from "../icons/TrashIcon.vue"
+import SuccessIcon from "../icons/SuccessIcon.vue";
+import FailIcon from "../icons/FailIcon.vue";
 
 const props = defineProps<{
   index: number

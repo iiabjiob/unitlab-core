@@ -48,3 +48,8 @@
 .btn-toolbar-active {
   @apply bg-neutral-200 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100;
 }
+
+.btn-dashed {
+  @apply border border-dashed border-neutral-400 text-neutral-500 
+         hover:text-neutral-700 rounded bg-transparent;
+}

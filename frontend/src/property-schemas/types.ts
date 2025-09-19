@@ -44,6 +44,7 @@ export interface UnitPropertyField<T> {
   display?: (item: T) => string | number
 }
 
+// bitmask
 export interface BitmaskPropertyField<T> {
   key: string
   label: string
@@ -51,6 +52,7 @@ export interface BitmaskPropertyField<T> {
   type: typeof PROPERTY_FIELD_TYPES.BITMASK
   visible?: (item: T) => boolean
   display?: (item: T) => string | number
+  resolveChannelCount: (item: T) => number
 }
 
 // channel

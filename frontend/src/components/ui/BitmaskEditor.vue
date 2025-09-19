@@ -1,35 +1,22 @@
 <template>
   <div class="space-y-2">
     <!-- Controls -->
-    <div class="flex justify-start gap-2 text-xs">
-      <button
-        type="button"
-        class="px-2 py-0.5 border rounded-sm
-               bg-neutral-100 dark:bg-neutral-800
-               hover:bg-neutral-200 dark:hover:bg-neutral-700"
-        @click="selectAll"
-      >
+    <div v-if="channelCount>0" class="flex justify-start gap-2 text-xs">
+      <UiButton type="toolbar" size="xs" @click="selectAll">
         all
-      </button>
-      <button
-        type="button"
-        class="px-2 py-0.5 border rounded-sm
-               bg-neutral-100 dark:bg-neutral-800
-               hover:bg-neutral-200 dark:hover:bg-neutral-700"
-        @click="clearAll"
-      >
+      </UiButton>
+
+      <UiButton type="toolbar" size="xs" @click="clearAll">
         clear
-      </button>
-      <button
-        type="button"
-        class="px-2 py-0.5 border rounded-sm
-               bg-neutral-100 dark:bg-neutral-800
-               hover:bg-neutral-200 dark:hover:bg-neutral-700"
-        @click="invertAll"
-      >
+      </UiButton>
+
+      <UiButton type="toolbar" size="xs" @click="invertAll">
         invert
-      </button>
+      </UiButton>
     </div>
+    <span v-else class="text-xs text-neutral-500">
+      unit not found
+    </span>
 
     <!-- Dynamic grid -->
     <div :class="`grid gap-1 text-xs ${gridColsClass}`">
@@ -51,6 +38,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue"
+import UiButton from "./UiButton.vue";
 
 const props = defineProps<{
   modelValue?: number

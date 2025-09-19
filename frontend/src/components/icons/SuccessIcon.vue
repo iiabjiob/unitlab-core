@@ -1,17 +1,17 @@
 <template>
   <svg
-    xmlns="http://www.w3.org/2000/svg"
     :width="size"
     :height="size"
     viewBox="0 0 20 20"
     fill="currentColor"
+    xmlns="http://www.w3.org/2000/svg"
     :class="cls"
   >
     <path
       fill-rule="evenodd"
       clip-rule="evenodd"
-      d="M33.707,8,40.854.854a.5.5,0,0,0-.708-.708L33,7.293,25.854.146a.5.5,0,0,0-.708.708L32.293,8l-7.147,7.146a.5.5,0,0,0,.708.708L33,8.707l7.146,7.147a.5.5,0,0,0,.708-.708Z"
-      transform="translate(-23 2)"
+      d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893
+         7.48-9.817a.75.75 0 011.05-.143z"
     />
   </svg>
 </template>

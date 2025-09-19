@@ -22,7 +22,7 @@
     >
       <!-- Options for select -->
       <option
-        v-if="field.type === 'select'"
+        v-if="field.type === PROPERTY_FIELD_TYPES.SELECT"
         v-for="opt in (field as any).options"
         :key="opt"
         :value="opt"
@@ -36,7 +36,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import { fieldEditors } from "@/property-schemas/fieldEditors";
-import type { PropertyField } from "@/property-schemas/types";
+import { PROPERTY_FIELD_TYPES, type PropertyField } from "@/property-schemas/types";
 
 const props = defineProps<{
   field: PropertyField<any>
@@ -54,20 +54,29 @@ const editor = computed(() => fieldEditors[props.field.type] ?? "span")
 // Generate props for editor
 const inputProps = computed(() => {
   const f = props.field
-  const common = { name: f.key }
+  const common = {
+    name: f.key,
+    autocomplete: "off"
+  }
 
   switch (f.type) {
-    case "string":
+    case PROPERTY_FIELD_TYPES.STRING:
       return { ...common, type: "text", value: props.value, disabled: !f.editable }
-    case "number":
+    case PROPERTY_FIELD_TYPES.NUMBER:
       return { ...common, type: "number", value: props.value, disabled: !f.editable }
-    case "boolean":
+    case PROPERTY_FIELD_TYPES.BOOLEAN:
       return { ...common, type: "checkbox", checked: props.value, disabled: !f.editable }
-    case "select":
-    case "unit":
-    case "bitmask":
-    case "channel":
-      return { ...common, modelValue: props.value }
+    case PROPERTY_FIELD_TYPES.SELECT:
+    case PROPERTY_FIELD_TYPES.UNIT:
+    case PROPERTY_FIELD_TYPES.CHANNEL:
+      return { ...common, modelValue: props.value, disabled: !f.editable }
+    case PROPERTY_FIELD_TYPES.BITMASK:
+      return {
+        ...common,
+        modelValue: props.value,
+        channelCount: f.resolveChannelCount(props.item),
+        disabled: !f.editable,
+      }
     default:
       return {}
   }
@@ -79,8 +88,8 @@ function onChange(e: Event) {
   const target = e.target as HTMLInputElement
   let value: any = target.value
 
-  if (f.type === "boolean") value = target.checked
-  if (f.type === "number") value = target.value === "" ? null : Number(target.value)
+  if (f.type === PROPERTY_FIELD_TYPES.BOOLEAN) value = target.checked
+  if (f.type === PROPERTY_FIELD_TYPES.NUMBER) value = target.value === "" ? null : Number(target.value)
 
   emit("commit", f, value)
 }
