@@ -1,6 +1,17 @@
 <template>
   <div class="p-3">
-    <SequencesToolbar/>
+    <SequencesToolbar
+      :importing="importing"
+      @add="onAdd"
+      @import="openFileDialog"
+    />
+    <input
+      ref="fileInput"
+      type="file"
+      accept="application/json"
+      class="hidden"
+      @change="onFileSelected"
+    />
   </div>
   <div class="flex-1 p-3">
     <div class="flex flex-wrap gap-4">
@@ -28,9 +39,12 @@ import SequenceCard from "@/components/sequences/SequenceCard.vue"
 import SelectableCard from "@/components/ui/SelectableCard.vue"
 import type { SequenceDef } from "@/types/sequences"
 import SequencesToolbar from "@/components/toolbars/SequencesToolbar.vue"
+import { useSequenceImport } from "@/composables/useSequenceImport"
 
 const store = useSequenceStore()
 const selection = useSelectionStore()
+
+const { importing, fileInput, openFileDialog, onFileSelected } = useSequenceImport()
 
 function select(item: SequenceDef) {
   selection.select({ type: "sequence", key: item.id })
@@ -38,6 +52,15 @@ function select(item: SequenceDef) {
 
 function onExport(seq: SequenceDef) {
   window.open(`/api/sequences/${seq.id}/export-file`, "_blank")
+}
+
+async function onAdd() {
+  const seq = await store.createSequence({
+    name: "New Sequence",
+    description: "Draft sequence",
+    steps: [],
+  })
+  selection.select({ type: "sequence", key: seq.id })
 }
 
 async function onDelete(seq: SequenceDef) {

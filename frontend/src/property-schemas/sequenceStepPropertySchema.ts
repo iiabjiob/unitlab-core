@@ -25,6 +25,7 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       type: PROPERTY_FIELD_TYPES.SELECT,
       options: Object.values(StepKind) as StepKind[],
       display: (s) => s.kind ?? "n/a",
+      required: true,
     },
 
     // WAIT

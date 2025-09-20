@@ -2,8 +2,6 @@ import {
   WSAction,
   CmdMode,
   type WSMessage,
-  type SetDoCommandMessage,
-  type SetAoCommandMessage,
 } from "@/types/ws/messages"
 import { StepKind, type SequenceStep } from "@/types/sequences"
 
