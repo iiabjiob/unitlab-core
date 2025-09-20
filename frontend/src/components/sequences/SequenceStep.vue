@@ -1,5 +1,5 @@
 <template>
-  <li class="flex items-center gap-2 group py-1">
+  <li class="flex items-center gap-3 group py-1">
     <!-- Drag handle -->
     <slot name="prefix" />
 
@@ -35,8 +35,6 @@
 
 <script setup lang="ts">
 import TrashIcon from "../icons/TrashIcon.vue"
-import SuccessIcon from "../icons/SuccessIcon.vue";
-import FailIcon from "../icons/FailIcon.vue";
 
 const props = defineProps<{
   index: number

@@ -6,6 +6,7 @@ import { getLogger } from "@/utils/logger"
 import { describeStep, toWSMessage } from "@/utils/sequenceUtils"
 import axios from "axios"
 import { ApiBuilder } from "@/utils/api"
+import { useValidationStore } from "./validationStore"
 
 const logger = getLogger("SEQ")
 
@@ -158,6 +159,26 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     return ensureState(seq).lastError !== null
   }
 
+  function hasBlockingErrors(seq: SequenceDef): boolean {
+    const validation = useValidationStore()
+
+    return validation.errors.some(err => {
+      if (err.level === "warning") return false
+
+      // ошибка на сам sequence
+      if (err.schemaName === "sequence" && err.itemId === seq.id) {
+        return true
+      }
+
+      // ошибка на шаги sequence
+      if (err.schemaName === "sequence_step") {
+        return seq.steps.some(step => step.id === err.itemId)
+      }
+
+      return false
+    })
+  }
+
   async function execStep(
     step: SequenceStep,
     ws: ReturnType<typeof useWebSocketStore>
@@ -281,6 +302,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     isRunning,
     isCompleted,
     hasError,
+    hasBlockingErrors,
     addStep,
     updateStep,
     deleteStep,

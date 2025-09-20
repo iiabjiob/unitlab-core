@@ -9,6 +9,7 @@
       :schema="sequenceStepPropertySchema"
       :item="st"
       :item-id="st.id"
+      schema-name="sequence_step"
       @update="(key, value) => sequenceStepPropertySchema.update(st, key as keyof SequenceStep, value)"
     />
   </div>

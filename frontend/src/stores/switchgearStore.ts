@@ -5,6 +5,7 @@ import axios from "axios"
 import { ApiBuilder } from "@/utils/api"
 import { getLogger } from "@/utils/logger"
 import { useChannelStore } from "./channelStore"
+import { runGlobalValidation } from "@/property-schemas/runValidation"
 
 const logger = getLogger("SG")
 
@@ -29,6 +30,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
       const { data } = await axios.get<Switchgear[]>(ApiBuilder.switchgears())
       switchgears.value = data
       logger.info(`📡 Loaded ${data.length} switchgears`)
+
     } catch (err) {
       logger.error("💥 Failed to fetch switchgears:", err)
     }

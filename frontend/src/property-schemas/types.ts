@@ -21,6 +21,9 @@ export interface BasePropertyField<T> {
   type: typeof PROPERTY_FIELD_TYPES.STRING | typeof PROPERTY_FIELD_TYPES.NUMBER | typeof PROPERTY_FIELD_TYPES.BOOLEAN
   visible?: (item: T) => boolean
   display?: (item: T) => string | number
+
+  required?: boolean
+  validate?: (value: any, item: T) => string | null // return error message or null
 }
 
 // select
@@ -32,6 +35,9 @@ export interface SelectPropertyField<T, O extends string = string> {
   options: readonly O[]
   visible?: (item: T) => boolean
   display?: (item: T) => string | number
+
+  required?: boolean
+  validate?: (value: any, item: T) => string | null
 }
 
 // unit
@@ -42,6 +48,9 @@ export interface UnitPropertyField<T> {
   type: typeof PROPERTY_FIELD_TYPES.UNIT
   visible?: (item: T) => boolean
   display?: (item: T) => string | number
+
+  required?: boolean
+  validate?: (value: any, item: T) => string | null
 }
 
 // bitmask
@@ -53,6 +62,9 @@ export interface BitmaskPropertyField<T> {
   visible?: (item: T) => boolean
   display?: (item: T) => string | number
   resolveChannelCount: (item: T) => number
+
+  required?: boolean
+  validate?: (value: any, item: T) => string | null
 }
 
 // channel
@@ -64,6 +76,9 @@ export interface ChannelPropertyField<T> {
   channelType: ChannelType
   visible?: (item: T) => boolean
   display?: (item: T) => string | number
+
+  required?: boolean
+  validate?: (value: any, item: T) => string | null
 }
 
 // custom
@@ -76,6 +91,9 @@ export interface CustomPropertyField<T> {
   props?: Record<string, any> | ((item: T) => Record<string, any>)
   visible?: (item: T) => boolean
   display?: (item: T) => string | number
+
+  required?: boolean
+  validate?: (value: any, item: T) => string | null
 }
 
 // Common union

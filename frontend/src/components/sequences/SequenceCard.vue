@@ -27,12 +27,21 @@
         size="sm"
         type="secondary"
         @click.stop="onStartStop"
-        :disabled="!sequence.steps.length"
+        :disabled="!sequence.steps.length || store.hasBlockingErrors(sequence)"
       >
         {{ st.status === "running" ? "Stop" : "Start" }}
       </UiButton>
 
-      <BadgeComponent class="text-xs">{{ statusLabel }}</BadgeComponent>
+      <UiButton
+        type="secondary"
+        size="sm"
+        @click.stop="onReset"
+        :disabled="!sequence.steps.length || store.hasBlockingErrors(sequence) || st.status === 'running' || st.status === 'idle'"
+        >
+        Reset
+      </UiButton>
+
+      <BadgeComponent :variant="statusVariant" class="text-xs">{{ statusLabel }}</BadgeComponent>
     </div>
 
     <!-- Progress bar -->
@@ -60,7 +69,7 @@
         >
           <!-- Добавляем иконку для drag -->
           <template #prefix>
-            <span class="drag-handle cursor-grab text-neutral-400 mr-1">⋮⋮</span>
+            <span class="drag-handle cursor-grab text-neutral-500">⋮⋮</span>
           </template>
         </SequenceStep>
       </template>
@@ -76,7 +85,7 @@
   <div class="mt-2 relative overflow-visible">
     <AddStepButton
       :kinds="availableKinds"
-      @add="addStep"
+      @add="addDefault"
     />
   </div>
 
@@ -118,6 +127,11 @@ async function onStartStop() {
   }
 }
 
+async function onReset() {
+
+  store.resetState(props.sequence)
+}
+
 function onReorder() {
   const newOrder = props.sequence.steps
   .map(s => s.id)
@@ -143,4 +157,25 @@ async function addStep(kind: StepKind) {
   }
   await store.addStep(props.sequence.id, newStep)
 }
+
+async function addDefault(kind: StepKind) {
+
+  const newStep: SequenceStepCreate = {
+    kind: StepKind.WAIT,
+    unit_id: null,
+    payload: { ms: 500 },
+  }
+  await store.addStep(props.sequence.id, newStep)
+}
+
+const statusVariant = computed(() => {
+  switch (st.value.status) {
+    case "idle": return "neutral"
+    case "running": return "info"
+    case "completed": return "success"
+    case "stopped": return "danger"
+    default: return "neutral"
+  }
+})
+
 </script>

@@ -10,6 +10,8 @@
           :item="item"
           :index="idx"
           :value="getValue(field)"
+          :schema-name="schemaName"
+          :item-id="item.id"
           @commit="commit"
         />
       </tbody>
@@ -33,6 +35,7 @@ import type { CustomPropertyField, PropertyField, PropertySchema } from "@/prope
 const props = defineProps<{
   schema: PropertySchema<any>
   item: Record<string, any>
+  schemaName?: string
 }>()
 
 const emit = defineEmits<{

@@ -20,7 +20,7 @@ const props = withDefaults(defineProps<{
   barClass?: string      // extra styles for inner bar
 }>(), {
   wrapperClass: "",
-  barClass: "bg-neutral-600",
+  barClass: "bg-blue-500",
 })
 
 const clampedValue = computed(() => Math.min(100, Math.max(0, props.value)))

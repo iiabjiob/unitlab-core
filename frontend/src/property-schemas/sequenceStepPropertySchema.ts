@@ -58,6 +58,7 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       type: PROPERTY_FIELD_TYPES.SELECT,
       options: ON_OFF_OPTIONS,
       visible: (s) => s.kind === StepKind.DO_LATCH,
+      required: true,
     },
 
     // --- DO_PULSE ---
@@ -74,7 +75,8 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       editable: true,
       type: PROPERTY_FIELD_TYPES.CHANNEL,
       channelType: CHANNEL_TYPES.DO,
-      visible: (s) => s.kind === StepKind.DO_PULSE
+      visible: (s) => s.kind === StepKind.DO_PULSE,
+      required: true,
     },
     {
       key: "payload.value",
@@ -83,6 +85,7 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       type: PROPERTY_FIELD_TYPES.SELECT,
       options: ON_OFF_OPTIONS,
       visible: (s) => s.kind === StepKind.DO_PULSE,
+      required: true,
     },
     {
       key: "payload.pulse_ms",
@@ -90,6 +93,7 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       editable: true,
       type: PROPERTY_FIELD_TYPES.NUMBER,
       visible: (s) => s.kind === StepKind.DO_PULSE,
+      required: true,
     },
 
     // --- DO_BITMASK ---
@@ -99,6 +103,7 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       editable: true,
       type: PROPERTY_FIELD_TYPES.UNIT,
       visible: (s) => s.kind === StepKind.DO_BITMASK,
+      required: true,
     },
     {
       key: "payload.bitmask",
@@ -127,14 +132,16 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       editable: true,
       type: PROPERTY_FIELD_TYPES.CHANNEL,
       channelType: CHANNEL_TYPES.DO,
-      visible: (s) => s.kind === StepKind.DO_PAIR
+      visible: (s) => s.kind === StepKind.DO_PAIR,
+      required: true,
     },
     { key: "payload.chB",
       label: "Channel B",
       editable: true,
       type: PROPERTY_FIELD_TYPES.CHANNEL,
       channelType: CHANNEL_TYPES.DO,
-      visible: (s) => s.kind === StepKind.DO_PAIR
+      visible: (s) => s.kind === StepKind.DO_PAIR,
+      required: true,
     },
     {
       key: "payload.state2b",
@@ -146,7 +153,8 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       display: (s) => {
         const entry = Object.entries(SWITCHGEAR_CODE).find(([_, v]) => v === s.payload?.state2b)
         return entry?.[0] ?? "UNKNOWN"
-      }
+      },
+      required: true,
     },
 
     // --- AO_SET ---
@@ -163,14 +171,16 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       editable: true,
       type: PROPERTY_FIELD_TYPES.CHANNEL,
       channelType: CHANNEL_TYPES.AO,
-      visible: (s) => s.kind === StepKind.AO_SET
+      visible: (s) => s.kind === StepKind.AO_SET,
+      required: true,
     },
     {
       key: "payload.value",
       label: "Value (4–20 mA)",
       editable: true,
       type: PROPERTY_FIELD_TYPES.NUMBER,
-      visible: (s) => s.kind === StepKind.AO_SET
+      visible: (s) => s.kind === StepKind.AO_SET,
+      required: true,
     },
   ],
 

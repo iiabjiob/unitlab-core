@@ -17,14 +17,16 @@ export const switchgearPropertySchema: PropertySchema<Switchgear> = {
       label: "DO Open",
       editable: true,
       type: PROPERTY_FIELD_TYPES.CHANNEL,
-      channelType: CHANNEL_TYPES.DO
+      channelType: CHANNEL_TYPES.DO,
+      required: true,
     },
     {
       key: "do_closed",
       label: "DO Closed",
       editable: true,
       type: PROPERTY_FIELD_TYPES.CHANNEL,
-      channelType: CHANNEL_TYPES.DO
+      channelType: CHANNEL_TYPES.DO,
+      required: true,
     },
     {
       key: "di_open",
