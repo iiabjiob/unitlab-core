@@ -1,5 +1,8 @@
 <template>
   <div class="h-full flex flex-col">
+    <div class="p-3">
+      <DevicesToolbar/>
+    </div>
     <!-- Контент -->
     <div class="flex-1 overflow-auto p-3">
       <div v-if="deviceStore.isLoading">Loading...</div>
@@ -39,6 +42,7 @@ import { useSelectionStore } from "@/stores/selectionStore"
 import DeviceCard from "@/components/devices/DeviceCard.vue"
 import SelectableCard from "@/components/ui/SelectableCard.vue"
 import type { Device } from "@/types/device"
+import DevicesToolbar from "@/components/toolbars/DevicesToolbar.vue"
 
 const deviceStore = useDeviceStore()
 const filterStore = useDeviceFilterStore()

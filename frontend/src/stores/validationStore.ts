@@ -1,6 +1,6 @@
 // src/stores/validationStore.ts
 import { defineStore } from "pinia"
-import { ref } from "vue"
+import { computed, ref } from "vue"
 import type { ValidationError } from "@/property-schemas/validation"
 
 export const useValidationStore = defineStore("validationStore", () => {
@@ -9,6 +9,7 @@ export const useValidationStore = defineStore("validationStore", () => {
   // UI state
   const showValidator = ref(false)
   const panelHeight = ref(160) // default size
+  const showErrorsOnly = ref(false)
 
   function setErrors(newErrors: ValidationError[]) {
     errors.value = newErrors
@@ -34,8 +35,18 @@ export const useValidationStore = defineStore("validationStore", () => {
     panelHeight.value = h
   }
 
+  const errorsCount = computed(() =>
+    errors.value.filter(e => e.level !== "warning").length
+  )
+  const warningsCount = computed(() =>
+    errors.value.filter(e => e.level === "warning").length
+  )
+
   return {
     errors,
+    errorsCount,
+    warningsCount,
+    showErrorsOnly,
     showValidator,
     panelHeight,
     setErrors,
@@ -45,6 +56,5 @@ export const useValidationStore = defineStore("validationStore", () => {
     setPanelHeight,
   }
 }, {
-
   persist: true,
 })

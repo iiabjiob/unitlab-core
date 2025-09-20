@@ -17,11 +17,6 @@
       <!-- Center workspace (main + bottom log) -->
       <div class="flex-1 flex flex-col overflow-hidden">
 
-        <!-- UiToolbar -->
-        <div v-if="meta.toolbar && meta.toolbarComponent" class="ignore-selection p-3">
-          <component :is="meta.toolbarComponent" class="bg-white dark:bg-neutral-800" />
-        </div>
-
         <!-- Main content -->
         <div class="flex-1 overflow-auto">
           <RouterView />
@@ -79,20 +74,7 @@
             No item selected
           </div>
 
-          <!-- Toggle bar -->
-          <div
-            class="flex items-center justify-between px-3 py-1 text-xs border-t border-neutral-300 dark:border-neutral-700 bg-neutral-200 dark:bg-neutral-700 cursor-pointer"
-            @click="validation.toggleValidator"
-          >
-            <div class="flex items-center gap-2">
-              <h4 class="font-bold text-sm">Validator</h4>
-              <span class="text-red-700 dark:text-red-300">🛑 {{ errorsCount }}</span>
-              <span class="text-yellow-700 dark:text-yellow-300">⚠️ {{ warningsCount }}</span>
-            </div>
-            <span class="text-neutral-600 dark:text-neutral-300">
-              {{ validation.showValidator ? "Hide" : "Show" }}
-            </span>
-          </div>
+
 
           <!-- Panel -->
           <ResizablePanel
@@ -105,7 +87,13 @@
             :maxSize="300"
             @resize-end="validation.setPanelHeight"
           >
-            <ValidatorPanel :errors="allErrors" @focus-field="focusField" />
+            <ValidatorToggle
+              :errors-count="validation.errorsCount"
+              :warnings-count="validation.warningsCount"
+              :show-validator="validation.showValidator"
+              @toggle="validation.toggleValidator"
+            />
+            <ValidatorPanel :errors="validation.errors" @focus-field="focusField" />
           </ResizablePanel>
         </div>
       </ResizablePanel>
@@ -115,7 +103,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
-import { useRoute, useRouter } from "vue-router"
+import { useRoute } from "vue-router"
 
 import AppAside from "./DesktopAside.vue"
 import ResizablePanel from "../ui/ResizablePanel.vue"
@@ -125,9 +113,7 @@ import { useSelectionStore } from "@/stores/selectionStore"
 import { updateEntity } from "@/property-schemas/updateEntity"
 import { resolveSchema } from "@/property-schemas/propertySchemas"
 import { useSelectionOutside } from "@/composables/useSelectionOutside"
-import { useValidationStore } from "@/stores/validationStore"
-import ValidatorPanel from "../ValidatorPanel.vue"
-import type { ValidationError } from "@/property-schemas/validation"
+import ValidatorPanel from "../validator/ValidatorPanel.vue"
 
 useSelectionOutside()
 
@@ -159,17 +145,9 @@ watch(
   }
 )
 
-const showValidator = ref(false)
-
+import { useValidationStore } from "@/stores/validationStore"
+import ValidatorToggle from "../validator/ValidatorToggle.vue"
 const validation = useValidationStore()
-const allErrors = computed(() => validation.errors)
-
-const errorsCount = computed(() =>
-  allErrors.value.filter(e => e.level !== "warning").length
-)
-const warningsCount = computed(() =>
-  allErrors.value.filter(e => e.level === "warning").length
-)
 
 const route = useRoute()
 const meta = computed(() => ({

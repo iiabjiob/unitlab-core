@@ -1,4 +1,4 @@
-<!-- src/components/ui/BadgeComponent.vue -->
+<!-- src/components/ui/UiBadge.vue -->
 <template>
   <span
     :class="[

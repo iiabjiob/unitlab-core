@@ -12,8 +12,8 @@
 
       <!-- меню действий -->
       <SequenceMenu
-        @export="$emit('export')"
-        @delete="onDelete"
+        @export="$emit('export', props.sequence)"
+        @delete="$emit('delete', props.sequence)"
       />
     </div>
 
@@ -41,7 +41,7 @@
         Reset
       </UiButton>
 
-      <BadgeComponent :variant="statusVariant" class="text-xs">{{ statusLabel }}</BadgeComponent>
+      <UiBadge :variant="statusVariant" class="text-xs">{{ statusLabel }}</UiBadge>
     </div>
 
     <!-- Progress bar -->
@@ -95,7 +95,7 @@
 import { computed } from "vue"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { type SequenceDef, type SequenceStepCreate, StepKind } from "@/types/sequences"
-import BadgeComponent from "@/components/ui/BadgeComponent.vue"
+import UiBadge from "@/components/ui/UiBadge.vue"
 import UiButton from "../ui/UiButton.vue"
 import ProgressBar from "../ui/ProgressBar.vue"
 import SequenceMenu from "./SequenceMenu.vue"
@@ -105,6 +105,11 @@ import AddStepButton from "./AddStepButton.vue"
 
 const props = defineProps<{ sequence: SequenceDef }>()
 const store = useSequenceStore()
+
+const emit = defineEmits<{
+  (e: "export", seq: SequenceDef): void
+  (e: "delete", seq: SequenceDef): void
+}>()
 
 const st = computed(() => store.ensureState(props.sequence))
 
@@ -142,21 +147,8 @@ function onReorder() {
   store.resetState(props.sequence)
 }
 
-function onDelete() {
-  store.deleteSequence(props.sequence.id)
-}
-
 // доступные типы шагов (потом можно вынести в конфиг)
 const availableKinds: StepKind[] = Object.values(StepKind)
-
-async function addStep(kind: StepKind) {
-  const newStep: SequenceStepCreate = {
-    kind,
-    unit_id: null,
-    payload: {}
-  }
-  await store.addStep(props.sequence.id, newStep)
-}
 
 async function addDefault(kind: StepKind) {
 

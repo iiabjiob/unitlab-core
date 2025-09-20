@@ -1,6 +1,15 @@
-<!-- src/components/editor/Workspace.vue -->
 <template>
+
+  <div class="p-3">
+    <SwitchgearsToolbar
+      @add="onAdd"
+      @save="onSave"
+      @load="onLoad"
+    />
+  </div>
+
   <div class="flex-1 overflow-auto p-3">
+
     <div class="flex flex-wrap gap-4">
       <div
         v-for="item in switchgearStore.switchgears"
@@ -19,7 +28,7 @@
             :do_closed="item.do_closed"
             :di_open="item.di_open"
             :di_close="item.di_close"
-            @delete="remove(item.id)"
+            @delete="onDelete(item)"
           />
         </SelectableCard>
       </div>
@@ -33,30 +42,48 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from "vue"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useSelectionStore } from "@/stores/selectionStore"
 import type { Switchgear } from "@/types/switchgear"
 
 import SwitchgearCard from "@/components/switchgear/SwitchgearCard.vue"
 import SelectableCard from "@/components/ui/SelectableCard.vue"
+import SwitchgearsToolbar from "@/components/toolbars/SwitchgearsToolbar.vue"
 
 const switchgearStore = useSwitchgearStore()
 const selection = useSelectionStore()
-
-onMounted(() => {
-  // загружаем список при инициализации
-  switchgearStore.fetchAll()
-})
 
 function select(item: Switchgear) {
   selection.select({ type: "switchgear", key: item.id })
 }
 
-function remove(id: number) {
-  switchgearStore.remove(id)
-  if (selection.selected?.type === "switchgear" && selection.selected.key === id) {
-    selection.clear()
+async function onAdd() {
+  const sg = await switchgearStore.create({
+    kind: "switchgear",
+    title: "Switchgear",
+    do_open: null,
+    do_closed: null,
+    di_open: null,
+    di_close: null,
+    feedback_delay_ms: 0,
+  })
+  selection.select({ type: "switchgear", key: sg.id })
+}
+
+async function onSave() {
+  //
+}
+
+async function onLoad() {
+  //
+}
+
+function onDelete(item: Switchgear) {
+  if (confirm(`Delete Switchgear ${item.title}?`)) {
+    switchgearStore.remove(item.id)
+    if (selection.selected?.type === "switchgear" && selection.selected.key === item.id) {
+      selection.clear()
+    }
   }
 }
 </script>

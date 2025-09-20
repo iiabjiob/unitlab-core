@@ -9,18 +9,10 @@ import SwitchgearView from "@/views/SwitchgearView.vue"
 import SignalListView from "@/views/SignalListView.vue"
 import SequencesView from "@/views/SequencesView.vue"
 import SettingsView from "@/views/SettingsView.vue"
-import DashboardToolbar from "@/components/toolbars/DashboardToolbar.vue"
-import DevicesToolbar from "@/components/toolbars/DevicesToolbar.vue"
-import SwitchgearsToolbar from "@/components/toolbars/SwitchgearsToolbar.vue"
-import SignalListToolbar from "@/components/toolbars/SignalListToolbar.vue"
-import SequencesToolbar from "@/components/toolbars/SequencesToolbar.vue"
-import SettingsToolbar from "@/components/toolbars/SettingsToolbar.vue"
-import EventsToolbar from "@/components/toolbars/EventsToolbar.vue"
 
 // Default layout meta (used by most screens)
 const defaultMeta = {
   // Layout chrome toggles
-  toolbar: true,
   leftAside: true,
   rightAside: true,
   bottomAside: true,
@@ -40,7 +32,6 @@ const router = createRouter({
       component: HomeView,
       meta: {
         ...defaultMeta,
-        toolbarComponent: DashboardToolbar,
         // example: dashboard usually needs full chrome
       },
     },
@@ -50,7 +41,6 @@ const router = createRouter({
       component: DevicesView,
       meta: {
         ...defaultMeta,
-        toolbarComponent: DevicesToolbar,
       },
 
     },
@@ -60,7 +50,6 @@ const router = createRouter({
       component: SwitchgearView,
       meta: {
         ...defaultMeta,
-        toolbarComponent: SwitchgearsToolbar,
       },
     },
     {
@@ -69,7 +58,6 @@ const router = createRouter({
       component: SignalListView,
       meta: {
         ...defaultMeta,
-        toolbarComponent: SignalListToolbar,
       },
     },
     {
@@ -78,7 +66,6 @@ const router = createRouter({
       component: SequencesView,
       meta: {
         ...defaultMeta,
-        toolbarComponent: SequencesToolbar,
       },
     },
     {
@@ -87,7 +74,6 @@ const router = createRouter({
       component: SettingsView,
       meta: {
         ...defaultMeta,
-        toolbarComponent: SettingsToolbar,
       },
     },
 
@@ -101,7 +87,6 @@ const router = createRouter({
         leftAside: true,
         rightAside: false,
         bottomAside: false,
-        toolbarComponent: EventsToolbar,
       },
     },
 
