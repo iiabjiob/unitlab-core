@@ -1,7 +1,7 @@
 import { nextTick } from "vue"
 import { useRouter } from "vue-router"
 import { useSelectionStore } from "@/stores/selectionStore"
-import type { ValidationError } from "@/validators/types"
+import { VALIDATION_LEVELS, type ValidationError } from "@/validators/types"
 import { SCHEMA_NAMES } from "@/property-schemas/types"
 
 export function useFocusField() {
@@ -75,7 +75,7 @@ export function useFocusField() {
 
     // 6. Highlight
     const target = row.querySelector(".label-cell") || row
-    if (err.level === "warning") {
+    if (err.level === VALIDATION_LEVELS.WARNING) {
       target.classList.add("validation-focus-warning")
       setTimeout(() => target.classList.remove("validation-focus-warning"), 2000)
     } else {

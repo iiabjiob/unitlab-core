@@ -11,7 +11,7 @@
           ? 'bg-neutral-200 dark:bg-neutral-700 font-bold'
           : 'hover:bg-neutral-100 dark:hover:bg-neutral-900'
       ]"
-      @click="themeStore.setMode(opt.value)"
+      @click.stop="themeStore.setMode(opt.value)"
     >
       {{ opt.label }}
     </button>

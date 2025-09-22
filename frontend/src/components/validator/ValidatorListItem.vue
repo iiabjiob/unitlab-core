@@ -15,7 +15,7 @@
     >
       ⚠️
     </span>
-    <span>[{{ error.schemaName }} #{{ error.itemId }}] – {{ error.message }}</span>
+    <span>[{{ error.schemaName }}] – {{ error.message }}</span>
   </li>
 </template>
 

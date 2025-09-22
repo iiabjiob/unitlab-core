@@ -1,5 +1,6 @@
 import type { SchemaName } from "@/property-schemas/types"
 import { useValidationStore } from "@/stores/validationStore"
+import { VALIDATION_LEVELS } from "@/validators/types"
 
 export function useValidationHelpers() {
   const store = useValidationStore()
@@ -26,8 +27,8 @@ export function useValidationHelpers() {
     const errs = getErrors(schemaName, itemId, fieldKey)
     if (!errs.length) return ""
 
-    if (errs.some(e => e.level === "error")) return "validation-error"
-    if (errs.some(e => e.level === "warning")) return "validation-warning"
+    if (errs.some(e => e.level === VALIDATION_LEVELS.ERROR)) return "validation-error"
+    if (errs.some(e => e.level === VALIDATION_LEVELS.WARNING)) return "validation-warning"
     return ""
   }
 

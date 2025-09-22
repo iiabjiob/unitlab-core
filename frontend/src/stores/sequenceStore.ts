@@ -14,6 +14,7 @@ import { describeStep, toWSMessage } from "@/utils/sequenceUtils"
 import axios from "axios"
 import { ApiBuilder } from "@/utils/api"
 import { useValidationStore } from "./validationStore"
+import { VALIDATION_LEVELS } from "@/validators/types"
 
 const logger = getLogger("SEQ")
 
@@ -209,7 +210,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   function hasBlockingErrors(seq: SequenceDef): boolean {
     const validation = useValidationStore()
     return validation.errors.some((err) => {
-      if (err.level === "warning") return false
+      if (err.level === VALIDATION_LEVELS.ERROR) return false
       if (err.schemaName === "sequence" && err.itemId === seq.id) return true
       if (err.schemaName === "sequence_step") {
         return seq.steps.some((step) => step.id === err.itemId)

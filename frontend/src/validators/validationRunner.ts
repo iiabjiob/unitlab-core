@@ -1,8 +1,11 @@
 // src/services/validationRunner.ts
 import { useValidationStore } from "@/stores/validationStore"
 import { validateSwitchgear } from "./switchgear"
+import { validateSequinceStep } from "./sequenceStep"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import type { SchemaName } from "@/property-schemas/types"
+import { useSequenceStore } from "@/stores/sequenceStore"
+import { validateSequence } from "./sequence"
 
 type ValidatorFn<T> = (item: T) => any[]
 
@@ -13,8 +16,16 @@ const validators: Record<SchemaName, () => { items: any[]; fn: ValidatorFn<any> 
   },
   device: () => ({ items: [], fn: () => [] }),
   channel: () => ({ items: [], fn: () => [] }),
-  sequence: () => ({ items: [], fn: () => [] }),
-  sequence_step: () => ({ items: [], fn: () => [] }),
+  sequence: () => {
+    const store = useSequenceStore()
+    return { items: store.sequences, fn: validateSequence }
+  },
+  sequence_step: () => {
+    const store = useSequenceStore()
+    // собрать все шаги из всех последовательностей
+    const steps = store.sequences.flatMap(seq => seq.steps ?? [])
+    return { items: steps, fn: validateSequinceStep }
+  },
 }
 
 

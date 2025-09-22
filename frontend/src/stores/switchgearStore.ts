@@ -10,6 +10,7 @@ import { validateSwitchgear } from "@/validators/switchgear"
 import { switchgearPropertySchema } from "@/property-schemas/switchgear.schema"
 import { SCHEMA_NAMES } from "@/property-schemas/types"
 import { clearOne, validateOne } from "@/validators/syncValidation"
+import { VALIDATION_LEVELS } from "@/validators/types"
 
 const logger = getLogger("SG")
 
@@ -59,6 +60,22 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   // Update single field(s)
   async function updateField(id: number, changes: Partial<Switchgear>) {
     try {
+      // Pre-submit validation
+      const current = switchgears.value.find(s => s.id === id)
+      if (!current) return
+
+      // создаём черновик: текущее + изменения
+      const draft = { ...current, ...changes }
+      const preErrors = validateSwitchgear(draft)
+
+      validateOne(SCHEMA_NAMES.SWITCHGEAR, draft, validateSwitchgear)
+
+      // если есть ошибки уровня error → не шлём запрос
+      if (preErrors.some(e => e.level === VALIDATION_LEVELS.ERROR)) {
+        logger.warn(`⚠️ Validation failed for switchgear ${id}`, preErrors)
+        return
+      }
+
       const { data } = await axios.patch<Switchgear>(ApiBuilder.switchgear(id), changes)
       const idx = switchgears.value.findIndex(s => s.id === id)
       if (idx !== -1) {
