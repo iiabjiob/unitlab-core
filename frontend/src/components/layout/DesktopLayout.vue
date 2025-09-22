@@ -76,25 +76,9 @@
 
 
 
-          <!-- Panel -->
-          <ResizablePanel
-            v-if="validation.showValidator"
-            class="ignore-selection bg-neutral-100 dark:bg-neutral-800 border-t border-neutral-300 dark:border-neutral-700"
-            placement="bottom"
-            storageKey="validator-height"
-            :defaultSize="validation.panelHeight"
-            :minSize="100"
-            :maxSize="300"
-            @resize-end="validation.setPanelHeight"
-          >
-            <ValidatorToggle
-              :errors-count="validation.errorsCount"
-              :warnings-count="validation.warningsCount"
-              :show-validator="validation.showValidator"
-              @toggle="validation.toggleValidator"
-            />
-            <ValidatorPanel :errors="validation.errors" @focus-field="focusField" />
-          </ResizablePanel>
+          <!-- Validator Panel -->
+          <ValidatorPanel @focus-field="focusField" />
+
         </div>
       </ResizablePanel>
     </div>
@@ -144,10 +128,6 @@ watch(
     }
   }
 )
-
-import { useValidationStore } from "@/stores/validationStore"
-import ValidatorToggle from "../validator/ValidatorToggle.vue"
-const validation = useValidationStore()
 
 const route = useRoute()
 const meta = computed(() => ({

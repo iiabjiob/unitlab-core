@@ -1,7 +1,8 @@
 import { nextTick } from "vue"
 import { useRouter } from "vue-router"
 import { useSelectionStore } from "@/stores/selectionStore"
-import type { ValidationError } from "@/property-schemas/validation"
+import type { ValidationError } from "@/validators/types"
+import { SCHEMA_NAMES } from "@/property-schemas/types"
 
 export function useFocusField() {
   const router = useRouter()
@@ -9,11 +10,11 @@ export function useFocusField() {
 
   async function focusField(err: ValidationError) {
     const typeMap: Record<string, { type: string; route: string }> = {
-      device:       { type: "device",       route: "/devices" },
-      switchgear:   { type: "switchgear",   route: "/switchgears" },
-      sequence:     { type: "sequence",     route: "/sequences" },
-      sequence_step:{ type: "sequence_step",route: "/sequences" },
-      channel:      { type: "channel",      route: "/devices" },
+      device:       { type: SCHEMA_NAMES.DEVICE,       route: "/devices" },
+      switchgear:   { type: SCHEMA_NAMES.SWITCHGEAR,   route: "/switchgears" },
+      sequence:     { type: SCHEMA_NAMES.SEQUENCE,     route: "/sequences" },
+      sequence_step:{ type: SCHEMA_NAMES.SEQUENCE_STEP,route: "/sequences" },
+      channel:      { type: SCHEMA_NAMES.CHANNEL,      route: "/devices" },
     }
 
     const map = typeMap[err.schemaName]
@@ -74,8 +75,13 @@ export function useFocusField() {
 
     // 6. Highlight
     const target = row.querySelector(".label-cell") || row
-    target.classList.add("border", "border-red-500", "animate-pulse")
-    setTimeout(() => target.classList.remove("border", "border-red-500", "animate-pulse"), 2000)
+    if (err.level === "warning") {
+      target.classList.add("validation-focus-warning")
+      setTimeout(() => target.classList.remove("validation-focus-warning"), 2000)
+    } else {
+      target.classList.add("validation-focus-error")
+      setTimeout(() => target.classList.remove("validation-focus-error"), 2000)
+    }
   }
 
   return { focusField }

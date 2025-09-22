@@ -1,5 +1,15 @@
 import type { ChannelType } from "../types/channel"
 
+export const SCHEMA_NAMES = {
+  DEVICE: "device",
+  CHANNEL: "channel",
+  SWITCHGEAR: "switchgear",
+  SEQUENCE: "sequence",
+  SEQUENCE_STEP: "sequence_step",
+} as const
+
+export type SchemaName = typeof SCHEMA_NAMES[keyof typeof SCHEMA_NAMES]
+
 export const PROPERTY_FIELD_TYPES = {
   STRING: "string",
   NUMBER: "number",

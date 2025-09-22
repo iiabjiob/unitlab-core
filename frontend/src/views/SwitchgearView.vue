@@ -36,7 +36,7 @@
 
     <!-- empty state -->
     <div v-if="!switchgearStore.switchgears.length" class="text-neutral-400">
-      Drop or add a Switchgear from the palette…
+      No switchgears yet. Create or import one
     </div>
   </div>
 </template>

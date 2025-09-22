@@ -5,7 +5,11 @@ import axios from "axios"
 import { ApiBuilder } from "@/utils/api"
 import { getLogger } from "@/utils/logger"
 import { useChannelStore } from "./channelStore"
-import { runGlobalValidation } from "@/property-schemas/runValidation"
+import { useValidationStore } from "./validationStore"
+import { validateSwitchgear } from "@/validators/switchgear"
+import { switchgearPropertySchema } from "@/property-schemas/switchgear.schema"
+import { SCHEMA_NAMES } from "@/property-schemas/types"
+import { clearOne, validateOne } from "@/validators/syncValidation"
 
 const logger = getLogger("SG")
 
@@ -41,6 +45,9 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     try {
       const { data } = await axios.post<Switchgear>(ApiBuilder.switchgears(), payload)
       switchgears.value.push(data)
+
+      validateOne(SCHEMA_NAMES.SWITCHGEAR, data, validateSwitchgear)
+
       logger.info(`➕ Created switchgear id=${data.id}`)
       return data
     } catch (err) {
@@ -56,6 +63,8 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
       const idx = switchgears.value.findIndex(s => s.id === id)
       if (idx !== -1) {
         switchgears.value[idx] = data
+
+        validateOne(SCHEMA_NAMES.SWITCHGEAR, data, validateSwitchgear)
       }
       logger.debug(`✏️ Switchgear ${id} updated`, changes)
     } catch (err) {
@@ -68,6 +77,9 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     try {
       await axios.delete(ApiBuilder.switchgear(id))
       switchgears.value = switchgears.value.filter(s => s.id !== id)
+
+      clearOne(SCHEMA_NAMES.SWITCHGEAR, id)
+
       logger.info(`🗑️ Switchgear ${id} deleted`)
     } catch (err) {
       logger.error(`💥 Failed to delete switchgear ${id}:`, err)

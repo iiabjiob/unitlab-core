@@ -18,7 +18,6 @@ export const switchgearPropertySchema: PropertySchema<Switchgear> = {
       editable: true,
       type: PROPERTY_FIELD_TYPES.CHANNEL,
       channelType: CHANNEL_TYPES.DO,
-      required: true,
     },
     {
       key: "do_closed",
@@ -26,7 +25,6 @@ export const switchgearPropertySchema: PropertySchema<Switchgear> = {
       editable: true,
       type: PROPERTY_FIELD_TYPES.CHANNEL,
       channelType: CHANNEL_TYPES.DO,
-      required: true,
     },
     {
       key: "di_open",

@@ -1,7 +1,7 @@
 // config/devicePropertySchema.ts
 import type { Device } from "@/types/device"
 import { useDeviceStore } from "@/stores/deviceStore"
-import { PROPERTY_FIELD_TYPES, type PropertySchema } from "@/property-schemas/types"
+import { PROPERTY_FIELD_TYPES, SCHEMA_NAMES, type PropertySchema } from "@/property-schemas/types"
 import DeviceChannelsProperties from "@/components/devices/DeviceChannelsProperties.vue"
 
 export const devicePropertySchema: PropertySchema<Device> = {

@@ -25,7 +25,7 @@ export const ApiBuilder = {
   sequenceImport: () => `/api/sequences/import-file`,
   sequenceSteps: (seqId: number) => `/api/sequences/${seqId}/steps`,
   sequenceStep: (seqId: number, stepId: number) => `/api/sequences/${seqId}/steps/${stepId}`,
-  sequenceReorder: (seqId: number) => `/api/sequences/${seqId}/steps/reorder`,
+  sequenceStepsReorder: (seqId: number) => `/api/sequences/${seqId}/steps/reorder`,
 
   events: (params?: Record<string, any>) => buildQuery('/api/events', params),
 

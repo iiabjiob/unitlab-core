@@ -8,6 +8,7 @@ import { CHANNEL_TYPES } from "@/types/channel"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { SWITCHGEAR_CODE, SWITCHGEAR_OPTIONS } from "@/constants/switchgear"
 
+
 export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
   fields: [
     {
@@ -25,7 +26,6 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       type: PROPERTY_FIELD_TYPES.SELECT,
       options: Object.values(StepKind) as StepKind[],
       display: (s) => s.kind ?? "n/a",
-      required: true,
     },
 
     // WAIT
@@ -59,7 +59,6 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       type: PROPERTY_FIELD_TYPES.SELECT,
       options: ON_OFF_OPTIONS,
       visible: (s) => s.kind === StepKind.DO_LATCH,
-      required: true,
     },
 
     // --- DO_PULSE ---
@@ -77,7 +76,6 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       type: PROPERTY_FIELD_TYPES.CHANNEL,
       channelType: CHANNEL_TYPES.DO,
       visible: (s) => s.kind === StepKind.DO_PULSE,
-      required: true,
     },
     {
       key: "payload.value",
@@ -86,7 +84,6 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       type: PROPERTY_FIELD_TYPES.SELECT,
       options: ON_OFF_OPTIONS,
       visible: (s) => s.kind === StepKind.DO_PULSE,
-      required: true,
     },
     {
       key: "payload.pulse_ms",
@@ -94,7 +91,6 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       editable: true,
       type: PROPERTY_FIELD_TYPES.NUMBER,
       visible: (s) => s.kind === StepKind.DO_PULSE,
-      required: true,
     },
 
     // --- DO_BITMASK ---
@@ -104,7 +100,6 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       editable: true,
       type: PROPERTY_FIELD_TYPES.UNIT,
       visible: (s) => s.kind === StepKind.DO_BITMASK,
-      required: true,
     },
     {
       key: "payload.bitmask",
@@ -134,7 +129,6 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       type: PROPERTY_FIELD_TYPES.CHANNEL,
       channelType: CHANNEL_TYPES.DO,
       visible: (s) => s.kind === StepKind.DO_PAIR,
-      required: true,
     },
     { key: "payload.chB",
       label: "Channel B",
@@ -142,7 +136,6 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       type: PROPERTY_FIELD_TYPES.CHANNEL,
       channelType: CHANNEL_TYPES.DO,
       visible: (s) => s.kind === StepKind.DO_PAIR,
-      required: true,
     },
     {
       key: "payload.state2b",
@@ -155,7 +148,6 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
         const entry = Object.entries(SWITCHGEAR_CODE).find(([_, v]) => v === s.payload?.state2b)
         return entry?.[0] ?? "UNKNOWN"
       },
-      required: true,
     },
 
     // --- AO_SET ---
@@ -173,7 +165,6 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       type: PROPERTY_FIELD_TYPES.CHANNEL,
       channelType: CHANNEL_TYPES.AO,
       visible: (s) => s.kind === StepKind.AO_SET,
-      required: true,
     },
     {
       key: "payload.value",
@@ -181,21 +172,23 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       editable: true,
       type: PROPERTY_FIELD_TYPES.NUMBER,
       visible: (s) => s.kind === StepKind.AO_SET,
-      required: true,
     },
   ],
 
   async update(item, key, value) {
+
     const store = useSequenceStore()
 
     const { root, sub } = splitKey(key.toString())
 
     if (root === "payload") {
       const newPayload = { ...(item.payload ?? {}), [sub]: value }
+
       await store.updateStep(item.sequence_id, item.id, { payload: newPayload })
     } else {
       await store.updateStep(item.sequence_id, item.id, { [sub]: value })
     }
+
   },
 
 }

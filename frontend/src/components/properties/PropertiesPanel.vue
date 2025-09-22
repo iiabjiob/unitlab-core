@@ -30,12 +30,12 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import FieldRow from "./FieldRow.vue"
-import type { CustomPropertyField, PropertyField, PropertySchema } from "@/property-schemas/types"
+import type { CustomPropertyField, PropertyField, PropertySchema, SchemaName } from "@/property-schemas/types"
 
 const props = defineProps<{
   schema: PropertySchema<any>
   item: Record<string, any>
-  schemaName?: string
+  schemaName?: SchemaName
 }>()
 
 const emit = defineEmits<{

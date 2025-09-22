@@ -2,7 +2,7 @@
   <UiToolbar title="Devices">
     <template #left>
       <UiButton type="toolbar" size="sm" @click="$emit('save')">💾 Save</UiButton>
-      <UiButton type="toolbar" size="sm" @click="$emit('load')">📂 Load</UiButton>
+      <UiButton type="toolbar" size="sm" @click="$emit('load')">📂 Import</UiButton>
     </template>
     <template #right>
       <DeviceFilterMenu />

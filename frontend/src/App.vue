@@ -8,8 +8,8 @@ import AppLayout from './components/layout/AppLayout.vue';
 import { useWebSocketStore } from './stores/websocketStore';
 import { useEventLogStore } from "./stores/eventLogStore";
 import { useSwitchgearStore } from "./stores/switchgearStore";
-import { runGlobalValidation } from "./property-schemas/runValidation";
 import { useSequenceStore } from "./stores/sequenceStore";
+import { validate } from "./validators/validationRunner";
 
 const wsStore = useWebSocketStore();
 const eventsStore = useEventLogStore();
@@ -22,14 +22,14 @@ onMounted(async () => {
 
   eventsStore.fetchEvents(50)
 
-    // параллельная загрузка
+  // параллельная загрузка
   await Promise.all([
     switchgearStore.fetchAll(),
     sequenceStore.fetchSequences(),
   ])
 
-  // теперь запускаем валидацию
-  await runGlobalValidation()
+  await validate()
+
 })
 
 </script>

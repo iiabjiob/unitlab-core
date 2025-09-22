@@ -1,11 +1,11 @@
 // config/propertySchemas.ts
-import { devicePropertySchema } from "./devicePropertySchema"
+import { devicePropertySchema } from "./device.schema"
 import type { PropertySchema } from "@/property-schemas/types"
-import { switchgearPropertySchema } from "./switchgearPropertySchema"
+import { switchgearPropertySchema } from "./switchgear.schema"
 import type { EntityMap, EntityType } from "@/types/entity"
-import { channelPropertySchema } from "./channelPropertySchema"
-import { sequencePropertySchema } from "./sequencePropertySchema"
-import { sequenceStepPropertySchema } from "./sequenceStepPropertySchema"
+import { channelPropertySchema } from "./channel.schema"
+import { sequencePropertySchema } from "./sequence.schema"
+import { sequenceStepPropertySchema } from "./sequenceStep.schema"
 
 
 export const propertySchemas: {

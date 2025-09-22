@@ -16,7 +16,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue"
-import { channelPropertySchema } from "@/property-schemas/channelPropertySchema"
+import { channelPropertySchema } from "@/property-schemas/channel.schema"
 import { useChannelStore } from "@/stores/channelStore"
 import type { Device } from "@/types/device"
 import PropertiesPanel from "../properties/PropertiesPanel.vue"

@@ -1,26 +1,17 @@
 // src/stores/validationStore.ts
 import { defineStore } from "pinia"
-import { computed, ref } from "vue"
-import type { ValidationError } from "@/property-schemas/validation"
+import { ref } from "vue"
+import type { ValidationError } from "@/validators/types"
+import type { SchemaName } from "@/property-schemas/types"
 
 export const useValidationStore = defineStore("validationStore", () => {
   const errors = ref<ValidationError[]>([])
-
-  // UI state
   const showValidator = ref(false)
-  const panelHeight = ref(160) // default size
   const showErrorsOnly = ref(false)
+  const panelHeight = ref(160)
 
   function setErrors(newErrors: ValidationError[]) {
     errors.value = newErrors
-  }
-
-  function getErrors(schemaName: string, itemId: number | string, fieldKey?: string) {
-    return errors.value.filter(e =>
-      e.schemaName === schemaName &&
-      e.itemId === itemId &&
-      (fieldKey ? e.fieldKey === fieldKey : true)
-    )
   }
 
   function clear() {
@@ -35,26 +26,23 @@ export const useValidationStore = defineStore("validationStore", () => {
     panelHeight.value = h
   }
 
-  const errorsCount = computed(() =>
-    errors.value.filter(e => e.level !== "warning").length
-  )
-  const warningsCount = computed(() =>
-    errors.value.filter(e => e.level === "warning").length
-  )
+  function replaceItemErrors(schemaName: SchemaName, itemId: string | number, newErrors: ValidationError[]) {
+    errors.value = [
+      ...errors.value.filter(e => !(e.schemaName === schemaName && e.itemId === itemId)),
+      ...newErrors,
+    ]
+  }
 
   return {
     errors,
-    errorsCount,
-    warningsCount,
-    showErrorsOnly,
     showValidator,
+    showErrorsOnly,
     panelHeight,
     setErrors,
-    getErrors,
     clear,
     toggleValidator,
     setPanelHeight,
+    replaceItemErrors,
   }
-}, {
-  persist: true,
-})
+}, { persist: true })
+

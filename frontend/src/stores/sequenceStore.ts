@@ -1,7 +1,14 @@
+// src/stores/sequenceStore.ts
 import { defineStore } from "pinia"
 import { ref } from "vue"
 import { useWebSocketStore } from "./websocketStore"
-import { StepKind, type SequenceDef, type SequenceStatus, type SequenceStep, type SequenceStepCreate } from "@/types/sequences"
+import {
+  StepKind,
+  type SequenceDef,
+  type SequenceStatus,
+  type SequenceStep,
+  type SequenceStepCreate,
+} from "@/types/sequences"
 import { getLogger } from "@/utils/logger"
 import { describeStep, toWSMessage } from "@/utils/sequenceUtils"
 import axios from "axios"
@@ -40,60 +47,99 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     return states.value[seq.id]
   }
 
-  // -------- API integration --------
+  // -------- API: sequences --------
+  async function fetchSequences() {
+    const { data } = await axios.get(ApiBuilder.sequences())
+    sequences.value = data
+    sequences.value.forEach((seq) => ensureState(seq))
+  }
+
+  async function createSequence(payload: { name: string; description?: string; steps: any[] }) {
+    const { data } = await axios.post(ApiBuilder.sequences(), payload)
+    sequences.value.push(data)
+    ensureState(data)
+    return data
+  }
+
+  async function updateSequence(id: number, payload: Partial<SequenceDef>) {
+    const { data } = await axios.patch(ApiBuilder.sequence(id), payload)
+    const idx = sequences.value.findIndex((s) => s.id === id)
+    if (idx !== -1) sequences.value[idx] = data
+    return data
+  }
 
   async function updateSequenceField(id: number, changes: Partial<SequenceDef>) {
     try {
       const { data } = await axios.patch(ApiBuilder.sequence(id), changes)
-      const idx = sequences.value.findIndex(s => s.id === id)
-      if (idx !== -1) {
-        sequences.value[idx] = data
-      }
+      const idx = sequences.value.findIndex((s) => s.id === id)
+      if (idx !== -1) sequences.value[idx] = data
       logger.debug(`✅ Sequence ${id} updated with`, changes)
     } catch (error) {
       logger.error(`💥 Failed to update sequence ${id}:`, error)
     }
   }
 
-  async function fetchSequences() {
-    const res = await fetch("/api/sequences")
-    if (!res.ok) throw new Error("Failed to fetch sequences")
-    sequences.value = await res.json()
-    // re-init state for new/changed sequences
-    sequences.value.forEach((seq) => ensureState(seq))
-  }
-
-  async function createSequence(payload: { name: string; description?: string; steps: any[] }) {
-    const res = await fetch("/api/sequences", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    if (!res.ok) throw new Error("Failed to create sequence")
-    const seq = await res.json()
-    sequences.value.push(seq)
-    ensureState(seq)
-    return seq
-  }
-
-  async function updateSequence(id: number, payload: { name?: string; description?: string }) {
-    const res = await fetch(`/api/sequences/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    })
-    if (!res.ok) throw new Error("Failed to update sequence")
-    const seq = await res.json()
-    const idx = sequences.value.findIndex((s) => s.id === id)
-    if (idx !== -1) sequences.value[idx] = seq
-    return seq
-  }
-
   async function deleteSequence(id: number) {
-    const res = await fetch(`/api/sequences/${id}`, { method: "DELETE" })
-    if (!res.ok) throw new Error("Failed to delete sequence")
+    await axios.delete(ApiBuilder.sequence(id))
     sequences.value = sequences.value.filter((s) => s.id !== id)
     delete states.value[id]
+  }
+
+  // -------- API: steps --------
+  async function addStep(seqId: number, step: SequenceStepCreate) {
+    const { data } = await axios.post(ApiBuilder.sequenceSteps(seqId), step)
+    const seq = sequences.value.find((s) => s.id === seqId)
+    if (seq) {
+      seq.steps.push(data)
+      ensureState(seq)
+    }
+    return data
+  }
+
+  async function updateStep(seqId: number, stepId: number, changes: Partial<SequenceStep>) {
+    const { data } = await axios.patch(ApiBuilder.sequenceStep(seqId, stepId), changes)
+    const seq = sequences.value.find((s) => s.id === seqId)
+    if (seq) {
+      seq.steps = seq.steps.map((st) =>
+        st.id === stepId
+          ? {
+              ...st,
+              ...data,
+              payload: { ...st.payload, ...data.payload, ...changes.payload },
+            }
+          : st,
+      )
+    }
+    return data
+  }
+
+  async function deleteStep(seqId: number, stepId: number) {
+    await axios.delete(ApiBuilder.sequenceStep(seqId, stepId))
+    const seq = sequences.value.find((s) => s.id === seqId)
+    if (seq) {
+      seq.steps = seq.steps.filter((s) => s.id !== stepId)
+      ensureState(seq)
+    }
+    return true
+  }
+
+  async function reorderSteps(seqId: number, newOrder: number[]) {
+    const { data } = await axios.post(ApiBuilder.sequenceStepsReorder(seqId), { new_order: newOrder })
+    const seq = sequences.value.find((s) => s.id === seqId)
+    if (seq) {
+      seq.steps = data
+      ensureState(seq)
+    }
+  }
+
+  async function replaceSteps(seqId: number, steps: SequenceStep[]) {
+    const { data } = await axios.put(ApiBuilder.sequenceSteps(seqId), steps)
+    const seq = sequences.value.find((s) => s.id === seqId)
+    if (seq) {
+      seq.steps = data
+      ensureState(seq)
+    }
+    return data
   }
 
   // -------- Execution --------
@@ -140,6 +186,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     logger.debug(`♻️ Sequence state reset: ${seq.name}`)
   }
 
+  // -------- Helpers for UI --------
   function getProgress(seq: SequenceDef): number {
     const st = ensureState(seq)
     const total = seq.steps.length
@@ -161,28 +208,17 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
   function hasBlockingErrors(seq: SequenceDef): boolean {
     const validation = useValidationStore()
-
-    return validation.errors.some(err => {
+    return validation.errors.some((err) => {
       if (err.level === "warning") return false
-
-      // ошибка на сам sequence
-      if (err.schemaName === "sequence" && err.itemId === seq.id) {
-        return true
-      }
-
-      // ошибка на шаги sequence
+      if (err.schemaName === "sequence" && err.itemId === seq.id) return true
       if (err.schemaName === "sequence_step") {
-        return seq.steps.some(step => step.id === err.itemId)
+        return seq.steps.some((step) => step.id === err.itemId)
       }
-
       return false
     })
   }
 
-  async function execStep(
-    step: SequenceStep,
-    ws: ReturnType<typeof useWebSocketStore>
-  ) {
+  async function execStep(step: SequenceStep, ws: ReturnType<typeof useWebSocketStore>) {
     if (step.kind === StepKind.WAIT) {
       const ms = step.payload?.ms ?? 0
       logger.debug(`⏳ Wait ${ms} ms`)
@@ -199,89 +235,6 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     }
   }
 
-  // -------- Step API integration --------
-  async function addStep(seqId: number, step: SequenceStepCreate) {
-    const res = await fetch(`/api/sequences/${seqId}/steps`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(step),
-    })
-    if (!res.ok) throw new Error("Failed to add step")
-    const newStep = await res.json()
-
-    // обновляем в локальном сторе
-    const seq = sequences.value.find((s) => s.id === seqId)
-    if (seq) {
-      seq.steps.push(newStep)
-      ensureState(seq)
-    }
-    return newStep
-  }
-
-  async function updateStep(seqId: number, stepId: number, changes: Partial<SequenceStep>) {
-    const res = await fetch(`/api/sequences/${seqId}/steps/${stepId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(changes),
-    })
-    if (!res.ok) throw new Error("Failed to update step")
-    const updated = await res.json()
-
-    const seq = sequences.value.find((s) => s.id === seqId)
-    if (seq) {
-      const idx = seq.steps.findIndex((s) => s.id === stepId)
-      if (idx !== -1) seq.steps[idx] = updated
-    }
-    return updated
-  }
-
-  async function deleteStep(seqId: number, stepId: number) {
-    const res = await fetch(`/api/sequences/${seqId}/steps/${stepId}`, {
-      method: "DELETE",
-    })
-    if (!res.ok) throw new Error("Failed to delete step")
-
-    const seq = sequences.value.find((s) => s.id === seqId)
-    if (seq) {
-      seq.steps = seq.steps.filter((s) => s.id !== stepId)
-      ensureState(seq) // пересчёт completed[]
-    }
-    return true
-  }
-
-  async function reorderSteps(seqId: number, newOrder: number[]) {
-    const res = await fetch(`/api/sequences/${seqId}/steps/reorder`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ new_order: newOrder }),
-    })
-    if (!res.ok) throw new Error("Failed to reorder steps")
-    const updated = await res.json()
-
-    const seq = sequences.value.find((s) => s.id === seqId)
-    if (seq) {
-      seq.steps = updated
-      ensureState(seq) // пересчёт completed[]
-    }
-  }
-
-  async function replaceSteps(seqId: number, steps: SequenceStep[]) {
-    const res = await fetch(`/api/sequences/${seqId}/steps`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(steps),
-    })
-    if (!res.ok) throw new Error("Failed to replace steps")
-    const updated = await res.json()
-
-    const seq = sequences.value.find((s) => s.id === seqId)
-    if (seq) {
-      seq.steps = updated
-      ensureState(seq)
-    }
-    return updated
-  }
-
   function getStepDescription(seq: SequenceDef, stepIndex: number): string {
     const step = seq.steps[stepIndex]
     return step ? describeStep(step) : ""
@@ -290,26 +243,30 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   return {
     sequences,
     states,
-    updateSequenceField,
+    // sequences API
     fetchSequences,
     createSequence,
     updateSequence,
+    updateSequenceField,
     deleteSequence,
-    start,
-    stop,
-    resetState,
-    getProgress,
-    isRunning,
-    isCompleted,
-    hasError,
-    hasBlockingErrors,
+    // steps API
     addStep,
     updateStep,
     deleteStep,
     reorderSteps,
     replaceSteps,
+    // execution
+    start,
+    stop,
+    resetState,
     execStep,
+    // helpers
     ensureState,
+    getProgress,
+    isRunning,
+    isCompleted,
+    hasError,
+    hasBlockingErrors,
     getStepDescription,
   }
 })

@@ -10,6 +10,7 @@ import type { EntityMap, EntityType } from "@/types/entity"
 import { useSwitchgearStore } from "./switchgearStore"
 import type { SequenceDef, SequenceStep } from "@/types/sequences"
 import { useSequenceStore } from "./sequenceStore"
+import { SCHEMA_NAMES } from "@/property-schemas/types"
 
 // 3. SelectedEntity
 export type SelectedEntity = {
@@ -32,19 +33,19 @@ export const useSelectionStore = defineStore("selectionStore", () => {
   function isSelected<T extends EntityType>(type: T, item: EntityMap[T]) {
     if (selected.value?.type !== type) return false
 
-    if (type === "channel") {
+    if (type === SCHEMA_NAMES.CHANNEL) {
       return selected.value.key === (item as Channel).id
     }
-    if (type === "device") {
+    if (type === SCHEMA_NAMES.DEVICE) {
       return selected.value.key === (item as Device).unit_id
     }
-    if (type === "switchgear") {
+    if (type === SCHEMA_NAMES.SWITCHGEAR) {
       return selected.value.key === (item as Switchgear).id
     }
-    if (type === "sequence") {
+    if (type === SCHEMA_NAMES.SEQUENCE) {
       return selected.value.key === (item as SequenceDef).id
     }
-    if (type === "sequence_step") {
+    if (type === SCHEMA_NAMES.SEQUENCE_STEP) {
       return selected.value.key === (item as SequenceStep).id
     }
 
@@ -55,23 +56,23 @@ export const useSelectionStore = defineStore("selectionStore", () => {
     if (!selected.value) return undefined
 
     switch (selected.value.type) {
-      case "channel": {
+      case SCHEMA_NAMES.CHANNEL: {
         const store = useChannelStore()
         return store.channels.find(c => c.id === selected.value!.key)
       }
-      case "device": {
+      case SCHEMA_NAMES.DEVICE: {
         const store = useDeviceStore()
         return store.devices.find(d => d.unit_id === selected.value!.key)
       }
-      case "switchgear": {
+      case SCHEMA_NAMES.SWITCHGEAR: {
         const store = useSwitchgearStore()
         return store.switchgears.find(s => s.id === selected.value!.key)
       }
-      case "sequence": {
+      case SCHEMA_NAMES.SEQUENCE: {
         const store = useSequenceStore()
         return store.sequences.find(s => s.id === selected.value!.key)
       }
-      case "sequence_step": {
+      case SCHEMA_NAMES.SEQUENCE_STEP: {
         const store = useSequenceStore()
         for (const seq of store.sequences) {
           const step = seq.steps.find(st => (st as any).id === selected.value!.key)
