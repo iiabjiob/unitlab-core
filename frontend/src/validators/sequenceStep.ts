@@ -5,7 +5,7 @@ import type { SequenceStep } from "@/types/sequences"
 import type { ValidationError } from "./types"
 import { SCHEMA_NAMES } from "@/property-schemas/types"
 
-export function validateSequinceStep(item: SequenceStep): ValidationError[] {
+export function validateSequenceStep(item: SequenceStep): ValidationError[] {
   const rules = sequenceStepRules[item.kind]
   if (!rules) return []
 

@@ -1,6 +1,7 @@
 // validators/core.ts
 import type { SchemaName } from "@/property-schemas/types"
 import { VALIDATION_LEVELS, type ValidationError, type ValidationLevel } from "./types"
+import { getValueByPath } from "@/utils/object"
 
 export interface FieldRule {
   required?: boolean
@@ -24,7 +25,7 @@ export function validateByRules<T>(
   const errs: ValidationError[] = []
 
   for (const [field, fieldRules] of Object.entries(rules)) {
-    const value = (item as any)[field]
+    const value = getValueByPath(item, field)
     const ruleList = Array.isArray(fieldRules) ? fieldRules : [fieldRules]
 
     for (const rule of ruleList) {
@@ -100,7 +101,7 @@ export function validateByRules<T>(
 
       // notEqualTo
       if (rule.notEqualTo) {
-        const other = (item as any)[rule.notEqualTo]
+        const other = getValueByPath(item, rule.notEqualTo)
         if (value && other && value === other) {
           errs.push({
             schemaName,

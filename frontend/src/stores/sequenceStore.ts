@@ -15,6 +15,10 @@ import axios from "axios"
 import { ApiBuilder } from "@/utils/api"
 import { useValidationStore } from "./validationStore"
 import { VALIDATION_LEVELS } from "@/validators/types"
+import { validateSequence } from "@/validators/sequence"
+import { validateSequenceStep } from "@/validators/sequenceStep"
+import { SCHEMA_NAMES } from "@/property-schemas/types"
+import { validateOne, clearOne } from "@/validators/syncValidation"
 
 const logger = getLogger("SEQ")
 
@@ -59,6 +63,8 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     const { data } = await axios.post(ApiBuilder.sequences(), payload)
     sequences.value.push(data)
     ensureState(data)
+
+    validateOne(SCHEMA_NAMES.SEQUENCE, data, validateSequence)
     return data
   }
 
@@ -71,9 +77,25 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
   async function updateSequenceField(id: number, changes: Partial<SequenceDef>) {
     try {
+      const current = sequences.value.find((s) => s.id === id)
+      if (!current) return
+
+      // draft for validation
+      const draft = { ...current, ...changes }
+      const preErrors = validateSequence(draft)
+
+      validateOne(SCHEMA_NAMES.SEQUENCE, draft, validateSequence)
+
+      if (preErrors.some((e) => e.level === VALIDATION_LEVELS.ERROR)) {
+        logger.warn(`⚠️ Validation failed for sequence ${id}`, preErrors)
+        return
+      }
       const { data } = await axios.patch(ApiBuilder.sequence(id), changes)
       const idx = sequences.value.findIndex((s) => s.id === id)
       if (idx !== -1) sequences.value[idx] = data
+
+      validateOne(SCHEMA_NAMES.SEQUENCE, data, validateSequence)
+
       logger.debug(`✅ Sequence ${id} updated with`, changes)
     } catch (error) {
       logger.error(`💥 Failed to update sequence ${id}:`, error)
@@ -84,6 +106,8 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     await axios.delete(ApiBuilder.sequence(id))
     sequences.value = sequences.value.filter((s) => s.id !== id)
     delete states.value[id]
+    clearOne(SCHEMA_NAMES.SEQUENCE, id)
+    logger.info(`Sequence ${id} deleted`)
   }
 
   // -------- API: steps --------
@@ -93,11 +117,13 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     if (seq) {
       seq.steps.push(data)
       ensureState(seq)
+      validateOne(SCHEMA_NAMES.SEQUENCE_STEP, data, validateSequenceStep)
     }
     return data
   }
 
   async function updateStep(seqId: number, stepId: number, changes: Partial<SequenceStep>) {
+
     const { data } = await axios.patch(ApiBuilder.sequenceStep(seqId, stepId), changes)
     const seq = sequences.value.find((s) => s.id === seqId)
     if (seq) {
@@ -110,6 +136,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
             }
           : st,
       )
+      validateOne(SCHEMA_NAMES.SEQUENCE_STEP, data, validateSequenceStep)
     }
     return data
   }
@@ -120,6 +147,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     if (seq) {
       seq.steps = seq.steps.filter((s) => s.id !== stepId)
       ensureState(seq)
+      clearOne(SCHEMA_NAMES.SEQUENCE_STEP, stepId)
     }
     return true
   }

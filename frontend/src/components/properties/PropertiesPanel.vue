@@ -31,6 +31,7 @@
 import { computed } from "vue"
 import FieldRow from "./FieldRow.vue"
 import type { CustomPropertyField, PropertyField, PropertySchema, SchemaName } from "@/property-schemas/types"
+import { getValueByPath } from "@/utils/object";
 
 const props = defineProps<{
   schema: PropertySchema<any>
@@ -47,11 +48,7 @@ function commit(field: PropertyField<any>, value: any) {
 }
 
 function getValue(field: PropertyField<any>) {
-  if (field.key.includes(".")) {
-    const [root, sub] = field.key.split(".")
-    return props.item[root]?.[sub]
-  }
-  return props.item[field.key]
+  return getValueByPath(props.item, field.key)
 }
 
 const visibleNormalFields = computed(() =>
