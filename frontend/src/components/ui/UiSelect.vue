@@ -19,11 +19,12 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: "update:modelValue", value: string | number | null): void
+  (e: "update:modelValue", value: string | null): void
 }>()
 
 function onChange(e: Event) {
   const target = e.target as HTMLSelectElement
-  emit("update:modelValue", target.value || null)
+  // всегда либо строка id, либо null
+  emit("update:modelValue", target.value === "" ? null : target.value)
 }
 </script>

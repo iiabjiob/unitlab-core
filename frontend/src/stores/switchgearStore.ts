@@ -59,19 +59,6 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   // Update single field(s)
   async function updateField(id: number, changes: Partial<Switchgear>) {
     try {
-      const current = switchgears.value.find(s => s.id === id)
-      if (!current) return
-
-      const draft = { ...current, ...changes }
-
-      // pre-submit validation только изменяемых полей
-      for (const key of Object.keys(changes)) {
-        const fieldErrors = validateSwitchgearField(draft, key as keyof Switchgear)
-        if (fieldErrors.some(e => e.level === VALIDATION_LEVELS.ERROR)) {
-          logger.warn(`⚠️ Validation failed for field ${key} of switchgear ${id}`, fieldErrors)
-          return
-        }
-      }
 
       // PATCH только если нет ошибок в изменяемых полях
       const { data } = await axios.patch<Switchgear>(ApiBuilder.switchgear(id), changes)

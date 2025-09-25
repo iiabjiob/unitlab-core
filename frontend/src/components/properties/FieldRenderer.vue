@@ -17,8 +17,7 @@
         disabled:cursor-not-allowed
         bg-white dark:bg-neutral-900
         disabled:bg-neutral-100 disabled:dark:bg-neutral-800"
-      @change="onChange"
-      @update:modelValue="onUpdate"
+      v-on="editorListeners"
     >
       <!-- Options for select -->
       <option
@@ -98,4 +97,15 @@ function onChange(e: Event) {
 function onUpdate(val: any) {
   emit("commit", props.field, val)
 }
+
+const editorListeners = computed(() => {
+  switch (props.field.type) {
+    case PROPERTY_FIELD_TYPES.STRING:
+    case PROPERTY_FIELD_TYPES.NUMBER:
+    case PROPERTY_FIELD_TYPES.BOOLEAN:
+      return { change: onChange }
+    default:
+      return { 'update:modelValue': onUpdate }
+  }
+})
 </script>
