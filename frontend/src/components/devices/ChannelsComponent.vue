@@ -9,7 +9,6 @@
         :key="`${unitId}-${ch.index}`"
         :channel="ch"
         :selected="selection.isSelected('channel', ch)"
-        @select="select(ch)"
         @toggle="state => onToggle(ch, state)"
         @ao-change="val => onAoChange(ch, val)"
       />
@@ -35,10 +34,6 @@ const props = defineProps<{
 const channelStore = useChannelStore()
 const deviceStore = useDeviceStore()
 const selection = useSelectionStore()
-
-function select(item: Channel) {
-  selection.select({ type: "channel", key: item.id })
-}
 
 // каналы (ищем device.id по unitId)
 const channels = computed<Channel[]>(() => {

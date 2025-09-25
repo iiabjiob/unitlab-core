@@ -36,7 +36,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import { fieldEditors } from "@/property-schemas/fieldEditors";
-import { PROPERTY_FIELD_TYPES, type PropertyField } from "@/property-schemas/types";
+import { PROPERTY_FIELD_TYPES, type ChannelPropertyField, type PropertyField } from "@/property-schemas/types";
 
 const props = defineProps<{
   field: PropertyField<any>
@@ -69,7 +69,7 @@ const inputProps = computed(() => {
     case PROPERTY_FIELD_TYPES.SELECT:
     case PROPERTY_FIELD_TYPES.UNIT:
     case PROPERTY_FIELD_TYPES.CHANNEL:
-      return { ...common, modelValue: props.value, disabled: !f.editable }
+      return { ...common, modelValue: props.value, channelType: (f as ChannelPropertyField<any>).channelType, disabled: !f.editable }
     case PROPERTY_FIELD_TYPES.BITMASK:
       return {
         ...common,

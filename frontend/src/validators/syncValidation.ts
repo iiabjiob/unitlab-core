@@ -23,7 +23,7 @@ export function validateOne<T>(
  */
 export function clearOne(schemaName: SchemaName, itemId: string | number) {
   const vStore = useValidationStore()
-  vStore.replaceItemErrors(schemaName, itemId, [])
+  vStore.removeItemErrors(schemaName, itemId)
 }
 
 /**

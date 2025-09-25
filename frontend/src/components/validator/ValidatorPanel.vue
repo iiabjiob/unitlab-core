@@ -20,7 +20,7 @@
   >
     <div class="flex-1 overflow-y-auto p-3 pt-0 text-xs">
       <!-- Filter -->
-      <div v-show="filteredErrors.length"
+      <div v-show="errorsCount>0 || warningsCount>0"
         class="flex items-center justify-between py-1 border-b border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800"
       >
         <label class="flex items-center gap-1 text-xs text-neutral-600 dark:text-neutral-300">

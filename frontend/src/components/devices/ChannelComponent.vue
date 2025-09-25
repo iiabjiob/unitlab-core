@@ -1,11 +1,9 @@
 <template>
   <div
-    class="selectable-row flex items-center w-full border-b border-neutral-300 dark:border-neutral-700 last:border-0 text-xs"
-    :class="selected ? 'selectable-row--selected' : 'selectable-row--idle'"
-    @click.stop="$emit('select', channel)"
+    class="flex items-center w-full border-b py-0.5 border-neutral-300 dark:border-neutral-700 last:border-0 text-xs"
   >
     <!-- Имя канала -->
-    <span>{{ channel.name || ("CH" + (channel.index + 1)) }}</span>
+    <span>{{ channelStore.resolveChannelLabel }}</span>
 
     <!-- Управление DO -->
     <div v-if="channel.type === 'do'" class="flex flex-1 items-center justify-end gap-2">
@@ -45,7 +43,7 @@
         />
         <span class="text-neutral-400 text-xs">mA</span>
       </div>
-      <UiButton size="xs" type="primary" @click.stop="onConfirm">
+      <UiButton size="xs" type="secondary" @click.stop="onConfirm">
         Set
       </UiButton>
     </div>
@@ -61,8 +59,8 @@
         {{ channel.state ? "🟢" : "⚪️" }}
       </template>
       <template v-else-if="channel.type === 'ao'">
-        <div class="min-w-[50px] text-nowrap">
-          {{ channel.state }}
+        <div class="min-w-[80px] text-nowrap">
+          {{ formatAoValue(channel.state as number) }}
           <span class="text-xs text-neutral-400 ml-1">mA</span>
         </div>
       </template>
@@ -75,6 +73,10 @@
 import type { Channel } from "@/types/channel"
 import UiButton from "../ui/UiButton.vue"
 import { ref } from "vue"
+import { formatAoValue, parseAoInput } from "@/utils/channel";
+import { useChannelStore } from "@/stores/channelStore";
+
+const channelStore = useChannelStore()
 
 const props = defineProps<{
   channel: Channel
@@ -82,43 +84,27 @@ const props = defineProps<{
   disabled?: boolean
 }>()
 
-const emit = defineEmits(["toggle", "ao-change", "select"])
+const emit = defineEmits(["toggle", "ao-change"])
 
 const inputValue = ref(
-  typeof props.channel.state === "number" ? formatValue(props.channel.state) : "4.00"
+  typeof props.channel.state === "number"
+    ? formatAoValue(props.channel.state)
+    : "4.00"
 )
 
 function onInput(e: Event) {
   const target = e.target as HTMLInputElement
-  let val = parseFloat(target.value)
-
-  if (isNaN(val)) {
-    inputValue.value = "0.00"
-    return
-  }
-  if (val < 0) val = 0
-  if (val > 24) val = 24
-  inputValue.value = target.value
+  inputValue.value = target.value // показываем, что юзер набрал
 }
 
 function onBlur() {
-  let val = parseFloat(inputValue.value)
-  if (isNaN(val)) val = 0
-  if (val < 0) val = 0
-  if (val > 24) val = 24
-  inputValue.value = formatValue(val)
+  const num = parseAoInput(inputValue.value)
+  inputValue.value = formatAoValue(num)
 }
 
 function onConfirm() {
-  let val = parseFloat(inputValue.value)
-  if (isNaN(val)) val = 0
-  if (val < 0) val = 0
-  if (val > 24) val = 24
-  emit("ao-change", val)
-  inputValue.value = formatValue(val)
-}
-
-function formatValue(num: number): string {
-  return num.toFixed(2)
+  const num = parseAoInput(inputValue.value)
+  emit("ao-change", num)
+  inputValue.value = formatAoValue(num)
 }
 </script>

@@ -19,6 +19,8 @@ import { validateSequence } from "@/validators/sequence"
 import { validateSequenceStep } from "@/validators/sequenceStep"
 import { SCHEMA_NAMES } from "@/property-schemas/types"
 import { validateOne, clearOne } from "@/validators/syncValidation"
+import { useChannelStore } from "./channelStore"
+import { useDeviceStore } from "./deviceStore"
 
 const logger = getLogger("SEQ")
 
@@ -77,19 +79,6 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
   async function updateSequenceField(id: number, changes: Partial<SequenceDef>) {
     try {
-      const current = sequences.value.find((s) => s.id === id)
-      if (!current) return
-
-      // draft for validation
-      const draft = { ...current, ...changes }
-      const preErrors = validateSequence(draft)
-
-      validateOne(SCHEMA_NAMES.SEQUENCE, draft, validateSequence)
-
-      if (preErrors.some((e) => e.level === VALIDATION_LEVELS.ERROR)) {
-        logger.warn(`⚠️ Validation failed for sequence ${id}`, preErrors)
-        return
-      }
       const { data } = await axios.patch(ApiBuilder.sequence(id), changes)
       const idx = sequences.value.findIndex((s) => s.id === id)
       if (idx !== -1) sequences.value[idx] = data
@@ -123,10 +112,12 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   async function updateStep(seqId: number, stepId: number, changes: Partial<SequenceStep>) {
-
     const { data } = await axios.patch(ApiBuilder.sequenceStep(seqId, stepId), changes)
     const seq = sequences.value.find((s) => s.id === seqId)
+
     if (seq) {
+
+      // Обновляем шаг в последовательности
       seq.steps = seq.steps.map((st) =>
         st.id === stepId
           ? {
@@ -136,8 +127,10 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
             }
           : st,
       )
+
       validateOne(SCHEMA_NAMES.SEQUENCE_STEP, data, validateSequenceStep)
     }
+
     return data
   }
 

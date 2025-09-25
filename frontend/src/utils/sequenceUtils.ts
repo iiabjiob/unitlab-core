@@ -5,10 +5,14 @@ import {
 } from "@/types/ws/messages"
 import { StepKind, type SequenceStep } from "@/types/sequences"
 
+import { useChannelStore } from "@/stores/channelStore"
+
+
 // ---------------------------------------------------------------------
 // Describe step (for UI)
 // ---------------------------------------------------------------------
 export function describeStep(step: SequenceStep): string {
+
   switch (step.kind) {
     case StepKind.WAIT:
       return `Wait ${step.payload?.ms ?? 0} ms`
@@ -25,7 +29,7 @@ export function describeStep(step: SequenceStep): string {
 
     case StepKind.DO_PAIR: {
       const { chA, chB, state2b } = step.payload ?? {}
-      return `DO: pair chA=${chA}, chB=${chB}, state=${state2b} (unit: ${step.unit_id ?? "?"})`
+      return `DO: pair chA=${chA}, chA=${chB}, state=${state2b} (unit: ${step.unit_id ?? "?"})`
     }
 
     case StepKind.DO_BITMASK: {

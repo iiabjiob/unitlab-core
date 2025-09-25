@@ -206,9 +206,32 @@ export const useChannelStore = defineStore('channelStore', () => {
     return dev?.unit_id ?? `dev#${deviceId}`
   }
 
+  function resolveChannelLabel(ch: Channel): string {
+    // 1. TODO: если будет signal_list → ch.signal?.hmi
+    if (ch.name?.trim()) {
+      return ch.name
+    }
+    return `CH${ch.index + 1}`
+  }
+
+  function resolveChannelFullLabel(ch: Channel): string {
+    return `${resolveUnitId(ch.device_id)}/${resolveChannelLabel(ch)}`
+  }
+
+  function findByUnitAndIndex(unitId: string, index: number) {
+    const deviceStore = useDeviceStore()
+    const device = deviceStore.devices.find(d => d.unit_id === unitId)
+    if (!device) return null
+
+    return channels.value.find(c => c.device_id === device.id && c.index === index) ?? null
+  }
+
   return {
     channels,
     responses,
+    findByUnitAndIndex,
+    resolveChannelLabel,
+    resolveChannelFullLabel,
     resolveUnitId,
     channelsByDevice,
     updateChannelField,

@@ -77,7 +77,7 @@
 
     <!-- Global error -->
     <p v-if="st.lastError" class="mt-3 text-xs text-red-600 font-mono">
-      ⚠️ Error at step {{ st.index }}: {{ st.lastError }}
+      ⚠️ Error at step {{ st.index+1 }}: {{ st.lastError }}
     </p>
   </li>
 

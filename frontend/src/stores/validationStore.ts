@@ -33,6 +33,11 @@ export const useValidationStore = defineStore("validationStore", () => {
     ]
   }
 
+  function removeItemErrors(schemaName: SchemaName, itemId: string | number) {
+    errors.value = errors.value.filter(e => !(e.schemaName === schemaName && e.itemId === itemId))
+  }
+
+
   return {
     errors,
     showValidator,
@@ -43,6 +48,7 @@ export const useValidationStore = defineStore("validationStore", () => {
     toggleValidator,
     setPanelHeight,
     replaceItemErrors,
+    removeItemErrors,
   }
 }, { persist: true })
 

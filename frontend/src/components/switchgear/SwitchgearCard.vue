@@ -13,19 +13,19 @@
 
     <!-- Visual cube -->
     <SwitchgearCube
-      :effective-state="effectiveState"
-      :pending-target="pendingTarget"
+      :effective-state="unitOnline ? effectiveState : 'UNKNOWN'"
+      :pending-target="unitOnline ? pendingTarget : null"
     />
     <div class="mx-auto">
 
       <span class="text-xs px-2 py-0.5 rounded-full" :class="statePillClass">
-        {{ effectiveState }}
+        {{ displayState }}
       </span>
     </div>
 
     <!-- Actions -->
     <SwitchgearActions
-      :is-cmd-disabled="isDisabled"
+      :is-cmd-disabled="(s) => !unitOnline || isCmdDisabled(s)"
       :set-do-pair="setDoPair"
     />
 
@@ -35,6 +35,7 @@
       :do-closed="doClosedResolved"
       :di-open="diOpenResolved"
       :di-close="diCloseResolved"
+      :unit-online="unitOnline"
     />
   </div>
 </template>
@@ -49,6 +50,25 @@ import SwitchgearActions from "./SwitchgearActions.vue"
 import SwitchgearCube from "./SwitchgearCube.vue"
 import SwitchgearTechFooter from "./SwitchgearTechFooter.vue"
 import SwitchgearMenu from "./SwitchgearMenu.vue"
+
+import { useDeviceStore } from "@/stores/deviceStore"
+
+const deviceStore = useDeviceStore()
+
+const unitOnline = computed(() => {
+  const anyCh = [props.do_open, props.do_closed].find(Boolean)
+  if (!anyCh) return true
+
+  const ch = channelStore.channels.find(c => c.id === anyCh)
+  if (!ch) return true
+
+  const dev = deviceStore.devices.find(d => d.id === ch.device_id)
+  return dev?.status === "online"
+})
+
+const displayState = computed(() => {
+  return unitOnline.value ? effectiveState.value : "UNKNOWN"
+})
 
 const props = withDefaults(
   defineProps<{
@@ -108,7 +128,7 @@ const {
 
 // Style helpers for state pill
 const statePillClass = computed(() => {
-  switch (effectiveState.value) {
+  switch (displayState.value) {
     case "CLOSED":
       return "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
     case "OPEN":

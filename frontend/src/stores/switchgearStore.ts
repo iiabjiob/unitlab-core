@@ -5,12 +5,11 @@ import axios from "axios"
 import { ApiBuilder } from "@/utils/api"
 import { getLogger } from "@/utils/logger"
 import { useChannelStore } from "./channelStore"
-import { useValidationStore } from "./validationStore"
-import { validateSwitchgear } from "@/validators/switchgear"
-import { switchgearPropertySchema } from "@/property-schemas/switchgear.schema"
+import { validateSwitchgear, validateSwitchgearField } from "@/validators/switchgear"
 import { SCHEMA_NAMES } from "@/property-schemas/types"
 import { clearOne, validateOne } from "@/validators/syncValidation"
 import { VALIDATION_LEVELS } from "@/validators/types"
+import { useDeviceStore } from "./deviceStore"
 
 const logger = getLogger("SG")
 
@@ -60,22 +59,21 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   // Update single field(s)
   async function updateField(id: number, changes: Partial<Switchgear>) {
     try {
-      // Pre-submit validation
       const current = switchgears.value.find(s => s.id === id)
       if (!current) return
 
-      // создаём черновик: текущее + изменения
       const draft = { ...current, ...changes }
-      const preErrors = validateSwitchgear(draft)
 
-      validateOne(SCHEMA_NAMES.SWITCHGEAR, draft, validateSwitchgear)
-
-      // если есть ошибки уровня error → не шлём запрос
-      if (preErrors.some(e => e.level === VALIDATION_LEVELS.ERROR)) {
-        logger.warn(`⚠️ Validation failed for switchgear ${id}`, preErrors)
-        return
+      // pre-submit validation только изменяемых полей
+      for (const key of Object.keys(changes)) {
+        const fieldErrors = validateSwitchgearField(draft, key as keyof Switchgear)
+        if (fieldErrors.some(e => e.level === VALIDATION_LEVELS.ERROR)) {
+          logger.warn(`⚠️ Validation failed for field ${key} of switchgear ${id}`, fieldErrors)
+          return
+        }
       }
 
+      // PATCH только если нет ошибок в изменяемых полях
       const { data } = await axios.patch<Switchgear>(ApiBuilder.switchgear(id), changes)
       const idx = switchgears.value.findIndex(s => s.id === id)
       if (idx !== -1) {
@@ -108,6 +106,17 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     return switchgears.value.find(s => s.id === id) ?? null
   }
 
+  function isUnitOnline(sw: Switchgear): boolean {
+    const chId = sw.do_open ?? sw.do_closed
+    if (!chId) return true
+
+    const ch = useChannelStore().channels.find(c => c.id === chId)
+    if (!ch) return true
+
+    const dev = useDeviceStore().devices.find(d => d.id === ch.device_id)
+    return dev?.status === "online"
+  }
+
   return {
     switchgears,
     resolveChannel,
@@ -116,5 +125,6 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     updateField,
     remove,
     getById,
+    isUnitOnline
   }
 })

@@ -38,7 +38,7 @@ export function validateByRules<T>(
           message: rule.message ?? `${field} is required`,
           level: rule.level ?? VALIDATION_LEVELS.ERROR
         })
-        break
+        continue
       }
 
       // recommended
@@ -50,6 +50,7 @@ export function validateByRules<T>(
           message: rule.message ?? `${field} is recommended`,
           level: rule.level ?? "warning"
         })
+        continue
       }
 
       // type check

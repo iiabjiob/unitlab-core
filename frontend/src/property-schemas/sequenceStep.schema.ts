@@ -176,19 +176,19 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
   ],
 
   async update(item, key, value) {
+  const store = useSequenceStore()
 
-    const store = useSequenceStore()
+  const { root, sub } = splitKey(key.toString())
 
-    const { root, sub } = splitKey(key.toString())
+  if (root === "payload") {
+    const newPayload = { ...(item.payload ?? {}), [sub]: value }
+    const changes: Partial<SequenceStep> = { payload: newPayload }
 
-    if (root === "payload") {
-      const newPayload = { ...(item.payload ?? {}), [sub]: value }
+    await store.updateStep(item.sequence_id, item.id, changes)
+  } else {
+    await store.updateStep(item.sequence_id, item.id, { [sub]: value })
+  }
+}
 
-      await store.updateStep(item.sequence_id, item.id, { payload: newPayload })
-    } else {
-      await store.updateStep(item.sequence_id, item.id, { [sub]: value })
-    }
-
-  },
 
 }
