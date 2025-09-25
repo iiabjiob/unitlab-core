@@ -8,7 +8,7 @@
       <div v-if="deviceStore.isLoading">Loading...</div>
 
       <div v-else-if="!filterStore.filteredDevices.length" class="text-neutral-400">
-        No devices yet. Try scanning...
+        No devices yet.
       </div>
 
       <div v-else>

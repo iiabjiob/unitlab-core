@@ -3,7 +3,7 @@
     class="flex items-center w-full border-b py-0.5 border-neutral-300 dark:border-neutral-700 last:border-0 text-xs"
   >
     <!-- Имя канала -->
-    <span>{{ channelStore.resolveChannelLabel }}</span>
+    <span>{{ label }}</span>
 
     <!-- Управление DO -->
     <div v-if="channel.type === 'do'" class="flex flex-1 items-center justify-end gap-2">
@@ -72,7 +72,7 @@
 <script setup lang="ts">
 import type { Channel } from "@/types/channel"
 import UiButton from "../ui/UiButton.vue"
-import { ref } from "vue"
+import { computed, ref } from "vue"
 import { formatAoValue, parseAoInput } from "@/utils/channel";
 import { useChannelStore } from "@/stores/channelStore";
 
@@ -85,6 +85,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits(["toggle", "ao-change"])
+
+const label = computed(() => channelStore.resolveChannelLabel(props.channel))
 
 const inputValue = ref(
   typeof props.channel.state === "number"

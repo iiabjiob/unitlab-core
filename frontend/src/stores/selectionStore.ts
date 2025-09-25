@@ -11,6 +11,7 @@ import { useSwitchgearStore } from "./switchgearStore"
 import type { SequenceDef, SequenceStep } from "@/types/sequences"
 import { useSequenceStore } from "./sequenceStore"
 import { SCHEMA_NAMES } from "@/property-schemas/types"
+import { useSequenceStepStore } from "./sequenceStepStore"
 
 // 3. SelectedEntity
 export type SelectedEntity = {
@@ -73,12 +74,10 @@ export const useSelectionStore = defineStore("selectionStore", () => {
         return store.sequences.find(s => s.id === selected.value!.key)
       }
       case SCHEMA_NAMES.SEQUENCE_STEP: {
-        const store = useSequenceStore()
-        for (const seq of store.sequences) {
-          const step = seq.steps.find(st => (st as any).id === selected.value!.key)
-          if (step) return step
-        }
+        const stepStore = useSequenceStepStore()
+        return stepStore.steps.find(st => st.id === selected.value!.key)
       }
+
     }
   })
 

@@ -8,27 +8,33 @@ export enum StepKind {
   DO_BITMASK = "DO_BITMASK", // all bitmask
 }
 
-export type SequenceStatus = "idle" | "running" | "stopped" | "completed"
+export enum SequenceStatusEnum {
+  IDLE = "idle",
+  RUNNING = "running",
+  STOPPED = "stopped",
+  COMPLETED = "completed",
+}
+
+// Тип: только значения enum
+export type SequenceStatus = `${SequenceStatusEnum}`
 
 
 export interface SequenceStepPayload {
+
+  device_id?: number
+
   // WAIT
   ms?: number
 
-  // DO_SET / DO_RESET_ALL
-  mode?: number
-  ch?: number
+  // DO
   value?: number
   bitmask?: number
-
-  // расширенные DO команды
-  chA?: number
-  chB?: number
   state2b?: number
   pulse_ms?: number
 
-  // AO_SET
-  // ch и value уже есть
+  channel_ids?: number[]
+  // AO
+  // value?: number уже есть
 }
 
 export interface SequenceStep {
@@ -36,13 +42,15 @@ export interface SequenceStep {
   sequence_id: number
   order_index: number
   kind: StepKind
-  unit_id?: string | null
+
+  channel_id?: number | null
+  device_id?: number | null
   payload?: SequenceStepPayload | null
 }
 
 export interface SequenceStepCreate {
   kind: StepKind
-  unit_id?: string | null
+  channel_id?: number | null
   payload?: Record<string, any> | null
 }
 
@@ -50,5 +58,4 @@ export interface SequenceDef {
   id: number
   name: string
   description?: string | null
-  steps: SequenceStep[]
 }

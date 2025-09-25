@@ -8,7 +8,6 @@ import EventsView from "@/views/EventsView.vue"
 import SwitchgearView from "@/views/SwitchgearView.vue"
 import SignalListView from "@/views/SignalListView.vue"
 import SequencesView from "@/views/SequencesView.vue"
-import SettingsView from "@/views/SettingsView.vue"
 
 // Default layout meta (used by most screens)
 const defaultMeta = {
@@ -32,7 +31,8 @@ const router = createRouter({
       component: HomeView,
       meta: {
         ...defaultMeta,
-        // example: dashboard usually needs full chrome
+        rightAside: false,
+        bottomAside: false,
       },
     },
     {
@@ -64,14 +64,6 @@ const router = createRouter({
       path: "/sequences",
       name: "sequences",
       component: SequencesView,
-      meta: {
-        ...defaultMeta,
-      },
-    },
-    {
-      path: "/settings",
-      name: "settings",
-      component: SettingsView,
       meta: {
         ...defaultMeta,
       },

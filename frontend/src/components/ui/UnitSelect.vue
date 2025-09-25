@@ -1,19 +1,18 @@
 <template>
   <UiSelect
-  :model-value="modelValue"
-  :name="name"
-  placeholder="— select unit —"
-  @update:modelValue="val => $emit('update:modelValue', val)"
->
-  <option
-    v-for="unit in units"
-    :key="unit.id"
-    :value="unit.id"
+    :model-value="modelValue"
+    :name="name"
+    placeholder="— select unit —"
+    @update:modelValue="val => $emit('update:modelValue', val ? Number(val) : null)"
   >
-    {{ unit.name ?? unit.id }}
-  </option>
-</UiSelect>
-
+    <option
+      v-for="unit in units"
+      :key="unit.id"
+      :value="unit.id"
+    >
+      {{ unit.name ?? unit.unit_id }}
+    </option>
+  </UiSelect>
 </template>
 
 <script setup lang="ts">
@@ -22,7 +21,7 @@ import { useDeviceStore } from "@/stores/deviceStore"
 import UiSelect from "./UiSelect.vue";
 
 const props = defineProps<{
-  modelValue: string | null
+  modelValue: number | null   // ✅ теперь строго device_id из БД
   name?: string
 }>()
 const emit = defineEmits(["update:modelValue"])

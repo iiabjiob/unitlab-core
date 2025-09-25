@@ -4,7 +4,7 @@
     <h4 class="font-bold text-sm">Steps</h4>
 
     <PropertiesPanel
-      v-for="st in sequence.steps"
+      v-for="st in steps"
       :key="st.id"
       :schema="sequenceStepPropertySchema"
       :item="st"
@@ -16,11 +16,20 @@
 </template>
 
 <script setup lang="ts">
-import { sequenceStepPropertySchema } from "@/property-schemas/sequenceStep.schema";
-import PropertiesPanel from "../properties/PropertiesPanel.vue";
+import { computed } from "vue"
+import { sequenceStepPropertySchema } from "@/property-schemas/sequenceStep.schema"
+import PropertiesPanel from "../properties/PropertiesPanel.vue"
 import type { SequenceDef, SequenceStep } from "@/types/sequences"
+import { useSequenceStepStore } from "@/stores/sequenceStepStore"
 
 const props = defineProps<{
   sequence: SequenceDef
 }>()
+
+const seqStepStore = useSequenceStepStore()
+
+// получаем реактивный список шагов из стора
+const steps = computed<SequenceStep[]>(() =>
+  seqStepStore.stepsBySequence(props.sequence.id).value
+)
 </script>

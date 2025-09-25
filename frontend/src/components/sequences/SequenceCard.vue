@@ -27,17 +27,17 @@
         size="sm"
         type="secondary"
         @click.stop="onStartStop"
-        :disabled="!sequence.steps.length || store.hasBlockingErrors(sequence)"
+        :disabled="!steps.length || seqStore.hasBlockingErrors(sequence)"
       >
-        {{ st.status === "running" ? "Stop" : "Start" }}
+        {{ st.status === SequenceStatusEnum.RUNNING ? "Stop" : "Start" }}
       </UiButton>
 
       <UiButton
         type="secondary"
         size="sm"
         @click.stop="onReset"
-        :disabled="!sequence.steps.length || store.hasBlockingErrors(sequence) || st.status === 'running' || st.status === 'idle'"
-        >
+        :disabled="!steps.length || seqStore.hasBlockingErrors(sequence) || st.status === 'running' || st.status === 'idle'"
+      >
         Reset
       </UiButton>
 
@@ -47,12 +47,12 @@
     <!-- Progress bar -->
     <ProgressBar
       class="my-2"
-      :value="store.getProgress(sequence)"
-      :disabled="!sequence.steps.length"
+      :value="seqStore.getProgress(sequence)"
+      :disabled="!steps.length"
     />
 
     <draggable
-      v-model="props.sequence.steps"
+      :list="enrichedSteps"
       item-key="id"
       handle=".drag-handle"
       @end="onReorder"
@@ -61,13 +61,12 @@
       <template #item="{ element, index }">
         <SequenceStep
           :index="index"
-          @delete="store.deleteStep(sequence.id, element.id!)"
-          :description="store.getStepDescription(props.sequence, index)"
-          :completed="store.ensureState(props.sequence).completed[index]"
-          :error="store.ensureState(props.sequence).lastError &&
-                  store.ensureState(props.sequence).index === index"
+          @delete="seqStepStore.deleteStep(sequence.id, element.id!)"
+          :description="element.description"
+          :completed="seqStore.ensureState(sequence).completed[index]"
+          :error="seqStore.ensureState(sequence).lastError &&
+                  seqStore.ensureState(sequence).index === index"
         >
-          <!-- Добавляем иконку для drag -->
           <template #prefix>
             <span class="drag-handle cursor-grab text-neutral-500">⋮⋮</span>
           </template>
@@ -94,7 +93,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import { useSequenceStore } from "@/stores/sequenceStore"
-import { type SequenceDef, type SequenceStepCreate, StepKind } from "@/types/sequences"
+import { type SequenceDef, SequenceStatusEnum, type SequenceStepCreate, StepKind } from "@/types/sequences"
 import UiBadge from "@/components/ui/UiBadge.vue"
 import UiButton from "../ui/UiButton.vue"
 import ProgressBar from "../ui/ProgressBar.vue"
@@ -102,70 +101,76 @@ import SequenceMenu from "./SequenceMenu.vue"
 import SequenceStep from "./SequenceStep.vue"
 import draggable from "vuedraggable"
 import AddStepButton from "./AddStepButton.vue"
+import { useSequenceStepStore } from "@/stores/sequenceStepStore"
 
 const props = defineProps<{ sequence: SequenceDef }>()
-const store = useSequenceStore()
+
+const seqStore = useSequenceStore()
+const seqStepStore = useSequenceStepStore()
 
 const emit = defineEmits<{
   (e: "export", seq: SequenceDef): void
   (e: "delete", seq: SequenceDef): void
 }>()
 
-const st = computed(() => store.ensureState(props.sequence))
+const st = computed(() => seqStore.ensureState(props.sequence))
+
+const steps = computed(() => seqStepStore.stepsBySequence(props.sequence.id).value)
+const enrichedSteps = computed(() => seqStepStore.enrichedStepsBySequence(props.sequence.id).value)
+
 
 const statusLabel = computed(() => {
   switch (st.value.status) {
-    case "idle": return "Idle"
-    case "running": return "Running"
-    case "completed": return "Completed"
-    case "stopped": return "Stopped"
+    case SequenceStatusEnum.IDLE: return "Idle"
+    case SequenceStatusEnum.RUNNING: return "Running"
+    case SequenceStatusEnum.COMPLETED: return "Completed"
+    case SequenceStatusEnum.STOPPED: return "Stopped"
   }
 })
 
 async function onStartStop() {
-  if (st.value.status === "running") {
-    store.stop(props.sequence)
+  if (st.value.status === SequenceStatusEnum.RUNNING) {
+    seqStore.stop(props.sequence)
   } else {
     // сбрасываем перед запуском
-    store.resetState(props.sequence)
-    await store.start(props.sequence)
+    seqStore.resetState(props.sequence)
+    await seqStore.start(props.sequence)
   }
 }
 
 async function onReset() {
 
-  store.resetState(props.sequence)
+  seqStore.resetState(props.sequence)
 }
 
-function onReorder() {
-  const newOrder = props.sequence.steps
-  .map(s => s.id)
-  .filter((id): id is number => id !== undefined)
+async function onReorder() {
+  const newOrder: number[] = enrichedSteps.value
+    .map((s) => s.id)
+    .filter((id): id is number => id !== undefined)
 
-  store.reorderSteps(props.sequence.id, newOrder)
-
-  store.resetState(props.sequence)
+  await seqStepStore.reorderSteps(props.sequence.id, newOrder)
+  seqStore.resetState(props.sequence)
 }
+
 
 // доступные типы шагов (потом можно вынести в конфиг)
 const availableKinds: StepKind[] = Object.values(StepKind)
 
 async function addDefault(kind: StepKind) {
-
   const newStep: SequenceStepCreate = {
     kind: StepKind.WAIT,
-    unit_id: null,
+    channel_id: null,
     payload: { ms: 500 },
   }
-  await store.addStep(props.sequence.id, newStep)
+  await seqStepStore.addStep(props.sequence.id, newStep)
 }
 
 const statusVariant = computed(() => {
   switch (st.value.status) {
-    case "idle": return "neutral"
-    case "running": return "info"
-    case "completed": return "success"
-    case "stopped": return "danger"
+    case SequenceStatusEnum.IDLE: return "neutral"
+    case SequenceStatusEnum.RUNNING: return "info"
+    case SequenceStatusEnum.COMPLETED: return "success"
+    case SequenceStatusEnum.STOPPED: return "danger"
     default: return "neutral"
   }
 })

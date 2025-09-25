@@ -1,13 +1,17 @@
 import { PROPERTY_FIELD_TYPES, type PropertySchema } from "@/property-schemas/types"
 import type { SequenceStep } from "@/types/sequences"
-import { useSequenceStore } from "@/stores/sequenceStore"
 import { StepKind } from "@/types/sequences"
 import { ON_OFF_OPTIONS } from "@/constants/option"
 import { splitKey } from "./utils"
 import { CHANNEL_TYPES } from "@/types/channel"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { SWITCHGEAR_CODE, SWITCHGEAR_OPTIONS } from "@/constants/switchgear"
+import { useSequenceStepStore } from "@/stores/sequenceStepStore"
 
+const ON_OFF_LABELS: Record<number, string> = {
+  0: "Off",
+  1: "On",
+}
 
 export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
   fields: [
@@ -46,7 +50,7 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
     //   visible: (s) => s.kind === StepKind.DO_LATCH,
     // },
     {
-      key: "payload.ch",
+      key: "channel_id",
       label: "Channel",
       editable: true,
       type: PROPERTY_FIELD_TYPES.CHANNEL,
@@ -57,7 +61,7 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       label: "Value",
       editable: true,
       type: PROPERTY_FIELD_TYPES.SELECT,
-      options: ON_OFF_OPTIONS,
+      options: [0 , 1],
       visible: (s) => s.kind === StepKind.DO_LATCH,
     },
 
@@ -70,7 +74,7 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
     //   visible: (s) => s.kind === StepKind.DO_PULSE,
     // },
     {
-      key: "payload.ch",
+      key: "channel_id",
       label: "Channel",
       editable: true,
       type: PROPERTY_FIELD_TYPES.CHANNEL,
@@ -82,7 +86,7 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       label: "Value",
       editable: true,
       type: PROPERTY_FIELD_TYPES.SELECT,
-      options: ON_OFF_OPTIONS,
+      options: [0 , 1],
       visible: (s) => s.kind === StepKind.DO_PULSE,
     },
     {
@@ -95,8 +99,8 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
 
     // --- DO_BITMASK ---
     {
-      key: "unit_id",
-      label: "Unit",
+      key: "payload.device_id",
+      label: "Device",
       editable: true,
       type: PROPERTY_FIELD_TYPES.UNIT,
       visible: (s) => s.kind === StepKind.DO_BITMASK,
@@ -109,7 +113,8 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
       visible: (s) => s.kind === StepKind.DO_BITMASK,
       resolveChannelCount: (s) => {
         const deviceStore = useDeviceStore()
-        const device = deviceStore.devices.find(d => d.unit_id === s.unit_id)
+        const deviceId = s.payload?.device_id
+        const device = deviceStore.devices.find(d => d.id === deviceId)
         return device?.channels?.filter(ch => ch.type === CHANNEL_TYPES.DO).length ?? 0
       }
     },
@@ -123,14 +128,15 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
     //   visible: (s) => s.kind === StepKind.DO_PAIR,
     // },
     {
-      key: "payload.chA",
+      key: "payload.channel_ids[0]",
       label: "Channel A",
       editable: true,
       type: PROPERTY_FIELD_TYPES.CHANNEL,
       channelType: CHANNEL_TYPES.DO,
       visible: (s) => s.kind === StepKind.DO_PAIR,
     },
-    { key: "payload.chB",
+    {
+      key: "payload.channel_ids[1]",
       label: "Channel B",
       editable: true,
       type: PROPERTY_FIELD_TYPES.CHANNEL,
@@ -159,7 +165,7 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
     //   visible: (s) => s.kind === StepKind.AO_SET,
     // },
     {
-      key: "payload.ch",
+      key: "channel_id",
       label: "Channel",
       editable: true,
       type: PROPERTY_FIELD_TYPES.CHANNEL,
@@ -176,7 +182,7 @@ export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
   ],
 
   async update(item, key, value) {
-  const store = useSequenceStore()
+  const store = useSequenceStepStore()
 
   const { root, sub } = splitKey(key.toString())
 

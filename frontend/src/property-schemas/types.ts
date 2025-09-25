@@ -36,8 +36,13 @@ export interface BasePropertyField<T> {
   validate?: (value: any, item: T) => string | null // return error message or null
 }
 
+export type SelectOption =
+  | string
+  | number
+  | { label: string; value: string | number }
+
 // select
-export interface SelectPropertyField<T, O extends string = string> {
+export interface SelectPropertyField<T, O extends SelectOption = SelectOption> {
   key: string
   label: string | ((item: T, index?: number) => string)
   editable: true

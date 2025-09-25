@@ -40,8 +40,8 @@
         </span>
 
         <!-- Device -->
-        <span v-if="e.unit_id" class="text-neutral-600 dark:text-neutral-300">
-          {{ e.unit_id }}
+        <span v-if="e.unitId" class="text-neutral-600 dark:text-neutral-300">
+          {{ e.unitId }}
         </span>
 
         <!-- Summary -->

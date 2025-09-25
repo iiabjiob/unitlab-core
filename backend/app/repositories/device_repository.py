@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -93,3 +94,20 @@ class DeviceRepository:
         """Return list of all unit_id from devices table."""
         result = await self.db.execute(select(Device.unit_id))
         return [row[0] for row in result.fetchall()]
+    
+    async def update(self, device_id: int, changes: dict) -> Device | None:
+        result = await self.db.execute(
+            select(Device)
+            .options(selectinload(Device.channels))  # preload
+            .where(Device.id == device_id)
+        )
+        device = result.scalar_one_or_none()
+        if not device:
+            return None
+
+        for k, v in changes.items():
+            setattr(device, k, v)
+
+        await self.db.commit()
+        await self.db.refresh(device)
+        return device

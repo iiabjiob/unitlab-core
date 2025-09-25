@@ -1,10 +1,10 @@
 <template>
   <div
     class="text-xs text-neutral-600 dark:text-neutral-400 space-y-2">
-    <!-- Indication (DO) -->
+    <!-- Control (DO) -->
     <div>
       <div class="font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-        Indication
+        Control
       </div>
       <div class="flex justify-between">
         <span>Open</span>
@@ -30,10 +30,10 @@
         <span v-else class="italic text-neutral-400">n/a</span>
       </div>
     </div>
-    <!-- Control (DI) -->
+    <!-- Indication (DI) -->
     <div>
       <div class="font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-        Control
+        Indication
       </div>
       <div class="flex justify-between">
         <span>Open</span>

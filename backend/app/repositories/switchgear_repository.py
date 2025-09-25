@@ -26,7 +26,7 @@ class SwitchgearRepository:
         result = await self.db.execute(select(Switchgear).where(Switchgear.id == sg_id))
         return result.scalar_one_or_none()
 
-    async def get_all(self) -> list[Switchgear]:
+    async def list(self) -> list[Switchgear]:
         result = await self.db.execute(select(Switchgear))
         return list(result.scalars().all())
 

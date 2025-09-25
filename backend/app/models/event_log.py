@@ -10,7 +10,7 @@ class EventLog(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     type: Mapped[str] = mapped_column(String, nullable=False)
-    message: Mapped[str] = mapped_column(String, nullable=True)
+    summary: Mapped[str] = mapped_column(String, nullable=True)
 
     channel_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("channels.id", ondelete="SET NULL"), nullable=True

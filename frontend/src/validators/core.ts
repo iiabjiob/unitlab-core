@@ -8,9 +8,12 @@ export interface FieldRule {
   recommended?: boolean
   min?: number
   max?: number
+  minLength?: number
+  maxLength?: number
+  unique?: boolean
   pattern?: RegExp
   notEqualTo?: string
-  type?: "number" | "string"
+  type?: "number" | "string" | "array"
   level: ValidationLevel
   message?: string
 }
@@ -67,7 +70,63 @@ export function validateByRules<T>(
         }
       }
 
-      // min / max
+      if (rule.type === "string") {
+        if (typeof value !== "string") {
+          errs.push({
+            schemaName,
+            itemId: (item as any).id,
+            fieldKey: field,
+            message: rule.message ?? `${field} must be a string`,
+            level: rule.level ?? VALIDATION_LEVELS.ERROR
+          })
+          continue
+        }
+      }
+
+      if (rule.type === "array") {
+        if (!Array.isArray(value)) {
+          errs.push({
+            schemaName,
+            itemId: (item as any).id,
+            fieldKey: field,
+            message: rule.message ?? `${field} must be an array`,
+            level: rule.level ?? VALIDATION_LEVELS.ERROR
+          })
+          continue
+        }
+
+        if (rule.minLength !== undefined && value.length < rule.minLength) {
+          errs.push({
+            schemaName,
+            itemId: (item as any).id,
+            fieldKey: field,
+            message: rule.message ?? `${field} must have at least ${rule.minLength} items`,
+            level: rule.level ?? VALIDATION_LEVELS.ERROR
+          })
+        }
+
+        if (rule.maxLength !== undefined && value.length > rule.maxLength) {
+          errs.push({
+            schemaName,
+            itemId: (item as any).id,
+            fieldKey: field,
+            message: rule.message ?? `${field} must have at most ${rule.maxLength} items`,
+            level: rule.level ?? VALIDATION_LEVELS.ERROR
+          })
+        }
+
+        if (rule.unique && new Set(value).size !== value.length) {
+          errs.push({
+            schemaName,
+            itemId: (item as any).id,
+            fieldKey: field,
+            message: rule.message ?? `${field} must contain unique items`,
+            level: rule.level ?? VALIDATION_LEVELS.ERROR
+          })
+        }
+      }
+
+      // min / max (для number)
       if (typeof value === "number") {
         if (rule.min !== undefined && value < rule.min) {
           errs.push({
@@ -118,3 +177,4 @@ export function validateByRules<T>(
 
   return errs
 }
+

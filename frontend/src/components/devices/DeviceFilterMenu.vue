@@ -45,7 +45,7 @@
 
         <!-- Reset all -->
         <div class="pt-2 border-t border-neutral-200 dark:border-neutral-700">
-          <UiButton type="secondary" size="xs" @click="resetFilters">
+          <UiButton type="toolbar" size="xs" @click="resetFilters">
             Reset filters
           </UiButton>
         </div>

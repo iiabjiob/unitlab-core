@@ -6,6 +6,7 @@ import { useSwitchgearStore } from "@/stores/switchgearStore"
 import type { SchemaName } from "@/property-schemas/types"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { validateSequence } from "./sequence"
+import { useSequenceStepStore } from "@/stores/sequenceStepStore"
 
 type ValidatorFn<T> = (item: T) => any[]
 
@@ -21,10 +22,8 @@ const validators: Record<SchemaName, () => { items: any[]; fn: ValidatorFn<any> 
     return { items: store.sequences, fn: validateSequence }
   },
   sequence_step: () => {
-    const store = useSequenceStore()
-    // собрать все шаги из всех последовательностей
-    const steps = store.sequences.flatMap(seq => seq.steps ?? [])
-    return { items: steps, fn: validateSequenceStep }
+    const stepStore = useSequenceStepStore()
+    return { items: stepStore.steps, fn: validateSequenceStep }
   },
 }
 

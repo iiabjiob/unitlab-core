@@ -1,3 +1,4 @@
+from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -38,7 +39,7 @@ class SequenceRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_all(self) -> list[Sequence]:
+    async def list(self) -> list[Sequence]:
         result = await self.db.execute(
             select(Sequence).options(selectinload(Sequence.steps))
         )
@@ -65,7 +66,7 @@ class SequenceRepository:
     async def register_if_not_exists(
         self,
         seq_data: dict,
-        steps: list[dict]
+        steps: List[Dict[str, Any]]
     ) -> Sequence:
         result = await self.db.execute(
             select(Sequence).where(Sequence.name == seq_data["name"])

@@ -58,7 +58,6 @@ async function onAdd() {
   const seq = await store.createSequence({
     name: "New Sequence",
     description: "Draft sequence",
-    steps: [],
   })
   selection.select({ type: "sequence", key: seq.id })
 }

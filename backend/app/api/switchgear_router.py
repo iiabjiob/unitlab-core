@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/switchgears", tags=["Switchgears"])
 @router.get("", response_model=list[SwitchgearSchema])
 async def list_switchgears(db: AsyncSession = Depends(get_db)):
     repo = SwitchgearRepository(db)
-    return await repo.get_all()
+    return await repo.list()
 
 
 @router.get("/{sg_id}", response_model=SwitchgearSchema)

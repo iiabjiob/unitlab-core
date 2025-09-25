@@ -30,6 +30,6 @@ export const sequencePropertySchema: PropertySchema<SequenceDef> = {
 
   async update(item, key, value) {
     const store = useSequenceStore()
-    await store.updateSequenceField(item.id, { [key]: value })
+    await store.updateSequence(item.id, { [key]: value })
   },
 }

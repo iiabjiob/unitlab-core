@@ -16,6 +16,7 @@ import type {
   TimeStatusEvent,
   EventLogEvent
 } from '@/types/ws/events'
+import type { EventLogEntry } from '@/types/eventLog'
 
 export function handleWsEvent(event: WSEvent) {
   const deviceStore = useDeviceStore()
@@ -66,7 +67,22 @@ export function handleWsEvent(event: WSEvent) {
     // --- События ---
     case WSChannel.EVENT_LOG: {
       const e = event as EventLogEvent
-      eventLogStore.add(e)
+
+      // маппим WS → Store
+      const entry: EventLogEntry = {
+        id: e.id,
+        ts: e.ts,
+        dir: e.dir,
+        source: e.source,
+        channelOrAction: e.channelOrAction,
+        unitId: e.unitId,
+        type: e.type,
+        summary: e.summary,
+        payload: e.payload,
+        createdAt: new Date(e.ts).toISOString(), // добавляем недостающий required
+      }
+
+      eventLogStore.add(entry)
       break
     }
   }

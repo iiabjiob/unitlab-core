@@ -95,17 +95,18 @@ export interface TimeStatusEvent extends TimeStatus {
 }
 
 export interface EventLogEvent {
-  channel: WSChannel.EVENT_LOG   // new channel
-  id: string                     // UUID or server-side sequence
+  channel: WSChannel.EVENT_LOG   // новый канал
+  id: string                     // UUID или серверный sequence
   ts: number                     // unix ms
-  dir: "IN" | "OUT"              // direction
+  dir: "IN" | "OUT"              // направление
   source: "WS_DEVICE" | "WS_COMMAND"
   channelOrAction: string
-  unit_id?: string
+  unitId?: string
   type?: string
   summary: string
   payload?: Record<string, any>
 }
+
 
 
 export type WSEvent =
