@@ -3,45 +3,54 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.infrastructure.db.database import get_db
-from app.repositories.sequence_step_repository import (
-    create_step as create_step_repo,
-    get_steps_for_sequence,
-    update_step as update_step_repo,
-    delete_step as delete_step_repo,
-)
+from app.repositories.sequence_step_repository import SequenceStepRepository
 from app.schemas.sequence_step_schema import (
     SequenceStepSchema,
     SequenceStepCreateSchema,
     SequenceStepUpdateSchema,
     SequenceReorderSchema,
 )
-from app.models.sequence import SequenceStep
+from app.models.sequence_step import SequenceStep
 
 router = APIRouter(prefix="/api/sequences/{seq_id}/steps", tags=["SequenceSteps"])
 
 
 @router.get("", response_model=list[SequenceStepSchema])
 async def list_steps(seq_id: int, db: AsyncSession = Depends(get_db)):
-    return await get_steps_for_sequence(db, seq_id)
+    repo = SequenceStepRepository(db)
+    return await repo.get_for_sequence(seq_id)
 
 
 @router.post("", response_model=SequenceStepSchema)
-async def create_step(seq_id: int, data: SequenceStepCreateSchema, db: AsyncSession = Depends(get_db)):
-    # find current max order_index
-    steps = await get_steps_for_sequence(db, seq_id)
+async def create_step(
+    seq_id: int,
+    data: SequenceStepCreateSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    repo = SequenceStepRepository(db)
+    steps = await repo.get_for_sequence(seq_id)
     next_index = len(steps)
+
     step_data = data.model_dump()
     step_data["order_index"] = next_index
-    return await create_step_repo(db, sequence_id=seq_id, data=step_data)
+
+    return await repo.create(sequence_id=seq_id, data=step_data)
 
 
 @router.patch("/{step_id}", response_model=SequenceStepSchema)
-async def update_step(seq_id: int, step_id: int, data: SequenceStepUpdateSchema, db: AsyncSession = Depends(get_db)):
-    # do not allow changing order_index here → only via reorder/batch update
+async def update_step(
+    seq_id: int,
+    step_id: int,
+    data: SequenceStepUpdateSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    repo = SequenceStepRepository(db)
     changes = data.model_dump(exclude_unset=True)
-    if "order_index" in changes:
-        changes.pop("order_index")
-    step = await update_step_repo(db, step_id, changes)
+
+    # forbid direct change of order_index here
+    changes.pop("order_index", None)
+
+    step = await repo.update(step_id, changes)
     if not step:
         raise HTTPException(404, "Step not found")
     return step
@@ -49,12 +58,13 @@ async def update_step(seq_id: int, step_id: int, data: SequenceStepUpdateSchema,
 
 @router.delete("/{step_id}")
 async def delete_step(seq_id: int, step_id: int, db: AsyncSession = Depends(get_db)):
-    ok = await delete_step_repo(db, step_id)
+    repo = SequenceStepRepository(db)
+    ok = await repo.delete(step_id)
     if not ok:
         raise HTTPException(404, "Step not found")
 
     # normalize order after deletion
-    steps = await get_steps_for_sequence(db, seq_id)
+    steps = await repo.get_for_sequence(seq_id)
     for idx, s in enumerate(steps):
         s.order_index = idx
     await db.commit()
@@ -79,7 +89,6 @@ async def reorder_steps(
 
     await db.commit()
 
-    # вернём уже отсортированный список
     result = await db.execute(
         select(SequenceStep)
         .where(SequenceStep.sequence_id == seq_id)
@@ -89,9 +98,15 @@ async def reorder_steps(
 
 
 @router.put("", response_model=list[SequenceStepSchema])
-async def replace_steps(seq_id: int, new_steps: list[SequenceStepCreateSchema], db: AsyncSession = Depends(get_db)):
+async def replace_steps(
+    seq_id: int,
+    new_steps: list[SequenceStepCreateSchema],
+    db: AsyncSession = Depends(get_db),
+):
+    repo = SequenceStepRepository(db)
+
     # remove old steps
-    old_steps = await get_steps_for_sequence(db, seq_id)
+    old_steps = await repo.get_for_sequence(seq_id)
     for s in old_steps:
         await db.delete(s)
     await db.flush()

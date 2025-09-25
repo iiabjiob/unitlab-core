@@ -3,7 +3,7 @@ from app.infrastructure.protocol.decode import sys as sys_decode
 from app.infrastructure.protocol.utils import fw_u16_to_str
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.db.database import AsyncSessionLocal
-from app.repositories.device_repository import register_or_update
+from app.repositories.device_repository import DeviceRepository
 from app.infrastructure.mqtt import topics
 from app.infrastructure.redis.manager import RedisManager
 from app.ws.manager import WebSocketManager
@@ -33,22 +33,22 @@ async def handle_device_register(topic: str, payload: bytes, unit_id: str):
         return
 
     unit_id = reg.id
-    type = reg.type.strip()   # 4-char code, лучше str.strip()
+    type_ = reg.type.strip()   # 4-char code
     num_channels = reg.num_channels
     firmware_version = fw_u16_to_str(reg.fwVersion)
 
     logger.debug(
-        f"Registering device {unit_id} (type={type}, ch={num_channels}, fw={firmware_version})"
+        f"Registering device {unit_id} (type={type_}, ch={num_channels}, fw={firmware_version})"
     )
 
     async with AsyncSessionLocal() as session:
+        repo = DeviceRepository(session)
         try:
-            device = await register_or_update(
-                db=session,
+            device = await repo.register_or_update(
                 unit_id=unit_id,
                 num_channels=num_channels,
                 firmware_version=firmware_version,
-                type=type,
+                type=type_,
                 is_active=True,
             )
             logger.info(f"✅ Registered device: {device.unit_id}")

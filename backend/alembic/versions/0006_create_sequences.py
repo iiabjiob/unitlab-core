@@ -30,8 +30,8 @@ def upgrade() -> None:
         sa.Column("sequence_id", sa.BigInteger, sa.ForeignKey("sequences.id", ondelete="CASCADE"), nullable=False),
         sa.Column("order_index", sa.Integer, nullable=False),
         sa.Column("kind", sa.String, nullable=False),  # e.g. DO_SET, WAIT
-        sa.Column("unit_id", sa.String, nullable=True),
-        sa.Column("payload", sa.JSON, nullable=True),  # ch, value, bitmask, pulse_ms, ms и т.д.
+        sa.Column("channel_id", sa.BigInteger, sa.ForeignKey("channels.id", ondelete="SET NULL"), nullable=True),
+        sa.Column("payload", sa.JSON, nullable=True),  # value, bitmask, pulse_ms, ms и т.д.
     )
 
 

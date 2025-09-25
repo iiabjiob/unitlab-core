@@ -1,10 +1,11 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional, Dict
+
 
 class SequenceStepBase(BaseModel):
     kind: str
-    unit_id: str | None = None
-    payload: dict | None = None
+    channel_id: Optional[int] = None
+    payload: Optional[Dict] = None
 
 
 class SequenceStepCreateSchema(SequenceStepBase):
@@ -12,10 +13,10 @@ class SequenceStepCreateSchema(SequenceStepBase):
 
 
 class SequenceStepUpdateSchema(BaseModel):
-    order_index: int | None = None
-    kind: str | None = None
-    unit_id: str | None = None
-    payload: dict | None = None
+    order_index: Optional[int] = None
+    kind: Optional[str] = None
+    channel_id: Optional[int] = None
+    payload: Optional[Dict] = None
 
 
 class SequenceStepSchema(SequenceStepBase):
@@ -25,6 +26,7 @@ class SequenceStepSchema(SequenceStepBase):
 
     class Config:
         from_attributes = True
+
 
 class SequenceReorderSchema(BaseModel):
     new_order: List[int]

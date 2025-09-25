@@ -3,7 +3,7 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import String, Integer, BigInteger, DateTime, ForeignKey
 from app.infrastructure.db.database import Base
-
+from app.models.sequence_step import SequenceStep
 
 class Channel(Base):
     __tablename__ = "channels"
@@ -26,3 +26,7 @@ class Channel(Base):
 
     # ORM связь: один девайс → много каналов
     device = relationship("Device", back_populates="channels")
+
+    steps: Mapped[list["SequenceStep"]] = relationship(
+        "SequenceStep", back_populates="channel"
+    )

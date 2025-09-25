@@ -1,7 +1,7 @@
 """create signal_list tables
 
 Revision ID: 0004_create_signal_list
-Revises: 0003_create_event_log
+Revises: 0003_create_event_logs
 Create Date: 2025-09-10
 """
 from typing import Sequence, Union
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers
 revision: str = "0004_create_signal_list"
-down_revision: Union[str, None] = "0003_create_event_log"
+down_revision: Union[str, None] = "0003_create_event_logs"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

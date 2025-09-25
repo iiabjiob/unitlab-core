@@ -1,14 +1,15 @@
+# app/api/sequence_router.py
 import json, re
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from app.infrastructure.db.database import get_db
-from app.repositories.sequence_repository import (
-    create_sequence, get_all_sequences, get_sequence,
-    update_sequence, delete_sequence
-)
+from sqlalchemy import select
 
+from app.infrastructure.db.database import get_db
+from app.repositories.sequence_repository import SequenceRepository
+from app.models.device import Device
+from app.models.channel import Channel
 from app.schemas.sequence_schema import (
     SequenceSchema, SequenceCreateSchema, SequenceUpdateSchema,
     SequenceExportSchema
@@ -19,12 +20,14 @@ router = APIRouter(prefix="/api/sequences", tags=["Sequences"])
 
 @router.get("", response_model=list[SequenceSchema])
 async def list_sequences(db: AsyncSession = Depends(get_db)):
-    return await get_all_sequences(db)
+    repo = SequenceRepository(db)
+    return await repo.list()
 
 
 @router.get("/{seq_id}", response_model=SequenceSchema)
 async def get_one(seq_id: int, db: AsyncSession = Depends(get_db)):
-    seq = await get_sequence(db, seq_id)
+    repo = SequenceRepository(db)
+    seq = await repo.get(seq_id)
     if not seq:
         raise HTTPException(404, "Sequence not found")
     return seq
@@ -32,13 +35,15 @@ async def get_one(seq_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("", response_model=SequenceSchema)
 async def create(data: SequenceCreateSchema, db: AsyncSession = Depends(get_db)):
+    repo = SequenceRepository(db)
     steps = [s.model_dump() for s in data.steps]
-    return await create_sequence(db, data.model_dump(exclude={"steps"}), steps)
+    return await repo.create(data.model_dump(exclude={"steps"}), steps)
 
 
 @router.patch("/{seq_id}", response_model=SequenceSchema)
 async def update(seq_id: int, data: SequenceUpdateSchema, db: AsyncSession = Depends(get_db)):
-    seq = await update_sequence(db, seq_id, data.model_dump(exclude_unset=True))
+    repo = SequenceRepository(db)
+    seq = await repo.update(seq_id, data.model_dump(exclude_unset=True))
     if not seq:
         raise HTTPException(404, "Sequence not found")
     return seq
@@ -46,7 +51,8 @@ async def update(seq_id: int, data: SequenceUpdateSchema, db: AsyncSession = Dep
 
 @router.delete("/{seq_id}")
 async def delete(seq_id: int, db: AsyncSession = Depends(get_db)):
-    ok = await delete_sequence(db, seq_id)
+    repo = SequenceRepository(db)
+    ok = await repo.delete(seq_id)
     if not ok:
         raise HTTPException(404, "Sequence not found")
     return {"detail": "Sequence deleted"}
@@ -54,23 +60,35 @@ async def delete(seq_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.get("/{seq_id}/export-file")
 async def export_sequence_file(seq_id: int, db: AsyncSession = Depends(get_db)):
-    seq = await get_sequence(db, seq_id)
+    repo = SequenceRepository(db)
+    seq = await repo.get(seq_id)
     if not seq:
         raise HTTPException(404, "Sequence not found")
 
     payload = {
         "name": seq.name,
         "description": seq.description,
-        "steps": [
-            {
+        "steps": [],
+    }
+
+    for step in seq.steps:
+        if step.channel:  # есть привязка к каналу
+            payload["steps"].append({
                 "order_index": step.order_index,
                 "kind": step.kind,
-                "unit_id": step.unit_id,
+                "unit_id": step.channel.device.unit_id,
+                "channel_index": step.channel.index,
                 "payload": step.payload,
-            }
-            for step in seq.steps
-        ],
-    }
+            })
+        else:  # шаги типа WAIT
+            payload["steps"].append({
+                "order_index": step.order_index,
+                "kind": step.kind,
+                "unit_id": None,
+                "channel_index": None,
+                "payload": step.payload,
+            })
+
     safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', seq.name)
     filename = f"{safe_name}_{seq.id}.json"
 
@@ -83,13 +101,13 @@ async def export_sequence_file(seq_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/import-file", response_model=list[SequenceSchema])
 async def import_sequences_file(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+    repo = SequenceRepository(db)
     raw = await file.read()
     try:
         data = json.loads(raw)
     except Exception as e:
         raise HTTPException(400, f"Invalid JSON file: {e}")
 
-    # поддержка обертки {"sequences": [...]}
     if "sequences" in data:
         seqs_data = data["sequences"]
     elif isinstance(data, list):
@@ -104,10 +122,36 @@ async def import_sequences_file(file: UploadFile = File(...), db: AsyncSession =
 
     imported = []
     for seq in parsed:
-        created = await create_sequence(
-            db,
+        steps_data = []
+        for step in seq.steps:
+            channel_id = None
+            if step.unit_id and step.channel_index is not None:
+                # найти device по unit_id
+                dev_res = await db.execute(
+                    select(Device).where(Device.unit_id == step.unit_id)
+                )
+                device = dev_res.scalar_one_or_none()
+                if device:
+                    ch_res = await db.execute(
+                        select(Channel).where(
+                            Channel.device_id == device.id,
+                            Channel.index == step.channel_index
+                        )
+                    )
+                    channel = ch_res.scalar_one_or_none()
+                    if channel:
+                        channel_id = channel.id
+
+            steps_data.append({
+                "order_index": step.order_index,
+                "kind": step.kind,
+                "channel_id": channel_id,
+                "payload": step.payload,
+            })
+
+        created = await repo.create(
             {"name": seq.name, "description": seq.description},
-            [s.model_dump() for s in seq.steps],
+            steps_data,
         )
         imported.append(created)
 
