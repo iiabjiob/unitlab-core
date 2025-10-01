@@ -3,13 +3,7 @@ import 'floating-vue/dist/style.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-
-import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
-
-// Register all Community features
-ModuleRegistry.registerModules([AllCommunityModule]);
-
-import { initWebSocket } from './wsInit'
+import piniaPluginPersistedstate from "pinia-plugin-persistedstate"
 
 import App from './App.vue'
 import router from './router'
@@ -17,13 +11,14 @@ import { logger } from './utils/logger'
 
 const app = createApp(App)
 
-app.use(createPinia())
+const pinia = createPinia()
+pinia.use(piniaPluginPersistedstate)
+
+app.use(pinia)
 app.use(router)
 
 logger.info('🚀 Starting frontend application')
 
 app.mount('#app')
-
-initWebSocket()
 
 logger.info('✅ Frontend application is up')

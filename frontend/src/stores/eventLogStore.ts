@@ -9,6 +9,21 @@ const logger = getLogger("EVT")
 
 type EventLogUIEntry = EventLogEntry & { highlight?: boolean }
 
+function mapApiToEvent(entry: any): EventLogEntry {
+  return {
+    id: entry.id,
+    ts: entry.ts,
+    dir: entry.dir,
+    source: entry.source,
+    channelOrAction: entry.channel_or_action,
+    unitId: entry.unit_id ?? undefined,
+    type: entry.type ?? undefined,
+    summary: entry.summary,
+    payload: entry.payload,
+    createdAt: entry.created_at,
+  }
+}
+
 export const useEventLogStore = defineStore("eventLogStore", () => {
   const items = ref<EventLogUIEntry[]>([])
   const isLoading = ref(false)
@@ -17,12 +32,12 @@ export const useEventLogStore = defineStore("eventLogStore", () => {
     isLoading.value = true
     try {
       logger.debug("⏳ Fetching /api/events ...")
-      const { data } = await axios.get<EventLogEntry[]>(ApiBuilder.events(), {
-        params: { limit }
+      const { data } = await axios.get<any[]>(ApiBuilder.events(), {
+        params: { limit },
       })
-      logger.debug("✅ Fetched:", items.value.length)
-      items.value = data
 
+      items.value = data.map(mapApiToEvent)
+      logger.debug("✅ Fetched:", items.value.length)
     } catch (err) {
       logger.error("💥 Failed to fetch events:", err)
     } finally {

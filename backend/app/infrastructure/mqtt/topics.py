@@ -1,13 +1,12 @@
-# Шаблоны подписок
-DEVICE_STATE     = "unitlab/devices/+/+/state"
-DEVICE_REQ_STATE = "unitlab/devices/+/+/req/state"
-DEVICE_HEARTBEAT = "unitlab/devices/+/+/heartbeat"
-DEVICE_CMD       = "unitlab/devices/+/+/cmd"
-DEVICE_RESP      = "unitlab/devices/+/+/resp"
-DEVICE_REGISTER  = "unitlab/device/register/#"
-DEVICE_SCAN      = "unitlab/devices/scan"
+DEVICE_STATE     = "+/s"
+DEVICE_REQ_STATE = "+/q"
+DEVICE_HEARTBEAT = "+/h"
+DEVICE_CMD       = "+/c"
+DEVICE_RESP      = "+/r"
+DEVICE_INFO      = "+/i"
+DEVICE_REGISTER  = "+/reg"
+DEVICE_SCAN      = "scan"
 
-# Шаблоны подписок для Core (только входящие от периферии)
 CORE_TOPICS = [
     DEVICE_STATE,
     DEVICE_HEARTBEAT,
@@ -20,32 +19,30 @@ PUBLISH_ONLY_TOPICS = [
     DEVICE_CMD,
     DEVICE_REQ_STATE,
     DEVICE_SCAN,
+    DEVICE_INFO,
 ]
 
 # Генераторы конкретных топиков
-def base(type: str, unit_id: str, namespace: str = "unitlab") -> str:
-    return f"{namespace}/devices/{type}/{unit_id}"
+def register(unit_id: str) -> str:
+    return f"{unit_id}/reg"
 
-def heartbeat(type: str, unit_id: str, namespace: str = "unitlab") -> str:
-    return f"{base(type, unit_id, namespace)}/heartbeat"
+def heartbeat(unit_id: str) -> str:
+    return f"{unit_id}/h"
 
-def state(type: str, unit_id: str, namespace: str = "unitlab") -> str:
-    return f"{base(type, unit_id, namespace)}/state"
+def state(unit_id: str) -> str:
+    return f"{unit_id}/s"
 
-def state_channel(type: str, unit_id: str, ch: int, namespace: str = "unitlab") -> str:
-    return f"{base(type, unit_id, namespace)}/state/ch/{ch}"
+def state_channel(unit_id: str, ch: int) -> str:
+    return f"{unit_id}/s/{ch}"
 
-def cmd(type: str, unit_id: str, namespace: str = "unitlab") -> str:
-    return f"{base(type, unit_id, namespace)}/cmd"
+def cmd(unit_id: str) -> str:
+    return f"{unit_id}/c"
 
-def req_state(type: str, unit_id: str, namespace: str = "unitlab") -> str:
-    return f"{base(type, unit_id, namespace)}/req/state"
+def req_state(unit_id: str) -> str:
+    return f"{unit_id}/q"
 
-def resp(type: str, unit_id: str, namespace: str = "unitlab") -> str:
-    return f"{base(type, unit_id, namespace)}/resp"
+def resp(unit_id: str) -> str:
+    return f"{unit_id}/r"
 
-def register(unit_id: str, namespace: str = "unitlab") -> str:
-    return f"{namespace}/device/register/{unit_id}"
-
-def scan(namespace: str = "unitlab") -> str:
-    return f"{namespace}/devices/scan"
+def info(unit_id: str) -> str:
+    return f"{unit_id}/i"

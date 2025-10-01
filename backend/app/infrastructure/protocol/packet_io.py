@@ -19,7 +19,14 @@ class PacketBuilder:
         self.cap = capacity
         self.len = 0
 
-    def build(self, mode: int, packet_id: int, ts: int, payload: bytes) -> bool:
+    def build(self, 
+              mode: int, 
+              packet_id: int, 
+              ts: int, 
+              payload: bytes,
+              flags: int = 0,
+              version: int = 1, 
+              ) -> bool:
         """Build full packet with header + payload into self.buf."""
         payload_len = len(payload)
         if payload_len > MAX_PAYLOAD:
@@ -30,9 +37,10 @@ class PacketBuilder:
         # Create header
         hdr = PacketHeader(
             mode=mode,
-            version=1,  # PROTOCOL_VERSION
+            version=version,
             packet_id=packet_id,
             timestamp_ms=ts,
+            flags=flags,
             payload_len=payload_len,
         )
 

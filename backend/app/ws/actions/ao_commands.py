@@ -1,6 +1,7 @@
+# ws/actions/ao_commands.py
 import time, uuid
 from fastapi import WebSocket
-from app.services.device_control_service.ao import set_ao_command_now
+from app.services.command_queue_service import enqueue_ao_command
 from app.schemas.ws.messages import SetAoCommandMessage
 from app.services.event_log_service import EventLogService
 from app.infrastructure.db.database import AsyncSessionLocal
@@ -8,13 +9,15 @@ from app.schemas.ws.events import EventDirection, EventSource
 from app.schemas.ws.messages import WSAction
 
 async def handle_set_ao_command(ws: WebSocket, msg: SetAoCommandMessage):
-    set_ao_command_now(
+    # Кладём AO-команду в outbound очередь
+    await enqueue_ao_command(
         unit_id=msg.unit_id,
         ch=msg.ch,
         value=msg.value,
+        correlation_id=str(uuid.uuid4()),  # можно пробросить request_id, если есть
     )
 
-    # Логирование через helper
+    # Логирование
     async with AsyncSessionLocal() as session:
         await EventLogService.log_and_broadcast(session, {
             "id": str(uuid.uuid4()),

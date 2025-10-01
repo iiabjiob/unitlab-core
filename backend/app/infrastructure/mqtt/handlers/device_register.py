@@ -1,22 +1,20 @@
-import time, uuid
 from app.infrastructure.protocol.packet_io import PacketParser
 from app.infrastructure.protocol.decode import sys as sys_decode
+from app.infrastructure.protocol.utils import fw_u16_to_str
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.db.database import AsyncSessionLocal
-from app.repositories.device_repository import register_or_update
+from app.repositories.device_repository import DeviceRepository
 from app.infrastructure.mqtt import topics
 from app.infrastructure.redis.manager import RedisManager
 from app.ws.manager import WebSocketManager
 from app.schemas.ws.events import DeviceRegisterEvent
-from app.services.event_log_service import EventLogService
-from app.schemas.ws.events import WSChannel, EventDirection, EventSource
 from app.core.logger import get_logger
 
 logger = get_logger("dev")
 
 
 @registry.mqtt_handler(topics.DEVICE_REGISTER)
-async def handle_device_register(topic: str, payload: bytes, match):
+async def handle_device_register(topic: str, payload: bytes, unit_id: str):
     """
     Handle device registration messages from MQTT.
     """
@@ -35,22 +33,22 @@ async def handle_device_register(topic: str, payload: bytes, match):
         return
 
     unit_id = reg.id
-    type = reg.type.strip()   # 4-char code, лучше str.strip()
-    channels = reg.channels
-    firmware_version = str(reg.fwVersion)
+    type_ = reg.type.strip()   # 4-char code
+    num_channels = reg.num_channels
+    firmware_version = fw_u16_to_str(reg.fwVersion)
 
     logger.debug(
-        f"Registering device {unit_id} (type={type}, ch={channels}, fw={firmware_version})"
+        f"Registering device {unit_id} (type={type_}, ch={num_channels}, fw={firmware_version})"
     )
 
     async with AsyncSessionLocal() as session:
+        repo = DeviceRepository(session)
         try:
-            device = await register_or_update(
-                db=session,
+            device = await repo.register_or_update(
                 unit_id=unit_id,
-                channels=channels,
+                num_channels=num_channels,
                 firmware_version=firmware_version,
-                type=type,
+                type=type_,
                 is_active=True,
             )
             logger.info(f"✅ Registered device: {device.unit_id}")
@@ -66,9 +64,10 @@ async def handle_device_register(topic: str, payload: bytes, match):
 
     # Build WS event
     event = DeviceRegisterEvent(
+        id=device.id,
         unit_id=device.unit_id,
         type=device.type,
-        channels=device.channels,
+        num_channels=device.num_channels,
         location=device.location,
         firmware_version=device.firmware_version,
         is_active=device.is_active,
@@ -78,17 +77,3 @@ async def handle_device_register(topic: str, payload: bytes, match):
 
     ws_manager = WebSocketManager.get_instance()
     await ws_manager.broadcast(event)
-
-    # Дополнительно: логируем событие в event_log
-    async with AsyncSessionLocal() as session:
-        await EventLogService.log_and_broadcast(session, {
-            "id": str(uuid.uuid4()),
-            "ts": int(time.time() * 1000),
-            "dir": EventDirection.IN,
-            "source": EventSource.WS_DEVICE,
-            "channel_or_action": WSChannel.DEVICE_REGISTER,
-            "unit_id": unit_id,
-            "type": type,
-            "summary": f"Device registered (ch={channels}, fw={firmware_version})",
-            "payload": event.model_dump(),
-        })

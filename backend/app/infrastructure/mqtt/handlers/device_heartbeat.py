@@ -1,9 +1,13 @@
+import asyncio
 import time
 from app.infrastructure.mqtt.handler_registry import registry
-from app.ws.manager import WebSocketManager
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.mqtt import topics
+from app.ws.manager import WebSocketManager
 from app.schemas.ws.events import DeviceHeartbeatEvent
+from app.services.ws_state_service import WsStateService
+from app.services.command_queue_service import enqueue_scan_devices
+from app.core.utils import to_str
 from app.core.config import get_settings
 from app.core.logger import get_logger
 
@@ -11,43 +15,41 @@ settings = get_settings()
 logger = get_logger("mqtt")
 
 @registry.mqtt_handler(topics.DEVICE_HEARTBEAT)
-async def handle_device_heartbeat(topic: str, payload: bytes, match):
-    type, unit_id = match.group(1), match.group(2)
-
-    # Use server timestamp (ms since epoch)
+async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
+    
     ts = int(time.time() * 1000)
+    logger.debug(f"📥 IN ← {unit_id}: heartbeat @ {ts}")
 
-    logger.debug(f"📥 IN ← {type.upper()} {unit_id}: heartbeat @ {ts}")
+    redis = RedisManager.get_instance()
 
-    redis_client = RedisManager.get_instance()
-    ws_manager = WebSocketManager.get_instance()
-
-    # Update status in Redis
-    await redis_client.sadd("devices:online", unit_id.encode())
-
-    await redis_client.set(
+    # обновляем last_seen (только он с TTL)
+    await redis.set(
         f"device:{unit_id}:last_seen",
         str(ts).encode(),
         ex=settings.heartbeat_ttl
     )
 
-    await redis_client.set(
-        f"device:{unit_id}:type",
-        type.encode()
-    )
-    await redis_client.set(
-        f"device:{unit_id}:status",
-        b"online",
-        ex=settings.heartbeat_ttl
-    )
+    # регистрируем девайс в all (если впервые)
+    await redis.sadd("devices:all", unit_id.encode())
 
-    # Build WS event
-    event = DeviceHeartbeatEvent(
-        unit_id=unit_id,
-        type=type,
-        status="online",
-        last_seen=ts,
-    )
+    # проверяем статус
+    prev_status_raw = await redis.get(f"device:{unit_id}:status")
+    prev_status = to_str(prev_status_raw)
 
-    # Broadcast WS
-    await ws_manager.broadcast(event)
+    if prev_status != "online":
+        await redis.set(f"device:{unit_id}:status", "online")
+        
+        event = DeviceHeartbeatEvent(
+                unit_id=unit_id,
+                status="online",
+                last_seen=ts,
+            )
+        ws_manager = WebSocketManager.get_instance()
+        await ws_manager.broadcast(event)
+
+        logger.info(f"Device {unit_id} came online")
+        
+        # запрашиваем информацию об устройсве и его состояния
+        await enqueue_scan_devices(correlation_id=0, unit_id=unit_id)
+
+        await WsStateService.sync_client_for_device(unit_id)

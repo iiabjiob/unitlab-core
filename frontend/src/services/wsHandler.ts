@@ -16,6 +16,7 @@ import type {
   TimeStatusEvent,
   EventLogEvent
 } from '@/types/ws/events'
+import type { EventLogEntry } from '@/types/eventLog'
 
 export function handleWsEvent(event: WSEvent) {
   const deviceStore = useDeviceStore()
@@ -27,9 +28,16 @@ export function handleWsEvent(event: WSEvent) {
 
     // --- регистрация устройства ---
     case WSChannel.DEVICE_REGISTER:{
-      logger.debug("📡 IN ← DEVICE_RESP:", event)
-      deviceStore.upsertDevice(event as DeviceRegisterEvent)
-      channelStore.requestStates(event.unit_id, event.type)
+      const devEvent = event as DeviceRegisterEvent
+      logger.debug("📡 IN ← DEVICE_REGISTER:", devEvent)
+
+      // 1. обновляем устройства
+      deviceStore.upsertDevice(devEvent)
+
+      // 2. обновляем каналы (если они пришли в событии)
+      if (devEvent.channels) {
+        channelStore.setBaseChannels(devEvent.id, devEvent.channels)
+      }
       break
     }
     // --- статус (онлайн/оффлайн) ---
@@ -41,7 +49,7 @@ export function handleWsEvent(event: WSEvent) {
     // --- состояние сигналов ---
     case WSChannel.DEVICE_STATE:{
       logger.debug("📡 IN ← DEVICE_STATE:", event)
-      channelStore.setSignals(event as DeviceStateEvent)
+      channelStore.setChannels(event as DeviceStateEvent)
       break
     }
     // --- ответы на команды ---
@@ -59,7 +67,22 @@ export function handleWsEvent(event: WSEvent) {
     // --- События ---
     case WSChannel.EVENT_LOG: {
       const e = event as EventLogEvent
-      eventLogStore.add(e)
+
+      // маппим WS → Store
+      const entry: EventLogEntry = {
+        id: e.id,
+        ts: e.ts,
+        dir: e.dir,
+        source: e.source,
+        channelOrAction: e.channelOrAction,
+        unitId: e.unitId,
+        type: e.type,
+        summary: e.summary,
+        payload: e.payload,
+        createdAt: new Date(e.ts).toISOString(), // добавляем недостающий required
+      }
+
+      eventLogStore.add(entry)
       break
     }
   }

@@ -16,19 +16,6 @@ export const useTimeStore = defineStore("timeStore", () => {
 
   let timer: number | null = null
 
-  // --- API: fetch initial time ---
-  async function fetchTime() {
-    try {
-      logger.debug("⏳ Fetching /api/time ...")
-      const { data } = await axios.get<TimeStatus>(ApiBuilder.time())
-      logger.debug("✅ Fetched:", data)
-      applyUpdate(data)
-      startTicker()
-    } catch (err) {
-      logger.error("💥 Failed to fetch time from server:", err)
-    }
-  }
-
   // --- Increment local time every second ---
   function startTicker() {
     if (timer) clearInterval(timer)
@@ -60,7 +47,11 @@ export const useTimeStore = defineStore("timeStore", () => {
       : "—"
   )
 
-  const sourceLabel = computed(() => source.value ?? "unknown")
+  const sourceLabel = computed(() => {
+    if (status.value === "unsynced") return "local"
+    if (status.value === "synced") return "ntp"
+    return source.value ?? "unknown"
+  })
 
   return {
     serverTime,
@@ -69,7 +60,7 @@ export const useTimeStore = defineStore("timeStore", () => {
     offsetUs,
     formatted,
     sourceLabel,
-    fetchTime,
     updateFromSync,
+    startTicker,
   }
 })

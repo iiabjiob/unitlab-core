@@ -10,38 +10,43 @@ from app.core.config import get_settings
 settings = get_settings()
 logger = get_logger("offline_checker")
 
+
 async def device_offline_checker():
-    redis_client = RedisManager.get_instance()
+    redis = RedisManager.get_instance()
     ws_manager = WebSocketManager.get_instance()
 
     while True:
         try:
-            online_units = await redis_client.smembers("devices:online")
+            all_units = await redis.smembers("devices:all")
 
-            for raw_id in online_units:
+            for raw_id in all_units:
                 unit_id = to_str(raw_id, "")
+                status = await redis.get(f"device:{unit_id}:status")
+                last_seen = await redis.get(f"device:{unit_id}:last_seen")
 
-                # Проверяем TTL
-                last_seen = await redis_client.get(f"device:{unit_id}:last_seen")
-                if not last_seen:
-                    # expired → offline
-                    prev_status = await redis_client.get(f"device:{unit_id}:status")
+                # --- OFFLINE ---
+                if not last_seen and status != "offline":
+                    await redis.set(f"device:{unit_id}:status", "offline")
+ 
+                    event = DeviceHeartbeatEvent(
+                        unit_id=unit_id,
+                        status="offline",
+                        last_seen=int(time.time() * 1000),
+                    )
+                    await ws_manager.broadcast(event)
+                    logger.info(f"Device {unit_id} went offline")
 
-                    if prev_status != b"offline":  # только при изменении
-                        await redis_client.srem("devices:online", unit_id.encode())
-                        await redis_client.set(f"device:{unit_id}:status", b"offline")
+                # --- ONLINE (оживление) ---
+                elif status == "offline" and last_seen:
+                    await redis.set(f"device:{unit_id}:status", "online")
 
-                        type_raw = await redis_client.get(f"device:{unit_id}:type")
-                        type_str = to_str(type_raw, "unknown")
-
-                        event = DeviceHeartbeatEvent(
-                            unit_id=unit_id,
-                            type=type_str,
-                            status="offline",
-                            last_seen=int(time.time() * 1000),
-                        )
-                        await ws_manager.broadcast(event)
-                        logger.info(f"Device {unit_id} ({type_str}) went offline")
+                    event = DeviceHeartbeatEvent(
+                        unit_id=unit_id,
+                        status="online",
+                        last_seen=int(time.time() * 1000),
+                    )
+                    await ws_manager.broadcast(event)
+                    logger.info(f"Device {unit_id} came online")
 
         except Exception as e:
             logger.error(f"💥 Offline checker error: {e}")

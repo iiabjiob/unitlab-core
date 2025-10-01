@@ -40,23 +40,12 @@ class EventSource(str, Enum):
     WS_COMMAND = "WS_COMMAND"
 
 # ---------------------------------------------------------------------
-# Динамические каналы (по устройствам)
-# ---------------------------------------------------------------------
-# def device_state(type: str, unit_id: str) -> str:
-#     return f"devices/{type}/{unit_id}/state"
-
-# ---------------------------------------------------------------------
-# Event модели
-# ---------------------------------------------------------------------
-
-# ---------------------------------------------------------------------
 # Состояния (DI/DO/AO)
 # ---------------------------------------------------------------------
 
 class DeviceStateEvent(BaseModel):
     channel: Literal[WSChannel.DEVICE_STATE] = WSChannel.DEVICE_STATE
     unit_id: str
-    type: str
     timestamp: int
     mode: State                   # Enum из protocol.modes
     payload: Dict[str, Any]
@@ -75,7 +64,6 @@ class DeviceRegisterEvent(DeviceSchema):
 class DeviceRespEvent(BaseModel):
     channel: Literal[WSChannel.DEVICE_RESP] = WSChannel.DEVICE_RESP
     unit_id: str
-    type: str
     packet_id: int
     status: RespStatus
     error: RespError
@@ -95,7 +83,6 @@ class DeviceRespEvent(BaseModel):
 class DeviceHeartbeatEvent(BaseModel):
     channel: Literal[WSChannel.DEVICE_STATUS] = WSChannel.DEVICE_STATUS
     unit_id: str
-    type: str
     status: Literal["online", "offline"]
     last_seen: int
 

@@ -1,0 +1,19 @@
+@layer components {
+  /* Базовое состояние */
+  .validation-error {
+    @apply bg-red-50 dark:bg-red-900/20;
+  }
+
+  .validation-warning {
+    @apply bg-yellow-50 dark:bg-yellow-900/20;
+  }
+
+  /* Фокус при переходе из панели */
+  .validation-focus-error {
+    @apply bg-red-100 dark:bg-red-900/40 border border-red-500 animate-pulse;
+  }
+
+  .validation-focus-warning {
+    @apply bg-yellow-100 dark:bg-yellow-900/40 border border-yellow-500 animate-pulse;
+  }
+}

@@ -1,3 +1,4 @@
+import type { Channel, ChannelType } from "../channel"
 import type { TimeStatus } from "../time"
 // ---------------------------------------------------------------------
 // Каналы WS (Backend → Frontend)
@@ -42,6 +43,7 @@ export enum RespError {
   STORAGE_FAIL = "STORAGE_FAIL",
   TRANSPORT_FAIL = "TRANSPORT_FAIL",
   PERMISSION = "PERMISSION",
+  HW_FAILURE = "HW_FAILURE",
 }
 
 // ---------------------------------------------------------------------
@@ -51,7 +53,6 @@ export enum RespError {
 export interface DeviceStateEvent {
   channel: WSChannel.DEVICE_STATE
   unit_id: string
-  type: string
   timestamp: number
   mode: StateMode
   payload: Record<string, any>
@@ -59,19 +60,23 @@ export interface DeviceStateEvent {
 
 export interface DeviceRegisterEvent {
   channel: WSChannel.DEVICE_REGISTER
+  id: number
   unit_id: string
-  type: string
-  channels: number
-  firmware_version: number
+  type: ChannelType
+  num_channels: number
+  firmware_version: string
   is_active: boolean
   status: "online" | "offline"
+  name?: string
+  location?: string
   last_seen?: number
+
+  channels?: Channel[]
 }
 
 export interface DeviceRespEvent {
   channel: WSChannel.DEVICE_RESP
   unit_id: string
-  type: string
   packet_id: number
   status: RespStatus
   error: RespError
@@ -81,7 +86,6 @@ export interface DeviceRespEvent {
 export interface DeviceHeartbeatEvent {
   channel: WSChannel.DEVICE_STATUS
   unit_id: string
-  type: string
   status: "online" | "offline"
   last_seen: number
 }
@@ -91,17 +95,18 @@ export interface TimeStatusEvent extends TimeStatus {
 }
 
 export interface EventLogEvent {
-  channel: WSChannel.EVENT_LOG   // new channel
-  id: string                     // UUID or server-side sequence
+  channel: WSChannel.EVENT_LOG   // новый канал
+  id: string                     // UUID или серверный sequence
   ts: number                     // unix ms
-  dir: "IN" | "OUT"              // direction
+  dir: "IN" | "OUT"              // направление
   source: "WS_DEVICE" | "WS_COMMAND"
   channelOrAction: string
-  unit_id?: string
+  unitId?: string
   type?: string
   summary: string
   payload?: Record<string, any>
 }
+
 
 
 export type WSEvent =

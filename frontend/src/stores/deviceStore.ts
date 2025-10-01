@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import axios from 'axios'
 import { ApiBuilder } from '@/utils/api'
 import type { Device } from '@/types/device'
 import type { DeviceRegisterEvent, DeviceHeartbeatEvent } from '@/types/ws/events'
 import { getLogger } from '@/utils/logger'
-
+import type { ChannelType } from '@/types/channel'
 const logger = getLogger('DEV')
 
 export const useDeviceStore = defineStore('deviceStore', () => {
@@ -13,38 +13,36 @@ export const useDeviceStore = defineStore('deviceStore', () => {
   const devices   = ref<Device[]>([])
   const isLoading = ref<boolean>(false)
 
-  async function fetchDevices() {
-    isLoading.value = true
+  async function updateDeviceField(deviceId: number, changes: Partial<Device>) {
     try {
-      logger.debug("⏳ Fetching /api/devices ...")
-      const response = await axios.get(ApiBuilder.devices())
-      logger.debug("✅ Fetched:", response.data)
-      devices.value = response.data
-    } catch (error) {
-      logger.error('💥 Failed to fetch devices:', error)
-    } finally {
-      isLoading.value = false
-    }
-  }
+      const { data } = await axios.patch(ApiBuilder.device(deviceId), changes)
 
-  async function toggleDeviceActive(unitId: string) {
-    try {
-      const { data } = await axios.patch(ApiBuilder.device(unitId))
-      const index = devices.value.findIndex(d => d.unit_id === unitId)
+      const index = devices.value.findIndex(d => d.id === deviceId)
       if (index !== -1) {
-        devices.value[index].is_active = data.is_active
+        devices.value[index] = {
+          ...data,
+          type: normalizeType(data.type),
+        }
       }
+
+      logger.debug(`✅ Device ${deviceId} updated with`, changes)
     } catch (error) {
-      logger.error('💥 Failed to toggle device active status:', error)
+      logger.error(`💥 Failed to update device ${deviceId}:`, error)
     }
   }
 
-  async function deleteDevice(unitId: string) {
+  async function toggleDeviceActive(deviceId: number) {
+    const index = devices.value.findIndex(d => d.id === deviceId)
+    if (index === -1) return
+    await updateDeviceField(deviceId, { is_active: !devices.value[index].is_active })
+  }
+
+  async function deleteDevice(deviceId: number) {
     try {
-      await axios.delete(ApiBuilder.device(unitId))
+      await axios.delete(ApiBuilder.device(deviceId))
 
       // ✅ Успешно удалено на сервере — теперь удаляем локально
-      const index = devices.value.findIndex(d => d.unit_id === unitId)
+      const index = devices.value.findIndex(d => d.id === deviceId)
       if (index !== -1) {
         devices.value.splice(index, 1)  // Удаляем из массива
       }
@@ -55,26 +53,50 @@ export const useDeviceStore = defineStore('deviceStore', () => {
   }
 
   function upsertDevice(event: DeviceRegisterEvent) {
-    const idx = devices.value.findIndex(d => d.unit_id === event.unit_id)
+    const idx = devices.value.findIndex(d => d.id === event.id)
+    const newDevice: Device = {
+      ...event,
+      type: normalizeType(event.type as unknown as string),
+    }
+
     if (idx !== -1) {
-      devices.value[idx] = { ...devices.value[idx], ...event }
+      // обновляем
+      devices.value[idx] = { ...devices.value[idx], ...newDevice }
     } else {
-      devices.value.push(event)
+      // добавляем
+      devices.value.push(newDevice)
     }
   }
 
   function updateStatus(event: DeviceHeartbeatEvent) {
-    const dev = devices.value.find(d => d.unit_id === event.unit_id)
-    if (dev) {
-      dev.status = event.status
-      dev.last_seen = event.last_seen
+    const idx = devices.value.findIndex(d => d.unit_id === event.unit_id)
+    if (idx !== -1) {
+      devices.value[idx].status = event.status
+      devices.value[idx].last_seen = event.last_seen
     }
   }
 
+  function normalizeType(raw: string): ChannelType {
+    switch (raw.toLowerCase()) {
+      case "do": return "do"
+      case "di": return "di"
+      case "ao": return "ao"
+      default:
+        logger.warn("⚠️ Unknown device type:", raw)
+        return "do"
+    }
+  }
+
+  const onlineDevices = computed(() => devices.value.filter(d => d.status === "online"))
+  const offlineDevices = computed(() => devices.value.filter(d => d.status === "offline"))
+
+
   return {
     devices,
+    onlineDevices,
+    offlineDevices,
     isLoading,
-    fetchDevices,
+    updateDeviceField,
     toggleDeviceActive,
     deleteDevice,
     upsertDevice,

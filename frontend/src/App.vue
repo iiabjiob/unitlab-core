@@ -1,51 +1,35 @@
 <template>
-  <div class="h-dvh flex flex-col text-base text-neutral-800 dark:text-neutral-200 bg-neutral-50 dark:bg-neutral-900 font-mono">
-    <template v-if="wsStatus === 'connected'">
-      <!-- Нормальный UI -->
-      <div class="flex flex-1 overflow-hidden">
-        <AppAside />
-        <main class="flex-1 overflow-auto">
-          <RouterView />
-        </main>
-      </div>
-    </template>
-
-    <template v-else-if="wsStatus === 'initial'">
-      <!-- Заглушка при первом запуске -->
-      <div class="flex-1 flex items-center justify-center">
-        <div class="text-center">
-          <p class="text-lg font-semibold">🔌 Connecting to server...</p>
-        </div>
-      </div>
-    </template>
-
-    <template v-else-if="wsStatus === 'lost'">
-
-      <div class="flex flex-1 overflow-hidden">
-        <AppAside />
-        <main class="flex-1 flex flex-col overflow-hidden">
-          <div class="flex-1 flex items-center justify-center">
-            <div class="text-center">
-              <p class="text-lg font-semibold">⚠️ Lost connection</p>
-              <p class="text-sm text-neutral-500 mt-2">Trying to reconnect…</p>
-            </div>
-          </div>
-        </main>
-      </div>
-    </template>
-  </div>
+  <AppLayout/>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue"
-import AppAside from "./components/AppAside.vue"
-import { useWebSocketStore } from "@/stores/websocketStore"
+import { onMounted } from "vue"
+import AppLayout from './components/layout/AppLayout.vue';
+import { useWebSocketStore } from './stores/websocketStore';
+import { useEventLogStore } from "./stores/eventLogStore";
+import { useSwitchgearStore } from "./stores/switchgearStore";
+import { useSequenceStore } from "./stores/sequenceStore";
+import { validate } from "./validators/validationRunner";
 
-const wsStore = useWebSocketStore()
+const wsStore = useWebSocketStore();
+const eventsStore = useEventLogStore();
+const switchgearStore = useSwitchgearStore()
+const sequenceStore = useSequenceStore()
 
-const wsStatus = computed(() => {
-  if (!wsStore.isConnected && !wsStore.everConnected) return "initial"
-  if (wsStore.isConnected) return "connected"
-  return "lost"
+onMounted(async () => {
+  // connect once when app is mounted
+  wsStore.connect()
+
+  eventsStore.fetchEvents(50)
+
+  // параллельная загрузка
+  await Promise.all([
+    switchgearStore.fetchAll(),
+    sequenceStore.fetchSequences(),
+  ])
+
+  await validate()
+
 })
+
 </script>

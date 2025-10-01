@@ -1,49 +1,53 @@
 # protocol/packet_structures.py
 # Mirror of C++ protocol/PacketStructures.h
-from dataclasses import dataclass
+from pydantic import BaseModel
 from enum import IntEnum
-from typing import Optional
-
 
 # ------------------------------------------------------------------------
 # Digital (DI/DO) state
 # ------------------------------------------------------------------------
 
-@dataclass
-class ReqStateSingleBit:
+
+class ReqStateSingleBit(BaseModel):
     ch: int  # u8
 
 
 # ReqStateAllBit → empty payload
 
 
-@dataclass
-class StateSingleBit:
+
+class StateSingleBit(BaseModel):
     ch: int   # u8
     value: int  # u8 (0=off, 1=on)
 
 
-@dataclass
-class StateAllBit:
+
+class StateAllBit(BaseModel):
     bitmask: int  # u32 (big-endian)
 
 
-@dataclass
-class CmdSetSingleBit:
+
+class CmdSetSingleBit(BaseModel):
     ch: int
     value: int  # u8 (0=off, 1=on)
 
 
-@dataclass
-class CmdSetAllBit:
+
+class CmdSetAllBit(BaseModel):
     bitmask: int  # u32 (big-endian)
 
 
-@dataclass
-class CmdSetPairBit:
+
+class CmdSetPairBit(BaseModel):
     chA: int
     chB: int
     state2b: int  # lowest 2 bits
+
+
+class CmdSetPulseBit(BaseModel):
+    ch: int
+    value: int
+    pulse_ms: int  # u16 (big-endian)
 
 
 class PairState2b(IntEnum):
@@ -60,22 +64,22 @@ PairStateMask: int = 0b11
 # Analog (AO) state
 # ------------------------------------------------------------------------
 
-@dataclass
-class ReqStateSingleFloat:
+
+class ReqStateSingleFloat(BaseModel):
     ch: int
 
 
 # ReqStateAllFloat → empty payload
 
 
-@dataclass
-class StateSingleFloat:
+
+class StateSingleFloat(BaseModel):
     ch: int
     value: float  # big-endian encoded float
 
 
-@dataclass
-class CmdSetSingleFloat:
+
+class CmdSetSingleFloat(BaseModel):
     ch: int
     value: float  # big-endian encoded float
 
@@ -84,19 +88,18 @@ class CmdSetSingleFloat:
 # System (SYS)
 # ------------------------------------------------------------------------
 
-@dataclass
-class Resp:
+
+class Resp(BaseModel):
     status: int  # u8
     errCode: int  # u8
 
 
-@dataclass
-class Register:
+
+class Register(BaseModel):
     type: str     # 4-char ASCII string
     id: str       # up to 32-char ASCII string
     fwVersion: int  # u16
-    channels: int   # u16
-
+    num_channels: int   # u16
 
 # ------------------------------------------------------------------------
 # System enums (high-level status & errors)
@@ -120,4 +123,4 @@ class RespError(IntEnum):
     STORAGE_FAIL   = 0x04
     TRANSPORT_FAIL = 0x05
     PERMISSION     = 0x06
-    # 0x07..0xFF reserved
+    HW_FAILURE     = 0x07

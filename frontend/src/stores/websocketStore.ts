@@ -15,14 +15,6 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
   // очередь всех сообщений, пока сокет не открыт
   const messageQueue: WSMessage[] = []
 
-  // server subscriptions
-  const activeServerSubs = ref<Set<string>>(new Set())
-  const pendingServerSubs: string[][] = []
-  const serverSyncedSubs = new Set<string>()
-
-  // local listeners
-  const localListeners = new Map<string, Set<(event: any) => void>>()
-
   // reconnect backoff
   const reconnectAttempts = ref(0)
   const maxReconnectAttempts = 5
@@ -56,25 +48,6 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
         const msg = messageQueue.shift()!
         _sendNow(msg)
       }
-
-      // Prefer flushing pending requests if they exist
-      if (pendingServerSubs.length > 0) {
-        // Merge all pending batches & de-dup
-        const merged = Array.from(
-          new Set(pendingServerSubs.flat())
-        )
-        logger.info("⏩ Flushing pending server subs:", merged)
-        // Now that we're going to send them to server, reflect them in "active"
-        merged.forEach((ch) => activeServerSubs.value.add(ch))
-        requestServerSubscribe(merged)
-        pendingServerSubs.length = 0
-
-      } else if (activeServerSubs.value.size > 0) {
-        // No pendings → we re-request what we believe should be active (reconnect case)
-        const channels = [...activeServerSubs.value]
-        logger.info("🔄 Re-requesting server subs:", channels)
-        requestServerSubscribe(channels)
-      }
     }
 
     socket.value.onclose = (event: CloseEvent) => {
@@ -89,12 +62,6 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
 
       // dispatch to domain stores
       handleWsEvent(data)
-
-      // fan-out to local listeners
-      const listeners = localListeners.get(data.channel)
-      if (listeners?.size) {
-        for (const listener of listeners) listener(data)
-      }
     }
 
     socket.value.onerror = (error: Event) => {
@@ -122,57 +89,6 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
     }
   }
 
-  // ---------------- server subscriptions ----------------
-  function requestServerSubscribe(channels: string[]) {
-    if (!channels?.length) return
-
-    if (isConnected.value) {
-      const toSend = channels.filter((ch) => !serverSyncedSubs.has(ch))
-      if (toSend.length) {
-        toSend.forEach((ch) => {
-          activeServerSubs.value.add(ch)
-          serverSyncedSubs.add(ch)
-        })
-        logger.info("📡 Request SUB →", toSend)
-        send({ action: WSAction.SUBSCRIBE, channels: toSend })
-      }
-    } else {
-      logger.info("⏳ Queue SUB (offline) →", channels)
-      pendingServerSubs.push(Array.from(new Set(channels)))
-    }
-  }
-
-  function requestServerUnsubscribe(channels: string[]) {
-    if (!channels?.length) return
-    channels.forEach((ch) => activeServerSubs.value.delete(ch))
-
-    if (isConnected.value) {
-      logger.info("📴 Request UNSUB →", channels)
-      send({ action: WSAction.UNSUBSCRIBE, channels })
-    } else {
-      logger.info("(Offline) UNSUB ignored →", channels)
-    }
-  }
-
-  // ---------------- local listeners ----------------
-  function onChannel(channel: string, callback: (event: any) => void) {
-    if (!localListeners.has(channel)) localListeners.set(channel, new Set())
-    localListeners.get(channel)!.add(callback)
-    logger.debug(
-      `📡 local on("${channel}") (listeners=${localListeners.get(channel)!.size})`
-    )
-  }
-
-  function offChannel(channel: string, callback: (event: any) => void) {
-    const set = localListeners.get(channel)
-    if (!set) return
-    set.delete(callback)
-    logger.debug(
-      `🧹 Local off("${channel}") (listeners=${set.size})`
-    )
-    if (set.size === 0) localListeners.delete(channel)
-  }
-
   // ---------------- reconnect backoff ----------------
   function _scheduleReconnect() {
     let delay: number
@@ -196,9 +112,5 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
     everConnected,
     connect,
     send,
-    requestServerSubscribe,
-    requestServerUnsubscribe,
-    onChannel,
-    offChannel,
   }
 })

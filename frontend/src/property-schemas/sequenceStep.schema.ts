@@ -1,0 +1,200 @@
+import { PROPERTY_FIELD_TYPES, type PropertySchema } from "@/property-schemas/types"
+import type { SequenceStep } from "@/types/sequences"
+import { StepKind } from "@/types/sequences"
+import { ON_OFF_OPTIONS } from "@/constants/option"
+import { splitKey } from "./utils"
+import { CHANNEL_TYPES } from "@/types/channel"
+import { useDeviceStore } from "@/stores/deviceStore"
+import { SWITCHGEAR_CODE, SWITCHGEAR_OPTIONS } from "@/constants/switchgear"
+import { useSequenceStepStore } from "@/stores/sequenceStepStore"
+
+const ON_OFF_LABELS: Record<number, string> = {
+  0: "Off",
+  1: "On",
+}
+
+export const sequenceStepPropertySchema: PropertySchema<SequenceStep> = {
+  fields: [
+    {
+      key: "order_index",
+      label: "Step",
+      editable: false,
+      type: PROPERTY_FIELD_TYPES.STRING,
+      display: (s) => String(s.order_index + 1),
+    },
+
+    {
+      key: "kind",
+      label: "Kind",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.SELECT,
+      options: Object.values(StepKind) as StepKind[],
+      display: (s) => s.kind ?? "n/a",
+    },
+
+    // WAIT
+    {
+      key: "payload.ms",
+      label: "Delay (ms)",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.NUMBER,
+      visible: (s) => s.kind === StepKind.WAIT,
+    },
+
+    // --- DO_LATCH ---
+    // {
+    //   key: "unit_id",
+    //   label: "Unit",
+    //   editable: true,
+    //   type: PROPERTY_FIELD_TYPES.UNIT,
+    //   visible: (s) => s.kind === StepKind.DO_LATCH,
+    // },
+    {
+      key: "channel_id",
+      label: "Channel",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.CHANNEL,
+      channelType: CHANNEL_TYPES.DO,
+      visible: (s) => s.kind === StepKind.DO_LATCH },
+    {
+      key: "payload.value",
+      label: "Value",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.SELECT,
+      options: [0 , 1],
+      visible: (s) => s.kind === StepKind.DO_LATCH,
+    },
+
+    // --- DO_PULSE ---
+    // {
+    //   key: "unit_id",
+    //   label: "Unit",
+    //   editable: true,
+    //   type: PROPERTY_FIELD_TYPES.UNIT,
+    //   visible: (s) => s.kind === StepKind.DO_PULSE,
+    // },
+    {
+      key: "channel_id",
+      label: "Channel",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.CHANNEL,
+      channelType: CHANNEL_TYPES.DO,
+      visible: (s) => s.kind === StepKind.DO_PULSE,
+    },
+    {
+      key: "payload.value",
+      label: "Value",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.SELECT,
+      options: [0 , 1],
+      visible: (s) => s.kind === StepKind.DO_PULSE,
+    },
+    {
+      key: "payload.pulse_ms",
+      label: "Pulse duration (ms)",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.NUMBER,
+      visible: (s) => s.kind === StepKind.DO_PULSE,
+    },
+
+    // --- DO_BITMASK ---
+    {
+      key: "payload.device_id",
+      label: "Device",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.UNIT,
+      visible: (s) => s.kind === StepKind.DO_BITMASK,
+    },
+    {
+      key: "payload.bitmask",
+      label: "Bitmask",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.BITMASK,
+      visible: (s) => s.kind === StepKind.DO_BITMASK,
+      resolveChannelCount: (s) => {
+        const deviceStore = useDeviceStore()
+        const deviceId = s.payload?.device_id
+        const device = deviceStore.devices.find(d => d.id === deviceId)
+        return device?.channels?.filter(ch => ch.type === CHANNEL_TYPES.DO).length ?? 0
+      }
+    },
+
+    // --- DO_PAIR ---
+    // {
+    //   key: "unit_id",
+    //   label: "Unit",
+    //   editable: true,
+    //   type: PROPERTY_FIELD_TYPES.UNIT,
+    //   visible: (s) => s.kind === StepKind.DO_PAIR,
+    // },
+    {
+      key: "payload.channel_ids[0]",
+      label: "Channel A",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.CHANNEL,
+      channelType: CHANNEL_TYPES.DO,
+      visible: (s) => s.kind === StepKind.DO_PAIR,
+    },
+    {
+      key: "payload.channel_ids[1]",
+      label: "Channel B",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.CHANNEL,
+      channelType: CHANNEL_TYPES.DO,
+      visible: (s) => s.kind === StepKind.DO_PAIR,
+    },
+    {
+      key: "payload.state2b",
+      label: "State (2-bit)",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.SELECT,
+      options: SWITCHGEAR_OPTIONS,
+      visible: (s) => s.kind === StepKind.DO_PAIR,
+      display: (s) => {
+        const entry = Object.entries(SWITCHGEAR_CODE).find(([_, v]) => v === s.payload?.state2b)
+        return entry?.[0] ?? "UNKNOWN"
+      },
+    },
+
+    // --- AO_SET ---
+    // {
+    //   key: "unit_id",
+    //   label: "Unit",
+    //   editable: true,
+    //   type: PROPERTY_FIELD_TYPES.UNIT,
+    //   visible: (s) => s.kind === StepKind.AO_SET,
+    // },
+    {
+      key: "channel_id",
+      label: "Channel",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.CHANNEL,
+      channelType: CHANNEL_TYPES.AO,
+      visible: (s) => s.kind === StepKind.AO_SET,
+    },
+    {
+      key: "payload.value",
+      label: "Value (4–20 mA)",
+      editable: true,
+      type: PROPERTY_FIELD_TYPES.NUMBER,
+      visible: (s) => s.kind === StepKind.AO_SET,
+    },
+  ],
+
+  async update(item, key, value) {
+  const store = useSequenceStepStore()
+
+  const { root, sub } = splitKey(key.toString())
+
+  if (root === "payload") {
+    const newPayload = { ...(item.payload ?? {}), [sub]: value }
+    const changes: Partial<SequenceStep> = { payload: newPayload }
+
+    await store.updateStep(item.sequence_id, item.id, changes)
+  } else {
+    await store.updateStep(item.sequence_id, item.id, { [sub]: value })
+  }
+}
+
+
+}

@@ -1,84 +1,73 @@
 <template>
-  <div class="p-5">
-
-    <div class="flex gap-5 mb-5">
-
-      <ButtonComponent @click="onStart" :disabled="!store.active || store.status === 'running'">
-        Start
-      </ButtonComponent>
-
-      <ButtonComponent type="secondary" @click="store.resetState" :disabled="!store.active">
-        Reset state
-      </ButtonComponent>
-
-      <ButtonComponent type="secondary" @click="store.resetAllDos(unitId)" :disabled="!unitId">
-        Reset all DOs
-      </ButtonComponent>
+  <div class="p-3">
+    <SequencesToolbar
+      :importing="importing"
+      @add="onAdd"
+      @import="openFileDialog"
+    />
+    <input
+      ref="fileInput"
+      type="file"
+      accept="application/json"
+      class="hidden"
+      @change="onFileSelected"
+    />
+  </div>
+  <div class="flex-1 p-3">
+    <div class="flex flex-wrap gap-4">
+      <div v-for="seq in store.sequences" :key="seq.id" class="relative w-full flex-shrink-0">
+        <SelectableCard :selected="selection.isSelected('sequence', seq)" @click="select(seq)">
+          <SequenceCard
+            :sequence="seq"
+            @export="onExport"
+            @delete="onDelete"
+          />
+        </SelectableCard>
+      </div>
     </div>
 
-    <!-- Progress bar -->
-    <div class="h-2 rounded bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
-      <div class="h-full bg-neutral-600" :style="{ width: store.progress + '%' }"></div>
+    <div v-if="!store.sequences.length" class="text-neutral-400">
+      No sequences yet. Create or import one…
     </div>
-
-
-    <!-- Steps checklist -->
-    <ol class="mt-2 space-y-1 text-sm">
-      <li v-for="(s, i) in store.active?.steps || []" :key="i" class="flex items-center gap-2">
-        <span class="inline-flex h-4 w-4 items-center justify-center rounded border"
-          :class="store.completed[i] ? 'bg-green-500 border-green-500' : 'bg-white dark:bg-neutral-900'">
-          <span v-if="store.completed[i]" class="text-[10px] text-white">✓</span>
-        </span>
-        <span class="font-mono text-xs text-neutral-500">#{{ i + 1 }}</span>
-        <span>{{ store.debugDescribe(i) }}</span>
-      </li>
-    </ol>
-
-
-    <!-- Error note -->
-    <p v-if="store.lastError" class="text-xs text-red-600">Error: {{ store.lastError }}</p>
-
   </div>
 </template>
 
-
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue"
-import { useDeviceStore } from "@/stores/deviceStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
-import { buildPilotSequence } from "@/sequences/demoSequences"
-import ButtonComponent from "@/components/ui/ButtonComponent.vue"
+import { useSelectionStore } from "@/stores/selectionStore"
+import SequenceCard from "@/components/sequences/SequenceCard.vue"
+import SelectableCard from "@/components/ui/SelectableCard.vue"
+import type { SequenceDef } from "@/types/sequences"
+import SequencesToolbar from "@/components/toolbars/SequencesToolbar.vue"
+import { useSequenceImport } from "@/composables/useSequenceImport"
 
-
-const deviceStore = useDeviceStore()
 const store = useSequenceStore()
-const unitId = ref<string>("")
+const selection = useSelectionStore()
 
+const { importing, fileInput, openFileDialog, onFileSelected } = useSequenceImport()
 
-const doDevices = computed(() => deviceStore.devices
-  .filter(d => d.type === 'do' && d.status === 'online'))
-
-function refreshSeq() {
-  if (!unitId.value) return
-  store.setSequence(buildPilotSequence(unitId.value))
+function select(item: SequenceDef) {
+  selection.select({ type: "sequence", key: item.id })
 }
 
-
-async function onStart() {
-  if (!store.active) refreshSeq()
-  await store.start()
+function onExport(seq: SequenceDef) {
+  window.open(`/api/sequences/${seq.id}/export-file`, "_blank")
 }
 
+async function onAdd() {
+  const seq = await store.createSequence({
+    name: "New Sequence",
+    description: "Draft sequence",
+  })
+  selection.select({ type: "sequence", key: seq.id })
+}
 
-// Auto-select first available DO device
-onMounted(() => {
-  if (!unitId.value && doDevices.value.length) {
-    unitId.value = doDevices.value[0].unit_id
-    refreshSeq()
+async function onDelete(seq: SequenceDef) {
+  if (confirm(`Delete Sequence ${seq.name}?`)) {
+    await store.deleteSequence(seq.id)
+    if (selection.selected?.type === "sequence" && selection.selected.key === seq.id) {
+      selection.clear()
+    }
   }
-})
-
-
-// Rebuild sequence when the unit changes
-watch(unitId, () => refreshSeq())
+}
 </script>

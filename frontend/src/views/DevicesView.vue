@@ -1,52 +1,64 @@
 <template>
-  <div class="p-5">
-    <!-- Keep title only on small screens -->
-    <h1 class="text-xl mb-4 md:hidden">Devices</h1>
-
-    <div v-if="deviceStore.isLoading">Loading...</div>
-
-    <div v-else-if="!deviceStore.devices.length" class="text-neutral-400">
-      No devices yet. Try scanning...
+  <div class="h-full flex flex-col">
+    <div class="p-3">
+      <DevicesToolbar/>
     </div>
+    <!-- Контент -->
+    <div class="flex-1 overflow-auto p-3">
+      <div v-if="deviceStore.isLoading">Loading...</div>
 
-    <!-- Grid on md+; simple list on mobile -->
-    <ul
-      v-else
-      class="
-        grid gap-5
-        grid-cols-1
-        sm:grid-cols-1
-        lg:grid-cols-2
-        xl:grid-cols-3
-        2xl:grid-cols-4
-        3xl:grid-cols-5
-        items-stretch
-      "
-    >
-      <li v-for="device in deviceStore.devices" :key="device.unit_id" class="h-full">
-        <DeviceComponent
-          :key="device.unit_id"
-          :device="device"
-          />
-      </li>
-    </ul>
+      <div v-else-if="!filterStore.filteredDevices.length" class="text-neutral-400">
+        No devices yet.
+      </div>
+
+      <div v-else>
+        <ul class="flex flex-wrap gap-5 justify-start">
+          <li
+            v-for="device in filterStore.filteredDevices"
+            :key="device.unit_id"
+            class="h-full w-[320px]"
+          >
+            <SelectableCard
+              :selected="selection.isSelected('device', device)"
+              @click="select(device)"
+            >
+              <DeviceCard
+                :device="device"
+                @toggle="onToggle"
+                @delete="onDelete"
+              />
+            </SelectableCard>
+          </li>
+        </ul>
+      </div>
+    </div>
   </div>
 </template>
 
-
 <script setup lang="ts">
-import { onMounted } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
-import { useWebSocketStore } from "@/stores/websocketStore"
-import { WSAction } from "@/types/ws/messages"
-import DeviceComponent from "@/components/DeviceComponent.vue"
+import { useDeviceFilterStore } from "@/stores/deviceFilterStore"
+import { useSelectionStore } from "@/stores/selectionStore"
+import DeviceCard from "@/components/devices/DeviceCard.vue"
+import SelectableCard from "@/components/ui/SelectableCard.vue"
+import type { Device } from "@/types/device"
+import DevicesToolbar from "@/components/toolbars/DevicesToolbar.vue"
 
-const wsStore = useWebSocketStore()
 const deviceStore = useDeviceStore()
+const filterStore = useDeviceFilterStore()
+const selection = useSelectionStore()
 
-onMounted(async () => {
-  await deviceStore.fetchDevices()
-  wsStore.send({ action: WSAction.SCAN_DEVICES })
+function select(item: Device) {
+  selection.select({ type: "device", key: item.unit_id })
+}
 
-})
+async function onToggle(item: Device) {
+  await deviceStore.toggleDeviceActive(item.id)
+}
+
+async function onDelete(item: Device) {
+  if (confirm(`Delete device ${item.unit_id}?`)) {
+    await deviceStore.deleteDevice(item.id)
+  }
+}
 </script>

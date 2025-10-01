@@ -1,131 +1,201 @@
+// src/stores/sequenceStore.ts
 import { defineStore } from "pinia"
-import { ref, computed } from "vue"
-import { useWebSocketStore } from "./websocketStore"
-import type { SequenceDef, SequenceStep } from "@/types/sequences"
-import { describeStep, toResetAllCmd } from "@/types/sequences"
-import { WSAction } from "@/types/ws/messages"
+import { ref } from "vue"
+import { SequenceStatusEnum, type SequenceDef, type SequenceStatus } from "@/types/sequences"
+import axios from "axios"
+import { ApiBuilder } from "@/utils/api"
 import { getLogger } from "@/utils/logger"
+import { validateOne, clearOne } from "@/validators/syncValidation"
+import { validateSequence } from "@/validators/sequence"
+import { SCHEMA_NAMES } from "@/property-schemas/types"
+import { useWebSocketStore } from "./websocketStore"
+import { useSequenceStepStore } from "./sequenceStepStore"
+import { useValidationStore } from "./validationStore"
+import { VALIDATION_LEVELS } from "@/validators/types"
+import { execStep } from "@/utils/sequenceUtils"
 
 const logger = getLogger("SEQ")
 
-export type SequenceStatus = "idle" | "running" | "stopped" | "completed"
-
-function sleep(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+type SeqState = {
+  status: SequenceStatus
+  index: number
+  completed: boolean[]
+  lastError: string | null
+  cancelToken: { cancelled: boolean }
 }
 
 export const useSequenceStore = defineStore("sequenceStore", () => {
-  const active = ref<SequenceDef | null>(null)
-  const status = ref<SequenceStatus>("idle")
-  const index = ref(0)
-  const completed = ref<boolean[]>([])
-  const lastError = ref<string | null>(null)
-  const cancelToken = ref({ cancelled: false })
+  const sequences = ref<SequenceDef[]>([])
+  const states = ref<Record<number, SeqState>>({})
 
-  const progress = computed(() => {
-    if (!active.value) return 0
-    const total = active.value.steps.length
-    const done = completed.value.filter(Boolean).length
-    return total === 0 ? 0 : Math.round((done / total) * 100)
-  })
-
-  function setSequence(seq: SequenceDef) {
-    active.value = seq
-    status.value = "idle"
-    index.value = 0
-    completed.value = new Array(seq.steps.length).fill(false)
-    lastError.value = null
-    cancelToken.value = { cancelled: false }
-    logger.info(`📋 Sequence set: ${seq.name}`)
+  function ensureState(seq: SequenceDef): SeqState {
+    if (!states.value[seq.id]) {
+      states.value[seq.id] = {
+        status: SequenceStatusEnum.IDLE,
+        index: 0,
+        completed: [],
+        lastError: null,
+        cancelToken: { cancelled: false },
+      }
+    }
+    return states.value[seq.id]
   }
 
-  async function start() {
-    if (!active.value || status.value === "running") return
-    status.value = "running"
-    cancelToken.value.cancelled = false
+  async function fetchSequences() {
+    const { data } = await axios.get(ApiBuilder.sequences())
+    sequences.value = data
+    sequences.value.forEach((seq) => ensureState(seq))
+    const stepStore = useSequenceStepStore()
+    await Promise.all(data.map((seq: SequenceDef) => stepStore.fetchSteps(seq.id)))
+
+  }
+
+  async function createSequence(payload: Omit<SequenceDef, "id" | "steps">) {
+    const { data } = await axios.post(ApiBuilder.sequences(), payload)
+    sequences.value.push(data)
+    ensureState(data)
+    validateOne(SCHEMA_NAMES.SEQUENCE, data, validateSequence)
+    return data
+  }
+
+  async function updateSequence(id: number, payload: Partial<SequenceDef>) {
+    const { data } = await axios.patch(ApiBuilder.sequence(id), payload)
+    const idx = sequences.value.findIndex((s) => s.id === id)
+    if (idx !== -1) sequences.value[idx] = data
+    validateOne(SCHEMA_NAMES.SEQUENCE, data, validateSequence)
+    return data
+  }
+
+  async function deleteSequence(id: number) {
+    await axios.delete(ApiBuilder.sequence(id))
+    sequences.value = sequences.value.filter((s) => s.id !== id)
+    delete states.value[id]
+    clearOne(SCHEMA_NAMES.SEQUENCE, id)
+    logger.info(`🗑️ Sequence ${id} deleted`)
+  }
+
+  async function start(seq: SequenceDef) {
+    const st = ensureState(seq)
+    if (st.status === SequenceStatusEnum.RUNNING) return
+
+    st.status = SequenceStatusEnum.RUNNING
+    st.cancelToken.cancelled = false
     const ws = useWebSocketStore()
+    const stepStore = useSequenceStepStore()
 
     try {
-      for (let i = index.value; i < active.value.steps.length; i++) {
-        if (cancelToken.value.cancelled) throw new Error("Sequence cancelled")
-        const step = active.value.steps[i]
-        await execStep(step, ws)
-        completed.value[i] = true
-        index.value = i + 1
+      const seqSteps = stepStore.stepsBySequence(seq.id).value
+      for (let i = st.index; i < seqSteps.length; i++) {
+        if (st.cancelToken.cancelled) throw new Error("Sequence cancelled")
+
+        const step = seqSteps[i] // ✅ берём один шаг
+        await execStep(
+          step,
+          ws,
+          stepStore.toWSMessage,        // функция маппинга шага → WSMessage
+          stepStore.getStepDescription  // функция описания шага
+        )
+
+        st.completed[i] = true
+        st.index = i + 1
       }
-      status.value = "completed"
-      logger.info("✅ Sequence completed")
+      st.status = SequenceStatusEnum.COMPLETED
+      logger.info(`✅ Sequence completed: ${seq.name}`)
     } catch (err: any) {
-      lastError.value = err?.message ?? String(err)
-      status.value = cancelToken.value.cancelled ? "stopped" : "idle"
-      logger.error("💥 Sequence failed:", err)
+      st.lastError = err?.message ?? String(err)
+      st.status = st.cancelToken.cancelled ? SequenceStatusEnum.STOPPED : SequenceStatusEnum.IDLE
+      logger.error(`💥 Sequence failed: ${seq.name}`, err)
     }
   }
 
-  function stop() {
-    cancelToken.value.cancelled = true
-    status.value = "stopped"
-    logger.warn("⏹️ Sequence stopped")
+  function stop(seq: SequenceDef) {
+    const st = ensureState(seq)
+    st.cancelToken.cancelled = true
+    st.status = SequenceStatusEnum.STOPPED
+    logger.warn(`⏹️ Sequence stopped: ${seq.name}`)
   }
 
-  async function resetAllDos(unit_id?: string) {
-    let uid = unit_id
-    if (!uid && active.value) {
-      const step = active.value.steps.find(s => s.kind === "DO_SET" || s.kind === "DO_RESET_ALL")
-      if (step?.kind === "DO_SET") uid = step.cmd.unit_id
-      if (step?.kind === "DO_RESET_ALL") uid = step.unit_id
+  function resetState(seq: SequenceDef) {
+    const stepStore = useSequenceStepStore()
+    const seqSteps = stepStore.stepsBySequence(seq.id).value
+
+    states.value[seq.id] = {
+      status: SequenceStatusEnum.IDLE,
+      index: 0,
+      completed: new Array(seqSteps.length).fill(false),
+      lastError: null,
+      cancelToken: { cancelled: false },
     }
-    if (!uid) return
-    const ws = useWebSocketStore()
-    ws.send(toResetAllCmd(uid))
-    logger.info(`🔄 Reset all DOs for ${uid}`)
+
+    logger.debug(`♻️ Sequence state reset: ${seq.name}`)
   }
 
-  function resetState() {
-    if (!active.value) return
-    status.value = "idle"
-    index.value = 0
-    completed.value = new Array(active.value.steps.length).fill(false)
-    lastError.value = null
-    cancelToken.value = { cancelled: false }
-    logger.debug("♻️ Sequence state reset")
+  // -------- Helpers for UI --------
+  function getProgress(seq: SequenceDef): number {
+    const st = ensureState(seq)
+    const stepStore = useSequenceStepStore()
+    const steps = stepStore.stepsBySequence(seq.id).value
+
+    const total = steps.length
+    const done = st.completed.filter(Boolean).length
+
+    return total === 0 ? 0 : Math.round((done / total) * 100)
   }
 
-  async function execStep(step: SequenceStep, ws: ReturnType<typeof useWebSocketStore>) {
-    switch (step.kind) {
-      case "WAIT":
-        logger.debug(`⏳ Wait ${step.ms} ms`)
-        await sleep(step.ms)
-        return
-      case "DO_RESET_ALL":
-        logger.debug(`🔄 Reset all DOs for ${step.unit_id}`)
-        ws.send(toResetAllCmd(step.unit_id))
-        return
-      case "DO_SET":
-        logger.debug(`➡️ Send DO_SET: ${describeStep(step)}`)
-        ws.send({ action: WSAction.SET_DO_COMMAND, ...step.cmd })
-        return
-    }
+  function isRunning(seq: SequenceDef): boolean {
+    return ensureState(seq).status === SequenceStatusEnum.RUNNING
   }
 
-  function debugDescribe(stepIndex: number): string {
-    if (!active.value) return "—"
-    const step = active.value.steps[stepIndex]
-    return describeStep(step)
+  function isCompleted(seq: SequenceDef): boolean {
+    return ensureState(seq).status === SequenceStatusEnum.COMPLETED
+  }
+
+  function hasError(seq: SequenceDef): boolean {
+    return ensureState(seq).lastError !== null
+  }
+
+  function hasBlockingErrors(seq: SequenceDef): boolean {
+    const validation = useValidationStore()
+    const stepStore = useSequenceStepStore()
+
+    return validation.errors.some((err) => {
+      // блокируем только для ошибок уровня ERROR
+      if (err.level !== VALIDATION_LEVELS.ERROR) return false
+
+      // ошибка на саму последовательность
+      if (err.schemaName === "sequence" && err.itemId === seq.id) {
+        return true
+      }
+
+      // ошибка на шаги внутри этой последовательности
+      if (err.schemaName === "sequence_step") {
+        const steps = stepStore.stepsBySequence(seq.id).value
+        return steps.some((step) => step.id === err.itemId)
+      }
+
+      return false
+    })
   }
 
   return {
-    active,
-    status,
-    index,
-    completed,
-    lastError,
-    progress,
-    setSequence,
+    sequences,
+    states,
+    ensureState,
+
+    fetchSequences,
+    createSequence,
+    updateSequence,
+    deleteSequence,
+
     start,
     stop,
-    resetAllDos,
     resetState,
-    debugDescribe,
+
+    getProgress,
+    isRunning,
+    isCompleted,
+    hasError,
+    hasBlockingErrors,
+
   }
 })

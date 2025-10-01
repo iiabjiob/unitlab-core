@@ -2,11 +2,14 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { Channel } from '@/types/channel'
+import axios from "axios"
+import { ApiBuilder } from '@/utils/api'
 
 import {
   StateMode,
   type DeviceStateEvent,
-  type DeviceRespEvent } from '@/types/ws/events'
+  type DeviceRespEvent
+} from '@/types/ws/events'
 
 import {
   WSAction,
@@ -14,84 +17,91 @@ import {
   ReqStateMode,
   type SetDoCommandMessage,
   type SetAoCommandMessage,
-  type RequestStateMessage } from '@/types/ws/messages'
+  type RequestStateMessage
+} from '@/types/ws/messages'
 
 import { useWebSocketStore } from "@/stores/websocketStore"
-import { useDeviceStore } from '@/stores/deviceStore'
+import { useDeviceStore } from "@/stores/deviceStore"
 import { getLogger } from '@/utils/logger'
 
 const logger = getLogger('CH')
 
 export const useChannelStore = defineStore('channelStore', () => {
-  // Все каналы: unit_id → Channel[]
-  const channels = ref<Record<string, Channel[]>>({})
-
-  // Последние RESP от устройств
+  const channels = ref<Channel[]>([])
   const responses = ref<Record<string, DeviceRespEvent>>({})
 
-  // Обновление от backend (DeviceStateEvent → Channels)
-  function setSignals(event: DeviceStateEvent) {
-  const unitId = event.unit_id
-  const prev = channels.value[unitId] ?? []
-  let updated = [...prev]
+  function channelsByDevice(deviceId: number) {
+    return channels.value.filter(ch => ch.device_id === deviceId)
+  }
 
-  switch (event.mode) {
-    case StateMode.STATE_SINGLE_BIT: {
-      const { ch, value } = event.payload
-      const idx = updated.findIndex(c => c.index === ch)
+  // PATCH /channels/{id}
+  async function updateChannelField(id: number, changes: Partial<Channel>) {
+    try {
+      const { data } = await axios.patch(ApiBuilder.channel(id), changes)
+      const idx = channels.value.findIndex(c => c.id === id)
       if (idx !== -1) {
-        updated[idx].state = !!value
-      } else {
-        updated.push({
-          index: ch,
-          device_id: unitId,
-          type: event.type.toUpperCase() as "DI" | "DO",
-          state: !!value,
-          name: `CH${ch + 1}`,
-        })
+        channels.value[idx] = data
       }
-      break
-    }
-
-    case StateMode.STATE_ALL_BIT: {
-      const { bitmask } = event.payload
-      const total = (useDeviceStore().devices.find(d => d.unit_id === unitId)?.channels) ?? 0
-      updated = []
-      for (let i = 0; i < total; i++) {
-        updated.push({
-          index: i,
-          device_id: unitId,
-          type: event.type.toUpperCase()  as "DI" | "DO",
-          state: (bitmask >> i) & 1 ? true : false,
-          name: `CH${i + 1}`,
-        })
-      }
-      break
-    }
-
-    case StateMode.STATE_SINGLE_FLOAT: {
-      const { ch, value } = event.payload
-      const idx = updated.findIndex(c => c.index === ch)
-      if (idx !== -1) {
-        updated[idx].state = value
-      } else {
-        updated.push({
-          index: ch,
-          device_id: unitId,
-          type: "AO",
-          state: value,
-          name: `AO${ch + 1}`,
-        })
-      }
-      break
+      logger.debug(`✅ Channel ${id} updated with`, changes)
+    } catch (error) {
+      logger.error(`💥 Failed to update channel ${id}:`, error)
     }
   }
 
-  channels.value[unitId] = updated
-  logger.debug(`📡 Updated channels for ${unitId}`, updated)
-}
+  // При регистрации устройства — добавить его каналы
+  function setBaseChannels(deviceId: number, base: Channel[]) {
+    channels.value = channels.value.filter(c => c.device_id !== deviceId)
+    channels.value = [...channels.value, ...base]
+    logger.info(`📡 Base channels set for ${deviceId}`, base)
+  }
 
-  // ---- RESP обработка ----
+  function setChannels(event: DeviceStateEvent) {
+    const deviceStore = useDeviceStore()
+    const device = deviceStore.devices.find(d => d.unit_id === event.unit_id)
+    if (!device) {
+      logger.warn(`⚠️ Device with unit_id=${event.unit_id} not found`)
+      return
+    }
+
+    const deviceId = device.id
+    let updated = [...channels.value]
+
+    switch (event.mode) {
+      case StateMode.STATE_SINGLE_BIT: {
+        const { ch, value } = event.payload
+        updated = updated.map(c =>
+          c.device_id === deviceId && c.index === ch
+            ? { ...c, state: !!value }
+            : c
+        )
+        break
+      }
+
+      case StateMode.STATE_ALL_BIT: {
+        const { bitmask } = event.payload
+        updated = updated.map(c =>
+          c.device_id === deviceId
+            ? { ...c, state: (bitmask >> c.index) & 1 ? true : false }
+            : c
+        )
+        break
+      }
+
+      case StateMode.STATE_SINGLE_FLOAT: {
+        const { ch, value } = event.payload
+        updated = updated.map(c =>
+          c.device_id === deviceId && c.index === ch
+            ? { ...c, state: value }
+            : c
+        )
+        break
+      }
+    }
+
+    channels.value = updated
+  }
+
+  // RESP обработка
   function setResponse(resp: DeviceRespEvent) {
     responses.value[resp.unit_id] = resp
     if (resp.status === 'OK') {
@@ -103,67 +113,125 @@ export const useChannelStore = defineStore('channelStore', () => {
     }
   }
 
-  function requestStates(unitId: string, deviceType: string) {
+  // Запросить состояния с устройства
+  function requestStates(deviceId: number, deviceType: string) {
+    const deviceStore = useDeviceStore()
+    const device = deviceStore.devices.find(d => d.id === deviceId)
+    if (!device) {
+      logger.error(`❌ Device ${deviceId} not found for requestStates`)
+      return
+    }
+
     const ws = useWebSocketStore()
     const msg: RequestStateMessage = {
       action: WSAction.GET_STATES,
-      unit_id: unitId,
-      type: deviceType.toLowerCase() as "di" | "do" | "ao",
+      unit_id: device.unit_id, // резолвим unit_id
       mode:
         deviceType.toLowerCase() === "ao"
           ? ReqStateMode.REQ_ALL_FLOAT
           : ReqStateMode.REQ_ALL_BIT,
     }
     ws.send(msg)
-    logger.info(`📨 Requested states from ${unitId} (${deviceType})`)
+    logger.info(`📨 Requested states from ${device.unit_id} (${deviceType})`)
   }
 
   // ---- Команды ----
-
   function sendDoCommand(unitId: string, ch: number, state: boolean) {
+    const deviceStore = useDeviceStore()
+    const device = deviceStore.devices.find(d => d.unit_id === unitId)
+    if (!device) {
+      logger.error(`❌ Device ${unitId} not found for DO command`)
+      return
+    }
+
     const ws = useWebSocketStore()
     const msg: SetDoCommandMessage = {
       action: WSAction.SET_DO_COMMAND,
-      unit_id: unitId,
+      unit_id: device.unit_id,
       mode: CmdMode.SET_SINGLE_BIT,
       ch,
       value: state ? 1 : 0,
     }
     ws.send(msg)
-    logger.info(`➡️ DO cmd ${unitId} ch=${ch} → ${state}`)
+    logger.info(`➡️ DO cmd ${device.unit_id} ch=${ch} → ${state}`)
   }
 
   function sendDoPairCommand(unitId: string, chA: number, chB: number, state2b: 0|1|2|3) {
+    const deviceStore = useDeviceStore()
+    const device = deviceStore.devices.find(d => d.unit_id === unitId)
+    if (!device) {
+      logger.error(`❌ Device ${unitId} not found for DO pair command`)
+      return
+    }
+
     const ws = useWebSocketStore()
     const msg: SetDoCommandMessage = {
       action: WSAction.SET_DO_COMMAND,
-      unit_id: unitId,
-      mode: CmdMode.SET_PAIR_BIT, // <- atomic pair
+      unit_id: device.unit_id,
+      mode: CmdMode.SET_PAIR_BIT,
       chA,
       chB,
       state2b,
     }
     ws.send(msg)
-    logger.info(`➡️ DO pair cmd ${unitId} [${chA}/${chB}] → state2b=${state2b}`)
+    logger.info(`➡️ DO pair cmd ${device.unit_id} [${chA}/${chB}] → state2b=${state2b}`)
   }
 
   function sendAoCommand(unitId: string, ch: number, value: number) {
+    const deviceStore = useDeviceStore()
+    const device = deviceStore.devices.find(d => d.unit_id === unitId)
+    if (!device) {
+      logger.error(`❌ Device ${unitId} not found for AO command`)
+      return
+    }
+
     const ws = useWebSocketStore()
     const msg: SetAoCommandMessage = {
       action: WSAction.SET_AO_COMMAND,
-      unit_id: unitId,
+      unit_id: device.unit_id,
       ch,
       value,
     }
     ws.send(msg)
-    logger.info(`➡️ AO cmd ${unitId} ch=${ch} → ${value}`)
+    logger.info(`➡️ AO cmd ${device.unit_id} ch=${ch} → ${value}`)
+  }
+
+  function resolveUnitId(deviceId: number): string {
+    const deviceStore = useDeviceStore()
+    const dev = deviceStore.devices.find(d => d.id === deviceId)
+    return dev?.unit_id ?? `dev#${deviceId}`
+  }
+
+  function resolveUnitName(deviceId: number): string {
+    const deviceStore = useDeviceStore()
+    const dev = deviceStore.devices.find(d => d.id === deviceId)
+    return dev?.name ?? dev?.unit_id ?? `dev#${deviceId}`
+  }
+
+  function resolveChannelLabel(ch: Channel): string {
+    // 1. TODO: если будет signal_list → ch.signal?.hmi
+    if (ch.name?.trim()) {
+      return ch.name
+    }
+    return `CH${ch.index + 1}`
+  }
+
+  function resolveChannelFullLabel(ch: Channel): string {
+    return `${resolveUnitName(ch.device_id)}/${resolveChannelLabel(ch)}`
   }
 
   return {
     channels,
     responses,
+    resolveChannelLabel,
+    resolveChannelFullLabel,
+    resolveUnitId,
+    resolveUnitName,
+    channelsByDevice,
+    updateChannelField,
     requestStates,
-    setSignals,
+    setBaseChannels,
+    setChannels,
     setResponse,
     sendDoCommand,
     sendDoPairCommand,
