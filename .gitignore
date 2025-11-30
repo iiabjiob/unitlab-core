@@ -2,6 +2,7 @@
 .env
 .editorconfig
 .devcontainer
+.pnpm-store
 
 # Logs
 logs
