@@ -3,67 +3,75 @@ services:
     build:
       context: ./backend
     container_name: unitlab-backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
-    env_file:
-      - ./backend/.env
-    volumes:  
-      - ./backend:/app
-      - ./config:/app/config
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ntp_run:/var/run/chrony
+    env_file: .env
     expose:
-      - "8000"   # доступен только внутри docker network
+      - "8000"
     depends_on:
-      - db
-      - redis
-      - mosquitto
-      - ntp
+      migrations:
+        condition: service_completed_successfully
+    networks:
+      - app_network
+
+  migrations:
+    build:
+      context: ./backend
+    command: uv run alembic upgrade head
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - app_network
 
   db:
-    image: postgres:latest
+    image: postgres:16
     container_name: unitlab-db
     restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    env_file: .env
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     volumes:
       - db_data:/var/lib/postgresql/data
     expose:
-      - "5432"   # только для других контейнеров
+      - "5432"
     networks:
       - app_network
-  
+
   nginx:
     image: nginx:latest
     container_name: unitlab-nginx
+    depends_on:
+      backend:
+        condition: service_healthy
     restart: unless-stopped
     ports:
-      - "80:80"  # наружу торчит только nginx
+      - "80:80"
     volumes:
       - ./frontend/dist:/usr/share/nginx/html
       - ./config/nginx.conf:/etc/nginx/conf.d/default.conf
-    depends_on:
-      - backend   # nginx зависит от backend
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     networks:
       - app_network
-  
+
   redis:
-    image: redis:latest
+    image: redis:7
     container_name: unitlab-redis
     restart: unless-stopped
     expose:
       - "6379"
-    networks:
-      - app_network
     volumes:
       - redis_data:/data
+    networks:
+      - app_network
 
   mosquitto:
     image: eclipse-mosquitto:2
@@ -77,25 +85,12 @@ services:
       - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
     networks:
       - app_network
-  
-  ntp:
-    image: cturra/ntp:latest
-    container_name: unitlab-ntp
-    restart: unless-stopped
-    ports:
-      - "123:123/udp"
-    volumes:
-      - ./config/chrony.conf:/etc/chrony/chrony.conf
-      - ntp_run:/var/run/chrony
-    networks:
-      - app_network
 
 volumes:
   db_data:
   redis_data:
   mosquitto_data:
   mosquitto_log:
-  ntp_run:
 
 networks:
   app_network:

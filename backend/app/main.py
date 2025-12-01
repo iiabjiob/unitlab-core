@@ -2,6 +2,7 @@ import asyncio
 from fastapi import FastAPI
 from contextlib import asynccontextmanager, suppress
 
+from app.api.health_router import router as health_router
 from app.api.device_router import router as devices_router
 from app.api.channel_router import router as channels_router
 from app.api.switchgear_router import router as switchgears_router
@@ -97,6 +98,7 @@ app = FastAPI(
 
 # Routers
 logger.info("🔗 Registering REST API routers...")
+app.include_router(health_router)
 app.include_router(devices_router)
 app.include_router(channels_router)
 app.include_router(switchgears_router)

@@ -12,9 +12,6 @@ class Settings(BaseSettings):
     debug: bool
     debug_level: str
 
-    ap_ssid_prefix: str
-    ap_password_prefix: str
-
     mqtt_host: str
     mqtt_port: int
 

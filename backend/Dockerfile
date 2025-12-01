@@ -1,17 +1,30 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
 
+# Install curl
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends chrony \
+    && apt-get install -y curl \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Обновить pip, wheel и setuptools
-RUN pip install --upgrade pip setuptools wheel
+# Install uv
+RUN pip install --no-cache-dir uv
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy project metadata first (for caching)
+COPY pyproject.toml uv.lock ./
 
+# Install deps
+RUN uv sync --frozen --no-dev
+
+# Ensure venv binaries are used
+ENV PATH="/app/.venv/bin:$PATH"
+
+# Copy project code
 COPY . .
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "gunicorn", \
+     "-k", "uvicorn.workers.UvicornWorker", \
+     "app.main:app", \
+     "--workers", "1", \
+     "--bind", "0.0.0.0:8000"]
