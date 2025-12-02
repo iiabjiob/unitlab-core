@@ -22,7 +22,8 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Передаём URL из .env напрямую
-config.set_main_option("sqlalchemy.url", settings.database_url.replace("+asyncpg", ""))
+safe_url = settings.database_url.replace("+asyncpg", "").replace("%", "%%")
+config.set_main_option("sqlalchemy.url", safe_url)
 
 # add your model's MetaData object here
 # for 'autogenerate' support

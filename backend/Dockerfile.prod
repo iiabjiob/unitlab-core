@@ -1,0 +1,64 @@
+# ---------------------------------------------------------
+# Stage 1: Builder (RPi5-friendly)
+# ---------------------------------------------------------
+FROM python:3.11-slim-bookworm AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Install system deps (RPi5 bookworm)
+RUN apt-get update && apt-get install -y \
+    curl build-essential libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+WORKDIR /app
+
+# Copy only dependency definition for caching
+COPY pyproject.toml uv.lock ./
+
+# Build venv with frozen deps
+RUN uv venv && . .venv/bin/activate \
+    && uv sync --frozen --no-dev
+
+
+# ---------------------------------------------------------
+# Stage 2: Runtime (small, secure, ARM64 optimized)
+# ---------------------------------------------------------
+FROM python:3.11-slim-bookworm AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Install wget + uv (for migrations and healthcheck)
+RUN apt-get update && apt-get install -y wget \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh
+
+ENV PATH="/root/.local/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+# Copy virtual environment
+COPY --from=builder /app/.venv /app/.venv
+
+# Copy application code
+COPY . .
+
+RUN adduser --disabled-password --gecos "" appuser \
+    && chown -R appuser /app
+USER appuser
+
+EXPOSE 8000
+
+CMD ["gunicorn", "app.main:app", \
+     "-k", "uvicorn.workers.UvicornWorker", \
+     "--workers", "1", \
+     "--bind", "0.0.0.0:8000", \
+     "--log-level", "info", \
+    "--timeout", "60", \
+    "--logger-class", "app.core.logger.UnitlabGunicornLogger"]

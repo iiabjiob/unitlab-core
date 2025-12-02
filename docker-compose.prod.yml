@@ -2,28 +2,40 @@ services:
   backend:
     build:
       context: ./backend
+      dockerfile: Dockerfile.prod
+    platform: linux/arm64
     container_name: unitlab-backend
+    mem_limit: 1024m
+    cpus: 2.0
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
       interval: 5s
       timeout: 2s
       retries: 5
-      start_period: 10s
     restart: unless-stopped
-    env_file: .env
+    env_file: ./backend/.env.prod
+    environment:
+      APP_ENV: production
     expose:
       - "8000"
     depends_on:
       migrations:
         condition: service_completed_successfully
+      db:
+        condition: service_healthy
     networks:
       - app_network
 
   migrations:
     build:
       context: ./backend
-    command: uv run alembic upgrade head
-    env_file: .env
+      dockerfile: Dockerfile.prod
+    container_name: unitlab-migrations
+    platform: linux/arm64
+    command: ["/app/.venv/bin/alembic", "upgrade", "head"]
+    env_file:
+      - ./backend/.env.prod
+      - ./backend/.env.db.prod
     depends_on:
       db:
         condition: service_healthy
@@ -34,9 +46,11 @@ services:
     image: postgres:16
     container_name: unitlab-db
     restart: unless-stopped
-    env_file: .env
+    mem_limit: 1024m
+    cpus: 1.5
+    env_file: ./backend/.env.db.prod
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U unitlab_pg_user -d unitlab_pg -h db"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -48,8 +62,11 @@ services:
       - app_network
 
   nginx:
-    image: nginx:latest
+    image: nginx:1.27
     container_name: unitlab-nginx
+    platform: linux/arm64
+    mem_limit: 256m
+    cpus: 0.25
     depends_on:
       backend:
         condition: service_healthy
@@ -65,11 +82,12 @@ services:
   redis:
     image: redis:7
     container_name: unitlab-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
     restart: unless-stopped
+    mem_limit: 512m
+    cpus: 0.50
     expose:
       - "6379"
-    volumes:
-      - redis_data:/data
     networks:
       - app_network
 
@@ -77,6 +95,8 @@ services:
     image: eclipse-mosquitto:2
     container_name: unitlab-mosquitto
     restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.25
     ports:
       - "1883:1883"
     volumes:
@@ -88,7 +108,6 @@ services:
 
 volumes:
   db_data:
-  redis_data:
   mosquitto_data:
   mosquitto_log:
 

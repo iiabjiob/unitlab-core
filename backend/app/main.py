@@ -39,19 +39,33 @@ settings = get_settings()
 logger = get_logger("core")
 
 
-async def check_database_connection():
-    """Simple DB health check at startup."""
-    try:
-        async with engine.begin() as conn:
-            await conn.execute(text("SELECT 1"))
-            logger.info("✅ Connected to the database!")
-    except Exception as e:
-        logger.error(f"💥 Database connection failed: {e}")
+async def check_database_connection(max_attempts: int = 10, base_delay: float = 1.5):
+    """Ping the DB with retries so we can survive slow compose DNS/startup."""
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("SELECT 1"))
+                logger.info("✅ Connected to the database!")
+                return
+        except Exception as e:
+            logger.error(
+                "💥 Database connection failed (attempt %s/%s): %s",
+                attempt,
+                max_attempts,
+                e,
+            )
+            if attempt == max_attempts:
+                raise
+            await asyncio.sleep(base_delay * attempt)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting FastAPI application...")
+
+    if settings.app_env == "development":
+        await run_migrations()
 
     # Healthchecks
     await check_database_connection()
@@ -116,3 +130,11 @@ app.include_router(ws_router)
 logger.info("✅ Websockets registered")
 
 logger.info(f"✅ FastAPI application is up and running at version {settings.app_version}")
+
+
+async def run_migrations():
+    from alembic.config import Config
+    from alembic import command
+
+    alembic_cfg = Config("alembic.ini")
+    command.upgrade(alembic_cfg, "head")

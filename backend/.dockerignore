@@ -1,0 +1,7 @@
+# Exclude local environments and caches from Docker context
+.venv
+__pycache__/
+*.pyc
+logs/
+.vscode/
+.env*
