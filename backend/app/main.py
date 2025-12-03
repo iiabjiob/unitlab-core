@@ -64,9 +64,6 @@ async def check_database_connection(max_attempts: int = 10, base_delay: float = 
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting FastAPI application...")
 
-    if settings.app_env == "development":
-        await run_migrations()
-
     # Healthchecks
     await check_database_connection()
 
@@ -130,11 +127,3 @@ app.include_router(ws_router)
 logger.info("✅ Websockets registered")
 
 logger.info(f"✅ FastAPI application is up and running at version {settings.app_version}")
-
-
-async def run_migrations():
-    from alembic.config import Config
-    from alembic import command
-
-    alembic_cfg = Config("alembic.ini")
-    command.upgrade(alembic_cfg, "head")
