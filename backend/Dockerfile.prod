@@ -6,44 +6,40 @@ FROM python:3.11-slim-bookworm AS builder
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Install system deps (RPi5 bookworm)
 RUN apt-get update && apt-get install -y \
     curl build-essential libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
 ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /app
 
-# Copy only dependency definition for caching
-COPY pyproject.toml uv.lock ./
+# Copy sources FIRST (important!)
+COPY . .
 
-# Build venv with frozen deps
+# Create venv and install prod deps
 RUN uv venv && . .venv/bin/activate \
     && uv sync --frozen --no-dev
 
 
 # ---------------------------------------------------------
-# Stage 2: Runtime (small, secure, ARM64 optimized)
+# Stage 2: Runtime (small, secure)
 # ---------------------------------------------------------
 FROM python:3.11-slim-bookworm AS runtime
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
-# Install wget + uv (for migrations and healthcheck)
 RUN apt-get update && apt-get install -y wget \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl -LsSf https://astral.sh/uv/install.sh | sh
+    && rm -rf /var/lib/apt/lists/*
 
-ENV PATH="/root/.local/bin:$PATH"
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 
-# Copy virtual environment
+# Copy virtual environment from builder
 COPY --from=builder /app/.venv /app/.venv
 
 # Copy application code
@@ -60,5 +56,5 @@ CMD ["gunicorn", "app.main:app", \
      "--workers", "1", \
      "--bind", "0.0.0.0:8000", \
      "--log-level", "info", \
-    "--timeout", "60", \
-    "--logger-class", "app.core.logger.UnitlabGunicornLogger"]
+     "--timeout", "60", \
+     "--logger-class", "app.core.logger.UnitlabGunicornLogger"]
