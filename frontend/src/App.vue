@@ -9,7 +9,6 @@ import { useWebSocketStore } from './stores/websocketStore';
 import { useEventLogStore } from "./stores/eventLogStore";
 import { useSwitchgearStore } from "./stores/switchgearStore";
 import { useSequenceStore } from "./stores/sequenceStore";
-import { validate } from "./validators/validationRunner";
 
 const wsStore = useWebSocketStore();
 const eventsStore = useEventLogStore();
@@ -27,8 +26,6 @@ onMounted(async () => {
     switchgearStore.fetchAll(),
     sequenceStore.fetchSequences(),
   ])
-
-  await validate()
 
 })
 

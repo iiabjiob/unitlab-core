@@ -9,9 +9,6 @@ import { useChannelStore } from "./channelStore"
 import axios from "axios"
 import { ApiBuilder } from "@/utils/api"
 import { getLogger } from "@/utils/logger"
-import { validateOne, clearOne } from "@/validators/syncValidation"
-import { validateSequenceStep } from "@/validators/sequenceStep"
-import { SCHEMA_NAMES } from "@/property-schemas/types"
 
 const logger = getLogger("SEQS")
 
@@ -164,17 +161,12 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
       .filter(s => s.sequence_id !== seqId)
       .concat(data)
       .sort((a, b) => a.order_index - b.order_index)
-
-    data.forEach((st: SequenceStep) =>
-      validateOne(SCHEMA_NAMES.SEQUENCE_STEP, st, validateSequenceStep),
-    )
   }
 
   async function addStep(seqId: number, step: SequenceStepCreate) {
     const { data } = await axios.post(ApiBuilder.sequenceSteps(seqId), step)
     steps.value.push(data)
     steps.value.sort((a, b) => a.order_index - b.order_index)
-    validateOne(SCHEMA_NAMES.SEQUENCE_STEP, data, validateSequenceStep)
     return data
   }
 
@@ -185,14 +177,12 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
       steps.value[idx] = { ...steps.value[idx], ...data }
       steps.value.sort((a, b) => a.order_index - b.order_index)
     }
-    validateOne(SCHEMA_NAMES.SEQUENCE_STEP, data, validateSequenceStep)
     return data
   }
 
   async function deleteStep(seqId: number, stepId: number) {
     await axios.delete(ApiBuilder.sequenceStep(seqId, stepId))
     steps.value = steps.value.filter(s => s.id !== stepId)
-    clearOne(SCHEMA_NAMES.SEQUENCE_STEP, stepId)
     return true
   }
 

@@ -18,10 +18,7 @@
             :key="device.unit_id"
             class="h-full w-[320px]"
           >
-            <SelectableCard
-              :selected="selection.isSelected('device', device)"
-              @click="select(device)"
-            >
+            <SelectableCard>
               <DeviceCard
                 :device="device"
                 @toggle="onToggle"
@@ -38,7 +35,6 @@
 <script setup lang="ts">
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useDeviceFilterStore } from "@/stores/deviceFilterStore"
-import { useSelectionStore } from "@/stores/selectionStore"
 import DeviceCard from "@/components/devices/DeviceCard.vue"
 import SelectableCard from "@/components/ui/SelectableCard.vue"
 import type { Device } from "@/types/device"
@@ -46,11 +42,6 @@ import DevicesToolbar from "@/components/toolbars/DevicesToolbar.vue"
 
 const deviceStore = useDeviceStore()
 const filterStore = useDeviceFilterStore()
-const selection = useSelectionStore()
-
-function select(item: Device) {
-  selection.select({ type: "device", key: item.unit_id })
-}
 
 async function onToggle(item: Device) {
   await deviceStore.toggleDeviceActive(item.id)

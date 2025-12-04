@@ -8,7 +8,6 @@
         v-for="ch in channels"
         :key="`${unitId}-${ch.index}`"
         :channel="ch"
-        :selected="selection.isSelected('channel', ch)"
         @toggle="state => onToggle(ch, state)"
         @ao-change="val => onAoChange(ch, val)"
       />
@@ -22,7 +21,6 @@ import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import ChannelComponent from "./ChannelComponent.vue"
 import type { Channel, ChannelType } from "@/types/channel"
-import { useSelectionStore } from "@/stores/selectionStore"
 
 const props = defineProps<{
   unitId: string
@@ -33,8 +31,6 @@ const props = defineProps<{
 
 const channelStore = useChannelStore()
 const deviceStore = useDeviceStore()
-const selection = useSelectionStore()
-
 // каналы (ищем device.id по unitId)
 const channels = computed<Channel[]>(() => {
   const dev = deviceStore.devices.find(d => d.unit_id === props.unitId)

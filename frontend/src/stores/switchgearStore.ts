@@ -5,10 +5,6 @@ import axios from "axios"
 import { ApiBuilder } from "@/utils/api"
 import { getLogger } from "@/utils/logger"
 import { useChannelStore } from "./channelStore"
-import { validateSwitchgear, validateSwitchgearField } from "@/validators/switchgear"
-import { SCHEMA_NAMES } from "@/property-schemas/types"
-import { clearOne, validateOne } from "@/validators/syncValidation"
-import { VALIDATION_LEVELS } from "@/validators/types"
 import { useDeviceStore } from "./deviceStore"
 
 const logger = getLogger("SG")
@@ -46,8 +42,6 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
       const { data } = await axios.post<Switchgear>(ApiBuilder.switchgears(), payload)
       switchgears.value.push(data)
 
-      validateOne(SCHEMA_NAMES.SWITCHGEAR, data, validateSwitchgear)
-
       logger.info(`➕ Created switchgear id=${data.id}`)
       return data
     } catch (err) {
@@ -60,13 +54,10 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   async function updateField(id: number, changes: Partial<Switchgear>) {
     try {
 
-      // PATCH только если нет ошибок в изменяемых полях
       const { data } = await axios.patch<Switchgear>(ApiBuilder.switchgear(id), changes)
       const idx = switchgears.value.findIndex(s => s.id === id)
       if (idx !== -1) {
         switchgears.value[idx] = data
-
-        validateOne(SCHEMA_NAMES.SWITCHGEAR, data, validateSwitchgear)
       }
       logger.debug(`✏️ Switchgear ${id} updated`, changes)
     } catch (err) {
@@ -79,8 +70,6 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     try {
       await axios.delete(ApiBuilder.switchgear(id))
       switchgears.value = switchgears.value.filter(s => s.id !== id)
-
-      clearOne(SCHEMA_NAMES.SWITCHGEAR, id)
 
       logger.info(`🗑️ Switchgear ${id} deleted`)
     } catch (err) {

@@ -80,7 +80,6 @@ const channelStore = useChannelStore()
 
 const props = defineProps<{
   channel: Channel
-  selected?: boolean
   disabled?: boolean
 }>()
 

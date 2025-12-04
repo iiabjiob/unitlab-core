@@ -5,13 +5,8 @@ import { SequenceStatusEnum, type SequenceDef, type SequenceStatus } from "@/typ
 import axios from "axios"
 import { ApiBuilder } from "@/utils/api"
 import { getLogger } from "@/utils/logger"
-import { validateOne, clearOne } from "@/validators/syncValidation"
-import { validateSequence } from "@/validators/sequence"
-import { SCHEMA_NAMES } from "@/property-schemas/types"
 import { useWebSocketStore } from "./websocketStore"
 import { useSequenceStepStore } from "./sequenceStepStore"
-import { useValidationStore } from "./validationStore"
-import { VALIDATION_LEVELS } from "@/validators/types"
 import { execStep } from "@/utils/sequenceUtils"
 
 const logger = getLogger("SEQ")
@@ -54,7 +49,6 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     const { data } = await axios.post(ApiBuilder.sequences(), payload)
     sequences.value.push(data)
     ensureState(data)
-    validateOne(SCHEMA_NAMES.SEQUENCE, data, validateSequence)
     return data
   }
 
@@ -62,7 +56,6 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     const { data } = await axios.patch(ApiBuilder.sequence(id), payload)
     const idx = sequences.value.findIndex((s) => s.id === id)
     if (idx !== -1) sequences.value[idx] = data
-    validateOne(SCHEMA_NAMES.SEQUENCE, data, validateSequence)
     return data
   }
 
@@ -70,7 +63,6 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     await axios.delete(ApiBuilder.sequence(id))
     sequences.value = sequences.value.filter((s) => s.id !== id)
     delete states.value[id]
-    clearOne(SCHEMA_NAMES.SEQUENCE, id)
     logger.info(`🗑️ Sequence ${id} deleted`)
   }
 
@@ -154,29 +146,6 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     return ensureState(seq).lastError !== null
   }
 
-  function hasBlockingErrors(seq: SequenceDef): boolean {
-    const validation = useValidationStore()
-    const stepStore = useSequenceStepStore()
-
-    return validation.errors.some((err) => {
-      // блокируем только для ошибок уровня ERROR
-      if (err.level !== VALIDATION_LEVELS.ERROR) return false
-
-      // ошибка на саму последовательность
-      if (err.schemaName === "sequence" && err.itemId === seq.id) {
-        return true
-      }
-
-      // ошибка на шаги внутри этой последовательности
-      if (err.schemaName === "sequence_step") {
-        const steps = stepStore.stepsBySequence(seq.id).value
-        return steps.some((step) => step.id === err.itemId)
-      }
-
-      return false
-    })
-  }
-
   return {
     sequences,
     states,
@@ -195,7 +164,5 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     isRunning,
     isCompleted,
     hasError,
-    hasBlockingErrors,
-
   }
 })

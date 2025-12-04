@@ -44,7 +44,6 @@
 import { computed, type Ref } from "vue"
 import { useSwitchgear, type ChannelRef } from "@/composables/useSwitchgear"
 import { useChannelStore } from "@/stores/channelStore"
-import { useValidationStore } from "@/stores/validationStore"
 
 import SwitchgearActions from "./SwitchgearActions.vue"
 import SwitchgearCube from "./SwitchgearCube.vue"
@@ -139,15 +138,5 @@ const statePillClass = computed(() => {
       return "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300"
   }
 })
-
-const validation = useValidationStore()
-
-const hasBlockingErrors = computed(() =>
-  validation.errors.some(
-    e => e.schemaName === "switchgear" && e.itemId === props.id && e.level !== "warning"
-  )
-)
-
-const isDisabled = computed(() => isCmdDisabled || hasBlockingErrors.value)
 
 </script>

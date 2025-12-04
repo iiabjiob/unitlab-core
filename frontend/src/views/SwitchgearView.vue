@@ -16,11 +16,7 @@
         :key="item.id"
         class="relative w-[280px] flex-shrink-0"
       >
-        <SelectableCard
-          class="w-full"
-          :selected="selection.isSelected('switchgear', item)"
-          @click="select(item)"
-        >
+        <SelectableCard class="w-full">
           <SwitchgearCard
             :id="item.id"
             :title="item.title"
@@ -43,7 +39,6 @@
 
 <script setup lang="ts">
 import { useSwitchgearStore } from "@/stores/switchgearStore"
-import { useSelectionStore } from "@/stores/selectionStore"
 import type { Switchgear } from "@/types/switchgear"
 
 import SwitchgearCard from "@/components/switchgear/SwitchgearCard.vue"
@@ -51,11 +46,6 @@ import SelectableCard from "@/components/ui/SelectableCard.vue"
 import SwitchgearsToolbar from "@/components/toolbars/SwitchgearsToolbar.vue"
 
 const switchgearStore = useSwitchgearStore()
-const selection = useSelectionStore()
-
-function select(item: Switchgear) {
-  selection.select({ type: "switchgear", key: item.id })
-}
 
 async function onAdd() {
   const sg = await switchgearStore.create({
@@ -67,7 +57,6 @@ async function onAdd() {
     di_close: null,
     feedback_delay_ms: 0,
   })
-  selection.select({ type: "switchgear", key: sg.id })
 }
 
 async function onSave() {
@@ -81,9 +70,6 @@ async function onLoad() {
 function onDelete(item: Switchgear) {
   if (confirm(`Delete Switchgear ${item.title}?`)) {
     switchgearStore.remove(item.id)
-    if (selection.selected?.type === "switchgear" && selection.selected.key === item.id) {
-      selection.clear()
-    }
   }
 }
 </script>

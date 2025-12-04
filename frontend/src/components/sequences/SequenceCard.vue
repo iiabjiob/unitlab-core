@@ -27,7 +27,7 @@
         size="sm"
         type="secondary"
         @click.stop="onStartStop"
-        :disabled="!steps.length || seqStore.hasBlockingErrors(sequence)"
+        :disabled="!steps.length"
       >
         {{ st.status === SequenceStatusEnum.RUNNING ? "Stop" : "Start" }}
       </UiButton>
@@ -36,7 +36,7 @@
         type="secondary"
         size="sm"
         @click.stop="onReset"
-        :disabled="!steps.length || seqStore.hasBlockingErrors(sequence) || st.status === 'running' || st.status === 'idle'"
+        :disabled="!steps.length || st.status === 'running' || st.status === 'idle'"
       >
         Reset
       </UiButton>
