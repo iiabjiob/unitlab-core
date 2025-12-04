@@ -1,0 +1,28 @@
+# Default simulator configuration used by UnitLab's virtual devices.
+# All values can be overridden via CLI arguments or custom YAML files.
+broker:
+  host: mosquitto
+  port: 1883
+  keepalive: 30
+  username: null
+  password: null
+
+devices:
+  DO:
+    count: 5
+    signals: 32
+    interval: 2.0
+  DI:
+    count: 1
+    signals: 32
+    interval: 1.0
+  AO:
+    count: 0
+    signals: 10
+    interval: 3.0
+
+behavior:
+  randomize: true
+  heartbeat: 5.0
+  reconnect_chance: 0.01
+  packet_loss: 0.005

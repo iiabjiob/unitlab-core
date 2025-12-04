@@ -1,0 +1,212 @@
+.ui-table__control {
+  height: 2rem;
+  min-width: 0;
+  padding: 0 0.5rem;
+  font-size: 0.6875rem;
+  color: #374151;
+  background-color: #ffffff;
+  border: 1px solid #d4d4d8;
+  border-radius: 0.125rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.ui-table__control:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+.ui-table__control:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.dark .ui-table__control {
+  color: #f3f4f6;
+  background-color: #1f2937;
+  border-color: #52525b;
+}
+
+.dark .ui-table__control:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 1px #60a5fa;
+}
+
+.ui-table__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.125rem;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #374151;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.1;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  cursor: pointer;
+}
+
+.ui-table__button:focus {
+  outline: none;
+}
+
+.ui-table__button:focus-visible {
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.45);
+}
+
+.ui-table__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.ui-table__button--neutral {
+  border-color: #d4d4d8;
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.ui-table__button--neutral:hover:not(:disabled) {
+  background: #e5e7eb;
+}
+
+.ui-table__button--neutral:focus-visible {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.55);
+}
+
+.dark .ui-table__button--neutral {
+  background: #1f2937;
+  border-color: #52525b;
+  color: #e5e7eb;
+}
+
+.dark .ui-table__button--neutral:hover:not(:disabled) {
+  background: #27272a;
+}
+
+.dark .ui-table__button--neutral:focus-visible {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.55);
+}
+
+.ui-table__button--primary {
+  border-color: #3b82f6;
+  background: #3b82f6;
+  color: #f9fafb;
+}
+
+.ui-table__button--primary:hover:not(:disabled) {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.ui-table__button--primary:focus-visible {
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.6), 0 0 0 4px rgba(249, 250, 251, 0.9);
+}
+
+.dark .ui-table__button--primary {
+  background: #3b82f6;
+  border-color: #60a5fa;
+  color: #f1f5f9;
+}
+
+.dark .ui-table__button--primary:hover:not(:disabled) {
+  background: #60a5fa;
+  border-color: #60a5fa;
+  color: #0b1120;
+}
+
+.dark .ui-table__button--primary:focus-visible {
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.7), 0 0 0 4px rgba(17, 24, 39, 0.92);
+}
+
+.ui-table__button--active {
+  border-color: #3b82f6;
+  color: #2563eb;
+}
+
+.dark .ui-table__button--active {
+  border-color: #60a5fa;
+  color: #93c5fd;
+}
+
+.ui-table__status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #e5e7eb;
+  background: #f3f4f6;
+}
+
+.dark .ui-table__status-bar {
+  border-top-color: #3f3f46;
+  background: #0f172a;
+}
+
+.ui-table__status-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #4b5563;
+}
+
+.dark .ui-table__status-bar-left {
+  color: #d1d5db;
+}
+
+.ui-table__status-label {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.ui-table__status-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-table__status-divider {
+  opacity: 0.5;
+}
+
+.ui-table__status-bar-right {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+
+.ui-table__status-metrics {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  white-space: nowrap;
+}
+
+.ui-table__status-metric {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: #4b5563;
+}
+
+.dark .ui-table__status-metric {
+  color: #d1d5db;
+}
+
+.ui-table__status-metric-label {
+  font-weight: 600;
+}
+
+.ui-table__status-metric-value {
+  font-variant-numeric: tabular-nums;
+}
+

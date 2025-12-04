@@ -1,0 +1,14 @@
+.ui-table__fill-handle {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background-color: var(
+    --ui-table-selection-fill-handle-color,
+    var(--ui-table-selection-active-border-color, rgb(37 99 235))
+  );
+  border: 1px solid var(--ui-table-selection-fill-handle-contrast, rgb(255 255 255));
+  box-shadow: none;
+  border-radius: 0;
+  cursor: crosshair;
+  z-index: 18;
+}

@@ -1,0 +1,10 @@
+.ui-table__empty-state {
+  padding: 1rem 0;
+  text-align: start;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.dark .ui-table__empty-state {
+  color: #9ca3af;
+}

@@ -1,0 +1,65 @@
+.cell-flash-copy {
+  animation: cell-flash-copy-anim 0.5s;
+}
+
+@keyframes cell-flash-copy-anim {
+  0% { background-color: #e0f7fa; }
+  100% { background-color: inherit; }
+}
+
+.cell-flash-paste {
+  animation: cell-flash-paste-anim 0.5s;
+}
+
+@keyframes cell-flash-paste-anim {
+  0% { background-color: #ffe082; }
+  100% { background-color: inherit; }
+}
+
+.cell-flash-fill {
+  animation: cell-flash-fill-anim 0.5s;
+}
+
+@keyframes cell-flash-fill-anim {
+  0% { background-color: #c8e6c9; }
+  100% { background-color: inherit; }
+}
+
+.cell-flash-undo {
+  animation: cell-flash-undo-anim 0.5s;
+}
+
+@keyframes cell-flash-undo-anim {
+  0% { background-color: #dbeafe; }
+  100% { background-color: inherit; }
+}
+
+.cell-flash-redo {
+  animation: cell-flash-redo-anim 0.5s;
+}
+
+@keyframes cell-flash-redo-anim {
+  0% { background-color: #fde2e2; }
+  100% { background-color: inherit; }
+}
+
+/**
+ * HOVER OVERLAY
+ * Outline rendered with box-shadow to avoid layout thrash.
+ */
+.ui-table__hover-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  background: var(--ui-table-row-hover-background-color, rgba(59, 130, 246, 0.12));
+  border-radius: 0;
+  will-change: transform;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  transition: none;
+  z-index: 30;
+}
+
+.dark .ui-table__hover-overlay {
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.45), inset 0 0 0 1px rgba(15, 23, 42, 0.25);
+}
