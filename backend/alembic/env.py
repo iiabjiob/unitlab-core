@@ -24,8 +24,8 @@ config.set_main_option("sqlalchemy.url", safe_sync_url)
 
 target_metadata = Base.metadata
 
-print("ASYNC URL:", async_url)
-print("SYNC URL FOR ALEMBIC:", sync_url)
+print("ALEMBIC ASYNC URL:", async_url)
+print("ALEMBIC  SYNC URL:", sync_url)
 
 
 def run_migrations_offline():
