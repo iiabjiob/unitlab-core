@@ -83,6 +83,8 @@ services:
     image: redis:7
     container_name: unitlab-redis
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    tmpfs:
+      - /data
     restart: unless-stopped
     mem_limit: 512m
     cpus: 0.50
@@ -95,21 +97,20 @@ services:
     image: eclipse-mosquitto:2
     container_name: unitlab-mosquitto
     restart: unless-stopped
+    tmpfs:
+      - /mosquitto/data
+      - /mosquitto/log
     mem_limit: 256m
     cpus: 0.25
     ports:
       - "1883:1883"
     volumes:
-      - mosquitto_data:/mosquitto/data
-      - mosquitto_log:/mosquitto/log
       - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
     networks:
       - app_network
 
 volumes:
   db_data:
-  mosquitto_data:
-  mosquitto_log:
 
 networks:
   app_network:
