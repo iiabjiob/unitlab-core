@@ -1,7 +1,6 @@
 import logging
 import os
 from logging import LoggerAdapter
-from gunicorn import glogging
 from app.core.config import get_settings  # Конфигурация проекта
 
 # Получаем настройки из .env
@@ -70,13 +69,3 @@ logger = get_logger()
 
 # Пример логов на старте
 logger.info(f"Logger initialized with level: {settings.debug_level} (env: {settings.app_env})")
-
-
-class UnitlabGunicornLogger(glogging.Logger):
-    """Downgrade expected SIGTERM shutdown noise to INFO."""
-
-    def error(self, msg, *args, **kwargs):
-        text = str(msg)
-        if "Worker (pid:" in text and "SIGTERM" in text:
-            return super().info(msg, *args, **kwargs)
-        return super().error(msg, *args, **kwargs)

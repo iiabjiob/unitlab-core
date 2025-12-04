@@ -1,15 +1,13 @@
 // src/stores/channelStore.ts
-import { defineStore } from 'pinia'
-import { ref } from 'vue'
-import type { Channel } from '@/types/channel'
-import axios from "axios"
-import { ApiBuilder } from '@/utils/api'
+import { defineStore } from "pinia"
+import { ref, shallowRef, triggerRef } from "vue"
 
-import {
-  StateMode,
-  type DeviceStateEvent,
-  type DeviceRespEvent
-} from '@/types/ws/events'
+import { api, ApiBuilder } from "@/utils/api"
+import { getLogger } from "@/utils/logger"
+import { normalizeChannel, ensureChannel } from "@/utils/channel"
+
+import { useDeviceStore } from "@/stores/deviceStore"
+import { useWebSocketStore } from "@/stores/websocketStore"
 
 import {
   WSAction,
@@ -17,184 +15,276 @@ import {
   ReqStateMode,
   type SetDoCommandMessage,
   type SetAoCommandMessage,
-  type RequestStateMessage
-} from '@/types/ws/messages'
+  type RequestStateMessage,
+} from "@/types/ws/messages"
 
-import { useWebSocketStore } from "@/stores/websocketStore"
-import { useDeviceStore } from "@/stores/deviceStore"
-import { getLogger } from '@/utils/logger'
+import {
+  StateMode,
+  type DeviceStateEvent,
+  type DeviceRespEvent,
+} from "@/types/ws/events"
 
-const logger = getLogger('CH')
+import { CHANNEL_TYPES, type Channel, type ChannelDto } from "@/types/channel"
 
-export const useChannelStore = defineStore('channelStore', () => {
-  const channels = ref<Channel[]>([])
-  const responses = ref<Record<string, DeviceRespEvent>>({})
+const logger = getLogger("CHANNEL")
+
+export const useChannelStore = defineStore("channelStore", () => {
+  const channels = shallowRef<Channel[]>([])
+  const responses = shallowRef<Record<string, DeviceRespEvent>>({})
+
+  const isLoading = ref(false)
+  const isLoaded = ref(false)
+
+  /* ----------------------------- FETCH ALL ----------------------------- */
+
+  async function fetchAll() {
+    isLoading.value = true
+    try {
+      const { data } = await api.get<ChannelDto[]>(ApiBuilder.channels())
+      channels.value = data.map(normalizeChannel)
+      isLoaded.value = true
+      logger.info(`📡 Loaded ${data.length} channels`)
+    } catch (err) {
+      logger.error("Failed to load channels", err)
+      throw err
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  async function ensureLoaded() {
+    if (!isLoaded.value && !isLoading.value) {
+      await fetchAll()
+    }
+  }
+
+  /* ------------------------------ QUERIES ------------------------------ */
 
   function channelsByDevice(deviceId: number) {
     return channels.value.filter(ch => ch.device_id === deviceId)
   }
 
-  // PATCH /channels/{id}
-  async function updateChannelField(id: number, changes: Partial<Channel>) {
+  /* ------------------------- MUTATIONS / PATCH ------------------------- */
+
+  async function updateChannelField(id: number, changes: Partial<ChannelDto>) {
     try {
-      const { data } = await axios.patch(ApiBuilder.channel(id), changes)
+      const { data } = await api.patch<ChannelDto>(ApiBuilder.channel(id), changes)
+      const updated = normalizeChannel(data)
       const idx = channels.value.findIndex(c => c.id === id)
       if (idx !== -1) {
-        channels.value[idx] = data
+        channels.value[idx] = updated
+        triggerRef(channels)
       }
-      logger.debug(`✅ Channel ${id} updated with`, changes)
+      logger.debug(`Channel ${id} updated`, updated)
     } catch (error) {
-      logger.error(`💥 Failed to update channel ${id}:`, error)
+      logger.error(`Failed to update channel ${id}`, error)
     }
   }
 
-  // При регистрации устройства — добавить его каналы
-  function setBaseChannels(deviceId: number, base: Channel[]) {
-    channels.value = channels.value.filter(c => c.device_id !== deviceId)
-    channels.value = [...channels.value, ...base]
-    logger.info(`📡 Base channels set for ${deviceId}`, base)
+  function reset() {
+    channels.value = []
+    responses.value = {}
+    isLoaded.value = false
+  }
+
+  function applyInitialChannels(deviceId: number, list: Channel[]) {
+    const next: Channel[] = []
+    for (const ch of channels.value) {
+      if (ch.device_id !== deviceId) {
+        next.push(ch)
+      }
+    }
+    for (const ch of list) {
+      next.push(ch)
+    }
+    channels.value = next
+  }
+
+  function setBaseChannels(deviceId: number, base: Array<Channel | ChannelDto>) {
+    const prepared = base.map(ensureChannel)
+    applyInitialChannels(deviceId, prepared)
+    logger.info(`📡 Base channels set for ${deviceId}`, prepared)
+  }
+
+  function applyBitState(deviceId: number, chIndex: number, value: boolean) {
+    let mutated = false
+    for (const ch of channels.value) {
+      if (ch.device_id === deviceId && ch.index === chIndex) {
+        if (ch.type === CHANNEL_TYPES.AO) {
+          continue
+        }
+        if (ch.state !== value) {
+          ch.state = value
+          mutated = true
+        }
+        break
+      }
+    }
+    if (mutated) triggerRef(channels)
+  }
+
+  function applyBitmaskState(deviceId: number, mask: number) {
+    let mutated = false
+    for (const ch of channels.value) {
+      if (ch.device_id !== deviceId || ch.type === CHANNEL_TYPES.AO) continue
+      const next = ((mask >> ch.index) & 1) === 1
+      if (ch.state !== next) {
+        ch.state = next
+        mutated = true
+      }
+    }
+    if (mutated) triggerRef(channels)
+  }
+
+  function applyFloatState(deviceId: number, chIndex: number, value: number) {
+    let mutated = false
+    for (const ch of channels.value) {
+      if (ch.device_id === deviceId && ch.index === chIndex && ch.type === CHANNEL_TYPES.AO) {
+        if (ch.state !== value) {
+          ch.state = value
+          mutated = true
+        }
+        break
+      }
+    }
+    if (mutated) triggerRef(channels)
   }
 
   function setChannels(event: DeviceStateEvent) {
     const deviceStore = useDeviceStore()
     const device = deviceStore.devices.find(d => d.unit_id === event.unit_id)
     if (!device) {
-      logger.warn(`⚠️ Device with unit_id=${event.unit_id} not found`)
+      logger.warn(`Device with unit_id=${event.unit_id} not found`)
       return
     }
 
-    const deviceId = device.id
-    let updated = [...channels.value]
-
     switch (event.mode) {
-      case StateMode.STATE_SINGLE_BIT: {
-        const { ch, value } = event.payload
-        updated = updated.map(c =>
-          c.device_id === deviceId && c.index === ch
-            ? { ...c, state: !!value }
-            : c
-        )
+      case StateMode.STATE_SINGLE_BIT:
+        applyBitState(device.id, event.payload.ch, !!event.payload.value)
         break
-      }
-
-      case StateMode.STATE_ALL_BIT: {
-        const { bitmask } = event.payload
-        updated = updated.map(c =>
-          c.device_id === deviceId
-            ? { ...c, state: (bitmask >> c.index) & 1 ? true : false }
-            : c
-        )
+      case StateMode.STATE_ALL_BIT:
+        applyBitmaskState(device.id, event.payload.bitmask)
         break
-      }
-
-      case StateMode.STATE_SINGLE_FLOAT: {
-        const { ch, value } = event.payload
-        updated = updated.map(c =>
-          c.device_id === deviceId && c.index === ch
-            ? { ...c, state: value }
-            : c
-        )
+      case StateMode.STATE_SINGLE_FLOAT:
+        applyFloatState(device.id, event.payload.ch, Number(event.payload.value))
         break
-      }
+      default:
+        logger.debug(`Unhandled device state mode=${event.mode}`)
     }
-
-    channels.value = updated
   }
 
-  // RESP обработка
   function setResponse(resp: DeviceRespEvent) {
-    responses.value[resp.unit_id] = resp
-    if (resp.status === 'OK') {
+    responses.value = {
+      ...responses.value,
+      [resp.unit_id]: resp,
+    }
+
+    if (resp.status === "OK") {
       logger.info(`✅ Command ack from ${resp.unit_id}, packet=${resp.packet_id}`)
     } else {
       logger.warn(
-        `⚠️ Command resp from ${resp.unit_id}, packet=${resp.packet_id}, status=${resp.status}, error=${resp.error}`
+        `⚠️ Command resp from ${resp.unit_id}, packet=${resp.packet_id}, status=${resp.status}, error=${resp.error}`,
       )
     }
   }
 
-  // Запросить состояния с устройства
-  function requestStates(deviceId: number, deviceType: string) {
+  function requestStates(deviceId: number) {
     const deviceStore = useDeviceStore()
     const device = deviceStore.devices.find(d => d.id === deviceId)
     if (!device) {
-      logger.error(`❌ Device ${deviceId} not found for requestStates`)
+      logger.error(`Device ${deviceId} not found for requestStates`)
       return
     }
 
     const ws = useWebSocketStore()
     const msg: RequestStateMessage = {
       action: WSAction.GET_STATES,
-      unit_id: device.unit_id, // резолвим unit_id
+      unit_id: device.unit_id,
       mode:
-        deviceType.toLowerCase() === "ao"
+        device.device_type.toLowerCase() === "ao"
           ? ReqStateMode.REQ_ALL_FLOAT
           : ReqStateMode.REQ_ALL_BIT,
     }
     ws.send(msg)
-    logger.info(`📨 Requested states from ${device.unit_id} (${deviceType})`)
+    logger.info(`Requested states from ${device.unit_id}`)
   }
 
-  // ---- Команды ----
-  function sendDoCommand(unitId: string, ch: number, state: boolean) {
+  /* ----------------------------- COMMANDS ----------------------------- */
+
+  function sendDoCommand(unitId: string, chIndex: number, state: boolean) {
     const deviceStore = useDeviceStore()
     const device = deviceStore.devices.find(d => d.unit_id === unitId)
     if (!device) {
-      logger.error(`❌ Device ${unitId} not found for DO command`)
+      logger.error(`Device ${unitId} not found for DO command`)
       return
     }
+
+    applyBitState(device.id, chIndex, state)
 
     const ws = useWebSocketStore()
     const msg: SetDoCommandMessage = {
       action: WSAction.SET_DO_COMMAND,
       unit_id: device.unit_id,
       mode: CmdMode.SET_SINGLE_BIT,
-      ch,
+      ch: chIndex,
       value: state ? 1 : 0,
     }
     ws.send(msg)
-    logger.info(`➡️ DO cmd ${device.unit_id} ch=${ch} → ${state}`)
+    logger.info(`➡️ DO cmd ${device.unit_id} ch=${chIndex} → ${state}`)
   }
 
-  function sendDoPairCommand(unitId: string, chA: number, chB: number, state2b: 0|1|2|3) {
+  function sendDoAllCommand(unitId: string, mask: number) {
+    const ws = useWebSocketStore()
+    ws.send({
+      action: WSAction.SET_DO_COMMAND,
+      unit_id: unitId,
+      mode: CmdMode.SET_ALL_BIT,
+      bitmask: mask,
+    } satisfies SetDoCommandMessage)
+    logger.info(`➡️ DO ALL cmd ${unitId} mask=${mask}`)
+  }
+
+  function sendDoPairCommand(unitId: string, chA: number, chB: number, state2b: 0 | 1 | 2 | 3) {
     const deviceStore = useDeviceStore()
     const device = deviceStore.devices.find(d => d.unit_id === unitId)
     if (!device) {
-      logger.error(`❌ Device ${unitId} not found for DO pair command`)
+      logger.error(`Device ${unitId} not found for DO pair command`)
       return
     }
 
     const ws = useWebSocketStore()
-    const msg: SetDoCommandMessage = {
+    ws.send({
       action: WSAction.SET_DO_COMMAND,
       unit_id: device.unit_id,
       mode: CmdMode.SET_PAIR_BIT,
       chA,
       chB,
       state2b,
-    }
-    ws.send(msg)
-    logger.info(`➡️ DO pair cmd ${device.unit_id} [${chA}/${chB}] → state2b=${state2b}`)
+    } satisfies SetDoCommandMessage)
+    logger.info(`➡️ DO pair cmd ${device.unit_id} [${chA}/${chB}] → ${state2b}`)
   }
 
-  function sendAoCommand(unitId: string, ch: number, value: number) {
+  function sendAoCommand(unitId: string, chIndex: number, value: number) {
     const deviceStore = useDeviceStore()
     const device = deviceStore.devices.find(d => d.unit_id === unitId)
     if (!device) {
-      logger.error(`❌ Device ${unitId} not found for AO command`)
+      logger.error(`Device ${unitId} not found for AO command`)
       return
     }
 
+    applyFloatState(device.id, chIndex, value)
+
     const ws = useWebSocketStore()
-    const msg: SetAoCommandMessage = {
+    ws.send({
       action: WSAction.SET_AO_COMMAND,
       unit_id: device.unit_id,
-      ch,
+      ch: chIndex,
       value,
-    }
-    ws.send(msg)
-    logger.info(`➡️ AO cmd ${device.unit_id} ch=${ch} → ${value}`)
+    } satisfies SetAoCommandMessage)
+    logger.info(`➡️ AO cmd ${device.unit_id} ch=${chIndex} → ${value}`)
   }
+
+  /* --------------------------- RESOLVERS --------------------------- */
 
   function resolveUnitId(deviceId: number): string {
     const deviceStore = useDeviceStore()
@@ -205,11 +295,13 @@ export const useChannelStore = defineStore('channelStore', () => {
   function resolveUnitName(deviceId: number): string {
     const deviceStore = useDeviceStore()
     const dev = deviceStore.devices.find(d => d.id === deviceId)
-    return dev?.name ?? dev?.unit_id ?? `dev#${deviceId}`
+    return dev?.name?.trim() || dev?.unit_id || `dev#${deviceId}`
   }
 
   function resolveChannelLabel(ch: Channel): string {
-    // 1. TODO: если будет signal_list → ch.signal?.hmi
+    if (ch.resolved_name?.trim()) {
+      return ch.resolved_name
+    }
     if (ch.name?.trim()) {
       return ch.name
     }
@@ -223,18 +315,29 @@ export const useChannelStore = defineStore('channelStore', () => {
   return {
     channels,
     responses,
-    resolveChannelLabel,
-    resolveChannelFullLabel,
-    resolveUnitId,
-    resolveUnitName,
+    isLoading,
+    isLoaded,
+
+    fetchAll,
+    ensureLoaded,
+    reset,
+
     channelsByDevice,
-    updateChannelField,
-    requestStates,
     setBaseChannels,
     setChannels,
     setResponse,
+    requestStates,
+
+    updateChannelField,
+
     sendDoCommand,
+    sendDoAllCommand,
     sendDoPairCommand,
     sendAoCommand,
+
+    resolveUnitId,
+    resolveUnitName,
+    resolveChannelLabel,
+    resolveChannelFullLabel,
   }
 })

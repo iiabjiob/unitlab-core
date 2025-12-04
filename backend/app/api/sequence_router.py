@@ -77,7 +77,7 @@ async def export_sequence_file(seq_id: int, db: AsyncSession = Depends(get_db)):
                 "order_index": step.order_index,
                 "kind": step.kind,
                 "unit_id": step.channel.device.unit_id,
-                "channel_index": step.channel.index,
+                "channel_index": step.channel.channel_index,
                 "payload": step.payload,
             })
         else:  # шаги типа WAIT
@@ -135,7 +135,7 @@ async def import_sequences_file(file: UploadFile = File(...), db: AsyncSession =
                     ch_res = await db.execute(
                         select(Channel).where(
                             Channel.device_id == device.id,
-                            Channel.index == step.channel_index
+                            Channel.channel_index == step.channel_index
                         )
                     )
                     channel = ch_res.scalar_one_or_none()

@@ -3,8 +3,8 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager, suppress
 
 from app.api.health_router import router as health_router
-from app.api.device_router import router as devices_router
-from app.api.channel_router import router as channels_router
+from app.api.v1.devices.router import router as devices_router
+from app.api.v1.channels.router import router as channels_router
 from app.api.switchgear_router import router as switchgears_router
 from app.api.sequence_router import router as sequence_router
 from app.api.sequence_step_router import router as sequence_step_router

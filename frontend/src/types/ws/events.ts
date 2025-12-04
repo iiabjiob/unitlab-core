@@ -1,4 +1,4 @@
-import type { Channel, ChannelType } from "../channel"
+import type { Channel } from "../channel"
 import type { TimeStatus } from "../time"
 // ---------------------------------------------------------------------
 // Каналы WS (Backend → Frontend)
@@ -62,16 +62,15 @@ export interface DeviceRegisterEvent {
   channel: WSChannel.DEVICE_REGISTER
   id: number
   unit_id: string
-  type: ChannelType
-  num_channels: number
-  firmware_version: string
-  is_active: boolean
+  device_type: "do" | "di" | "ao"
+  num_channels?: number | null
+  firmware_version?: string | null
+  name?: string | null
   status: "online" | "offline"
-  name?: string
-  location?: string
-  last_seen?: number
-
-  channels?: Channel[]
+  last_seen?: number | null
+  registered_at?: number | null
+  created?: boolean
+  channels?: Channel[] | null
 }
 
 export interface DeviceRespEvent {

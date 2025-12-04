@@ -1,4 +1,13 @@
 
+import axios, { type AxiosInstance } from "axios"
+
+export const api: AxiosInstance = axios.create({
+  timeout: 10000,
+  headers: {
+    "Content-Type": "application/json",
+  },
+})
+
 function buildQuery(baseUrl: string, params?: Record<string, any>) {
   if (!params) return baseUrl
 
@@ -10,11 +19,17 @@ function buildQuery(baseUrl: string, params?: Record<string, any>) {
   return queryString ? `${baseUrl}?${queryString}` : baseUrl
 }
 
-export const ApiBuilder = {
-  devices: (params?: Record<string, any>) => buildQuery('/api/devices', params),
-  device: (id: number) => `/api/devices/${id}`,
+const API_V1 = "/api/v1"
 
-  channel: (id: number) => `/api/channels/${id}`,
+export const ApiBuilder = {
+  devices: (params?: Record<string, any>) => buildQuery(`${API_V1}/devices`, params),
+  device: (id: number) => `${API_V1}/devices/${id}`,
+  devicesBulkDelete: () => `${API_V1}/devices/bulk`,
+  deviceChannels: (id: number, params?: Record<string, any>) =>
+    buildQuery(`${API_V1}/devices/${id}/channels`, params),
+
+  channels: (params?: Record<string, any>) => buildQuery(`${API_V1}/channels`, params),
+  channel: (id: number) => `${API_V1}/channels/${id}`,
 
   switchgears: () => "/api/switchgears",
   switchgear: (id: number) => `/api/switchgears/${id}`,

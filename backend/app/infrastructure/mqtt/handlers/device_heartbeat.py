@@ -7,6 +7,8 @@ from app.ws.manager import WebSocketManager
 from app.schemas.ws.events import DeviceHeartbeatEvent
 from app.services.ws_state_service import WsStateService
 from app.services.command_queue_service import enqueue_scan_devices
+from app.infrastructure.db.database import AsyncSessionLocal
+from app.services.device_service import DeviceService
 from app.core.utils import to_str
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -31,6 +33,10 @@ async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
 
     # регистрируем девайс в all (если впервые)
     await redis.sadd("devices:all", unit_id.encode())
+
+    async with AsyncSessionLocal() as session:
+        service = DeviceService(session)
+        await service.set_last_seen(unit_id, ts)
 
     # проверяем статус
     prev_status_raw = await redis.get(f"device:{unit_id}:status")

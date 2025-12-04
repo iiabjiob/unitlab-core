@@ -1,37 +1,48 @@
-export type ChannelType = "di" | "do" | "ao"
-
 export const CHANNEL_TYPES = {
   DI: "di" as const,
   DO: "do" as const,
   AO: "ao" as const,
 }
 
-export interface BaseChannel {
+export type ChannelType = typeof CHANNEL_TYPES[keyof typeof CHANNEL_TYPES]
+
+export interface ChannelDto {
+  id: number
+  device_id: number
+  channel_index: number
+  channel_type: ChannelType
+  name?: string | null
+  resolved_name?: string | null
+  state?: boolean | number | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ChannelBase {
   id: number
   device_id: number
   index: number
   type: ChannelType
-  name?: string
+  name: string
+  resolved_name: string
+  created_at?: number
+  updated_at?: number
 }
 
-/** Цифровой вход (DI) */
-export interface DiChannel extends BaseChannel {
-  /** Состояние входа: true=замкнут, false=разомкнут */
+export interface DiChannel extends ChannelBase {
+  type: "di"
   state: boolean
 }
 
-/** Цифровой выход (DO) */
-export interface DoChannel extends BaseChannel {
-  /** Состояние выхода: true=ON, false=OFF */
+export interface DoChannel extends ChannelBase {
+  type: "do"
   state: boolean
 }
 
-/** Аналоговый выход (AO) */
-export interface AoChannel extends BaseChannel {
-  /** Текущее значение, мА (4..20) */
+export interface AoChannel extends ChannelBase {
+  type: "ao"
   state: number
 }
 
-/** Универсальный канал */
 export type Channel = DiChannel | DoChannel | AoChannel
 

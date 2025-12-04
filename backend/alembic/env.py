@@ -1,73 +1,62 @@
 from logging.config import fileConfig
 from alembic import context
 
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
-from sqlalchemy import pool
-
+from sqlalchemy import create_engine, pool
 from app.infrastructure.db.database import Base
-
-import app.models  # noqa: F401
-
+import app.models  # noqa
 from app.core.config import get_settings
 
 settings = get_settings()
-
-
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Полный async URL (НЕ удаляем +asyncpg!)
+# Async URL from settings (used by application)
 async_url = settings.database_url
 
-safe_url = async_url.replace("%", "%%")
+# Convert asyncpg URL to psycopg3 sync URL for Alembic
+# postgresql+asyncpg:// → postgresql+psycopg://
+sync_url = async_url.replace("+asyncpg", "+psycopg")
 
-config.set_main_option("sqlalchemy.url", safe_url)
+safe_sync_url = sync_url.replace("%", "%%")
+config.set_main_option("sqlalchemy.url", safe_sync_url)
 
 target_metadata = Base.metadata
 
+print("ASYNC URL:", async_url)
+print("SYNC URL FOR ALEMBIC:", sync_url)
 
-def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode."""
 
+def run_migrations_offline():
     context.configure(
-        url=async_url,
+        url=safe_sync_url,
         target_metadata=target_metadata,
         literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        dialect_opts={"paramstyle": "named"},
+        include_schemas=True,
     )
-
     with context.begin_transaction():
         context.run_migrations()
 
 
-async def run_migrations_online() -> None:
-    """Run migrations in 'online' mode."""
+def run_migrations_online():
+    engine = create_engine(sync_url, poolclass=pool.NullPool)
 
-    connectable = create_async_engine(
-        async_url,
-        poolclass=pool.NullPool,
-    )
-
-    async with connectable.connect() as connection:
-        await connection.run_sync(
-            lambda sync_conn: context.configure(
-                connection=sync_conn,
-                target_metadata=target_metadata,
-                compare_type=True,
-            )
+    with engine.connect() as connection:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            include_schemas=True,
         )
 
-        await connection.run_sync(
-            lambda sync_conn: context.run_migrations()
-        )
+        with context.begin_transaction():
+            context.run_migrations()
 
 
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    import asyncio
-
-    asyncio.run(run_migrations_online())
+    run_migrations_online()

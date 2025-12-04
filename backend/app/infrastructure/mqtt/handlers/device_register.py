@@ -3,7 +3,7 @@ from app.infrastructure.protocol.decode import sys as sys_decode
 from app.infrastructure.protocol.utils import fw_u16_to_str
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.db.database import AsyncSessionLocal
-from app.repositories.device_repository import DeviceRepository
+from app.services.device_service import DeviceService
 from app.infrastructure.mqtt import topics
 from app.infrastructure.redis.manager import RedisManager
 from app.ws.manager import WebSocketManager
@@ -41,15 +41,16 @@ async def handle_device_register(topic: str, payload: bytes, unit_id: str):
         f"Registering device {unit_id} (type={type_}, ch={num_channels}, fw={firmware_version})"
     )
 
+    device = None
+    created = False
     async with AsyncSessionLocal() as session:
-        repo = DeviceRepository(session)
+        service = DeviceService(session)
         try:
-            device = await repo.register_or_update(
+            device, created = await service.register_or_update(
                 unit_id=unit_id,
                 num_channels=num_channels,
                 firmware_version=firmware_version,
-                type=type_,
-                is_active=True,
+                device_type=type_,
             )
             logger.info(f"✅ Registered device: {device.unit_id}")
         except Exception as e:
@@ -57,23 +58,21 @@ async def handle_device_register(topic: str, payload: bytes, unit_id: str):
             logger.error(f"💥 DB error registering device '{unit_id}': {e}")
             return
 
+    if device is None:
+        return
+
     # enrich with Redis dynamic info
     redis_client = RedisManager.get_instance()
     last_seen = await redis_client.get(f"device:{unit_id}:last_seen")
     status = "online" if last_seen else "offline"
 
-    # Build WS event
-    event = DeviceRegisterEvent(
-        id=device.id,
-        unit_id=device.unit_id,
-        type=device.type,
-        num_channels=device.num_channels,
-        location=device.location,
-        firmware_version=device.firmware_version,
-        is_active=device.is_active,
-        status=status,
-        last_seen=int(last_seen) if last_seen else None,
-    )
+    payload = device.model_dump()
+    payload["status"] = status
+    payload["last_seen"] = int(last_seen) if last_seen else device.last_seen
+    payload["registered_at"] = device.registered_at
+    payload["created"] = created
+
+    event = DeviceRegisterEvent(**payload)
 
     ws_manager = WebSocketManager.get_instance()
     await ws_manager.broadcast(event)

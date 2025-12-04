@@ -56,6 +56,7 @@ class DeviceStateEvent(BaseModel):
 
 class DeviceRegisterEvent(DeviceSchema):
     channel: Literal[WSChannel.DEVICE_REGISTER] = WSChannel.DEVICE_REGISTER
+    created: bool = False
 
 # ---------------------------------------------------------------------
 # RESP (ответы на команды)

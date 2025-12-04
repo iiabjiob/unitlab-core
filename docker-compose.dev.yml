@@ -1,4 +1,16 @@
 services:
+  dev:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+      tags:
+        - unitlab-dev:latest
+    container_name: unitlab-dev-container
+    volumes:
+      - .:/workspace
+    command: sleep infinity
+    networks:
+      - net
   db:
     image: postgres:16
     container_name: unitlab-db-dev
@@ -13,29 +25,33 @@ services:
     volumes:
       - db_data_dev:/var/lib/postgresql/data
     networks:
-      - app_network
+      - net
 
   redis:
     image: redis:7
     container_name: unitlab-redis-dev
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    tmpfs:
+      - /data
     ports:
       - "6379:6379"
     networks:
-      - app_network
+      - net
 
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: unitlab-mosquitto-dev
     ports:
       - "1883:1883"
+    tmpfs:
+      - /mosquitto/data
+      - /mosquitto/log
     volumes:
       - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf
     networks:
-      - app_network
+      - net
 
 volumes:
   db_data_dev:
 
 networks:
-  app_network:
+  net:

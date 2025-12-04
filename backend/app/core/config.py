@@ -8,6 +8,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 APP_ENV = os.getenv("APP_ENV", "development").lower()
 ENV_FILE = None if APP_ENV in ("production", "prod") else REPO_ROOT / ".env.dev"
 
+print("ENV_FILE resolved to:", ENV_FILE)
+
 if ENV_FILE and not ENV_FILE.exists():
     raise FileNotFoundError("❌ ENV FILE NOT FOUND: .env.dev")
 

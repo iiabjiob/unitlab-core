@@ -5,6 +5,7 @@ from app.models.device import Device
 
 from app.infrastructure.redis.manager import RedisManager
 from app.ws.manager import WebSocketManager
+from app.schemas.device_schema import DeviceSchema
 from app.schemas.ws.events import DeviceRegisterEvent
 from app.services.device_state_service import DeviceStateService
 from app.schemas.channel_schema import ChannelSchema
@@ -52,19 +53,12 @@ class WsStateService:
                 last_seen = int(to_str(last_seen_raw, "0")) if last_seen_raw else None
 
                 # REGISTER
-                reg_event = DeviceRegisterEvent(
-                    id=device.id,
-                    unit_id=device.unit_id,
-                    type=device.type,
-                    firmware_version=device.firmware_version,
-                    num_channels=device.num_channels,
-                    is_active=device.is_active,
-                    name=device.name,
-                    location=device.location,
-                    status=status if status in ("online", "offline") else "offline",
-                    last_seen=last_seen,
-                    channels=[ChannelSchema.model_validate(ch) for ch in device.channels],
-                )
+                schema = DeviceSchema.model_validate(device)
+                schema.status = status if status in ("online", "offline") else "offline"
+                schema.last_seen = last_seen if last_seen else device.last_seen
+                schema.registered_at = device.registered_at_ms
+                schema.channels = [ChannelSchema.model_validate(ch) for ch in device.channels]
+                reg_event = DeviceRegisterEvent(**schema.model_dump())
                 await ws_manager.send_event(ws, reg_event)
 
                 # STATE
@@ -104,19 +98,12 @@ class WsStateService:
             status = to_str(status_raw, "offline")
             last_seen = int(to_str(last_seen_raw, "0")) if last_seen_raw else None
 
-            reg_event = DeviceRegisterEvent(
-                id=device.id,
-                unit_id=device.unit_id,
-                type=device.type,
-                firmware_version=device.firmware_version,
-                num_channels=device.num_channels,
-                is_active=device.is_active,
-                name=device.name,
-                location=device.location,
-                status=status,
-                last_seen=last_seen,
-                channels=[ChannelSchema.model_validate(ch) for ch in device.channels],
-            )
+            schema = DeviceSchema.model_validate(device)
+            schema.status = status if status in ("online", "offline") else "offline"
+            schema.last_seen = last_seen if last_seen else device.last_seen
+            schema.registered_at = device.registered_at_ms
+            schema.channels = [ChannelSchema.model_validate(ch) for ch in device.channels]
+            reg_event = DeviceRegisterEvent(**schema.model_dump())
             if target:
                 await ws_manager.send_event(target, reg_event)
             else:

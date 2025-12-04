@@ -36,7 +36,7 @@ class SequenceExportStepSchema(BaseModel):
     order_index: int
     kind: str
     unit_id: Optional[str] = None        # device.unit_id
-    channel_index: Optional[int] = None  # channel.index внутри устройства
+    channel_index: Optional[int] = None  # channel.channel_index внутри устройства
     payload: Optional[Dict[str, Any]] = None
 
 
