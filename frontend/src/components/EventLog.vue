@@ -13,7 +13,7 @@
 
     <!-- Empty state -->
     <div
-      v-if="!store.items.length"
+      v-if="!store.events.length"
       class="flex-1 flex items-center justify-center text-neutral-400 dark:text-neutral-500 text-sm"
     >
       No events yet
@@ -25,28 +25,28 @@
       class="log-list flex-1 overflow-y-auto divide-y divide-neutral-200 dark:divide-neutral-700"
     >
       <li
-        v-for="e in store.items"
+        v-for="e in store.events"
         :key="e.id"
         class="text-xs flex items-center gap-2 px-1 py-0.5 transition-colors truncate"
         :class="e.highlight ? 'bg-yellow-50 dark:bg-yellow-950' : ''"
       >
-        <!-- Direction -->
-        <span v-if="e.dir === 'IN'">⬅️</span>
-        <span v-else-if="e.dir === 'OUT'">➡️</span>
+        <span v-if="e.direction === 'in'">⬅️</span>
+        <span v-else-if="e.direction === 'out'">➡️</span>
 
-        <!-- Timestamp -->
         <span class="font-mono text-neutral-500 dark:text-neutral-400">
-          {{ formatTs(e.ts) }}
+          {{ formatEventTs(e.ts) }}
         </span>
 
-        <!-- Device -->
-        <span v-if="e.unitId" class="text-neutral-600 dark:text-neutral-300">
-          {{ e.unitId }}
+        <span class="text-[10px] uppercase tracking-wide text-neutral-400">
+          {{ e.event_type }}
         </span>
 
-        <!-- Summary -->
+        <span class="text-neutral-500 dark:text-neutral-400 truncate">
+          {{ e.source }}
+        </span>
+
         <span class="font-medium text-neutral-800 dark:text-neutral-100 truncate">
-          {{ e.summary }}
+          {{ e.message || '—' }}
         </span>
       </li>
     </ul>
@@ -58,6 +58,10 @@ import { useEventLogStore } from "@/stores/eventLogStore"
 import { formatTs } from "@/utils/datetime"
 
 const store = useEventLogStore()
+const formatEventTs = (ts: string) => {
+  const ms = Date.parse(ts)
+  return Number.isNaN(ms) ? ts : formatTs(ms)
+}
 </script>
 
 <style scoped>

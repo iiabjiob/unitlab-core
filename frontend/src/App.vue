@@ -19,7 +19,9 @@ onMounted(async () => {
   // connect once when app is mounted
   wsStore.connect()
 
-  eventsStore.fetchEvents(50)
+  eventsStore.ensureLoaded({ limit: 200 }).catch(err => {
+    console.error("Failed to preload events", err)
+  })
 
   // параллельная загрузка
   await Promise.all([

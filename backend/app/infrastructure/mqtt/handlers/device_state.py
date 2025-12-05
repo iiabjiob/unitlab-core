@@ -1,4 +1,4 @@
-import time, uuid
+import time
 from app.infrastructure.protocol.packet_io import PacketParser
 from app.infrastructure.protocol.decode import bit as bit_decode, afloat as float_decode
 from app.infrastructure.protocol.modes import State
@@ -11,7 +11,7 @@ from app.schemas.ws.events import (
     EventDirection,
     EventSource,
 )
-from app.services.event_log_service import EventLogService
+from app.services.event_service import EventService
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.core.logger import get_logger
 
@@ -59,13 +59,17 @@ async def handle_device_state(topic: str, payload: bytes, unit_id: str):
 
     if should_log:
         async with AsyncSessionLocal() as session:
-            await EventLogService.log_and_broadcast(session, {
-                "id": str(uuid.uuid4()),
-                "ts": hdr.timestamp_ms or int(time.time() * 1000),
-                "dir": EventDirection.IN,
-                "source": EventSource.WS_DEVICE,
-                "channel_or_action": WSChannel.DEVICE_STATE,
-                "unit_id": unit_id,
-                "summary": f"STATE update (mode=0x{hdr.mode:02X})",
-                "payload": event.model_dump(),
-            })
+            await EventService.log_and_broadcast(
+                session,
+                {
+                    "event_type": "state",
+                    "ts": hdr.timestamp_ms or int(time.time() * 1000),
+                    "direction": EventDirection.IN,
+                    "source": EventSource.WS_DEVICE.value,
+                    "payload": {
+                        **event.model_dump(mode="json"),
+                        "topic": WSChannel.DEVICE_STATE,
+                    },
+                    "message": f"STATE update (mode=0x{hdr.mode:02X})",
+                },
+            )

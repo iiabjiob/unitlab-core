@@ -1,16 +1,19 @@
-export type EventDirection = "IN" | "OUT"
-
-export type EventSource = "WS_DEVICE" | "WS_COMMAND"
+export type EventType = "cmd" | "state" | "system" | "sequence" | "status"
+export type EventDirection = "in" | "out" | null
+export type EventResult = "ok" | "error" | "timeout" | "pending" | null
 
 export interface EventLogEntry {
-  id: string                 // unique id (timestamp+counter)
-  ts: number                 // unix ms
-  dir: EventDirection        // IN / OUT
-  source: EventSource        // WS_DEVICE | WS_COMMAND
-  channelOrAction: string    // e.g. "devices/state" or "set_do_command"
-  unitId?: string            // optional, derived via channel.device.unit_id
-  type?: string              // optional, event type
-  summary: string            // short human-readable line
-  payload?: unknown          // raw event/command (for future modal)
-  createdAt: string          // ISO datetime from backend
+  id: number
+  ts: string
+  project_id?: number | null
+  event_type: EventType
+  source: string
+  direction?: EventDirection
+  result?: EventResult
+  payload?: Record<string, unknown> | null
+  message?: string | null
+  packet_id?: string | null
+  datapoint_id?: number | null
+  device_id?: number | null
+  channel_id?: number | null
 }

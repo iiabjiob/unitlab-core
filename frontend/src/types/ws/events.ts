@@ -1,4 +1,5 @@
 import type { Channel } from "../channel"
+import type { EventLogEntry } from "../eventLog"
 import type { TimeStatus } from "../time"
 // ---------------------------------------------------------------------
 // Каналы WS (Backend → Frontend)
@@ -93,17 +94,9 @@ export interface TimeStatusEvent extends TimeStatus {
   channel: WSChannel.TIME_STATUS
 }
 
-export interface EventLogEvent {
-  channel: WSChannel.EVENT_LOG   // новый канал
-  id: string                     // UUID или серверный sequence
-  ts: number                     // unix ms
-  dir: "IN" | "OUT"              // направление
-  source: "WS_DEVICE" | "WS_COMMAND"
-  channelOrAction: string
-  unitId?: string
-  type?: string
-  summary: string
-  payload?: Record<string, any>
+export interface WSEventLogEvent {
+  channel: WSChannel.EVENT_LOG
+  event: EventLogEntry
 }
 
 
@@ -164,6 +157,6 @@ export type ChannelWSEvent =
   | DeviceRespEvent
   | DeviceHeartbeatEvent
   | TimeStatusEvent
-  | EventLogEvent
+  | WSEventLogEvent
 
 export type WSEvent = ChannelWSEvent | SequenceWsEvent

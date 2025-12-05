@@ -4,7 +4,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
@@ -31,6 +31,7 @@ from app.schemas.ws.events import (
     SequenceStoppedEvent,
 )
 from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command
+from app.services.event_service import EventService
 from app.ws.manager import WebSocketManager
 
 logger = get_logger("sequence")
@@ -122,6 +123,14 @@ class SequenceRunner:
             task.add_done_callback(lambda _: self._active_runs.pop(sequence_id, None))
 
         await self._broadcast_started(sequence_id, run_id, len(contexts))
+        await self._log_sequence_event(
+            sequence_id,
+            run_id,
+            status="started",
+            result="pending",
+            message=f"Sequence run {run_id} started ({len(contexts)} steps).",
+            extra={"step_count": len(contexts)},
+        )
         return await self.get_state(sequence_id)
 
     async def stop(self, sequence_id: int) -> SequenceStateSchema:
@@ -322,8 +331,9 @@ class SequenceRunner:
         async with AsyncSessionLocal() as session:
             if not contexts:
                 await self._mark_run_completed(session, run_id, start_time)
+                elapsed_total = int((time.monotonic() - start_time) * 1000)
                 await ws_manager.broadcast(
-                    SequenceCompletedEvent(sequence_id=sequence_id, run_id=run_id, elapsed_ms=0)
+                    SequenceCompletedEvent(sequence_id=sequence_id, run_id=run_id, elapsed_ms=elapsed_total)
                 )
                 self._cache_state(
                     sequence_id,
@@ -338,6 +348,14 @@ class SequenceRunner:
                         started_at=started_at,
                         finished_at=datetime.now(timezone.utc),
                     ),
+                )
+                await self._log_sequence_event(
+                    sequence_id,
+                    run_id,
+                    status="completed",
+                    result="ok",
+                    message=f"Sequence run {run_id} completed with no steps",
+                    extra={"elapsed_ms": elapsed_total, "completed_steps": []},
                 )
                 return
 
@@ -360,6 +378,19 @@ class SequenceRunner:
                             started_at=started_at,
                             finished_at=datetime.now(timezone.utc),
                         ),
+                    )
+                    elapsed_total = int((time.monotonic() - start_time) * 1000)
+                    await self._log_sequence_event(
+                        sequence_id,
+                        run_id,
+                        status="stopped",
+                        result="ok",
+                        message=f"Sequence run {run_id} stopped by user",
+                        extra={
+                            "step_index": ctx.index,
+                            "elapsed_ms": elapsed_total,
+                            "completed_steps": list(completed_step_ids),
+                        },
                     )
                     return
 
@@ -419,6 +450,21 @@ class SequenceRunner:
                             started_at=started_at,
                             finished_at=datetime.now(timezone.utc),
                         ),
+                    )
+                    elapsed_total = int((time.monotonic() - start_time) * 1000)
+                    await self._log_sequence_event(
+                        sequence_id,
+                        run_id,
+                        status="error",
+                        result="error",
+                        message=f"Sequence run {run_id} failed at step {ctx.index + 1}: {message}",
+                        extra={
+                            "step_index": ctx.index,
+                            "step_id": ctx.sequence_step_id,
+                            "elapsed_ms": elapsed_total,
+                            "error": message,
+                            "completed_steps": list(completed_step_ids),
+                        },
                     )
                     return
 
@@ -485,6 +531,18 @@ class SequenceRunner:
                     started_at=started_at,
                     finished_at=datetime.now(timezone.utc),
                 ),
+            )
+            await self._log_sequence_event(
+                sequence_id,
+                run_id,
+                status="completed",
+                result="ok",
+                message=f"Sequence run {run_id} completed in {elapsed_total} ms",
+                extra={
+                    "elapsed_ms": elapsed_total,
+                    "completed_steps": list(completed_step_ids),
+                    "step_count": total_steps,
+                },
             )
 
     async def _execute_step(self, ctx: StepContext) -> None:
@@ -658,3 +716,41 @@ class SequenceRunner:
                 total_steps=total_steps,
             )
         )
+
+    async def _log_sequence_event(
+        self,
+        sequence_id: int,
+        run_id: int,
+        *,
+        status: str,
+        result: str,
+        message: str,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        payload: Dict[str, Any] = {
+            "sequence_id": sequence_id,
+            "run_id": run_id,
+            "status": status,
+        }
+        if extra:
+            payload.update(extra)
+
+        event_data: Dict[str, Any] = {
+            "event_type": "sequence",
+            "source": "sequence-runner",
+            "result": result,
+            "payload": payload,
+        }
+        if message:
+            event_data["message"] = message
+
+        try:
+            async with AsyncSessionLocal() as session:
+                await EventService.log_and_broadcast(session, event_data)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Failed to log sequence event (run=%s status=%s)",
+                run_id,
+                status,
+                exc_info=True,
+            )

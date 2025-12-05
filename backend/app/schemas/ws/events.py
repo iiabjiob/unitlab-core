@@ -3,6 +3,7 @@ from typing import Literal, Union, Dict, Any, Optional, List
 from app.infrastructure.protocol.modes import State
 from app.infrastructure.protocol.packet_structures import RespStatus, RespError
 from app.schemas.device_schema import DeviceSchema
+from app.schemas.event_schema import EventSchema
 from app.schemas.time import TimeStatus
 from enum import Enum
 
@@ -32,8 +33,8 @@ class WSChannel(str, Enum):
     EVENT_LOG = "events/log"
 
 class EventDirection(str, Enum):
-    IN = "IN"
-    OUT = "OUT"
+    IN = "in"
+    OUT = "out"
 
 class EventSource(str, Enum):
     WS_DEVICE = "WS_DEVICE"
@@ -99,22 +100,7 @@ class TimeStatusEvent(TimeStatus):
 # ---------------------------------------------------------------------
 class EventLogEvent(BaseModel):
     channel: Literal[WSChannel.EVENT_LOG] = WSChannel.EVENT_LOG
-    id: str
-    ts: int
-    dir: EventDirection
-    source: EventSource
-    channel_or_action: str
-    unit_id: Optional[str]
-    type: Optional[str]
-    summary: str
-    payload: Optional[Any]
-
-    model_config = {
-        "json_encoders": {
-            EventDirection: lambda v: v.name,
-            EventSource: lambda v: v.name,
-        }
-    }
+    event: EventSchema
 
 
 class SequenceEventBase(BaseModel):

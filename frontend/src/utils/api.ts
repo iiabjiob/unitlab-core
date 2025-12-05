@@ -46,7 +46,11 @@ export const ApiBuilder = {
   sequenceStart: (seqId: number) => `${API_V1}/sequences/${seqId}/start`,
   sequenceStop: (seqId: number) => `${API_V1}/sequences/${seqId}/stop`,
 
-  events: (params?: Record<string, any>) => buildQuery('/api/events', params),
+  events: (params?: Record<string, any>) => buildQuery(`${API_V1}/events`, params),
+  projectEvents: (projectId: number, params?: Record<string, any>) =>
+    buildQuery(`${API_V1}/projects/${projectId}/events`, params),
+  projectEvent: (projectId: number, eventId: number) =>
+    `${API_V1}/projects/${projectId}/events/${eventId}`,
 
   time: (params?: Record<string, any>) => buildQuery('/api/time', params),
 
