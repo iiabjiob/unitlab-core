@@ -5,9 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.sequence import Sequence
-from app.models.sequence_step import SequenceStep
-from app.models.sequence import SequenceStepType
+from app.models.sequence import Sequence, SequenceStep, SequenceStepType
 from app.models.channel import Channel
 
 

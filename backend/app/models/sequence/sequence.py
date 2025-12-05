@@ -1,29 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum as SAEnum, String, Text
+from sqlalchemy import DateTime, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.infrastructure.db.database import Base
 from app.models.types import BIGINT_PK
 
-
-class SequenceStepType(str, Enum):
-    WAIT = "WAIT"
-    DO_LATCH = "DO_LATCH"
-    DO_PULSE = "DO_PULSE"
-    DO_PAIR = "DO_PAIR"
-    DO_BITMASK = "DO_BITMASK"
-    AO_SET = "AO_SET"
-
-
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover - import for annotations only
     from app.models.sequence_run import SequenceRun
-    from app.models.sequence_step import SequenceStep
+    from .sequence_step import SequenceStep
 
 
 class Sequence(Base):

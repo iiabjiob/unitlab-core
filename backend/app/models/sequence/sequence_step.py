@@ -16,12 +16,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.infrastructure.db.database import Base
-from app.models.sequence import SequenceStepType
 from app.models.types import BIGINT_PK
+from .types import SequenceStepType
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover - import for annotations only
     from app.models.channel import Channel
-    from app.models.sequence import Sequence
+    from .sequence import Sequence
 
 
 class SequenceStep(Base):

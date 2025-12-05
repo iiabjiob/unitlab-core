@@ -2,8 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.sequence import SequenceStepType
-from app.models.sequence_step import SequenceStep
+from app.models.sequence import SequenceStep, SequenceStepType
 
 
 class SequenceStepRepository:

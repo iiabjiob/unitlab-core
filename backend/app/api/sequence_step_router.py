@@ -10,7 +10,7 @@ from app.schemas.sequence_step_schema import (
     SequenceStepUpdateSchema,
     SequenceReorderSchema,
 )
-from app.models.sequence_step import SequenceStep
+from app.models.sequence import SequenceStep
 
 router = APIRouter(prefix="/api/sequences/{seq_id}/steps", tags=["SequenceSteps"])
 

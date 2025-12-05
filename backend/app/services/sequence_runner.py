@@ -14,8 +14,7 @@ from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.protocol.modes import Cmd
 from app.models.channel import Channel
 from app.models.device import Device
-from app.models.sequence import Sequence, SequenceStepType
-from app.models.sequence_step import SequenceStep
+from app.models.sequence import Sequence, SequenceStep, SequenceStepType
 from app.models.sequence_run import (
     SequenceRun,
     SequenceRunStatus,

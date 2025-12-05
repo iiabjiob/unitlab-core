@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 from sqlalchemy.sql import func
 
 from app.infrastructure.db.database import Base
-from app.models.sequence_step import SequenceStep
+from app.models.sequence import SequenceStep
 from app.models.types import BIGINT_PK
 
 
