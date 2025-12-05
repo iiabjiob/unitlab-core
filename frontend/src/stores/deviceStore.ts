@@ -12,6 +12,7 @@ import type { Channel } from "@/types/channel"
 import { ensureChannel } from "@/utils/channel"
 import type { DeviceRegisterEvent, DeviceHeartbeatEvent } from "@/types/ws/events"
 import { getLogger } from "@/utils/logger"
+import { useToastStore } from "@/stores/toastStore"
 
 const logger = getLogger("DEVICE")
 
@@ -53,6 +54,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
   const isLoaded = ref(false)
   const isDeleting = ref(false)
   const totalCount = ref(0)
+  const toastStore = useToastStore()
 
   function reset() {
     devices.value = []
@@ -204,7 +206,23 @@ export const useDeviceStore = defineStore("deviceStore", () => {
   }
 
   function updateStatus(event: DeviceHeartbeatEvent) {
+    const existing = devices.value.find(d => d.unit_id === event.unit_id)
+    const previousStatus = existing?.status
+
     setStatus(event.unit_id, event.status, event.last_seen)
+
+    if (!previousStatus || previousStatus === event.status) {
+      return
+    }
+
+    const displayName = existing?.display_name ?? event.unit_id
+    const variant = event.status === "online" ? "success" : "error"
+    const message =
+      event.status === "online"
+        ? `${displayName} is back online`
+        : `${displayName} went offline`
+
+    toastStore.push(message, { variant })
   }
 
   return {

@@ -1,14 +1,16 @@
 <template>
-  <AppLayout/>
+  <AppLayout />
+  <ToastContainer />
 </template>
 
 <script setup lang="ts">
 import { onMounted } from "vue"
-import AppLayout from './components/layout/AppLayout.vue';
-import { useWebSocketStore } from './stores/websocketStore';
-import { useEventLogStore } from "./stores/eventLogStore";
-import { useSwitchgearStore } from "./stores/switchgearStore";
-import { useSequenceStore } from "./stores/sequenceStore";
+import AppLayout from "./components/layout/AppLayout.vue"
+import ToastContainer from "./components/ui/ToastContainer.vue"
+import { useWebSocketStore } from "./stores/websocketStore"
+import { useEventLogStore } from "./stores/eventLogStore"
+import { useSwitchgearStore } from "./stores/switchgearStore"
+import { useSequenceStore } from "./stores/sequenceStore"
 
 const wsStore = useWebSocketStore();
 const eventsStore = useEventLogStore();

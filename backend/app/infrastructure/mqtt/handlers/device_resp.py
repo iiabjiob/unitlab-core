@@ -4,9 +4,7 @@ from app.infrastructure.protocol.packet_structures import RespStatus, RespError
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.mqtt import topics
 from app.ws.manager import WebSocketManager
-from app.schemas.ws.events import DeviceRespEvent, WSChannel, EventDirection, EventSource
-from app.services.event_service import EventService
-from app.infrastructure.db.database import AsyncSessionLocal
+from app.schemas.ws.events import DeviceRespEvent
 from app.core.logger import get_logger
 
 logger = get_logger("mqtt")
@@ -50,22 +48,4 @@ async def handle_device_resp(topic: str, payload: bytes, unit_id: str):
     ws_manager = WebSocketManager.get_instance()
     await ws_manager.broadcast(event)
 
-    # Логируем в event_log (DB + WS events/log)
-    async with AsyncSessionLocal() as session:
-        ts_value = parser.hdr.timestamp_ms or int(time.time() * 1000)
-        await EventService.log_and_broadcast(
-            session,
-            {
-                "event_type": "status",
-                "ts": ts_value,
-                "direction": EventDirection.IN,
-                "source": EventSource.WS_DEVICE.value,
-                "payload": {
-                    **event.model_dump(mode="json"),
-                    "topic": WSChannel.DEVICE_RESP,
-                    "status": status.name,
-                    "error": error.name,
-                },
-                "message": f"RESP packetId={parser.hdr.packet_id} status={status.name} err={error.name}",
-            },
-        )
+    # stop duplicating RESP statuses into event log; toast UI handles visibility now
