@@ -6,7 +6,6 @@ import HomeView from "@/views/HomeView.vue"
 import DevicesView from "@/views/DevicesView.vue"
 import EventsView from "@/views/EventsView.vue"
 import SwitchgearView from "@/views/SwitchgearView.vue"
-import SignalListView from "@/views/SignalListView.vue"
 import SequencesView from "@/views/SequencesView.vue"
 
 // Default layout meta (used by most screens)
@@ -48,14 +47,6 @@ const router = createRouter({
       path: "/switchgears",
       name: "switchgears",
       component: SwitchgearView,
-      meta: {
-        ...defaultMeta,
-      },
-    },
-    {
-      path: "/signal-list",
-      name: "signal-list",
-      component: SignalListView,
       meta: {
         ...defaultMeta,
       },

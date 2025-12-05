@@ -7,7 +7,6 @@ __all__ = [
     "Device",
     "Channel",
     "EventLog",
-    "SignalList",
     "Switchgear",
     "Sequence",
     "SequenceStep",
