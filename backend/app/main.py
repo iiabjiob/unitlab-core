@@ -2,17 +2,15 @@ import asyncio
 from fastapi import FastAPI
 from contextlib import asynccontextmanager, suppress
 
-from app.api.health_router import router as health_router
+from app.api.v1.health.router import router as health_router
 from app.api.v1.devices.router import router as devices_router
 from app.api.v1.channels.router import router as channels_router
-from app.api.switchgear_router import router as switchgears_router
+from app.api.v1.switchgears.router import router as switchgears_router
 from app.api.v1.sequences.router import router as sequences_router
 from app.api.v1.events.router import (
     router_system as events_system_router,
     router_project as events_project_router,
 )
-from app.api.time_router import router as time_router
-from app.api.setting_router import router as settings_router
 
 from app.ws.router import router as ws_router
 
@@ -116,10 +114,8 @@ app.include_router(devices_router)
 app.include_router(channels_router)
 app.include_router(switchgears_router)
 app.include_router(sequences_router)
-app.include_router(time_router)
 app.include_router(events_system_router)
 app.include_router(events_project_router)
-app.include_router(settings_router)
 
 logger.info("✅ REST API routers registered")
 

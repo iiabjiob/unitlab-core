@@ -14,8 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.db.database import get_db
 from app.models.channel import Channel
 from app.models.device import Device
-from app.repositories.sequence_repository import SequenceRepository
-from app.repositories.sequence_step_repository import SequenceStepRepository
+from app.api.v1.sequences import SequenceRepository, SequenceStepRepository
 from app.schemas.sequence_run_schema import SequenceStateSchema
 from app.schemas.sequence_schema import (
     SequenceCreateSchema,

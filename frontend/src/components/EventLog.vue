@@ -22,7 +22,7 @@
     <!-- List -->
     <ul
       v-else
-      class="log-list flex-1 overflow-y-auto divide-y divide-neutral-200 dark:divide-neutral-700"
+      class="log-list flex-1 overflow-y-auto"
     >
       <li
         v-for="e in store.events"

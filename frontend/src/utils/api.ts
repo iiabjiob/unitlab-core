@@ -31,8 +31,8 @@ export const ApiBuilder = {
   channels: (params?: Record<string, any>) => buildQuery(`${API_V1}/channels`, params),
   channel: (id: number) => `${API_V1}/channels/${id}`,
 
-  switchgears: () => "/api/switchgears",
-  switchgear: (id: number) => `/api/switchgears/${id}`,
+  switchgears: () => `${API_V1}/switchgears`,
+  switchgear: (id: number) => `${API_V1}/switchgears/${id}`,
 
   sequences: () => `${API_V1}/sequences`,
   sequence: (id: number) => `${API_V1}/sequences/${id}`,
