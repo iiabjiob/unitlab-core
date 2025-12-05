@@ -9,11 +9,12 @@
       <div
         v-for="toast in toastStore.getByPosition(position)"
         :key="toast.id"
-        class="pointer-events-auto rounded border-l-4 p-3 shadow-lg shadow-slate-900/10 dark:shadow-black/40 backdrop-blur-sm"
-        :class="variantClass(toast.variant)"
+        class="pointer-events-auto rounded border border-slate-200 bg-white/95 p-3 text-slate-900 shadow-lg shadow-slate-900/10 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-100 dark:shadow-black/40"
       >
         <div class="flex items-start justify-between gap-3">
-          <p class="text-sm font-medium leading-5">{{ toast.message }}</p>
+          <p class="text-sm font-medium leading-5" :class="variantTextClass(toast.variant)">
+            {{ toast.message }}
+          </p>
           <button
             type="button"
             class="text-xs font-semibold uppercase tracking-wide text-slate-500 transition hover:text-slate-700 dark:text-slate-300 dark:hover:text-white"
@@ -46,14 +47,14 @@ function remove(id: number) {
   toastStore.remove(id)
 }
 
-function variantClass(variant: ToastVariant) {
+function variantTextClass(variant: ToastVariant) {
   switch (variant) {
     case "success":
-      return "border-emerald-400 bg-emerald-50 text-emerald-900 dark:border-emerald-500 dark:bg-emerald-900 dark:text-emerald-200"
+      return "text-emerald-600 dark:text-emerald-300"
     case "error":
-      return "border-rose-400 bg-rose-50 text-rose-900 dark:border-rose-500 dark:bg-rose-900 dark:text-rose-200"
+      return "text-rose-600 dark:text-rose-300"
     default:
-      return "border-sky-400 bg-sky-50 text-sky-900 dark:border-sky-500 dark:bg-sky-900 dark:text-sky-200"
+      return "text-slate-900 dark:text-slate-100"
   }
 }
 

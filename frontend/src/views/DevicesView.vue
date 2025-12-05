@@ -12,19 +12,18 @@
       </div>
 
       <div v-else>
-        <ul class="flex flex-wrap gap-5 justify-start">
+        <ul class="flex flex-col gap-4">
           <li
             v-for="device in filterStore.filteredDevices"
             :key="device.unit_id"
-            class="h-full w-[320px]"
+            class="w-full"
           >
-            <SelectableCard>
-              <DeviceCard
-                :device="device"
-                @toggle="onToggle"
-                @delete="onDelete"
-              />
-            </SelectableCard>
+            <DeviceCard
+              :device="device"
+              @toggle="onToggle"
+              @delete="onDelete"
+              class="w-full"
+            />
           </li>
         </ul>
       </div>
@@ -36,7 +35,6 @@
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useDeviceFilterStore } from "@/stores/deviceFilterStore"
 import DeviceCard from "@/components/devices/DeviceCard.vue"
-import SelectableCard from "@/components/ui/SelectableCard.vue"
 import type { Device } from "@/types/device"
 import DevicesToolbar from "@/components/toolbars/DevicesToolbar.vue"
 
