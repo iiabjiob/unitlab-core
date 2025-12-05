@@ -31,16 +31,7 @@ export function useSequenceImport() {
         return
       }
 
-      const imported = await res.json()
-      const list = Array.isArray(imported) ? imported : [imported]
-
-      list.forEach(seq => {
-        if (seq.steps && Array.isArray(seq.steps)) {
-          store.sequences.push(seq)
-        } else {
-          console.warn("⚠️ Skipped invalid sequence", seq)
-        }
-      })
+      await store.fetchSequences()
     } finally {
       importing.value = false
       target.value = "" // reset input

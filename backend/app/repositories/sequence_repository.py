@@ -1,10 +1,14 @@
-from typing import List, Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any, Dict, List
+
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
 from app.models.sequence import Sequence
 from app.models.sequence_step import SequenceStep
+from app.models.sequence import SequenceStepType
+from app.models.channel import Channel
 
 
 class SequenceRepository:
@@ -20,8 +24,16 @@ class SequenceRepository:
             await self.db.flush()  # чтобы id появился
 
             for idx, step in enumerate(steps):
-                step_data = {**step, "order_index": idx}  # нормализуем порядок
-                st = SequenceStep(sequence_id=seq.id, **step_data)
+                step_type_value = step.get("sequence_step_type") or step.get("type") or step.get("kind")
+                step_type = SequenceStepType(step_type_value) if step_type_value else SequenceStepType.WAIT
+                step_data = {
+                    "sequence_id": seq.id,
+                    "order_index": idx,
+                    "sequence_step_type": step_type,
+                    "channel_id": step.get("channel_id"),
+                    "payload": step.get("payload"),
+                }
+                st = SequenceStep(**step_data)
                 self.db.add(st)
 
             await self.db.commit()
@@ -34,14 +46,22 @@ class SequenceRepository:
     async def get(self, seq_id: int) -> Sequence | None:
         result = await self.db.execute(
             select(Sequence)
-            .options(selectinload(Sequence.steps))
+            .options(
+                selectinload(Sequence.steps)
+                .selectinload(SequenceStep.channel)
+                .selectinload(Channel.device)
+            )
             .where(Sequence.id == seq_id)
         )
         return result.scalar_one_or_none()
 
     async def list(self) -> list[Sequence]:
         result = await self.db.execute(
-            select(Sequence).options(selectinload(Sequence.steps))
+            select(Sequence).options(
+                selectinload(Sequence.steps)
+                .selectinload(SequenceStep.channel)
+                .selectinload(Channel.device)
+            )
         )
         return list(result.scalars().all())
 
@@ -77,7 +97,16 @@ class SequenceRepository:
 
         seq = Sequence(**seq_data)
         for idx, step in enumerate(steps):
-            seq.steps.append(SequenceStep(order_index=idx, **step))
+            step_type_value = step.get("sequence_step_type") or step.get("type") or step.get("kind")
+            step_type = SequenceStepType(step_type_value) if step_type_value else SequenceStepType.WAIT
+            seq.steps.append(
+                SequenceStep(
+                    order_index=idx,
+                    sequence_step_type=step_type,
+                    channel_id=step.get("channel_id"),
+                    payload=step.get("payload"),
+                )
+            )
 
         self.db.add(seq)
         await self.db.commit()

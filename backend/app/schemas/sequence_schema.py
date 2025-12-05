@@ -1,29 +1,21 @@
-from pydantic import BaseModel, ConfigDict
-from typing import Optional, List, Dict, Any
-from app.schemas.sequence_step_schema import SequenceStepSchema
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+
+from app.schemas.sequence_step_schema import (
+    SequenceStepSchema,
+    SequenceStepCreateSchema,
+)
 
 
-class SequenceSchema(BaseModel):
-    id: int
-    name: str
-    description: Optional[str]
-    steps: List[SequenceStepSchema]
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-# шаг при создании через API (мы всё равно сразу мапим на channel_id)
-class SequenceCreateStepSchema(BaseModel):
-    order_index: int
-    kind: str
-    channel_id: Optional[int] = None
-    payload: Optional[Dict[str, Any]] = None
-
-
-class SequenceCreateSchema(BaseModel):
+class SequenceBase(BaseModel):
     name: str
     description: Optional[str] = None
-    steps: List[SequenceCreateStepSchema] = []
+
+
+class SequenceCreateSchema(SequenceBase):
+    steps: List[SequenceStepCreateSchema] = Field(default_factory=list)
 
 
 class SequenceUpdateSchema(BaseModel):
@@ -31,16 +23,27 @@ class SequenceUpdateSchema(BaseModel):
     description: Optional[str] = None
 
 
-# шаг для экспорта/импорта (внешние ID)
+class SequenceSchema(SequenceBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    steps: List[SequenceStepSchema] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SequenceExportStepSchema(BaseModel):
     order_index: int
-    kind: str
-    unit_id: Optional[str] = None        # device.unit_id
-    channel_index: Optional[int] = None  # channel.channel_index внутри устройства
+    sequence_step_type: str = Field(
+        validation_alias=AliasChoices("sequence_step_type", "type", "kind"),
+        serialization_alias="sequence_step_type",
+    )
+    unit_id: Optional[str] = None
+    channel_index: Optional[int] = None
     payload: Optional[Dict[str, Any]] = None
 
 
 class SequenceExportSchema(BaseModel):
     name: str
     description: Optional[str] = None
-    steps: List[SequenceExportStepSchema] = []
+    steps: List[SequenceExportStepSchema] = Field(default_factory=list)

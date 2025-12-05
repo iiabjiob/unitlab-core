@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal, Union, Dict, Any, Optional
+from typing import Literal, Union, Dict, Any, Optional, List
 from app.infrastructure.protocol.modes import State
 from app.infrastructure.protocol.packet_structures import RespStatus, RespError
 from app.schemas.device_schema import DeviceSchema
@@ -116,6 +116,47 @@ class EventLogEvent(BaseModel):
         }
     }
 
+
+class SequenceEventBase(BaseModel):
+    topic: Literal["sequence"] = "sequence"
+    sequence_id: int
+    run_id: int
+
+
+class SequenceStartedEvent(SequenceEventBase):
+    event: Literal["started"] = "started"
+    total_steps: int
+
+
+class SequenceProgressEvent(SequenceEventBase):
+    event: Literal["progress"] = "progress"
+    step_index: int
+    step_id: int
+    step_type: str
+    elapsed_ms: int
+    completed_steps: List[int]
+
+
+class SequenceStepErrorEvent(SequenceEventBase):
+    event: Literal["step_error"] = "step_error"
+    step_index: int
+    step_id: int
+    message: str
+
+
+class SequenceErrorEvent(SequenceEventBase):
+    event: Literal["error"] = "error"
+    message: str
+
+
+class SequenceStoppedEvent(SequenceEventBase):
+    event: Literal["stopped"] = "stopped"
+
+
+class SequenceCompletedEvent(SequenceEventBase):
+    event: Literal["completed"] = "completed"
+    elapsed_ms: int
+
 # ---------------------------------------------------------------------
 # Union для всех событий
 # ---------------------------------------------------------------------
@@ -127,4 +168,10 @@ WSEvent = Union[
     DeviceHeartbeatEvent,
     TimeStatusEvent,
     EventLogEvent,
+    SequenceStartedEvent,
+    SequenceProgressEvent,
+    SequenceStepErrorEvent,
+    SequenceErrorEvent,
+    SequenceStoppedEvent,
+    SequenceCompletedEvent,
 ]

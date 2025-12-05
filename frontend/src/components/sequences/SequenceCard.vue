@@ -32,22 +32,13 @@
         {{ st.status === SequenceStatusEnum.RUNNING ? "Stop" : "Start" }}
       </UiButton>
 
-      <UiButton
-        type="secondary"
-        size="sm"
-        @click.stop="onReset"
-        :disabled="!steps.length || st.status === 'running' || st.status === 'idle'"
-      >
-        Reset
-      </UiButton>
-
       <UiBadge :variant="statusVariant" class="text-xs">{{ statusLabel }}</UiBadge>
     </div>
 
     <!-- Progress bar -->
     <ProgressBar
       class="my-2"
-      :value="seqStore.getProgress(sequence)"
+      :value="seqStore.getProgress(sequence.id)"
       :disabled="!steps.length"
     />
 
@@ -63,9 +54,8 @@
           :index="index"
           @delete="seqStepStore.deleteStep(sequence.id, element.id!)"
           :description="element.description"
-          :completed="seqStore.ensureState(sequence).completed[index]"
-          :error="seqStore.ensureState(sequence).lastError &&
-                  seqStore.ensureState(sequence).index === index"
+            :completed="!!element.id && st.completed_step_ids.includes(element.id)"
+            :error="Boolean(st.last_error) && st.current_step_index === index"
         >
           <template #prefix>
             <span class="drag-handle cursor-grab text-neutral-500">⋮⋮</span>
@@ -75,8 +65,8 @@
     </draggable>
 
     <!-- Global error -->
-    <p v-if="st.lastError" class="mt-3 text-xs text-red-600 font-mono">
-      ⚠️ Error at step {{ st.index+1 }}: {{ st.lastError }}
+    <p v-if="st.last_error" class="mt-3 text-xs text-red-600 font-mono">
+      ⚠️ Error: {{ st.last_error }}
     </p>
   </li>
 
@@ -93,7 +83,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import { useSequenceStore } from "@/stores/sequenceStore"
-import { type SequenceDef, SequenceStatusEnum, type SequenceStepCreate, StepKind } from "@/types/sequences"
+import { type SequenceDef, SequenceStatusEnum, type SequenceStepCreate, SequenceStepType } from "@/types/sequences"
 import UiBadge from "@/components/ui/UiBadge.vue"
 import UiButton from "../ui/UiButton.vue"
 import ProgressBar from "../ui/ProgressBar.vue"
@@ -113,7 +103,7 @@ const emit = defineEmits<{
   (e: "delete", seq: SequenceDef): void
 }>()
 
-const st = computed(() => seqStore.ensureState(props.sequence))
+const st = computed(() => seqStore.ensureState(props.sequence.id))
 
 const steps = computed(() => seqStepStore.stepsBySequence(props.sequence.id).value)
 const enrichedSteps = computed(() => seqStepStore.enrichedStepsBySequence(props.sequence.id).value)
@@ -125,22 +115,16 @@ const statusLabel = computed(() => {
     case SequenceStatusEnum.RUNNING: return "Running"
     case SequenceStatusEnum.COMPLETED: return "Completed"
     case SequenceStatusEnum.STOPPED: return "Stopped"
+    case SequenceStatusEnum.ERROR: return "Error"
   }
 })
 
 async function onStartStop() {
   if (st.value.status === SequenceStatusEnum.RUNNING) {
-    seqStore.stop(props.sequence)
+    await seqStore.stopSequence(props.sequence.id)
   } else {
-    // сбрасываем перед запуском
-    seqStore.resetState(props.sequence)
-    await seqStore.start(props.sequence)
+    await seqStore.startSequence(props.sequence.id)
   }
-}
-
-async function onReset() {
-
-  seqStore.resetState(props.sequence)
 }
 
 async function onReorder() {
@@ -149,18 +133,26 @@ async function onReorder() {
     .filter((id): id is number => id !== undefined)
 
   await seqStepStore.reorderSteps(props.sequence.id, newOrder)
-  seqStore.resetState(props.sequence)
 }
 
 
 // доступные типы шагов (потом можно вынести в конфиг)
-const availableKinds: StepKind[] = Object.values(StepKind)
+const availableKinds: SequenceStepType[] = Object.values(SequenceStepType)
 
-async function addDefault(kind: StepKind) {
+const defaultPayloadByType: Record<SequenceStepType, Record<string, any>> = {
+  [SequenceStepType.WAIT]: { ms: 500 },
+  [SequenceStepType.DO_LATCH]: { value: 1 },
+  [SequenceStepType.DO_PULSE]: { value: 1, pulse_ms: 200 },
+  [SequenceStepType.DO_PAIR]: { channel_ids: [] },
+  [SequenceStepType.DO_BITMASK]: { bitmask: 0 },
+  [SequenceStepType.AO_SET]: { value: 4 },
+}
+
+async function addDefault(kind: SequenceStepType) {
   const newStep: SequenceStepCreate = {
-    kind: StepKind.WAIT,
+    sequence_step_type: kind,
     channel_id: null,
-    payload: { ms: 500 },
+    payload: defaultPayloadByType[kind] ?? {},
   }
   await seqStepStore.addStep(props.sequence.id, newStep)
 }
@@ -170,7 +162,8 @@ const statusVariant = computed(() => {
     case SequenceStatusEnum.IDLE: return "neutral"
     case SequenceStatusEnum.RUNNING: return "info"
     case SequenceStatusEnum.COMPLETED: return "success"
-    case SequenceStatusEnum.STOPPED: return "danger"
+    case SequenceStatusEnum.STOPPED: return "warning"
+    case SequenceStatusEnum.ERROR: return "danger"
     default: return "neutral"
   }
 })

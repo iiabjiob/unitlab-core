@@ -14,7 +14,6 @@
       </div>
 
       <DeviceMenu
-        :is-active="device.is_active"
         @toggle="$emit('toggle', device)"
         @delete="$emit('delete', device)"
       />

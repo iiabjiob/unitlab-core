@@ -39,13 +39,14 @@ import SelectableCard from "@/components/ui/SelectableCard.vue"
 import type { SequenceDef } from "@/types/sequences"
 import SequencesToolbar from "@/components/toolbars/SequencesToolbar.vue"
 import { useSequenceImport } from "@/composables/useSequenceImport"
+import { ApiBuilder } from "@/utils/api"
 
 const store = useSequenceStore()
 
 const { importing, fileInput, openFileDialog, onFileSelected } = useSequenceImport()
 
 function onExport(seq: SequenceDef) {
-  window.open(`/api/sequences/${seq.id}/export-file`, "_blank")
+  window.open(ApiBuilder.sequenceExport(seq.id), "_blank")
 }
 
 async function onAdd() {

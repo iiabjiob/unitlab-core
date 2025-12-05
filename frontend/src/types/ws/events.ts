@@ -108,10 +108,62 @@ export interface EventLogEvent {
 
 
 
-export type WSEvent =
+export interface SequenceEventBase {
+  topic: "sequence"
+  sequence_id: number
+  run_id: number
+}
+
+export interface SequenceStartedEvent extends SequenceEventBase {
+  event: "started"
+  total_steps: number
+}
+
+export interface SequenceProgressEvent extends SequenceEventBase {
+  event: "progress"
+  step_index: number
+  step_id: number
+  step_type: string
+  elapsed_ms: number
+  completed_steps: number[]
+}
+
+export interface SequenceStepErrorEvent extends SequenceEventBase {
+  event: "step_error"
+  step_index: number
+  step_id: number
+  message: string
+}
+
+export interface SequenceErrorEvent extends SequenceEventBase {
+  event: "error"
+  message: string
+}
+
+export interface SequenceStoppedEvent extends SequenceEventBase {
+  event: "stopped"
+}
+
+export interface SequenceCompletedEvent extends SequenceEventBase {
+  event: "completed"
+  elapsed_ms: number
+}
+
+export type SequenceWsEvent =
+  | SequenceStartedEvent
+  | SequenceProgressEvent
+  | SequenceStepErrorEvent
+  | SequenceErrorEvent
+  | SequenceStoppedEvent
+  | SequenceCompletedEvent
+
+
+export type ChannelWSEvent =
   | DeviceStateEvent
   | DeviceRegisterEvent
   | DeviceRespEvent
   | DeviceHeartbeatEvent
   | TimeStatusEvent
   | EventLogEvent
+
+export type WSEvent = ChannelWSEvent | SequenceWsEvent
