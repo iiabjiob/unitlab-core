@@ -18,7 +18,8 @@ export interface UseSwitchgearOpts {
   doClosed: Ref<ChannelRef | null>
   diOpen: Ref<ChannelRef | null>
   diClose: Ref<ChannelRef | null>
-  feedbackDelayMs?: number
+  diOpenDelayMs?: Ref<number | null>
+  diCloseDelayMs?: Ref<number | null>
 }
 
 export function useSwitchgear(opts: UseSwitchgearOpts) {
@@ -29,8 +30,6 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
   // Busy flag + pending target highlight
   const busy = ref(false)
   const pendingTarget = ref<SwitchgearState | null>(null)
-
-  const feedbackDelayMs = ref(opts.feedbackDelayMs ?? 0)
 
   // --- Helpers ---
   function getChannelState(
@@ -95,14 +94,15 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
     }
   }
 
-  function scheduleDoPair(target: SwitchgearState) {
+  function scheduleDoPair(target: SwitchgearState, delayOverride?: number | null) {
     if (!opts.doOpen.value || !opts.doClosed.value) return
     pendingTarget.value = target
     busy.value = true
+    const delay = typeof delayOverride === "number" ? delayOverride : 0
     setTimeout(() => {
       sendDoPair(target)
       busy.value = false
-    }, feedbackDelayMs.value)
+    }, delay)
   }
 
   // --- DI → DO trigger (auto open/close) ---
@@ -117,13 +117,13 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
     ({ diOpen, diClose }) => {
       if (diOpen !== null) {
         if (lastDiOpen.value === false && diOpen === true) {
-          scheduleDoPair("OPEN")
+          scheduleDoPair("OPEN", opts.diOpenDelayMs?.value)
         }
         lastDiOpen.value = diOpen
       }
       if (diClose !== null) {
         if (lastDiClose.value === false && diClose === true) {
-          scheduleDoPair("CLOSED")
+          scheduleDoPair("CLOSED", opts.diCloseDelayMs?.value)
         }
         lastDiClose.value = diClose
       }
@@ -135,8 +135,6 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
     effectiveState,
     pendingTarget,
     busy,
-    feedbackDelayMs,
-
     // expose signals (useful for footer/debug)
     doOpen: opts.doOpen,
     doClosed: opts.doClosed,

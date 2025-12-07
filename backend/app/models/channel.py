@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
+
 from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, Index
-from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.infrastructure.db.database import Base
 from app.models.sequence import SequenceStep
 from app.models.types import BIGINT_PK
+
+if TYPE_CHECKING:  # pragma: no cover - only needed for typing
+    from app.models.switchgear import SwitchgearChannelBinding
 
 
 class Channel(Base):
@@ -34,13 +39,14 @@ class Channel(Base):
     )
 
     device = relationship("Device", back_populates="channels", lazy="selectin")
+    
     steps: Mapped[list["SequenceStep"]] = relationship(
         "SequenceStep", back_populates="channel", lazy="selectin"
     )
 
-    # Backward-compatible aliases for legacy code paths
-    index = synonym("channel_index")
-    type = synonym("channel_type")
+    switchgear_bindings: Mapped[list["SwitchgearChannelBinding"]] = relationship(
+        "SwitchgearChannelBinding", back_populates="channel", lazy="selectin"
+    )
 
     @property
     def resolved_name(self) -> str:

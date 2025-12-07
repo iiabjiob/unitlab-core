@@ -1,6 +1,12 @@
 import { defineStore } from "pinia"
 import { ref } from "vue"
-import type { Switchgear } from "@/types/switchgear"
+import type {
+  Switchgear,
+  SwitchgearCreateInput,
+  SwitchgearUpdateInput,
+  SwitchgearBindingRole,
+} from "@/types/switchgear"
+import { SWITCHGEAR_BINDING_ROLES } from "@/types/switchgear"
 import axios from "axios"
 import { ApiBuilder } from "@/utils/api"
 import { getLogger } from "@/utils/logger"
@@ -8,6 +14,14 @@ import { useChannelStore } from "./channelStore"
 import { useDeviceStore } from "./deviceStore"
 
 const logger = getLogger("SG")
+
+function buildEmptyBindings() {
+  return SWITCHGEAR_BINDING_ROLES.map(role => ({
+    role,
+    channel_id: null,
+    delay_ms: 0,
+  }))
+}
 
 export const useSwitchgearStore = defineStore("switchgearStore", () => {
   const switchgears = ref<Switchgear[]>([])
@@ -37,9 +51,19 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   }
 
   // Create new switchgear
-  async function create(payload: Omit<Switchgear, "id">) {
+  async function create(payload: SwitchgearCreateInput) {
     try {
-      const { data } = await axios.post<Switchgear>(ApiBuilder.switchgears(), payload)
+      const body = {
+        switchgear_type: payload.switchgear_type ?? "switchgear",
+        name: payload.name,
+        bindings: (payload.bindings && payload.bindings.length
+          ? payload.bindings
+          : buildEmptyBindings()).map(binding => ({
+          delay_ms: 0,
+          ...binding,
+        })),
+      }
+      const { data } = await axios.post<Switchgear>(ApiBuilder.switchgears(), body)
       switchgears.value.push(data)
 
       logger.info(`➕ Created switchgear id=${data.id}`)
@@ -51,7 +75,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   }
 
   // Update single field(s)
-  async function updateField(id: number, changes: Partial<Switchgear>) {
+  async function updateField(id: number, changes: SwitchgearUpdateInput) {
     try {
 
       const { data } = await axios.patch<Switchgear>(ApiBuilder.switchgear(id), changes)
@@ -82,8 +106,22 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     return switchgears.value.find(s => s.id === id) ?? null
   }
 
+  function bindingByRole(sw: Switchgear, role: SwitchgearBindingRole) {
+    return sw.bindings.find(binding => binding.role === role) ?? null
+  }
+
+  function resolveBindingChannelId(sw: Switchgear, roles: SwitchgearBindingRole[]) {
+    for (const role of roles) {
+      const candidate = bindingByRole(sw, role)?.channel_id ?? null
+      if (candidate !== null && candidate !== undefined) {
+        return candidate
+      }
+    }
+    return null
+  }
+
   function isUnitOnline(sw: Switchgear): boolean {
-    const chId = sw.do_open ?? sw.do_closed
+    const chId = resolveBindingChannelId(sw, ["do_open", "do_closed"])
     if (!chId) return true
 
     const ch = useChannelStore().channels.find(c => c.id === chId)
@@ -101,6 +139,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     updateField,
     remove,
     getById,
-    isUnitOnline
+    isUnitOnline,
+    bindingByRole,
   }
 })

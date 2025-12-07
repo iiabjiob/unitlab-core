@@ -18,12 +18,7 @@
       >
         <SelectableCard class="w-full">
           <SwitchgearCard
-            :id="item.id"
-            :title="item.title"
-            :do_open="item.do_open"
-            :do_closed="item.do_closed"
-            :di_open="item.di_open"
-            :di_close="item.di_close"
+            :switchgear="item"
             @delete="onDelete(item)"
           />
         </SelectableCard>
@@ -38,24 +33,33 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from "vue"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
-import type { Switchgear } from "@/types/switchgear"
+import { useChannelStore } from "@/stores/channelStore"
+import type { Switchgear, SwitchgearBindingInput } from "@/types/switchgear"
+import { SWITCHGEAR_BINDING_ROLES } from "@/types/switchgear"
 
 import SwitchgearCard from "@/components/switchgear/SwitchgearCard.vue"
 import SelectableCard from "@/components/ui/SelectableCard.vue"
 import SwitchgearsToolbar from "@/components/toolbars/SwitchgearsToolbar.vue"
 
 const switchgearStore = useSwitchgearStore()
+const channelStore = useChannelStore()
+
+onMounted(() => {
+  channelStore.ensureLoaded()
+})
 
 async function onAdd() {
-  const sg = await switchgearStore.create({
-    kind: "switchgear",
-    title: "Switchgear",
-    do_open: null,
-    do_closed: null,
-    di_open: null,
-    di_close: null,
-    feedback_delay_ms: 0,
+  const defaultBindings: SwitchgearBindingInput[] = SWITCHGEAR_BINDING_ROLES.map(role => ({
+    role,
+    channel_id: null,
+    delay_ms: 0,
+  }))
+  await switchgearStore.create({
+    name: "Switchgear",
+    switchgear_type: "switchgear",
+    bindings: defaultBindings,
   })
 }
 
@@ -68,7 +72,7 @@ async function onLoad() {
 }
 
 function onDelete(item: Switchgear) {
-  if (confirm(`Delete Switchgear ${item.title}?`)) {
+  if (confirm(`Delete Switchgear ${item.name}?`)) {
     switchgearStore.remove(item.id)
   }
 }

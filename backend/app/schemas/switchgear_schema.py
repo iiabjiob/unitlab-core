@@ -1,33 +1,39 @@
 # app/schemas/switchgear_schema.py
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 
-class SwitchgearSchema(BaseModel):
+
+class SwitchgearBindingSchema(BaseModel):
     id: int
-    title: str
-    kind: str
-    do_open: Optional[int] = None
-    do_closed: Optional[int] = None
-    di_open: Optional[int] = None
-    di_close: Optional[int] = None
-    feedback_delay_ms: int
+    channel_id: Optional[int]
+    role: str
+    delay_ms: int
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
+
+class SwitchgearBindingCreateSchema(BaseModel):
+    channel_id: Optional[int] = None
+    role: str
+    delay_ms: int = 0
+
+
+class SwitchgearSchema(BaseModel):
+    id: int
+    name: str
+    switchgear_type: str
+    bindings: list[SwitchgearBindingSchema] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
+
 class SwitchgearCreateSchema(BaseModel):
-    title: str
-    kind: str = "switchgear"
-    do_open: Optional[int] = None
-    do_closed: Optional[int] = None
-    di_open: Optional[int] = None
-    di_close: Optional[int] = None
-    feedback_delay_ms: int = 0
+    name: str
+    switchgear_type: str = "switchgear"
+    bindings: list[SwitchgearBindingCreateSchema] = Field(default_factory=list)
+
 
 class SwitchgearUpdateSchema(BaseModel):
-    title: Optional[str] = None
-    kind: Optional[str] = None
-    do_open: Optional[int] = None
-    do_closed: Optional[int] = None
-    di_open: Optional[int] = None
-    di_close: Optional[int] = None
-    feedback_delay_ms: Optional[int] = None
+    name: Optional[str] = None
+    switchgear_type: Optional[str] = None
+    bindings: Optional[list[SwitchgearBindingCreateSchema]] = None
