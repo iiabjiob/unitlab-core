@@ -13,15 +13,17 @@ class SwitchgearRepository:
 
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._binding_loader = selectinload(Switchgear.bindings).selectinload(
+            SwitchgearChannelBinding.channel
+        )
 
     async def list(self) -> list[Switchgear]:
-        result = await self.db.execute(select(Switchgear).options(selectinload(Switchgear.bindings)))
+        stmt = select(Switchgear).options(self._binding_loader)
+        result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
     async def get(self, switchgear_id: int) -> Switchgear | None:
-        stmt = select(Switchgear).options(selectinload(Switchgear.bindings)).where(
-            Switchgear.id == switchgear_id
-        )
+        stmt = select(Switchgear).options(self._binding_loader).where(Switchgear.id == switchgear_id)
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -49,6 +51,7 @@ class SwitchgearRepository:
 
         if bindings_data is not None:
             switchgear.bindings.clear()
+            await self.db.flush()
             for binding in bindings_data:
                 switchgear.bindings.append(SwitchgearChannelBinding(**binding))
 
