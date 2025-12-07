@@ -9,9 +9,6 @@ from app.schemas.device_schema import DeviceSchema
 from app.schemas.ws.events import DeviceRegisterEvent
 from app.services.device_state_service import DeviceStateService
 from app.schemas.channel_schema import ChannelSchema
-from app.schemas.ws.events import TimeStatusEvent
-from app.services.time_sync import get_chrony_status
-from datetime import datetime, timezone
 from app.core.utils import to_str
 from app.core.logger import get_logger
 
@@ -63,19 +60,6 @@ class WsStateService:
 
                 # STATE
                 await WsStateService.send_cached_state_to_ui(device.unit_id, target=ws)
-
-            # TIME_STATUS
-            try:
-                status, source, offset_us = get_chrony_status()
-                event = TimeStatusEvent(
-                    timestamp=datetime.now(timezone.utc).isoformat(),
-                    status=status,
-                    source=source,
-                    offset_us=offset_us,
-                )
-                await ws_manager.send_event(ws, event)
-            except Exception as e:
-                logger.error(f"💥 Failed to sync time status: {e}")
 
     @staticmethod
     async def sync_client_for_device(unit_id: str, target=None):

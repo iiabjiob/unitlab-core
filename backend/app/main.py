@@ -21,7 +21,6 @@ from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.mqtt.manager import MqttManager
 
 from app.tasks.device_offline_task import device_offline_checker
-from app.tasks.tyme_sync_task import time_status_broadcaster
 
 from app.core.message_bus import MessageBus
 from app.infrastructure.mqtt.inbound_worker import run_inbound_router_worker
@@ -74,7 +73,6 @@ async def lifespan(app: FastAPI):
     # Background tasks
     logger.info("🔗 Registering background tasks...")
     checker_task = asyncio.create_task(device_offline_checker())
-    time_task = asyncio.create_task(time_status_broadcaster())
     logger.info("✅ Background tasks registered")
 
     bus = MessageBus.get_instance()
@@ -88,10 +86,8 @@ async def lifespan(app: FastAPI):
 
         # Cancel background tasks
         checker_task.cancel()
-        time_task.cancel()
         with suppress(asyncio.CancelledError):
             await checker_task
-            await time_task
 
         # Stop infrastructure services
         await MessageBus.get_instance().shutdown()

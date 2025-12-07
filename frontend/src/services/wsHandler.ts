@@ -1,7 +1,6 @@
 import { WSChannel } from '@/types/ws/events'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { useChannelStore } from '@/stores/channelStore'
-import { useTimeStore } from '@/stores/timeStore'
 import { useEventLogStore } from '@/stores/eventLogStore'
 import { getLogger } from '@/utils/logger'
 import { useSequenceStore } from '@/stores/sequenceStore'
@@ -14,7 +13,6 @@ import type {
   DeviceHeartbeatEvent,
   DeviceStateEvent,
   DeviceRespEvent,
-  TimeStatusEvent,
   WSEventLogEvent,
   SequenceWsEvent,
   ChannelWSEvent,
@@ -23,7 +21,6 @@ import type {
 export function handleWsEvent(event: WSEvent) {
   const deviceStore = useDeviceStore()
   const channelStore = useChannelStore()
-  const timeStore = useTimeStore()
   const eventLogStore = useEventLogStore();
   const sequenceStore = useSequenceStore()
 
@@ -66,12 +63,6 @@ export function handleWsEvent(event: WSEvent) {
     case WSChannel.DEVICE_RESP: {
       logger.debug("📡 IN ← DEVICE_RESP:", channelEvent)
       channelStore.setResponse(channelEvent as DeviceRespEvent)
-      break
-    }
-    // --- время ---
-    case WSChannel.TIME_STATUS:{
-      logger.debug("📡 IN ← TIME_STATUS:", channelEvent)
-      timeStore.updateFromSync(channelEvent as TimeStatusEvent)
       break
     }
     // --- События ---

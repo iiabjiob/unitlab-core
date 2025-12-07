@@ -1,10 +1,9 @@
 from pydantic import BaseModel
-from typing import Literal, Union, Dict, Any, Optional, List
+from typing import Literal, Union, Dict, Any, List
 from app.infrastructure.protocol.modes import State
 from app.infrastructure.protocol.packet_structures import RespStatus, RespError
 from app.schemas.device_schema import DeviceSchema
 from app.schemas.event_schema import EventSchema
-from app.schemas.time import TimeStatus
 from enum import Enum
 
 # -----------------------------------------------------------------
@@ -89,13 +88,6 @@ class DeviceHeartbeatEvent(BaseModel):
     last_seen: int
 
 # ---------------------------------------------------------------------
-# TimeStatus
-# ---------------------------------------------------------------------
-
-class TimeStatusEvent(TimeStatus):
-    channel: Literal[WSChannel.TIME_STATUS] = WSChannel.TIME_STATUS
-
-# ---------------------------------------------------------------------
 # EventLog
 # ---------------------------------------------------------------------
 class EventLogEvent(BaseModel):
@@ -152,7 +144,6 @@ WSEvent = Union[
     DeviceRegisterEvent,
     DeviceRespEvent,
     DeviceHeartbeatEvent,
-    TimeStatusEvent,
     EventLogEvent,
     SequenceStartedEvent,
     SequenceProgressEvent,
