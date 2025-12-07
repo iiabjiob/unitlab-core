@@ -6,7 +6,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from "vue"
+import { ref, computed, onMounted } from "vue"
 
 const now = ref<Date | null>(null)
 let intervalId: number | null = null

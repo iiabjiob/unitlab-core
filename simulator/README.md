@@ -18,7 +18,6 @@ The simulator is completely CLI-driven (`python -m simulator`) and relies on a s
 Recommended invocation uses `uv run`, which isolates dependencies per project:
 
 ```bash
-cd /workspace/simulator
 uv run python -m simulator
 ```
 
