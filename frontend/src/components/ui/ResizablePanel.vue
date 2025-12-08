@@ -37,13 +37,13 @@ const panelRef = ref<HTMLElement | null>(null)
 const panelClasses = computed(() => {
   switch (props.placement) {
     case "left":
-      return "h-full flex-col border-r border-neutral-200 dark:border-neutral-800"
+      return "h-full flex-col border-r border-neutral-200 dark:border-neutral-700"
     case "right":
-      return "h-full flex-col border-l border-neutral-200 dark:border-neutral-800"
+      return "h-full flex-col border-l border-neutral-200 dark:border-neutral-700"
     case "top":
-      return "w-full flex-col border-b border-neutral-200 dark:border-neutral-800"
+      return "w-full flex-col border-b border-neutral-200 dark:border-neutral-700"
     case "bottom":
-      return "w-full flex-col border-t border-neutral-200 dark:border-neutral-800"
+      return "w-full flex-col border-t border-neutral-200 dark:border-neutral-700"
   }
 })
 

@@ -23,7 +23,7 @@ interface SpinnerProps {
 const props = defineProps<SpinnerProps>()
 
 // ✅ Классы цвета, размера и позиции с тайпсейфти
-const colorClass = computed(() => `text-${props.color ?? 'gray'}-500`)
+const colorClass = computed(() => `text-${props.color ?? 'neutral'}-500`)
 
 const sizeClass = computed(() => {
   switch (props.size) {

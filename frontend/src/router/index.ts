@@ -1,12 +1,12 @@
 // src/router/index.ts
 import { createRouter, createWebHistory } from "vue-router"
+import { sequencesRoutes } from './sequences.routes';
 
 // Views
 import HomeView from "@/views/HomeView.vue"
-import DevicesView from "@/views/DevicesView.vue"
 import EventsView from "@/views/EventsView.vue"
 import SwitchgearView from "@/views/SwitchgearView.vue"
-import SequencesView from "@/views/SequencesView.vue"
+import { devicesRoutes } from "./devices.routes";
 
 // Default layout meta (used by most screens)
 const defaultMeta = {
@@ -34,15 +34,7 @@ const router = createRouter({
         bottomAside: false,
       },
     },
-    {
-      path: "/devices",
-      name: "devices",
-      component: DevicesView,
-      meta: {
-        ...defaultMeta,
-      },
-
-    },
+    ...devicesRoutes,
     {
       path: "/switchgears",
       name: "switchgears",
@@ -51,14 +43,7 @@ const router = createRouter({
         ...defaultMeta,
       },
     },
-    {
-      path: "/sequences",
-      name: "sequences",
-      component: SequencesView,
-      meta: {
-        ...defaultMeta,
-      },
-    },
+    ...sequencesRoutes,
 
     // Event List: clean "data view" layout
     {

@@ -15,8 +15,6 @@ export enum SequenceStatusEnum {
   ERROR = "error",
 }
 
-export type SequenceStatus = `${SequenceStatusEnum}`
-
 export enum SequenceRunStatusEnum {
   RUNNING = "running",
   COMPLETED = "completed",
@@ -94,7 +92,7 @@ export interface SequenceRun {
 
 export interface SequenceState {
   sequence_id: number
-  status: SequenceStatus
+  status: SequenceStatusEnum
   run_id?: number | null
   current_step_index: number
   total_steps: number

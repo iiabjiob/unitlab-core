@@ -124,7 +124,6 @@ export interface SequenceProgressEvent extends SequenceEventBase {
 export interface SequenceStepErrorEvent extends SequenceEventBase {
   event: "step_error"
   step_index: number
-  step_id: number
   message: string
 }
 
