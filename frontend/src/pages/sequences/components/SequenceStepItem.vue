@@ -12,7 +12,15 @@
            :class="statusClass" />
 
       <!-- Drag handle -->
-      <div class="text-neutral-500 dark:text-neutral-400 cursor-grab">⋮⋮</div>
+      <div
+        class="text-neutral-500 dark:text-neutral-400 cursor-grab"
+        data-drag-handle
+        role="button"
+        tabindex="-1"
+        aria-label="Drag step"
+      >
+        ⋮⋮
+      </div>
 
       <!-- Index -->
       <div class="w-6 text-neutral-400 dark:text-neutral-500">

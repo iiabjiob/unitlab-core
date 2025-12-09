@@ -69,6 +69,7 @@ async function handleReorder(nextItems: EnrichedStep[]) {
         :item-key="itemKey"
         wrapper-tag="div"
         item-tag="div"
+        handle-only
         class="divide-y divide-neutral-300 dark:divide-neutral-700"
         :style="{ gap: '0' }"
         @update:items="handleReorder"

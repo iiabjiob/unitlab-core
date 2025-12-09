@@ -12,7 +12,7 @@
       :id="itemId(index)"
       :key="itemKey(item)"
       class="draggable-list__item"
-      :class="itemClass(index)"
+      :class="[itemClass(index), handleOnly ? 'draggable-list__item--handle-only' : null]"
       :style="itemStyleAttr(index)"
       tabindex="0"
       :role="itemRole"
@@ -25,6 +25,10 @@
       @dragend="handleDragEnd"
       @keydown="handleKeydown(index, $event)"
       @focus="handleFocus(index)"
+      @pointerdown="handlePointerDown"
+      @pointerup="handlePointerDone"
+      @pointerleave="handlePointerDone"
+      @pointercancel="handlePointerDone"
       :ref="getItemRefHandler(item)"
     >
       <!-- BEFORE indicator -->
@@ -67,6 +71,7 @@ export interface DraggableListProps<T> {
   itemTag?: keyof HTMLElementTagNameMap | string
   itemStyle?: (item: T, index: number) => Record<string, string | number> | undefined
   itemDraggable?: (item: T, index: number) => boolean
+  handleOnly?: boolean
 }
 
 const props = defineProps<DraggableListProps<T>>()
@@ -83,6 +88,7 @@ const draggingIndex = ref<number | null>(null)
 const dragOverState = ref<{ index: number; position: "before" | "after" } | null>(null)
 const keyboardDragIndex = ref<number | null>(null)
 const activeIndex = ref<number>(-1)
+const handlePointerArmed = ref(false)
 
 const idPrefix = `draggable-${Math.random().toString(36).slice(2)}`
 
@@ -100,6 +106,7 @@ const isListSemantic = computed(
 )
 const wrapperRole = computed(() => (isListSemantic.value ? "listbox" : undefined))
 const itemRole = computed(() => (isListSemantic.value ? "option" : undefined))
+const handleOnly = computed(() => props.handleOnly ?? false)
 
 const activeDescendantId = computed(() =>
   activeIndex.value >= 0 ? itemId(activeIndex.value) : undefined,
@@ -130,6 +137,17 @@ function getItemRefHandler(item: T) {
     itemRefHandlers.set(key, handler)
   }
   return handler
+}
+
+function handlePointerDown(event: PointerEvent) {
+  if (!handleOnly.value) return
+  const target = event.target as HTMLElement | null
+  handlePointerArmed.value = !!target?.closest('[data-drag-handle]')
+}
+
+function handlePointerDone() {
+  if (!handleOnly.value) return
+  handlePointerArmed.value = false
 }
 
 function captureRectsBeforeReorder() {
@@ -248,6 +266,11 @@ function reorder(from: number, to: number): number | null {
 /* ------------------------------------------------------------------ */
 
 function handleDragStart(index: number, event: DragEvent) {
+  if (handleOnly.value && !handlePointerArmed.value) {
+    event.preventDefault()
+    return
+  }
+  handlePointerDone()
   if (!event.dataTransfer) return
   if (!isItemDraggable(index)) {
     event.preventDefault()
@@ -463,6 +486,10 @@ watch(
   position: relative;
   display: flex;
   align-items: center;
+}
+
+.draggable-list__item--handle-only {
+  cursor: default;
 }
 
 .draggable-list__item--disabled {
