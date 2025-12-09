@@ -21,19 +21,6 @@
         <div class="flex-1 overflow-auto">
           <RouterView />
         </div>
-
-        <!-- Bottom event log -->
-        <ResizablePanel
-          v-if="meta.bottomAside"
-          class="ignore-selection bg-white dark:bg-neutral-800"
-          placement="bottom"
-          storageKey="bottom-aside-height"
-          :defaultSize="240"
-          :minSize="160"
-          :maxSize="400"
-        >
-          <EventLog class="border-t border-neutral-200 dark:border-neutral-700" />
-        </ResizablePanel>
       </div>
     </div>
   </div>
@@ -45,13 +32,9 @@ import { useRoute } from "vue-router"
 
 import AppAside from "./DesktopAside.vue"
 import ResizablePanel from "../ui/ResizablePanel.vue"
-import EventLog from "../EventLog.vue"
 
 const route = useRoute()
 const meta = computed(() => ({
-  toolbar: route.meta.toolbar ?? true,
   leftAside: route.meta.leftAside ?? true,
-  bottomAside: route.meta.bottomAside ?? true,
-  toolbarComponent: route.meta.toolbarComponent ?? null,
 }))
 </script>

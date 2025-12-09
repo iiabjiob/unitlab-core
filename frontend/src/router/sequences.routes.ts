@@ -3,8 +3,6 @@ import type { RouteRecordRaw } from "vue-router"
 // Default meta shared from index.ts
 const defaultMeta = {
   leftAside: true,
-  rightAside: true,
-  bottomAside: true,
   layout: "auto" as const,
 }
 

@@ -25,35 +25,8 @@
           </div>
         </main>
 
-        <!-- Bottom aside placeholder -->
-        <div
-          class="h-40 border-t border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 flex flex-col"
-        >
-          <div class="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700">
-            <h4 class="font-bold text-sm">Event Log</h4>
-          </div>
-          <div class="flex-1 p-3 space-y-2 text-xs">
-            <div class="h-3 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
-            <div class="h-3 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
-            <div class="h-3 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
-          </div>
-        </div>
       </div>
 
-      <!-- Right aside placeholder -->
-      <div
-        class="w-72 border-l border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 flex flex-col"
-      >
-        <div class="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700">
-          <h4 class="font-bold text-sm">Properties</h4>
-        </div>
-        <div class="flex-1 p-3 space-y-3 text-xs">
-          <div class="h-4 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
-          <div class="h-4 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
-          <div class="h-4 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
-          <div class="h-4 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
-        </div>
-      </div>
     </div>
   </div>
 </template>

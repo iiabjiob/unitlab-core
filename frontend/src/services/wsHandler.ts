@@ -1,7 +1,6 @@
 import { WSChannel } from '@/types/ws/events'
 import { useDeviceStore } from '@/stores/deviceStore'
 import { useChannelStore } from '@/stores/channelStore'
-import { useEventLogStore } from '@/stores/eventLogStore'
 import { getLogger } from '@/utils/logger'
 import { useSequenceStore } from '@/stores/sequenceStore'
 
@@ -13,7 +12,6 @@ import type {
   DeviceHeartbeatEvent,
   DeviceStateEvent,
   DeviceRespEvent,
-  WSEventLogEvent,
   SequenceWsEvent,
   ChannelWSEvent,
 } from '@/types/ws/events'
@@ -21,7 +19,6 @@ import type {
 export function handleWsEvent(event: WSEvent) {
   const deviceStore = useDeviceStore()
   const channelStore = useChannelStore()
-  const eventLogStore = useEventLogStore();
   const sequenceStore = useSequenceStore()
 
   if ('topic' in event && (event as SequenceWsEvent).topic === 'sequence') {
@@ -63,11 +60,6 @@ export function handleWsEvent(event: WSEvent) {
     case WSChannel.DEVICE_RESP: {
       logger.debug("📡 IN ← DEVICE_RESP:", channelEvent)
       channelStore.setResponse(channelEvent as DeviceRespEvent)
-      break
-    }
-    // --- События ---
-    case WSChannel.EVENT_LOG: {
-      eventLogStore.handleWs(channelEvent as WSEventLogEvent)
       break
     }
   }

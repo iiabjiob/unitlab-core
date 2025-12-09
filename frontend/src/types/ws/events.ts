@@ -1,5 +1,4 @@
 import type { Channel } from "../channel"
-import type { EventLogEntry } from "../eventLog"
 import type { TimeStatus } from "../time"
 // ---------------------------------------------------------------------
 // Каналы WS (Backend → Frontend)
@@ -11,7 +10,6 @@ export enum WSChannel {
   DEVICE_RESP     = "devices/resp",
   DEVICE_STATUS   = "devices/status",
   TIME_STATUS     = "time/status",
-  EVENT_LOG       = "events/log",
 }
 
 // ---------------------------------------------------------------------
@@ -94,13 +92,6 @@ export interface TimeStatusEvent extends TimeStatus {
   channel: WSChannel.TIME_STATUS
 }
 
-export interface WSEventLogEvent {
-  channel: WSChannel.EVENT_LOG
-  event: EventLogEntry
-}
-
-
-
 export interface SequenceEventBase {
   topic: "sequence"
   sequence_id: number
@@ -156,6 +147,5 @@ export type ChannelWSEvent =
   | DeviceRespEvent
   | DeviceHeartbeatEvent
   | TimeStatusEvent
-  | WSEventLogEvent
 
 export type WSEvent = ChannelWSEvent | SequenceWsEvent

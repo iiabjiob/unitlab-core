@@ -1,0 +1,25 @@
+<template>
+  <div class="flex h-full">
+
+    <ResizablePanel
+        placement="left"
+        storageKey="device-list-width"
+        :defaultSize="240"
+        :minSize="200"
+        :maxSize="400"
+        >
+        <aside class="p-4 h-full flex flex-col">
+            <DeviceListSidebar />
+        </aside>
+    </ResizablePanel>
+    
+    <main class="flex-1 p-4">
+      <router-view />
+    </main>
+  </div>
+</template>
+
+<script setup lang="ts">
+import ResizablePanel from '@/components/ui/ResizablePanel.vue';
+import DeviceListSidebar from './components/SwitchgearListSidebar.vue';
+</script>

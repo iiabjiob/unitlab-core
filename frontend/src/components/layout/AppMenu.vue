@@ -17,7 +17,6 @@
 import DraftIcon from "../icons/DraftIcon.vue"
 
 const items = [
-  { to: "/dashboar", label: "Deshboard" },
   { to: "/devices", label: "Devices" },
   { to: "/switchgears", label: "Switchgears" },
   { to: "/sequences", label: "Sequences" },
