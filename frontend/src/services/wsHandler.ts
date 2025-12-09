@@ -62,5 +62,7 @@ export function handleWsEvent(event: WSEvent) {
       channelStore.setResponse(channelEvent as DeviceRespEvent)
       break
     }
+    default:
+      logger.warn("⚠️ Unknown WS channel:", channelEvent)
   }
 }

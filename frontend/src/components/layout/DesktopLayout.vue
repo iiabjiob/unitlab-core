@@ -15,13 +15,13 @@
       </ResizablePanel>
 
       <!-- Center workspace (main + bottom log) -->
-      <div class="flex-1 flex flex-col overflow-hidden">
+      <main class="flex-1 flex flex-col overflow-hidden">
 
         <!-- Main content -->
         <div class="flex-1 overflow-auto">
           <RouterView />
         </div>
-      </div>
+      </main>
     </div>
   </div>
 </template>

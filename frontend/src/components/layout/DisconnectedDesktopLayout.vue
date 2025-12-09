@@ -11,9 +11,9 @@
       </div>
 
       <!-- Center workspace -->
-      <div class="flex-1 flex flex-col overflow-hidden">
+      <main class="flex-1 flex flex-col overflow-hidden">
         <!-- Main -->
-        <main class="flex-1 flex items-center justify-center">
+        <div class="flex-1 flex items-center justify-center">
           <div class="text-center">
             <p v-if="status === 'initial'" class="text-lg font-semibold animate-pulse">
               🔌 Connecting to server...
@@ -23,9 +23,9 @@
               <p class="text-sm text-neutral-500 mt-2 animate-pulse">Trying to reconnect…</p>
             </div>
           </div>
-        </main>
+        </div>
 
-      </div>
+      </main>
 
     </div>
   </div>

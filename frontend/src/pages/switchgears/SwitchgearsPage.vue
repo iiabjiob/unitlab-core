@@ -13,9 +13,9 @@
         </aside>
     </ResizablePanel>
     
-    <main class="flex-1 p-4">
+    <section class="flex-1 p-4">
       <router-view />
-    </main>
+    </section>
   </div>
 </template>
 
