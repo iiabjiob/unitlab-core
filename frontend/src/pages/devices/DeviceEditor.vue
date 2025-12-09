@@ -7,6 +7,7 @@ import { useDeviceStore } from "@/stores/deviceStore"
 import DeviceEditorHeader from "./components/DeviceEditorHeader.vue"
 import DeviceExecutionLog from "./components/DeviceExecutionLog.vue"
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
+import DeviceChannelsList from "./components/DeviceChannelsList.vue"
 
 const route = useRoute()
 const store = useDeviceStore()
@@ -28,13 +29,13 @@ const device = computed(() =>
       :device="device"
     />
 
-    <div class="flex flex-1 overflow-hidden bg-white dark:bg-neutral-800 shadow rounded p-5">
+    <div class="flex flex-1 overflow-hidden bg-white dark:bg-neutral-800 shadow rounded p-5 mt-5">
 
-      <!-- STEP LIST -->
+      <!-- CHANNELS LIST -->
       <ResizablePanel
         v-if="device" :device="device"
         placement="left"
-        storageKey="device-steps-list-width"
+        storageKey="device-channels-list-width"
         :minSize="380"
         :defaultSize="380"
         :maxSize="800"

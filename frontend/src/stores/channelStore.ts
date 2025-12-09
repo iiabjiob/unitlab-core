@@ -1,6 +1,6 @@
 // src/stores/channelStore.ts
 import { defineStore } from "pinia"
-import { ref, shallowRef, triggerRef } from "vue"
+import { computed, ref, shallowRef, triggerRef } from "vue"
 
 import { api, ApiBuilder } from "@/utils/api"
 import { getLogger } from "@/utils/logger"
@@ -29,8 +29,8 @@ import { CHANNEL_TYPES, type Channel, type ChannelDto } from "@/types/channel"
 const logger = getLogger("CHANNEL")
 
 export const useChannelStore = defineStore("channelStore", () => {
-  const channels = shallowRef<Channel[]>([])
-  const responses = shallowRef<Record<string, DeviceRespEvent>>({})
+  const channels = ref<Channel[]>([])
+  const responses = ref<Record<string, DeviceRespEvent>>({})
 
   const isLoading = ref(false)
   const isLoaded = ref(false)
@@ -73,7 +73,6 @@ export const useChannelStore = defineStore("channelStore", () => {
       const idx = channels.value.findIndex(c => c.id === id)
       if (idx !== -1) {
         channels.value[idx] = updated
-        triggerRef(channels)
       }
       logger.debug(`Channel ${id} updated`, updated)
     } catch (error) {
@@ -107,7 +106,6 @@ export const useChannelStore = defineStore("channelStore", () => {
   }
 
   function applyBitState(deviceId: number, chIndex: number, value: boolean) {
-    let mutated = false
     for (const ch of channels.value) {
       if (ch.device_id === deviceId && ch.index === chIndex) {
         if (ch.type === CHANNEL_TYPES.AO) {
@@ -115,39 +113,32 @@ export const useChannelStore = defineStore("channelStore", () => {
         }
         if (ch.state !== value) {
           ch.state = value
-          mutated = true
         }
         break
       }
     }
-    if (mutated) triggerRef(channels)
   }
 
   function applyBitmaskState(deviceId: number, mask: number) {
-    let mutated = false
     for (const ch of channels.value) {
       if (ch.device_id !== deviceId || ch.type === CHANNEL_TYPES.AO) continue
       const next = ((mask >> ch.index) & 1) === 1
       if (ch.state !== next) {
         ch.state = next
-        mutated = true
       }
     }
-    if (mutated) triggerRef(channels)
+
   }
 
   function applyFloatState(deviceId: number, chIndex: number, value: number) {
-    let mutated = false
     for (const ch of channels.value) {
       if (ch.device_id === deviceId && ch.index === chIndex && ch.type === CHANNEL_TYPES.AO) {
         if (ch.state !== value) {
           ch.state = value
-          mutated = true
         }
         break
       }
     }
-    if (mutated) triggerRef(channels)
   }
 
   function setChannels(event: DeviceStateEvent) {

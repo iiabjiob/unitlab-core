@@ -43,6 +43,22 @@ export function ensureChannel(entity: Channel | ChannelDto): Channel {
   return entity as Channel
 }
 
+export function buildBitmask(channels: Channel[], state: boolean): number {
+  return channels.reduce((mask, ch) => {
+    if (ch.type !== CHANNEL_TYPES.DO) return mask
+    const bit = 1 << ch.index
+    return state ? mask | bit : mask & ~bit
+  }, 0)
+}
+
+export function buildToggleBitmask(channels: Channel[]): number {
+  return channels.reduce((mask, ch) => {
+    if (ch.type !== CHANNEL_TYPES.DO) return mask
+    const bit = 1 << ch.index
+    return ch.state ? mask & ~bit : mask | bit
+  }, 0)
+}
+
 /** Ограничивает значение в диапазоне 4..20 мА (или 0..24, если хочешь расширенный режим) */
 export function clampAoValue(value: number, min = 4, max = 20): number {
   if (isNaN(value)) return min

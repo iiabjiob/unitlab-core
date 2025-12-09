@@ -26,7 +26,7 @@ function selectStep(stepId: number) {
       Steps ({{ steps.length }})
     </div>
 
-    <!-- ADD TOOLBAR -->
+    <!-- TOOLBAR -->
     <div class="py-2">
       <SequenceStepAddToolbar
         @add="stepStore.addStep(sequence.id, $event)"
@@ -34,7 +34,7 @@ function selectStep(stepId: number) {
     </div>
 
     <!-- LIST -->
-    <div class="flex-1 overflow-y-auto divide-y divide-neutral-300 dark:divide-neutral-700">
+    <div class="flex-1 overflow-y-auto divide-y divide-neutral-300 dark:divide-neutral-700 mt-5">
       <SequenceStepItem
         v-for="step in steps"
         :key="step.id"
