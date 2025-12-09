@@ -3,6 +3,13 @@ import { ref, computed } from "vue"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import type { SequenceDef } from "@/types/sequences"
 import UiButton from "@/components/ui/UiButton.vue"
+import {
+  UiMenu,
+  UiMenuTrigger,
+  UiMenuContent,
+  UiMenuItem
+} from "@/components/ui/menu"
+import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vue"
 
 const props = defineProps<{
   sequence: SequenceDef
@@ -84,16 +91,22 @@ const createdAt = computed(() => {
     </div>
 
     <!-- RIGHT ACTIONS -->
-    <div class="flex items-center gap-2">
+    <UiMenu>
+      <UiMenuTrigger>
+        <UiButton variant="icon">
+          <EllipsisHorizontalIcon size="24"/>
+        </UiButton>
+      </UiMenuTrigger>
 
-      <UiButton variant="secondary" size="xs" @click="emit('duplicate')">
-        Duplicate
-      </UiButton>
+      <UiMenuContent>
+        <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="emit('duplicate')">
+          Duplicate
+        </UiMenuItem>
 
-      <UiButton variant="danger" size="xs" @click="emit('delete')">
-        Delete
-      </UiButton>
-
-    </div>
+        <UiMenuItem danger @select="emit('delete')">
+          Delete
+        </UiMenuItem>
+      </UiMenuContent>
+    </UiMenu>
   </div>
 </template>
