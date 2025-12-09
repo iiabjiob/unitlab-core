@@ -3,7 +3,6 @@ from typing import Literal, Union, Dict, Any, List
 from app.infrastructure.protocol.modes import State
 from app.infrastructure.protocol.packet_structures import RespStatus, RespError
 from app.schemas.device_schema import DeviceSchema
-from app.schemas.event_schema import EventSchema
 from enum import Enum
 
 # -----------------------------------------------------------------
@@ -29,15 +28,6 @@ class WSChannel(str, Enum):
     DEVICE_REGISTER = "devices/register"
     DEVICE_RESP     = "devices/resp"
     DEVICE_STATUS   = "devices/status"
-    EVENT_LOG = "events/log"
-
-class EventDirection(str, Enum):
-    IN = "in"
-    OUT = "out"
-
-class EventSource(str, Enum):
-    WS_DEVICE = "WS_DEVICE"
-    WS_COMMAND = "WS_COMMAND"
 
 # ---------------------------------------------------------------------
 # Состояния (DI/DO/AO)
@@ -86,14 +76,6 @@ class DeviceHeartbeatEvent(BaseModel):
     unit_id: str
     status: Literal["online", "offline"]
     last_seen: int
-
-# ---------------------------------------------------------------------
-# EventLog
-# ---------------------------------------------------------------------
-class EventLogEvent(BaseModel):
-    channel: Literal[WSChannel.EVENT_LOG] = WSChannel.EVENT_LOG
-    event: EventSchema
-
 
 class SequenceEventBase(BaseModel):
     topic: Literal["sequence"] = "sequence"
@@ -144,7 +126,6 @@ WSEvent = Union[
     DeviceRegisterEvent,
     DeviceRespEvent,
     DeviceHeartbeatEvent,
-    EventLogEvent,
     SequenceStartedEvent,
     SequenceProgressEvent,
     SequenceStepErrorEvent,

@@ -30,7 +30,7 @@ class WsStateService:
 
     @staticmethod
     async def sync_client(ws):
-        """При коннекте клиента: REGISTER + STATUS + STATE + TIME + EVENT_LOG"""
+        """При коннекте клиента: REGISTER + STATUS + STATE + TIME"""
         ws_manager = WebSocketManager.get_instance()
         redis = RedisManager.get_instance()
 

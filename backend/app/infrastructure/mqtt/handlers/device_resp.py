@@ -47,5 +47,3 @@ async def handle_device_resp(topic: str, payload: bytes, unit_id: str):
 
     ws_manager = WebSocketManager.get_instance()
     await ws_manager.broadcast(event)
-
-    # stop duplicating RESP statuses into event log; toast UI handles visibility now

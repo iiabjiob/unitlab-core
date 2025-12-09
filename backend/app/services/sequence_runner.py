@@ -31,7 +31,6 @@ from app.schemas.ws.events import (
     SequenceStoppedEvent,
 )
 from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command
-from app.services.event_service import EventService
 from app.ws.manager import WebSocketManager
 
 logger = get_logger("sequence")
@@ -123,14 +122,7 @@ class SequenceRunner:
             task.add_done_callback(lambda _: self._active_runs.pop(sequence_id, None))
 
         await self._broadcast_started(sequence_id, run_id, len(contexts))
-        await self._log_sequence_event(
-            sequence_id,
-            run_id,
-            status="started",
-            result="pending",
-            message=f"Sequence run {run_id} started ({len(contexts)} steps).",
-            extra={"step_count": len(contexts)},
-        )
+        logger.info("Sequence %s run %s started (%s steps)", sequence_id, run_id, len(contexts))
         return await self.get_state(sequence_id)
 
     async def stop(self, sequence_id: int) -> SequenceStateSchema:
@@ -349,14 +341,6 @@ class SequenceRunner:
                         finished_at=datetime.now(timezone.utc),
                     ),
                 )
-                await self._log_sequence_event(
-                    sequence_id,
-                    run_id,
-                    status="completed",
-                    result="ok",
-                    message=f"Sequence run {run_id} completed with no steps",
-                    extra={"elapsed_ms": elapsed_total, "completed_steps": []},
-                )
                 return
 
             for ctx in contexts:
@@ -380,18 +364,6 @@ class SequenceRunner:
                         ),
                     )
                     elapsed_total = int((time.monotonic() - start_time) * 1000)
-                    await self._log_sequence_event(
-                        sequence_id,
-                        run_id,
-                        status="stopped",
-                        result="ok",
-                        message=f"Sequence run {run_id} stopped by user",
-                        extra={
-                            "step_index": ctx.index,
-                            "elapsed_ms": elapsed_total,
-                            "completed_steps": list(completed_step_ids),
-                        },
-                    )
                     return
 
                 step_started = time.monotonic()
@@ -452,20 +424,6 @@ class SequenceRunner:
                         ),
                     )
                     elapsed_total = int((time.monotonic() - start_time) * 1000)
-                    await self._log_sequence_event(
-                        sequence_id,
-                        run_id,
-                        status="error",
-                        result="error",
-                        message=f"Sequence run {run_id} failed at step {ctx.index + 1}: {message}",
-                        extra={
-                            "step_index": ctx.index,
-                            "step_id": ctx.sequence_step_id,
-                            "elapsed_ms": elapsed_total,
-                            "error": message,
-                            "completed_steps": list(completed_step_ids),
-                        },
-                    )
                     return
 
                 await self._mark_step_status(
@@ -532,17 +490,11 @@ class SequenceRunner:
                     finished_at=datetime.now(timezone.utc),
                 ),
             )
-            await self._log_sequence_event(
-                sequence_id,
+            logger.info(
+                "Sequence run %s completed in %sms (%s steps)",
                 run_id,
-                status="completed",
-                result="ok",
-                message=f"Sequence run {run_id} completed in {elapsed_total} ms",
-                extra={
-                    "elapsed_ms": elapsed_total,
-                    "completed_steps": list(completed_step_ids),
-                    "step_count": total_steps,
-                },
+                elapsed_total,
+                total_steps,
             )
 
     async def _execute_step(self, ctx: StepContext) -> None:
@@ -668,6 +620,7 @@ class SequenceRunner:
                 current_step_index=step_index,
             )
         )
+        logger.info("Sequence run %s stopped at step %s", run_id, step_index)
         await session.commit()
 
     async def _mark_step_status(
@@ -716,41 +669,3 @@ class SequenceRunner:
                 total_steps=total_steps,
             )
         )
-
-    async def _log_sequence_event(
-        self,
-        sequence_id: int,
-        run_id: int,
-        *,
-        status: str,
-        result: str,
-        message: str,
-        extra: Optional[Dict[str, Any]] = None,
-    ) -> None:
-        payload: Dict[str, Any] = {
-            "sequence_id": sequence_id,
-            "run_id": run_id,
-            "status": status,
-        }
-        if extra:
-            payload.update(extra)
-
-        event_data: Dict[str, Any] = {
-            "event_type": "sequence",
-            "source": "sequence-runner",
-            "result": result,
-            "payload": payload,
-        }
-        if message:
-            event_data["message"] = message
-
-        try:
-            async with AsyncSessionLocal() as session:
-                await EventService.log_and_broadcast(session, event_data)
-        except Exception:  # noqa: BLE001
-            logger.warning(
-                "Failed to log sequence event (run=%s status=%s)",
-                run_id,
-                status,
-                exc_info=True,
-            )

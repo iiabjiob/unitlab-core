@@ -9,17 +9,15 @@ from app.core.utils import to_str, to_int
 
 class DeviceStateService:
     @staticmethod
-    async def update_state(unit_id: str, hdr, decoded) -> tuple[bool, bool, DeviceStateEvent | None]:
+    async def update_state(unit_id: str, hdr, decoded) -> tuple[bool, DeviceStateEvent | None]:
         """
         Update Redis state for the device based on the packet header/mode and decoded payload.
         Returns:
             changed: bool       -> True if Redis was updated
-            should_log: bool    -> True if this event should be logged to event_log
             event: DeviceStateEvent | None
         """
         redis = RedisManager.get_instance()
         changed = False
-        should_log = False
 
         if hdr.mode == State.STATE_ALL_BIT:
             current = await redis.get(f"device:{unit_id}:bitmask")
@@ -27,7 +25,6 @@ class DeviceStateService:
             if to_str(current) != new_val:
                 await redis.set(f"device:{unit_id}:bitmask", new_val)
                 changed = True
-                should_log = True
 
         elif hdr.mode == State.STATE_SINGLE_BIT:
             current = await redis.get(f"device:{unit_id}:bitmask")
@@ -41,7 +38,6 @@ class DeviceStateService:
             if new_mask_val != mask_val:
                 await redis.set(f"device:{unit_id}:bitmask", str(new_mask_val))
                 changed = True
-                should_log = True
 
         elif hdr.mode == State.STATE_SINGLE_FLOAT:
             current_val = await redis.hget(f"device:{unit_id}:ao", str(decoded.ch))
@@ -49,7 +45,6 @@ class DeviceStateService:
             if to_str(current_val) != new_val:
                 await redis.hset(f"device:{unit_id}:ao", str(decoded.ch), new_val)
                 changed = True
-                should_log = False  # AO we don’t log
 
         event = DeviceStateEvent(
             unit_id=unit_id,
@@ -57,7 +52,7 @@ class DeviceStateService:
             mode=State(hdr.mode),
             payload=decoded.model_dump(),
         )
-        return changed, should_log, event
+        return changed, event
 
     # -------------------------------------------------------------------------
 
