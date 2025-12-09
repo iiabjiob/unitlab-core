@@ -12,8 +12,16 @@ const logger = getLogger("SEQS")
 
 export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
   const steps = ref<SequenceStep[]>([])
+  const loadedSequence = ref<Set<number>>(new Set())
   const activeStepId = ref<number | null>(null)
   const channelStore = useChannelStore()
+
+  async function ensureSteps(seqId: number) {
+    if (!loadedSequence.value.has(seqId)) {
+      await fetchSteps(seqId)
+      loadedSequence.value.add(seqId)
+    }
+  }
 
   function setActiveStep(stepId: number) {
     activeStepId.value = stepId
@@ -117,6 +125,7 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
     steps,
     stepsBySequence,
     activeStepId,
+    ensureSteps,
     setActiveStep,
     enrichedStepsBySequence,
     getStepDescription,

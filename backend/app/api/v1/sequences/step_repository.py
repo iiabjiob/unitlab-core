@@ -33,7 +33,9 @@ class SequenceStepRepository:
                 .order_by(SequenceStep.order_index.desc())
                 .limit(1)
             )
-            last_index = result.scalar_one_or_none() or -1
+            last_index = result.scalar_one_or_none()
+            if last_index is None:
+                last_index = -1
 
             step_type_value = data.get("sequence_step_type") or data.get("type") or data.get("kind")
             step_type = SequenceStepType(step_type_value) if step_type_value else SequenceStepType.WAIT

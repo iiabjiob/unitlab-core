@@ -8,6 +8,11 @@ const props = defineProps<{
   sequence: SequenceDef
 }>()
 
+const emit = defineEmits<{
+  (e: "duplicate"): void
+  (e: "delete"): void
+}>()
+
 const store = useSequenceStore()
 
 const editing = ref(false)
@@ -81,11 +86,11 @@ const createdAt = computed(() => {
     <!-- RIGHT ACTIONS -->
     <div class="flex items-center gap-2">
 
-      <UiButton variant="secondary" size="xs">
+      <UiButton variant="secondary" size="xs" @click="emit('duplicate')">
         Duplicate
       </UiButton>
 
-      <UiButton variant="danger" size="xs">
+      <UiButton variant="danger" size="xs" @click="emit('delete')">
         Delete
       </UiButton>
 

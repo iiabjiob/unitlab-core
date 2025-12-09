@@ -53,7 +53,6 @@ export interface SequenceStep {
 
 export interface SequenceStepCreate {
   sequence_step_type: SequenceStepType
-  order_index?: number | null
   channel_id?: number | null
   payload?: Record<string, any> | null
 }

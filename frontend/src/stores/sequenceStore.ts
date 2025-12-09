@@ -45,12 +45,20 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   const sequences = ref<SequenceDef[]>([])
   const states = ref<Record<number, SequenceState>>({})
   const loading = ref(false)
+  const loadedOnce = ref(false)
   const stepStore = useSequenceStepStore()
   const logs = ref<Record<number, Array<{
     ts: string
     type: "info" | "step" | "error"
     message: string
   }>>>({})
+
+  async function ensureLoaded() {
+    if (!loadedOnce.value) {
+      await fetchSequences()
+      loadedOnce.value = true
+    }
+  }
 
   function stepsCount(seqId: number): number {
     return stepStore.stepsBySequence(seqId).value.length
@@ -105,27 +113,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
       sequences.value = []
       data.forEach(upsertSequence)
-
-      const empty = data.filter((s: SequenceDef) => !s.steps?.length)
-      if (empty.length) {
-        await Promise.all(empty.map((s: SequenceDef) => stepStore.fetchSteps(s.id)))
-      }
-
-      // Clean states of deleted sequences
-      const ids = new Set(data.map((s: SequenceDef) => s.id))
-      Object.keys(states.value).forEach(key => {
-        const id = Number(key)
-        if (!ids.has(id)) {
-          delete states.value[id]
-          stepStore.dropSequence(id)
-        }
-      })
-
-      // load runtime state
-      await Promise.all(
-        data.map((s: SequenceDef) => SequencesAPI.getState(s.id).then(res => applySnapshot(s.id, res.data)).catch(() => null))
-      )
-
+      
       logger.info(`📡 Loaded ${data.length} sequences`)
     } finally {
       loading.value = false
@@ -142,6 +130,22 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     }
 
     return `${base} ${n}`
+  }
+
+  function nextDuplicateName(sourceName: string): string {
+    const base = sourceName.trim() || "Sequence"
+    const names = new Set(sequences.value.map(s => s.name))
+
+    let suffix = " copy"
+    let counter = 2
+    let candidate = `${base}${suffix}`
+
+    while (names.has(candidate)) {
+      candidate = `${base}${suffix} ${counter}`
+      counter += 1
+    }
+
+    return candidate
   }
 
   async function createSequenceAuto() {
@@ -167,6 +171,31 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     sequences.value = sequences.value.filter(s => s.id !== id)
     delete states.value[id]
     stepStore.dropSequence(id)
+  }
+
+  async function duplicateSequence(id: number) {
+    const original = sequences.value.find(seq => seq.id === id)
+    if (!original) {
+      throw new Error(`Sequence ${id} not found`)
+    }
+
+    await stepStore.ensureSteps(id)
+    const stepsPayload = stepStore.stepsBySequence(id).value
+      .map(step => ({
+        sequence_step_type: step.sequence_step_type,
+        channel_id: step.channel_id,
+        payload: step.payload ?? null,
+      }))
+
+    const { data } = await SequencesAPI.create({
+      name: nextDuplicateName(original.name),
+      description: original.description ?? "",
+      steps: stepsPayload,
+    })
+
+    upsertSequence(data)
+    await refreshState(data.id)
+    return data
   }
 
   async function refreshState(id: number) {
@@ -298,11 +327,13 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     states,
     loading,
     logs,
+    ensureLoaded,
     fetchSequences,
     updateSequence,
     createSequence,
     createSequenceAuto,
     deleteSequence,
+    duplicateSequence,
 
     refreshState,
     startSequence,

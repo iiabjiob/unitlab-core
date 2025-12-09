@@ -1,3 +1,5 @@
+import { useSequenceStepStore } from "@/stores/sequenceStepStore"
+import { useSequenceStore } from "@/stores/sequenceStore"
 import type { RouteRecordRaw } from "vue-router"
 
 // Default meta shared from index.ts
@@ -10,10 +12,12 @@ export const sequencesRoutes: RouteRecordRaw[] = [
   {
     path: "/sequences",
     component: () => import("@/pages/sequences/SequencesPage.vue"),
+    beforeEnter: async () => {
+      const store = useSequenceStore()
+      await store.ensureLoaded()
+    },
     meta: {
       ...defaultMeta,
-      rightAside: false,
-      bottomAside: false,
     },
     children: [
       {
@@ -26,7 +30,17 @@ export const sequencesRoutes: RouteRecordRaw[] = [
         name: "sequences.detail",
         component: () => import("@/pages/sequences/SequenceEditor.vue"),
         props: true,
+        beforeEnter: async (to) => {
+          const seqId = Number(to.params.id)
+          const seqStore = useSequenceStore()
+          const stepStore = useSequenceStepStore()
+
+          await seqStore.ensureLoaded()
+          await stepStore.ensureSteps(seqId)
+          await seqStore.refreshState(seqId)
+        }
       },
+      
     ],
   },
 ]

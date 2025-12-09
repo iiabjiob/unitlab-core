@@ -15,7 +15,6 @@ SequenceStepTypeLiteral = Literal[
 
 
 class SequenceStepBase(BaseModel):
-    order_index: int
     sequence_step_type: SequenceStepTypeLiteral = Field(
         validation_alias=AliasChoices("sequence_step_type", "type", "kind"),
         serialization_alias="sequence_step_type",
@@ -27,7 +26,6 @@ class SequenceStepBase(BaseModel):
 
 
 class SequenceStepCreateSchema(BaseModel):
-    order_index: Optional[int] = None
     sequence_step_type: SequenceStepTypeLiteral = Field(
         validation_alias=AliasChoices("sequence_step_type", "type", "kind"),
         serialization_alias="sequence_step_type",
@@ -54,6 +52,7 @@ class SequenceStepUpdateSchema(BaseModel):
 class SequenceStepSchema(SequenceStepBase):
     id: int
     sequence_id: int
+    order_index: int
     created_at: datetime
     updated_at: datetime
 
