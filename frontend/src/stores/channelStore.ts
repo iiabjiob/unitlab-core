@@ -118,11 +118,6 @@ export const useChannelStore = defineStore("channelStore", () => {
         }
         if (ch.state !== value) {
           ch.state = value
-
-          logStore.push(deviceId, {
-            type: "state",
-            message: `STATE CH${chIndex + 1} → ${value}`
-          })
         }
         break
       }
@@ -135,11 +130,6 @@ export const useChannelStore = defineStore("channelStore", () => {
       const next = ((mask >> ch.index) & 1) === 1
       if (ch.state !== next) {
         ch.state = next
-
-        logStore.push(deviceId, {
-          type: "state",
-          message: `STATE BITMASK=${mask.toString(2).padStart(32, "0")}`
-        })
       }
     }
 
@@ -148,11 +138,6 @@ export const useChannelStore = defineStore("channelStore", () => {
   function applyFloatState(deviceId: number, chIndex: number, value: number) {
     for (const ch of channels.value) {
       if (ch.device_id === deviceId && ch.index === chIndex && ch.type === CHANNEL_TYPES.AO) {
-
-        logStore.push(deviceId, {
-          type: "state",
-          message: `STATE AO CH${chIndex + 1} → ${value}`
-        })
 
         if (ch.state !== value) {
           ch.state = value
@@ -173,12 +158,24 @@ export const useChannelStore = defineStore("channelStore", () => {
     switch (event.mode) {
       case StateMode.STATE_SINGLE_BIT:
         applyBitState(device.id, event.payload.ch, !!event.payload.value)
+        logStore.push(device.id, {
+          type: "state",
+          message: `STATE CH${event.payload.ch + 1} → ${event.payload.value}`
+        })
         break
       case StateMode.STATE_ALL_BIT:
         applyBitmaskState(device.id, event.payload.bitmask)
+        logStore.push(device.id, {
+          type: "state",
+          message: `STATE BITMASK=${event.payload.bitmask.toString(2).padStart(32, "0")}`
+        })
         break
       case StateMode.STATE_SINGLE_FLOAT:
         applyFloatState(device.id, event.payload.ch, Number(event.payload.value))
+        logStore.push(device.id, {
+          type: "state",
+          message: `STATE AO CH${event.payload.ch + 1} → ${event.payload.value}`
+        })
         break
       default:
         logger.debug(`Unhandled device state mode=${event.mode}`)

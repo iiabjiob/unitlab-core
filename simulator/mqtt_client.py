@@ -267,6 +267,7 @@ class SimulatedDeviceBase:
         self._connected.set()
         self._mqtt.subscribe(topic_cmd(self.unit_id))
         self._mqtt.subscribe(topic_req_state(self.unit_id))
+        self._mqtt.subscribe(topic_info(self.unit_id))
         await self._send_registration()
 
     # --- gmqtt hooks ----------------------------------------------------
@@ -366,7 +367,21 @@ class SimulatedDeviceBase:
         return True
 
     async def handle_packet(self, topic: str, header: PacketHeader, payload: bytes) -> None:
-        raise NotImplementedError
+        mode = header.mode
+
+        # 1) REGISTER REQUESTED VIA SCAN
+        if mode == Sys.SCAN:
+            self._logger.debug("SCAN received → sending REGISTER + STATE for %s", self.unit_id)
+
+            # re-send REGISTER
+            await self._send_registration()
+
+            # send current state snapshot
+            await self.publish_state(packet_id=header.packet_id)
+            return
+
+        # 3) CMD — delegated to subclass
+        raise NotImplementedError("handle_packet must be implemented in subclass")
 
     # --- shared utilities -----------------------------------------------
     async def _publish_packet(

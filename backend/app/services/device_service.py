@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import update
 
 from app.api.v1.devices.repository import DeviceRepository
 from app.models.channel import Channel
@@ -86,6 +87,23 @@ class DeviceService:
             timestamp = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
         dev = await self.repo.set_last_seen(unit_id, timestamp)
         return self._to_schema(dev) if dev else None
+
+    async def touch_last_seen(self, unit_id: str, ts_ms: Optional[int]) -> None:
+        """Fast path for heartbeats: update last_seen_at without loading Device."""
+        if ts_ms is None:
+            return
+
+        timestamp = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+
+        await self.db.execute(
+            update(Device)
+            .where(Device.unit_id == unit_id)
+            .values(
+                last_seen_at=timestamp,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+        await self.db.commit()
 
     async def _sync_channels(self, dev: Device, num_channels: Optional[int], dev_type: Optional[str]):
         if not hasattr(dev, "channels") or dev.channels is None:
