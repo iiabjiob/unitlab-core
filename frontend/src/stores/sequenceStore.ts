@@ -10,6 +10,7 @@ import {
 import type { SequenceWsEvent } from "@/types/ws/events"
 import { getLogger } from "@/utils/logger"
 import { useSequenceStepStore } from "./sequenceStepStore"
+import { useSequenceLogStore } from "@/stores/sequenceLogStore"
 
 const logger = getLogger("SEQ")
 
@@ -40,6 +41,7 @@ const mapStatus = (raw: string): SequenceStatusEnum => {
   }
 }
 
+
 export const useSequenceStore = defineStore("sequenceStore", () => {
 
   const sequences = ref<SequenceDef[]>([])
@@ -47,12 +49,8 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   const loading = ref(false)
   const loadedOnce = ref(false)
   const stepStore = useSequenceStepStore()
-  const logs = ref<Record<number, Array<{
-    ts: string
-    type: "info" | "step" | "error"
-    message: string
-  }>>>({})
-
+  const logStore = useSequenceLogStore()
+    
   async function ensureLoaded() {
     if (!loadedOnce.value) {
       await fetchSequences()
@@ -217,18 +215,6 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     return applySnapshot(id, data)
   }
 
-  function pushLog(seqId: number, entry: { type: string; message: string }) {
-    const ts = new Date().toLocaleTimeString()
-
-    if (!logs.value[seqId]) logs.value[seqId] = []
-
-    logs.value[seqId].push({
-      ts,
-      type: entry.type as any,
-      message: entry.message
-    })
-  }
-
   function handleSequenceEvent(event: SequenceWsEvent) {
     const prev = ensureState(event.sequence_id)
 
@@ -242,7 +228,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           last_error: null,
         }
 
-        pushLog(event.sequence_id, {
+        logStore.push(event.sequence_id, {
           type: "info",
           message: "Sequence started"
         })
@@ -257,7 +243,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           last_error: null,
         }
 
-        pushLog(event.sequence_id, {
+        logStore.push(event.sequence_id, {
           type: "step",
           message: `Step ${event.step_index + 1}/${prev.total_steps} completed`
         })
@@ -271,7 +257,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           last_error: event.message,
         }
 
-        pushLog(event.sequence_id, {
+        logStore.push(event.sequence_id, {
           type: "error",
           message: `Step ${event.step_index + 1} error: ${event.message}`
         })
@@ -284,7 +270,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           last_error: event.message,
         }
 
-        pushLog(event.sequence_id, {
+        logStore.push(event.sequence_id, {
           type: "error",
           message: `Sequence error: ${event.message}`
         })
@@ -296,7 +282,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           status: SequenceStatusEnum.STOPPED,
         }
 
-        pushLog(event.sequence_id, {
+        logStore.push(event.sequence_id, {
           type: "info",
           message: "Sequence stopped by user"
         })
@@ -310,7 +296,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           completed_step_ids: [...prev.completed_step_ids],
         }
 
-        pushLog(event.sequence_id, {
+        logStore.push(event.sequence_id, {
           type: "info",
           message: "Sequence completed successfully"
         })
@@ -330,7 +316,6 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     sequences,
     states,
     loading,
-    logs,
     ensureLoaded,
     fetchSequences,
     updateSequence,

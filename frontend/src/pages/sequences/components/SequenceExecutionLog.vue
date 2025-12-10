@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import { useSequenceStore } from "@/stores/sequenceStore"
+import { useSequenceLogStore } from "@/stores/sequenceLogStore"
 import type { SequenceDef, SequenceState } from "@/types/sequences"
 
 const props = defineProps<{
@@ -10,8 +11,12 @@ const props = defineProps<{
 
 const store = useSequenceStore()
 
-// Истинный лог
-const logs = computed(() => store.logs[props.sequence.id] ?? [])
+const logStore = useSequenceLogStore()
+const logs = computed(() => logStore.logs[props.sequence.id] ?? [])
+const sortedLogs = computed(() =>
+  [...(logStore.logs[props.sequence.id] ?? [])]
+    .sort((a, b) => a.t - b.t)
+)
 </script>
 
 <template>
@@ -33,7 +38,7 @@ const logs = computed(() => store.logs[props.sequence.id] ?? [])
 
       <!-- LOG ENTRY -->
       <div
-        v-for="(log, i) in logs"
+        v-for="(log, i) in sortedLogs"
         :key="i"
         class="flex items-center gap-2 py-[1px] px-1 rounded-sm
                hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-colors"
