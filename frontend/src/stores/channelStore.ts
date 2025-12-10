@@ -9,6 +9,8 @@ import { normalizeChannel, ensureChannel } from "@/utils/channel"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
 
+import { useChannelLogStore } from "@/stores/channelLogStore"
+
 import {
   WSAction,
   CmdMode,
@@ -34,6 +36,8 @@ export const useChannelStore = defineStore("channelStore", () => {
 
   const isLoading = ref(false)
   const isLoaded = ref(false)
+
+  const logStore = useChannelLogStore()
 
   /* ----------------------------- FETCH ALL ----------------------------- */
 
@@ -108,11 +112,17 @@ export const useChannelStore = defineStore("channelStore", () => {
   function applyBitState(deviceId: number, chIndex: number, value: boolean) {
     for (const ch of channels.value) {
       if (ch.device_id === deviceId && ch.index === chIndex) {
+
         if (ch.type === CHANNEL_TYPES.AO) {
           continue
         }
         if (ch.state !== value) {
           ch.state = value
+
+          logStore.push(deviceId, {
+            type: "state",
+            message: `STATE CH${chIndex + 1} → ${value}`
+          })
         }
         break
       }
@@ -125,6 +135,11 @@ export const useChannelStore = defineStore("channelStore", () => {
       const next = ((mask >> ch.index) & 1) === 1
       if (ch.state !== next) {
         ch.state = next
+
+        logStore.push(deviceId, {
+          type: "state",
+          message: `STATE BITMASK=${mask.toString(2).padStart(32, "0")}`
+        })
       }
     }
 
@@ -133,6 +148,12 @@ export const useChannelStore = defineStore("channelStore", () => {
   function applyFloatState(deviceId: number, chIndex: number, value: number) {
     for (const ch of channels.value) {
       if (ch.device_id === deviceId && ch.index === chIndex && ch.type === CHANNEL_TYPES.AO) {
+
+        logStore.push(deviceId, {
+          type: "state",
+          message: `STATE AO CH${chIndex + 1} → ${value}`
+        })
+
         if (ch.state !== value) {
           ch.state = value
         }
@@ -170,12 +191,28 @@ export const useChannelStore = defineStore("channelStore", () => {
       [resp.unit_id]: resp,
     }
 
+    const deviceStore = useDeviceStore()
+    const device = deviceStore.devices.find(d => d.unit_id === resp.unit_id)
+
+    if (!device) {
+      logger.warn(`DeviceRespEvent: device not found for unit_id=${resp.unit_id}`)
+      return
+    }
+
     if (resp.status === "OK") {
       logger.info(`✅ Command ack from ${resp.unit_id}, packet=${resp.packet_id}`)
+      logStore.push(device.id, {
+        type: "resp",
+        message: `ACK packet=${resp.packet_id}`
+      })
     } else {
       logger.warn(
         `⚠️ Command resp from ${resp.unit_id}, packet=${resp.packet_id}, status=${resp.status}, error=${resp.error}`,
       )
+      logStore.push(device.id, {
+        type: "error",
+        message: `RESP ERROR packet=${resp.packet_id} → ${resp.error}`
+      })
     }
   }
 
@@ -210,7 +247,7 @@ export const useChannelStore = defineStore("channelStore", () => {
       return
     }
 
-    applyBitState(device.id, chIndex, state)
+    // applyBitState(device.id, chIndex, state)
 
     const ws = useWebSocketStore()
     const msg: SetDoCommandMessage = {
@@ -222,6 +259,11 @@ export const useChannelStore = defineStore("channelStore", () => {
     }
     ws.send(msg)
     logger.info(`➡️ DO cmd ${device.unit_id} ch=${chIndex} → ${state}`)
+
+    logStore.push(device.id, {
+      type: "cmd",
+      message: `SEND DO CH${chIndex + 1} → ${state}`
+    })
   }
 
   function sendDoAllCommand(unitId: string, mask: number) {
@@ -253,6 +295,10 @@ export const useChannelStore = defineStore("channelStore", () => {
       state2b,
     } satisfies SetDoCommandMessage)
     logger.info(`➡️ DO pair cmd ${device.unit_id} [${chA}/${chB}] → ${state2b}`)
+    logStore.push(device.id, {
+      type: "cmd",
+      message: `SEND DO PAIR [${chA + 1}/${chB + 1}] → state2b=${state2b}`
+    })
   }
 
   function sendAoCommand(unitId: string, chIndex: number, value: number) {
@@ -263,7 +309,7 @@ export const useChannelStore = defineStore("channelStore", () => {
       return
     }
 
-    applyFloatState(device.id, chIndex, value)
+    // applyFloatState(device.id, chIndex, value)
 
     const ws = useWebSocketStore()
     ws.send({
@@ -273,6 +319,11 @@ export const useChannelStore = defineStore("channelStore", () => {
       value,
     } satisfies SetAoCommandMessage)
     logger.info(`➡️ AO cmd ${device.unit_id} ch=${chIndex} → ${value}`)
+
+    logStore.push(device.id, {
+      type: "cmd",
+      message: `SEND AO CH${chIndex + 1} → ${value}`
+    })
   }
 
   /* --------------------------- RESOLVERS --------------------------- */

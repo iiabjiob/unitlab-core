@@ -1,79 +1,64 @@
 <script setup lang="ts">
 import { computed } from "vue"
-import { useDeviceStore } from "@/stores/deviceStore"
+import { useChannelLogStore } from "@/stores/channelLogStore"
 import type { Device } from "@/types/device";
 
-const props = defineProps<{
-  device: Device
-}>()
+const props = defineProps<{ device: Device }>()
 
-const store = useDeviceStore()
-
-// Истинный лог
-const logs = computed(() => [])
+const logStore = useChannelLogStore()
+const logs = computed(() => logStore.logs[props.device.id] ?? [])
+const sortedLogs = computed(() =>
+  [...(logStore.logs[props.device.id] ?? [])]
+    .sort((a, b) => a.t - b.t)
+)
 </script>
 
 <template>
   <div class="h-full flex flex-col select-none">
 
-    <!-- HEADER -->
-    <div class="p-4  text-xs uppercase tracking-wider 
-                text-neutral-500 dark:text-neutral-400 border-b 
-                border-neutral-200 dark:border-neutral-800">
-      Execution Log
+    <div class="p-3 text-xs uppercase tracking-wider text-neutral-500 border-b
+                dark:text-neutral-400 border-neutral-200 dark:border-neutral-800">
+      Device Log
     </div>
 
-    <!-- LIST -->
     <div
       class="flex-1 overflow-y-auto px-4 py-2 space-y-[2px]
              font-mono text-[11px] leading-tight
              text-neutral-700 dark:text-neutral-300"
     >
 
-      <!-- LOG ENTRY -->
       <div
-        v-for="(log, i) in logs"
+        v-for="(log, i) in sortedLogs"
         :key="i"
         class="flex items-center gap-2 py-[1px] px-1 rounded-sm
                hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-colors"
       >
+        <div class="text-[10px] opacity-50 w-14 shrink-0 text-right">{{ log.ts }}</div>
 
-        <!-- TIMESTAMP -->
-        <div class="text-[10px] opacity-50 w-14 shrink-0 text-right">
-          <!-- {{ log.ts }} -->
-        </div>
-
-        <!-- DOT -->
-        <div
-          class="w-2 h-2 rounded-full"
-          :class="{
-            // 'bg-red-500': log.type === 'error',
-            // 'bg-blue-400': log.type === 'step',
-            // 'bg-neutral-400': log.type === 'info'
-          }"
+        <div class="w-2 h-2 rounded-full"
+             :class="{
+              'bg-neutral-400': log.type === 'cmd',
+              'bg-blue-500': log.type === 'state',
+              'bg-green-500': log.type === 'resp',
+              'bg-red-500': log.type === 'error',
+             }"
         ></div>
 
-        <!-- MESSAGE -->
-        <div
-          class="whitespace-pre-wrap break-words flex-1"
-          :class="{
-            // 'text-red-400': log.type === 'error',
-            // 'text-blue-300': log.type === 'step',
-          }"
-        >
-          <!-- {{ log.message }} -->
+        <div class="flex-1 whitespace-pre-wrap break-words"
+             :class="{
+              //  'text-neutral-400': log.type === 'cmd',
+               'text-blue-400': log.type === 'state',
+               'text-green-400': log.type === 'resp',
+               'text-red-400': log.type === 'error',
+             }">
+          {{ log.message }}
         </div>
-
       </div>
 
-      <!-- EMPTY -->
-      <div
-        v-if="logs.length === 0"
-        class="opacity-40 italic py-2"
-      >
+      <div v-if="logs.length === 0"
+           class="opacity-40 italic py-2">
         No logs yet…
       </div>
-
     </div>
   </div>
 </template>
