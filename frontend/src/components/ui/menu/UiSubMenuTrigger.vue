@@ -1,3 +1,4 @@
+<!-- File: UiSubMenuTrigger.vue -->
 <script setup lang="ts">
 import { ref, onMounted } from "vue"
 import { useStrictInject } from "./utils/useStrictInject"
@@ -12,7 +13,8 @@ onMounted(() => {
 })
 
 /* ---------------- MOUSE TRAJECTORY (Amazon-style) ---------------- */
-
+// Borrow the classic Amazon navigation trick: capture the last few mouse points so we can detect whether the
+// pointer is intentionally moving toward the submenu panel (in which case we delay closing the parent item).
 const mouse = [{ x: 0, y: 0 }, { x: 0, y: 0 }]
 
 window.addEventListener("mousemove", (e) => {
@@ -28,7 +30,7 @@ function movingTowardSubmenu(): boolean {
   const p2 = mouse[mouse.length - 1]
 
   const dx = p2.x - p1.x
-  if (dx < 0) return false // движение не вправо
+  if (dx < 0) return false // Ignore motions heading left; submenu lives on the right.
 
   const midY = (rect.top + rect.bottom) / 2
   return Math.abs(p2.y - midY) < rect.height / 2 + 40
@@ -44,10 +46,10 @@ function onPointerEnter() {
 function onPointerLeave(e: PointerEvent) {
   const target = e.relatedTarget as HTMLElement | null
 
-  // Если уходим внутрь submenu → не закрывать
+  // If the pointer enters the submenu content we stay open; that panel will take ownership of closing logic.
   if (ctx.contentEl.value?.contains(target)) return
 
-  // Если движемся в сторону submenu → не закрывать
+  // Likewise, keep the parent item open while the cursor is traveling toward the submenu hot zone.
   if (movingTowardSubmenu()) return
 
   ctx.scheduleClose()
@@ -55,6 +57,7 @@ function onPointerLeave(e: PointerEvent) {
 
 /* ---------------- KEYBOARD ---------------- */
 
+// Keyboard interaction mirrors desktop conventions: Right/Enter opens, Left collapses back to the parent item.
 function onKeydown(e: KeyboardEvent) {
   if (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ") {
     e.preventDefault()

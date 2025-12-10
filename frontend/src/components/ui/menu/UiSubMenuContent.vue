@@ -1,3 +1,4 @@
+<!-- File: UiSubMenuContent.vue -->
 <script setup lang="ts">
 import { ref, watch, nextTick } from "vue"
 import { useStrictInject } from "./utils/useStrictInject"
@@ -60,7 +61,7 @@ function onKeydown(e: KeyboardEvent) {
 function onPointerLeave(e: PointerEvent) {
   const target = e.relatedTarget as HTMLElement | null
 
-  // если мышь ушла на trigger → НЕ закрывать
+  // Keep the submenu open when the pointer returns to the trigger so the user can re-enter without flicker.
   if (ctx.parentItemEl.value?.contains(target)) return
 
   ctx.scheduleClose()

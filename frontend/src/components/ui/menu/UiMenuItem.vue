@@ -3,6 +3,7 @@
 import { inject } from "vue"
 import { UI_MENU_KEY, type UiMenuContext } from "./menuContext"
 
+// `danger` is purely presentational (red text); actual destructive behavior lives in parent handlers.
 const props = defineProps<{
   danger?: boolean
 }>()
@@ -19,6 +20,7 @@ if (!injected) {
 
 const menu: UiMenuContext = injected
 
+// Emit `select` first so userland handlers fire before the menu disappears, then close the panel.
 function handleSelect() {
   emit("select")
   menu.close()

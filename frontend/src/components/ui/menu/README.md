@@ -1,40 +1,27 @@
-# UiMenu — Headless Context Menu, Dropdown & SubMenu for Vue 3
+# UiMenu
 
-A lightweight, **fully headless**, **accessible**, and **positioning‑aware** menu system for Vue 3.
+> Headless, accessible menu components for Vue 3 with intelligent positioning and keyboard navigation.
 
-Supports:
-- Dropdown menus
-- Right‑click context menus
-- Multi‑level SubMenus
-- Smart collision‑aware positioning
-- Amazon‑style mouse prediction
-- Full keyboard accessibility
-- Teleport to `<body>`
-- Theme customization (light/dark/custom)
-- Zero dependencies
+A lightweight, framework-agnostic menu system built for production applications. Provides dropdown menus, context menus, and nested submenus with smart positioning, hover-intent detection, and full keyboard accessibility.
 
-Perfect for dashboards, engineering tools, IDE-like UIs, and professional design systems.
+## Features
 
----
+- **Fully headless** — Complete control over styling and markup
+- **Accessible by default** — ARIA roles, keyboard navigation, focus management
+- **Smart positioning** — Viewport-aware with automatic collision detection
+- **Context menu support** — Trigger from clicks or cursor position
+- **Nested submenus** — Unlimited depth with Amazon-style hover prediction
+- **Auto-repositioning** — ResizeObserver tracks layout changes
+- **Zero dependencies** — Pure Vue 3 with no external libraries
+- **Theme-ready** — CSS variables for light/dark modes
 
-## 🚀 Features
+Ideal for dashboards, data tools, and applications requiring professional menu UX.
 
-- ✔ Headless — bring your own styles  
-- ✔ Trigger or cursor anchoring  
-- ✔ Collision‑aware positioning  
-- ✔ SubMenu hover‑intent prediction (Amazon-style)  
-- ✔ Auto‑reposition via ResizeObserver  
-- ✔ No memory leaks  
-- ✔ Full keyboard accessibility  
-- ✔ ARIA roles for screen readers  
-- ✔ Teleport to `<body>`  
-- ✔ Fully themable via CSS Variables  
+## Installation
 
----
+This library is designed as a component suite for Vue 3 projects. Import directly from your UI component library:
 
-## 📦 Installation
-
-```ts
+```typescript
 import {
   UiMenu,
   UiMenuTrigger,
@@ -44,161 +31,178 @@ import {
   UiMenuSeparator,
   UiSubMenu,
   UiSubMenuTrigger,
-  UiSubMenuContent
-} from "@unitlab/ui-menu"
+  UiSubMenuContent,
+} from "@/components/ui/menu"
 ```
 
----
+## Quick Start
 
-## 🧱 Components Overview
-
-| Component | Purpose |
-|----------|---------|
-| **UiMenu** | Root state provider |
-| **UiMenuTrigger** | Opens menu via click / keyboard / right‑click |
-| **UiMenuContent** | Floating teleported menu container |
-| **UiMenuItem** | Actionable item |
-| **UiMenuLabel** | Section heading |
-| **UiMenuSeparator** | Divider |
-| **UiSubMenu** | Submenu provider |
-| **UiSubMenuTrigger** | Opens nested menu |
-| **UiSubMenuContent** | Floating nested content |
-
----
-
-## 🧰 Basic Usage
-
-### Dropdown Menu
+### Basic Dropdown
 
 ```vue
-<UiMenu>
-  <UiMenuTrigger>
-    <button class="btn">Options</button>
-  </UiMenuTrigger>
+<template>
+  <UiMenu>
+    <UiMenuTrigger>
+      <button>Options</button>
+    </UiMenuTrigger>
 
-  <UiMenuContent>
-    <UiMenuItem @select="edit">Edit</UiMenuItem>
-    <UiMenuItem @select="duplicate">Duplicate</UiMenuItem>
-    <UiMenuSeparator />
-    <UiMenuItem danger @select="remove">Delete</UiMenuItem>
-  </UiMenuContent>
-</UiMenu>
+    <UiMenuContent>
+      <UiMenuItem @select="handleEdit">Edit</UiMenuItem>
+      <UiMenuItem @select="handleDuplicate">Duplicate</UiMenuItem>
+      <UiMenuSeparator />
+      <UiMenuItem danger @select="handleDelete">Delete</UiMenuItem>
+    </UiMenuContent>
+  </UiMenu>
+</template>
+
+<script setup lang="ts">
+function handleEdit() {
+  console.log("Edit clicked")
+}
+
+function handleDuplicate() {
+  console.log("Duplicate clicked")
+}
+
+function handleDelete() {
+  console.log("Delete clicked")
+}
+</script>
 ```
 
----
-
-## 🖱 Right‑Click Context Menu
+### Context Menu (Right-Click)
 
 ```vue
-<div @contextmenu.prevent="menuRef.openAtCursor($event)">
-  Right-click here
-</div>
+<template>
+  <div @contextmenu.prevent="openMenu">
+    Right-click here
+  </div>
 
-<UiMenu ref="menuRef">
-  <UiMenuContent>
-    <UiMenuItem @select="copy">Copy</UiMenuItem>
-    <UiMenuItem @select="paste">Paste</UiMenuItem>
-  </UiMenuContent>
-</UiMenu>
+  <UiMenu v-model:open="isOpen">
+    <UiMenuContent :position="menuPosition">
+      <UiMenuItem @select="handleCopy">Copy</UiMenuItem>
+      <UiMenuItem @select="handlePaste">Paste</UiMenuItem>
+    </UiMenuContent>
+  </UiMenu>
+</template>
+
+<script setup lang="ts">
+import { ref } from "vue"
+
+const isOpen = ref(false)
+const menuPosition = ref({ x: 0, y: 0 })
+
+function openMenu(event: MouseEvent) {
+  menuPosition.value = { x: event.clientX, y: event.clientY }
+  isOpen.value = true
+}
+
+function handleCopy() {
+  console.log("Copy")
+}
+
+function handlePaste() {
+  console.log("Paste")
+}
+</script>
 ```
 
----
-
-## 🎮 Keyboard Interaction
+## Keyboard Interaction
 
 ### Trigger
 
 | Key | Action |
 |-----|--------|
 | **Enter / Space** | Toggle menu |
-| **ArrowDown** | Open + focus first item |
-| **Right‑click** | Open context menu |
+| **ArrowDown** | Open and focus first item |
 
-### Inside Menu
+### Menu Content
 
 | Key | Action |
-|------|--------|
-| **ArrowUp / ArrowDown** | Navigate |
-| **Home / End** | Jump to first/last |
-| **Enter / Space** | Select |
-| **Esc** | Close + return focus |
-| **Tab** | Close |
+|-----|--------|
+| **ArrowUp / ArrowDown** | Navigate items |
+| **Home / End** | Jump to first/last item |
+| **Enter / Space** | Select item |
+| **Escape** | Close and return focus to trigger |
+| **Tab** | Close menu |
 
----
+## Positioning
 
-## 🧠 Positioning Model
+The menu system supports two positioning modes:
 
-Two anchor types:
+### Trigger-Based Positioning
+Opens below the trigger element and automatically flips above if there's insufficient space below.
 
-### 1. *Trigger anchor*  
-Opens below trigger; flips above if needed.
+### Cursor-Based Positioning
+Positions the menu at specific screen coordinates, useful for context menus.
 
-### 2. *Cursor anchor*  
-Positions directly at cursor for context menus.
+The menu automatically repositions when:
+- Window resizes
+- Page scrolls
+- Menu content changes size
+- Trigger element moves or resizes
 
-Repositions automatically when:
-- window resizes  
-- scrolling  
-- menu resizes  
-- trigger resizes  
+Positioning uses **ResizeObserver** for efficient DOM monitoring.
 
-Powered by **ResizeObserver**.
+## Submenus
 
----
-
-## 🧩 SubMenu — Multi‑level Menus
-
-`UiSubMenu` supports nested menus with behavior similar to VSCode, RadixUI and macOS Finder.
+Nested menus with intelligent hover detection and keyboard navigation.
 
 ### Features
-- Hover intent detection  
-- Amazon‑style mouse trajectory prediction  
-- Smooth keyboard navigation  
-- Safe close delay  
-- Viewport‑aware positioning  
-- Unlimited nesting  
-
-### Example
+- Hover intent detection with mouse trajectory prediction
+- Smooth keyboard navigation between levels
+- Automatic positioning with viewport awareness
+- Configurable hover delays
+- Unlimited nesting depth
 
 ```vue
-<UiMenu>
-  <UiMenuTrigger>
-    <button class="px-3 py-2 bg-neutral-200 rounded">Menu</button>
-  </UiMenuTrigger>
+<template>
+  <UiMenu>
+    <UiMenuTrigger>
+      <button>Actions</button>
+    </UiMenuTrigger>
 
-  <UiMenuContent>
-    <UiMenuItem @select="openFile">Open File</UiMenuItem>
+    <UiMenuContent>
+      <UiMenuItem @select="handleOpen">Open File</UiMenuItem>
 
-    <UiSubMenu>
-      <UiSubMenuTrigger>File Actions</UiSubMenuTrigger>
-      <UiSubMenuContent>
-        <UiMenuItem @select="rename">Rename</UiMenuItem>
-        <UiMenuItem @select="duplicate">Duplicate</UiMenuItem>
+      <UiSubMenu>
+        <UiSubMenuTrigger>File Actions</UiSubMenuTrigger>
+        <UiSubMenuContent>
+          <UiMenuItem @select="handleRename">Rename</UiMenuItem>
+          <UiMenuItem @select="handleDuplicate">Duplicate</UiMenuItem>
 
-        <UiSubMenu>
-          <UiSubMenuTrigger>Advanced</UiSubMenuTrigger>
-          <UiSubMenuContent>
-            <UiMenuItem @select="compress">Compress</UiMenuItem>
-            <UiMenuItem @select="archive">Archive</UiMenuItem>
-          </UiSubMenuContent>
-        </UiSubMenu>
-      </UiSubMenuContent>
-    </UiSubMenu>
+          <UiSubMenu>
+            <UiSubMenuTrigger>Advanced</UiSubMenuTrigger>
+            <UiSubMenuContent>
+              <UiMenuItem @select="handleCompress">Compress</UiMenuItem>
+              <UiMenuItem @select="handleArchive">Archive</UiMenuItem>
+            </UiSubMenuContent>
+          </UiSubMenu>
+        </UiSubMenuContent>
+      </UiSubMenu>
 
-    <UiMenuSeparator />
+      <UiMenuSeparator />
 
-    <UiMenuItem danger @select="deleteItem">Delete</UiMenuItem>
-  </UiMenuContent>
-</UiMenu>
+      <UiMenuItem danger @select="handleDelete">Delete</UiMenuItem>
+    </UiMenuContent>
+  </UiMenu>
+</template>
+
+<script setup lang="ts">
+function handleOpen() { /* ... */ }
+function handleRename() { /* ... */ }
+function handleDuplicate() { /* ... */ }
+function handleCompress() { /* ... */ }
+function handleArchive() { /* ... */ }
+function handleDelete() { /* ... */ }
+</script>
 ```
 
----
+## Theming
 
-# 🎨 Theming & Dark Mode
+The menu system is fully customizable using CSS variables. All styling is theme-agnostic and works with any CSS framework.
 
-`UiMenu` is fully styled via **CSS Variables**, making it compatible with Tailwind, Bootstrap, SCSS, UnoCSS and vanilla CSS.
-
-## Default Theme
+### Default Theme
 
 ```css
 :root {
@@ -214,9 +218,7 @@ Powered by **ResizeObserver**.
 }
 ```
 
----
-
-## 🌙 Dark Mode (compatible with Tailwind `.dark`)
+### Dark Mode
 
 ```css
 .dark {
@@ -229,13 +231,13 @@ Powered by **ResizeObserver**.
 }
 ```
 
-Enable automatically with:
+Apply dark mode globally:
 
 ```html
 <html class="dark">
 ```
 
-Or scoped:
+Or to specific sections:
 
 ```html
 <div class="dark">
@@ -243,92 +245,82 @@ Or scoped:
 </div>
 ```
 
----
+### Custom Theme
 
-## 🎨 Custom Theme (Tailwind)
-
-```css
-@layer base {
-  :root {
-    --ui-menu-bg: theme('colors.neutral.50');
-    --ui-menu-text: theme('colors.neutral.900');
-    --ui-menu-hover-bg: theme('colors.neutral.200');
-  }
-
-  .dark {
-    --ui-menu-bg: theme('colors.neutral.900');
-    --ui-menu-text: theme('colors.neutral.100');
-    --ui-menu-hover-bg: theme('colors.neutral.700');
-  }
-}
-```
-
----
-
-## 🎨 Custom Theme (Vanilla CSS)
+Create custom themes by overriding CSS variables:
 
 ```css
-.my-menu-theme {
-  --ui-menu-bg: #242424;
-  --ui-menu-text: #eaeaea;
-  --ui-menu-hover-bg: #333;
-  --ui-menu-border: #444;
+.custom-theme {
+  --ui-menu-bg: #f8f9fa;
+  --ui-menu-text: #212529;
+  --ui-menu-hover-bg: #e9ecef;
+  --ui-menu-border: #dee2e6;
+  --ui-menu-radius: 4px;
 }
 ```
-
-Usage:
 
 ```html
-<div class="my-menu-theme">
+<div class="custom-theme">
   <UiMenu />
 </div>
 ```
 
----
+## API Reference
 
-# 📚 API Summary
+### `<UiMenu>`
+Root component that manages menu state and provides context to children.
 
-## `<UiMenu>`
-Root provider, manages state.
+**Props:**
+- `open?: boolean` - Controls menu visibility (v-model compatible)
 
-## `<UiMenuTrigger>`
-- Click to open
-- Right‑click context menu
-- Keyboard activation
+**Events:**
+- `update:open` - Emitted when menu visibility changes
 
-## `<UiMenuContent>`
-Teleported floating container.
+### `<UiMenuTrigger>`
+Trigger element that opens the menu.
 
-## `<UiMenuItem>`
+**Props:**
+- `asChild?: boolean` - Pass trigger behavior to child element
+
+### `<UiMenuContent>`
+Floating container for menu items, teleported to document body.
+
+**Props:**
+- `position?: { x: number; y: number }` - Explicit positioning for context menus
+
+### `<UiMenuItem>`
 Selectable menu item.
 
-Props:
-- `danger?: boolean`
+**Props:**
+- `danger?: boolean` - Applies danger/destructive styling
 
-Events:
-- `@select`
+**Events:**
+- `@select` - Emitted when item is selected
 
-## `<UiSubMenu>`
-Provides nested menu context.
+### `<UiMenuLabel>`
+Non-interactive label for menu sections.
 
-## `<UiSubMenuTrigger>`
-Opens submenu on hover / keyboard.
+### `<UiMenuSeparator>`
+Visual separator between menu items.
 
-## `<UiSubMenuContent>`
-Teleported floating submenu.
+### `<UiSubMenu>`
+Container for nested menu functionality.
 
----
+### `<UiSubMenuTrigger>`
+Trigger that opens a submenu on hover or keyboard interaction.
 
-# 🧪 Accessibility
+### `<UiSubMenuContent>`
+Floating container for submenu items, automatically positioned.
 
-- Full keyboard control  
-- Roving focus  
-- ARIA roles (`menu`, `menuitem`, `separator`)  
-- Escape & Tab handling  
-- Focus return to trigger  
+## Accessibility
 
----
+- Full keyboard navigation with arrow keys
+- Roving focus management
+- Proper ARIA roles (`menu`, `menuitem`, `separator`)
+- Escape and Tab key handling
+- Focus returns to trigger on close
+- Screen reader compatible
 
-# 📄 License
+## License
 
-MIT — free for personal and commercial use.
+MIT

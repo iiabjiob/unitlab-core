@@ -11,6 +11,7 @@ import {
 } from "vue"
 import { UI_MENU_KEY, type UiMenuContext } from "./menuContext"
 
+// The trigger may either render its own wrapper or forward props to a child (`asChild`, à la Radix UI).
 const props = defineProps<{ asChild?: boolean }>()
 
 // Inject menu context
@@ -55,6 +56,7 @@ function onClick() {
   menu.toggleFromTrigger()
 }
 
+// Right-click opens the menu at the cursor — useful for context menus that share the same components.
 function onContextMenu(e: MouseEvent) {
   menu.openAtCursor(e)
 }
@@ -85,6 +87,7 @@ function renderAsChild() {
   return cloneVNode(
     vnode,
     mergeProps(vnode.props || {}, {
+      // Always ensure the semantic class is present so CSS variables keep working even in asChild mode.
       class: ["ui-menu-trigger", vnode.props?.class],
       role: "button",
       tabindex: 0,

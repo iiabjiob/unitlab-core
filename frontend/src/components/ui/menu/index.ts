@@ -1,3 +1,4 @@
+// Re-export the full headless menu surface so consumers can cherry-pick pieces as needed.
 import "./styles.css"
 
 export { default as UiMenu } from "./UiMenu.vue"

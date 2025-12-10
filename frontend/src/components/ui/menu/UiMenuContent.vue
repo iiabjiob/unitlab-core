@@ -12,6 +12,7 @@ if (!injected) {
 const menu: UiMenuContext = injected
 const root = ref<HTMLElement | null>(null)
 
+// Keep the shared context up to date so the parent can reposition the floating panel when needed.
 watch(
   () => root.value,
   (el) => {
@@ -25,6 +26,7 @@ onBeforeUnmount(() => {
   }
 })
 
+// As soon as the panel becomes visible, wait for the DOM to settle, align it, and focus the first item for a11y.
 watch(
   () => menu.open.value,
   async (v) => {
@@ -36,6 +38,7 @@ watch(
   }
 )
 
+// Keep focus inside the menu and provide a graceful fallback when no items are focusable yet.
 function focusFirstItem() {
   const items = root.value?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []
   if (items.length > 0) {
@@ -45,6 +48,7 @@ function focusFirstItem() {
   }
 }
 
+// Keyboard navigation mirrors native menus: Escape closes, arrows cycle, Home/End jump.
 function onKeydown(e: KeyboardEvent) {
   const items = root.value?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []
 
@@ -95,6 +99,7 @@ function onKeydown(e: KeyboardEvent) {
     if (i === -1) {
       i = delta > 0 ? 0 : arr.length - 1
     } else {
+      // Wrap around so the navigation feels cyclical, just like native OS menus.
       i = (i + delta + arr.length) % arr.length
     }
     arr[i]?.focus()
@@ -103,6 +108,7 @@ function onKeydown(e: KeyboardEvent) {
   function focusAt(index: number) {
     const arr = Array.from(items)
     if (arr.length === 0) return
+    // Clamp to avoid exceptions when Home/End fire before the nodes exist or while filtering.
     const clamped = Math.max(0, Math.min(arr.length - 1, index))
     arr[clamped]?.focus()
   }

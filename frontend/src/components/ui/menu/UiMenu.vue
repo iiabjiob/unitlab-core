@@ -10,7 +10,9 @@ const triggerEl = ref<HTMLElement | null>(null)
 const contentEl = ref<HTMLElement | null>(null)
 const menuStyle = ref<Record<string, string>>({})
 
+// Track whether the menu should anchor to the trigger element or follow the cursor for context-menus.
 const anchor = ref<Anchor>("trigger")
+// Cursor coordinates are cached because the native event object becomes invalid after async work.
 const cursorPoint = ref({ x: 0, y: 0 })
 
 const emit = defineEmits<{
@@ -22,6 +24,7 @@ let listenersBound = false
 let triggerResizeObserver: ResizeObserver | null = null
 let contentResizeObserver: ResizeObserver | null = null
 
+// Opening is async so we wait for the DOM to paint before reading layout for positioning.
 function openMenu() {
   if (!open.value) {
     open.value = true
@@ -63,6 +66,7 @@ function openAtCursor(e: MouseEvent) {
   openMenu()
 }
 
+// Compute a best-effort viewport-safe menu position for both trigger anchored and cursor anchored modes.
 function position() {
   if (!contentEl.value) return
 
@@ -111,6 +115,7 @@ function position() {
   }
 }
 
+// Pointer capture is registered on the document so we only close when the click happens fully outside.
 function onPointerDown(e: PointerEvent) {
   if (!open.value) return
   const target = e.target as Node | null
@@ -126,6 +131,7 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
+// The menu uses low level listeners rather than Vue events so nested portals still close correctly.
 function bindGlobalListeners() {
   if (listenersBound) return
   listenersBound = true
@@ -146,6 +152,7 @@ function unbindGlobalListeners() {
   window.removeEventListener("scroll", position, true)
 }
 
+// Recompute the popover position when trigger metrics change (resizes, zoom, responsive layouts).
 watch(triggerEl, (el, prev) => {
   if (prev && triggerResizeObserver) {
     triggerResizeObserver.disconnect()
@@ -161,6 +168,7 @@ watch(triggerEl, (el, prev) => {
 })
 
 
+// Watch the floating panel as well because slot content can resize dynamically (icons, async labels, etc.).
 watch(contentEl, (el, prev) => {
   if (prev && contentResizeObserver) {
     contentResizeObserver.disconnect()
@@ -187,6 +195,7 @@ const menuContext: UiMenuContext = {
   close: closeMenu
 }
 
+// Provide the full reactive surface so nested components (trigger, content, items) can coordinate focus.
 provide(UI_MENU_KEY, menuContext)
 
 onBeforeUnmount(() => {
