@@ -1,36 +1,35 @@
-# 📌 UiMenu — Headless Context Menu & Dropdown for Vue 3
+# UiMenu — Headless Context Menu, Dropdown & SubMenu for Vue 3
 
 A lightweight, **fully headless**, **accessible**, and **positioning-aware** menu system for Vue 3.
-Supports:
+Includes:
 
-- Trigger-based dropdown menus
-- Right-click context menus
-- Keyboard navigation
-- Collision-aware positioning (opens above if needed)
-- Auto-repositioning via ResizeObserver
-- Focus management like RadixUI / HeadlessUI
-- Fully customizable UI (renderless logic)
+- Dropdown menus  
+- Right-click context menus  
+- Multi-level SubMenus  
+- Smart positioning + collision handling  
+- Amazon‑style mouse prediction  
+- Full keyboard control  
+- Renderless, style‑agnostic design  
 
-Perfect for dashboards, engineering tools, and scalable design systems.
-
----
-
-## 🚀 Features
-
-- ✔ Headless — bring your own styles
-- ✔ Trigger or cursor anchoring (context menu)
-- ✔ Smart, collision-aware positioning
-- ✔ Auto-reposition + ResizeObserver
-- ✔ No memory leaks (stable global listeners)
-- ✔ Full keyboard accessibility
-- ✔ Correct ARIA roles
-- ✔ Teleport to `<body>` to avoid clipping
+Perfect for dashboards, engineering tools, IDE-like UIs, and professional design systems.
 
 ---
 
-## 📦 Installation
+# 🚀 Features
 
-Import directly:
+- ✔ Headless — bring your own styles  
+- ✔ Trigger or cursor anchoring  
+- ✔ Collision‑aware positioning  
+- ✔ SubMenu hover‑intent prediction (Amazon-style)  
+- ✔ Auto‑reposition + ResizeObserver  
+- ✔ No memory leaks  
+- ✔ Full keyboard accessibility  
+- ✔ ARIA roles for screen readers  
+- ✔ Teleport to `<body>`  
+
+---
+
+# 📦 Installation
 
 ```ts
 import {
@@ -39,28 +38,34 @@ import {
   UiMenuContent,
   UiMenuItem,
   UiMenuLabel,
-  UiMenuSeparator
+  UiMenuSeparator,
+  UiSubMenu,
+  UiSubMenuTrigger,
+  UiSubMenuContent
 } from "@/components/ui/menu"
 ```
 
 ---
 
-## 🧱 Components Overview
+# 🧱 Components Overview
 
 | Component | Purpose |
 |----------|---------|
-| **UiMenu** | Root provider managing state & positioning |
-| **UiMenuTrigger** | Activates menu on click, Enter, Space, ArrowDown, or right-click |
-| **UiMenuContent** | Floating (teleported) menu container |
-| **UiMenuItem** | Actionable item with keyboard + mouse activation |
-| **UiMenuLabel** | Non-interactive label |
-| **UiMenuSeparator** | Horizontal divider |
+| **UiMenu** | Root state provider |
+| **UiMenuTrigger** | Opens menu from click / keyboard / right-click |
+| **UiMenuContent** | Floating teleported menu |
+| **UiMenuItem** | Actionable item |
+| **UiMenuLabel** | Section header |
+| **UiMenuSeparator** | Divider |
+| **UiSubMenu** | Submenu provider |
+| **UiSubMenuTrigger** | Opens nested menu |
+| **UiSubMenuContent** | Floating nested content |
 
 ---
 
-## 🧰 Basic Usage
+# 🧰 Basic Usage
 
-### Dropdown (left-click)
+## Dropdown Menu
 
 ```vue
 <UiMenu>
@@ -81,7 +86,7 @@ import {
 
 ---
 
-### Context Menu (right-click)
+# 🖱 Context Menu (Right‑Click)
 
 ```vue
 <div @contextmenu.prevent="menuRef.openAtCursor($event)">
@@ -98,75 +103,178 @@ import {
 
 ---
 
-## 🎮 Keyboard Interaction
+# 🎮 Keyboard Interaction
 
-### **On trigger**
+## On Trigger
+
 | Key | Action |
 |-----|--------|
-| Enter / Space | Toggle menu |
-| ArrowDown | Open + focus first item |
-| Right-click | Open at cursor |
+| **Enter / Space** | Toggle menu |
+| **ArrowDown** | Open + focus first item |
+| **Right‑click** | Open context menu |
 
-### **Inside menu**
+## Inside Menu
+
 | Key | Action |
 |-----|--------|
-| ArrowUp / ArrowDown | Navigate |
-| Home / End | Jump to first/last |
-| Enter / Space | Activate item |
-| Esc | Close + return focus to trigger |
-| Tab | Close + return focus to trigger |
+| **ArrowUp / ArrowDown** | Navigate |
+| **Home / End** | Jump to first/last |
+| **Enter / Space** | Select item |
+| **Esc** | Close and return focus |
+| **Tab** | Close and return focus |
 
 ---
 
-## 🧠 Positioning Model
+# 🧠 Positioning Model
 
-Supports two anchor modes:
+Anchor types:
 
 ### **1. Trigger anchor**
-Opens under the trigger unless there is no space — then opens above.
+Opens under the trigger; flips upward when needed.
 
 ### **2. Cursor anchor**
-Uses `MouseEvent.clientX` / `clientY`, clamped to viewport.
+Positions at cursor (context menus).
 
-### Auto-repositioning triggers:
+### Repositions on:
 
-- Resize
-- Scroll
-- Trigger resize
-- Content resize
+- window resize  
+- scroll  
+- trigger resize  
+- menu resize  
 
-Handled via global listeners + ResizeObserver.
+Powered by ResizeObserver + global listeners.
 
 ---
 
-## ⚙ Events
+# 🧩 SubMenu — Multi-level Menus
 
-### `@open`
-Fires when the menu opens.
+`UiSubMenu` enables nested menus with UX similar to Radix UI, VSCode, and macOS Finder.
 
-### `@close`
-Fires when the menu closes.
+### ✨ Features
 
-### `UiMenuItem @select`
-Fires when item activates (click / Enter / Space).
+- Hover‑intent submenu opening  
+- Amazon‑style mouse‑trajectory prediction  
+- ArrowRight = open  
+- ArrowLeft = close  
+- Smooth focus transfer  
+- Safe closing delays  
+- Viewport‑aware positioning  
+- Unlimited depth  
+
+---
+
+# ⚡ Example — Nested SubMenu
 
 ```vue
-<UiMenuItem @select="doSomething">Do something</UiMenuItem>
+<UiMenu>
+  <UiMenuTrigger>
+    <button class="px-3 py-2 bg-neutral-200 rounded">Menu</button>
+  </UiMenuTrigger>
+
+  <UiMenuContent>
+    <UiMenuItem @select="openFile">Open File</UiMenuItem>
+
+    <UiSubMenu>
+      <UiSubMenuTrigger>File Actions</UiSubMenuTrigger>
+
+      <UiSubMenuContent>
+        <UiMenuItem @select="rename">Rename</UiMenuItem>
+        <UiMenuItem @select="duplicate">Duplicate</UiMenuItem>
+
+        <UiSubMenu>
+          <UiSubMenuTrigger>Advanced</UiSubMenuTrigger>
+
+          <UiSubMenuContent>
+            <UiMenuItem @select="compress">Compress</UiMenuItem>
+            <UiMenuItem @select="archive">Archive</UiMenuItem>
+          </UiSubMenuContent>
+        </UiSubMenu>
+      </UiSubMenuContent>
+    </UiSubMenu>
+
+    <UiMenuSeparator />
+
+    <UiMenuItem danger @select="deleteItem">Delete</UiMenuItem>
+  </UiMenuContent>
+</UiMenu>
 ```
 
 ---
 
-## 🎨 Styling
+# 🧠 SubMenu Mouse Behavior (Amazon‑Style Prediction)
 
-Completely headless — style things as needed:
+To prevent accidental closing while moving diagonally toward submenu:
+
+- Tracks last 2–3 cursor points  
+- Computes motion vector  
+- Builds a virtual triangle from item → submenu panel  
+- If cursor is inside predicted zone → submenu stays open  
+- Adds closing delay (150ms)  
+- Safe zone: vertical tolerance ±40px  
+
+This achieves **industry‑best submenu UX**.
+
+---
+
+# 🎮 SubMenu Keyboard Interaction
+
+Inside a submenu:
+
+| Key | Action |
+|------|--------|
+| **→ ArrowRight** | Open submenu |
+| **← ArrowLeft** | Close submenu & return focus |
+| **↑ / ↓** | Navigate items |
+| **Enter / Space** | Activate |
+| **Esc** | Close submenu |
+
+---
+
+# 🧰 SubMenu Component API
+
+## `<UiSubMenu>`
+Provides submenu state.
+
+### Props  
+_None_
+
+---
+
+## `<UiSubMenuTrigger>`
+Opens submenu via:
+
+- Hover  
+- ArrowRight  
+- Enter / Space  
+
+---
+
+## `<UiSubMenuContent>`
+Teleported floating content.
+
+Handles:
+
+- Focus navigation  
+- Safe close  
+- Collision constraints  
+
+---
+
+# 🎨 Styling
+
+The entire system is headless.
+
+Example:
 
 ```html
 <UiMenuItem class="px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-700" />
 ```
 
+You may use Tailwind, UnoCSS, SCSS, or plain CSS.
+
 ---
 
-## 💎 Example: Full Menu
+# 💎 Full Example (Dropdown + SubMenu)
 
 ```vue
 <UiMenu>
@@ -180,10 +288,17 @@ Completely headless — style things as needed:
     <UiMenuItem @select="openProfile">Profile</UiMenuItem>
     <UiMenuItem @select="settings">Settings</UiMenuItem>
 
+    <UiSubMenu>
+      <UiSubMenuTrigger>More</UiSubMenuTrigger>
+      <UiSubMenuContent>
+        <UiMenuItem @select="itemA">Item A</UiMenuItem>
+        <UiMenuItem @select="itemB">Item B</UiMenuItem>
+      </UiSubMenuContent>
+    </UiSubMenu>
+
     <UiMenuSeparator />
 
     <UiMenuLabel>Danger zone</UiMenuLabel>
-
     <UiMenuItem danger @select="logout">Log out</UiMenuItem>
   </UiMenuContent>
 </UiMenu>
@@ -191,6 +306,6 @@ Completely headless — style things as needed:
 
 ---
 
-## 📄 License
+# 📄 License
 
 MIT — free for personal and commercial use.

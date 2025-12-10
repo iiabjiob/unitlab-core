@@ -1,3 +1,4 @@
+// File: menuContext.ts
 import type { InjectionKey, Ref } from "vue"
 
 export interface UiMenuContext {

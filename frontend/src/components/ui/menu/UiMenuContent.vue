@@ -1,3 +1,4 @@
+<!-- File: UiMenuContent.vue -->
 <script setup lang="ts">
 import { inject, nextTick, onBeforeUnmount, ref, watch } from "vue"
 import { UI_MENU_KEY, type UiMenuContext } from "./menuContext"
@@ -113,8 +114,7 @@ function onKeydown(e: KeyboardEvent) {
     <div
       v-if="menu.open.value"
       ref="root"
-      class="absolute z-50 min-w-40 rounded-md border border-neutral-200 bg-white shadow-lg 
-             dark:border-neutral-700 dark:bg-neutral-800"
+      class="ui-menu-content"
       :style="menu.menuStyle.value"
       role="menu"
       aria-orientation="vertical"

@@ -1,3 +1,4 @@
+<!-- File: UiMenuItem.vue -->
 <script setup lang="ts">
 import { inject } from "vue"
 import { UI_MENU_KEY, type UiMenuContext } from "./menuContext"
@@ -37,11 +38,8 @@ function onKeydown(e: KeyboardEvent) {
 
 <template>
   <div
-    class="px-3 py-2 text-sm cursor-pointer select-none rounded outline-none
-           hover:bg-neutral-100 dark:hover:bg-neutral-700
-           focus:bg-neutral-100 dark:focus:bg-neutral-700
-           flex items-center gap-2"
-    :class="props.danger ? 'text-red-600' : ''"
+    class="ui-menu-item"
+    :class="{ 'is-danger': props.danger }"
     role="menuitem"
     tabindex="-1"
     @click="onClick"
