@@ -3,7 +3,7 @@
     <transition name="fade-modal">
       <div
         v-if="open"
-        class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 dark:bg-black/70"
+        class="fixed inset-0 z-1000 flex items-center justify-center bg-black/50 dark:bg-black/70"
         @click.self="onBackdropClick"
       >
         <transition name="scale-modal">

@@ -25,6 +25,34 @@ function buildEmptyBindings() {
 
 export const useSwitchgearStore = defineStore("switchgearStore", () => {
   const switchgears = ref<Switchgear[]>([])
+  const loading = ref(false)
+  const loadedOnce = ref(false)
+
+  function existingNames() {
+    return new Set(switchgears.value.map(sw => sw.name))
+  }
+
+  function nextDefaultName() {
+    const base = "New Switchgear"
+    const names = existingNames()
+    let suffix = 1
+    while (names.has(`${base} ${suffix}`)) {
+      suffix += 1
+    }
+    return `${base} ${suffix}`
+  }
+
+  function nextDuplicateName(sourceName: string) {
+    const trimmed = sourceName.trim() || "Switchgear"
+    const names = existingNames()
+    let candidate = `${trimmed} copy`
+    let counter = 2
+    while (names.has(candidate)) {
+      candidate = `${trimmed} copy ${counter}`
+      counter += 1
+    }
+    return candidate
+  }
 
   function resolveChannel(chId: number | null) {
     if (!chId) return null
@@ -40,13 +68,23 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
 
   // Fetch all switchgears
   async function fetchAll() {
+    loading.value = true
     try {
       const { data } = await axios.get<Switchgear[]>(ApiBuilder.switchgears())
       switchgears.value = data
       logger.info(`📡 Loaded ${data.length} switchgears`)
+      loadedOnce.value = true
 
     } catch (err) {
       logger.error("💥 Failed to fetch switchgears:", err)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function ensureLoaded() {
+    if (!loadedOnce.value && !loading.value) {
+      await fetchAll()
     }
   }
 
@@ -74,6 +112,11 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     }
   }
 
+  async function createAuto() {
+    const name = nextDefaultName()
+    return await create({ name })
+  }
+
   // Update single field(s)
   async function updateField(id: number, changes: SwitchgearUpdateInput) {
     try {
@@ -84,8 +127,10 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
         switchgears.value[idx] = data
       }
       logger.debug(`✏️ Switchgear ${id} updated`, changes)
+      return data
     } catch (err) {
       logger.error(`💥 Failed to update switchgear ${id}:`, err)
+      throw err
     }
   }
 
@@ -120,6 +165,37 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     return null
   }
 
+  async function duplicate(id: number) {
+    const original = switchgears.value.find(sw => sw.id === id)
+    if (!original) {
+      throw new Error(`Switchgear ${id} not found`)
+    }
+
+    const payload: SwitchgearCreateInput = {
+      name: nextDuplicateName(original.name),
+      switchgear_type: original.switchgear_type,
+      bindings: original.bindings.map(binding => ({
+        role: binding.role,
+        channel_id: binding.channel_id,
+        delay_ms: binding.delay_ms,
+      })),
+    }
+
+    return await create(payload)
+  }
+
+  async function resetBindings(id: number) {
+    const target = switchgears.value.find(sw => sw.id === id)
+    if (!target) return
+    await updateField(id, {
+      bindings: buildEmptyBindings().map(binding => ({
+        ...binding,
+        channel_id: null,
+        delay_ms: 0,
+      })),
+    })
+  }
+
   function isUnitOnline(sw: Switchgear): boolean {
     const chId = resolveBindingChannelId(sw, ["do_open", "do_closed"])
     if (!chId) return true
@@ -133,13 +209,19 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
 
   return {
     switchgears,
+    loading,
+    ensureLoaded,
     resolveChannel,
     fetchAll,
     create,
+    createAuto,
     updateField,
     remove,
     getById,
     isUnitOnline,
     bindingByRole,
+    resolveBindingChannelId,
+    duplicate,
+    resetBindings,
   }
 })

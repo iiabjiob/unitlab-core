@@ -31,7 +31,7 @@ const sortedLogs = computed(() =>
 
     <!-- LIST -->
     <div
-      class="flex-1 overflow-y-auto px-4 py-2 space-y-[2px]
+      class="flex-1 overflow-y-auto px-4 py-2 space-y-0.5
              font-mono text-[11px] leading-tight
              text-neutral-700 dark:text-neutral-300"
     >
@@ -40,7 +40,7 @@ const sortedLogs = computed(() =>
       <div
         v-for="(log, i) in sortedLogs"
         :key="i"
-        class="flex items-center gap-2 py-[1px] px-1 rounded-sm
+        class="flex items-center gap-2 py-px px-1 rounded-sm
                hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-colors"
       >
 
@@ -61,7 +61,7 @@ const sortedLogs = computed(() =>
 
         <!-- MESSAGE -->
         <div
-          class="whitespace-pre-wrap break-words flex-1"
+          class="whitespace-pre-wrap wrap-break-words flex-1"
           :class="{
             'text-red-400': log.type === 'error',
             'text-blue-300': log.type === 'step',

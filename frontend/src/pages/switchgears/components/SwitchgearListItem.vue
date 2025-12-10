@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import type { Switchgear } from "@/types/switchgear";
+import type { Switchgear } from "@/types/switchgear"
 
-const props = defineProps<{
-  swtichgear: Switchgear
+defineProps<{
+  switchgear: Switchgear
   active: boolean
 }>()
-
 </script>
 
 <template>
@@ -22,18 +21,16 @@ const props = defineProps<{
       :class="active ? 'bg-blue-500' : 'bg-transparent group-hover:bg-neutral-700'"
     />
 
-    <div class="flex items-center gap-2">
-  
+    <div class="flex flex-col gap-0.5 flex-1">
       <!-- SWITCHGEAR NAME -->
-      <div class="truncate text-sm flex-1">
-        {{ swtichgear.name }}
+      <div class="truncate text-sm font-medium">
+        {{ switchgear.name }}
       </div>
-  
+
       <!-- SWITCHGEAR TYPE -->
-      <div class="text-xs truncate text-neutral-500 dark:text-neutral-400">
-        {{ swtichgear.switchgear_type }}
+      <div class="text-[11px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+        {{ switchgear.switchgear_type }}
       </div>
     </div>
-
   </div>
 </template>

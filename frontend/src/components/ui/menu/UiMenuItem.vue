@@ -2,9 +2,13 @@
 import { inject } from "vue"
 import { UI_MENU_KEY, type UiMenuContext } from "./menuContext"
 
-const props = defineProps<{ danger?: boolean }>()
+const props = defineProps<{
+  danger?: boolean
+}>()
 
-const emit = defineEmits(["select"])
+const emit = defineEmits<{
+  (e: "select"): void
+}>()
 
 const injected = inject(UI_MENU_KEY)
 
@@ -29,13 +33,6 @@ function onKeydown(e: KeyboardEvent) {
     handleSelect()
   }
 }
-
-function onPointerEnter() {
-  const active = document.activeElement as HTMLElement | null
-  if (active && active !== document.body && active.getAttribute("role") === "menuitem") {
-    active.blur()
-  }
-}
 </script>
 
 <template>
@@ -49,7 +46,6 @@ function onPointerEnter() {
     tabindex="-1"
     @click="onClick"
     @keydown="onKeydown"
-    @pointerenter="onPointerEnter"
   >
     <slot />
   </div>

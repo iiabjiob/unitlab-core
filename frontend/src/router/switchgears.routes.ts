@@ -1,4 +1,5 @@
 import type { RouteRecordRaw } from "vue-router"
+import { useSwitchgearStore } from "@/stores/switchgearStore"
 
 // Default meta shared from index.ts
 const defaultMeta = {
@@ -10,6 +11,10 @@ export const switchgearsRoutes: RouteRecordRaw[] = [
   {
     path: "/switchgears",
     component: () => import("@/pages/switchgears/SwitchgearsPage.vue"),
+    beforeEnter: async () => {
+      const store = useSwitchgearStore()
+      await store.ensureLoaded()
+    },
     meta: {
       ...defaultMeta,
       rightAside: false,
