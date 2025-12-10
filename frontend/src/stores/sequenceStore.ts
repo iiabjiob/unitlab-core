@@ -77,6 +77,10 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     return states.value[id]
   }
 
+  function resetState(seqId: number) {
+    states.value[seqId] = createEmptyState(seqId, stepsCount(seqId))
+  }
+
   function applySnapshot(seqId: number, snapshot: SequenceState) {
     const total = snapshot.total_steps ?? stepsCount(seqId)
 
@@ -334,6 +338,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     createSequenceAuto,
     deleteSequence,
     duplicateSequence,
+    resetState,
 
     refreshState,
     startSequence,

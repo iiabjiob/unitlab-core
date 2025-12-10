@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import select, update, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.sequence import SequenceStep, SequenceStepType
+from app.models.sequence import Sequence, SequenceStep, SequenceStepType
 
 
 class SequenceStepRepository:
@@ -48,6 +48,7 @@ class SequenceStepRepository:
                 payload=data.get("payload"),
             )
             self.db.add(step)
+            await self._touch_sequence(sequence_id)
             await self.db.commit()
             await self.db.refresh(step)
             return step
@@ -68,6 +69,7 @@ class SequenceStepRepository:
             elif hasattr(step, key):
                 setattr(step, key, value)
 
+        await self._touch_sequence(step.sequence_id)
         await self.db.commit()
         await self.db.refresh(step)
         return step
@@ -77,6 +79,7 @@ class SequenceStepRepository:
         if not step:
             return False
         await self.db.delete(step)
+        await self._touch_sequence(step.sequence_id)
         await self.db.commit()
         return True
 
@@ -97,16 +100,44 @@ class SequenceStepRepository:
             if step_id not in seen:
                 normalized.append(step_id)
 
-        total = len(normalized)
-        # Phase 1: move everything out of the way to avoid unique constraint clashes.
-        for idx, step_id in enumerate(normalized):
-            lookup[step_id].order_index = total + idx
+        return await self._apply_order(sequence_id, normalized, steps)
+
+    async def normalize(self, sequence_id: int) -> list[SequenceStep]:
+        steps = await self.get_for_sequence(sequence_id)
+        ordered_ids = [step.id for step in steps]
+        return await self._apply_order(sequence_id, ordered_ids, steps)
+
+    async def _apply_order(
+        self,
+        sequence_id: int,
+        ordered_ids: list[int],
+        current_steps: list[SequenceStep] | None = None,
+    ) -> list[SequenceStep]:
+        total = len(ordered_ids)
+        if total == 0:
+            return []
+
+        steps = current_steps or await self.get_for_sequence(sequence_id)
+        max_index = max((step.order_index for step in steps), default=-1)
+        offset = max_index + total + 1
+
+        # Phase 1: bulk offset to avoid unique constraint conflicts.
+        await self.db.execute(
+            update(SequenceStep)
+            .where(SequenceStep.sequence_id == sequence_id)
+            .values(order_index=SequenceStep.order_index + offset)
+        )
         await self.db.flush()
 
-        # Phase 2: apply the final order.
-        for idx, step_id in enumerate(normalized):
-            lookup[step_id].order_index = idx
+        # Phase 2: apply final order per step id.
+        for idx, step_id in enumerate(ordered_ids):
+            await self.db.execute(
+                update(SequenceStep)
+                .where(SequenceStep.id == step_id)
+                .values(order_index=idx)
+            )
 
+        await self._touch_sequence(sequence_id)
         await self.db.commit()
         return await self.get_for_sequence(sequence_id)
 
@@ -129,5 +160,13 @@ class SequenceStepRepository:
                 )
             )
 
+        await self._touch_sequence(sequence_id)
         await self.db.commit()
         return await self.get_for_sequence(sequence_id)
+
+    async def _touch_sequence(self, sequence_id: int) -> None:
+        await self.db.execute(
+            update(Sequence)
+            .where(Sequence.id == sequence_id)
+            .values(updated_at=func.now())
+        )

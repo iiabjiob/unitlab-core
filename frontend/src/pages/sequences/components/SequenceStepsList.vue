@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
 import { useSequenceStepStore } from "@/stores/sequenceStepStore"
+import { useSequenceStore } from "@/stores/sequenceStore"
 import SequenceStepAddToolbar from "./SequenceStepAddToolbar.vue"
 import SequenceStepItem from "./SequenceStepItem.vue"
 import DraggableList from "@/components/ui/DraggableList.vue"
-import type { SequenceDef, SequenceStep } from "@/types/sequences"
+import type { SequenceDef, SequenceStep, SequenceStepCreate } from "@/types/sequences"
 
 const props = defineProps<{ sequence: SequenceDef }>()
 
 const stepStore = useSequenceStepStore()
+const sequenceStore = useSequenceStore()
 
 type EnrichedStep = SequenceStep & { description: string }
 
@@ -40,9 +42,28 @@ async function handleReorder(nextItems: EnrichedStep[]) {
 
   try {
     await stepStore.reorderSteps(props.sequence.id, newOrder)
+    sequenceStore.resetState(props.sequence.id)
   } catch (error) {
     console.error("Failed to reorder steps", error)
     draggableSteps.value = [...steps.value]
+  }
+}
+
+async function handleDelete(stepId: number) {
+  try {
+    await stepStore.deleteStep(props.sequence.id, stepId)
+    sequenceStore.resetState(props.sequence.id)
+  } catch (error) {
+    console.error("Failed to delete step", error)
+  }
+}
+
+async function handleAdd(payload: SequenceStepCreate) {
+  try {
+    await stepStore.addStep(props.sequence.id, payload)
+    sequenceStore.resetState(props.sequence.id)
+  } catch (error) {
+    console.error("Failed to add step", error)
   }
 }
 </script>
@@ -58,7 +79,7 @@ async function handleReorder(nextItems: EnrichedStep[]) {
     <!-- TOOLBAR -->
     <div class="py-2">
       <SequenceStepAddToolbar
-        @add="stepStore.addStep(sequence.id, $event)"
+        @add="handleAdd"
       />
     </div>
 
@@ -77,7 +98,8 @@ async function handleReorder(nextItems: EnrichedStep[]) {
         <template #default="{ item }">
           <SequenceStepItem
             :step="item"
-            @click="selectStep(item.id)"
+            @select="selectStep"
+            @delete="handleDelete"
           />
         </template>
       </DraggableList>

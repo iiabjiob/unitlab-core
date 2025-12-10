@@ -3,6 +3,7 @@
     class="group flex items-center justify-between px-2 py-1.5 text-sm select-none
            transition-colors
            hover:bg-neutral-100 dark:hover:bg-neutral-800"
+    @click="emit('select', step.id)"
   >
     <!-- LEFT -->
     <div class="flex items-center gap-3">
@@ -62,7 +63,7 @@ const props = defineProps<{
   step: SequenceStep
 }>()
 
-const emit = defineEmits(["edit", "delete"])
+const emit = defineEmits(["edit", "delete", "select"])
 
 const seqStore = useSequenceStore()
 const stepStore = useSequenceStepStore()

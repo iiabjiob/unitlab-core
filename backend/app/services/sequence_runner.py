@@ -161,6 +161,13 @@ class SequenceRunner:
             run: Optional[SequenceRun] = result.scalar_one_or_none()
 
             total_steps = len(sequence.steps)
+            sequence_updated_at = sequence.updated_at or sequence.created_at
+
+            if run:
+                reference = run.finished_at or run.started_at or datetime.min.replace(tzinfo=timezone.utc)
+                if sequence_updated_at and reference and sequence_updated_at > reference:
+                    run = None
+
             if not run:
                 state = SequenceStateSchema(
                     sequence_id=sequence_id,
@@ -659,6 +666,9 @@ class SequenceRunner:
 
     def _cache_state(self, sequence_id: int, state: SequenceStateSchema) -> None:
         self._state_cache[sequence_id] = state
+
+    def invalidate_state(self, sequence_id: int) -> None:
+        self._state_cache.pop(sequence_id, None)
 
     async def _broadcast_started(self, sequence_id: int, run_id: int, total_steps: int) -> None:
         ws_manager = WebSocketManager.get_instance()

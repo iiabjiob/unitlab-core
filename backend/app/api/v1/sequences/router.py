@@ -93,7 +93,9 @@ async def list_steps(seq_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/{seq_id}/steps", response_model=SequenceStepSchema)
 async def create_step(seq_id: int, payload: SequenceStepCreateSchema, db: AsyncSession = Depends(get_db)):
     repo = SequenceStepRepository(db)
-    return await repo.create(seq_id, payload.model_dump(exclude_unset=True))
+    step = await repo.create(seq_id, payload.model_dump(exclude_unset=True))
+    SequenceRunner.get_instance().invalidate_state(seq_id)
+    return step
 
 
 @router.patch("/{seq_id}/steps/{step_id}", response_model=SequenceStepSchema)
@@ -107,6 +109,7 @@ async def update_step(
     step = await repo.update(step_id, payload.model_dump(exclude_unset=True))
     if not step:
         raise HTTPException(status_code=404, detail="Step not found")
+    SequenceRunner.get_instance().invalidate_state(seq_id)
     return step
 
 
@@ -117,25 +120,26 @@ async def delete_step(seq_id: int, step_id: int, db: AsyncSession = Depends(get_
     if not deleted:
         raise HTTPException(status_code=404, detail="Step not found")
 
-    # normalize order indexes
-    steps = await repo.get_for_sequence(seq_id)
-    for idx, step in enumerate(steps):
-        step.order_index = idx
-    await db.commit()
+    await repo.normalize(seq_id)
+    SequenceRunner.get_instance().invalidate_state(seq_id)
     return {"detail": "Step deleted"}
 
 
 @router.post("/{seq_id}/steps/reorder", response_model=list[SequenceStepSchema])
 async def reorder_steps(seq_id: int, payload: SequenceReorderSchema, db: AsyncSession = Depends(get_db)):
     repo = SequenceStepRepository(db)
-    return await repo.reorder(seq_id, payload.new_order)
+    steps = await repo.reorder(seq_id, payload.new_order)
+    SequenceRunner.get_instance().invalidate_state(seq_id)
+    return steps
 
 
 @router.put("/{seq_id}/steps", response_model=list[SequenceStepSchema])
 async def replace_steps(seq_id: int, steps: list[SequenceStepCreateSchema], db: AsyncSession = Depends(get_db)):
     repo = SequenceStepRepository(db)
     payload = [step.model_dump() for step in steps]
-    return await repo.replace(seq_id, payload)
+    result = await repo.replace(seq_id, payload)
+    SequenceRunner.get_instance().invalidate_state(seq_id)
+    return result
 
 
 # ---------------------------------------------------------------------------
