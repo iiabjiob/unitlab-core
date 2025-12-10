@@ -171,10 +171,6 @@ def topic_state(unit_id: str) -> str:
     return f"{unit_id}/s"
 
 
-def topic_state_channel(unit_id: str, ch: int) -> str:
-    return f"{unit_id}/s/{ch}"
-
-
 def topic_cmd(unit_id: str) -> str:
     return f"{unit_id}/c"
 

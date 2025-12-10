@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 from simulator.mqtt_client import (
     SimulatedDeviceBase,
     topic_state,
-    topic_state_channel,
 )
 from simulator.packet_structures import (
     Cmd,
@@ -98,7 +97,7 @@ class SimulatedDODevice(SimulatedDeviceBase):
     ) -> None:
         payload = encode_state_single_bit(StateSingleBit(ch=ch, value=value))
         await self._publish_packet(
-            topic_state_channel(self.unit_id, ch),
+            topic_state(self.unit_id),
             Mode.STATE_SINGLE_BIT,
             payload,
             packet_id=packet_id,

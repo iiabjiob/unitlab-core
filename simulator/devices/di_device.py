@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Optional
 from simulator.mqtt_client import (
     SimulatedDeviceBase,
     topic_state,
-    topic_state_channel,
 )
 from simulator.packet_structures import (
     Cmd,
@@ -133,7 +132,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
                 return
             await self._send_resp(RespStatus.OK, packet_id=header.packet_id)
             await self._publish_packet(
-                topic_state_channel(self.unit_id, ch),
+                topic_state(self.unit_id),
                 Mode.STATE_SINGLE_BIT,
                 encode_state_single_bit(StateSingleBit(ch=ch, value=value)),
                 packet_id=header.packet_id,
@@ -161,7 +160,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
                     self._bitmask &= ~(1 << ch)
                 payload = encode_state_single_bit(StateSingleBit(ch=ch, value=target))
             await self._publish_packet(
-                topic_state_channel(self.unit_id, ch),
+                topic_state(self.unit_id),
                 Mode.STATE_SINGLE_BIT,
                 payload,
                 retain=False,
@@ -179,7 +178,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
                         self._bitmask &= ~(1 << ch)
                     payload = encode_state_single_bit(StateSingleBit(ch=ch, value=final))
                 await self._publish_packet(
-                    topic_state_channel(self.unit_id, ch),
+                    topic_state(self.unit_id),
                     Mode.STATE_SINGLE_BIT,
                     payload,
                     retain=False,
@@ -198,7 +197,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
                             StateSingleBit(ch=ch, value=previous)
                         )
                     await self._publish_packet(
-                        topic_state_channel(self.unit_id, ch),
+                        topic_state(self.unit_id),
                         Mode.STATE_SINGLE_BIT,
                         payload,
                     )
