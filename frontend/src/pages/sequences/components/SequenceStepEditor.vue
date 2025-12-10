@@ -131,7 +131,6 @@ function exitEditMode() {
           <UiButton
             size="xs"
             variant="ghost"
-            :disabled="saving"
             @click="exitEditMode"
           >
             x
@@ -143,14 +142,13 @@ function exitEditMode() {
         :is="editorComponent"
         :key="step.id"
         :step="step"
-        :disabled="saving"
         @update="handleUpdate"
       />
 
       <UiAlert v-if="error" type="error" :message="error" />
-      <div v-else-if="saving" class="text-xs text-neutral-500">
+      <!-- <div v-else-if="saving" class="text-xs text-neutral-500">
         Saving…
-      </div>
+      </div> -->
     </div>
   
 </template>

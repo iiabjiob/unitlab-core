@@ -50,12 +50,12 @@ function setValue(next: number) {
 				<UiButton
 					v-for="option in [0, 1]"
 					:key="option"
-					size="sm"
+					size="xs"
 					:variant="currentValue === option ? 'primary' : 'secondary'"
 					:disabled="disabled"
 					@click="setValue(option)"
 				>
-					{{ option === 0 ? "Low" : "High" }}
+					{{ option === 0 ? "Off" : "On" }}
 				</UiButton>
 			</div>
 		</div>

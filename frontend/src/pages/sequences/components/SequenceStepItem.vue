@@ -3,7 +3,7 @@
     class="group flex items-center justify-between px-2 py-1.5 text-sm select-none transition-colors"
     :class="[
       active
-        ? 'bg-blue-50 text-blue-900 dark:bg-blue-900/30 dark:text-blue-100'
+        ? 'bg-neutral-50 text-blue-900 dark:bg-neutral-900/30 dark:text-blue-100'
         : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
     ]"
     @click="emit('select', step.id)"
@@ -42,10 +42,14 @@
       class="flex items-center gap-2 transition-opacity"
       :class="active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
     >
-      <button
-        @click.stop="emit('delete', step.id)"
-        class="text-neutral-400 dark:text-neutral-500 hover:text-red-500 dark:hover:text-red-400"
-      >🗑</button>
+      
+      <UiButton
+        size="xs"
+        variant="ghost"
+        @click.stop="emit('edit', step.id)"
+      >
+        <TrashIcon size="16" />
+      </UiButton>
     </div>
   </div>
 </template>
@@ -57,6 +61,8 @@ import { computed } from "vue"
 import type { SequenceStep } from "@/types/sequences"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useSequenceStepStore } from "@/stores/sequenceStepStore"
+import TrashIcon from "@/components/icons/TrashIcon.vue";
+import UiButton from "@/components/ui/UiButton.vue";
 
 const props = defineProps<{
   step: SequenceStep
