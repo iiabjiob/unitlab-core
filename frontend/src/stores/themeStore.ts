@@ -1,5 +1,5 @@
 import { defineStore } from "pinia"
-import { ref, watch } from "vue"
+import { ref, watch, computed } from "vue"
 
 export type ThemeMode = "light" | "dark" | "auto"
 
@@ -8,35 +8,39 @@ export const useThemeStore = defineStore("themeStore", () => {
     (localStorage.getItem("themeMode") as ThemeMode) || "auto"
   )
 
-  function applyTheme() {
-    const root = document.documentElement
-    let theme: "light" | "dark"
+  const mql = typeof window !== "undefined"
+    ? window.matchMedia("(prefers-color-scheme: dark)")
+    : null
 
+  const currentTheme = computed<"light" | "dark">(() => {
     if (mode.value === "auto") {
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
-      theme = prefersDark ? "dark" : "light"
-    } else {
-      theme = mode.value
+      return mql?.matches ? "dark" : "light"
     }
+    return mode.value
+  })
 
-    if (theme === "dark") {
-      root.classList.add("dark")
-    } else {
-      root.classList.remove("dark")
-    }
+  function applyTheme() {
+    if (typeof document === "undefined") return
+    document.documentElement.classList.toggle("dark", currentTheme.value === "dark")
   }
 
   function setMode(newMode: ThemeMode) {
+    if (mode.value === newMode) return
     mode.value = newMode
     localStorage.setItem("themeMode", newMode)
-    applyTheme() // 👈 применяем сразу
   }
 
-  // применить при старте
+  // react to mode change
+  watch(mode, applyTheme)
+
+  // react to OS theme change
+  if (mql) {
+    mql.addEventListener?.("change", () => {
+      if (mode.value === "auto") applyTheme()
+    })
+  }
+
   applyTheme()
 
-  // если mode меняется где-то реактивно → обновить
-  watch(mode, () => applyTheme())
-
-  return { mode, setMode }
+  return { mode, setMode, currentTheme }
 })

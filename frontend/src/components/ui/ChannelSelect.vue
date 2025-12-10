@@ -3,7 +3,8 @@
     :model-value="modelValue"
     :name="name"
     placeholder="— select channel —"
-    @update:modelValue="val => $emit('update:modelValue', val === null ? null : Number(val))"
+    :disabled="disabled"
+    @update:modelValue="updateValue"
   >
     <option
       v-for="ch in filtered"
@@ -26,6 +27,7 @@ const props = defineProps<{
   channelType: ChannelType
   name?: string
   excludeIds?: number[]
+  disabled?: boolean
 }>()
 const emit = defineEmits<{
   (e: "update:modelValue", value: number | null): void
@@ -40,4 +42,12 @@ const filtered = computed(() =>
       !(props.excludeIds?.includes(ch.id))
   )
 )
+
+function updateValue(val: string | number | null) {
+  if (val === null || val === "") {
+    emit("update:modelValue", null)
+    return
+  }
+  emit("update:modelValue", Number(val))
+}
 </script>

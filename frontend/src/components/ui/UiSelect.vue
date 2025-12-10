@@ -4,6 +4,7 @@
            bg-white dark:bg-neutral-800 focus:outline-none"
     :value="modelValue ?? ''"
     :name="name"
+    :disabled="disabled"
     @change="onChange"
   >
     <option value="" v-if="placeholder">{{ placeholder }}</option>
@@ -16,6 +17,7 @@ const props = defineProps<{
   modelValue?: string | number | null
   name?: string
   placeholder?: string
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{

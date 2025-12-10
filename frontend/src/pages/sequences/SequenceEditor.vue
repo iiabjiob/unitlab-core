@@ -3,17 +3,20 @@ import { computed, ref } from "vue"
 import { useRoute, useRouter } from "vue-router"
 
 import { useSequenceStore } from "@/stores/sequenceStore"
+import { useSequenceStepStore } from "@/stores/sequenceStepStore"
 
 import SequenceEditorHeader from "./components/SequenceEditorHeader.vue"
 import SequenceRunControls from "./components/SequenceRunControls.vue"
 import SequenceStepsList from "./components/SequenceStepsList.vue"
 import SequenceExecutionLog from "./components/SequenceExecutionLog.vue"
+import SequenceStepEditor from "./components/SequenceStepEditor.vue"
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 
 const route = useRoute()
 const router = useRouter()
 const store = useSequenceStore()
+const stepStore = useSequenceStepStore()
 
 const sequenceId = computed(() => Number(route.params.id))
 
@@ -22,6 +25,14 @@ const sequence = computed(() =>
 )
 
 const state = computed(() => store.states[sequenceId.value])
+const selectedStep = computed(() => {
+  if (!sequence.value) return null
+  const activeId = stepStore.activeStepId
+  if (!activeId) return null
+  return stepStore.steps.find(
+    step => step.sequence_id === sequence.value?.id && step.id === activeId,
+  ) ?? null
+})
 const deleteModalOpen = ref(false)
 const deleteMessage = computed(() =>
   sequence.value ? `Sequence "${sequence.value.name}" will be deleted with all steps.` : ""
@@ -48,6 +59,10 @@ async function confirmDelete() {
   await store.deleteSequence(sequence.value.id)
   deleteModalOpen.value = false
   await router.push({ name: "sequences.list" })
+}
+
+function exitStepEdit() {
+  stepStore.setActiveStep(null)
 }
 </script>
 
@@ -85,10 +100,21 @@ async function confirmDelete() {
         <SequenceStepsList :sequence="sequence" />
       </ResizablePanel>
       
+      <!-- PANEL -->
+      <div v-if="sequence && state" class="flex flex-col flex-1 overflow-hidden">
 
-      <!-- LOG PANEL -->
-      <div v-if="sequence && state" class="flex-1 overflow-y-auto" >
-        <SequenceExecutionLog :sequence="sequence" :state="state" />
+        <!-- EDITOR -->
+        <SequenceStepEditor          
+          :sequence="sequence"
+          :step="selectedStep"
+          @close="exitStepEdit"
+        />
+
+        <!-- LOG -->
+        <div class="flex-1 overflow-y-auto mt-2">
+          <SequenceExecutionLog :sequence="sequence" :state="state" />
+        </div>
+
       </div>
 
     </div>

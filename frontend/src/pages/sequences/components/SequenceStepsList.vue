@@ -29,7 +29,11 @@ watch(
 )
 
 function selectStep(stepId: number) {
-  stepStore.activeStepId = stepId
+  stepStore.setActiveStep(stepId)
+}
+
+function editStep(step: EnrichedStep) {
+  selectStep(step.id)
 }
 
 function itemKey(step: EnrichedStep) {
@@ -53,6 +57,9 @@ async function handleDelete(stepId: number) {
   try {
     await stepStore.deleteStep(props.sequence.id, stepId)
     sequenceStore.resetState(props.sequence.id)
+    if (stepStore.activeStepId === stepId) {
+      stepStore.setActiveStep(null)
+    }
   } catch (error) {
     console.error("Failed to delete step", error)
   }
@@ -60,8 +67,9 @@ async function handleDelete(stepId: number) {
 
 async function handleAdd(payload: SequenceStepCreate) {
   try {
-    await stepStore.addStep(props.sequence.id, payload)
+    const created = await stepStore.addStep(props.sequence.id, payload)
     sequenceStore.resetState(props.sequence.id)
+    stepStore.setActiveStep(created.id)
   } catch (error) {
     console.error("Failed to add step", error)
   }
@@ -98,7 +106,9 @@ async function handleAdd(payload: SequenceStepCreate) {
         <template #default="{ item }">
           <SequenceStepItem
             :step="item"
+            :active="stepStore.activeStepId === item.id"
             @select="selectStep"
+            @edit="editStep"
             @delete="handleDelete"
           />
         </template>

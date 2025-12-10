@@ -23,7 +23,7 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
     }
   }
 
-  function setActiveStep(stepId: number) {
+  function setActiveStep(stepId: number | null) {
     activeStepId.value = stepId
   }
 

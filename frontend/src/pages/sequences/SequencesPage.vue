@@ -3,7 +3,7 @@
 
     <ResizablePanel
         placement="left"
-        storageKey="sequence-list-width"
+        storageKey="page-sidebar-width"
         :defaultSize="240"
         :minSize="200"
         :maxSize="400"

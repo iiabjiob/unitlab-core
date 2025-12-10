@@ -1,8 +1,11 @@
 <template>
   <div
-    class="group flex items-center justify-between px-2 py-1.5 text-sm select-none
-           transition-colors
-           hover:bg-neutral-100 dark:hover:bg-neutral-800"
+    class="group flex items-center justify-between px-2 py-1.5 text-sm select-none transition-colors"
+    :class="[
+      active
+        ? 'bg-blue-50 text-blue-900 dark:bg-blue-900/30 dark:text-blue-100'
+        : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+    ]"
     @click="emit('select', step.id)"
   >
     <!-- LEFT -->
@@ -25,7 +28,7 @@
 
       <!-- Index -->
       <div class="w-6 text-neutral-400 dark:text-neutral-500">
-        {{ step.order_index }}
+        {{ step.order_index+1 }}
       </div>
 
       <!-- Description -->
@@ -36,13 +39,9 @@
 
     <!-- RIGHT ACTIONS (appear only on hover) -->
     <div
-      class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity"
+      class="flex items-center gap-2 transition-opacity"
+      :class="active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
     >
-      <button
-        @click.stop="emit('edit', step)"
-        class="text-neutral-400 dark:text-neutral-500 hover:text-blue-500 dark:hover:text-blue-400"
-      >✎</button>
-
       <button
         @click.stop="emit('delete', step.id)"
         class="text-neutral-400 dark:text-neutral-500 hover:text-red-500 dark:hover:text-red-400"
@@ -61,6 +60,7 @@ import { useSequenceStepStore } from "@/stores/sequenceStepStore"
 
 const props = defineProps<{
   step: SequenceStep
+  active?: boolean
 }>()
 
 const emit = defineEmits(["edit", "delete", "select"])
