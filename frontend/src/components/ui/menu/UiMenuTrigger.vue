@@ -13,7 +13,7 @@ import { UI_MENU_KEY, type UiMenuContext } from "./menuContext"
 
 const props = defineProps<{ asChild?: boolean }>()
 
-// Inject context
+// Inject menu context
 const injected = inject(UI_MENU_KEY)
 if (!injected) {
   throw new Error("UiMenuTrigger must be used inside UiMenu")
@@ -23,17 +23,34 @@ const menu = injected as UiMenuContext
 const slots = useSlots()
 const triggerEl = ref<HTMLElement | null>(null)
 
-function bind(el: HTMLElement | null) {
-  triggerEl.value = el
-  menu.triggerEl.value = el
+/* -------------------------------------------------
+ * UNIVERSAL REF HANDLER (fixes all DOM-related bugs)
+ * ------------------------------------------------- */
+function bind(el: Element | ComponentPublicInstance | null) {
+  let element: HTMLElement | null = null
+
+  // Case 1 — DOM element
+  if (el instanceof HTMLElement) {
+    element = el
+  }
+
+  // Case 2 — Vue component instance
+  else if (el && (el as any).$el instanceof HTMLElement) {
+    element = (el as any).$el
+  }
+
+  triggerEl.value = element
+  menu.triggerEl.value = element
 }
 
+/* cleanup */
 onBeforeUnmount(() => {
   if (menu.triggerEl.value === triggerEl.value) {
     menu.triggerEl.value = null
   }
 })
 
+/* handlers */
 function onClick() {
   menu.toggleFromTrigger()
 }
@@ -53,9 +70,9 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
-// --------------------------------------
-// Generate cloned child VNode on demand
-// --------------------------------------
+/* --------------------------------------
+ * asChild rendering (Radix-style cloning)
+ * -------------------------------------- */
 function renderAsChild() {
   const children = slots.default?.()
 
@@ -68,7 +85,7 @@ function renderAsChild() {
   return cloneVNode(
     vnode,
     mergeProps(vnode.props || {}, {
-      class: "ui-menu-trigger",
+      class: ["ui-menu-trigger", vnode.props?.class],
       role: "button",
       tabindex: 0,
       "aria-haspopup": "menu",
@@ -79,9 +96,9 @@ function renderAsChild() {
         e.preventDefault()
         onContextMenu(e)
       },
-      // IMPORTANT: correct ref signature
+      // Correct and safe ref handler
       ref: (el: Element | ComponentPublicInstance | null) => {
-        bind(el as HTMLElement | null)
+        bind(el)
       }
     }),
     true
@@ -90,7 +107,7 @@ function renderAsChild() {
 </script>
 
 <template>
-  <!-- asChild mode: render cloned vnode inside render tree -->
+  <!-- asChild: child becomes the trigger -->
   <template v-if="asChild">
     <component :is="renderAsChild()" />
   </template>
@@ -98,7 +115,7 @@ function renderAsChild() {
   <!-- default wrapper -->
   <div
     v-else
-    ref="triggerEl"
+    :ref="bind"
     class="ui-menu-trigger"
     role="button"
     tabindex="0"

@@ -1,35 +1,38 @@
 # UiMenu — Headless Context Menu, Dropdown & SubMenu for Vue 3
 
-A lightweight, **fully headless**, **accessible**, and **positioning-aware** menu system for Vue 3.
-Includes:
+A lightweight, **fully headless**, **accessible**, and **positioning‑aware** menu system for Vue 3.
 
-- Dropdown menus  
-- Right-click context menus  
-- Multi-level SubMenus  
-- Smart positioning + collision handling  
-- Amazon‑style mouse prediction  
-- Full keyboard control  
-- Renderless, style‑agnostic design  
+Supports:
+- Dropdown menus
+- Right‑click context menus
+- Multi‑level SubMenus
+- Smart collision‑aware positioning
+- Amazon‑style mouse prediction
+- Full keyboard accessibility
+- Teleport to `<body>`
+- Theme customization (light/dark/custom)
+- Zero dependencies
 
 Perfect for dashboards, engineering tools, IDE-like UIs, and professional design systems.
 
 ---
 
-# 🚀 Features
+## 🚀 Features
 
 - ✔ Headless — bring your own styles  
 - ✔ Trigger or cursor anchoring  
 - ✔ Collision‑aware positioning  
 - ✔ SubMenu hover‑intent prediction (Amazon-style)  
-- ✔ Auto‑reposition + ResizeObserver  
+- ✔ Auto‑reposition via ResizeObserver  
 - ✔ No memory leaks  
 - ✔ Full keyboard accessibility  
 - ✔ ARIA roles for screen readers  
 - ✔ Teleport to `<body>`  
+- ✔ Fully themable via CSS Variables  
 
 ---
 
-# 📦 Installation
+## 📦 Installation
 
 ```ts
 import {
@@ -42,20 +45,20 @@ import {
   UiSubMenu,
   UiSubMenuTrigger,
   UiSubMenuContent
-} from "@/components/ui/menu"
+} from "@unitlab/ui-menu"
 ```
 
 ---
 
-# 🧱 Components Overview
+## 🧱 Components Overview
 
 | Component | Purpose |
 |----------|---------|
 | **UiMenu** | Root state provider |
-| **UiMenuTrigger** | Opens menu from click / keyboard / right-click |
-| **UiMenuContent** | Floating teleported menu |
+| **UiMenuTrigger** | Opens menu via click / keyboard / right‑click |
+| **UiMenuContent** | Floating teleported menu container |
 | **UiMenuItem** | Actionable item |
-| **UiMenuLabel** | Section header |
+| **UiMenuLabel** | Section heading |
 | **UiMenuSeparator** | Divider |
 | **UiSubMenu** | Submenu provider |
 | **UiSubMenuTrigger** | Opens nested menu |
@@ -63,9 +66,9 @@ import {
 
 ---
 
-# 🧰 Basic Usage
+## 🧰 Basic Usage
 
-## Dropdown Menu
+### Dropdown Menu
 
 ```vue
 <UiMenu>
@@ -76,9 +79,7 @@ import {
   <UiMenuContent>
     <UiMenuItem @select="edit">Edit</UiMenuItem>
     <UiMenuItem @select="duplicate">Duplicate</UiMenuItem>
-
     <UiMenuSeparator />
-
     <UiMenuItem danger @select="remove">Delete</UiMenuItem>
   </UiMenuContent>
 </UiMenu>
@@ -86,7 +87,7 @@ import {
 
 ---
 
-# 🖱 Context Menu (Right‑Click)
+## 🖱 Right‑Click Context Menu
 
 ```vue
 <div @contextmenu.prevent="menuRef.openAtCursor($event)">
@@ -103,9 +104,9 @@ import {
 
 ---
 
-# 🎮 Keyboard Interaction
+## 🎮 Keyboard Interaction
 
-## On Trigger
+### Trigger
 
 | Key | Action |
 |-----|--------|
@@ -113,57 +114,51 @@ import {
 | **ArrowDown** | Open + focus first item |
 | **Right‑click** | Open context menu |
 
-## Inside Menu
+### Inside Menu
 
 | Key | Action |
-|-----|--------|
+|------|--------|
 | **ArrowUp / ArrowDown** | Navigate |
 | **Home / End** | Jump to first/last |
-| **Enter / Space** | Select item |
-| **Esc** | Close and return focus |
-| **Tab** | Close and return focus |
+| **Enter / Space** | Select |
+| **Esc** | Close + return focus |
+| **Tab** | Close |
 
 ---
 
-# 🧠 Positioning Model
+## 🧠 Positioning Model
 
-Anchor types:
+Two anchor types:
 
-### **1. Trigger anchor**
-Opens under the trigger; flips upward when needed.
+### 1. *Trigger anchor*  
+Opens below trigger; flips above if needed.
 
-### **2. Cursor anchor**
-Positions at cursor (context menus).
+### 2. *Cursor anchor*  
+Positions directly at cursor for context menus.
 
-### Repositions on:
+Repositions automatically when:
+- window resizes  
+- scrolling  
+- menu resizes  
+- trigger resizes  
 
-- window resize  
-- scroll  
-- trigger resize  
-- menu resize  
-
-Powered by ResizeObserver + global listeners.
+Powered by **ResizeObserver**.
 
 ---
 
-# 🧩 SubMenu — Multi-level Menus
+## 🧩 SubMenu — Multi‑level Menus
 
-`UiSubMenu` enables nested menus with UX similar to Radix UI, VSCode, and macOS Finder.
+`UiSubMenu` supports nested menus with behavior similar to VSCode, RadixUI and macOS Finder.
 
-### ✨ Features
-
-- Hover‑intent submenu opening  
-- Amazon‑style mouse‑trajectory prediction  
-- ArrowRight = open  
-- ArrowLeft = close  
-- Smooth focus transfer  
-- Safe closing delays  
+### Features
+- Hover intent detection  
+- Amazon‑style mouse trajectory prediction  
+- Smooth keyboard navigation  
+- Safe close delay  
 - Viewport‑aware positioning  
-- Unlimited depth  
+- Unlimited nesting  
 
----
-
-# ⚡ Example — Nested SubMenu
+### Example
 
 ```vue
 <UiMenu>
@@ -176,14 +171,12 @@ Powered by ResizeObserver + global listeners.
 
     <UiSubMenu>
       <UiSubMenuTrigger>File Actions</UiSubMenuTrigger>
-
       <UiSubMenuContent>
         <UiMenuItem @select="rename">Rename</UiMenuItem>
         <UiMenuItem @select="duplicate">Duplicate</UiMenuItem>
 
         <UiSubMenu>
           <UiSubMenuTrigger>Advanced</UiSubMenuTrigger>
-
           <UiSubMenuContent>
             <UiMenuItem @select="compress">Compress</UiMenuItem>
             <UiMenuItem @select="archive">Archive</UiMenuItem>
@@ -201,108 +194,138 @@ Powered by ResizeObserver + global listeners.
 
 ---
 
-# 🧠 SubMenu Mouse Behavior (Amazon‑Style Prediction)
+# 🎨 Theming & Dark Mode
 
-To prevent accidental closing while moving diagonally toward submenu:
+`UiMenu` is fully styled via **CSS Variables**, making it compatible with Tailwind, Bootstrap, SCSS, UnoCSS and vanilla CSS.
 
-- Tracks last 2–3 cursor points  
-- Computes motion vector  
-- Builds a virtual triangle from item → submenu panel  
-- If cursor is inside predicted zone → submenu stays open  
-- Adds closing delay (150ms)  
-- Safe zone: vertical tolerance ±40px  
+## Default Theme
 
-This achieves **industry‑best submenu UX**.
-
----
-
-# 🎮 SubMenu Keyboard Interaction
-
-Inside a submenu:
-
-| Key | Action |
-|------|--------|
-| **→ ArrowRight** | Open submenu |
-| **← ArrowLeft** | Close submenu & return focus |
-| **↑ / ↓** | Navigate items |
-| **Enter / Space** | Activate |
-| **Esc** | Close submenu |
+```css
+:root {
+  --ui-menu-bg: #ffffff;
+  --ui-menu-text: #1f1f1f;
+  --ui-menu-hover-bg: #f3f3f3;
+  --ui-menu-border: #dddddd;
+  --ui-menu-muted: #6b6b6b;
+  --ui-menu-danger: #d32f2f;
+  --ui-menu-radius: 8px;
+  --ui-menu-item-radius: 6px;
+  --ui-menu-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+}
+```
 
 ---
 
-# 🧰 SubMenu Component API
+## 🌙 Dark Mode (compatible with Tailwind `.dark`)
 
-## `<UiSubMenu>`
-Provides submenu state.
+```css
+.dark {
+  --ui-menu-bg: #1f1f1f;
+  --ui-menu-text: #f3f3f3;
+  --ui-menu-hover-bg: #2b2b2b;
+  --ui-menu-border: #333333;
+  --ui-menu-muted: #999999;
+  --ui-menu-danger: #ff6b6b;
+}
+```
 
-### Props  
-_None_
-
----
-
-## `<UiSubMenuTrigger>`
-Opens submenu via:
-
-- Hover  
-- ArrowRight  
-- Enter / Space  
-
----
-
-## `<UiSubMenuContent>`
-Teleported floating content.
-
-Handles:
-
-- Focus navigation  
-- Safe close  
-- Collision constraints  
-
----
-
-# 🎨 Styling
-
-The entire system is headless.
-
-Example:
+Enable automatically with:
 
 ```html
-<UiMenuItem class="px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-700" />
+<html class="dark">
 ```
 
-You may use Tailwind, UnoCSS, SCSS, or plain CSS.
+Or scoped:
+
+```html
+<div class="dark">
+  <UiMenu />
+</div>
+```
 
 ---
 
-# 💎 Full Example (Dropdown + SubMenu)
+## 🎨 Custom Theme (Tailwind)
 
-```vue
-<UiMenu>
-  <UiMenuTrigger>
-    <button class="px-3 py-2 rounded bg-neutral-200">Menu</button>
-  </UiMenuTrigger>
+```css
+@layer base {
+  :root {
+    --ui-menu-bg: theme('colors.neutral.50');
+    --ui-menu-text: theme('colors.neutral.900');
+    --ui-menu-hover-bg: theme('colors.neutral.200');
+  }
 
-  <UiMenuContent>
-    <UiMenuLabel>General</UiMenuLabel>
-
-    <UiMenuItem @select="openProfile">Profile</UiMenuItem>
-    <UiMenuItem @select="settings">Settings</UiMenuItem>
-
-    <UiSubMenu>
-      <UiSubMenuTrigger>More</UiSubMenuTrigger>
-      <UiSubMenuContent>
-        <UiMenuItem @select="itemA">Item A</UiMenuItem>
-        <UiMenuItem @select="itemB">Item B</UiMenuItem>
-      </UiSubMenuContent>
-    </UiSubMenu>
-
-    <UiMenuSeparator />
-
-    <UiMenuLabel>Danger zone</UiMenuLabel>
-    <UiMenuItem danger @select="logout">Log out</UiMenuItem>
-  </UiMenuContent>
-</UiMenu>
+  .dark {
+    --ui-menu-bg: theme('colors.neutral.900');
+    --ui-menu-text: theme('colors.neutral.100');
+    --ui-menu-hover-bg: theme('colors.neutral.700');
+  }
+}
 ```
+
+---
+
+## 🎨 Custom Theme (Vanilla CSS)
+
+```css
+.my-menu-theme {
+  --ui-menu-bg: #242424;
+  --ui-menu-text: #eaeaea;
+  --ui-menu-hover-bg: #333;
+  --ui-menu-border: #444;
+}
+```
+
+Usage:
+
+```html
+<div class="my-menu-theme">
+  <UiMenu />
+</div>
+```
+
+---
+
+# 📚 API Summary
+
+## `<UiMenu>`
+Root provider, manages state.
+
+## `<UiMenuTrigger>`
+- Click to open
+- Right‑click context menu
+- Keyboard activation
+
+## `<UiMenuContent>`
+Teleported floating container.
+
+## `<UiMenuItem>`
+Selectable menu item.
+
+Props:
+- `danger?: boolean`
+
+Events:
+- `@select`
+
+## `<UiSubMenu>`
+Provides nested menu context.
+
+## `<UiSubMenuTrigger>`
+Opens submenu on hover / keyboard.
+
+## `<UiSubMenuContent>`
+Teleported floating submenu.
+
+---
+
+# 🧪 Accessibility
+
+- Full keyboard control  
+- Roving focus  
+- ARIA roles (`menu`, `menuitem`, `separator`)  
+- Escape & Tab handling  
+- Focus return to trigger  
 
 ---
 

@@ -1,3 +1,5 @@
+import "./styles.css"
+
 export { default as UiMenu } from "./UiMenu.vue"
 export { default as UiMenuTrigger } from "./UiMenuTrigger.vue"
 export { default as UiMenuContent } from "./UiMenuContent.vue"
