@@ -111,6 +111,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  color: var(--ui-menu-text, #1f1f1f);
   gap: 0.65rem;
   padding: 0.45rem 0.9rem;
   border-radius: var(--ui-menu-item-radius, 6px);

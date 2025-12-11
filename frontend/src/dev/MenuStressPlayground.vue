@@ -100,7 +100,7 @@ function removeDynamic() {
       }"
     >
       <UiMenu>
-        <UiMenuTrigger>
+        <UiMenuTrigger asChild trigger="both">
           <button class="px-4 py-2 bg-blue-300 dark:bg-blue-700 rounded">
             Open Stress-Test Menu
           </button>
