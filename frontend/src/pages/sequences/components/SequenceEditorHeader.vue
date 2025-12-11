@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/menu"
 import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vue"
 
+import MenuScrollTest from "@/dev/MenuScrollTest.vue"
+
 const props = defineProps<{
   sequence: SequenceDef
 }>()

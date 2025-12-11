@@ -57,6 +57,8 @@
   box-shadow: var(--ui-menu-shadow, 0 5px 20px rgba(0,0,0,0.15));
   outline: none;
   z-index: 999;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
 }
 
 .ui-menu-item {
@@ -129,4 +131,6 @@
   box-shadow: var(--ui-menu-shadow, 0 5px 20px rgba(0,0,0,0.15));
   outline: none;
   z-index: 1000;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
 }

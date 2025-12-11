@@ -24,8 +24,13 @@ watch(
 
 function focusFirstItem() {
   const items = root.value?.querySelectorAll<HTMLElement>('[role="menuitem"]')
-  if (items && items.length > 0) items[0].focus()
-  else root.value?.focus()
+  if (items && items.length > 0) {
+    items[0].focus()
+    // AUTO-SCROLL on initial open
+    items[0].scrollIntoView({ block: "nearest" })
+  } else {
+    root.value?.focus()
+  }
 }
 
 /* ---------------- KEYBOARD NAVIGATION ---------------- */
@@ -42,12 +47,34 @@ function onKeydown(e: KeyboardEvent) {
     e.preventDefault()
     i = (i + 1 + items.length) % items.length
     items[i].focus()
+    // AUTO-SCROLL
+    items[i].scrollIntoView({ block: "nearest" })
   }
 
   if (e.key === "ArrowUp") {
     e.preventDefault()
     i = (i - 1 + items.length) % items.length
     items[i].focus()
+    // AUTO-SCROLL
+    items[i].scrollIntoView({ block: "nearest" })
+  }
+
+  if (e.key === "Home") {
+    e.preventDefault()
+    if (items.length > 0) {
+      items[0].focus()
+      // AUTO-SCROLL
+      items[0].scrollIntoView({ block: "nearest" })
+    }
+  }
+
+  if (e.key === "End") {
+    e.preventDefault()
+    if (items.length > 0) {
+      items[items.length - 1].focus()
+      // AUTO-SCROLL
+      items[items.length - 1].scrollIntoView({ block: "nearest" })
+    }
   }
 
   if (e.key === "ArrowLeft") {
@@ -83,16 +110,3 @@ function onPointerLeave(e: PointerEvent) {
     </div>
   </teleport>
 </template>
-
-<style>
-.ui-submenu-content {
-  position: absolute;
-  min-width: 160px;
-  background: var(--ui-menu-bg, #fff);
-  border: 1px solid var(--ui-menu-border, #ddd);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  outline: none;
-  z-index: 999;
-}
-</style>
