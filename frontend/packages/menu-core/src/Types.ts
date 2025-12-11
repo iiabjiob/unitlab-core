@@ -11,13 +11,14 @@ export interface Rect {
   height: number
 }
 
-export type Placement = "left" | "right"
+export type Placement = "left" | "right" | "top" | "bottom" | "auto"
+export type Alignment = "start" | "center" | "end" | "auto"
 
 export interface PositionOptions {
   gutter?: number
   viewportPadding?: number
-  preferSide?: Placement
-  align?: "start" | "center" | "end"
+  placement?: Placement
+  align?: Alignment
   viewportWidth?: number
   viewportHeight?: number
 }
@@ -25,19 +26,35 @@ export interface PositionOptions {
 export interface PositionResult {
   left: number
   top: number
-  placement: Placement
+  placement: Exclude<Placement, "auto">
+  align: Exclude<Alignment, "auto">
 }
 
 export interface MousePredictionConfig {
   history?: number
   verticalTolerance?: number
   headingThreshold?: number
+  samplingOffset?: number
+  horizontalThreshold?: number
+  driftBias?: number
 }
+
+export interface MousePredictionDebugPayload {
+  points: ReadonlyArray<Point>
+  target: Rect
+  origin: Rect
+  headingScore: number
+  insideVertical: boolean
+  horizontalProgress: number
+}
+
+export type MousePredictionDebugCallback = (payload: MousePredictionDebugPayload) => void
 
 export interface MenuCallbacks {
   onOpen?: (menuId: string) => void
   onClose?: (menuId: string) => void
   onSelect?: (itemId: string, menuId: string) => void
+  onHighlight?: (itemId: string | null, menuId: string) => void
   onPositionChange?: (menuId: string, position: PositionResult) => void
 }
 

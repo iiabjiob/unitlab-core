@@ -9,3 +9,6 @@ dependencies = [
     "asyncio",
     "pyyaml",
 ]
+
+[tool.uv]
+project-root = true
