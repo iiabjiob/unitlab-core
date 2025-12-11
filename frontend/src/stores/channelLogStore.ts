@@ -1,3 +1,4 @@
+import { formatTs } from "@/utils/datetime"
 import { defineStore } from "pinia"
 import { ref } from "vue"
 
@@ -14,13 +15,12 @@ export const useChannelLogStore = defineStore("channelLogStore", () => {
   const logs = ref<Record<number, ChannelLogEntry[]>>({})
 
   function push(deviceId: number, entry: Omit<ChannelLogEntry, "ts" | "t">) {
-    const ts = new Date().toLocaleTimeString()
     const now = Date.now()
 
     if (!logs.value[deviceId]) logs.value[deviceId] = []
 
     logs.value[deviceId].push({
-      ts,
+      ts: formatTs(now),
       t: now,
       ...entry,
     })

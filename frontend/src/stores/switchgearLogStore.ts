@@ -1,3 +1,4 @@
+import { formatTs } from "@/utils/datetime"
 import { defineStore } from "pinia"
 import { ref } from "vue"
 
@@ -15,7 +16,7 @@ export const useSwitchgearLogStore = defineStore("switchgearLogStore", () => {
     const now = Date.now()
     if (!logs.value[swId]) logs.value[swId] = []
     logs.value[swId].push({
-      ts: new Date(now).toLocaleTimeString(),
+      ts: formatTs(now),
       t: now,
       ...entry,
     })

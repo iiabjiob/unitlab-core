@@ -41,7 +41,7 @@ const sortedLogs = computed(() =>
       >
 
         <!-- TIMESTAMP -->
-        <div class="text-[10px] opacity-50 w-14 shrink-0 text-right">
+        <div class="text-[10px] opacity-50 w-20 shrink-0 text-left">
           {{ log.ts }}
         </div>
 

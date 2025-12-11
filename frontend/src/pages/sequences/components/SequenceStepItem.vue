@@ -27,7 +27,7 @@
       </div>
 
       <!-- Index -->
-      <div class="w-6 text-neutral-400 dark:text-neutral-500">
+      <div class="w-6 text-neutral-500 ">
         {{ step.order_index+1 }}
       </div>
 
@@ -48,7 +48,7 @@
         variant="ghost"
         @click.stop="emit('edit', step.id)"
       >
-        <TrashIcon size="16" />
+        <TrashIcon class="opacity-50 hover:opacity-100" size="12" />
       </UiButton>
     </div>
   </div>

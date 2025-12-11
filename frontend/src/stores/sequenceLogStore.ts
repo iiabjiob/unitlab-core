@@ -1,4 +1,5 @@
 // src/stores/sequenceLogStore.ts
+import { formatTs } from "@/utils/datetime"
 import { defineStore } from "pinia"
 import { ref } from "vue"
 
@@ -16,7 +17,7 @@ export const useSequenceLogStore = defineStore("sequenceLogStore", () => {
     const now = Date.now()
     if (!logs.value[seqId]) logs.value[seqId] = []
     logs.value[seqId].push({
-      ts: new Date(now).toLocaleTimeString(),
+      ts: formatTs(now),
       t: now,
       ...entry
     })
