@@ -1,46 +1,73 @@
+// src/stores/themeStore.ts
 import { defineStore } from "pinia"
-import { ref, watch, computed } from "vue"
+import { ref, computed } from "vue"
 
 export type ThemeMode = "light" | "dark" | "auto"
 
 export const useThemeStore = defineStore("themeStore", () => {
+  const supported = typeof window !== "undefined" && typeof document !== "undefined"
+
   const mode = ref<ThemeMode>(
-    (localStorage.getItem("themeMode") as ThemeMode) || "auto"
+    (supported ? (localStorage.getItem("themeMode") as ThemeMode) : null) || "auto"
   )
 
-  const mql = typeof window !== "undefined"
-    ? window.matchMedia("(prefers-color-scheme: dark)")
-    : null
+  const systemDark = ref(
+    supported ? window.matchMedia("(prefers-color-scheme: dark)").matches : false
+  )
 
   const currentTheme = computed<"light" | "dark">(() => {
-    if (mode.value === "auto") {
-      return mql?.matches ? "dark" : "light"
-    }
-    return mode.value
+    return mode.value === "auto"
+      ? (systemDark.value ? "dark" : "light")
+      : mode.value
   })
 
   function applyTheme() {
-    if (typeof document === "undefined") return
-    document.documentElement.classList.toggle("dark", currentTheme.value === "dark")
+    if (!supported) return
+    document.documentElement.classList.toggle(
+      "dark",
+      currentTheme.value === "dark"
+    )
   }
 
   function setMode(newMode: ThemeMode) {
-    if (mode.value === newMode) return
     mode.value = newMode
-    localStorage.setItem("themeMode", newMode)
+    if (supported) {
+      localStorage.setItem("themeMode", newMode)
+    }
+    applyTheme()
   }
 
-  // react to mode change
-  watch(mode, applyTheme)
+  function toggle() {
+    setMode(currentTheme.value === "dark" ? "light" : "dark")
+  }
 
-  // react to OS theme change
-  if (mql) {
-    mql.addEventListener?.("change", () => {
+  function init() {
+    if (!supported) return
+
+    // Initial apply
+    applyTheme()
+
+    // OS theme changes
+    const mql = window.matchMedia("(prefers-color-scheme: dark)")
+    mql.addEventListener("change", (e) => {
+      systemDark.value = e.matches
       if (mode.value === "auto") applyTheme()
+    })
+
+    // Sync between tabs
+    window.addEventListener("storage", (e) => {
+      if (e.key === "themeMode" && e.newValue) {
+        mode.value = e.newValue as ThemeMode
+        applyTheme()
+      }
     })
   }
 
-  applyTheme()
-
-  return { mode, setMode, currentTheme }
+  return {
+    mode,
+    currentTheme,
+    setMode,
+    toggle,
+    init,
+  }
 })

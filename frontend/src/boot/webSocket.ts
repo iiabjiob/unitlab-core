@@ -5,7 +5,7 @@ import { logger } from "@/utils/logger"
 export function bootWebSocket() {
   const ws = useWebSocketStore()
 
-  logger.info("🔌 Boot: initializing WebSocket…")
-
   ws.connect()
+
+  logger.info("🔌 Boot: WebSocket connected")
 }

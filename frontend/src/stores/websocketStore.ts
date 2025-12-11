@@ -34,7 +34,6 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
     const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws"
     const wsUrl = `${wsProtocol}://${window.location.host}/ws/ws`
 
-    logger.info("🔌 Connecting")
     socket.value = new WebSocket(wsUrl)
 
     socket.value.onopen = () => {

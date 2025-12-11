@@ -1,17 +1,16 @@
 <template>
-  <div class="flex items-center gap-0.5 text-xs overflow-hidden">
-
+  <div
+    class="inline-flex items-center rounded-md overflow-hidden bg-neutral-100 dark:bg-neutral-800 p-0.5"
+    role="radiogroup"
+  >
     <button
       v-for="opt in options"
       :key="opt.value"
-      class="px-2 py-1 cursor-pointer"
-      :class="[
-        'transition-colors',
-        themeStore.mode === opt.value
-          ? 'bg-neutral-200 dark:bg-neutral-700 font-bold'
-          : 'hover:bg-neutral-100 dark:hover:bg-neutral-900'
-      ]"
+      role="radio"
+      :aria-checked="themeStore.mode === opt.value"
       @click.stop="themeStore.setMode(opt.value)"
+      class="px-3 py-1 text-xs rounded-md transition-all select-none"
+      :class="buttonClass(opt.value)"
     >
       {{ opt.label }}
     </button>
@@ -28,4 +27,11 @@ const options: { label: string; value: ThemeMode }[] = [
   { label: "Dark", value: "dark" },
   { label: "Auto", value: "auto" },
 ]
+
+function buttonClass(value: ThemeMode) {
+  const active = themeStore.mode === value
+  return active
+    ? "bg-neutral-200 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-50 ring-1 ring-neutral-300 dark:ring-neutral-600"
+    : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200/50 dark:hover:bg-neutral-700/50"
+}
 </script>
