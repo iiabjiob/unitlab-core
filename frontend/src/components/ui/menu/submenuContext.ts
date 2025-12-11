@@ -2,6 +2,7 @@
 import type { InjectionKey, Ref } from "vue"
 
 export interface UiSubMenuContext {
+  id: string
   /** Submenu-specific open state (decoupled from root popover). */
   open: Ref<boolean>
   /** Owning trigger element (used for focus handoffs when collapsing). */
@@ -16,6 +17,9 @@ export interface UiSubMenuContext {
   /** Debounce helpers so pointer-leave closures feel natural. */
   scheduleClose: () => void
   cancelClose: () => void
+
+  scheduleOpen: () => void
+  cancelOpen: () => void
 }
 
 // Symbol ensures each submenu instance provides its own context, even when nested deeply.

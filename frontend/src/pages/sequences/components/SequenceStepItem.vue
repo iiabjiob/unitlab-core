@@ -46,7 +46,7 @@
       <UiButton
         size="xs"
         variant="ghost"
-        @click.stop="emit('edit', step.id)"
+        @click.stop="emit('delete', step.id)"
       >
         <TrashIcon class="opacity-50 hover:opacity-100" size="12" />
       </UiButton>

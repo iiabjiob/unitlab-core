@@ -77,19 +77,60 @@ function onKeydown(e: KeyboardEvent) {
     }
   }
 
+  if (e.key === "Escape") {
+    e.preventDefault()
+    ctx.closeMenu()
+    ctx.parentItemEl.value?.focus()
+    return
+  }
+
   if (e.key === "ArrowLeft") {
     ctx.closeMenu()
     ctx.parentItemEl.value?.focus()
+  }
+
+  // Focus trap (Tab → first/last item)
+  if (e.key === "Tab") {
+    e.preventDefault()
+    if (!items.length) return
+    e.shiftKey ? items[items.length - 1].focus() : items[0].focus()
   }
 }
 
 /* ---------------- SAFE CLOSE ON MOUSE LEAVE ---------------- */
 
+function isMovingIntoChildSubmenu(target: HTMLElement | null) {
+  if (!target || !root.value) return false
+
+  const childPanel = target.closest<HTMLElement>(".ui-submenu-content")
+  if (!childPanel || !childPanel.id) return false
+
+  return Boolean(
+    root.value.querySelector<HTMLElement>(`[aria-controls="${childPanel.id}"]`)
+  )
+}
+
+function onPointerEnter() {
+  ctx.cancelClose()
+}
+
 function onPointerLeave(e: PointerEvent) {
   const target = e.relatedTarget as HTMLElement | null
 
-  // Keep the submenu open when the pointer returns to the trigger so the user can re-enter without flicker.
-  if (ctx.parentItemEl.value?.contains(target)) return
+  if (!target) {
+    ctx.scheduleClose()
+    return
+  }
+
+  if (ctx.parentItemEl.value?.contains(target)) {
+    ctx.cancelClose()
+    return
+  }
+
+  if (isMovingIntoChildSubmenu(target)) {
+    ctx.cancelClose()
+    return
+  }
 
   ctx.scheduleClose()
 }
@@ -101,8 +142,10 @@ function onPointerLeave(e: PointerEvent) {
       v-if="ctx.open.value"
       ref="root"
       class="ui-submenu-content"
+      :id="ctx.id"
       role="menu"
       tabindex="-1"
+      @pointerenter="onPointerEnter"
       @keydown="onKeydown"
       @pointerleave="onPointerLeave"
     >

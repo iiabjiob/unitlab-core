@@ -4,9 +4,12 @@
   --ui-menu-hover-bg: #f3f3f3;
   --ui-menu-text: #1f1f1f;
   --ui-menu-muted: #6b6b6b;
+  --ui-menu-min-width: 180px;
+  --ui-menu-max-width: 360px;
   --ui-menu-radius: 8px;
   --ui-menu-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
   --ui-menu-padding-y: 0.35rem;
+  --ui-menu-padding-x: 0.35rem;
   --ui-menu-item-radius: 6px;
   --ui-menu-separator: #e5e5e5;
   --ui-menu-danger: #d32f2f;
@@ -49,15 +52,17 @@
 
 .ui-menu-content {
   position: absolute;
-  min-width: 180px;
-  padding: var(--ui-menu-padding-y) 0;
+  min-width: var(--ui-menu-min-width, 180px);
+  max-width: var(--ui-menu-max-width, 360px);
+  width: max-content;
+  padding: var(--ui-menu-padding-y) var(--ui-menu-padding-x);
   background: var(--ui-menu-bg, #fff);
   border: 1px solid var(--ui-menu-border, #ddd);
   border-radius: var(--ui-menu-radius, 8px);
   box-shadow: var(--ui-menu-shadow, 0 5px 20px rgba(0,0,0,0.15));
   outline: none;
   z-index: 999;
-  max-height: calc(100vh - 16px);
+  max-height: var(--ui-menu-max-height, calc(100vh - 16px));
   overflow-y: auto;
 }
 
@@ -65,6 +70,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
   gap: 0.65rem;
   padding: 0.45rem 0.9rem;
   font-size: 0.92rem;
@@ -123,8 +131,12 @@
 
 .ui-submenu-content {
   position: absolute;
-  min-width: 180px;
-  padding: var(--ui-menu-padding-y) 0;
+  min-width: var(--ui-menu-min-width, 180px);
+  max-width: var(--ui-menu-max-width, 360px);
+  width: max-content;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: var(--ui-menu-padding-y) var(--ui-menu-padding-x);
   background: var(--ui-menu-bg, #fff);
   border: 1px solid var(--ui-menu-border, #ddd);
   border-radius: var(--ui-menu-radius, 8px);
@@ -133,4 +145,11 @@
   z-index: 1000;
   max-height: calc(100vh - 16px);
   overflow-y: auto;
+}
+
+@media (max-width: 480px) {
+  .ui-menu-content {
+    max-width: 260px;
+    min-width: 150px;
+  }
 }

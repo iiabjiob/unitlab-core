@@ -212,7 +212,11 @@ The menu system is fully customizable using CSS variables. All styling is theme-
   --ui-menu-border: #dddddd;
   --ui-menu-muted: #6b6b6b;
   --ui-menu-danger: #d32f2f;
+  --ui-menu-min-width: 180px;
+  --ui-menu-max-width: 360px;
   --ui-menu-radius: 8px;
+  --ui-menu-padding-y: 0.35rem;
+  --ui-menu-padding-x: 0.35rem;
   --ui-menu-item-radius: 6px;
   --ui-menu-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
 }
