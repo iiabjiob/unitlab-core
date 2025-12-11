@@ -1,5 +1,6 @@
 import { http } from "./http"
 import { API_V1, buildQuery } from "./utils"
+import type { SequenceStep, SequenceStepCreate } from "@/types/sequences"
 
 export const SequencesAPI = {
   list(params?: Record<string, any>) {
@@ -24,23 +25,27 @@ export const SequencesAPI = {
 
   // Steps
   getSteps(seqId: number | string) {
-    return http.get(`${API_V1}/sequences/${seqId}/steps`)
+    return http.get<SequenceStep[]>(`${API_V1}/sequences/${seqId}/steps`)
   },
 
-  addStep(seqId: number | string, payload: any) {
-    return http.post(`${API_V1}/sequences/${seqId}/steps`, payload)
+  addStep(seqId: number | string, payload: SequenceStepCreate) {
+    return http.post<SequenceStep>(`${API_V1}/sequences/${seqId}/steps`, payload)
   },
 
-  updateStep(seqId: number | string, stepId: number | string, payload: any) {
-    return http.patch(`${API_V1}/sequences/${seqId}/steps/${stepId}`, payload)
+  updateStep(seqId: number | string, stepId: number | string, payload: Partial<SequenceStep>) {
+    return http.patch<SequenceStep>(`${API_V1}/sequences/${seqId}/steps/${stepId}`, payload)
   },
 
   deleteStep(seqId: number | string, stepId: number | string) {
     return http.delete(`${API_V1}/sequences/${seqId}/steps/${stepId}`)
   },
 
-  reorderSteps(seqId: number | string, payload: any) {
-    return http.post(`${API_V1}/sequences/${seqId}/steps/reorder`, payload)
+  reorderSteps(seqId: number | string, payload: { new_order: number[] }) {
+    return http.post<SequenceStep[]>(`${API_V1}/sequences/${seqId}/steps/reorder`, payload)
+  },
+
+  replaceSteps(seqId: number | string, payload: SequenceStepCreate[]) {
+    return http.put<SequenceStep[]>(`${API_V1}/sequences/${seqId}/steps`, payload)
   },
 
   // Execution

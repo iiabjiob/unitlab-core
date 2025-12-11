@@ -4,9 +4,8 @@ import { ref, computed } from "vue"
 import type { SequenceStep, SequenceStepCreate } from "@/types/sequences"
 import { SequenceStepType } from "@/types/sequences"
 import { useChannelStore } from "./channelStore"
-import axios from "axios"
-import { ApiBuilder } from "@/utils/api"
 import { getLogger } from "@/utils/logger"
+import { SequencesAPI } from "@/api/sequences.api"
 
 const logger = getLogger("SEQS")
 
@@ -77,7 +76,7 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
   }
 
   async function fetchSteps(seqId: number) {
-    const { data } = await axios.get<SequenceStep[]>(ApiBuilder.sequenceSteps(seqId))
+    const { data } = await SequencesAPI.getSteps(seqId)
     setStepsForSequence(seqId, data)
     logger.info(`📡 Loaded ${data.length} steps for sequence ${seqId}`)
   }
@@ -87,14 +86,14 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
       ...step,
       sequence_step_type: step.sequence_step_type,
     }
-    const { data } = await axios.post<SequenceStep>(ApiBuilder.sequenceSteps(seqId), payload)
+    const { data } = await SequencesAPI.addStep(seqId, payload)
     steps.value.push(data)
     steps.value.sort((a, b) => a.order_index - b.order_index)
     return data
   }
 
   async function updateStep(seqId: number, stepId: number, changes: Partial<SequenceStep>) {
-    const { data } = await axios.patch<SequenceStep>(ApiBuilder.sequenceStep(seqId, stepId), changes)
+    const { data } = await SequencesAPI.updateStep(seqId, stepId, changes)
     const idx = steps.value.findIndex((s) => s.id === stepId)
     if (idx !== -1) {
       steps.value[idx] = { ...steps.value[idx], ...data }
@@ -104,19 +103,19 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
   }
 
   async function deleteStep(seqId: number, stepId: number) {
-    await axios.delete(ApiBuilder.sequenceStep(seqId, stepId))
+    await SequencesAPI.deleteStep(seqId, stepId)
     steps.value = steps.value.filter((s) => s.id !== stepId)
     return true
   }
 
   async function reorderSteps(seqId: number, newOrder: number[]) {
-    const { data } = await axios.post<SequenceStep[]>(ApiBuilder.sequenceStepsReorder(seqId), { new_order: newOrder })
+    const { data } = await SequencesAPI.reorderSteps(seqId, { new_order: newOrder })
     setStepsForSequence(seqId, data)
     return data
   }
 
   async function replaceSteps(seqId: number, newSteps: SequenceStepCreate[]) {
-    const { data } = await axios.put<SequenceStep[]>(ApiBuilder.sequenceStepsReplace(seqId), newSteps)
+    const { data } = await SequencesAPI.replaceSteps(seqId, newSteps)
     setStepsForSequence(seqId, data)
     return data
   }

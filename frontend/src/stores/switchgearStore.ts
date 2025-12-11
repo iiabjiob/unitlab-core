@@ -7,8 +7,7 @@ import type {
   SwitchgearBindingRole,
 } from "@/types/switchgear"
 import { SWITCHGEAR_BINDING_ROLES } from "@/types/switchgear"
-import axios from "axios"
-import { ApiBuilder } from "@/utils/api"
+import { SwitchgearsAPI } from "@/api/switchgears.api"
 import { getLogger } from "@/utils/logger"
 import { useChannelStore } from "./channelStore"
 import { useDeviceStore } from "./deviceStore"
@@ -70,7 +69,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   async function fetchAll() {
     loading.value = true
     try {
-      const { data } = await axios.get<Switchgear[]>(ApiBuilder.switchgears())
+      const { data } = await SwitchgearsAPI.list()
       switchgears.value = data
       logger.info(`📡 Loaded ${data.length} switchgears`)
       loadedOnce.value = true
@@ -101,7 +100,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
           ...binding,
         })),
       }
-      const { data } = await axios.post<Switchgear>(ApiBuilder.switchgears(), body)
+      const { data } = await SwitchgearsAPI.create(body)
       switchgears.value.push(data)
 
       logger.info(`➕ Created switchgear id=${data.id}`)
@@ -121,7 +120,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   async function updateField(id: number, changes: SwitchgearUpdateInput) {
     try {
 
-      const { data } = await axios.patch<Switchgear>(ApiBuilder.switchgear(id), changes)
+      const { data } = await SwitchgearsAPI.update(id, changes)
       const idx = switchgears.value.findIndex(s => s.id === id)
       if (idx !== -1) {
         switchgears.value[idx] = data
@@ -137,7 +136,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   // Delete
   async function remove(id: number) {
     try {
-      await axios.delete(ApiBuilder.switchgear(id))
+      await SwitchgearsAPI.delete(id)
       switchgears.value = switchgears.value.filter(s => s.id !== id)
 
       logger.info(`🗑️ Switchgear ${id} deleted`)

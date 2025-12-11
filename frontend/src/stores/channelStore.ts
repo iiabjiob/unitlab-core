@@ -2,7 +2,7 @@
 import { defineStore } from "pinia"
 import { computed, ref, shallowRef, triggerRef } from "vue"
 
-import { api, ApiBuilder } from "@/utils/api"
+import { ChannelsAPI } from "@/api/channels.api"
 import { getLogger } from "@/utils/logger"
 import { normalizeChannel, ensureChannel } from "@/utils/channel"
 
@@ -44,7 +44,7 @@ export const useChannelStore = defineStore("channelStore", () => {
   async function fetchAll() {
     isLoading.value = true
     try {
-      const { data } = await api.get<ChannelDto[]>(ApiBuilder.channels())
+      const { data } = await ChannelsAPI.list()
       channels.value = data.map(normalizeChannel)
       isLoaded.value = true
       logger.info(`📡 Loaded ${data.length} channels`)
@@ -72,7 +72,7 @@ export const useChannelStore = defineStore("channelStore", () => {
 
   async function updateChannelField(id: number, changes: Partial<ChannelDto>) {
     try {
-      const { data } = await api.patch<ChannelDto>(ApiBuilder.channel(id), changes)
+      const { data } = await ChannelsAPI.update(id, changes)
       const updated = normalizeChannel(data)
       const idx = channels.value.findIndex(c => c.id === id)
       if (idx !== -1) {

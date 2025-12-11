@@ -1,7 +1,7 @@
 import { defineStore } from "pinia"
 import { ref, shallowRef } from "vue"
 
-import { ApiBuilder, api } from "@/utils/api"
+import { DevicesAPI } from "@/api/devices.api"
 import type {
   Device,
   DeviceDto,
@@ -66,7 +66,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
   async function fetchAll() {
     isLoading.value = true
     try {
-      const { data } = await api.get<DeviceDto[]>(ApiBuilder.devices())
+      const { data } = await DevicesAPI.list()
       const normalized = data.map(normalizeDevice)
       devices.value = normalized
       totalCount.value = normalized.length
@@ -87,7 +87,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
 
   async function updateDeviceField(deviceId: number, changes: Partial<DeviceDto>) {
     try {
-      const { data } = await api.patch<DeviceDto>(ApiBuilder.device(deviceId), changes)
+      const { data } = await DevicesAPI.update(deviceId, changes)
       const updated = normalizeDevice(data)
 
       const index = devices.value.findIndex(d => d.id === deviceId)
@@ -105,7 +105,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
 
   async function deleteDevice(deviceId: number) {
     try {
-      await api.delete(ApiBuilder.device(deviceId))
+      await DevicesAPI.delete(deviceId)
       devices.value = devices.value.filter(d => d.id !== deviceId)
       totalCount.value = devices.value.length
     } catch (error) {
@@ -128,10 +128,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
     devices.value = devices.value.filter(d => !removeSet.has(d.id))
 
     try {
-      const { data } = await api.delete<DeviceBulkDeleteResponse>(
-        ApiBuilder.devicesBulkDelete(),
-        { data: { ids: uniqueIds } },
-      )
+      const { data } = await DevicesAPI.bulkDelete(uniqueIds)
       const deleted = data?.deleted ?? 0
       if (deleted !== uniqueIds.length) {
         logger.warn(`Backend mismatch: requested=${uniqueIds.length}, deleted=${deleted}. Refetching...`)
