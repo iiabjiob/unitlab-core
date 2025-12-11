@@ -16,7 +16,7 @@ const LEVEL_NAMES: Record<LogLevel, string> = {
   [LogLevel.NONE]:  "NONE ",
 }
 
-// читаем уровень из окружения (vite: VITE_LOG_LEVEL)
+// Read desired level from env (Vite exposes VITE_LOG_LEVEL).
 const ENV_LOG_LEVEL = (import.meta.env.VITE_LOG_LEVEL || "info").toLowerCase()
 const LOG_LEVELS: Record<string, LogLevel> = {
   debug: LogLevel.DEBUG,
@@ -32,7 +32,7 @@ function shouldLog(level: LogLevel): boolean {
 }
 
 function padSource(source: string): string {
-  // всегда 4 символа: WS, APP, API → [WS  ], [APP], [API]
+  // Keep tag at four characters: WS, APP, API → [WS  ], [APP], [API]
   if (source.length > 4) {
     return source.slice(0, 4).toUpperCase()
   }

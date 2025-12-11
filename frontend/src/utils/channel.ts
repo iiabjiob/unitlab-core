@@ -63,7 +63,7 @@ export function buildToggleBitmask(channels: Channel[]): number {
   return mask >>> 0
 }
 
-/** Ограничивает значение в диапазоне 4..20 мА (или 0..24, если хочешь расширенный режим) */
+/** Clamp AO value to the safe 4–20 mA range (override via args for custom windows). */
 export function clampAoValue(value: number, min = 4, max = 20): number {
   if (isNaN(value)) return min
   if (value < min) return min
@@ -71,12 +71,12 @@ export function clampAoValue(value: number, min = 4, max = 20): number {
   return value
 }
 
-/** Приводит значение к строке с двумя знаками после запятой */
+/** Format AO value with two decimals so inputs stay consistent with backend expectations. */
 export function formatAoValue(value: number): string {
   return clampAoValue(value).toFixed(2)
 }
 
-/** Парсинг строки из input → нормализованное число */
+/** Parse user input into a normalized AO number while enforcing bounds. */
 export function parseAoInput(raw: string, min = 4, max = 20): number {
   const num = parseFloat(raw)
   return clampAoValue(isNaN(num) ? min : num, min, max)

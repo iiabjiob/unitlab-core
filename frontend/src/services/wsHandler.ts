@@ -21,6 +21,7 @@ export function handleWsEvent(event: WSEvent) {
   const channelStore = useChannelStore()
   const sequenceStore = useSequenceStore()
 
+  // Route sequence events into the sequence store so realtime progress stays in sync.
   if ('topic' in event && (event as SequenceWsEvent).topic === 'sequence') {
     sequenceStore.handleSequenceEvent(event as SequenceWsEvent)
     return
@@ -30,33 +31,33 @@ export function handleWsEvent(event: WSEvent) {
 
   switch (channelEvent.channel) {
 
-    // --- регистрация устройства ---
+    // Device registration: hydrate or merge the newly discovered unit.
     case WSChannel.DEVICE_REGISTER:{
       const devEvent = channelEvent as DeviceRegisterEvent
       logger.debug("📡 IN ← DEVICE_REGISTER:", devEvent)
 
-      // 1. обновляем устройства
+      // Update or insert the device record first.
       deviceStore.upsertDevice(devEvent)
 
-      // 2. обновляем каналы (если они пришли в событии)
+      // If the payload already contains channels, seed them into the channel store.
       if (devEvent.channels) {
         channelStore.setBaseChannels(devEvent.id, devEvent.channels)
       }
       break
     }
-    // --- статус (онлайн/оффлайн) ---
+    // Heartbeat status updates keep online/offline indicators responsive.
     case WSChannel.DEVICE_STATUS:{
       logger.debug("📡 IN ← DEVICE_STATUS:", channelEvent)
       deviceStore.updateStatus(channelEvent as DeviceHeartbeatEvent)
       break
     }
-    // --- состояние сигналов ---
+    // Device state broadcasts carry DI/DO/AO changes for visualization.
     case WSChannel.DEVICE_STATE:{
       logger.debug("📡 IN ← DEVICE_STATE:", channelEvent)
       channelStore.setChannels(channelEvent as DeviceStateEvent)
       break
     }
-    // --- ответы на команды ---
+    // Command responses confirm that the device acknowledged the instruction.
     case WSChannel.DEVICE_RESP: {
       logger.debug("📡 IN ← DEVICE_RESP:", channelEvent)
       channelStore.setResponse(channelEvent as DeviceRespEvent)

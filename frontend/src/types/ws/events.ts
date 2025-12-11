@@ -1,7 +1,7 @@
 import type { Channel } from "../channel"
 import type { TimeStatus } from "../time"
 // ---------------------------------------------------------------------
-// Каналы WS (Backend → Frontend)
+// WS channels (Backend → Frontend)
 // ---------------------------------------------------------------------
 
 export enum WSChannel {
@@ -13,7 +13,7 @@ export enum WSChannel {
 }
 
 // ---------------------------------------------------------------------
-// Протокол (Modes, Cmd, State) — зеркалит backend/protocol/modes.py
+// Protocol constants mirror backend/protocol/modes.py
 // ---------------------------------------------------------------------
 export enum StateMode {
   STATE_SINGLE_BIT   = 0x12,

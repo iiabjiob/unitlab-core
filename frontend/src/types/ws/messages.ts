@@ -45,19 +45,19 @@ export interface SetDoCommandMessage {
   unit_id: string
   mode: CmdMode
 
-  // common for SET_SINGLE_BIT / SET_PULSE_BIT
+  // Common for SET_SINGLE_BIT / SET_PULSE_BIT
   ch?: number
   value?: number
 
-  // only for SET_ALL_BIT
+  // Only for SET_ALL_BIT
   bitmask?: number
 
-  // only for SET_PAIR_BIT
+  // Only for SET_PAIR_BIT
   chA?: number
   chB?: number
   state2b?: number
 
-  // only for SET_PULSE_BIT
+  // Only for SET_PULSE_BIT
   pulse_ms?: number
 }
 

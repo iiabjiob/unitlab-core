@@ -2,7 +2,7 @@ import { defineStore } from "pinia"
 import { ref } from "vue"
 import { handleWsEvent } from "@/services/wsHandler"
 import type { WSEvent } from "@/types/ws/events"
-import { WSAction, type WSMessage } from "@/types/ws/messages"
+import type { WSMessage } from "@/types/ws/messages"
 import { getLogger } from "@/utils/logger"
 
 const logger = getLogger("WS")
@@ -12,97 +12,109 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
   const isConnected = ref(false)
   const everConnected = ref(false)
 
-  // очередь всех сообщений, пока сокет не открыт
+  let manualClose = false
+
   const messageQueue: WSMessage[] = []
+  const MAX_QUEUE = 2000
 
   // reconnect backoff
   const reconnectAttempts = ref(0)
-  const maxReconnectAttempts = 5
   const reconnectDelay = 1000
   const maxReconnectDelay = 30000
 
-  // ---------------- connect ----------------
+  /* ---------------- CONNECT ---------------- */
   function connect() {
-    if (
-      socket.value &&
-      (socket.value.readyState === WebSocket.OPEN ||
-        socket.value.readyState === WebSocket.CONNECTING)
-    ) {
-      return
+    manualClose = false
+
+    if (socket.value) {
+      logger.debug("♻️ Closing previous socket before reconnect")
+      socket.value.close()
+      socket.value = null
     }
 
-    const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws"
-    const wsUrl = `${wsProtocol}://${window.location.host}/ws/ws`
+    const wsProtocol = location.protocol === "https:" ? "wss" : "ws"
+    const wsUrl = `${wsProtocol}://${location.host}/ws/ws`
 
     socket.value = new WebSocket(wsUrl)
 
     socket.value.onopen = () => {
       isConnected.value = true
+      everConnected.value = true
       reconnectAttempts.value = 0
-      everConnected.value = true // было соединение хоть раз
+
       logger.info("✅ Connected")
 
-      // Flush queued messages first
+      // flush queue
       while (messageQueue.length > 0) {
-        const msg = messageQueue.shift()!
-        _sendNow(msg)
+        _sendNow(messageQueue.shift()!)
       }
     }
 
-    socket.value.onclose = (event: CloseEvent) => {
-      logger.warn("💥 Disconnected", event)
+    socket.value.onclose = (ev) => {
+      logger.warn("💥 Disconnected", ev)
       isConnected.value = false
       socket.value = null
-      _scheduleReconnect()
+
+      if (!manualClose) scheduleReconnect()
     }
 
-    socket.value.onmessage = (event: MessageEvent) => {
-      const data: WSEvent = JSON.parse(event.data)
-
-      // dispatch to domain stores
-      handleWsEvent(data)
-    }
-
-    socket.value.onerror = (error: Event) => {
-      logger.error("⚠️ Error", error)
+    socket.value.onerror = (err) => {
+      logger.error("⚠️ WebSocket Error", err)
       socket.value?.close()
     }
-  }
 
-  // ---------------- send with queue ----------------
-  function _sendNow(message: WSMessage) {
-    if (socket.value && socket.value.readyState === WebSocket.OPEN) {
-      socket.value.send(JSON.stringify(message))
-      logger.debug("📤 Sent", message)
-    } else {
-      logger.warn("💤 Tried to send but socket not open", message)
+    socket.value.onmessage = (ev) => {
+      const msg: WSEvent = JSON.parse(ev.data)
+      handleWsEvent(msg)
     }
   }
 
-  function send(message: WSMessage) {
+  /* ---------------- SEND ---------------- */
+  function _sendNow(msg: WSMessage) {
+    if (socket.value?.readyState === WebSocket.OPEN) {
+      socket.value.send(JSON.stringify(msg))
+      logger.debug("📤 Sent", msg)
+    } else {
+      logger.warn("💤 Socket not open", msg)
+    }
+  }
+
+  function send(msg: WSMessage) {
     if (isConnected.value) {
-      _sendNow(message)
+      _sendNow(msg)
     } else {
-      messageQueue.push(message)
-      logger.info("💤 Message queued", message)
+      if (messageQueue.length > MAX_QUEUE) {
+        logger.warn("⚠️ Queue full, dropping oldest")
+        messageQueue.shift()
+      }
+      messageQueue.push(msg)
+      logger.info("🕒 Queued", msg)
     }
   }
 
-  // ---------------- reconnect backoff ----------------
-  function _scheduleReconnect() {
-    let delay: number
-    if (reconnectAttempts.value < maxReconnectAttempts) {
-      reconnectAttempts.value++
-      delay = reconnectDelay * Math.pow(2, reconnectAttempts.value - 1)
-    } else {
-      delay = maxReconnectDelay
-    }
-    const seconds = (delay / 1000).toFixed(1)
-    logger.info(`⏳ Reconnect in ${seconds}s (attempt #${reconnectAttempts.value})`)
+  /* ---------------- RECONNECT ---------------- */
+  function scheduleReconnect() {
+    reconnectAttempts.value++
+
+    const delay = Math.min(
+      reconnectDelay * Math.pow(2, reconnectAttempts.value - 1),
+      maxReconnectDelay
+    )
+
+    logger.info(`⏳ Reconnect in ${(delay / 1000).toFixed(1)}s (#${reconnectAttempts.value})`)
+
     setTimeout(() => {
-      logger.info(`🔄 Reconnect attempt #${reconnectAttempts.value}`)
+      logger.info("🔄 Reconnecting…")
       connect()
     }, delay)
+  }
+
+  /* ---------------- MANUAL CLOSE ---------------- */
+  function disconnect() {
+    manualClose = true
+    socket.value?.close()
+    socket.value = null
+    isConnected.value = false
   }
 
   return {
@@ -110,6 +122,7 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
     isConnected,
     everConnected,
     connect,
+    disconnect,
     send,
   }
 })
