@@ -85,25 +85,3 @@ function onKeydown(e: KeyboardEvent) {
     <span class="ui-submenu-arrow">▶</span>
   </div>
 </template>
-
-<style>
-.ui-submenu-trigger {
-  padding: 6px 12px;
-  cursor: pointer;
-  user-select: none;
-  display: flex;
-  justify-content: space-between;
-  border-radius: 4px;
-  outline: none;
-}
-
-.ui-submenu-trigger:hover,
-.ui-submenu-trigger:focus {
-  background: var(--ui-menu-hover-bg, #eee);
-}
-
-.ui-submenu-arrow {
-  font-size: 12px;
-  opacity: 0.6;
-}
-</style>
