@@ -40,6 +40,7 @@ export class MenuCore {
   protected readonly stateMachine: MenuStateMachine
   protected readonly events: MenuEvents
   protected readonly tree: MenuTree
+  protected autoHighlightOnOpen = false
 
   constructor(options: MenuOptions = {}, callbacks: MenuCallbacks = {}, tree?: MenuTree, parentLink?: { parentId: string; parentItemId: string | null }) {
     const resolvedId = options.id ?? `menu-${++idCounter}`
@@ -89,7 +90,9 @@ export class MenuCore {
     this.timers.cancelClose()
     this.tree.updateOpenState(this.id, true)
     this.events.emitOpen()
-    this.ensureInitialHighlight()
+    if (this.autoHighlightOnOpen) {
+      this.ensureInitialHighlight()
+    }
     this.emitState()
   }
 
@@ -114,7 +117,9 @@ export class MenuCore {
       if (result.state.open) {
         this.tree.updateOpenState(this.id, true)
         this.events.emitOpen()
-        this.ensureInitialHighlight()
+        if (this.autoHighlightOnOpen) {
+          this.ensureInitialHighlight()
+        }
       } else {
         this.tree.updateOpenState(this.id, false)
         this.events.emitClose()

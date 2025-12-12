@@ -16,6 +16,7 @@ export interface SubmenuOptions extends MenuOptions {
 }
 
 export class SubmenuCore extends MenuCore {
+  protected override autoHighlightOnOpen = true
   private readonly parent: MenuCore
   private readonly parentItemId: string
   private readonly predictor: MousePrediction
