@@ -72,4 +72,22 @@ Pair controlled state with the controller when you need external stores to drive
 - Inspect `controller.snapshot.value.items[id].rect` to see the last measured DOMRect for positioning issues.
 - Use Vue Devtools to inspect the `MenuProvider` component when validating nested structures.
 
+## Global shortcuts
+
+Register keyboard shortcuts that trigger menu items even when the menu is closed:
+
+```vue
+<script setup lang="ts">
+import { useMenuShortcuts } from '@workspace/menu-vue'
+
+useMenuShortcuts({
+  rename: 'F2',
+  duplicate: 'Meta+D',
+  delete: 'Delete',
+})
+</script>
+```
+
+The helper ignores inputs, textareas, and contenteditable regions so forms stay usable. Provide menu item IDs as keys and shortcut strings as values in the `Ctrl+Shift+P` format.
+
 More real-world flows live in the [guides](../guide/context-menu.md).

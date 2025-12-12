@@ -17,6 +17,7 @@ export interface MenuController {
   readonly close: (reason?: "pointer" | "keyboard" | "programmatic") => void
   readonly toggle: () => void
   readonly highlight: (id: string | null) => void
+  readonly select: (id: string) => void
   readonly setAnchor: (rect: Rect | null) => void
   readonly recordPointer?: (point: { x: number; y: number }) => void
   readonly setTriggerRect?: (rect: Rect | null) => void
@@ -72,6 +73,7 @@ export function useMenuController(config: MenuControllerConfig): MenuController 
     close: (reason) => core.close(reason),
     toggle: () => core.toggle(),
     highlight: (id) => core.highlight(id),
+    select: (id) => core.select(id),
     setAnchor: (rect) => {
       anchorRef.value = rect
     },
