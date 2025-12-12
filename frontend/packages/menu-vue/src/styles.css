@@ -21,10 +21,12 @@
 .dark {
   --ui-menu-bg: #1f1f1f;
   --ui-menu-text: #f3f3f3;
+  --ui-submenu-trigger-text: #f3f3f3;
   --ui-menu-hover-bg: #2b2b2b;
   --ui-menu-border: #333333;
   --ui-menu-muted: #9a9a9a;
   --ui-menu-danger: #ff6b6b;
+  --ui-menu-separator: #3d3d3d;
   --ui-menu-submenu-indicator: #bbbbbb;
 }
 

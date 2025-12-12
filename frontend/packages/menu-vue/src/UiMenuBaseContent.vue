@@ -23,7 +23,8 @@ const panelPointer = pointerHandlers.makePanelHandlers({ bindings, bridge: subme
 const focus = useMenuFocus(props.provider.controller.panelRef)
 const lastPlacement = ref<PositionResult["placement"] | null>(null)
 const isOpen = computed(() => props.provider.controller.state.value.open)
-const panelState = computed(() => (isOpen.value ? "open" : "closed"))
+const shouldRender = ref(isOpen.value)
+const panelState = ref<"open" | "closed">(isOpen.value ? "open" : "closed")
 const resolvedSide = computed<PositionResult["placement"]>(() =>
   lastPlacement.value ?? (props.variant === "submenu" ? "right" : "bottom")
 )
@@ -59,17 +60,35 @@ const refreshGeometry = () => {
   updatePosition()
 }
 
+const playOpenAnimation = () => {
+  panelState.value = "closed"
+  if (typeof window === "undefined") {
+    panelState.value = "open"
+    return
+  }
+  window.requestAnimationFrame(() => {
+    panelState.value = "open"
+  })
+}
+
 watch(
   isOpen,
   async (open) => {
     if (open) {
+      shouldRender.value = true
+      panelState.value = "closed"
       await nextTick()
       props.provider.controller.panelRef.value = root.value
+      playOpenAnimation()
       refreshGeometry()
       focus.focusFirst()
-    } else if (props.provider.controller.panelRef.value === root.value) {
-      props.provider.controller.panelRef.value = null
-      props.provider.controller.setAnchor(null)
+    } else {
+      if (props.provider.controller.panelRef.value === root.value) {
+        props.provider.controller.panelRef.value = null
+        props.provider.controller.setAnchor(null)
+      }
+      panelState.value = "closed"
+      shouldRender.value = false
     }
   }
 )
@@ -139,7 +158,7 @@ function motionFromSide(side: PositionResult["placement"]) {
 <template>
   <Teleport :to="teleportTarget">
     <div
-      v-if="isOpen"
+      v-if="shouldRender"
       ref="root"
       :class="props.className ?? (props.variant === 'submenu' ? 'ui-submenu-content' : 'ui-menu-content')"
       :id="bindings.id"
