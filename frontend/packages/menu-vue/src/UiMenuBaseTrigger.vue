@@ -22,7 +22,10 @@ const props = defineProps<{
 }>()
 
 const el = ref<HTMLElement | null>(null)
-const triggerMode = computed<TriggerMode>(() => props.triggerMode ?? "both")
+const triggerMode = computed<TriggerMode>(() => {
+  if (props.triggerMode) return props.triggerMode
+  return props.variant === "menu" ? "click" : "both"
+})
 const openOnClick = computed(() => triggerMode.value === "click" || triggerMode.value === "both")
 const openOnContext = computed(() => triggerMode.value === "contextmenu" || triggerMode.value === "both")
 

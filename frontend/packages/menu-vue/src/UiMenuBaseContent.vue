@@ -82,6 +82,9 @@ function handlePointerEnter(event: PointerEvent) {
 }
 
 function handlePointerLeave(event: PointerEvent) {
+    if (props.variant !== "submenu") {
+        return
+    }
   panelPointer.onPointerLeave(event)
 }
 

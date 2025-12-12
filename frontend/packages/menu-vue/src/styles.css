@@ -3,11 +3,12 @@
   --ui-menu-border: #dddddd;
   --ui-menu-hover-bg: #f3f3f3;
   --ui-menu-text: #1f1f1f;
+  --ui-submenu-trigger-text: #1f1f1f;
   --ui-menu-muted: #6b6b6b;
   --ui-menu-min-width: 180px;
   --ui-menu-max-width: 360px;
   --ui-menu-radius: 8px;
-  --ui-menu-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+  --ui-menu-shadow: 0 4px 8px rgba(15, 23, 42, 0.12);
   --ui-menu-padding-y: 0.35rem;
   --ui-menu-padding-x: 0.35rem;
   --ui-menu-item-radius: 6px;
@@ -111,7 +112,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: var(--ui-menu-text, #1f1f1f);
+  color: var(--ui-submenu-trigger-text, #1f1f1f);
   gap: 0.65rem;
   padding: 0.45rem 0.9rem;
   border-radius: var(--ui-menu-item-radius, 6px);

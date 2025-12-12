@@ -2,14 +2,6 @@
 
 > Vue's most advanced headless menu system — instant accessibility, diagonal mouse prediction, and zero lock-in.
 
-<table>
-  <tr>
-    <td width="33%" align="center"><img src="./docs/assets/menu-basic.svg" alt="Basic menu preview" width="230" /><br/><strong>Baseline dropdown</strong></td>
-    <td width="33%" align="center"><img src="./docs/assets/submenu.svg" alt="Submenu preview" width="230" /><br/><strong>Infinite submenus</strong></td>
-    <td width="33%" align="center"><img src="./docs/assets/mouse-prediction.svg" alt="Mouse prediction preview" width="230" /><br/><strong>Diagonal intent</strong></td>
-  </tr>
-</table>
-
 ```vue
 <script setup lang="ts">
 import { UiMenu, UiMenuTrigger, UiMenuContent, UiMenuItem } from '@workspace/menu-vue'

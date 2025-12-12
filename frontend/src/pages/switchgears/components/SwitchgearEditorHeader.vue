@@ -92,7 +92,7 @@ const unitOnline = computed(() => (store.isUnitOnline(props.switchgear) ? "onlin
 
     <!-- ACTIONS -->
     <UiMenu>
-      <UiMenuTrigger>
+      <UiMenuTrigger asChild>
         <UiButton variant="icon">
           <EllipsisHorizontalIcon size="24" />
         </UiButton>

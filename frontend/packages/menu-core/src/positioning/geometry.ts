@@ -2,7 +2,7 @@ import type { Alignment, Rect } from "../Types"
 
 export type Axis = "x" | "y"
 
-export const SIDES = ["right", "left", "bottom", "top"] as const
+export const SIDES = ["bottom", "top", "left", "right" ] as const
 export type Side = (typeof SIDES)[number]
 
 export const ALIGNMENTS = ["start", "center", "end"] as const satisfies readonly Alignment[]
