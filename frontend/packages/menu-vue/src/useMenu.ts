@@ -1,55 +1,25 @@
-import { onBeforeUnmount, shallowRef } from "vue"
-import type { ShallowRef } from "vue"
-import {
-  MenuCore,
-  SubmenuCore,
-  type MenuCallbacks,
-  type MenuOptions,
-  type MenuState,
-  type Subscription,
-} from "@workspace/menu-core"
+import type { MenuCallbacks, MenuOptions, SubmenuCore } from "@workspace/menu-core"
+import type { MenuController as CoreCompatibleController } from "./useMenuController"
+import { useMenuController } from "./useMenuController"
 
-export interface MenuController {
-  core: MenuCore
-  state: ShallowRef<MenuState>
-}
+export type { MenuController } from "./useMenuController"
 
-export function useMenu(options?: MenuOptions, callbacks?: MenuCallbacks): MenuController {
-  const core = new MenuCore(options, callbacks)
-  const state = shallowRef<MenuState>(core.getSnapshot())
-  const subscription = core.subscribe((next) => {
-    state.value = next
-  })
-
-  onBeforeUnmount(() => {
-    subscription.unsubscribe()
-    core.destroy()
-  })
-
-  return { core, state }
-}
-
-export interface SubmenuController {
-  core: SubmenuCore
-  state: ShallowRef<MenuState>
-  dispose: () => void
+export function useMenu(options?: MenuOptions, callbacks?: MenuCallbacks) {
+  const controller = useMenuController({ kind: "root", options, callbacks })
+  return { core: controller.core, state: controller.state, controller }
 }
 
 export function createSubmenuController(
-  parent: MenuCore,
+  parent: CoreCompatibleController | CoreCompatibleController["core"],
   options: { parentItemId: string } & MenuOptions,
   callbacks?: MenuCallbacks
-): SubmenuController {
-  const core = new SubmenuCore(parent, options, callbacks)
-  const state = shallowRef<MenuState>(core.getSnapshot())
-  const subscription: Subscription = core.subscribe((next) => {
-    state.value = next
+) {
+  const controller = useMenuController({
+    kind: "submenu",
+    parent,
+    parentItemId: options.parentItemId,
+    options,
+    callbacks,
   })
-
-  const dispose = () => {
-    subscription.unsubscribe()
-    core.destroy()
-  }
-
-  return { core, state, dispose }
+  return { core: controller.core as SubmenuCore, state: controller.state, dispose: controller.dispose, controller }
 }

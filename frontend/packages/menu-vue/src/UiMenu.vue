@@ -1,26 +1,15 @@
 <script setup lang="ts">
-import { ref, shallowRef } from "vue"
-import type { MenuCallbacks, MenuOptions, Rect } from "@workspace/menu-core"
-import { useMenu } from "./useMenu"
-import { provideMenuContext } from "./context"
+import type { MenuCallbacks, MenuOptions } from "@workspace/menu-core"
+import { provideMenuProvider } from "./context"
+import { useMenuController } from "./useMenuController"
 
 const props = defineProps<{ options?: MenuOptions; callbacks?: MenuCallbacks }>()
 
-const triggerRef = ref<HTMLElement | null>(null)
-const panelRef = ref<HTMLElement | null>(null)
-const anchorOverride = shallowRef<Rect | null>(null)
+const controller = useMenuController({ kind: "root", options: props.options, callbacks: props.callbacks })
 
-const { core, state } = useMenu(props.options, props.callbacks)
+const provider = provideMenuProvider({ controller })
 
-provideMenuContext({
-  core,
-  state,
-  triggerRef,
-  panelRef,
-  anchorOverride,
-  parentMenuId: null,
-  rootMenuId: core.id,
-})
+defineExpose({ controller })
 </script>
 
 <template>
