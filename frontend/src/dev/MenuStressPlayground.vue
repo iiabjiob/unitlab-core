@@ -47,7 +47,7 @@ function removeDynamic() {
 
 <template>
   <div
-    class="p-10 space-y-10"
+    class="menu-stress-playground p-10 space-y-10"
     :dir="enableRTL ? 'rtl' : 'ltr'"
   >
     <h1 class="text-2xl font-bold">Menu Stress Playground</h1>
@@ -106,7 +106,7 @@ function removeDynamic() {
           </button>
         </UiMenuTrigger>
 
-        <UiMenuContent>
+        <UiMenuContent class="menu-playground-panel">
           <UiMenuLabel>Root items ({{ selectedCount }})</UiMenuLabel>
           <UiMenuSeparator />
 
@@ -136,7 +136,7 @@ function removeDynamic() {
 
           <UiSubMenu v-if="enableNested">
             <UiSubMenuTrigger>Nested Level 1 →</UiSubMenuTrigger>
-            <UiSubMenuContent>
+            <UiSubMenuContent class="menu-playground-panel">
               <UiMenuLabel>Level 1</UiMenuLabel>
               <UiMenuSeparator />
 
@@ -144,7 +144,7 @@ function removeDynamic() {
 
               <UiSubMenu>
                 <UiSubMenuTrigger>Nested Level 2 →</UiSubMenuTrigger>
-                <UiSubMenuContent>
+                <UiSubMenuContent class="menu-playground-panel">
                   <UiMenuLabel>Level 2</UiMenuLabel>
                   <UiMenuSeparator />
 
@@ -153,7 +153,7 @@ function removeDynamic() {
 
                   <UiSubMenu>
                     <UiSubMenuTrigger>Nested Level 3 →</UiSubMenuTrigger>
-                    <UiSubMenuContent>
+                    <UiSubMenuContent class="menu-playground-panel">
                       <UiMenuLabel>Level 3</UiMenuLabel>
                       <UiMenuSeparator />
 
@@ -177,3 +177,39 @@ function removeDynamic() {
     </div>
   </div>
 </template>
+
+<style scoped>
+:global(.menu-playground-panel[data-state="closed"]) {
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+}
+
+:global(.menu-playground-panel[data-state="open"]) {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+:global(.menu-playground-panel[data-motion="from-bottom"][data-state="closed"]) {
+  opacity: 0;
+  transform: translateY(4px) scale(0.96);
+}
+
+:global(.menu-playground-panel[data-motion="from-bottom"][data-state="open"]) {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: opacity 140ms ease, transform 140ms cubic-bezier(.2, .8, .4, 1);
+}
+
+:global(.menu-playground-panel[data-motion="from-left"][data-state="closed"]) {
+  opacity: 0;
+  transform: translateX(-6px);
+}
+
+:global(.menu-playground-panel[data-motion="from-left"][data-state="open"]) {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+</style>

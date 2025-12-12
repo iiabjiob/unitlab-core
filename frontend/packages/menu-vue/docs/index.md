@@ -9,6 +9,7 @@ The `@workspace/menu-vue` package gives you accessible, headless Vue 3 building 
 - [Controller API](./reference/controller.md)
 - [Context menus guide](./guide/context-menu.md)
 - [Virtualized menus guide](./guide/virtualization.md)
+- [Animations guide](./guide/animations.md)
 
 ## When to reach for Menu Vue
 

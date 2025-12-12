@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Teleport, computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
+import { Teleport, computed, nextTick, onBeforeUnmount, onMounted, ref, watch, useAttrs } from "vue"
+import type { PositionResult } from "@workspace/menu-core"
 import type { MenuProviderValue } from "./context"
 import { useMenuPointerHandlers } from "./useMenuPointerHandlers"
 import { useMenuFocus } from "./useMenuFocus"
@@ -20,6 +21,15 @@ const pointerHandlers = useMenuPointerHandlers(props.provider)
 const submenuBridge = useSubmenuBridge(props.variant)
 const panelPointer = pointerHandlers.makePanelHandlers({ bindings, bridge: submenuBridge })
 const focus = useMenuFocus(props.provider.controller.panelRef)
+const lastPlacement = ref<PositionResult["placement"] | null>(null)
+const isOpen = computed(() => props.provider.controller.state.value.open)
+const panelState = computed(() => (isOpen.value ? "open" : "closed"))
+const resolvedSide = computed<PositionResult["placement"]>(() =>
+  lastPlacement.value ?? (props.variant === "submenu" ? "right" : "bottom")
+)
+const resolvedMotion = computed(() => motionFromSide(resolvedSide.value))
+defineOptions({ inheritAttrs: false })
+const attrs = useAttrs()
 
 const syncSubmenuGeometry = () => {
   if (props.variant !== "submenu" || !submenuBridge) {
@@ -31,7 +41,15 @@ const syncSubmenuGeometry = () => {
   props.provider.controller.setPanelRect?.(panelRect ?? null)
 }
 
-const updatePosition = useMenuPositioning(props.provider.controller, syncSubmenuGeometry)
+const preferredPlacement: PositionResult["placement"] = props.variant === "submenu" ? "right" : "bottom"
+
+const updatePosition = useMenuPositioning(props.provider.controller, {
+  placement: preferredPlacement,
+  afterUpdate: (position) => {
+    lastPlacement.value = position.placement
+    syncSubmenuGeometry()
+  },
+})
 
 const teleportTarget = computed(() => props.teleportTo ?? "body")
 const parentMenuId = props.provider.parentController?.id ?? ""
@@ -42,7 +60,7 @@ const refreshGeometry = () => {
 }
 
 watch(
-  () => props.provider.controller.state.value.open,
+  isOpen,
   async (open) => {
     if (open) {
       await nextTick()
@@ -59,14 +77,14 @@ watch(
 watch(
   () => props.provider.controller.anchorRef.value,
   () => {
-    if (props.provider.controller.state.value.open) {
+    if (isOpen.value) {
       refreshGeometry()
     }
   }
 )
 
 onMounted(() => {
-  if (props.provider.controller.state.value.open) {
+  if (isOpen.value) {
     refreshGeometry()
   }
 })
@@ -82,9 +100,9 @@ function handlePointerEnter(event: PointerEvent) {
 }
 
 function handlePointerLeave(event: PointerEvent) {
-    if (props.variant !== "submenu") {
-        return
-    }
+  if (props.variant !== "submenu") {
+    return
+  }
   panelPointer.onPointerLeave(event)
 }
 
@@ -102,21 +120,39 @@ function handleKeydown(event: KeyboardEvent) {
   }
   bindings.value.onKeyDown?.(event)
 }
+
+function motionFromSide(side: PositionResult["placement"]) {
+  switch (side) {
+    case "top":
+      return "from-top"
+    case "left":
+      return "from-left"
+    case "right":
+      return "from-right"
+    case "bottom":
+    default:
+      return "from-bottom"
+  }
+}
 </script>
 
 <template>
   <Teleport :to="teleportTarget">
     <div
-      v-if="props.provider.controller.state.value.open"
+      v-if="isOpen"
       ref="root"
       :class="props.className ?? (props.variant === 'submenu' ? 'ui-submenu-content' : 'ui-menu-content')"
       :id="bindings.id"
       role="menu"
       tabindex="-1"
       data-ui-menu-panel="true"
+      :data-state="panelState"
+      :data-side="resolvedSide"
+      :data-motion="resolvedMotion"
       :data-ui-root-menu-id="props.provider.rootId"
       :data-ui-menu-id="props.provider.controller.id"
       :data-ui-parent-menu-id="parentMenuId"
+      v-bind="attrs"
       @pointerenter="handlePointerEnter"
       @pointerleave="handlePointerLeave"
       @keydown="handleKeydown"
