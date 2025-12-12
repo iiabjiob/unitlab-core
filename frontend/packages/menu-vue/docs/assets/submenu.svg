@@ -1,51 +1,13 @@
-<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <style>
-      .bg { fill: #f8f9fa; }
-      .text { font: 14px sans-serif; fill: #495057; }
-      .menu { fill: white; stroke: #adb5bd; stroke-width: 1; }
-      .item { fill: #f8f9fa; }
-      .item-hover { fill: #e9ecef; }
-      .item-text { font: 11px sans-serif; fill: #212529; }
-      .submenu-indicator { fill: #6c757d; }
-    </style>
-  </defs>
-  
-  <rect width="300" height="200" class="bg"/>
-  
-  <!-- Title -->
-  <text x="150" y="25" text-anchor="middle" class="text" font-weight="bold">Nested Submenus</text>
-  
-  <!-- Main Menu -->
-  <rect x="20" y="40" width="120" height="140" rx="6" class="menu" filter="drop-shadow(0 4px 8px rgba(0,0,0,0.1))"/>
-  
-  <rect x="25" y="45" width="110" height="24" rx="3" class="item"/>
-  <text x="35" y="60" class="item-text">Edit</text>
-  
-  <rect x="25" y="72" width="110" height="24" rx="3" class="item-hover"/>
-  <text x="35" y="87" class="item-text">Export</text>
-  <text x="120" y="87" class="submenu-indicator">→</text>
-  
-  <rect x="25" y="99" width="110" height="24" rx="3" class="item"/>
-  <text x="35" y="114" class="item-text">Share</text>
-  
-  <rect x="25" y="126" width="110" height="24" rx="3" class="item"/>
-  <text x="35" y="141" class="item-text">Delete</text>
-  
-  <!-- Submenu -->
-  <rect x="150" y="72" width="130" height="100" rx="6" class="menu" filter="drop-shadow(0 4px 8px rgba(0,0,0,0.1))"/>
-  
-  <rect x="155" y="77" width="120" height="24" rx="3" class="item"/>
-  <text x="165" y="92" class="item-text">📄 PDF</text>
-  
-  <rect x="155" y="104" width="120" height="24" rx="3" class="item-hover"/>
-  <text x="165" y="119" class="item-text">📊 Excel</text>
-  
-  <rect x="155" y="131" width="120" height="24" rx="3" class="item"/>
-  <text x="165" y="146" class="item-text">🖼️ Image</text>
-  
-  <!-- Connection line -->
-  <path d="M 135 84 L 150 84" stroke="#007bff" stroke-width="2" stroke-dasharray="4,2"/>
-  
-  <text x="150" y="195" text-anchor="middle" font-size="10" fill="#6c757d">Hover to open submenus</text>
+<svg width="320" height="200" viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Submenu preview">
+  <rect width="320" height="200" fill="#0a0f1f" rx="16" />
+  <rect x="36" y="36" width="120" height="130" rx="10" fill="#020617" stroke="#1d4ed8" stroke-width="2" />
+  <rect x="52" y="52" width="88" height="20" rx="4" fill="#1d4ed8" />
+  <rect x="52" y="80" width="88" height="20" rx="4" fill="#1e293b" />
+  <rect x="52" y="108" width="88" height="20" rx="4" fill="#1e293b" />
+  <rect x="168" y="72" width="120" height="94" rx="10" fill="#020617" stroke="#94a3b8" stroke-width="2" />
+  <rect x="184" y="88" width="88" height="20" rx="4" fill="#1e293b" />
+  <rect x="184" y="116" width="88" height="20" rx="4" fill="#1e293b" />
+  <path d="M142 98 L168 98" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" />
+  <text x="96" y="65" text-anchor="middle" fill="#e2e8f0" font-family="Inter, 'Segoe UI', sans-serif" font-size="11">Parent</text>
+  <text x="224" y="103" text-anchor="middle" fill="#e2e8f0" font-family="Inter, 'Segoe UI', sans-serif" font-size="11">Child</text>
 </svg>

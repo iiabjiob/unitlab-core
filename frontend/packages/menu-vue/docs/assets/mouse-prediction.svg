@@ -1,67 +1,11 @@
-<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <style>
-      .bg { fill: #f8f9fa; }
-      .text { font: 14px sans-serif; fill: #495057; }
-      .menu { fill: white; stroke: #adb5bd; stroke-width: 1; }
-      .item { fill: #f8f9fa; }
-      .item-hover { fill: #e9ecef; }
-      .item-text { font: 11px sans-serif; fill: #212529; }
-      .cursor { fill: #007bff; }
-      .path { fill: none; stroke: #007bff; stroke-width: 2; stroke-dasharray: 4,2; }
-      .prediction-zone { fill: rgba(0, 123, 255, 0.1); stroke: #007bff; stroke-width: 1; stroke-dasharray: 2,2; }
-    </style>
-  </defs>
-  
-  <rect width="300" height="200" class="bg"/>
-  
-  <!-- Title -->
-  <text x="150" y="25" text-anchor="middle" class="text" font-weight="bold">Mouse Prediction</text>
-  
-  <!-- Main Menu -->
-  <rect x="20" y="50" width="100" height="120" rx="6" class="menu" filter="drop-shadow(0 4px 8px rgba(0,0,0,0.1))"/>
-  
-  <rect x="25" y="55" width="90" height="24" rx="3" class="item"/>
-  <text x="35" y="70" class="item-text">File</text>
-  
-  <rect x="25" y="82" width="90" height="24" rx="3" class="item-hover"/>
-  <text x="35" y="97" class="item-text">Edit</text>
-  <text x="100" y="97" font-size="10">→</text>
-  
-  <rect x="25" y="109" width="90" height="24" rx="3" class="item"/>
-  <text x="35" y="124" class="item-text">View</text>
-  
-  <rect x="25" y="136" width="90" height="24" rx="3" class="item"/>
-  <text x="35" y="151" class="item-text">Help</text>
-  
-  <!-- Submenu -->
-  <rect x="130" y="82" width="100" height="80" rx="6" class="menu" filter="drop-shadow(0 4px 8px rgba(0,0,0,0.1))"/>
-  
-  <rect x="135" y="87" width="90" height="20" rx="3" class="item"/>
-  <text x="145" y="100" class="item-text" font-size="10">Copy</text>
-  
-  <rect x="135" y="110" width="90" height="20" rx="3" class="item"/>
-  <text x="145" y="123" class="item-text" font-size="10">Paste</text>
-  
-  <rect x="135" y="133" width="90" height="20" rx="3" class="item"/>
-  <text x="145" y="146" class="item-text" font-size="10">Cut</text>
-  
-  <!-- Prediction zone (triangle) -->
-  <path d="M 115 94 L 130 87 L 130 157 Z" class="prediction-zone"/>
-  
-  <!-- Mouse cursor path (diagonal) -->
-  <path d="M 70 94 Q 95 105, 140 115" class="path"/>
-  
-  <!-- Cursor positions -->
-  <circle cx="70" cy="94" r="3" class="cursor" opacity="0.3"/>
-  <circle cx="85" cy="100" r="3" class="cursor" opacity="0.5"/>
-  <circle cx="100" cy="106" r="3" class="cursor" opacity="0.7"/>
-  <circle cx="115" cy="110" r="3" class="cursor" opacity="0.9"/>
-  <circle cx="140" cy="115" r="4" class="cursor"/>
-  
-  <!-- Cursor icon -->
-  <path d="M 140 115 L 140 125 L 144 121 L 148 126 L 150 124 L 146 119 L 150 119 Z" fill="#007bff"/>
-  
-  <text x="150" y="190" text-anchor="middle" font-size="9" fill="#6c757d">Diagonal movement detected</text>
-  <text x="150" y="198" text-anchor="middle" font-size="9" fill="#6c757d">Submenu stays open!</text>
+<svg width="320" height="200" viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mouse prediction preview">
+  <rect width="320" height="200" fill="#020617" rx="16" />
+  <rect x="40" y="60" width="120" height="100" rx="10" fill="#0f172a" stroke="#1d4ed8" stroke-width="2" />
+  <rect x="180" y="60" width="100" height="80" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+  <path d="M100 120 L230 90" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" stroke-dasharray="6 6" />
+  <polygon points="232,90 222,86 222,94" fill="#38bdf8" />
+  <circle cx="104" cy="124" r="6" fill="#f8fafc" stroke="#0f172a" stroke-width="2" />
+  <path d="M70 120 L60 140 L80 140 Z" fill="#e2e8f0" stroke="#0f172a" stroke-width="2" />
+  <text x="100" y="150" text-anchor="middle" fill="#e2e8f0" font-family="Inter, 'Segoe UI', sans-serif" font-size="11">Pointer</text>
+  <text x="220" y="150" text-anchor="middle" fill="#e2e8f0" font-family="Inter, 'Segoe UI', sans-serif" font-size="11">Intent window</text>
 </svg>
