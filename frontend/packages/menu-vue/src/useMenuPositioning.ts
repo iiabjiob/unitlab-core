@@ -138,14 +138,23 @@ function resolvePreferredPlacement(
   gutter: number,
   viewportPadding: number
 ): Placement {
+  const basePreference = preferred && preferred !== "auto" ? preferred : "auto"
+
+  if ((basePreference === "right" || basePreference === "left") && preferred === "auto") {
+    const spaceRight = availableHorizontalSpace("right", anchor, viewportWidth, gutter, viewportPadding)
+    const spaceLeft = availableHorizontalSpace("left", anchor, viewportWidth, gutter, viewportPadding)
+    return spaceRight >= spaceLeft ? "right" : "left"
+  }
+
   if (!preferred || preferred === "auto") {
     return "auto"
   }
+
   if (preferred === "left" || preferred === "right") {
-    return chooseHorizontalPlacement(preferred, anchor, panel, viewportWidth, gutter, viewportPadding)
+    return chooseHorizontalPlacement(preferred, anchor, panel, viewportWidth, viewportHeight, gutter, viewportPadding)
   }
   if (preferred === "top" || preferred === "bottom") {
-    return chooseVerticalPlacement(preferred, anchor, panel, viewportHeight, gutter, viewportPadding)
+    return chooseVerticalPlacement(preferred, anchor, panel, viewportHeight, viewportWidth, gutter, viewportPadding)
   }
   return preferred
 }
@@ -155,6 +164,7 @@ function chooseHorizontalPlacement(
   anchor: Rect,
   panel: Rect,
   viewportWidth: number,
+  viewportHeight: number,
   gutter: number,
   viewportPadding: number
 ): Placement {
@@ -167,6 +177,11 @@ function chooseHorizontalPlacement(
   if (oppositeSpace >= panel.width) {
     return opposite
   }
+  const belowSpace = availableVerticalSpace("bottom", anchor, viewportHeight, gutter, viewportPadding)
+  const aboveSpace = availableVerticalSpace("top", anchor, viewportHeight, gutter, viewportPadding)
+  if (belowSpace >= panel.height || aboveSpace >= panel.height) {
+    return belowSpace >= aboveSpace ? "bottom" : "top"
+  }
   return preferredSpace >= oppositeSpace ? preferred : opposite
 }
 
@@ -175,6 +190,7 @@ function chooseVerticalPlacement(
   anchor: Rect,
   panel: Rect,
   viewportHeight: number,
+  viewportWidth: number,
   gutter: number,
   viewportPadding: number
 ): Placement {
@@ -186,6 +202,11 @@ function chooseVerticalPlacement(
   const oppositeSpace = availableVerticalSpace(opposite, anchor, viewportHeight, gutter, viewportPadding)
   if (oppositeSpace >= panel.height) {
     return opposite
+  }
+  const rightSpace = availableHorizontalSpace("right", anchor, viewportWidth, gutter, viewportPadding)
+  const leftSpace = availableHorizontalSpace("left", anchor, viewportWidth, gutter, viewportPadding)
+  if (rightSpace >= panel.width || leftSpace >= panel.width) {
+    return rightSpace >= leftSpace ? "right" : "left"
   }
   return preferredSpace >= oppositeSpace ? preferred : opposite
 }
