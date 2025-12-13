@@ -8,7 +8,7 @@ import {
   UiMenuTrigger,
   UiMenuContent,
   UiMenuItem
-} from "@/components/ui/menu"
+} from "@affino/menu-vue"
 import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vue"
 
 const props = defineProps<{

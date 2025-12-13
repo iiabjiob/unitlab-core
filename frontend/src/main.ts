@@ -1,4 +1,5 @@
 import './assets/main.css'
+import '@affino/menu-vue/styles.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'

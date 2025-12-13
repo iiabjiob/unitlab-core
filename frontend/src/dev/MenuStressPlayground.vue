@@ -10,7 +10,7 @@ import {
   UiSubMenu,
   UiSubMenuTrigger,
   UiSubMenuContent,
-} from "@/components/ui/menu"
+} from "@affino/menu-vue"
 
 // SETTINGS
 const itemCounts = [50, 200, 500, 1000]
