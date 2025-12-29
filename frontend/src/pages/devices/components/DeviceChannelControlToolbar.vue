@@ -19,13 +19,13 @@ const allOff = computed(() => hasDo.value && doChannels.value.every(ch => !ch.st
 function setAll(state: boolean) {
   if (!hasDo.value) return
   const mask = buildBitmask(doChannels.value, state)
-  channelStore.sendDoAllCommand(props.unitId, mask)
+  channelStore.sendDoAllCommand(props.deviceId, props.unitId, mask)
 }
 
 function toggleAll() {
   if (!hasDo.value) return
   const mask = buildToggleBitmask(doChannels.value)
-  channelStore.sendDoAllCommand(props.unitId, mask)
+  channelStore.sendDoAllCommand(props.deviceId, props.unitId, mask)
 }
 </script>
 

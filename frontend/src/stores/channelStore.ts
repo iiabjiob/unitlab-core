@@ -366,7 +366,26 @@ export const useChannelStore = defineStore("channelStore", () => {
     })
   }
 
-  function sendDoAllCommand(unitId: string, mask: number) {
+  function sendDoAllCommand(deviceId: number, unitId: string, mask: number) {
+    const deviceStore = useDeviceStore()
+    const device =
+      deviceStore.devices.find(d => d.id === deviceId) ||
+      deviceStore.devices.find(d => d.unit_id === unitId)
+
+    if (!device) {
+      logger.error(`Device ${unitId} not found for DO all command`)
+      return
+    }
+
+    const doChannels = channelsByDevice(device.id).filter(
+      ch => ch.type === CHANNEL_TYPES.DO,
+    ) as DoChannel[]
+
+    doChannels.forEach(ch => {
+      const target = ((mask >> ch.index) & 1) === 1
+      enterDoPendingState(ch, target)
+    })
+
     const ws = useWebSocketStore()
     ws.send({
       action: WSAction.SET_DO_COMMAND,
@@ -375,6 +394,11 @@ export const useChannelStore = defineStore("channelStore", () => {
       bitmask: mask,
     } satisfies SetDoCommandMessage)
     logger.info(`➡️ DO ALL cmd ${unitId} mask=${mask}`)
+
+    logStore.push(device.id, {
+      type: "cmd",
+      message: `SEND DO ALL mask=${mask}`,
+    })
   }
 
   function sendDoPairCommand(unitId: string, chA: number, chB: number, state2b: 0 | 1 | 2 | 3) {
