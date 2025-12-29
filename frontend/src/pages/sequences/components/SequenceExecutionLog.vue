@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref } from "vue"
 import { useSequenceLogStore } from "@/stores/sequenceLogStore"
 import type { SequenceDef, SequenceState } from "@/types/sequences"
+import { useAutoScroll } from "@/composables/useAutoScroll"
 
 const props = defineProps<{
   sequence: SequenceDef
@@ -10,6 +11,9 @@ const props = defineProps<{
 
 const logStore = useSequenceLogStore()
 const logs = computed(() => logStore.logs[props.sequence.id] ?? [])
+
+const logContainer = ref<HTMLElement | null>(null)
+useAutoScroll(logs, logContainer)
 </script>
 
 <template>
@@ -24,6 +28,7 @@ const logs = computed(() => logStore.logs[props.sequence.id] ?? [])
 
     <!-- LIST -->
     <div
+      ref="logContainer"
       class="flex-1 overflow-y-auto px-4 py-2 space-y-0.5
              font-mono text-[11px] leading-tight
              text-neutral-700 dark:text-neutral-300"

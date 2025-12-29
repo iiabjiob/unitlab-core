@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref } from "vue"
 import type { Switchgear } from "@/types/switchgear"
 import { useSwitchgearLogStore } from "@/stores/switchgearLogStore"
+import { useAutoScroll } from "@/composables/useAutoScroll"
 
 const props = defineProps<{
   switchgear: Switchgear
@@ -13,6 +14,9 @@ const sortedLogs = computed(() =>
   [...(logStore.logs[props.switchgear.id] ?? [])]
     .sort((a, b) => a.t - b.t)
 )
+
+const logContainer = ref<HTMLElement | null>(null)
+useAutoScroll(sortedLogs, logContainer)
 </script>
 
 <template>
@@ -27,6 +31,7 @@ const sortedLogs = computed(() =>
 
     <!-- LIST -->
     <div
+      ref="logContainer"
       class="flex-1 overflow-y-auto px-4 py-2 space-y-0.5
              font-mono text-[11px] leading-tight
              text-neutral-700 dark:text-neutral-300"

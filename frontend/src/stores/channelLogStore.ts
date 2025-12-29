@@ -7,6 +7,8 @@ export type ChannelLogEntry = {
   t: number
   type: "info" | "cmd" | "state" | "resp" | "error"
   message: string
+  actionId?: string
+  reason?: string
 }
 
 export const useChannelLogStore = defineStore("channelLogStore", () => {

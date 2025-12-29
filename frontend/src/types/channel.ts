@@ -14,6 +14,7 @@ export interface DoChannelUiState {
   stage: ChannelUiStage
   target?: boolean
   previous?: boolean
+  actionId?: string
   debounceTimer?: TimeoutHandle | null
   timeoutTimer?: TimeoutHandle | null
   errorTimer?: TimeoutHandle | null

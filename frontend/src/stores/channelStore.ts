@@ -10,6 +10,7 @@ import { useDeviceStore } from "@/stores/deviceStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
 
 import { useChannelLogStore } from "@/stores/channelLogStore"
+import type { ChannelLogEntry } from "@/stores/channelLogStore"
 
 import {
   WSAction,
@@ -43,16 +44,80 @@ export const useChannelStore = defineStore("channelStore", () => {
 
   const logStore = useChannelLogStore()
 
-  const DIGITAL_ON = "ON"
-  const DIGITAL_OFF = "OFF"
-  const DIGITAL_PENDING = "PENDING"
+  const actionCounters = new Map<number, number>()
+  const actionQueues = new Map<number, string[]>()
+  const aoActionMap = new Map<string, string>()
 
-  function toDigitalLabel(value: unknown): "ON" | "OFF" {
+  function enqueueAction(deviceId: number): string {
+    const next = (actionCounters.get(deviceId) ?? 0) + 1
+    actionCounters.set(deviceId, next)
+    const actionId = next.toString().padStart(4, "0")
+    const queue = actionQueues.get(deviceId) ?? []
+    queue.push(actionId)
+    actionQueues.set(deviceId, queue)
+    return actionId
+  }
+
+  function consumeAction(deviceId: number): string | undefined {
+    const queue = actionQueues.get(deviceId)
+    if (!queue || queue.length === 0) return undefined
+    const id = queue.shift()
+    if (!queue.length) {
+      actionQueues.delete(deviceId)
+    }
+    return id
+  }
+
+  function removeAction(deviceId: number, actionId?: string) {
+    if (!actionId) return
+    const queue = actionQueues.get(deviceId)
+    if (!queue) return
+    const idx = queue.indexOf(actionId)
+    if (idx === -1) return
+    queue.splice(idx, 1)
+    if (!queue.length) {
+      actionQueues.delete(deviceId)
+    }
+  }
+
+  function aoKey(deviceId: number, chIndex: number) {
+    return `${deviceId}:${chIndex}`
+  }
+
+  function registerAoAction(deviceId: number, chIndex: number, actionId: string) {
+    aoActionMap.set(aoKey(deviceId, chIndex), actionId)
+  }
+
+  function peekAoAction(deviceId: number, chIndex: number): string | undefined {
+    return aoActionMap.get(aoKey(deviceId, chIndex))
+  }
+
+  function clearAoAction(deviceId: number, chIndex: number) {
+    aoActionMap.delete(aoKey(deviceId, chIndex))
+  }
+
+  function purgeAoAction(actionId?: string) {
+    if (!actionId) return
+    for (const [key, id] of aoActionMap.entries()) {
+      if (id === actionId) {
+        aoActionMap.delete(key)
+      }
+    }
+  }
+
+  const DIGITAL_ON = "ON" as const
+  const DIGITAL_OFF = "OFF" as const
+  const DIGITAL_PENDING = "PENDING" as const
+
+  type DigitalStableLabel = typeof DIGITAL_ON | typeof DIGITAL_OFF
+  type DigitalLabel = DigitalStableLabel | typeof DIGITAL_PENDING
+
+  function toDigitalLabel(value: unknown): DigitalStableLabel {
     return value ? DIGITAL_ON : DIGITAL_OFF
   }
 
-  function formatPendingSuffix() {
-    return ` (${DIGITAL_PENDING})`
+  function formatPendingSuffix(active = true) {
+    return active ? ` (${DIGITAL_PENDING})` : ""
   }
 
   function summarizeDoChannels(deviceId: number) {
@@ -92,7 +157,7 @@ export const useChannelStore = defineStore("channelStore", () => {
     return `${DIGITAL_ON}: ${summary.on}, ${DIGITAL_OFF}: ${summary.off}`
   }
 
-  function decodePairLabels(state2b: number): ["ON" | "OFF", "ON" | "OFF"] | null {
+  function decodePairLabels(state2b: number): [DigitalStableLabel, DigitalStableLabel] | null {
     switch (state2b) {
       case 0b00:
         return [DIGITAL_ON, DIGITAL_OFF]
@@ -103,6 +168,21 @@ export const useChannelStore = defineStore("channelStore", () => {
       default:
         return null
     }
+  }
+
+  function decodePairTargets(state2b: number): [boolean, boolean] | null {
+    const labels = decodePairLabels(state2b)
+    if (!labels) return null
+    return [labels[0] === DIGITAL_ON, labels[1] === DIGITAL_ON]
+  }
+
+  type ChannelLogPayload = Pick<ChannelLogEntry, "type" | "message" | "reason">
+
+  function pushDeviceLog(deviceId: number, entry: ChannelLogPayload, actionId?: string) {
+    logStore.push(deviceId, {
+      ...entry,
+      actionId,
+    })
   }
 
   function ensureDoUi(channel: DoChannel): DoChannelUiState {
@@ -133,14 +213,16 @@ export const useChannelStore = defineStore("channelStore", () => {
     ui.stage = "idle"
     ui.target = undefined
     ui.previous = undefined
+    ui.actionId = undefined
   }
 
-  function enterDoPendingState(channel: DoChannel, target: boolean) {
+  function enterDoPendingState(channel: DoChannel, target: boolean, actionId?: string) {
     const ui = ensureDoUi(channel)
     clearDoUiTimers(ui)
     ui.stage = "debounce"
     ui.target = target
     ui.previous = channel.state
+    ui.actionId = actionId
 
     ui.debounceTimer = setTimeout(() => {
       ui.stage = "pending"
@@ -149,6 +231,9 @@ export const useChannelStore = defineStore("channelStore", () => {
     ui.timeoutTimer = setTimeout(() => {
       ui.stage = "error"
       ui.target = undefined
+      if (ui.actionId) {
+        removeAction(channel.device_id, ui.actionId)
+      }
       if (typeof ui.previous === "boolean") {
         channel.state = ui.previous
       }
@@ -174,6 +259,7 @@ export const useChannelStore = defineStore("channelStore", () => {
       ui.stage = "idle"
       ui.target = undefined
       ui.previous = undefined
+      ui.actionId = undefined
     }
   }
 
@@ -263,48 +349,64 @@ export const useChannelStore = defineStore("channelStore", () => {
     logger.info(`📡 Base channels set for ${deviceId}`, prepared)
   }
 
-  function applyBitState(deviceId: number, chIndex: number, value: boolean) {
+  function applyBitState(deviceId: number, chIndex: number, value: boolean): { changed: boolean; actionId?: string } {
     for (const ch of channels.value) {
       if (ch.device_id === deviceId && ch.index === chIndex) {
-
         if (ch.type === CHANNEL_TYPES.AO) {
-          break
+          return { changed: false }
         }
-        if (ch.state !== value) {
+        let actionId: string | undefined
+        if (ch.type === CHANNEL_TYPES.DO) {
+          actionId = ch.ui?.actionId
+        }
+        const previous = ch.state
+        const changed = previous !== value
+        if (changed) {
           ch.state = value
         }
         if (ch.type === CHANNEL_TYPES.DO) {
           fulfillDoPendingState(ch as DoChannel, value)
         }
-        break
+        return { changed, actionId }
       }
     }
+    return { changed: false }
   }
 
-  function applyBitmaskState(deviceId: number, mask: number) {
+  function applyBitmaskState(deviceId: number, mask: number): { changed: boolean; actionIds: Set<string> } {
+    let changed = false
+    const actionIds = new Set<string>()
     for (const ch of channels.value) {
       if (ch.device_id !== deviceId || ch.type === CHANNEL_TYPES.AO) continue
       const next = ((mask >> ch.index) & 1) === 1
       if (ch.state !== next) {
         ch.state = next
+        changed = true
       }
       if (ch.type === CHANNEL_TYPES.DO) {
+        const id = ch.ui?.actionId
+        if (id) {
+          actionIds.add(id)
+        }
         fulfillDoPendingState(ch as DoChannel, next)
       }
     }
-
+    return { changed, actionIds }
   }
 
-  function applyFloatState(deviceId: number, chIndex: number, value: number) {
+  function applyFloatState(deviceId: number, chIndex: number, value: number): { changed: boolean; actionId?: string } {
     for (const ch of channels.value) {
       if (ch.device_id === deviceId && ch.index === chIndex && ch.type === CHANNEL_TYPES.AO) {
-
-        if (ch.state !== value) {
+        const previous = ch.state
+        const changed = previous !== value
+        if (changed) {
           ch.state = value
         }
-        break
+        const actionId = peekAoAction(deviceId, chIndex)
+        return { changed, actionId }
       }
     }
+    return { changed: false }
   }
 
   function setChannels(event: DeviceStateEvent) {
@@ -317,30 +419,50 @@ export const useChannelStore = defineStore("channelStore", () => {
 
     switch (event.mode) {
       case StateMode.STATE_SINGLE_BIT: {
-        applyBitState(device.id, event.payload.ch, !!event.payload.value)
+        const { changed, actionId } = applyBitState(device.id, event.payload.ch, !!event.payload.value)
+        if (!changed) {
+          break
+        }
         const singleLabel = toDigitalLabel(event.payload.value)
-        logStore.push(device.id, {
+        pushDeviceLog(device.id, {
           type: "state",
           message: `CH${event.payload.ch + 1} state ${singleLabel}`
-        })
+        }, actionId)
+        if (actionId) {
+          removeAction(device.id, actionId)
+        }
         break
       }
       case StateMode.STATE_ALL_BIT: {
-        applyBitmaskState(device.id, event.payload.bitmask)
+        const { changed, actionIds } = applyBitmaskState(device.id, event.payload.bitmask)
+        if (!changed) {
+          break
+        }
         const maskSummary = formatSummary(summarizeDoChannels(device.id))
-        logStore.push(device.id, {
+        const actionId = actionIds.size === 1 ? Array.from(actionIds)[0] : undefined
+        pushDeviceLog(device.id, {
           type: "state",
           message: `All digital outputs updated (${maskSummary})`
-        })
+        }, actionId)
+        if (actionId) {
+          removeAction(device.id, actionId)
+        }
         break
       }
       case StateMode.STATE_SINGLE_FLOAT: {
-        applyFloatState(device.id, event.payload.ch, Number(event.payload.value))
+        const { changed, actionId } = applyFloatState(device.id, event.payload.ch, Number(event.payload.value))
+        if (!changed) {
+          break
+        }
         const aoValue = formatAoValue(Number(event.payload.value))
-        logStore.push(device.id, {
+        pushDeviceLog(device.id, {
           type: "state",
           message: `AO CH${event.payload.ch + 1} set to ${aoValue} mA`
-        })
+        }, actionId)
+        if (actionId) {
+          clearAoAction(device.id, event.payload.ch)
+          removeAction(device.id, actionId)
+        }
         break
       }
       default:
@@ -362,20 +484,28 @@ export const useChannelStore = defineStore("channelStore", () => {
       return
     }
 
+    const actionId = consumeAction(device.id)
+
     if (resp.status === "OK") {
-      logger.info(`✅ Command ack from ${resp.unit_id}, packet=${resp.packet_id}`)
-      logStore.push(device.id, {
+      logger.debug(`✅ Command ack from ${resp.unit_id}, packet=${resp.packet_id}`)
+      logger.info(`✅ Command acknowledged by ${resp.unit_id}`)
+      pushDeviceLog(device.id, {
         type: "resp",
-        message: `ACK packet=${resp.packet_id}`
-      })
+        message: "Command acknowledged"
+      }, actionId)
     } else {
-      logger.warn(
+      logger.debug(
         `⚠️ Command resp from ${resp.unit_id}, packet=${resp.packet_id}, status=${resp.status}, error=${resp.error}`,
       )
-      logStore.push(device.id, {
+      logger.warn(
+        `⚠️ Command response from ${resp.unit_id}: status=${resp.status}${resp.error ? `, error=${resp.error}` : ""}`,
+      )
+      const errorDetail = resp.error ? `: ${resp.error}` : ""
+      pushDeviceLog(device.id, {
         type: "error",
-        message: `RESP ERROR packet=${resp.packet_id} → ${resp.error}`
-      })
+        message: `Command error (${resp.status})${errorDetail}`
+      }, actionId)
+      purgeAoAction(actionId)
     }
   }
 
@@ -410,9 +540,11 @@ export const useChannelStore = defineStore("channelStore", () => {
       return
     }
 
+    const actionId = enqueueAction(device.id)
+
     const channel = findDoChannel(device.id, chIndex)
     if (channel) {
-      enterDoPendingState(channel, state)
+      enterDoPendingState(channel, state, actionId)
     }
 
     // applyBitState(device.id, chIndex, state)
@@ -429,10 +561,10 @@ export const useChannelStore = defineStore("channelStore", () => {
     const targetLabel = toDigitalLabel(state)
     logger.info(`➡️ DO cmd ${device.unit_id} ch=${chIndex} → ${targetLabel}`)
 
-    logStore.push(device.id, {
+    pushDeviceLog(device.id, {
       type: "cmd",
-      message: `CMD DO CH${chIndex + 1} ${targetLabel}${formatPendingSuffix()}`
-    })
+      message: `User requested DO CH${chIndex + 1} → ${targetLabel}${formatPendingSuffix(true)}`
+    }, actionId)
   }
 
   function sendDoAllCommand(deviceId: number, unitId: string, mask: number) {
@@ -450,9 +582,11 @@ export const useChannelStore = defineStore("channelStore", () => {
       ch => ch.type === CHANNEL_TYPES.DO,
     ) as DoChannel[]
 
+    const actionId = enqueueAction(device.id)
+
     doChannels.forEach(ch => {
       const target = ((mask >> ch.index) & 1) === 1
-      enterDoPendingState(ch, target)
+      enterDoPendingState(ch, target, actionId)
     })
     const maskSummary = formatSummary(summarizeMaskTargets(doChannels, mask))
 
@@ -465,10 +599,10 @@ export const useChannelStore = defineStore("channelStore", () => {
     } satisfies SetDoCommandMessage)
     logger.info(`➡️ DO ALL cmd ${unitId} targets → ${maskSummary}`)
 
-    logStore.push(device.id, {
+    pushDeviceLog(device.id, {
       type: "cmd",
-      message: `CMD DO ALL ${maskSummary}${formatPendingSuffix()}`,
-    })
+      message: `User requested DO ALL (${maskSummary})${formatPendingSuffix(doChannels.length > 0)}`,
+    }, actionId)
   }
 
   function sendDoPairCommand(unitId: string, chA: number, chB: number, state2b: 0 | 1 | 2 | 3) {
@@ -477,6 +611,20 @@ export const useChannelStore = defineStore("channelStore", () => {
     if (!device) {
       logger.error(`Device ${unitId} not found for DO pair command`)
       return
+    }
+
+    const actionId = enqueueAction(device.id)
+
+    const pairTargets = decodePairTargets(state2b)
+    if (pairTargets) {
+      const channelA = findDoChannel(device.id, chA)
+      if (channelA) {
+        enterDoPendingState(channelA, pairTargets[0], actionId)
+      }
+      const channelB = findDoChannel(device.id, chB)
+      if (channelB) {
+        enterDoPendingState(channelB, pairTargets[1], actionId)
+      }
     }
 
     const ws = useWebSocketStore()
@@ -488,14 +636,14 @@ export const useChannelStore = defineStore("channelStore", () => {
       chB,
       state2b,
     } satisfies SetDoCommandMessage)
-    const pairLabels = decodePairLabels(state2b) ?? [DIGITAL_PENDING, DIGITAL_PENDING]
+    const pairLabels = (decodePairLabels(state2b) ?? [DIGITAL_PENDING, DIGITAL_PENDING]) as [DigitalLabel, DigitalLabel]
     logger.info(
       `➡️ DO pair cmd ${device.unit_id} [${chA}/${chB}] → CH${chA + 1}:${pairLabels[0]} / CH${chB + 1}:${pairLabels[1]}`,
     )
-    logStore.push(device.id, {
+    pushDeviceLog(device.id, {
       type: "cmd",
-      message: `CMD DO PAIR CH${chA + 1}=${pairLabels[0]}, CH${chB + 1}=${pairLabels[1]}${formatPendingSuffix()}`
-    })
+      message: `User requested DO pair CH${chA + 1} → ${pairLabels[0]}, CH${chB + 1} → ${pairLabels[1]}${formatPendingSuffix(!!pairTargets)}`
+    }, actionId)
   }
 
   function sendAoCommand(unitId: string, chIndex: number, value: number) {
@@ -508,6 +656,9 @@ export const useChannelStore = defineStore("channelStore", () => {
 
     // applyFloatState(device.id, chIndex, value)
 
+    const actionId = enqueueAction(device.id)
+    registerAoAction(device.id, chIndex, actionId)
+
     const ws = useWebSocketStore()
     ws.send({
       action: WSAction.SET_AO_COMMAND,
@@ -518,10 +669,10 @@ export const useChannelStore = defineStore("channelStore", () => {
     const aoValue = formatAoValue(value)
     logger.info(`➡️ AO cmd ${device.unit_id} ch=${chIndex} → ${aoValue} mA`)
 
-    logStore.push(device.id, {
+    pushDeviceLog(device.id, {
       type: "cmd",
-      message: `CMD AO CH${chIndex + 1} set to ${aoValue} mA`
-    })
+      message: `User requested AO CH${chIndex + 1} → ${aoValue} mA`
+    }, actionId)
   }
 
   /* --------------------------- RESOLVERS --------------------------- */
