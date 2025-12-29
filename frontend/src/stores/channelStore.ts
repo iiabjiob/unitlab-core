@@ -4,7 +4,7 @@ import { ref } from "vue"
 
 import { ChannelsAPI } from "@/api/channels.api"
 import { getLogger } from "@/utils/logger"
-import { normalizeChannel, ensureChannel } from "@/utils/channel"
+import { normalizeChannel, ensureChannel, formatAoValue } from "@/utils/channel"
 
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
@@ -42,6 +42,68 @@ export const useChannelStore = defineStore("channelStore", () => {
   const isLoaded = ref(false)
 
   const logStore = useChannelLogStore()
+
+  const DIGITAL_ON = "ON"
+  const DIGITAL_OFF = "OFF"
+  const DIGITAL_PENDING = "PENDING"
+
+  function toDigitalLabel(value: unknown): "ON" | "OFF" {
+    return value ? DIGITAL_ON : DIGITAL_OFF
+  }
+
+  function formatPendingSuffix() {
+    return ` (${DIGITAL_PENDING})`
+  }
+
+  function summarizeDoChannels(deviceId: number) {
+    const doChannels = channelsByDevice(deviceId).filter(
+      ch => ch.type === CHANNEL_TYPES.DO,
+    ) as DoChannel[]
+    let on = 0
+    let off = 0
+    doChannels.forEach(ch => {
+      if (ch.state) {
+        on += 1
+      } else {
+        off += 1
+      }
+    })
+    return { on, off, total: doChannels.length }
+  }
+
+  function summarizeMaskTargets(doChannels: DoChannel[], mask: number) {
+    let on = 0
+    let off = 0
+    doChannels.forEach(ch => {
+      const target = ((mask >> ch.index) & 1) === 1
+      if (target) {
+        on += 1
+      } else {
+        off += 1
+      }
+    })
+    return { on, off, total: doChannels.length }
+  }
+
+  function formatSummary(summary: { on: number; off: number; total: number }) {
+    if (summary.total === 0) {
+      return "no DO channels"
+    }
+    return `${DIGITAL_ON}: ${summary.on}, ${DIGITAL_OFF}: ${summary.off}`
+  }
+
+  function decodePairLabels(state2b: number): ["ON" | "OFF", "ON" | "OFF"] | null {
+    switch (state2b) {
+      case 0b00:
+        return [DIGITAL_ON, DIGITAL_OFF]
+      case 0b01:
+        return [DIGITAL_OFF, DIGITAL_OFF]
+      case 0b10:
+        return [DIGITAL_ON, DIGITAL_ON]
+      default:
+        return null
+    }
+  }
 
   function ensureDoUi(channel: DoChannel): DoChannelUiState {
     if (!channel.ui) {
@@ -254,27 +316,33 @@ export const useChannelStore = defineStore("channelStore", () => {
     }
 
     switch (event.mode) {
-      case StateMode.STATE_SINGLE_BIT:
+      case StateMode.STATE_SINGLE_BIT: {
         applyBitState(device.id, event.payload.ch, !!event.payload.value)
+        const singleLabel = toDigitalLabel(event.payload.value)
         logStore.push(device.id, {
           type: "state",
-          message: `STATE CH${event.payload.ch + 1} → ${event.payload.value}`
+          message: `CH${event.payload.ch + 1} state ${singleLabel}`
         })
         break
-      case StateMode.STATE_ALL_BIT:
+      }
+      case StateMode.STATE_ALL_BIT: {
         applyBitmaskState(device.id, event.payload.bitmask)
+        const maskSummary = formatSummary(summarizeDoChannels(device.id))
         logStore.push(device.id, {
           type: "state",
-          message: `STATE BITMASK=${event.payload.bitmask.toString(2).padStart(32, "0")}`
+          message: `All digital outputs updated (${maskSummary})`
         })
         break
-      case StateMode.STATE_SINGLE_FLOAT:
+      }
+      case StateMode.STATE_SINGLE_FLOAT: {
         applyFloatState(device.id, event.payload.ch, Number(event.payload.value))
+        const aoValue = formatAoValue(Number(event.payload.value))
         logStore.push(device.id, {
           type: "state",
-          message: `STATE AO CH${event.payload.ch + 1} → ${event.payload.value}`
+          message: `AO CH${event.payload.ch + 1} set to ${aoValue} mA`
         })
         break
+      }
       default:
         logger.debug(`Unhandled device state mode=${event.mode}`)
     }
@@ -358,11 +426,12 @@ export const useChannelStore = defineStore("channelStore", () => {
       value: state ? 1 : 0,
     }
     ws.send(msg)
-    logger.info(`➡️ DO cmd ${device.unit_id} ch=${chIndex} → ${state}`)
+    const targetLabel = toDigitalLabel(state)
+    logger.info(`➡️ DO cmd ${device.unit_id} ch=${chIndex} → ${targetLabel}`)
 
     logStore.push(device.id, {
       type: "cmd",
-      message: `SEND DO CH${chIndex + 1} → ${state}`
+      message: `CMD DO CH${chIndex + 1} ${targetLabel}${formatPendingSuffix()}`
     })
   }
 
@@ -385,6 +454,7 @@ export const useChannelStore = defineStore("channelStore", () => {
       const target = ((mask >> ch.index) & 1) === 1
       enterDoPendingState(ch, target)
     })
+    const maskSummary = formatSummary(summarizeMaskTargets(doChannels, mask))
 
     const ws = useWebSocketStore()
     ws.send({
@@ -393,11 +463,11 @@ export const useChannelStore = defineStore("channelStore", () => {
       mode: CmdMode.SET_ALL_BIT,
       bitmask: mask,
     } satisfies SetDoCommandMessage)
-    logger.info(`➡️ DO ALL cmd ${unitId} mask=${mask}`)
+    logger.info(`➡️ DO ALL cmd ${unitId} targets → ${maskSummary}`)
 
     logStore.push(device.id, {
       type: "cmd",
-      message: `SEND DO ALL mask=${mask}`,
+      message: `CMD DO ALL ${maskSummary}${formatPendingSuffix()}`,
     })
   }
 
@@ -418,10 +488,13 @@ export const useChannelStore = defineStore("channelStore", () => {
       chB,
       state2b,
     } satisfies SetDoCommandMessage)
-    logger.info(`➡️ DO pair cmd ${device.unit_id} [${chA}/${chB}] → ${state2b}`)
+    const pairLabels = decodePairLabels(state2b) ?? [DIGITAL_PENDING, DIGITAL_PENDING]
+    logger.info(
+      `➡️ DO pair cmd ${device.unit_id} [${chA}/${chB}] → CH${chA + 1}:${pairLabels[0]} / CH${chB + 1}:${pairLabels[1]}`,
+    )
     logStore.push(device.id, {
       type: "cmd",
-      message: `SEND DO PAIR [${chA + 1}/${chB + 1}] → state2b=${state2b}`
+      message: `CMD DO PAIR CH${chA + 1}=${pairLabels[0]}, CH${chB + 1}=${pairLabels[1]}${formatPendingSuffix()}`
     })
   }
 
@@ -442,11 +515,12 @@ export const useChannelStore = defineStore("channelStore", () => {
       ch: chIndex,
       value,
     } satisfies SetAoCommandMessage)
-    logger.info(`➡️ AO cmd ${device.unit_id} ch=${chIndex} → ${value}`)
+    const aoValue = formatAoValue(value)
+    logger.info(`➡️ AO cmd ${device.unit_id} ch=${chIndex} → ${aoValue} mA`)
 
     logStore.push(device.id, {
       type: "cmd",
-      message: `SEND AO CH${chIndex + 1} → ${value}`
+      message: `CMD AO CH${chIndex + 1} set to ${aoValue} mA`
     })
   }
 
