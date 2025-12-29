@@ -17,7 +17,7 @@ const router = createRouter({
     {
       path: "/",
       name: "home",
-      component: () => import("@/dev/MenuStressPlayground.vue"),
+      component: () => import("@/pages/home/HomePage.vue"),
     },
     ...devicesRoutes,
     ...switchgearsRoutes,

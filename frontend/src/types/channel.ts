@@ -6,6 +6,19 @@ export const CHANNEL_TYPES = {
 
 export type ChannelType = typeof CHANNEL_TYPES[keyof typeof CHANNEL_TYPES]
 
+export type ChannelUiStage = "idle" | "debounce" | "pending" | "error"
+
+export type TimeoutHandle = ReturnType<typeof setTimeout>
+
+export interface DoChannelUiState {
+  stage: ChannelUiStage
+  target?: boolean
+  previous?: boolean
+  debounceTimer?: TimeoutHandle | null
+  timeoutTimer?: TimeoutHandle | null
+  errorTimer?: TimeoutHandle | null
+}
+
 export interface ChannelDto {
   id: number
   device_id: number
@@ -37,6 +50,7 @@ export interface DiChannel extends ChannelBase {
 export interface DoChannel extends ChannelBase {
   type: "do"
   state: boolean
+  ui?: DoChannelUiState
 }
 
 export interface AoChannel extends ChannelBase {

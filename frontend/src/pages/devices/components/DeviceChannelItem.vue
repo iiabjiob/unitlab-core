@@ -9,13 +9,15 @@
         v-if="channel.type === 'do'"
         class="w-4 h-4 rounded-sm border cursor-pointer flex items-center justify-center
                transition-colors"
-        :class="{
-          'bg-green-500 border-green-600': channel.state,
-          'bg-neutral-300 dark:bg-neutral-700 border-neutral-600 hover:bg-neutral-600': !channel.state
-        }"
-        @click.stop="emit('toggle', channel)"
+        :class="[doControlClass, { 'cursor-not-allowed opacity-70': isWaiting }]"
+        @click.stop="onToggleClick"
       >
-        <span v-if="channel.state" class="text-[10px] text-white">✓</span>
+        <span
+          v-if="isWaiting"
+          class="w-2.5 h-2.5 border-[1.5px] border-white/80 border-t-transparent rounded-full animate-spin"
+        />
+        <span v-else-if="isError" class="text-[10px] font-semibold text-white">!</span>
+        <span v-else-if="channel.state" class="text-[10px] text-white">✓</span>
       </div>
 
       <!-- DI indicator -->
@@ -48,6 +50,7 @@
 
 
 <script setup lang="ts">
+import { computed } from "vue"
 import type { Channel } from "@/types/channel"
 
 const props = defineProps<{ channel: Channel }>()
@@ -56,6 +59,35 @@ const emit = defineEmits<{
   (e: "toggle", ch: Channel): void
   (e: "set-ao", payload: { channel: Channel; value: number }): void
 }>()
+
+const status = computed(() =>
+  props.channel.type === "do" ? props.channel.ui?.stage ?? "idle" : "idle"
+)
+const isWaiting = computed(() => status.value === "pending" || status.value === "debounce")
+const isError = computed(() => status.value === "error")
+
+const doControlClass = computed(() => {
+  if (props.channel.type !== "do") {
+    return ""
+  }
+  if (isError.value) {
+    return "bg-red-500 border-red-500 text-white animate-pulse"
+  }
+  if (props.channel.state) {
+    return "bg-green-500 border-green-600 text-white"
+  }
+  if (isWaiting.value) {
+    return "bg-yellow-400/80 border-yellow-500 text-yellow-900"
+  }
+  return "bg-neutral-300 dark:bg-neutral-700 border-neutral-600 hover:bg-neutral-600"
+})
+
+function onToggleClick() {
+  if (props.channel.type !== "do" || isWaiting.value) {
+    return
+  }
+  emit("toggle", props.channel)
+}
 
 function onAoChange(event: Event) {
   const raw = (event.target as HTMLInputElement).value

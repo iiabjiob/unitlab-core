@@ -26,6 +26,7 @@ export function normalizeChannel(dto: ChannelDto): Channel {
       ...base,
       type: CHANNEL_TYPES.DO,
       state: Boolean(dto.state),
+      ui: { stage: "idle" },
     }
   }
 

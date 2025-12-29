@@ -1,6 +1,6 @@
 // src/stores/channelStore.ts
 import { defineStore } from "pinia"
-import { computed, ref, shallowRef, triggerRef } from "vue"
+import { ref } from "vue"
 
 import { ChannelsAPI } from "@/api/channels.api"
 import { getLogger } from "@/utils/logger"
@@ -26,9 +26,13 @@ import {
   type DeviceRespEvent,
 } from "@/types/ws/events"
 
-import { CHANNEL_TYPES, type Channel, type ChannelDto } from "@/types/channel"
+import { CHANNEL_TYPES, type Channel, type ChannelDto, type DoChannel, type DoChannelUiState } from "@/types/channel"
 
 const logger = getLogger("CHANNEL")
+
+const COMMAND_PENDING_DEBOUNCE_MS = 150
+const COMMAND_TIMEOUT_MS = 2000
+const COMMAND_FAILURE_DISPLAY_MS = 2000
 
 export const useChannelStore = defineStore("channelStore", () => {
   const channels = ref<Channel[]>([])
@@ -38,6 +42,85 @@ export const useChannelStore = defineStore("channelStore", () => {
   const isLoaded = ref(false)
 
   const logStore = useChannelLogStore()
+
+  function ensureDoUi(channel: DoChannel): DoChannelUiState {
+    if (!channel.ui) {
+      channel.ui = { stage: "idle" }
+    }
+    return channel.ui
+  }
+
+  function clearDoUiTimers(ui: DoChannelUiState) {
+    if (ui.debounceTimer) {
+      clearTimeout(ui.debounceTimer)
+      ui.debounceTimer = null
+    }
+    if (ui.timeoutTimer) {
+      clearTimeout(ui.timeoutTimer)
+      ui.timeoutTimer = null
+    }
+    if (ui.errorTimer) {
+      clearTimeout(ui.errorTimer)
+      ui.errorTimer = null
+    }
+  }
+
+  function resetDoUiState(channel: DoChannel) {
+    const ui = ensureDoUi(channel)
+    clearDoUiTimers(ui)
+    ui.stage = "idle"
+    ui.target = undefined
+    ui.previous = undefined
+  }
+
+  function enterDoPendingState(channel: DoChannel, target: boolean) {
+    const ui = ensureDoUi(channel)
+    clearDoUiTimers(ui)
+    ui.stage = "debounce"
+    ui.target = target
+    ui.previous = channel.state
+
+    ui.debounceTimer = setTimeout(() => {
+      ui.stage = "pending"
+    }, COMMAND_PENDING_DEBOUNCE_MS)
+
+    ui.timeoutTimer = setTimeout(() => {
+      ui.stage = "error"
+      ui.target = undefined
+      if (typeof ui.previous === "boolean") {
+        channel.state = ui.previous
+      }
+      ui.errorTimer = setTimeout(() => {
+        resetDoUiState(channel)
+      }, COMMAND_FAILURE_DISPLAY_MS)
+    }, COMMAND_TIMEOUT_MS)
+  }
+
+  function fulfillDoPendingState(channel: DoChannel, actualState: boolean) {
+    const ui = channel.ui
+    if (!ui) {
+      return
+    }
+
+    if (ui.target === actualState || ui.stage === "error") {
+      resetDoUiState(channel)
+      return
+    }
+
+    if (ui.stage !== "idle") {
+      clearDoUiTimers(ui)
+      ui.stage = "idle"
+      ui.target = undefined
+      ui.previous = undefined
+    }
+  }
+
+  function findDoChannel(deviceId: number, chIndex: number): DoChannel | undefined {
+    const raw = channels.value.find(
+      ch => ch.device_id === deviceId && ch.index === chIndex && ch.type === CHANNEL_TYPES.DO,
+    )
+    return raw as DoChannel | undefined
+  }
 
   /* ----------------------------- FETCH ALL ----------------------------- */
 
@@ -85,6 +168,11 @@ export const useChannelStore = defineStore("channelStore", () => {
   }
 
   function reset() {
+    channels.value.forEach(ch => {
+      if (ch.type === CHANNEL_TYPES.DO && ch.ui) {
+        clearDoUiTimers(ch.ui)
+      }
+    })
     channels.value = []
     responses.value = {}
     isLoaded.value = false
@@ -95,6 +183,10 @@ export const useChannelStore = defineStore("channelStore", () => {
     for (const ch of channels.value) {
       if (ch.device_id !== deviceId) {
         next.push(ch)
+        continue
+      }
+      if (ch.type === CHANNEL_TYPES.DO && ch.ui) {
+        clearDoUiTimers(ch.ui)
       }
     }
     for (const ch of list) {
@@ -114,10 +206,13 @@ export const useChannelStore = defineStore("channelStore", () => {
       if (ch.device_id === deviceId && ch.index === chIndex) {
 
         if (ch.type === CHANNEL_TYPES.AO) {
-          continue
+          break
         }
         if (ch.state !== value) {
           ch.state = value
+        }
+        if (ch.type === CHANNEL_TYPES.DO) {
+          fulfillDoPendingState(ch as DoChannel, value)
         }
         break
       }
@@ -130,6 +225,9 @@ export const useChannelStore = defineStore("channelStore", () => {
       const next = ((mask >> ch.index) & 1) === 1
       if (ch.state !== next) {
         ch.state = next
+      }
+      if (ch.type === CHANNEL_TYPES.DO) {
+        fulfillDoPendingState(ch as DoChannel, next)
       }
     }
 
@@ -242,6 +340,11 @@ export const useChannelStore = defineStore("channelStore", () => {
     if (!device) {
       logger.error(`Device ${unitId} not found for DO command`)
       return
+    }
+
+    const channel = findDoChannel(device.id, chIndex)
+    if (channel) {
+      enterDoPendingState(channel, state)
     }
 
     // applyBitState(device.id, chIndex, state)
