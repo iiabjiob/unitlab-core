@@ -46,6 +46,18 @@ class DeviceStateService:
                 await redis.hset(f"device:{unit_id}:ao", str(decoded.ch), new_val)
                 changed = True
 
+        elif hdr.mode == State.STATE_ALL_DIAG:
+            diag_key = f"device:{unit_id}:diag"
+            current_diag = await redis.hgetall(diag_key)
+            new_mapping = {
+                "open_mask": str(decoded.open_mask),
+                "fault_mask": str(decoded.fault_mask),
+                "soft_mask": str(decoded.soft_mask),
+            }
+            if any(current_diag.get(k) != v for k, v in new_mapping.items()):
+                await redis.hset(diag_key, mapping=new_mapping)
+                changed = True
+
         event = DeviceStateEvent(
             unit_id=unit_id,
             timestamp=hdr.timestamp_ms or int(time.time() * 1000),
@@ -77,6 +89,14 @@ class DeviceStateService:
             val = await redis.hget(f"device:{unit_id}:ao", str(ch))
             payload = {"ch": ch, "value": float(to_str(val) or 0)}
 
+        elif mode == State.STATE_ALL_DIAG:
+            diag = await redis.hgetall(f"device:{unit_id}:diag")
+            payload = {
+                "open_mask": to_int(diag.get("open_mask"), 0),
+                "fault_mask": to_int(diag.get("fault_mask"), 0),
+                "soft_mask": to_int(diag.get("soft_mask"), 0),
+            }
+
         else:
             payload = {}
 
@@ -94,6 +114,7 @@ class DeviceStateService:
         """
         Get a full snapshot of device state for UI sync:
         - Current bitmask
+        - Aggregated diagnostics (if available)
         - All AO channels
         """
         redis = RedisManager.get_instance()
@@ -101,6 +122,11 @@ class DeviceStateService:
 
         # Always include full bitmask
         events.append(await DeviceStateService.build_event_from_redis(unit_id, State.STATE_ALL_BIT))
+
+        # Include diagnostics if stored
+        diag_exists = await redis.hlen(f"device:{unit_id}:diag")
+        if diag_exists:
+            events.append(await DeviceStateService.build_event_from_redis(unit_id, State.STATE_ALL_DIAG))
 
         # Include AO channels if exist
         ao_channels = await redis.hkeys(f"device:{unit_id}:ao")

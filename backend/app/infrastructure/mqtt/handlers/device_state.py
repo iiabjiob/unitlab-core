@@ -29,6 +29,8 @@ async def handle_device_state(topic: str, payload: bytes, unit_id: str):
         decoded = bit_decode.state_single(body)
     elif hdr.mode == State.STATE_ALL_BIT:
         decoded = bit_decode.state_all(body)
+    elif hdr.mode == State.STATE_ALL_DIAG:
+        decoded = bit_decode.state_diag(body)
     elif hdr.mode == State.STATE_SINGLE_FLOAT:
         decoded = float_decode.state_single(body)
     else:

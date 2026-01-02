@@ -27,6 +27,13 @@ class StateAllBit(BaseModel):
 
 
 
+class StateDiagBitmask(BaseModel):
+    open_mask: int   # u32
+    fault_mask: int  # u32
+    soft_mask: int   # u32
+
+
+
 class CmdSetSingleBit(BaseModel):
     ch: int
     value: int  # u8 (0=off, 1=on)

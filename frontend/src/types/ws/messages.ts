@@ -13,6 +13,7 @@ export enum ReqStateMode {
   REQ_ALL_BIT      = 0x11,
   REQ_SINGLE_FLOAT = 0x14,
   REQ_ALL_FLOAT    = 0x15,
+  REQ_ALL_DIAG     = 0x17,
 }
 
 export enum CmdMode {

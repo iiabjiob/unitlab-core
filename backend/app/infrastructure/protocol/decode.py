@@ -7,6 +7,7 @@ from . import endian
 from .packet_structures import (
     StateSingleBit,
     StateAllBit,
+    StateDiagBitmask,
     CmdSetSingleBit,
     CmdSetAllBit,
     CmdSetPairBit,
@@ -37,6 +38,16 @@ class bit:
         if len(data) != 4:
             return None
         return StateAllBit(bitmask=endian.read_u32_be(data))
+
+    @staticmethod
+    def state_diag(data: bytes) -> Optional[StateDiagBitmask]:
+        if len(data) != 12:
+            return None
+        return StateDiagBitmask(
+            open_mask=endian.read_u32_be(data, 0),
+            fault_mask=endian.read_u32_be(data, 4),
+            soft_mask=endian.read_u32_be(data, 8),
+        )
 
     @staticmethod
     def cmd_set_single(data: bytes) -> Optional[CmdSetSingleBit]:

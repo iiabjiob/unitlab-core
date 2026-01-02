@@ -43,6 +43,12 @@ export interface ChannelBase {
   updated_at?: number
 }
 
+export interface ChannelDiagnostics {
+  open: boolean
+  fault: boolean
+  soft: boolean
+}
+
 export interface DiChannel extends ChannelBase {
   type: "di"
   state: boolean
@@ -52,6 +58,7 @@ export interface DoChannel extends ChannelBase {
   type: "do"
   state: boolean
   ui?: DoChannelUiState
+  diagnostics?: ChannelDiagnostics
 }
 
 export interface AoChannel extends ChannelBase {

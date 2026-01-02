@@ -27,7 +27,7 @@ import {
   type DeviceRespEvent,
 } from "@/types/ws/events"
 
-import { CHANNEL_TYPES, type Channel, type ChannelDto, type DoChannel, type DoChannelUiState } from "@/types/channel"
+import { CHANNEL_TYPES, type Channel, type ChannelDto, type ChannelDiagnostics, type DoChannel, type DoChannelUiState } from "@/types/channel"
 
 const logger = getLogger("CHANNEL")
 
@@ -176,6 +176,12 @@ export const useChannelStore = defineStore("channelStore", () => {
     return [labels[0] === DIGITAL_ON, labels[1] === DIGITAL_ON]
   }
 
+  type DiagnosticsBitmasks = {
+    open_mask: number
+    fault_mask: number
+    soft_mask: number
+  }
+
   type ChannelLogPayload = Pick<ChannelLogEntry, "type" | "message" | "reason">
 
   function pushDeviceLog(deviceId: number, entry: ChannelLogPayload, actionId?: string) {
@@ -183,6 +189,56 @@ export const useChannelStore = defineStore("channelStore", () => {
       ...entry,
       actionId,
     })
+  }
+
+  function ensureDoDiagnostics(channel: DoChannel): ChannelDiagnostics {
+    if (!channel.diagnostics) {
+      channel.diagnostics = { open: false, fault: false, soft: false }
+    }
+    return channel.diagnostics
+  }
+
+  function applyDiagnostics(deviceId: number, diag: DiagnosticsBitmasks): boolean {
+    const doChannels = channelsByDevice(deviceId).filter(
+      ch => ch.type === CHANNEL_TYPES.DO,
+    ) as DoChannel[]
+    if (!doChannels.length) {
+      return false
+    }
+
+    let changed = false
+    doChannels.forEach(ch => {
+      const state = ensureDoDiagnostics(ch)
+      const nextOpen = ((diag.open_mask >> ch.index) & 1) === 1
+      const nextFault = ((diag.fault_mask >> ch.index) & 1) === 1
+      const nextSoft = ((diag.soft_mask >> ch.index) & 1) === 1
+      if (state.open !== nextOpen || state.fault !== nextFault || state.soft !== nextSoft) {
+        state.open = nextOpen
+        state.fault = nextFault
+        state.soft = nextSoft
+        changed = true
+      }
+    })
+    return changed
+  }
+
+  function summarizeDiagnostics(deviceId: number, diag: DiagnosticsBitmasks): string {
+    const doChannels = channelsByDevice(deviceId).filter(
+      ch => ch.type === CHANNEL_TYPES.DO,
+    ) as DoChannel[]
+    if (!doChannels.length) {
+      return "no DO channels"
+    }
+
+    const counts = { open: 0, fault: 0, soft: 0 }
+    doChannels.forEach(ch => {
+      const bit = 1 << ch.index
+      if (diag.open_mask & bit) counts.open += 1
+      if (diag.fault_mask & bit) counts.fault += 1
+      if (diag.soft_mask & bit) counts.soft += 1
+    })
+
+    return `open:${counts.open}, fault:${counts.fault}, soft:${counts.soft}`
   }
 
   function ensureDoUi(channel: DoChannel): DoChannelUiState {
@@ -465,6 +521,23 @@ export const useChannelStore = defineStore("channelStore", () => {
         }
         break
       }
+      case StateMode.STATE_ALL_DIAG: {
+        const diagPayload: DiagnosticsBitmasks = {
+          open_mask: Number(event.payload.open_mask) >>> 0,
+          fault_mask: Number(event.payload.fault_mask) >>> 0,
+          soft_mask: Number(event.payload.soft_mask) >>> 0,
+        }
+        const changed = applyDiagnostics(device.id, diagPayload)
+        if (!changed) {
+          break
+        }
+        const summary = summarizeDiagnostics(device.id, diagPayload)
+        pushDeviceLog(device.id, {
+          type: "state",
+          message: `Diagnostics updated (${summary})`
+        })
+        break
+      }
       default:
         logger.debug(`Unhandled device state mode=${event.mode}`)
     }
@@ -518,16 +591,26 @@ export const useChannelStore = defineStore("channelStore", () => {
     }
 
     const ws = useWebSocketStore()
+    const lowerType = device.device_type.toLowerCase()
     const msg: RequestStateMessage = {
       action: WSAction.GET_STATES,
       unit_id: device.unit_id,
       mode:
-        device.device_type.toLowerCase() === "ao"
+        lowerType === "ao"
           ? ReqStateMode.REQ_ALL_FLOAT
           : ReqStateMode.REQ_ALL_BIT,
     }
     ws.send(msg)
     logger.info(`Requested states from ${device.unit_id}`)
+
+    if (lowerType !== "ao") {
+      ws.send({
+        action: WSAction.GET_STATES,
+        unit_id: device.unit_id,
+        mode: ReqStateMode.REQ_ALL_DIAG,
+      } satisfies RequestStateMessage)
+      logger.info(`Requested diagnostics from ${device.unit_id}`)
+    }
   }
 
   /* ----------------------------- COMMANDS ----------------------------- */

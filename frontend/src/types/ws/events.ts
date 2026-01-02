@@ -19,6 +19,13 @@ export enum StateMode {
   STATE_SINGLE_BIT   = 0x12,
   STATE_ALL_BIT      = 0x13,
   STATE_SINGLE_FLOAT = 0x16,
+  STATE_ALL_DIAG     = 0x18,
+}
+
+export interface DeviceDiagnosticsPayload {
+  open_mask: number
+  fault_mask: number
+  soft_mask: number
 }
 
 // ---------------------------------------------------------------------

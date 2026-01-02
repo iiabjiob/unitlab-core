@@ -44,6 +44,22 @@
       <div class="text-xs text-neutral-700 dark:text-neutral-300">
         {{ channel.resolved_name }}
       </div>
+
+      <div
+        v-if="diagnosticBadges.length"
+        class="flex items-center gap-1 text-[10px] text-neutral-500"
+      >
+        <span
+          v-for="badge in diagnosticBadges"
+          :key="badge.key"
+          class="px-1.5 py-0.5 rounded border transition-colors"
+          :class="badge.active
+            ? 'bg-red-500/80 border-red-500 text-white'
+            : 'border-neutral-300 dark:border-neutral-600 text-neutral-500 dark:text-neutral-400'"
+        >
+          {{ badge.label }}
+        </span>
+      </div>
     </div>
   </div>
 </template>
@@ -65,6 +81,15 @@ const status = computed(() =>
 )
 const isWaiting = computed(() => status.value === "pending" || status.value === "debounce")
 const isError = computed(() => status.value === "error")
+const diagnostics = computed(() => (props.channel.type === "do" ? props.channel.diagnostics : undefined))
+const diagnosticBadges = computed(() => {
+  if (!diagnostics.value) return []
+  return [
+    { key: "open", label: "Open", active: diagnostics.value.open },
+    { key: "fault", label: "Fault", active: diagnostics.value.fault },
+    { key: "soft", label: "Soft", active: diagnostics.value.soft }
+  ]
+})
 
 const doControlClass = computed(() => {
   if (props.channel.type !== "do") {

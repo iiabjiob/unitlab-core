@@ -9,6 +9,8 @@ class State(IntEnum):
     REQ_ALL_BIT        = 0x11  # []
     STATE_SINGLE_BIT   = 0x12  # [ch][val:u8]
     STATE_ALL_BIT      = 0x13  # [bitmap:u32 BE]
+    REQ_ALL_DIAG       = 0x17  # [] aggregated diagnostics bitmasks
+    STATE_ALL_DIAG     = 0x18  # [open:u32][fault:u32][soft:u32]
 
     # Analog (float-based)
     REQ_SINGLE_FLOAT   = 0x14  # [ch]
