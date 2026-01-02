@@ -20,12 +20,35 @@ export enum StateMode {
   STATE_ALL_BIT      = 0x13,
   STATE_SINGLE_FLOAT = 0x16,
   STATE_ALL_DIAG     = 0x18,
+  STATE_CHANGED_BIT  = 0x19,
+  STATE_DIAG_DI      = 0x1B,
+  STATE_LATCHED_DI   = 0x1C,
 }
 
 export interface DeviceDiagnosticsPayload {
   open_mask: number
   fault_mask: number
   soft_mask: number
+}
+
+export interface DeviceDeltaPayload {
+  changed: number
+  state: number
+}
+
+export interface DeviceDiDiagnosticsPayload {
+  seen: number
+  stuck: number
+  lost: number
+  latched: number
+  latched_changed: number
+  latched_cause: number
+}
+
+export interface DeviceDiLatchedPayload {
+  latched: number
+  changed: number
+  cause: number
 }
 
 // ---------------------------------------------------------------------

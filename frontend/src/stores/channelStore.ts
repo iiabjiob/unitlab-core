@@ -27,7 +27,16 @@ import {
   type DeviceRespEvent,
 } from "@/types/ws/events"
 
-import { CHANNEL_TYPES, type Channel, type ChannelDto, type ChannelDiagnostics, type DoChannel, type DoChannelUiState } from "@/types/channel"
+import { CHANNEL_TYPES, type Channel, type ChannelDto, type DiChannel, type DoChannel, type DoChannelUiState } from "@/types/channel"
+import {
+  applyDeltaState,
+  applyDiDiagnostics,
+  applyDoDiagnostics,
+  describeDiDiagnosticUpdates,
+  type DiDiagnosticsBitmasks,
+  type DiDiagnosticsChange,
+  type DoDiagnosticsBitmasks,
+} from "@/stores/utils/diagnostics"
 
 const logger = getLogger("CHANNEL")
 
@@ -176,12 +185,6 @@ export const useChannelStore = defineStore("channelStore", () => {
     return [labels[0] === DIGITAL_ON, labels[1] === DIGITAL_ON]
   }
 
-  type DiagnosticsBitmasks = {
-    open_mask: number
-    fault_mask: number
-    soft_mask: number
-  }
-
   type ChannelLogPayload = Pick<ChannelLogEntry, "type" | "message" | "reason">
 
   function pushDeviceLog(deviceId: number, entry: ChannelLogPayload, actionId?: string) {
@@ -191,38 +194,7 @@ export const useChannelStore = defineStore("channelStore", () => {
     })
   }
 
-  function ensureDoDiagnostics(channel: DoChannel): ChannelDiagnostics {
-    if (!channel.diagnostics) {
-      channel.diagnostics = { open: false, fault: false, soft: false }
-    }
-    return channel.diagnostics
-  }
-
-  function applyDiagnostics(deviceId: number, diag: DiagnosticsBitmasks): boolean {
-    const doChannels = channelsByDevice(deviceId).filter(
-      ch => ch.type === CHANNEL_TYPES.DO,
-    ) as DoChannel[]
-    if (!doChannels.length) {
-      return false
-    }
-
-    let changed = false
-    doChannels.forEach(ch => {
-      const state = ensureDoDiagnostics(ch)
-      const nextOpen = ((diag.open_mask >> ch.index) & 1) === 1
-      const nextFault = ((diag.fault_mask >> ch.index) & 1) === 1
-      const nextSoft = ((diag.soft_mask >> ch.index) & 1) === 1
-      if (state.open !== nextOpen || state.fault !== nextFault || state.soft !== nextSoft) {
-        state.open = nextOpen
-        state.fault = nextFault
-        state.soft = nextSoft
-        changed = true
-      }
-    })
-    return changed
-  }
-
-  function summarizeDiagnostics(deviceId: number, diag: DiagnosticsBitmasks): string {
+  function summarizeDoDiagnostics(deviceId: number, diag: DoDiagnosticsBitmasks): string {
     const doChannels = channelsByDevice(deviceId).filter(
       ch => ch.type === CHANNEL_TYPES.DO,
     ) as DoChannel[]
@@ -239,6 +211,21 @@ export const useChannelStore = defineStore("channelStore", () => {
     })
 
     return `open:${counts.open}, fault:${counts.fault}, soft:${counts.soft}`
+  }
+
+  function logDiDiagnosticChanges(deviceId: number, changes: DiDiagnosticsChange[]) {
+    changes.forEach(change => {
+      const { labels, alert } = describeDiDiagnosticUpdates(change.updates)
+      if (!labels.length) {
+        return
+      }
+      const channelLabel = resolveChannelLabel(change.channel)
+      const prefix = `DI ${channelLabel}`
+      pushDeviceLog(deviceId, {
+        type: alert ? "error" : "state",
+        message: `${prefix}: ${labels.join(", ")}`
+      })
+    })
   }
 
   function ensureDoUi(channel: DoChannel): DoChannelUiState {
@@ -450,6 +437,16 @@ export const useChannelStore = defineStore("channelStore", () => {
     return { changed, actionIds }
   }
 
+  function countBits(mask: number): number {
+    let value = mask >>> 0
+    let count = 0
+    while (value) {
+      value &= value - 1
+      count += 1
+    }
+    return count
+  }
+
   function applyFloatState(deviceId: number, chIndex: number, value: number): { changed: boolean; actionId?: string } {
     for (const ch of channels.value) {
       if (ch.device_id === deviceId && ch.index === chIndex && ch.type === CHANNEL_TYPES.AO) {
@@ -494,14 +491,17 @@ export const useChannelStore = defineStore("channelStore", () => {
         if (!changed) {
           break
         }
-        const maskSummary = formatSummary(summarizeDoChannels(device.id))
-        const actionId = actionIds.size === 1 ? Array.from(actionIds)[0] : undefined
-        pushDeviceLog(device.id, {
-          type: "state",
-          message: `All digital outputs updated (${maskSummary})`
-        }, actionId)
-        if (actionId) {
-          removeAction(device.id, actionId)
+        const deviceType = device.device_type.toLowerCase()
+        if (deviceType === "do") {
+          const maskSummary = formatSummary(summarizeDoChannels(device.id))
+          const actionId = actionIds.size === 1 ? Array.from(actionIds)[0] : undefined
+          pushDeviceLog(device.id, {
+            type: "state",
+            message: `All digital outputs updated (${maskSummary})`
+          }, actionId)
+          if (actionId) {
+            removeAction(device.id, actionId)
+          }
         }
         break
       }
@@ -522,20 +522,86 @@ export const useChannelStore = defineStore("channelStore", () => {
         break
       }
       case StateMode.STATE_ALL_DIAG: {
-        const diagPayload: DiagnosticsBitmasks = {
+        const diagPayload: DoDiagnosticsBitmasks = {
           open_mask: Number(event.payload.open_mask) >>> 0,
           fault_mask: Number(event.payload.fault_mask) >>> 0,
           soft_mask: Number(event.payload.soft_mask) >>> 0,
         }
-        const changed = applyDiagnostics(device.id, diagPayload)
+        const doChannels = channelsByDevice(device.id).filter(
+          ch => ch.type === CHANNEL_TYPES.DO,
+        ) as DoChannel[]
+        const changed = applyDoDiagnostics(doChannels, diagPayload)
         if (!changed) {
           break
         }
-        const summary = summarizeDiagnostics(device.id, diagPayload)
+        const summary = summarizeDoDiagnostics(device.id, diagPayload)
         pushDeviceLog(device.id, {
           type: "state",
           message: `Diagnostics updated (${summary})`
         })
+        break
+      }
+      case StateMode.STATE_CHANGED_BIT: {
+        const changedMask = Number(event.payload.changed) >>> 0
+        const stateMask = Number(event.payload.state) >>> 0
+        const { changed, actionIds, updates } = applyDeltaState(
+          channels.value,
+          device.id,
+          changedMask,
+          stateMask,
+          { onDoUpdate: (channel, next) => fulfillDoPendingState(channel, next) },
+        )
+        if (!changed) {
+          break
+        }
+        const channelDescriptions = updates
+          .map(({ channel, value }) => `${resolveChannelLabel(channel)} → ${toDigitalLabel(value)}`)
+        const message = channelDescriptions.length
+          ? `Digital delta: ${channelDescriptions.join(", ")}`
+          : `Digital delta (${countBits(changedMask)} ch)`
+        const actionId = actionIds.size === 1 ? Array.from(actionIds)[0] : undefined
+        pushDeviceLog(device.id, {
+          type: "state",
+          message
+        }, actionId)
+        if (actionId) {
+          removeAction(device.id, actionId)
+        }
+        break
+      }
+      case StateMode.STATE_DIAG_DI: {
+        const diagPayload: DiDiagnosticsBitmasks = {
+          seen_mask: Number(event.payload.seen) >>> 0,
+          stuck_mask: Number(event.payload.stuck) >>> 0,
+          lost_mask: Number(event.payload.lost) >>> 0,
+          latched_mask: Number(event.payload.latched) >>> 0,
+          latched_changed_mask: Number(event.payload.latched_changed) >>> 0,
+          latched_cause_mask: Number(event.payload.latched_cause) >>> 0,
+        }
+        const diChannels = channelsByDevice(device.id).filter(
+          ch => ch.type === CHANNEL_TYPES.DI,
+        ) as DiChannel[]
+        const changes = applyDiDiagnostics(diChannels, diagPayload)
+        if (!changes.length) {
+          break
+        }
+        logDiDiagnosticChanges(device.id, changes)
+        break
+      }
+      case StateMode.STATE_LATCHED_DI: {
+        const diagPayload: DiDiagnosticsBitmasks = {
+          latched_mask: Number(event.payload.latched) >>> 0,
+          latched_changed_mask: Number(event.payload.changed) >>> 0,
+          latched_cause_mask: Number(event.payload.cause) >>> 0,
+        }
+        const diChannels = channelsByDevice(device.id).filter(
+          ch => ch.type === CHANNEL_TYPES.DI,
+        ) as DiChannel[]
+        const changes = applyDiDiagnostics(diChannels, diagPayload)
+        if (!changes.length) {
+          break
+        }
+        logDiDiagnosticChanges(device.id, changes)
         break
       }
       default:
@@ -603,13 +669,20 @@ export const useChannelStore = defineStore("channelStore", () => {
     ws.send(msg)
     logger.info(`Requested states from ${device.unit_id}`)
 
-    if (lowerType !== "ao") {
+    if (lowerType === "do") {
       ws.send({
         action: WSAction.GET_STATES,
         unit_id: device.unit_id,
         mode: ReqStateMode.REQ_ALL_DIAG,
       } satisfies RequestStateMessage)
-      logger.info(`Requested diagnostics from ${device.unit_id}`)
+      logger.info(`Requested DO diagnostics from ${device.unit_id}`)
+    } else if (lowerType === "di") {
+      ws.send({
+        action: WSAction.GET_STATES,
+        unit_id: device.unit_id,
+        mode: ReqStateMode.REQ_DIAG_DI,
+      } satisfies RequestStateMessage)
+      logger.info(`Requested DI diagnostics from ${device.unit_id}`)
     }
   }
 

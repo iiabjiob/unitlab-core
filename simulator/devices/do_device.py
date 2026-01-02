@@ -20,8 +20,10 @@ from simulator.packet_structures import (
     RespError,
     RespStatus,
     StateAllBit,
+    StateDiagBitmask,
     StateSingleBit,
     encode_state_all_bit,
+    encode_state_diag_bitmask,
     encode_state_single_bit,
     decode_cmd_set_all_bit,
     decode_cmd_set_pair,
@@ -60,6 +62,10 @@ class SimulatedDODevice(SimulatedDeviceBase):
         )
         self._bitmask = 0
         self._state_lock = asyncio.Lock()
+        self._diag_lock = asyncio.Lock()
+        self._diag_open = 0
+        self._diag_fault = 0
+        self._diag_soft = 0
 
     @property
     def device_type_code(self) -> str:
@@ -104,6 +110,39 @@ class SimulatedDODevice(SimulatedDeviceBase):
             retain=False,
         )
 
+    async def _publish_diag(self, *, packet_id: Optional[int] = None) -> None:
+        async with self._diag_lock:
+            payload = encode_state_diag_bitmask(
+                StateDiagBitmask(
+                    open_mask=self._diag_open & self._mask(),
+                    fault_mask=self._diag_fault & self._mask(),
+                    soft_mask=self._diag_soft & self._mask(),
+                )
+            )
+        await self._publish_packet(
+            topic_state(self.unit_id),
+            Mode.STATE_ALL_DIAG,
+            payload,
+            packet_id=packet_id,
+            retain=True,
+        )
+
+    async def _maybe_mutate_diag(self, changed_mask: int) -> None:
+        mask = changed_mask & self._mask()
+        if not mask:
+            return
+        if self._rng.random() >= 0.35:
+            return
+        target_field = self._rng.choice(("_diag_open", "_diag_fault", "_diag_soft"))
+        async with self._diag_lock:
+            current = getattr(self, target_field)
+            if self._rng.random() < 0.5:
+                current |= mask
+            else:
+                current &= ~mask
+            setattr(self, target_field, current & self._mask())
+        await self._publish_diag()
+
     async def handle_packet(self, topic: str, header, payload: bytes) -> None:
         mode = header.mode
         try:
@@ -141,6 +180,15 @@ class SimulatedDODevice(SimulatedDeviceBase):
                 return
             await self._send_resp(RespStatus.OK, packet_id=header.packet_id)
             await self._publish_single_bit(ch, value, packet_id=header.packet_id)
+        elif state_mode == Mode.REQ_ALL_DIAG:
+            decision = await self._maybe_fail_exchange(
+                header.packet_id,
+                context="DO diagnostic request",
+            )
+            if decision:
+                return
+            await self._send_resp(RespStatus.OK, packet_id=header.packet_id)
+            await self._publish_diag(packet_id=header.packet_id)
         else:
             self._logger.debug("Unhandled state request %s from %s", state_mode, topic)
 
@@ -210,14 +258,25 @@ class SimulatedDODevice(SimulatedDeviceBase):
         await self._send_resp(RespStatus.OK, packet_id=packet_id)
 
     async def _apply_single(self, cmd: CmdSetSingleBit, packet_id: Optional[int] = None) -> None:
+        changed_mask = 0
         async with self._state_lock:
-            self._set_bit(cmd.ch, cmd.value)
+            previous = (self._bitmask >> cmd.ch) & 0x01
+            if previous != cmd.value:
+                self._set_bit(cmd.ch, cmd.value)
+                changed_mask = 1 << cmd.ch
         await self._publish_single_bit(cmd.ch, cmd.value, packet_id=packet_id)
+        if changed_mask:
+            await self._maybe_mutate_diag(changed_mask)
 
     async def _apply_all(self, cmd: CmdSetAllBit, packet_id: Optional[int] = None) -> None:
+        changed_mask = 0
         async with self._state_lock:
+            previous = self._bitmask
             self._bitmask = cmd.bitmask & self._mask()
+            changed_mask = (previous ^ self._bitmask) & self._mask()
         await self.publish_state(packet_id=packet_id)
+        if changed_mask:
+            await self._maybe_mutate_diag(changed_mask)
 
     async def _apply_pair(
         self,
@@ -232,20 +291,35 @@ class SimulatedDODevice(SimulatedDeviceBase):
         desired = mapping.get(cmd.state2b)
         if desired is None:
             return
+        changed_mask = 0
         async with self._state_lock:
+            prev_a = (self._bitmask >> cmd.ch_a) & 0x01
+            prev_b = (self._bitmask >> cmd.ch_b) & 0x01
             self._set_bit(cmd.ch_a, desired[0])
             self._set_bit(cmd.ch_b, desired[1])
+            if prev_a != desired[0]:
+                changed_mask |= 1 << cmd.ch_a
+            if prev_b != desired[1]:
+                changed_mask |= 1 << cmd.ch_b
         await self._publish_single_bit(cmd.ch_a, desired[0], packet_id=packet_id)
         await self._publish_single_bit(cmd.ch_b, desired[1], packet_id=packet_id)
+        if changed_mask:
+            await self._maybe_mutate_diag(changed_mask)
 
     async def _apply_pulse(
         self,
         cmd: CmdSetPulseBit,
         packet_id: Optional[int] = None,
     ) -> None:
+        changed_mask = 0
         async with self._state_lock:
+            previous = (self._bitmask >> cmd.ch) & 0x01
             self._set_bit(cmd.ch, cmd.value)
+            if previous != cmd.value:
+                changed_mask = 1 << cmd.ch
         await self._publish_single_bit(cmd.ch, cmd.value, packet_id=packet_id)
+        if changed_mask:
+            await self._maybe_mutate_diag(changed_mask)
 
         async def revert() -> None:
             try:

@@ -64,6 +64,12 @@ class Mode(IntEnum):
     REQ_ALL_BIT = 0x11
     STATE_SINGLE_BIT = 0x12
     STATE_ALL_BIT = 0x13
+    REQ_ALL_DIAG = 0x17
+    STATE_ALL_DIAG = 0x18
+    STATE_CHANGED_BIT = 0x19
+    REQ_DIAG_DI = 0x1A
+    STATE_DIAG_DI = 0x1B
+    STATE_LATCHED_DI = 0x1C
 
     REQ_SINGLE_FLOAT = 0x14
     REQ_ALL_FLOAT = 0x15
@@ -123,6 +129,36 @@ class StateAllBit:
 
 
 @dataclass
+class StateDiagBitmask:
+    open_mask: int
+    fault_mask: int
+    soft_mask: int
+
+
+@dataclass
+class StateChangedBit:
+    changed: int
+    state: int
+
+
+@dataclass
+class DiagAllDi:
+    seen: int
+    stuck: int
+    lost: int
+    latched: int
+    latched_changed: int
+    latched_cause: int
+
+
+@dataclass
+class StateLatchedBit:
+    latched: int
+    changed: int
+    cause: int
+
+
+@dataclass
 class StateSingleFloat:
     ch: int
     value: float
@@ -179,6 +215,39 @@ def encode_state_single_bit(payload: StateSingleBit) -> bytes:
 
 def encode_state_all_bit(payload: StateAllBit) -> bytes:
     return payload.bitmask.to_bytes(4, byteorder="big", signed=False)
+
+
+def encode_state_diag_bitmask(payload: StateDiagBitmask) -> bytes:
+    return (
+        payload.open_mask.to_bytes(4, "big", signed=False)
+        + payload.fault_mask.to_bytes(4, "big", signed=False)
+        + payload.soft_mask.to_bytes(4, "big", signed=False)
+    )
+
+
+def encode_state_changed_bit(payload: StateChangedBit) -> bytes:
+    return payload.changed.to_bytes(4, "big", signed=False) + payload.state.to_bytes(4, "big", signed=False)
+
+
+def encode_state_diag_di(payload: DiagAllDi) -> bytes:
+    return b"".join(
+        value.to_bytes(4, "big", signed=False)
+        for value in (
+            payload.seen,
+            payload.stuck,
+            payload.lost,
+            payload.latched,
+            payload.latched_changed,
+            payload.latched_cause,
+        )
+    )
+
+
+def encode_state_latched_bit(payload: StateLatchedBit) -> bytes:
+    return b"".join(
+        value.to_bytes(4, "big", signed=False)
+        for value in (payload.latched, payload.changed, payload.cause)
+    )
 
 
 def encode_state_single_float(payload: StateSingleFloat) -> bytes:

@@ -49,9 +49,19 @@ export interface ChannelDiagnostics {
   soft: boolean
 }
 
+export interface DiChannelDiagnostics {
+  seen: boolean
+  stuck: boolean
+  lost: boolean
+  latched: boolean
+  latchedChanged: boolean
+  latchedCause: boolean
+}
+
 export interface DiChannel extends ChannelBase {
   type: "di"
   state: boolean
+  diDiagnostics?: DiChannelDiagnostics
 }
 
 export interface DoChannel extends ChannelBase {

@@ -8,6 +8,9 @@ from .packet_structures import (
     StateSingleBit,
     StateAllBit,
     StateDiagBitmask,
+    StateChangedBit,
+    DiagAllDi,
+    StateLatchedBit,
     CmdSetSingleBit,
     CmdSetAllBit,
     CmdSetPairBit,
@@ -47,6 +50,38 @@ class bit:
             open_mask=endian.read_u32_be(data, 0),
             fault_mask=endian.read_u32_be(data, 4),
             soft_mask=endian.read_u32_be(data, 8),
+        )
+
+    @staticmethod
+    def state_delta(data: bytes) -> Optional[StateChangedBit]:
+        if len(data) != 8:
+            return None
+        return StateChangedBit(
+            changed=endian.read_u32_be(data, 0),
+            state=endian.read_u32_be(data, 4),
+        )
+
+    @staticmethod
+    def state_diag_di(data: bytes) -> Optional[DiagAllDi]:
+        if len(data) != 24:
+            return None
+        return DiagAllDi(
+            seen=endian.read_u32_be(data, 0),
+            stuck=endian.read_u32_be(data, 4),
+            lost=endian.read_u32_be(data, 8),
+            latched=endian.read_u32_be(data, 12),
+            latched_changed=endian.read_u32_be(data, 16),
+            latched_cause=endian.read_u32_be(data, 20),
+        )
+
+    @staticmethod
+    def state_latched(data: bytes) -> Optional[StateLatchedBit]:
+        if len(data) != 12:
+            return None
+        return StateLatchedBit(
+            latched=endian.read_u32_be(data, 0),
+            changed=endian.read_u32_be(data, 4),
+            cause=endian.read_u32_be(data, 8),
         )
 
     @staticmethod

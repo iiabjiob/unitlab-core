@@ -31,6 +31,12 @@ async def handle_device_state(topic: str, payload: bytes, unit_id: str):
         decoded = bit_decode.state_all(body)
     elif hdr.mode == State.STATE_ALL_DIAG:
         decoded = bit_decode.state_diag(body)
+    elif hdr.mode == State.STATE_CHANGED_BIT:
+        decoded = bit_decode.state_delta(body)
+    elif hdr.mode == State.STATE_DIAG_DI:
+        decoded = bit_decode.state_diag_di(body)
+    elif hdr.mode == State.STATE_LATCHED_DI:
+        decoded = bit_decode.state_latched(body)
     elif hdr.mode == State.STATE_SINGLE_FLOAT:
         decoded = float_decode.state_single(body)
     else:
@@ -42,9 +48,9 @@ async def handle_device_state(topic: str, payload: bytes, unit_id: str):
 
     changed, event = await DeviceStateService.update_state(unit_id, hdr, decoded)
 
-    # if not changed:
-    #     logger.debug(f"⏩ No state change for {unit_id}, skip WS broadcast")
-    #     return
+    if not event:
+        logger.debug(f"⏩ No state change for {unit_id}, skip WS broadcast")
+        return
 
     logger.debug(f"📥 IN ← {unit_id}: {event.model_dump()}")
 

@@ -23,11 +23,8 @@
       <!-- DI indicator -->
       <div
         v-else-if="channel.type === 'di'"
-        class="w-4 h-4 rounded-full border"
-        :class="{
-          'bg-green-500 border-green-600': channel.state,
-          'bg-neutral-600 border-neutral-500': !channel.state
-        }"
+        class="w-4 h-4 rounded-full border transition-all duration-200"
+        :class="diIndicatorClass"
       />
 
       <!-- AO input -->
@@ -45,21 +42,6 @@
         {{ channel.resolved_name }}
       </div>
 
-      <div
-        v-if="diagnosticBadges.length"
-        class="flex items-center gap-1 text-[10px] text-neutral-500"
-      >
-        <span
-          v-for="badge in diagnosticBadges"
-          :key="badge.key"
-          class="px-1.5 py-0.5 rounded border transition-colors"
-          :class="badge.active
-            ? 'bg-red-500/80 border-red-500 text-white'
-            : 'border-neutral-300 dark:border-neutral-600 text-neutral-500 dark:text-neutral-400'"
-        >
-          {{ badge.label }}
-        </span>
-      </div>
     </div>
   </div>
 </template>
@@ -81,14 +63,28 @@ const status = computed(() =>
 )
 const isWaiting = computed(() => status.value === "pending" || status.value === "debounce")
 const isError = computed(() => status.value === "error")
-const diagnostics = computed(() => (props.channel.type === "do" ? props.channel.diagnostics : undefined))
-const diagnosticBadges = computed(() => {
-  if (!diagnostics.value) return []
-  return [
-    { key: "open", label: "Open", active: diagnostics.value.open },
-    { key: "fault", label: "Fault", active: diagnostics.value.fault },
-    { key: "soft", label: "Soft", active: diagnostics.value.soft }
-  ]
+
+const diAlertActive = computed(() => {
+  if (props.channel.type !== "di") {
+    return false
+  }
+  const diag = props.channel.diDiagnostics
+  if (!diag) {
+    return false
+  }
+  return Boolean(diag.stuck || diag.lost || diag.latched)
+})
+
+const diIndicatorClass = computed(() => {
+  if (props.channel.type !== "di") {
+    return ""
+  }
+  if (diAlertActive.value) {
+    return "bg-red-500 border-red-500 animate-pulse"
+  }
+  return props.channel.state
+    ? "bg-green-500 border-green-600"
+    : "bg-neutral-600 border-neutral-500"
 })
 
 const doControlClass = computed(() => {

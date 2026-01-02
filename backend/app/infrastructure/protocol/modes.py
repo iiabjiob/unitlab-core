@@ -11,6 +11,10 @@ class State(IntEnum):
     STATE_ALL_BIT      = 0x13  # [bitmap:u32 BE]
     REQ_ALL_DIAG       = 0x17  # [] aggregated diagnostics bitmasks
     STATE_ALL_DIAG     = 0x18  # [open:u32][fault:u32][soft:u32]
+    STATE_CHANGED_BIT  = 0x19  # [changed:u32][state:u32] (DI delta snapshot)
+    REQ_DIAG_DI        = 0x1A  # [] request DI diagnostics summary
+    STATE_DIAG_DI      = 0x1B  # [seen][stuck][lost][latched][latched_changed][latched_cause]
+    STATE_LATCHED_DI   = 0x1C  # [latched][changed][cause]
 
     # Analog (float-based)
     REQ_SINGLE_FLOAT   = 0x14  # [ch]

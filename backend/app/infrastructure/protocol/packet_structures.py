@@ -34,6 +34,27 @@ class StateDiagBitmask(BaseModel):
 
 
 
+class StateChangedBit(BaseModel):
+    changed: int  # u32 bitmask
+    state: int    # u32 snapshot (only bits from 'changed' are valid)
+
+
+class DiagAllDi(BaseModel):
+    seen: int
+    stuck: int
+    lost: int
+    latched: int
+    latched_changed: int
+    latched_cause: int
+
+
+class StateLatchedBit(BaseModel):
+    latched: int
+    changed: int
+    cause: int
+
+
+
 class CmdSetSingleBit(BaseModel):
     ch: int
     value: int  # u8 (0=off, 1=on)

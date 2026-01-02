@@ -14,6 +14,7 @@ export enum ReqStateMode {
   REQ_SINGLE_FLOAT = 0x14,
   REQ_ALL_FLOAT    = 0x15,
   REQ_ALL_DIAG     = 0x17,
+  REQ_DIAG_DI      = 0x1A,
 }
 
 export enum CmdMode {
