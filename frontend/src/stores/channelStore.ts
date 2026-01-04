@@ -521,7 +521,7 @@ export const useChannelStore = defineStore("channelStore", () => {
         }
         break
       }
-      case StateMode.STATE_ALL_DIAG: {
+      case StateMode.DIAG_ALL_BIT: {
         const diagPayload: DoDiagnosticsBitmasks = {
           open_mask: Number(event.payload.open_mask) >>> 0,
           fault_mask: Number(event.payload.fault_mask) >>> 0,
@@ -569,7 +569,7 @@ export const useChannelStore = defineStore("channelStore", () => {
         }
         break
       }
-      case StateMode.STATE_DIAG_DI: {
+      case StateMode.DIAG_DI_BIT: {
         const diagPayload: DiDiagnosticsBitmasks = {
           seen_mask: Number(event.payload.seen) >>> 0,
           stuck_mask: Number(event.payload.stuck) >>> 0,
@@ -588,7 +588,7 @@ export const useChannelStore = defineStore("channelStore", () => {
         logDiDiagnosticChanges(device.id, changes)
         break
       }
-      case StateMode.STATE_LATCHED_DI: {
+      case StateMode.STATE_LATCHED_BIT: {
         const diagPayload: DiDiagnosticsBitmasks = {
           latched_mask: Number(event.payload.latched) >>> 0,
           latched_changed_mask: Number(event.payload.changed) >>> 0,
@@ -673,14 +673,14 @@ export const useChannelStore = defineStore("channelStore", () => {
       ws.send({
         action: WSAction.GET_STATES,
         unit_id: device.unit_id,
-        mode: ReqStateMode.REQ_ALL_DIAG,
+        mode: ReqStateMode.REQ_DIAG_ALL_BIT,
       } satisfies RequestStateMessage)
       logger.info(`Requested DO diagnostics from ${device.unit_id}`)
     } else if (lowerType === "di") {
       ws.send({
         action: WSAction.GET_STATES,
         unit_id: device.unit_id,
-        mode: ReqStateMode.REQ_DIAG_DI,
+        mode: ReqStateMode.REQ_DIAG_DI_BIT,
       } satisfies RequestStateMessage)
       logger.info(`Requested DI diagnostics from ${device.unit_id}`)
     }

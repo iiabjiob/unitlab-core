@@ -54,6 +54,7 @@ class RequestStateMessage(BaseModel):
     mode → соответствует protocol.modes.State:
         - REQ_SINGLE_BIT / REQ_ALL_BIT
         - REQ_SINGLE_FLOAT / REQ_ALL_FLOAT
+        - REQ_DIAG_DI_BIT / REQ_DIAG_ALL_BIT / REQ_DIAG_AO_FLOAT
     """
     action: Literal[WSAction.GET_STATES]
     unit_id: str

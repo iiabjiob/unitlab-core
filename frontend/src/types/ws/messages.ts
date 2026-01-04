@@ -9,12 +9,13 @@ export enum WSAction {
 }
 
 export enum ReqStateMode {
-  REQ_SINGLE_BIT   = 0x10,
-  REQ_ALL_BIT      = 0x11,
-  REQ_SINGLE_FLOAT = 0x14,
-  REQ_ALL_FLOAT    = 0x15,
-  REQ_ALL_DIAG     = 0x17,
-  REQ_DIAG_DI      = 0x1A,
+  REQ_SINGLE_BIT     = 0x10,
+  REQ_ALL_BIT        = 0x11,
+  REQ_DIAG_DI_BIT    = 0x16,
+  REQ_DIAG_ALL_BIT   = 0x18,
+  REQ_SINGLE_FLOAT   = 0x1A,
+  REQ_ALL_FLOAT      = 0x1B,
+  REQ_DIAG_AO_FLOAT  = 0x1D,
 }
 
 export enum CmdMode {

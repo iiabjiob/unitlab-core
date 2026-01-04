@@ -29,13 +29,13 @@ async def handle_device_state(topic: str, payload: bytes, unit_id: str):
         decoded = bit_decode.state_single(body)
     elif hdr.mode == State.STATE_ALL_BIT:
         decoded = bit_decode.state_all(body)
-    elif hdr.mode == State.STATE_ALL_DIAG:
+    elif hdr.mode == State.DIAG_ALL_BIT:
         decoded = bit_decode.state_diag(body)
     elif hdr.mode == State.STATE_CHANGED_BIT:
         decoded = bit_decode.state_delta(body)
-    elif hdr.mode == State.STATE_DIAG_DI:
+    elif hdr.mode == State.DIAG_DI_BIT:
         decoded = bit_decode.state_diag_di(body)
-    elif hdr.mode == State.STATE_LATCHED_DI:
+    elif hdr.mode == State.STATE_LATCHED_BIT:
         decoded = bit_decode.state_latched(body)
     elif hdr.mode == State.STATE_SINGLE_FLOAT:
         decoded = float_decode.state_single(body)

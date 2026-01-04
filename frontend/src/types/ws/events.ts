@@ -18,11 +18,12 @@ export enum WSChannel {
 export enum StateMode {
   STATE_SINGLE_BIT   = 0x12,
   STATE_ALL_BIT      = 0x13,
-  STATE_SINGLE_FLOAT = 0x16,
-  STATE_ALL_DIAG     = 0x18,
-  STATE_CHANGED_BIT  = 0x19,
-  STATE_DIAG_DI      = 0x1B,
-  STATE_LATCHED_DI   = 0x1C,
+  STATE_CHANGED_BIT  = 0x14,
+  STATE_LATCHED_BIT  = 0x15,
+  DIAG_DI_BIT        = 0x17,
+  DIAG_ALL_BIT       = 0x19,
+  STATE_SINGLE_FLOAT = 0x1C,
+  DIAG_AO_FLOAT      = 0x1E,
 }
 
 export interface DeviceDiagnosticsPayload {
