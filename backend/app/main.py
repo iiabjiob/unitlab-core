@@ -14,13 +14,8 @@ from app.infrastructure.db.database import engine
 from sqlalchemy import text
 
 from app.infrastructure.redis.manager import RedisManager
-from app.infrastructure.mqtt.manager import MqttManager
 
-from app.tasks.device_offline_task import device_offline_checker
-
-from app.core.message_bus import MessageBus
-from app.infrastructure.mqtt.inbound_worker import run_inbound_router_worker
-from app.infrastructure.mqtt.outbound_worker import run_outbound_publisher_worker
+from app.ws.pubsub_listener import forward_ws_events_from_pubsub
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -64,31 +59,23 @@ async def lifespan(app: FastAPI):
 
     # Start infrastructure services
     await RedisManager.start()
-    await MqttManager.start()
 
     # Background tasks
     logger.info("🔗 Registering background tasks...")
-    checker_task = asyncio.create_task(device_offline_checker())
-    logger.info("✅ Background tasks registered")
-
-    bus = MessageBus.get_instance()
-    bus.register_task(asyncio.create_task(run_inbound_router_worker()))
-    bus.register_task(asyncio.create_task(run_outbound_publisher_worker()))
-    logger.info("✅ Queued workers started")
+    ws_forwarder_task = asyncio.create_task(forward_ws_events_from_pubsub())
+    logger.info("✅ WS forwarder started")
     try:
         yield
     finally:
         logger.info("🛑 Shutting down FastAPI application...")
 
         # Cancel background tasks
-        checker_task.cancel()
+        ws_forwarder_task.cancel()
         with suppress(asyncio.CancelledError):
-            await checker_task
+            await ws_forwarder_task
 
         # Stop infrastructure services
-        await MessageBus.get_instance().shutdown()
         await RedisManager.stop()
-        await MqttManager.stop()
 
 
 app = FastAPI(

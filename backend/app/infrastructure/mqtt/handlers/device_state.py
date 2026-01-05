@@ -4,7 +4,7 @@ from app.infrastructure.protocol.modes import State
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.mqtt import topics
 from app.services.device_state_service import DeviceStateService
-from app.ws.manager import WebSocketManager
+from app.core.events.ws_event_publisher import WsEventPublisher
 from app.core.logger import get_logger
 
 logger = get_logger("mqtt")
@@ -54,6 +54,5 @@ async def handle_device_state(topic: str, payload: bytes, unit_id: str):
 
     logger.debug(f"📥 IN ← {unit_id}: {event.model_dump()}")
 
-    ws_manager = WebSocketManager.get_instance()
-    await ws_manager.broadcast(event)
+    await WsEventPublisher.publish(event)
 

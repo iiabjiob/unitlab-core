@@ -40,10 +40,14 @@ class Settings(BaseSettings):
     # ---- MQTT ----
     mqtt_host: str
     mqtt_port: int
+    mqtt_in_stream: str = "mqtt:inbound"
+    mqtt_out_stream: str = "mqtt:outbound"
+    mqtt_stream_maxlen: int = 10000
 
     # ---- Redis ----
     redis_host: str
     redis_port: int
+    ws_events_channel: str = "ws:events"
 
     # ---- Heartbeat ----
     heartbeat_ttl: int = 30

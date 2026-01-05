@@ -3,7 +3,7 @@ from app.infrastructure.protocol.decode import sys as sys_decode
 from app.infrastructure.protocol.packet_structures import RespStatus, RespError
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.mqtt import topics
-from app.ws.manager import WebSocketManager
+from app.core.events.ws_event_publisher import WsEventPublisher
 from app.schemas.ws.events import DeviceRespEvent
 from app.core.logger import get_logger
 
@@ -45,5 +45,4 @@ async def handle_device_resp(topic: str, payload: bytes, unit_id: str):
         f"status={status.name} err={error.name}"
     )
 
-    ws_manager = WebSocketManager.get_instance()
-    await ws_manager.broadcast(event)
+    await WsEventPublisher.publish(event)

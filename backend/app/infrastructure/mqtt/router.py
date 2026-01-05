@@ -33,7 +33,7 @@ class MqttRouter:
             logger.warning(f"No handler for {topic}")
             return
 
-        # unit_id всегда первая часть топика
+        # unit_id is always the first segment of a topic
         unit_id = self.extract_unit_id(topic)
 
         try:

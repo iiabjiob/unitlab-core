@@ -13,7 +13,8 @@ from app.infrastructure.protocol.packet_structures import (
     CmdSetPulseBit,
     CmdSetSingleFloat,
 )
-from app.core.message_bus import MessageBus, OutboundCmdMsg
+from app.core.mqtt_dto import OutboundCmdMsg
+from app.infrastructure.redis.stream_bus import enqueue_outbound_command
 from app.core.logger import get_logger
 
 logger = get_logger("cmdq")
@@ -66,7 +67,7 @@ async def enqueue_do_command(
         packet_id=pid,
     )
 
-    await MessageBus.get_instance().outbound_cmd_q.put(msg)
+    await enqueue_outbound_command(msg)
 
     logger.info(f"🧺 Queued DO → {topic} | pid={pid} ({mode.name}) {data.hex().upper()}")
 
@@ -92,7 +93,7 @@ async def enqueue_ao_command(unit_id: str, ch: int, value: float, correlation_id
         packet_id=pid,
     )
         
-    await MessageBus.get_instance().outbound_cmd_q.put(msg)
+    await enqueue_outbound_command(msg)
     
     logger.info(f"🧺 Queued AO → {topic} | pid={pid} ({mode.name}) {data.hex().upper()}")
 
@@ -127,7 +128,7 @@ async def enqueue_request_state(
         packet_id=pid,
     )
         
-    await MessageBus.get_instance().outbound_cmd_q.put(msg)
+    await enqueue_outbound_command(msg)
     
     logger.info(f"🧺 Queued STATE REQ → {topic} | pid={pid} ({mode.name}) {data.hex().upper()}")
 
@@ -155,6 +156,6 @@ async def enqueue_scan_devices(correlation_id: str | None = None, unit_id: str |
         packet_id=pid,
     )
         
-    await MessageBus.get_instance().outbound_cmd_q.put(msg)
+    await enqueue_outbound_command(msg)
     
     logger.info(f"🧺 Queued SCAN → {topic} | pid={pid} {payload.hex().upper()}")

@@ -3,6 +3,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
+    image: unitlab-backend:latest
     platform: linux/arm64
     container_name: unitlab-backend
     mem_limit: 1024m
@@ -27,10 +28,81 @@ services:
     networks:
       - app_network
 
+  mqtt_ingress:
+    image: unitlab-backend:latest
+    platform: linux/arm64
+    container_name: unitlab-mqtt-ingress
+    command: ["python", "-m", "app.workers.mqtt_ingress"]
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      APP_ENV: production
+    depends_on:
+      redis:
+        condition: service_started
+      mosquitto:
+        condition: service_started
+    networks:
+      - app_network
+
+  inbound_processor:
+    image: unitlab-backend:latest
+    platform: linux/arm64
+    container_name: unitlab-inbound-processor
+    command: ["python", "-m", "app.workers.inbound_processor"]
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      APP_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app_network
+
+  mqtt_outbound:
+    image: unitlab-backend:latest
+    platform: linux/arm64
+    container_name: unitlab-mqtt-outbound
+    command: ["python", "-m", "app.workers.mqtt_outbound"]
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      APP_ENV: production
+    depends_on:
+      redis:
+        condition: service_started
+      mosquitto:
+        condition: service_started
+    networks:
+      - app_network
+
+  device_offline:
+    image: unitlab-backend:latest
+    platform: linux/arm64
+    container_name: unitlab-device-offline
+    command: ["python", "-m", "app.workers.device_offline"]
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      APP_ENV: production
+    depends_on:
+      redis:
+        condition: service_started
+    networks:
+      - app_network
+
   migrations:
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
+    image: unitlab-backend:latest
     container_name: unitlab-migrations
     platform: linux/arm64
     command: ["/app/.venv/bin/alembic", "upgrade", "head"]

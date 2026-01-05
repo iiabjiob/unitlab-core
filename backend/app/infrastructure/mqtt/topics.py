@@ -14,7 +14,7 @@ CORE_TOPICS = [
     DEVICE_REGISTER,
 ]
 
-# Эти только для публикации Core → периферия
+# Publish-only topics (Core → devices)
 PUBLISH_ONLY_TOPICS = [
     DEVICE_CMD,
     DEVICE_REQ_STATE,
@@ -22,7 +22,7 @@ PUBLISH_ONLY_TOPICS = [
     DEVICE_INFO,
 ]
 
-# Генераторы конкретных топиков
+# Topic helpers
 def register(unit_id: str) -> str:
     return f"{unit_id}/reg"
 

@@ -6,7 +6,7 @@ from app.infrastructure.db.database import AsyncSessionLocal
 from app.services.device_service import DeviceService
 from app.infrastructure.mqtt import topics
 from app.infrastructure.redis.manager import RedisManager
-from app.ws.manager import WebSocketManager
+from app.core.events.ws_event_publisher import WsEventPublisher
 from app.schemas.ws.events import DeviceRegisterEvent
 from app.core.logger import get_logger
 
@@ -74,5 +74,4 @@ async def handle_device_register(topic: str, payload: bytes, unit_id: str):
 
     event = DeviceRegisterEvent(**payload)
 
-    ws_manager = WebSocketManager.get_instance()
-    await ws_manager.broadcast(event)
+    await WsEventPublisher.publish(event)
