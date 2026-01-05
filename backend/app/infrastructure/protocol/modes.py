@@ -19,6 +19,7 @@ class State(IntEnum):
     # Analog (float-based)
     REQ_SINGLE_FLOAT   = 0x1A  # [ch]
     REQ_ALL_FLOAT      = 0x1B  # snapshot (for all STATE_SINGLE_FLOAT)
+    DIAG_DI_BIT_V2     = REQ_ALL_FLOAT  # firmware >=2025.2 sends DI diagnostics under this opcode
     STATE_SINGLE_FLOAT = 0x1C  # [ch][value:floatBE]
     REQ_DIAG_AO_FLOAT  = 0x1D  # [] request AO diagnostics summary
     DIAG_AO_FLOAT      = 0x1E  # [diagnostic masks]

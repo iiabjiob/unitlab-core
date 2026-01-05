@@ -33,7 +33,7 @@ async def handle_device_state(topic: str, payload: bytes, unit_id: str):
         decoded = bit_decode.state_diag(body)
     elif hdr.mode == State.STATE_CHANGED_BIT:
         decoded = bit_decode.state_delta(body)
-    elif hdr.mode == State.DIAG_DI_BIT:
+    elif hdr.mode in (State.DIAG_DI_BIT, State.DIAG_DI_BIT_V2):
         decoded = bit_decode.state_diag_di(body)
     elif hdr.mode == State.STATE_LATCHED_BIT:
         decoded = bit_decode.state_latched(body)

@@ -9,6 +9,13 @@ from app.core.utils import to_str, to_int
 
 class DeviceStateService:
     @staticmethod
+    def _normalize_state_mode(raw_mode: int) -> State:
+        """Collapse firmware-specific aliases to a canonical State enum."""
+        if raw_mode == State.DIAG_DI_BIT_V2:
+            return State.DIAG_DI_BIT
+        return State(raw_mode)
+
+    @staticmethod
     async def update_state(unit_id: str, hdr, decoded) -> tuple[bool, DeviceStateEvent | None]:
         """
         Update Redis state for the device based on the packet header/mode and decoded payload.
@@ -69,7 +76,7 @@ class DeviceStateService:
                 await redis.set(bitmask_key, str(next_mask))
                 changed = True
 
-        elif hdr.mode == State.DIAG_DI_BIT:
+        elif hdr.mode in (State.DIAG_DI_BIT, State.DIAG_DI_BIT_V2):
             diag_key = f"device:{unit_id}:diag_di"
             current_diag = await redis.hgetall(diag_key)
             new_mapping = {
@@ -102,7 +109,7 @@ class DeviceStateService:
         event = DeviceStateEvent(
             unit_id=unit_id,
             timestamp=hdr.timestamp_ms or int(time.time() * 1000),
-            mode=State(hdr.mode),
+            mode=DeviceStateService._normalize_state_mode(hdr.mode),
             payload=decoded.model_dump(),
         )
         return changed, event

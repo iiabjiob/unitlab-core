@@ -54,8 +54,11 @@ async def check_database_connection(max_attempts: int = 10, base_delay: float = 
 async def lifespan(app: FastAPI):
     logger.info("🚀 Starting FastAPI application...")
 
-    # Healthchecks
-    await check_database_connection()
+    # Healthchecks (skip heavy DB probe in non-production environments)
+    if settings.app_env.lower() == "production":
+        await check_database_connection()
+    else:
+        logger.info("⏩ Skipping DB readiness probe in %s mode", settings.app_env)
 
     # Start infrastructure services
     await RedisManager.start()

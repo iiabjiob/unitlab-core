@@ -121,7 +121,7 @@ class SimulatedDODevice(SimulatedDeviceBase):
             )
         await self._publish_packet(
             topic_state(self.unit_id),
-            Mode.STATE_ALL_DIAG,
+            Mode.DIAG_ALL_BIT,
             payload,
             packet_id=packet_id,
             retain=True,
@@ -180,7 +180,7 @@ class SimulatedDODevice(SimulatedDeviceBase):
                 return
             await self._send_resp(RespStatus.OK, packet_id=header.packet_id)
             await self._publish_single_bit(ch, value, packet_id=header.packet_id)
-        elif state_mode == Mode.REQ_ALL_DIAG:
+        elif state_mode == Mode.REQ_DIAG_ALL_BIT:
             decision = await self._maybe_fail_exchange(
                 header.packet_id,
                 context="DO diagnostic request",

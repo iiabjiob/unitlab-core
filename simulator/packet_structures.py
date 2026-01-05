@@ -60,20 +60,24 @@ def unpack_header(data: bytes) -> PacketHeader:
 class Mode(IntEnum):
     """State opcodes used by both the firmware and simulator."""
 
-    REQ_SINGLE_BIT = 0x10
-    REQ_ALL_BIT = 0x11
-    STATE_SINGLE_BIT = 0x12
-    STATE_ALL_BIT = 0x13
-    REQ_ALL_DIAG = 0x17
-    STATE_ALL_DIAG = 0x18
-    STATE_CHANGED_BIT = 0x19
-    REQ_DIAG_DI = 0x1A
-    STATE_DIAG_DI = 0x1B
-    STATE_LATCHED_DI = 0x1C
+    # Digital state (matching backend/app/infrastructure/protocol/modes.py)
+    REQ_SINGLE_BIT     = 0x10
+    REQ_ALL_BIT        = 0x11
+    STATE_SINGLE_BIT   = 0x12
+    STATE_ALL_BIT      = 0x13
+    STATE_CHANGED_BIT  = 0x14
+    STATE_LATCHED_BIT  = 0x15
+    REQ_DIAG_DI_BIT    = 0x16
+    DIAG_DI_BIT        = 0x17
+    REQ_DIAG_ALL_BIT   = 0x18
+    DIAG_ALL_BIT       = 0x19
 
-    REQ_SINGLE_FLOAT = 0x14
-    REQ_ALL_FLOAT = 0x15
-    STATE_SINGLE_FLOAT = 0x16
+    # Analog state (AO)
+    REQ_SINGLE_FLOAT   = 0x1A
+    REQ_ALL_FLOAT      = 0x1B
+    STATE_SINGLE_FLOAT = 0x1C
+    REQ_DIAG_AO_FLOAT  = 0x1D
+    DIAG_AO_FLOAT      = 0x1E
 
 
 class Cmd(IntEnum):

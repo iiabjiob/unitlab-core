@@ -2,33 +2,39 @@
 
 FastAPI + AsyncPG + Redis + MQTT backend
 
-## MQTT/Redis пайплайн
+## MQTT/Redis Pipeline
 
-Новая архитектура разделяет транспорт на отдельные воркеры, поэтому сам FastAPI остаётся «тонким» API/WS шлюзом.
+The transport layer is now split into standalone workers, so FastAPI stays a thin REST/WS gateway.
 
-### Запуск сервисов
+### Startup order
 
-1. FastAPI (WS + REST):
+Before running any of the commands below in a devcontainer, activate the backend Python environment (e.g. `cd backend && source .venv/bin/activate`) or prefix commands with `uv run` so they reuse the managed virtualenv.
+
+1. FastAPI (REST + WebSockets):
 	```bash
-	uvicorn app.main:app --reload --workers 4
+	uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --workers 4
 	```
 2. MQTT ingress → Redis Stream `mqtt:inbound`:
 	```bash
-	python -m app.workers.mqtt_ingress
+	uv run python -m app.workers.mqtt_ingress
 	```
-3. Inbound processor (бизнес-логика + WS события → Redis Pub/Sub `ws:events`):
+3. Inbound processor (business logic + WS events → Redis Pub/Sub `ws:events`):
 	```bash
-	python -m app.workers.inbound_processor
+	uv run python -m app.workers.inbound_processor
 	```
 4. MQTT outbound publisher ← Redis Stream `mqtt:outbound`:
 	```bash
-	python -m app.workers.mqtt_outbound
+	uv run python -m app.workers.mqtt_outbound
 	```
-5. Device offline checker (следит за `devices:all`, публикует WS heartbeats):
+5. Device offline checker (watches `devices:all`, emits WS heartbeats):
 	```bash
-	python -m app.workers.device_offline
+	uv run python -m app.workers.device_offline
 	```
 
-FastAPI подписывается на `ws:events` и ретранслирует события подключённым WebSocket клиентам.
+FastAPI subscribes to `ws:events` and forwards every payload to connected WebSocket clients.
 
-> В `docker-compose.prod.yml` эти воркеры уже описаны отдельными сервисами (`mqtt_ingress`, `inbound_processor`, `mqtt_outbound`, `device_offline`). Для запуска всего стека в продукционной конфигурации достаточно выполнить `docker compose -f docker-compose.prod.yml up -d`.
+> In `docker-compose.prod.yml` these workers are defined as separate services (`mqtt_ingress`, `inbound_processor`, `mqtt_outbound`, `device_offline`). To launch the full production stack run `docker compose -f docker-compose.prod.yml up -d`.
+
+## Local docker-compose
+
+For development, `docker-compose.dev.yml` brings up only the shared infrastructure (Postgres, Redis, Mosquitto, devcontainer). FastAPI and all workers should be started manually from the devcontainer using the commands above, which lets you see code changes immediately without rebuilding images.

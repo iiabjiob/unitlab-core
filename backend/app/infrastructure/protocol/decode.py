@@ -44,12 +44,27 @@ class bit:
 
     @staticmethod
     def state_diag(data: bytes) -> Optional[StateDiagBitmask]:
-        if len(data) != 12:
+        if len(data) == 12:
+            open_mask = endian.read_u32_be(data, 0)
+            fault_mask = endian.read_u32_be(data, 4)
+            soft_mask = endian.read_u32_be(data, 8)
+        elif len(data) == 8:
+            # Firmware 2025.x trimmed the soft fault mask from this frame
+            open_mask = endian.read_u32_be(data, 0)
+            fault_mask = endian.read_u32_be(data, 4)
+            soft_mask = 0
+        elif len(data) == 4:
+            # Legacy devices sometimes only send the open_mask
+            open_mask = endian.read_u32_be(data, 0)
+            fault_mask = 0
+            soft_mask = 0
+        else:
             return None
+
         return StateDiagBitmask(
-            open_mask=endian.read_u32_be(data, 0),
-            fault_mask=endian.read_u32_be(data, 4),
-            soft_mask=endian.read_u32_be(data, 8),
+            open_mask=open_mask,
+            fault_mask=fault_mask,
+            soft_mask=soft_mask,
         )
 
     @staticmethod

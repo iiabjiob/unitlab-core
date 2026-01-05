@@ -150,7 +150,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
                 packet_id=header.packet_id,
                 retain=False,
             )
-        elif request == Mode.REQ_DIAG_DI:
+        elif request == Mode.REQ_DIAG_DI_BIT:
             decision = await self._maybe_fail_exchange(
                 header.packet_id,
                 context="DI diagnostic request",
@@ -294,7 +294,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
         )
         await self._publish_packet(
             topic_state(self.unit_id),
-            Mode.STATE_DIAG_DI,
+            Mode.DIAG_DI_BIT,
             payload,
             packet_id=packet_id,
             retain=True,
@@ -311,7 +311,7 @@ class SimulatedDIDevice(SimulatedDeviceBase):
             )
         await self._publish_packet(
             topic_state(self.unit_id),
-            Mode.STATE_LATCHED_DI,
+            Mode.STATE_LATCHED_BIT,
             payload,
             packet_id=packet_id,
             retain=True,
