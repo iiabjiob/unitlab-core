@@ -4,10 +4,12 @@ import { useSequenceStore } from "@/stores/sequenceStore"
 import { useRouter, useRoute } from "vue-router"
 import SequenceListItem from "./SequenceListItem.vue"
 import UiButton from "@/components/ui/UiButton.vue"
+import { useProjectStore } from "@/stores/projectStore"
 
 const store = useSequenceStore()
 const router = useRouter()
 const route = useRoute()
+const projectStore = useProjectStore()
 
 function isActive(id: number) {
   return Number(route.params.id) === id
@@ -18,6 +20,7 @@ function openSequence(id: number) {
 }
 
 function addSequence() {
+  if (!projectStore.activeProjectId) return
   store.createSequenceAuto().then(seq => {
     router.push(`/sequences/${seq.id}`)
   })
@@ -25,8 +28,10 @@ function addSequence() {
 
 // SEARCH
 const query = ref("")
+const projectMissing = computed(() => !projectStore.activeProjectId)
 
 const filteredSequences = computed(() => {
+  if (projectMissing.value) return []
   if (!query.value.trim()) return store.sequences
 
   const q = query.value.toLowerCase()
@@ -47,10 +52,17 @@ const filteredSequences = computed(() => {
         variant="primary"
         size="sm"
         full
+        :disabled="projectMissing"
         @click="addSequence"
       >
         + New Sequence
       </UiButton>
+      <p
+        v-if="projectMissing"
+        class="mt-2 text-[11px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
+      >
+        Use the project switcher to enable edits
+      </p>
     </div>
 
     <!-- SEARCH FIELD -->
@@ -59,7 +71,8 @@ const filteredSequences = computed(() => {
         v-model="query"
         type="text"
         name="sequence-search"
-        placeholder="Search sequences…"
+        :disabled="projectMissing"
+        :placeholder="projectMissing ? 'Select a project to get started' : 'Search sequences…'"
         class="w-full px-3 py-1 text-sm rounded border border-gray-700
                text-gray-800 dark:text-gray-200 placeholder-gray-500"
       />
@@ -67,6 +80,14 @@ const filteredSequences = computed(() => {
 
     <!-- LIST -->
     <div class="flex-1 overflow-y-auto space-y-1">
+      <div
+        v-if="projectMissing"
+        class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400"
+      >
+        Select or create a project to see its sequences.
+      </div>
+
+      <template v-else>
       <div
         v-for="seq in filteredSequences"
         :key="seq.id"
@@ -84,6 +105,7 @@ const filteredSequences = computed(() => {
       >
         No sequences found
       </div>
+      </template>
     </div>
 
   </div>

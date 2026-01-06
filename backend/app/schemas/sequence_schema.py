@@ -25,6 +25,7 @@ class SequenceUpdateSchema(BaseModel):
 
 class SequenceSchema(SequenceBase):
     id: int
+    project_id: int
     created_at: datetime
     updated_at: datetime
     steps: List[SequenceStepSchema] = Field(default_factory=list)

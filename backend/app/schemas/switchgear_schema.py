@@ -20,6 +20,7 @@ class SwitchgearBindingCreateSchema(BaseModel):
 
 class SwitchgearSchema(BaseModel):
     id: int
+    project_id: int
     name: str
     switchgear_type: str
     bindings: list[SwitchgearBindingSchema] = Field(default_factory=list)

@@ -6,25 +6,27 @@ import type {
 	SwitchgearUpdateInput,
 } from "@/types/switchgear"
 
+const basePath = (projectId: number | string) => `${API_V1}/projects/${projectId}/switchgears`
+
 export const SwitchgearsAPI = {
-	list() {
-		return http.get<Switchgear[]>(`${API_V1}/switchgears`)
+	list(projectId: number | string) {
+		return http.get<Switchgear[]>(basePath(projectId))
 	},
 
-	get(id: number | string) {
-		return http.get<Switchgear>(`${API_V1}/switchgears/${id}`)
+	get(projectId: number | string, id: number | string) {
+		return http.get<Switchgear>(`${basePath(projectId)}/${id}`)
 	},
 
-	create(payload: SwitchgearCreateInput) {
-		return http.post<Switchgear>(`${API_V1}/switchgears`, payload)
+	create(projectId: number | string, payload: SwitchgearCreateInput) {
+		return http.post<Switchgear>(basePath(projectId), payload)
 	},
 
-	update(id: number | string, payload: SwitchgearUpdateInput) {
-		return http.patch<Switchgear>(`${API_V1}/switchgears/${id}`, payload)
+	update(projectId: number | string, id: number | string, payload: SwitchgearUpdateInput) {
+		return http.patch<Switchgear>(`${basePath(projectId)}/${id}`, payload)
 	},
 
-	delete(id: number | string) {
-		return http.delete(`${API_V1}/switchgears/${id}`)
+	delete(projectId: number | string, id: number | string) {
+		return http.delete(`${basePath(projectId)}/${id}`)
 	},
 }
 

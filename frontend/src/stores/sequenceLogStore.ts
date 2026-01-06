@@ -27,5 +27,9 @@ export const useSequenceLogStore = defineStore("sequenceLogStore", () => {
     logs.value[seqId] = []
   }
 
-  return { logs, push, clear }
+  function resetAll() {
+    logs.value = {}
+  }
+
+  return { logs, push, clear, resetAll }
 })

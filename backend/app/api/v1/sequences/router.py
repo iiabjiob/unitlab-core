@@ -34,48 +34,64 @@ from app.services.sequence_runner import (
     SequenceRunner,
 )
 
-router = APIRouter(prefix="/api/v1/sequences", tags=["Sequences"])
+router = APIRouter(prefix="/api/v1/projects/{project_id}/sequences", tags=["Sequences"])
+
+
+async def _ensure_sequence_in_project(
+    repo: SequenceRepository, project_id: int, seq_id: int
+) -> None:
+    if not await repo.ensure(project_id, seq_id):
+        raise HTTPException(status_code=404, detail="Sequence not found")
 
 
 # ---------------------------------------------------------------------------
 # CRUD
 # ---------------------------------------------------------------------------
 @router.get("", response_model=list[SequenceSchema])
-async def list_sequences(db: AsyncSession = Depends(get_db)):
+async def list_sequences(project_id: int, db: AsyncSession = Depends(get_db)):
     repo = SequenceRepository(db)
-    return await repo.list()
+    return await repo.list(project_id)
 
 
 @router.get("/{seq_id}", response_model=SequenceSchema)
-async def get_sequence(seq_id: int, db: AsyncSession = Depends(get_db)):
+async def get_sequence(project_id: int, seq_id: int, db: AsyncSession = Depends(get_db)):
     repo = SequenceRepository(db)
-    seq = await repo.get(seq_id)
+    seq = await repo.get(project_id, seq_id)
     if not seq:
         raise HTTPException(status_code=404, detail="Sequence not found")
     return seq
 
 
 @router.post("", response_model=SequenceSchema)
-async def create_sequence(payload: SequenceCreateSchema, db: AsyncSession = Depends(get_db)):
+async def create_sequence(
+    project_id: int,
+    payload: SequenceCreateSchema,
+    db: AsyncSession = Depends(get_db),
+):
     repo = SequenceRepository(db)
     data = payload.model_dump(exclude={"steps"})
     steps = [step.model_dump() for step in payload.steps]
-    return await repo.create(data, steps)
+    return await repo.create(project_id, data, steps)
 
 
 @router.patch("/{seq_id}", response_model=SequenceSchema)
-async def update_sequence(seq_id: int, payload: SequenceUpdateSchema, db: AsyncSession = Depends(get_db)):
+async def update_sequence(
+    project_id: int,
+    seq_id: int,
+    payload: SequenceUpdateSchema,
+    db: AsyncSession = Depends(get_db),
+):
     repo = SequenceRepository(db)
-    seq = await repo.update(seq_id, payload.model_dump(exclude_unset=True))
+    seq = await repo.update(project_id, seq_id, payload.model_dump(exclude_unset=True))
     if not seq:
         raise HTTPException(status_code=404, detail="Sequence not found")
     return seq
 
 
 @router.delete("/{seq_id}")
-async def delete_sequence(seq_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_sequence(project_id: int, seq_id: int, db: AsyncSession = Depends(get_db)):
     repo = SequenceRepository(db)
-    deleted = await repo.delete(seq_id)
+    deleted = await repo.delete(project_id, seq_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Sequence not found")
     return {"detail": "Sequence deleted"}
@@ -85,13 +101,22 @@ async def delete_sequence(seq_id: int, db: AsyncSession = Depends(get_db)):
 # Steps
 # ---------------------------------------------------------------------------
 @router.get("/{seq_id}/steps", response_model=list[SequenceStepSchema])
-async def list_steps(seq_id: int, db: AsyncSession = Depends(get_db)):
+async def list_steps(project_id: int, seq_id: int, db: AsyncSession = Depends(get_db)):
+    seq_repo = SequenceRepository(db)
+    await _ensure_sequence_in_project(seq_repo, project_id, seq_id)
     repo = SequenceStepRepository(db)
     return await repo.get_for_sequence(seq_id)
 
 
 @router.post("/{seq_id}/steps", response_model=SequenceStepSchema)
-async def create_step(seq_id: int, payload: SequenceStepCreateSchema, db: AsyncSession = Depends(get_db)):
+async def create_step(
+    project_id: int,
+    seq_id: int,
+    payload: SequenceStepCreateSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    seq_repo = SequenceRepository(db)
+    await _ensure_sequence_in_project(seq_repo, project_id, seq_id)
     repo = SequenceStepRepository(db)
     step = await repo.create(seq_id, payload.model_dump(exclude_unset=True))
     SequenceRunner.get_instance().invalidate_state(seq_id)
@@ -100,11 +125,14 @@ async def create_step(seq_id: int, payload: SequenceStepCreateSchema, db: AsyncS
 
 @router.patch("/{seq_id}/steps/{step_id}", response_model=SequenceStepSchema)
 async def update_step(
+    project_id: int,
     seq_id: int,
     step_id: int,
     payload: SequenceStepUpdateSchema,
     db: AsyncSession = Depends(get_db),
 ):
+    seq_repo = SequenceRepository(db)
+    await _ensure_sequence_in_project(seq_repo, project_id, seq_id)
     repo = SequenceStepRepository(db)
     step = await repo.update(step_id, payload.model_dump(exclude_unset=True))
     if not step:
@@ -114,7 +142,9 @@ async def update_step(
 
 
 @router.delete("/{seq_id}/steps/{step_id}")
-async def delete_step(seq_id: int, step_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_step(project_id: int, seq_id: int, step_id: int, db: AsyncSession = Depends(get_db)):
+    seq_repo = SequenceRepository(db)
+    await _ensure_sequence_in_project(seq_repo, project_id, seq_id)
     repo = SequenceStepRepository(db)
     deleted = await repo.delete(step_id)
     if not deleted:
@@ -126,7 +156,14 @@ async def delete_step(seq_id: int, step_id: int, db: AsyncSession = Depends(get_
 
 
 @router.post("/{seq_id}/steps/reorder", response_model=list[SequenceStepSchema])
-async def reorder_steps(seq_id: int, payload: SequenceReorderSchema, db: AsyncSession = Depends(get_db)):
+async def reorder_steps(
+    project_id: int,
+    seq_id: int,
+    payload: SequenceReorderSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    seq_repo = SequenceRepository(db)
+    await _ensure_sequence_in_project(seq_repo, project_id, seq_id)
     repo = SequenceStepRepository(db)
     steps = await repo.reorder(seq_id, payload.new_order)
     SequenceRunner.get_instance().invalidate_state(seq_id)
@@ -134,7 +171,14 @@ async def reorder_steps(seq_id: int, payload: SequenceReorderSchema, db: AsyncSe
 
 
 @router.put("/{seq_id}/steps", response_model=list[SequenceStepSchema])
-async def replace_steps(seq_id: int, steps: list[SequenceStepCreateSchema], db: AsyncSession = Depends(get_db)):
+async def replace_steps(
+    project_id: int,
+    seq_id: int,
+    steps: list[SequenceStepCreateSchema],
+    db: AsyncSession = Depends(get_db),
+):
+    seq_repo = SequenceRepository(db)
+    await _ensure_sequence_in_project(seq_repo, project_id, seq_id)
     repo = SequenceStepRepository(db)
     payload = [step.model_dump() for step in steps]
     result = await repo.replace(seq_id, payload)
@@ -146,7 +190,13 @@ async def replace_steps(seq_id: int, steps: list[SequenceStepCreateSchema], db: 
 # Runtime control
 # ---------------------------------------------------------------------------
 @router.post("/{seq_id}/start", response_model=SequenceStateSchema)
-async def start_sequence(seq_id: int):
+async def start_sequence(
+    project_id: int,
+    seq_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    repo = SequenceRepository(db)
+    await _ensure_sequence_in_project(repo, project_id, seq_id)
     runner = SequenceRunner.get_instance()
     try:
         return await runner.start(seq_id)
@@ -157,7 +207,13 @@ async def start_sequence(seq_id: int):
 
 
 @router.post("/{seq_id}/stop", response_model=SequenceStateSchema)
-async def stop_sequence(seq_id: int):
+async def stop_sequence(
+    project_id: int,
+    seq_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    repo = SequenceRepository(db)
+    await _ensure_sequence_in_project(repo, project_id, seq_id)
     runner = SequenceRunner.get_instance()
     try:
         return await runner.stop(seq_id)
@@ -166,7 +222,13 @@ async def stop_sequence(seq_id: int):
 
 
 @router.get("/{seq_id}/state", response_model=SequenceStateSchema)
-async def get_sequence_state(seq_id: int):
+async def get_sequence_state(
+    project_id: int,
+    seq_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    repo = SequenceRepository(db)
+    await _ensure_sequence_in_project(repo, project_id, seq_id)
     runner = SequenceRunner.get_instance()
     try:
         return await runner.get_state(seq_id)
@@ -178,9 +240,13 @@ async def get_sequence_state(seq_id: int):
 # Import / Export
 # ---------------------------------------------------------------------------
 @router.get("/{seq_id}/export-file")
-async def export_sequence_file(seq_id: int, db: AsyncSession = Depends(get_db)):
+async def export_sequence_file(
+    project_id: int,
+    seq_id: int,
+    db: AsyncSession = Depends(get_db),
+):
     repo = SequenceRepository(db)
-    seq = await repo.get(seq_id)
+    seq = await repo.get(project_id, seq_id)
     if not seq:
         raise HTTPException(status_code=404, detail="Sequence not found")
 
@@ -209,7 +275,11 @@ async def export_sequence_file(seq_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/import-file", response_model=list[SequenceSchema])
-async def import_sequences_file(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+async def import_sequences_file(
+    project_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
     raw = await file.read()
     try:
         parsed = json.loads(raw)
@@ -244,6 +314,7 @@ async def import_sequences_file(file: UploadFile = File(...), db: AsyncSession =
             )
 
         created = await repo.create(
+            project_id,
             {"name": schema.name, "description": schema.description},
             steps_data,
         )

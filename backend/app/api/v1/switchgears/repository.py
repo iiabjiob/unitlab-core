@@ -9,7 +9,7 @@ from app.models.switchgear import Switchgear, SwitchgearChannelBinding
 
 
 class SwitchgearRepository:
-    """CRUD helpers for switchgears scoped to the v1 API."""
+    """CRUD helpers for project-scoped switchgears."""
 
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -17,20 +17,30 @@ class SwitchgearRepository:
             SwitchgearChannelBinding.channel
         )
 
-    async def list(self) -> list[Switchgear]:
-        stmt = select(Switchgear).options(self._binding_loader)
+    def _base_query(self):
+        return select(Switchgear).options(self._binding_loader)
+
+    async def list(self, project_id: int) -> list[Switchgear]:
+        stmt = (
+            self._base_query()
+            .where(Switchgear.project_id == project_id)
+            .order_by(Switchgear.name.asc())
+        )
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def get(self, switchgear_id: int) -> Switchgear | None:
-        stmt = select(Switchgear).options(self._binding_loader).where(Switchgear.id == switchgear_id)
+    async def get(self, project_id: int, switchgear_id: int) -> Switchgear | None:
+        stmt = self._base_query().where(
+            Switchgear.id == switchgear_id,
+            Switchgear.project_id == project_id,
+        )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def create(self, data: dict) -> Switchgear:
+    async def create(self, project_id: int, data: dict) -> Switchgear:
         try:
             bindings_data = data.pop("bindings", [])
-            switchgear = Switchgear(**data)
+            switchgear = Switchgear(project_id=project_id, **data)
             for binding in bindings_data:
                 switchgear.bindings.append(SwitchgearChannelBinding(**binding))
             self.db.add(switchgear)
@@ -41,8 +51,8 @@ class SwitchgearRepository:
             await self.db.rollback()
             raise RuntimeError(f"DB error creating switchgear: {exc}") from exc
 
-    async def update(self, switchgear_id: int, changes: dict) -> Switchgear | None:
-        switchgear = await self.get(switchgear_id)
+    async def update(self, project_id: int, switchgear_id: int, changes: dict) -> Switchgear | None:
+        switchgear = await self.get(project_id, switchgear_id)
         if not switchgear:
             return None
         bindings_data = changes.pop("bindings", None)
@@ -59,8 +69,8 @@ class SwitchgearRepository:
         await self.db.refresh(switchgear)
         return switchgear
 
-    async def delete(self, switchgear_id: int) -> bool:
-        switchgear = await self.get(switchgear_id)
+    async def delete(self, project_id: int, switchgear_id: int) -> bool:
+        switchgear = await self.get(project_id, switchgear_id)
         if not switchgear:
             return False
         await self.db.delete(switchgear)

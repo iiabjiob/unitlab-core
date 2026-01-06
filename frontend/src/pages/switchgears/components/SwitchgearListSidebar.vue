@@ -4,10 +4,12 @@ import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useRouter, useRoute } from "vue-router"
 import SwitchgearListItem from "./SwitchgearListItem.vue"
 import UiButton from "@/components/ui/UiButton.vue"
+import { useProjectStore } from "@/stores/projectStore"
 
 const store = useSwitchgearStore()
 const router = useRouter()
 const route = useRoute()
+const projectStore = useProjectStore()
 
 function isActive(id: number) {
   return Number(route.params.id) === id
@@ -18,14 +20,17 @@ function openSwitchgear(id: number) {
 }
 
 async function addSwitchgear() {
+  if (!projectStore.activeProjectId) return
   const created = await store.createAuto()
   openSwitchgear(created.id)
 }
 
 // SEARCH
 const query = ref("")
+const projectMissing = computed(() => !projectStore.activeProjectId)
 
 const filteredSwitchgears = computed(() => {
+  if (projectMissing.value) return []
   if (!query.value.trim()) return store.switchgears
 
   const q = query.value.toLowerCase()
@@ -46,10 +51,17 @@ const filteredSwitchgears = computed(() => {
         variant="primary"
         size="sm"
         full
+        :disabled="projectMissing"
         @click="addSwitchgear"
       >
         + New Switchgear
       </UiButton>
+      <p
+        v-if="projectMissing"
+        class="mt-2 text-[11px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
+      >
+        Choose a project to start configuring
+      </p>
     </div>
 
     <!-- SEARCH FIELD -->
@@ -58,7 +70,8 @@ const filteredSwitchgears = computed(() => {
         v-model="query"
         type="text"
         name="switchgear-search"
-        placeholder="Search switchgears…"
+        :disabled="projectMissing"
+        :placeholder="projectMissing ? 'Select a project to get started' : 'Search switchgears…'"
         class="w-full px-3 py-1 text-sm rounded border border-gray-700
                text-gray-800 dark:text-gray-200 placeholder-gray-500"
       />
@@ -66,6 +79,14 @@ const filteredSwitchgears = computed(() => {
 
     <!-- LIST -->
     <div class="flex-1 overflow-y-auto space-y-1">
+      <div
+        v-if="projectMissing"
+        class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400"
+      >
+        Switchgears belong to a project. Pick one to view its presets.
+      </div>
+
+      <template v-else>
       <div
         v-for="switchgear in filteredSwitchgears"
         :key="switchgear.id"
@@ -83,6 +104,7 @@ const filteredSwitchgears = computed(() => {
       >
         No switchgears found
       </div>
+      </template>
     </div>
 
   </div>

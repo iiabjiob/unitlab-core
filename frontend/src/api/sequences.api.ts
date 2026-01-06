@@ -2,70 +2,77 @@ import { http } from "./http"
 import { API_V1, buildQuery } from "./utils"
 import type { SequenceStep, SequenceStepCreate } from "@/types/sequences"
 
+const basePath = (projectId: number | string) => `${API_V1}/projects/${projectId}/sequences`
+
 export const SequencesAPI = {
-  list(params?: Record<string, any>) {
-    return http.get(buildQuery(`${API_V1}/sequences`, params))
+  list(projectId: number | string, params?: Record<string, any>) {
+    return http.get(buildQuery(basePath(projectId), params))
   },
 
-  get(id: number | string) {
-    return http.get(`${API_V1}/sequences/${id}`)
+  get(projectId: number | string, id: number | string) {
+    return http.get(`${basePath(projectId)}/${id}`)
   },
 
-  create(payload: any) {
-    return http.post(`${API_V1}/sequences`, payload)
+  create(projectId: number | string, payload: any) {
+    return http.post(basePath(projectId), payload)
   },
 
-  update(id: number | string, payload: any) {
-    return http.patch(`${API_V1}/sequences/${id}`, payload)
+  update(projectId: number | string, id: number | string, payload: any) {
+    return http.patch(`${basePath(projectId)}/${id}`, payload)
   },
 
-  delete(id: number | string) {
-    return http.delete(`${API_V1}/sequences/${id}`)
+  delete(projectId: number | string, id: number | string) {
+    return http.delete(`${basePath(projectId)}/${id}`)
   },
 
   // Steps
-  getSteps(seqId: number | string) {
-    return http.get<SequenceStep[]>(`${API_V1}/sequences/${seqId}/steps`)
+  getSteps(projectId: number | string, seqId: number | string) {
+    return http.get<SequenceStep[]>(`${basePath(projectId)}/${seqId}/steps`)
   },
 
-  addStep(seqId: number | string, payload: SequenceStepCreate) {
-    return http.post<SequenceStep>(`${API_V1}/sequences/${seqId}/steps`, payload)
+  addStep(projectId: number | string, seqId: number | string, payload: SequenceStepCreate) {
+    return http.post<SequenceStep>(`${basePath(projectId)}/${seqId}/steps`, payload)
   },
 
-  updateStep(seqId: number | string, stepId: number | string, payload: Partial<SequenceStep>) {
-    return http.patch<SequenceStep>(`${API_V1}/sequences/${seqId}/steps/${stepId}`, payload)
+  updateStep(
+    projectId: number | string,
+    seqId: number | string,
+    stepId: number | string,
+    payload: Partial<SequenceStep>,
+  ) {
+    return http.patch<SequenceStep>(`${basePath(projectId)}/${seqId}/steps/${stepId}`, payload)
   },
 
-  deleteStep(seqId: number | string, stepId: number | string) {
-    return http.delete(`${API_V1}/sequences/${seqId}/steps/${stepId}`)
+  deleteStep(projectId: number | string, seqId: number | string, stepId: number | string) {
+    return http.delete(`${basePath(projectId)}/${seqId}/steps/${stepId}`)
   },
 
-  reorderSteps(seqId: number | string, payload: { new_order: number[] }) {
-    return http.post<SequenceStep[]>(`${API_V1}/sequences/${seqId}/steps/reorder`, payload)
+  reorderSteps(projectId: number | string, seqId: number | string, payload: { new_order: number[] }) {
+    return http.post<SequenceStep[]>(`${basePath(projectId)}/${seqId}/steps/reorder`, payload)
   },
 
-  replaceSteps(seqId: number | string, payload: SequenceStepCreate[]) {
-    return http.put<SequenceStep[]>(`${API_V1}/sequences/${seqId}/steps`, payload)
+  replaceSteps(projectId: number | string, seqId: number | string, payload: SequenceStepCreate[]) {
+    return http.put<SequenceStep[]>(`${basePath(projectId)}/${seqId}/steps`, payload)
   },
 
   // Execution
-  start(seqId: number | string) {
-    return http.post(`${API_V1}/sequences/${seqId}/start`)
+  start(projectId: number | string, seqId: number | string) {
+    return http.post(`${basePath(projectId)}/${seqId}/start`)
   },
 
-  stop(seqId: number | string) {
-    return http.post(`${API_V1}/sequences/${seqId}/stop`)
+  stop(projectId: number | string, seqId: number | string) {
+    return http.post(`${basePath(projectId)}/${seqId}/stop`)
   },
 
-  getState(seqId: number | string) {
-    return http.get(`${API_V1}/sequences/${seqId}/state`)
+  getState(projectId: number | string, seqId: number | string) {
+    return http.get(`${basePath(projectId)}/${seqId}/state`)
   },
 
-  export(seqId: number | string) {
-    return http.get(`${API_V1}/sequences/${seqId}/export-file`)
+  export(projectId: number | string, seqId: number | string) {
+    return http.get(`${basePath(projectId)}/${seqId}/export-file`)
   },
 
-  import(formData: FormData) {
-    return http.post(`${API_V1}/sequences/import-file`, formData)
+  import(projectId: number | string, formData: FormData) {
+    return http.post(`${basePath(projectId)}/import-file`, formData)
   },
 }

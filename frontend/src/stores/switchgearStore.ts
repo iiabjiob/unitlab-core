@@ -1,5 +1,5 @@
 import { defineStore } from "pinia"
-import { ref } from "vue"
+import { ref, watch } from "vue"
 import type {
   Switchgear,
   SwitchgearCreateInput,
@@ -11,6 +11,7 @@ import { SwitchgearsAPI } from "@/api/switchgears.api"
 import { getLogger } from "@/utils/logger"
 import { useChannelStore } from "./channelStore"
 import { useDeviceStore } from "./deviceStore"
+import { useProjectStore } from "./projectStore"
 
 const logger = getLogger("SG")
 
@@ -26,6 +27,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   const switchgears = ref<Switchgear[]>([])
   const loading = ref(false)
   const loadedOnce = ref(false)
+  const projectStore = useProjectStore()
 
   function existingNames() {
     return new Set(switchgears.value.map(sw => sw.name))
@@ -67,11 +69,13 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
 
   // Fetch all switchgears
   async function fetchAll() {
+    if (!projectStore.activeProjectId) return
     loading.value = true
     try {
-      const { data } = await SwitchgearsAPI.list()
+      const projectId = projectStore.requireProjectId()
+      const { data } = await SwitchgearsAPI.list(projectId)
       switchgears.value = data
-      logger.info(`📡 Loaded ${data.length} switchgears`)
+      logger.info(`📡 Loaded ${data.length} switchgears for project ${projectId}`)
       loadedOnce.value = true
 
     } catch (err) {
@@ -82,6 +86,11 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   }
 
   async function ensureLoaded() {
+    if (!projectStore.activeProjectId) {
+      logger.debug("⏸️ No active project selected, skipping switchgear load")
+      return
+    }
+
     if (!loadedOnce.value && !loading.value) {
       await fetchAll()
     }
@@ -100,7 +109,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
           ...binding,
         })),
       }
-      const { data } = await SwitchgearsAPI.create(body)
+      const { data } = await SwitchgearsAPI.create(projectStore.requireProjectId(), body)
       switchgears.value.push(data)
 
       logger.info(`➕ Created switchgear id=${data.id}`)
@@ -120,7 +129,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   async function updateField(id: number, changes: SwitchgearUpdateInput) {
     try {
 
-      const { data } = await SwitchgearsAPI.update(id, changes)
+      const { data } = await SwitchgearsAPI.update(projectStore.requireProjectId(), id, changes)
       const idx = switchgears.value.findIndex(s => s.id === id)
       if (idx !== -1) {
         switchgears.value[idx] = data
@@ -136,7 +145,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   // Delete
   async function remove(id: number) {
     try {
-      await SwitchgearsAPI.delete(id)
+      await SwitchgearsAPI.delete(projectStore.requireProjectId(), id)
       switchgears.value = switchgears.value.filter(s => s.id !== id)
 
       logger.info(`🗑️ Switchgear ${id} deleted`)
@@ -205,6 +214,21 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     const dev = useDeviceStore().devices.find(d => d.id === ch.device_id)
     return dev?.status === "online"
   }
+
+  function resetForProjectChange() {
+    switchgears.value = []
+    loadedOnce.value = false
+  }
+
+  watch(
+    () => projectStore.activeProjectId,
+    (projectId) => {
+      resetForProjectChange()
+      if (projectId) {
+        void fetchAll()
+      }
+    },
+  )
 
   return {
     switchgears,

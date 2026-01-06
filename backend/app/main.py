@@ -7,11 +7,11 @@ from app.api.v1.devices.router import router as devices_router
 from app.api.v1.channels.router import router as channels_router
 from app.api.v1.switchgears.router import router as switchgears_router
 from app.api.v1.sequences.router import router as sequences_router
+from app.api.v1.projects.router import router as projects_router
 
 from app.ws.router import router as ws_router
 
-from app.infrastructure.db.database import engine
-from sqlalchemy import text
+from app.infrastructure.db.health import wait_for_database as check_database_connection
 
 from app.infrastructure.redis.manager import RedisManager
 
@@ -27,28 +27,6 @@ from app.infrastructure.mqtt.handlers import bootstrap  # noqa: F401
 
 settings = get_settings()
 logger = get_logger("core")
-
-
-async def check_database_connection(max_attempts: int = 10, base_delay: float = 1.5):
-    """Ping the DB with retries so we can survive slow compose DNS/startup."""
-
-    for attempt in range(1, max_attempts + 1):
-        try:
-            async with engine.begin() as conn:
-                await conn.execute(text("SELECT 1"))
-                logger.info("✅ Connected to the database!")
-                return
-        except Exception as e:
-            logger.error(
-                "💥 Database connection failed (attempt %s/%s): %s",
-                attempt,
-                max_attempts,
-                e,
-            )
-            if attempt == max_attempts:
-                raise
-            await asyncio.sleep(base_delay * attempt)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -94,6 +72,7 @@ logger.info("🔗 Registering REST API routers...")
 app.include_router(health_router)
 app.include_router(devices_router)
 app.include_router(channels_router)
+app.include_router(projects_router)
 app.include_router(switchgears_router)
 app.include_router(sequences_router)
 

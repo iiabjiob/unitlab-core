@@ -17,17 +17,19 @@ class SequenceRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def list(self) -> list[Sequence]:
-        result = await self.db.execute(self._with_steps())
+    async def list(self, project_id: int) -> list[Sequence]:
+        result = await self.db.execute(self._with_steps(project_id))
         return list(result.scalars().all())
 
-    async def get(self, seq_id: int) -> Optional[Sequence]:
-        result = await self.db.execute(self._with_steps().where(Sequence.id == seq_id))
+    async def get(self, project_id: int, seq_id: int) -> Optional[Sequence]:
+        result = await self.db.execute(
+            self._with_steps(project_id).where(Sequence.id == seq_id)
+        )
         return result.scalar_one_or_none()
 
-    async def create(self, data: dict, steps: list[dict]) -> Sequence:
+    async def create(self, project_id: int, data: dict, steps: list[dict]) -> Sequence:
         try:
-            seq = Sequence(**data)
+            seq = Sequence(project_id=project_id, **data)
             self.db.add(seq)
             await self.db.flush()
 
@@ -50,8 +52,8 @@ class SequenceRepository:
             await self.db.rollback()
             raise RuntimeError(f"DB error creating sequence: {exc}") from exc
 
-    async def update(self, seq_id: int, changes: dict) -> Optional[Sequence]:
-        seq = await self.get(seq_id)
+    async def update(self, project_id: int, seq_id: int, changes: dict) -> Optional[Sequence]:
+        seq = await self.get(project_id, seq_id)
         if not seq:
             return None
         for key, value in changes.items():
@@ -60,8 +62,8 @@ class SequenceRepository:
         await self.db.refresh(seq, attribute_names=["steps"])
         return seq
 
-    async def delete(self, seq_id: int) -> bool:
-        seq = await self.get(seq_id)
+    async def delete(self, project_id: int, seq_id: int) -> bool:
+        seq = await self.get(project_id, seq_id)
         if not seq:
             return False
         await self.db.delete(seq)
@@ -69,7 +71,11 @@ class SequenceRepository:
         return True
 
     async def register_if_not_exists(self, seq_data: dict, steps: List[Dict[str, Any]]) -> Sequence:
-        result = await self.db.execute(select(Sequence).where(Sequence.name == seq_data["name"]))
+        project_id = seq_data.get("project_id")
+        stmt = select(Sequence).where(Sequence.name == seq_data["name"])
+        if project_id is not None:
+            stmt = stmt.where(Sequence.project_id == project_id)
+        result = await self.db.execute(stmt)
         existing = result.scalar_one_or_none()
         if existing:
             return existing
@@ -92,9 +98,20 @@ class SequenceRepository:
         await self.db.refresh(seq)
         return seq
 
-    def _with_steps(self):
-        return select(Sequence).options(
+    async def ensure(self, project_id: int, seq_id: int) -> bool:
+        stmt = select(Sequence.id).where(
+            Sequence.id == seq_id,
+            Sequence.project_id == project_id,
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    def _with_steps(self, project_id: int | None = None):
+        stmt = select(Sequence).options(
             selectinload(Sequence.steps)
             .selectinload(SequenceStep.channel)
             .selectinload(Channel.device)
         )
+        if project_id is not None:
+            stmt = stmt.where(Sequence.project_id == project_id)
+        return stmt

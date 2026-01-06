@@ -29,6 +29,7 @@ export interface SwitchgearBindingInput {
 
 export interface Switchgear {
   id: number
+  project_id: number
   switchgear_type: SwitchgearType
   name: string
   bindings: SwitchgearBinding[]

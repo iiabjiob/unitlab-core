@@ -1,5 +1,5 @@
 import { defineStore } from "pinia"
-import { ref } from "vue"
+import { ref, watch } from "vue"
 import { SequencesAPI } from "@/api/sequences.api"
 import {
   SequenceStatusEnum,
@@ -11,6 +11,7 @@ import type { SequenceWsEvent } from "@/types/ws/events"
 import { getLogger } from "@/utils/logger"
 import { useSequenceStepStore } from "./sequenceStepStore"
 import { useSequenceLogStore } from "@/stores/sequenceLogStore"
+import { useProjectStore } from "./projectStore"
 
 const logger = getLogger("SEQ")
 
@@ -50,11 +51,16 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   const loadedOnce = ref(false)
   const stepStore = useSequenceStepStore()
   const logStore = useSequenceLogStore()
+  const projectStore = useProjectStore()
     
   async function ensureLoaded() {
+    if (!projectStore.activeProjectId) {
+      logger.debug("⏸️ No active project selected, skipping sequence load")
+      return
+    }
+
     if (!loadedOnce.value) {
       await fetchSequences()
-      loadedOnce.value = true
     }
   }
 
@@ -109,14 +115,16 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   async function fetchSequences() {
+    if (!projectStore.activeProjectId) return
+    const projectId = projectStore.requireProjectId()
     loading.value = true
     try {
-      const { data } = await SequencesAPI.list()
+      const { data } = await SequencesAPI.list(projectId)
 
       sequences.value = []
       data.forEach(upsertSequence)
-      
-      logger.info(`📡 Loaded ${data.length} sequences`)
+      loadedOnce.value = true
+      logger.info(`📡 Loaded ${data.length} sequences for project ${projectId}`)
     } finally {
       loading.value = false
     }
@@ -156,20 +164,20 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   async function createSequence(payload: { name: string; description?: string }) {
-    const { data } = await SequencesAPI.create({ ...payload, steps: [] })
+    const { data } = await SequencesAPI.create(projectStore.requireProjectId(), { ...payload, steps: [] })
     upsertSequence(data)
     await refreshState(data.id)
     return data
   }
 
   async function updateSequence(id: number, payload: Partial<SequenceDef>) {
-    const { data } = await SequencesAPI.update(id, payload)
+    const { data } = await SequencesAPI.update(projectStore.requireProjectId(), id, payload)
     upsertSequence(data)
     return data
   }
 
   async function deleteSequence(id: number) {
-    await SequencesAPI.delete(id)
+    await SequencesAPI.delete(projectStore.requireProjectId(), id)
     sequences.value = sequences.value.filter(s => s.id !== id)
     delete states.value[id]
     stepStore.dropSequence(id)
@@ -189,7 +197,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
         payload: step.payload ?? null,
       }))
 
-    const { data } = await SequencesAPI.create({
+    const { data } = await SequencesAPI.create(projectStore.requireProjectId(), {
       name: nextDuplicateName(original.name),
       description: original.description ?? "",
       steps: stepsPayload,
@@ -201,21 +209,24 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   async function refreshState(id: number) {
-    const { data } = await SequencesAPI.getState(id)
+    const { data } = await SequencesAPI.getState(projectStore.requireProjectId(), id)
     return applySnapshot(id, data)
   }
 
   async function startSequence(id: number) {
-    const { data } = await SequencesAPI.start(id)
+    const { data } = await SequencesAPI.start(projectStore.requireProjectId(), id)
     return applySnapshot(id, data)
   }
 
   async function stopSequence(id: number) {
-    const { data } = await SequencesAPI.stop(id)
+    const { data } = await SequencesAPI.stop(projectStore.requireProjectId(), id)
     return applySnapshot(id, data)
   }
 
   function handleSequenceEvent(event: SequenceWsEvent) {
+    if (!sequences.value.some(seq => seq.id === event.sequence_id)) {
+      return
+    }
     const prev = ensureState(event.sequence_id)
 
     switch (event.event) {
@@ -303,6 +314,24 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
         break
     }
   }
+
+  function resetForProjectChange() {
+    sequences.value = []
+    states.value = {}
+    loadedOnce.value = false
+    stepStore.resetAll()
+    logStore.resetAll()
+  }
+
+  watch(
+    () => projectStore.activeProjectId,
+    (projectId) => {
+      resetForProjectChange()
+      if (projectId) {
+        void fetchSequences()
+      }
+    },
+  )
 
 
 

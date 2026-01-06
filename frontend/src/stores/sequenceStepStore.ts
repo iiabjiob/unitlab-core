@@ -1,11 +1,12 @@
 // src/stores/sequenceStepStore.ts
 import { defineStore } from "pinia"
-import { ref, computed } from "vue"
+import { ref, computed, watch } from "vue"
 import type { SequenceStep, SequenceStepCreate } from "@/types/sequences"
 import { SequenceStepType } from "@/types/sequences"
 import { useChannelStore } from "./channelStore"
 import { getLogger } from "@/utils/logger"
 import { SequencesAPI } from "@/api/sequences.api"
+import { useProjectStore } from "./projectStore"
 
 const logger = getLogger("SEQS")
 
@@ -14,6 +15,7 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
   const loadedSequence = ref<Set<number>>(new Set())
   const activeStepId = ref<number | null>(null)
   const channelStore = useChannelStore()
+  const projectStore = useProjectStore()
 
   async function ensureSteps(seqId: number) {
     if (!loadedSequence.value.has(seqId)) {
@@ -76,7 +78,7 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
   }
 
   async function fetchSteps(seqId: number) {
-    const { data } = await SequencesAPI.getSteps(seqId)
+    const { data } = await SequencesAPI.getSteps(projectStore.requireProjectId(), seqId)
     setStepsForSequence(seqId, data)
     logger.info(`📡 Loaded ${data.length} steps for sequence ${seqId}`)
   }
@@ -86,14 +88,14 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
       ...step,
       sequence_step_type: step.sequence_step_type,
     }
-    const { data } = await SequencesAPI.addStep(seqId, payload)
+    const { data } = await SequencesAPI.addStep(projectStore.requireProjectId(), seqId, payload)
     steps.value.push(data)
     steps.value.sort((a, b) => a.order_index - b.order_index)
     return data
   }
 
   async function updateStep(seqId: number, stepId: number, changes: Partial<SequenceStep>) {
-    const { data } = await SequencesAPI.updateStep(seqId, stepId, changes)
+    const { data } = await SequencesAPI.updateStep(projectStore.requireProjectId(), seqId, stepId, changes)
     const idx = steps.value.findIndex((s) => s.id === stepId)
     if (idx !== -1) {
       steps.value[idx] = { ...steps.value[idx], ...data }
@@ -103,22 +105,35 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
   }
 
   async function deleteStep(seqId: number, stepId: number) {
-    await SequencesAPI.deleteStep(seqId, stepId)
+    await SequencesAPI.deleteStep(projectStore.requireProjectId(), seqId, stepId)
     steps.value = steps.value.filter((s) => s.id !== stepId)
     return true
   }
 
   async function reorderSteps(seqId: number, newOrder: number[]) {
-    const { data } = await SequencesAPI.reorderSteps(seqId, { new_order: newOrder })
+    const { data } = await SequencesAPI.reorderSteps(projectStore.requireProjectId(), seqId, { new_order: newOrder })
     setStepsForSequence(seqId, data)
     return data
   }
 
   async function replaceSteps(seqId: number, newSteps: SequenceStepCreate[]) {
-    const { data } = await SequencesAPI.replaceSteps(seqId, newSteps)
+    const { data } = await SequencesAPI.replaceSteps(projectStore.requireProjectId(), seqId, newSteps)
     setStepsForSequence(seqId, data)
     return data
   }
+
+  function resetAll() {
+    steps.value = []
+    loadedSequence.value = new Set()
+    activeStepId.value = null
+  }
+
+  watch(
+    () => projectStore.activeProjectId,
+    () => {
+      resetAll()
+    },
+  )
 
   return {
     steps,
@@ -136,5 +151,6 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
     replaceSteps,
     hydrateSequence: setStepsForSequence,
     dropSequence: removeSequenceSteps,
+    resetAll,
   }
 })

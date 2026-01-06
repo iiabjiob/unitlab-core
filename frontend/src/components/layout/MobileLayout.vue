@@ -13,6 +13,10 @@
       </template>
     </MobileHeader>
 
+    <div class="border-b border-neutral-200/70 bg-white/80 px-3 py-2 backdrop-blur dark:border-neutral-800/70 dark:bg-neutral-900/80">
+      <ProjectSwitcher variant="compact" />
+    </div>
+
 
     <!-- Main content -->
     <main class="flex-1 overflow-auto relative">
@@ -38,6 +42,7 @@ import TimeComponent from "../misc/TimeComponent.vue"
 import { useWebSocketStore } from "@/stores/websocketStore"
 import SlideOver from "../ui/SlideOver.vue"
 import MobileHeader from "./MobileHeader.vue"
+import ProjectSwitcher from "@/components/projects/ProjectSwitcher.vue"
 
 // Drawer state
 const isDrawerOpen = ref(false)
