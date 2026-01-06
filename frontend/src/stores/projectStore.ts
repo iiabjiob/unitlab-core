@@ -118,6 +118,15 @@ export const useProjectStore = defineStore("projectStore", () => {
     return data
   }
 
+  async function deleteProject(projectId: number) {
+    await ProjectsAPI.remove(projectId)
+    projects.value = projects.value.filter(project => project.id !== projectId)
+    if (activeProjectId.value === projectId) {
+      setActiveProject(null)
+      reconcileActiveSelection()
+    }
+  }
+
   const activeProject = computed(() =>
     projects.value.find(project => project.id === activeProjectId.value) ?? null,
   )
@@ -142,5 +151,6 @@ export const useProjectStore = defineStore("projectStore", () => {
     requireProjectId,
     createProject,
     renameProject,
+    deleteProject,
   }
 })

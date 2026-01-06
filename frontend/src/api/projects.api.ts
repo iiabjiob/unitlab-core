@@ -18,4 +18,8 @@ export const ProjectsAPI = {
   update(id: number | string, payload: ProjectUpdateInput) {
     return http.patch<Project>(`${API_V1}/projects/${id}`, payload)
   },
+
+  remove(id: number | string) {
+    return http.delete<void>(`${API_V1}/projects/${id}`)
+  },
 }

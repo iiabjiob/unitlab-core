@@ -5,12 +5,12 @@
     :aria-disabled="status === 'offline'"
   >
     <!-- Header -->
-    <div class="px-5 py-3 border-b border-neutral-200 dark:border-neutral-700">
+    <div class="px-5 border-b border-neutral-200 dark:border-neutral-700 h-20 flex flex-col justify-center gap-2">
       <div class="flex justify-between items-center gap-3">
         <AppLogo />
         <OnlineStatusComponent :status="status" />
       </div>
-      <TimeComponent class="text-sm ml-auto" />
+      <TimeComponent class="text-sm" />
     </div>
 
     <!-- Menu (растягивается на всё доступное место, но учитывает высоту лога) -->

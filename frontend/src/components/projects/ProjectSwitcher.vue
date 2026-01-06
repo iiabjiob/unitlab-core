@@ -1,164 +1,173 @@
 <template>
-  <div ref="root" class="relative isolate" :class="variant === 'compact' ? 'w-full' : 'max-w-xl'">
-    <button
-      class="group flex w-full items-center justify-between gap-4 rounded-[28px] border border-white/20 bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-600 px-6 py-4 text-left text-white shadow-[0_20px_45px_-25px_rgba(16,185,129,0.8)] transition hover:translate-y-0.5 hover:shadow-[0_25px_55px_-25px_rgba(6,182,212,0.9)] dark:from-emerald-400 dark:via-cyan-400 dark:to-sky-500"
-      :class="variant === 'compact' ? 'px-4 py-3 text-sm' : ''"
-      type="button"
-      :disabled="loading"
-      @click="toggle"
-    >
-      <div>
-        <p class="text-[10px] uppercase tracking-[0.4em] text-white/70">Project</p>
-        <p class="text-lg font-semibold leading-tight" :class="!hasProject ? 'opacity-70 italic' : ''">
-          {{ currentLabel }}
-        </p>
-      </div>
-      <div class="flex flex-col items-end text-xs">
-        <span class="text-white/80">{{ projectStore.projects.length }} available</span>
-        <span
-          class="font-mono text-[11px] text-white/60"
-          v-if="projectStore.activeProject"
+  <div :class="[wrapperClass, 'project-switcher']">
+    <UiMenu v-model:open="menuOpen">
+      <UiMenuTrigger asChild>
+        <button
+          type="button"
+          :disabled="loading"
+          :class="triggerClasses"
         >
-          #{{ projectStore.activeProject.id }} · {{ projectStore.activeProject.uuid.slice(0, 8) }}
-        </span>
-      </div>
-      <span
-        class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white transition group-hover:bg-white/20"
-        :class="open ? 'rotate-180' : ''"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="h-4 w-4">
-          <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
-        </svg>
-      </span>
-    </button>
+          <div class="flex flex-col">
+            <span :class="labelClass">Project</span>
+            <span
+              class="font-semibold"
+              :class="[nameClass, hasProject ? 'text-neutral-900 dark:text-neutral-100' : 'text-neutral-500 dark:text-neutral-500']"
+            >
+              {{ currentLabel }}
+            </span>
+          </div>
+          <div class="flex items-center gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <span>{{ projectStore.projects.length }} saved</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              class="h-4 w-4"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
+            </svg>
+          </div>
+        </button>
+      </UiMenuTrigger>
 
-    <transition name="fade">
-      <div
-        v-if="open"
-        class="absolute right-0 top-[calc(100%+0.75rem)] z-30 w-[320px] rounded-2xl border border-neutral-200/40 bg-white/95 p-4 text-neutral-800 shadow-2xl backdrop-blur dark:border-neutral-700/50 dark:bg-neutral-900/95 dark:text-neutral-100"
-      >
-        <div class="mb-3 flex items-center justify-between text-xs uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">
-          <span>Projects</span>
-          <button
-            class="rounded-full border border-neutral-200 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.3em] text-neutral-500 transition hover:border-neutral-400 hover:text-neutral-700 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-500"
-            type="button"
-            :disabled="loading"
-            @click.stop="refresh"
-          >
-            Refresh
-          </button>
+      <UiMenuContent class="min-w-[320px] border border-neutral-200 p-0 dark:border-neutral-800">
+        <div class="border-b border-neutral-200 px-3 py-2 text-[10px] uppercase tracking-[0.3em] text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
+          Projects
         </div>
 
-        <div class="max-h-56 space-y-2 overflow-y-auto pr-1">
-          <button
-            v-for="project in projectStore.projects"
-            :key="project.id"
-            class="flex w-full items-center justify-between rounded-xl border border-transparent px-3 py-2 text-left transition hover:border-neutral-200 hover:bg-neutral-50 dark:hover:border-neutral-700 dark:hover:bg-neutral-800"
-            :class="project.id === projectStore.activeProjectId ? 'border-emerald-300 bg-emerald-50/70 dark:border-emerald-500/50 dark:bg-emerald-500/10' : ''"
-            type="button"
-            @click.stop="select(project.id)"
-          >
-            <div>
-              <p class="text-sm font-semibold">{{ project.name }}</p>
-              <p class="font-mono text-[11px] text-neutral-500 dark:text-neutral-400">{{ project.uuid }}</p>
-            </div>
-            <span
-              v-if="project.id === projectStore.activeProjectId"
-              class="rounded-full bg-emerald-500/20 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.3em] text-emerald-700 dark:text-emerald-300"
+        <div class="max-h-64 overflow-y-auto py-1">
+          <template v-if="menuProjects.length">
+            <UiMenuItem
+              v-for="project in menuProjects"
+              :key="project.id"
+              class="flex items-center justify-between gap-4 px-3 py-2 text-sm"
+              @select="select(project.id)"
             >
-              Active
-            </span>
-          </button>
-
-          <div v-if="!projectStore.projects.length && !loading" class="rounded-xl border border-dashed border-neutral-200 px-3 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
-            No projects yet. Create one below.
+              <div class="flex flex-col">
+                <span class="font-medium text-neutral-900 dark:text-neutral-100">{{ project.name }}</span>
+                <span class="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  Updated {{ formatTimestamp(project.updated_at) }}
+                </span>
+              </div>
+              <span
+                v-if="project.id === projectStore.activeProjectId"
+                class="text-[10px] uppercase tracking-[0.3em] text-emerald-500"
+              >
+                Active
+              </span>
+            </UiMenuItem>
+          </template>
+          <div v-else class="px-3 py-4 text-sm text-neutral-500 dark:text-neutral-400">
+            No projects available.
           </div>
         </div>
 
-        <form class="mt-4 space-y-2" @submit.prevent="handleCreate">
-          <label class="text-[10px] font-semibold uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">Create project</label>
+        <UiMenuSeparator />
+
+        <form class="space-y-2 px-3 py-3" @submit.prevent="handleCreate" @click.stop>
+          <label :class="labelClass">Create project</label>
           <div class="flex gap-2">
             <input
               v-model="draftName"
               type="text"
               placeholder="New project name"
-              class="flex-1 rounded-xl border border-neutral-200 bg-white/70 px-3 py-2 text-sm text-neutral-800 outline-none transition focus:border-emerald-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100"
+              class="flex-1 rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
             />
             <button
               type="submit"
-              class="rounded-xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+              class="rounded-md border border-neutral-300 px-3 py-2 text-sm font-semibold text-neutral-900 dark:border-neutral-600 dark:text-neutral-50"
               :disabled="isCreating"
             >
-              Create
+              Add
             </button>
           </div>
         </form>
-      </div>
-    </transition>
+      </UiMenuContent>
+    </UiMenu>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue"
+import { computed, onMounted, ref } from "vue"
+import {
+  UiMenu,
+  UiMenuTrigger,
+  UiMenuContent,
+  UiMenuItem,
+  UiMenuSeparator,
+} from "@affino/menu-vue"
 import { useProjectStore } from "@/stores/projectStore"
+import { formatTsFull } from "@/utils/datetime"
 
-const props = withDefaults(defineProps<{ variant?: "default" | "compact" }>(), {
+const props = withDefaults(defineProps<{ variant?: "default" | "compact" | "mini" }>(), {
   variant: "default",
 })
-const variant = computed(() => props.variant)
 
 const projectStore = useProjectStore()
-const open = ref(false)
 const draftName = ref("")
 const isCreating = ref(false)
-const root = ref<HTMLElement | null>(null)
+const menuOpen = ref(false)
+
+const wrapperClass = computed(() => {
+  if (props.variant === "compact") return "w-full"
+  if (props.variant === "mini") return "max-w-[220px]"
+  return "max-w-xl"
+})
+const triggerClasses = computed(() => {
+  const classes = [
+    "flex w-full items-center justify-between rounded-lg border border-neutral-300 text-left text-neutral-900 dark:border-neutral-700 dark:text-neutral-100",
+  ]
+
+  if (props.variant === "compact") {
+    classes.push("h-12 px-4 text-xs bg-white dark:bg-neutral-900")
+  } else if (props.variant === "mini") {
+    classes.push("h-12 px-3 text-sm bg-neutral-100 dark:bg-neutral-800")
+  } else {
+    classes.push("h-14 px-4 text-sm bg-white dark:bg-neutral-900")
+  }
+
+  return classes
+})
+const nameClass = computed(() => {
+  if (props.variant === "mini") return "text-lg"
+  if (props.variant === "compact") return "text-sm"
+  return "text-base"
+})
+const labelClass = "text-[10px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
 
 const loading = computed(() => projectStore.loading)
 const hasProject = computed(() => Boolean(projectStore.activeProject))
-const currentLabel = computed(() => projectStore.activeProject?.name ?? "Open a project")
+const currentLabel = computed(() => projectStore.activeProject?.name ?? "Select project")
+const menuProjects = computed(() => projectStore.projects)
 
-async function ensureProjectsLoaded() {
-  await projectStore.bootstrap()
-}
-
-function toggle() {
-  open.value = !open.value
+function formatTimestamp(value?: string | null) {
+  if (!value) return "--"
+  const ms = new Date(value).getTime()
+  if (Number.isNaN(ms)) return "--"
+  return formatTsFull(ms)
 }
 
 async function select(projectId: number) {
   await projectStore.selectProject(projectId)
-  open.value = false
-}
-
-async function refresh() {
-  await projectStore.refresh()
+  menuOpen.value = false
 }
 
 async function handleCreate() {
-  if (!draftName.value.trim()) return
+  const trimmed = draftName.value.trim()
+  if (!trimmed) return
   isCreating.value = true
   try {
-    await projectStore.createProject(draftName.value)
+    await projectStore.createProject(trimmed)
     draftName.value = ""
-    open.value = false
+    menuOpen.value = false
   } finally {
     isCreating.value = false
   }
 }
 
-function handleDocumentClick(event: MouseEvent) {
-  if (!open.value) return
-  if (!root.value) return
-  if (root.value.contains(event.target as Node)) return
-  open.value = false
-}
-
 onMounted(() => {
-  void ensureProjectsLoaded()
-  document.addEventListener("click", handleDocumentClick)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener("click", handleDocumentClick)
+  void projectStore.bootstrap()
 })
 </script>
