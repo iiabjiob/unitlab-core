@@ -27,6 +27,7 @@ const filteredDevices = computed(() => {
 
   return store.devices.filter(s =>
     s.unit_id.toLowerCase().includes(q) ||
+    s.display_name.toLowerCase().includes(q) ||
     (s.name && s.name.toLowerCase().includes(q))
   )
 })
@@ -40,6 +41,7 @@ const filteredDevices = computed(() => {
       <input
         v-model="query"
         type="text"
+        autocomplete="off"
         name="device-search"
         placeholder="Search devices…"
         class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"

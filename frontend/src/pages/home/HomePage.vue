@@ -11,25 +11,22 @@
                 <p class="text-sm text-neutral-500 dark:text-neutral-400">UUID {{ activeProject.uuid }}</p>
               </div>
             </div>
-            <div class="flex flex-wrap gap-2 text-[10px] uppercase tracking-[0.3em]">
-              <button
-                type="button"
-                class="rounded-md border border-neutral-300 px-3 py-2 text-neutral-600 transition hover:border-neutral-900 hover:text-neutral-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-neutral-200 dark:hover:text-neutral-50"
-                name="rename-project-button"
-                :disabled="isRenaming"
-                @click="openRenameModal"
-              >
-                {{ isRenaming ? "Saving" : "Rename" }}
-              </button>
-              <button
-                type="button"
-                class="rounded-md border border-red-400 px-3 py-2 text-red-600 transition hover:border-red-500 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-500/60 dark:text-red-300 dark:hover:border-red-400 dark:hover:text-red-200"
-                name="delete-project-button"
-                :disabled="isDeleting"
-                @click="openDeleteModal"
-              >
-                {{ isDeleting ? "Deleting" : "Delete" }}
-              </button>
+            <div class="flex items-start justify-end">
+              <UiMenu>
+                <UiMenuTrigger asChild>
+                  <UiButton variant="icon" name="project-actions-button" aria-label="Project actions">
+                    <EllipsisHorizontalIcon size="24" />
+                  </UiButton>
+                </UiMenuTrigger>
+                <UiMenuContent>
+                  <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openRenameModal">
+                    Rename
+                  </UiMenuItem>
+                  <UiMenuItem danger @select="openDeleteModal">
+                    Delete
+                  </UiMenuItem>
+                </UiMenuContent>
+              </UiMenu>
             </div>
           </div>
         </header>
@@ -78,33 +75,15 @@
       </template>
     </section>
 
-    <UiModal :open="renameModalOpen" title="Rename project" @close="handleRenameCancel">
-      <div class="space-y-4">
-        <p class="text-sm text-neutral-500 dark:text-neutral-400">
-          Update the display name for this workspace. This does not affect the UUID.
-        </p>
-        <div class="space-y-2">
-          <label class="text-[10px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400">Name</label>
-          <input
-            v-model="renameValue"
-            type="text"
-            class="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-50"
-            name="project-name-input"
-            :disabled="isRenaming"
-            placeholder="Project name"
-          />
-          <p v-if="renameError" class="text-xs text-red-500">{{ renameError }}</p>
-        </div>
-      </div>
-      <template #footer>
-        <button class="btn btn-secondary btn-base" type="button" name="rename-cancel-button" :disabled="isRenaming" @click="handleRenameCancel">
-          Cancel
-        </button>
-        <button class="btn btn-primary btn-base" type="button" name="rename-save-button" :disabled="isRenaming" @click="submitRename">
-          {{ isRenaming ? "Saving..." : "Save" }}
-        </button>
-      </template>
-    </UiModal>
+    <RenameModal
+      :open="renameModalOpen"
+      title="Rename project"
+      v-model="renameValue"
+      :loading="isRenaming"
+      :error="renameError"
+      @cancel="handleRenameCancel"
+      @confirm="submitRename"
+    />
 
     <ConfirmModal
       :open="deleteModalOpen"
@@ -123,8 +102,16 @@
 import { computed, onMounted, ref, watch } from "vue"
 import type { RouteLocationRaw } from "vue-router"
 import AppLogo from "@/components/layout/AppLogo.vue"
-import UiModal from "@/components/ui/UiModal.vue"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
+import RenameModal from "@/components/ui/RenameModal.vue"
+import UiButton from "@/components/ui/UiButton.vue"
+import {
+  UiMenu,
+  UiMenuTrigger,
+  UiMenuContent,
+  UiMenuItem,
+} from "@affino/menu-vue"
+import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vue"
 import { useProjectStore } from "@/stores/projectStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
@@ -167,6 +154,9 @@ watch(activeProject, (project) => {
   if (!project) {
     renameModalOpen.value = false
     deleteModalOpen.value = false
+    renameValue.value = ""
+    renameError.value = ""
+    deleteError.value = ""
   }
 })
 
@@ -195,7 +185,7 @@ const projectMetrics = computed<MetricCard[]>(() => {
 const recentProjects = computed(() => projectStore.projects.slice(0, 5))
 
 function openRenameModal() {
-  if (!activeProject.value) return
+  if (!activeProject.value || isRenaming.value) return
   renameValue.value = activeProject.value.name
   renameError.value = ""
   renameModalOpen.value = true
@@ -203,6 +193,8 @@ function openRenameModal() {
 
 function handleRenameCancel() {
   if (isRenaming.value) return
+  renameError.value = ""
+  renameValue.value = activeProject.value?.name ?? ""
   renameModalOpen.value = false
 }
 
@@ -211,6 +203,10 @@ async function submitRename() {
   const nextName = renameValue.value.trim()
   if (!nextName) {
     renameError.value = "Name is required"
+    return
+  }
+  if (nextName === activeProject.value.name) {
+    renameModalOpen.value = false
     return
   }
 
@@ -227,7 +223,7 @@ async function submitRename() {
 }
 
 function openDeleteModal() {
-  if (!activeProject.value) return
+  if (!activeProject.value || isDeleting.value) return
   deleteError.value = ""
   deleteModalOpen.value = true
 }

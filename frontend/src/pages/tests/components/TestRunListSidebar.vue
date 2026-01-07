@@ -69,6 +69,7 @@ function addRun() {
       <input
         v-model="query"
         type="text"
+        autocomplete="off"
         name="test-search"
         :disabled="projectMissing"
         :placeholder="projectMissing ? 'Select a project to get started' : 'Search tests…'"

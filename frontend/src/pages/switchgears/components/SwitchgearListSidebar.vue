@@ -69,6 +69,7 @@ const filteredSwitchgears = computed(() => {
       <input
         v-model="query"
         type="text"
+        autocomplete="off"
         name="switchgear-search"
         :disabled="projectMissing"
         :placeholder="projectMissing ? 'Select a project to get started' : 'Search switchgears…'"

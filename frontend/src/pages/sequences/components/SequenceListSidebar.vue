@@ -70,6 +70,7 @@ const filteredSequences = computed(() => {
       <input
         v-model="query"
         type="text"
+        autocomplete="off"
         name="sequence-search"
         :disabled="projectMissing"
         :placeholder="projectMissing ? 'Select a project to get started' : 'Search sequences…'"

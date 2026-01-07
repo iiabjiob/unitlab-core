@@ -9,11 +9,13 @@ const props = withDefaults(defineProps<{
   confirmLabel?: string
   cancelLabel?: string
   loading?: boolean
+  error?: string
 }>(), {
   label: "Name",
   confirmLabel: "Save",
   cancelLabel: "Cancel",
   loading: false,
+  error: "",
 })
 
 const emit = defineEmits<{
@@ -46,6 +48,9 @@ function handleSubmit() {
       @input="onInput"
       @keydown.enter.prevent="handleSubmit"
     />
+    <p v-if="error" class="mt-2 text-xs text-red-500">
+      {{ error }}
+    </p>
 
     <template #footer>
       <button

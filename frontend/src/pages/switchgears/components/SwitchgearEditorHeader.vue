@@ -19,6 +19,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "delete"): void
+  (e: "duplicate"): void
 }>()
 
 const store = useSwitchgearStore()
@@ -93,6 +94,9 @@ const unitOnline = computed(() => (store.isUnitOnline(props.switchgear) ? "onlin
       <UiMenuContent>
         <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="promptRename">
           Rename
+        </UiMenuItem>
+        <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="emit('duplicate')">
+          Duplicate
         </UiMenuItem>
         <UiMenuItem danger @select="emit('delete')">
           Delete

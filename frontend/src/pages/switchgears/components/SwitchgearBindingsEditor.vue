@@ -137,12 +137,19 @@ async function resetAll() {
         />
 
         <div v-if="ROLE_META[role].supportsDelay" class="flex items-center gap-2 text-xs text-neutral-500">
-          <label class="uppercase tracking-wide text-[11px]">Pulse Duration</label>
+          <label
+            class="uppercase tracking-wide text-[11px]"
+            :for="`binding-delay-${role}`"
+          >
+            Pulse Duration
+          </label>
           <input
             type="number"
             min="0"
             step="50"
             class="w-24 px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-200"
+            :id="`binding-delay-${role}`"
+            :name="`binding-delay-${role}`"
             :value="delayFor(role)"
             @change="event => handleDelayChange(role, Number((event.target as HTMLInputElement).value))"
           />

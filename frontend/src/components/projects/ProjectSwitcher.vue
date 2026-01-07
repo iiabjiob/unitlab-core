@@ -66,26 +66,29 @@
 
         <UiMenuSeparator />
 
-        <form class="space-y-2 px-3 py-3" @submit.prevent="handleCreate" @click.stop>
-          <label :class="labelClass">Create project</label>
-          <div class="flex gap-2">
-            <input
-              v-model="draftName"
-              type="text"
-              placeholder="New project name"
-              class="flex-1 rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
-            />
-            <button
-              type="submit"
-              class="rounded-md border border-neutral-300 px-3 py-2 text-sm font-semibold text-neutral-900 dark:border-neutral-600 dark:text-neutral-50"
-              :disabled="isCreating"
-            >
-              Add
-            </button>
-          </div>
-        </form>
+        <div class="px-3 py-3">
+          <button
+            type="button"
+            class="w-full rounded-md border border-dashed border-neutral-400 px-3 py-2 text-sm font-semibold text-neutral-900 transition hover:border-neutral-900 dark:border-neutral-600 dark:text-neutral-50 dark:hover:border-neutral-200"
+            @click.stop="openCreateModal"
+          >
+            + New project
+          </button>
+        </div>
       </UiMenuContent>
     </UiMenu>
+
+    <RenameModal
+      :open="createModalOpen"
+      title="Create project"
+      label="Project name"
+      confirm-label="Create"
+      v-model="createName"
+      :loading="isCreating"
+      :error="createError"
+      @cancel="handleCreateCancel"
+      @confirm="handleCreateSubmit"
+    />
   </div>
 </template>
 
@@ -100,20 +103,23 @@ import {
 } from "@affino/menu-vue"
 import { useProjectStore } from "@/stores/projectStore"
 import { formatTsFull } from "@/utils/datetime"
+import RenameModal from "@/components/ui/RenameModal.vue"
 
 const props = withDefaults(defineProps<{ variant?: "default" | "compact" | "mini" }>(), {
   variant: "default",
 })
 
 const projectStore = useProjectStore()
-const draftName = ref("")
 const isCreating = ref(false)
 const menuOpen = ref(false)
+const createModalOpen = ref(false)
+const createName = ref("")
+const createError = ref("")
 
 const wrapperClass = computed(() => {
   if (props.variant === "compact") return "w-full"
-  if (props.variant === "mini") return "max-w-[220px]"
-  return "max-w-xl"
+  if (props.variant === "mini") return "w-full"
+  return "w-full max-w-2xl"
 })
 const triggerClasses = computed(() => {
   const classes = [
@@ -144,9 +150,13 @@ const menuProjects = computed(() => projectStore.projects)
 
 function formatTimestamp(value?: string | null) {
   if (!value) return "--"
-  const ms = new Date(value).getTime()
-  if (Number.isNaN(ms)) return "--"
-  return formatTsFull(ms)
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return "--"
+  return d.toLocaleDateString("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  })
 }
 
 async function select(projectId: number) {
@@ -154,14 +164,35 @@ async function select(projectId: number) {
   menuOpen.value = false
 }
 
-async function handleCreate() {
-  const trimmed = draftName.value.trim()
-  if (!trimmed) return
+function openCreateModal() {
+  if (isCreating.value) return
+  createName.value = ""
+  createError.value = ""
+  createModalOpen.value = true
+  menuOpen.value = false
+}
+
+function handleCreateCancel() {
+  if (isCreating.value) return
+  createModalOpen.value = false
+  createError.value = ""
+}
+
+async function handleCreateSubmit() {
+  if (isCreating.value) return
+  const trimmed = createName.value.trim()
+  if (!trimmed) {
+    createError.value = "Name is required"
+    return
+  }
+
+  createError.value = ""
   isCreating.value = true
   try {
     await projectStore.createProject(trimmed)
-    draftName.value = ""
-    menuOpen.value = false
+    createModalOpen.value = false
+  } catch (error) {
+    createError.value = error instanceof Error ? error.message : "Failed to create project"
   } finally {
     isCreating.value = false
   }

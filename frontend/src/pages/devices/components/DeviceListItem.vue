@@ -32,7 +32,10 @@ function handleSelect() {
       <span class="w-2 h-2 rounded-full transition-colors" :class="statusClass" />
     </template>
     <span class="truncate text-sm">
-      {{ device.unit_id }}
+      <p class="font-semibold text-sm text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
+        <span>{{ device.display_name }}</span>
+        <span v-if="device.name" class="text-xs text-neutral-500 dark:text-neutral-400">· {{ device.unit_id }}</span>
+      </p>
     </span>
     <template #suffix>
       <span class="text-xs truncate text-neutral-500 dark:text-neutral-400">
