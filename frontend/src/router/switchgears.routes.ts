@@ -1,6 +1,7 @@
 import type { RouteRecordRaw } from "vue-router"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useProjectStore } from "@/stores/projectStore"
+import { useSelectionStore } from "@/stores/selectionStore"
 
 // Default meta shared from index.ts
 const defaultMeta = {
@@ -28,6 +29,18 @@ export const switchgearsRoutes: RouteRecordRaw[] = [
         path: "",
         name: "switchgears.list",
         component: () => import("@/pages/switchgears/SwitchgearPlaceholder.vue"),
+        beforeEnter: () => {
+          const selectionStore = useSelectionStore()
+          selectionStore.restore()
+          const lastId = selectionStore.lastSwitchgearId
+          if (!lastId) return true
+
+          const store = useSwitchgearStore()
+          const exists = store.switchgears.some(sw => sw.id === lastId)
+          if (!exists) return true
+
+          return { name: "switchgears.detail", params: { id: lastId } }
+        },
       },
       {
         path: ":id",

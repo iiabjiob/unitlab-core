@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, watch } from "vue"
 import { useRoute } from "vue-router"
 
 import { useDeviceStore } from "@/stores/deviceStore"
+import { useSelectionStore } from "@/stores/selectionStore"
 
 import DeviceEditorHeader from "./components/DeviceEditorHeader.vue"
 import DeviceExecutionLog from "./components/DeviceExecutionLog.vue"
@@ -11,11 +12,20 @@ import DeviceChannelsList from "./components/DeviceChannelsList.vue"
 
 const route = useRoute()
 const store = useDeviceStore()
+const selectionStore = useSelectionStore()
 
 const deviceId = computed(() => Number(route.params.id))
 
 const device = computed(() =>
   store.devices.find(d => d.id === deviceId.value)
+)
+
+watch(
+  () => device.value?.id ?? null,
+  (id) => {
+    selectionStore.selectDevice(id)
+  },
+  { immediate: true }
 )
 
 </script>

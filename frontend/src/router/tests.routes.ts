@@ -2,6 +2,7 @@ import type { RouteRecordRaw } from "vue-router"
 import { useProjectStore } from "@/stores/projectStore"
 import { useTestRunStore } from "@/stores/testRunStore"
 import { useTestRunStepStore } from "@/stores/testRunStepStore"
+import { useSelectionStore } from "@/stores/selectionStore"
 
 const defaultMeta = {
   leftAside: true,
@@ -29,6 +30,18 @@ export const testsRoutes: RouteRecordRaw[] = [
         path: "",
         name: "tests.list",
         component: () => import("@/pages/tests/TestRunPlaceholder.vue"),
+        beforeEnter: () => {
+          const selectionStore = useSelectionStore()
+          selectionStore.restore()
+          const lastId = selectionStore.lastTestRunId
+          if (!lastId) return true
+
+          const runStore = useTestRunStore()
+          const exists = runStore.runs.some(run => run.id === lastId)
+          if (!exists) return true
+
+          return { name: "tests.detail", params: { id: lastId } }
+        },
       },
       {
         path: ":id",

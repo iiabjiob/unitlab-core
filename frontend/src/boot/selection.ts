@@ -10,5 +10,6 @@ export function bootSelection() {
     seq: sel.lastSequenceId,
     dev: sel.lastDeviceId,
     swg: sel.lastSwitchgearId,
+    test: sel.lastTestRunId,
   })
 }

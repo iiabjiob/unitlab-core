@@ -60,6 +60,7 @@ import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import { useTestRunStore } from "@/stores/testRunStore"
 import { useTestRunStepStore } from "@/stores/testRunStepStore"
+import { useSelectionStore } from "@/stores/selectionStore"
 import TestRunEditorHeader from "./components/TestRunEditorHeader.vue"
 import TestRunRunControls from "./components/TestRunRunControls.vue"
 import TestRunStepsList from "./components/TestRunStepsList.vue"
@@ -69,6 +70,7 @@ const props = defineProps<{ id: string }>()
 const router = useRouter()
 const runStore = useTestRunStore()
 const stepStore = useTestRunStepStore()
+const selectionStore = useSelectionStore()
 
 const runId = computed(() => Number(props.id))
 const run = computed(() => runStore.runs.find(r => r.id === runId.value))
@@ -139,6 +141,14 @@ watch(
       void runStore.refreshState(run.value.id)
     }
   },
+)
+
+watch(
+  () => run.value?.id ?? null,
+  (id) => {
+    selectionStore.selectTestRun(id)
+  },
+  { immediate: true }
 )
 
 onMounted(() => {

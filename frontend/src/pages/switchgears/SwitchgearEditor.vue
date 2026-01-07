@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 
 import { useSwitchgearStore } from "@/stores/switchgearStore"
+import { useSelectionStore } from "@/stores/selectionStore"
 
 import SwitchgearEditorHeader from "./components/SwitchgearEditorHeader.vue"
 import SwitchgearExecutionLog from "./components/SwitchgearExecutionLog.vue"
@@ -14,11 +15,20 @@ import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 const route = useRoute()
 const router = useRouter()
 const store = useSwitchgearStore()
+const selectionStore = useSelectionStore()
 
 const switchgearId = computed(() => Number(route.params.id))
 
 const switchgear = computed(() =>
   store.switchgears.find(s => s.id === switchgearId.value)
+)
+
+watch(
+  () => switchgear.value?.id ?? null,
+  (id) => {
+    selectionStore.selectSwitchgear(id)
+  },
+  { immediate: true }
 )
 
 const deleteModalOpen = ref(false)

@@ -1,6 +1,7 @@
 import { useSequenceStepStore } from "@/stores/sequenceStepStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useProjectStore } from "@/stores/projectStore"
+import { useSelectionStore } from "@/stores/selectionStore"
 import type { RouteRecordRaw } from "vue-router"
 
 // Default meta shared from index.ts
@@ -27,6 +28,18 @@ export const sequencesRoutes: RouteRecordRaw[] = [
         path: "",
         name: "sequences.list",
         component: () => import("@/pages/sequences/SequencePlaceholder.vue"),
+        beforeEnter: () => {
+          const selectionStore = useSelectionStore()
+          selectionStore.restore()
+          const lastId = selectionStore.lastSequenceId
+          if (!lastId) return true
+
+          const seqStore = useSequenceStore()
+          const exists = seqStore.sequences.some(sequence => sequence.id === lastId)
+          if (!exists) return true
+
+          return { name: "sequences.detail", params: { id: lastId } }
+        },
       },
       {
         path: ":id",

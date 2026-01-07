@@ -6,6 +6,7 @@ type SelectionState = {
   lastDeviceId: number | null
   lastSwitchgearId: number | null
   lastSequenceId: number | null
+  lastTestRunId: number | null
 }
 
 const STORAGE_KEY = "unitlab.selection"
@@ -16,6 +17,19 @@ export const useSelectionStore = defineStore("selection", () => {
   const lastDeviceId = ref<number | null>(null)
   const lastSwitchgearId = ref<number | null>(null)
   const lastSequenceId = ref<number | null>(null)
+  const lastTestRunId = ref<number | null>(null)
+  let restored = false
+
+  function normalizeId(id: number | null | undefined): number | null {
+    return typeof id === "number" && Number.isFinite(id) ? id : null
+  }
+
+  function setSelection(target: { value: number | null }, id: number | null | undefined) {
+    const next = normalizeId(id)
+    if (target.value === next) return
+    target.value = next
+    persist()
+  }
 
   // --- PERSISTENCE ---------------------------------------------------
   function persist() {
@@ -25,13 +39,18 @@ export const useSelectionStore = defineStore("selection", () => {
         lastDeviceId: lastDeviceId.value,
         lastSwitchgearId: lastSwitchgearId.value,
         lastSequenceId: lastSequenceId.value,
+        lastTestRunId: lastTestRunId.value,
       })
     )
   }
 
   function restore() {
+    if (restored) return
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return
+    if (!raw) {
+      restored = true
+      return
+    }
 
     try {
       const data: SelectionState = JSON.parse(raw)
@@ -39,26 +58,30 @@ export const useSelectionStore = defineStore("selection", () => {
       lastDeviceId.value = data.lastDeviceId ?? null
       lastSwitchgearId.value = data.lastSwitchgearId ?? null
       lastSequenceId.value = data.lastSequenceId ?? null
+      lastTestRunId.value = data.lastTestRunId ?? null
     } catch (err) {
       console.warn("Failed to restore selection:", err)
+    } finally {
+      restored = true
     }
   }
 
   // --- ACTIONS -------------------------------------------------------
 
-  function selectDevice(id: number) {
-    lastDeviceId.value = id
-    persist()
+  function selectDevice(id: number | null) {
+    setSelection(lastDeviceId, id)
   }
 
-  function selectSwitchgear(id: number) {
-    lastSwitchgearId.value = id
-    persist()
+  function selectSwitchgear(id: number | null) {
+    setSelection(lastSwitchgearId, id)
   }
 
-  function selectSequence(id: number) {
-    lastSequenceId.value = id
-    persist()
+  function selectSequence(id: number | null) {
+    setSelection(lastSequenceId, id)
+  }
+
+  function selectTestRun(id: number | null) {
+    setSelection(lastTestRunId, id)
   }
 
   // --- NAVIGATION ----------------------------------------------------
@@ -66,6 +89,10 @@ export const useSelectionStore = defineStore("selection", () => {
     // priority: most recently used page → pick whichever exists
     if (lastSequenceId.value) {
       router.push(`/sequences/${lastSequenceId.value}`)
+      return
+    }
+    if (lastTestRunId.value) {
+      router.push(`/tests/${lastTestRunId.value}`)
       return
     }
     if (lastDeviceId.value) {
@@ -86,11 +113,13 @@ export const useSelectionStore = defineStore("selection", () => {
     lastDeviceId,
     lastSequenceId,
     lastSwitchgearId,
+    lastTestRunId,
 
     // actions
     selectDevice,
     selectSequence,
     selectSwitchgear,
+    selectTestRun,
 
     // persistence
     restore,

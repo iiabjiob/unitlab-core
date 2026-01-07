@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useSequenceStepStore } from "@/stores/sequenceStepStore"
+import { useSelectionStore } from "@/stores/selectionStore"
 
 import SequenceEditorHeader from "./components/SequenceEditorHeader.vue"
 import SequenceRunControls from "./components/SequenceRunControls.vue"
@@ -17,11 +18,20 @@ const route = useRoute()
 const router = useRouter()
 const store = useSequenceStore()
 const stepStore = useSequenceStepStore()
+const selectionStore = useSelectionStore()
 
 const sequenceId = computed(() => Number(route.params.id))
 
 const sequence = computed(() =>
   store.sequences.find(s => s.id === sequenceId.value)
+)
+
+watch(
+  () => sequence.value?.id ?? null,
+  (id) => {
+    selectionStore.selectSequence(id)
+  },
+  { immediate: true }
 )
 
 const state = computed(() => store.states[sequenceId.value])
