@@ -206,10 +206,10 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
 
   function isUnitOnline(sw: Switchgear): boolean {
     const chId = resolveBindingChannelId(sw, ["do_open", "do_closed"])
-    if (!chId) return true
+    if (!chId) return false
 
     const ch = useChannelStore().channels.find(c => c.id === chId)
-    if (!ch) return true
+    if (!ch) return false
 
     const dev = useDeviceStore().devices.find(d => d.id === ch.device_id)
     return dev?.status === "online"

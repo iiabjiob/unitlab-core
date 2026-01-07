@@ -94,7 +94,7 @@ const filteredSequences = computed(() => {
         <SequenceListItem
           :sequence="seq"
           :active="isActive(seq.id)"
-          @click="openSequence(seq.id)"
+          @select="openSequence(seq.id)"
         />
       </div>
 

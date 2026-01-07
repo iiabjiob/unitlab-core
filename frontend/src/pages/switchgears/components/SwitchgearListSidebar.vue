@@ -93,7 +93,7 @@ const filteredSwitchgears = computed(() => {
         <SwitchgearListItem
           :switchgear="switchgear"
           :active="isActive(switchgear.id)"
-          @click="openSwitchgear(switchgear.id)"
+          @select="openSwitchgear(switchgear.id)"
         />
       </div>
 

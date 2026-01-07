@@ -3,6 +3,7 @@ import { ref, computed, watch } from "vue"
 import type { Switchgear } from "@/types/switchgear"
 import UiButton from "@/components/ui/UiButton.vue"
 import OnlineStatusComponent from "@/components/misc/OnlineStatusComponent.vue"
+import RenameModal from "@/components/ui/RenameModal.vue"
 import {
   UiMenu,
   UiMenuTrigger,
@@ -21,33 +22,41 @@ const emit = defineEmits<{
 }>()
 
 const store = useSwitchgearStore()
-
-const editing = ref(false)
-const tempName = ref(props.switchgear.name)
+const renameOpen = ref(false)
+const renameValue = ref(props.switchgear.name)
+const renaming = ref(false)
 
 watch(
   () => props.switchgear.name,
-  name => {
-    if (!editing.value) tempName.value = name
-  }
+  (name) => {
+    if (!renameOpen.value) renameValue.value = name
+  },
 )
 
-function startEdit() {
-  editing.value = true
-  tempName.value = props.switchgear.name
+function promptRename() {
+  renameValue.value = props.switchgear.name
+  renameOpen.value = true
 }
 
-async function saveEdit() {
-  const trimmed = tempName.value.trim()
-  editing.value = false
-  if (trimmed && trimmed !== props.switchgear.name) {
-    await store.updateField(props.switchgear.id, { name: trimmed })
+function cancelRename() {
+  renameOpen.value = false
+  renameValue.value = props.switchgear.name
+}
+
+async function confirmRename() {
+  const trimmed = renameValue.value.trim()
+  if (!trimmed || trimmed === props.switchgear.name) {
+    renameOpen.value = false
+    renameValue.value = props.switchgear.name
+    return
   }
-}
-
-function cancelEdit() {
-  editing.value = false
-  tempName.value = props.switchgear.name
+  renaming.value = true
+  try {
+    await store.updateField(props.switchgear.id, { name: trimmed })
+    renameOpen.value = false
+  } finally {
+    renaming.value = false
+  }
 }
 
 const unitOnline = computed(() => (store.isUnitOnline(props.switchgear) ? "online" : "offline"))
@@ -58,35 +67,18 @@ const unitOnline = computed(() => (store.isUnitOnline(props.switchgear) ? "onlin
     <!-- LEFT SIDE -->
     <div class="flex flex-col gap-1">
 
-      <!-- Switchgear name -->
-      <div class="flex items-center gap-2">
-        <div
-          v-if="!editing"
-          class="text-lg font-medium tracking-tight hover:text-blue-400 cursor-pointer"
-          @dblclick="startEdit"
-        >
-          {{ switchgear.name }}
-        </div>
-
-        <input
-          v-else
-          v-model="tempName"
-          @keydown.enter="saveEdit"
-          @keydown.esc="cancelEdit"
-          @blur="saveEdit"
-          class="px-2 py-1 text-sm rounded bg-neutral-800 border border-neutral-600 
-                 text-neutral-200 focus:ring-1 focus:ring-blue-500"
-          autofocus
-        />
-
-        <OnlineStatusComponent :status="unitOnline" />
+      <div class="text-lg font-medium tracking-tight text-neutral-900 dark:text-white">
+        {{ switchgear.name }}
       </div>
 
-      <!-- Metadata -->
-      <div class="text-xs text-neutral-500 leading-normal space-y-0.5">
-        <div class="uppercase tracking-wide text-[11px]">
-          Type · {{ switchgear.switchgear_type }}
-        </div>
+      <div class="flex flex-wrap items-center gap-3 text-sm text-neutral-500 dark:text-neutral-400">
+        <span class="text-xs uppercase tracking-[0.3em] text-neutral-400 dark:text-neutral-500">
+          Switchgear
+        </span>
+        <span>·</span>
+        <span class="uppercase tracking-wide text-[11px]">{{ switchgear.switchgear_type }}</span>
+        <span>·</span>
+        <OnlineStatusComponent :status="unitOnline" />
       </div>
     </div>
 
@@ -99,10 +91,22 @@ const unitOnline = computed(() => (store.isUnitOnline(props.switchgear) ? "onlin
       </UiMenuTrigger>
 
       <UiMenuContent>
+        <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="promptRename">
+          Rename
+        </UiMenuItem>
         <UiMenuItem danger @select="emit('delete')">
           Delete
         </UiMenuItem>
       </UiMenuContent>
     </UiMenu>
   </div>
+
+  <RenameModal
+    :open="renameOpen"
+    title="Rename switchgear"
+    v-model="renameValue"
+    :loading="renaming"
+    @cancel="cancelRename"
+    @confirm="confirmRename"
+  />
 </template>

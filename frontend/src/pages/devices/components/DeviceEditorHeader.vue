@@ -1,16 +1,11 @@
 <script setup lang="ts">
-import { ref, computed } from "vue"
-import { useDeviceStore } from "@/stores/deviceStore"
-import UiButton from "@/components/ui/UiButton.vue"
-import type { Device } from "@/types/device";
-import OnlineStatusComponent from "@/components/misc/OnlineStatusComponent.vue";
+import { computed } from "vue"
+import type { Device } from "@/types/device"
+import OnlineStatusComponent from "@/components/misc/OnlineStatusComponent.vue"
 
 const props = defineProps<{
   device: Device
 }>()
-
-const store = useDeviceStore()
-
 
 const lastSeen = computed(() => {
   const d = new Date(props.device.last_seen || Date.now())
@@ -22,6 +17,11 @@ const lastSeen = computed(() => {
     minute: "2-digit",
   })
 })
+
+const deviceTypeLabel = computed(() => {
+  const base = props.device.type ?? (props.device as any).device_type ?? ""
+  return base ? base.toUpperCase() : "UNKNOWN"
+})
 </script>
 
 <template>
@@ -29,23 +29,26 @@ const lastSeen = computed(() => {
     <!-- LEFT SIDE -->
     <div class="flex flex-col gap-1">
 
-      <!-- Device name -->
-      <div class="flex items-center gap-2">
-        <div class="text-lg font-medium tracking-tight hover:text-blue-400 cursor-pointer">
-          {{ device.unit_id }}
-        </div>
-
-        <OnlineStatusComponent :status="device.status" />
+      <div class="text-lg font-medium tracking-tight text-neutral-900 dark:text-white">
+        {{ device.unit_id }}
       </div>
 
-      <!-- Metadata -->
-      <div class="text-xs text-neutral-500 leading-normal">
+      <div class="flex flex-wrap items-center gap-3 text-sm text-neutral-500 dark:text-neutral-400">
+        <span class="text-xs uppercase tracking-[0.3em]">Device</span>
+        <span>·</span>
+        <span>Type {{ deviceTypeLabel }}</span>
         <template v-if="device.name">
-          <div>{{ device.name }}</div>
+          <span>·</span>
+          <span>{{ device.name }}</span>
         </template>
-        <div class="opacity-70">Type: {{ device.type.toUpperCase() }}</div>
-        <div class="opacity-70">Firmware Version: {{ device.firmware_version }}</div>
-        <div class="opacity-70">Last seen: {{ lastSeen }}</div>
+        <template v-if="device.firmware_version">
+          <span>·</span>
+          <span>Firmware {{ device.firmware_version }}</span>
+        </template>
+        <span>·</span>
+        <span>Last seen {{ lastSeen }}</span>
+        <span>·</span>
+        <OnlineStatusComponent :status="device.status" />
       </div>
     </div>
   </div>

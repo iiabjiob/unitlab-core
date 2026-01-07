@@ -55,7 +55,7 @@ const filteredDevices = computed(() => {
         <DeviceListItem
           :device="device"
           :active="isActive(device.id)"
-          @click="openDevice(device.id)"
+          @select="openDevice(device.id)"
         />
       </div>
 

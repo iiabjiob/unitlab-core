@@ -1,86 +1,20 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed } from "vue"
+import ExecutionLogPanel from "@/components/ui/ExecutionLogPanel.vue"
 import type { Switchgear } from "@/types/switchgear"
 import { useSwitchgearLogStore } from "@/stores/switchgearLogStore"
-import { useAutoScroll } from "@/composables/useAutoScroll"
 
 const props = defineProps<{
   switchgear: Switchgear
 }>()
 
 const logStore = useSwitchgearLogStore()
-const logs = computed(() => logStore.logs[props.switchgear.id] ?? [])
 const sortedLogs = computed(() =>
   [...(logStore.logs[props.switchgear.id] ?? [])]
     .sort((a, b) => a.t - b.t)
 )
-
-const logContainer = ref<HTMLElement | null>(null)
-useAutoScroll(sortedLogs, logContainer)
 </script>
 
 <template>
-  <div class="h-full flex flex-col select-none">
-
-    <!-- HEADER -->
-    <div class="p-4 text-xs uppercase tracking-wider 
-                text-neutral-500 dark:text-neutral-400 border-b 
-                border-neutral-200 dark:border-neutral-800">
-      Execution Log
-    </div>
-
-    <!-- LIST -->
-    <div
-      ref="logContainer"
-      class="flex-1 overflow-y-auto px-4 py-2 space-y-0.5
-             font-mono text-[11px] leading-tight
-             text-neutral-700 dark:text-neutral-300"
-    >
-
-      <!-- LOG ENTRY -->
-      <div
-        v-for="(log, i) in sortedLogs"
-        :key="i"
-        class="flex items-center gap-2 py-px px-1 rounded-sm
-               hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-colors"
-      >
-
-        <!-- TIMESTAMP -->
-        <div class="text-[10px] opacity-50 w-20 shrink-0 text-left">
-          {{ log.ts }}
-        </div>
-
-        <!-- DOT -->
-        <div
-          class="w-2 h-2 rounded-full"
-          :class="{
-            'bg-red-500': log.type === 'error',
-            'bg-blue-400': log.type === 'command',
-            'bg-neutral-400': log.type === 'info'
-          }"
-        ></div>
-
-        <!-- MESSAGE -->
-        <div
-          class="whitespace-pre-wrap wrap-break-word flex-1"
-          :class="{
-            'text-red-400': log.type === 'error',
-            'text-blue-300': log.type === 'command',
-          }"
-        >
-          {{ log.message }}
-        </div>
-
-      </div>
-
-      <!-- EMPTY -->
-      <div
-        v-if="logs.length === 0"
-        class="opacity-40 italic py-2"
-      >
-        No logs yet…
-      </div>
-
-    </div>
-  </div>
+  <ExecutionLogPanel :logs="sortedLogs" />
 </template>

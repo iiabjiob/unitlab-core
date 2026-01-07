@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from "vue"
+import { ref, computed, watch } from "vue"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import type { SequenceDef } from "@/types/sequences"
 import UiButton from "@/components/ui/UiButton.vue"
+import RenameModal from "@/components/ui/RenameModal.vue"
 import {
   UiMenu,
   UiMenuTrigger,
@@ -21,24 +22,44 @@ const emit = defineEmits<{
 }>()
 
 const store = useSequenceStore()
+const renameOpen = ref(false)
+const renameValue = ref(props.sequence.name)
+const renaming = ref(false)
 
-const editing = ref(false)
-const tempName = ref(props.sequence.name)
+watch(
+  () => props.sequence.name,
+  (value) => {
+    if (!renameOpen.value) {
+      renameValue.value = value
+    }
+  },
+)
 
-function startEdit() {
-  editing.value = true
-  tempName.value = props.sequence.name
+function promptRename() {
+  renameValue.value = props.sequence.name
+  renameOpen.value = true
 }
 
-async function saveEdit() {
-  editing.value = false
-  if (tempName.value.trim() && tempName.value !== props.sequence.name) {
-    await store.updateSequence(props.sequence.id, { name: tempName.value })
+function closeRename() {
+  renameOpen.value = false
+  renameValue.value = props.sequence.name
+}
+
+async function confirmRename() {
+  const next = renameValue.value.trim()
+  if (!next || next === props.sequence.name) {
+    renameOpen.value = false
+    renameValue.value = props.sequence.name
+    return
   }
-}
 
-function cancelEdit() {
-  editing.value = false
+  renaming.value = true
+  try {
+    await store.updateSequence(props.sequence.id, { name: next })
+    renameOpen.value = false
+  } finally {
+    renaming.value = false
+  }
 }
 
 const createdAt = computed(() => {
@@ -59,34 +80,20 @@ const createdAt = computed(() => {
     <!-- LEFT SIDE -->
     <div class="flex flex-col gap-1">
 
-      <!-- Sequence name -->
-      <div class="flex items-center gap-2">
-        <div
-          v-if="!editing"
-          class="text-lg font-medium tracking-tight hover:text-blue-400 cursor-pointer"
-          @dblclick="startEdit"
-        >
-          {{ sequence.name }}
-        </div>
-
-        <input
-          v-else
-          v-model="tempName"
-          @keydown.enter="saveEdit"
-          @keydown.esc="cancelEdit"
-          @blur="saveEdit"
-          class="px-2 py-1 text-sm rounded bg-neutral-800 border border-neutral-600 
-                 text-neutral-200 focus:ring-1 focus:ring-blue-500"
-          autofocus
-        />
+      <div class="text-lg font-medium tracking-tight text-neutral-900 dark:text-white">
+        {{ sequence.name }}
       </div>
 
-      <!-- Metadata -->
-      <div class="text-xs text-neutral-500 leading-normal">
-        <template v-if="sequence.description">
-          <div>{{ sequence.description }}</div>
-        </template>
-        <div class="opacity-70">Created: {{ createdAt }}</div>
+      <div class="flex flex-wrap items-center gap-3 text-sm text-neutral-500 dark:text-neutral-400">
+        <span class="text-xs uppercase tracking-[0.3em] text-neutral-400 dark:text-neutral-500">
+          Sequence
+        </span>
+        <span>·</span>
+        <span>Created {{ createdAt }}</span>
+      </div>
+
+      <div v-if="sequence.description" class="text-xs text-neutral-500 dark:text-neutral-400">
+        {{ sequence.description }}
       </div>
     </div>
 
@@ -99,6 +106,9 @@ const createdAt = computed(() => {
       </UiMenuTrigger>
 
       <UiMenuContent>
+        <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="promptRename">
+          Rename
+        </UiMenuItem>
         <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="emit('duplicate')">
           Duplicate
         </UiMenuItem>
@@ -109,4 +119,13 @@ const createdAt = computed(() => {
       </UiMenuContent>
     </UiMenu>
   </div>
+
+  <RenameModal
+    :open="renameOpen"
+    title="Rename sequence"
+    v-model="renameValue"
+    :loading="renaming"
+    @cancel="closeRename"
+    @confirm="confirmRename"
+  />
 </template>

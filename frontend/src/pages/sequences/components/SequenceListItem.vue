@@ -1,29 +1,23 @@
 <script setup lang="ts">
+import SidebarListItem from "@/components/ui/SidebarListItem.vue"
 import type { SequenceDef } from "@/types/sequences"
 
-defineProps<{
+const props = defineProps<{
   sequence: SequenceDef
   active: boolean
 }>()
+
+const emit = defineEmits<{ (e: "select", id: number): void }>()
+
+function handleSelect() {
+  emit("select", props.sequence.id)
+}
 </script>
 
 <template>
-  <div
-    class="group cursor-pointer select-none flex items-center px-3 py-2
-           text-neutral-400 dark:text-neutral-600 hover:bg-neutral-850 transition-colors"
-    :class="{
-      'text-neutral-900 dark:text-white': active
-    }"
-  >
-    <!-- Active indicator -->
-    <div
-      class="w-1 h-5 mr-2 rounded transition-colors"
-      :class="active ? 'bg-blue-500' : 'bg-transparent group-hover:bg-neutral-700'"
-    />
-
-    <!-- Title -->
-    <div class="truncate text-sm">
+  <SidebarListItem :active="active" @select="handleSelect">
+    <span class="truncate text-sm">
       {{ sequence.name }}
-    </div>
-  </div>
+    </span>
+  </SidebarListItem>
 </template>
