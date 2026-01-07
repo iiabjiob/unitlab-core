@@ -20,5 +20,6 @@ const items = [
   { to: "/devices", label: "Devices" },
   { to: "/switchgears", label: "Switchgears" },
   { to: "/sequences", label: "Sequences" },
+  { to: "/tests", label: "Tests" },
 ]
 </script>

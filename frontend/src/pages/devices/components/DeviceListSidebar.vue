@@ -42,8 +42,7 @@ const filteredDevices = computed(() => {
         type="text"
         name="device-search"
         placeholder="Search devices…"
-        class="w-full px-3 py-1 text-sm rounded border border-gray-700
-               text-gray-800 dark:text-gray-200 placeholder-gray-500"
+        class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
       />
     </div>
 

@@ -8,6 +8,7 @@ from app.api.v1.channels.router import router as channels_router
 from app.api.v1.switchgears.router import router as switchgears_router
 from app.api.v1.sequences.router import router as sequences_router
 from app.api.v1.projects.router import router as projects_router
+from app.api.v1.tests.router import router as tests_router
 
 from app.ws.router import router as ws_router
 
@@ -75,6 +76,7 @@ app.include_router(channels_router)
 app.include_router(projects_router)
 app.include_router(switchgears_router)
 app.include_router(sequences_router)
+app.include_router(tests_router)
 
 logger.info("✅ REST API routers registered")
 
