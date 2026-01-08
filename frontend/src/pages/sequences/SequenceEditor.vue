@@ -5,6 +5,7 @@ import { useRoute, useRouter } from "vue-router"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useSequenceStepStore } from "@/stores/sequenceStepStore"
 import { useSelectionStore } from "@/stores/selectionStore"
+import { useViewport } from "@/composables/useViewport"
 
 import SequenceEditorHeader from "./components/SequenceEditorHeader.vue"
 import SequenceRunControls from "./components/SequenceRunControls.vue"
@@ -74,6 +75,8 @@ async function confirmDelete() {
 function exitStepEdit() {
   stepStore.setActiveStep(null)
 }
+
+const { isDesktop } = useViewport()
 </script>
 
 <template>
@@ -96,32 +99,40 @@ function exitStepEdit() {
       @stop="store.stopSequence(sequenceId)"
     />
 
-    <div class="flex flex-1 overflow-hidden bg-white dark:bg-neutral-800 shadow rounded p-5">
+    <div class="mt-5 flex flex-1 flex-col gap-4 overflow-hidden rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5">
 
       <!-- STEP LIST -->
       <ResizablePanel
-        v-if="sequence" :sequence="sequence"
+        v-if="sequence && isDesktop"
+        :sequence="sequence"
         placement="left"
         storageKey="sequence-steps-list-width"
         :minSize="380"
         :defaultSize="380"
         :maxSize="800"
-        >
+      >
         <SequenceStepsList :sequence="sequence" />
       </ResizablePanel>
+
+      <div
+        v-else-if="sequence"
+        class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
+      >
+        <SequenceStepsList :sequence="sequence" />
+      </div>
       
       <!-- PANEL -->
-      <div v-if="sequence && state" class="flex flex-col flex-1 overflow-hidden">
+      <div v-if="sequence && state" class="flex flex-1 flex-col overflow-hidden">
 
         <!-- EDITOR -->
-        <SequenceStepEditor          
+        <SequenceStepEditor
           :sequence="sequence"
           :step="selectedStep"
           @close="exitStepEdit"
         />
 
         <!-- LOG -->
-        <div class="flex-1 overflow-y-auto mt-2">
+        <div class="mt-4 flex-1 overflow-y-auto">
           <SequenceExecutionLog :sequence="sequence" :state="state" />
         </div>
 

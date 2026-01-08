@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router"
 
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useSelectionStore } from "@/stores/selectionStore"
+import { useViewport } from "@/composables/useViewport"
 
 import SwitchgearEditorHeader from "./components/SwitchgearEditorHeader.vue"
 import SwitchgearExecutionLog from "./components/SwitchgearExecutionLog.vue"
@@ -59,6 +60,8 @@ async function confirmDelete() {
   await router.push({ name: "switchgears.list" })
 }
 
+const { isDesktop } = useViewport()
+
 </script>
 
 <template>
@@ -74,10 +77,11 @@ async function confirmDelete() {
       <!-- CONTROL TOOLBAR -->
       <SwitchgearControlToolbar :switchgear="switchgear" />
 
-      <div class="flex flex-1 overflow-hidden bg-white dark:bg-neutral-800 shadow rounded p-5">
+      <div class="mt-5 flex flex-1 flex-col gap-4 overflow-hidden rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5">
 
         <!-- BINDINGS PANEL -->
         <ResizablePanel
+          v-if="isDesktop"
           :switchgear="switchgear"
           placement="left"
           storageKey="switchgear-list-width"
@@ -87,6 +91,13 @@ async function confirmDelete() {
         >
           <SwitchgearBindingsEditor :switchgear="switchgear" />
         </ResizablePanel>
+
+        <div
+          v-else
+          class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
+        >
+          <SwitchgearBindingsEditor :switchgear="switchgear" />
+        </div>
 
         <!-- LOG PANEL -->
         <div class="flex flex-col flex-1 overflow-hidden">
