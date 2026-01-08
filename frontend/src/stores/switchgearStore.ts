@@ -12,6 +12,8 @@ import { getLogger } from "@/utils/logger"
 import { useChannelStore } from "./channelStore"
 import { useDeviceStore } from "./deviceStore"
 import { useProjectStore } from "./projectStore"
+import { CHANNEL_TYPES } from "@/types/channel"
+import { codeToState, type SwitchgearState } from "@/constants/switchgear"
 
 const logger = getLogger("SG")
 
@@ -28,6 +30,8 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   const loading = ref(false)
   const loadedOnce = ref(false)
   const projectStore = useProjectStore()
+  const channelStore = useChannelStore()
+  const deviceStore = useDeviceStore()
 
   function existingNames() {
     return new Set(switchgears.value.map(sw => sw.name))
@@ -57,7 +61,6 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
 
   function resolveChannel(chId: number | null) {
     if (!chId) return null
-    const channelStore = useChannelStore()
     const ch = channelStore.channels.find(c => c.id === chId)
     if (!ch) return null
     return {
@@ -173,6 +176,47 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     return null
   }
 
+  function resolveBinaryState(
+    channelId: number | null,
+    expectedType: typeof CHANNEL_TYPES[keyof typeof CHANNEL_TYPES],
+  ): boolean | null {
+    if (!channelId) return null
+    const ch = channelStore.channels.find(c => c.id === channelId)
+    if (!ch || ch.type !== expectedType) return null
+    return typeof ch.state === "boolean" ? ch.state : null
+  }
+
+  function resolvePairState(
+    open: boolean | null,
+    closed: boolean | null,
+  ): SwitchgearState | null {
+    if (open === null || closed === null) return null
+    return codeToState(open, closed)
+  }
+
+  function resolveSwitchgearState(sw: Switchgear): SwitchgearState {
+    const diOpen = resolveBinaryState(
+      resolveBindingChannelId(sw, ["di_open"]),
+      CHANNEL_TYPES.DI,
+    )
+    const diClose = resolveBinaryState(
+      resolveBindingChannelId(sw, ["di_close"]),
+      CHANNEL_TYPES.DI,
+    )
+    const diState = resolvePairState(diOpen, diClose)
+    if (diState !== null) return diState
+
+    const doOpen = resolveBinaryState(
+      resolveBindingChannelId(sw, ["do_open"]),
+      CHANNEL_TYPES.DO,
+    )
+    const doClose = resolveBinaryState(
+      resolveBindingChannelId(sw, ["do_closed"]),
+      CHANNEL_TYPES.DO,
+    )
+    return resolvePairState(doOpen, doClose) ?? "UNKNOWN"
+  }
+
   async function duplicate(id: number) {
     const original = switchgears.value.find(sw => sw.id === id)
     if (!original) {
@@ -208,10 +252,10 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     const chId = resolveBindingChannelId(sw, ["do_open", "do_closed"])
     if (!chId) return false
 
-    const ch = useChannelStore().channels.find(c => c.id === chId)
+    const ch = channelStore.channels.find(c => c.id === chId)
     if (!ch) return false
 
-    const dev = useDeviceStore().devices.find(d => d.id === ch.device_id)
+    const dev = deviceStore.devices.find(d => d.id === ch.device_id)
     return dev?.status === "online"
   }
 
@@ -242,6 +286,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     remove,
     getById,
     isUnitOnline,
+    resolveSwitchgearState,
     bindingByRole,
     resolveBindingChannelId,
     duplicate,

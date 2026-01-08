@@ -12,6 +12,7 @@ import {
 } from "@affino/menu-vue"
 import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vue"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
+import SwitchgearPositionIcon from "./SwitchgearPositionIcon.vue"
 
 const props = defineProps<{
   switchgear: Switchgear
@@ -61,25 +62,29 @@ async function confirmRename() {
 }
 
 const unitOnline = computed(() => (store.isUnitOnline(props.switchgear) ? "online" : "offline"))
+const positionState = computed(() => store.resolveSwitchgearState(props.switchgear))
 </script>
 
 <template>
   <div class="px-4 py-3 flex items-start justify-between border-b border-neutral-300 dark:border-neutral-800">
     <!-- LEFT SIDE -->
-    <div class="flex flex-col gap-1">
+    <div class="flex items-start gap-3">
+      <SwitchgearPositionIcon :state="positionState" size="lg" />
+      <div class="flex flex-col gap-1">
 
-      <div class="text-lg font-medium tracking-tight text-neutral-900 dark:text-white">
-        {{ switchgear.name }}
-      </div>
+        <div class="text-lg font-medium tracking-tight text-neutral-900 dark:text-white">
+          {{ switchgear.name }}
+        </div>
 
-      <div class="flex flex-wrap items-center gap-3 text-sm text-neutral-500 dark:text-neutral-400">
-        <span class="text-xs uppercase tracking-[0.3em] text-neutral-400 dark:text-neutral-500">
-          Switchgear
-        </span>
-        <span>·</span>
-        <span class="uppercase tracking-wide text-[11px]">{{ switchgear.switchgear_type }}</span>
-        <span>·</span>
-        <OnlineStatusComponent :status="unitOnline" />
+        <div class="flex flex-wrap items-center gap-3 text-sm text-neutral-500 dark:text-neutral-400">
+          <span class="text-xs uppercase tracking-[0.3em] text-neutral-400 dark:text-neutral-500">
+            Switchgear
+          </span>
+          <span>·</span>
+          <span class="uppercase tracking-wide text-[11px]">{{ switchgear.switchgear_type }}</span>
+          <span>·</span>
+          <OnlineStatusComponent :status="unitOnline" />
+        </div>
       </div>
     </div>
 

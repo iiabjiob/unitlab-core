@@ -12,6 +12,8 @@ from app.infrastructure.db.database import Base
 from app.models.types import BIGINT_PK
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from app.models.allocation import Allocation
+    from app.models.datapoint import Datapoint
     from app.models.sequence import Sequence
     from app.models.switchgear import Switchgear
 
@@ -33,6 +35,18 @@ class Project(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    allocations: Mapped[list["Allocation"]] = relationship(
+        "Allocation",
+        back_populates="project",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    datapoints: Mapped[list["Datapoint"]] = relationship(
+        "Datapoint",
+        back_populates="project",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
     switchgears: Mapped[list["Switchgear"]] = relationship(
         "Switchgear",
         back_populates="project",

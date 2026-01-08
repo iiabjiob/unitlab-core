@@ -12,6 +12,7 @@ from app.models.sequence import SequenceStep
 from app.models.types import BIGINT_PK
 
 if TYPE_CHECKING:  # pragma: no cover - only needed for typing
+    from app.models.allocation import Allocation
     from app.models.switchgear import SwitchgearChannelBinding
 
 
@@ -46,6 +47,10 @@ class Channel(Base):
 
     switchgear_bindings: Mapped[list["SwitchgearChannelBinding"]] = relationship(
         "SwitchgearChannelBinding", back_populates="channel", lazy="selectin"
+    )
+
+    allocations: Mapped[list["Allocation"]] = relationship(
+        "Allocation", back_populates="channel", lazy="selectin"
     )
 
     @property

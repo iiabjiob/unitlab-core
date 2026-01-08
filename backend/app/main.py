@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager, suppress
 from app.api.v1.health.router import router as health_router
 from app.api.v1.devices.router import router as devices_router
 from app.api.v1.channels.router import router as channels_router
+from app.api.v1.datapoints.router import router as datapoints_router
 from app.api.v1.switchgears.router import router as switchgears_router
 from app.api.v1.sequences.router import router as sequences_router
 from app.api.v1.projects.router import router as projects_router
@@ -78,6 +79,7 @@ logger.info("🔗 Registering REST API routers...")
 app.include_router(health_router)
 app.include_router(devices_router)
 app.include_router(channels_router)
+app.include_router(datapoints_router)
 app.include_router(projects_router)
 app.include_router(switchgears_router)
 app.include_router(sequences_router)
