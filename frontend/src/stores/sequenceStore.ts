@@ -5,6 +5,7 @@ import {
   SequenceStatusEnum,
   type SequenceDef,
   type SequenceState,
+  type SequenceStep,
 } from "@/types/sequences"
 
 import type { SequenceWsEvent } from "@/types/ws/events"
@@ -32,7 +33,9 @@ function createEmptyState(seqId: number, totalSteps: number): SequenceState {
 const mapStatus = (raw: string): SequenceStatusEnum => {
   switch (raw.toLowerCase()) {
     case "idle": return SequenceStatusEnum.IDLE
+    case "pending": return SequenceStatusEnum.PENDING
     case "running": return SequenceStatusEnum.RUNNING
+    case "cancelling": return SequenceStatusEnum.CANCELLING
     case "stopped": return SequenceStatusEnum.STOPPED
     case "completed": return SequenceStatusEnum.COMPLETED
     case "error": return SequenceStatusEnum.ERROR
@@ -241,7 +244,8 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
         logStore.push(event.sequence_id, {
           type: "info",
-          message: "Sequence started"
+          message: "Sequence started",
+          run_id: event.run_id,
         })
         break
 
@@ -256,7 +260,28 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
         logStore.push(event.sequence_id, {
           type: "step",
-          message: `Step ${event.step_index + 1}/${prev.total_steps} completed`
+          message: `Step ${event.step_index + 1}/${prev.total_steps} completed`,
+          run_id: event.run_id,
+          ...buildStepLogMeta(event.sequence_id, {
+            stepId: event.step_id,
+            stepIndex: event.step_index,
+            stepType: event.step_type,
+          }),
+        })
+        break
+
+      case "stopping":
+        states.value[event.sequence_id] = {
+          ...prev,
+          status: SequenceStatusEnum.CANCELLING,
+          current_step_index: event.current_step_index,
+          total_steps: event.total_steps ?? prev.total_steps,
+        }
+
+        logStore.push(event.sequence_id, {
+          type: "info",
+          message: "Stop requested, waiting for current step to finish",
+          run_id: event.run_id,
         })
         break
 
@@ -270,7 +295,11 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
         logStore.push(event.sequence_id, {
           type: "error",
-          message: `Step ${event.step_index + 1} error: ${event.message}`
+          message: `Step ${event.step_index + 1} error: ${event.message}`,
+          run_id: event.run_id,
+          ...buildStepLogMeta(event.sequence_id, {
+            stepIndex: event.step_index,
+          }),
         })
         break
 
@@ -283,7 +312,8 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
         logStore.push(event.sequence_id, {
           type: "error",
-          message: `Sequence error: ${event.message}`
+          message: `Sequence error: ${event.message}`,
+          run_id: event.run_id,
         })
         break
 
@@ -295,7 +325,8 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
         logStore.push(event.sequence_id, {
           type: "info",
-          message: "Sequence stopped by user"
+          message: "Sequence stopped by user",
+          run_id: event.run_id,
         })
         break
 
@@ -309,7 +340,8 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
         logStore.push(event.sequence_id, {
           type: "info",
-          message: "Sequence completed successfully"
+          message: "Sequence completed successfully",
+          run_id: event.run_id,
         })
         break
     }
@@ -321,6 +353,40 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     loadedOnce.value = false
     stepStore.resetAll()
     logStore.resetAll()
+  }
+
+  function findStepById(seqId: number, stepId?: number | null): SequenceStep | undefined {
+    if (!stepId) return undefined
+    return stepStore.steps.find((step) => step.sequence_id === seqId && step.id === stepId)
+  }
+
+  function findStepByIndex(seqId: number, index?: number | null): SequenceStep | undefined {
+    if (index === undefined || index === null || index < 0) return undefined
+    return stepStore.steps.find((step) => step.sequence_id === seqId && step.order_index === index)
+  }
+
+  function buildStepLogMeta(
+    seqId: number,
+    opts: { stepId?: number | null; stepIndex?: number | null; stepType?: string },
+  ): Record<string, any> {
+    const meta: Record<string, any> = {}
+
+    if (opts.stepId != null) meta.step_id = opts.stepId
+    if (opts.stepIndex != null) meta.step_index = opts.stepIndex
+    if (opts.stepType) meta.step_type = opts.stepType
+
+    const step = findStepById(seqId, opts.stepId) ?? findStepByIndex(seqId, opts.stepIndex)
+    if (step) {
+      meta.step_id = step.id
+      meta.step_index = step.order_index
+      meta.step_type = step.sequence_step_type
+      meta.step_label = stepStore.getStepDescription(step)
+      meta.step_payload = step.payload ?? null
+      meta.channel_id = step.channel_id ?? null
+      meta.details = meta.step_label
+    }
+
+    return meta
   }
 
   watch(

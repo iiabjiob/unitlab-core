@@ -99,30 +99,37 @@ const { isDesktop } = useViewport()
       @stop="store.stopSequence(sequenceId)"
     />
 
-    <div class="mt-5 flex flex-1 flex-col gap-4 overflow-hidden rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5">
-
-      <!-- STEP LIST -->
-      <ResizablePanel
-        v-if="sequence && isDesktop"
-        :sequence="sequence"
-        placement="left"
-        storageKey="sequence-steps-list-width"
-        :minSize="380"
-        :defaultSize="380"
-        :maxSize="800"
-      >
-        <SequenceStepsList :sequence="sequence" />
-      </ResizablePanel>
+    <div class="mt-5 flex flex-1 min-h-0 flex-col gap-4 overflow-hidden rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5 lg:flex-row lg:gap-5">
 
       <div
-        v-else-if="sequence"
-        class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
+        v-if="sequence"
+        class="flex flex-col min-h-0 lg:flex-none"
       >
-        <SequenceStepsList :sequence="sequence" />
+        <ResizablePanel
+          v-if="isDesktop"
+          class="flex flex-col min-h-0 h-full"
+          :sequence="sequence"
+          placement="left"
+          storageKey="sequence-steps-list-width"
+          :minSize="380"
+          :defaultSize="380"
+          :maxSize="800"
+        >
+          <SequenceStepsList :sequence="sequence" />
+        </ResizablePanel>
+
+        <div
+          v-else
+          class="flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
+        >
+          <div class="h-full min-h-0 overflow-y-auto">
+            <SequenceStepsList :sequence="sequence" />
+          </div>
+        </div>
       </div>
-      
+
       <!-- PANEL -->
-      <div v-if="sequence && state" class="flex flex-1 flex-col overflow-hidden">
+      <div v-if="sequence && state" class="flex flex-1 min-h-0 flex-col overflow-hidden">
 
         <!-- EDITOR -->
         <SequenceStepEditor
@@ -132,7 +139,7 @@ const { isDesktop } = useViewport()
         />
 
         <!-- LOG -->
-        <div class="mt-4 flex-1 overflow-y-auto">
+        <div class="mt-4 flex-1 min-h-0 overflow-hidden">
           <SequenceExecutionLog :sequence="sequence" :state="state" />
         </div>
 

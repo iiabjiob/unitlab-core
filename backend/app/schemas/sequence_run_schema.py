@@ -6,7 +6,7 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SequenceRunStatusLiteral = Literal["running", "completed", "stopped", "error"]
+SequenceRunStatusLiteral = Literal["pending", "running", "cancelling", "completed", "stopped", "error"]
 SequenceRunStepStatusLiteral = Literal[
     "pending",
     "running",
@@ -45,7 +45,7 @@ class SequenceRunSchema(BaseModel):
 
 class SequenceStateSchema(BaseModel):
     sequence_id: int
-    status: Literal["idle", "running", "completed", "stopped", "error"]
+    status: Literal["idle", "pending", "running", "cancelling", "completed", "stopped", "error"]
     run_id: Optional[int] = None
     current_step_index: int
     total_steps: int

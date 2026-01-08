@@ -93,7 +93,8 @@ class SequenceProgressEvent(SequenceEventBase):
     step_index: int
     step_id: int
     step_type: str
-    elapsed_ms: int
+    step_elapsed_ms: int
+    run_elapsed_ms: int
     completed_steps: List[int]
 
 
@@ -107,6 +108,12 @@ class SequenceStepErrorEvent(SequenceEventBase):
 class SequenceErrorEvent(SequenceEventBase):
     event: Literal["error"] = "error"
     message: str
+
+
+class SequenceStoppingEvent(SequenceEventBase):
+    event: Literal["stopping"] = "stopping"
+    current_step_index: int
+    total_steps: int
 
 
 class SequenceStoppedEvent(SequenceEventBase):
@@ -130,6 +137,7 @@ WSEvent = Union[
     SequenceProgressEvent,
     SequenceStepErrorEvent,
     SequenceErrorEvent,
+    SequenceStoppingEvent,
     SequenceStoppedEvent,
     SequenceCompletedEvent,
 ]

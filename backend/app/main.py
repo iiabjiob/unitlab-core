@@ -16,6 +16,7 @@ from app.infrastructure.db.health import wait_for_database as check_database_con
 from app.infrastructure.redis.manager import RedisManager
 
 from app.ws.pubsub_listener import forward_ws_events_from_pubsub
+from app.services.sequence_event_forwarder import forward_sequence_events
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -44,7 +45,9 @@ async def lifespan(app: FastAPI):
     # Background tasks
     logger.info("🔗 Registering background tasks...")
     ws_forwarder_task = asyncio.create_task(forward_ws_events_from_pubsub())
+    sequence_forwarder_task = asyncio.create_task(forward_sequence_events())
     logger.info("✅ WS forwarder started")
+    logger.info("✅ Sequence event forwarder started")
     try:
         yield
     finally:
@@ -54,6 +57,9 @@ async def lifespan(app: FastAPI):
         ws_forwarder_task.cancel()
         with suppress(asyncio.CancelledError):
             await ws_forwarder_task
+        sequence_forwarder_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await sequence_forwarder_task
 
         # Stop infrastructure services
         await RedisManager.stop()

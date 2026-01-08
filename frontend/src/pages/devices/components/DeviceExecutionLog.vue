@@ -18,7 +18,7 @@ useAutoScroll(sortedLogs, logContainer)
 </script>
 
 <template>
-  <div class="h-full flex flex-col select-none">
+  <div class="h-full min-h-0 flex flex-col select-none">
 
     <div class="p-3 text-xs uppercase tracking-wider text-neutral-500 border-b
                 dark:text-neutral-400 border-neutral-200 dark:border-neutral-800">
@@ -27,7 +27,7 @@ useAutoScroll(sortedLogs, logContainer)
 
     <div
       ref="logContainer"
-      class="flex-1 overflow-y-auto px-4 py-2 space-y-0.5
+      class="flex-1 min-h-0 overflow-y-auto px-4 py-2 space-y-0.5
              font-mono text-[11px] leading-tight
              text-neutral-700 dark:text-neutral-300"
     >

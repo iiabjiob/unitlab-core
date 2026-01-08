@@ -16,7 +16,9 @@ const emit = defineEmits(["start", "stop"])
 // СТРОГИЕ, ЧИСТЫЕ ИКОНКИ (моноширинные)
 const ICONS = {
   [SequenceStatusEnum.IDLE]:      "○",
+  [SequenceStatusEnum.PENDING]:   "...",
   [SequenceStatusEnum.RUNNING]:   "●",
+  [SequenceStatusEnum.CANCELLING]: "!!",
   [SequenceStatusEnum.ERROR]:     "▲",
   [SequenceStatusEnum.STOPPED]:   "■",
   [SequenceStatusEnum.COMPLETED]: "✓",
@@ -25,7 +27,9 @@ const ICONS = {
 // Цвет статуса
 const statusColor = computed(() => {
   switch (props.state.status) {
+    case SequenceStatusEnum.PENDING:  return "text-blue-200"
     case SequenceStatusEnum.RUNNING:   return "text-blue-400"
+    case SequenceStatusEnum.CANCELLING:return "text-amber-400"
     case SequenceStatusEnum.ERROR:     return "text-red-400"
     case SequenceStatusEnum.STOPPED:   return "text-yellow-400"
     case SequenceStatusEnum.COMPLETED: return "text-green-400"
@@ -36,7 +40,9 @@ const statusColor = computed(() => {
 // Лейбл статуса
 const statusLabel = computed(() => {
   switch (props.state.status) {
+    case SequenceStatusEnum.PENDING:  return "Queued"
     case SequenceStatusEnum.RUNNING:   return "Running"
+    case SequenceStatusEnum.CANCELLING:return "Stopping..."
     case SequenceStatusEnum.ERROR:     return "Error"
     case SequenceStatusEnum.STOPPED:   return "Stopped"
     case SequenceStatusEnum.COMPLETED: return "Completed"
@@ -60,7 +66,9 @@ const canStart = computed(() =>
   ].includes(props.state.status)
 )
 
-const canStop = computed(() => props.state.status === SequenceStatusEnum.RUNNING)
+const canStop = computed(() =>
+  props.state.status === SequenceStatusEnum.RUNNING || props.state.status === SequenceStatusEnum.PENDING
+)
 </script>
 
 <template>

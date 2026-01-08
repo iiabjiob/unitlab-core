@@ -139,7 +139,8 @@ export interface SequenceProgressEvent extends SequenceEventBase {
   step_index: number
   step_id: number
   step_type: string
-  elapsed_ms: number
+  step_elapsed_ms: number
+  run_elapsed_ms: number
   completed_steps: number[]
 }
 
@@ -152,6 +153,12 @@ export interface SequenceStepErrorEvent extends SequenceEventBase {
 export interface SequenceErrorEvent extends SequenceEventBase {
   event: "error"
   message: string
+}
+
+export interface SequenceStoppingEvent extends SequenceEventBase {
+  event: "stopping"
+  current_step_index: number
+  total_steps: number
 }
 
 export interface SequenceStoppedEvent extends SequenceEventBase {
@@ -168,6 +175,7 @@ export type SequenceWsEvent =
   | SequenceProgressEvent
   | SequenceStepErrorEvent
   | SequenceErrorEvent
+  | SequenceStoppingEvent
   | SequenceStoppedEvent
   | SequenceCompletedEvent
 

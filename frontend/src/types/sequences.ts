@@ -9,14 +9,18 @@ export enum SequenceStepType {
 
 export enum SequenceStatusEnum {
   IDLE = "idle",
+  PENDING = "pending",
   RUNNING = "running",
+  CANCELLING = "cancelling",
   STOPPED = "stopped",
   COMPLETED = "completed",
   ERROR = "error",
 }
 
 export enum SequenceRunStatusEnum {
+  PENDING = "pending",
   RUNNING = "running",
+  CANCELLING = "cancelling",
   COMPLETED = "completed",
   STOPPED = "stopped",
   ERROR = "error",

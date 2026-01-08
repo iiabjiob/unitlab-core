@@ -77,31 +77,36 @@ const { isDesktop } = useViewport()
       <!-- CONTROL TOOLBAR -->
       <SwitchgearControlToolbar :switchgear="switchgear" />
 
-      <div class="mt-5 flex flex-1 flex-col gap-4 overflow-hidden rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5">
+      <div class="mt-5 flex flex-1 min-h-0 flex-col gap-4 overflow-hidden rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5 lg:flex-row lg:gap-5">
 
         <!-- BINDINGS PANEL -->
-        <ResizablePanel
-          v-if="isDesktop"
-          :switchgear="switchgear"
-          placement="left"
-          storageKey="switchgear-list-width"
-          :minSize="380"
-          :defaultSize="380"
-          :maxSize="800"
-        >
-          <SwitchgearBindingsEditor :switchgear="switchgear" />
-        </ResizablePanel>
+        <div class="flex flex-col min-h-0 lg:flex-none">
+          <ResizablePanel
+            v-if="isDesktop"
+            class="flex flex-col min-h-0 h-full"
+            :switchgear="switchgear"
+            placement="left"
+            storageKey="switchgear-list-width"
+            :minSize="380"
+            :defaultSize="380"
+            :maxSize="800"
+          >
+            <SwitchgearBindingsEditor :switchgear="switchgear" />
+          </ResizablePanel>
 
-        <div
-          v-else
-          class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
-        >
-          <SwitchgearBindingsEditor :switchgear="switchgear" />
+          <div
+            v-else
+            class="flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
+          >
+            <div class="h-full min-h-0 overflow-y-auto">
+              <SwitchgearBindingsEditor :switchgear="switchgear" />
+            </div>
+          </div>
         </div>
 
         <!-- LOG PANEL -->
-        <div class="flex flex-col flex-1 overflow-hidden">
-          <div class="flex-1 overflow-y-auto">
+        <div class="flex flex-1 min-h-0 flex-col overflow-hidden">
+          <div class="flex-1 min-h-0 overflow-hidden">
             <SwitchgearExecutionLog :switchgear="switchgear" />
           </div>
         </div>

@@ -28,11 +28,9 @@ from app.schemas.sequence_step_schema import (
     SequenceStepSchema,
     SequenceStepUpdateSchema,
 )
-from app.services.sequence_runner import (
-    SequenceAlreadyRunningError,
-    SequenceNotFoundError,
-    SequenceRunner,
-)
+from app.services.sequence_command_service import SequenceCommandService
+from app.services.sequence_runner import SequenceNotFoundError
+from app.services.sequence_state_service import SequenceStateService
 
 router = APIRouter(prefix="/api/v1/projects/{project_id}/sequences", tags=["Sequences"])
 
@@ -119,7 +117,6 @@ async def create_step(
     await _ensure_sequence_in_project(seq_repo, project_id, seq_id)
     repo = SequenceStepRepository(db)
     step = await repo.create(seq_id, payload.model_dump(exclude_unset=True))
-    SequenceRunner.get_instance().invalidate_state(seq_id)
     return step
 
 
@@ -137,7 +134,6 @@ async def update_step(
     step = await repo.update(step_id, payload.model_dump(exclude_unset=True))
     if not step:
         raise HTTPException(status_code=404, detail="Step not found")
-    SequenceRunner.get_instance().invalidate_state(seq_id)
     return step
 
 
@@ -151,7 +147,6 @@ async def delete_step(project_id: int, seq_id: int, step_id: int, db: AsyncSessi
         raise HTTPException(status_code=404, detail="Step not found")
 
     await repo.normalize(seq_id)
-    SequenceRunner.get_instance().invalidate_state(seq_id)
     return {"detail": "Step deleted"}
 
 
@@ -166,7 +161,6 @@ async def reorder_steps(
     await _ensure_sequence_in_project(seq_repo, project_id, seq_id)
     repo = SequenceStepRepository(db)
     steps = await repo.reorder(seq_id, payload.new_order)
-    SequenceRunner.get_instance().invalidate_state(seq_id)
     return steps
 
 
@@ -182,7 +176,6 @@ async def replace_steps(
     repo = SequenceStepRepository(db)
     payload = [step.model_dump() for step in steps]
     result = await repo.replace(seq_id, payload)
-    SequenceRunner.get_instance().invalidate_state(seq_id)
     return result
 
 
@@ -197,13 +190,16 @@ async def start_sequence(
 ):
     repo = SequenceRepository(db)
     await _ensure_sequence_in_project(repo, project_id, seq_id)
-    runner = SequenceRunner.get_instance()
     try:
-        return await runner.start(seq_id)
+        state = await SequenceStateService.get_state(seq_id)
     except SequenceNotFoundError:
         raise HTTPException(status_code=404, detail="Sequence not found")
-    except SequenceAlreadyRunningError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+
+    if state.status in {"pending", "running", "cancelling"}:
+        raise HTTPException(status_code=409, detail="Sequence already running")
+
+    await SequenceCommandService.enqueue_start(seq_id)
+    return await SequenceStateService.get_state(seq_id)
 
 
 @router.post("/{seq_id}/stop", response_model=SequenceStateSchema)
@@ -214,11 +210,16 @@ async def stop_sequence(
 ):
     repo = SequenceRepository(db)
     await _ensure_sequence_in_project(repo, project_id, seq_id)
-    runner = SequenceRunner.get_instance()
     try:
-        return await runner.stop(seq_id)
+        state = await SequenceStateService.get_state(seq_id)
     except SequenceNotFoundError:
         raise HTTPException(status_code=404, detail="Sequence not found")
+
+    if state.status not in {"pending", "running", "cancelling"}:
+        return state
+
+    await SequenceCommandService.enqueue_stop(seq_id)
+    return await SequenceStateService.get_state(seq_id)
 
 
 @router.get("/{seq_id}/state", response_model=SequenceStateSchema)
@@ -229,9 +230,8 @@ async def get_sequence_state(
 ):
     repo = SequenceRepository(db)
     await _ensure_sequence_in_project(repo, project_id, seq_id)
-    runner = SequenceRunner.get_instance()
     try:
-        return await runner.get_state(seq_id)
+        return await SequenceStateService.get_state(seq_id)
     except SequenceNotFoundError:
         raise HTTPException(status_code=404, detail="Sequence not found")
 

@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     mqtt_out_stream: str = "mqtt:outbound"
     mqtt_stream_maxlen: int = 10000
 
+    # ---- Sequences ----
+    sequence_command_stream: str = "sequence:commands"
+    sequence_command_dlq_stream: str = "sequence:commands:dlq"
+    sequence_event_stream: str = "sequence:events"
+    sequence_stream_maxlen: int = 5000
+
     # ---- Redis ----
     redis_host: str
     redis_port: int

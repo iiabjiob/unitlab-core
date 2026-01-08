@@ -30,8 +30,19 @@ Before running any of the commands below in a devcontainer, activate the backend
 	```bash
 	uv run python -m app.workers.device_offline
 	```
+6. **Sequence runner** (consumes `sequence:commands`, emits lifecycle events to `sequence:events`):
+	```bash
+	uv run python -m app.workers.sequence_runner
+	```
 
 FastAPI subscribes to `ws:events` and forwards every payload to connected WebSocket clients.
+
+### Sequence execution pipeline
+
+- REST `start/stop` endpoints enqueue control messages into the Redis stream named in `sequence_command_stream` (defaults to `sequence:commands`).
+- `app.workers.sequence_runner` is the single consumer (for now) that executes sequences, updates the `sequence_runs` tables, and writes telemetry to `sequence_event_stream` (`sequence:events`).
+- FastAPI hosts a background task (`forward_sequence_events`) that tails `sequence:events`, translates each record back into the legacy WS payloads (`started`, `progress`, `completed`, `stopped`, `error`), and publishes them through the existing `ws:events` pub/sub channel via `WsEventPublisher`.
+- Frontend clients continue to receive real-time updates with no code changes, while the backend can scale API pods and the runner worker independently.
 
 > In `docker-compose.prod.yml` these workers are defined as separate services (`mqtt_ingress`, `inbound_processor`, `mqtt_outbound`, `device_offline`). To launch the full production stack run `docker compose -f docker-compose.prod.yml up -d`.
 

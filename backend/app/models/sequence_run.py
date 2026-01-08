@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     Text,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -22,7 +23,9 @@ from app.models.types import BIGINT_PK
 
 
 class SequenceRunStatus(str, Enum):
+    PENDING = "pending"
     RUNNING = "running"
+    CANCELLING = "cancelling"
     COMPLETED = "completed"
     STOPPED = "stopped"
     ERROR = "error"
@@ -41,10 +44,16 @@ class SequenceRun(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('running','completed','stopped','error')",
+            "status IN ('pending','running','cancelling','completed','stopped','error')",
             name="ck_sequence_runs_status",
         ),
         Index("ix_sequence_runs_sequence_started", "sequence_id", "started_at"),
+        Index(
+            "uq_sequence_runs_active",
+            "sequence_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending','running','cancelling')"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
@@ -58,7 +67,7 @@ class SequenceRun(Base):
             values_callable=lambda enum: [member.value for member in enum],
         ),
         nullable=False,
-        server_default=SequenceRunStatus.RUNNING.value,
+        server_default=SequenceRunStatus.PENDING.value,
     )
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

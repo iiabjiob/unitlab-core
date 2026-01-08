@@ -8,6 +8,7 @@ from redis.asyncio.client import PubSub
 
 from app.core.config import get_settings
 from app.core.mqtt_dto import InboundMqttMsg, OutboundCmdMsg
+from app.core.sequence_dto import SequenceCommand, SequenceEvent
 from app.infrastructure.redis.manager import RedisManager
 
 settings = get_settings()
@@ -99,6 +100,37 @@ def parse_outbound_entry(entry: StreamEntry) -> Tuple[str, OutboundCmdMsg]:
         enqueued_at_ms=payload.get("enqueued_at_ms") or payload.get("ts_ms"),
     )
     return entry_id, msg
+
+
+async def enqueue_sequence_command(cmd: SequenceCommand, *, stream_name: str | None = None) -> str:
+    redis = RedisManager.get_instance()
+    target_stream = stream_name or settings.sequence_command_stream
+    return await redis.xadd(
+        target_stream,
+        _wrap_payload(cmd.to_payload()),
+        maxlen=settings.sequence_stream_maxlen,
+        approximate=True,
+    )
+
+
+def parse_sequence_command_entry(entry: StreamEntry) -> Tuple[str, SequenceCommand]:
+    entry_id, payload = _unwrap_payload(entry)
+    return entry_id, SequenceCommand.from_payload(payload)
+
+
+async def append_sequence_event(event: SequenceEvent) -> str:
+    redis = RedisManager.get_instance()
+    return await redis.xadd(
+        settings.sequence_event_stream,
+        _wrap_payload(event.to_payload()),
+        maxlen=settings.sequence_stream_maxlen,
+        approximate=True,
+    )
+
+
+def parse_sequence_event_entry(entry: StreamEntry) -> Tuple[str, SequenceEvent]:
+    entry_id, payload = _unwrap_payload(entry)
+    return entry_id, SequenceEvent.from_payload(payload)
 
 
 async def publish_ws_event(payload: Dict[str, Any]) -> None:

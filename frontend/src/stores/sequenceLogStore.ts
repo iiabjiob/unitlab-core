@@ -8,6 +8,14 @@ export type SequenceLogEntry = {
   t: number
   type: "info" | "step" | "error"
   message: string
+  run_id?: number
+  step_id?: number
+  step_index?: number
+  step_type?: string
+  step_label?: string
+  step_payload?: Record<string, any> | null
+  channel_id?: number | null
+  details?: string
 }
 
 export const useSequenceLogStore = defineStore("sequenceLogStore", () => {

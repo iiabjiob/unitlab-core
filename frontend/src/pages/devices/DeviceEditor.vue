@@ -42,32 +42,41 @@ const { isDesktop } = useViewport()
       :device="device"
     />
 
-    <div class="mt-5 flex flex-1 flex-col gap-4 overflow-hidden rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5">
+    <div class="mt-5 flex flex-1 min-h-0 flex-col gap-4 overflow-hidden rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5 lg:flex-row lg:gap-5">
 
       <!-- CHANNELS LIST -->
-      <ResizablePanel
-        v-if="device && isDesktop"
-        :device="device"
-        placement="left"
-        storageKey="device-channels-list-width"
-        :minSize="380"
-        :defaultSize="380"
-        :maxSize="800"
-      >
-        <DeviceChannelsList :device="device" />
-      </ResizablePanel>
-
       <div
-        v-else-if="device"
-        class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
+        v-if="device"
+        class="flex flex-col min-h-0 lg:flex-none"
       >
-        <DeviceChannelsList :device="device" />
+        <ResizablePanel
+          v-if="isDesktop"
+          class="flex flex-col min-h-0 h-full"
+          :device="device"
+          placement="left"
+          storageKey="device-channels-list-width"
+          :minSize="380"
+          :defaultSize="380"
+          :maxSize="800"
+        >
+          <DeviceChannelsList :device="device" />
+        </ResizablePanel>
+
+        <div
+          v-else
+          class="flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
+        >
+          <div class="h-full min-h-0 overflow-y-auto">
+            <DeviceChannelsList :device="device" />
+          </div>
+        </div>
       </div>
-      
 
       <!-- LOG PANEL -->
-      <div v-if="device" class="flex-1 overflow-y-auto">
-        <DeviceExecutionLog :device="device" />
+      <div v-if="device" class="flex flex-1 min-h-0 flex-col overflow-hidden">
+        <div class="flex-1 min-h-0 overflow-hidden">
+          <DeviceExecutionLog :device="device" />
+        </div>
       </div>
 
     </div>
