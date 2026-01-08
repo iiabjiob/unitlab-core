@@ -115,13 +115,11 @@ import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vu
 import { useProjectStore } from "@/stores/projectStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
-import { useTestRunStore } from "@/stores/testRunStore"
 import { formatTsFull } from "@/utils/datetime"
 
 const projectStore = useProjectStore()
 const sequenceStore = useSequenceStore()
 const switchgearStore = useSwitchgearStore()
-const testRunStore = useTestRunStore()
 
 onMounted(() => {
   void projectStore.bootstrap()
@@ -135,7 +133,6 @@ watch(
     if (id) {
       void sequenceStore.ensureLoaded()
       void switchgearStore.ensureLoaded()
-      void testRunStore.ensureLoaded()
     }
   },
   { immediate: true },
@@ -177,7 +174,6 @@ const projectMetrics = computed<MetricCard[]>(() => {
   if (!activeProject.value) return []
   return [
     { label: "Sequences", value: sequenceStore.sequences.length, to: { name: "sequences.list" } },
-    { label: "Tests", value: testRunStore.runs.length, to: { name: "tests.list" } },
     { label: "Switchgears", value: switchgearStore.switchgears.length, to: { name: "switchgears.list" } },
   ]
 })

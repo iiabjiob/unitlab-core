@@ -3,7 +3,6 @@ import { createRouter, createWebHistory } from "vue-router"
 import { sequencesRoutes } from "./sequences.routes"
 import { devicesRoutes } from "./devices.routes"
 import { switchgearsRoutes } from "./switchgears.routes"
-import { testsRoutes } from "./tests.routes"
 
 // Default layout meta (used by most screens)
 const defaultMeta = {
@@ -22,8 +21,6 @@ const router = createRouter({
     ...devicesRoutes,
     ...switchgearsRoutes,
     ...sequencesRoutes,
-    ...testsRoutes,
-
     // Catch-all → redirect home
     {
       path: "/:pathMatch(.*)*",

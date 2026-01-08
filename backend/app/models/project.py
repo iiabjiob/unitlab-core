@@ -14,7 +14,6 @@ from app.models.types import BIGINT_PK
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from app.models.sequence import Sequence
     from app.models.switchgear import Switchgear
-    from app.models.test_run import TestRun
 
 
 class Project(Base):
@@ -46,12 +45,5 @@ class Project(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    test_runs: Mapped[list["TestRun"]] = relationship(
-        "TestRun",
-        back_populates="project",
-        cascade="all, delete-orphan",
-        lazy="selectin",
-    )
-
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"Project(id={self.id!r}, name={self.name!r})"

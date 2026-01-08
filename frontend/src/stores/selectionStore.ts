@@ -6,7 +6,6 @@ type SelectionState = {
   lastDeviceId: number | null
   lastSwitchgearId: number | null
   lastSequenceId: number | null
-  lastTestRunId: number | null
 }
 
 const STORAGE_KEY = "unitlab.selection"
@@ -17,7 +16,6 @@ export const useSelectionStore = defineStore("selection", () => {
   const lastDeviceId = ref<number | null>(null)
   const lastSwitchgearId = ref<number | null>(null)
   const lastSequenceId = ref<number | null>(null)
-  const lastTestRunId = ref<number | null>(null)
   let restored = false
 
   function normalizeId(id: number | null | undefined): number | null {
@@ -39,7 +37,6 @@ export const useSelectionStore = defineStore("selection", () => {
         lastDeviceId: lastDeviceId.value,
         lastSwitchgearId: lastSwitchgearId.value,
         lastSequenceId: lastSequenceId.value,
-        lastTestRunId: lastTestRunId.value,
       })
     )
   }
@@ -58,7 +55,6 @@ export const useSelectionStore = defineStore("selection", () => {
       lastDeviceId.value = data.lastDeviceId ?? null
       lastSwitchgearId.value = data.lastSwitchgearId ?? null
       lastSequenceId.value = data.lastSequenceId ?? null
-      lastTestRunId.value = data.lastTestRunId ?? null
     } catch (err) {
       console.warn("Failed to restore selection:", err)
     } finally {
@@ -80,19 +76,11 @@ export const useSelectionStore = defineStore("selection", () => {
     setSelection(lastSequenceId, id)
   }
 
-  function selectTestRun(id: number | null) {
-    setSelection(lastTestRunId, id)
-  }
-
   // --- NAVIGATION ----------------------------------------------------
   function openLast(router = useRouter()) {
     // priority: most recently used page → pick whichever exists
     if (lastSequenceId.value) {
       router.push(`/sequences/${lastSequenceId.value}`)
-      return
-    }
-    if (lastTestRunId.value) {
-      router.push(`/tests/${lastTestRunId.value}`)
       return
     }
     if (lastDeviceId.value) {
@@ -113,13 +101,11 @@ export const useSelectionStore = defineStore("selection", () => {
     lastDeviceId,
     lastSequenceId,
     lastSwitchgearId,
-    lastTestRunId,
 
     // actions
     selectDevice,
     selectSequence,
     selectSwitchgear,
-    selectTestRun,
 
     // persistence
     restore,

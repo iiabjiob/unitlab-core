@@ -13,7 +13,6 @@ from app.models.types import BIGINT_PK
 
 if TYPE_CHECKING:  # pragma: no cover - only needed for typing
     from app.models.switchgear import SwitchgearChannelBinding
-    from app.models.test_run import TestRunStep
 
 
 class Channel(Base):
@@ -43,10 +42,6 @@ class Channel(Base):
     
     steps: Mapped[list["SequenceStep"]] = relationship(
         "SequenceStep", back_populates="channel", lazy="selectin"
-    )
-
-    test_steps: Mapped[list["TestRunStep"]] = relationship(
-        "TestRunStep", back_populates="channel", lazy="selectin"
     )
 
     switchgear_bindings: Mapped[list["SwitchgearChannelBinding"]] = relationship(

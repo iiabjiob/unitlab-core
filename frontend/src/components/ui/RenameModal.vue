@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue"
 import UiModal from "./UiModal.vue"
 
 const props = withDefaults(defineProps<{
@@ -10,6 +11,8 @@ const props = withDefaults(defineProps<{
   cancelLabel?: string
   loading?: boolean
   error?: string
+  inputId?: string
+  inputName?: string
 }>(), {
   label: "Name",
   confirmLabel: "Save",
@@ -33,14 +36,23 @@ function handleSubmit() {
   if (props.loading) return
   emit("confirm")
 }
+
+const generatedId = `rename-modal-${Math.random().toString(36).slice(2, 9)}`
+const fieldId = computed(() => props.inputId || generatedId)
+const fieldName = computed(() => props.inputName || fieldId.value)
 </script>
 
 <template>
   <UiModal :open="open" :title="title" @close="emit('cancel')">
-    <label class="block text-xs uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400">
+    <label
+      :for="fieldId"
+      class="block text-xs uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
+    >
       {{ label }}
     </label>
     <input
+      :id="fieldId"
+      :name="fieldName"
       :value="modelValue"
       :disabled="loading"
       type="text"
