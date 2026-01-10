@@ -12,6 +12,7 @@ import MobileLayout from "./MobileLayout.vue"
 import { useWebSocketStore } from "@/stores/websocketStore"
 import DisconnectedMobileLayout from "./DisconnectedMobileLayout.vue"
 import DisconnectedDesktopLayout from "./DisconnectedDesktopLayout.vue"
+import WelcomeLayout from "./WelcomeLayout.vue"
 
 const isMobile = ref(false)
 
@@ -34,13 +35,20 @@ const wsStatus = computed(() => {
   return "lost"
 })
 
-// Decide layout: meta.layout = 'app' | 'mobile' | 'auto'
+type LayoutMode = "auto" | "app" | "mobile" | "welcome"
+
+// Decide layout: meta.layout = 'app' | 'mobile' | 'auto' | 'welcome'
 const layoutComp = computed(() => {
+  const mode = (route.meta.layout as LayoutMode | undefined) ?? "auto"
+
+  if (mode === "welcome") {
+    return WelcomeLayout
+  }
+
   if (wsStatus.value !== "connected") {
     return isMobile.value ? DisconnectedMobileLayout : DisconnectedDesktopLayout
   }
 
-  const mode = (route.meta.layout as "auto" | "app" | "mobile") ?? "auto"
   if (mode === "mobile") return MobileLayout
   if (mode === "app") return DesktopLayout
   return isMobile.value ? MobileLayout : DesktopLayout

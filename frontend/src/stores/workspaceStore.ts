@@ -6,6 +6,7 @@ import { WorkspacesAPI } from "@/api/workspaces.api"
 import { getLogger } from "@/utils/logger"
 
 const STORAGE_KEY = "active-workspace-id"
+const DEFAULT_WORKSPACE_NAME = "Default"
 const logger = getLogger("WORKSPACES")
 
 function slugify(input: string): string {
@@ -23,6 +24,7 @@ export const useWorkspaceStore = defineStore("workspaceStore", () => {
   const loading = ref(false)
   const bootstrapped = ref(false)
   const error = ref<string | null>(null)
+  const autoCreatingDefault = ref(false)
 
   hydrateFromStorage()
 
@@ -57,13 +59,34 @@ export const useWorkspaceStore = defineStore("workspaceStore", () => {
     try {
       const { data } = await WorkspacesAPI.list()
       workspaces.value = data
-      reconcileActiveSelection()
       logger.debug(`📁 Loaded ${data.length} workspaces`)
+
+      if (!workspaces.value.length) {
+        await ensureDefaultWorkspace()
+      } else {
+        reconcileActiveSelection()
+      }
     } catch (err) {
       logger.error("💥 Failed to fetch workspaces", err)
       error.value = err instanceof Error ? err.message : String(err)
     } finally {
       loading.value = false
+    }
+  }
+
+  async function ensureDefaultWorkspace() {
+    if (autoCreatingDefault.value) return
+
+    autoCreatingDefault.value = true
+    try {
+      logger.info("🆕 Provisioning default workspace")
+      await createWorkspace(DEFAULT_WORKSPACE_NAME)
+      logger.info("✅ Default workspace is ready")
+    } catch (err) {
+      logger.error("💥 Failed to auto-create default workspace", err)
+      throw err
+    } finally {
+      autoCreatingDefault.value = false
     }
   }
 

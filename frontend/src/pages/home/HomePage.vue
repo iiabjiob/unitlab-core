@@ -1,253 +1,184 @@
 <template>
-  <div class="h-full overflow-auto bg-neutral-50 dark:bg-neutral-950">
-    <section class="mx-auto max-w-6xl px-6 py-10">
-      <template v-if="activeWorkspace">
-        <header class="mb-8 rounded-2xl border border-neutral-200 bg-white px-6 py-6 text-neutral-900 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-50">
-          <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
-              <p class="text-[10px] uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">Active workspace</p>
-              <div class="mt-3">
-                <h1 class="text-3xl font-semibold tracking-tight">{{ activeWorkspace.name }}</h1>
-                <p class="text-sm text-neutral-500 dark:text-neutral-400">UUID {{ activeWorkspace.uuid }}</p>
-              </div>
-            </div>
-            <div class="flex items-start justify-end">
-              <UiMenu>
-                <UiMenuTrigger asChild>
-                  <UiButton variant="icon" name="workspace-actions-button" aria-label="Workspace actions">
-                    <EllipsisHorizontalIcon size="24" />
-                  </UiButton>
-                </UiMenuTrigger>
-                <UiMenuContent>
-                  <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openRenameModal">
-                    Rename
-                  </UiMenuItem>
-                  <UiMenuItem danger @select="openDeleteModal">
-                    Delete
-                  </UiMenuItem>
-                </UiMenuContent>
-              </UiMenu>
-            </div>
-          </div>
-        </header>
-
-        <div class="grid gap-4 md:grid-cols-4">
-          <RouterLink
-            v-for="metric in workspaceMetrics"
-            :key="metric.label"
-            :to="metric.to"
-            class="block rounded-2xl border border-neutral-200 bg-white px-5 py-4 text-neutral-800 transition-colors hover:border-neutral-900 hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-800 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:border-neutral-100 dark:hover:bg-neutral-800"
+  <div class="bg-gradient-to-b from-neutral-50 via-white to-neutral-100 text-neutral-900 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-900 dark:text-neutral-50">
+    <div class="mx-auto flex min-h-dvh w-full max-w-5xl flex-col items-center justify-center px-6 py-16">
+      <div class="w-full space-y-10 rounded-3xl border border-neutral-200/70 bg-white/90 p-8 shadow-[0_25px_60px_rgba(15,23,42,0.15)] backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80">
+        <div class="flex flex-col items-center gap-5 text-center">
+          <AppLogo class="text-4xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50" />
+          <span
+            class="inline-flex items-center gap-2 rounded-full px-4 py-1 text-sm font-semibold ring-1 ring-inset"
+            :class="connectionState.chipClass"
           >
-            <p class="text-[10px] uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">{{ metric.label }}</p>
-            <p class="mt-3 text-2xl font-mono">{{ metric.value }}</p>
-          </RouterLink>
-        </div>
-      </template>
-
-      <template v-else>
-        <div class="flex flex-col items-center gap-6 rounded-2xl border border-dashed border-neutral-300 bg-white px-6 py-14 text-center text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200">
-          <AppLogo class="h-16 w-16" />
-          <p class="text-sm uppercase tracking-[0.5em] text-neutral-500 dark:text-neutral-400">Select workspace</p>
-          <p class="text-base text-neutral-600 dark:text-neutral-300">Choose any of the recent workspaces below to view metrics and begin configuration.</p>
+            <span class="h-2 w-2 rounded-full" :class="connectionState.dotClass"></span>
+            {{ connectionState.label }}
+          </span>
         </div>
 
-        <div class="mt-8 rounded-2xl border border-neutral-200 bg-white px-5 py-5 dark:border-neutral-800 dark:bg-neutral-900">
-          <p class="text-[10px] uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">Recent workspaces</p>
-          <div class="mt-4 divide-y divide-neutral-200 dark:divide-neutral-800">
-            <button
-              v-for="workspace in recentWorkspaces"
-              :key="workspace.id"
-              class="flex w-full items-center justify-between gap-6 px-2 py-3 text-left text-sm text-neutral-800 transition hover:bg-neutral-50 dark:text-neutral-100 dark:hover:bg-neutral-800"
-              @click="workspaceStore.selectWorkspace(workspace.id)"
-            >
-              <div>
-                <p class="font-semibold">{{ workspace.name }}</p>
-                <p class="text-xs text-neutral-500 dark:text-neutral-400">Updated {{ formatTimestamp(workspace.updated_at) }}</p>
-              </div>
-              <span class="text-[10px] uppercase tracking-[0.4em] text-neutral-500">Open</span>
-            </button>
-
-            <div v-if="!recentWorkspaces.length" class="py-4 text-sm text-neutral-500 dark:text-neutral-400">
-              No workspaces yet. Use the switcher to create one.
+        <div class="flex justify-center">
+          <section class="w-full max-w-3xl rounded-2xl border border-neutral-200/80 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-950/40">
+            <p class="text-xs uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">Workspace</p>
+            <div class="mt-4 space-y-4">
+              <WorkspaceSwitcher />
+              <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ workspaceSummary }}</p>
+              <p v-if="workspaceError" class="text-sm text-red-500">{{ workspaceError }}</p>
             </div>
-          </div>
+          </section>
         </div>
-      </template>
-    </section>
 
-    <RenameModal
-      :open="renameModalOpen"
-      title="Rename workspace"
-      v-model="renameValue"
-      :loading="isRenaming"
-      :error="renameError"
-      @cancel="handleRenameCancel"
-      @confirm="submitRename"
-    />
+        <div class="grid gap-4 md:grid-cols-3">
+          <button
+            v-for="card in statusCards"
+            :key="card.label"
+            type="button"
+            class="rounded-2xl border border-neutral-200/70 bg-white/80 px-5 py-4 text-center transition hover:-translate-y-0.5 hover:border-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:border-neutral-700 dark:bg-neutral-900/70 dark:hover:border-neutral-200"
+            @click="goTo(card.route)"
+          >
+            <p class="text-[10px] uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">{{ card.label }}</p>
+            <p class="mt-4 text-3xl font-semibold">{{ card.value }}</p>
+            <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ card.detail }}</p>
+          </button>
+        </div>
 
-    <ConfirmModal
-      :open="deleteModalOpen"
-      title="Delete workspace"
-      :message="deleteModalMessage"
-      cancel-label="Cancel"
-      :confirm-label="deleteConfirmLabel"
-      :enter-confirms="false"
-      @cancel="handleDeleteCancel"
-      @confirm="confirmDelete"
-    />
+        <section class="rounded-2xl border border-neutral-200/70 bg-neutral-50/90 p-6 dark:border-neutral-800 dark:bg-neutral-900">
+          <p class="text-xs uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">Quick actions</p>
+          <div class="mt-5 grid gap-4 md:grid-cols-3">
+            <button
+              v-for="action in quickActions"
+              :key="action.label"
+              type="button"
+              class="flex h-28 flex-col justify-between rounded-xl border border-neutral-200 bg-white px-4 py-3 text-left text-neutral-900 transition hover:-translate-y-0.5 hover:border-neutral-900 hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:border-neutral-700 dark:bg-neutral-950/40 dark:text-neutral-50 dark:hover:border-neutral-200/80 dark:hover:bg-neutral-900"
+              @click="goTo(action.route)"
+            >
+              <span class="text-2xl">{{ action.icon }}</span>
+              <div>
+                <p class="text-base font-semibold">{{ action.label }}</p>
+                <p v-if="action.caption" class="text-sm text-neutral-500 dark:text-neutral-400">{{ action.caption }}</p>
+              </div>
+            </button>
+          </div>
+        </section>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue"
-import type { RouteLocationRaw } from "vue-router"
+import { computed, onMounted } from "vue"
+import { useRouter } from "vue-router"
 import AppLogo from "@/components/layout/AppLogo.vue"
-import ConfirmModal from "@/components/ui/ConfirmModal.vue"
-import RenameModal from "@/components/ui/RenameModal.vue"
-import UiButton from "@/components/ui/UiButton.vue"
-import {
-  UiMenu,
-  UiMenuTrigger,
-  UiMenuContent,
-  UiMenuItem,
-} from "@affino/menu-vue"
-import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vue"
+import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
-import { useSequenceStore } from "@/stores/sequenceStore"
+import { useWebSocketStore } from "@/stores/websocketStore"
+import { useDeviceStore } from "@/stores/deviceStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
-import { formatTsFull } from "@/utils/datetime"
+import { useSequenceStore } from "@/stores/sequenceStore"
 
 const workspaceStore = useWorkspaceStore()
-const sequenceStore = useSequenceStore()
+const wsStore = useWebSocketStore()
+const deviceStore = useDeviceStore()
 const switchgearStore = useSwitchgearStore()
+const sequenceStore = useSequenceStore()
+const router = useRouter()
 
 onMounted(() => {
   void workspaceStore.bootstrap()
+  void deviceStore.ensureLoaded()
+  void switchgearStore.ensureLoaded()
+  void sequenceStore.ensureLoaded()
 })
 
-const activeWorkspace = computed(() => workspaceStore.activeWorkspace)
-
-watch(
-  () => workspaceStore.activeWorkspaceId,
-  (id) => {
-    if (id) {
-      void sequenceStore.ensureLoaded()
-      void switchgearStore.ensureLoaded()
+const connectionState = computed(() => {
+  if (wsStore.isConnected) {
+    return {
+      label: "Connected",
+      chipClass: "bg-emerald-100/80 text-emerald-700 ring-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-200",
+      dotClass: "bg-emerald-500 animate-pulse",
     }
-  },
-  { immediate: true },
-)
+  }
 
-const renameModalOpen = ref(false)
-const renameValue = ref("")
-const renameError = ref("")
-const isRenaming = ref(false)
+  if (wsStore.everConnected) {
+    return {
+      label: "Reconnecting…",
+      chipClass: "bg-amber-100/80 text-amber-700 ring-amber-400/40 dark:bg-amber-500/20 dark:text-amber-200",
+      dotClass: "bg-amber-400 animate-pulse",
+    }
+  }
 
-const deleteModalOpen = ref(false)
-const deleteError = ref("")
-const isDeleting = ref(false)
-
-watch(activeWorkspace, (workspace) => {
-  if (!workspace) {
-    renameModalOpen.value = false
-    deleteModalOpen.value = false
-    renameValue.value = ""
-    renameError.value = ""
-    deleteError.value = ""
+  return {
+    label: "Connecting…",
+    chipClass: "bg-neutral-200 text-neutral-700 ring-neutral-400/40 dark:bg-neutral-800 dark:text-neutral-200",
+    dotClass: "bg-neutral-400 animate-pulse",
   }
 })
 
-function formatTimestamp(value?: string | null) {
-  if (!value) return "--"
-  const ms = new Date(value).getTime()
-  if (Number.isNaN(ms)) return "--"
-  return formatTsFull(ms)
-}
+const workspaceSummary = computed(() => {
+  if (workspaceStore.loading) {
+    return "Syncing workspaces…"
+  }
 
-type MetricCard = {
-  label: string
-  value: number | string
-  to: RouteLocationRaw
-}
+  if (!workspaceStore.workspaces.length) {
+    return "Preparing your default workspace…"
+  }
 
-const workspaceMetrics = computed<MetricCard[]>(() => {
-  if (!activeWorkspace.value) return []
+  if (workspaceStore.workspaces.length === 1) {
+    const label = workspaceStore.activeWorkspace?.name ?? workspaceStore.workspaces[0].name
+    return `${label} is ready.`
+  }
+
+  return `${workspaceStore.workspaces.length} workspaces are ready.`
+})
+
+const workspaceError = computed(() => workspaceStore.error)
+
+const statusCards = computed(() => {
+  const onlineDevices = deviceStore.devices.filter(device => device.status === "online").length
+  const totalDevices = deviceStore.devices.length
+  const switchgears = switchgearStore.switchgears.length
+  const sequences = sequenceStore.sequences.length
+
   return [
-    { label: "Sequences", value: sequenceStore.sequences.length, to: { name: "sequences.list" } },
-    { label: "Switchgears", value: switchgearStore.switchgears.length, to: { name: "switchgears.list" } },
+    {
+      label: "Devices online",
+      value: `${onlineDevices}/${totalDevices || 0}`,
+      detail: totalDevices ? "Live modules" : "Waiting for devices",
+      route: { name: "devices.list" },
+    },
+    {
+      label: "Switchgears",
+      value: switchgears,
+      detail: switchgears ? "Configured cabinets" : "Add your first cabinet",
+      route: { name: "switchgears.list" },
+    },
+    {
+      label: "Sequences",
+      value: sequences,
+      detail: sequences ? "Ready test plans" : "No tests yet",
+      route: { name: "sequences.list" },
+    },
   ]
 })
 
-const recentWorkspaces = computed(() => workspaceStore.workspaces.slice(0, 5))
+const quickActions = [
+  {
+    icon: "🔘",
+    label: "Toggle channel",
+    caption: "Jump to devices",
+    route: { name: "devices.list" },
+  },
+  {
+    icon: "🔁",
+    label: "Simulate switch (ON / OFF)",
+    caption: "Open switchgears",
+    route: { name: "switchgears.list" },
+  },
+  {
+    icon: "▶️",
+    label: "Run full cabinet test",
+    caption: "Launch sequences",
+    route: { name: "sequences.list" },
+  },
+]
 
-function openRenameModal() {
-  if (!activeWorkspace.value || isRenaming.value) return
-  renameValue.value = activeWorkspace.value.name
-  renameError.value = ""
-  renameModalOpen.value = true
-}
-
-function handleRenameCancel() {
-  if (isRenaming.value) return
-  renameError.value = ""
-  renameValue.value = activeWorkspace.value?.name ?? ""
-  renameModalOpen.value = false
-}
-
-async function submitRename() {
-  if (!activeWorkspace.value || isRenaming.value) return
-  const nextName = renameValue.value.trim()
-  if (!nextName) {
-    renameError.value = "Name is required"
-    return
-  }
-  if (nextName === activeWorkspace.value.name) {
-    renameModalOpen.value = false
-    return
-  }
-
-  renameError.value = ""
-  isRenaming.value = true
-  try {
-    await workspaceStore.renameWorkspace(activeWorkspace.value.id, nextName)
-    renameModalOpen.value = false
-  } catch (error) {
-    renameError.value = error instanceof Error ? error.message : "Failed to rename workspace"
-  } finally {
-    isRenaming.value = false
-  }
-}
-
-function openDeleteModal() {
-  if (!activeWorkspace.value || isDeleting.value) return
-  deleteError.value = ""
-  deleteModalOpen.value = true
-}
-
-function handleDeleteCancel() {
-  if (isDeleting.value) return
-  deleteModalOpen.value = false
-}
-
-const deleteModalMessage = computed(() => {
-  if (!activeWorkspace.value) return ""
-  const base = `Deleting "${activeWorkspace.value.name}" will remove all resources under this workspace. This action cannot be undone.`
-  return deleteError.value ? `${base} ${deleteError.value}` : base
-})
-
-const deleteConfirmLabel = computed(() => (isDeleting.value ? "Deleting..." : "Delete"))
-
-async function confirmDelete() {
-  if (!activeWorkspace.value || isDeleting.value) return
-  deleteError.value = ""
-  isDeleting.value = true
-  try {
-    await workspaceStore.deleteWorkspace(activeWorkspace.value.id)
-    deleteModalOpen.value = false
-  } catch (error) {
-    deleteError.value = error instanceof Error ? error.message : "Failed to delete workspace"
-  } finally {
-    isDeleting.value = false
-  }
+function goTo(route: { name: string }) {
+  router.push(route)
 }
 </script>

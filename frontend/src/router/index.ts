@@ -17,6 +17,10 @@ const router = createRouter({
       path: "/",
       name: "home",
       component: () => import("@/pages/home/HomePage.vue"),
+      meta: {
+        leftAside: false,
+        layout: "welcome" as const,
+      },
     },
     ...devicesRoutes,
     ...switchgearsRoutes,
