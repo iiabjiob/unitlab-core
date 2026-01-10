@@ -12,7 +12,7 @@ import type { SequenceWsEvent } from "@/types/ws/events"
 import { getLogger } from "@/utils/logger"
 import { useSequenceStepStore } from "./sequenceStepStore"
 import { useSequenceLogStore } from "@/stores/sequenceLogStore"
-import { useProjectStore } from "./projectStore"
+import { useWorkspaceStore } from "./workspaceStore"
 
 const logger = getLogger("SEQ")
 
@@ -54,11 +54,11 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   const loadedOnce = ref(false)
   const stepStore = useSequenceStepStore()
   const logStore = useSequenceLogStore()
-  const projectStore = useProjectStore()
+  const workspaceStore = useWorkspaceStore()
     
   async function ensureLoaded() {
-    if (!projectStore.activeProjectId) {
-      logger.debug("⏸️ No active project selected, skipping sequence load")
+    if (!workspaceStore.activeWorkspaceId) {
+      logger.debug("⏸️ No active workspace selected, skipping sequence load")
       return
     }
 
@@ -118,16 +118,16 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   async function fetchSequences() {
-    if (!projectStore.activeProjectId) return
-    const projectId = projectStore.requireProjectId()
+    if (!workspaceStore.activeWorkspaceId) return
+    const workspaceId = workspaceStore.requireWorkspaceId()
     loading.value = true
     try {
-      const { data } = await SequencesAPI.list(projectId)
+      const { data } = await SequencesAPI.list(workspaceId)
 
       sequences.value = []
       data.forEach(upsertSequence)
       loadedOnce.value = true
-      logger.info(`📡 Loaded ${data.length} sequences for project ${projectId}`)
+      logger.info(`📡 Loaded ${data.length} sequences for workspace ${workspaceId}`)
     } finally {
       loading.value = false
     }
@@ -167,20 +167,20 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   async function createSequence(payload: { name: string; description?: string }) {
-    const { data } = await SequencesAPI.create(projectStore.requireProjectId(), { ...payload, steps: [] })
+    const { data } = await SequencesAPI.create(workspaceStore.requireWorkspaceId(), { ...payload, steps: [] })
     upsertSequence(data)
     await refreshState(data.id)
     return data
   }
 
   async function updateSequence(id: number, payload: Partial<SequenceDef>) {
-    const { data } = await SequencesAPI.update(projectStore.requireProjectId(), id, payload)
+    const { data } = await SequencesAPI.update(workspaceStore.requireWorkspaceId(), id, payload)
     upsertSequence(data)
     return data
   }
 
   async function deleteSequence(id: number) {
-    await SequencesAPI.delete(projectStore.requireProjectId(), id)
+    await SequencesAPI.delete(workspaceStore.requireWorkspaceId(), id)
     sequences.value = sequences.value.filter(s => s.id !== id)
     delete states.value[id]
     stepStore.dropSequence(id)
@@ -200,7 +200,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
         payload: step.payload ?? null,
       }))
 
-    const { data } = await SequencesAPI.create(projectStore.requireProjectId(), {
+    const { data } = await SequencesAPI.create(workspaceStore.requireWorkspaceId(), {
       name: nextDuplicateName(original.name),
       description: original.description ?? "",
       steps: stepsPayload,
@@ -212,17 +212,17 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   async function refreshState(id: number) {
-    const { data } = await SequencesAPI.getState(projectStore.requireProjectId(), id)
+    const { data } = await SequencesAPI.getState(workspaceStore.requireWorkspaceId(), id)
     return applySnapshot(id, data)
   }
 
   async function startSequence(id: number) {
-    const { data } = await SequencesAPI.start(projectStore.requireProjectId(), id)
+    const { data } = await SequencesAPI.start(workspaceStore.requireWorkspaceId(), id)
     return applySnapshot(id, data)
   }
 
   async function stopSequence(id: number) {
-    const { data } = await SequencesAPI.stop(projectStore.requireProjectId(), id)
+    const { data } = await SequencesAPI.stop(workspaceStore.requireWorkspaceId(), id)
     return applySnapshot(id, data)
   }
 
@@ -347,7 +347,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     }
   }
 
-  function resetForProjectChange() {
+  function resetForWorkspaceChange() {
     sequences.value = []
     states.value = {}
     loadedOnce.value = false
@@ -390,10 +390,10 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   watch(
-    () => projectStore.activeProjectId,
-    (projectId) => {
-      resetForProjectChange()
-      if (projectId) {
+    () => workspaceStore.activeWorkspaceId,
+    (workspaceId) => {
+      resetForWorkspaceChange()
+      if (workspaceId) {
         void fetchSequences()
       }
     },

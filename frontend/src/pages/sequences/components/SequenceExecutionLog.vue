@@ -42,8 +42,8 @@ function resolveStepIdFromLog(log: SequenceLogEntry): number | null {
   return null
 }
 
-function handleSelect(payload: { index: number; log: SequenceLogEntry }) {
-  const stepId = resolveStepIdFromLog(payload.log)
+function handleSelect(payload: { index: number; log: SequenceLogEntry | Record<string, any> }) {
+  const stepId = resolveStepIdFromLog(payload.log as SequenceLogEntry)
   if (!stepId) return
   if (stepStore.activeStepId === stepId) return
   stepStore.setActiveStep(stepId)

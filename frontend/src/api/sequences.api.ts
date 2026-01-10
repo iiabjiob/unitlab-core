@@ -2,77 +2,77 @@ import { http } from "./http"
 import { API_V1, buildQuery } from "./utils"
 import type { SequenceStep, SequenceStepCreate } from "@/types/sequences"
 
-const basePath = (projectId: number | string) => `${API_V1}/projects/${projectId}/sequences`
+const basePath = (workspaceId: number | string) => `${API_V1}/workspaces/${workspaceId}/sequences`
 
 export const SequencesAPI = {
-  list(projectId: number | string, params?: Record<string, any>) {
-    return http.get(buildQuery(basePath(projectId), params))
+  list(workspaceId: number | string, params?: Record<string, any>) {
+    return http.get(buildQuery(basePath(workspaceId), params))
   },
 
-  get(projectId: number | string, id: number | string) {
-    return http.get(`${basePath(projectId)}/${id}`)
+  get(workspaceId: number | string, id: number | string) {
+    return http.get(`${basePath(workspaceId)}/${id}`)
   },
 
-  create(projectId: number | string, payload: any) {
-    return http.post(basePath(projectId), payload)
+  create(workspaceId: number | string, payload: any) {
+    return http.post(basePath(workspaceId), payload)
   },
 
-  update(projectId: number | string, id: number | string, payload: any) {
-    return http.patch(`${basePath(projectId)}/${id}`, payload)
+  update(workspaceId: number | string, id: number | string, payload: any) {
+    return http.patch(`${basePath(workspaceId)}/${id}`, payload)
   },
 
-  delete(projectId: number | string, id: number | string) {
-    return http.delete(`${basePath(projectId)}/${id}`)
+  delete(workspaceId: number | string, id: number | string) {
+    return http.delete(`${basePath(workspaceId)}/${id}`)
   },
 
   // Steps
-  getSteps(projectId: number | string, seqId: number | string) {
-    return http.get<SequenceStep[]>(`${basePath(projectId)}/${seqId}/steps`)
+  getSteps(workspaceId: number | string, seqId: number | string) {
+    return http.get<SequenceStep[]>(`${basePath(workspaceId)}/${seqId}/steps`)
   },
 
-  addStep(projectId: number | string, seqId: number | string, payload: SequenceStepCreate) {
-    return http.post<SequenceStep>(`${basePath(projectId)}/${seqId}/steps`, payload)
+  addStep(workspaceId: number | string, seqId: number | string, payload: SequenceStepCreate) {
+    return http.post<SequenceStep>(`${basePath(workspaceId)}/${seqId}/steps`, payload)
   },
 
   updateStep(
-    projectId: number | string,
+    workspaceId: number | string,
     seqId: number | string,
     stepId: number | string,
     payload: Partial<SequenceStep>,
   ) {
-    return http.patch<SequenceStep>(`${basePath(projectId)}/${seqId}/steps/${stepId}`, payload)
+    return http.patch<SequenceStep>(`${basePath(workspaceId)}/${seqId}/steps/${stepId}`, payload)
   },
 
-  deleteStep(projectId: number | string, seqId: number | string, stepId: number | string) {
-    return http.delete(`${basePath(projectId)}/${seqId}/steps/${stepId}`)
+  deleteStep(workspaceId: number | string, seqId: number | string, stepId: number | string) {
+    return http.delete(`${basePath(workspaceId)}/${seqId}/steps/${stepId}`)
   },
 
-  reorderSteps(projectId: number | string, seqId: number | string, payload: { new_order: number[] }) {
-    return http.post<SequenceStep[]>(`${basePath(projectId)}/${seqId}/steps/reorder`, payload)
+  reorderSteps(workspaceId: number | string, seqId: number | string, payload: { new_order: number[] }) {
+    return http.post<SequenceStep[]>(`${basePath(workspaceId)}/${seqId}/steps/reorder`, payload)
   },
 
-  replaceSteps(projectId: number | string, seqId: number | string, payload: SequenceStepCreate[]) {
-    return http.put<SequenceStep[]>(`${basePath(projectId)}/${seqId}/steps`, payload)
+  replaceSteps(workspaceId: number | string, seqId: number | string, payload: SequenceStepCreate[]) {
+    return http.put<SequenceStep[]>(`${basePath(workspaceId)}/${seqId}/steps`, payload)
   },
 
   // Execution
-  start(projectId: number | string, seqId: number | string) {
-    return http.post(`${basePath(projectId)}/${seqId}/start`)
+  start(workspaceId: number | string, seqId: number | string) {
+    return http.post(`${basePath(workspaceId)}/${seqId}/start`)
   },
 
-  stop(projectId: number | string, seqId: number | string) {
-    return http.post(`${basePath(projectId)}/${seqId}/stop`)
+  stop(workspaceId: number | string, seqId: number | string) {
+    return http.post(`${basePath(workspaceId)}/${seqId}/stop`)
   },
 
-  getState(projectId: number | string, seqId: number | string) {
-    return http.get(`${basePath(projectId)}/${seqId}/state`)
+  getState(workspaceId: number | string, seqId: number | string) {
+    return http.get(`${basePath(workspaceId)}/${seqId}/state`)
   },
 
-  export(projectId: number | string, seqId: number | string) {
-    return http.get(`${basePath(projectId)}/${seqId}/export-file`)
+  export(workspaceId: number | string, seqId: number | string) {
+    return http.get(`${basePath(workspaceId)}/${seqId}/export-file`)
   },
 
-  import(projectId: number | string, formData: FormData) {
-    return http.post(`${basePath(projectId)}/import-file`, formData)
+  import(workspaceId: number | string, formData: FormData) {
+    return http.post(`${basePath(workspaceId)}/import-file`, formData)
   },
 }

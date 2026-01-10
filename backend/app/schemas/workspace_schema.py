@@ -5,19 +5,21 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 
-class ProjectBase(BaseModel):
+class WorkspaceBase(BaseModel):
     name: str
+    slug: str
 
 
-class ProjectCreateSchema(ProjectBase):
+class WorkspaceCreateSchema(WorkspaceBase):
     pass
 
 
-class ProjectUpdateSchema(BaseModel):
+class WorkspaceUpdateSchema(BaseModel):
     name: Optional[str] = None
+    slug: Optional[str] = None
 
 
-class ProjectSchema(ProjectBase):
+class WorkspaceSchema(WorkspaceBase):
     id: int
     uuid: UUID
     created_at: datetime

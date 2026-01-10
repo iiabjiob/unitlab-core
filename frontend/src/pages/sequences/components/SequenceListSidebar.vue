@@ -4,12 +4,12 @@ import { useSequenceStore } from "@/stores/sequenceStore"
 import { useRouter, useRoute } from "vue-router"
 import SequenceListItem from "./SequenceListItem.vue"
 import UiButton from "@/components/ui/UiButton.vue"
-import { useProjectStore } from "@/stores/projectStore"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
 
 const store = useSequenceStore()
 const router = useRouter()
 const route = useRoute()
-const projectStore = useProjectStore()
+const workspaceStore = useWorkspaceStore()
 
 function isActive(id: number) {
   return Number(route.params.id) === id
@@ -20,7 +20,7 @@ function openSequence(id: number) {
 }
 
 function addSequence() {
-  if (!projectStore.activeProjectId) return
+  if (!workspaceStore.activeWorkspaceId) return
   store.createSequenceAuto().then(seq => {
     router.push(`/sequences/${seq.id}`)
   })
@@ -28,10 +28,10 @@ function addSequence() {
 
 // SEARCH
 const query = ref("")
-const projectMissing = computed(() => !projectStore.activeProjectId)
+const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 
 const filteredSequences = computed(() => {
-  if (projectMissing.value) return []
+  if (workspaceMissing.value) return []
   if (!query.value.trim()) return store.sequences
 
   const q = query.value.toLowerCase()
@@ -52,16 +52,16 @@ const filteredSequences = computed(() => {
         variant="primary"
         size="sm"
         full
-        :disabled="projectMissing"
+        :disabled="workspaceMissing"
         @click="addSequence"
       >
         + New Sequence
       </UiButton>
       <p
-        v-if="projectMissing"
+        v-if="workspaceMissing"
         class="mt-2 text-[11px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
       >
-        Use the project switcher to enable edits
+        Use the workspace switcher to enable edits
       </p>
     </div>
 
@@ -72,8 +72,8 @@ const filteredSequences = computed(() => {
         type="text"
         autocomplete="off"
         name="sequence-search"
-        :disabled="projectMissing"
-        :placeholder="projectMissing ? 'Select a project to get started' : 'Search sequences…'"
+        :disabled="workspaceMissing"
+        :placeholder="workspaceMissing ? 'Select a workspace to get started' : 'Search sequences…'"
         class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
       />
     </div>
@@ -81,10 +81,10 @@ const filteredSequences = computed(() => {
     <!-- LIST -->
     <div class="flex-1 overflow-y-auto space-y-1">
       <div
-        v-if="projectMissing"
+        v-if="workspaceMissing"
         class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400"
       >
-        Select or create a project to see its sequences.
+        Select or create a workspace to see its sequences.
       </div>
 
       <template v-else>

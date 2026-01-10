@@ -63,7 +63,7 @@ export interface SequenceStepCreate {
 
 export interface SequenceDef {
   id: number
-  project_id: number
+  workspace_ids: number[]
   name: string
   description?: string | null
   created_at: string

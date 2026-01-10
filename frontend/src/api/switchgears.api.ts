@@ -6,27 +6,27 @@ import type {
 	SwitchgearUpdateInput,
 } from "@/types/switchgear"
 
-const basePath = (projectId: number | string) => `${API_V1}/projects/${projectId}/switchgears`
+const basePath = (workspaceId: number | string) => `${API_V1}/workspaces/${workspaceId}/switchgears`
 
 export const SwitchgearsAPI = {
-	list(projectId: number | string) {
-		return http.get<Switchgear[]>(basePath(projectId))
+	list(workspaceId: number | string) {
+		return http.get<Switchgear[]>(basePath(workspaceId))
 	},
 
-	get(projectId: number | string, id: number | string) {
-		return http.get<Switchgear>(`${basePath(projectId)}/${id}`)
+	get(workspaceId: number | string, id: number | string) {
+		return http.get<Switchgear>(`${basePath(workspaceId)}/${id}`)
 	},
 
-	create(projectId: number | string, payload: SwitchgearCreateInput) {
-		return http.post<Switchgear>(basePath(projectId), payload)
+	create(workspaceId: number | string, payload: SwitchgearCreateInput) {
+		return http.post<Switchgear>(basePath(workspaceId), payload)
 	},
 
-	update(projectId: number | string, id: number | string, payload: SwitchgearUpdateInput) {
-		return http.patch<Switchgear>(`${basePath(projectId)}/${id}`, payload)
+	update(workspaceId: number | string, id: number | string, payload: SwitchgearUpdateInput) {
+		return http.patch<Switchgear>(`${basePath(workspaceId)}/${id}`, payload)
 	},
 
-	delete(projectId: number | string, id: number | string) {
-		return http.delete(`${basePath(projectId)}/${id}`)
+	delete(workspaceId: number | string, id: number | string) {
+		return http.delete(`${basePath(workspaceId)}/${id}`)
 	},
 }
 

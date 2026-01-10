@@ -4,12 +4,12 @@ import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useRouter, useRoute } from "vue-router"
 import SwitchgearListItem from "./SwitchgearListItem.vue"
 import UiButton from "@/components/ui/UiButton.vue"
-import { useProjectStore } from "@/stores/projectStore"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
 
 const store = useSwitchgearStore()
 const router = useRouter()
 const route = useRoute()
-const projectStore = useProjectStore()
+const workspaceStore = useWorkspaceStore()
 
 function isActive(id: number) {
   return Number(route.params.id) === id
@@ -20,17 +20,17 @@ function openSwitchgear(id: number) {
 }
 
 async function addSwitchgear() {
-  if (!projectStore.activeProjectId) return
+  if (!workspaceStore.activeWorkspaceId) return
   const created = await store.createAuto()
   openSwitchgear(created.id)
 }
 
 // SEARCH
 const query = ref("")
-const projectMissing = computed(() => !projectStore.activeProjectId)
+const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 
 const filteredSwitchgears = computed(() => {
-  if (projectMissing.value) return []
+  if (workspaceMissing.value) return []
   if (!query.value.trim()) return store.switchgears
 
   const q = query.value.toLowerCase()
@@ -51,16 +51,16 @@ const filteredSwitchgears = computed(() => {
         variant="primary"
         size="sm"
         full
-        :disabled="projectMissing"
+        :disabled="workspaceMissing"
         @click="addSwitchgear"
       >
         + New Switchgear
       </UiButton>
       <p
-        v-if="projectMissing"
+        v-if="workspaceMissing"
         class="mt-2 text-[11px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
       >
-        Choose a project to start configuring
+        Choose a workspace to start configuring
       </p>
     </div>
 
@@ -71,8 +71,8 @@ const filteredSwitchgears = computed(() => {
         type="text"
         autocomplete="off"
         name="switchgear-search"
-        :disabled="projectMissing"
-        :placeholder="projectMissing ? 'Select a project to get started' : 'Search switchgears…'"
+        :disabled="workspaceMissing"
+        :placeholder="workspaceMissing ? 'Select a workspace to get started' : 'Search switchgears…'"
         class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
       />
     </div>
@@ -80,10 +80,10 @@ const filteredSwitchgears = computed(() => {
     <!-- LIST -->
     <div class="flex-1 overflow-y-auto space-y-1">
       <div
-        v-if="projectMissing"
+        v-if="workspaceMissing"
         class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400"
       >
-        Switchgears belong to a project. Pick one to view its presets.
+        Switchgears belong to a workspace. Pick one to view its presets.
       </div>
 
       <template v-else>

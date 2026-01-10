@@ -1,6 +1,6 @@
 import type { RouteRecordRaw } from "vue-router"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
-import { useProjectStore } from "@/stores/projectStore"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSelectionStore } from "@/stores/selectionStore"
 
 // Default meta shared from index.ts
@@ -14,8 +14,8 @@ export const switchgearsRoutes: RouteRecordRaw[] = [
     path: "/switchgears",
     component: () => import("@/pages/switchgears/SwitchgearsPage.vue"),
     beforeEnter: async () => {
-      const projectStore = useProjectStore()
-      await projectStore.bootstrap()
+      const workspaceStore = useWorkspaceStore()
+      await workspaceStore.bootstrap()
       const store = useSwitchgearStore()
       await store.ensureLoaded()
     },
@@ -48,9 +48,9 @@ export const switchgearsRoutes: RouteRecordRaw[] = [
         component: () => import("@/pages/switchgears/SwitchgearEditor.vue"),
         props: true,
         beforeEnter: async () => {
-          const projectStore = useProjectStore()
-          await projectStore.bootstrap()
-          if (!projectStore.activeProjectId) {
+          const workspaceStore = useWorkspaceStore()
+          await workspaceStore.bootstrap()
+          if (!workspaceStore.activeWorkspaceId) {
             return { name: "home" }
           }
         },

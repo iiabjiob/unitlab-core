@@ -11,7 +11,7 @@ from app.schemas.switchgear_schema import (
     SwitchgearUpdateSchema,
 )
 
-router = APIRouter(prefix="/api/v1/projects/{project_id}/switchgears", tags=["Switchgears"])
+router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/switchgears", tags=["Switchgears"])
 
 
 def get_repository(db: AsyncSession = Depends(get_db)) -> SwitchgearRepository:
@@ -20,19 +20,19 @@ def get_repository(db: AsyncSession = Depends(get_db)) -> SwitchgearRepository:
 
 @router.get("", response_model=list[SwitchgearSchema])
 async def list_switchgears(
-    project_id: int,
+    workspace_id: int,
     repo: SwitchgearRepository = Depends(get_repository),
 ):
-    return await repo.list(project_id)
+    return await repo.list(workspace_id)
 
 
 @router.get("/{switchgear_id}", response_model=SwitchgearSchema)
 async def get_switchgear(
-    project_id: int,
+    workspace_id: int,
     switchgear_id: int,
     repo: SwitchgearRepository = Depends(get_repository),
 ):
-    switchgear = await repo.get(project_id, switchgear_id)
+    switchgear = await repo.get(workspace_id, switchgear_id)
     if not switchgear:
         raise HTTPException(status_code=404, detail="Switchgear not found")
     return switchgear
@@ -40,22 +40,22 @@ async def get_switchgear(
 
 @router.post("", response_model=SwitchgearSchema)
 async def create_switchgear(
-    project_id: int,
+    workspace_id: int,
     payload: SwitchgearCreateSchema,
     repo: SwitchgearRepository = Depends(get_repository),
 ):
-    return await repo.create(project_id, payload.model_dump())
+    return await repo.create(workspace_id, payload.model_dump())
 
 
 @router.patch("/{switchgear_id}", response_model=SwitchgearSchema)
 async def update_switchgear(
-    project_id: int,
+    workspace_id: int,
     switchgear_id: int,
     payload: SwitchgearUpdateSchema,
     repo: SwitchgearRepository = Depends(get_repository),
 ):
     updated = await repo.update(
-        project_id,
+        workspace_id,
         switchgear_id,
         payload.model_dump(exclude_unset=True),
     )
@@ -66,11 +66,11 @@ async def update_switchgear(
 
 @router.delete("/{switchgear_id}")
 async def delete_switchgear(
-    project_id: int,
+    workspace_id: int,
     switchgear_id: int,
     repo: SwitchgearRepository = Depends(get_repository),
 ):
-    deleted = await repo.delete(project_id, switchgear_id)
+    deleted = await repo.delete(workspace_id, switchgear_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Switchgear not found")
     return {"detail": "Switchgear deleted"}

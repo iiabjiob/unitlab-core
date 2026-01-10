@@ -1,20 +1,20 @@
 <template>
   <div class="h-full overflow-auto bg-neutral-50 dark:bg-neutral-950">
     <section class="mx-auto max-w-6xl px-6 py-10">
-      <template v-if="activeProject">
+      <template v-if="activeWorkspace">
         <header class="mb-8 rounded-2xl border border-neutral-200 bg-white px-6 py-6 text-neutral-900 shadow-sm dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-50">
           <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
-              <p class="text-[10px] uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">Active project</p>
+              <p class="text-[10px] uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">Active workspace</p>
               <div class="mt-3">
-                <h1 class="text-3xl font-semibold tracking-tight">{{ activeProject.name }}</h1>
-                <p class="text-sm text-neutral-500 dark:text-neutral-400">UUID {{ activeProject.uuid }}</p>
+                <h1 class="text-3xl font-semibold tracking-tight">{{ activeWorkspace.name }}</h1>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">UUID {{ activeWorkspace.uuid }}</p>
               </div>
             </div>
             <div class="flex items-start justify-end">
               <UiMenu>
                 <UiMenuTrigger asChild>
-                  <UiButton variant="icon" name="project-actions-button" aria-label="Project actions">
+                  <UiButton variant="icon" name="workspace-actions-button" aria-label="Workspace actions">
                     <EllipsisHorizontalIcon size="24" />
                   </UiButton>
                 </UiMenuTrigger>
@@ -33,7 +33,7 @@
 
         <div class="grid gap-4 md:grid-cols-4">
           <RouterLink
-            v-for="metric in projectMetrics"
+            v-for="metric in workspaceMetrics"
             :key="metric.label"
             :to="metric.to"
             class="block rounded-2xl border border-neutral-200 bg-white px-5 py-4 text-neutral-800 transition-colors hover:border-neutral-900 hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-800 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:border-neutral-100 dark:hover:bg-neutral-800"
@@ -47,28 +47,28 @@
       <template v-else>
         <div class="flex flex-col items-center gap-6 rounded-2xl border border-dashed border-neutral-300 bg-white px-6 py-14 text-center text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200">
           <AppLogo class="h-16 w-16" />
-          <p class="text-sm uppercase tracking-[0.5em] text-neutral-500 dark:text-neutral-400">Select project</p>
+          <p class="text-sm uppercase tracking-[0.5em] text-neutral-500 dark:text-neutral-400">Select workspace</p>
           <p class="text-base text-neutral-600 dark:text-neutral-300">Choose any of the recent workspaces below to view metrics and begin configuration.</p>
         </div>
 
         <div class="mt-8 rounded-2xl border border-neutral-200 bg-white px-5 py-5 dark:border-neutral-800 dark:bg-neutral-900">
-          <p class="text-[10px] uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">Recent projects</p>
+          <p class="text-[10px] uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">Recent workspaces</p>
           <div class="mt-4 divide-y divide-neutral-200 dark:divide-neutral-800">
             <button
-              v-for="project in recentProjects"
-              :key="project.id"
+              v-for="workspace in recentWorkspaces"
+              :key="workspace.id"
               class="flex w-full items-center justify-between gap-6 px-2 py-3 text-left text-sm text-neutral-800 transition hover:bg-neutral-50 dark:text-neutral-100 dark:hover:bg-neutral-800"
-              @click="projectStore.selectProject(project.id)"
+              @click="workspaceStore.selectWorkspace(workspace.id)"
             >
               <div>
-                <p class="font-semibold">{{ project.name }}</p>
-                <p class="text-xs text-neutral-500 dark:text-neutral-400">Updated {{ formatTimestamp(project.updated_at) }}</p>
+                <p class="font-semibold">{{ workspace.name }}</p>
+                <p class="text-xs text-neutral-500 dark:text-neutral-400">Updated {{ formatTimestamp(workspace.updated_at) }}</p>
               </div>
               <span class="text-[10px] uppercase tracking-[0.4em] text-neutral-500">Open</span>
             </button>
 
-            <div v-if="!recentProjects.length" class="py-4 text-sm text-neutral-500 dark:text-neutral-400">
-              No projects yet. Use the switcher to create one.
+            <div v-if="!recentWorkspaces.length" class="py-4 text-sm text-neutral-500 dark:text-neutral-400">
+              No workspaces yet. Use the switcher to create one.
             </div>
           </div>
         </div>
@@ -77,7 +77,7 @@
 
     <RenameModal
       :open="renameModalOpen"
-      title="Rename project"
+      title="Rename workspace"
       v-model="renameValue"
       :loading="isRenaming"
       :error="renameError"
@@ -87,7 +87,7 @@
 
     <ConfirmModal
       :open="deleteModalOpen"
-      title="Delete project"
+      title="Delete workspace"
       :message="deleteModalMessage"
       cancel-label="Cancel"
       :confirm-label="deleteConfirmLabel"
@@ -112,23 +112,23 @@ import {
   UiMenuItem,
 } from "@affino/menu-vue"
 import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vue"
-import { useProjectStore } from "@/stores/projectStore"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { formatTsFull } from "@/utils/datetime"
 
-const projectStore = useProjectStore()
+const workspaceStore = useWorkspaceStore()
 const sequenceStore = useSequenceStore()
 const switchgearStore = useSwitchgearStore()
 
 onMounted(() => {
-  void projectStore.bootstrap()
+  void workspaceStore.bootstrap()
 })
 
-const activeProject = computed(() => projectStore.activeProject)
+const activeWorkspace = computed(() => workspaceStore.activeWorkspace)
 
 watch(
-  () => projectStore.activeProjectId,
+  () => workspaceStore.activeWorkspaceId,
   (id) => {
     if (id) {
       void sequenceStore.ensureLoaded()
@@ -147,8 +147,8 @@ const deleteModalOpen = ref(false)
 const deleteError = ref("")
 const isDeleting = ref(false)
 
-watch(activeProject, (project) => {
-  if (!project) {
+watch(activeWorkspace, (workspace) => {
+  if (!workspace) {
     renameModalOpen.value = false
     deleteModalOpen.value = false
     renameValue.value = ""
@@ -170,19 +170,19 @@ type MetricCard = {
   to: RouteLocationRaw
 }
 
-const projectMetrics = computed<MetricCard[]>(() => {
-  if (!activeProject.value) return []
+const workspaceMetrics = computed<MetricCard[]>(() => {
+  if (!activeWorkspace.value) return []
   return [
     { label: "Sequences", value: sequenceStore.sequences.length, to: { name: "sequences.list" } },
     { label: "Switchgears", value: switchgearStore.switchgears.length, to: { name: "switchgears.list" } },
   ]
 })
 
-const recentProjects = computed(() => projectStore.projects.slice(0, 5))
+const recentWorkspaces = computed(() => workspaceStore.workspaces.slice(0, 5))
 
 function openRenameModal() {
-  if (!activeProject.value || isRenaming.value) return
-  renameValue.value = activeProject.value.name
+  if (!activeWorkspace.value || isRenaming.value) return
+  renameValue.value = activeWorkspace.value.name
   renameError.value = ""
   renameModalOpen.value = true
 }
@@ -190,18 +190,18 @@ function openRenameModal() {
 function handleRenameCancel() {
   if (isRenaming.value) return
   renameError.value = ""
-  renameValue.value = activeProject.value?.name ?? ""
+  renameValue.value = activeWorkspace.value?.name ?? ""
   renameModalOpen.value = false
 }
 
 async function submitRename() {
-  if (!activeProject.value || isRenaming.value) return
+  if (!activeWorkspace.value || isRenaming.value) return
   const nextName = renameValue.value.trim()
   if (!nextName) {
     renameError.value = "Name is required"
     return
   }
-  if (nextName === activeProject.value.name) {
+  if (nextName === activeWorkspace.value.name) {
     renameModalOpen.value = false
     return
   }
@@ -209,17 +209,17 @@ async function submitRename() {
   renameError.value = ""
   isRenaming.value = true
   try {
-    await projectStore.renameProject(activeProject.value.id, nextName)
+    await workspaceStore.renameWorkspace(activeWorkspace.value.id, nextName)
     renameModalOpen.value = false
   } catch (error) {
-    renameError.value = error instanceof Error ? error.message : "Failed to rename project"
+    renameError.value = error instanceof Error ? error.message : "Failed to rename workspace"
   } finally {
     isRenaming.value = false
   }
 }
 
 function openDeleteModal() {
-  if (!activeProject.value || isDeleting.value) return
+  if (!activeWorkspace.value || isDeleting.value) return
   deleteError.value = ""
   deleteModalOpen.value = true
 }
@@ -230,22 +230,22 @@ function handleDeleteCancel() {
 }
 
 const deleteModalMessage = computed(() => {
-  if (!activeProject.value) return ""
-  const base = `Deleting "${activeProject.value.name}" will remove all resources under this project. This action cannot be undone.`
+  if (!activeWorkspace.value) return ""
+  const base = `Deleting "${activeWorkspace.value.name}" will remove all resources under this workspace. This action cannot be undone.`
   return deleteError.value ? `${base} ${deleteError.value}` : base
 })
 
 const deleteConfirmLabel = computed(() => (isDeleting.value ? "Deleting..." : "Delete"))
 
 async function confirmDelete() {
-  if (!activeProject.value || isDeleting.value) return
+  if (!activeWorkspace.value || isDeleting.value) return
   deleteError.value = ""
   isDeleting.value = true
   try {
-    await projectStore.deleteProject(activeProject.value.id)
+    await workspaceStore.deleteWorkspace(activeWorkspace.value.id)
     deleteModalOpen.value = false
   } catch (error) {
-    deleteError.value = error instanceof Error ? error.message : "Failed to delete project"
+    deleteError.value = error instanceof Error ? error.message : "Failed to delete workspace"
   } finally {
     isDeleting.value = false
   }

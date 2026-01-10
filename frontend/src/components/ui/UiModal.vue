@@ -9,7 +9,10 @@
         <transition name="scale-modal">
           <div
             v-if="open"
-            class="relative flex w-full max-w-2xl flex-col rounded-md border border-neutral-200 bg-white text-neutral-900 shadow-2xl dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 max-h-[80vh] overflow-hidden"
+            :class="[
+              'relative flex w-full flex-col rounded-md border border-neutral-200 bg-white text-neutral-900 shadow-2xl dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 max-h-[80vh] overflow-hidden',
+              props.maxWidthClass ?? 'max-w-2xl',
+            ]"
             role="dialog"
             aria-modal="true"
           >
@@ -37,6 +40,7 @@ import { watch, onMounted, onBeforeUnmount } from "vue"
 const props = defineProps<{
   open: boolean
   title?: string
+  maxWidthClass?: string
 }>()
 
 const emit = defineEmits<{

@@ -102,7 +102,6 @@ import {
   UiMenuSeparator,
 } from "@affino/menu-vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
-import { formatTsFull } from "@/utils/datetime"
 import RenameModal from "@/components/ui/RenameModal.vue"
 
 const props = withDefaults(defineProps<{ variant?: "default" | "compact" | "mini" }>(), {

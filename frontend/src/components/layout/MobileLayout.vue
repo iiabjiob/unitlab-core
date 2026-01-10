@@ -14,7 +14,7 @@
     </MobileHeader>
 
     <div class="border-b border-neutral-200 bg-white px-5 py-3 dark:border-neutral-800 dark:bg-neutral-900">
-      <ProjectSwitcher variant="compact" />
+      <WorkspaceSwitcher variant="compact" />
       <div class="mt-3 flex flex-wrap gap-4 text-[11px] text-neutral-500 dark:text-neutral-400">
         <div class="min-w-[140px] flex-1">
           <p class="text-[10px] uppercase tracking-[0.3em]">Created</p>
@@ -52,8 +52,8 @@ import TimeComponent from "../misc/TimeComponent.vue"
 import { useWebSocketStore } from "@/stores/websocketStore"
 import SlideOver from "../ui/SlideOver.vue"
 import MobileHeader from "./MobileHeader.vue"
-import ProjectSwitcher from "@/components/projects/ProjectSwitcher.vue"
-import { useProjectStore } from "@/stores/projectStore"
+import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
 
 // Drawer state
 const isDrawerOpen = ref(false)
@@ -66,16 +66,16 @@ const status = computed(() => {
   return "offline"
 })
 
-const projectStore = useProjectStore()
+const workspaceStore = useWorkspaceStore()
 
-function formatProjectDate(value?: string | null) {
+function formatWorkspaceDate(value?: string | null) {
   if (!value) return "--"
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "--"
   return date.toISOString().slice(0, 10)
 }
 
-const createdLabel = computed(() => formatProjectDate(projectStore.activeProject?.created_at))
-const updatedLabel = computed(() => formatProjectDate(projectStore.activeProject?.updated_at))
+const createdLabel = computed(() => formatWorkspaceDate(workspaceStore.activeWorkspace?.created_at))
+const updatedLabel = computed(() => formatWorkspaceDate(workspaceStore.activeWorkspace?.updated_at))
 
 </script>

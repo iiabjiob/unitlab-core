@@ -20,9 +20,9 @@ class SwitchgearBindingCreateSchema(BaseModel):
 
 class SwitchgearSchema(BaseModel):
     id: int
-    project_id: int
     name: str
     switchgear_type: str
+    workspace_ids: list[int] = Field(default_factory=list)
     bindings: list[SwitchgearBindingSchema] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True, extra="ignore")

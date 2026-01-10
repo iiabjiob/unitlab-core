@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -12,17 +12,14 @@ from app.infrastructure.db.database import Base
 from app.models.types import BIGINT_PK
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from app.models.project import Project
+    from app.models.workspace import Workspace, WorkspaceSwitchgear
 
 
 class Switchgear(Base):
     __tablename__ = "switchgears"
-    __table_args__ = (Index("ix_switchgears_project_name", "project_id", "name"),)
+    __table_args__: tuple = ()
 
     id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
-    project_id: Mapped[int] = mapped_column(
-        BIGINT_PK, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
-    )
     name: Mapped[str] = mapped_column(String, nullable=False)
     switchgear_type: Mapped[str] = mapped_column(String, nullable=False, default="switchgear")
 
@@ -36,8 +33,17 @@ class Switchgear(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    project: Mapped["Project"] = relationship(
-        "Project", back_populates="switchgears", lazy="selectin"
+    workspace_links: Mapped[list["WorkspaceSwitchgear"]] = relationship(
+        "WorkspaceSwitchgear",
+        back_populates="switchgear",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    workspaces: Mapped[list["Workspace"]] = relationship(
+        "Workspace",
+        secondary="workspace_switchgears",
+        viewonly=True,
+        lazy="selectin",
     )
 
 

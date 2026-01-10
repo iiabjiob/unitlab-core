@@ -25,9 +25,9 @@ class SequenceUpdateSchema(BaseModel):
 
 class SequenceSchema(SequenceBase):
     id: int
-    project_id: int
     created_at: datetime
     updated_at: datetime
+    workspace_ids: List[int] = Field(default_factory=list)
     steps: List[SequenceStepSchema] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
