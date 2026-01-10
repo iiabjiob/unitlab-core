@@ -19,6 +19,7 @@ import DraftIcon from "../icons/DraftIcon.vue"
 const items = [
   { to: "/devices", label: "Devices" },
   { to: "/switchgears", label: "Switchgears" },
+  { to: "/signals", label: "Signals" },
   { to: "/sequences", label: "Sequences" },
 ]
 </script>

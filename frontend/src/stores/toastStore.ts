@@ -20,15 +20,14 @@ export interface ToastItem {
 
 const DEFAULT_TIMEOUT = 5000
 const DEFAULT_POSITION: ToastPosition = "bottom-right"
+type ToastOptions = Partial<Omit<ToastItem, "id" | "message">>
+type ToastNoVariantOptions = Omit<ToastOptions, "variant">
 
 export const useToastStore = defineStore("toastStore", () => {
   const toasts = ref<ToastItem[]>([])
   let seed = 0
 
-  function push(
-    message: string,
-    options: Partial<Omit<ToastItem, "id" | "message">> = {}
-  ): number {
+  function push(message: string, options: ToastOptions = {}): number {
     seed += 1
     const id = seed
 
@@ -49,6 +48,18 @@ export const useToastStore = defineStore("toastStore", () => {
     return id
   }
 
+  function success(message: string, options: ToastNoVariantOptions = {}) {
+    return push(message, { ...options, variant: "success" })
+  }
+
+  function error(message: string, options: ToastNoVariantOptions = {}) {
+    return push(message, { ...options, variant: "error" })
+  }
+
+  function info(message: string, options: ToastNoVariantOptions = {}) {
+    return push(message, { ...options, variant: "info" })
+  }
+
   function remove(id: number) {
     toasts.value = toasts.value.filter(t => t.id !== id)
   }
@@ -64,6 +75,9 @@ export const useToastStore = defineStore("toastStore", () => {
   return {
     toasts,
     push,
+    success,
+    error,
+    info,
     remove,
     clear,
     getByPosition,

@@ -24,3 +24,11 @@ export function formatTsFull(ms: number): string {
   const ms3 = String(d.getMilliseconds()).padStart(3, "0")
   return `${yyyy}-${MM}-${dd} ${hh}:${mm}:${ss}.${ms3}`
 }
+
+/**
+ * Convenience wrapper to format ISO strings or Date objects using formatTsFull.
+ */
+export function formatDate(value: string | number | Date): string {
+  const ms = typeof value === "number" ? value : new Date(value).getTime()
+  return formatTsFull(ms)
+}
