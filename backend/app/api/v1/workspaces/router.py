@@ -10,12 +10,21 @@ from app.schemas.workspace_schema import (
     WorkspaceSchema,
     WorkspaceUpdateSchema,
 )
+from app.services.workspace_links_service import (
+    WorkspaceEntityNotFoundError,
+    WorkspaceLinkNotFoundError,
+    WorkspaceLinksService,
+)
 
 router = APIRouter(prefix="/api/v1/workspaces", tags=["Workspaces"])
 
 
 def get_repository(db: AsyncSession = Depends(get_db)) -> WorkspaceRepository:
     return WorkspaceRepository(db)
+
+
+def get_links_service(db: AsyncSession = Depends(get_db)) -> WorkspaceLinksService:
+    return WorkspaceLinksService(db)
 
 
 @router.get("", response_model=list[WorkspaceSchema])
@@ -68,3 +77,59 @@ async def delete_workspace(
     if not deleted:
         raise HTTPException(status_code=404, detail="Workspace not found")
     return {"detail": "Workspace deleted"}
+
+
+@router.post("/{workspace_id}/switchgears/{switchgear_id}")
+async def attach_switchgear(
+    workspace_id: int,
+    switchgear_id: int,
+    service: WorkspaceLinksService = Depends(get_links_service),
+):
+    try:
+        await service.attach_switchgear(workspace_id, switchgear_id)
+    except WorkspaceEntityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"detail": "Switchgear attached"}
+
+
+@router.delete("/{workspace_id}/switchgears/{switchgear_id}")
+async def detach_switchgear(
+    workspace_id: int,
+    switchgear_id: int,
+    service: WorkspaceLinksService = Depends(get_links_service),
+):
+    try:
+        await service.detach_switchgear(workspace_id, switchgear_id)
+    except WorkspaceLinkNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except WorkspaceEntityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"detail": "Switchgear detached"}
+
+
+@router.post("/{workspace_id}/sequences/{sequence_id}")
+async def attach_sequence(
+    workspace_id: int,
+    sequence_id: int,
+    service: WorkspaceLinksService = Depends(get_links_service),
+):
+    try:
+        await service.attach_sequence(workspace_id, sequence_id)
+    except WorkspaceEntityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"detail": "Sequence attached"}
+
+
+@router.delete("/{workspace_id}/sequences/{sequence_id}")
+async def detach_sequence(
+    workspace_id: int,
+    sequence_id: int,
+    service: WorkspaceLinksService = Depends(get_links_service),
+):
+    try:
+        await service.detach_sequence(workspace_id, sequence_id)
+    except WorkspaceLinkNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except WorkspaceEntityNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"detail": "Sequence detached"}

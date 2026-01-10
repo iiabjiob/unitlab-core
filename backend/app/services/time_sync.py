@@ -7,7 +7,7 @@ logger = get_logger("TimeSync")
 def get_chrony_status() -> tuple[str, str, int | None]:
     """
     Возвращает (status, source, offset_us).
-    status: "synced" | "unsynced" | "error"
+    status принимает одно из значений "synced", "unsynced" или "error".
     source: адрес сервера или "local"/ошибка
     offset_us: смещение в микросекундах (int) или None
     """
