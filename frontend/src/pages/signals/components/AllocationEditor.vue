@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-full flex-col gap-4 p-4">
+  <div class="flex h-full min-h-0 min-w-0 flex-col gap-4 p-4">
     <div
       v-if="!selectedSnapshotId"
       class="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/80 p-8 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400"
@@ -9,8 +9,14 @@
 
     <div
       v-else
-      class="flex flex-1 min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-neutral-900"
+      class="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-neutral-900"
     >
+      <SignalEditorHeader
+        v-if="selectedSnapshot"
+        :snapshot="selectedSnapshot"
+        @lock="handleLock"
+        @delete="requestDelete"
+      />
       <div class="border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
         <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -42,19 +48,24 @@
           </span>
         </div>
       </div>
-      <div class="flex-1 min-h-0">
+      <div class="flex flex-1 min-h-0 min-w-0 overflow-hidden">
         <div
           v-if="snapshotRows.length === 0"
           class="flex h-full items-center justify-center rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900"
         >
           No data detected for the selected sheet.
         </div>
-        <div v-else class="h-full min-h-0">
+        <div v-else class="flex-1 min-h-0 min-w-0 overflow-hidden">
           <UiTableLight
-            class="h-full"
+            class="flex-1 min-h-0 min-w-0"
             :columns="snapshotColumns"
             :rows="snapshotRows"
             :row-key="rowKeyForSnapshot"
+            :enable-sorting="true"
+            :enable-filtering="true"
+            :enable-column-resize="true"
+            :default-sort-key="SNAPSHOT_ROW_INDEX_COLUMN_KEY"
+            max-height="100%"
           >
             <template #cell="{ column, value, rowIndex }">
               <template v-if="column.key === SNAPSHOT_ROW_INDEX_COLUMN_KEY">
@@ -71,21 +82,36 @@
         </div>
       </div>
     </div>
+
+    <ConfirmModal
+      v-if="selectedSnapshot"
+      :open="deleteModalOpen"
+      title="Delete snapshot"
+      :message="deleteMessage"
+      confirm-label="Delete"
+      cancel-label="Cancel"
+      @confirm="confirmDelete"
+      @cancel="cancelDelete"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
+import { useRouter } from "vue-router"
 
+import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import UiTableLight from "@/components/ui/UiTableLight.vue"
 import { useSignalSnapshotStore } from "@/stores/signalSnapshotStore"
 import { useToastStore } from "@/stores/toastStore"
 import type { AllocationMappingItem, AllocationMappingMeta, SignalSnapshot, SnapshotSheet } from "@/types/signal"
+import SignalEditorHeader from "./SignalEditorHeader.vue"
 
 const props = defineProps<{ snapshotId: number | null }>()
 
 const snapshotStore = useSignalSnapshotStore()
 const toastStore = useToastStore()
+const router = useRouter()
 
 const selectedSnapshotId = ref<number | null>(props.snapshotId ?? null)
 type SnapshotRow = Record<string, unknown>
@@ -104,12 +130,37 @@ const snapshotColumns = computed(() => {
   const headers = currentSheet.value?.headers ?? []
   const uniqueHeaders = headers.filter((header, index) => header && headers.indexOf(header) === index)
   return [
-    { key: SNAPSHOT_ROW_INDEX_COLUMN_KEY, label: "#" },
-    ...uniqueHeaders.map(header => ({ key: header, label: header })),
+    {
+      key: SNAPSHOT_ROW_INDEX_COLUMN_KEY,
+      label: "#",
+      width: 64,
+      sortable: true,
+      filterable: false,
+      resizable: false,
+    },
+    ...uniqueHeaders.map(header => ({
+      key: header,
+      label: header,
+      sortable: true,
+      filterable: true,
+      resizable: true,
+    })),
   ]
 })
 
 const snapshots = computed(() => snapshotStore.snapshots)
+const selectedSnapshot = computed(() => {
+  if (!selectedSnapshotId.value) return null
+  return snapshots.value.find(s => s.id === selectedSnapshotId.value)
+    ?? snapshotStore.snapshotDetails[selectedSnapshotId.value]
+    ?? null
+})
+const deleteModalOpen = ref(false)
+const deleteMessage = computed(() => {
+  if (!selectedSnapshot.value) return ""
+  const name = selectedSnapshot.value.source_filename ?? `Snapshot #${selectedSnapshot.value.id}`
+  return `Snapshot "${name}" will be deleted.`
+})
 
 watch(
   () => props.snapshotId,
@@ -132,6 +183,36 @@ watch(
   },
   { immediate: true },
 )
+
+function requestDelete() {
+  deleteModalOpen.value = true
+}
+
+function cancelDelete() {
+  deleteModalOpen.value = false
+}
+
+async function confirmDelete() {
+  if (!selectedSnapshot.value) return
+  try {
+    await snapshotStore.deleteSnapshot(selectedSnapshot.value.id)
+    deleteModalOpen.value = false
+    await router.push({ name: "signals.home" })
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+  }
+}
+
+async function handleLock() {
+  if (!selectedSnapshot.value) return
+  if (selectedSnapshot.value.status === "locked") return
+  try {
+    await snapshotStore.lockSnapshot(selectedSnapshot.value.id)
+    toastStore.success("Snapshot locked")
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+  }
+}
 
 async function initialize(snapshotId: number) {
   try {

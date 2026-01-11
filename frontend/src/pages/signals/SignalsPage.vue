@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-full flex-col md:flex-row">
+  <div class="flex h-full min-h-0 min-w-0 flex-col md:flex-row">
     <div class="border-b border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900 md:hidden">
       <button
         class="flex w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-semibold text-neutral-700 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
@@ -34,10 +34,12 @@
       </aside>
     </ResizablePanel>
 
-    <section class="flex-1 overflow-y-auto bg-neutral-50 p-3 md:p-4 dark:bg-neutral-950">
-      <div class="flex h-full flex-col">
-        <div class="flex-1 rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <RouterView />
+    <section class="flex-1 min-h-0 min-w-0 overflow-y-auto bg-neutral-50 p-3 md:p-4 dark:bg-neutral-950">
+      <div class="flex h-full min-h-0 min-w-0 flex-col">
+        <div class="flex flex-1 min-h-0 min-w-0 rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <RouterView v-slot="{ Component }">
+            <component v-if="Component" :is="Component" class="flex h-full min-h-0 min-w-0 flex-1" />
+          </RouterView>
         </div>
       </div>
     </section>
