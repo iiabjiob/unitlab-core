@@ -1,0 +1,821 @@
+<template>
+  <UiModal :open="open" title="Import Signal List" maxWidthClass="max-w-3xl" @close="emitClose">
+    <form class="space-y-4" @submit.prevent="handleSubmit">
+      <UiAlert
+        type="info"
+        message="Upload an Excel signal list (.xls, .xlsx, .xlsm). Include headers and any metadata columns required by your workspace schema."
+      />
+
+      <div
+        class="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-300"
+      >
+        <div class="flex flex-wrap items-center gap-2">
+          <template v-for="(item, index) in stepItems" :key="item.id">
+            <div class="flex items-center gap-2">
+              <span :class="stepIndicatorClass(item.id)">{{ index + 1 }}. {{ item.label }}</span>
+              <span v-if="index < stepItems.length - 1" class="text-neutral-400">→</span>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div v-if="step === 'upload'">
+        <label class="mb-1 block text-sm font-semibold text-neutral-700 dark:text-neutral-200">Signal list file</label>
+        <div
+          class="group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-neutral-300 bg-white px-6 py-10 text-center text-sm text-neutral-600 transition hover:border-primary-500 hover:bg-primary-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+          :class="{
+            'border-primary-500 bg-primary-50 text-primary-700 shadow-xl dark:border-primary-400 dark:bg-primary-500/20 dark:text-primary-200': dropActive,
+            'pointer-events-none opacity-60': parsing || loading,
+          }"
+          tabindex="0"
+          role="button"
+          aria-label="Upload signal list file"
+          :aria-disabled="parsing || loading"
+          @click="triggerFileDialog"
+          @keydown.enter.prevent="triggerFileDialog"
+          @keydown.space.prevent="triggerFileDialog"
+          @dragenter.prevent="onDragEnter"
+          @dragover.prevent="onDragOver"
+          @dragleave.prevent="onDragLeave"
+          @drop.prevent="onDrop"
+        >
+          <div class="flex flex-col items-center gap-2">
+            <p class="text-base font-semibold text-neutral-800 dark:text-neutral-50">Drag & drop your spreadsheet</p>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">
+              or <span class="text-primary-600 dark:text-primary-300 underline-offset-2 group-hover:underline">browse files</span>
+            </p>
+          </div>
+          <p class="mt-4 text-xs text-neutral-500 dark:text-neutral-400">Supported: .xls, .xlsx, .xlsm</p>
+          <p class="mt-1 text-xs text-neutral-500" v-if="fileName">
+            Selected: <span class="font-medium">{{ fileName }}</span>
+          </p>
+          <p v-if="parsing" class="mt-2 text-xs text-neutral-500">Analyzing workbook…</p>
+        </div>
+        <input
+          ref="fileInput"
+          type="file"
+          accept=".xls,.xlsx,.xlsm"
+          class="sr-only"
+          :disabled="parsing || loading"
+          @change="onFileChange"
+        />
+      </div>
+
+      <template v-else>
+        <div class="rounded-lg border border-neutral-200 bg-white p-3 text-sm dark:border-neutral-700 dark:bg-neutral-900">
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p class="font-semibold text-neutral-800 dark:text-neutral-100">File ready</p>
+              <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ fileName }}</p>
+            </div>
+            <UiButton type="button" variant="ghost" size="sm" @click="replaceFile" :disabled="loading || parsing">
+              Choose different file
+            </UiButton>
+          </div>
+        </div>
+
+        <div v-if="step === 'columns'" class="space-y-4">
+          <div>
+            <label class="mb-1 block text-sm font-semibold text-neutral-700 dark:text-neutral-200">Worksheet</label>
+            <select
+              v-model="selectedSheetName"
+              class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+            >
+              <option v-for="sheet in sheetNames" :key="sheet" :value="sheet">
+                {{ sheet }}
+              </option>
+            </select>
+          </div>
+
+          <div v-if="availableColumns.length">
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">Columns</p>
+                <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                  {{ selectedColumnCount }} of {{ availableColumns.length }} selected
+                </p>
+              </div>
+              <div class="flex gap-2">
+                <UiButton type="button" variant="ghost" size="xs" @click="selectAllColumns" :disabled="loading">
+                  Select all
+                </UiButton>
+                <UiButton type="button" variant="ghost" size="xs" @click="clearAllColumns" :disabled="loading">
+                  Clear
+                </UiButton>
+              </div>
+            </div>
+            <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <label
+                v-for="column in availableColumns"
+                :key="column.index"
+                class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+              >
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+                  :checked="isColumnSelected(column.index)"
+                  @change="toggleColumn(column.index)"
+                />
+                <span class="text-neutral-800 dark:text-neutral-100">{{ column.header }}</span>
+              </label>
+            </div>
+          </div>
+          <p v-else class="text-sm text-neutral-500 dark:text-neutral-400">
+            Selected worksheet has no readable header row. Choose another sheet or upload a different file.
+          </p>
+        </div>
+
+        <div v-else-if="step === 'hmi'" class="space-y-4">
+          <div>
+            <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">HMI text representation</p>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">
+              Pick the column that best describes the signal name shown to operators. We will log this label for diagnostics.
+            </p>
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-200">Column</label>
+            <select
+              v-model.number="hmiColumnIndex"
+              class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+            >
+              <option v-for="column in selectedColumnOptions" :key="column.index" :value="column.index">
+                {{ column.header }}
+              </option>
+            </select>
+          </div>
+          <div class="rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-sm dark:border-neutral-700 dark:bg-neutral-900/40">
+            <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Sample values</p>
+            <ul class="mt-2 space-y-1 text-neutral-800 dark:text-neutral-100">
+              <li v-for="(sample, index) in hmiSamples" :key="index">{{ sample }}</li>
+              <li v-if="!hmiSamples.length" class="text-xs text-neutral-500 dark:text-neutral-400">No data rows detected yet.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div v-else-if="step === 'types'" class="space-y-4">
+          <div>
+            <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">Type mapping</p>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">
+              Choose the sheet column with vendor-specific types and map them to internal categories. Rows without a mapping will be skipped.
+            </p>
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-200">Type column</label>
+            <select
+              v-model.number="typeColumnIndex"
+              class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+            >
+              <option v-for="column in selectedColumnOptions" :key="column.index" :value="column.index">
+                {{ column.header }}
+              </option>
+            </select>
+          </div>
+          <div v-if="typeValueOptions.length" class="space-y-2">
+            <div
+              v-for="option in typeValueOptions"
+              :key="option.key"
+              class="flex flex-col gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div>
+                <p class="font-medium text-neutral-800 dark:text-neutral-100">{{ option.label }}</p>
+                <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ option.count }} rows</p>
+              </div>
+              <select
+                class="w-full rounded-lg border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 sm:w-52"
+                :value="typeMapping[option.key] ?? ''"
+                @change="event => onTypeMappingChange(option.key, event)"
+              >
+                <option value="">Skip</option>
+                <option v-for="internal in internalTypeOptions" :key="internal.value" :value="internal.value">
+                  {{ internal.label }}
+                </option>
+              </select>
+            </div>
+          </div>
+          <p v-else class="text-sm text-neutral-500 dark:text-neutral-400">
+            Selected column has no recognizable values. Choose a different column.
+          </p>
+          <UiAlert
+            type="warning"
+            message="Rows with types left as 'Skip' will not be imported."
+          />
+        </div>
+      </template>
+
+      <p v-if="error" class="text-sm text-red-500">{{ error }}</p>
+
+      <div class="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
+        <UiButton type="button" variant="secondary" @click="emitClose" :disabled="loading || parsing">
+          Cancel
+        </UiButton>
+        <div class="flex gap-2">
+          <UiButton
+            v-if="canGoBack"
+            type="button"
+            variant="ghost"
+            @click="goToPreviousStep"
+            :disabled="loading || parsing"
+          >
+            Back
+          </UiButton>
+          <UiButton
+            v-if="!isFinalStep"
+            type="button"
+            variant="primary"
+            :disabled="!canAdvance || loading"
+            @click="goToNextStep"
+          >
+            Next
+          </UiButton>
+          <UiButton
+            v-else
+            type="submit"
+            variant="primary"
+            :disabled="!canSubmitFinal || loading"
+          >
+            <template v-if="loading">
+              Importing…
+            </template>
+            <template v-else>
+              Import
+            </template>
+          </UiButton>
+        </div>
+      </div>
+    </form>
+  </UiModal>
+</template>
+
+<script setup lang="ts">
+import { computed, nextTick, ref, watch } from "vue"
+import * as XLSX from "xlsx"
+
+import UiAlert from "@/components/ui/UiAlert.vue"
+import UiButton from "@/components/ui/UiButton.vue"
+import UiModal from "@/components/ui/UiModal.vue"
+import { useSignalSnapshotStore } from "@/stores/signalSnapshotStore"
+import type { InternalSignalType, SignalImportMeta } from "@/types/signal"
+
+defineProps<{ open: boolean }>()
+
+const emit = defineEmits<{ (e: "close"): void; (e: "imported", snapshotId: number): void }>()
+
+const snapshotStore = useSignalSnapshotStore()
+const ALLOWED_EXTENSIONS = ["xls", "xlsx", "xlsm"]
+const INTERNAL_TYPE_COLUMN_KEY = "internal_type"
+
+const STEP_ITEMS = [
+  { id: "upload", label: "Upload file" },
+  { id: "columns", label: "Columns" },
+  { id: "hmi", label: "HMI text" },
+  { id: "types", label: "Type mapping" },
+] as const
+type WizardStep = (typeof STEP_ITEMS)[number]["id"]
+const stepOrder: WizardStep[] = STEP_ITEMS.map(item => item.id)
+const stepItems = STEP_ITEMS
+
+const step = ref<WizardStep>("upload")
+const file = ref<File | null>(null)
+const fileName = ref("")
+const loading = ref(false)
+const error = ref<string | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null)
+const parsing = ref(false)
+const workbook = ref<XLSX.WorkBook | null>(null)
+const dropActive = ref(false)
+const dragCounter = ref(0)
+
+type SheetColumn = {
+  header: string
+  index: number
+}
+
+const sheetColumns = ref<Record<string, SheetColumn[]>>({})
+const sheetRows = ref<Record<string, unknown[][]>>({})
+const selectedSheetName = ref<string | null>(null)
+const selectedColumnsBySheet = ref<Record<string, number[]>>({})
+const hmiColumnIndex = ref<number | null>(null)
+const typeColumnIndex = ref<number | null>(null)
+const typeMapping = ref<Record<string, InternalSignalType>>({})
+
+const internalTypeOptions: Array<{ value: InternalSignalType; label: string }> = [
+  { value: "di", label: "Digital input (DI)" },
+  { value: "do", label: "Digital output (DO)" },
+  { value: "ao", label: "Analog output (AO)" },
+  { value: "ai", label: "Analog input (AI)" },
+]
+
+const sheetNames = computed(() => workbook.value?.SheetNames ?? [])
+const availableColumns = computed(() => (selectedSheetName.value ? sheetColumns.value[selectedSheetName.value] ?? [] : []))
+const selectedColumnIndexes = computed(() =>
+  selectedSheetName.value ? selectedColumnsBySheet.value[selectedSheetName.value] ?? [] : []
+)
+const selectedColumnSet = computed(() => new Set(selectedColumnIndexes.value))
+const selectedColumnCount = computed(() => selectedColumnIndexes.value.length)
+const selectedColumnOptions = computed(() =>
+  selectedSheetName.value
+    ? (sheetColumns.value[selectedSheetName.value] ?? []).filter(column => selectedColumnSet.value.has(column.index))
+    : []
+)
+const hmiSamples = computed(() => sampleColumnValues(hmiColumnIndex.value, 5))
+const typeValueOptions = computed(() => buildTypeValueOptions())
+const hasTypeMappings = computed(() => Object.keys(typeMapping.value).length > 0)
+const activeStepIndex = computed(() => stepOrder.indexOf(step.value))
+const isFinalStep = computed(() => step.value === "types")
+const canGoBack = computed(() => step.value === "hmi" || step.value === "types")
+const columnsStepValid = computed(
+  () => !!selectedSheetName.value && availableColumns.value.length > 0 && selectedColumnCount.value > 0,
+)
+const hmiStepValid = computed(() => columnsStepValid.value && hmiColumnIndex.value !== null)
+const typeStepValid = computed(
+  () => hmiStepValid.value && typeColumnIndex.value !== null && typeValueOptions.value.length > 0 && hasTypeMappings.value,
+)
+const canAdvance = computed(() => {
+  if (step.value === "columns") return columnsStepValid.value
+  if (step.value === "hmi") return hmiStepValid.value
+  return false
+})
+const canSubmitFinal = computed(() => step.value === "types" && typeStepValid.value)
+
+function stepIndicatorClass(target: WizardStep) {
+  const targetIndex = stepOrder.indexOf(target)
+  const currentIndex = activeStepIndex.value
+  if (targetIndex === currentIndex) return "text-primary-600 dark:text-primary-400"
+  if (targetIndex < currentIndex) return "text-neutral-500 dark:text-neutral-300"
+  return "text-neutral-400 dark:text-neutral-500"
+}
+
+function goToNextStep() {
+  if (loading.value || parsing.value) return
+  if (!canAdvance.value) return
+  const currentIndex = activeStepIndex.value
+  if (currentIndex === -1 || currentIndex >= stepOrder.length - 1) return
+  step.value = stepOrder[currentIndex + 1]
+}
+
+function goToPreviousStep() {
+  if (loading.value || parsing.value) return
+  const currentIndex = activeStepIndex.value
+  if (currentIndex <= 1) return
+  step.value = stepOrder[currentIndex - 1]
+}
+
+function emitClose() {
+  if (loading.value || parsing.value) return
+  resetWorkflowState()
+  emit("close")
+}
+
+async function onFileChange(e: Event) {
+  const target = e.target as HTMLInputElement
+  const selected = target.files?.[0] ?? null
+  await handleSelectedFile(selected)
+}
+
+function resetWorkflowState(options: { preserveError?: boolean } = {}) {
+  clearWorkbookState()
+  file.value = null
+  fileName.value = ""
+  hmiColumnIndex.value = null
+  typeColumnIndex.value = null
+  typeMapping.value = {}
+  if (!options.preserveError) {
+    error.value = null
+  }
+  if (fileInput.value) {
+    fileInput.value.value = ""
+  }
+  dropActive.value = false
+  dragCounter.value = 0
+}
+
+function clearWorkbookState() {
+  workbook.value = null
+  sheetColumns.value = {}
+  sheetRows.value = {}
+  selectedSheetName.value = null
+  selectedColumnsBySheet.value = {}
+  step.value = "upload"
+}
+
+async function handleSubmit() {
+  if (!canSubmitFinal.value || loading.value || parsing.value || step.value !== "types") return
+  loading.value = true
+  error.value = null
+  try {
+    const payload = await buildPreparedImportPayload()
+    const snapshot = await snapshotStore.importSnapshot(payload.file, payload.metadata)
+    emit("imported", snapshot.id)
+    resetWorkflowState()
+    emit("close")
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleSelectedFile(selected: File | null) {
+  if (!selected) {
+    resetWorkflowState()
+    return
+  }
+
+  const ext = selected.name.split(".").pop()?.toLowerCase()
+  if (!ext || !ALLOWED_EXTENSIONS.includes(ext)) {
+    error.value = "Unsupported file type. Please upload .xls, .xlsx, or .xlsm."
+    resetWorkflowState({ preserveError: true })
+    if (fileInput.value) fileInput.value.value = ""
+    return
+  }
+
+  try {
+    await parseWorkbook(selected)
+    file.value = selected
+    fileName.value = selected.name
+    error.value = null
+  } catch {
+    if (fileInput.value) fileInput.value.value = ""
+  }
+}
+
+function isColumnSelected(index: number) {
+  return selectedColumnSet.value.has(index)
+}
+
+function toggleColumn(index: number) {
+  if (!selectedSheetName.value) return
+  const next = new Set(selectedColumnIndexes.value)
+  if (next.has(index)) {
+    next.delete(index)
+  } else {
+    next.add(index)
+  }
+  selectedColumnsBySheet.value[selectedSheetName.value] = Array.from(next).sort((a, b) => a - b)
+}
+
+function selectAllColumns() {
+  if (!selectedSheetName.value) return
+  const columns = sheetColumns.value[selectedSheetName.value] ?? []
+  selectedColumnsBySheet.value[selectedSheetName.value] = columns.map(column => column.index)
+}
+
+function clearAllColumns() {
+  if (!selectedSheetName.value) return
+  selectedColumnsBySheet.value[selectedSheetName.value] = []
+}
+
+async function replaceFile() {
+  if (loading.value || parsing.value) return
+  resetWorkflowState()
+  await nextTick()
+  fileInput.value?.click()
+}
+
+function triggerFileDialog() {
+  if (loading.value || parsing.value) return
+  fileInput.value?.click()
+}
+
+function onDragEnter(event: DragEvent) {
+  if (loading.value || parsing.value) return
+  event.preventDefault()
+  dragCounter.value += 1
+  dropActive.value = true
+}
+
+function onDragOver(event: DragEvent) {
+  if (loading.value || parsing.value) return
+  event.preventDefault()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = "copy"
+  }
+}
+
+function onDragLeave(event: DragEvent) {
+  if (loading.value || parsing.value) return
+  event.preventDefault()
+  dragCounter.value = Math.max(0, dragCounter.value - 1)
+  if (dragCounter.value === 0) {
+    dropActive.value = false
+  }
+}
+
+async function onDrop(event: DragEvent) {
+  if (loading.value || parsing.value) return
+  event.preventDefault()
+  dropActive.value = false
+  dragCounter.value = 0
+  const dropped = event.dataTransfer?.files?.[0]
+  await handleSelectedFile(dropped ?? null)
+}
+
+async function parseWorkbook(selected: File) {
+  parsing.value = true
+  try {
+    const buffer = await selected.arrayBuffer()
+    const parsedWorkbook = XLSX.read(buffer, { type: "array" })
+    if (!parsedWorkbook.SheetNames.length) {
+      throw new Error("Workbook does not contain any worksheets.")
+    }
+
+    const columnsBySheet: Record<string, SheetColumn[]> = {}
+    const rowsBySheet: Record<string, unknown[][]> = {}
+    parsedWorkbook.SheetNames.forEach(sheetName => {
+      const sheet = parsedWorkbook.Sheets[sheetName]
+      if (!sheet) {
+        columnsBySheet[sheetName] = []
+        rowsBySheet[sheetName] = []
+        return
+      }
+      const matrix = XLSX.utils.sheet_to_json(sheet, {
+        header: 1,
+        raw: false,
+        blankrows: false,
+        defval: null,
+      }) as unknown[][]
+      rowsBySheet[sheetName] = matrix
+      const headerRow = Array.isArray(matrix[0]) ? matrix[0] : []
+      const columns: SheetColumn[] = []
+      headerRow.forEach((value, idx) => {
+        const normalized = normalizeHeaderValue(value)
+        if (normalized) {
+          columns.push({ header: normalized, index: idx })
+        }
+      })
+      columnsBySheet[sheetName] = columns
+    })
+
+    if (!Object.values(columnsBySheet).some(columns => columns.length)) {
+      throw new Error("Unable to find any column headers. Make sure the first row contains column names.")
+    }
+
+    workbook.value = parsedWorkbook
+    sheetColumns.value = columnsBySheet
+    sheetRows.value = rowsBySheet
+    selectedColumnsBySheet.value = Object.fromEntries(
+      Object.entries(columnsBySheet).map(([sheetName, columns]) => [sheetName, columns.map(column => column.index)])
+    )
+    const defaultSheet = findFirstSheetWithColumns(columnsBySheet, parsedWorkbook.SheetNames)
+    selectedSheetName.value = defaultSheet ?? parsedWorkbook.SheetNames[0] ?? null
+    step.value = "columns"
+  } catch (err) {
+    const message =
+      err instanceof Error
+        ? err.message
+        : "Unable to parse the uploaded workbook. Please verify the file contents and try again."
+    error.value = message
+    resetWorkflowState({ preserveError: true })
+    throw err
+  } finally {
+    parsing.value = false
+  }
+}
+
+function findFirstSheetWithColumns(columnsBySheet: Record<string, SheetColumn[]>, sheetNameList: string[]): string | null {
+  for (const name of sheetNameList) {
+    if ((columnsBySheet[name] ?? []).length) {
+      return name
+    }
+  }
+  return null
+}
+
+function normalizeHeaderValue(value: unknown): string {
+  if (value === null || value === undefined) return ""
+  if (typeof value === "string") return value.trim()
+  if (value instanceof Date) return value.toISOString()
+  return String(value).trim()
+}
+
+function stripExtension(name: string) {
+  const lastDot = name.lastIndexOf(".")
+  return lastDot === -1 ? name : name.slice(0, lastDot)
+}
+
+function sanitizeSheetName(name: string) {
+  const cleaned = name.replace(/[:\\/?*\[\]]/g, "").trim() || "Sheet1"
+  return cleaned.slice(0, 31)
+}
+
+function sampleColumnValues(columnIndex: number | null, limit = 5): string[] {
+  if (!selectedSheetName.value || columnIndex === null) return []
+  const rows = sheetRows.value[selectedSheetName.value] ?? []
+  const samples: string[] = []
+  for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
+    const row = Array.isArray(rows[rowIndex]) ? rows[rowIndex] : []
+    const formatted = formatCellValue(row[columnIndex])
+    if (!formatted) continue
+    samples.push(formatted)
+    if (samples.length >= limit) break
+  }
+  return samples
+}
+
+function formatCellValue(value: unknown): string {
+  if (value === null || value === undefined) return ""
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    return trimmed || "(blank)"
+  }
+  if (value instanceof Date) return value.toISOString()
+  const stringValue = String(value).trim()
+  return stringValue || "(blank)"
+}
+
+function normalizeTypeKey(value: unknown): string {
+  if (value === null || value === undefined) return ""
+  if (value instanceof Date) return value.toISOString().trim().toLowerCase()
+  const asString = typeof value === "string" ? value : String(value)
+  return asString.trim().toLowerCase()
+}
+
+function formatTypeLabel(value: unknown): string {
+  if (value === null || value === undefined) return "(blank)"
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    return trimmed || "(blank)"
+  }
+  if (value instanceof Date) return value.toISOString()
+  const stringValue = String(value).trim()
+  return stringValue || "(blank)"
+}
+
+function buildTypeValueOptions() {
+  if (!selectedSheetName.value || typeColumnIndex.value === null) return []
+  const rows = sheetRows.value[selectedSheetName.value] ?? []
+  const map = new Map<string, { label: string; count: number }>()
+  for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
+    const row = Array.isArray(rows[rowIndex]) ? rows[rowIndex] : []
+    const normalized = normalizeTypeKey(row[typeColumnIndex.value])
+    if (!normalized) continue
+    const label = formatTypeLabel(row[typeColumnIndex.value])
+    if (map.has(normalized)) {
+      map.get(normalized)!.count += 1
+    } else {
+      map.set(normalized, { label, count: 1 })
+    }
+  }
+  return Array.from(map.entries()).map(([key, value]) => ({ key, ...value }))
+}
+
+function ensureValidColumnSelections() {
+  const columns = selectedColumnOptions.value
+  if (!columns.length) {
+    hmiColumnIndex.value = null
+    typeColumnIndex.value = null
+    return
+  }
+  if (!columns.some(column => column.index === hmiColumnIndex.value)) {
+    hmiColumnIndex.value = columns[0].index
+  }
+  if (!columns.some(column => column.index === typeColumnIndex.value)) {
+    typeColumnIndex.value = guessTypeColumnIndex(columns)
+  }
+}
+
+function guessTypeColumnIndex(columns: SheetColumn[]): number | null {
+  const heuristics = [/type/i, /тип/i, /category/i]
+  for (const pattern of heuristics) {
+    const match = columns.find(column => pattern.test(column.header))
+    if (match) return match.index
+  }
+  return columns[0]?.index ?? null
+}
+
+function onTypeMappingChange(key: string, event: Event) {
+  const select = event.target as HTMLSelectElement
+  const value = (select.value || "") as InternalSignalType | ""
+  const next = { ...typeMapping.value }
+  if (!value) {
+    delete next[key]
+  } else {
+    next[key] = value
+  }
+  typeMapping.value = next
+}
+
+async function buildPreparedImportPayload(): Promise<{ file: File; metadata: SignalImportMeta }> {
+  if (!selectedSheetName.value) {
+    throw new Error("Select a worksheet before importing.")
+  }
+  const rows = sheetRows.value[selectedSheetName.value]
+  if (!rows?.length) {
+    throw new Error("Selected worksheet contains no data rows.")
+  }
+  const selectedIndexes = selectedColumnIndexes.value
+  if (!selectedIndexes.length) {
+    throw new Error("Select at least one column to continue.")
+  }
+  const selectionSet = new Set(selectedIndexes)
+  const orderedColumns = (sheetColumns.value[selectedSheetName.value] ?? []).filter(column =>
+    selectionSet.has(column.index)
+  )
+  if (!orderedColumns.length) {
+    throw new Error("Select at least one column to continue.")
+  }
+  const hmiColumn = orderedColumns.find(column => column.index === hmiColumnIndex.value)
+  if (!hmiColumn) {
+    throw new Error("Choose an HMI text column before importing.")
+  }
+  if (typeColumnIndex.value === null) {
+    throw new Error("Choose a type column before importing.")
+  }
+  const typeColumn = orderedColumns.find(column => column.index === typeColumnIndex.value)
+  if (!typeColumn) {
+    throw new Error("Type column must be part of the selection.")
+  }
+  const mappingEntries = Object.entries(typeMapping.value)
+  if (!mappingEntries.length) {
+    throw new Error("Map at least one vendor type to an internal type.")
+  }
+  const normalizedMapping = Object.fromEntries(mappingEntries)
+  const currentTypeOptions = typeValueOptions.value
+  const displayMapping: Record<string, InternalSignalType> = {}
+  mappingEntries.forEach(([key, value]) => {
+    const label = currentTypeOptions.find(option => option.key === key)?.label ?? key
+    displayMapping[label] = value
+  })
+  const filteredRows: unknown[][] = [
+    orderedColumns.map(column => column.header).concat(INTERNAL_TYPE_COLUMN_KEY),
+  ]
+  for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
+    const row = Array.isArray(rows[rowIndex]) ? rows[rowIndex] : []
+    const normalized = normalizeTypeKey(row[typeColumnIndex.value])
+    if (!normalized) continue
+    const mappedType = normalizedMapping[normalized]
+    if (!mappedType) continue
+    const filteredRow = orderedColumns.map(column => row[column.index] ?? null)
+    filteredRow.push(mappedType)
+    filteredRows.push(filteredRow)
+  }
+  if (filteredRows.length === 1) {
+    throw new Error("No rows match the selected type mapping.")
+  }
+
+  const trimmedWorkbook = XLSX.utils.book_new()
+  const sanitizedName = sanitizeSheetName(selectedSheetName.value)
+  const newSheet = XLSX.utils.aoa_to_sheet(filteredRows)
+  XLSX.utils.book_append_sheet(trimmedWorkbook, newSheet, sanitizedName)
+  const buffer = XLSX.write(trimmedWorkbook, { bookType: "xlsx", type: "array" })
+  const suggestedName = `${stripExtension(fileName.value) || "signal-list"}-prepared.xlsx`
+  const preparedFile = new File([buffer], suggestedName, {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  })
+
+  const metadata: SignalImportMeta = {
+    sheet_name: sanitizedName,
+    source_sheet_name: selectedSheetName.value,
+    hmi_representation: hmiColumn.header,
+    type_column: typeColumn.header,
+    type_mapping: displayMapping,
+    internal_type_column: INTERNAL_TYPE_COLUMN_KEY,
+  }
+
+  return { file: preparedFile, metadata }
+}
+
+watch(
+  () => selectedSheetName.value,
+  sheet => {
+    if (!sheet) return
+    if (!(sheet in selectedColumnsBySheet.value)) {
+      selectedColumnsBySheet.value[sheet] = sheetColumns.value[sheet]?.map(column => column.index) ?? []
+    }
+  },
+)
+
+watch(
+  [() => selectedSheetName.value, () => selectedColumnIndexes.value],
+  () => {
+    ensureValidColumnSelections()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => ({ sheet: selectedSheetName.value, column: typeColumnIndex.value }),
+  (current, previous) => {
+    if (!previous || current.sheet !== previous.sheet || current.column !== previous.column) {
+      typeMapping.value = {}
+    }
+  },
+)
+
+watch(
+  () => typeValueOptions.value,
+  options => {
+    const valid = new Set(options.map(option => option.key))
+    const next: Record<string, InternalSignalType> = {}
+    Object.entries(typeMapping.value).forEach(([key, value]) => {
+      if (valid.has(key)) {
+        next[key] = value
+      }
+    })
+    if (Object.keys(next).length !== Object.keys(typeMapping.value).length) {
+      typeMapping.value = next
+    }
+  },
+  { deep: true },
+)
+</script>

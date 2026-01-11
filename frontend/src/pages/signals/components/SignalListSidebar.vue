@@ -1,8 +1,11 @@
 <template>
   <div class="flex h-full flex-col">
     <div class="mb-4 space-y-2">
-      <UiButton variant="primary" size="sm" full disabled>
+      <UiButton variant="primary" size="sm" full @click="$emit('import')">
         + Import Signal List
+      </UiButton>
+      <UiButton variant="ghost" size="sm" full @click="$emit('open-test-runs')">
+        Test runs history
       </UiButton>
     </div>
 
@@ -68,7 +71,7 @@ const props = defineProps<{
   selectedId: number | null
 }>()
 
-defineEmits<{ (e: "select", id: number): void; (e: "import"): void }>()
+defineEmits<{ (e: "select", id: number): void; (e: "import"): void; (e: "open-test-runs"): void }>()
 
 const query = ref("")
 

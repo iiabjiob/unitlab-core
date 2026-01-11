@@ -3,6 +3,7 @@ import { API_V1 } from "./utils"
 import type {
   Allocation,
   AllocationMappingItem,
+  SignalImportMeta,
   SignalSnapshot,
   SignalSnapshotSummary,
   TestRun,
@@ -14,9 +15,12 @@ export const SignalSnapshotsAPI = {
     return http.get<SignalSnapshotSummary[]>(`${API_V1}/workspaces/${workspaceId}/signal-snapshots`)
   },
 
-  import(workspaceId: number, file: File) {
+  import(workspaceId: number, file: File, metadata?: SignalImportMeta) {
     const formData = new FormData()
     formData.append("file", file)
+    if (metadata) {
+      formData.append("metadata", JSON.stringify(metadata))
+    }
     return http.post<SignalSnapshot>(`${API_V1}/workspaces/${workspaceId}/signal-snapshots/import`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     })

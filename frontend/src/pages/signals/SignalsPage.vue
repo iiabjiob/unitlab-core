@@ -9,7 +9,7 @@
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h12M4 18h8" />
         </svg>
-        Browse signals
+        Browse snapshots
       </button>
     </div>
 
@@ -29,25 +29,16 @@
           :selected-id="selectedSnapshotId"
           @select="selectSnapshot"
           @import="openImport"
+          @open-test-runs="openTestRuns"
         />
       </aside>
     </ResizablePanel>
 
-    <section class="flex-1 overflow-y-auto bg-neutral-50 p-4 dark:bg-neutral-950">
-      <div class="rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <UTabs v-model:activeIndex="activeTab" :tabs="tabs">
-          <template #tab-0>
-            <div class="h-full overflow-hidden">
-              <SnapshotTable @configure="selectSnapshot" @delete="handleDelete" />
-            </div>
-          </template>
-          <template #tab-1>
-            <AllocationEditor :snapshot-id="selectedSnapshotId" />
-          </template>
-          <template #tab-2>
-            <TestRunsTable />
-          </template>
-        </UTabs>
+    <section class="flex-1 overflow-y-auto bg-neutral-50 p-3 md:p-4 dark:bg-neutral-950">
+      <div class="flex h-full flex-col">
+        <div class="flex-1 rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <RouterView />
+        </div>
       </div>
     </section>
 
@@ -66,62 +57,70 @@
           :selected-id="selectedSnapshotId"
           @select="selectSnapshot"
           @import="openImport"
+          @open-test-runs="openTestRuns"
         />
       </div>
     </SlideOver>
+
+    <SignalImportModal :open="importModalOpen" @close="closeImport" @imported="handleImported" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue"
+import { computed, onMounted, ref, watch } from "vue"
+import { useRoute, useRouter } from "vue-router"
 
-import AllocationEditor from "./components/AllocationEditor.vue"
 import SignalListSidebar from "./components/SignalListSidebar.vue"
-import SnapshotTable from "./components/SnapshotTable.vue"
-import TestRunsTable from "./components/TestRunsTable.vue"
+import SignalImportModal from "./components/SignalImportModal.vue"
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import SlideOver from "@/components/ui/SlideOver.vue"
-import UTabs from "@/components/ui/UTabs.vue"
 import { useSignalSnapshotStore } from "@/stores/signalSnapshotStore"
 import { useViewport } from "@/composables/useViewport"
 
 const snapshotStore = useSignalSnapshotStore()
 const { isDesktop } = useViewport()
+const route = useRoute()
+const router = useRouter()
 
-const activeTab = ref(0)
-const selectedSnapshotId = ref<number | null>(null)
 const snapshots = computed(() => snapshotStore.snapshots)
 const sidebarOpen = ref(false)
-const tabs = [
-  { label: "Snapshots" },
-  { label: "Allocation" },
-  { label: "Test Runs" },
-]
+const importModalOpen = ref(false)
+
+const selectedSnapshotId = computed<number | null>(() => {
+  if (route.name !== "signals.detail") return null
+  const raw = Array.isArray(route.params.snapshotId) ? route.params.snapshotId[0] : route.params.snapshotId
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? parsed : null
+})
+
+onMounted(() => {
+  snapshotStore.refreshSnapshots()
+})
 
 watch(isDesktop, (next) => {
   if (next) sidebarOpen.value = false
 })
 
-defineSlots<{
-  "tab-0": () => void
-  "tab-1": () => void
-  "tab-2": () => void
-}>()
+async function selectSnapshot(id: number) {
+  await router.push({ name: "signals.detail", params: { snapshotId: id } })
+  sidebarOpen.value = false
+}
 
-function selectSnapshot(id: number) {
-  selectedSnapshotId.value = id
-  activeTab.value = 1
+function openTestRuns() {
+  router.push({ name: "signals.testRuns" })
   sidebarOpen.value = false
 }
 
 function openImport() {
-  // TODO: open modal
+  importModalOpen.value = true
 }
 
-async function handleDelete(id: number) {
-  await snapshotStore.deleteSnapshot(id)
-  if (selectedSnapshotId.value === id) {
-    selectedSnapshotId.value = null
-  }
+function closeImport() {
+  importModalOpen.value = false
+}
+
+async function handleImported(snapshotId: number) {
+  await selectSnapshot(snapshotId)
+  importModalOpen.value = false
 }
 </script>

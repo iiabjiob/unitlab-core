@@ -13,7 +13,7 @@ from app.schemas.signal_snapshot_schema import (
 )
 from app.services.allocation_service import AllocationService
 from app.services.signal_snapshot_service import (
-    InvalidCSVError,
+    InvalidSnapshotFileError,
     SignalSnapshotNotFoundError,
     SignalSnapshotService,
     SnapshotLockedError,
@@ -42,8 +42,8 @@ async def import_signal_snapshot(
     service = SignalSnapshotService(db)
     content = await file.read()
     try:
-        snapshot = await service.import_csv(workspace_id, content, file.filename)
-    except InvalidCSVError as exc:
+        snapshot = await service.import_workbook(workspace_id, content, file.filename)
+    except InvalidSnapshotFileError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return snapshot
 
@@ -78,6 +78,19 @@ async def delete_signal_snapshot(snapshot_id: int, db: AsyncSession = Depends(ge
     except SnapshotLockedError:
         raise HTTPException(status_code=409, detail="Locked snapshots cannot be deleted")
     return {"detail": "Signal snapshot deleted"}
+
+
+@router.post(
+    "/signal-snapshots/{snapshot_id}/lock",
+    response_model=SignalSnapshotDetailSchema,
+)
+async def lock_signal_snapshot(snapshot_id: int, db: AsyncSession = Depends(get_db)):
+    service = SignalSnapshotService(db)
+    try:
+        snapshot = await service.lock(snapshot_id)
+    except SignalSnapshotNotFoundError:
+        raise HTTPException(status_code=404, detail="Signal snapshot not found")
+    return snapshot
 
 
 @router.get(

@@ -5,6 +5,7 @@ import { SignalSnapshotsAPI, TestRunsAPI } from "@/api/signal_snapshots.api"
 import type {
   Allocation,
   AllocationMappingItem,
+  SignalImportMeta,
   SignalSnapshot,
   SignalSnapshotSummary,
   TestRun,
@@ -36,9 +37,9 @@ export const useSignalSnapshotStore = defineStore("signalSnapshotStore", () => {
     }
   }
 
-  async function importSnapshot(file: File) {
+  async function importSnapshot(file: File, metadata?: SignalImportMeta) {
     const workspaceId = workspaceStore.requireWorkspaceId()
-    const { data } = await SignalSnapshotsAPI.import(workspaceId, file)
+    const { data } = await SignalSnapshotsAPI.import(workspaceId, file, metadata)
     snapshots.value = [data, ...snapshots.value]
     snapshotDetails[data.id] = data
     return data

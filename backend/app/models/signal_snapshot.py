@@ -46,7 +46,12 @@ class SignalSnapshot(Base):
         nullable=False,
     )
     status: Mapped[SignalSnapshotStatus] = mapped_column(
-        SAEnum(SignalSnapshotStatus, name="signal_snapshot_status_enum"),
+        SAEnum(
+            SignalSnapshotStatus,
+            name="signal_snapshot_status_enum",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+            validate_strings=True,
+        ),
         nullable=False,
         server_default=SignalSnapshotStatus.DRAFT.value,
     )
@@ -54,7 +59,7 @@ class SignalSnapshot(Base):
     source_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     rows_count: Mapped[int] = mapped_column(Integer, nullable=False)
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
-    data: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

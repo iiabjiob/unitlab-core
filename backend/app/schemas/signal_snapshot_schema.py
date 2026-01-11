@@ -22,4 +22,4 @@ class SignalSnapshotSummarySchema(BaseModel):
 
 
 class SignalSnapshotDetailSchema(SignalSnapshotSummarySchema):
-    data: list[dict[str, Any]]
+    data: Any
