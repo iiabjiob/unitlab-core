@@ -31,12 +31,20 @@ export const devicesRoutes: RouteRecordRaw[] = [
           const selectionStore = useSelectionStore()
           selectionStore.restore()
           const lastId = selectionStore.lastDeviceId
-          if (!lastId) return true
+          const lastDevice = lastId
+            ? deviceStore.devices.find(device => device.id === lastId)
+            : null
 
-          const exists = deviceStore.devices.some(device => device.id === lastId)
-          if (!exists) return true
+          if (lastDevice?.online) {
+            return { name: "devices.detail", params: { id: lastDevice.id } }
+          }
 
-          return { name: "devices.detail", params: { id: lastId } }
+          const fallback = deviceStore.devices.find(device => device.online)
+          if (fallback) {
+            return { name: "devices.detail", params: { id: fallback.id } }
+          }
+
+          return true
         },
       },
       {
@@ -44,6 +52,33 @@ export const devicesRoutes: RouteRecordRaw[] = [
         name: "devices.detail",
         component: () => import("@/pages/devices/DeviceEditor.vue"),
         props: true,
+        beforeEnter: (to) => {
+          const deviceStore = useDeviceStore()
+          const selectionStore = useSelectionStore()
+          selectionStore.restore()
+
+          const requestedId = Number(to.params.id)
+          const requested = deviceStore.devices.find(device => device.id === requestedId)
+          if (requested?.online) {
+            return true
+          }
+
+          const lastId = selectionStore.lastDeviceId
+          const lastDevice = lastId
+            ? deviceStore.devices.find(device => device.id === lastId && device.online)
+            : null
+
+          if (lastDevice) {
+            return { name: "devices.detail", params: { id: lastDevice.id } }
+          }
+
+          const fallback = deviceStore.devices.find(device => device.online)
+          if (fallback) {
+            return { name: "devices.detail", params: { id: fallback.id } }
+          }
+
+          return { name: "devices.list" }
+        },
       },
     ],
   },

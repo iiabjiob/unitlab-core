@@ -6,10 +6,12 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     Enum as SAEnum,
     ForeignKey,
     Index,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -19,9 +21,17 @@ from app.infrastructure.db.database import Base
 from app.models.types import BIGINT_PK
 
 if TYPE_CHECKING:  # pragma: no cover - import for annotations only
+    from app.models.allocation import Allocation
     from app.models.sequence import Sequence
     from app.models.signal_snapshot import SignalSnapshot
     from app.models.workspace import Workspace
+
+
+class TestRunMode(str, Enum):
+    """Execution mode controls whether a run is channel-only or snapshot-backed."""
+
+    CHANNEL = "channel"
+    SIGNAL = "signal"
 
 
 class TestRunStatus(str, Enum):
@@ -34,9 +44,23 @@ class TestRunStatus(str, Enum):
 
 
 class TestRun(Base):
+    """Execution context tying allocation + sequences to optional signal snapshots.
+
+    Domain rules:
+    * `mode` defines whether a run references a `SignalSnapshot`.
+    * Channel mode forbids linking a snapshot; signal mode requires one for coverage.
+    * Allocations live inside the run (`allocation_snapshot`) so they always belong to it.
+    * Sequences are attached through `TestRunSequenceLink`, keeping sequences decoupled from snapshots.
+    """
+
     __tablename__ = "test_runs"
     __table_args__ = (
         Index("ix_test_runs_workspace_created", "workspace_id", "created_at"),
+        CheckConstraint(
+            "(mode = 'channel' AND signal_snapshot_id IS NULL) OR "
+            "(mode = 'signal' AND signal_snapshot_id IS NOT NULL)",
+            name="ck_test_runs_mode_snapshot",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
@@ -45,17 +69,16 @@ class TestRun(Base):
         ForeignKey("workspaces.id", ondelete="CASCADE"),
         nullable=False,
     )
-    sequence_id: Mapped[int] = mapped_column(
-        BIGINT_PK,
-        ForeignKey("sequences.id", ondelete="RESTRICT"),
+    mode: Mapped[TestRunMode] = mapped_column(
+        SAEnum(TestRunMode, name="test_run_mode_enum"),
         nullable=False,
+        server_default=TestRunMode.CHANNEL.value,
     )
-    signal_snapshot_id: Mapped[int] = mapped_column(
+    signal_snapshot_id: Mapped[int | None] = mapped_column(
         BIGINT_PK,
         ForeignKey("signal_snapshots.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
-    allocation_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
     status: Mapped[TestRunStatus] = mapped_column(
         SAEnum(TestRunStatus, name="test_run_status_enum"),
         nullable=False,
@@ -71,9 +94,55 @@ class TestRun(Base):
     workspace: Mapped["Workspace"] = relationship(
         "Workspace", back_populates="test_runs", lazy="selectin"
     )
-    sequence: Mapped["Sequence"] = relationship(
-        "Sequence", back_populates="test_runs", lazy="selectin"
-    )
-    signal_snapshot: Mapped["SignalSnapshot"] = relationship(
+    signal_snapshot: Mapped["SignalSnapshot | None"] = relationship(
         "SignalSnapshot", back_populates="test_runs", lazy="selectin"
     )
+    allocation: Mapped["Allocation"] = relationship(
+        "Allocation",
+        back_populates="test_run",
+        cascade="all, delete-orphan",
+        uselist=False,
+        lazy="selectin",
+    )
+    sequence_links: Mapped[list["TestRunSequenceLink"]] = relationship(
+        "TestRunSequenceLink",
+        back_populates="test_run",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    sequences: Mapped[list["Sequence"]] = relationship(
+        "Sequence",
+        secondary="test_run_sequences",
+        back_populates="test_runs",
+        lazy="selectin",
+    )
+
+    @property
+    def sequence_ids(self) -> list[int]:  # pragma: no cover - convenience for serializers
+        return [link.sequence_id for link in self.sequence_links]
+
+
+class TestRunSequenceLink(Base):
+    """Association between a TestRun and the sequences executed within it."""
+
+    __tablename__ = "test_run_sequences"
+    __table_args__ = (
+        UniqueConstraint("test_run_id", "sequence_id", name="uq_test_run_sequence_pair"),
+        Index("ix_test_run_sequences_test_run", "test_run_id"),
+        Index("ix_test_run_sequences_sequence", "sequence_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
+    test_run_id: Mapped[int] = mapped_column(
+        BIGINT_PK,
+        ForeignKey("test_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    sequence_id: Mapped[int] = mapped_column(
+        BIGINT_PK,
+        ForeignKey("sequences.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    test_run: Mapped["TestRun"] = relationship("TestRun", back_populates="sequence_links")
+    sequence: Mapped["Sequence"] = relationship("Sequence", back_populates="test_run_links")

@@ -40,6 +40,7 @@ class SequenceRunStepStatus(str, Enum):
 
 
 class SequenceRun(Base):
+    """Sequence execution record created only through TestRun-driven execution."""
     __tablename__ = "sequence_runs"
 
     __table_args__ = (

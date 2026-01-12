@@ -24,7 +24,14 @@ from app.models.sequence_run import (
 )
 from app.schemas.sequence_run_schema import SequenceStateSchema
 from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command
+from app.services.execution_context import ExecutionContext, SequenceDTO
+from app.services.domain_errors import (
+    AllocationInvalidError,
+    ChannelNotAllocatedError,
+    SequenceNotApplicableError,
+)
 from app.services.sequence_event_stream import SequenceEventStream
+from app.services.test_run_service import TestRunService
 
 
 logger = get_logger("sequence.runner")
@@ -74,10 +81,23 @@ class StepContext:
 
 @dataclass
 class ActiveRun:
+    test_run_id: int
     sequence_id: int
     run_id: int
     cancel_event: asyncio.Event
     task: asyncio.Task[None]
+
+
+@dataclass
+class TestRunTracker:
+    test_run_id: int
+    sequence_ids: Set[int]
+    completed_sequences: Set[int] | None = None
+    failed: bool = False
+
+    def __post_init__(self) -> None:
+        if self.completed_sequences is None:
+            self.completed_sequences = set()
 
 
 class SequenceRunner:
@@ -91,42 +111,80 @@ class SequenceRunner:
         self._last_cancellation_probe_at: Dict[int, float] = {}
         self._lock = asyncio.Lock()
         self._stopping_emitted_runs: Set[int] = set()
+        self._test_run_trackers: Dict[int, TestRunTracker] = {}
 
     async def start(
         self,
-        sequence_id: int,
+        test_run_id: int,
         *,
         request_id: Optional[str] = None,
         requested_by: Optional[str] = None,
-    ) -> SequenceStateSchema:
-        self.invalidate_state(sequence_id)
+    ) -> List[SequenceStateSchema]:
+        return await self.start_test_run(test_run_id, request_id=request_id, requested_by=requested_by)
+
+    async def start_test_run(
+        self,
+        test_run_id: int,
+        *,
+        request_id: Optional[str] = None,
+        requested_by: Optional[str] = None,
+    ) -> List[SequenceStateSchema]:
+        async with AsyncSessionLocal() as session:
+            service = TestRunService(session)
+            context = await service.build_execution_context(test_run_id)
+            await service.mark_running(test_run_id)
+
+        for sequence in context.sequences:
+            self.invalidate_state(sequence.id)
+
         async with self._lock:
-            if sequence_id in self._active_runs:
-                raise SequenceAlreadyRunningError(f"Sequence {sequence_id} already running")
+            for sequence in context.sequences:
+                if sequence.id in self._active_runs:
+                    raise SequenceAlreadyRunningError(
+                        f"Sequence {sequence.id} already running"
+                    )
 
-            run_id, contexts = await self._create_run(sequence_id)
-            cancel_event = asyncio.Event()
-            task = asyncio.create_task(
-                self._execute_run(
-                    sequence_id,
-                    run_id,
-                    contexts,
-                    cancel_event,
-                    request_id,
-                    requested_by,
-                ),
-                name=f"sequence-run-{run_id}",
+            self._test_run_trackers[test_run_id] = TestRunTracker(
+                test_run_id=test_run_id,
+                sequence_ids={sequence.id for sequence in context.sequences},
             )
-            self._active_runs[sequence_id] = ActiveRun(
-                sequence_id=sequence_id,
-                run_id=run_id,
-                cancel_event=cancel_event,
-                task=task,
-            )
-            task.add_done_callback(lambda _: self._active_runs.pop(sequence_id, None))
 
-        logger.info("Sequence %s run %s scheduled", sequence_id, run_id)
-        return await self.get_state(sequence_id)
+            for sequence in context.sequences:
+                run_id, contexts = await self._create_run(context, sequence)
+                cancel_event = asyncio.Event()
+                task = asyncio.create_task(
+                    self._execute_run(
+                        test_run_id,
+                        sequence.id,
+                        run_id,
+                        contexts,
+                        cancel_event,
+                        request_id,
+                        requested_by,
+                    ),
+                    name=f"sequence-run-{run_id}",
+                )
+                self._active_runs[sequence.id] = ActiveRun(
+                    test_run_id=context.test_run_id,
+                    sequence_id=sequence.id,
+                    run_id=run_id,
+                    cancel_event=cancel_event,
+                    task=task,
+                )
+                task.add_done_callback(lambda _: self._active_runs.pop(sequence.id, None))
+                logger.info("Sequence %s run %s scheduled (test_run=%s)", sequence.id, run_id, test_run_id)
+
+        return [await self.get_state(sequence.id) for sequence in context.sequences]
+
+    async def stop_test_run(self, test_run_id: int) -> List[SequenceStateSchema]:
+        async with AsyncSessionLocal() as session:
+            service = TestRunService(session)
+            context = await service.build_execution_context(test_run_id)
+
+        states: List[SequenceStateSchema] = []
+        for sequence in context.sequences:
+            states.append(await self.stop(sequence.id))
+        return states
 
     async def stop(self, sequence_id: int) -> SequenceStateSchema:
         self.invalidate_state(sequence_id)
@@ -226,7 +284,7 @@ class SequenceRunner:
         total_steps: int,
         started_at: datetime,
         start_time: float,
-    ) -> None:
+    ) -> tuple[str, Optional[str]]:
         for ctx in contexts:
             await self._probe_cancellation_from_db(run_id, cancel_event)
             if cancel_event.is_set():
@@ -248,7 +306,7 @@ class SequenceRunner:
                     started_at=started_at,
                     start_time=start_time,
                 )
-                return
+                return "stopped", "stopped"
 
             should_continue = await self._run_step(
                 session=session,
@@ -262,7 +320,12 @@ class SequenceRunner:
                 start_time=start_time,
             )
             if not should_continue:
-                return
+                if cancel_event.is_set():
+                    return "stopped", "stopped"
+                error_message = await session.scalar(
+                    select(SequenceRun.error_message).where(SequenceRun.id == run_id)
+                )
+                return "error", error_message or "error"
 
         await self._mark_run_completed(session, run_id)
         await session.commit()
@@ -276,6 +339,7 @@ class SequenceRunner:
             started_at=started_at,
             start_time=start_time,
         )
+        return "completed", None
 
     async def _run_step(
         self,
@@ -349,6 +413,47 @@ class SequenceRunner:
                 started_at=started_at,
                 start_time=start_time,
             )
+            return False
+        except (AllocationInvalidError, ChannelNotAllocatedError, SequenceNotApplicableError) as exc:
+            message = str(exc)
+            logger.warning(
+                "Sequence step invalid (sequence=%s, run=%s, step=%s): %s",
+                sequence_id,
+                run_id,
+                ctx.sequence_step_id,
+                message,
+            )
+            await self._mark_step_status(
+                session,
+                ctx.run_step_id,
+                SequenceRunStepStatus.ERROR,
+                step_started_monotonic,
+                message,
+            )
+            await self._mark_run_error(session, run_id, ctx.index, message)
+            await session.commit()
+            await SequenceEventStream.failed(
+                sequence_id=sequence_id,
+                run_id=run_id,
+                message=message,
+                step_index=ctx.index,
+                step_id=ctx.sequence_step_id,
+            )
+            self._cache_state(
+                sequence_id,
+                SequenceStateSchema(
+                    sequence_id=sequence_id,
+                    status="error",
+                    run_id=run_id,
+                    current_step_index=ctx.index,
+                    total_steps=total_steps,
+                    completed_step_ids=list(completed_step_ids),
+                    last_error=message,
+                    started_at=started_at,
+                    finished_at=datetime.now(timezone.utc),
+                ),
+            )
+            self._reset_cancellation_probe(run_id)
             return False
         except Exception as exc:  # noqa: BLE001
             message = str(exc)
@@ -675,15 +780,21 @@ class SequenceRunner:
             result = await session.execute(stmt)
             return result.scalar_one_or_none()
 
-    async def _create_run(self, sequence_id: int) -> tuple[int, List[StepContext]]:
+    async def _create_run(
+        self,
+        context: ExecutionContext,
+        sequence: SequenceDTO,
+    ) -> tuple[int, List[StepContext]]:
         async with AsyncSessionLocal() as session:
-            sequence = await self._load_sequence(session, sequence_id, include_steps=True)
-            if not sequence:
-                raise SequenceNotFoundError(f"Sequence {sequence_id} not found")
-
+            if not context.test_run_id:
+                raise AllocationInvalidError("Sequence runs require a TestRun context")
+            if not sequence.steps:
+                raise SequenceNotApplicableError(
+                    f"Sequence {sequence.id} has no steps to execute"
+                )
             ordered_steps = sorted(sequence.steps, key=lambda s: s.order_index)
             run = SequenceRun(
-                sequence_id=sequence_id,
+                sequence_id=sequence.id,
                 status=SequenceRunStatus.PENDING,
                 current_step_index=0,
             )
@@ -700,15 +811,83 @@ class SequenceRunner:
 
             try:
                 await session.flush()
-                channel_ids = {step.channel_id for step in ordered_steps if step.channel_id}
+                # Resolve channels exclusively through the TestRun allocation entries.
+                allocation_entries = context.allocation_entries
+                if not allocation_entries:
+                    raise AllocationInvalidError(
+                        f"Test run {context.test_run_id} has no allocation entries"
+                    )
+                allocation_by_channel_id = {
+                    entry.channel_id: entry for entry in allocation_entries
+                }
+                allocation_by_signal_key = {
+                    entry.signal_key: entry
+                    for entry in allocation_entries
+                    if entry.signal_key
+                }
+
+                def resolve_channel_id(
+                    *,
+                    channel_id: Optional[int],
+                    signal_key: Optional[str],
+                ) -> Optional[int]:
+                    if channel_id:
+                        if channel_id not in allocation_by_channel_id:
+                            raise ChannelNotAllocatedError(
+                                f"Channel {channel_id} is not part of allocation for test run {context.test_run_id}"
+                            )
+                        return channel_id
+                    if signal_key:
+                        entry = allocation_by_signal_key.get(signal_key)
+                        if not entry:
+                            raise ChannelNotAllocatedError(
+                                f"Signal {signal_key} is not part of allocation for test run {context.test_run_id}"
+                            )
+                        return entry.channel_id
+                    return None
+
+                def resolve_channel_ids(
+                    *,
+                    channel_ids: list[int] | None,
+                    signal_keys: list[str] | None,
+                ) -> list[int]:
+                    resolved: list[int] = []
+                    if channel_ids:
+                        for channel_id in channel_ids:
+                            if channel_id not in allocation_by_channel_id:
+                                raise ChannelNotAllocatedError(
+                                    f"Channel {channel_id} is not part of allocation for test run {context.test_run_id}"
+                                )
+                            resolved.append(channel_id)
+                        return resolved
+                    if signal_keys:
+                        for key in signal_keys:
+                            entry = allocation_by_signal_key.get(key)
+                            if not entry:
+                                raise ChannelNotAllocatedError(
+                                    f"Signal {key} is not part of allocation for test run {context.test_run_id}"
+                                )
+                            resolved.append(entry.channel_id)
+                        return resolved
+                    return resolved
+
+                channel_ids: set[int] = set()
                 payload_channel_ids: set[int] = set()
                 device_ids: set[int] = set()
 
                 for step in ordered_steps:
                     payload = step.payload or {}
-                    for cid in payload.get("channel_ids", []) or []:
-                        if cid:
-                            payload_channel_ids.add(cid)
+                    resolved_primary = resolve_channel_id(
+                        channel_id=step.channel_id,
+                        signal_key=payload.get("signal_key"),
+                    )
+                    if resolved_primary:
+                        channel_ids.add(resolved_primary)
+                    resolved_pair_ids = resolve_channel_ids(
+                        channel_ids=payload.get("channel_ids"),
+                        signal_keys=payload.get("signal_keys"),
+                    )
+                    payload_channel_ids.update(resolved_pair_ids)
                     device_id = payload.get("device_id")
                     if device_id:
                         device_ids.add(device_id)
@@ -744,10 +923,18 @@ class SequenceRunner:
                 contexts: List[StepContext] = []
                 for index, (step, run_step) in enumerate(zip(ordered_steps, run.steps)):
                     payload = dict(step.payload or {})
-                    primary = channel_lookup.get(step.channel_id) if step.channel_id else None
+                    resolved_primary = resolve_channel_id(
+                        channel_id=step.channel_id,
+                        signal_key=payload.get("signal_key"),
+                    )
+                    primary = channel_lookup.get(resolved_primary) if resolved_primary else None
+                    resolved_pair_ids = resolve_channel_ids(
+                        channel_ids=payload.get("channel_ids"),
+                        signal_keys=payload.get("signal_keys"),
+                    )
                     pair_channels = [
                         channel_lookup[cid]
-                        for cid in payload.get("channel_ids", []) or []
+                        for cid in resolved_pair_ids
                         if cid in channel_lookup
                     ]
                     target_device = None
@@ -772,14 +959,18 @@ class SequenceRunner:
 
                 await session.commit()
                 return run.id, contexts
+            except (AllocationInvalidError, ChannelNotAllocatedError, SequenceNotApplicableError):
+                await session.rollback()
+                raise
             except IntegrityError as exc:
                 await session.rollback()
                 if self._is_active_run_violation(exc):
-                    raise SequenceAlreadyRunningError(f"Sequence {sequence_id} already running") from exc
+                    raise SequenceAlreadyRunningError(f"Sequence {sequence.id} already running") from exc
                 raise
 
     async def _execute_run(
         self,
+        test_run_id: int,
         sequence_id: int,
         run_id: int,
         contexts: List[StepContext],
@@ -792,25 +983,26 @@ class SequenceRunner:
         started_at = datetime.now(timezone.utc)
         completed_step_ids: List[int] = []
 
-        async with AsyncSessionLocal() as session:
-            activated = await self._activate_run(session, run_id, started_at)
-            if not activated:
-                cancellation_index = await self._handle_activation_skip(
-                    session=session,
-                    sequence_id=sequence_id,
-                    run_id=run_id,
-                    total_steps=total_steps,
-                    completed_step_ids=completed_step_ids,
-                    started_at=started_at,
-                    start_time=start_time,
-                )
-                if cancellation_index is None:
-                    await session.rollback()
-                    return
-                await session.commit()
-                await self._publish_terminal_state(
-                    sequence_id=sequence_id,
-                    run_id=run_id,
+        try:
+            async with AsyncSessionLocal() as session:
+                activated = await self._activate_run(session, run_id, started_at)
+                if not activated:
+                    cancellation_index = await self._handle_activation_skip(
+                        session=session,
+                        sequence_id=sequence_id,
+                        run_id=run_id,
+                        total_steps=total_steps,
+                        completed_step_ids=completed_step_ids,
+                        started_at=started_at,
+                        start_time=start_time,
+                    )
+                    if cancellation_index is None:
+                        await session.rollback()
+                        return
+                    await session.commit()
+                    await self._publish_terminal_state(
+                        sequence_id=sequence_id,
+                        run_id=run_id,
                     status="stopped",
                     current_step_index=cancellation_index,
                     total_steps=total_steps,
@@ -818,30 +1010,85 @@ class SequenceRunner:
                     started_at=started_at,
                     start_time=start_time,
                 )
+                await self._register_test_run_result(
+                    test_run_id=test_run_id,
+                    sequence_id=sequence_id,
+                    status="stopped",
+                    reason="stopped",
+                )
                 return
 
-            await session.commit()
+                await session.commit()
 
-            await self._on_run_started(
-                sequence_id=sequence_id,
-                run_id=run_id,
-                total_steps=total_steps,
-                started_at=started_at,
-                request_id=request_id,
-                requested_by=requested_by,
-            )
+                await self._on_run_started(
+                    sequence_id=sequence_id,
+                    run_id=run_id,
+                    total_steps=total_steps,
+                    started_at=started_at,
+                    request_id=request_id,
+                    requested_by=requested_by,
+                )
 
-            await self._run_loop(
-                session=session,
+                final_status, reason = await self._run_loop(
+                    session=session,
+                    sequence_id=sequence_id,
+                    run_id=run_id,
+                    contexts=contexts,
+                    cancel_event=cancel_event,
+                    completed_step_ids=completed_step_ids,
+                    total_steps=total_steps,
+                    started_at=started_at,
+                    start_time=start_time,
+                )
+            await self._register_test_run_result(
+                test_run_id=test_run_id,
                 sequence_id=sequence_id,
-                run_id=run_id,
-                contexts=contexts,
-                cancel_event=cancel_event,
-                completed_step_ids=completed_step_ids,
-                total_steps=total_steps,
-                started_at=started_at,
-                start_time=start_time,
+                status=final_status,
+                reason=reason,
             )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "Sequence run crashed (sequence=%s, run=%s, test_run=%s)",
+                sequence_id,
+                run_id,
+                test_run_id,
+            )
+            await self._mark_test_run_failed(test_run_id, reason=str(exc))
+            raise
+
+    async def _register_test_run_result(
+        self,
+        *,
+        test_run_id: int,
+        sequence_id: int,
+        status: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        tracker = self._test_run_trackers.get(test_run_id)
+        if not tracker:
+            return
+
+        if status != "completed":
+            if not tracker.failed:
+                await self._mark_test_run_failed(test_run_id, reason=reason or status)
+                tracker.failed = True
+            self._test_run_trackers.pop(test_run_id, None)
+            return
+
+        tracker.completed_sequences.add(sequence_id)
+        if not tracker.failed and tracker.completed_sequences == tracker.sequence_ids:
+            await self._mark_test_run_completed(test_run_id)
+            self._test_run_trackers.pop(test_run_id, None)
+
+    async def _mark_test_run_failed(self, test_run_id: int, reason: str) -> None:
+        async with AsyncSessionLocal() as session:
+            service = TestRunService(session)
+            await service.mark_failed(test_run_id, reason)
+
+    async def _mark_test_run_completed(self, test_run_id: int) -> None:
+        async with AsyncSessionLocal() as session:
+            service = TestRunService(session)
+            await service.mark_completed(test_run_id)
 
     async def _execute_step(
         self,
@@ -861,7 +1108,7 @@ class SequenceRunner:
 
         if step_type == SequenceStepType.AO_SET:
             if not ctx.primary_channel:
-                raise ValueError("AO_SET step requires a primary channel")
+                raise AllocationInvalidError("AO_SET step requires a primary channel")
             value = float(payload.get("value", 0))
             await enqueue_ao_command(
                 unit_id=ctx.primary_channel.unit_id,
@@ -872,7 +1119,7 @@ class SequenceRunner:
 
         if step_type == SequenceStepType.DO_LATCH:
             if not ctx.primary_channel:
-                raise ValueError("DO_LATCH step requires a primary channel")
+                raise AllocationInvalidError("DO_LATCH step requires a primary channel")
             value = int(payload.get("value", 0))
             await enqueue_do_command(
                 unit_id=ctx.primary_channel.unit_id,
@@ -884,7 +1131,7 @@ class SequenceRunner:
 
         if step_type == SequenceStepType.DO_PULSE:
             if not ctx.primary_channel:
-                raise ValueError("DO_PULSE step requires a primary channel")
+                raise AllocationInvalidError("DO_PULSE step requires a primary channel")
             value = int(payload.get("value", 0))
             pulse_ms = int(payload.get("pulse_ms", 0))
             await enqueue_do_command(
@@ -898,10 +1145,10 @@ class SequenceRunner:
 
         if step_type == SequenceStepType.DO_PAIR:
             if len(ctx.pair_channels) != 2:
-                raise ValueError("DO_PAIR step requires two channels")
+                raise AllocationInvalidError("DO_PAIR step requires two channels")
             first, second = ctx.pair_channels
             if first.unit_id != second.unit_id:
-                raise ValueError("Pair channels must belong to the same device")
+                raise AllocationInvalidError("Pair channels must belong to the same device")
             state2b = int(payload.get("state2b", 0))
             await enqueue_do_command(
                 unit_id=first.unit_id,
@@ -914,7 +1161,7 @@ class SequenceRunner:
 
         if step_type == SequenceStepType.DO_BITMASK:
             if not ctx.target_device:
-                raise ValueError("DO_BITMASK step requires device context")
+                raise AllocationInvalidError("DO_BITMASK step requires device context")
             bitmask = int(payload.get("bitmask", 0))
             await enqueue_do_command(
                 unit_id=ctx.target_device.unit_id,
@@ -923,7 +1170,7 @@ class SequenceRunner:
             )
             return
 
-        raise ValueError(f"Unsupported step type {step_type}")
+        raise SequenceNotApplicableError(f"Unsupported step type {step_type}")
 
     async def _wait_with_cancellation(
         self,

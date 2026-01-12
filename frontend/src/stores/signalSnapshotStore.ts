@@ -98,9 +98,13 @@ export const useSignalSnapshotStore = defineStore("signalSnapshotStore", () => {
     }
   }
 
-  async function createTestRun(payload: TestRunCreatePayload) {
+  async function createTestRun(payload: Omit<TestRunCreatePayload, "workspace_id">) {
     const workspaceId = workspaceStore.requireWorkspaceId()
-    const { data } = await TestRunsAPI.create(workspaceId, payload)
+    const request: TestRunCreatePayload = {
+      workspace_id: workspaceId,
+      ...payload,
+    }
+    const { data } = await TestRunsAPI.create(workspaceId, request)
     runs.value = [data, ...runs.value]
     return data
   }
@@ -109,6 +113,14 @@ export const useSignalSnapshotStore = defineStore("signalSnapshotStore", () => {
     const { data } = await TestRunsAPI.repeat(runId)
     runs.value = [data, ...runs.value]
     return data
+  }
+
+  async function startTestRun(runId: number) {
+    await TestRunsAPI.start(runId)
+  }
+
+  async function stopTestRun(runId: number) {
+    await TestRunsAPI.stop(runId)
   }
 
   const draftSnapshots = computed(() => snapshots.value.filter(s => s.status === "draft"))
@@ -132,5 +144,7 @@ export const useSignalSnapshotStore = defineStore("signalSnapshotStore", () => {
     refreshRuns,
     createTestRun,
     repeatRun,
+    startTestRun,
+    stopTestRun,
   }
 })

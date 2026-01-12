@@ -9,6 +9,7 @@ import type {
   TestRun,
   TestRunCreatePayload,
 } from "@/types/signal"
+import type { SequenceState } from "@/types/sequences"
 
 export const SignalSnapshotsAPI = {
   list(workspaceId: number) {
@@ -64,5 +65,13 @@ export const TestRunsAPI = {
 
   repeat(runId: number) {
     return http.post<TestRun>(`${API_V1}/test-runs/${runId}/repeat`)
+  },
+
+  start(runId: number) {
+    return http.post<SequenceState[]>(`${API_V1}/test-runs/${runId}/start`)
+  },
+
+  stop(runId: number) {
+    return http.post<SequenceState[]>(`${API_V1}/test-runs/${runId}/stop`)
   },
 }

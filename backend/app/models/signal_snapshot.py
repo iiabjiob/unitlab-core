@@ -71,53 +71,11 @@ class SignalSnapshot(Base):
     workspace: Mapped["Workspace"] = relationship(
         "Workspace", back_populates="signal_snapshots", lazy="selectin"
     )
-    allocation: Mapped["Allocation | None"] = relationship(
-        "Allocation",
-        back_populates="snapshot",
-        uselist=False,
-        cascade="all, delete-orphan",
-        lazy="selectin",
-    )
     test_runs: Mapped[list["TestRun"]] = relationship(
         "TestRun",
         back_populates="signal_snapshot",
-        cascade="all, delete-orphan",
         lazy="selectin",
     )
 
     def is_locked(self) -> bool:
         return self.status == SignalSnapshotStatus.LOCKED
-
-
-class Allocation(Base):
-    __tablename__ = "allocations"
-    __table_args__ = (
-        UniqueConstraint("signal_snapshot_id", name="uq_allocations_snapshot"),
-        Index("ix_allocations_workspace", "workspace_id"),
-    )
-
-    id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
-    workspace_id: Mapped[int] = mapped_column(
-        BIGINT_PK,
-        ForeignKey("workspaces.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    signal_snapshot_id: Mapped[int] = mapped_column(
-        BIGINT_PK,
-        ForeignKey("signal_snapshots.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    mapping: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
-    )
-
-    workspace: Mapped["Workspace"] = relationship(
-        "Workspace", back_populates="allocations", lazy="selectin"
-    )
-    snapshot: Mapped[SignalSnapshot] = relationship(
-        SignalSnapshot, back_populates="allocation", lazy="selectin"
-    )

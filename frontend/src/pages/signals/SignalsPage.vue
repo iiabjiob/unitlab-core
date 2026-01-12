@@ -29,7 +29,6 @@
           :selected-id="selectedSnapshotId"
           @select="selectSnapshot"
           @import="openImport"
-          @open-test-runs="openTestRuns"
         />
       </aside>
     </ResizablePanel>
@@ -59,7 +58,6 @@
           :selected-id="selectedSnapshotId"
           @select="selectSnapshot"
           @import="openImport"
-          @open-test-runs="openTestRuns"
         />
       </div>
     </SlideOver>
@@ -105,11 +103,6 @@ watch(isDesktop, (next) => {
 
 async function selectSnapshot(id: number) {
   await router.push({ name: "signals.detail", params: { snapshotId: id } })
-  sidebarOpen.value = false
-}
-
-function openTestRuns() {
-  router.push({ name: "signals.testRuns" })
   sidebarOpen.value = false
 }
 

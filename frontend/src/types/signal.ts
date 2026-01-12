@@ -64,12 +64,31 @@ export interface Allocation {
   updated_at: string
 }
 
+export type TestRunMode = "channel" | "signal"
+
+export interface TestRunAllocationEntry {
+  id: number
+  channel_id: number
+  signal_key: string | null
+  signal_metadata: Record<string, unknown> | null
+}
+
+export interface TestRunAllocation {
+  id: number
+  test_run_id: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+  entries: TestRunAllocationEntry[]
+}
+
 export interface TestRun {
   id: number
   workspace_id: number
-  sequence_id: number
-  signal_snapshot_id: number
-  allocation_snapshot: AllocationMappingItem[]
+  signal_snapshot_id: number | null
+  allocation: TestRunAllocation | null
+  sequence_ids: number[]
+  mode: TestRunMode
   status: "created" | "running" | "completed" | "failed"
   created_at: string
   started_at: string | null
@@ -77,7 +96,21 @@ export interface TestRun {
   execution_meta?: Record<string, unknown> | null
 }
 
+export interface TestRunAllocationEntryInput {
+  channel_id: number
+  signal_key?: string | null
+  signal_metadata?: Record<string, unknown> | null
+}
+
+export interface TestRunAllocationCreatePayload {
+  notes?: string | null
+  entries: TestRunAllocationEntryInput[]
+}
+
 export interface TestRunCreatePayload {
-  sequence_id: number
-  signal_snapshot_id: number
+  workspace_id: number
+  sequence_ids: number[]
+  allocation: TestRunAllocationCreatePayload
+  mode: TestRunMode
+  signal_snapshot_id?: number | null
 }

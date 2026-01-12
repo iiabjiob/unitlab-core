@@ -13,6 +13,7 @@ from app.models.types import BIGINT_PK
 
 if TYPE_CHECKING:  # pragma: no cover - only needed for typing
     from app.models.switchgear import SwitchgearChannelBinding
+    from app.models.allocation import AllocationEntry
 
 
 class Channel(Base):
@@ -47,6 +48,11 @@ class Channel(Base):
     switchgear_bindings: Mapped[list["SwitchgearChannelBinding"]] = relationship(
         "SwitchgearChannelBinding", back_populates="channel", lazy="selectin"
     )
+    allocation_entries = relationship(
+    "AllocationEntry",
+    back_populates="channel",
+    viewonly=True,
+)
 
     @property
     def resolved_name(self) -> str:

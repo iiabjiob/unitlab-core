@@ -28,9 +28,8 @@ from app.schemas.sequence_step_schema import (
     SequenceStepSchema,
     SequenceStepUpdateSchema,
 )
-from app.services.sequence_command_service import SequenceCommandService
-from app.services.sequence_runner import SequenceNotFoundError
 from app.services.sequence_state_service import SequenceStateService
+from app.services.sequence_runner import SequenceNotFoundError
 
 router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/sequences", tags=["Sequences"])
 
@@ -188,18 +187,10 @@ async def start_sequence(
     seq_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    repo = SequenceRepository(db)
-    await _ensure_sequence_in_workspace(repo, workspace_id, seq_id)
-    try:
-        state = await SequenceStateService.get_state(seq_id)
-    except SequenceNotFoundError:
-        raise HTTPException(status_code=404, detail="Sequence not found")
-
-    if state.status in {"pending", "running", "cancelling"}:
-        raise HTTPException(status_code=409, detail="Sequence already running")
-
-    await SequenceCommandService.enqueue_start(seq_id)
-    return await SequenceStateService.get_state(seq_id)
+    raise HTTPException(
+        status_code=409,
+        detail="Sequence execution now requires a TestRun. Use /test-runs/{run_id}/start.",
+    )
 
 
 @router.post("/{seq_id}/stop", response_model=SequenceStateSchema)
@@ -208,18 +199,10 @@ async def stop_sequence(
     seq_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    repo = SequenceRepository(db)
-    await _ensure_sequence_in_workspace(repo, workspace_id, seq_id)
-    try:
-        state = await SequenceStateService.get_state(seq_id)
-    except SequenceNotFoundError:
-        raise HTTPException(status_code=404, detail="Sequence not found")
-
-    if state.status not in {"pending", "running", "cancelling"}:
-        return state
-
-    await SequenceCommandService.enqueue_stop(seq_id)
-    return await SequenceStateService.get_state(seq_id)
+    raise HTTPException(
+        status_code=409,
+        detail="Sequence execution now requires a TestRun. Use /test-runs/{run_id}/stop.",
+    )
 
 
 @router.get("/{seq_id}/state", response_model=SequenceStateSchema)

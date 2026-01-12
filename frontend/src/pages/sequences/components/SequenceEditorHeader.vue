@@ -3,6 +3,7 @@ import { ref, computed, watch } from "vue"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import type { SequenceDef } from "@/types/sequences"
 import UiButton from "@/components/ui/UiButton.vue"
+import UiBadge from "@/components/ui/UiBadge.vue"
 import RenameModal from "@/components/ui/RenameModal.vue"
 import {
   UiMenu,
@@ -72,6 +73,16 @@ const createdAt = computed(() => {
     minute: "2-digit",
   })
 })
+
+const usageTooltip = [
+  "Execution flow:",
+  "This sequence only runs inside a Test Run.",
+  "Build a run with the sequences you need, add an allocation, and attach a signal list when required.",
+  "",
+  "• Add the sequence to a Test Run and pick the workspace allocation.",
+  "• Assign physical channels or signals in Signals → Test Runs.",
+  "• Start or stop execution strictly from Test Run history.",
+].join("\n")
 </script>
 
 <template>
@@ -80,8 +91,11 @@ const createdAt = computed(() => {
     <!-- LEFT SIDE -->
     <div class="flex flex-col gap-1">
 
-      <div class="text-lg font-medium tracking-tight text-neutral-900 dark:text-white">
-        {{ sequence.name }}
+      <div class="flex items-center gap-3">
+        <div class="text-lg font-medium tracking-tight text-neutral-900 dark:text-white">
+          {{ sequence.name }}
+        </div>
+        <UiBadge variant="info" :title="usageTooltip">Used in Test Runs</UiBadge>
       </div>
 
       <div class="flex flex-wrap items-center gap-3 text-sm text-neutral-500 dark:text-neutral-400">

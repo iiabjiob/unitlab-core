@@ -15,11 +15,6 @@ export const signalsRoutes: RouteRecordRaw[] = [
         component: () => import("@/pages/signals/SignalPlaceholder.vue"),
       },
       {
-        path: "test-runs",
-        name: "signals.testRuns",
-        component: () => import("@/pages/signals/components/TestRunsTable.vue"),
-      },
-      {
         path: ":snapshotId(\\d+)",
         name: "signals.detail",
         component: () => import("@/pages/signals/components/AllocationEditor.vue"),

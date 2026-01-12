@@ -10,13 +10,21 @@ class SequenceCommandService:
     """High-level helpers to enqueue sequence control commands into Redis streams."""
 
     @staticmethod
-    async def enqueue_start(sequence_id: int, requested_by: Optional[str] = None) -> SequenceCommand:
-        command = SequenceCommand(type=SequenceCommandType.START, sequence_id=sequence_id, requested_by=requested_by)
+    async def enqueue_start(test_run_id: int, requested_by: Optional[str] = None) -> SequenceCommand:
+        command = SequenceCommand(
+            type=SequenceCommandType.START,
+            test_run_id=test_run_id,
+            requested_by=requested_by,
+        )
         await enqueue_sequence_command(command)
         return command
 
     @staticmethod
-    async def enqueue_stop(sequence_id: int, requested_by: Optional[str] = None) -> SequenceCommand:
-        command = SequenceCommand(type=SequenceCommandType.STOP, sequence_id=sequence_id, requested_by=requested_by)
+    async def enqueue_stop(test_run_id: int, requested_by: Optional[str] = None) -> SequenceCommand:
+        command = SequenceCommand(
+            type=SequenceCommandType.STOP,
+            test_run_id=test_run_id,
+            requested_by=requested_by,
+        )
         await enqueue_sequence_command(command)
         return command

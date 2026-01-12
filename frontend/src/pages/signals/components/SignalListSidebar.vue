@@ -5,9 +5,6 @@
       <UiButton variant="primary" size="sm" full :disabled="workspaceMissing" @click="$emit('import')">
         + Import Signal List
       </UiButton>
-      <UiButton variant="ghost" size="sm" full :disabled="workspaceMissing" @click="$emit('open-test-runs')">
-        Test runs history
-      </UiButton>
       <p
         v-if="workspaceMissing"
         class="mt-2 text-[11px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
@@ -82,7 +79,7 @@ const props = defineProps<{
   selectedId: number | null
 }>()
 
-defineEmits<{ (e: "select", id: number): void; (e: "import"): void; (e: "open-test-runs"): void }>()
+defineEmits<{ (e: "select", id: number): void; (e: "import"): void }>()
 
 const workspaceStore = useWorkspaceStore()
 const query = ref("")

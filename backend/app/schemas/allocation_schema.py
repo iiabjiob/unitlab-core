@@ -4,23 +4,33 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class AllocationMappingItemSchema(BaseModel):
-    channel_id: str
-    signal_key: str
-    signal_row_index: int
-    meta: dict[str, Any] | None = None
+class AllocationEntryBaseSchema(BaseModel):
+    channel_id: int
+    signal_key: str | None = None
+    signal_metadata: dict[str, Any] | None = None
 
 
-class AllocationSchema(BaseModel):
+class AllocationEntrySchema(AllocationEntryBaseSchema):
     id: int
-    workspace_id: int
-    signal_snapshot_id: int
-    mapping: list[AllocationMappingItemSchema]
-    created_at: datetime
-    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class AllocationUpdateSchema(BaseModel):
-    mapping: list[AllocationMappingItemSchema] = Field(default_factory=list)
+class AllocationSchema(BaseModel):
+    id: int
+    test_run_id: int
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+    entries: list[AllocationEntrySchema]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AllocationEntryCreateSchema(AllocationEntryBaseSchema):
+    pass
+
+
+class AllocationCreateSchema(BaseModel):
+    notes: str | None = None
+    entries: list[AllocationEntryCreateSchema] = Field(default_factory=list)

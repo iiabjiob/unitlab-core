@@ -8,7 +8,6 @@ import { useSelectionStore } from "@/stores/selectionStore"
 import { useViewport } from "@/composables/useViewport"
 
 import SequenceEditorHeader from "./components/SequenceEditorHeader.vue"
-import SequenceRunControls from "./components/SequenceRunControls.vue"
 import SequenceStepsList from "./components/SequenceStepsList.vue"
 import SequenceExecutionLog from "./components/SequenceExecutionLog.vue"
 import SequenceStepEditor from "./components/SequenceStepEditor.vue"
@@ -88,15 +87,6 @@ const { isDesktop } = useViewport()
       :sequence="sequence"
       @duplicate="handleDuplicate"
       @delete="requestDelete"
-    />
-
-    <!-- RUN CONTROLS -->
-    <SequenceRunControls
-      v-if="sequence && state"
-      :sequence="sequence"
-      :state="state"
-      @start="store.startSequence(sequenceId)"
-      @stop="store.stopSequence(sequenceId)"
     />
 
     <div class="mt-5 flex flex-1 min-h-0 flex-col gap-4 overflow-hidden rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5 lg:flex-row lg:gap-5">

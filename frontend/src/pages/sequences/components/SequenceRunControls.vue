@@ -1,129 +1,43 @@
 <script setup lang="ts">
-import { computed } from "vue"
-import {
-  SequenceStatusEnum,
-  type SequenceDef,
-  type SequenceState,
-} from "@/types/sequences"
+import { useRouter } from "vue-router"
+import UiButton from "@/components/ui/UiButton.vue"
+import type { SequenceDef } from "@/types/sequences"
 
-const props = defineProps<{
+defineProps<{
   sequence: SequenceDef
-  state: SequenceState
 }>()
 
-const emit = defineEmits(["start", "stop"])
+const router = useRouter()
 
-// СТРОГИЕ, ЧИСТЫЕ ИКОНКИ (моноширинные)
-const ICONS = {
-  [SequenceStatusEnum.IDLE]:      "○",
-  [SequenceStatusEnum.PENDING]:   "...",
-  [SequenceStatusEnum.RUNNING]:   "●",
-  [SequenceStatusEnum.CANCELLING]: "!!",
-  [SequenceStatusEnum.ERROR]:     "▲",
-  [SequenceStatusEnum.STOPPED]:   "■",
-  [SequenceStatusEnum.COMPLETED]: "✓",
+function openTestRuns() {
+  router.push({ name: "signals.testRuns" })
 }
 
-// Цвет статуса
-const statusColor = computed(() => {
-  switch (props.state.status) {
-    case SequenceStatusEnum.PENDING:  return "text-blue-200"
-    case SequenceStatusEnum.RUNNING:   return "text-blue-400"
-    case SequenceStatusEnum.CANCELLING:return "text-amber-400"
-    case SequenceStatusEnum.ERROR:     return "text-red-400"
-    case SequenceStatusEnum.STOPPED:   return "text-yellow-400"
-    case SequenceStatusEnum.COMPLETED: return "text-green-400"
-    default:                           return "text-neutral-500"
-  }
-})
-
-// Лейбл статуса
-const statusLabel = computed(() => {
-  switch (props.state.status) {
-    case SequenceStatusEnum.PENDING:  return "Queued"
-    case SequenceStatusEnum.RUNNING:   return "Running"
-    case SequenceStatusEnum.CANCELLING:return "Stopping..."
-    case SequenceStatusEnum.ERROR:     return "Error"
-    case SequenceStatusEnum.STOPPED:   return "Stopped"
-    case SequenceStatusEnum.COMPLETED: return "Completed"
-    default:                           return "Idle"
-  }
-})
-
-// Прогресс
-const progressPercent = computed(() => {
-  const st = props.state
-  if (st.total_steps === 0) return 0
-  return Math.round((st.completed_step_ids.length / st.total_steps) * 100)
-})
-
-const canStart = computed(() =>
-  [
-    SequenceStatusEnum.IDLE,
-    SequenceStatusEnum.COMPLETED,
-    SequenceStatusEnum.ERROR,
-    SequenceStatusEnum.STOPPED,
-  ].includes(props.state.status)
-)
-
-const canStop = computed(() =>
-  props.state.status === SequenceStatusEnum.RUNNING || props.state.status === SequenceStatusEnum.PENDING
-)
+function openSignals() {
+  router.push({ name: "signals.home" })
+}
 </script>
 
 <template>
-  <div class="py-5 flex flex-col gap-2">
-
-    <!-- ROW 1: LEFT — Start, Status, Step -->
-    
-
-      <!-- LEFT -->
-      <div class="flex items-center gap-4">
-
-        <!-- Start / Stop always first -->
-        <button
-          v-if="canStart"
-          @click="emit('start')"
-          class="px-3 py-1 rounded bg-green-600 hover:bg-green-500
-                 text-white text-sm font-medium"
-        >
-          ▶ Start
-        </button>
-
-        <button
-          v-if="canStop"
-          @click="emit('stop')"
-          class="px-3 py-1 rounded bg-red-600 hover:bg-red-500
-                 text-white text-sm font-medium"
-        >
-          ■ Stop
-        </button>
-
-        <!-- STATUS -->
-        <div :class="['flex items-center gap-1 text-sm font-medium', statusColor]">
-          <span class="font-mono">{{ ICONS[state.status] }}</span>
-          <span>{{ statusLabel }}</span>
-        </div>
-
-        <!-- STEPS -->
-        <div class="text-xs text-neutral-500 dark:text-neutral-400">
-          Step {{ state.current_step_index }} / {{ state.total_steps }}
-        </div>
-        <!-- RIGHT → small progress text -->
-        <div class="text-xs text-neutral-500 dark:text-neutral-400">
-          ({{ progressPercent }}%)
-        </div>
-      </div>
-
-    
-
-    <!-- ROW 2: THIN PROGRESS BAR -->
-    <!-- <div class="h-1 bg-neutral-800 dark:bg-neutral-700 rounded overflow-hidden">
-      <div
-        class="h-full bg-blue-500 transition-all duration-200"
-        :style="{ width: progressPercent + '%' }"
-      ></div>
-    </div> -->
-
-  </div>
+  <section class="mt-4 rounded-2xl border border-neutral-200 bg-white/80 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
+    <p class="text-xs font-semibold uppercase tracking-[0.3em] text-neutral-400">
+      Execution flow
+    </p>
+    <h3 class="mt-2 text-lg font-semibold text-neutral-900 dark:text-neutral-50">
+      Эта последовательность запускается только внутри Test Run.
+    </h3>
+    <p class="mt-2 text-sm text-neutral-600 dark:text-neutral-300">
+      Sequence описывает шаги. Чтобы она заработала с реальными каналами или сигналами,
+      соберите Test Run с нужным набором последовательностей, аллокацией и (при необходимости) сигнал-листом.
+    </p>
+    <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-neutral-600 dark:text-neutral-300">
+      <li>Добавьте sequence в Test Run и выберите workspace allocation.</li>
+      <li>Назначьте физические каналы или сигналы в разделе Signals → Test Runs.</li>
+      <li>Стартуйте/останавливайте выполнение только из Test Run history.</li>
+    </ul>
+    <div class="mt-4 flex flex-wrap gap-2">
+      <UiButton size="sm" @click="openTestRuns">Открыть Test Runs</UiButton>
+      <UiButton variant="ghost" size="sm" @click="openSignals">К сигналам</UiButton>
+    </div>
+  </section>
 </template>
