@@ -22,6 +22,7 @@ from app.infrastructure.db.database import Base
 from app.models.types import BIGINT_PK
 
 if TYPE_CHECKING:  # pragma: no cover - import for annotations only
+    from app.models.signal_snapshot_allocation import SignalSnapshotAllocation
     from app.models.test_run import TestRun
     from app.models.workspace import Workspace
 
@@ -74,6 +75,13 @@ class SignalSnapshot(Base):
     test_runs: Mapped[list["TestRun"]] = relationship(
         "TestRun",
         back_populates="signal_snapshot",
+        lazy="selectin",
+    )
+    allocation: Mapped["SignalSnapshotAllocation | None"] = relationship(
+        "SignalSnapshotAllocation",
+        back_populates="snapshot",
+        cascade="all, delete-orphan",
+        uselist=False,
         lazy="selectin",
     )
 

@@ -6,6 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.db.database import get_db
 from app.models.workspace import Workspace
+from app.schemas.signal_snapshot_allocation_schema import (
+    SignalSnapshotAllocationSchema,
+    SignalSnapshotAllocationUpdateSchema,
+)
 from app.schemas.signal_snapshot_schema import (
     SignalSnapshotDetailSchema,
     SignalSnapshotSummarySchema,
@@ -89,4 +93,35 @@ async def lock_signal_snapshot(snapshot_id: int, db: AsyncSession = Depends(get_
     except SignalSnapshotNotFoundError:
         raise HTTPException(status_code=404, detail="Signal snapshot not found")
     return snapshot
+
+
+@router.get(
+    "/signal-snapshots/{snapshot_id}/allocation",
+    response_model=SignalSnapshotAllocationSchema,
+)
+async def get_snapshot_allocation(snapshot_id: int, db: AsyncSession = Depends(get_db)):
+    service = SignalSnapshotService(db)
+    try:
+        allocation = await service.get_allocation(snapshot_id)
+    except SignalSnapshotNotFoundError:
+        raise HTTPException(status_code=404, detail="Signal snapshot not found")
+    return allocation
+
+
+@router.put(
+    "/signal-snapshots/{snapshot_id}/allocation",
+    response_model=SignalSnapshotAllocationSchema,
+)
+async def update_snapshot_allocation(
+    snapshot_id: int,
+    payload: SignalSnapshotAllocationUpdateSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    service = SignalSnapshotService(db)
+    mapping_payload = [item.model_dump() for item in payload.mapping]
+    try:
+        allocation = await service.update_allocation(snapshot_id, mapping_payload)
+    except SignalSnapshotNotFoundError:
+        raise HTTPException(status_code=404, detail="Signal snapshot not found")
+    return allocation
 

@@ -14,6 +14,7 @@ from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.signal_snapshot import SignalSnapshot, SignalSnapshotStatus
+from app.models.signal_snapshot_allocation import SignalSnapshotAllocation
 
 
 CURRENT_SNAPSHOT_SCHEMA_VERSION = 2
@@ -107,6 +108,44 @@ class SignalSnapshotService:
         await self.db.refresh(snapshot)
         return snapshot
 
+    async def get_allocation(self, snapshot_id: int) -> SignalSnapshotAllocation:
+        snapshot = await self._get_snapshot(snapshot_id)
+        if not snapshot:
+            raise SignalSnapshotNotFoundError
+        allocation = await self._get_allocation(snapshot_id)
+        if allocation:
+            return allocation
+        allocation = SignalSnapshotAllocation(
+            workspace_id=snapshot.workspace_id,
+            signal_snapshot_id=snapshot.id,
+            mapping=[],
+        )
+        self.db.add(allocation)
+        await self.db.commit()
+        await self.db.refresh(allocation)
+        return allocation
+
+    async def update_allocation(
+        self,
+        snapshot_id: int,
+        mapping: list[dict[str, Any]],
+    ) -> SignalSnapshotAllocation:
+        snapshot = await self._get_snapshot(snapshot_id)
+        if not snapshot:
+            raise SignalSnapshotNotFoundError
+        allocation = await self._get_allocation(snapshot_id)
+        if allocation is None:
+            allocation = SignalSnapshotAllocation(
+                workspace_id=snapshot.workspace_id,
+                signal_snapshot_id=snapshot.id,
+                mapping=[],
+            )
+            self.db.add(allocation)
+        allocation.mapping = mapping
+        await self.db.commit()
+        await self.db.refresh(allocation)
+        return allocation
+
     @staticmethod
     def lock_snapshot(snapshot: SignalSnapshot) -> None:
         """Mark the snapshot as immutable for future operations."""
@@ -124,6 +163,13 @@ class SignalSnapshotService:
         stmt: Select[tuple[SignalSnapshot]] = select(SignalSnapshot).where(SignalSnapshot.id == snapshot_id)
         if for_update:
             stmt = stmt.with_for_update()
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def _get_allocation(self, snapshot_id: int) -> SignalSnapshotAllocation | None:
+        stmt: Select[tuple[SignalSnapshotAllocation]] = select(SignalSnapshotAllocation).where(
+            SignalSnapshotAllocation.signal_snapshot_id == snapshot_id
+        )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
 

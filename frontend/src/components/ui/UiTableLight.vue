@@ -1,5 +1,5 @@
 <template>
-  <div class="ui-table-light" :class="{ 'ui-table-light--resizing': isResizing }">
+  <div class="ui-table-light" :class="[tableThemeClass, { 'ui-table-light--resizing': isResizing }]">
     <div class="ui-table-light__container" :style="containerStyle">
       <table class="ui-table-light__table">
         <thead>
@@ -80,6 +80,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue"
+import { storeToRefs } from "pinia"
+
+import { useThemeStore } from "@/stores/themeStore"
 
 type ColumnAlign = "left" | "center" | "right"
 type SortDirection = "asc" | "desc"
@@ -124,6 +127,11 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{ (e: "row-click", payload: { row: TableRow; rowIndex: number }): void }>()
+
+const themeStore = useThemeStore()
+const { currentTheme } = storeToRefs(themeStore)
+
+const tableThemeClass = computed(() => (currentTheme.value === "dark" ? "ui-table-light--dark" : null))
 
 const containerStyle = computed(() => {
   if (!props.maxHeight) return undefined
@@ -386,16 +394,48 @@ onBeforeUnmount(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  color-scheme: light;
+  --ui-table-surface: #ffffff;
+  --ui-table-text: #0f172a;
+  --ui-table-border: rgba(226, 232, 240, 0.9);
+  --ui-table-header-bg: #f8fafc;
+  --ui-table-header-text: #475569;
+  --ui-table-accent: #0f172a;
+  --ui-table-row-alt: rgba(248, 250, 252, 0.7);
+  --ui-table-row-hover: rgba(226, 232, 240, 0.5);
+  --ui-table-filter-bg: #ffffff;
+  --ui-table-filter-border: rgba(148, 163, 184, 0.6);
+  --ui-table-filter-text: #0f172a;
+  --ui-table-empty: #94a3b8;
+  --ui-table-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
 }
 
-:global(.dark) .ui-table-light {
+.ui-table-light--dark {
+  color-scheme: dark;
   background-color: transparent;
+  --ui-table-surface: #06080f;
+  --ui-table-text: #f2f4f7;
+  --ui-table-border: rgba(148, 163, 184, 0.4);
+  --ui-table-header-bg: rgba(10, 12, 18, 0.95);
+  --ui-table-header-text: #e2e8f0;
+  --ui-table-accent: #f4f4f5;
+  --ui-table-row-alt: rgba(17, 20, 30, 0.65);
+  --ui-table-row-hover: rgba(148, 163, 184, 0.18);
+  --ui-table-filter-bg: rgba(5, 7, 12, 0.9);
+  --ui-table-filter-border: rgba(148, 163, 184, 0.4);
+  --ui-table-filter-text: #f8fafc;
+  --ui-table-empty: #a0aec0;
+  --ui-table-shadow: 0 18px 45px rgba(2, 6, 12, 0.45);
 }
 
 .ui-table-light__container {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  background-color: var(--ui-table-surface);
+  border-radius: 1rem;
+  border: 1px solid var(--ui-table-border);
+  box-shadow: var(--ui-table-shadow);
 }
 
 .ui-table-light__table {
@@ -408,35 +448,25 @@ onBeforeUnmount(() => {
 
 .ui-table-light__cell {
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
-  color: #0f172a;
+  border-bottom: 1px solid var(--ui-table-border);
+  color: var(--ui-table-text);
   vertical-align: top;
-}
-
-:global(.dark) .ui-table-light__cell {
-  color: #e2e8f0;
-  border-color: rgba(51, 65, 85, 0.7);
 }
 
 .ui-table-light__cell--header {
   position: sticky;
   top: 0;
   z-index: 2;
-  background-color: #f8fafc;
+  background-color: var(--ui-table-header-bg);
   text-align: left;
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #475569;
+  color: var(--ui-table-header-text);
   user-select: none;
   cursor: default;
   position: sticky;
-}
-
-:global(.dark) .ui-table-light__cell--header {
-  background-color: #111827;
-  color: #cbd5f5;
 }
 
 .ui-table-light__cell--sortable {
@@ -444,11 +474,7 @@ onBeforeUnmount(() => {
 }
 
 .ui-table-light__cell--sorted {
-  color: #0f172a;
-}
-
-:global(.dark) .ui-table-light__cell--sorted {
-  color: #f8fafc;
+  color: var(--ui-table-accent);
 }
 
 .ui-table-light__header-content {
@@ -485,18 +511,14 @@ onBeforeUnmount(() => {
 }
 
 .ui-table-light--resizing .ui-table-light__resize-handle {
-  background-color: rgba(59, 130, 246, 0.2);
+  background-color: rgba(148, 163, 184, 0.3);
 }
 
 .ui-table-light__filter-row {
   position: sticky;
   top: 2.625rem;
   z-index: 1;
-  background-color: #f8fafc;
-}
-
-:global(.dark) .ui-table-light__filter-row {
-  background-color: #0f172a;
+  background-color: var(--ui-table-header-bg);
 }
 
 .ui-table-light__cell--filter {
@@ -505,34 +527,20 @@ onBeforeUnmount(() => {
 
 .ui-table-light__filter-input {
   width: 100%;
-  border: 1px solid rgba(148, 163, 184, 0.6);
+  border: 1px solid var(--ui-table-filter-border);
   border-radius: 0.5rem;
   padding: 0.2rem 0.4rem;
   font-size: 0.75rem;
-  background-color: #ffffff;
-  color: #0f172a;
-}
-
-:global(.dark) .ui-table-light__filter-input {
-  background-color: #0f172a;
-  border-color: rgba(71, 85, 105, 0.9);
-  color: #e2e8f0;
+  background-color: var(--ui-table-filter-bg);
+  color: var(--ui-table-filter-text);
 }
 
 .ui-table-light__row:nth-child(even) .ui-table-light__cell {
-  background-color: rgba(248, 250, 252, 0.7);
-}
-
-:global(.dark) .ui-table-light__row:nth-child(even) .ui-table-light__cell {
-  background-color: rgba(15, 23, 42, 0.6);
+  background-color: var(--ui-table-row-alt);
 }
 
 .ui-table-light__row:hover .ui-table-light__cell {
-  background-color: rgba(226, 232, 240, 0.5);
-}
-
-:global(.dark) .ui-table-light__row:hover .ui-table-light__cell {
-  background-color: rgba(30, 41, 59, 0.8);
+  background-color: var(--ui-table-row-hover);
 }
 
 .ui-table-light__cell--left {
@@ -551,10 +559,6 @@ onBeforeUnmount(() => {
   padding: 1.5rem;
   text-align: center;
   font-size: 0.875rem;
-  color: #94a3b8;
-}
-
-:global(.dark) .ui-table-light__empty {
-  color: #64748b;
+  color: var(--ui-table-empty);
 }
 </style>
