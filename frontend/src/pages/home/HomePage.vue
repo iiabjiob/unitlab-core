@@ -24,35 +24,32 @@
           </section>
         </div>
 
-        <div class="grid gap-4 md:grid-cols-3">
-          <button
-            v-for="card in statusCards"
-            :key="card.label"
-            type="button"
-            class="rounded-2xl border border-neutral-200/70 bg-white/80 px-5 py-4 text-center transition hover:-translate-y-0.5 hover:border-neutral-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:border-neutral-700 dark:bg-neutral-900/70 dark:hover:border-neutral-200"
-            @click="goTo(card.route)"
-          >
-            <p class="text-[10px] uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">{{ card.label }}</p>
-            <p class="mt-4 text-3xl font-semibold">{{ card.value }}</p>
-            <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ card.detail }}</p>
-          </button>
-        </div>
-
         <section class="rounded-2xl border border-neutral-200/70 bg-neutral-50/90 p-6 dark:border-neutral-800 dark:bg-neutral-900">
-          <p class="text-xs uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">Quick actions</p>
-          <div class="mt-5 grid gap-4 md:grid-cols-3">
+          <div class="flex flex-col gap-2 text-left sm:flex-row sm:items-center sm:justify-between">
+            <p class="text-xs uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">Choose your next action</p>
+            <p class="text-sm text-neutral-500 dark:text-neutral-400">Pick the scenario that matches the job in front of you.</p>
+          </div>
+
+          <div class="mt-6 grid gap-4 md:grid-cols-2">
             <button
-              v-for="action in quickActions"
-              :key="action.label"
+              v-for="scenario in scenarioCards"
+              :key="scenario.title"
               type="button"
-              class="flex h-28 flex-col justify-between rounded-xl border border-neutral-200 bg-white px-4 py-3 text-left text-neutral-900 transition hover:-translate-y-0.5 hover:border-neutral-900 hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:border-neutral-700 dark:bg-neutral-950/40 dark:text-neutral-50 dark:hover:border-neutral-200/80 dark:hover:bg-neutral-900"
-              @click="goTo(action.route)"
+              class="flex flex-col justify-between rounded-2xl border border-neutral-200 bg-white/90 p-5 text-left text-neutral-900 transition hover:-translate-y-0.5 hover:border-neutral-900 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:border-neutral-700 dark:bg-neutral-950/40 dark:text-neutral-50 dark:hover:border-neutral-200/80 dark:hover:bg-neutral-900"
+              @click="goTo(scenario.route)"
             >
-              <span class="text-2xl">{{ action.icon }}</span>
-              <div>
-                <p class="text-base font-semibold">{{ action.label }}</p>
-                <p v-if="action.caption" class="text-sm text-neutral-500 dark:text-neutral-400">{{ action.caption }}</p>
+              <div class="flex items-center justify-between gap-3">
+                <p class="text-[10px] uppercase tracking-[0.4em] text-neutral-500 dark:text-neutral-400">{{ scenario.badge }}</p>
+                <span aria-hidden="true" class="text-lg text-neutral-400 dark:text-neutral-500">→</span>
               </div>
+              <div class="mt-4 space-y-2">
+                <h3 class="text-xl font-semibold leading-tight">{{ scenario.title }}</h3>
+                <p class="text-sm text-neutral-500 dark:text-neutral-400">{{ scenario.description }}</p>
+              </div>
+              <span class="mt-6 inline-flex items-center gap-1 text-sm font-semibold text-emerald-600 dark:text-emerald-300">
+                {{ scenario.cta }}
+                <span aria-hidden="true">↗</span>
+              </span>
             </button>
           </div>
         </section>
@@ -68,23 +65,11 @@ import AppLogo from "@/components/layout/AppLogo.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
-import { useDeviceStore } from "@/stores/deviceStore"
-import { useSwitchgearStore } from "@/stores/switchgearStore"
-import { useSequenceStore } from "@/stores/sequenceStore"
 
 const workspaceStore = useWorkspaceStore()
 const wsStore = useWebSocketStore()
-const deviceStore = useDeviceStore()
-const switchgearStore = useSwitchgearStore()
-const sequenceStore = useSequenceStore()
 const router = useRouter()
 
-onMounted(() => {
-  void workspaceStore.bootstrap()
-  void deviceStore.ensureLoaded()
-  void switchgearStore.ensureLoaded()
-  void sequenceStore.ensureLoaded()
-})
 
 const connectionState = computed(() => {
   if (wsStore.isConnected) {
@@ -129,52 +114,34 @@ const workspaceSummary = computed(() => {
 
 const workspaceError = computed(() => workspaceStore.error)
 
-const statusCards = computed(() => {
-  const onlineDevices = deviceStore.devices.filter(device => device.status === "online").length
-  const totalDevices = deviceStore.devices.length
-  const switchgears = switchgearStore.switchgears.length
-  const sequences = sequenceStore.sequences.length
-
-  return [
-    {
-      label: "Devices online",
-      value: `${onlineDevices}/${totalDevices || 0}`,
-      detail: totalDevices ? "Live modules" : "Waiting for devices",
-      route: { name: "devices.list" },
-    },
-    {
-      label: "Switchgears",
-      value: switchgears,
-      detail: switchgears ? "Configured cabinets" : "Add your first cabinet",
-      route: { name: "switchgears.list" },
-    },
-    {
-      label: "Sequences",
-      value: sequences,
-      detail: sequences ? "Ready test plans" : "No tests yet",
-      route: { name: "sequences.list" },
-    },
-  ]
-})
-
-const quickActions = [
+const scenarioCards = [
   {
-    icon: "🔘",
-    label: "Toggle channel",
-    caption: "Jump to devices",
+    badge: "Scenario 01",
+    title: "Live Hardware Control",
+    description: "Use when you need instant manual access to raw I/O channels without loading a project context.",
+    cta: "Open Live Hardware",
     route: { name: "devices.list" },
   },
   {
-    icon: "🔁",
-    label: "Simulate switch (ON / OFF)",
-    caption: "Open switchgears",
+    badge: "Scenario 02",
+    title: "Live Signal Control",
+    description: "Use when you prefer human-readable project signal names for guided manual intervention.",
+    cta: "Go to Signals",
+    route: { name: "signals.home" },
+  },
+  {
+    badge: "Scenario 03",
+    title: "Switchgear / Disconnectors",
+    description: "Use when you must operate two-position disconnectors and verify feedback before energizing anything else.",
+    cta: "Open Switchgears",
     route: { name: "switchgears.list" },
   },
   {
-    icon: "▶️",
-    label: "Run full cabinet test",
-    caption: "Launch sequences",
-    route: { name: "sequences.list" },
+    badge: "Scenario 04",
+    title: "Test Runs",
+    description: "Use when you are ready to execute a scripted FAT batch with automatic logging and safety prompts.",
+    cta: "Review Test Runs",
+    route: { name: "testRuns.home" },
   },
 ]
 

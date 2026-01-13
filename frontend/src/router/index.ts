@@ -5,6 +5,7 @@ import { devicesRoutes } from "./devices.routes"
 import { switchgearsRoutes } from "./switchgears.routes"
 import { signalsRoutes } from "./signals.routes"
 import { testRunsRoutes } from "./testRuns.routes"
+import { bootRuntime } from "@/boot/runtime"
 
 // Default layout meta (used by most screens)
 const defaultMeta = {
@@ -38,6 +39,11 @@ const router = createRouter({
       },
     },
   ],
+})
+
+// ✅ Runtime bootstrap (global, idempotent)
+router.beforeEach(async () => {
+  await bootRuntime()
 })
 
 export default router

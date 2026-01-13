@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.v1.sequences.errors import ReadOnlySequenceError
 from app.models.channel import Channel
 from app.models.sequence import Sequence, SequenceStep, SequenceStepType
 from app.models.workspace import WorkspaceSequence
@@ -58,6 +59,11 @@ class SequenceRepository:
         seq = await self.get(workspace_id, seq_id)
         if not seq:
             return None
+        if seq.read_only:
+            raise ReadOnlySequenceError("Sequence is read-only")
+        changes.pop("system_key", None)
+        changes.pop("system_provided", None)
+        changes.pop("read_only", None)
         for key, value in changes.items():
             setattr(seq, key, value)
         await self.db.commit()
@@ -68,6 +74,8 @@ class SequenceRepository:
         seq = await self.get(workspace_id, seq_id)
         if not seq:
             return False
+        if seq.read_only:
+            raise ReadOnlySequenceError("Sequence is read-only")
         await self.db.delete(seq)
         await self.db.commit()
         return True

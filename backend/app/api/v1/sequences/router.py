@@ -15,6 +15,7 @@ from app.infrastructure.db.database import get_db
 from app.models.channel import Channel
 from app.models.device import Device
 from app.api.v1.sequences import SequenceRepository, SequenceStepRepository
+from app.api.v1.sequences.errors import ReadOnlySequenceError
 from app.schemas.sequence_run_schema import SequenceStateSchema
 from app.schemas.sequence_schema import (
     SequenceCreateSchema,
@@ -79,7 +80,10 @@ async def update_sequence(
     db: AsyncSession = Depends(get_db),
 ):
     repo = SequenceRepository(db)
-    seq = await repo.update(workspace_id, seq_id, payload.model_dump(exclude_unset=True))
+    try:
+        seq = await repo.update(workspace_id, seq_id, payload.model_dump(exclude_unset=True))
+    except ReadOnlySequenceError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     if not seq:
         raise HTTPException(status_code=404, detail="Sequence not found")
     return seq
@@ -88,7 +92,10 @@ async def update_sequence(
 @router.delete("/{seq_id}")
 async def delete_sequence(workspace_id: int, seq_id: int, db: AsyncSession = Depends(get_db)):
     repo = SequenceRepository(db)
-    deleted = await repo.delete(workspace_id, seq_id)
+    try:
+        deleted = await repo.delete(workspace_id, seq_id)
+    except ReadOnlySequenceError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     if not deleted:
         raise HTTPException(status_code=404, detail="Sequence not found")
     return {"detail": "Sequence deleted"}
@@ -115,7 +122,10 @@ async def create_step(
     seq_repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
     repo = SequenceStepRepository(db)
-    step = await repo.create(seq_id, payload.model_dump(exclude_unset=True))
+    try:
+        step = await repo.create(seq_id, payload.model_dump(exclude_unset=True))
+    except ReadOnlySequenceError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     return step
 
 
@@ -130,7 +140,10 @@ async def update_step(
     seq_repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
     repo = SequenceStepRepository(db)
-    step = await repo.update(step_id, payload.model_dump(exclude_unset=True))
+    try:
+        step = await repo.update(step_id, payload.model_dump(exclude_unset=True))
+    except ReadOnlySequenceError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     if not step:
         raise HTTPException(status_code=404, detail="Step not found")
     return step
@@ -141,7 +154,10 @@ async def delete_step(workspace_id: int, seq_id: int, step_id: int, db: AsyncSes
     seq_repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
     repo = SequenceStepRepository(db)
-    deleted = await repo.delete(step_id)
+    try:
+        deleted = await repo.delete(step_id)
+    except ReadOnlySequenceError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     if not deleted:
         raise HTTPException(status_code=404, detail="Step not found")
 
@@ -159,7 +175,10 @@ async def reorder_steps(
     seq_repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
     repo = SequenceStepRepository(db)
-    steps = await repo.reorder(seq_id, payload.new_order)
+    try:
+        steps = await repo.reorder(seq_id, payload.new_order)
+    except ReadOnlySequenceError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     return steps
 
 
@@ -174,7 +193,10 @@ async def replace_steps(
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
     repo = SequenceStepRepository(db)
     payload = [step.model_dump() for step in steps]
-    result = await repo.replace(seq_id, payload)
+    try:
+        result = await repo.replace(seq_id, payload)
+    except ReadOnlySequenceError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     return result
 
 

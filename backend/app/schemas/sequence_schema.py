@@ -27,6 +27,9 @@ class SequenceSchema(SequenceBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    system_key: str | None = None
+    system_provided: bool
+    read_only: bool
     workspace_ids: List[int] = Field(default_factory=list)
     steps: List[SequenceStepSchema] = Field(default_factory=list)
 

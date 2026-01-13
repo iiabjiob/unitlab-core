@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.workspaces import WorkspaceRepository
+from app.api.v1.sequences.errors import ReadOnlySequenceError
 from app.infrastructure.db.database import get_db
 from app.schemas.workspace_schema import (
     WorkspaceCreateSchema,
@@ -132,4 +133,6 @@ async def detach_sequence(
         raise HTTPException(status_code=404, detail=str(exc))
     except WorkspaceEntityNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except ReadOnlySequenceError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
     return {"detail": "Sequence detached"}

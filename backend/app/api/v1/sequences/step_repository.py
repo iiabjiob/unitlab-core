@@ -4,6 +4,7 @@ from sqlalchemy import select, update, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.sequences.errors import ReadOnlySequenceError
 from app.models.sequence import Sequence, SequenceStep, SequenceStepType
 
 
@@ -26,6 +27,7 @@ class SequenceStepRepository:
         return result.scalars().all()
 
     async def create(self, sequence_id: int, data: dict) -> SequenceStep:
+        await self._ensure_sequence_mutable(sequence_id)
         try:
             result = await self.db.execute(
                 select(SequenceStep.order_index)
@@ -60,6 +62,7 @@ class SequenceStepRepository:
         step = await self.get(step_id)
         if not step:
             return None
+        await self._ensure_sequence_mutable(step.sequence_id)
 
         for key, value in changes.items():
             if key in {"sequence_step_type", "type", "kind"} and value is not None:
@@ -78,12 +81,14 @@ class SequenceStepRepository:
         step = await self.get(step_id)
         if not step:
             return False
+        await self._ensure_sequence_mutable(step.sequence_id)
         await self.db.delete(step)
         await self._touch_sequence(step.sequence_id)
         await self.db.commit()
         return True
 
     async def reorder(self, sequence_id: int, new_order: list[int]) -> list[SequenceStep]:
+        await self._ensure_sequence_mutable(sequence_id)
         steps = await self.get_for_sequence(sequence_id)
         if not steps:
             return []
@@ -103,6 +108,7 @@ class SequenceStepRepository:
         return await self._apply_order(sequence_id, normalized, steps)
 
     async def normalize(self, sequence_id: int) -> list[SequenceStep]:
+        await self._ensure_sequence_mutable(sequence_id)
         steps = await self.get_for_sequence(sequence_id)
         ordered_ids = [step.id for step in steps]
         return await self._apply_order(sequence_id, ordered_ids, steps)
@@ -142,6 +148,7 @@ class SequenceStepRepository:
         return await self.get_for_sequence(sequence_id)
 
     async def replace(self, sequence_id: int, new_steps: list[dict]) -> list[SequenceStep]:
+        await self._ensure_sequence_mutable(sequence_id)
         existing = await self.get_for_sequence(sequence_id)
         for step in existing:
             await self.db.delete(step)
@@ -170,3 +177,12 @@ class SequenceStepRepository:
             .where(Sequence.id == sequence_id)
             .values(updated_at=func.now())
         )
+
+    async def _ensure_sequence_mutable(self, sequence_id: int) -> None:
+        stmt = select(Sequence.read_only).where(Sequence.id == sequence_id)
+        result = await self.db.execute(stmt)
+        read_only = result.scalar_one_or_none()
+        if read_only is None:
+            raise ReadOnlySequenceError("Sequence not found")
+        if read_only:
+            raise ReadOnlySequenceError("Sequence is read-only")

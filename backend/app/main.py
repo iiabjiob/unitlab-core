@@ -19,6 +19,7 @@ from app.infrastructure.redis.manager import RedisManager
 
 from app.ws.pubsub_listener import forward_ws_events_from_pubsub
 from app.services.sequence_event_forwarder import forward_sequence_events
+from app.services.system_sequence_seeder import seed_default_sequences
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -40,6 +41,9 @@ async def lifespan(app: FastAPI):
         await check_database_connection()
     else:
         logger.info("⏩ Skipping DB readiness probe in %s mode", settings.app_env)
+
+    logger.info("🌱 Ensuring default sequences exist")
+    await seed_default_sequences()
 
     # Start infrastructure services
     await RedisManager.start()

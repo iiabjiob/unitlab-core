@@ -4,6 +4,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.sequences.errors import ReadOnlySequenceError
 from app.models.sequence import Sequence
 from app.models.switchgear import Switchgear
 from app.models.workspace import Workspace, WorkspaceSequence, WorkspaceSwitchgear
@@ -64,6 +65,10 @@ class WorkspaceLinksService:
         link = (await self.db.execute(stmt)).scalar_one_or_none()
         if not link:
             raise WorkspaceLinkNotFoundError("Sequence is not attached to this workspace")
+        seq_stmt = select(Sequence.read_only).where(Sequence.id == sequence_id)
+        read_only = (await self.db.execute(seq_stmt)).scalar_one_or_none()
+        if read_only:
+            raise ReadOnlySequenceError("Sequence is read-only")
         await self.db.delete(link)
         await self.db.commit()
 
