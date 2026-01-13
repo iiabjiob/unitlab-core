@@ -4,9 +4,9 @@ from .channel import Channel  # noqa: F401
 from .switchgear import Switchgear, SwitchgearChannelBinding  # noqa: F401
 from .sequence import Sequence, SequenceStep  # noqa: F401
 from .sequence_run import SequenceRun, SequenceRunStep  # noqa: F401
-from .signal_snapshot import SignalSnapshot, SignalSnapshotStatus  # noqa: F401
-from .signal_snapshot_allocation import SignalSnapshotAllocation  # noqa: F401
-from .test_run import TestRun, TestRunMode, TestRunStatus  # noqa: F401
+from .signal import Signal, SignalIODirection  # noqa: F401
+from .test_run import TestRun, TestRunStatus  # noqa: F401
+from .test_run_signal_snapshot import TestRunSignalSnapshot, TestRunSignalSnapshotEntry  # noqa: F401
 from .workspace import Workspace, WorkspaceSequence, WorkspaceSwitchgear  # noqa: F401
 
 __all__ = [
@@ -20,12 +20,12 @@ __all__ = [
     "SequenceStep",
     "SequenceRun",
     "SequenceRunStep",
-    "SignalSnapshot",
-    "SignalSnapshotAllocation",
-    "SignalSnapshotStatus",
+    "Signal",
+    "SignalIODirection",
     "TestRun",
-    "TestRunMode",
     "TestRunStatus",
+    "TestRunSignalSnapshot",
+    "TestRunSignalSnapshotEntry",
     "Workspace",
     "WorkspaceSwitchgear",
     "WorkspaceSequence",

@@ -10,9 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.allocation import Allocation, AllocationEntry
 from app.models.channel import Channel
-from app.models.signal_snapshot import SignalSnapshot
+from app.models.signal import Signal
 from app.models.sequence import Sequence
-from app.models.test_run import TestRun, TestRunMode, TestRunSequenceLink, TestRunStatus
+from app.models.test_run import TestRun, TestRunSequenceLink, TestRunStatus
+from app.models.test_run_signal_snapshot import (
+    TestRunSignalSnapshot,
+    TestRunSignalSnapshotEntry,
+)
 from app.models.workspace import WorkspaceSequence
 from app.schemas.allocation_schema import AllocationCreateSchema, AllocationEntryCreateSchema
 from app.schemas.test_run_schema import TestRunCreateSchema
@@ -21,7 +25,6 @@ from app.services.execution_context import (
     ExecutionContext,
     SequenceDTO,
     SequenceStepDTO,
-    SignalSnapshotDTO,
 )
 from app.services.domain_errors import (
     AllocationInvalidError,
@@ -29,10 +32,6 @@ from app.services.domain_errors import (
     ChannelNotFoundError,
     SequenceNotApplicableError,
     TestRunInvalidStateError,
-)
-from app.services.signal_snapshot_service import (
-    SignalSnapshotNotFoundError,
-    SignalSnapshotService,
 )
 
 
@@ -63,6 +62,7 @@ class TestRunService:
     async def list_runs(self, workspace_id: int) -> list[TestRun]:
         stmt = (
             select(TestRun)
+            .options(selectinload(TestRun.snapshot))
             .where(TestRun.workspace_id == workspace_id)
             .order_by(TestRun.created_at.desc())
         )
@@ -70,7 +70,35 @@ class TestRunService:
         return list(result.scalars().all())
 
     async def get_run(self, run_id: int) -> TestRun:
-        stmt = select(TestRun).where(TestRun.id == run_id)
+        stmt = select(TestRun).options(selectinload(TestRun.snapshot)).where(TestRun.id == run_id)
+        result = await self.db.execute(stmt)
+        run = result.scalar_one_or_none()
+        if not run:
+            raise TestRunNotFoundError
+        return run
+
+    async def get_run_snapshot(self, run_id: int) -> TestRunSignalSnapshot:
+        stmt = (
+            select(TestRunSignalSnapshot)
+            .options(selectinload(TestRunSignalSnapshot.entries))
+            .where(TestRunSignalSnapshot.test_run_id == run_id)
+        )
+        result = await self.db.execute(stmt)
+        snapshot = result.scalar_one_or_none()
+        if not snapshot:
+            raise TestRunNotFoundError
+        return snapshot
+
+    async def _load_run_for_repeat(self, run_id: int) -> TestRun:
+        stmt = (
+            select(TestRun)
+            .options(
+                selectinload(TestRun.allocation).selectinload(Allocation.entries),
+                selectinload(TestRun.sequence_links),
+                selectinload(TestRun.snapshot).selectinload(TestRunSignalSnapshot.entries),
+            )
+            .where(TestRun.id == run_id)
+        )
         result = await self.db.execute(stmt)
         run = result.scalar_one_or_none()
         if not run:
@@ -83,47 +111,43 @@ class TestRunService:
         await self._ensure_sequence_membership(workspace_id, sequence_ids)
         allocation_payload = payload.allocation or AllocationCreateSchema()
         sequences = await self._load_sequences(sequence_ids)
-        allocation_payload = await self._validate_allocation(
+        allocation_payload, signal_map = await self._validate_allocation(
+            workspace_id,
             allocation_payload,
             sequences,
             allow_empty_allocation=payload.allow_empty_allocation,
         )
 
         async with self.db.begin():
-            snapshot: SignalSnapshot | None = None
-            if payload.mode == TestRunMode.SIGNAL:
-                if payload.signal_snapshot_id is None:
-                    raise SignalSnapshotNotFoundError
-                snapshot = await self._get_snapshot(
-                    payload.signal_snapshot_id,
-                    workspace_id,
-                    for_update=True,
-                )
-                if not snapshot:
-                    raise SignalSnapshotNotFoundError
-                SignalSnapshotService.lock_snapshot(snapshot)
-
             run = TestRun(
                 workspace_id=workspace_id,
-                mode=payload.mode,
-                signal_snapshot_id=payload.signal_snapshot_id,
                 status=TestRunStatus.CREATED,
-                allocation=self._build_allocation_model(allocation_payload),
+                allocation=self._build_allocation_model(allocation_payload, signal_map),
                 sequence_links=[
                     TestRunSequenceLink(sequence_id=sequence_id) for sequence_id in sequence_ids
                 ],
             )
             self.db.add(run)
+            await self.db.flush()
+            snapshot = self._build_snapshot_model(
+                test_run_id=run.id,
+                workspace_id=workspace_id,
+                allocation_entries=run.allocation.entries,
+                signal_map=signal_map,
+            )
+            self.db.add(snapshot)
 
         await self.db.refresh(run)
         return run
 
     async def repeat_run(self, run_id: int) -> TestRun:
-        run = await self.get_run(run_id)
+        run = await self._load_run_for_repeat(run_id)
+        if not run.snapshot:
+            raise TestRunNotFoundError
+        if not run.allocation:
+            raise TestRunAllocationMissingError("Test run allocation is missing")
         clone = TestRun(
             workspace_id=run.workspace_id,
-            mode=run.mode,
-            signal_snapshot_id=run.signal_snapshot_id,
             status=TestRunStatus.CREATED,
             allocation=self._clone_allocation_model(run.allocation),
             sequence_links=[
@@ -132,6 +156,9 @@ class TestRunService:
             ],
         )
         self.db.add(clone)
+        await self.db.flush()
+        snapshot = self._clone_snapshot_model(run.snapshot, clone.id)
+        self.db.add(snapshot)
         await self.db.commit()
         await self.db.refresh(clone)
         return clone
@@ -144,7 +171,7 @@ class TestRunService:
                 selectinload(TestRun.allocation).selectinload(Allocation.entries),
                 selectinload(TestRun.sequences).selectinload(Sequence.steps),
                 selectinload(TestRun.sequence_links),
-                selectinload(TestRun.signal_snapshot),
+                selectinload(TestRun.snapshot).selectinload(TestRunSignalSnapshot.entries),
             )
             .where(TestRun.id == test_run_id)
         )
@@ -168,17 +195,10 @@ class TestRunService:
             if link.sequence_id in sequence_map
         ]
         sequences = tuple(self._build_sequence_dto(sequence) for sequence in ordered_sequences)
-        signal_snapshot = (
-            self._build_snapshot_dto(run.signal_snapshot)
-            if run.signal_snapshot is not None
-            else None
-        )
-
         return ExecutionContext(
             test_run_id=run.id,
-            mode=run.mode,
+            status=run.status,
             allocation_entries=allocation_entries,
-            signal_snapshot=signal_snapshot,
             sequences=sequences,
         )
 
@@ -234,22 +254,6 @@ class TestRunService:
                 "Sequences are not attached to this workspace: " + ", ".join(map(str, missing))
             )
 
-    async def _get_snapshot(
-        self,
-        snapshot_id: int,
-        workspace_id: int,
-        *,
-        for_update: bool = False,
-    ) -> SignalSnapshot | None:
-        stmt: Select[tuple[SignalSnapshot]] = select(SignalSnapshot).where(
-            SignalSnapshot.id == snapshot_id,
-            SignalSnapshot.workspace_id == workspace_id,
-        )
-        if for_update:
-            stmt = stmt.with_for_update()
-        result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
-
     @staticmethod
     def _validate_sequence_ids(sequence_ids: list[int]) -> list[int]:
         seen: set[int] = set()
@@ -273,11 +277,12 @@ class TestRunService:
 
     async def _validate_allocation(
         self,
+        workspace_id: int,
         allocation_payload: AllocationCreateSchema,
         sequences: list[Sequence],
         *,
         allow_empty_allocation: bool,
-    ) -> AllocationCreateSchema:
+    ) -> tuple[AllocationCreateSchema, dict[int, Signal]]:
         referenced_channel_ids: set[int] = set()
         referenced_signal_keys: set[str] = set()
 
@@ -304,7 +309,17 @@ class TestRunService:
             ]
 
         allocation_channel_ids = {entry.channel_id for entry in allocation_entries}
-        allocation_signal_keys = {entry.signal_key for entry in allocation_entries if entry.signal_key}
+        allocation_signal_ids = {
+            entry.signal_id for entry in allocation_entries if entry.signal_id is not None
+        }
+
+        signal_map = await self._load_signals_by_ids(workspace_id, allocation_signal_ids)
+        available_signal_ids = set(signal_map.keys())
+        missing_signal_ids = sorted(allocation_signal_ids - available_signal_ids)
+        if missing_signal_ids:
+            missing = ", ".join(map(str, missing_signal_ids))
+            raise AllocationInvalidError(f"Signals not found: {missing}")
+        allocation_signal_keys = {signal.key for signal in signal_map.values()}
 
         if referenced_channel_ids - allocation_channel_ids:
             missing = ", ".join(map(str, sorted(referenced_channel_ids - allocation_channel_ids)))
@@ -315,9 +330,12 @@ class TestRunService:
 
         await self._ensure_channels_exist(referenced_channel_ids | allocation_channel_ids)
 
-        return AllocationCreateSchema(
-            notes=allocation_payload.notes,
-            entries=allocation_entries,
+        return (
+            AllocationCreateSchema(
+                notes=allocation_payload.notes,
+                entries=allocation_entries,
+            ),
+            signal_map,
         )
 
     @staticmethod
@@ -351,6 +369,22 @@ class TestRunService:
                 "Channels not found: " + ", ".join(map(str, missing))
             )
 
+    async def _load_signals_by_ids(
+        self,
+        workspace_id: int,
+        signal_ids: set[int],
+    ) -> dict[int, Signal]:
+        if not signal_ids:
+            return {}
+        stmt: Select[tuple[Signal]] = select(Signal).where(
+            Signal.workspace_id == workspace_id,
+            Signal.id.in_(signal_ids),
+            Signal.deleted_at.is_(None),
+        )
+        result = await self.db.execute(stmt)
+        signals = result.scalars().all()
+        return {signal.id: signal for signal in signals}
+
     @staticmethod
     def _short_reason(reason: str, max_len: int = 200) -> str:
         normalized = reason.strip()
@@ -362,6 +396,7 @@ class TestRunService:
     def _build_allocation_entry_dto(entry: AllocationEntry) -> AllocationEntryDTO:
         return AllocationEntryDTO(
             channel_id=entry.channel_id,
+            signal_id=entry.signal_id,
             signal_key=entry.signal_key,
             signal_metadata=copy.deepcopy(entry.signal_metadata)
             if entry.signal_metadata is not None
@@ -386,25 +421,23 @@ class TestRunService:
         )
 
     @staticmethod
-    def _build_snapshot_dto(snapshot: SignalSnapshot) -> SignalSnapshotDTO:
-        return SignalSnapshotDTO(
-            id=snapshot.id,
-            source_filename=snapshot.source_filename,
-            source_hash=snapshot.source_hash,
-        )
-
-    @staticmethod
-    def _build_allocation_model(payload: AllocationCreateSchema) -> Allocation:
-        entries = [
-            AllocationEntry(
-                channel_id=entry.channel_id,
-                signal_key=entry.signal_key,
-                signal_metadata=copy.deepcopy(entry.signal_metadata)
-                if entry.signal_metadata is not None
-                else None,
+    def _build_allocation_model(
+        payload: AllocationCreateSchema,
+        signal_map: dict[int, Signal],
+    ) -> Allocation:
+        entries: list[AllocationEntry] = []
+        for entry in payload.entries:
+            signal = signal_map.get(entry.signal_id) if entry.signal_id is not None else None
+            entries.append(
+                AllocationEntry(
+                    channel_id=entry.channel_id,
+                    signal_id=entry.signal_id,
+                    signal_key=signal.key if signal else None,
+                    signal_metadata=copy.deepcopy(entry.signal_metadata)
+                    if entry.signal_metadata is not None
+                    else None,
+                )
             )
-            for entry in payload.entries
-        ]
         return Allocation(notes=payload.notes, entries=entries)
 
     @staticmethod
@@ -412,6 +445,7 @@ class TestRunService:
         entries = [
             AllocationEntry(
                 channel_id=entry.channel_id,
+                signal_id=entry.signal_id,
                 signal_key=entry.signal_key,
                 signal_metadata=copy.deepcopy(entry.signal_metadata)
                 if entry.signal_metadata is not None
@@ -420,3 +454,62 @@ class TestRunService:
             for entry in allocation.entries
         ]
         return Allocation(notes=allocation.notes, entries=entries)
+
+    @staticmethod
+    def _build_snapshot_model(
+        *,
+        test_run_id: int,
+        workspace_id: int,
+        allocation_entries: list[AllocationEntry],
+        signal_map: dict[int, Signal],
+    ) -> TestRunSignalSnapshot:
+        entries: list[TestRunSignalSnapshotEntry] = []
+        for entry in allocation_entries:
+            if entry.signal_id is None:
+                continue
+            signal = signal_map.get(entry.signal_id)
+            if not signal:
+                continue
+            entries.append(
+                TestRunSignalSnapshotEntry(
+                    live_signal_id=signal.id,
+                    signal_key=signal.key,
+                    name=signal.name,
+                    io_direction=signal.io_direction,
+                    allocation_channel_id=entry.channel_id,
+                    allocation_metadata=copy.deepcopy(entry.signal_metadata)
+                    if entry.signal_metadata is not None
+                    else None,
+                    entry_metadata=copy.deepcopy(signal.signal_metadata),
+                )
+            )
+        return TestRunSignalSnapshot(
+            test_run_id=test_run_id,
+            workspace_id=workspace_id,
+            entries=entries,
+        )
+
+    @staticmethod
+    def _clone_snapshot_model(
+        snapshot: TestRunSignalSnapshot,
+        test_run_id: int,
+    ) -> TestRunSignalSnapshot:
+        entries = [
+            TestRunSignalSnapshotEntry(
+                live_signal_id=entry.live_signal_id,
+                signal_key=entry.signal_key,
+                name=entry.name,
+                io_direction=entry.io_direction,
+                allocation_channel_id=entry.allocation_channel_id,
+                allocation_metadata=copy.deepcopy(entry.allocation_metadata)
+                if entry.allocation_metadata is not None
+                else None,
+                entry_metadata=copy.deepcopy(entry.entry_metadata),
+            )
+            for entry in snapshot.entries
+        ]
+        return TestRunSignalSnapshot(
+            test_run_id=test_run_id,
+            workspace_id=snapshot.workspace_id,
+            entries=entries,
+        )

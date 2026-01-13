@@ -8,7 +8,7 @@ from app.infrastructure.db.database import get_db
 from app.models.workspace import Workspace
 from app.schemas.sequence_run_schema import SequenceStateSchema
 from app.schemas.test_run_schema import TestRunCreateSchema, TestRunSchema
-from app.services.signal_snapshot_service import SignalSnapshotNotFoundError
+from app.schemas.test_run_signal_schema import TestRunSignalSnapshotSchema
 from app.services.sequence_command_service import SequenceCommandService
 from app.services.sequence_state_service import SequenceStateService
 from app.services.test_run_service import (
@@ -52,8 +52,6 @@ async def create_test_run(
         raise HTTPException(status_code=400, detail=str(exc))
     except WorkspaceResourceNotFoundError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
-    except SignalSnapshotNotFoundError:
-        raise HTTPException(status_code=404, detail="Signal snapshot not found in workspace")
     return run
 
 
@@ -81,6 +79,15 @@ async def repeat_test_run(run_id: int, db: AsyncSession = Depends(get_db)):
     service = TestRunService(db)
     try:
         return await service.repeat_run(run_id)
+    except TestRunNotFoundError:
+        raise HTTPException(status_code=404, detail="Test run not found")
+
+
+@router.get("/test-runs/{run_id}/signals", response_model=TestRunSignalSnapshotSchema)
+async def get_test_run_signals(run_id: int, db: AsyncSession = Depends(get_db)):
+    service = TestRunService(db)
+    try:
+        return await service.get_run_snapshot(run_id)
     except TestRunNotFoundError:
         raise HTTPException(status_code=404, detail="Test run not found")
 

@@ -65,11 +65,11 @@ import { computed, ref } from "vue"
 
 import UiButton from "@/components/ui/UiButton.vue"
 import TestRunListItem from "./TestRunListItem.vue"
-import type { TestRun } from "@/types/signal"
+import type { TestRunRecord } from "@/types/signal"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 
 const props = defineProps<{
-  runs: TestRun[]
+  runs: TestRunRecord[]
   selectedId: number | null
   loading?: boolean
   sequenceNameMap: Map<number, string>
@@ -96,13 +96,13 @@ const filteredRuns = computed(() => {
   return normalizedRuns.value.filter(run => {
     const idMatch = `#${run.id}`.includes(q)
     const statusMatch = run.status.toLowerCase().includes(q)
-    const modeMatch = run.mode.toLowerCase().includes(q)
+    const notesMatch = (run.allocation?.notes?.toLowerCase() ?? "").includes(q)
     const sequenceMatch = run.sequence_ids.some(id => {
       const name = props.sequenceNameMap.get(id)
       if (!name) return false
       return name.toLowerCase().includes(q)
     })
-    return idMatch || statusMatch || modeMatch || sequenceMatch
+    return idMatch || statusMatch || notesMatch || sequenceMatch
   })
 })
 </script>

@@ -14,8 +14,9 @@ from app.models.types import BIGINT_PK
 if TYPE_CHECKING:  # pragma: no cover
     from app.models.switchgear import Switchgear
     from app.models.sequence import Sequence
-    from app.models.signal_snapshot import SignalSnapshot
+    from app.models.signal import Signal
     from app.models.test_run import TestRun
+    from app.models.test_run_signal_snapshot import TestRunSignalSnapshot
 
 
 class Workspace(Base):
@@ -57,8 +58,14 @@ class Workspace(Base):
         viewonly=True,
         lazy="selectin",
     )
-    signal_snapshots: Mapped[list["SignalSnapshot"]] = relationship(
-        "SignalSnapshot",
+    signals: Mapped[list["Signal"]] = relationship(
+        "Signal",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    signal_snapshots: Mapped[list["TestRunSignalSnapshot"]] = relationship(
+        "TestRunSignalSnapshot",
         back_populates="workspace",
         cascade="all, delete-orphan",
         lazy="selectin",

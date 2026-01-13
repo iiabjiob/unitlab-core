@@ -12,7 +12,7 @@
       <UiBadge :variant="statusVariant(run.status)">{{ run.status }}</UiBadge>
     </div>
     <div class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-      <span class="uppercase tracking-[0.3em] text-[10px] text-neutral-400 dark:text-neutral-500">{{ run.mode }} mode</span>
+      <span class="uppercase tracking-[0.3em] text-[10px] text-neutral-400 dark:text-neutral-500">{{ snapshotLabel }}</span>
       <span class="mx-1">·</span>
       <span>{{ created }}</span>
     </div>
@@ -25,15 +25,16 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import UiBadge from "@/components/ui/UiBadge.vue"
-import type { TestRun } from "@/types/signal"
+import type { TestRunRecord } from "@/types/signal"
 
 const props = defineProps<{
-  run: TestRun
+  run: TestRunRecord
   active?: boolean
   sequenceNameMap: Map<number, string>
 }>()
 
 const created = computed(() => new Date(props.run.created_at).toLocaleString())
+const snapshotLabel = computed(() => (props.run.snapshot ? "SNAPSHOT READY" : "SNAPSHOT PENDING"))
 
 const sequenceSummary = computed(() => {
   if (!props.run.sequence_ids.length) return ""

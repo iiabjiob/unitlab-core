@@ -67,12 +67,12 @@ import { useRoute, useRouter } from "vue-router"
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import SlideOver from "@/components/ui/SlideOver.vue"
 import TestRunListSidebar from "./components/TestRunListSidebar.vue"
-import { useSignalSnapshotStore } from "@/stores/signalSnapshotStore"
+import { useTestRunStore } from "@/stores/testRunStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useViewport } from "@/composables/useViewport"
 
-const snapshotStore = useSignalSnapshotStore()
+const testRunStore = useTestRunStore()
 const sequenceStore = useSequenceStore()
 const workspaceStore = useWorkspaceStore()
 const { isDesktop } = useViewport()
@@ -81,8 +81,8 @@ const router = useRouter()
 
 const sidebarOpen = ref(false)
 
-const runs = computed(() => snapshotStore.runs)
-const runsLoading = computed(() => snapshotStore.runsLoading)
+const runs = computed(() => testRunStore.testRuns)
+const runsLoading = computed(() => testRunStore.loading)
 
 const sequenceNameMap = computed(() => {
   const map = new Map<number, string>()
@@ -100,7 +100,7 @@ const selectedRunId = computed<number | null>(() => {
 async function hydrate() {
   if (!workspaceStore.activeWorkspaceId) return
   await Promise.allSettled([
-    snapshotStore.refreshRuns(),
+    testRunStore.refreshRuns(),
     sequenceStore.ensureLoaded(),
   ])
 }

@@ -23,15 +23,8 @@ from app.models.types import BIGINT_PK
 if TYPE_CHECKING:  # pragma: no cover - import for annotations only
     from app.models.allocation import Allocation
     from app.models.sequence import Sequence
-    from app.models.signal_snapshot import SignalSnapshot
+    from app.models.test_run_signal_snapshot import TestRunSignalSnapshot
     from app.models.workspace import Workspace
-
-
-class TestRunMode(str, Enum):
-    """Execution mode controls whether a run is channel-only or snapshot-backed."""
-
-    CHANNEL = "channel"
-    SIGNAL = "signal"
 
 
 class TestRunStatus(str, Enum):
@@ -44,23 +37,11 @@ class TestRunStatus(str, Enum):
 
 
 class TestRun(Base):
-    """Execution context tying allocation + sequences to optional signal snapshots.
-
-    Domain rules:
-    * `mode` defines whether a run references a `SignalSnapshot`.
-    * Channel mode forbids linking a snapshot; signal mode requires one for coverage.
-    * Allocations live inside the run (`allocation_snapshot`) so they always belong to it.
-    * Sequences are attached through `TestRunSequenceLink`, keeping sequences decoupled from snapshots.
-    """
+    """Execution context tying allocation + sequences to frozen signal snapshots."""
 
     __tablename__ = "test_runs"
     __table_args__ = (
         Index("ix_test_runs_workspace_created", "workspace_id", "created_at"),
-        CheckConstraint(
-            "(mode = 'channel' AND signal_snapshot_id IS NULL) OR "
-            "(mode = 'signal' AND signal_snapshot_id IS NOT NULL)",
-            name="ck_test_runs_mode_snapshot",
-        ),
     )
 
     id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
@@ -68,16 +49,6 @@ class TestRun(Base):
         BIGINT_PK,
         ForeignKey("workspaces.id", ondelete="CASCADE"),
         nullable=False,
-    )
-    mode: Mapped[TestRunMode] = mapped_column(
-        SAEnum(TestRunMode, name="test_run_mode_enum"),
-        nullable=False,
-        server_default=TestRunMode.CHANNEL.value,
-    )
-    signal_snapshot_id: Mapped[int | None] = mapped_column(
-        BIGINT_PK,
-        ForeignKey("signal_snapshots.id", ondelete="RESTRICT"),
-        nullable=True,
     )
     status: Mapped[TestRunStatus] = mapped_column(
         SAEnum(TestRunStatus, name="test_run_status_enum"),
@@ -94,8 +65,12 @@ class TestRun(Base):
     workspace: Mapped["Workspace"] = relationship(
         "Workspace", back_populates="test_runs", lazy="selectin"
     )
-    signal_snapshot: Mapped["SignalSnapshot | None"] = relationship(
-        "SignalSnapshot", back_populates="test_runs", lazy="selectin"
+    snapshot: Mapped["TestRunSignalSnapshot"] = relationship(
+        "TestRunSignalSnapshot",
+        back_populates="test_run",
+        cascade="all, delete-orphan",
+        uselist=False,
+        lazy="selectin",
     )
     allocation: Mapped["Allocation"] = relationship(
         "Allocation",

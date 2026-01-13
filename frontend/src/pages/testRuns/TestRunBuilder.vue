@@ -4,7 +4,7 @@
       <p class="text-xs font-semibold uppercase tracking-[0.3em] text-neutral-400">Test Runs</p>
       <h1 class="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">Create a new test run</h1>
       <p class="text-sm text-neutral-500 dark:text-neutral-300">
-        Combine sequences, choose execution mode, and attach allocation bindings. Runs execute only after you dispatch them from the detail page.
+        Combine sequences, map channels to live signals, and we will capture an immutable snapshot the moment you dispatch the run.
       </p>
     </header>
 
@@ -20,45 +20,12 @@
       class="flex-1 overflow-y-auto rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
     >
       <form class="flex flex-col" @submit.prevent="createRun">
-        <header class="flex items-center justify-between border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
-          <div>
-            <h2 class="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Run definition</h2>
-            <p class="text-sm text-neutral-500 dark:text-neutral-400">Choose how the run should execute.</p>
-          </div>
-          <UiBadge :variant="builder.mode === 'signal' ? 'info' : 'warning'" class="uppercase">{{ builder.mode }} mode</UiBadge>
+        <header class="border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
+          <h2 class="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Run definition</h2>
+          <p class="text-sm text-neutral-500 dark:text-neutral-400">Sequences plus channel-to-signal bindings determine what gets executed.</p>
         </header>
 
         <div class="grid gap-4 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800 md:grid-cols-2">
-          <div class="flex flex-col gap-2">
-            <label class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Execution mode</label>
-            <div class="flex gap-3">
-              <label class="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">
-                <input v-model="builder.mode" type="radio" class="accent-neutral-900" value="signal" /> Signal (snapshot)
-              </label>
-              <label class="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200">
-                <input v-model="builder.mode" type="radio" class="accent-neutral-900" value="channel" /> Channel only
-              </label>
-            </div>
-            <p class="text-xs text-neutral-500" v-if="builder.mode === 'channel'">Runs without a signal snapshot. Only channel bindings will be used.</p>
-            <div v-else class="flex flex-col gap-2">
-              <select v-model.number="builder.snapshotId" class="input">
-                <option :value="null">Select locked snapshot</option>
-                <option v-for="snapshot in lockedSnapshots" :key="snapshot.id" :value="snapshot.id">
-                  {{ snapshot.source_filename ?? `Snapshot #${snapshot.id}` }}
-                </option>
-              </select>
-              <button
-                class="btn-secondary"
-                type="button"
-                :disabled="!builder.snapshotId || allocationLoading"
-                @click="loadAllocationFromSnapshot"
-              >
-                <span v-if="allocationLoading">Loading allocation…</span>
-                <span v-else>Load allocation from snapshot</span>
-              </button>
-            </div>
-          </div>
-
           <div class="flex flex-col gap-2">
             <label class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Sequences</label>
             <select v-model="builder.sequenceIds" class="input h-32" multiple>
@@ -69,6 +36,30 @@
             <p class="text-xs text-neutral-500">Hold Cmd/Ctrl to select multiple sequences.</p>
           </div>
 
+          <div class="flex flex-col gap-2">
+            <label class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Preload allocation (optional)</label>
+            <select v-model="allocationSnapshotId" class="input">
+              <option :value="null">Select locked snapshot</option>
+              <option v-for="snapshot in lockedSnapshots" :key="snapshot.id" :value="snapshot.id">
+                {{ snapshot.source_filename ?? `Snapshot #${snapshot.id}` }}
+              </option>
+            </select>
+            <div class="flex gap-3">
+              <button
+                class="btn-secondary flex-1"
+                type="button"
+                :disabled="!allocationSnapshotId || allocationLoading"
+                @click="loadAllocationFromSnapshot"
+              >
+                <span v-if="allocationLoading">Loading allocation…</span>
+                <span v-else>Load snapshot mapping</span>
+              </button>
+            </div>
+            <p class="text-xs text-neutral-500">
+              Snapshots remain immutable per test run. Loading a snapshot only helps seed the allocation; we still capture a fresh snapshot on dispatch.
+            </p>
+          </div>
+
           <div class="md:col-span-2 flex flex-col gap-2">
             <label class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Notes</label>
             <textarea
@@ -77,6 +68,9 @@
               rows="2"
               placeholder="Optional operator notes for this run"
             ></textarea>
+            <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              <input v-model="builder.allowEmptyAllocation" type="checkbox" class="accent-neutral-900" /> Allow empty allocation (channel-only dry run)
+            </label>
           </div>
         </div>
 
@@ -94,7 +88,7 @@
               <thead>
                 <tr>
                   <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Channel ID</th>
-                  <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Signal key</th>
+                  <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Signal</th>
                   <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Metadata (JSON)</th>
                   <th class="px-3 py-2"></th>
                 </tr>
@@ -105,10 +99,15 @@
                     <input v-model.number="entry.channelId" type="number" class="input w-32" placeholder="ID" />
                   </td>
                   <td class="px-3 py-2">
-                    <input v-model="entry.signalKey" type="text" class="input" placeholder="Optional" />
+                    <select v-model="entry.signalId" class="input">
+                      <option :value="null">Unassigned</option>
+                      <option v-for="signal in signalOptions" :key="signal.id" :value="signal.id">
+                        {{ signalLabel(signal) }}
+                      </option>
+                    </select>
                   </td>
                   <td class="px-3 py-2">
-                    <textarea v-model="entry.metadataText" class="input" rows="2" placeholder='{ "sheet": "Main" }'></textarea>
+                    <textarea v-model="entry.metadataText" class="input" rows="2" placeholder='{ "wire": "A1" }'></textarea>
                   </td>
                   <td class="px-3 py-2 text-right">
                     <button class="btn-tertiary" type="button" :disabled="builder.entries.length === 1" @click="removeEntry(index)">Remove</button>
@@ -119,7 +118,7 @@
           </div>
 
           <div class="mt-4 flex flex-wrap items-center justify-end gap-3">
-            <span v-if="!allocationReady" class="text-xs text-red-500">Provide at least one channel binding.</span>
+            <span v-if="!allocationReady && !builder.allowEmptyAllocation" class="text-xs text-red-500">Provide at least one channel binding or enable empty allocation.</span>
             <button class="btn-primary" type="submit" :disabled="!canSubmit || submitLoading">
               <span v-if="submitLoading">Creating…</span>
               <span v-else>Create test run</span>
@@ -135,23 +134,26 @@
 import { computed, onMounted, reactive, ref, watch } from "vue"
 import { useRouter } from "vue-router"
 
-import UiBadge from "@/components/ui/UiBadge.vue"
 import { useSignalSnapshotStore } from "@/stores/signalSnapshotStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { useSignalsStore } from "@/stores/signalStore"
+import { useTestRunStore } from "@/stores/testRunStore"
 import { useToastStore } from "@/stores/toastStore"
-import type { TestRunAllocationEntryInput, TestRunMode } from "@/types/signal"
+import type { AllocationEntryInput, Signal } from "@/types/signal"
 import type { SequenceDef } from "@/types/sequences"
 
 interface AllocationEntryDraft {
   channelId: number | null
-  signalKey: string
+  signalId: number | null
   metadataText: string
 }
 
 const snapshotStore = useSignalSnapshotStore()
 const sequenceStore = useSequenceStore()
 const workspaceStore = useWorkspaceStore()
+const signalsStore = useSignalsStore()
+const testRunStore = useTestRunStore()
 const toastStore = useToastStore()
 const router = useRouter()
 
@@ -159,28 +161,35 @@ const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 
 const lockedSnapshots = computed(() => snapshotStore.lockedSnapshots)
 const sequenceOptions = computed(() => sequenceStore.sequences)
+const signalOptions = computed(() => signalsStore.activeSignals)
+const signalByKey = computed(() => {
+  const map = new Map<string, Signal>()
+  signalsStore.signals.forEach(signal => map.set(signal.key, signal))
+  return map
+})
 
 const builder = reactive({
-  mode: "signal" as TestRunMode,
-  snapshotId: null as number | null,
   sequenceIds: [] as number[],
   notes: "",
+  allowEmptyAllocation: false,
   entries: [createEntry()],
 })
+
+const allocationSnapshotId = ref<number | null>(null)
 
 const submitLoading = ref(false)
 const allocationLoading = ref(false)
 
 function createEntry(): AllocationEntryDraft {
-  return { channelId: null, signalKey: "", metadataText: "" }
+  return { channelId: null, signalId: null, metadataText: "" }
 }
 
 function resetBuilder() {
-  builder.mode = "signal"
-  builder.snapshotId = lockedSnapshots.value[0]?.id ?? null
   builder.sequenceIds = []
   builder.notes = ""
+  builder.allowEmptyAllocation = false
   builder.entries = [createEntry()]
+  allocationSnapshotId.value = lockedSnapshots.value[0]?.id ?? null
 }
 
 onMounted(() => {
@@ -195,8 +204,9 @@ watch(
     if (workspaceMissing.value) {
       builder.entries = [createEntry()]
       builder.sequenceIds = []
-      builder.snapshotId = null
       builder.notes = ""
+      builder.allowEmptyAllocation = false
+      allocationSnapshotId.value = null
       return
     }
     await initializeData()
@@ -204,30 +214,21 @@ watch(
 )
 
 watch(
-  () => builder.mode,
-  (mode) => {
-    if (mode === "channel") {
-      builder.snapshotId = null
-    } else if (!builder.snapshotId && lockedSnapshots.value.length) {
-      builder.snapshotId = lockedSnapshots.value[0].id
-    }
-  },
-)
-
-watch(
   () => lockedSnapshots.value,
   (snapshots) => {
-    if (builder.mode === "signal" && !builder.snapshotId && snapshots.length) {
-      builder.snapshotId = snapshots[0].id
+    if (!allocationSnapshotId.value && snapshots.length) {
+      allocationSnapshotId.value = snapshots[0].id
     }
   },
+  { immediate: true },
 )
 
 async function initializeData() {
   await Promise.allSettled([
     snapshotStore.refreshSnapshots(),
-    snapshotStore.refreshRuns(),
+    testRunStore.refreshRuns(),
     sequenceStore.ensureLoaded(),
+    signalsStore.refreshSignals(true),
   ])
   resetBuilder()
 }
@@ -246,13 +247,12 @@ const allocationReady = computed(() => builder.entries.some(entry => Number.isFi
 const canSubmit = computed(() => {
   if (workspaceMissing.value) return false
   if (!builder.sequenceIds.length) return false
-  if (!allocationReady.value) return false
-  if (builder.mode === "signal" && !builder.snapshotId) return false
+  if (!builder.allowEmptyAllocation && !allocationReady.value) return false
   return true
 })
 
-function parseEntries(): TestRunAllocationEntryInput[] {
-  const entries: TestRunAllocationEntryInput[] = []
+function parseEntries(): AllocationEntryInput[] {
+  const entries: AllocationEntryInput[] = []
   builder.entries.forEach((entry, index) => {
     if (!Number.isFinite(entry.channelId)) {
       return
@@ -267,13 +267,10 @@ function parseEntries(): TestRunAllocationEntryInput[] {
     }
     entries.push({
       channel_id: entry.channelId as number,
-      signal_key: entry.signalKey?.trim() || null,
+      signal_id: Number.isFinite(entry.signalId) ? (entry.signalId as number) : null,
       signal_metadata: metadata,
     })
   })
-  if (!entries.length) {
-    throw new Error("Provide at least one channel binding")
-  }
   return entries
 }
 
@@ -284,16 +281,17 @@ async function createRun() {
     const allocationEntries = parseEntries()
     const payload = {
       sequence_ids: [...builder.sequenceIds],
-      mode: builder.mode,
-      signal_snapshot_id: builder.mode === "signal" ? builder.snapshotId : null,
-      allocation: {
-        notes: builder.notes || null,
-        entries: allocationEntries,
-      },
+      allocation: allocationEntries.length || builder.notes
+        ? {
+            notes: builder.notes || null,
+            entries: allocationEntries,
+          }
+        : undefined,
+      allow_empty_allocation: builder.allowEmptyAllocation || allocationEntries.length === 0,
     }
-    const run = await snapshotStore.createTestRun(payload)
+    const run = await testRunStore.createTestRun(payload)
     toastStore.success("Test run created")
-    await snapshotStore.refreshRuns()
+    await testRunStore.refreshRuns(true)
     resetBuilder()
     router.push({ name: "testRuns.detail", params: { runId: run.id } })
   } catch (err) {
@@ -304,26 +302,33 @@ async function createRun() {
 }
 
 async function loadAllocationFromSnapshot() {
-  if (!builder.snapshotId) return
+  if (!allocationSnapshotId.value) return
   allocationLoading.value = true
   try {
-    const allocation = await snapshotStore.getAllocation(builder.snapshotId, true)
+    const allocation = await snapshotStore.getAllocation(allocationSnapshotId.value, true)
     if (!allocation.mapping.length) {
       toastStore.info("Snapshot allocation is empty")
       return
     }
-    builder.entries = allocation.mapping.map(item => ({
-      channelId: Number(item.channel_id) || null,
-      signalKey: item.signal_key ?? "",
-      metadataText: JSON.stringify(
-        {
-          signal_row_index: item.signal_row_index,
-          meta: item.meta ?? null,
-        },
-        null,
-        0,
-      ),
-    }))
+    builder.entries = allocation.mapping.map(item => {
+      const match = item.signal_key ? signalByKey.value.get(item.signal_key) : null
+      return {
+        channelId: Number(item.channel_id) || null,
+        signalId: match?.id ?? null,
+        metadataText: JSON.stringify(
+          {
+            snapshot_signal_key: item.signal_key ?? null,
+            snapshot_row_index: item.signal_row_index,
+            snapshot_meta: item.meta ?? null,
+          },
+          null,
+          2,
+        ),
+      }
+    })
+    if (!builder.entries.length) {
+      builder.entries = [createEntry()]
+    }
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
   } finally {
@@ -333,5 +338,9 @@ async function loadAllocationFromSnapshot() {
 
 function sequenceLabel(sequence: SequenceDef) {
   return `${sequence.name} (#${sequence.id})`
+}
+
+function signalLabel(signal: Signal) {
+  return `${signal.name} · ${signal.key}`
 }
 </script>

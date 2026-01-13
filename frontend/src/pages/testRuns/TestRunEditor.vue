@@ -33,10 +33,10 @@
             <h1 class="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">{{ runTitle }}</h1>
             <div class="flex flex-wrap items-center gap-3 text-sm text-neutral-500">
               <UiBadge :variant="statusVariant(run.status)">{{ run.status }}</UiBadge>
-              <UiBadge :variant="run.mode === 'signal' ? 'info' : 'warning'" class="uppercase">{{ run.mode }} mode</UiBadge>
               <span>Created {{ formatDate(run.created_at) }}</span>
               <span v-if="run.started_at">Started {{ formatDate(run.started_at) }}</span>
               <span v-if="run.finished_at">Finished {{ formatDate(run.finished_at) }}</span>
+              <span v-if="run.snapshot">Snapshot captured {{ formatDate(run.snapshot.captured_at) }}</span>
             </div>
           </div>
           <div class="flex flex-wrap gap-3">
@@ -103,8 +103,10 @@
                 <dd class="text-neutral-900 dark:text-neutral-100">{{ workspaceStore.activeWorkspace?.name ?? "—" }}</dd>
               </div>
               <div class="flex justify-between gap-4">
-                <dt class="text-neutral-500">Snapshot</dt>
-                <dd class="text-neutral-900 dark:text-neutral-100">{{ run.signal_snapshot_id ?? "—" }}</dd>
+                <dt class="text-neutral-500">Snapshot captured</dt>
+                <dd class="text-neutral-900 dark:text-neutral-100">
+                  {{ run.snapshot ? formatDate(run.snapshot.captured_at) : "Pending" }}
+                </dd>
               </div>
               <div class="flex justify-between gap-4">
                 <dt class="text-neutral-500">Created</dt>
@@ -131,7 +133,7 @@
         <section class="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <div>
             <p class="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Allocation entries</p>
-            <p class="text-xs text-neutral-500">Signal bindings applied to this run.</p>
+            <p class="text-xs text-neutral-500">Live signal bindings captured at dispatch time.</p>
           </div>
 
           <div v-if="!allocationEntries.length" class="mt-6 rounded-xl bg-neutral-50 px-4 py-6 text-sm text-neutral-500 dark:bg-neutral-800">
@@ -150,7 +152,10 @@
               <tbody class="divide-y divide-neutral-100 dark:divide-neutral-800">
                 <tr v-for="entry in allocationEntries" :key="entry.id">
                   <td class="px-3 py-2 font-medium text-neutral-900 dark:text-neutral-50">Channel {{ entry.channel_id }}</td>
-                  <td class="px-3 py-2 text-neutral-600 dark:text-neutral-200">{{ entry.signal_key ?? "—" }}</td>
+                  <td class="px-3 py-2 text-neutral-600 dark:text-neutral-200">
+                    <span v-if="entry.signal_id">Signal #{{ entry.signal_id }}</span>
+                    <span v-else>—</span>
+                  </td>
                   <td class="px-3 py-2 text-neutral-600 dark:text-neutral-200">
                     <pre class="whitespace-pre-wrap text-xs">{{ formatMetadata(entry.signal_metadata) }}</pre>
                   </td>
@@ -176,17 +181,17 @@ import { computed, onMounted, ref, watch } from "vue"
 import { RouterLink, useRouter } from "vue-router"
 
 import UiBadge from "@/components/ui/UiBadge.vue"
-import { useSignalSnapshotStore } from "@/stores/signalSnapshotStore"
+import { useTestRunStore } from "@/stores/testRunStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
-import type { TestRun } from "@/types/signal"
+import type { TestRunRecord } from "@/types/signal"
 import type { SequenceDef } from "@/types/sequences"
 import { formatDate } from "@/utils/datetime"
 
 const props = defineProps<{ runId: number | null }>()
 
-const snapshotStore = useSignalSnapshotStore()
+const testRunStore = useTestRunStore()
 const sequenceStore = useSequenceStore()
 const workspaceStore = useWorkspaceStore()
 const toastStore = useToastStore()
@@ -195,9 +200,9 @@ const router = useRouter()
 const actionLoading = ref<"start" | "stop" | "repeat" | null>(null)
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
-const runsLoading = computed(() => snapshotStore.runsLoading)
+const runsLoading = computed(() => testRunStore.loading)
 
-const run = computed<TestRun | null>(() => snapshotStore.runs.find(r => r.id === props.runId) ?? null)
+const run = computed<TestRunRecord | null>(() => testRunStore.testRuns.find(r => r.id === props.runId) ?? null)
 
 const sequenceMap = computed(() => {
   const map = new Map<number, SequenceDef>()
@@ -239,14 +244,14 @@ watch(
   () => props.runId,
   async (runId, prev) => {
     if (runId && runId !== prev && !run.value) {
-      await snapshotStore.refreshRuns()
+      await testRunStore.refreshRuns(true)
     }
   },
 )
 
 async function initialize() {
   await Promise.allSettled([
-    snapshotStore.refreshRuns(),
+    testRunStore.refreshRuns(),
     sequenceStore.ensureLoaded(),
   ])
 }
@@ -265,7 +270,7 @@ function formatMetadata(meta: Record<string, unknown> | null | undefined) {
   }
 }
 
-function statusVariant(status: TestRun["status"]) {
+function statusVariant(status: TestRunRecord["status"]) {
   switch (status) {
     case "completed":
       return "success"
@@ -279,16 +284,16 @@ function statusVariant(status: TestRun["status"]) {
 }
 
 async function refresh() {
-  await snapshotStore.refreshRuns()
+  await testRunStore.refreshRuns(true)
 }
 
 async function startRun() {
   if (!run.value) return
   actionLoading.value = "start"
   try {
-    await snapshotStore.startTestRun(run.value.id)
+    await testRunStore.startTestRun(run.value.id)
     toastStore.success("Run start requested")
-    await snapshotStore.refreshRuns()
+    await testRunStore.refreshRuns(true)
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
   } finally {
@@ -300,9 +305,9 @@ async function stopRun() {
   if (!run.value) return
   actionLoading.value = "stop"
   try {
-    await snapshotStore.stopTestRun(run.value.id)
+    await testRunStore.stopTestRun(run.value.id)
     toastStore.success("Stop request sent")
-    await snapshotStore.refreshRuns()
+    await testRunStore.refreshRuns(true)
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
   } finally {
@@ -314,9 +319,9 @@ async function repeatRun() {
   if (!run.value) return
   actionLoading.value = "repeat"
   try {
-    const clone = await snapshotStore.repeatRun(run.value.id)
+    const clone = await testRunStore.repeatTestRun(run.value.id)
     toastStore.success("Test run cloned")
-    await snapshotStore.refreshRuns()
+    await testRunStore.refreshRuns(true)
     router.push({ name: "testRuns.detail", params: { runId: clone.id } })
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))

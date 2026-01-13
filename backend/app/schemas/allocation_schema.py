@@ -6,12 +6,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class AllocationEntryBaseSchema(BaseModel):
     channel_id: int
-    signal_key: str | None = None
+    signal_id: int | None = None
     signal_metadata: dict[str, Any] | None = None
 
 
 class AllocationEntrySchema(AllocationEntryBaseSchema):
     id: int
+    signal_key: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -114,3 +114,111 @@ export interface TestRunCreatePayload {
   mode: TestRunMode
   signal_snapshot_id?: number | null
 }
+
+// --- Live signal domain (in-progress migration) ---
+
+export type SignalIODirection = "DI" | "DO" | "AI" | "AO"
+
+export interface Signal {
+  id: number
+  workspace_id: number
+  key: string
+  name: string
+  io_direction: SignalIODirection
+  category: string | null
+  signal_metadata: Record<string, unknown>
+  is_active: boolean
+  deleted_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface SignalCreatePayload {
+  key: string
+  name: string
+  io_direction: SignalIODirection
+  category?: string | null
+  metadata?: Record<string, unknown>
+  is_active?: boolean
+}
+
+export interface SignalUpdatePayload {
+  name?: string | null
+  io_direction?: SignalIODirection | null
+  category?: string | null
+  metadata?: Record<string, unknown> | null
+  is_active?: boolean | null
+}
+
+export interface TestRunSignalSnapshotSummary {
+  test_run_id: number
+  workspace_id: number
+  captured_at: string
+}
+
+export interface TestRunSignalSnapshotEntry {
+  id: number
+  snapshot_id: number
+  live_signal_id: number | null
+  signal_key: string
+  name: string
+  io_direction: SignalIODirection
+  allocation_channel_id: number | null
+  allocation_metadata: Record<string, unknown> | null
+  entry_metadata: Record<string, unknown>
+  created_at: string
+}
+
+export interface TestRunSignalSnapshot extends TestRunSignalSnapshotSummary {
+  entries: TestRunSignalSnapshotEntry[]
+}
+
+export type TestRunStatus = "created" | "running" | "completed" | "failed"
+
+export interface AllocationEntry {
+  id: number
+  channel_id: number
+  signal_id: number | null
+  signal_key: string | null
+  signal_metadata: Record<string, unknown> | null
+}
+
+export interface AllocationRecord {
+  id: number
+  test_run_id: number
+  notes: string | null
+  created_at: string
+  updated_at: string
+  entries: AllocationEntry[]
+}
+
+export interface AllocationEntryInput {
+  channel_id: number
+  signal_id?: number | null
+  signal_metadata?: Record<string, unknown> | null
+}
+
+export interface AllocationCreatePayload {
+  notes?: string | null
+  entries?: AllocationEntryInput[]
+}
+
+export interface TestRunRecord {
+  id: number
+  workspace_id: number
+  allocation: AllocationRecord | null
+  sequence_ids: number[]
+  status: TestRunStatus
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  execution_meta: Record<string, unknown> | null
+  snapshot: TestRunSignalSnapshotSummary | null
+}
+
+export interface TestRunCreatePayloadV2 {
+  workspace_id: number
+  sequence_ids: number[]
+  allocation?: AllocationCreatePayload
+  allow_empty_allocation?: boolean
+}

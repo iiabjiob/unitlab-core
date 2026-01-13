@@ -14,16 +14,12 @@ from app.models.types import BIGINT_PK
 
 if TYPE_CHECKING:  # pragma: no cover - typing helpers only
     from app.models.channel import Channel
+    from app.models.signal import Signal
     from app.models.test_run import TestRun
 
 
 class Allocation(Base):
-    """Channel-to-signal mapping captured for a specific test run.
-
-    Channel-mode allocation: every entry binds a `Channel` and leaves all signal fields null.
-    Signal-mode allocation: entries still bind physical channels but may populate signal metadata to
-    trace back to the optional `SignalSnapshot` referenced by the owning `TestRun`.
-    """
+    """Channel-to-signal mapping captured for a specific test run."""
 
     __tablename__ = "test_run_allocations"
     __table_args__ = (
@@ -77,8 +73,14 @@ class AllocationEntry(Base):
         ForeignKey("channels.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    signal_id: Mapped[int | None] = mapped_column(
+        BIGINT_PK,
+        ForeignKey("signals.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     signal_key: Mapped[str | None] = mapped_column(nullable=True)
     signal_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     allocation: Mapped["Allocation"] = relationship("Allocation", back_populates="entries")
     channel: Mapped["Channel"] = relationship("Channel", lazy="selectin")
+    signal: Mapped["Signal | None"] = relationship("Signal", back_populates="allocation_entries")
