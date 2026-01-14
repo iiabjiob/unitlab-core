@@ -1,3 +1,4 @@
+import axios from "axios"
 import { defineStore } from "pinia"
 import { computed, reactive, ref } from "vue"
 
@@ -32,6 +33,13 @@ export const useSignalSnapshotStore = defineStore("signalSnapshotStore", () => {
       const { data } = await SignalSnapshotsAPI.list(workspaceId)
       snapshots.value = data
       logger.debug("📸 Loaded", data.length, "snapshots")
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        snapshots.value = []
+        logger.warn("⚠️ Signal snapshot API unavailable, skipping list fetch")
+        return
+      }
+      throw error
     } finally {
       loading.value = false
     }

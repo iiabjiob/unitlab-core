@@ -9,77 +9,91 @@
 
     <div
       v-else
-      class="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-neutral-900"
+      class="flex flex-1 min-h-0 min-w-0 flex-col gap-4"
     >
-      <SignalEditorHeader
-        v-if="selectedSnapshot"
-        :snapshot="selectedSnapshot"
-        @lock="handleLock"
-        @delete="requestDelete"
-      />
-      <div class="border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p class="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Snapshot rows</p>
-            <p v-if="currentSheet" class="text-xs text-neutral-500 dark:text-neutral-400">
-              Sheet "{{ currentSheet.name }}" · {{ currentSheet.rows_count }} rows
-            </p>
-            <p v-else class="text-xs text-neutral-500 dark:text-neutral-400">No sheet detected</p>
+      <div class="grid flex-1 min-h-0 min-w-0 gap-4 lg:grid-cols-[minmax(0,1.75fr)_minmax(320px,1fr)]">
+        <div class="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-neutral-900">
+          <SignalEditorHeader
+            v-if="selectedSnapshot"
+            :snapshot="selectedSnapshot"
+            @lock="handleLock"
+            @delete="requestDelete"
+          />
+          <div class="border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p class="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Snapshot rows</p>
+                <p v-if="currentSheet" class="text-xs text-neutral-500 dark:text-neutral-400">
+                  Sheet "{{ currentSheet.name }}" · {{ currentSheet.rows_count }} rows
+                </p>
+                <p v-else class="text-xs text-neutral-500 dark:text-neutral-400">No sheet detected</p>
+              </div>
+              <select
+                v-if="sheetOptions.length > 1"
+                v-model.number="selectedSheetIndex"
+                class="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700 shadow-sm focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 lg:w-48"
+              >
+                <option
+                  v-for="sheet in sheetOptions"
+                  :key="sheet.index"
+                  :value="sheet.index"
+                  :disabled="sheet.rows_count === 0"
+                >
+                  {{ sheet.name }} ({{ sheet.rows_count }})
+                </option>
+              </select>
+              <span
+                v-else-if="currentSheet"
+                class="inline-flex items-center rounded-xl border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-500 dark:border-neutral-700 dark:text-neutral-300"
+              >
+                {{ currentSheet.name }}
+              </span>
+            </div>
           </div>
-          <select
-            v-if="sheetOptions.length > 1"
-            v-model.number="selectedSheetIndex"
-            class="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700 shadow-sm focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 lg:w-48"
-          >
-            <option
-              v-for="sheet in sheetOptions"
-              :key="sheet.index"
-              :value="sheet.index"
-              :disabled="sheet.rows_count === 0"
+          <div class="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+            <div
+              v-if="snapshotRows.length === 0"
+              class="flex h-full items-center justify-center rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900"
             >
-              {{ sheet.name }} ({{ sheet.rows_count }})
-            </option>
-          </select>
-          <span
-            v-else-if="currentSheet"
-            class="inline-flex items-center rounded-xl border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-500 dark:border-neutral-700 dark:text-neutral-300"
-          >
-            {{ currentSheet.name }}
-          </span>
+              No data detected for the selected sheet.
+            </div>
+            <div v-else class="flex-1 min-h-0 min-w-0 overflow-hidden">
+              <UiTableLight
+                class="flex-1 min-h-0 min-w-0"
+                :columns="snapshotColumns"
+                :rows="snapshotRows"
+                :row-key="rowKeyForSnapshot"
+                :enable-sorting="true"
+                :enable-filtering="true"
+                :enable-column-resize="true"
+                :default-sort-key="SNAPSHOT_ROW_INDEX_COLUMN_KEY"
+                max-height="100%"
+              >
+                <template #cell="{ column, value, rowIndex }">
+                  <template v-if="column.key === SNAPSHOT_ROW_INDEX_COLUMN_KEY">
+                    <span class="font-mono text-xs text-neutral-500 dark:text-neutral-400">#{{ rowIndex + 1 }}</span>
+                  </template>
+                  <template v-else>
+                    <span class="text-xs text-neutral-700 dark:text-neutral-100">{{ formatSnapshotCellValue(value) }}</span>
+                  </template>
+                </template>
+                <template #empty>
+                  Selected worksheet has no rows.
+                </template>
+              </UiTableLight>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-        <div
-          v-if="snapshotRows.length === 0"
-          class="flex h-full items-center justify-center rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900"
-        >
-          No data detected for the selected sheet.
-        </div>
-        <div v-else class="flex-1 min-h-0 min-w-0 overflow-hidden">
-          <UiTableLight
-            class="flex-1 min-h-0 min-w-0"
-            :columns="snapshotColumns"
-            :rows="snapshotRows"
-            :row-key="rowKeyForSnapshot"
-            :enable-sorting="true"
-            :enable-filtering="true"
-            :enable-column-resize="true"
-            :default-sort-key="SNAPSHOT_ROW_INDEX_COLUMN_KEY"
-            max-height="100%"
-          >
-            <template #cell="{ column, value, rowIndex }">
-              <template v-if="column.key === SNAPSHOT_ROW_INDEX_COLUMN_KEY">
-                <span class="font-mono text-xs text-neutral-500 dark:text-neutral-400">#{{ rowIndex + 1 }}</span>
-              </template>
-              <template v-else>
-                <span class="text-xs text-neutral-700 dark:text-neutral-100">{{ formatSnapshotCellValue(value) }}</span>
-              </template>
-            </template>
-            <template #empty>
-              Selected worksheet has no rows.
-            </template>
-          </UiTableLight>
-        </div>
+
+        <LiveSignalsPanel
+          :signals="signals"
+          :channels="channels"
+          :mapping="mapping"
+          :workspace-ready="workspaceReady"
+          :loading="livePanelLoading"
+          @refresh-signals="refreshLiveSignals"
+          @refresh-channels="refreshLiveChannelStates"
+        />
       </div>
     </div>
 
@@ -99,19 +113,33 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
 import { useRouter } from "vue-router"
+import { storeToRefs } from "pinia"
 
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import UiTableLight from "@/components/ui/UiTableLight.vue"
 import { useSignalSnapshotStore } from "@/stores/signalSnapshotStore"
+import { useSignalsStore } from "@/stores/signalStore"
+import { useChannelStore } from "@/stores/channelStore"
 import { useToastStore } from "@/stores/toastStore"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { useDeviceStore } from "@/stores/deviceStore"
 import type { AllocationMappingItem, AllocationMappingMeta, SignalSnapshot, SnapshotSheet } from "@/types/signal"
 import SignalEditorHeader from "./SignalEditorHeader.vue"
+import LiveSignalsPanel from "./LiveSignalsPanel.vue"
 
 const props = defineProps<{ snapshotId: number | null }>()
 
 const snapshotStore = useSignalSnapshotStore()
+const signalsStore = useSignalsStore()
+const channelStore = useChannelStore()
+const workspaceStore = useWorkspaceStore()
+const deviceStore = useDeviceStore()
 const toastStore = useToastStore()
 const router = useRouter()
+
+const { signals, loading: liveSignalsLoading } = storeToRefs(signalsStore)
+const { channels, isLoading: channelsLoading } = storeToRefs(channelStore)
+const { devices } = storeToRefs(deviceStore)
 
 const selectedSnapshotId = ref<number | null>(props.snapshotId ?? null)
 type SnapshotRow = Record<string, unknown>
@@ -121,6 +149,8 @@ const snapshotRows = ref<SnapshotRow[]>([])
 const sheetOptions = ref<SnapshotSheet[]>([])
 const selectedSheetIndex = ref<number | null>(null)
 const SNAPSHOT_ROW_INDEX_COLUMN_KEY = "__snapshotIndex__"
+const workspaceReady = computed(() => Boolean(workspaceStore.activeWorkspaceId))
+const livePanelLoading = computed(() => liveSignalsLoading.value || channelsLoading.value)
 
 const currentSheet = computed(() =>
   sheetOptions.value.find(sheet => sheet.index === selectedSheetIndex.value) ?? null,
@@ -198,6 +228,29 @@ async function confirmDelete() {
     await snapshotStore.deleteSnapshot(selectedSnapshot.value.id)
     deleteModalOpen.value = false
     await router.push({ name: "signals.home" })
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+  }
+}
+
+async function refreshLiveSignals() {
+  if (!workspaceReady.value) return
+  try {
+    await signalsStore.refreshSignals(true)
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+  }
+}
+
+async function refreshLiveChannelStates() {
+  try {
+    await Promise.all([deviceStore.ensureLoaded(), channelStore.ensureLoaded()])
+    const deviceIds = new Set<number>()
+    channels.value.forEach(channel => deviceIds.add(channel.device_id))
+    if (!deviceIds.size) {
+      devices.value.forEach(device => deviceIds.add(device.id))
+    }
+    deviceIds.forEach(deviceId => channelStore.requestStates(deviceId))
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
   }

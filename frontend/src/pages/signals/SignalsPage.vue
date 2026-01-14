@@ -67,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue"
+import { computed, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 
 import SignalListSidebar from "./components/SignalListSidebar.vue"
@@ -75,16 +75,28 @@ import SignalImportModal from "./components/SignalImportModal.vue"
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import SlideOver from "@/components/ui/SlideOver.vue"
 import { useSignalSnapshotStore } from "@/stores/signalSnapshotStore"
+import { useSignalsStore } from "@/stores/signalStore"
+import { useChannelStore } from "@/stores/channelStore"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { useDeviceStore } from "@/stores/deviceStore"
 import { useViewport } from "@/composables/useViewport"
+import { getLogger } from "@/utils/logger"
 
 const snapshotStore = useSignalSnapshotStore()
+const liveSignalsStore = useSignalsStore()
+const channelStore = useChannelStore()
+const workspaceStore = useWorkspaceStore()
+const deviceStore = useDeviceStore()
 const { isDesktop } = useViewport()
 const route = useRoute()
 const router = useRouter()
+const logger = getLogger("signals-page")
 
 const snapshots = computed(() => snapshotStore.snapshots)
 const sidebarOpen = ref(false)
 const importModalOpen = ref(false)
+const lastBootstrappedWorkspaceId = ref<number | null>(null)
+const bootstrapping = ref(false)
 
 const selectedSnapshotId = computed<number | null>(() => {
   if (route.name !== "signals.detail") return null
@@ -93,13 +105,48 @@ const selectedSnapshotId = computed<number | null>(() => {
   return Number.isFinite(parsed) ? parsed : null
 })
 
-onMounted(() => {
-  snapshotStore.refreshSnapshots()
-})
-
 watch(isDesktop, (next) => {
   if (next) sidebarOpen.value = false
 })
+
+watch(
+  () => workspaceStore.activeWorkspaceId,
+  (workspaceId) => {
+    if (!workspaceId) {
+      lastBootstrappedWorkspaceId.value = null
+      return
+    }
+    if (lastBootstrappedWorkspaceId.value === workspaceId && snapshots.value.length) {
+      return
+    }
+    lastBootstrappedWorkspaceId.value = workspaceId
+    bootstrapping.value = true
+    void bootstrapWorkspace(workspaceId).finally(() => {
+      bootstrapping.value = false
+    })
+  },
+  { immediate: true },
+)
+
+async function bootstrapWorkspace(workspaceId: number) {
+  try {
+    await Promise.all([
+      snapshotStore.refreshSnapshots(),
+      liveSignalsStore.refreshSignals(true),
+    ])
+    await Promise.all([
+      deviceStore.ensureLoaded(),
+      channelStore.ensureLoaded(),
+    ])
+    const deviceIds = new Set(deviceStore.devices.map(device => device.id))
+    deviceIds.forEach((deviceId) => {
+      channelStore.requestStates(deviceId)
+    })
+    logger.info(`Signals workspace bootstrapped for #${workspaceId}`)
+  } catch (err) {
+    logger.error("Failed to bootstrap Signals workspace", err)
+  }
+}
 
 async function selectSnapshot(id: number) {
   await router.push({ name: "signals.detail", params: { snapshotId: id } })
