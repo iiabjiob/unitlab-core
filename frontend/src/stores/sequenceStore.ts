@@ -134,7 +134,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   function nextDefaultName(): string {
-    const base = "New Sequence"
+    const base = "New Instruction"
     const names = sequences.value.map(s => s.name)
 
     let n = 1
@@ -146,7 +146,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   function nextDuplicateName(sourceName: string): string {
-    const base = sourceName.trim() || "Sequence"
+    const base = sourceName.trim() || "Instruction"
     const names = new Set(sequences.value.map(s => s.name))
 
     let suffix = " copy"
@@ -244,7 +244,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
         logStore.push(event.sequence_id, {
           type: "info",
-          message: "Sequence started",
+          message: "Instruction started",
           run_id: event.run_id,
         })
         break
@@ -312,7 +312,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
         logStore.push(event.sequence_id, {
           type: "error",
-          message: `Sequence error: ${event.message}`,
+          message: `Instruction error: ${event.message}`,
           run_id: event.run_id,
         })
         break
@@ -325,7 +325,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
         logStore.push(event.sequence_id, {
           type: "info",
-          message: "Sequence stopped by user",
+          message: "Instruction stopped by user",
           run_id: event.run_id,
         })
         break
@@ -340,7 +340,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
         logStore.push(event.sequence_id, {
           type: "info",
-          message: "Sequence completed successfully",
+          message: "Instruction completed successfully",
           run_id: event.run_id,
         })
         break

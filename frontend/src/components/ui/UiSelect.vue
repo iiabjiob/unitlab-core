@@ -26,7 +26,7 @@ const emit = defineEmits<{
 
 function onChange(e: Event) {
   const target = e.target as HTMLSelectElement
-  // всегда либо строка id, либо null
+  // Always either an id string or null
   emit("update:modelValue", target.value === "" ? null : target.value)
 }
 </script>

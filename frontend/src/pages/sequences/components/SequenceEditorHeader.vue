@@ -76,12 +76,12 @@ const createdAt = computed(() => {
 
 const usageTooltip = [
   "Execution flow:",
-  "This sequence only runs inside a Test Run.",
-  "Build a run with the sequences you need, add an allocation, and attach a signal list when required.",
+  "This instruction is typically queued inside a Test Run.",
+  "Build a run with the instructions you need, add an allocation, and attach a signal list when required.",
   "",
-  "• Add the sequence to a Test Run and pick the workspace allocation.",
+  "• Add the instruction to a Test Run and pick the workspace allocation.",
   "• Assign physical channels or signals in Signals → Test Runs.",
-  "• Start or stop execution strictly from Test Run history.",
+  "• Start or stop execution from Test Runs unless you use direct run controls.",
 ].join("\n")
 </script>
 
@@ -95,12 +95,19 @@ const usageTooltip = [
         <div class="text-lg font-medium tracking-tight text-neutral-900 dark:text-white">
           {{ sequence.name }}
         </div>
-        <UiBadge variant="info" :title="usageTooltip">Used in Test Runs</UiBadge>
+        <!-- <UiBadge variant="info" :title="usageTooltip">Used in Test Runs</UiBadge> -->
+        <UiBadge
+          v-if="sequence.read_only"
+          variant="warning"
+          title="This instruction is managed by the system and cannot be edited"
+        >
+          Read-only
+        </UiBadge>
       </div>
 
       <div class="flex flex-wrap items-center gap-3 text-sm text-neutral-500 dark:text-neutral-400">
         <span class="text-xs uppercase tracking-[0.3em] text-neutral-400 dark:text-neutral-500">
-          Sequence
+          Instruction
         </span>
         <span>·</span>
         <span>Created {{ createdAt }}</span>
@@ -136,7 +143,7 @@ const usageTooltip = [
 
   <RenameModal
     :open="renameOpen"
-    title="Rename sequence"
+    title="Rename instruction"
     v-model="renameValue"
     :loading="renaming"
     @cancel="closeRename"

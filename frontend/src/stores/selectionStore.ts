@@ -80,7 +80,7 @@ export const useSelectionStore = defineStore("selection", () => {
   function openLast(router = useRouter()) {
     // priority: most recently used page → pick whichever exists
     if (lastSequenceId.value) {
-      router.push(`/sequences/${lastSequenceId.value}`)
+      router.push(`/test-runs/instructions/${lastSequenceId.value}`)
       return
     }
     if (lastDeviceId.value) {

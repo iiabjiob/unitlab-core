@@ -5,7 +5,7 @@ from app.services.command_queue_service import enqueue_do_command
 from app.schemas.ws.messages import SetDoCommandMessage
 
 async def handle_set_do_command(ws: WebSocket, msg: SetDoCommandMessage):
-    # Кладём DO-команду в outbound очередь
+    # Push DO command into outbound queue
     await enqueue_do_command(
         unit_id=msg.unit_id,
         mode=msg.mode,

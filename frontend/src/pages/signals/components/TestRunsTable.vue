@@ -10,7 +10,7 @@
 
       <div class="grid gap-4 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800 md:grid-cols-2">
         <div class="flex flex-col gap-2">
-          <label class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Sequences</label>
+          <label class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Instructions</label>
           <select v-model="builder.sequenceIds" class="input h-32" multiple>
             <option
               v-for="sequence in sequenceOptions"
@@ -20,7 +20,7 @@
               {{ sequenceLabel(sequence) }}
             </option>
           </select>
-          <p class="text-xs text-neutral-500">Hold Cmd/Ctrl to select multiple sequences.</p>
+          <p class="text-xs text-neutral-500">Hold Cmd/Ctrl to select multiple instructions.</p>
         </div>
 
         <div class="flex flex-col gap-2">
@@ -60,7 +60,7 @@
         <div class="flex items-center justify-between">
           <div>
             <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">Allocation entries</p>
-            <p class="text-xs text-neutral-500">Each channel used by the selected sequences must appear below.</p>
+            <p class="text-xs text-neutral-500">Each channel used by the selected instructions must appear below.</p>
           </div>
           <button class="btn-secondary" @click="addEntry">Add entry</button>
         </div>
@@ -125,7 +125,7 @@
             <tr>
               <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Run</th>
               <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Snapshot</th>
-              <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Sequences</th>
+              <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Instructions</th>
               <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Bindings</th>
               <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Status</th>
               <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Created</th>

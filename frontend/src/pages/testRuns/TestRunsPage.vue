@@ -34,7 +34,7 @@
       </aside>
     </ResizablePanel>
 
-    <section class="flex-1 overflow-y-auto bg-neutral-50 p-3 dark:bg-neutral-950 md:p-4">
+    <section class="flex-1 overflow-y-auto p-3 md:p-4">
       <RouterView />
     </section>
 

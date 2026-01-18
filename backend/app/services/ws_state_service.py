@@ -19,7 +19,7 @@ class WsStateService:
     async def send_cached_state_to_ui(unit_id: str, target=None):
         ws_manager = WebSocketManager.get_instance()
 
-        # Берём все события состояния (bitmask + AO) из Redis
+        # Pull all cached state events (bitmask + AO) from Redis
         events = await DeviceStateService.get_snapshot(unit_id)
 
         for event in events:
@@ -30,7 +30,7 @@ class WsStateService:
 
     @staticmethod
     async def sync_client(ws):
-        """При коннекте клиента: REGISTER + STATUS + STATE + TIME"""
+        """On client connect: REGISTER + STATUS + STATE + TIME"""
         ws_manager = WebSocketManager.get_instance()
         redis = RedisManager.get_instance()
 
@@ -42,14 +42,14 @@ class WsStateService:
             logger.info(f"🔄 Syncing WS client, devices={len(devices)}")
 
             for device in devices:
-                # статус/last_seen из Redis
+                # Status/last_seen loaded from Redis
                 status_raw = await redis.get(f"device:{device.unit_id}:status")
                 last_seen_raw = await redis.get(f"device:{device.unit_id}:last_seen")
 
                 status = to_str(status_raw, "offline")
                 last_seen = int(to_str(last_seen_raw, "0")) if last_seen_raw else None
 
-                # REGISTER
+                # REGISTER event
                 schema = DeviceSchema.model_validate(device)
                 schema.status = status if status in ("online", "offline") else "offline"
                 schema.last_seen = last_seen if last_seen else device.last_seen
@@ -58,5 +58,5 @@ class WsStateService:
                 reg_event = DeviceRegisterEvent(**schema.model_dump())
                 await ws_manager.send_event(ws, reg_event)
 
-                # STATE
+                # STATE snapshot
                 await WsStateService.send_cached_state_to_ui(device.unit_id, target=ws)

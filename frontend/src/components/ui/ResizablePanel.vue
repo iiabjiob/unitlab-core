@@ -79,7 +79,7 @@ function startResize(e: MouseEvent) {
     const current = isHorizontal ? ev.clientX : ev.clientY
     let delta = current - start
 
-    // для right и bottom инвертируем delta
+    // Flip delta for right and bottom handles
     if (props.placement === "right" || props.placement === "bottom") {
       delta = -delta
     }

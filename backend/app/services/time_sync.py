@@ -6,12 +6,12 @@ logger = get_logger("TimeSync")
 
 def get_chrony_status() -> tuple[str, str, int | None]:
     """
-    Возвращает (status, source, offset_us).
-    status принимает одно из значений "synced", "unsynced" или "error".
-    source: адрес сервера или "local"/ошибка
-    offset_us: смещение в микросекундах (int) или None
+    Returns (status, source, offset_us).
+    status: "synced", "unsynced", or "error".
+    source: server address or "local"/error text.
+    offset_us: offset in microseconds (int) or None.
     """
-    return "synced", "local", 0  # Заглушка для тестирования
+    return "synced", "local", 0  # Test stub
     # try:
     #     result = subprocess.run(
     #         ["chronyc", "-n", "sources"],
@@ -21,7 +21,7 @@ def get_chrony_status() -> tuple[str, str, int | None]:
     #     )
 
     #     for line in result.stdout.splitlines():
-    #         if line.startswith("^*"):  # лучший выбранный источник
+    #         if line.startswith("^*"):  # best selected source
     #             parts = line.split()
     #             address = parts[1]
     #             match = re.search(r"([-+]?\d+)us", line)

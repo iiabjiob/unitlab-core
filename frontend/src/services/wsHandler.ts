@@ -3,6 +3,7 @@ import { useDeviceStore } from '@/stores/deviceStore'
 import { useChannelStore } from '@/stores/channelStore'
 import { getLogger } from '@/utils/logger'
 import { useSequenceStore } from '@/stores/sequenceStore'
+import { useSystemHealthStore } from '@/stores/systemHealthStore'
 
 const logger = getLogger('ws')
 
@@ -14,12 +15,14 @@ import type {
   DeviceRespEvent,
   SequenceWsEvent,
   ChannelWSEvent,
+  SystemHealthChangedEvent,
 } from '@/types/ws/events'
 
 export function handleWsEvent(event: WSEvent) {
   const deviceStore = useDeviceStore()
   const channelStore = useChannelStore()
   const sequenceStore = useSequenceStore()
+  const systemHealthStore = useSystemHealthStore()
 
   // Route sequence events into the sequence store so realtime progress stays in sync.
   if ('topic' in event && (event as SequenceWsEvent).topic === 'sequence') {
@@ -30,6 +33,17 @@ export function handleWsEvent(event: WSEvent) {
   const channelEvent = event as ChannelWSEvent
 
   switch (channelEvent.channel) {
+
+    case WSChannel.SYSTEM_INFO: {
+      const sysEvent = channelEvent as SystemHealthChangedEvent
+      if (sysEvent.event === "system_health_changed") {
+        logger.debug("📡 IN ← SYSTEM_HEALTH:", sysEvent)
+        systemHealthStore.applySnapshot(sysEvent.snapshot)
+        break
+      }
+      logger.warn("⚠️ Unknown SYSTEM_INFO payload", sysEvent)
+      break
+    }
 
     // Device registration: hydrate or merge the newly discovered unit.
     case WSChannel.DEVICE_REGISTER:{

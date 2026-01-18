@@ -15,8 +15,7 @@ class SequenceCommandType(str, Enum):
 @dataclass(slots=True)
 class SequenceCommand:
     type: SequenceCommandType
-    test_run_id: Optional[int] = None
-    sequence_id: Optional[int] = None
+    sequence_id: int
     run_id: Optional[int] = None
     requested_by: Optional[str] = None
     request_id: str = field(default_factory=lambda: uuid.uuid4().hex)
@@ -27,7 +26,6 @@ class SequenceCommand:
     def to_payload(self) -> Dict[str, Any]:
         return {
             "type": self.type.value,
-            "test_run_id": self.test_run_id,
             "sequence_id": self.sequence_id,
             "run_id": self.run_id,
             "requested_by": self.requested_by,
@@ -39,12 +37,12 @@ class SequenceCommand:
 
     @staticmethod
     def from_payload(payload: Dict[str, Any]) -> "SequenceCommand":
-        test_run_id = payload.get("test_run_id")
         sequence_id = payload.get("sequence_id")
+        if sequence_id is None:
+            raise ValueError("sequence_id is required in sequence command payload")
         return SequenceCommand(
             type=SequenceCommandType(payload["type"]),
-            test_run_id=int(test_run_id) if test_run_id is not None else None,
-            sequence_id=int(sequence_id) if sequence_id is not None else None,
+            sequence_id=int(sequence_id),
             run_id=payload.get("run_id"),
             requested_by=payload.get("requested_by"),
             request_id=payload.get("request_id") or uuid.uuid4().hex,
@@ -59,7 +57,6 @@ class SequenceCommand:
             payload_extra.update(extra)
         return SequenceCommand(
             type=self.type,
-            test_run_id=self.test_run_id,
             sequence_id=self.sequence_id,
             run_id=self.run_id,
             requested_by=self.requested_by,

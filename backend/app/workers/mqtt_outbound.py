@@ -4,6 +4,7 @@ import asyncio
 import os
 import signal
 import socket
+from contextlib import suppress
 
 from redis.exceptions import ResponseError
 
@@ -13,6 +14,7 @@ from app.infrastructure.mqtt.manager import MqttManager
 from app.infrastructure.mqtt.outbound_worker import publish_outbound_message
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_outbound_entry
+from app.services.worker_health import clear_worker_status, start_worker_heartbeat
 
 settings = get_settings()
 logger = get_logger("worker.outbound")
@@ -77,6 +79,7 @@ async def main() -> None:
     )
 
     await _drain_pending(redis, mqtt_client)
+    heartbeat_task = start_worker_heartbeat("mqtt_outbound")
 
     stop_event = asyncio.Event()
 
@@ -105,6 +108,10 @@ async def main() -> None:
                 continue
             await _process_entries(redis, mqtt_client, entries)
     finally:
+        heartbeat_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await heartbeat_task
+        await clear_worker_status("mqtt_outbound")
         await MqttManager.stop()
         await RedisManager.stop()
 

@@ -66,6 +66,9 @@ export interface SequenceDef {
   workspace_ids: number[]
   name: string
   description?: string | null
+  system_key?: string | null
+  system_provided: boolean
+  read_only: boolean
   created_at: string
   updated_at: string
   steps?: SequenceStep[]

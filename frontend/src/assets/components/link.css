@@ -1,17 +1,17 @@
-/* Общий стиль для обычных ссылок */
+/* Shared styling for standard links */
 @layer components {
 .link {
     @apply text-neutral-700 hover:underline font-medium 
            dark:text-neutral-300 dark:hover:text-neutral-100;
   }
   
-  /* Навигационные ссылки */
+  /* Navigation links */
   .nav-link {
     @apply text-neutral-700 rounded font-medium px-2 py-0.5
            dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800;
   }
   
-  /* Активная навигационная ссылка */
+  /* Active navigation link */
   .nav-link-active {
     @apply bg-neutral-200 text-neutral-900
            dark:bg-neutral-800 dark:text-white;

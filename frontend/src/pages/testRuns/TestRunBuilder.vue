@@ -4,7 +4,7 @@
       <p class="text-xs font-semibold uppercase tracking-[0.3em] text-neutral-400">Test Runs</p>
       <h1 class="text-2xl font-semibold text-neutral-900 dark:text-neutral-50">Create a new test run</h1>
       <p class="text-sm text-neutral-500 dark:text-neutral-300">
-        Combine sequences, map channels to live signals, and we will capture an immutable snapshot the moment you dispatch the run.
+        Combine instructions, map channels to live signals, and we will capture an immutable snapshot the moment you dispatch the run.
       </p>
     </header>
 
@@ -22,18 +22,18 @@
       <form class="flex flex-col" @submit.prevent="createRun">
         <header class="border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
           <h2 class="text-lg font-semibold text-neutral-900 dark:text-neutral-50">Run definition</h2>
-          <p class="text-sm text-neutral-500 dark:text-neutral-400">Sequences plus channel-to-signal bindings determine what gets executed.</p>
+          <p class="text-sm text-neutral-500 dark:text-neutral-400">Instructions plus channel-to-signal bindings determine what gets executed.</p>
         </header>
 
         <div class="grid gap-4 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800 md:grid-cols-2">
           <div class="flex flex-col gap-2">
-            <label class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Sequences</label>
+            <label class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Instructions</label>
             <select v-model="builder.sequenceIds" class="input h-32" multiple>
               <option v-for="sequence in sequenceOptions" :key="sequence.id" :value="sequence.id">
                 {{ sequenceLabel(sequence) }}
               </option>
             </select>
-            <p class="text-xs text-neutral-500">Hold Cmd/Ctrl to select multiple sequences.</p>
+            <p class="text-xs text-neutral-500">Hold Cmd/Ctrl to select multiple instructions.</p>
           </div>
 
           <div class="flex flex-col gap-2">

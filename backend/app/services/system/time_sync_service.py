@@ -56,7 +56,7 @@ class TimeSyncService:
 
             for line in output.splitlines():
                 if "offsetFromMaster" in line:
-                    # Пример строки: offsetFromMaster  -23
+                    # Example line: offsetFromMaster  -23
                     return int(line.strip().split()[-1])
         except Exception:
             pass

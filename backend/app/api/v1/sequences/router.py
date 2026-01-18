@@ -29,6 +29,7 @@ from app.schemas.sequence_step_schema import (
     SequenceStepSchema,
     SequenceStepUpdateSchema,
 )
+from app.services.sequence_command_service import SequenceCommandService
 from app.services.sequence_state_service import SequenceStateService
 from app.services.sequence_runner import SequenceNotFoundError
 
@@ -209,10 +210,13 @@ async def start_sequence(
     seq_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    raise HTTPException(
-        status_code=409,
-        detail="Sequence execution now requires a TestRun. Use /test-runs/{run_id}/start.",
-    )
+    repo = SequenceRepository(db)
+    await _ensure_sequence_in_workspace(repo, workspace_id, seq_id)
+    await SequenceCommandService.enqueue_start(seq_id)
+    try:
+        return await SequenceStateService.get_state(seq_id)
+    except SequenceNotFoundError:
+        raise HTTPException(status_code=404, detail="Sequence not found")
 
 
 @router.post("/{seq_id}/stop", response_model=SequenceStateSchema)
@@ -221,10 +225,13 @@ async def stop_sequence(
     seq_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    raise HTTPException(
-        status_code=409,
-        detail="Sequence execution now requires a TestRun. Use /test-runs/{run_id}/stop.",
-    )
+    repo = SequenceRepository(db)
+    await _ensure_sequence_in_workspace(repo, workspace_id, seq_id)
+    await SequenceCommandService.enqueue_stop(seq_id)
+    try:
+        return await SequenceStateService.get_state(seq_id)
+    except SequenceNotFoundError:
+        raise HTTPException(status_code=404, detail="Sequence not found")
 
 
 @router.get("/{seq_id}/state", response_model=SequenceStateSchema)

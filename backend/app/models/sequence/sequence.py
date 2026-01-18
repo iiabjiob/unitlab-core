@@ -12,7 +12,6 @@ from app.models.types import BIGINT_PK
 
 if TYPE_CHECKING:  # pragma: no cover - import for annotations only
     from app.models.sequence_run import SequenceRun
-    from app.models.test_run import TestRun, TestRunSequenceLink
     from .sequence_step import SequenceStep
     from app.models.workspace import Workspace, WorkspaceSequence
 
@@ -56,19 +55,6 @@ class Sequence(Base):
         "SequenceRun",
         back_populates="sequence",
         cascade="all, delete-orphan",
-        lazy="selectin",
-    )
-    test_run_links: Mapped[list["TestRunSequenceLink"]] = relationship(
-        "TestRunSequenceLink",
-        back_populates="sequence",
-        cascade="all, delete-orphan",
-        lazy="selectin",
-    )
-    test_runs: Mapped[list["TestRun"]] = relationship(
-        "TestRun",
-        secondary="test_run_sequences",
-        back_populates="sequences",
-        viewonly=True,
         lazy="selectin",
     )
     workspace_links: Mapped[list["WorkspaceSequence"]] = relationship(

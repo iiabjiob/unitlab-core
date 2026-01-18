@@ -4,8 +4,8 @@ import WorkspacePlaceholder from "@/components/ui/WorkspacePlaceholder.vue"
 
 <template>
   <WorkspacePlaceholder
-    tag="Sequences"
-    title="Select a sequence"
-    description="Pick any sequence from the sidebar to edit its steps, settings, and runtime configuration. Use the button on the left to spin up a fresh sequence when you need one."
+    tag="Instructions"
+    title="Select an instruction"
+    description="Pick any instruction from the sidebar to edit its steps, settings, and runtime configuration. Use the button on the left to spin up a fresh instruction when you need one."
   />
 </template>

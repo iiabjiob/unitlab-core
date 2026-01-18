@@ -16,13 +16,13 @@ function isActive(id: number) {
 }
 
 function openSequence(id: number) {
-  router.push(`/sequences/${id}`)
+  router.push(`/test-runs/instructions/${id}`)
 }
 
 function addSequence() {
   if (!workspaceStore.activeWorkspaceId) return
   store.createSequenceAuto().then(seq => {
-    router.push(`/sequences/${seq.id}`)
+    router.push(`/test-runs/instructions/${seq.id}`)
   })
 }
 
@@ -55,7 +55,7 @@ const filteredSequences = computed(() => {
         :disabled="workspaceMissing"
         @click="addSequence"
       >
-        + New Sequence
+        + New Instruction
       </UiButton>
       <p
         v-if="workspaceMissing"
@@ -71,9 +71,9 @@ const filteredSequences = computed(() => {
         v-model="query"
         type="text"
         autocomplete="off"
-        name="sequence-search"
+        name="instruction-search"
         :disabled="workspaceMissing"
-        :placeholder="workspaceMissing ? 'Select a workspace to get started' : 'Search sequences…'"
+        :placeholder="workspaceMissing ? 'Select a workspace to get started' : 'Search instructions…'"
         class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
       />
     </div>
@@ -84,7 +84,7 @@ const filteredSequences = computed(() => {
         v-if="workspaceMissing"
         class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400"
       >
-        Select or create a workspace to see its sequences.
+        Select or create a workspace to see its instructions.
       </div>
 
       <template v-else>
@@ -101,9 +101,9 @@ const filteredSequences = computed(() => {
 
       <div
         v-if="filteredSequences.length === 0"
-        class="text-gray-500 text-xs italic px-2 py-2"
+        class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400"
       >
-        No sequences found
+        No instructions found
       </div>
       </template>
     </div>

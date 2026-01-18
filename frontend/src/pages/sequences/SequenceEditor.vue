@@ -11,6 +11,7 @@ import SequenceEditorHeader from "./components/SequenceEditorHeader.vue"
 import SequenceStepsList from "./components/SequenceStepsList.vue"
 import SequenceExecutionLog from "./components/SequenceExecutionLog.vue"
 import SequenceStepEditor from "./components/SequenceStepEditor.vue"
+import SequenceRunControls from "./components/SequenceRunControls.vue"
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 
@@ -45,7 +46,7 @@ const selectedStep = computed(() => {
 })
 const deleteModalOpen = ref(false)
 const deleteMessage = computed(() =>
-  sequence.value ? `Sequence "${sequence.value.name}" will be deleted with all steps.` : ""
+  sequence.value ? `Instruction "${sequence.value.name}" will be deleted with all steps.` : ""
 )
 const deleteConfirmLabel = "Delete"
 const deleteCancelLabel = "Cancel"
@@ -53,7 +54,7 @@ const deleteCancelLabel = "Cancel"
 async function handleDuplicate() {
   if (!sequence.value) return
   const duplicated = await store.duplicateSequence(sequence.value.id)
-  await router.push({ name: "sequences.detail", params: { id: duplicated.id } })
+  await router.push({ name: "instructions.detail", params: { id: duplicated.id } })
 }
 
 function requestDelete() {
@@ -68,7 +69,7 @@ async function confirmDelete() {
   if (!sequence.value) return
   await store.deleteSequence(sequence.value.id)
   deleteModalOpen.value = false
-  await router.push({ name: "sequences.list" })
+  await router.push({ name: "instructions.list" })
 }
 
 function exitStepEdit() {
@@ -87,6 +88,12 @@ const { isDesktop } = useViewport()
       :sequence="sequence"
       @duplicate="handleDuplicate"
       @delete="requestDelete"
+    />
+
+    <SequenceRunControls
+      v-if="sequence && state"
+      :sequence="sequence"
+      :state="state"
     />
 
     <div class="mt-5 flex flex-1 min-h-0 flex-col gap-4 overflow-hidden rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5 lg:flex-row lg:gap-5">
@@ -140,7 +147,7 @@ const { isDesktop } = useViewport()
     <ConfirmModal
       v-if="sequence"
       :open="deleteModalOpen"
-      title="Delete sequence"
+      title="Delete instruction"
       :message="deleteMessage"
       :confirm-label="deleteConfirmLabel"
       :cancel-label="deleteCancelLabel"

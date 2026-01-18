@@ -4,6 +4,7 @@ import asyncio
 import os
 import signal
 import socket
+from contextlib import suppress
 
 from redis.exceptions import ResponseError
 
@@ -12,14 +13,12 @@ from app.core.logger import get_logger
 from app.core.sequence_dto import SequenceCommand, SequenceCommandType
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import enqueue_sequence_command, parse_sequence_command_entry
+from app.services.worker_health import clear_worker_status, start_worker_heartbeat
 from app.services.sequence_runner import (
     SequenceAlreadyRunningError,
     SequenceNotFoundError,
     SequenceRunner,
 )
-from app.services.test_run_service import TestRunNotFoundError, TestRunService
-from app.services.domain_errors import DomainError, TestRunInvalidStateError
-from app.infrastructure.db.database import AsyncSessionLocal
 
 settings = get_settings()
 logger = get_logger("worker.sequence")
@@ -77,53 +76,26 @@ async def _process_entries(redis, runner: SequenceRunner, entries) -> None:
             await _handle_command(runner, command)
         except SequenceNotFoundError as exc:
             logger.error("💥 Sequence not found for command %s: %s", entry_id, exc)
-            await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
-        except TestRunNotFoundError as exc:
-            logger.error("💥 Test run invalid for command %s: %s", entry_id, exc)
-            await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
-        except DomainError as exc:
-            if isinstance(exc, TestRunInvalidStateError):
-                logger.warning("⚠️ Test run state rejected for command %s: %s", entry_id, exc)
-            else:
-                await _mark_test_run_failed(command, exc)
-                logger.warning("⚠️ Invalid test run command %s: %s", entry_id, exc)
-            await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
         except SequenceAlreadyRunningError as exc:
             logger.warning("⚠️ Sequence already running: %s", exc)
-            await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
         except Exception as exc:  # noqa: BLE001
             logger.exception("💥 Failed to process sequence command %s: %s", entry_id, exc)
-            await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
             if command:
-                moved_to_dlq = await _retry_or_dlq(command, exc)
-                if moved_to_dlq:
-                    await _mark_test_run_failed(command, exc)
-        else:
+                await _retry_or_dlq(command, exc)
+        finally:
             await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
-
-
-async def _mark_test_run_failed(command: SequenceCommand | None, error: Exception) -> None:
-    if not command or command.test_run_id is None:
-        return
-    async with AsyncSessionLocal() as session:
-        service = TestRunService(session)
-        await service.mark_failed(command.test_run_id, str(error))
 
 
 async def _handle_command(runner: SequenceRunner, command: SequenceCommand) -> None:
     if command.type == SequenceCommandType.START:
-        if command.test_run_id is None:
-            raise ValueError("START command requires test_run_id")
-        await runner.start_test_run(
-            command.test_run_id,
+        await runner.start(
+            command.sequence_id,
             request_id=command.request_id,
             requested_by=command.requested_by,
         )
         return
     if command.type == SequenceCommandType.STOP:
-        if command.test_run_id is None:
-            raise ValueError("STOP command requires test_run_id")
-        await runner.stop_test_run(command.test_run_id)
+        await runner.stop(command.sequence_id)
         return
     raise ValueError(f"Unknown sequence command type: {command.type}")
 
@@ -135,8 +107,8 @@ async def _retry_or_dlq(command: SequenceCommand, error: Exception) -> bool:
         retry_cmd = command.bumped_attempt(next_attempt, extra={"last_error": reason})
         await enqueue_sequence_command(retry_cmd)
         logger.warning(
-            "🔁 Requeued sequence command (test_run=%s, attempt=%s/%s)",
-            command.test_run_id,
+            "🔁 Requeued sequence command (sequence=%s, attempt=%s/%s)",
+            command.sequence_id,
             next_attempt,
             MAX_RETRIES,
         )
@@ -145,9 +117,9 @@ async def _retry_or_dlq(command: SequenceCommand, error: Exception) -> bool:
         dlq_cmd = command.bumped_attempt(next_attempt, extra={"dlq_reason": reason})
         await enqueue_sequence_command(dlq_cmd, stream_name=settings.sequence_command_dlq_stream)
         logger.error(
-            "💀 Command moved to DLQ after %s attempts (test_run=%s)",
+            "💀 Command moved to DLQ after %s attempts (sequence=%s)",
             next_attempt,
-            command.test_run_id,
+            command.sequence_id,
         )
         return True
 
@@ -161,6 +133,7 @@ async def main() -> None:
     runner = SequenceRunner()
 
     await _drain_pending(redis, runner)
+    heartbeat_task = start_worker_heartbeat("sequence_runner")
 
     stop_event = asyncio.Event()
 
@@ -189,6 +162,10 @@ async def main() -> None:
                 continue
             await _process_entries(redis, runner, entries)
     finally:
+        heartbeat_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await heartbeat_task
+        await clear_worker_status("sequence_runner")
         await RedisManager.stop()
 
 

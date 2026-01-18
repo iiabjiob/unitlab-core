@@ -33,14 +33,8 @@
       </aside>
     </ResizablePanel>
 
-    <section class="flex-1 min-h-0 min-w-0 overflow-y-auto bg-neutral-50 p-3 md:p-4 dark:bg-neutral-950">
-      <div class="flex h-full min-h-0 min-w-0 flex-col">
-        <div class="flex flex-1 min-h-0 min-w-0 rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <RouterView v-slot="{ Component }">
-            <component v-if="Component" :is="Component" class="flex h-full min-h-0 min-w-0 flex-1" />
-          </RouterView>
-        </div>
-      </div>
+    <section class="flex-1 overflow-y-auto p-3 md:p-4">
+      <RouterView />
     </section>
 
     <SlideOver

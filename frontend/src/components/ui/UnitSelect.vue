@@ -21,7 +21,7 @@ import { useDeviceStore } from "@/stores/deviceStore"
 import UiSelect from "./UiSelect.vue";
 
 const props = defineProps<{
-  modelValue: number | null   // ✅ теперь строго device_id из БД
+  modelValue: number | null   // ✅ now strictly device_id from DB
   name?: string
 }>()
 const emit = defineEmits(["update:modelValue"])

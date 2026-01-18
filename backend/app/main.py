@@ -7,8 +7,6 @@ from app.api.v1.devices.router import router as devices_router
 from app.api.v1.channels.router import router as channels_router
 from app.api.v1.switchgears.router import router as switchgears_router
 from app.api.v1.sequences.router import router as sequences_router
-from app.api.v1.signals.router import router as signals_router
-from app.api.v1.test_runs.router import router as test_runs_router
 from app.api.v1.workspaces.router import router as workspaces_router
 
 from app.ws.router import router as ws_router
@@ -19,6 +17,7 @@ from app.infrastructure.redis.manager import RedisManager
 
 from app.ws.pubsub_listener import forward_ws_events_from_pubsub
 from app.services.sequence_event_forwarder import forward_sequence_events
+from app.services.system.worker_health_aggregator import run_worker_health_aggregator
 from app.services.system_sequence_seeder import seed_default_sequences
 
 from app.core.config import get_settings
@@ -52,8 +51,10 @@ async def lifespan(app: FastAPI):
     logger.info("🔗 Registering background tasks...")
     ws_forwarder_task = asyncio.create_task(forward_ws_events_from_pubsub())
     sequence_forwarder_task = asyncio.create_task(forward_sequence_events())
+    worker_health_task = asyncio.create_task(run_worker_health_aggregator())
     logger.info("✅ WS forwarder started")
     logger.info("✅ Sequence event forwarder started")
+    logger.info("✅ Worker health aggregator started")
     try:
         yield
     finally:
@@ -66,6 +67,9 @@ async def lifespan(app: FastAPI):
         sequence_forwarder_task.cancel()
         with suppress(asyncio.CancelledError):
             await sequence_forwarder_task
+        worker_health_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await worker_health_task
 
         # Stop infrastructure services
         await RedisManager.stop()
@@ -87,8 +91,6 @@ app.include_router(channels_router)
 app.include_router(workspaces_router)
 app.include_router(switchgears_router)
 app.include_router(sequences_router)
-app.include_router(signals_router)
-app.include_router(test_runs_router)
 
 logger.info("✅ REST API routers registered")
 

@@ -1,5 +1,5 @@
 @layer components {
-/* Базовый класс */
+/* Base class */
 .btn {
   @apply font-mono font-medium cursor-pointer rounded-sm;
 }
@@ -8,7 +8,7 @@
   @apply opacity-50 cursor-default;
 }
 
-/* Размеры */
+/* Sizes */
 .btn-xs {
   @apply px-1 py-0 text-xs;
 }
@@ -25,7 +25,7 @@
   @apply px-4 py-2 text-base;
 }
 
-/* Основные стили */
+/* Primary styles */
 .btn-primary {
   @apply bg-neutral-800 text-white focus:ring-2 focus:ring-neutral-400 
          dark:bg-neutral-200 dark:text-neutral-900 dark:focus:ring-neutral-300;
@@ -34,6 +34,11 @@
 .btn-secondary {
   @apply border border-neutral-300 bg-neutral-100 text-neutral-700 shadow-sm 
          dark:border-neutral-600 dark:bg-neutral-700 dark:text-neutral-200;
+}
+
+.btn-success {
+  @apply bg-green-600 text-white focus:ring-2 focus:ring-green-400
+         dark:bg-green-400 dark:text-neutral-900 dark:focus:ring-green-300;
 }
 
 .btn-danger {

@@ -10,11 +10,13 @@ import { useRoute } from "vue-router"
 import DesktopLayout from "./DesktopLayout.vue"
 import MobileLayout from "./MobileLayout.vue"
 import { useWebSocketStore } from "@/stores/websocketStore"
+import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import DisconnectedMobileLayout from "./DisconnectedMobileLayout.vue"
 import DisconnectedDesktopLayout from "./DisconnectedDesktopLayout.vue"
 import WelcomeLayout from "./WelcomeLayout.vue"
 
 const isMobile = ref(false)
+const systemHealthStore = useSystemHealthStore()
 
 function checkMobile() {
   isMobile.value = window.innerWidth < 768
@@ -22,8 +24,11 @@ function checkMobile() {
 onMounted(() => {
   checkMobile()
   window.addEventListener("resize", checkMobile)
+  void systemHealthStore.refresh()
 })
-onBeforeUnmount(() => window.removeEventListener("resize", checkMobile))
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", checkMobile)
+})
 
 const route = useRoute()
 const wsStore = useWebSocketStore()

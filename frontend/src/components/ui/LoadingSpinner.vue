@@ -11,7 +11,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-// ✅ Явно определяем интерфейс Props
+// ✅ Explicitly define the Props interface
 interface SpinnerProps {
   text?: string
   color?: string
@@ -22,7 +22,7 @@ interface SpinnerProps {
 
 const props = defineProps<SpinnerProps>()
 
-// ✅ Классы цвета, размера и позиции с тайпсейфти
+// ✅ Type-safe color/size/position classes
 const colorClass = computed(() => `text-${props.color ?? 'neutral'}-500`)
 
 const sizeClass = computed(() => {
@@ -32,7 +32,7 @@ const sizeClass = computed(() => {
     case 'large':
       return 'h-12 w-12'
     default:
-      return 'h-8 w-8' // medium (или undefined)
+      return 'h-8 w-8' // medium (or undefined)
   }
 })
 

@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     heartbeat_ttl: int = 30
     check_heartbeat_interval: int = 5
 
+    # ---- Worker Health ----
+    worker_health_interval: int = 10
+    worker_health_ttl: int = 30
+
     # ---- Time Sync ----
     ntp_server_1: str | None = None
     ntp_server_2: str | None = None

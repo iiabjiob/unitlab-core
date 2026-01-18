@@ -42,7 +42,7 @@ function handleDelayInput(event: Event) {
       />
     </div>
     <p class="text-xs text-neutral-500 dark:text-neutral-400">
-      Sequence pauses for the specified duration before moving to the next step.
+      Instruction pauses for the specified duration before moving to the next step.
     </p>
   </div>
 </template>

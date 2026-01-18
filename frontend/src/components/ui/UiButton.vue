@@ -14,6 +14,7 @@ import { computed } from "vue"
 type ButtonVariant =
   | "primary"
   | "secondary"
+  | "success"
   | "danger"
   | "toolbar"
   | "dashed"
@@ -43,6 +44,7 @@ const computedClass = computed(() => {
   const variants: Record<ButtonVariant, string> = {
     primary: "btn-primary",
     secondary: "btn-secondary",
+    success: "btn-success",
     danger: "btn-danger",
     toolbar: "btn-toolbar",
     dashed: "btn-dashed",

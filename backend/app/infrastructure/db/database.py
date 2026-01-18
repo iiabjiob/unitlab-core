@@ -4,10 +4,10 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-# Асинхронный движок для SQLAlchemy
+# Async SQLAlchemy engine
 engine = create_async_engine(settings.database_url, future=True, echo=True)
 
-# Сессия для работы с БД
+# Session factory for DB work
 AsyncSessionLocal = sessionmaker(
     bind=engine,
     class_=AsyncSession,
@@ -16,7 +16,7 @@ AsyncSessionLocal = sessionmaker(
 
 Base = declarative_base()
 
-# Dependency для получения асинхронной сессии
+# Dependency that yields an async session
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session

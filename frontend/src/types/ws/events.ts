@@ -1,10 +1,12 @@
 import type { Channel } from "../channel"
+import type { SystemHealthResponse, SystemStatus } from "../health"
 import type { TimeStatus } from "../time"
 // ---------------------------------------------------------------------
 // WS channels (Backend → Frontend)
 // ---------------------------------------------------------------------
 
 export enum WSChannel {
+  SYSTEM_INFO    = "system/info",
   DEVICE_STATE    = "devices/state",
   DEVICE_REGISTER = "devices/register",
   DEVICE_RESP     = "devices/resp",
@@ -119,6 +121,19 @@ export interface DeviceHeartbeatEvent {
   last_seen: number
 }
 
+export interface SystemHealthChangedEvent {
+  channel: WSChannel.SYSTEM_INFO
+  event: "system_health_changed"
+  previous_status: SystemStatus | null
+  current_status: SystemStatus
+  changed_at: string
+  issues: string[]
+  diff: {
+    workers: string[]
+  }
+  snapshot: SystemHealthResponse
+}
+
 export interface TimeStatusEvent extends TimeStatus {
   channel: WSChannel.TIME_STATUS
 }
@@ -181,6 +196,7 @@ export type SequenceWsEvent =
 
 
 export type ChannelWSEvent =
+  | SystemHealthChangedEvent
   | DeviceStateEvent
   | DeviceRegisterEvent
   | DeviceRespEvent

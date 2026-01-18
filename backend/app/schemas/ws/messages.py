@@ -11,13 +11,13 @@ class WSAction(str, Enum):
     SCAN_DEVICES    = "scan_devices"
 
 # ---------------------------------------------------------------------
-# Управление выходами (DO / AO)
+# Output control (DO / AO)
 # ---------------------------------------------------------------------
 
 class SetDoCommandMessage(BaseModel):
     """
-    Управление цифровыми выходами (DO).
-    mode → соответствует protocol.modes.Cmd:
+    Manage digital outputs (DO).
+    mode → matches protocol.modes.Cmd:
         - SET_SINGLE_BIT
         - SET_ALL_BIT
         - SET_PAIR_BIT
@@ -36,7 +36,7 @@ class SetDoCommandMessage(BaseModel):
 
 class SetAoCommandMessage(BaseModel):
     """
-    Управление аналоговыми выходами (AO).
+    Manage analog outputs (AO).
     """
     action: Literal[WSAction.SET_AO_COMMAND]
     unit_id: str
@@ -45,13 +45,13 @@ class SetAoCommandMessage(BaseModel):
 
 
 # ---------------------------------------------------------------------
-# Запросы состояния (DI / DO / AO)
+# State requests (DI / DO / AO)
 # ---------------------------------------------------------------------
 
 class RequestStateMessage(BaseModel):
     """
-    Запрос состояния устройства.
-    mode → соответствует protocol.modes.State:
+    Request the state of a device.
+    mode → matches protocol.modes.State:
         - REQ_SINGLE_BIT / REQ_ALL_BIT
         - REQ_SINGLE_FLOAT / REQ_ALL_FLOAT
         - REQ_DIAG_DI_BIT / REQ_DIAG_ALL_BIT / REQ_DIAG_AO_FLOAT
@@ -63,7 +63,7 @@ class RequestStateMessage(BaseModel):
 
 
 # ---------------------------------------------------------------------
-# Сканирование устройств
+# Device scan
 # ---------------------------------------------------------------------
 
 class ScanDevicesMessage(BaseModel):
@@ -71,7 +71,7 @@ class ScanDevicesMessage(BaseModel):
 
 
 # ---------------------------------------------------------------------
-# Унифицированный union
+# Unified union
 # ---------------------------------------------------------------------
 
 WSMessage = Union[

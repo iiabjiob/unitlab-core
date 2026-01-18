@@ -4,6 +4,7 @@ import asyncio
 import os
 import signal
 import socket
+from contextlib import suppress
 from typing import List, Tuple
 
 from redis.exceptions import ResponseError
@@ -15,6 +16,7 @@ from app.infrastructure.mqtt.handlers import bootstrap  # noqa: F401
 from app.infrastructure.mqtt.inbound_worker import process_inbound_message
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_inbound_entry
+from app.services.worker_health import clear_worker_status, start_worker_heartbeat
 
 settings = get_settings()
 logger = get_logger("worker.inbound")
@@ -76,6 +78,7 @@ async def main() -> None:
 
     await _ensure_group(redis)
     await _drain_pending(redis)
+    heartbeat_task = start_worker_heartbeat("inbound_processor")
 
     logger.info(
         "🚀 Inbound processor ready (stream=%s, group=%s, consumer=%s)",
@@ -104,6 +107,10 @@ async def main() -> None:
                 continue
             await _process_entries(redis, entries)
     finally:
+        heartbeat_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await heartbeat_task
+        await clear_worker_status("inbound_processor")
         await RedisManager.stop()
 
 

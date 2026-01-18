@@ -10,7 +10,7 @@
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h12M4 18h8" />
         </svg>
-        Browse sequences
+        Browse instructions
       </button>
     </div>
 
@@ -35,7 +35,7 @@
     <SlideOver
       v-if="!isDesktop"
       :open="sidebarOpen"
-      title="Sequences"
+      title="Instructions"
       placement="left"
       :widthPx="360"
       @close="sidebarOpen = false"

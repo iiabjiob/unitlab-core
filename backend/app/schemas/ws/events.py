@@ -1,5 +1,7 @@
+from datetime import datetime
+from typing import Any, Dict, List, Literal, Union
+
 from pydantic import BaseModel
-from typing import Literal, Union, Dict, Any, List
 from app.infrastructure.protocol.modes import State
 from app.infrastructure.protocol.packet_structures import RespStatus, RespError
 from app.schemas.device_schema import DeviceSchema
@@ -7,18 +9,17 @@ from enum import Enum
 
 # -----------------------------------------------------------------
     # NOTE:
-    # Каналы WebSocket намеренно названы во множественном числе ("devices/..."),
-    # чтобы сохранить консистентность с MQTT-топиками:
+    # WebSocket channels intentionally use plural names ("devices/...")
+    # to stay aligned with the MQTT topics:
     #
     #   MQTT:    devices/+/state
     #   WS:      devices/state
     #
-    # В обоих случаях это означает "события для множества устройств",
-    # а само сообщение внутри содержит unit_id, type и т.д.
+    # Both mean "events for multiple devices" while the payload carries
+    # unit_id, type, etc.
     #
-    # Даже если WebSocket сообщение всегда описывает одно устройство,
-    # мы НЕ переключаемся на "device/...", чтобы не плодить два разных
-    # пространства имен для одинаковых событий.
+    # Even though each WS message describes a single device, we keep
+    # the plural naming to avoid maintaining two namespaces.
     # -----------------------------------------------------------------
 class WSChannel(str, Enum):
     SYSTEM_INFO     = "system/info"
@@ -30,18 +31,18 @@ class WSChannel(str, Enum):
     DEVICE_STATUS   = "devices/status"
 
 # ---------------------------------------------------------------------
-# Состояния (DI/DO/AO)
+# Device states (DI/DO/AO)
 # ---------------------------------------------------------------------
 
 class DeviceStateEvent(BaseModel):
     channel: Literal[WSChannel.DEVICE_STATE] = WSChannel.DEVICE_STATE
     unit_id: str
     timestamp: int
-    mode: State                   # Enum из protocol.modes
+    mode: State                   # Enum from protocol.modes
     payload: Dict[str, Any]
 
 # ---------------------------------------------------------------------
-# Регистрация устройства
+# Device registration
 # ---------------------------------------------------------------------
 
 class DeviceRegisterEvent(DeviceSchema):
@@ -49,7 +50,7 @@ class DeviceRegisterEvent(DeviceSchema):
     created: bool = False
 
 # ---------------------------------------------------------------------
-# RESP (ответы на команды)
+# RESP (command responses)
 # ---------------------------------------------------------------------
 
 class DeviceRespEvent(BaseModel):
@@ -124,8 +125,19 @@ class SequenceCompletedEvent(SequenceEventBase):
     event: Literal["completed"] = "completed"
     elapsed_ms: int
 
+
+class SystemHealthChangedEvent(BaseModel):
+    channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
+    event: Literal["system_health_changed"] = "system_health_changed"
+    previous_status: Literal["online", "degraded", "offline"] | None = None
+    current_status: Literal["online", "degraded", "offline"]
+    changed_at: datetime
+    issues: List[str]
+    diff: Dict[str, List[str]]
+    snapshot: Dict[str, Any]
+
 # ---------------------------------------------------------------------
-# Union для всех событий
+# Union of all WS events
 # ---------------------------------------------------------------------
 
 WSEvent = Union[
@@ -140,4 +152,5 @@ WSEvent = Union[
     SequenceStoppingEvent,
     SequenceStoppedEvent,
     SequenceCompletedEvent,
+    SystemHealthChangedEvent,
 ]

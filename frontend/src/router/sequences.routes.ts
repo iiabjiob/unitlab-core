@@ -12,7 +12,7 @@ const defaultMeta = {
 
 export const sequencesRoutes: RouteRecordRaw[] = [
   {
-    path: "/sequences",
+    path: "/test-runs/instructions",
     component: () => import("@/pages/sequences/SequencesPage.vue"),
     beforeEnter: async () => {
       const workspaceStore = useWorkspaceStore()
@@ -26,7 +26,7 @@ export const sequencesRoutes: RouteRecordRaw[] = [
     children: [
       {
         path: "",
-        name: "sequences.list",
+        name: "instructions.list",
         component: () => import("@/pages/sequences/SequencePlaceholder.vue"),
         beforeEnter: () => {
           const selectionStore = useSelectionStore()
@@ -38,12 +38,12 @@ export const sequencesRoutes: RouteRecordRaw[] = [
           const exists = seqStore.sequences.some(sequence => sequence.id === lastId)
           if (!exists) return true
 
-          return { name: "sequences.detail", params: { id: lastId } }
+          return { name: "instructions.detail", params: { id: lastId } }
         },
       },
       {
         path: ":id",
-        name: "sequences.detail",
+        name: "instructions.detail",
         component: () => import("@/pages/sequences/SequenceEditor.vue"),
         props: true,
         beforeEnter: async (to) => {

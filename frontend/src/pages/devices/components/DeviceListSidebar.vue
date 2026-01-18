@@ -63,7 +63,7 @@ const filteredDevices = computed(() => {
 
       <div
         v-if="filteredDevices.length === 0"
-        class="text-gray-500 text-xs italic px-2 py-2"
+        class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400"
       >
         No devices found
       </div>

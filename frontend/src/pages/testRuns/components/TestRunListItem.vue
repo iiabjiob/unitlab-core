@@ -39,7 +39,7 @@ const snapshotLabel = computed(() => (props.run.snapshot ? "SNAPSHOT READY" : "S
 const sequenceSummary = computed(() => {
   if (!props.run.sequence_ids.length) return ""
   const names = props.run.sequence_ids
-    .map(id => props.sequenceNameMap.get(id) ?? `Sequence #${id}`)
+    .map(id => props.sequenceNameMap.get(id) ?? `Instruction #${id}`)
   if (!names.length) return ""
   return names.slice(0, 2).join(", ") + (names.length > 2 ? ` +${names.length - 2} more` : "")
 })

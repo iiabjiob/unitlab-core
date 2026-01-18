@@ -70,13 +70,13 @@
           <section class="xl:col-span-2 rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Sequences</p>
-                <p class="text-xs text-neutral-500">Ordered list of sequences queued inside this run.</p>
+                <p class="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Instructions</p>
+                <p class="text-xs text-neutral-500">Ordered list of instructions queued inside this run.</p>
               </div>
               <RouterLink class="btn-tertiary" :to="{ name: 'testRuns.new' }">Add another run</RouterLink>
             </div>
             <div v-if="!run.sequence_ids.length" class="mt-6 rounded-xl bg-neutral-50 px-4 py-6 text-sm text-neutral-500 dark:bg-neutral-800">
-              No sequences attached.
+              No instructions attached.
             </div>
             <ol v-else class="mt-6 space-y-3">
               <li
@@ -89,7 +89,7 @@
                 </span>
                 <div>
                   <p class="font-medium text-neutral-900 dark:text-neutral-50">{{ describeSequence(sequenceId) }}</p>
-                  <p class="text-xs text-neutral-500">Sequence #{{ sequenceId }}</p>
+                  <p class="text-xs text-neutral-500">Instruction #{{ sequenceId }}</p>
                 </div>
               </li>
             </ol>
@@ -217,7 +217,7 @@ const runTitle = computed(() => {
       ? `${run.value.allocation.notes.slice(0, 61)}…`
       : run.value.allocation.notes
   }
-  return `Run with ${run.value.sequence_ids.length} sequence(s)`
+  return `Run with ${run.value.sequence_ids.length} instruction(s)`
 })
 
 const allocationEntries = computed(() => run.value?.allocation?.entries ?? [])
@@ -258,7 +258,7 @@ async function initialize() {
 
 function describeSequence(sequenceId: number) {
   const seq = sequenceMap.value.get(sequenceId)
-  return seq ? `${seq.name}` : `Sequence #${sequenceId}`
+  return seq ? `${seq.name}` : `Instruction #${sequenceId}`
 }
 
 function formatMetadata(meta: Record<string, unknown> | null | undefined) {

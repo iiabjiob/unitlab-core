@@ -93,15 +93,13 @@ function onKeydown(event: KeyboardEvent, index: number) {
         </div>
         <div class="w-2 h-2 rounded-full" :class="dotClass(log.type)" />
         <div class="whitespace-pre-wrap break-words flex-1" :class="textClass(log.type)">
-          <div>
-            {{ log.message }}
-          </div>
-          <div
+          <span>{{ log.message }}</span>
+          <span
             v-if="detailText(log)"
-            class="mt-0.5 text-[10px] text-neutral-500 dark:text-neutral-400"
+            class="ml-1 text-[10px] text-neutral-500 dark:text-neutral-400"
           >
-            {{ detailText(log) }}
-          </div>
+            · {{ detailText(log) }}
+          </span>
         </div>
       </div>
       <div v-if="entries.length === 0" class="opacity-40 italic py-2">

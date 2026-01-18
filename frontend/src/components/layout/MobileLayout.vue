@@ -5,7 +5,7 @@
       <template #left>
         <div class="flex gap-3 items-center">
           <AppLogo />
-          <OnlineStatusComponent :status="status" />
+          <OnlineStatusComponent :status="status" :description="statusDescription" />
         </div>
       </template>
       <template #right>
@@ -50,6 +50,7 @@ import AppLogo from "./AppLogo.vue"
 import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
 import TimeComponent from "../misc/TimeComponent.vue"
 import { useWebSocketStore } from "@/stores/websocketStore"
+import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import SlideOver from "../ui/SlideOver.vue"
 import MobileHeader from "./MobileHeader.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
@@ -60,10 +61,16 @@ const isDrawerOpen = ref(false)
 
 // WebSocket connection status
 const wsStore = useWebSocketStore()
+const systemHealthStore = useSystemHealthStore()
+
 const status = computed(() => {
-  if (wsStore.isConnected) return "online"
-  if (!wsStore.isConnected && wsStore.everConnected) return "offline"
-  return "offline"
+  if (!wsStore.isConnected) return "offline"
+  return systemHealthStore.status
+})
+
+const statusDescription = computed(() => {
+  if (!wsStore.isConnected) return "No connection to the server"
+  return systemHealthStore.tooltip
 })
 
 const workspaceStore = useWorkspaceStore()
