@@ -24,6 +24,9 @@ const hasDoChannels = computed(() =>
 )
 
 function onToggle(ch: Channel) {
+  if (isOffline.value) {
+    return
+  }
   const next = !ch.state
   channelStore.sendDoCommand(
     channelStore.resolveUnitId(ch.device_id),
@@ -33,6 +36,9 @@ function onToggle(ch: Channel) {
 }
 
 function onSetAo({ channel, value }: { channel: Channel; value: number }) {
+  if (isOffline.value) {
+    return
+  }
   channelStore.sendAoCommand(
     channelStore.resolveUnitId(channel.device_id),
     channel.index,
@@ -50,36 +56,33 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
       Channels ({{ channelCount }})
     </div>
 
-    <!-- OFFLINE STATE -->
     <div
       v-if="isOffline"
-      class="flex-1 flex items-center justify-center text-neutral-500 text-sm italic"
+      class="mt-2 rounded border border-amber-300/70 bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-300"
     >
-      Device is offline — channel states unavailable
+      Device is offline: controls are disabled until it is back online.
     </div>
 
-    <!-- ONLINE STATE -->
-    <template v-else>
-      <!-- CONTROL TOOLBAR -->
-      <div v-if="hasDoChannels" class="py-2">
-        <DeviceChannelControlToolbar
-          :device-id="device.id"
-          :unit-id="device.unit_id"
-        />
-      </div>
+    <!-- CONTROL TOOLBAR -->
+    <div v-if="hasDoChannels" class="py-2">
+      <DeviceChannelControlToolbar
+        :device-id="device.id"
+        :unit-id="device.unit_id"
+        :disabled="isOffline"
+      />
+    </div>
 
-      <!-- LIST -->
-      <div class="grid grid-cols-4 gap-2 mt-5">
-        <DeviceChannelItem
-          v-for="channel in channels"
-          :key="channel.id"
-          :channel="channel"
-          @toggle="onToggle"
-          @set-ao="onSetAo"
-        />
-      </div>
-    </template>
+    <!-- LIST -->
+    <div class="grid grid-cols-4 gap-2 mt-5">
+      <DeviceChannelItem
+        v-for="channel in channels"
+        :key="channel.id"
+        :channel="channel"
+        :disabled="isOffline"
+        @toggle="onToggle"
+        @set-ao="onSetAo"
+      />
+    </div>
 
   </div>
 </template>
-

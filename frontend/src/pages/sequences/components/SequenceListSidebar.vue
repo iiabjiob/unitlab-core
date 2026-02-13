@@ -4,7 +4,17 @@ import { useSequenceStore } from "@/stores/sequenceStore"
 import { useRouter, useRoute } from "vue-router"
 import SequenceListItem from "./SequenceListItem.vue"
 import UiButton from "@/components/ui/UiButton.vue"
+import UiSidebarListbox from "@/components/ui/UiSidebarListbox.vue"
+import RenameModal from "@/components/ui/RenameModal.vue"
+import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import {
+  UiMenu,
+  UiMenuTrigger,
+  UiMenuContent,
+  UiMenuItem,
+} from "@affino/menu-vue"
+import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vue"
 
 const store = useSequenceStore()
 const router = useRouter()
@@ -41,6 +51,75 @@ const filteredSequences = computed(() => {
     (s.description && s.description.toLowerCase().includes(q))
   )
 })
+
+const selectedId = computed<number | null>(() => {
+  const parsed = Number(route.params.id)
+  return Number.isFinite(parsed) ? parsed : null
+})
+
+const selectedSequence = computed(() => {
+  if (selectedId.value === null) return null
+  return store.sequences.find((seq) => seq.id === selectedId.value) ?? null
+})
+
+const renameOpen = ref(false)
+const renameValue = ref("")
+const renaming = ref(false)
+const deleteOpen = ref(false)
+const deleteMessage = computed(() =>
+  selectedSequence.value
+    ? `Instruction "${selectedSequence.value.name}" will be deleted with all steps.`
+    : "",
+)
+
+function handleSelect(id: string | number) {
+  const parsed = Number(id)
+  if (!Number.isFinite(parsed)) return
+  openSequence(parsed)
+}
+
+function openRenameSelected() {
+  if (!selectedSequence.value) return
+  renameValue.value = selectedSequence.value.name
+  renameOpen.value = true
+}
+
+function cancelRenameSelected() {
+  renameOpen.value = false
+  renameValue.value = selectedSequence.value?.name ?? ""
+}
+
+async function confirmRenameSelected() {
+  if (!selectedSequence.value) return
+  const trimmed = renameValue.value.trim()
+  if (!trimmed || trimmed === selectedSequence.value.name) {
+    renameOpen.value = false
+    return
+  }
+  renaming.value = true
+  try {
+    await store.updateSequence(selectedSequence.value.id, { name: trimmed })
+    renameOpen.value = false
+  } finally {
+    renaming.value = false
+  }
+}
+
+async function duplicateSelected() {
+  if (!selectedSequence.value) return
+  const duplicated = await store.duplicateSequence(selectedSequence.value.id)
+  await router.push({ name: "instructions.detail", params: { id: duplicated.id } })
+}
+
+async function confirmDeleteSelected() {
+  if (!selectedSequence.value) return
+  const deletingId = selectedSequence.value.id
+  await store.deleteSequence(deletingId)
+  deleteOpen.value = false
+  if (selectedId.value === deletingId) {
+    await router.push({ name: "instructions.list" })
+  }
+}
 </script>
 
 <template>
@@ -48,15 +127,40 @@ const filteredSequences = computed(() => {
 
     <!-- HEADER -->
     <div class="mb-3">
-      <UiButton
-        variant="primary"
-        size="sm"
-        full
-        :disabled="workspaceMissing"
-        @click="addSequence"
-      >
-        + New Instruction
-      </UiButton>
+      <div class="flex items-center gap-2">
+        <UiButton
+          variant="primary"
+          size="sm"
+          full
+          :disabled="workspaceMissing"
+          @click="addSequence"
+        >
+          + New Instruction
+        </UiButton>
+        <UiMenu v-if="selectedSequence">
+          <UiMenuTrigger asChild>
+            <UiButton
+              variant="icon"
+              aria-label="Instruction actions"
+              @click.stop
+              @pointerdown.stop
+            >
+              <EllipsisHorizontalIcon size="20" />
+            </UiButton>
+          </UiMenuTrigger>
+          <UiMenuContent>
+            <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openRenameSelected">
+              Rename
+            </UiMenuItem>
+            <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="duplicateSelected">
+              Duplicate
+            </UiMenuItem>
+            <UiMenuItem danger @select="deleteOpen = true">
+              Delete
+            </UiMenuItem>
+          </UiMenuContent>
+        </UiMenu>
+      </div>
       <p
         v-if="workspaceMissing"
         class="mt-2 text-[11px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
@@ -88,25 +192,45 @@ const filteredSequences = computed(() => {
       </div>
 
       <template v-else>
-      <div
-        v-for="seq in filteredSequences"
-        :key="seq.id"
+      <UiSidebarListbox
+        :items="filteredSequences"
+        :active-id="selectedId"
+        aria-label="Instructions"
+        @select="handleSelect"
       >
-        <SequenceListItem
-          :sequence="seq"
-          :active="isActive(seq.id)"
-          @select="openSequence(seq.id)"
-        />
-      </div>
-
-      <div
-        v-if="filteredSequences.length === 0"
-        class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400"
-      >
-        No instructions found
-      </div>
+        <template #item="{ item: seq, isCursor }">
+          <SequenceListItem
+            :sequence="seq"
+            :active="isActive(seq.id) || isCursor"
+          />
+        </template>
+        <template #empty>
+          <div class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+            No instructions found
+          </div>
+        </template>
+      </UiSidebarListbox>
       </template>
     </div>
+
+    <RenameModal
+      :open="renameOpen"
+      title="Rename instruction"
+      v-model="renameValue"
+      :loading="renaming"
+      @cancel="cancelRenameSelected"
+      @confirm="confirmRenameSelected"
+    />
+
+    <ConfirmModal
+      :open="deleteOpen"
+      title="Delete instruction"
+      :message="deleteMessage"
+      confirm-label="Delete"
+      cancel-label="Cancel"
+      @cancel="deleteOpen = false"
+      @confirm="confirmDeleteSelected"
+    />
 
   </div>
 </template>

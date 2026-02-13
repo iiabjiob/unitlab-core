@@ -4,6 +4,7 @@ import { useChannelStore } from '@/stores/channelStore'
 import { getLogger } from '@/utils/logger'
 import { useSequenceStore } from '@/stores/sequenceStore'
 import { useSystemHealthStore } from '@/stores/systemHealthStore'
+import { useRealtimeScopeStore } from '@/stores/realtimeScopeStore'
 
 const logger = getLogger('ws')
 
@@ -23,6 +24,7 @@ export function handleWsEvent(event: WSEvent) {
   const channelStore = useChannelStore()
   const sequenceStore = useSequenceStore()
   const systemHealthStore = useSystemHealthStore()
+  const realtimeScopeStore = useRealtimeScopeStore()
 
   // Route sequence events into the sequence store so realtime progress stays in sync.
   if ('topic' in event && (event as SequenceWsEvent).topic === 'sequence') {
@@ -51,10 +53,21 @@ export function handleWsEvent(event: WSEvent) {
       logger.debug("📡 IN ← DEVICE_REGISTER:", devEvent)
 
       // Update or insert the device record first.
-      deviceStore.upsertDevice(devEvent)
+      deviceStore.upsertDevice({
+        id: devEvent.id,
+        unit_id: devEvent.unit_id,
+        device_type: devEvent.device_type,
+        num_channels: devEvent.num_channels ?? null,
+        firmware_version: devEvent.firmware_version ?? null,
+        name: devEvent.name ?? null,
+        status: devEvent.status,
+        last_seen: devEvent.last_seen ?? null,
+        registered_at: devEvent.registered_at ?? null,
+        channels: null,
+      })
 
-      // If the payload already contains channels, seed them into the channel store.
-      if (devEvent.channels) {
+      // Hydrate channel catalog only for currently observed units.
+      if (devEvent.channels && realtimeScopeStore.shouldProcessRealtimeForUnit(devEvent.unit_id)) {
         channelStore.setBaseChannels(devEvent.id, devEvent.channels)
       }
       break
@@ -67,6 +80,9 @@ export function handleWsEvent(event: WSEvent) {
     }
     // Device state broadcasts carry DI/DO/AO changes for visualization.
     case WSChannel.DEVICE_STATE:{
+      if (!realtimeScopeStore.shouldProcessRealtimeForUnit(channelEvent.unit_id)) {
+        break
+      }
       logger.debug("📡 IN ← DEVICE_STATE:", channelEvent)
       channelStore.setChannels(channelEvent as DeviceStateEvent)
       break

@@ -62,6 +62,10 @@ async function confirmRename() {
 }
 
 const unitOnline = computed(() => (store.isUnitOnline(props.switchgear) ? "online" : "offline"))
+const unitStatusDescription = computed(() => {
+  if (store.isUnitOnline(props.switchgear)) return null
+  return "The device linked to these controls is offline. Control actions are unavailable until it reconnects."
+})
 const positionState = computed(() => store.resolveSwitchgearState(props.switchgear))
 </script>
 
@@ -83,7 +87,11 @@ const positionState = computed(() => store.resolveSwitchgearState(props.switchge
           <span>·</span>
           <span class="uppercase tracking-wide text-[11px]">{{ switchgear.switchgear_type }}</span>
           <span>·</span>
-          <OnlineStatusComponent :status="unitOnline" />
+          <OnlineStatusComponent
+            :status="unitOnline"
+            :description="unitStatusDescription"
+            neutral-offline
+          />
         </div>
       </div>
     </div>

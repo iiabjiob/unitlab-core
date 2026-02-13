@@ -4,7 +4,9 @@ import UiButton from "@/components/ui/UiButton.vue"
 import { useChannelStore } from "@/stores/channelStore"
 import { buildBitmask, buildToggleBitmask } from "@/utils/channel"
 
-const props = defineProps<{ deviceId: number; unitId: string }>()
+const props = withDefaults(defineProps<{ deviceId: number; unitId: string; disabled?: boolean }>(), {
+  disabled: false,
+})
 
 const channelStore = useChannelStore()
 
@@ -17,13 +19,13 @@ const allOn = computed(() => hasDo.value && doChannels.value.every(ch => !!ch.st
 const allOff = computed(() => hasDo.value && doChannels.value.every(ch => !ch.state))
 
 function setAll(state: boolean) {
-  if (!hasDo.value) return
+  if (!hasDo.value || props.disabled) return
   const mask = buildBitmask(doChannels.value, state)
   channelStore.sendDoAllCommand(props.deviceId, props.unitId, mask)
 }
 
 function toggleAll() {
-  if (!hasDo.value) return
+  if (!hasDo.value || props.disabled) return
   const mask = buildToggleBitmask(doChannels.value)
   channelStore.sendDoAllCommand(props.deviceId, props.unitId, mask)
 }
@@ -34,7 +36,7 @@ function toggleAll() {
     <UiButton
       size="xs"
       variant="secondary"
-      :disabled="!hasDo || allOn"
+      :disabled="props.disabled || !hasDo || allOn"
       @click="setAll(true)"
     >
       All [ON]
@@ -42,7 +44,7 @@ function toggleAll() {
     <UiButton
       size="xs"
       variant="secondary"
-      :disabled="!hasDo || allOff"
+      :disabled="props.disabled || !hasDo || allOff"
       @click="setAll(false)"
     >
       All [OFF]
@@ -50,7 +52,7 @@ function toggleAll() {
     <UiButton
       size="xs"
       variant="secondary"
-      :disabled="!hasDo"
+      :disabled="props.disabled || !hasDo"
       @click="toggleAll"
     >
       All [TOGGLE]

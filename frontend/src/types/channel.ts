@@ -32,6 +32,13 @@ export interface ChannelDto {
   updated_at?: string
 }
 
+export interface ChannelListDto {
+  items: ChannelDto[]
+  total: number
+  limit: number
+  offset: number
+}
+
 export interface ChannelBase {
   id: number
   device_id: number
@@ -77,4 +84,3 @@ export interface AoChannel extends ChannelBase {
 }
 
 export type Channel = DiChannel | DoChannel | AoChannel
-

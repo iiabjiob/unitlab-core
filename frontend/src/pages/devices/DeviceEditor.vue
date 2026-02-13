@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, watch } from "vue"
+import { computed, onBeforeUnmount, watch } from "vue"
 import { useRoute } from "vue-router"
 
 import { useDeviceStore } from "@/stores/deviceStore"
+import { useChannelStore } from "@/stores/channelStore"
 import { useSelectionStore } from "@/stores/selectionStore"
+import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
 import { useViewport } from "@/composables/useViewport"
 
 import DeviceEditorHeader from "./components/DeviceEditorHeader.vue"
@@ -13,7 +15,10 @@ import DeviceChannelsList from "./components/DeviceChannelsList.vue"
 
 const route = useRoute()
 const store = useDeviceStore()
+const channelStore = useChannelStore()
 const selectionStore = useSelectionStore()
+const realtimeScopeStore = useRealtimeScopeStore()
+const scopeId = "devices:editor"
 
 const deviceId = computed(() => Number(route.params.id))
 
@@ -23,13 +28,33 @@ const device = computed(() =>
 
 watch(
   () => device.value?.id ?? null,
-  (id) => {
+  async (id) => {
     selectionStore.selectDevice(id)
+    if (!id) {
+      realtimeScopeStore.clearRealtimeUnitScope(scopeId)
+      return
+    }
+    try {
+      await channelStore.ensureDeviceChannelsLoaded(id)
+    } catch {
+      realtimeScopeStore.clearRealtimeUnitScope(scopeId)
+      return
+    }
+    const target = store.devices.find(item => item.id === id)
+    if (!target) {
+      realtimeScopeStore.clearRealtimeUnitScope(scopeId)
+      return
+    }
+    realtimeScopeStore.setRealtimeUnitScope(scopeId, [target.unit_id])
   },
   { immediate: true }
 )
 
 const { isDesktop } = useViewport()
+
+onBeforeUnmount(() => {
+  realtimeScopeStore.clearRealtimeUnitScope(scopeId)
+})
 
 </script>
 

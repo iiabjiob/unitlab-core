@@ -1,6 +1,7 @@
 <template>
   <div
     class="group flex items-center justify-between px-2 py-1.5 text-sm select-none"
+    :class="{ 'opacity-60': disabled }"
   >
     <div class="flex items-center gap-3">
 
@@ -9,7 +10,7 @@
         v-if="channel.type === 'do'"
         class="w-4 h-4 rounded-sm border cursor-pointer flex items-center justify-center
                transition-colors"
-        :class="[doControlClass, { 'cursor-not-allowed opacity-70': isWaiting }]"
+        :class="[doControlClass, { 'cursor-not-allowed opacity-70': isWaiting || disabled }]"
         @click.stop="onToggleClick"
       >
         <span
@@ -33,6 +34,7 @@
         type="number"
         class="w-16 px-1 py-0.5 text-xs rounded border border-neutral-600
                bg-neutral-900 text-neutral-200"
+        :disabled="disabled"
         :value="channel.state"
         @change="onAoChange"
       />
@@ -51,7 +53,9 @@
 import { computed } from "vue"
 import type { Channel } from "@/types/channel"
 
-const props = defineProps<{ channel: Channel }>()
+const props = withDefaults(defineProps<{ channel: Channel; disabled?: boolean }>(), {
+  disabled: false,
+})
 
 const emit = defineEmits<{
   (e: "toggle", ch: Channel): void
@@ -104,13 +108,16 @@ const doControlClass = computed(() => {
 })
 
 function onToggleClick() {
-  if (props.channel.type !== "do" || isWaiting.value) {
+  if (props.channel.type !== "do" || isWaiting.value || props.disabled) {
     return
   }
   emit("toggle", props.channel)
 }
 
 function onAoChange(event: Event) {
+  if (props.disabled) {
+    return
+  }
   const raw = (event.target as HTMLInputElement).value
   const num = Number(raw)
   if (!isNaN(num)) {

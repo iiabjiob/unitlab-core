@@ -1,30 +1,34 @@
 <template>
   <teleport to="body">
-    <div v-if="open" class="fixed inset-0 z-40 ">
+    <div v-if="isOpen" class="fixed inset-0 z-40 ">
       <!-- Backdrop -->
       <div
         class="absolute inset-0 bg-black/10"
-        @click="onBackdropClick"
+        @click="requestClose('backdrop')"
       />
 
       <!-- Slide-over LEFT/RIGHT -->
       <transition :name="transitionName">
         <div
           v-if="isSide"
+          ref="dialogRef"
           class="absolute top-0 h-full border-neutral-200 dark:border-neutral-800 shadow-xl
                  transform will-change-transform bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
-          :class="sideClasses"
+          :class="[sideClasses, defaultWidthClasses]"
           :style="sideStyles"
           role="dialog"
           aria-modal="true"
+          tabindex="-1"
+          @keydown="onDialogKeydown"
         >
+          <span class="sr-only" tabindex="0" @focus="loopFocus('end')" />
           <!-- Header -->
           <div class="flex items-center justify-between px-3 py-2 border-b border-neutral-200 dark:border-neutral-800">
             <span class="text-sm font-semibold">{{ title }}</span>
             <button
               class="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
               aria-label="Close panel"
-              @click="$emit('close')"
+              @click="requestClose('pointer')"
             >
               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M6 18L18 6"/>
@@ -33,9 +37,10 @@
           </div>
 
           <!-- Content -->
-          <div class="h-[calc(100%-2.5rem)] overflow-y-auto" @click="closeOnItemClick && $emit('close')">
+          <div class="h-[calc(100%-2.5rem)] overflow-y-auto" @click="closeOnItemClick && requestClose('pointer')">
             <slot />
           </div>
+          <span class="sr-only" tabindex="0" @focus="loopFocus('start')" />
         </div>
       </transition>
 
@@ -43,15 +48,19 @@
       <transition name="slide-bottom">
         <div
           v-if="isBottom"
+          ref="dialogRef"
           class="absolute left-0 right-0 rounded-t-2xl shadow-2xl border-t border-neutral-200 dark:border-neutral-800
                  transform will-change-transform bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
           :style="bottomStyles"
           role="dialog"
           aria-modal="true"
+          tabindex="-1"
+          @keydown="onDialogKeydown"
           @touchstart.passive="onTouchStart"
           @touchmove.prevent="onTouchMove"
           @touchend="onTouchEnd"
         >
+          <span class="sr-only" tabindex="0" @focus="loopFocus('end')" />
           <!-- Drag handle -->
           <div class="pt-2 pb-1 flex justify-center">
             <div class="h-1.5 w-10 rounded-full bg-neutral-300 dark:bg-neutral-700" />
@@ -63,7 +72,7 @@
             <button
               class="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
               aria-label="Close sheet"
-              @click="$emit('close')"
+              @click="requestClose('pointer')"
             >
               <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M6 18L18 6"/>
@@ -72,9 +81,10 @@
           </div>
 
           <!-- Content -->
-          <div class="px-4 pb-4 overflow-y-auto" :style="{ maxHeight: `${maxHeightVh}vh` }" @click="closeOnItemClick && $emit('close')">
+          <div class="px-4 pb-4 overflow-y-auto" :style="{ maxHeight: `${maxHeightVh}vh` }" @click="closeOnItemClick && requestClose('pointer')">
             <slot />
           </div>
+          <span class="sr-only" tabindex="0" @focus="loopFocus('start')" />
         </div>
       </transition>
     </div>
@@ -83,6 +93,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onBeforeUnmount } from "vue"
+import { createDialogFocusOrchestrator, type DialogCloseReason, useDialogController } from "@affino/dialog-vue"
 
 type Placement = "left" | "right" | "bottom"
 
@@ -108,6 +119,19 @@ const props = withDefaults(defineProps<{
 })
 
 const emit = defineEmits<{ (e: "close"): void }>()
+
+const dialogRef = ref<HTMLElement | null>(null)
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+const dialog = useDialogController({
+  overlayKind: "sheet",
+  focusOrchestrator: createDialogFocusOrchestrator({
+    dialog: () => dialogRef.value,
+    initialFocus: () => dialogRef.value?.querySelector<HTMLElement>("[data-dialog-initial]") ?? dialogRef.value,
+  }),
+})
+const isOpen = computed(() => dialog.snapshot.value.isOpen)
 
 // Derived flags
 const isSide = computed(() => props.placement === "left" || props.placement === "right")
@@ -155,12 +179,43 @@ function onTouchMove(e: TouchEvent) {
 }
 function onTouchEnd() {
   // Close if dragged enough, otherwise snap back
-  if (deltaY.value > 80) emit("close")
+  if (deltaY.value > 80) {
+    requestClose("pointer")
+  }
   deltaY.value = 0
 }
 
-function onBackdropClick() {
-  if (props.closeOnBackdrop) emit("close")
+function requestClose(reason: DialogCloseReason) {
+  if (reason === "backdrop" && !props.closeOnBackdrop) return
+  void dialog.close(reason).then((closed) => {
+    if (closed) {
+      emit("close")
+    }
+  })
+}
+
+function onDialogKeydown(e: KeyboardEvent) {
+  if (e.key === "Escape" && isOpen.value) {
+    requestClose("escape-key")
+  }
+}
+
+function loopFocus(edge: "start" | "end") {
+  const container = dialogRef.value
+  if (!container) return
+
+  const nodes = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((node) => {
+    if (node.classList.contains("sr-only")) return false
+    if (node.getAttribute("aria-hidden") === "true") return false
+    return true
+  })
+  if (!nodes.length) {
+    container.focus()
+    return
+  }
+
+  const target = edge === "start" ? nodes[0] : nodes[nodes.length - 1]
+  target?.focus()
 }
 
 // Lock body scroll when open (simple version)
@@ -174,11 +229,20 @@ function lockScroll(lock: boolean) {
     delete body.dataset.prevOverflow
   }
 }
-watch(() => props.open, (v) => lockScroll(v), { immediate: true })
-onMounted(() => {
-  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && props.open) emit("close") }
-  window.addEventListener("keydown", onKey)
-  onBeforeUnmount(() => window.removeEventListener("keydown", onKey))
+watch(() => isOpen.value, (v) => lockScroll(v), { immediate: true })
+
+watch(() => props.open, (open) => {
+  if (open && !isOpen.value) {
+    dialog.open("programmatic")
+    return
+  }
+  if (!open && isOpen.value) {
+    void dialog.close("programmatic")
+  }
+}, { immediate: true })
+
+onBeforeUnmount(() => {
+  lockScroll(false)
 })
 </script>
 
@@ -223,5 +287,17 @@ onMounted(() => {
 .slide-bottom-enter-to,
 .slide-bottom-leave-from {
   transform: translateY(0);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 </style>

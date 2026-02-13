@@ -48,15 +48,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue"
+import { onBeforeUnmount, onMounted, ref, watch } from "vue"
 
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import DeviceListSidebar from "./components/SwitchgearListSidebar.vue"
 import SlideOver from "@/components/ui/SlideOver.vue"
 import { useViewport } from "@/composables/useViewport"
+import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
 
 const { isDesktop } = useViewport()
 const sidebarOpen = ref(false)
+const realtimeScopeStore = useRealtimeScopeStore()
+const scopeId = "switchgears:page"
+
+onMounted(() => {
+  realtimeScopeStore.setGlobalRealtimeScope(scopeId, true)
+})
+
+onBeforeUnmount(() => {
+  realtimeScopeStore.setGlobalRealtimeScope(scopeId, false)
+})
 
 watch(isDesktop, (next) => {
   if (next) sidebarOpen.value = false

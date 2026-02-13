@@ -14,9 +14,18 @@ importers:
       '@affino/datagrid-vue':
         specifier: ^0.1.0
         version: 0.1.0(@affino/datagrid-theme@0.1.0)(pinia@3.0.4(typescript@5.8.3)(vue@3.5.25(typescript@5.8.3)))(vue@3.5.25(typescript@5.8.3))
+      '@affino/dialog-vue':
+        specifier: ^1.1.0
+        version: 1.1.0(vue@3.5.25(typescript@5.8.3))
       '@affino/menu-vue':
         specifier: 1.0.0-alpha.6
         version: 1.0.0-alpha.6(@affino/menu-core@1.0.0-alpha.2)(vue@3.5.25(typescript@5.8.3))
+      '@affino/popover-vue':
+        specifier: ^1.0.0
+        version: 1.0.0(vue@3.5.25(typescript@5.8.3))
+      '@affino/tooltip-vue':
+        specifier: ^1.0.0
+        version: 1.0.0(vue@3.5.25(typescript@5.8.3))
       '@tailwindcss/vite':
         specifier: ^4.1.10
         version: 4.1.17(vite@6.4.1(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2))
@@ -102,6 +111,14 @@ packages:
       pinia: ^2.1.0 || ^3.0.0
       vue: ^3.3.0
 
+  '@affino/dialog-core@1.1.0':
+    resolution: {integrity: sha512-fmXJ2qN0q6A6kLszfEv55IKop+cVpAwf0kSjF1uBaxnDzLdhjzwtr56Q6sQJtXtujOdfiX/APKHU3oafo9cgnw==}
+
+  '@affino/dialog-vue@1.1.0':
+    resolution: {integrity: sha512-80MKrX9H+YQ/5v3otx6SDGV/ew6CxsAVKwHOAFLESlTR7+ZqsFmJ1iTm2eNWXeplYr6Okn58Q+xKEd9/9lloow==}
+    peerDependencies:
+      vue: ^3.3.0
+
   '@affino/menu-core@1.0.0-alpha.2':
     resolution: {integrity: sha512-iLeryXMR3jkBhgYv+Eedg0h+R3+SCI0M+JhmRt+Pc0ATFE7PkgzMF6wzsk3WziKVCTfE+2hM18zvW7pOVEQAtA==}
 
@@ -109,6 +126,28 @@ packages:
     resolution: {integrity: sha512-PtUR3WdBjXXgiIDtHPQT0bRom/2nIHIW12lkv/uOWt6CBjTvfW5Ekl9A5iVuYtgYZmgEJGQtGvLDesf1EB/2+g==}
     peerDependencies:
       '@affino/menu-core': ^1.0.0-alpha.4
+      vue: ^3.3.0
+
+  '@affino/overlay-host@1.0.0':
+    resolution: {integrity: sha512-fvHMEvBPRdcrBeYaKY2Q3ZLas3D7KKDUe4nJeMMp19sY5PA/C8ylHAjhIVse2monjgJtPveVdoBGMgmcMO/K7A==}
+
+  '@affino/popover-core@1.0.0':
+    resolution: {integrity: sha512-bPOVpRZ2DajkrDw8lXw+8gOx7SvwjHpCdKlz74eKJtG7LNDlm/wwTG5mC3xA57KsRS9SwEnX8N0CJi2q4GfQLQ==}
+
+  '@affino/popover-vue@1.0.0':
+    resolution: {integrity: sha512-f6S+KKsOeBhmqgXKEhuFRSr5tIZ3G3zCobIoZbe/8V5q3u9KbIDoKiOFlBiWoAIwvFBFXKVK1Lp6ybu23koZKQ==}
+    peerDependencies:
+      vue: ^3.3.0
+
+  '@affino/surface-core@1.0.0':
+    resolution: {integrity: sha512-K+7XzAFvcpXv262pe68kxq6fw51TgckbI2CyOLjKOthZPzXF7V0IJBZ5gTNq53vEqNh4qq4C5BrOKR0unbilPw==}
+
+  '@affino/tooltip-core@1.0.0':
+    resolution: {integrity: sha512-taq3oyVo5yzOF8dKa9N9oTK6wVVBBl8qvdVZ3oL/C4uM1KSWXy+ugCRLIOMC8gs8l4iQSvmTHgsFJop2ORgOPQ==}
+
+  '@affino/tooltip-vue@1.0.0':
+    resolution: {integrity: sha512-PbRciAFOercOUYjiZH56XA0IXhzuOxigQsfvmzD9xosz9p2sVCcpMe95q0pnxJodbr4CtsarYC6XSC4saML7ow==}
+    peerDependencies:
       vue: ^3.3.0
 
   '@antfu/utils@0.7.10':
@@ -1515,11 +1554,44 @@ snapshots:
       pinia: 3.0.4(typescript@5.8.3)(vue@3.5.25(typescript@5.8.3))
       vue: 3.5.25(typescript@5.8.3)
 
+  '@affino/dialog-core@1.1.0':
+    dependencies:
+      '@affino/surface-core': 1.0.0
+
+  '@affino/dialog-vue@1.1.0(vue@3.5.25(typescript@5.8.3))':
+    dependencies:
+      '@affino/dialog-core': 1.1.0
+      vue: 3.5.25(typescript@5.8.3)
+
   '@affino/menu-core@1.0.0-alpha.2': {}
 
   '@affino/menu-vue@1.0.0-alpha.6(@affino/menu-core@1.0.0-alpha.2)(vue@3.5.25(typescript@5.8.3))':
     dependencies:
       '@affino/menu-core': 1.0.0-alpha.2
+      vue: 3.5.25(typescript@5.8.3)
+
+  '@affino/overlay-host@1.0.0': {}
+
+  '@affino/popover-core@1.0.0':
+    dependencies:
+      '@affino/surface-core': 1.0.0
+
+  '@affino/popover-vue@1.0.0(vue@3.5.25(typescript@5.8.3))':
+    dependencies:
+      '@affino/overlay-host': 1.0.0
+      '@affino/popover-core': 1.0.0
+      vue: 3.5.25(typescript@5.8.3)
+
+  '@affino/surface-core@1.0.0': {}
+
+  '@affino/tooltip-core@1.0.0':
+    dependencies:
+      '@affino/surface-core': 1.0.0
+
+  '@affino/tooltip-vue@1.0.0(vue@3.5.25(typescript@5.8.3))':
+    dependencies:
+      '@affino/overlay-host': 1.0.0
+      '@affino/tooltip-core': 1.0.0
       vue: 3.5.25(typescript@5.8.3)
 
   '@antfu/utils@0.7.10': {}

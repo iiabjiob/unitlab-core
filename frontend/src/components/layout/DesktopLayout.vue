@@ -22,16 +22,7 @@
             <div class="min-w-[220px] max-w-md flex-1">
               <WorkspaceSwitcher variant="mini" />
             </div>
-            <div class="flex flex-wrap gap-8 text-xs text-neutral-500 dark:text-neutral-400">
-              <div>
-                <p class="text-[10px] uppercase tracking-[0.3em]">Created</p>
-                <p class="font-mono text-sm text-neutral-600 dark:text-neutral-300">{{ createdLabel }}</p>
-              </div>
-              <div>
-                <p class="text-[10px] uppercase tracking-[0.3em]">Modified</p>
-                <p class="font-mono text-sm text-neutral-600 dark:text-neutral-300">{{ updatedLabel }}</p>
-              </div>
-            </div>
+            <TimeComponent class="text-sm text-neutral-500 dark:text-neutral-400" />
           </div>
         </header>
 
@@ -51,23 +42,11 @@ import { useRoute } from "vue-router"
 import AppAside from "./DesktopAside.vue"
 import ResizablePanel from "../ui/ResizablePanel.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
-import { useWorkspaceStore } from "@/stores/workspaceStore"
+import TimeComponent from "../misc/TimeComponent.vue"
 
 const route = useRoute()
 const meta = computed(() => ({
   leftAside: route.meta.leftAside ?? true,
 }))
 
-const workspaceStore = useWorkspaceStore()
-const activeWorkspace = computed(() => workspaceStore.activeWorkspace)
-
-function formatWorkspaceDate(value?: string | null) {
-  if (!value) return "--"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return "--"
-  return date.toISOString().slice(0, 10)
-}
-
-const createdLabel = computed(() => formatWorkspaceDate(activeWorkspace.value?.created_at))
-const updatedLabel = computed(() => formatWorkspaceDate(activeWorkspace.value?.updated_at))
 </script>

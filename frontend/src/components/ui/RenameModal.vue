@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref, watch } from "vue"
 import UiModal from "./UiModal.vue"
 
 const props = withDefaults(defineProps<{
@@ -40,6 +40,18 @@ function handleSubmit() {
 const generatedId = `rename-modal-${Math.random().toString(36).slice(2, 9)}`
 const fieldId = computed(() => props.inputId || generatedId)
 const fieldName = computed(() => props.inputName || fieldId.value)
+const inputRef = ref<HTMLInputElement | null>(null)
+
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) return
+    requestAnimationFrame(() => {
+      inputRef.value?.focus()
+      inputRef.value?.select()
+    })
+  },
+)
 </script>
 
 <template>
@@ -51,11 +63,13 @@ const fieldName = computed(() => props.inputName || fieldId.value)
       {{ label }}
     </label>
     <input
+      ref="inputRef"
       :id="fieldId"
       :name="fieldName"
       :value="modelValue"
       :disabled="loading"
       type="text"
+      data-dialog-initial
       class="mt-2 w-full rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
       @input="onInput"
       @keydown.enter.prevent="handleSubmit"

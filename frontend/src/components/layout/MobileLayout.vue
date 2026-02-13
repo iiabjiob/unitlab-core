@@ -15,16 +15,6 @@
 
     <div class="border-b border-neutral-200 bg-white px-5 py-3 dark:border-neutral-800 dark:bg-neutral-900">
       <WorkspaceSwitcher variant="compact" />
-      <div class="mt-3 flex flex-wrap gap-4 text-[11px] text-neutral-500 dark:text-neutral-400">
-        <div class="min-w-[140px] flex-1">
-          <p class="text-[10px] uppercase tracking-[0.3em]">Created</p>
-          <p class="font-mono text-xs text-neutral-900 dark:text-neutral-100">{{ createdLabel }}</p>
-        </div>
-        <div class="min-w-[140px] flex-1">
-          <p class="text-[10px] uppercase tracking-[0.3em]">Modified</p>
-          <p class="font-mono text-xs text-neutral-900 dark:text-neutral-100">{{ updatedLabel }}</p>
-        </div>
-      </div>
     </div>
 
 
@@ -54,7 +44,6 @@ import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import SlideOver from "../ui/SlideOver.vue"
 import MobileHeader from "./MobileHeader.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
-import { useWorkspaceStore } from "@/stores/workspaceStore"
 
 // Drawer state
 const isDrawerOpen = ref(false)
@@ -72,17 +61,5 @@ const statusDescription = computed(() => {
   if (!wsStore.isConnected) return "No connection to the server"
   return systemHealthStore.tooltip
 })
-
-const workspaceStore = useWorkspaceStore()
-
-function formatWorkspaceDate(value?: string | null) {
-  if (!value) return "--"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return "--"
-  return date.toISOString().slice(0, 10)
-}
-
-const createdLabel = computed(() => formatWorkspaceDate(workspaceStore.activeWorkspace?.created_at))
-const updatedLabel = computed(() => formatWorkspaceDate(workspaceStore.activeWorkspace?.updated_at))
 
 </script>

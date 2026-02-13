@@ -5,10 +5,16 @@
     </p>
 
     <template #footer>
-      <button class="btn btn-secondary btn-base" @click="$emit('cancel')">
+      <button type="button" class="btn btn-secondary btn-base" @click="$emit('cancel')">
         {{ cancelLabel }}
       </button>
-      <button ref="confirmBtn" class="btn btn-danger btn-base" @click="$emit('confirm')">
+      <button
+        ref="confirmBtn"
+        type="button"
+        class="btn btn-danger btn-base"
+        data-dialog-initial
+        @click="$emit('confirm')"
+      >
         {{ confirmLabel }}
       </button>
     </template>
@@ -16,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from "vue"
+import { ref, watch } from "vue"
 import UiModal from "./UiModal.vue"
 
 const props = defineProps<{
@@ -35,30 +41,12 @@ const emit = defineEmits<{
 
 const confirmBtn = ref<HTMLButtonElement | null>(null)
 
-function handleKeydown(e: KeyboardEvent) {
-  if (!props.open) return
-  if (e.key === "Enter" && props.enterConfirms) {
-    e.preventDefault()
-    emit("confirm")
-  }
-}
-
 watch(
   () => props.open,
   (v) => {
-    document.body.style.overflow = v ? "hidden" : ""
     if (v) {
-      window.addEventListener("keydown", handleKeydown)
       requestAnimationFrame(() => confirmBtn.value?.focus())
-    } else {
-      window.removeEventListener("keydown", handleKeydown)
     }
   },
-  { immediate: true },
 )
-
-onBeforeUnmount(() => {
-  window.removeEventListener("keydown", handleKeydown)
-  document.body.style.overflow = ""
-})
 </script>

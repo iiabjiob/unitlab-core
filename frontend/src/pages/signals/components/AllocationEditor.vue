@@ -89,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue"
+import { computed, onBeforeUnmount, ref, watch } from "vue"
 import { useRouter } from "vue-router"
 import { storeToRefs } from "pinia"
 
@@ -103,6 +103,7 @@ import { useChannelStore } from "@/stores/channelStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useDeviceStore } from "@/stores/deviceStore"
+import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
 import type { AllocationMappingItem, AllocationMappingMeta, SignalSnapshot, SnapshotSheet } from "@/types/signal"
 import SignalEditorHeader from "./SignalEditorHeader.vue"
 import LiveSignalsPanel from "./LiveSignalsPanel.vue"
@@ -114,8 +115,10 @@ const signalsStore = useSignalsStore()
 const channelStore = useChannelStore()
 const workspaceStore = useWorkspaceStore()
 const deviceStore = useDeviceStore()
+const realtimeScopeStore = useRealtimeScopeStore()
 const toastStore = useToastStore()
 const router = useRouter()
+const liveScopeId = "signals:live-panel"
 
 const { signals, loading: liveSignalsLoading } = storeToRefs(signalsStore)
 const { channels, isLoading: channelsLoading } = storeToRefs(channelStore)
@@ -237,6 +240,17 @@ watch(
     syncRowsWithSelection()
   },
 )
+
+watch(
+  livePanelOpen,
+  (open) => {
+    realtimeScopeStore.setGlobalRealtimeScope(liveScopeId, open)
+  },
+)
+
+onBeforeUnmount(() => {
+  realtimeScopeStore.setGlobalRealtimeScope(liveScopeId, false)
+})
 
 function requestDelete() {
   deleteModalOpen.value = true

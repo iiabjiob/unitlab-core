@@ -10,7 +10,6 @@
         <AppLogo />
         <OnlineStatusComponent :status="status" :description="statusDescription" />
       </div>
-      <TimeComponent class="text-sm" />
     </div>
 
     <!-- Menu stretches to fill available space while leaving room for the footer -->
@@ -27,7 +26,6 @@ import { useWebSocketStore } from "@/stores/websocketStore"
 import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import AppMenu from "./AppMenu.vue"
 import AppLogo from "./AppLogo.vue"
-import TimeComponent from "../misc/TimeComponent.vue"
 import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
 import ThemeToggle from "../ui/ThemeToggle.vue"
 

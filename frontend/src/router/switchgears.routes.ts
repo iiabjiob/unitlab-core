@@ -2,6 +2,7 @@ import type { RouteRecordRaw } from "vue-router"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSelectionStore } from "@/stores/selectionStore"
+import { useChannelStore } from "@/stores/channelStore"
 
 // Default meta shared from index.ts
 const defaultMeta = {
@@ -18,6 +19,8 @@ export const switchgearsRoutes: RouteRecordRaw[] = [
       await workspaceStore.bootstrap()
       const store = useSwitchgearStore()
       await store.ensureLoaded()
+      const channelStore = useChannelStore()
+      await channelStore.ensureLoaded()
     },
     meta: {
       ...defaultMeta,

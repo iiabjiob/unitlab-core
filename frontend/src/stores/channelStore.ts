@@ -3,6 +3,7 @@ import { defineStore } from "pinia"
 import { ref } from "vue"
 
 import { ChannelsAPI } from "@/api/channels.api"
+import { DevicesAPI } from "@/api/devices.api"
 import { getLogger } from "@/utils/logger"
 import { normalizeChannel, ensureChannel, formatAoValue } from "@/utils/channel"
 
@@ -27,7 +28,7 @@ import {
   type DeviceRespEvent,
 } from "@/types/ws/events"
 
-import { CHANNEL_TYPES, type Channel, type ChannelDto, type DiChannel, type DoChannel, type DoChannelUiState } from "@/types/channel"
+import { CHANNEL_TYPES, type Channel, type ChannelDto, type ChannelListDto, type DiChannel, type DoChannel, type DoChannelUiState } from "@/types/channel"
 import {
   applyDeltaState,
   applyDiDiagnostics,
@@ -50,6 +51,8 @@ export const useChannelStore = defineStore("channelStore", () => {
 
   const isLoading = ref(false)
   const isLoaded = ref(false)
+  const deviceLoading = new Set<number>()
+  const deviceLoaded = new Set<number>()
 
   const logStore = useChannelLogStore()
 
@@ -367,9 +370,48 @@ export const useChannelStore = defineStore("channelStore", () => {
     }
   }
 
+  async function fetchByDevice(deviceId: number, force = false) {
+    if (!Number.isFinite(deviceId) || deviceId <= 0) {
+      return
+    }
+    if (!force && deviceLoaded.has(deviceId)) {
+      return
+    }
+    if (deviceLoading.has(deviceId)) {
+      return
+    }
+
+    deviceLoading.add(deviceId)
+    try {
+      const { data } = await DevicesAPI.getChannels(deviceId, { limit: 1000, offset: 0 })
+      const payload = Array.isArray(data)
+        ? data
+        : (Array.isArray((data as ChannelListDto).items)
+          ? (data as ChannelListDto).items
+          : [])
+      setBaseChannels(deviceId, payload)
+      deviceLoaded.add(deviceId)
+    } catch (err) {
+      logger.error(`Failed to load channels for device ${deviceId}`, err)
+      throw err
+    } finally {
+      deviceLoading.delete(deviceId)
+    }
+  }
+
+  async function ensureDeviceChannelsLoaded(deviceId: number) {
+    await fetchByDevice(deviceId, false)
+  }
+
+  function invalidateDeviceChannels(deviceId: number) {
+    deviceLoaded.delete(deviceId)
+  }
+
   /* ------------------------------ QUERIES ------------------------------ */
 
   function channelsByDevice(deviceId: number) {
+    // Keep Vue dependency on reactive source; maps themselves are not tracked.
+    void channels.value.length
     return [...channelsByDeviceFast(deviceId)]
   }
 
@@ -400,6 +442,8 @@ export const useChannelStore = defineStore("channelStore", () => {
     rebuildChannelIndexes()
     responses.value = {}
     isLoaded.value = false
+    deviceLoaded.clear()
+    deviceLoading.clear()
   }
 
   function applyInitialChannels(deviceId: number, list: Channel[]) {
@@ -421,8 +465,17 @@ export const useChannelStore = defineStore("channelStore", () => {
   }
 
   function setBaseChannels(deviceId: number, base: Array<Channel | ChannelDto>) {
-    const prepared = base.map(ensureChannel)
+    const prepared = base.map((raw) => {
+      const normalized = ensureChannel(raw)
+      return {
+        ...normalized,
+        // Defensive normalization: payloads can come from different WS/REST shapes.
+        // For per-device hydration, the requested device is the source of truth.
+        device_id: deviceId,
+      }
+    })
     applyInitialChannels(deviceId, prepared)
+    deviceLoaded.add(deviceId)
     logger.info(`📡 Base channels set for ${deviceId}`, prepared)
   }
 
@@ -899,6 +952,8 @@ export const useChannelStore = defineStore("channelStore", () => {
 
     fetchAll,
     ensureLoaded,
+    ensureDeviceChannelsLoaded,
+    invalidateDeviceChannels,
     reset,
 
     channelsByDevice,
