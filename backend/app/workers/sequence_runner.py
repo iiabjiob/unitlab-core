@@ -88,16 +88,36 @@ async def _process_entries(redis, runner: SequenceRunner, entries) -> None:
 
 async def _handle_command(runner: SequenceRunner, command: SequenceCommand) -> None:
     if command.type == SequenceCommandType.START:
+        signal_bindings = _coerce_signal_bindings(command.extra)
         await runner.start(
             command.sequence_id,
             request_id=command.request_id,
             requested_by=command.requested_by,
+            signal_bindings=signal_bindings,
         )
         return
     if command.type == SequenceCommandType.STOP:
         await runner.stop(command.sequence_id)
         return
     raise ValueError(f"Unknown sequence command type: {command.type}")
+
+
+def _coerce_signal_bindings(extra: dict | None) -> dict[str, int]:
+    if not isinstance(extra, dict):
+        return {}
+    raw = extra.get("signal_bindings")
+    if not isinstance(raw, dict):
+        return {}
+
+    bindings: dict[str, int] = {}
+    for key, value in raw.items():
+        if not isinstance(key, str) or not key.strip():
+            continue
+        try:
+            bindings[key.strip()] = int(value)
+        except (TypeError, ValueError):
+            continue
+    return bindings
 
 
 async def _retry_or_dlq(command: SequenceCommand, error: Exception) -> bool:

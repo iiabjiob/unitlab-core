@@ -33,7 +33,7 @@
       </aside>
     </ResizablePanel>
 
-    <section class="flex-1 overflow-y-auto p-3 md:p-4">
+    <section class="flex-1 overflow-y-auto p-3 md:p-0">
       <RouterView />
     </section>
 
@@ -69,22 +69,20 @@ import SignalImportModal from "./components/SignalImportModal.vue"
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import SlideOver from "@/components/ui/SlideOver.vue"
 import { useSignalSnapshotStore } from "@/stores/signalSnapshotStore"
-import { useSignalsStore } from "@/stores/signalStore"
-import { useChannelStore } from "@/stores/channelStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
-import { useDeviceStore } from "@/stores/deviceStore"
 import { useViewport } from "@/composables/useViewport"
 import { getLogger } from "@/utils/logger"
 
 const snapshotStore = useSignalSnapshotStore()
-const liveSignalsStore = useSignalsStore()
-const channelStore = useChannelStore()
 const workspaceStore = useWorkspaceStore()
-const deviceStore = useDeviceStore()
 const { isDesktop } = useViewport()
 const route = useRoute()
 const router = useRouter()
 const logger = getLogger("signals-page")
+const signalsDiagMode = typeof window !== "undefined"
+  ? (new URLSearchParams(window.location.search).get("signalsdiag") ?? "").trim().toLowerCase()
+  : ""
+const signalsDiagNoBootstrap = signalsDiagMode === "no-bootstrap"
 
 const snapshots = computed(() => snapshotStore.snapshots)
 const sidebarOpen = ref(false)
@@ -123,19 +121,12 @@ watch(
 )
 
 async function bootstrapWorkspace(workspaceId: number) {
+  if (signalsDiagNoBootstrap) {
+    logger.warn(`Signals bootstrap skipped via signalsdiag=${signalsDiagMode || "unknown"} for #${workspaceId}`)
+    return
+  }
   try {
-    await Promise.all([
-      snapshotStore.refreshSnapshots(),
-      liveSignalsStore.refreshSignals(true),
-    ])
-    await Promise.all([
-      deviceStore.ensureLoaded(),
-      channelStore.ensureLoaded(),
-    ])
-    const deviceIds = new Set(deviceStore.devices.map(device => device.id))
-    deviceIds.forEach((deviceId) => {
-      channelStore.requestStates(deviceId)
-    })
+    await snapshotStore.refreshSnapshots()
     logger.info(`Signals workspace bootstrapped for #${workspaceId}`)
   } catch (err) {
     logger.error("Failed to bootstrap Signals workspace", err)

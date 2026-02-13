@@ -56,6 +56,9 @@ export const useChannelStore = defineStore("channelStore", () => {
   const actionCounters = new Map<number, number>()
   const actionQueues = new Map<number, string[]>()
   const aoActionMap = new Map<string, string>()
+  const channelsIndexByDevice = new Map<number, Channel[]>()
+  const channelsIndexByDeviceAndChannel = new Map<string, Channel>()
+  const EMPTY_CHANNELS: readonly Channel[] = []
 
   function enqueueAction(deviceId: number): string {
     const next = (actionCounters.get(deviceId) ?? 0) + 1
@@ -91,6 +94,32 @@ export const useChannelStore = defineStore("channelStore", () => {
 
   function aoKey(deviceId: number, chIndex: number) {
     return `${deviceId}:${chIndex}`
+  }
+
+  function channelKey(deviceId: number, chIndex: number) {
+    return `${deviceId}:${chIndex}`
+  }
+
+  function rebuildChannelIndexes() {
+    channelsIndexByDevice.clear()
+    channelsIndexByDeviceAndChannel.clear()
+    for (const channel of channels.value) {
+      const byDevice = channelsIndexByDevice.get(channel.device_id)
+      if (byDevice) {
+        byDevice.push(channel)
+      } else {
+        channelsIndexByDevice.set(channel.device_id, [channel])
+      }
+      channelsIndexByDeviceAndChannel.set(channelKey(channel.device_id, channel.index), channel)
+    }
+  }
+
+  function channelsByDeviceFast(deviceId: number): readonly Channel[] {
+    return channelsIndexByDevice.get(deviceId) ?? EMPTY_CHANNELS
+  }
+
+  function channelByDeviceAndIndex(deviceId: number, chIndex: number): Channel | undefined {
+    return channelsIndexByDeviceAndChannel.get(channelKey(deviceId, chIndex))
   }
 
   function registerAoAction(deviceId: number, chIndex: number, actionId: string) {
@@ -307,9 +336,10 @@ export const useChannelStore = defineStore("channelStore", () => {
   }
 
   function findDoChannel(deviceId: number, chIndex: number): DoChannel | undefined {
-    const raw = channels.value.find(
-      ch => ch.device_id === deviceId && ch.index === chIndex && ch.type === CHANNEL_TYPES.DO,
-    )
+    const raw = channelByDeviceAndIndex(deviceId, chIndex)
+    if (!raw || raw.type !== CHANNEL_TYPES.DO) {
+      return undefined
+    }
     return raw as DoChannel | undefined
   }
 
@@ -320,6 +350,7 @@ export const useChannelStore = defineStore("channelStore", () => {
     try {
       const { data } = await ChannelsAPI.list()
       channels.value = data.map(normalizeChannel)
+      rebuildChannelIndexes()
       isLoaded.value = true
       logger.info(`📡 Loaded ${data.length} channels`)
     } catch (err) {
@@ -339,7 +370,7 @@ export const useChannelStore = defineStore("channelStore", () => {
   /* ------------------------------ QUERIES ------------------------------ */
 
   function channelsByDevice(deviceId: number) {
-    return channels.value.filter(ch => ch.device_id === deviceId)
+    return [...channelsByDeviceFast(deviceId)]
   }
 
   /* ------------------------- MUTATIONS / PATCH ------------------------- */
@@ -351,6 +382,7 @@ export const useChannelStore = defineStore("channelStore", () => {
       const idx = channels.value.findIndex(c => c.id === id)
       if (idx !== -1) {
         channels.value[idx] = updated
+        rebuildChannelIndexes()
       }
       logger.debug(`Channel ${id} updated`, updated)
     } catch (error) {
@@ -365,6 +397,7 @@ export const useChannelStore = defineStore("channelStore", () => {
       }
     })
     channels.value = []
+    rebuildChannelIndexes()
     responses.value = {}
     isLoaded.value = false
   }
@@ -384,6 +417,7 @@ export const useChannelStore = defineStore("channelStore", () => {
       next.push(ch)
     }
     channels.value = next
+    rebuildChannelIndexes()
   }
 
   function setBaseChannels(deviceId: number, base: Array<Channel | ChannelDto>) {
@@ -393,34 +427,33 @@ export const useChannelStore = defineStore("channelStore", () => {
   }
 
   function applyBitState(deviceId: number, chIndex: number, value: boolean): { changed: boolean; actionId?: string } {
-    for (const ch of channels.value) {
-      if (ch.device_id === deviceId && ch.index === chIndex) {
-        if (ch.type === CHANNEL_TYPES.AO) {
-          return { changed: false }
-        }
-        let actionId: string | undefined
-        if (ch.type === CHANNEL_TYPES.DO) {
-          actionId = ch.ui?.actionId
-        }
-        const previous = ch.state
-        const changed = previous !== value
-        if (changed) {
-          ch.state = value
-        }
-        if (ch.type === CHANNEL_TYPES.DO) {
-          fulfillDoPendingState(ch as DoChannel, value)
-        }
-        return { changed, actionId }
-      }
+    const ch = channelByDeviceAndIndex(deviceId, chIndex)
+    if (!ch) {
+      return { changed: false }
     }
-    return { changed: false }
+    if (ch.type === CHANNEL_TYPES.AO) {
+      return { changed: false }
+    }
+    let actionId: string | undefined
+    if (ch.type === CHANNEL_TYPES.DO) {
+      actionId = ch.ui?.actionId
+    }
+    const previous = ch.state
+    const changed = previous !== value
+    if (changed) {
+      ch.state = value
+    }
+    if (ch.type === CHANNEL_TYPES.DO) {
+      fulfillDoPendingState(ch as DoChannel, value)
+    }
+    return { changed, actionId }
   }
 
   function applyBitmaskState(deviceId: number, mask: number): { changed: boolean; actionIds: Set<string> } {
     let changed = false
     const actionIds = new Set<string>()
-    for (const ch of channels.value) {
-      if (ch.device_id !== deviceId || ch.type === CHANNEL_TYPES.AO) continue
+    for (const ch of channelsByDeviceFast(deviceId)) {
+      if (ch.type === CHANNEL_TYPES.AO) continue
       const next = ((mask >> ch.index) & 1) === 1
       if (ch.state !== next) {
         ch.state = next
@@ -448,18 +481,17 @@ export const useChannelStore = defineStore("channelStore", () => {
   }
 
   function applyFloatState(deviceId: number, chIndex: number, value: number): { changed: boolean; actionId?: string } {
-    for (const ch of channels.value) {
-      if (ch.device_id === deviceId && ch.index === chIndex && ch.type === CHANNEL_TYPES.AO) {
-        const previous = ch.state
-        const changed = previous !== value
-        if (changed) {
-          ch.state = value
-        }
-        const actionId = peekAoAction(deviceId, chIndex)
-        return { changed, actionId }
-      }
+    const ch = channelByDeviceAndIndex(deviceId, chIndex)
+    if (!ch || ch.type !== CHANNEL_TYPES.AO) {
+      return { changed: false }
     }
-    return { changed: false }
+    const previous = ch.state
+    const changed = previous !== value
+    if (changed) {
+      ch.state = value
+    }
+    const actionId = peekAoAction(deviceId, chIndex)
+    return { changed, actionId }
   }
 
   function setChannels(event: DeviceStateEvent) {

@@ -8,6 +8,9 @@ from app.api.v1.channels.router import router as channels_router
 from app.api.v1.switchgears.router import router as switchgears_router
 from app.api.v1.sequences.router import router as sequences_router
 from app.api.v1.workspaces.router import router as workspaces_router
+from app.api.v1.signals.router import router as signals_router
+from app.api.v1.signal_snapshots.router import router as signal_snapshots_router
+from app.api.v1.test_runs.router import router as test_runs_router
 
 from app.ws.router import router as ws_router
 
@@ -91,6 +94,9 @@ app.include_router(channels_router)
 app.include_router(workspaces_router)
 app.include_router(switchgears_router)
 app.include_router(sequences_router)
+app.include_router(signals_router)
+app.include_router(signal_snapshots_router)
+app.include_router(test_runs_router)
 
 logger.info("✅ REST API routers registered")
 

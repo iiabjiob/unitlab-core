@@ -4,6 +4,8 @@ import type {
   TestRunRecord,
   TestRunCreatePayloadV2,
   TestRunSignalSnapshot,
+  TestRunPreflight,
+  TestRunReallocatePayload,
 } from "@/types/signal"
 import type { SequenceState } from "@/types/sequences"
 
@@ -32,6 +34,21 @@ export const TestRunsAPI = {
 
   getSignalsSnapshot(runId: number) {
     return http.get<TestRunSignalSnapshot>(`${API_V1}/test-runs/${runId}/signals`)
+  },
+
+  preflight(runId: number) {
+    return http.get<TestRunPreflight>(`${API_V1}/test-runs/${runId}/preflight`)
+  },
+
+  reallocate(runId: number, payload: TestRunReallocatePayload) {
+    return http.post<TestRunRecord>(`${API_V1}/test-runs/${runId}/reallocate`, payload)
+  },
+
+  exportCableJournal(runId: number) {
+    return http.get<string>(`${API_V1}/test-runs/${runId}/cable-journal/export`, {
+      responseType: "text",
+      transformResponse: [(value: string) => value],
+    })
   },
 
   start(runId: number) {

@@ -43,6 +43,13 @@
 
         <template v-else>
           <div
+            v-if="truncatedList"
+            class="rounded-2xl border border-neutral-200/70 px-3 py-2 text-[11px] uppercase tracking-[0.2em] text-neutral-500 dark:border-neutral-700 dark:text-neutral-400"
+          >
+            Showing latest {{ MAX_RENDERED_SNAPSHOTS }} snapshots
+          </div>
+
+          <div
             v-for="snapshot in filteredSnapshots"
             :key="snapshot.id"
           >
@@ -83,14 +90,17 @@ defineEmits<{ (e: "select", id: number): void; (e: "import"): void }>()
 
 const workspaceStore = useWorkspaceStore()
 const query = ref("")
+const MAX_RENDERED_SNAPSHOTS = 200
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
+const visibleSnapshots = computed(() => props.snapshots.slice(0, MAX_RENDERED_SNAPSHOTS))
+const truncatedList = computed(() => props.snapshots.length > MAX_RENDERED_SNAPSHOTS)
 
 const filteredSnapshots = computed(() => {
   if (workspaceMissing.value) return []
-  if (!query.value.trim()) return props.snapshots
+  if (!query.value.trim()) return visibleSnapshots.value
   const q = query.value.toLowerCase()
-  return props.snapshots.filter(snapshot => {
+  return visibleSnapshots.value.filter(snapshot => {
     const title = snapshot.source_filename ?? `snapshot-${snapshot.id}`
     return title.toLowerCase().includes(q) || (snapshot.source_hash?.toLowerCase().includes(q) ?? false)
   })

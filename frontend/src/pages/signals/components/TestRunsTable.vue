@@ -124,6 +124,7 @@
           <thead>
             <tr>
               <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Run</th>
+              <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Rev</th>
               <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Snapshot</th>
               <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Instructions</th>
               <th class="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-neutral-500">Bindings</th>
@@ -136,6 +137,7 @@
           <tbody class="divide-y divide-neutral-100 dark:divide-neutral-800" v-if="runs.length">
             <tr v-for="run in runs" :key="run.id">
               <td class="px-3 py-2 font-medium text-neutral-900 dark:text-neutral-50">#{{ run.id }}</td>
+              <td class="px-3 py-2 text-neutral-700 dark:text-neutral-200">r{{ run.allocation_revision ?? 1 }}</td>
               <td class="px-3 py-2 text-neutral-700 dark:text-neutral-200">
                 <span class="text-neutral-400" v-if="!run.snapshot">Pending</span>
                 <span v-else>#{{ run.snapshot.test_run_id }}</span>
@@ -149,6 +151,12 @@
               <td class="px-3 py-2 text-neutral-500">{{ run.snapshot ? formatDate(run.snapshot.captured_at) : "—" }}</td>
               <td class="px-3 py-2 text-right">
                 <div class="flex justify-end gap-2">
+                  <button class="btn-tertiary" :disabled="preflightLoading[run.id]" @click="preflight(run.id)">
+                    {{ preflightLoading[run.id] ? "Preflight…" : "Preflight" }}
+                  </button>
+                  <button class="btn-tertiary" :disabled="journalLoading[run.id]" @click="exportJournal(run.id)">
+                    {{ journalLoading[run.id] ? "Exporting…" : "Cable" }}
+                  </button>
                   <button class="btn-secondary" :disabled="actionLoading === run.id" @click="start(run.id)">Start</button>
                   <button class="btn-tertiary" :disabled="actionLoading === run.id" @click="stop(run.id)">Stop</button>
                   <button class="btn-tertiary" @click="repeat(run.id)">Clone</button>
@@ -158,7 +166,7 @@
           </tbody>
           <tbody v-else>
             <tr>
-              <td colspan="8" class="px-3 py-10 text-center text-sm text-neutral-500">No runs recorded yet.</td>
+              <td colspan="9" class="px-3 py-10 text-center text-sm text-neutral-500">No runs recorded yet.</td>
             </tr>
           </tbody>
         </table>
@@ -220,6 +228,8 @@ const allocationSnapshotId = ref<number | null>(null)
 const submitLoading = ref(false)
 const allocationLoading = ref(false)
 const actionLoading = ref<number | null>(null)
+const preflightLoading = reactive<Record<number, boolean>>({})
+const journalLoading = reactive<Record<number, boolean>>({})
 
 onMounted(() => {
   void Promise.allSettled([
@@ -300,8 +310,13 @@ async function run() {
       allow_empty_allocation: builder.allowEmptyAllocation || allocation.length === 0,
     }
     const run = await testRunStore.createTestRun(payload)
-    await testRunStore.startTestRun(run.id)
-    toastStore.success("Test run dispatched")
+    const check = await preflight(run.id)
+    if (check?.ready) {
+      await testRunStore.startTestRun(run.id)
+      toastStore.success("Test run dispatched")
+    } else {
+      toastStore.info(`Run #${run.id} created, preflight requires reallocation`)
+    }
     builder.sequenceIds = []
     builder.entries = [createEntry()]
     builder.notes = ""
@@ -359,9 +374,31 @@ async function repeat(runId: number) {
   }
 }
 
+async function preflight(runId: number) {
+  preflightLoading[runId] = true
+  try {
+    const result = await testRunStore.preflightTestRun(runId)
+    if (result.ready) {
+      toastStore.success(`Run #${runId} preflight passed`)
+    } else {
+      toastStore.info(`Run #${runId} requires reallocation before start`)
+    }
+    return result
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+    return null
+  } finally {
+    preflightLoading[runId] = false
+  }
+}
+
 async function start(runId: number) {
   actionLoading.value = runId
   try {
+    const check = await preflight(runId)
+    if (!check || !check.ready) {
+      return
+    }
     await testRunStore.startTestRun(runId)
     toastStore.success(`Run #${runId} started`)
   } catch (err) {
@@ -380,6 +417,27 @@ async function stop(runId: number) {
     toastStore.error(err instanceof Error ? err.message : String(err))
   } finally {
     actionLoading.value = null
+  }
+}
+
+async function exportJournal(runId: number) {
+  journalLoading[runId] = true
+  try {
+    const csv = await testRunStore.exportCableJournal(runId)
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `test-run-${runId}-cable-journal.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toastStore.success(`Run #${runId} cable journal exported`)
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+  } finally {
+    journalLoading[runId] = false
   }
 }
 

@@ -1,6 +1,6 @@
 import axios from "axios"
 import { defineStore } from "pinia"
-import { computed, reactive, ref } from "vue"
+import { computed, reactive, ref, shallowRef } from "vue"
 
 import { SignalSnapshotsAPI, TestRunsAPI } from "@/api/signal_snapshots.api"
 import type {
@@ -19,30 +19,42 @@ const logger = getLogger("SIGNALS")
 
 export const useSignalSnapshotStore = defineStore("signalSnapshotStore", () => {
   const workspaceStore = useWorkspaceStore()
-  const snapshots = ref<SignalSnapshotSummary[]>([])
+  const snapshots = shallowRef<SignalSnapshotSummary[]>([])
   const runs = ref<TestRun[]>([])
   const snapshotDetails = reactive<Record<number, SignalSnapshot>>({})
   const allocations: Record<number, Allocation> = {}
   const loading = ref(false)
   const runsLoading = ref(false)
+  let refreshSnapshotsInFlight: Promise<void> | null = null
 
-  async function refreshSnapshots() {
-    const workspaceId = workspaceStore.requireWorkspaceId()
-    loading.value = true
-    try {
-      const { data } = await SignalSnapshotsAPI.list(workspaceId)
-      snapshots.value = data
-      logger.debug("📸 Loaded", data.length, "snapshots")
-    } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 404) {
-        snapshots.value = []
-        logger.warn("⚠️ Signal snapshot API unavailable, skipping list fetch")
-        return
-      }
-      throw error
-    } finally {
-      loading.value = false
+  async function refreshSnapshots(options?: { force?: boolean; limit?: number; offset?: number }) {
+    if (refreshSnapshotsInFlight && !options?.force) {
+      await refreshSnapshotsInFlight
+      return
     }
+    const limit = options?.limit ?? 200
+    const offset = options?.offset ?? 0
+    const workspaceId = workspaceStore.requireWorkspaceId()
+    const run = async () => {
+      loading.value = true
+      try {
+        const { data } = await SignalSnapshotsAPI.list(workspaceId, { limit, offset })
+        snapshots.value = data
+        logger.debug("📸 Loaded", data.length, "snapshots")
+      } catch (error) {
+        if (axios.isAxiosError(error) && error.response?.status === 404) {
+          snapshots.value = []
+          logger.warn("⚠️ Signal snapshot API unavailable, skipping list fetch")
+          return
+        }
+        throw error
+      } finally {
+        loading.value = false
+        refreshSnapshotsInFlight = null
+      }
+    }
+    refreshSnapshotsInFlight = run()
+    await refreshSnapshotsInFlight
   }
 
   async function importSnapshot(file: File, metadata?: SignalImportMeta) {
@@ -69,7 +81,11 @@ export const useSignalSnapshotStore = defineStore("signalSnapshotStore", () => {
 
   function updateSnapshot(snapshot: SignalSnapshot) {
     const idx = snapshots.value.findIndex(s => s.id === snapshot.id)
-    if (idx !== -1) snapshots.value[idx] = snapshot
+    if (idx !== -1) {
+      const next = snapshots.value.slice()
+      next[idx] = snapshot
+      snapshots.value = next
+    }
   }
 
   async function getSnapshot(snapshotId: number, force = false) {

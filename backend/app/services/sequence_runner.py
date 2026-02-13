@@ -84,6 +84,7 @@ class SequenceRunner:
         *,
         request_id: Optional[str] = None,
         requested_by: Optional[str] = None,
+        signal_bindings: Optional[dict[str, int]] = None,
     ) -> SequenceStateSchema:
         self.invalidate_state(sequence_id)
 
@@ -91,7 +92,10 @@ class SequenceRunner:
             if sequence_id in self._active_runs:
                 raise SequenceAlreadyRunningError(f"Sequence {sequence_id} already running")
 
-            run_id, contexts = await self._create_run(sequence_id)
+            run_id, contexts = await self._create_run(
+                sequence_id,
+                signal_bindings=signal_bindings or {},
+            )
             cancel_event = asyncio.Event()
             task = asyncio.create_task(
                 self._execute_run(
@@ -442,7 +446,13 @@ class SequenceRunner:
             result = await session.execute(stmt)
             return result.scalar_one_or_none()
 
-    async def _create_run(self, sequence_id: int) -> tuple[int, List[StepContext]]:
+    async def _create_run(
+        self,
+        sequence_id: int,
+        *,
+        signal_bindings: dict[str, int] | None = None,
+    ) -> tuple[int, List[StepContext]]:
+        signal_bindings = signal_bindings or {}
         async with AsyncSessionLocal() as session:
             sequence = await self._load_sequence(session, sequence_id, include_steps=True)
             if not sequence:
@@ -470,20 +480,29 @@ class SequenceRunner:
             try:
                 await session.flush()
 
-                primary_channel_ids: set[int] = {
-                    step.channel_id for step in ordered_steps if step.channel_id
-                }
+                primary_channel_ids: set[int] = set()
                 payload_channel_ids: set[int] = set()
                 device_ids: set[int] = set()
+                payload_by_step_id: Dict[int, dict] = {}
+                primary_channel_by_step_id: Dict[int, int | None] = {}
 
                 for step in ordered_steps:
-                    payload = step.payload or {}
-                    signal_key = payload.get("signal_key")
-                    signal_keys = payload.get("signal_keys")
-                    if signal_key or signal_keys:
-                        raise SequenceNotApplicableError(
-                            "Signal references require allocation metadata and are not supported yet"
-                        )
+                    payload = self._resolve_payload_channel_ids(
+                        step.payload or {},
+                        signal_bindings=signal_bindings,
+                    )
+                    resolved_primary = self._resolve_primary_channel_id(
+                        step=step,
+                        payload=payload,
+                        signal_bindings=signal_bindings,
+                    )
+
+                    payload_by_step_id[step.id] = payload
+                    primary_channel_by_step_id[step.id] = resolved_primary
+
+                    if resolved_primary is not None:
+                        primary_channel_ids.add(int(resolved_primary))
+
                     for channel_id in payload.get("channel_ids") or []:
                         if channel_id is None:
                             continue
@@ -535,8 +554,9 @@ class SequenceRunner:
 
                 contexts: List[StepContext] = []
                 for index, (step, run_step) in enumerate(zip(ordered_steps, run.steps)):
-                    payload = dict(step.payload or {})
-                    primary = channel_lookup.get(step.channel_id) if step.channel_id else None
+                    payload = dict(payload_by_step_id.get(step.id) or {})
+                    primary_channel_id = primary_channel_by_step_id.get(step.id)
+                    primary = channel_lookup.get(primary_channel_id) if primary_channel_id else None
                     pair_channels = []
                     for channel_id in payload.get("channel_ids") or []:
                         info = channel_lookup.get(int(channel_id))
@@ -572,6 +592,68 @@ class SequenceRunner:
                 if self._is_active_run_violation(exc):
                     raise SequenceAlreadyRunningError(f"Sequence {sequence.id} already running") from exc
                 raise
+
+    @staticmethod
+    def _resolve_payload_channel_ids(
+        payload_raw: dict,
+        *,
+        signal_bindings: dict[str, int],
+    ) -> dict:
+        payload = dict(payload_raw or {})
+
+        raw_channel_ids = payload.get("channel_ids")
+        if isinstance(raw_channel_ids, list) and raw_channel_ids:
+            payload["channel_ids"] = [int(channel_id) for channel_id in raw_channel_ids if channel_id is not None]
+            return payload
+
+        signal_keys = payload.get("signal_keys")
+        if not isinstance(signal_keys, list) or not signal_keys:
+            return payload
+
+        resolved: list[int] = []
+        missing: list[str] = []
+        for raw_key in signal_keys:
+            key = str(raw_key).strip() if raw_key is not None else ""
+            if not key:
+                continue
+            channel_id = signal_bindings.get(key)
+            if channel_id is None:
+                missing.append(key)
+                continue
+            resolved.append(int(channel_id))
+
+        if missing:
+            raise SequenceNotApplicableError(
+                "Missing channel allocation for signal_keys: " + ", ".join(sorted(set(missing)))
+            )
+        if resolved:
+            payload["channel_ids"] = resolved
+        return payload
+
+    @staticmethod
+    def _resolve_primary_channel_id(
+        *,
+        step,
+        payload: dict,
+        signal_bindings: dict[str, int],
+    ) -> int | None:
+        if step.channel_id is not None:
+            return int(step.channel_id)
+
+        raw_signal_key = payload.get("signal_key")
+        signal_key = str(raw_signal_key).strip() if raw_signal_key is not None else ""
+        if not signal_key:
+            return None
+
+        channel_id = signal_bindings.get(signal_key)
+        if channel_id is None and SequenceRunner._step_requires_primary_channel(step):
+            raise SequenceNotApplicableError(f"Missing channel allocation for signal_key '{signal_key}'")
+        return int(channel_id) if channel_id is not None else None
+
+    @staticmethod
+    def _step_requires_primary_channel(step) -> bool:
+        step_type = getattr(step.sequence_step_type, "value", str(step.sequence_step_type))
+        return step_type in {"DO_LATCH", "DO_PULSE", "AO_SET"}
 
     async def _execute_run(
         self,

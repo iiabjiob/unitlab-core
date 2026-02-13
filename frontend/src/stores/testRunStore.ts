@@ -4,6 +4,8 @@ import { computed, reactive, ref } from "vue"
 import { TestRunsAPI } from "@/api/test_runs.api"
 import type {
   TestRunCreatePayloadV2,
+  TestRunPreflight,
+  TestRunReallocatePayload,
   TestRunRecord,
   TestRunSignalSnapshot,
 } from "@/types/signal"
@@ -69,6 +71,22 @@ export const useTestRunStore = defineStore("testRunStore", () => {
     return data
   }
 
+  async function preflightTestRun(runId: number): Promise<TestRunPreflight> {
+    const { data } = await TestRunsAPI.preflight(runId)
+    return data
+  }
+
+  async function reallocateTestRun(runId: number, payload: TestRunReallocatePayload) {
+    const { data } = await TestRunsAPI.reallocate(runId, payload)
+    upsertRun(data)
+    return data
+  }
+
+  async function exportCableJournal(runId: number) {
+    const { data } = await TestRunsAPI.exportCableJournal(runId)
+    return data
+  }
+
   async function startTestRun(runId: number): Promise<SequenceState[]> {
     const { data } = await TestRunsAPI.start(runId)
     await getTestRun(runId, true)
@@ -109,6 +127,9 @@ export const useTestRunStore = defineStore("testRunStore", () => {
     getTestRun,
     createTestRun,
     repeatTestRun,
+    preflightTestRun,
+    reallocateTestRun,
+    exportCableJournal,
     startTestRun,
     stopTestRun,
     getRunSnapshot,

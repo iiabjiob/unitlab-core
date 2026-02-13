@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-full min-h-0 min-w-0 flex-col gap-4 p-4">
+  <div class="flex h-full min-h-0 min-w-0 flex-col gap-4">
     <div
       v-if="!selectedSnapshotId"
       class="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/80 p-8 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400"
@@ -7,11 +7,8 @@
       Select a snapshot to configure allocation
     </div>
 
-    <div
-      v-else
-      class="flex flex-1 min-h-0 min-w-0 flex-col gap-4"
-    >
-      <div class="grid flex-1 min-h-0 min-w-0 gap-4 lg:grid-cols-[minmax(0,1.75fr)_minmax(320px,1fr)]">
+    <div v-else class="flex flex-1 min-h-0 min-w-0 flex-col gap-4">
+      
         <div class="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-neutral-900">
           <SignalEditorHeader
             v-if="selectedSnapshot"
@@ -19,72 +16,53 @@
             @lock="handleLock"
             @delete="requestDelete"
           />
-          <div class="border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p class="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Snapshot rows</p>
-                <p v-if="currentSheet" class="text-xs text-neutral-500 dark:text-neutral-400">
-                  Sheet "{{ currentSheet.name }}" · {{ currentSheet.rows_count }} rows
-                </p>
-                <p v-else class="text-xs text-neutral-500 dark:text-neutral-400">No sheet detected</p>
-              </div>
-              <select
-                v-if="sheetOptions.length > 1"
-                v-model.number="selectedSheetIndex"
-                class="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-xs font-medium text-neutral-700 shadow-sm focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 lg:w-48"
-              >
-                <option
-                  v-for="sheet in sheetOptions"
-                  :key="sheet.index"
-                  :value="sheet.index"
-                  :disabled="sheet.rows_count === 0"
-                >
-                  {{ sheet.name }} ({{ sheet.rows_count }})
-                </option>
-              </select>
-              <span
-                v-else-if="currentSheet"
-                class="inline-flex items-center rounded-xl border border-neutral-200 px-3 py-1 text-xs font-medium text-neutral-500 dark:border-neutral-700 dark:text-neutral-300"
-              >
-                {{ currentSheet.name }}
-              </span>
-            </div>
-          </div>
+
+
           <div class="flex flex-1 min-h-0 min-w-0 overflow-hidden">
             <div
               v-if="snapshotRows.length === 0"
-              class="flex h-full items-center justify-center rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900"
+              class="flex h-full w-full items-center justify-center rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900"
             >
               No data detected for the selected sheet.
             </div>
-            <div v-else class="flex-1 min-h-0 min-w-0 overflow-hidden">
-              <UiTableLight
-                class="flex-1 min-h-0 min-w-0"
-                :columns="snapshotColumns"
-                :rows="snapshotRows"
-                :row-key="rowKeyForSnapshot"
-                :enable-sorting="true"
-                :enable-filtering="true"
-                :enable-column-resize="true"
-                :default-sort-key="SNAPSHOT_ROW_INDEX_COLUMN_KEY"
-                max-height="100%"
-              >
-                <template #cell="{ column, value, rowIndex }">
-                  <template v-if="column.key === SNAPSHOT_ROW_INDEX_COLUMN_KEY">
-                    <span class="font-mono text-xs text-neutral-500 dark:text-neutral-400">#{{ rowIndex + 1 }}</span>
-                  </template>
-                  <template v-else>
-                    <span class="text-xs text-neutral-700 dark:text-neutral-100">{{ formatSnapshotCellValue(value) }}</span>
-                  </template>
-                </template>
-                <template #empty>
-                  Selected worksheet has no rows.
-                </template>
-              </UiTableLight>
-            </div>
+
+            <UiAffinoDataGrid
+              v-else
+              class="flex-1 min-h-0"
+              :rows="snapshotRows"
+              :columns="snapshotColumns"
+              :row-height="34"
+              :overscan-rows="10"
+              :overscan-columns="2"
+              :enable-filtering="true"
+              :enable-column-resize="true"
+              :empty-text="'Selected worksheet has no rows.'"
+              :row-key="snapshotRowKey"
+            >
+              <template #cell="{ column, value }">
+                <span
+                  v-if="column.key === SNAPSHOT_ROW_INDEX_COLUMN_KEY"
+                  class="font-mono text-xs text-neutral-500 dark:text-neutral-400"
+                >
+                  #{{ String(value ?? "") }}
+                </span>
+                <span v-else class="text-xs text-neutral-700 dark:text-neutral-100">{{ formatSnapshotCellValue(value) }}</span>
+              </template>
+            </UiAffinoDataGrid>
           </div>
         </div>
 
+      
+    </div>
+
+    <SlideOver
+      :open="livePanelOpen"
+      title="Live Signals"
+      placement="right"
+      :widthPx="820"
+      @close="livePanelOpen = false"
+    >
+      <div class="h-full p-4">
         <LiveSignalsPanel
           :signals="signals"
           :channels="channels"
@@ -95,7 +73,7 @@
           @refresh-channels="refreshLiveChannelStates"
         />
       </div>
-    </div>
+    </SlideOver>
 
     <ConfirmModal
       v-if="selectedSnapshot"
@@ -116,7 +94,9 @@ import { useRouter } from "vue-router"
 import { storeToRefs } from "pinia"
 
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
-import UiTableLight from "@/components/ui/UiTableLight.vue"
+import SlideOver from "@/components/ui/SlideOver.vue"
+import UiButton from "@/components/ui/UiButton.vue"
+import UiAffinoDataGrid from "@/components/ui/UiAffinoDataGrid.vue"
 import { useSignalSnapshotStore } from "@/stores/signalSnapshotStore"
 import { useSignalsStore } from "@/stores/signalStore"
 import { useChannelStore } from "@/stores/channelStore"
@@ -142,10 +122,31 @@ const { channels, isLoading: channelsLoading } = storeToRefs(channelStore)
 const { devices } = storeToRefs(deviceStore)
 
 const selectedSnapshotId = ref<number | null>(props.snapshotId ?? null)
+const livePanelOpen = ref(false)
+const livePanelDataReady = ref(false)
+
 type SnapshotRow = Record<string, unknown>
 
+type SnapshotGridRow = SnapshotRow & {
+  rowId: string
+  __snapshotIndex__: number
+}
+
+type AllocationGridRow = {
+  rowId: string
+  index: number
+  entry: AllocationMappingItem
+  channel_id: string
+  signal_key: string
+  sheet: string
+  column_key: string
+  signal_row_index: number
+  selection: string
+  actions: string
+}
+
 const mapping = ref<AllocationMappingItem[]>([])
-const snapshotRows = ref<SnapshotRow[]>([])
+const snapshotRows = ref<SnapshotGridRow[]>([])
 const sheetOptions = ref<SnapshotSheet[]>([])
 const selectedSheetIndex = ref<number | null>(null)
 const SNAPSHOT_ROW_INDEX_COLUMN_KEY = "__snapshotIndex__"
@@ -163,17 +164,14 @@ const snapshotColumns = computed(() => {
     {
       key: SNAPSHOT_ROW_INDEX_COLUMN_KEY,
       label: "#",
-      width: 64,
-      sortable: true,
-      filterable: false,
-      resizable: false,
+      width: 74,
+      minWidth: 60,
     },
     ...uniqueHeaders.map(header => ({
       key: header,
       label: header,
-      sortable: true,
-      filterable: true,
-      resizable: true,
+      width: 180,
+      minWidth: 120,
     })),
   ]
 })
@@ -206,12 +204,38 @@ watch(
       sheetOptions.value = []
       selectedSheetIndex.value = null
       snapshotRows.value = []
-      mapping.value = [createMappingRow(null)]
       return
     }
     initialize(next)
   },
   { immediate: true },
+)
+
+watch(
+  () => sheetOptions.value,
+  (next) => {
+    if (!next.length) {
+      selectedSheetIndex.value = null
+      snapshotRows.value = []
+      return
+    }
+    const currentIndex = selectedSheetIndex.value
+    const hasMatch = next.some(sheet => sheet.index === currentIndex)
+    if (!hasMatch) {
+      const fallback = next.find(sheet => sheet.rows_count > 0) ?? next[0]
+      selectedSheetIndex.value = fallback.index
+    } else {
+      syncRowsWithSelection()
+    }
+    hydrateMappingMetaWithSheets(getSheetByIndex(selectedSheetIndex.value))
+  },
+)
+
+watch(
+  selectedSheetIndex,
+  () => {
+    syncRowsWithSelection()
+  },
 )
 
 function requestDelete() {
@@ -237,6 +261,15 @@ async function refreshLiveSignals() {
   if (!workspaceReady.value) return
   try {
     await signalsStore.refreshSignals(true)
+    livePanelDataReady.value = true
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+  }
+}
+
+async function ensureChannelCatalogLoaded() {
+  try {
+    await Promise.all([deviceStore.ensureLoaded(), channelStore.ensureLoaded()])
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
   }
@@ -244,7 +277,7 @@ async function refreshLiveSignals() {
 
 async function refreshLiveChannelStates() {
   try {
-    await Promise.all([deviceStore.ensureLoaded(), channelStore.ensureLoaded()])
+    await ensureChannelCatalogLoaded()
     const deviceIds = new Set<number>()
     channels.value.forEach(channel => deviceIds.add(channel.device_id))
     if (!deviceIds.size) {
@@ -269,20 +302,15 @@ async function handleLock() {
 
 async function initialize(snapshotId: number) {
   try {
-    const allocation = await snapshotStore.getAllocation(snapshotId)
+    await ensureChannelCatalogLoaded()
+    
     const snapshot = await snapshotStore.getSnapshot(snapshotId)
     const normalized = normalizeSnapshotData(snapshot)
     sheetOptions.value = normalized.sheets
     selectedSheetIndex.value = normalized.defaultSheetIndex ?? normalized.sheets[0]?.index ?? null
     const fallbackSheet = getSheetByIndex(selectedSheetIndex.value) ?? normalized.sheets[0] ?? null
 
-    mapping.value = allocation.mapping.length
-      ? allocation.mapping.map((item) => ({
-          ...item,
-          meta: item.meta ? { ...item.meta } : null,
-        }))
-      : [createMappingRow(fallbackSheet)]
-
+    
     hydrateMappingMetaWithSheets(fallbackSheet)
     autoFillMissingValues()
     syncRowsWithSelection()
@@ -291,92 +319,9 @@ async function initialize(snapshotId: number) {
   }
 }
 
-watch(
-  () => sheetOptions.value,
-  (next) => {
-    if (!next.length) {
-      selectedSheetIndex.value = null
-      snapshotRows.value = []
-      return
-    }
-    const currentIndex = selectedSheetIndex.value
-    const hasMatch = next.some(sheet => sheet.index === currentIndex)
-    if (!hasMatch) {
-      const fallback = next.find(sheet => sheet.rows_count > 0) ?? next[0]
-      selectedSheetIndex.value = fallback.index
-    } else {
-      syncRowsWithSelection()
-    }
-    hydrateMappingMetaWithSheets(getSheetByIndex(selectedSheetIndex.value))
-  },
-  { deep: true },
-)
 
-watch(
-  selectedSheetIndex,
-  () => {
-    syncRowsWithSelection()
-  },
-)
-
-function createMappingRow(defaultSheet: SnapshotSheet | null): AllocationMappingItem {
-  return {
-    channel_id: "",
-    signal_key: "",
-    signal_row_index: 0,
-    meta: defaultSheet
-      ? {
-          sheet_index: defaultSheet.index,
-          sheet_name: defaultSheet.name,
-          column_key: defaultSheet.headers[0] ?? null,
-        }
-      : {
-          sheet_index: null,
-          sheet_name: null,
-          column_key: null,
-        },
-  }
-}
-
-function addMapping() {
-  mapping.value.push(createMappingRow(currentSheet.value ?? sheetOptions.value[0] ?? null))
-}
-
-function removeMapping(index: number) {
-  if (mapping.value.length <= 1) return
-  mapping.value.splice(index, 1)
-}
-
-async function save() {
-  if (!selectedSnapshotId.value) return
-  try {
-    await snapshotStore.saveAllocation(selectedSnapshotId.value, mapping.value)
-    toastStore.success("Allocation saved")
-  } catch (err) {
-    toastStore.error(err instanceof Error ? err.message : String(err))
-  }
-}
-
-function handleSheetSelect(item: AllocationMappingItem, event: Event) {
-  const select = event.target as HTMLSelectElement
-  const value = select.value
-  const sheetIndex = value === "" ? null : Number(value)
-  applySheetSelection(item, sheetIndex)
-}
-
-function handleColumnSelect(item: AllocationMappingItem, event: Event) {
-  const select = event.target as HTMLSelectElement
-  const value = select.value
-  const meta = ensureMeta(item)
-  meta.column_key = value || null
-  autoFillSignalKeyFromSelection(item)
-}
-
-function handleRowIndexChange(item: AllocationMappingItem) {
-  if (!Number.isFinite(item.signal_row_index) || item.signal_row_index < 0) {
-    item.signal_row_index = 0
-  }
-  autoFillSignalKeyFromSelection(item)
+function snapshotRowKey(row: Record<string, unknown>): string {
+  return String(row.rowId ?? "")
 }
 
 function getSheetByIndex(index: number | null): SnapshotSheet | null {
@@ -387,20 +332,6 @@ function getSheetByIndex(index: number | null): SnapshotSheet | null {
 function getHeadersForSheet(index: number | null): string[] {
   const sheet = getSheetByIndex(index)
   return sheet?.headers ?? []
-}
-
-function applySheetSelection(item: AllocationMappingItem, sheetIndex: number | null) {
-  const meta = ensureMeta(item)
-  const sheet = getSheetByIndex(sheetIndex)
-  meta.sheet_index = sheet?.index ?? null
-  meta.sheet_name = sheet?.name ?? null
-  const headers = sheet?.headers ?? []
-  if (!headers.length) {
-    meta.column_key = null
-  } else if (!meta.column_key || !headers.includes(meta.column_key)) {
-    meta.column_key = headers[0]
-  }
-  autoFillSignalKeyFromSelection(item)
 }
 
 function ensureMeta(item: AllocationMappingItem): AllocationMappingMeta {
@@ -463,52 +394,18 @@ function resolveCellValue(item: AllocationMappingItem): string | null {
   return String(rawValue)
 }
 
-function pullValueFromSelection(item: AllocationMappingItem) {
-  autoFillSignalKeyFromSelection(item, { force: true })
-}
-
-function pullValuesForAll() {
-  mapping.value.forEach(item => autoFillSignalKeyFromSelection(item, { force: true }))
-}
-
-function describeSelection(item: AllocationMappingItem): string {
-  const meta = item.meta
-  if (!meta || meta.sheet_index === null) {
-    return "Select sheet, column, and row to pull a value."
-  }
-  const sheetLabel = meta.sheet_name ?? `Sheet ${meta.sheet_index + 1}`
-  const columnLabel = meta.column_key ?? "column"
-  const rowLabel = Number.isFinite(item.signal_row_index)
-    ? `row ${item.signal_row_index + 1}`
-    : "row ?"
-  const value = resolveCellValue(item)
-  if (value === null) {
-    return `${sheetLabel} · ${columnLabel} @ ${rowLabel} — empty`
-  }
-  return `${sheetLabel} · ${columnLabel} @ ${rowLabel} → ${value}`
-}
-
 function syncRowsWithSelection() {
   if (selectedSheetIndex.value === null) {
     snapshotRows.value = []
     return
   }
   const selected = getSheetByIndex(selectedSheetIndex.value)
-  snapshotRows.value = selected?.rows ?? []
-}
-
-function rowKeyForSnapshot(row: SnapshotRow, index: number): string {
-  const candidates: (string | number | undefined)[] = [
-    row.id as string | number | undefined,
-    row.ID as string | number | undefined,
-    row.key as string | number | undefined,
-    row.Key as string | number | undefined,
-  ]
-  const match = candidates.find(value => typeof value === "string" || typeof value === "number")
-  if (match !== undefined) {
-    return String(match)
-  }
-  return `row-${index}`
+  const rows = selected?.rows ?? []
+  snapshotRows.value = rows.map((row, index) => ({
+    rowId: `sheet-row-${index}`,
+    [SNAPSHOT_ROW_INDEX_COLUMN_KEY]: index + 1,
+    ...row,
+  }))
 }
 
 function formatSnapshotCellValue(value: unknown): string {
@@ -519,7 +416,7 @@ function formatSnapshotCellValue(value: unknown): string {
   if (typeof value === "object") {
     try {
       return JSON.stringify(value)
-    } catch (err) {
+    } catch {
       return "[object]"
     }
   }

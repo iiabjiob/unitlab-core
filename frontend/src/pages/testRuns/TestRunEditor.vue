@@ -44,6 +44,14 @@
               <span v-if="actionLoading === 'repeat'">Cloning…</span>
               <span v-else>Clone run</span>
             </button>
+            <button class="btn-tertiary" type="button" :disabled="preflightLoading" @click="runPreflight()">
+              <span v-if="preflightLoading">Preflight…</span>
+              <span v-else>Preflight</span>
+            </button>
+            <button class="btn-tertiary" type="button" :disabled="journalLoading" @click="exportCableJournal">
+              <span v-if="journalLoading">Exporting…</span>
+              <span v-else>Cable journal</span>
+            </button>
             <button class="btn-secondary" type="button" :disabled="runsLoading" @click="refresh">Refresh</button>
             <button
               class="btn-primary"
@@ -103,6 +111,14 @@
                 <dd class="text-neutral-900 dark:text-neutral-100">{{ workspaceStore.activeWorkspace?.name ?? "—" }}</dd>
               </div>
               <div class="flex justify-between gap-4">
+                <dt class="text-neutral-500">Allocation revision</dt>
+                <dd class="text-neutral-900 dark:text-neutral-100">r{{ run.allocation_revision }}</dd>
+              </div>
+              <div class="flex justify-between gap-4" v-if="run.source_test_run_id">
+                <dt class="text-neutral-500">Source run</dt>
+                <dd class="text-neutral-900 dark:text-neutral-100">#{{ run.source_test_run_id }}</dd>
+              </div>
+              <div class="flex justify-between gap-4">
                 <dt class="text-neutral-500">Snapshot captured</dt>
                 <dd class="text-neutral-900 dark:text-neutral-100">
                   {{ run.snapshot ? formatDate(run.snapshot.captured_at) : "Pending" }}
@@ -129,6 +145,81 @@
             </dl>
           </section>
         </div>
+
+        <section class="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-semibold text-neutral-900 dark:text-neutral-50">Unit preflight</p>
+              <p class="text-xs text-neutral-500">Checks availability before start and proposes reallocation.</p>
+            </div>
+            <UiBadge v-if="preflight" :variant="preflight.ready ? 'success' : 'warning'">
+              {{ preflight.ready ? "ready" : "reallocation required" }}
+            </UiBadge>
+          </div>
+
+          <div v-if="!preflight" class="mt-4 rounded-xl bg-neutral-50 px-4 py-4 text-sm text-neutral-500 dark:bg-neutral-800">
+            Run preflight to validate participating units and channels.
+          </div>
+
+          <div v-else class="mt-4 space-y-4">
+            <div class="grid gap-2 md:grid-cols-2">
+              <div
+                v-for="unit in preflight.units"
+                :key="unit.device_id"
+                class="rounded-xl border px-3 py-2 text-sm"
+                :class="unit.available ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-700/40 dark:bg-emerald-900/20' : 'border-amber-200 bg-amber-50 dark:border-amber-700/40 dark:bg-amber-900/20'"
+              >
+                <p class="font-semibold text-neutral-900 dark:text-neutral-50">{{ unit.unit_id }}</p>
+                <p class="text-xs text-neutral-600 dark:text-neutral-300">
+                  {{ unit.available ? "online" : `unavailable${unit.reason ? ` (${unit.reason})` : ""}` }}
+                </p>
+              </div>
+            </div>
+
+            <div v-if="preflightIssues.length" class="space-y-3">
+              <div
+                v-for="issue in preflightIssues"
+                :key="issue.allocation_entry_id"
+                class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm dark:border-amber-700/40 dark:bg-amber-900/20"
+              >
+                <p class="font-semibold text-neutral-900 dark:text-neutral-50">
+                  Entry #{{ issue.allocation_entry_id }} · channel {{ issue.channel_id }}
+                </p>
+                <p class="text-xs text-neutral-700 dark:text-neutral-200">
+                  {{ issue.signal_key ?? "unassigned signal" }} · {{ issue.reason ?? "unavailable" }}
+                </p>
+                <div class="mt-2 flex flex-wrap items-center gap-2">
+                  <label class="text-xs text-neutral-600 dark:text-neutral-300">Reassign to</label>
+                  <select
+                    v-model.number="reallocationDraft[issue.allocation_entry_id]"
+                    class="input w-44"
+                  >
+                    <option :value="issue.channel_id">Keep current</option>
+                    <option
+                      v-for="candidateId in issue.recommended_channel_ids"
+                      :key="candidateId"
+                      :value="candidateId"
+                    >
+                      Channel {{ candidateId }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="flex items-center justify-end">
+                <button
+                  class="btn-primary"
+                  type="button"
+                  :disabled="reallocateLoading || !hasReallocationChanges"
+                  @click="createReallocatedRun"
+                >
+                  <span v-if="reallocateLoading">Creating revision…</span>
+                  <span v-else>Create reallocated run</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
 
         <section class="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <div>
@@ -177,7 +268,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue"
+import axios from "axios"
+import { computed, onMounted, reactive, ref, watch } from "vue"
 import { RouterLink, useRouter } from "vue-router"
 
 import UiBadge from "@/components/ui/UiBadge.vue"
@@ -185,7 +277,7 @@ import { useTestRunStore } from "@/stores/testRunStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
-import type { TestRunRecord } from "@/types/signal"
+import type { TestRunPreflight, TestRunRecord, TestRunReallocationItem } from "@/types/signal"
 import type { SequenceDef } from "@/types/sequences"
 import { formatDate } from "@/utils/datetime"
 
@@ -198,6 +290,11 @@ const toastStore = useToastStore()
 const router = useRouter()
 
 const actionLoading = ref<"start" | "stop" | "repeat" | null>(null)
+const preflightLoading = ref(false)
+const reallocateLoading = ref(false)
+const journalLoading = ref(false)
+const preflight = ref<TestRunPreflight | null>(null)
+const reallocationDraft = reactive<Record<number, number>>({})
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const runsLoading = computed(() => testRunStore.loading)
@@ -221,6 +318,14 @@ const runTitle = computed(() => {
 })
 
 const allocationEntries = computed(() => run.value?.allocation?.entries ?? [])
+const preflightIssues = computed(() => preflight.value?.entries.filter(item => !item.available) ?? [])
+const hasReallocationChanges = computed(() => {
+  if (!preflightIssues.value.length) return false
+  return preflightIssues.value.some((issue) => {
+    const selected = Number(reallocationDraft[issue.allocation_entry_id] ?? issue.channel_id)
+    return Number.isFinite(selected) && selected !== issue.channel_id
+  })
+})
 
 const formattedExecutionMeta = computed(() =>
   run.value?.execution_meta ? JSON.stringify(run.value.execution_meta, null, 2) : "{}",
@@ -246,6 +351,8 @@ watch(
     if (runId && runId !== prev && !run.value) {
       await testRunStore.refreshRuns(true)
     }
+    preflight.value = null
+    clearReallocationDraft()
   },
 )
 
@@ -291,10 +398,22 @@ async function startRun() {
   if (!run.value) return
   actionLoading.value = "start"
   try {
+    const currentPreflight = await runPreflight({ silentOnReady: true, suppressErrors: true })
+    if (currentPreflight && !currentPreflight.ready) {
+      toastStore.info("Preflight requires reallocation before start")
+      return
+    }
     await testRunStore.startTestRun(run.value.id)
     toastStore.success("Run start requested")
     await testRunStore.refreshRuns(true)
   } catch (err) {
+    const preflightFromError = extractPreflightFromError(err)
+    if (preflightFromError) {
+      preflight.value = preflightFromError
+      seedReallocationDraft(preflightFromError)
+      toastStore.info("Preflight failed. Reassign unavailable channels and retry.")
+      return
+    }
     toastStore.error(err instanceof Error ? err.message : String(err))
   } finally {
     actionLoading.value = null
@@ -328,6 +447,111 @@ async function repeatRun() {
   } finally {
     actionLoading.value = null
   }
+}
+
+async function runPreflight(options: { silentOnReady?: boolean; suppressErrors?: boolean } = {}) {
+  if (!run.value) return null
+  preflightLoading.value = true
+  try {
+    const snapshot = await testRunStore.preflightTestRun(run.value.id)
+    preflight.value = snapshot
+    seedReallocationDraft(snapshot)
+    if (!options.silentOnReady && snapshot.ready) {
+      toastStore.success("Preflight passed")
+    }
+    return snapshot
+  } catch (err) {
+    if (!options.suppressErrors) {
+      toastStore.error(err instanceof Error ? err.message : String(err))
+    }
+    return null
+  } finally {
+    preflightLoading.value = false
+  }
+}
+
+async function createReallocatedRun() {
+  if (!run.value || !preflight.value) return
+  const reallocation: TestRunReallocationItem[] = preflightIssues.value
+    .map((issue) => ({
+      allocation_entry_id: issue.allocation_entry_id,
+      channel_id: Number(reallocationDraft[issue.allocation_entry_id] ?? issue.channel_id),
+    }))
+    .filter(item => Number.isFinite(item.channel_id) && item.channel_id !== preflightIssueChannel(item.allocation_entry_id))
+
+  if (!reallocation.length) {
+    toastStore.info("Choose at least one new channel from recommendations")
+    return
+  }
+
+  reallocateLoading.value = true
+  try {
+    const cloned = await testRunStore.reallocateTestRun(run.value.id, {
+      notes: run.value.allocation?.notes ?? null,
+      reallocation,
+    })
+    toastStore.success(`Created run #${cloned.id} revision r${cloned.allocation_revision}`)
+    await testRunStore.refreshRuns(true)
+    router.push({ name: "testRuns.detail", params: { runId: cloned.id } })
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+  } finally {
+    reallocateLoading.value = false
+  }
+}
+
+async function exportCableJournal() {
+  if (!run.value) return
+  journalLoading.value = true
+  try {
+    const csv = await testRunStore.exportCableJournal(run.value.id)
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `test-run-${run.value.id}-cable-journal.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toastStore.success("Cable journal exported")
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+  } finally {
+    journalLoading.value = false
+  }
+}
+
+function seedReallocationDraft(snapshot: TestRunPreflight) {
+  clearReallocationDraft()
+  snapshot.entries
+    .filter(item => !item.available)
+    .forEach((item) => {
+      const suggested = item.recommended_channel_ids[0]
+      reallocationDraft[item.allocation_entry_id] = Number.isFinite(suggested) ? suggested : item.channel_id
+    })
+}
+
+function clearReallocationDraft() {
+  Object.keys(reallocationDraft).forEach((key) => {
+    delete reallocationDraft[Number(key)]
+  })
+}
+
+function preflightIssueChannel(allocationEntryId: number): number {
+  const issue = preflightIssues.value.find(item => item.allocation_entry_id === allocationEntryId)
+  return issue?.channel_id ?? Number.NaN
+}
+
+function extractPreflightFromError(err: unknown): TestRunPreflight | null {
+  if (!axios.isAxiosError(err)) return null
+  const detail = err.response?.data?.detail
+  if (!detail || typeof detail !== "object") return null
+  const candidate = (detail as Record<string, unknown>).preflight
+  if (!candidate || typeof candidate !== "object") return null
+  const typed = candidate as TestRunPreflight
+  if (typeof typed.test_run_id !== "number" || !Array.isArray(typed.entries)) return null
+  return typed
 }
 
 </script>

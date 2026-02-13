@@ -206,6 +206,8 @@ export interface AllocationCreatePayload {
 export interface TestRunRecord {
   id: number
   workspace_id: number
+  source_test_run_id: number | null
+  allocation_revision: number
   allocation: AllocationRecord | null
   sequence_ids: number[]
   status: TestRunStatus
@@ -221,4 +223,41 @@ export interface TestRunCreatePayloadV2 {
   sequence_ids: number[]
   allocation?: AllocationCreatePayload
   allow_empty_allocation?: boolean
+}
+
+export interface TestRunPreflightUnit {
+  device_id: number
+  unit_id: string
+  available: boolean
+  last_seen_at: string | null
+  reason: string | null
+}
+
+export interface TestRunPreflightEntry {
+  allocation_entry_id: number
+  channel_id: number
+  signal_id: number | null
+  signal_key: string | null
+  required_direction: SignalIODirection | null
+  available: boolean
+  reason: string | null
+  recommended_channel_ids: number[]
+}
+
+export interface TestRunPreflight {
+  test_run_id: number
+  ready: boolean
+  reallocation_required: boolean
+  units: TestRunPreflightUnit[]
+  entries: TestRunPreflightEntry[]
+}
+
+export interface TestRunReallocationItem {
+  allocation_entry_id: number
+  channel_id: number
+}
+
+export interface TestRunReallocatePayload {
+  notes?: string | null
+  reallocation: TestRunReallocationItem[]
 }

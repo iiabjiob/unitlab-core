@@ -12,8 +12,13 @@ import type {
 import type { SequenceState } from "@/types/sequences"
 
 export const SignalSnapshotsAPI = {
-  list(workspaceId: number) {
-    return http.get<SignalSnapshotSummary[]>(`${API_V1}/workspaces/${workspaceId}/signal-snapshots`)
+  list(workspaceId: number, options?: { limit?: number; offset?: number }) {
+    return http.get<SignalSnapshotSummary[]>(`${API_V1}/workspaces/${workspaceId}/signal-snapshots`, {
+      params: {
+        limit: options?.limit,
+        offset: options?.offset,
+      },
+    })
   },
 
   import(workspaceId: number, file: File, metadata?: SignalImportMeta) {
