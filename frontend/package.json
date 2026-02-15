@@ -17,6 +17,7 @@
     "@affino/menu-vue": "1.0.0-alpha.6",
     "@affino/popover-vue": "^1.0.0",
     "@affino/tooltip-vue": "^1.0.0",
+    "@affino/treeview-vue": "^0.1.0",
     "@tailwindcss/vite": "^4.1.10",
     "axios": "^1.10.0",
     "pinia": "^3.0.1",

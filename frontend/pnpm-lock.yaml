@@ -26,6 +26,9 @@ importers:
       '@affino/tooltip-vue':
         specifier: ^1.0.0
         version: 1.0.0(vue@3.5.25(typescript@5.8.3))
+      '@affino/treeview-vue':
+        specifier: ^0.1.0
+        version: 0.1.0(vue@3.5.25(typescript@5.8.3))
       '@tailwindcss/vite':
         specifier: ^4.1.10
         version: 4.1.17(vite@6.4.1(@types/node@22.19.1)(jiti@2.6.1)(lightningcss@1.30.2))
@@ -147,6 +150,14 @@ packages:
 
   '@affino/tooltip-vue@1.0.0':
     resolution: {integrity: sha512-PbRciAFOercOUYjiZH56XA0IXhzuOxigQsfvmzD9xosz9p2sVCcpMe95q0pnxJodbr4CtsarYC6XSC4saML7ow==}
+    peerDependencies:
+      vue: ^3.3.0
+
+  '@affino/treeview-core@0.1.0':
+    resolution: {integrity: sha512-++pDtsVCqLhXlVxmGkXf1w+dUS7k4249TB9xwubkqGPOp5R3ykiGS9oDiOel1pmhU+NddbwQ8OZJCu9HZy32DA==}
+
+  '@affino/treeview-vue@0.1.0':
+    resolution: {integrity: sha512-QT5d6Cs8Sq+yMrfP6Hl6DlRtfQ+f6H6US1fYz13TsewYHXJrHsSRrCtWaCqwispjrA/Tgw7SI2CrPLHJ/aAW7A==}
     peerDependencies:
       vue: ^3.3.0
 
@@ -1592,6 +1603,13 @@ snapshots:
     dependencies:
       '@affino/overlay-host': 1.0.0
       '@affino/tooltip-core': 1.0.0
+      vue: 3.5.25(typescript@5.8.3)
+
+  '@affino/treeview-core@0.1.0': {}
+
+  '@affino/treeview-vue@0.1.0(vue@3.5.25(typescript@5.8.3))':
+    dependencies:
+      '@affino/treeview-core': 0.1.0
       vue: 3.5.25(typescript@5.8.3)
 
   '@antfu/utils@0.7.10': {}

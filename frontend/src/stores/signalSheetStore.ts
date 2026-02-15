@@ -31,10 +31,14 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   const loadingAllocations = ref(false)
   const importing = ref(false)
   const allocationRevision = ref(0)
+  const recentlyChangedSignalIds = ref<number[]>([])
 
   const initializedWorkspaceId = ref<number | null>(null)
   let allocationsInFlight: Promise<SignalAllocationRow[]> | null = null
   const allocationIndexBySignalId = new Map<number, number>()
+  const allocationOwnerByChannelId = new Map<number, number>()
+  const allocationMutationVersionBySignalId = new Map<number, number>()
+  let allocationMutationVersionCounter = 0
 
   function requireWorkspaceId(): number {
     return workspaceStore.requireWorkspaceId()
@@ -44,12 +48,24 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     allocationRevision.value += 1
   }
 
+  function setRecentlyChangedSignalIds(signalIds: readonly number[]) {
+    if (!signalIds.length) {
+      recentlyChangedSignalIds.value = []
+      return
+    }
+    recentlyChangedSignalIds.value = [...new Set(signalIds.map(item => Number(item)).filter(Number.isFinite))]
+  }
+
   function isFiniteChannelId(value: unknown): value is number {
     return typeof value === "number" && Number.isFinite(value)
   }
 
   function isAllocatedChannelId(value: unknown): boolean {
     return isFiniteChannelId(value)
+  }
+
+  function normalizeChannelId(value: unknown): number | null {
+    return isFiniteChannelId(value) ? value : null
   }
 
   function cloneAllocationRow(row: SignalAllocationRow): SignalAllocationRow {
@@ -61,16 +77,22 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
   }
 
-  function rebuildAllocationIndex() {
+  function rebuildAllocationIndexes() {
     allocationIndexBySignalId.clear()
+    allocationOwnerByChannelId.clear()
     allocationRows.value.forEach((row, index) => {
       allocationIndexBySignalId.set(row.signal_id, index)
+      const channelId = normalizeChannelId(row.channel_id)
+      if (channelId !== null) {
+        allocationOwnerByChannelId.set(channelId, row.signal_id)
+      }
     })
   }
 
   function replaceAllocationRows(rows: SignalAllocationRow[]) {
     allocationRows.value = rows
-    rebuildAllocationIndex()
+    rebuildAllocationIndexes()
+    setRecentlyChangedSignalIds(rows.map(row => row.signal_id))
     bumpAllocationRevision()
   }
 
@@ -99,13 +121,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
   }
 
-  function assignAllocationRow(targetRow: SignalAllocationRow, sourceRow: SignalAllocationRow) {
-    const previousAllocated = isAllocatedChannelId(targetRow.channel_id)
-    Object.assign(targetRow, sourceRow)
-    const nextAllocated = isAllocatedChannelId(targetRow.channel_id)
-    patchSheetAllocatedCount(previousAllocated, nextAllocated)
-  }
-
   function resolveChannelLabel(unitId: string | null, channelIndex: number | null): string | null {
     if (!Number.isFinite(channelIndex as number)) {
       return null
@@ -114,55 +129,71 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     return unitId ? `${unitId}/${suffix}` : suffix
   }
 
-  function applyLocalAllocationPatch(signalId: number, nextChannelIdRaw: number | null | undefined) {
+  function applyLocalAllocationPatch(
+    signalId: number,
+    nextChannelIdRaw: number | null | undefined,
+    options?: { skipRevision?: boolean },
+  ) {
     const rowIndex = allocationIndexBySignalId.get(signalId)
     if (rowIndex === undefined) {
       return
     }
-    const row = allocationRows.value[rowIndex]
-    if (!row) {
+    const currentRow = allocationRows.value[rowIndex]
+    if (!currentRow) {
       return
     }
 
-    const previousAllocated = isAllocatedChannelId(row.channel_id)
+    const previousAllocated = isAllocatedChannelId(currentRow.channel_id)
+    const previousChannelId = normalizeChannelId(currentRow.channel_id)
     const nextChannelId = isFiniteChannelId(nextChannelIdRaw) ? nextChannelIdRaw : null
+    const nextRow: SignalAllocationRow = { ...currentRow }
 
     if (nextChannelId === null) {
-      row.channel_id = null
-      row.channel_type = null
-      row.channel_index = null
-      row.channel_label = null
-      row.device_id = null
-      row.unit_id = null
-      row.unit_online = null
-      row.unit_last_seen_at = null
+      nextRow.channel_id = null
+      nextRow.channel_type = null
+      nextRow.channel_index = null
+      nextRow.channel_label = null
+      nextRow.device_id = null
+      nextRow.unit_id = null
+      nextRow.unit_online = null
+      nextRow.unit_last_seen_at = null
     } else {
       const channel = channelStore.channels.find(item => item.id === nextChannelId)
-      row.channel_id = nextChannelId
+      nextRow.channel_id = nextChannelId
       if (!channel) {
-        row.channel_type = null
-        row.channel_index = null
-        row.channel_label = null
-        row.device_id = null
-        row.unit_id = null
-        row.unit_online = null
-        row.unit_last_seen_at = null
+        nextRow.channel_type = null
+        nextRow.channel_index = null
+        nextRow.channel_label = null
+        nextRow.device_id = null
+        nextRow.unit_id = null
+        nextRow.unit_online = null
+        nextRow.unit_last_seen_at = null
       } else {
         const device = deviceStore.devices.find(item => item.id === channel.device_id)
         const unitId = device?.unit_id ?? channelStore.resolveUnitId(channel.device_id) ?? null
-        row.channel_type = channel.type
-        row.channel_index = channel.index
-        row.device_id = channel.device_id
-        row.unit_id = unitId
-        row.channel_label = resolveChannelLabel(unitId, channel.index)
-        row.unit_online = device ? device.status === "online" : null
-        row.unit_last_seen_at = null
+        nextRow.channel_type = channel.type
+        nextRow.channel_index = channel.index
+        nextRow.device_id = channel.device_id
+        nextRow.unit_id = unitId
+        nextRow.channel_label = resolveChannelLabel(unitId, channel.index)
+        nextRow.unit_online = device ? device.status === "online" : null
+        nextRow.unit_last_seen_at = null
       }
     }
 
-    const nextAllocated = isAllocatedChannelId(row.channel_id)
+    allocationRows.value[rowIndex] = nextRow
+    if (previousChannelId !== null && allocationOwnerByChannelId.get(previousChannelId) === signalId) {
+      allocationOwnerByChannelId.delete(previousChannelId)
+    }
+    if (nextChannelId !== null) {
+      allocationOwnerByChannelId.set(nextChannelId, signalId)
+    }
+
+    const nextAllocated = isAllocatedChannelId(nextRow.channel_id)
     patchSheetAllocatedCount(previousAllocated, nextAllocated)
-    bumpAllocationRevision()
+    if (!options?.skipRevision) {
+      bumpAllocationRevision()
+    }
   }
 
   function applyServerAllocationPatch(serverRows: SignalAllocationRow[], signalIds: readonly number[]) {
@@ -192,8 +223,27 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       if (rowIndex === undefined || !serverRow) return
       const targetRow = allocationRows.value[rowIndex]
       if (!targetRow) return
-      assignAllocationRow(targetRow, serverRow)
+      const previousAllocated = isAllocatedChannelId(targetRow.channel_id)
+      const previousChannelId = normalizeChannelId(targetRow.channel_id)
+      const nextRow = {
+        ...targetRow,
+        ...serverRow,
+        signal_metadata: serverRow.signal_metadata && typeof serverRow.signal_metadata === "object"
+          ? { ...serverRow.signal_metadata }
+          : {},
+      }
+      allocationRows.value[rowIndex] = nextRow
+      if (previousChannelId !== null && allocationOwnerByChannelId.get(previousChannelId) === signalId) {
+        allocationOwnerByChannelId.delete(previousChannelId)
+      }
+      const nextChannelId = normalizeChannelId(nextRow.channel_id)
+      if (nextChannelId !== null) {
+        allocationOwnerByChannelId.set(nextChannelId, signalId)
+      }
+      const nextAllocated = isAllocatedChannelId(nextRow.channel_id)
+      patchSheetAllocatedCount(previousAllocated, nextAllocated)
     })
+    setRecentlyChangedSignalIds(signalIds)
     bumpAllocationRevision()
   }
 
@@ -202,6 +252,9 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     presets.value = []
     allocationRows.value = []
     allocationIndexBySignalId.clear()
+    allocationOwnerByChannelId.clear()
+    allocationMutationVersionBySignalId.clear()
+    setRecentlyChangedSignalIds([])
     initializedWorkspaceId.value = null
   }
 
@@ -336,6 +389,14 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
 
     const affectedSignalIds = effectiveEntries.map(item => item.signal_id)
+    const affectedSignalVersions = new Map<number, number>()
+    affectedSignalIds.forEach((signalId) => {
+      allocationMutationVersionCounter += 1
+      const nextVersion = allocationMutationVersionCounter
+      allocationMutationVersionBySignalId.set(signalId, nextVersion)
+      affectedSignalVersions.set(signalId, nextVersion)
+    })
+
     const rollback = new Map<number, SignalAllocationRow>()
     affectedSignalIds.forEach((signalId) => {
       const rowIndex = allocationIndexBySignalId.get(signalId)
@@ -346,21 +407,42 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     })
 
     effectiveEntries.forEach((entry) => {
-      applyLocalAllocationPatch(entry.signal_id, entry.channel_id)
+      applyLocalAllocationPatch(entry.signal_id, entry.channel_id, { skipRevision: true })
     })
+    setRecentlyChangedSignalIds(affectedSignalIds)
+    bumpAllocationRevision()
 
     const workspaceId = requireWorkspaceId()
     try {
       const { data } = await SignalSheetAPI.updateAllocations(workspaceId, effectiveEntries)
-      applyServerAllocationPatch(data, affectedSignalIds)
+      const stillCurrentSignalIds = affectedSignalIds.filter((signalId) => (
+        allocationMutationVersionBySignalId.get(signalId) === affectedSignalVersions.get(signalId)
+      ))
+      if (stillCurrentSignalIds.length > 0) {
+        applyServerAllocationPatch(data, stillCurrentSignalIds)
+      }
       return allocationRows.value
     } catch (error) {
       rollback.forEach((snapshot, signalId) => {
+        if (allocationMutationVersionBySignalId.get(signalId) !== affectedSignalVersions.get(signalId)) {
+          return
+        }
         const rowIndex = allocationIndexBySignalId.get(signalId)
         if (rowIndex === undefined) return
         const row = allocationRows.value[rowIndex]
         if (!row) return
-        assignAllocationRow(row, snapshot)
+        const previousAllocated = isAllocatedChannelId(row.channel_id)
+        const previousChannelId = normalizeChannelId(row.channel_id)
+        allocationRows.value[rowIndex] = cloneAllocationRow(snapshot)
+        if (previousChannelId !== null && allocationOwnerByChannelId.get(previousChannelId) === signalId) {
+          allocationOwnerByChannelId.delete(previousChannelId)
+        }
+        const nextChannelId = normalizeChannelId(snapshot.channel_id)
+        if (nextChannelId !== null) {
+          allocationOwnerByChannelId.set(nextChannelId, signalId)
+        }
+        const nextAllocated = isAllocatedChannelId(snapshot.channel_id)
+        patchSheetAllocatedCount(previousAllocated, nextAllocated)
       })
       bumpAllocationRevision()
       throw error
@@ -374,13 +456,27 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   async function autoAllocate(payload: SignalAutoAllocatePayload) {
     const workspaceId = requireWorkspaceId()
     const { data } = await SignalSheetAPI.autoAllocate(workspaceId, payload)
-    replaceAllocationRows(data.rows)
+    if (Array.isArray(data.rows) && data.rows.length > 0) {
+      applyServerAllocationPatch(
+        data.rows,
+        data.rows.map(row => row.signal_id),
+      )
+    }
     recomputeSheetAllocatedCount()
     return data
   }
 
   const hasSheet = computed(() => Boolean(sheet.value && sheet.value.signals_count > 0))
-  const allocatedCount = computed(() => allocationRows.value.filter(row => isAllocatedChannelId(row.channel_id)).length)
+  const allocatedCount = computed(() => {
+    if (sheet.value) {
+      return Math.max(0, Number(sheet.value.allocated_count ?? 0))
+    }
+    return allocationRows.value.filter(row => isAllocatedChannelId(row.channel_id)).length
+  })
+
+  function getAllocationOwnerSignalId(channelId: number): number | null {
+    return allocationOwnerByChannelId.get(channelId) ?? null
+  }
 
   return {
     sheet,
@@ -391,6 +487,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     loadingAllocations,
     importing,
     allocationRevision,
+    recentlyChangedSignalIds,
     hasSheet,
     allocatedCount,
     resetState,
@@ -404,5 +501,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     bulkSetAllocations,
     setAllocation,
     autoAllocate,
+    getAllocationOwnerSignalId,
   }
 })

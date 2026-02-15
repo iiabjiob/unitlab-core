@@ -31,6 +31,24 @@
         >
           De-allocate selected
         </UiButton>
+        <UiButton
+          v-if="selectedAllocatedPhysicalRows.length > 0"
+          variant="success"
+          size="sm"
+          :disabled="loading"
+          @click="runTestVisualOnly"
+        >
+          Run test
+        </UiButton>
+        <UiButton
+          v-if="canCreateSwitchgearFromSelection"
+          variant="secondary"
+          size="sm"
+          :disabled="loading"
+          @click="createSwitchgearVisualOnly"
+        >
+          {{ createSwitchgearButtonLabel }}
+        </UiButton>
       </div>
     </header>
 
@@ -68,65 +86,16 @@
       @selection-change="handleSelectionChange"
     >
       <template #cell="{ column, row, value }">
-        <div
+        <AllocationChannelPicker
           v-if="column.key === 'channel_select'"
-          class="flex min-w-0 items-center justify-between gap-2"
-        >
-          <span
-            class="truncate text-xs"
-            :class="allocationValueClass(asAllocationRow(row))"
-            :title="allocationDisplayLabel(asAllocationRow(row))"
-          >
-            {{ allocationDisplayLabel(asAllocationRow(row)) }}
-          </span>
-          <UiMenu
-          >
-            <UiMenuTrigger asChild>
-              <button
-                type="button"
-                class="shrink-0 rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-700 hover:bg-neutral-100 disabled:cursor-default disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
-                :disabled="loading"
-              >
-                {{ asAllocationRow(row).channel_id ? "Change" : "Bind" }}
-              </button>
-            </UiMenuTrigger>
-            <UiMenuContent>
-              <UiMenuItem
-                v-if="asAllocationRow(row).channel_id"
-                @select="() => setAllocationForRow(asAllocationRow(row), null)"
-              >
-                Unassign
-              </UiMenuItem>
-              <UiSubMenu
-                v-for="group in channelGroupsForRow(asAllocationRow(row))"
-                :key="`alloc-group-${asAllocationRow(row).signal_id}-${group.unitId}`"
-              >
-                <UiSubMenuTrigger class="flex w-full items-center justify-between px-2 py-1.5 text-left text-sm text-neutral-800 hover:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-neutral-800">
-                  <span>{{ group.unitId }}</span>
-                  <span class="text-[11px] text-neutral-500 dark:text-neutral-400">{{ group.options.length }}</span>
-                </UiSubMenuTrigger>
-                <UiSubMenuContent>
-                  <UiMenuItem
-                    v-for="option in group.options"
-                    :key="`alloc-${asAllocationRow(row).signal_id}-${option.id}`"
-                    :disabled="option.disabled"
-                    @select="() => handleAllocationMenuSelect(asAllocationRow(row), option)"
-                  >
-                    <span :class="option.disabled ? 'text-neutral-400 dark:text-neutral-500' : ''">
-                      {{ channelSuffixLabel(option.label) }}
-                    </span>
-                  </UiMenuItem>
-                </UiSubMenuContent>
-              </UiSubMenu>
-              <UiMenuItem
-                v-if="channelGroupsForRow(asAllocationRow(row)).length === 0"
-                disabled
-              >
-                No compatible channels
-              </UiMenuItem>
-            </UiMenuContent>
-          </UiMenu>
-        </div>
+          :row="asAllocationRow(row)"
+          :loading="loading"
+          :value-label="allocationDisplayLabel(asAllocationRow(row))"
+          :value-class="allocationValueClass(asAllocationRow(row))"
+          :channel-groups="channelGroupsForRow(asAllocationRow(row))"
+          :unit-status-by-id="unitStatusById"
+          @allocate="channelId => handleAllocationPickerSelect(asAllocationRow(row), channelId)"
+        />
 
         <div v-else-if="column.key === 'control'" class="flex justify-center">
           <UiMenu v-if="canControl(asAllocationRow(row))" :options="persistentControlMenuOptions">
@@ -188,7 +157,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue"
+import { computed, onBeforeUnmount, ref, shallowRef, triggerRef, watch } from "vue"
 import { storeToRefs } from "pinia"
 import {
   UiMenu,
@@ -196,15 +165,13 @@ import {
   UiMenuItem,
   UiMenuSeparator,
   UiMenuTrigger,
-  UiSubMenu,
-  UiSubMenuContent,
-  UiSubMenuTrigger,
 } from "@affino/menu-vue"
 
 import UiAffinoDataGrid from "@/components/ui/UiAffinoDataGrid.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import type { Channel, DoChannel } from "@/types/channel"
 import type { SignalAllocationRow, SignalSheet } from "@/types/signal"
+import AllocationChannelPicker from "@/pages/signals/components/AllocationChannelPicker.vue"
 import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
 import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
@@ -220,7 +187,7 @@ const deviceStore = useDeviceStore()
 const realtimeScopeStore = useRealtimeScopeStore()
 const toastStore = useToastStore()
 
-const { allocationRows, loadingAllocations, loadingSheet, allocatedCount, allocationRevision } = storeToRefs(signalSheetStore)
+const { allocationRows, loadingAllocations, loadingSheet, allocatedCount, allocationRevision, recentlyChangedSignalIds } = storeToRefs(signalSheetStore)
 const { channels } = storeToRefs(channelStore)
 
 const scopeId = "signals:allocations"
@@ -228,6 +195,7 @@ const INTERNAL_TYPE_COLUMN_KEY = "internal_type"
 const importModalOpen = ref(false)
 const persistentControlMenuOptions = { closeOnSelect: false }
 const selectedRowKeys = ref<string[]>([])
+let realtimeScopeSyncFrame: number | null = null
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const loading = computed(() => loadingAllocations.value || loadingSheet.value)
@@ -267,11 +235,12 @@ const deviceStatusById = computed(() => {
   return map
 })
 
-const channelOwnerById = computed(() => {
-  const map = new Map<number, number>()
-  allocationRows.value.forEach((row) => {
-    if (!Number.isFinite(row.channel_id as number)) return
-    map.set(Number(row.channel_id), row.signal_id)
+const unitStatusById = computed<Record<string, string>>(() => {
+  const map: Record<string, string> = {}
+  deviceStore.devices.forEach((device) => {
+    const unitId = String(device.unit_id ?? "").trim()
+    if (!unitId) return
+    map[unitId] = device.status
   })
   return map
 })
@@ -285,17 +254,20 @@ const channelUnitById = computed(() => {
   return map
 })
 
-const allocationRowByRowKey = computed(() => {
-  const map = new Map<string, SignalAllocationRow>()
-  allocationRows.value.forEach((row) => {
-    map.set(`signal-${row.signal_id}`, row)
-  })
-  return map
-})
+function signalIdFromRowKey(rowKey: string): number | null {
+  if (!rowKey.startsWith("signal-")) return null
+  const parsed = Number(rowKey.slice("signal-".length))
+  if (!Number.isFinite(parsed)) return null
+  return parsed
+}
 
 const selectedAllocationRows = computed(() => (
   selectedRowKeys.value
-    .map(rowKey => allocationRowByRowKey.value.get(rowKey))
+    .map((rowKey) => {
+      const signalId = signalIdFromRowKey(rowKey)
+      if (signalId === null) return null
+      return findAllocationRowBySignalId(signalId)
+    })
     .filter((row): row is SignalAllocationRow => Boolean(row))
 ))
 
@@ -309,6 +281,44 @@ const selectedAllocatedSignalIds = computed(() => (
   selectedAllocationRows.value
     .filter(row => Number.isFinite(row.channel_id as number))
     .map(row => row.signal_id)
+))
+
+const selectedAllocatedPhysicalRows = computed(() => (
+  selectedAllocationRows.value.filter((row) => (
+    Number.isFinite(row.channel_id as number)
+    && Number.isFinite(row.device_id as number)
+    && Boolean(row.unit_id)
+  ))
+))
+
+const selectedAllocatedPhysicalDiCount = computed(() => (
+  selectedAllocatedPhysicalRows.value.filter(row => row.signal_direction === "DI").length
+))
+
+const selectedAllocatedPhysicalDoCount = computed(() => (
+  selectedAllocatedPhysicalRows.value.filter(row => row.signal_direction === "DO").length
+))
+
+const selectedAllocatedPhysicalOnlyDiDo = computed(() => (
+  selectedAllocatedPhysicalRows.value.every(row => row.signal_direction === "DI" || row.signal_direction === "DO")
+))
+
+const switchgearCreatableCount = computed(() => {
+  if (!selectedAllocatedPhysicalOnlyDiDo.value) return 0
+  const diCount = selectedAllocatedPhysicalDiCount.value
+  const doCount = selectedAllocatedPhysicalDoCount.value
+  if (diCount < 2 || doCount < 2) return 0
+  if (diCount !== doCount) return 0
+  if (diCount % 2 !== 0) return 0
+  return diCount / 2
+})
+
+const canCreateSwitchgearFromSelection = computed(() => switchgearCreatableCount.value > 0)
+
+const createSwitchgearButtonLabel = computed(() => (
+  switchgearCreatableCount.value === 1
+    ? "Create switchgear"
+    : `Create ${switchgearCreatableCount.value} switchgears`
 ))
 
 const sourceColumnHeaders = computed(() => resolveSourceColumnHeaders(signalSheetStore.sheet))
@@ -328,22 +338,9 @@ const gridColumns = computed(() => {
   ]
 })
 
-const gridRows = computed(() =>
-  allocationRows.value.map((row) => {
-    const sourceRow = extractSourceRow(row.signal_metadata)
-    const payload: Record<string, unknown> = {
-      rowId: `signal-${row.signal_id}`,
-      ...row,
-      // Filtering/sorting must use the same human-readable text as in the cell.
-      channel_select: allocationDisplayLabel(row),
-      control: "",
-    }
-    sourceColumnHeaders.value.forEach((header, index) => {
-      payload[sourceColumnKey(index)] = sourceRow[header] ?? ""
-    })
-    return payload
-  }),
-)
+const gridRows = shallowRef<GridRow[]>([])
+const gridRowBySignalId = new Map<number, GridRow>()
+const gridRowIndexBySignalId = new Map<number, number>()
 
 type GridRow = Record<string, unknown>
 type ChannelOption = { id: number; label: string; disabled: boolean }
@@ -406,6 +403,90 @@ function extractSourceRow(signalMetadata: Record<string, unknown>): Record<strin
     return {}
   }
   return source as Record<string, unknown>
+}
+
+function assignDynamicGridFields(payload: GridRow, row: SignalAllocationRow) {
+  Object.assign(payload, row)
+  payload.rowId = `signal-${row.signal_id}`
+  // Filtering/sorting must use the same human-readable text as in the cell.
+  payload.channel_select = allocationDisplayLabel(row)
+  payload.control = ""
+}
+
+function createGridRow(row: SignalAllocationRow, headers: readonly string[]): GridRow {
+  const payload: GridRow = {}
+  assignDynamicGridFields(payload, row)
+  const sourceRow = extractSourceRow(row.signal_metadata)
+  headers.forEach((header, index) => {
+    payload[sourceColumnKey(index)] = sourceRow[header] ?? ""
+  })
+  return payload
+}
+
+function rebuildGridRows() {
+  const headers = sourceColumnHeaders.value
+  const nextRows: GridRow[] = []
+  gridRowBySignalId.clear()
+  gridRowIndexBySignalId.clear()
+
+  allocationRows.value.forEach((row, index) => {
+    const signalId = row.signal_id
+    const payload = createGridRow(row, headers)
+    gridRowBySignalId.set(signalId, payload)
+    gridRowIndexBySignalId.set(signalId, index)
+    nextRows.push(payload)
+  })
+
+  if (selectedRowKeys.value.length > 0) {
+    const allowed = new Set(nextRows.map(item => String(item.rowId)))
+    selectedRowKeys.value = selectedRowKeys.value.filter(rowKey => allowed.has(rowKey))
+  }
+
+  gridRows.value = nextRows
+}
+
+function findAllocationRowBySignalId(signalId: number): SignalAllocationRow | null {
+  const row = allocationRows.value.find(item => item.signal_id === signalId)
+  return row ?? null
+}
+
+function syncGridRowsBySignalIds(signalIds: readonly number[]) {
+  if (!signalIds.length) return
+  if (signalIds.length > 128) {
+    rebuildGridRows()
+    return
+  }
+
+  const headers = sourceColumnHeaders.value
+  let structuralChange = false
+
+  signalIds.forEach((signalId) => {
+    const row = findAllocationRowBySignalId(signalId)
+    if (!row) {
+      const existingIndex = gridRowIndexBySignalId.get(signalId)
+      if (existingIndex === undefined) return
+      const nextRows = [...gridRows.value]
+      nextRows.splice(existingIndex, 1)
+      gridRows.value = nextRows
+      structuralChange = true
+      return
+    }
+
+    const existingPayload = gridRowBySignalId.get(signalId)
+    if (!existingPayload) {
+      structuralChange = true
+      return
+    }
+    assignDynamicGridFields(existingPayload, row)
+  })
+
+  if (structuralChange) {
+    rebuildGridRows()
+    return
+  }
+
+  // shallowRef: notify grid about in-place patched row objects.
+  triggerRef(gridRows)
 }
 
 function asAllocationRow(row: GridRow): SignalAllocationRow {
@@ -473,21 +554,24 @@ const channelOptionsByType = computed<Record<"di" | "do" | "ai" | "ao", ChannelO
     grouped[type].push({
       id: channel.id,
       label: `${channelStore.resolveUnitId(channel.device_id)}/ch${channel.index + 1}`,
-      disabled: deviceStatusById.value.get(channel.device_id) !== "online",
+      disabled: false,
     })
   })
   return grouped
 })
 
 function channelOptionsForRow(row: SignalAllocationRow): ChannelOption[] {
-  const ownerByChannel = channelOwnerById.value
-  return channelOptionsBySignal(row.signal_direction).filter((option) => {
-    const ownerSignalId = ownerByChannel.get(option.id)
-    return ownerSignalId === undefined || ownerSignalId === row.signal_id
+  return channelOptionsBySignal(row.signal_direction).map((option) => {
+    const ownerSignalId = signalSheetStore.getAllocationOwnerSignalId(option.id)
+    const allocatedToAnotherSignal = ownerSignalId !== null && ownerSignalId !== row.signal_id
+    return {
+      ...option,
+      disabled: option.disabled || allocatedToAnotherSignal,
+    }
   })
 }
 
-function channelGroupsForRow(row: SignalAllocationRow): ChannelOptionGroup[] {
+function buildChannelGroupsForRow(row: SignalAllocationRow): ChannelOptionGroup[] {
   const groups = new Map<string, ChannelOption[]>()
   channelOptionsForRow(row).forEach((option) => {
     const unitId = channelUnitById.value.get(option.id) ?? "Unassigned unit"
@@ -499,28 +583,36 @@ function channelGroupsForRow(row: SignalAllocationRow): ChannelOptionGroup[] {
     groups.set(unitId, [option])
   })
 
-  return Array.from(groups.entries()).map(([unitId, options]) => ({ unitId, options }))
+  return Array.from(groups.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([unitId, options]) => ({ unitId, options }))
 }
 
-function channelSuffixLabel(label: string): string {
-  const slashIndex = label.indexOf("/")
-  if (slashIndex === -1 || slashIndex + 1 >= label.length) {
-    return label
-  }
-  return label.slice(slashIndex + 1)
+const channelGroupsBySignalId = computed(() => {
+  const map = new Map<number, ChannelOptionGroup[]>()
+  allocationRows.value.forEach((row) => {
+    map.set(row.signal_id, buildChannelGroupsForRow(row))
+  })
+  return map
+})
+
+function channelGroupsForRow(row: SignalAllocationRow): ChannelOptionGroup[] {
+  return channelGroupsBySignalId.value.get(row.signal_id) ?? []
 }
 
 function setAllocationForRow(row: SignalAllocationRow, nextChannelId: number | null) {
-  void signalSheetStore
-    .setAllocation(row.signal_id, Number.isFinite(nextChannelId as number) ? nextChannelId : null)
-    .catch((err) => {
-      toastStore.error(err instanceof Error ? err.message : String(err))
-    })
+  // Defer heavy reactive updates out of the click task to keep menu interactions responsive.
+  setTimeout(() => {
+    void signalSheetStore
+      .setAllocation(row.signal_id, Number.isFinite(nextChannelId as number) ? nextChannelId : null)
+      .catch((err) => {
+        toastStore.error(err instanceof Error ? err.message : String(err))
+      })
+  }, 0)
 }
 
-function handleAllocationMenuSelect(row: SignalAllocationRow, option: ChannelOption) {
-  if (option.disabled) return
-  setAllocationForRow(row, option.id)
+function handleAllocationPickerSelect(row: SignalAllocationRow, channelId: number | null) {
+  setAllocationForRow(row, channelId)
 }
 
 function allocationDisplayLabel(row: SignalAllocationRow): string {
@@ -707,6 +799,16 @@ async function deallocateSelected() {
   }
 }
 
+function runTestVisualOnly() {
+  toastStore.info("Run test is UI-only for now. Backend execution is disabled.")
+}
+
+function createSwitchgearVisualOnly() {
+  if (!switchgearCreatableCount.value) return
+  const noun = switchgearCreatableCount.value === 1 ? "switchgear" : "switchgears"
+  toastStore.info(`Create ${switchgearCreatableCount.value} ${noun} is UI-only for now.`)
+}
+
 async function ensureRuntimeCatalogLoaded() {
   await deviceStore.ensureLoaded()
   await channelStore.ensureLoaded()
@@ -731,6 +833,52 @@ async function refreshAll() {
 }
 
 watch(
+  sourceColumnHeaders,
+  () => {
+    rebuildGridRows()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => allocationRows.value.length,
+  () => {
+    rebuildGridRows()
+  },
+  { immediate: true, flush: "post" },
+)
+
+watch(
+  recentlyChangedSignalIds,
+  (signalIds) => {
+    syncGridRowsBySignalIds(signalIds)
+  },
+  { flush: "post" },
+)
+
+function syncRealtimeUnitScope() {
+  const units = new Set<string>()
+  allocationRows.value.forEach((row) => {
+    if (!row.channel_id) return
+    const channel = channelMap.value.get(row.channel_id)
+    if (!channel) return
+    const unitId = channelUnitById.value.get(channel.id) ?? null
+    if (unitId) units.add(unitId)
+  })
+  realtimeScopeStore.setRealtimeUnitScope(scopeId, [...units])
+}
+
+function scheduleRealtimeUnitScopeSync() {
+  if (realtimeScopeSyncFrame !== null) {
+    return
+  }
+  realtimeScopeSyncFrame = requestAnimationFrame(() => {
+    realtimeScopeSyncFrame = null
+    syncRealtimeUnitScope()
+  })
+}
+
+watch(
   () => workspaceStore.activeWorkspaceId,
   async (workspaceId) => {
     if (!workspaceId) return
@@ -742,28 +890,16 @@ watch(
 watch(
   () => [allocationRevision.value, channels.value.length, deviceStore.devices.length],
   () => {
-    const units = new Set<string>()
-    allocationRows.value.forEach((row) => {
-      if (!row.channel_id) return
-      const channel = channelMap.value.get(row.channel_id)
-      if (!channel) return
-      const unitId = channelStore.resolveUnitId(channel.device_id)
-      if (unitId) units.add(unitId)
-    })
-    realtimeScopeStore.setRealtimeUnitScope(scopeId, [...units])
+    scheduleRealtimeUnitScopeSync()
   },
-  { immediate: true },
-)
-
-watch(
-  allocationRowByRowKey,
-  (rowMap) => {
-    if (!selectedRowKeys.value.length) return
-    selectedRowKeys.value = selectedRowKeys.value.filter(rowKey => rowMap.has(rowKey))
-  },
+  { immediate: true, flush: "post" },
 )
 
 onBeforeUnmount(() => {
+  if (realtimeScopeSyncFrame !== null) {
+    cancelAnimationFrame(realtimeScopeSyncFrame)
+    realtimeScopeSyncFrame = null
+  }
   realtimeScopeStore.clearRealtimeUnitScope(scopeId)
 })
 </script>

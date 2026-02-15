@@ -220,7 +220,8 @@ async def update_signal_allocations(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    return await repo.list_allocation_rows(workspace_id)
+    touched_signal_ids = [item.signal_id for item in payload.entries]
+    return await repo.list_allocation_rows_by_signal_ids(workspace_id, touched_signal_ids)
 
 
 @router.post("/workspaces/{workspace_id}/signal-allocations/auto", response_model=SignalAutoAllocateResponseSchema)
@@ -239,7 +240,7 @@ async def auto_allocate_signal_rows(
         overwrite_existing=payload.overwrite_existing,
     )
 
-    rows = await repo.list_allocation_rows(workspace_id)
+    rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, result.changed_signal_ids)
     return SignalAutoAllocateResponseSchema(
         result=SignalAutoAllocateResultSchema(
             assigned=result.assigned,
@@ -264,6 +265,38 @@ def _parse_metadata(raw_metadata: str | None) -> SignalImportMetaSchema | None:
         return SignalImportMetaSchema.model_validate(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=exc.errors())
+
+
+def _compact_sheet_payload(raw_data: Any) -> dict[str, Any]:
+    if not isinstance(raw_data, dict):
+        return {
+            "version": 2,
+            "sheet_count": 0,
+            "default_sheet_index": 0,
+            "sheets": [],
+        }
+
+    raw_sheets = raw_data.get("sheets")
+    compact_sheets: list[dict[str, Any]] = []
+    if isinstance(raw_sheets, list):
+        for item in raw_sheets:
+            if not isinstance(item, dict):
+                continue
+            compact_sheets.append(
+                {
+                    "name": item.get("name"),
+                    "index": item.get("index"),
+                    "headers": item.get("headers") if isinstance(item.get("headers"), list) else [],
+                    "rows_count": item.get("rows_count"),
+                }
+            )
+
+    return {
+        "version": raw_data.get("version", 2),
+        "sheet_count": raw_data.get("sheet_count", len(compact_sheets)),
+        "default_sheet_index": raw_data.get("default_sheet_index", 0),
+        "sheets": compact_sheets,
+    }
 
 
 async def _build_sheet_schema(
@@ -309,7 +342,7 @@ async def _build_sheet_schema(
         source_hash=sheet.source_hash,
         rows_count=sheet.rows_count,
         schema_version=sheet.schema_version,
-        data=dict(sheet.data or {}),
+        data=_compact_sheet_payload(sheet.data),
         import_meta=import_meta,
         signals_count=signals_count,
         allocated_count=allocated_count,

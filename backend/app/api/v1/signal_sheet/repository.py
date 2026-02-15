@@ -25,6 +25,7 @@ class SignalSheetAutoAllocateResult:
     skipped: int
     missing: int
     unassigned_signal_ids: list[int]
+    changed_signal_ids: list[int]
 
 
 _DIRECTION_TO_CHANNEL_TYPE: dict[str, str] = {
@@ -162,7 +163,29 @@ class SignalSheetRepository:
     async def list_allocation_rows(self, workspace_id: int) -> list[SignalAllocationRowSchema]:
         signals = await self._list_active_signals(workspace_id)
         allocations_by_signal = await self._allocations_by_signal_id(workspace_id)
+        return await self._build_allocation_rows(signals, allocations_by_signal)
 
+    async def list_allocation_rows_by_signal_ids(
+        self,
+        workspace_id: int,
+        signal_ids: Sequence[int],
+    ) -> list[SignalAllocationRowSchema]:
+        normalized_signal_ids = {int(signal_id) for signal_id in signal_ids}
+        if not normalized_signal_ids:
+            return []
+        signals_by_id = await self._active_signals_by_ids(workspace_id, normalized_signal_ids)
+        if not signals_by_id:
+            return []
+        signals = list(signals_by_id.values())
+        signals.sort(key=lambda signal: signal.id)
+        allocations_by_signal = await self._allocations_by_signal_ids(workspace_id, normalized_signal_ids)
+        return await self._build_allocation_rows(signals, allocations_by_signal)
+
+    async def _build_allocation_rows(
+        self,
+        signals: Sequence[Signal],
+        allocations_by_signal: dict[int, SignalAllocation],
+    ) -> list[SignalAllocationRowSchema]:
         channel_ids = {allocation.channel_id for allocation in allocations_by_signal.values()}
         channels_by_id = await self._channels_by_ids(channel_ids)
 
@@ -316,6 +339,7 @@ class SignalSheetRepository:
             )
 
         used_channel_ids = {allocation.channel_id for allocation in current_allocations.values()}
+        changed_signal_ids: set[int] = set()
 
         assigned = 0
         skipped = 0
@@ -357,11 +381,15 @@ class SignalSheetRepository:
                 )
                 self.db.add(allocation)
                 current_allocations[signal.id] = allocation
+                changed_signal_ids.add(signal.id)
             else:
+                previous_channel_id = existing.channel_id
                 existing.channel_id = candidate.id
                 meta = dict(existing.allocation_meta or {})
                 meta["source"] = "auto"
                 existing.allocation_meta = meta
+                if previous_channel_id != candidate.id:
+                    changed_signal_ids.add(signal.id)
 
             used_channel_ids.add(candidate.id)
             assigned += 1
@@ -372,6 +400,7 @@ class SignalSheetRepository:
             skipped=skipped,
             missing=missing,
             unassigned_signal_ids=sorted(set(unassigned)),
+            changed_signal_ids=sorted(changed_signal_ids),
         )
 
     async def count_active_signals(self, workspace_id: int) -> int:
@@ -430,6 +459,29 @@ class SignalSheetRepository:
                 Signal.workspace_id == workspace_id,
                 Signal.deleted_at.is_(None),
                 Signal.is_active.is_(True),
+            )
+            .options(selectinload(SignalAllocation.signal))
+        )
+        rows = await self.db.execute(stmt)
+        allocations = list(rows.scalars().all())
+        return {item.signal_id: item for item in allocations}
+
+    async def _allocations_by_signal_ids(
+        self,
+        workspace_id: int,
+        signal_ids: set[int],
+    ) -> dict[int, SignalAllocation]:
+        if not signal_ids:
+            return {}
+        stmt: Select[tuple[SignalAllocation]] = (
+            select(SignalAllocation)
+            .join(Signal, SignalAllocation.signal_id == Signal.id)
+            .where(
+                SignalAllocation.workspace_id == workspace_id,
+                Signal.workspace_id == workspace_id,
+                Signal.deleted_at.is_(None),
+                Signal.is_active.is_(True),
+                SignalAllocation.signal_id.in_(signal_ids),
             )
             .options(selectinload(SignalAllocation.signal))
         )

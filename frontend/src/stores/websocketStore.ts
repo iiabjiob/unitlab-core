@@ -14,8 +14,10 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
   const hasStarted = ref(false)
   const isConnecting = ref(false)
 
-  let manualClose = false
+  let manualDisconnect = false
+  let intentionallyClosedSocket: WebSocket | null = null
   let connectTimeout: ReturnType<typeof setTimeout> | null = null
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
   const messageQueue: WSMessage[] = []
   const MAX_QUEUE = 2000
@@ -26,38 +28,61 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
   const reconnectDelay = 1000
   const maxReconnectDelay = 30000
 
+  function clearConnectTimeout() {
+    if (!connectTimeout) return
+    clearTimeout(connectTimeout)
+    connectTimeout = null
+  }
+
+  function clearReconnectTimer() {
+    if (!reconnectTimer) return
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+
   /* ---------------- CONNECT ---------------- */
   function connect() {
+    const activeSocket = socket.value
+    if (
+      activeSocket &&
+      (
+        activeSocket.readyState === WebSocket.OPEN ||
+        activeSocket.readyState === WebSocket.CONNECTING
+      )
+    ) {
+      logger.debug("🔒 Skip connect(): socket already open/connecting")
+      return
+    }
+
     hasStarted.value = true
     isConnecting.value = true
-    manualClose = false
+    manualDisconnect = false
+    clearReconnectTimer()
 
-    if (socket.value) {
+    if (activeSocket) {
       logger.debug("♻️ Closing previous socket before reconnect")
-      socket.value.close()
+      intentionallyClosedSocket = activeSocket
+      activeSocket.close()
       socket.value = null
     }
-    if (connectTimeout) {
-      clearTimeout(connectTimeout)
-      connectTimeout = null
-    }
+    clearConnectTimeout()
 
     const wsProtocol = location.protocol === "https:" ? "wss" : "ws"
     const wsUrl = `${wsProtocol}://${location.host}/ws/ws`
 
-    socket.value = new WebSocket(wsUrl)
+    const ws = new WebSocket(wsUrl)
+    socket.value = ws
 
-    socket.value.onopen = () => {
-      if (connectTimeout) {
-        clearTimeout(connectTimeout)
-        connectTimeout = null
-      }
+    ws.onopen = () => {
+      if (socket.value !== ws) return
+      clearConnectTimeout()
+      clearReconnectTimer()
       isConnected.value = true
       isConnecting.value = false
       everConnected.value = true
       reconnectAttempts.value = 0
 
-      logger.info("✅ Connected")
+      logger.info(`✅ Connected (${wsUrl})`)
 
       // flush queue
       while (messageQueue.length > 0) {
@@ -65,34 +90,48 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
       }
     }
 
-    socket.value.onclose = (ev) => {
-      if (connectTimeout) {
-        clearTimeout(connectTimeout)
-        connectTimeout = null
+    ws.onclose = (ev) => {
+      const isIntentional = intentionallyClosedSocket === ws || manualDisconnect
+      if (intentionallyClosedSocket === ws) {
+        intentionallyClosedSocket = null
       }
-      logger.warn("💥 Disconnected", ev)
+      if (socket.value !== ws) {
+        return
+      }
+
+      clearConnectTimeout()
+      logger.warn(
+        `💥 Disconnected code=${ev.code} reason="${ev.reason || "n/a"}" clean=${ev.wasClean}`,
+        ev,
+      )
       isConnected.value = false
       isConnecting.value = false
       socket.value = null
 
-      if (!manualClose) scheduleReconnect()
+      if (!isIntentional) scheduleReconnect()
     }
 
-    socket.value.onerror = (err) => {
+    ws.onerror = (err) => {
+      if (socket.value !== ws) return
       logger.error("⚠️ WebSocket Error", err)
-      socket.value?.close()
+      ws.close()
     }
 
-    socket.value.onmessage = (ev) => {
-      const msg: WSEvent = JSON.parse(ev.data)
-      handleWsEvent(msg)
+    ws.onmessage = (ev) => {
+      if (socket.value !== ws) return
+      try {
+        const msg: WSEvent = JSON.parse(ev.data)
+        handleWsEvent(msg)
+      } catch (error) {
+        logger.error("⚠️ Failed to parse WS message", error)
+      }
     }
 
     connectTimeout = setTimeout(() => {
-      if (!socket.value) return
-      if (socket.value.readyState === WebSocket.CONNECTING) {
+      if (socket.value !== ws) return
+      if (ws.readyState === WebSocket.CONNECTING) {
         logger.warn(`⏱️ Connect timeout after ${CONNECT_TIMEOUT_MS}ms, restarting socket`)
-        socket.value.close()
+        ws.close()
       }
     }, CONNECT_TIMEOUT_MS)
   }
@@ -122,6 +161,9 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
 
   /* ---------------- RECONNECT ---------------- */
   function scheduleReconnect() {
+    if (manualDisconnect) return
+    if (reconnectTimer) return
+
     reconnectAttempts.value++
 
     const delay = Math.min(
@@ -131,7 +173,9 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
 
     logger.info(`⏳ Reconnect in ${(delay / 1000).toFixed(1)}s (#${reconnectAttempts.value})`)
 
-    setTimeout(() => {
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      if (manualDisconnect) return
       logger.info("🔄 Reconnecting…")
       connect()
     }, delay)
@@ -139,12 +183,15 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
 
   /* ---------------- MANUAL CLOSE ---------------- */
   function disconnect() {
-    manualClose = true
-    if (connectTimeout) {
-      clearTimeout(connectTimeout)
-      connectTimeout = null
+    manualDisconnect = true
+    clearReconnectTimer()
+    clearConnectTimeout()
+
+    if (socket.value) {
+      intentionallyClosedSocket = socket.value
+      socket.value.close()
     }
-    socket.value?.close()
+
     socket.value = null
     isConnected.value = false
     isConnecting.value = false

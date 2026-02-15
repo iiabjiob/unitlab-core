@@ -1,26 +1,17 @@
 <template>
-  <UiSelect
+  <ChannelTreePicker
     :model-value="modelValue"
+    :channel-type="channelType"
     :name="name"
-    placeholder="— select channel —"
+    :exclude-ids="excludeIds"
     :disabled="disabled"
     @update:modelValue="updateValue"
-  >
-    <option
-      v-for="ch in filtered"
-      :key="ch.id"
-      :value="ch.id"
-    >
-      {{ channelStore.resolveChannelFullLabel(ch) }}
-    </option>
-  </UiSelect>
+  />
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue"
-import { useChannelStore } from "@/stores/channelStore"
 import type { ChannelType } from "@/types/channel"
-import UiSelect from "./UiSelect.vue"
+import ChannelTreePicker from "./ChannelTreePicker.vue"
 
 const props = defineProps<{
   modelValue: number | null
@@ -32,16 +23,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "update:modelValue", value: number | null): void
 }>()
-
-const channelStore = useChannelStore()
-
-const filtered = computed(() =>
-  channelStore.channels.filter(
-    ch =>
-      ch.type === props.channelType &&
-      !(props.excludeIds?.includes(ch.id))
-  )
-)
 
 function updateValue(val: string | number | null) {
   if (val === null || val === "") {
