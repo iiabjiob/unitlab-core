@@ -89,8 +89,8 @@
           <div class="ui-affino-grid__index-header" :style="indexHeaderStyle">#</div>
           <div v-if="showFilterRow" class="ui-affino-grid__index-filter" :style="indexFilterStyle"></div>
 
-          <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @scroll.passive="handleLinkedViewportScroll">
-            <div class="ui-affino-grid__index-canvas">
+          <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @wheel="handleLinkedViewportWheel">
+            <div class="ui-affino-grid__index-canvas" :style="linkedViewportCanvasStyle">
               <template v-if="hasRenderableData">
                 <div
                   v-if="topSpacerPx > 0"
@@ -134,8 +134,8 @@
           </div>
           <div v-if="showFilterRow" class="ui-affino-grid__select-filter" :style="indexFilterStyle"></div>
 
-          <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @scroll.passive="handleLinkedViewportScroll">
-            <div class="ui-affino-grid__select-canvas">
+          <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @wheel="handleLinkedViewportWheel">
+            <div class="ui-affino-grid__select-canvas" :style="linkedViewportCanvasStyle">
               <template v-if="hasRenderableData">
                 <div
                   v-if="topSpacerPx > 0"
@@ -221,8 +221,8 @@
             </div>
           </div>
 
-          <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @scroll.passive="handleLinkedViewportScroll">
-            <div class="ui-affino-grid__pinned-canvas">
+          <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel="handleLinkedViewportWheel">
+            <div class="ui-affino-grid__pinned-canvas" :style="linkedViewportCanvasStyle">
               <template v-if="hasRenderableData">
                 <div
                   v-if="topSpacerPx > 0"
@@ -464,8 +464,8 @@
             </div>
           </div>
 
-          <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @scroll.passive="handleLinkedViewportScroll">
-            <div class="ui-affino-grid__pinned-canvas">
+          <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel="handleLinkedViewportWheel">
+            <div class="ui-affino-grid__pinned-canvas" :style="linkedViewportCanvasStyle">
               <template v-if="hasRenderableData">
                 <div
                   v-if="topSpacerPx > 0"
@@ -667,6 +667,7 @@ const viewportMetrics = reactive<ViewportMetricsSnapshot>({
 })
 const observedViewportWidth = ref<number | null>(null)
 const observedViewportHeight = ref<number | null>(null)
+const linkedViewportScrollTop = ref(0)
 const rowModelRevision = ref(0)
 const measuredHeaderHeight = ref<number | null>(null)
 const measuredFilterHeight = ref<number | null>(null)
@@ -1089,6 +1090,12 @@ const indexHeaderStyle = computed<Record<string, string>>(() => resolveMeasuredH
 const indexFilterStyle = computed<Record<string, string>>(() => resolveMeasuredHeightStyle(measuredFilterHeight.value))
 const pinnedHeaderRowStyle = computed<Record<string, string>>(() => resolveMeasuredHeightStyle(measuredHeaderHeight.value))
 const pinnedFilterRowStyle = computed<Record<string, string>>(() => resolveMeasuredHeightStyle(measuredFilterHeight.value))
+const linkedViewportCanvasStyle = computed<Record<string, string>>(() => ({
+  transform: linkedViewportScrollTop.value !== 0
+    ? `translate3d(0, ${-linkedViewportScrollTop.value}px, 0)`
+    : "translate3d(0, 0, 0)",
+  willChange: "transform",
+}))
 const rowHeightPx = computed(() => {
   if (rowHeightMode.value === "auto") {
     return Math.max(baseRowHeight.value, measuredAutoRowHeight.value ?? baseRowHeight.value)
@@ -1474,7 +1481,6 @@ let hoverClearTimer: ReturnType<typeof setTimeout> | null = null
 let initialViewportRecoveryAttempts = 0
 let lastHandledScrollTop = Number.NaN
 let lastHandledScrollLeft = Number.NaN
-let syncingLinkedScroll = false
 const resizeInteractionActive = ref(false)
 const suppressHeaderSortUntil = ref(0)
 const RESIZE_SORT_GUARD_MS = 140
@@ -1634,26 +1640,46 @@ function updateMeasuredHeaderHeights() {
 }
 
 function syncLinkedScroll(scrollTop: number) {
-  syncingLinkedScroll = true
-  try {
-    const indexViewport = indexViewportRef.value
-    if (indexViewport && indexViewport.scrollTop !== scrollTop) {
-      indexViewport.scrollTop = scrollTop
+  linkedViewportScrollTop.value = Math.max(0, Math.trunc(scrollTop))
+}
+
+function normalizeWheelDelta(delta: number, deltaMode: number, pageSize: number): number {
+  if (!Number.isFinite(delta)) return 0
+  if (deltaMode === 1) return delta * 16
+  if (deltaMode === 2) return delta * Math.max(1, pageSize)
+  return delta
+}
+
+function handleLinkedViewportWheel(event: WheelEvent) {
+  const bodyViewport = viewportRef.value
+  if (!bodyViewport) return
+
+  let consumed = false
+
+  const deltaY = normalizeWheelDelta(event.deltaY, event.deltaMode, bodyViewport.clientHeight)
+  if (deltaY !== 0) {
+    const maxTop = Math.max(0, bodyViewport.scrollHeight - bodyViewport.clientHeight)
+    const nextTop = Math.max(0, Math.min(maxTop, bodyViewport.scrollTop + deltaY))
+    if (nextTop !== bodyViewport.scrollTop) {
+      bodyViewport.scrollTop = nextTop
+      syncLinkedScroll(nextTop)
+      consumed = true
     }
-    const selectionViewport = selectionViewportRef.value
-    if (selectionViewport && selectionViewport.scrollTop !== scrollTop) {
-      selectionViewport.scrollTop = scrollTop
+  }
+
+  const mainViewport = mainViewportRef.value
+  const deltaX = normalizeWheelDelta(event.deltaX, event.deltaMode, mainViewport?.clientWidth ?? 0)
+  if (mainViewport && deltaX !== 0) {
+    const maxLeft = Math.max(0, mainViewport.scrollWidth - mainViewport.clientWidth)
+    const nextLeft = Math.max(0, Math.min(maxLeft, mainViewport.scrollLeft + deltaX))
+    if (nextLeft !== mainViewport.scrollLeft) {
+      mainViewport.scrollLeft = nextLeft
+      consumed = true
     }
-    const leftPinnedViewport = leftPinnedViewportRef.value
-    if (leftPinnedViewport && leftPinnedViewport.scrollTop !== scrollTop) {
-      leftPinnedViewport.scrollTop = scrollTop
-    }
-    const rightPinnedViewport = rightPinnedViewportRef.value
-    if (rightPinnedViewport && rightPinnedViewport.scrollTop !== scrollTop) {
-      rightPinnedViewport.scrollTop = scrollTop
-    }
-  } finally {
-    syncingLinkedScroll = false
+  }
+
+  if (consumed && event.cancelable) {
+    event.preventDefault()
   }
 }
 
@@ -2139,24 +2165,6 @@ function handleBodyScroll(event: Event) {
   }
   lastHandledScrollTop = nextTop
   syncLinkedScroll(nextTop)
-  if (rowHeightMode.value === "auto") {
-    scheduleAutoRowHeightMeasure()
-  }
-  scheduleViewportSync()
-}
-
-function handleLinkedViewportScroll(event: Event) {
-  if (syncingLinkedScroll) return
-  const source = event.currentTarget as HTMLElement | null
-  const bodyViewport = viewportRef.value
-  if (!source || !bodyViewport) return
-
-  const nextTop = Math.max(0, source.scrollTop)
-  if (nextTop === bodyViewport.scrollTop) return
-
-  bodyViewport.scrollTop = nextTop
-  lastHandledScrollTop = bodyViewport.scrollTop
-  syncLinkedScroll(bodyViewport.scrollTop)
   if (rowHeightMode.value === "auto") {
     scheduleAutoRowHeightMeasure()
   }
@@ -2923,11 +2931,9 @@ function columnStyle(width: number) {
 .ui-affino-grid__pinned-viewport {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow-y: hidden;
   overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  position: relative;
 }
 
 .ui-affino-grid__pinned-canvas {
@@ -2938,11 +2944,9 @@ function columnStyle(width: number) {
 .ui-affino-grid__index-viewport {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow-y: hidden;
   overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  position: relative;
   border-right: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(255, 255, 255, 0.95);
 }
@@ -2988,11 +2992,9 @@ function columnStyle(width: number) {
 .ui-affino-grid__select-viewport {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow-y: hidden;
   overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  position: relative;
   border-right: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(255, 255, 255, 0.95);
 }

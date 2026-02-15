@@ -63,9 +63,9 @@
               'is-channel': isChannelNode(node.value),
             }"
             :aria-level="nodeLevel(node.value)"
-            :aria-expanded="isUnitNode(node.value) ? String(isExpanded(node.value)) : undefined"
-            :aria-selected="String(isNodeSelected(node.value))"
-            :aria-disabled="String(isNodeDisabled(node.value))"
+            :aria-expanded="isUnitNode(node.value) ? isExpanded(node.value) : undefined"
+            :aria-selected="isNodeSelected(node.value)"
+            :aria-disabled="isNodeDisabled(node.value)"
             role="treeitem"
             :tabindex="isNodeActive(node.value) ? 0 : -1"
             @keydown="onNodeKeydown($event, node.value)"
@@ -134,7 +134,7 @@ const popover = usePopoverController({
 
 const floating = useFloatingPopover(popover, {
   strategy: "fixed",
-  placement: "bottom-start",
+  placement: "bottom",
   align: "start",
   gutter: 6,
   viewportPadding: 8,
