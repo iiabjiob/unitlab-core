@@ -1,10 +1,10 @@
 <template>
-  <UiModal :open="open" title="Import Signal List" maxWidthClass="max-w-3xl" @close="emitClose">
-    <form class="space-y-4" @submit.prevent="handleSubmit">
-      <UiAlert
+  <UiModal :open="open" title="Import Signal List" maxWidthClass="max-w-3xl h-[80vh]" @close="emitClose">
+    <form id="signal-import-form" class="space-y-4" @submit.prevent="handleSubmit">
+      <!-- <UiAlert
         type="info"
         message="Upload an Excel signal list (.xls, .xlsx, .xlsm). Include headers and any metadata columns required by your workspace schema."
-      />
+      /> -->
 
       <div
         class="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-300"
@@ -19,12 +19,17 @@
         </div>
       </div>
 
+      <div v-if="error" ref="errorAnchorRef">
+        <UiAlert type="error" :message="error" />
+      </div>
+
       <div v-if="step === 'upload'">
         <label class="mb-1 block text-sm font-semibold text-neutral-700 dark:text-neutral-200">Signal list file</label>
         <div
-          class="group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-neutral-300 bg-white px-6 py-10 text-center text-sm text-neutral-600 transition hover:border-primary-500 hover:bg-primary-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+          class="group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center text-sm transition"
           :class="{
-            'border-primary-500 bg-primary-50 text-primary-700 shadow-xl dark:border-primary-400 dark:bg-primary-500/20 dark:text-primary-200': dropActive,
+            'border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-400 dark:bg-emerald-500/20 dark:text-emerald-200': dropActive,
+            'border-neutral-300 bg-white text-neutral-600 hover:border-primary-500 hover:bg-primary-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200': !dropActive,
             'pointer-events-none opacity-60': parsing || loading,
           }"
           tabindex="0"
@@ -64,15 +69,13 @@
           <label class="block text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
             Preset (optional)
           </label>
-          <select
+          <UiAffinoListbox
             v-model="selectedPresetId"
-            class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
-          >
-            <option :value="null">Manual wizard</option>
-            <option v-for="preset in presets" :key="preset.id" :value="preset.id">
-              {{ preset.name }}
-            </option>
-          </select>
+            :options="presetListboxOptions"
+            placeholder="Manual wizard"
+            aria-label="Preset"
+            :disabled="loading || parsing"
+          />
           <p class="text-xs text-neutral-500 dark:text-neutral-400">
             Choose a saved preset to prefill sheet/column/type mapping in the wizard.
           </p>
@@ -107,14 +110,12 @@
         <div v-if="step === 'columns'" class="space-y-4">
           <div>
             <label class="mb-1 block text-sm font-semibold text-neutral-700 dark:text-neutral-200">Worksheet</label>
-            <select
+            <UiAffinoListbox
               v-model="selectedSheetName"
-              class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
-            >
-              <option v-for="sheet in sheetNames" :key="sheet" :value="sheet">
-                {{ sheet }}
-              </option>
-            </select>
+              :options="worksheetListboxOptions"
+              aria-label="Worksheet"
+              :disabled="loading || parsing || worksheetListboxOptions.length === 0"
+            />
           </div>
 
           <div v-if="availableColumns.length">
@@ -155,50 +156,24 @@
           </p>
         </div>
 
-        <div v-else-if="step === 'hmi'" class="space-y-4">
-          <div>
-            <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">HMI text representation</p>
-            <p class="text-xs text-neutral-500 dark:text-neutral-400">
-              Pick the column that best describes the signal name shown to operators. We will log this label for diagnostics.
-            </p>
-          </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-200">Column</label>
-            <select
-              v-model.number="hmiColumnIndex"
-              class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
-            >
-              <option v-for="column in selectedColumnOptions" :key="column.index" :value="column.index">
-                {{ column.header }}
-              </option>
-            </select>
-          </div>
-          <div class="rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-sm dark:border-neutral-700 dark:bg-neutral-900/40">
-            <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Sample values</p>
-            <ul class="mt-2 space-y-1 text-neutral-800 dark:text-neutral-100">
-              <li v-for="(sample, index) in hmiSamples" :key="index">{{ sample }}</li>
-              <li v-if="!hmiSamples.length" class="text-xs text-neutral-500 dark:text-neutral-400">No data rows detected yet.</li>
-            </ul>
-          </div>
-        </div>
-
         <div v-else-if="step === 'types'" class="space-y-4">
           <div>
             <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">Type mapping</p>
             <p class="text-xs text-neutral-500 dark:text-neutral-400">
-              Choose the sheet column with vendor-specific types and map them to internal categories. Rows without a mapping will be skipped.
+              Select the column that contains vendor type codes, then map each code to an internal signal type.
+            </p>
+            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+              Example: <span class="font-semibold text-neutral-700 dark:text-neutral-200">SPS → DI</span>, <span class="font-semibold text-neutral-700 dark:text-neutral-200">SPC → DO</span>. Unmapped codes are skipped.
             </p>
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-200">Type column</label>
-            <select
-              v-model.number="typeColumnIndex"
-              class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
-            >
-              <option v-for="column in selectedColumnOptions" :key="column.index" :value="column.index">
-                {{ column.header }}
-              </option>
-            </select>
+            <UiAffinoListbox
+              v-model="typeColumnIndex"
+              :options="typeColumnListboxOptions"
+              aria-label="Type column"
+              :disabled="loading || parsing || typeColumnListboxOptions.length === 0"
+            />
           </div>
           <div v-if="typeValueOptions.length" class="space-y-2">
             <div
@@ -210,16 +185,15 @@
                 <p class="font-medium text-neutral-800 dark:text-neutral-100">{{ option.label }}</p>
                 <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ option.count }} rows</p>
               </div>
-              <select
-                class="w-full rounded-lg border border-neutral-300 bg-white px-2 py-1 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 sm:w-52"
-                :value="typeMapping[option.key] ?? ''"
-                @change="event => onTypeMappingChange(option.key, event)"
-              >
-                <option value="">Skip</option>
-                <option v-for="internal in internalTypeOptions" :key="internal.value" :value="internal.value">
-                  {{ internal.label }}
-                </option>
-              </select>
+              <div class="sm:w-52">
+                <UiAffinoListbox
+                  :model-value="typeMapping[option.key] ?? ''"
+                  :options="typeMappingListboxOptions"
+                  aria-label="Internal type mapping"
+                  :disabled="loading || parsing"
+                  @update:model-value="value => onTypeMappingChange(option.key, value)"
+                />
+              </div>
             </div>
           </div>
           <p v-else class="text-sm text-neutral-500 dark:text-neutral-400">
@@ -242,9 +216,10 @@
         </div>
       </template>
 
-      <p v-if="error" class="text-sm text-red-500">{{ error }}</p>
+    </form>
 
-      <div class="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
+    <template #footer>
+      <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <UiButton type="button" variant="secondary" @click="emitClose" :disabled="loading || parsing">
           Cancel
         </UiButton>
@@ -270,6 +245,7 @@
           <UiButton
             v-else
             type="submit"
+            form="signal-import-form"
             variant="primary"
             :disabled="!canSubmitFinal || loading"
           >
@@ -282,7 +258,7 @@
           </UiButton>
         </div>
       </div>
-    </form>
+    </template>
   </UiModal>
   <ConfirmModal
     :open="deletePresetOpen"
@@ -296,11 +272,13 @@
 </template>
 
 <script setup lang="ts">
+import axios from "axios"
 import { computed, nextTick, ref, watch } from "vue"
 import * as XLSX from "xlsx"
 
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import UiAlert from "@/components/ui/UiAlert.vue"
+import UiAffinoListbox from "@/components/ui/UiAffinoListbox.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiModal from "@/components/ui/UiModal.vue"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
@@ -319,7 +297,6 @@ const INTERNAL_TYPE_COLUMN_KEY = "internal_type"
 const STEP_ITEMS = [
   { id: "upload", label: "Upload file" },
   { id: "columns", label: "Columns" },
-  { id: "hmi", label: "HMI text" },
   { id: "types", label: "Type mapping" },
 ] as const
 type WizardStep = (typeof STEP_ITEMS)[number]["id"]
@@ -331,6 +308,7 @@ const file = ref<File | null>(null)
 const fileName = ref("")
 const loading = ref(false)
 const error = ref<string | null>(null)
+const errorAnchorRef = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const parsing = ref(false)
 const workbook = ref<XLSX.WorkBook | null>(null)
@@ -346,7 +324,6 @@ const sheetColumns = ref<Record<string, SheetColumn[]>>({})
 const sheetRows = ref<Record<string, unknown[][]>>({})
 const selectedSheetName = ref<string | null>(null)
 const selectedColumnsBySheet = ref<Record<string, number[]>>({})
-const hmiColumnIndex = ref<number | null>(null)
 const typeColumnIndex = ref<number | null>(null)
 const typeMapping = ref<Record<string, InternalSignalType>>({})
 const selectedPresetId = ref<number | null>(null)
@@ -359,6 +336,10 @@ const internalTypeOptions: Array<{ value: InternalSignalType; label: string }> =
   { value: "do", label: "Digital output (DO)" },
   { value: "ao", label: "Analog output (AO)" },
   { value: "ai", label: "Analog input (AI)" },
+]
+const typeMappingListboxOptions: Array<{ value: InternalSignalType | ""; label: string }> = [
+  { value: "", label: "Skip" },
+  ...internalTypeOptions,
 ]
 
 const sheetNames = computed(() => workbook.value?.SheetNames ?? [])
@@ -373,26 +354,33 @@ const selectedColumnOptions = computed(() =>
     ? (sheetColumns.value[selectedSheetName.value] ?? []).filter(column => selectedColumnSet.value.has(column.index))
     : []
 )
-const hmiSamples = computed(() => sampleColumnValues(hmiColumnIndex.value, 5))
 const typeValueOptions = computed(() => buildTypeValueOptions())
 const hasTypeMappings = computed(() => Object.keys(typeMapping.value).length > 0)
 const activeStepIndex = computed(() => stepOrder.indexOf(step.value))
 const isFinalStep = computed(() => step.value === "types")
-const canGoBack = computed(() => step.value === "hmi" || step.value === "types")
+const canGoBack = computed(() => step.value === "types")
 const columnsStepValid = computed(
   () => !!selectedSheetName.value && availableColumns.value.length > 0 && selectedColumnCount.value > 0,
 )
-const hmiStepValid = computed(() => columnsStepValid.value && hmiColumnIndex.value !== null)
 const typeStepValid = computed(
-  () => hmiStepValid.value && typeColumnIndex.value !== null && typeValueOptions.value.length > 0 && hasTypeMappings.value,
+  () => columnsStepValid.value && typeColumnIndex.value !== null && typeValueOptions.value.length > 0 && hasTypeMappings.value,
 )
 const canAdvance = computed(() => {
   if (step.value === "columns") return columnsStepValid.value
-  if (step.value === "hmi") return hmiStepValid.value
   return false
 })
 const canSubmitFinal = computed(() => step.value === "types" && typeStepValid.value)
 const presets = computed(() => signalSheetStore.presets)
+const presetListboxOptions = computed(() => [
+  { value: null, label: "Manual wizard" },
+  ...presets.value.map(preset => ({ value: preset.id, label: preset.name })),
+])
+const worksheetListboxOptions = computed(() =>
+  sheetNames.value.map(sheet => ({ value: sheet, label: sheet })),
+)
+const typeColumnListboxOptions = computed(() =>
+  selectedColumnOptions.value.map(column => ({ value: column.index, label: column.header })),
+)
 const selectedPreset = computed<SignalSheetPreset | null>(() =>
   presets.value.find(item => item.id === selectedPresetId.value) ?? null,
 )
@@ -442,7 +430,6 @@ function resetWorkflowState(options: { preserveError?: boolean } = {}) {
   clearWorkbookState()
   file.value = null
   fileName.value = ""
-  hmiColumnIndex.value = null
   typeColumnIndex.value = null
   typeMapping.value = {}
   savePresetName.value = ""
@@ -480,10 +467,56 @@ async function handleSubmit() {
     resetWorkflowState()
     emit("close")
   } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
+    error.value = toReadableImportError(err)
+    await nextTick()
+    errorAnchorRef.value?.scrollIntoView({ behavior: "smooth", block: "nearest" })
   } finally {
     loading.value = false
   }
+}
+
+function toReadableImportError(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    const detail = typeof err.response?.data?.detail === "string" ? err.response.data.detail : ""
+    const normalized = detail.replace(/^Unable to parse workbook:\s*/i, "").trim()
+
+    const limit = detail.match(/Import limit exceeded:\s*(\d+)\s*rows\s*\(max\s*(\d+)\)/i)
+    if (limit) {
+      return `The file is too large: ${limit[1]} rows. The maximum allowed is ${limit[2]} rows.`
+    }
+
+    if (/Uploaded file is empty/i.test(detail)) {
+      return "The file is empty. Upload a signal list file with data."
+    }
+
+    if (/Workbook does not contain any worksheets/i.test(normalized)) {
+      return "No worksheets were found in the file. Check the file and try again."
+    }
+
+    if (/Unable to find any column headers/i.test(normalized)) {
+      return "Column headers could not be found. Make sure the first row contains column names."
+    }
+
+    if (/Preset metadata is invalid/i.test(detail)) {
+      return "The selected preset is invalid. Choose another preset or use manual setup."
+    }
+
+    if (/Invalid metadata JSON/i.test(detail)) {
+      return "Invalid import settings. Reopen the dialog and try again."
+    }
+
+    if (detail.trim()) {
+      return normalized || detail
+    }
+
+    return "Could not import the file. Check the data and try again."
+  }
+
+  if (err instanceof Error && err.message.trim()) {
+    return err.message
+  }
+
+  return "Could not import the file. Please try again."
 }
 
 async function handleSelectedFile(selected: File | null) {
@@ -558,6 +591,10 @@ function onDragEnter(event: DragEvent) {
 function onDragOver(event: DragEvent) {
   if (loading.value || parsing.value) return
   event.preventDefault()
+  dropActive.value = true
+  if (dragCounter.value === 0) {
+    dragCounter.value = 1
+  }
   if (event.dataTransfer) {
     event.dataTransfer.dropEffect = "copy"
   }
@@ -692,14 +729,6 @@ function applyPresetToSelection(meta: SignalImportMeta) {
     const selectedSet = new Set<number>(
       selectedFromPreset.length ? selectedFromPreset : columns.map(column => column.index),
     )
-
-    if (meta.hmi_representation) {
-      const hmiColumn = findColumnByHeader(columns, meta.hmi_representation)
-      if (hmiColumn) {
-        hmiColumnIndex.value = hmiColumn.index
-        selectedSet.add(hmiColumn.index)
-      }
-    }
 
     if (meta.type_column) {
       const typeColumn = findColumnByHeader(columns, meta.type_column)
@@ -836,12 +865,8 @@ function buildTypeValueOptions() {
 function ensureValidColumnSelections() {
   const columns = selectedColumnOptions.value
   if (!columns.length) {
-    hmiColumnIndex.value = null
     typeColumnIndex.value = null
     return
-  }
-  if (!columns.some(column => column.index === hmiColumnIndex.value)) {
-    hmiColumnIndex.value = columns[0].index
   }
   if (!columns.some(column => column.index === typeColumnIndex.value)) {
     typeColumnIndex.value = guessTypeColumnIndex(columns)
@@ -857,14 +882,13 @@ function guessTypeColumnIndex(columns: SheetColumn[]): number | null {
   return columns[0]?.index ?? null
 }
 
-function onTypeMappingChange(key: string, event: Event) {
-  const select = event.target as HTMLSelectElement
-  const value = (select.value || "") as InternalSignalType | ""
+function onTypeMappingChange(key: string, value: string | number | null) {
+  const normalizedValue = (typeof value === "string" ? value : "") as InternalSignalType | ""
   const next = { ...typeMapping.value }
-  if (!value) {
+  if (!normalizedValue) {
     delete next[key]
   } else {
-    next[key] = value
+    next[key] = normalizedValue
   }
   typeMapping.value = next
 }
@@ -887,10 +911,6 @@ async function buildPreparedImportPayload(): Promise<{ file: File; metadata: Sig
   )
   if (!orderedColumns.length) {
     throw new Error("Select at least one column to continue.")
-  }
-  const hmiColumn = orderedColumns.find(column => column.index === hmiColumnIndex.value)
-  if (!hmiColumn) {
-    throw new Error("Choose an HMI text column before importing.")
   }
   if (typeColumnIndex.value === null) {
     throw new Error("Choose a type column before importing.")
@@ -941,7 +961,6 @@ async function buildPreparedImportPayload(): Promise<{ file: File; metadata: Sig
     sheet_name: sanitizedName,
     source_sheet_name: selectedSheetName.value,
     selected_columns: orderedColumns.map(column => column.header),
-    hmi_representation: hmiColumn.header,
     type_column: typeColumn.header,
     type_mapping: displayMapping,
     internal_type_column: INTERNAL_TYPE_COLUMN_KEY,

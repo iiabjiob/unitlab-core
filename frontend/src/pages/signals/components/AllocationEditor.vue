@@ -1,23 +1,35 @@
 <template>
   <div class="flex h-full min-h-0 min-w-0 flex-col gap-4 p-3 md:p-4">
     <header class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 dark:text-neutral-400">Live Signal Sheet</p>
-        <p class="text-sm text-neutral-700 dark:text-neutral-200">
-          {{ summaryText }}
-        </p>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
+      <div class="flex flex-wrap items-center gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 dark:text-neutral-400">Live Signal Sheet</p>
+          <p class="text-sm text-neutral-700 dark:text-neutral-200">
+            {{ summaryText }}
+          </p>
+        </div>
         <UiButton variant="primary" size="sm" :disabled="workspaceMissing || loading" @click="openImportModal">
           + Import Signal List
         </UiButton>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
         <UiButton
+          v-if="selectedUnassignedSignalIds.length > 0"
           variant="secondary"
           size="sm"
-          :disabled="loading || !unassignedSignalIds.length"
-          @click="autoAllocateUnassigned"
+          :disabled="loading"
+          @click="allocateSelectedUnassigned"
         >
-          Auto allocate unassigned
+          Allocate selected unassigned
+        </UiButton>
+        <UiButton
+          v-if="selectedAllocatedSignalIds.length > 0"
+          variant="ghost"
+          size="sm"
+          :disabled="loading"
+          @click="deallocateSelected"
+        >
+          De-allocate selected
         </UiButton>
       </div>
     </header>
@@ -53,6 +65,7 @@
       :persist-state="true"
       :dataset-key="gridDatasetKey"
       @row-click="handleRowClick"
+      @selection-change="handleSelectionChange"
     >
       <template #cell="{ column, row, value }">
         <div
@@ -84,18 +97,29 @@
               >
                 Unassign
               </UiMenuItem>
-              <UiMenuItem
-                v-for="option in channelOptionsForRow(asAllocationRow(row))"
-                :key="`alloc-${asAllocationRow(row).signal_id}-${option.id}`"
-                :disabled="option.disabled"
-                @select="() => handleAllocationMenuSelect(asAllocationRow(row), option)"
+              <UiSubMenu
+                v-for="group in channelGroupsForRow(asAllocationRow(row))"
+                :key="`alloc-group-${asAllocationRow(row).signal_id}-${group.unitId}`"
               >
-                <span :class="option.disabled ? 'text-neutral-400 dark:text-neutral-500' : ''">
-                  {{ option.label }}
-                </span>
-              </UiMenuItem>
+                <UiSubMenuTrigger class="flex w-full items-center justify-between px-2 py-1.5 text-left text-sm text-neutral-800 hover:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-neutral-800">
+                  <span>{{ group.unitId }}</span>
+                  <span class="text-[11px] text-neutral-500 dark:text-neutral-400">{{ group.options.length }}</span>
+                </UiSubMenuTrigger>
+                <UiSubMenuContent>
+                  <UiMenuItem
+                    v-for="option in group.options"
+                    :key="`alloc-${asAllocationRow(row).signal_id}-${option.id}`"
+                    :disabled="option.disabled"
+                    @select="() => handleAllocationMenuSelect(asAllocationRow(row), option)"
+                  >
+                    <span :class="option.disabled ? 'text-neutral-400 dark:text-neutral-500' : ''">
+                      {{ channelSuffixLabel(option.label) }}
+                    </span>
+                  </UiMenuItem>
+                </UiSubMenuContent>
+              </UiSubMenu>
               <UiMenuItem
-                v-if="channelOptionsForRow(asAllocationRow(row)).length === 0"
+                v-if="channelGroupsForRow(asAllocationRow(row)).length === 0"
                 disabled
               >
                 No compatible channels
@@ -172,6 +196,9 @@ import {
   UiMenuItem,
   UiMenuSeparator,
   UiMenuTrigger,
+  UiSubMenu,
+  UiSubMenuContent,
+  UiSubMenuTrigger,
 } from "@affino/menu-vue"
 
 import UiAffinoDataGrid from "@/components/ui/UiAffinoDataGrid.vue"
@@ -200,6 +227,7 @@ const scopeId = "signals:allocations"
 const INTERNAL_TYPE_COLUMN_KEY = "internal_type"
 const importModalOpen = ref(false)
 const persistentControlMenuOptions = { closeOnSelect: false }
+const selectedRowKeys = ref<string[]>([])
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const loading = computed(() => loadingAllocations.value || loadingSheet.value)
@@ -248,11 +276,40 @@ const channelOwnerById = computed(() => {
   return map
 })
 
-const unassignedSignalIds = computed(() =>
-  allocationRows.value
+const channelUnitById = computed(() => {
+  const map = new Map<number, string>()
+  channels.value.forEach((channel) => {
+    const unitId = channelStore.resolveUnitId(channel.device_id)
+    map.set(channel.id, unitId || `Device ${channel.device_id}`)
+  })
+  return map
+})
+
+const allocationRowByRowKey = computed(() => {
+  const map = new Map<string, SignalAllocationRow>()
+  allocationRows.value.forEach((row) => {
+    map.set(`signal-${row.signal_id}`, row)
+  })
+  return map
+})
+
+const selectedAllocationRows = computed(() => (
+  selectedRowKeys.value
+    .map(rowKey => allocationRowByRowKey.value.get(rowKey))
+    .filter((row): row is SignalAllocationRow => Boolean(row))
+))
+
+const selectedUnassignedSignalIds = computed(() => (
+  selectedAllocationRows.value
     .filter(row => !Number.isFinite(row.channel_id as number))
-    .map(row => row.signal_id),
-)
+    .map(row => row.signal_id)
+))
+
+const selectedAllocatedSignalIds = computed(() => (
+  selectedAllocationRows.value
+    .filter(row => Number.isFinite(row.channel_id as number))
+    .map(row => row.signal_id)
+))
 
 const sourceColumnHeaders = computed(() => resolveSourceColumnHeaders(signalSheetStore.sheet))
 
@@ -290,6 +347,7 @@ const gridRows = computed(() =>
 
 type GridRow = Record<string, unknown>
 type ChannelOption = { id: number; label: string; disabled: boolean }
+type ChannelOptionGroup = { unitId: string; options: ChannelOption[] }
 
 function sourceColumnKey(index: number): string {
   return `source_col_${index}`
@@ -427,6 +485,29 @@ function channelOptionsForRow(row: SignalAllocationRow): ChannelOption[] {
     const ownerSignalId = ownerByChannel.get(option.id)
     return ownerSignalId === undefined || ownerSignalId === row.signal_id
   })
+}
+
+function channelGroupsForRow(row: SignalAllocationRow): ChannelOptionGroup[] {
+  const groups = new Map<string, ChannelOption[]>()
+  channelOptionsForRow(row).forEach((option) => {
+    const unitId = channelUnitById.value.get(option.id) ?? "Unassigned unit"
+    const group = groups.get(unitId)
+    if (group) {
+      group.push(option)
+      return
+    }
+    groups.set(unitId, [option])
+  })
+
+  return Array.from(groups.entries()).map(([unitId, options]) => ({ unitId, options }))
+}
+
+function channelSuffixLabel(label: string): string {
+  const slashIndex = label.indexOf("/")
+  if (slashIndex === -1 || slashIndex + 1 >= label.length) {
+    return label
+  }
+  return label.slice(slashIndex + 1)
 }
 
 function setAllocationForRow(row: SignalAllocationRow, nextChannelId: number | null) {
@@ -579,6 +660,10 @@ function handleRowClick() {
   return
 }
 
+function handleSelectionChange(payload: { rowKeys: string[] }) {
+  selectedRowKeys.value = payload.rowKeys
+}
+
 function openImportModal() {
   if (workspaceMissing.value) return
   importModalOpen.value = true
@@ -594,17 +679,29 @@ async function handleImported() {
   await signalSheetStore.refreshPresets()
 }
 
-async function autoAllocateUnassigned() {
-  if (!unassignedSignalIds.value.length) return
+async function allocateSelectedUnassigned() {
+  if (!selectedUnassignedSignalIds.value.length) return
   try {
     const response = await signalSheetStore.autoAllocate({
-      signal_ids: [...unassignedSignalIds.value],
+      signal_ids: [...selectedUnassignedSignalIds.value],
       prefer_online: true,
       overwrite_existing: false,
     })
     const assigned = response.result.assigned
     const rest = response.result.unassigned_signal_ids.length
-    toastStore.success(`Auto allocation complete: ${assigned} assigned${rest ? `, ${rest} left` : ""}`)
+    toastStore.success(`Allocation complete: ${assigned} assigned${rest ? `, ${rest} left unassigned` : ""}`)
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+  }
+}
+
+async function deallocateSelected() {
+  if (!selectedAllocatedSignalIds.value.length) return
+  try {
+    await signalSheetStore.bulkSetAllocations(
+      selectedAllocatedSignalIds.value.map(signalId => ({ signal_id: signalId, channel_id: null })),
+    )
+    toastStore.success(`De-allocated ${selectedAllocatedSignalIds.value.length} selected signal(s)`)
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
   }
@@ -656,6 +753,14 @@ watch(
     realtimeScopeStore.setRealtimeUnitScope(scopeId, [...units])
   },
   { immediate: true },
+)
+
+watch(
+  allocationRowByRowKey,
+  (rowMap) => {
+    if (!selectedRowKeys.value.length) return
+    selectedRowKeys.value = selectedRowKeys.value.filter(rowKey => rowMap.has(rowKey))
+  },
 )
 
 onBeforeUnmount(() => {

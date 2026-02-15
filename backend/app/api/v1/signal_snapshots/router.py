@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.signal_snapshots import SignalSnapshotsRepository
 from app.api.v1.signals import SignalsRepository
+from app.core.config import get_settings
 from app.infrastructure.db.database import get_db
 from app.models.signal_snapshot import SignalSnapshotStatus
 from app.schemas.signal_snapshot_schema import (
@@ -22,6 +23,7 @@ from app.schemas.signal_snapshot_schema import (
 from app.services.signal_sheet_import_service import SignalSheetImportService
 
 router = APIRouter(prefix="/api/v1", tags=["Signal Snapshots"])
+settings = get_settings()
 
 
 def get_snapshot_repo(db: AsyncSession = Depends(get_db)) -> SignalSnapshotsRepository:
@@ -70,9 +72,18 @@ async def import_signal_snapshot(
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"Unable to parse workbook: {exc}")
 
+    max_rows = max(1, int(settings.signal_import_max_rows))
+    if payload.rows_count > max_rows:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Import limit exceeded: {payload.rows_count} rows (max {max_rows})",
+        )
+
     if payload.signals:
         await signals_repo.upsert_imported(workspace_id, payload.signals)
         await db.commit()
+
+    await repo.delete_for_workspace(workspace_id)
 
     source_hash = hashlib.sha256(raw).hexdigest()
     snapshot = await repo.create(

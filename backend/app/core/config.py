@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     worker_health_interval: int = 10
     worker_health_ttl: int = 30
 
+    # ---- Signal Import ----
+    signal_import_max_rows: int = 20000
+
     # ---- Time Sync ----
     ntp_server_1: str | None = None
     ntp_server_2: str | None = None

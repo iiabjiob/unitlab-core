@@ -28,50 +28,61 @@
             Reset all
           </button>
           <button
+            :ref="columnPanelFloating.triggerRef"
             type="button"
             class="ui-affino-grid__toolbar-button"
-            @click="toggleColumnPanel"
+            v-bind="columnPanelTriggerProps"
           >
-            {{ showColumnPanel ? "Hide columns" : "Columns" }}
+            {{ isColumnPanelOpen ? "Hide columns" : "Columns" }}
           </button>
         </div>
       </div>
 
-      <div v-if="props.showControls && showColumnPanel" class="ui-affino-grid__column-panel">
-        <div class="ui-affino-grid__column-panel-title">Column visibility and order</div>
+      <Teleport
+        v-if="props.showControls && isColumnPanelOpen && columnPanelTeleportTarget"
+        :to="columnPanelTeleportTarget"
+      >
         <div
-          v-for="entry in columnManagerColumns"
-          :key="`column-panel-${entry.key}`"
-          class="ui-affino-grid__column-panel-row"
+          :ref="columnPanelFloating.contentRef"
+          class="ui-affino-grid__column-panel ui-affino-grid__column-panel--floating"
+          :style="columnPanelContentStyle"
+          v-bind="columnPanelContentProps"
         >
-          <label class="ui-affino-grid__column-toggle">
-            <input
-              type="checkbox"
-              :checked="entry.visible"
-              @change="event => handleColumnVisibilityChange(entry.key, event)"
-            />
-            <span>{{ entry.label }}</span>
-          </label>
-          <div class="ui-affino-grid__column-order-actions">
-            <button
-              type="button"
-              class="ui-affino-grid__column-order-button"
-              :disabled="!canMoveColumn(entry.key, -1)"
-              @click="moveColumn(entry.key, -1)"
-            >
-              ↑
-            </button>
-            <button
-              type="button"
-              class="ui-affino-grid__column-order-button"
-              :disabled="!canMoveColumn(entry.key, 1)"
-              @click="moveColumn(entry.key, 1)"
-            >
-              ↓
-            </button>
+          <div class="ui-affino-grid__column-panel-title">Column visibility and order</div>
+          <div
+            v-for="entry in columnManagerColumns"
+            :key="`column-panel-${entry.key}`"
+            class="ui-affino-grid__column-panel-row"
+          >
+            <label class="ui-affino-grid__column-toggle">
+              <input
+                type="checkbox"
+                :checked="entry.visible"
+                @change="event => handleColumnVisibilityChange(entry.key, event)"
+              />
+              <span>{{ entry.label }}</span>
+            </label>
+            <div class="ui-affino-grid__column-order-actions">
+              <button
+                type="button"
+                class="ui-affino-grid__column-order-button"
+                :disabled="!canMoveColumn(entry.key, -1)"
+                @click="moveColumn(entry.key, -1)"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                class="ui-affino-grid__column-order-button"
+                :disabled="!canMoveColumn(entry.key, 1)"
+                @click="moveColumn(entry.key, 1)"
+              >
+                ↓
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </Teleport>
 
       <div class="ui-affino-grid__content-shell">
         <div class="ui-affino-grid__index-column">
@@ -91,11 +102,63 @@
                   v-for="(rowNode, localIndex) in visibleRowNodes"
                   :key="`idx-${String(rowNode.rowId)}`"
                   class="ui-affino-grid__index-row"
-                  :class="{ 'is-even': localIndex % 2 === 1, 'is-hovered': isRowHovered(rowNode) }"
+                  :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode) }"
                   @mouseenter="setHoveredRow(rowNode)"
                   @mouseleave="clearHoveredRow(rowNode)"
                 >
                   {{ resolveNodeDisplayIndex(rowNode, localIndex) + 1 }}
+                </div>
+
+                <div
+                  v-if="bottomSpacerPx > 0"
+                  class="ui-affino-grid__spacer-row ui-affino-grid__spacer-row--index"
+                  :style="{ height: `${bottomSpacerPx}px` }"
+                ></div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <div class="ui-affino-grid__select-column">
+          <div class="ui-affino-grid__select-header" :style="indexHeaderStyle">
+            <input
+              ref="selectHeaderCheckboxRef"
+              type="checkbox"
+              class="ui-affino-grid__row-select-checkbox"
+              :checked="allVisibleRowsSelected"
+              :disabled="visibleRowSelectionKeys.length === 0"
+              aria-label="Select all visible rows"
+              @click.stop
+              @change="handleSelectAllVisibleChange"
+            />
+          </div>
+          <div v-if="showFilterRow" class="ui-affino-grid__select-filter" :style="indexFilterStyle"></div>
+
+          <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @scroll.passive="handleLinkedViewportScroll">
+            <div class="ui-affino-grid__select-canvas">
+              <template v-if="hasRenderableData">
+                <div
+                  v-if="topSpacerPx > 0"
+                  class="ui-affino-grid__spacer-row ui-affino-grid__spacer-row--index"
+                  :style="{ height: `${topSpacerPx}px` }"
+                ></div>
+
+                <div
+                  v-for="(rowNode, localIndex) in visibleRowNodes"
+                  :key="`sel-${String(rowNode.rowId)}`"
+                  class="ui-affino-grid__select-row"
+                  :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode) }"
+                  @mouseenter="setHoveredRow(rowNode)"
+                  @mouseleave="clearHoveredRow(rowNode)"
+                >
+                  <input
+                    type="checkbox"
+                    class="ui-affino-grid__row-select-checkbox"
+                    :checked="isRowSelected(rowNode, localIndex)"
+                    :aria-label="`Select row ${resolveNodeDisplayIndex(rowNode, localIndex) + 1}`"
+                    @click.stop
+                    @change="event => handleRowSelectionChange(rowNode, localIndex, event)"
+                  />
                 </div>
 
                 <div
@@ -171,7 +234,7 @@
                   v-for="(rowNode, localIndex) in visibleRowNodes"
                   :key="`left-${String(rowNode.rowId)}`"
                   class="ui-affino-grid__row ui-affino-grid__row--data ui-affino-grid__row--pinned"
-                  :class="{ 'is-even': localIndex % 2 === 1, 'is-hovered': isRowHovered(rowNode) }"
+                  :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode) }"
                   v-bind="grid.bindings.rowSelection(rowData(rowNode.data), resolveNodeDisplayIndex(rowNode, localIndex))"
                   @mouseenter="setHoveredRow(rowNode)"
                   @mouseleave="clearHoveredRow(rowNode)"
@@ -297,7 +360,7 @@
                     v-for="(rowNode, localIndex) in visibleRowNodes"
                     :key="String(rowNode.rowId)"
                     class="ui-affino-grid__row ui-affino-grid__row--data"
-                    :class="{ 'is-even': localIndex % 2 === 1, 'is-hovered': isRowHovered(rowNode) }"
+                    :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode) }"
                     v-bind="grid.bindings.rowSelection(rowData(rowNode.data), resolveNodeDisplayIndex(rowNode, localIndex))"
                     @mouseenter="setHoveredRow(rowNode)"
                     @mouseleave="clearHoveredRow(rowNode)"
@@ -414,7 +477,7 @@
                   v-for="(rowNode, localIndex) in visibleRowNodes"
                   :key="`right-${String(rowNode.rowId)}`"
                   class="ui-affino-grid__row ui-affino-grid__row--data ui-affino-grid__row--pinned"
-                  :class="{ 'is-even': localIndex % 2 === 1, 'is-hovered': isRowHovered(rowNode) }"
+                  :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode) }"
                   v-bind="grid.bindings.rowSelection(rowData(rowNode.data), resolveNodeDisplayIndex(rowNode, localIndex))"
                   @mouseenter="setHoveredRow(rowNode)"
                   @mouseleave="clearHoveredRow(rowNode)"
@@ -479,6 +542,7 @@ import type {
   DataGridSortState,
 } from "@affino/datagrid-core"
 import { createDataGridSettingsAdapter, useAffinoDataGrid, useDataGridSettingsStore } from "@affino/datagrid-vue"
+import { useFloatingPopover, usePopoverController } from "@affino/popover-vue"
 import {
   useDataGridColumnLayoutOrchestration,
 } from "@affino/datagrid-vue/advanced"
@@ -568,11 +632,15 @@ const props = withDefaults(defineProps<{
   datasetKey: "",
 })
 
-const emit = defineEmits<{ (e: "row-click", payload: { row: GridRow; rowIndex: number }): void }>()
+const emit = defineEmits<{
+  (e: "row-click", payload: { row: GridRow; rowIndex: number }): void
+  (e: "selection-change", payload: { rowKeys: string[] }): void
+}>()
 
 const mainViewportRef = ref<HTMLElement | null>(null)
 const viewportRef = ref<HTMLElement | null>(null)
 const indexViewportRef = ref<HTMLElement | null>(null)
+const selectionViewportRef = ref<HTMLElement | null>(null)
 const headerRowRef = ref<HTMLElement | null>(null)
 const filterRowRef = ref<HTMLElement | null>(null)
 const leftPinnedViewportRef = ref<HTMLElement | null>(null)
@@ -582,9 +650,9 @@ const rightPinnedHeaderRowRef = ref<HTMLElement | null>(null)
 const leftPinnedFilterRowRef = ref<HTMLElement | null>(null)
 const rightPinnedFilterRowRef = ref<HTMLElement | null>(null)
 const PINNED_INDEX_COLUMN_WIDTH = 64
+const PINNED_SELECTION_COLUMN_WIDTH = 42
 
 const columnFilters = reactive<Record<string, string>>({})
-const showColumnPanel = ref(false)
 const baseRowHeight = ref(Math.max(1, props.rowHeight))
 const rowHeightMode = ref<RowHeightMode>("fixed")
 const measuredAutoRowHeight = ref<number | null>(null)
@@ -603,6 +671,7 @@ const rowModelRevision = ref(0)
 const measuredHeaderHeight = ref<number | null>(null)
 const measuredFilterHeight = ref<number | null>(null)
 const hoveredRowId = ref<string | null>(null)
+const selectHeaderCheckboxRef = ref<HTMLInputElement | null>(null)
 
 let viewportRowModel: ViewportRowModelBridge | null = null
 let viewportColumnModel: ViewportColumnModelBridge | null = null
@@ -616,6 +685,30 @@ let settingsPersistTimer: ReturnType<typeof setTimeout> | null = null
 let restoringSettings = false
 const SETTINGS_PERSIST_DELAY_MS = 120
 const dataGridSettingsAdapter = createDataGridSettingsAdapter(useDataGridSettingsStore())
+const columnPanelPopover = usePopoverController({
+  role: "dialog",
+  closeOnEscape: true,
+  closeOnInteractOutside: true,
+})
+const columnPanelFloating = useFloatingPopover(columnPanelPopover, {
+  strategy: "fixed",
+  placement: "bottom",
+  align: "end",
+  gutter: 8,
+  viewportPadding: 8,
+  zIndex: 1200,
+})
+const isColumnPanelOpen = computed(() => columnPanelPopover.state.value.open)
+const columnPanelTeleportTarget = computed(() => columnPanelFloating.teleportTarget.value)
+const columnPanelContentStyle = computed(() => columnPanelFloating.contentStyle.value)
+const columnPanelTriggerProps = computed(() => columnPanelPopover.getTriggerProps({
+  type: "button",
+  role: "dialog",
+}))
+const columnPanelContentProps = computed(() => columnPanelPopover.getContentProps({
+  role: "dialog",
+  tabIndex: -1,
+}))
 
 const INDEX_COLUMN_KEYS = new Set<string>([
   "__snapshotindex__",
@@ -1006,6 +1099,7 @@ const isRowHeightFixed = computed(() => rowHeightMode.value === "fixed")
 const gridStyle = computed<Record<string, string>>(() => ({
   "--ui-affino-row-height": `${rowHeightPx.value}px`,
   "--ui-affino-index-width": `${PINNED_INDEX_COLUMN_WIDTH}px`,
+  "--ui-affino-select-width": `${PINNED_SELECTION_COLUMN_WIDTH}px`,
   "--ui-affino-left-width": `${leftPinnedWidthPx.value}px`,
   "--ui-affino-right-width": `${rightPinnedWidthPx.value}px`,
 }))
@@ -1018,6 +1112,31 @@ const totalRows = computed(() => {
   }
   return Math.max(0, grid.rowModel.getRowCount())
 })
+
+const visibleRowSelectionKeys = computed(() => {
+  const total = totalRows.value
+  if (total <= 0) {
+    return [] as string[]
+  }
+  const allVisibleRows = grid.rowModel.getRowsInRange({ start: 0, end: total - 1 })
+  return allVisibleRows.map((rowNode, index) => resolveSelectionKeyFromNode(rowNode, index))
+})
+
+const selectedRowKeySet = computed(() => new Set(grid.features.selection.selectedRowKeys.value))
+
+const selectedVisibleRowsCount = computed(() => (
+  visibleRowSelectionKeys.value.reduce((count, rowKey) => (
+    count + (selectedRowKeySet.value.has(rowKey) ? 1 : 0)
+  ), 0)
+))
+
+const allVisibleRowsSelected = computed(() => (
+  visibleRowSelectionKeys.value.length > 0 && selectedVisibleRowsCount.value === visibleRowSelectionKeys.value.length
+))
+
+const hasPartialVisibleSelection = computed(() => (
+  selectedVisibleRowsCount.value > 0 && !allVisibleRowsSelected.value
+))
 
 const resolvedColumns = computed<readonly ResolvedColumn[]>(() => {
   const snapshot = grid.columnState.snapshot.value
@@ -1270,6 +1389,44 @@ function resolveNodeDisplayIndex(rowNode: unknown, localIndex: number): number {
   return Math.max(0, visibleRowRange.value.start + Math.max(0, Math.trunc(localIndex)))
 }
 
+function isEvenDisplayRow(rowNode: unknown, localIndex: number): boolean {
+  return resolveNodeDisplayIndex(rowNode, localIndex) % 2 === 1
+}
+
+function resolveSelectionKeyFromNode(rowNode: unknown, fallbackIndex: number): string {
+  const row = rowData((rowNode as { data?: unknown })?.data)
+  const fromNode = Number((rowNode as { displayIndex?: number })?.displayIndex)
+  const displayIndex = Number.isFinite(fromNode) && fromNode >= 0
+    ? Math.trunc(fromNode)
+    : Math.max(0, Math.trunc(fallbackIndex))
+  return grid.bindings.getRowKey(row, displayIndex)
+}
+
+function resolveRowSelectionKey(rowNode: unknown, localIndex: number): string {
+  return resolveSelectionKeyFromNode(rowNode, resolveNodeDisplayIndex(rowNode, localIndex))
+}
+
+function isRowSelected(rowNode: unknown, localIndex: number): boolean {
+  const rowKey = resolveRowSelectionKey(rowNode, localIndex)
+  return grid.features.selection.isSelectedByKey(rowKey)
+}
+
+function handleRowSelectionChange(rowNode: unknown, localIndex: number, event: Event) {
+  const rowKey = resolveRowSelectionKey(rowNode, localIndex)
+  const target = event.target as HTMLInputElement | null
+  grid.features.selection.setSelectedByKey(rowKey, Boolean(target?.checked))
+}
+
+function handleSelectAllVisibleChange(event: Event) {
+  const target = event.target as HTMLInputElement | null
+  const shouldSelect = Boolean(target?.checked)
+  if (shouldSelect) {
+    grid.actions.selectAllRows()
+    return
+  }
+  grid.features.selection.clearSelection()
+}
+
 const renderedDisplayRange = computed<WindowRange>(() => {
   const rows = visibleRowNodes.value
   if (!rows.length) {
@@ -1483,6 +1640,10 @@ function syncLinkedScroll(scrollTop: number) {
     if (indexViewport && indexViewport.scrollTop !== scrollTop) {
       indexViewport.scrollTop = scrollTop
     }
+    const selectionViewport = selectionViewportRef.value
+    if (selectionViewport && selectionViewport.scrollTop !== scrollTop) {
+      selectionViewport.scrollTop = scrollTop
+    }
     const leftPinnedViewport = leftPinnedViewportRef.value
     if (leftPinnedViewport && leftPinnedViewport.scrollTop !== scrollTop) {
       leftPinnedViewport.scrollTop = scrollTop
@@ -1663,6 +1824,9 @@ onMounted(() => {
     if (leftPinnedViewportRef.value) {
       viewportResizeObserver.observe(leftPinnedViewportRef.value)
     }
+    if (selectionViewportRef.value) {
+      viewportResizeObserver.observe(selectionViewportRef.value)
+    }
     if (rightPinnedViewportRef.value) {
       viewportResizeObserver.observe(rightPinnedViewportRef.value)
     }
@@ -1703,6 +1867,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  columnPanelPopover.dispose()
   persistTableSettingsNow()
   unsubscribeRowModel()
   if (onWindowResize && typeof window !== "undefined") {
@@ -1848,6 +2013,9 @@ watch(
       if (viewportResizeObserver && leftPinnedViewportRef.value) {
         viewportResizeObserver.observe(leftPinnedViewportRef.value)
       }
+      if (viewportResizeObserver && selectionViewportRef.value) {
+        viewportResizeObserver.observe(selectionViewportRef.value)
+      }
       if (viewportResizeObserver && rightPinnedViewportRef.value) {
         viewportResizeObserver.observe(rightPinnedViewportRef.value)
       }
@@ -1916,6 +2084,35 @@ watch(
   },
 )
 
+watch(
+  () => props.showControls,
+  (showControls) => {
+    if (showControls) {
+      return
+    }
+    columnPanelPopover.close("programmatic")
+  },
+)
+
+watch(
+  () => grid.features.selection.selectedRowKeys.value,
+  (rowKeys) => {
+    emit("selection-change", { rowKeys: [...rowKeys] })
+  },
+  { immediate: true },
+)
+
+watch(
+  hasPartialVisibleSelection,
+  (partial) => {
+    if (!selectHeaderCheckboxRef.value) {
+      return
+    }
+    selectHeaderCheckboxRef.value.indeterminate = partial
+  },
+  { immediate: true },
+)
+
 function handleMainScroll(event: Event) {
   const target = event.currentTarget as HTMLElement | null
   if (!target) {
@@ -1964,10 +2161,6 @@ function handleLinkedViewportScroll(event: Event) {
     scheduleAutoRowHeightMeasure()
   }
   scheduleViewportSync()
-}
-
-function toggleColumnPanel() {
-  showColumnPanel.value = !showColumnPanel.value
 }
 
 function handleColumnVisibilityChange(columnKey: string, event: Event) {
@@ -2550,15 +2743,25 @@ function columnStyle(width: number) {
   flex-direction: column;
   gap: 0.35rem;
   padding: 0.55rem;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
-  background: rgba(248, 250, 252, 0.76);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.55rem;
+  background: #f8fafc;
+  width: min(22rem, calc(100vw - 1rem));
   max-height: 18rem;
   overflow: auto;
 }
 
+.ui-affino-grid__column-panel--floating {
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+}
+
 .dark .ui-affino-grid__column-panel {
-  border-bottom-color: var(--ui-affino-dark-border);
-  background: rgba(23, 23, 23, 0.86);
+  border-color: var(--ui-affino-dark-border);
+  background: #171717;
+}
+
+.dark .ui-affino-grid__column-panel--floating {
+  box-shadow: 0 14px 28px rgba(2, 6, 23, 0.5);
 }
 
 .ui-affino-grid__column-panel-title {
@@ -2613,6 +2816,7 @@ function columnStyle(width: number) {
   display: grid;
   grid-template-columns:
     var(--ui-affino-index-width, 64px)
+    var(--ui-affino-select-width, 42px)
     var(--ui-affino-left-width, 0px)
     minmax(0, 1fr)
     var(--ui-affino-right-width, 0px);
@@ -2663,7 +2867,7 @@ function columnStyle(width: number) {
 }
 
 .ui-affino-grid__main-viewport {
-  grid-column: 3;
+  grid-column: 4;
   min-height: 0;
   min-width: 0;
   overflow-x: auto;
@@ -2699,12 +2903,12 @@ function columnStyle(width: number) {
 }
 
 .ui-affino-grid__pinned-column--left {
-  grid-column: 2;
+  grid-column: 3;
   border-right: 1px solid rgba(148, 163, 184, 0.2);
 }
 
 .ui-affino-grid__pinned-column--right {
-  grid-column: 4;
+  grid-column: 5;
   border-left: 1px solid rgba(148, 163, 184, 0.2);
 }
 
@@ -2743,7 +2947,109 @@ function columnStyle(width: number) {
   background: rgba(255, 255, 255, 0.95);
 }
 
+.ui-affino-grid__select-column {
+  grid-column: 2;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ui-affino-grid__select-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid rgba(148, 163, 184, 0.2);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  background: #f8fafc;
+  box-sizing: border-box;
+}
+
+.dark .ui-affino-grid__select-header {
+  border-right-color: var(--ui-affino-dark-border);
+  border-bottom-color: var(--ui-affino-dark-border);
+  background: var(--ui-affino-dark-bg-surface);
+}
+
+.ui-affino-grid__select-filter {
+  border-right: 1px solid rgba(148, 163, 184, 0.2);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  background: #f8fafc;
+  min-height: 29px;
+  box-sizing: border-box;
+}
+
+.dark .ui-affino-grid__select-filter {
+  border-right-color: var(--ui-affino-dark-border);
+  border-bottom-color: var(--ui-affino-dark-border);
+  background: var(--ui-affino-dark-bg-surface);
+}
+
+.ui-affino-grid__select-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  border-right: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.dark .ui-affino-grid__select-viewport {
+  border-right-color: var(--ui-affino-dark-border);
+  background: var(--ui-affino-dark-bg-main);
+}
+
+.ui-affino-grid__select-canvas {
+  width: 100%;
+  min-width: 100%;
+}
+
+.ui-affino-grid__select-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.2rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  box-sizing: border-box;
+}
+
+.dark .ui-affino-grid__select-row {
+  border-bottom-color: var(--ui-affino-dark-border);
+}
+
+.ui-affino-grid__select-row.is-even {
+  background: rgba(241, 245, 249, 0.45);
+}
+
+.dark .ui-affino-grid__select-row.is-even {
+  background: var(--ui-affino-dark-bg-even);
+}
+
+.ui-affino-grid__select-row.is-hovered {
+  background: rgba(226, 232, 240, 0.55);
+}
+
+.dark .ui-affino-grid__select-row.is-hovered {
+  background: var(--ui-affino-dark-bg-hover);
+}
+
+.ui-affino-grid__row-select-checkbox {
+  width: 0.9rem;
+  height: 0.9rem;
+  cursor: pointer;
+}
+
+.ui-affino-grid.is-row-fixed .ui-affino-grid__select-row {
+  height: var(--ui-affino-row-height, 34px);
+  min-height: var(--ui-affino-row-height, 34px);
+  max-height: var(--ui-affino-row-height, 34px);
+}
+
 .ui-affino-grid__index-viewport::-webkit-scrollbar,
+.ui-affino-grid__select-viewport::-webkit-scrollbar,
 .ui-affino-grid__pinned-viewport::-webkit-scrollbar {
   width: 0;
   height: 0;

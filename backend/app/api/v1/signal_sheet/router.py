@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.signal_sheet import SignalSheetAutoAllocateResult, SignalSheetRepository
 from app.api.v1.signals import SignalsRepository
+from app.core.config import get_settings
 from app.infrastructure.db.database import get_db
 from app.schemas.signal_snapshot_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import (
@@ -27,6 +28,7 @@ from app.schemas.signal_sheet_schema import (
 from app.services.signal_sheet_import_service import SignalSheetImportService
 
 router = APIRouter(prefix="/api/v1", tags=["Signal Sheet"])
+settings = get_settings()
 
 
 def get_repo(db: AsyncSession = Depends(get_db)) -> SignalSheetRepository:
@@ -88,6 +90,13 @@ async def import_signal_sheet(
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"Unable to parse workbook: {exc}")
+
+    max_rows = max(1, int(settings.signal_import_max_rows))
+    if payload.rows_count > max_rows:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Import limit exceeded: {payload.rows_count} rows (max {max_rows})",
+        )
 
     await signals_repo.replace_from_import(workspace_id, payload.signals)
     await repo.cleanup_orphan_allocations(workspace_id)

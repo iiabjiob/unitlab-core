@@ -279,9 +279,7 @@ class SignalSheetImportService:
 
     @staticmethod
     def _pick_hmi_column(headers: list[str], metadata: SignalImportMetaSchema | None) -> str | None:
-        if metadata and metadata.hmi_representation and metadata.hmi_representation in headers:
-            return metadata.hmi_representation
-
+        _ = metadata
         heuristics = ("hmi", "name", "signal", "description")
         for header in headers:
             lowered = header.lower()

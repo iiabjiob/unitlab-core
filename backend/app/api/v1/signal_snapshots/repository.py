@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only, selectinload
 
@@ -90,6 +90,12 @@ class SignalSnapshotsRepository:
         await self.db.commit()
         await self.db.refresh(snapshot)
         return snapshot
+
+    async def delete_for_workspace(self, workspace_id: int) -> int:
+        stmt = delete(SignalSnapshot).where(SignalSnapshot.workspace_id == workspace_id)
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return int(result.rowcount or 0)
 
     async def delete(self, snapshot_id: int) -> bool:
         snapshot = await self.get(snapshot_id)
