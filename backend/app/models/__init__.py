@@ -4,7 +4,7 @@ from .switchgear import Switchgear, SwitchgearChannelBinding  # noqa: F401
 from .sequence import Sequence, SequenceStep  # noqa: F401
 from .sequence_run import SequenceRun, SequenceRunStep  # noqa: F401
 from .signal import Signal  # noqa: F401
-from .signal_snapshot import SignalSnapshot, SignalSnapshotAllocation  # noqa: F401
+from .signal_sheet import SignalAllocation, SignalSheet, SignalSheetPreset  # noqa: F401
 from .test_run import (  # noqa: F401
     TestRun,
     TestRunAllocation,
@@ -25,8 +25,9 @@ __all__ = [
     "SequenceRun",
     "SequenceRunStep",
     "Signal",
-    "SignalSnapshot",
-    "SignalSnapshotAllocation",
+    "SignalSheet",
+    "SignalSheetPreset",
+    "SignalAllocation",
     "TestRun",
     "TestRunAllocation",
     "TestRunAllocationEntry",

@@ -5,22 +5,40 @@ import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 
 let booted = false
+let bootInFlight: Promise<void> | null = null
 
 export async function bootRuntime() {
   if (booted) return
-  booted = true
+  if (bootInFlight) {
+    await bootInFlight
+    return
+  }
 
-  logger.info("🧠 Boot: Runtime…")
+  bootInFlight = (async () => {
+    logger.info("🧠 Boot: Runtime…")
 
-  const workspaceStore = useWorkspaceStore()
-  const deviceStore = useDeviceStore()
-  const switchgearStore = useSwitchgearStore()
-  const sequenceStore = useSequenceStore()
+    const workspaceStore = useWorkspaceStore()
+    const deviceStore = useDeviceStore()
+    const switchgearStore = useSwitchgearStore()
+    const sequenceStore = useSequenceStore()
 
-  await workspaceStore.bootstrap()
-  await deviceStore.ensureLoaded()
-  await switchgearStore.ensureLoaded()
-  await sequenceStore.ensureLoaded()
+    const workspaceReady = await workspaceStore.bootstrap()
+    if (!workspaceReady) {
+      logger.warn("⚠️ Boot: workspace bootstrap failed, will retry on next navigation")
+      return
+    }
 
-  logger.info("✅ Boot: Runtime ready")
+    await deviceStore.ensureLoaded()
+    await switchgearStore.ensureLoaded()
+    await sequenceStore.ensureLoaded()
+
+    booted = true
+    logger.info("✅ Boot: Runtime ready")
+  })()
+
+  try {
+    await bootInFlight
+  } finally {
+    bootInFlight = null
+  }
 }

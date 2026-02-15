@@ -1,9 +1,18 @@
 import type { RouteRecordRaw } from "vue-router"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
 
 export const signalsRoutes: RouteRecordRaw[] = [
   {
     path: "/signals",
     component: () => import("@/pages/signals/SignalsPage.vue"),
+    beforeEnter: async () => {
+      const workspaceStore = useWorkspaceStore()
+      const ready = await workspaceStore.bootstrap()
+      if (!ready || !workspaceStore.activeWorkspaceId) {
+        return { name: "home" }
+      }
+      return true
+    },
     meta: {
       leftAside: true,
       layout: "app",
@@ -12,13 +21,7 @@ export const signalsRoutes: RouteRecordRaw[] = [
       {
         path: "",
         name: "signals.home",
-        component: () => import("@/pages/signals/SignalPlaceholder.vue"),
-      },
-      {
-        path: ":snapshotId(\\d+)",
-        name: "signals.detail",
         component: () => import("@/pages/signals/components/AllocationEditor.vue"),
-        props: route => ({ snapshotId: Number(route.params.snapshotId) || null }),
       },
     ],
   },

@@ -1,47 +1,74 @@
 // utils/channel.ts
 
-import { CHANNEL_TYPES, type Channel, type ChannelDto } from "@/types/channel"
+import { CHANNEL_TYPES, type Channel, type ChannelDto, type ChannelType } from "@/types/channel"
 
-export function normalizeChannel(dto: ChannelDto): Channel {
+function normalizeChannelType(raw: unknown): ChannelType | null {
+  const value = String(raw ?? "").trim().toLowerCase()
+  if (value === CHANNEL_TYPES.DI) return CHANNEL_TYPES.DI
+  if (value === CHANNEL_TYPES.DO) return CHANNEL_TYPES.DO
+  if (value === CHANNEL_TYPES.AO) return CHANNEL_TYPES.AO
+  return null
+}
+
+export function normalizeChannel(dto: ChannelDto, fallbackType?: ChannelType | null): Channel {
+  const raw = dto as unknown as Record<string, unknown>
+  const channelType = normalizeChannelType(dto.channel_type ?? raw.type) ?? normalizeChannelType(fallbackType)
+  const channelIndexRaw = dto.channel_index ?? raw.index
+  const channelIndex = Number.isFinite(Number(channelIndexRaw)) ? Number(channelIndexRaw) : 0
+  const stateRaw = dto.state ?? raw.state
+  const createdAtRaw = dto.created_at ?? raw.created_at
+  const updatedAtRaw = dto.updated_at ?? raw.updated_at
+  const createdAt = typeof createdAtRaw === "number"
+    ? createdAtRaw
+    : (createdAtRaw ? Date.parse(String(createdAtRaw)) : undefined)
+  const updatedAt = typeof updatedAtRaw === "number"
+    ? updatedAtRaw
+    : (updatedAtRaw ? Date.parse(String(updatedAtRaw)) : undefined)
   const base = {
     id: dto.id,
     device_id: dto.device_id,
-    index: dto.channel_index,
+    index: channelIndex,
     name: dto.name?.trim() ?? "",
-    resolved_name: dto.resolved_name?.trim() ?? "",
-    created_at: dto.created_at ? Date.parse(dto.created_at) : undefined,
-    updated_at: dto.updated_at ? Date.parse(dto.updated_at) : undefined,
+    resolved_name: dto.resolved_name?.trim() ?? String(raw.resolved_name ?? "").trim(),
+    created_at: Number.isFinite(createdAt as number) ? createdAt : undefined,
+    updated_at: Number.isFinite(updatedAt as number) ? updatedAt : undefined,
   }
 
-  if (dto.channel_type === CHANNEL_TYPES.DI) {
+  if (channelType === CHANNEL_TYPES.DI) {
     return {
       ...base,
       type: CHANNEL_TYPES.DI,
-      state: Boolean(dto.state),
+      state: Boolean(stateRaw),
     }
   }
 
-  if (dto.channel_type === CHANNEL_TYPES.DO) {
+  if (channelType === CHANNEL_TYPES.DO) {
     return {
       ...base,
       type: CHANNEL_TYPES.DO,
-      state: Boolean(dto.state),
+      state: Boolean(stateRaw),
       ui: { stage: "idle" },
     }
   }
 
+  if (channelType === CHANNEL_TYPES.AO) {
+    return {
+      ...base,
+      type: CHANNEL_TYPES.AO,
+      state: typeof stateRaw === "number" ? stateRaw : 0,
+    }
+  }
+
+  // Unknown type: keep controls hidden (non-AO fallback) until explicit type arrives.
   return {
     ...base,
-    type: CHANNEL_TYPES.AO,
-    state: typeof dto.state === "number" ? dto.state : 0,
+    type: CHANNEL_TYPES.DI,
+    state: Boolean(stateRaw),
   }
 }
 
-export function ensureChannel(entity: Channel | ChannelDto): Channel {
-  if ("channel_index" in entity || "channel_type" in entity) {
-    return normalizeChannel(entity as ChannelDto)
-  }
-  return entity as Channel
+export function ensureChannel(entity: Channel | ChannelDto, fallbackType?: ChannelType | null): Channel {
+  return normalizeChannel(entity as ChannelDto, fallbackType)
 }
 
 export function buildBitmask(channels: Channel[], state: boolean): number {

@@ -121,6 +121,39 @@ class SignalsRepository:
 
         await self.db.flush()
 
+    async def replace_from_import(
+        self,
+        workspace_id: int,
+        projections: Iterable[ImportedSignalProjection],
+    ) -> None:
+        payload = list(projections)
+        await self.upsert_imported(workspace_id, payload)
+
+        imported_keys = {item.key for item in payload}
+        if not imported_keys:
+            stmt = select(Signal).where(
+                Signal.workspace_id == workspace_id,
+                Signal.deleted_at.is_(None),
+            )
+            rows = await self.db.execute(stmt)
+            for signal in rows.scalars().all():
+                signal.is_active = False
+                signal.deleted_at = datetime.now(timezone.utc)
+            await self.db.flush()
+            return
+
+        stale_stmt = select(Signal).where(
+            Signal.workspace_id == workspace_id,
+            Signal.deleted_at.is_(None),
+            Signal.key.not_in(imported_keys),
+        )
+        stale_rows = await self.db.execute(stale_stmt)
+        for stale in stale_rows.scalars().all():
+            stale.is_active = False
+            stale.deleted_at = datetime.now(timezone.utc)
+
+        await self.db.flush()
+
     @staticmethod
     def _parse_direction(value: str) -> SignalIODirection:
         if isinstance(value, SignalIODirection):

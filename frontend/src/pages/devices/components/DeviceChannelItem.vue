@@ -7,7 +7,7 @@
 
       <!-- DO control -->
       <div
-        v-if="channel.type === 'do'"
+        v-if="effectiveType === 'do'"
         class="w-4 h-4 rounded-sm border cursor-pointer flex items-center justify-center
                transition-colors"
         :class="[doControlClass, { 'cursor-not-allowed opacity-70': isWaiting || disabled }]"
@@ -23,14 +23,14 @@
 
       <!-- DI indicator -->
       <div
-        v-else-if="channel.type === 'di'"
+        v-else-if="effectiveType === 'di'"
         class="w-4 h-4 rounded-full border transition-all duration-200"
         :class="diIndicatorClass"
       />
 
       <!-- AO input -->
       <input
-        v-else-if="channel.type === 'ao'"
+        v-else-if="effectiveType === 'ao'"
         type="number"
         class="w-16 px-1 py-0.5 text-xs rounded border border-neutral-600
                bg-neutral-900 text-neutral-200"
@@ -53,8 +53,13 @@
 import { computed } from "vue"
 import type { Channel } from "@/types/channel"
 
-const props = withDefaults(defineProps<{ channel: Channel; disabled?: boolean }>(), {
+const props = withDefaults(defineProps<{
+  channel: Channel
+  disabled?: boolean
+  deviceType?: "do" | "di" | "ao"
+}>(), {
   disabled: false,
+  deviceType: undefined,
 })
 
 const emit = defineEmits<{
@@ -62,14 +67,23 @@ const emit = defineEmits<{
   (e: "set-ao", payload: { channel: Channel; value: number }): void
 }>()
 
+const effectiveType = computed<Channel["type"] | null>(() => {
+  const channelType = props.channel.type
+  const expectedType = props.deviceType
+  if (!expectedType) {
+    return channelType
+  }
+  return channelType === expectedType ? channelType : null
+})
+
 const status = computed(() =>
-  props.channel.type === "do" ? props.channel.ui?.stage ?? "idle" : "idle"
+  effectiveType.value === "do" ? props.channel.ui?.stage ?? "idle" : "idle"
 )
 const isWaiting = computed(() => status.value === "pending" || status.value === "debounce")
 const isError = computed(() => status.value === "error")
 
 const diAlertActive = computed(() => {
-  if (props.channel.type !== "di") {
+  if (effectiveType.value !== "di") {
     return false
   }
   const diag = props.channel.diDiagnostics
@@ -80,7 +94,7 @@ const diAlertActive = computed(() => {
 })
 
 const diIndicatorClass = computed(() => {
-  if (props.channel.type !== "di") {
+  if (effectiveType.value !== "di") {
     return ""
   }
   if (diAlertActive.value) {
@@ -92,7 +106,7 @@ const diIndicatorClass = computed(() => {
 })
 
 const doControlClass = computed(() => {
-  if (props.channel.type !== "do") {
+  if (effectiveType.value !== "do") {
     return ""
   }
   if (isError.value) {
@@ -108,7 +122,7 @@ const doControlClass = computed(() => {
 })
 
 function onToggleClick() {
-  if (props.channel.type !== "do" || isWaiting.value || props.disabled) {
+  if (effectiveType.value !== "do" || isWaiting.value || props.disabled) {
     return
   }
   emit("toggle", props.channel)

@@ -7,5 +7,5 @@ export function bootWebSocket() {
 
   ws.connect()
 
-  logger.info("🔌 Boot: WebSocket connected")
+  logger.info("🔌 Boot: WebSocket connect initiated")
 }

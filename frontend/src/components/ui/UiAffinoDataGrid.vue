@@ -5,12 +5,80 @@
     :style="gridStyle"
   >
     <div class="ui-affino-grid__layout">
+      <div v-if="props.showControls" class="ui-affino-grid__toolbar">
+        <div class="ui-affino-grid__toolbar-filters">
+          <span class="ui-affino-grid__toolbar-title">Filters</span>
+          <span v-if="activeFilters.length === 0" class="ui-affino-grid__toolbar-empty">No active filters</span>
+          <span
+            v-for="filter in activeFilters"
+            :key="`filter-chip-${filter.key}`"
+            class="ui-affino-grid__filter-chip"
+            :title="`${filter.label}: ${filter.value}`"
+          >
+            {{ filter.label }}: {{ filter.value }}
+          </span>
+        </div>
+        <div class="ui-affino-grid__toolbar-actions">
+          <button
+            type="button"
+            class="ui-affino-grid__toolbar-button"
+            :disabled="activeFilters.length === 0"
+            @click="resetAllFilters"
+          >
+            Reset all
+          </button>
+          <button
+            type="button"
+            class="ui-affino-grid__toolbar-button"
+            @click="toggleColumnPanel"
+          >
+            {{ showColumnPanel ? "Hide columns" : "Columns" }}
+          </button>
+        </div>
+      </div>
+
+      <div v-if="props.showControls && showColumnPanel" class="ui-affino-grid__column-panel">
+        <div class="ui-affino-grid__column-panel-title">Column visibility and order</div>
+        <div
+          v-for="entry in columnManagerColumns"
+          :key="`column-panel-${entry.key}`"
+          class="ui-affino-grid__column-panel-row"
+        >
+          <label class="ui-affino-grid__column-toggle">
+            <input
+              type="checkbox"
+              :checked="entry.visible"
+              @change="event => handleColumnVisibilityChange(entry.key, event)"
+            />
+            <span>{{ entry.label }}</span>
+          </label>
+          <div class="ui-affino-grid__column-order-actions">
+            <button
+              type="button"
+              class="ui-affino-grid__column-order-button"
+              :disabled="!canMoveColumn(entry.key, -1)"
+              @click="moveColumn(entry.key, -1)"
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              class="ui-affino-grid__column-order-button"
+              :disabled="!canMoveColumn(entry.key, 1)"
+              @click="moveColumn(entry.key, 1)"
+            >
+              ↓
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div class="ui-affino-grid__content-shell">
         <div class="ui-affino-grid__index-column">
           <div class="ui-affino-grid__index-header" :style="indexHeaderStyle">#</div>
           <div v-if="showFilterRow" class="ui-affino-grid__index-filter" :style="indexFilterStyle"></div>
 
-          <div ref="indexViewportRef" class="ui-affino-grid__index-viewport">
+          <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @scroll.passive="handleLinkedViewportScroll">
             <div class="ui-affino-grid__index-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -23,7 +91,9 @@
                   v-for="(rowNode, localIndex) in visibleRowNodes"
                   :key="`idx-${String(rowNode.rowId)}`"
                   class="ui-affino-grid__index-row"
-                  :class="{ 'is-even': localIndex % 2 === 1 }"
+                  :class="{ 'is-even': localIndex % 2 === 1, 'is-hovered': isRowHovered(rowNode) }"
+                  @mouseenter="setHoveredRow(rowNode)"
+                  @mouseleave="clearHoveredRow(rowNode)"
                 >
                   {{ resolveNodeDisplayIndex(rowNode, localIndex) + 1 }}
                 </div>
@@ -46,6 +116,7 @@
               class="ui-affino-grid__cell ui-affino-grid__cell--header"
               :style="columnStyle(entry.width)"
               v-bind="grid.bindings.headerCell(entry.key)"
+              @click.capture="handleHeaderCellClickCapture"
             >
               <div class="ui-affino-grid__header-content">
                 <span class="ui-affino-grid__header-label">{{ entry.label }}</span>
@@ -57,6 +128,9 @@
                 v-if="enableColumnResize && grid.bindings.columnResizeHandle"
                 class="ui-affino-grid__resize-handle"
                 v-bind="grid.bindings.columnResizeHandle(entry.key)"
+                @pointerdown.stop="armResizeClickGuard"
+                @mousedown.stop="armResizeClickGuard"
+                @click.stop.prevent="armResizeClickGuard"
               ></span>
             </div>
           </div>
@@ -74,6 +148,7 @@
               :style="columnStyle(entry.width)"
             >
               <input
+                v-if="isColumnFilterable(entry.column)"
                 v-model="columnFilters[entry.key]"
                 type="text"
                 class="ui-affino-grid__filter-input"
@@ -83,7 +158,7 @@
             </div>
           </div>
 
-          <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport">
+          <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @scroll.passive="handleLinkedViewportScroll">
             <div class="ui-affino-grid__pinned-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -96,8 +171,10 @@
                   v-for="(rowNode, localIndex) in visibleRowNodes"
                   :key="`left-${String(rowNode.rowId)}`"
                   class="ui-affino-grid__row ui-affino-grid__row--data ui-affino-grid__row--pinned"
-                  :class="{ 'is-even': localIndex % 2 === 1 }"
+                  :class="{ 'is-even': localIndex % 2 === 1, 'is-hovered': isRowHovered(rowNode) }"
                   v-bind="grid.bindings.rowSelection(rowData(rowNode.data), resolveNodeDisplayIndex(rowNode, localIndex))"
+                  @mouseenter="setHoveredRow(rowNode)"
+                  @mouseleave="clearHoveredRow(rowNode)"
                   @click="emit('row-click', { row: rowData(rowNode.data), rowIndex: resolveNodeDisplayIndex(rowNode, localIndex) })"
                 >
                   <div
@@ -154,6 +231,7 @@
                   class="ui-affino-grid__cell ui-affino-grid__cell--header"
                   :style="columnStyle(entry.width)"
                   v-bind="grid.bindings.headerCell(entry.key)"
+                  @click.capture="handleHeaderCellClickCapture"
                 >
                   <div class="ui-affino-grid__header-content">
                     <span class="ui-affino-grid__header-label">{{ entry.label }}</span>
@@ -165,6 +243,9 @@
                     v-if="enableColumnResize && grid.bindings.columnResizeHandle"
                     class="ui-affino-grid__resize-handle"
                     v-bind="grid.bindings.columnResizeHandle(entry.key)"
+                    @pointerdown.stop="armResizeClickGuard"
+                    @mousedown.stop="armResizeClickGuard"
+                    @click.stop.prevent="armResizeClickGuard"
                   ></span>
                 </div>
                 <div
@@ -187,6 +268,7 @@
                   :style="columnStyle(entry.width)"
                 >
                   <input
+                    v-if="isColumnFilterable(entry.column)"
                     v-model="columnFilters[entry.key]"
                     type="text"
                     class="ui-affino-grid__filter-input"
@@ -215,8 +297,10 @@
                     v-for="(rowNode, localIndex) in visibleRowNodes"
                     :key="String(rowNode.rowId)"
                     class="ui-affino-grid__row ui-affino-grid__row--data"
-                    :class="{ 'is-even': localIndex % 2 === 1 }"
+                    :class="{ 'is-even': localIndex % 2 === 1, 'is-hovered': isRowHovered(rowNode) }"
                     v-bind="grid.bindings.rowSelection(rowData(rowNode.data), resolveNodeDisplayIndex(rowNode, localIndex))"
+                    @mouseenter="setHoveredRow(rowNode)"
+                    @mouseleave="clearHoveredRow(rowNode)"
                     @click="emit('row-click', { row: rowData(rowNode.data), rowIndex: resolveNodeDisplayIndex(rowNode, localIndex) })"
                   >
                     <div
@@ -275,6 +359,7 @@
               class="ui-affino-grid__cell ui-affino-grid__cell--header"
               :style="columnStyle(entry.width)"
               v-bind="grid.bindings.headerCell(entry.key)"
+              @click.capture="handleHeaderCellClickCapture"
             >
               <div class="ui-affino-grid__header-content">
                 <span class="ui-affino-grid__header-label">{{ entry.label }}</span>
@@ -286,6 +371,9 @@
                 v-if="enableColumnResize && grid.bindings.columnResizeHandle"
                 class="ui-affino-grid__resize-handle"
                 v-bind="grid.bindings.columnResizeHandle(entry.key)"
+                @pointerdown.stop="armResizeClickGuard"
+                @mousedown.stop="armResizeClickGuard"
+                @click.stop.prevent="armResizeClickGuard"
               ></span>
             </div>
           </div>
@@ -303,6 +391,7 @@
               :style="columnStyle(entry.width)"
             >
               <input
+                v-if="isColumnFilterable(entry.column)"
                 v-model="columnFilters[entry.key]"
                 type="text"
                 class="ui-affino-grid__filter-input"
@@ -312,7 +401,7 @@
             </div>
           </div>
 
-          <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport">
+          <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @scroll.passive="handleLinkedViewportScroll">
             <div class="ui-affino-grid__pinned-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -325,8 +414,10 @@
                   v-for="(rowNode, localIndex) in visibleRowNodes"
                   :key="`right-${String(rowNode.rowId)}`"
                   class="ui-affino-grid__row ui-affino-grid__row--data ui-affino-grid__row--pinned"
-                  :class="{ 'is-even': localIndex % 2 === 1 }"
+                  :class="{ 'is-even': localIndex % 2 === 1, 'is-hovered': isRowHovered(rowNode) }"
                   v-bind="grid.bindings.rowSelection(rowData(rowNode.data), resolveNodeDisplayIndex(rowNode, localIndex))"
+                  @mouseenter="setHoveredRow(rowNode)"
+                  @mouseleave="clearHoveredRow(rowNode)"
                   @click="emit('row-click', { row: rowData(rowNode.data), rowIndex: resolveNodeDisplayIndex(rowNode, localIndex) })"
                 >
                   <div
@@ -365,18 +456,29 @@
         </div>
       </div>
     </div>
+
+    <div v-if="showInitialLoadingOverlay" class="ui-affino-grid__loading-overlay" aria-live="polite" aria-busy="true">
+      <div class="ui-affino-grid__loading-chip">
+        <span class="ui-affino-grid__loading-spinner" aria-hidden="true"></span>
+        <span>Loading table…</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import type {
+  DataGridColumnModelSnapshot,
   DataGridColumnModel,
+  DataGridColumnStateSnapshot,
   DataGridColumnSnapshot,
   DataGridCoreServiceContext,
+  DataGridFilterSnapshot,
   DataGridRowModel,
+  DataGridSortState,
 } from "@affino/datagrid-core"
-import { useAffinoDataGrid } from "@affino/datagrid-vue"
+import { createDataGridSettingsAdapter, useAffinoDataGrid, useDataGridSettingsStore } from "@affino/datagrid-vue"
 import {
   useDataGridColumnLayoutOrchestration,
 } from "@affino/datagrid-vue/advanced"
@@ -447,6 +549,10 @@ const props = withDefaults(defineProps<{
   enableColumnResize?: boolean
   emptyText?: string
   rowKey?: (row: GridRow, rowIndex: number) => string
+  showControls?: boolean
+  tableId?: string
+  persistState?: boolean
+  datasetKey?: string
 }>(), {
   rowHeight: 34,
   overscanRows: 8,
@@ -456,6 +562,10 @@ const props = withDefaults(defineProps<{
   enableColumnResize: true,
   emptyText: "No data",
   rowKey: undefined,
+  showControls: false,
+  tableId: undefined,
+  persistState: true,
+  datasetKey: "",
 })
 
 const emit = defineEmits<{ (e: "row-click", payload: { row: GridRow; rowIndex: number }): void }>()
@@ -474,6 +584,7 @@ const rightPinnedFilterRowRef = ref<HTMLElement | null>(null)
 const PINNED_INDEX_COLUMN_WIDTH = 64
 
 const columnFilters = reactive<Record<string, string>>({})
+const showColumnPanel = ref(false)
 const baseRowHeight = ref(Math.max(1, props.rowHeight))
 const rowHeightMode = ref<RowHeightMode>("fixed")
 const measuredAutoRowHeight = ref<number | null>(null)
@@ -491,6 +602,7 @@ const observedViewportHeight = ref<number | null>(null)
 const rowModelRevision = ref(0)
 const measuredHeaderHeight = ref<number | null>(null)
 const measuredFilterHeight = ref<number | null>(null)
+const hoveredRowId = ref<string | null>(null)
 
 let viewportRowModel: ViewportRowModelBridge | null = null
 let viewportColumnModel: ViewportColumnModelBridge | null = null
@@ -500,6 +612,10 @@ let cachedColumnWindowSource: readonly DataGridColumnSnapshot[] | null = null
 let cachedColumnWindowPrefix: number[] = []
 let lastAppliedFilterSignature: string | null = null
 let lastVirtualWindowSnapshot: VirtualWindowSnapshot | null = null
+let settingsPersistTimer: ReturnType<typeof setTimeout> | null = null
+let restoringSettings = false
+const SETTINGS_PERSIST_DELAY_MS = 120
+const dataGridSettingsAdapter = createDataGridSettingsAdapter(useDataGridSettingsStore())
 
 const INDEX_COLUMN_KEYS = new Set<string>([
   "__snapshotindex__",
@@ -730,19 +846,27 @@ const viewportService = {
       viewportMetrics.overscanRows !== normalizedOverscanRows ||
       viewportMetrics.overscanColumns !== normalizedOverscanColumns
     )
-    if (!changed) {
-      return null
+    const previousAppliedRange = lastAppliedRowRange
+      ? { start: lastAppliedRowRange.start, end: lastAppliedRowRange.end }
+      : null
+
+    if (changed) {
+      viewportMetrics.scrollTop = normalizedTop
+      viewportMetrics.scrollLeft = normalizedLeft
+      viewportMetrics.viewportHeight = normalizedHeight
+      viewportMetrics.viewportWidth = normalizedWidth
+      viewportMetrics.rowHeight = normalizedRowHeight
+      viewportMetrics.overscanRows = normalizedOverscanRows
+      viewportMetrics.overscanColumns = normalizedOverscanColumns
+      explicitRowRange = null
     }
 
-    viewportMetrics.scrollTop = normalizedTop
-    viewportMetrics.scrollLeft = normalizedLeft
-    viewportMetrics.viewportHeight = normalizedHeight
-    viewportMetrics.viewportWidth = normalizedWidth
-    viewportMetrics.rowHeight = normalizedRowHeight
-    viewportMetrics.overscanRows = normalizedOverscanRows
-    viewportMetrics.overscanColumns = normalizedOverscanColumns
-    explicitRowRange = null
-    return applyRowRangeToModel()
+    const range = applyRowRangeToModel()
+    const rangeChanged = !isSameRange(previousAppliedRange, range)
+    if (!changed && !rangeChanged) {
+      return null
+    }
+    return range
   },
   setRowHeightMode(mode: RowHeightMode) {
     const normalized: RowHeightMode = mode === "auto" ? "auto" : "fixed"
@@ -844,7 +968,7 @@ const grid = useAffinoDataGrid<GridRow>({
     statusBar: false,
     tree: false,
     summary: false,
-    visibility: false,
+    visibility: true,
   },
 })
 
@@ -906,6 +1030,45 @@ const resolvedColumns = computed<readonly ResolvedColumn[]>(() => {
   }))
 })
 
+const persistedTableId = computed(() => {
+  if (!props.persistState) {
+    return null
+  }
+  const value = String(props.tableId ?? "").trim()
+  return value.length > 0 ? value : null
+})
+const persistedDatasetKey = computed(() => {
+  const value = String(props.datasetKey ?? "").trim()
+  return value.length > 0 ? value : "__default__"
+})
+const persistedHydrationSignature = computed(() => (
+  `${persistedTableId.value ?? ""}|${persistedDatasetKey.value}|${coreColumns.value.map(column => column.key).join("|")}`
+))
+
+const columnLabelByKey = computed(() => {
+  const entries = coreColumns.value.map(column => [column.key, column.label ?? column.key] as const)
+  return new Map(entries)
+})
+
+const activeFilters = computed(() => (
+  Object.entries(columnFilters)
+    .map(([key, rawValue]) => ({
+      key,
+      label: columnLabelByKey.value.get(key) ?? key,
+      value: rawValue.trim(),
+    }))
+    .filter(item => item.value.length > 0)
+    .sort((left, right) => left.label.localeCompare(right.label))
+))
+
+const columnManagerColumns = computed(() => (
+  grid.columnState.snapshot.value.columns.map(column => ({
+    key: column.key,
+    label: column.column.label ?? column.key,
+    visible: column.visible,
+  }))
+))
+
 const visibleRowRange = computed<WindowRange>(() => {
   const window = grid.virtualWindow.value
   const total = totalRows.value
@@ -924,6 +1087,11 @@ const columnLayout = useDataGridColumnLayoutOrchestration({
 })
 
 const orderedColumns = computed(() => columnLayout.orderedColumns.value)
+
+function isColumnFilterable(column: GridColumn): boolean {
+  return column.meta?.filterable !== false
+}
+
 function normalizePin(pin: GridColumn["pin"] | ResolvedColumn["pin"]): "left" | "right" | "none" {
   if (pin === "left" || pin === "right") {
     return pin
@@ -1029,12 +1197,69 @@ const renderedColumnsSignature = computed(() => (
     .join("|")
 ))
 
+function resolveBootstrapRowRange(total: number): WindowRange {
+  if (total <= 0) {
+    return { start: 0, end: -1 }
+  }
+
+  const bodyViewport = viewportRef.value
+  const mainViewport = mainViewportRef.value
+  const measuredHeight = Math.max(
+    0,
+    bodyViewport?.clientHeight ?? 0,
+    mainViewport?.clientHeight ?? 0,
+    observedViewportHeight.value ?? 0,
+  )
+  const rowHeight = Math.max(1, rowHeightPx.value)
+  const visibleCountFromHeight = measuredHeight > 0
+    ? Math.max(1, Math.ceil(measuredHeight / rowHeight))
+    : 16
+  const overscan = Math.max(0, viewportMetrics.overscanRows)
+  const end = Math.min(total - 1, visibleCountFromHeight + overscan * 2 - 1)
+  return { start: 0, end }
+}
+
+function forceBootstrapViewportRange() {
+  const total = totalRows.value
+  if (total <= 1) {
+    return
+  }
+  const bootstrapRange = resolveBootstrapRowRange(total)
+  if (bootstrapRange.end < bootstrapRange.start) {
+    return
+  }
+  viewportService.setViewportRange(bootstrapRange)
+  grid.syncRowsInRange(bootstrapRange)
+}
+
 const visibleRowNodes = computed(() => {
   void props.rows
   void rowModelRevision.value
+  const total = totalRows.value
+  if (total === 0) return []
+
   const { start, end } = visibleRowRange.value
-  if (end < start || totalRows.value === 0) return []
-  return grid.rowModel.getRowsInRange({ start, end })
+  if (end >= start) {
+    const nodes = grid.rowModel.getRowsInRange({ start, end })
+    if (nodes.length > 1 || total <= 1) {
+      return nodes
+    }
+
+    const bootstrapRange = resolveBootstrapRowRange(total)
+    if (bootstrapRange.end >= bootstrapRange.start) {
+      const bootstrapNodes = grid.rowModel.getRowsInRange(bootstrapRange)
+      if (bootstrapNodes.length > nodes.length) {
+        return bootstrapNodes
+      }
+    }
+    return nodes
+  }
+
+  const bootstrapRange = resolveBootstrapRowRange(total)
+  if (bootstrapRange.end < bootstrapRange.start) {
+    return []
+  }
+  return grid.rowModel.getRowsInRange(bootstrapRange)
 })
 
 function resolveNodeDisplayIndex(rowNode: unknown, localIndex: number): number {
@@ -1059,6 +1284,11 @@ const renderedDisplayRange = computed<WindowRange>(() => {
 })
 
 const renderedRowsCount = computed(() => visibleRowNodes.value.length)
+const tableReadyOnce = ref(false)
+
+const showInitialLoadingOverlay = computed(() => (
+  !tableReadyOnce.value && totalRows.value > 1 && renderedRowsCount.value <= 1
+))
 
 const topSpacerPx = computed(() => {
   const { start } = renderedDisplayRange.value
@@ -1078,8 +1308,139 @@ let syncFrame: number | null = null
 let autoRowHeightMeasureFrame: number | null = null
 let onWindowResize: (() => void) | null = null
 let viewportResizeObserver: ResizeObserver | null = null
+let resizeClickGuardTimer: ReturnType<typeof setTimeout> | null = null
+let resizeGuardReleaseTimer: ReturnType<typeof setTimeout> | null = null
+let resizeGuardPointerUpListener: ((event: PointerEvent) => void) | null = null
+let resizeGuardMouseUpListener: ((event: MouseEvent) => void) | null = null
+let initialViewportRecoveryFrame: number | null = null
+let hoverClearTimer: ReturnType<typeof setTimeout> | null = null
+let initialViewportRecoveryAttempts = 0
 let lastHandledScrollTop = Number.NaN
 let lastHandledScrollLeft = Number.NaN
+let syncingLinkedScroll = false
+const resizeInteractionActive = ref(false)
+const suppressHeaderSortUntil = ref(0)
+const RESIZE_SORT_GUARD_MS = 140
+const MAX_INITIAL_VIEWPORT_RECOVERY_ATTEMPTS = 12
+
+function detachResizeGuardReleaseListeners() {
+  if (typeof document === "undefined") {
+    resizeGuardPointerUpListener = null
+    resizeGuardMouseUpListener = null
+    return
+  }
+  if (resizeGuardPointerUpListener) {
+    document.removeEventListener("pointerup", resizeGuardPointerUpListener, true)
+    resizeGuardPointerUpListener = null
+  }
+  if (resizeGuardMouseUpListener) {
+    document.removeEventListener("mouseup", resizeGuardMouseUpListener, true)
+    resizeGuardMouseUpListener = null
+  }
+}
+
+function releaseResizeClickGuard() {
+  resizeInteractionActive.value = false
+  suppressHeaderSortUntil.value = Date.now() + RESIZE_SORT_GUARD_MS
+  schedulePersistTableSettings()
+  if (resizeClickGuardTimer !== null) {
+    clearTimeout(resizeClickGuardTimer)
+  }
+  resizeClickGuardTimer = setTimeout(() => {
+    suppressHeaderSortUntil.value = 0
+    resizeClickGuardTimer = null
+  }, RESIZE_SORT_GUARD_MS)
+}
+
+function armResizeClickGuard() {
+  resizeInteractionActive.value = true
+  suppressHeaderSortUntil.value = Number.POSITIVE_INFINITY
+
+  if (resizeGuardReleaseTimer !== null) {
+    clearTimeout(resizeGuardReleaseTimer)
+    resizeGuardReleaseTimer = null
+  }
+
+  if (typeof document !== "undefined") {
+    detachResizeGuardReleaseListeners()
+    resizeGuardPointerUpListener = () => {
+      detachResizeGuardReleaseListeners()
+      if (resizeGuardReleaseTimer !== null) {
+        clearTimeout(resizeGuardReleaseTimer)
+      }
+      resizeGuardReleaseTimer = setTimeout(() => {
+        resizeGuardReleaseTimer = null
+        releaseResizeClickGuard()
+      }, 0)
+    }
+    resizeGuardMouseUpListener = () => {
+      detachResizeGuardReleaseListeners()
+      if (resizeGuardReleaseTimer !== null) {
+        clearTimeout(resizeGuardReleaseTimer)
+      }
+      resizeGuardReleaseTimer = setTimeout(() => {
+        resizeGuardReleaseTimer = null
+        releaseResizeClickGuard()
+      }, 0)
+    }
+    document.addEventListener("pointerup", resizeGuardPointerUpListener, true)
+    document.addEventListener("mouseup", resizeGuardMouseUpListener, true)
+  }
+}
+
+function handleHeaderCellClickCapture(event: MouseEvent) {
+  if (resizeInteractionActive.value) {
+    event.preventDefault()
+    event.stopPropagation()
+    event.stopImmediatePropagation()
+    return
+  }
+  if (Date.now() > suppressHeaderSortUntil.value) {
+    return
+  }
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation()
+}
+
+function resolveRowHoverKey(rowNode: unknown): string | null {
+  const candidate = (rowNode as { rowId?: unknown })?.rowId
+  if (candidate === null || candidate === undefined) {
+    return null
+  }
+  return String(candidate)
+}
+
+function setHoveredRow(rowNode: unknown) {
+  const key = resolveRowHoverKey(rowNode)
+  if (!key) return
+  if (hoverClearTimer !== null) {
+    clearTimeout(hoverClearTimer)
+    hoverClearTimer = null
+  }
+  hoveredRowId.value = key
+}
+
+function clearHoveredRow(rowNode: unknown) {
+  const key = resolveRowHoverKey(rowNode)
+  if (!key || hoveredRowId.value !== key) {
+    return
+  }
+  if (hoverClearTimer !== null) {
+    clearTimeout(hoverClearTimer)
+  }
+  hoverClearTimer = setTimeout(() => {
+    if (hoveredRowId.value === key) {
+      hoveredRowId.value = null
+    }
+    hoverClearTimer = null
+  }, 0)
+}
+
+function isRowHovered(rowNode: unknown): boolean {
+  const key = resolveRowHoverKey(rowNode)
+  return !!key && hoveredRowId.value === key
+}
 
 function updateObservedViewportSize() {
   const mainViewport = mainViewportRef.value
@@ -1116,17 +1477,22 @@ function updateMeasuredHeaderHeights() {
 }
 
 function syncLinkedScroll(scrollTop: number) {
-  const indexViewport = indexViewportRef.value
-  if (indexViewport && indexViewport.scrollTop !== scrollTop) {
-    indexViewport.scrollTop = scrollTop
-  }
-  const leftPinnedViewport = leftPinnedViewportRef.value
-  if (leftPinnedViewport && leftPinnedViewport.scrollTop !== scrollTop) {
-    leftPinnedViewport.scrollTop = scrollTop
-  }
-  const rightPinnedViewport = rightPinnedViewportRef.value
-  if (rightPinnedViewport && rightPinnedViewport.scrollTop !== scrollTop) {
-    rightPinnedViewport.scrollTop = scrollTop
+  syncingLinkedScroll = true
+  try {
+    const indexViewport = indexViewportRef.value
+    if (indexViewport && indexViewport.scrollTop !== scrollTop) {
+      indexViewport.scrollTop = scrollTop
+    }
+    const leftPinnedViewport = leftPinnedViewportRef.value
+    if (leftPinnedViewport && leftPinnedViewport.scrollTop !== scrollTop) {
+      leftPinnedViewport.scrollTop = scrollTop
+    }
+    const rightPinnedViewport = rightPinnedViewportRef.value
+    if (rightPinnedViewport && rightPinnedViewport.scrollTop !== scrollTop) {
+      rightPinnedViewport.scrollTop = scrollTop
+    }
+  } finally {
+    syncingLinkedScroll = false
   }
 }
 
@@ -1168,14 +1534,21 @@ function syncViewportMetrics() {
   const mainViewport = mainViewportRef.value
   if (!bodyViewport || !mainViewport) return
   syncLinkedScroll(bodyViewport.scrollTop)
-  const liveHeight = Math.max(0, bodyViewport.clientHeight)
+  const liveBodyHeight = Math.max(0, bodyViewport.clientHeight)
+  const liveMainHeight = Math.max(0, mainViewport.clientHeight)
+  const liveShellHeight = Math.max(0, mainViewport.parentElement?.clientHeight ?? 0)
+  const liveHeight = Math.max(liveBodyHeight, liveMainHeight, liveShellHeight)
   const liveWidth = Math.max(0, mainViewport.clientWidth)
-  const viewportHeight = (observedViewportHeight.value && observedViewportHeight.value > 0)
-    ? observedViewportHeight.value
-    : liveHeight
-  const viewportWidth = (observedViewportWidth.value && observedViewportWidth.value > 0)
-    ? observedViewportWidth.value
-    : liveWidth
+  const viewportHeight = Math.max(
+    0,
+    observedViewportHeight.value ?? 0,
+    liveHeight,
+  )
+  const viewportWidth = Math.max(
+    0,
+    observedViewportWidth.value ?? 0,
+    liveWidth,
+  )
   const range = viewportService.setViewportMetrics({
     scrollTop: bodyViewport.scrollTop,
     scrollLeft: mainViewport.scrollLeft,
@@ -1199,6 +1572,50 @@ function scheduleViewportSync() {
   syncFrame = requestAnimationFrame(() => {
     syncFrame = null
     syncViewportMetrics()
+  })
+}
+
+function cancelInitialViewportRecovery() {
+  if (initialViewportRecoveryFrame !== null) {
+    cancelAnimationFrame(initialViewportRecoveryFrame)
+    initialViewportRecoveryFrame = null
+  }
+  initialViewportRecoveryAttempts = 0
+}
+
+function scheduleInitialViewportRecovery(reset = false) {
+  if (reset) {
+    cancelInitialViewportRecovery()
+  }
+  if (initialViewportRecoveryFrame !== null) {
+    return
+  }
+
+  initialViewportRecoveryFrame = requestAnimationFrame(() => {
+    initialViewportRecoveryFrame = null
+
+    const total = totalRows.value
+    const range = visibleRowRange.value
+    const rendered = range.end >= range.start ? (range.end - range.start + 1) : 0
+    const bodyViewport = viewportRef.value
+    const measuredHeight = bodyViewport ? Math.max(0, bodyViewport.clientHeight) : 0
+    const likelyMeasured = measuredHeight >= Math.max(rowHeightPx.value * 2, 48)
+
+    if (total <= 1 || rendered > 1) {
+      initialViewportRecoveryAttempts = 0
+      return
+    }
+
+    updateObservedViewportSize()
+    syncViewportMetrics()
+
+    initialViewportRecoveryAttempts += 1
+    if (!likelyMeasured || (rendered <= 1 && initialViewportRecoveryAttempts < MAX_INITIAL_VIEWPORT_RECOVERY_ATTEMPTS)) {
+      scheduleInitialViewportRecovery(false)
+      return
+    }
+
+    initialViewportRecoveryAttempts = 0
   })
 }
 
@@ -1270,19 +1687,23 @@ onMounted(() => {
   }
 
   syncFilterKeys()
+  restorePersistedTableSettings()
   applyFilters()
   if (rowHeightMode.value === "auto") {
     scheduleAutoRowHeightMeasure()
   }
   scheduleViewportSync()
+  scheduleInitialViewportRecovery(true)
   requestAnimationFrame(() => {
     updateObservedViewportSize()
     updateMeasuredHeaderHeights()
     scheduleViewportSync()
+    scheduleInitialViewportRecovery(false)
   })
 })
 
 onBeforeUnmount(() => {
+  persistTableSettingsNow()
   unsubscribeRowModel()
   if (onWindowResize && typeof window !== "undefined") {
     window.removeEventListener("resize", onWindowResize)
@@ -1302,7 +1723,52 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(autoRowHeightMeasureFrame)
     autoRowHeightMeasureFrame = null
   }
+  cancelInitialViewportRecovery()
+  detachResizeGuardReleaseListeners()
+  if (resizeGuardReleaseTimer !== null) {
+    clearTimeout(resizeGuardReleaseTimer)
+    resizeGuardReleaseTimer = null
+  }
+  if (resizeClickGuardTimer !== null) {
+    clearTimeout(resizeClickGuardTimer)
+    resizeClickGuardTimer = null
+  }
+  if (settingsPersistTimer !== null) {
+    clearTimeout(settingsPersistTimer)
+    settingsPersistTimer = null
+  }
+  if (hoverClearTimer !== null) {
+    clearTimeout(hoverClearTimer)
+    hoverClearTimer = null
+  }
+  hoveredRowId.value = null
+  resizeInteractionActive.value = false
+  suppressHeaderSortUntil.value = 0
 })
+
+watch(
+  persistedHydrationSignature,
+  () => {
+    restorePersistedTableSettings()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => grid.columnState.snapshot.value,
+  () => {
+    schedulePersistTableSettings()
+  },
+  { deep: true },
+)
+
+watch(
+  () => grid.sortState.value,
+  () => {
+    schedulePersistTableSettings()
+  },
+  { deep: true },
+)
 
 watch(
   () => props.columns,
@@ -1329,9 +1795,49 @@ watch(
       if (viewportResizeObserver && rightPinnedFilterRowRef.value) {
         viewportResizeObserver.observe(rightPinnedFilterRowRef.value)
       }
+      restorePersistedTableSettings()
       scheduleViewportSync()
     })
   },
+)
+
+watch(
+  () => props.rows.length,
+  (next, prev) => {
+    if (next > 0 && next !== prev) {
+      tableReadyOnce.value = false
+    }
+    void nextTick(() => {
+      updateObservedViewportSize()
+      scheduleViewportSync()
+      scheduleInitialViewportRecovery(true)
+    })
+  },
+  { immediate: true },
+)
+
+watch(
+  rowModelRevision,
+  () => {
+    const total = totalRows.value
+    const range = visibleRowRange.value
+    const rendered = range.end >= range.start ? (range.end - range.start + 1) : 0
+    if (total > 1 && rendered <= 1) {
+      forceBootstrapViewportRange()
+      scheduleViewportSync()
+      scheduleInitialViewportRecovery(false)
+    }
+  },
+)
+
+watch(
+  () => [totalRows.value, renderedRowsCount.value] as const,
+  ([total, rendered]) => {
+    if (total <= 1 || rendered > 1) {
+      tableReadyOnce.value = true
+    }
+  },
+  { immediate: true },
 )
 
 watch(
@@ -1442,13 +1948,331 @@ function handleBodyScroll(event: Event) {
   scheduleViewportSync()
 }
 
+function handleLinkedViewportScroll(event: Event) {
+  if (syncingLinkedScroll) return
+  const source = event.currentTarget as HTMLElement | null
+  const bodyViewport = viewportRef.value
+  if (!source || !bodyViewport) return
+
+  const nextTop = Math.max(0, source.scrollTop)
+  if (nextTop === bodyViewport.scrollTop) return
+
+  bodyViewport.scrollTop = nextTop
+  lastHandledScrollTop = bodyViewport.scrollTop
+  syncLinkedScroll(bodyViewport.scrollTop)
+  if (rowHeightMode.value === "auto") {
+    scheduleAutoRowHeightMeasure()
+  }
+  scheduleViewportSync()
+}
+
+function toggleColumnPanel() {
+  showColumnPanel.value = !showColumnPanel.value
+}
+
+function handleColumnVisibilityChange(columnKey: string, event: Event) {
+  const target = event.target as HTMLInputElement | null
+  const nextVisible = Boolean(target?.checked)
+  grid.columnState.setVisibility(columnKey, nextVisible)
+  persistTableSettingsNow()
+}
+
+function canMoveColumn(columnKey: string, direction: -1 | 1): boolean {
+  const order = grid.columnState.snapshot.value.order
+  const index = order.indexOf(columnKey)
+  if (index < 0) return false
+  const targetIndex = index + direction
+  return targetIndex >= 0 && targetIndex < order.length
+}
+
+function moveColumn(columnKey: string, direction: -1 | 1) {
+  const order = [...grid.columnState.snapshot.value.order]
+  const fromIndex = order.indexOf(columnKey)
+  if (fromIndex < 0) return
+  const toIndex = fromIndex + direction
+  if (toIndex < 0 || toIndex >= order.length) return
+  const [column] = order.splice(fromIndex, 1)
+  if (!column) return
+  order.splice(toIndex, 0, column)
+  grid.columnState.setOrder(order)
+  persistTableSettingsNow()
+}
+
+function resetAllFilters() {
+  Object.keys(columnFilters).forEach((key) => {
+    columnFilters[key] = ""
+  })
+  applyFilters()
+}
+
+function captureColumnStateSnapshot(snapshot: DataGridColumnModelSnapshot): DataGridColumnStateSnapshot {
+  const visibility: Record<string, boolean> = {}
+  const widths: Record<string, number> = {}
+  const pinning: Record<string, "left" | "right" | "none"> = {}
+  snapshot.columns.forEach((column) => {
+    visibility[column.key] = column.visible
+    pinning[column.key] = column.pin
+    if (typeof column.width === "number" && Number.isFinite(column.width)) {
+      widths[column.key] = Math.max(0, Math.trunc(column.width))
+    }
+  })
+  return {
+    order: [...snapshot.order],
+    visibility,
+    widths,
+    pinning,
+  }
+}
+
+function applyPersistedColumnState(state: DataGridColumnStateSnapshot) {
+  const currentOrder = grid.columnState.snapshot.value.order
+  if (state.order.length > 0) {
+    const knownKeys = new Set(currentOrder)
+    const nextOrder = state.order.filter(columnKey => knownKeys.has(columnKey))
+    const nextOrderSet = new Set(nextOrder)
+    currentOrder.forEach((columnKey) => {
+      if (!nextOrderSet.has(columnKey)) {
+        nextOrder.push(columnKey)
+        nextOrderSet.add(columnKey)
+      }
+    })
+    if (nextOrder.length > 0) {
+      grid.columnState.setOrder(nextOrder)
+    }
+  }
+  Object.entries(state.visibility).forEach(([columnKey, visible]) => {
+    grid.columnState.setVisibility(columnKey, Boolean(visible))
+  })
+  Object.entries(state.widths).forEach(([columnKey, width]) => {
+    if (!Number.isFinite(width)) return
+    grid.columnState.setWidth(columnKey, Math.max(0, Math.trunc(width)))
+  })
+  Object.entries(state.pinning).forEach(([columnKey, pin]) => {
+    const normalizedPin = pin === "left" || pin === "right" ? pin : "none"
+    grid.columnState.setPin(columnKey, normalizedPin)
+  })
+}
+
+function normalizePersistedSortState(state: DataGridSortState[] | undefined): DataGridSortState[] {
+  if (!Array.isArray(state)) {
+    return []
+  }
+  return state
+    .map(item => ({
+      key: String(item?.key ?? "").trim(),
+      direction: item?.direction === "desc" ? "desc" : "asc",
+    }))
+    .filter(item => item.key.length > 0)
+}
+
+function buildFilterSnapshotFromInputs(): DataGridFilterSnapshot | null {
+  const columnFiltersSnapshot: Record<string, string[]> = {}
+  Object.entries(columnFilters).forEach(([key, value]) => {
+    const trimmed = value.trim()
+    if (!trimmed.length) return
+    columnFiltersSnapshot[key] = [trimmed]
+  })
+  if (!Object.keys(columnFiltersSnapshot).length) {
+    return null
+  }
+  return {
+    columnFilters: columnFiltersSnapshot,
+    advancedFilters: {},
+  }
+}
+
+function applyPersistedFilterSnapshot(snapshot: DataGridFilterSnapshot | null) {
+  syncFilterKeys()
+  Object.keys(columnFilters).forEach((key) => {
+    columnFilters[key] = ""
+  })
+  if (!snapshot) {
+    return
+  }
+  Object.entries(snapshot.columnFilters ?? {}).forEach(([key, values]) => {
+    if (!(key in columnFilters) || !Array.isArray(values) || values.length === 0) {
+      return
+    }
+    const first = values.find(value => String(value ?? "").trim().length > 0)
+    if (first === undefined || first === null) {
+      return
+    }
+    columnFilters[key] = String(first)
+  })
+}
+
+function persistTableSettingsNow() {
+  const tableId = persistedTableId.value
+  if (!tableId || restoringSettings) {
+    return
+  }
+  const columnState = captureColumnStateSnapshot(grid.columnState.snapshot.value)
+  dataGridSettingsAdapter.setColumnState(
+    tableId,
+    columnState,
+  )
+  writePersistedColumnWidths(tableId, persistedDatasetKey.value, columnState.widths)
+  dataGridSettingsAdapter.setSortState(
+    tableId,
+    grid.sortState.value.map(item => ({
+      key: item.key,
+      field: item.key,
+      direction: item.direction,
+    })),
+  )
+  dataGridSettingsAdapter.setFilterSnapshot(
+    tableId,
+    buildFilterSnapshotFromInputs(),
+  )
+}
+
+function resolveDatasetStorageKey(tableId: string): string {
+  return `affino-datagrid-dataset::${tableId}`
+}
+
+function resolveColumnWidthsStorageKey(tableId: string, datasetKey: string): string {
+  return `affino-datagrid-widths::${tableId}::${datasetKey}`
+}
+
+function readPersistedColumnWidths(tableId: string, datasetKey: string): Record<string, number> | null {
+  if (typeof window === "undefined") {
+    return null
+  }
+  try {
+    const raw = window.localStorage.getItem(resolveColumnWidthsStorageKey(tableId, datasetKey))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    if (!parsed || typeof parsed !== "object") {
+      return null
+    }
+    const normalized: Record<string, number> = {}
+    Object.entries(parsed).forEach(([key, value]) => {
+      const width = Number(value)
+      if (!Number.isFinite(width) || width <= 0) return
+      normalized[key] = Math.max(1, Math.trunc(width))
+    })
+    return Object.keys(normalized).length ? normalized : null
+  } catch {
+    return null
+  }
+}
+
+function writePersistedColumnWidths(tableId: string, datasetKey: string, widths: Record<string, number>) {
+  if (typeof window === "undefined") {
+    return
+  }
+  try {
+    window.localStorage.setItem(
+      resolveColumnWidthsStorageKey(tableId, datasetKey),
+      JSON.stringify(widths),
+    )
+  } catch {
+    // Ignore storage write failures and keep runtime functional.
+  }
+}
+
+function applyPersistedColumnWidths(widths: Record<string, number> | null) {
+  if (!widths) {
+    return
+  }
+  Object.entries(widths).forEach(([columnKey, width]) => {
+    if (!Number.isFinite(width)) return
+    grid.columnState.setWidth(columnKey, Math.max(1, Math.trunc(width)))
+  })
+}
+
+function readPersistedDatasetKey(tableId: string): string | null {
+  if (typeof window === "undefined") {
+    return null
+  }
+  try {
+    return window.localStorage.getItem(resolveDatasetStorageKey(tableId))
+  } catch {
+    return null
+  }
+}
+
+function writePersistedDatasetKey(tableId: string, datasetKey: string) {
+  if (typeof window === "undefined") {
+    return
+  }
+  try {
+    window.localStorage.setItem(resolveDatasetStorageKey(tableId), datasetKey)
+  } catch {
+    // Ignore storage write failures and keep runtime functional.
+  }
+}
+
+function ensurePersistedDatasetScope() {
+  const tableId = persistedTableId.value
+  if (!tableId) {
+    return
+  }
+  const currentDatasetKey = persistedDatasetKey.value
+  const storedDatasetKey = readPersistedDatasetKey(tableId)
+  if (storedDatasetKey !== null && storedDatasetKey !== currentDatasetKey) {
+    dataGridSettingsAdapter.clearTable(tableId)
+    if (settingsPersistTimer !== null) {
+      clearTimeout(settingsPersistTimer)
+      settingsPersistTimer = null
+    }
+  }
+  writePersistedDatasetKey(tableId, currentDatasetKey)
+}
+
+function schedulePersistTableSettings() {
+  if (!persistedTableId.value || restoringSettings) {
+    return
+  }
+  if (settingsPersistTimer !== null) {
+    clearTimeout(settingsPersistTimer)
+  }
+  settingsPersistTimer = setTimeout(() => {
+    settingsPersistTimer = null
+    persistTableSettingsNow()
+  }, SETTINGS_PERSIST_DELAY_MS)
+}
+
+function restorePersistedTableSettings() {
+  const tableId = persistedTableId.value
+  if (!tableId) {
+    return
+  }
+  ensurePersistedDatasetScope()
+  restoringSettings = true
+  try {
+    const persistedColumnState = dataGridSettingsAdapter.getColumnState(tableId)
+    if (persistedColumnState) {
+      applyPersistedColumnState(persistedColumnState)
+    }
+    applyPersistedColumnWidths(readPersistedColumnWidths(tableId, persistedDatasetKey.value))
+
+    const persistedSortState = normalizePersistedSortState(dataGridSettingsAdapter.getSortState(tableId))
+    if (persistedSortState.length > 0 && props.enableSorting) {
+      grid.setSortState(persistedSortState)
+    }
+
+    const persistedFilterSnapshot = dataGridSettingsAdapter.getFilterSnapshot(tableId)
+    applyPersistedFilterSnapshot(persistedFilterSnapshot)
+  } finally {
+    restoringSettings = false
+  }
+  applyFilters()
+}
+
 function syncFilterKeys() {
-  const allowedKeys = new Set(coreColumns.value.map(column => column.key))
-  coreColumns.value.forEach((column) => {
+  const allowedKeys = new Set(
+    coreColumns.value
+      .filter(column => isColumnFilterable(column))
+      .map(column => column.key),
+  )
+  coreColumns.value
+    .filter(column => isColumnFilterable(column))
+    .forEach((column) => {
     if (!(column.key in columnFilters)) {
       columnFilters[column.key] = ""
     }
-  })
+    })
   Object.keys(columnFilters).forEach((key) => {
     if (!allowedKeys.has(key)) {
       delete columnFilters[key]
@@ -1463,6 +2287,7 @@ function applyFilters() {
     }
     lastAppliedFilterSignature = "__disabled__"
     grid.features.filtering.clear()
+    schedulePersistTableSettings()
     return
   }
 
@@ -1481,6 +2306,7 @@ function applyFilters() {
 
   if (!active.length) {
     grid.features.filtering.clear()
+    schedulePersistTableSettings()
     return
   }
 
@@ -1493,6 +2319,7 @@ function applyFilters() {
     })
     first = false
   })
+  schedulePersistTableSettings()
 }
 
 function sortDirection(columnKey: string): "asc" | "desc" | null {
@@ -1538,10 +2365,78 @@ function columnStyle(width: number) {
 
 <style scoped>
 .ui-affino-grid {
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;
   min-width: 0;
+}
+
+.ui-affino-grid__loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 4;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.15));
+}
+
+.dark .ui-affino-grid__loading-overlay {
+  background: linear-gradient(to bottom, rgba(23, 23, 23, 0.52), rgba(23, 23, 23, 0.22));
+}
+
+.ui-affino-grid__loading-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(248, 250, 252, 0.92);
+  color: #334155;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.dark .ui-affino-grid__loading-chip {
+  border-color: var(--ui-affino-dark-border);
+  background: rgba(38, 38, 38, 0.88);
+  color: var(--ui-affino-dark-text-strong);
+}
+
+.ui-affino-grid__loading-spinner {
+  width: 0.78rem;
+  height: 0.78rem;
+  border-radius: 9999px;
+  border: 2px solid rgba(100, 116, 139, 0.28);
+  border-top-color: rgba(51, 65, 85, 0.9);
+  animation: ui-affino-grid-spin 0.8s linear infinite;
+}
+
+.dark .ui-affino-grid__loading-spinner {
+  border-color: rgba(163, 163, 163, 0.3);
+  border-top-color: rgba(229, 229, 229, 0.9);
+}
+
+@keyframes ui-affino-grid-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.dark .ui-affino-grid {
+  --ui-affino-dark-bg-main: rgba(23, 23, 23, 0.94);
+  --ui-affino-dark-bg-pinned: rgba(20, 20, 20, 0.96);
+  --ui-affino-dark-bg-surface: #171717;
+  --ui-affino-dark-bg-input: #111111;
+  --ui-affino-dark-bg-even: rgba(38, 38, 38, 0.5);
+  --ui-affino-dark-bg-hover: rgba(64, 64, 64, 0.52);
+  --ui-affino-dark-border: rgba(115, 115, 115, 0.32);
+  --ui-affino-dark-text: #e5e5e5;
+  --ui-affino-dark-text-muted: #a3a3a3;
+  --ui-affino-dark-text-strong: #d4d4d4;
 }
 
 .ui-affino-grid__layout {
@@ -1553,9 +2448,166 @@ function columnStyle(width: number) {
   flex-direction: column;
 }
 
+.ui-affino-grid__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.55rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(248, 250, 252, 0.86);
+}
+
+.dark .ui-affino-grid__toolbar {
+  border-bottom-color: var(--ui-affino-dark-border);
+  background: rgba(23, 23, 23, 0.9);
+}
+
+.ui-affino-grid__toolbar-filters {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.ui-affino-grid__toolbar-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.dark .ui-affino-grid__toolbar-title {
+  color: var(--ui-affino-dark-text-strong);
+}
+
+.ui-affino-grid__toolbar-empty {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.dark .ui-affino-grid__toolbar-empty {
+  color: var(--ui-affino-dark-text-muted);
+}
+
+.ui-affino-grid__filter-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 20rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  color: #334155;
+  background: rgba(255, 255, 255, 0.92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dark .ui-affino-grid__filter-chip {
+  border-color: var(--ui-affino-dark-border);
+  color: var(--ui-affino-dark-text);
+  background: rgba(17, 17, 17, 0.9);
+}
+
+.ui-affino-grid__toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ui-affino-grid__toolbar-button,
+.ui-affino-grid__column-order-button {
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 0.45rem;
+  background: #fff;
+  color: #334155;
+  font-size: 0.72rem;
+  line-height: 1;
+  font-weight: 600;
+  padding: 0.3rem 0.5rem;
+}
+
+.ui-affino-grid__toolbar-button:disabled,
+.ui-affino-grid__column-order-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.dark .ui-affino-grid__toolbar-button,
+.dark .ui-affino-grid__column-order-button {
+  border-color: var(--ui-affino-dark-border);
+  color: var(--ui-affino-dark-text-strong);
+  background: var(--ui-affino-dark-bg-input);
+}
+
+.ui-affino-grid__column-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.55rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(248, 250, 252, 0.76);
+  max-height: 18rem;
+  overflow: auto;
+}
+
+.dark .ui-affino-grid__column-panel {
+  border-bottom-color: var(--ui-affino-dark-border);
+  background: rgba(23, 23, 23, 0.86);
+}
+
+.ui-affino-grid__column-panel-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.dark .ui-affino-grid__column-panel-title {
+  color: var(--ui-affino-dark-text-strong);
+}
+
+.ui-affino-grid__column-panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.ui-affino-grid__column-toggle {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.76rem;
+  color: #334155;
+}
+
+.dark .ui-affino-grid__column-toggle {
+  color: var(--ui-affino-dark-text);
+}
+
+.ui-affino-grid__column-order-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.ui-affino-grid__column-order-button {
+  min-width: 1.65rem;
+  padding: 0.25rem 0.35rem;
+}
+
 .ui-affino-grid__content-shell {
+  flex: 1;
   width: 100%;
-  height: 100%;
+  height: 0;
   min-height: 0;
   min-width: 0;
   display: grid;
@@ -1591,9 +2643,9 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__index-header {
-  color: #cbd5e1;
-  border-right-color: rgba(148, 163, 184, 0.22);
-  border-bottom-color: rgba(148, 163, 184, 0.22);
+  color: var(--ui-affino-dark-text-strong);
+  border-right-color: var(--ui-affino-dark-border);
+  border-bottom-color: var(--ui-affino-dark-border);
 }
 
 .ui-affino-grid__index-filter {
@@ -1605,9 +2657,9 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__index-filter {
-  border-right-color: rgba(148, 163, 184, 0.22);
-  border-bottom-color: rgba(148, 163, 184, 0.22);
-  background: #111827;
+  border-right-color: var(--ui-affino-dark-border);
+  border-bottom-color: var(--ui-affino-dark-border);
+  background: var(--ui-affino-dark-bg-surface);
 }
 
 .ui-affino-grid__main-viewport {
@@ -1622,7 +2674,7 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__main-viewport {
-  background: rgba(10, 12, 18, 0.92);
+  background: var(--ui-affino-dark-bg-main);
 }
 
 .ui-affino-grid__main-canvas {
@@ -1643,7 +2695,7 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__pinned-column {
-  background: rgba(10, 12, 18, 0.92);
+  background: var(--ui-affino-dark-bg-pinned);
 }
 
 .ui-affino-grid__pinned-column--left {
@@ -1657,17 +2709,21 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__pinned-column--left {
-  border-right-color: rgba(148, 163, 184, 0.22);
+  border-right-color: var(--ui-affino-dark-border);
 }
 
 .dark .ui-affino-grid__pinned-column--right {
-  border-left-color: rgba(148, 163, 184, 0.22);
+  border-left-color: var(--ui-affino-dark-border);
 }
 
 .ui-affino-grid__pinned-viewport {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .ui-affino-grid__pinned-canvas {
@@ -1678,14 +2734,24 @@ function columnStyle(width: number) {
 .ui-affino-grid__index-viewport {
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   border-right: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(255, 255, 255, 0.95);
 }
 
+.ui-affino-grid__index-viewport::-webkit-scrollbar,
+.ui-affino-grid__pinned-viewport::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 .dark .ui-affino-grid__index-viewport {
-  border-right-color: rgba(148, 163, 184, 0.22);
-  background: rgba(10, 12, 18, 0.92);
+  border-right-color: var(--ui-affino-dark-border);
+  background: var(--ui-affino-dark-bg-main);
 }
 
 .ui-affino-grid__index-canvas {
@@ -1708,8 +2774,8 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__index-row {
-  color: #94a3b8;
-  border-bottom-color: rgba(148, 163, 184, 0.22);
+  color: var(--ui-affino-dark-text-muted);
+  border-bottom-color: var(--ui-affino-dark-border);
 }
 
 .ui-affino-grid__index-row.is-even {
@@ -1717,7 +2783,15 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__index-row.is-even {
-  background: rgba(15, 23, 42, 0.45);
+  background: var(--ui-affino-dark-bg-even);
+}
+
+.ui-affino-grid__index-row.is-hovered {
+  background: rgba(226, 232, 240, 0.55);
+}
+
+.dark .ui-affino-grid__index-row.is-hovered {
+  background: var(--ui-affino-dark-bg-hover);
 }
 
 .ui-affino-grid.is-row-fixed .ui-affino-grid__index-row {
@@ -1738,7 +2812,7 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__viewport {
-  background: rgba(10, 12, 18, 0.92);
+  background: var(--ui-affino-dark-bg-main);
 }
 
 .ui-affino-grid__canvas {
@@ -1768,8 +2842,8 @@ function columnStyle(width: number) {
 
 .dark .ui-affino-grid__cell,
 .dark .ui-affino-grid__spacer {
-  border-bottom-color: rgba(148, 163, 184, 0.22);
-  border-right-color: rgba(148, 163, 184, 0.22);
+  border-bottom-color: var(--ui-affino-dark-border);
+  border-right-color: var(--ui-affino-dark-border);
 }
 
 .ui-affino-grid__cell {
@@ -1793,7 +2867,7 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__cell {
-  color: #f1f5f9;
+  color: var(--ui-affino-dark-text);
 }
 
 .ui-affino-grid__cell--header {
@@ -1816,11 +2890,11 @@ function columnStyle(width: number) {
 
 .dark .ui-affino-grid__row--header .ui-affino-grid__cell,
 .dark .ui-affino-grid__row--header .ui-affino-grid__spacer {
-  background: #111827;
+  background: var(--ui-affino-dark-bg-surface);
 }
 
 .dark .ui-affino-grid__cell--header {
-  color: #cbd5e1;
+  color: var(--ui-affino-dark-text-strong);
 }
 
 .ui-affino-grid__header-content {
@@ -1844,7 +2918,7 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__sort-indicator {
-  color: #e2e8f0;
+  color: var(--ui-affino-dark-text-strong);
 }
 
 .ui-affino-grid__resize-handle {
@@ -1863,7 +2937,7 @@ function columnStyle(width: number) {
 
 .dark .ui-affino-grid__row--filter .ui-affino-grid__cell,
 .dark .ui-affino-grid__row--filter .ui-affino-grid__spacer {
-  background: #111827;
+  background: var(--ui-affino-dark-bg-surface);
 }
 
 .ui-affino-grid__filter-input {
@@ -1877,9 +2951,9 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__filter-input {
-  border-color: rgba(148, 163, 184, 0.35);
-  background: #0b1220;
-  color: #e2e8f0;
+  border-color: var(--ui-affino-dark-border);
+  background: var(--ui-affino-dark-bg-input);
+  color: var(--ui-affino-dark-text-strong);
 }
 
 .ui-affino-grid__row--data.is-even .ui-affino-grid__cell {
@@ -1887,7 +2961,7 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__row--data.is-even .ui-affino-grid__cell {
-  background: rgba(15, 23, 42, 0.45);
+  background: var(--ui-affino-dark-bg-even);
 }
 
 .ui-affino-grid__row--data:hover .ui-affino-grid__cell {
@@ -1895,7 +2969,17 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__row--data:hover .ui-affino-grid__cell {
-  background: rgba(30, 41, 59, 0.6);
+  background: var(--ui-affino-dark-bg-hover);
+}
+
+.ui-affino-grid__row--data.is-hovered .ui-affino-grid__cell,
+.ui-affino-grid__row--data.is-hovered .ui-affino-grid__spacer {
+  background: rgba(226, 232, 240, 0.55);
+}
+
+.dark .ui-affino-grid__row--data.is-hovered .ui-affino-grid__cell,
+.dark .ui-affino-grid__row--data.is-hovered .ui-affino-grid__spacer {
+  background: var(--ui-affino-dark-bg-hover);
 }
 
 .ui-affino-grid__value {
@@ -1932,6 +3016,6 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__empty {
-  color: #94a3b8;
+  color: var(--ui-affino-dark-text-muted);
 }
 </style>

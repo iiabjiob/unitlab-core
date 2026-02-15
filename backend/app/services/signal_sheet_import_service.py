@@ -257,7 +257,7 @@ class SignalSheetImportService:
                 category = category_str or None
 
             signal_metadata = {
-                "source": "signal_snapshot_import",
+                "source": "signal_sheet_import",
                 "source_filename": filename,
                 "sheet_name": selected.get("name"),
                 "sheet_index": selected.get("index"),

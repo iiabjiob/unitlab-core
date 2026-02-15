@@ -25,6 +25,7 @@ export const useWorkspaceStore = defineStore("workspaceStore", () => {
   const bootstrapped = ref(false)
   const error = ref<string | null>(null)
   const autoCreatingDefault = ref(false)
+  let bootstrapInFlight: Promise<boolean> | null = null
 
   hydrateFromStorage()
 
@@ -47,13 +48,28 @@ export const useWorkspaceStore = defineStore("workspaceStore", () => {
     }
   }
 
-  async function bootstrap(force = false) {
-    if (bootstrapped.value && !force) return
-    await fetchWorkspaces()
-    bootstrapped.value = true
+  async function bootstrap(force = false): Promise<boolean> {
+    if (bootstrapped.value && !force) return true
+    if (bootstrapInFlight && !force) {
+      return await bootstrapInFlight
+    }
+
+    bootstrapInFlight = (async () => {
+      const ok = await fetchWorkspaces()
+      if (ok) {
+        bootstrapped.value = true
+      }
+      return ok
+    })()
+
+    try {
+      return await bootstrapInFlight
+    } finally {
+      bootstrapInFlight = null
+    }
   }
 
-  async function fetchWorkspaces() {
+  async function fetchWorkspaces(): Promise<boolean> {
     loading.value = true
     error.value = null
     try {
@@ -66,9 +82,12 @@ export const useWorkspaceStore = defineStore("workspaceStore", () => {
       } else {
         reconcileActiveSelection()
       }
+
+      return true
     } catch (err) {
       logger.error("💥 Failed to fetch workspaces", err)
       error.value = err instanceof Error ? err.message : String(err)
+      return false
     } finally {
       loading.value = false
     }

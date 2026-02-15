@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.channel import Channel
 from app.models.sequence import Sequence
-from app.models.signal import Signal
+from app.models.signal import Signal, SignalIODirection
 from app.models.test_run import (
     TestRun,
     TestRunAllocation,
@@ -191,7 +191,7 @@ class TestRunsRepository:
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all())
 
-    async def create_signal_snapshot(self, run: TestRun, allocation_by_key: dict[str, TestRunAllocationEntry]) -> None:
+    async def create_signal_snapshot(self, run: TestRun) -> None:
         existing_snapshot = await self.get_signal_snapshot(run.id)
         if existing_snapshot is not None:
             await self.db.delete(existing_snapshot)
@@ -202,26 +202,34 @@ class TestRunsRepository:
             workspace_id=run.workspace_id,
         )
 
-        signal_stmt = (
-            select(Signal)
-            .where(Signal.workspace_id == run.workspace_id, Signal.deleted_at.is_(None))
-            .order_by(Signal.created_at.asc())
-        )
-        signals = list((await self.db.execute(signal_stmt)).scalars().all())
-
         entries: list[TestRunSignalSnapshotEntry] = []
-        for signal in signals:
-            allocation_entry = allocation_by_key.get(signal.key)
+        seen_signal_keys: set[str] = set()
+        allocation_entries = run.allocation.entries if run.allocation else []
+        for allocation_entry in allocation_entries:
+            signal = allocation_entry.signal
+            metadata = dict(allocation_entry.signal_metadata or {}) if allocation_entry.signal_metadata else {}
+
+            signal_key = signal.key if signal is not None and signal.key else self._extract_signal_key_from_meta(metadata)
+            if not signal_key or signal_key in seen_signal_keys:
+                continue
+
+            direction = (
+                signal.io_direction if signal is not None else self._extract_direction_from_meta(metadata)
+            )
+            if direction is None:
+                continue
+
+            seen_signal_keys.add(signal_key)
             entries.append(
                 TestRunSignalSnapshotEntry(
                     snapshot_id=run.id,
-                    live_signal_id=signal.id,
-                    signal_key=signal.key,
-                    name=signal.name,
-                    io_direction=signal.io_direction,
-                    allocation_channel_id=allocation_entry.channel_id if allocation_entry else None,
-                    allocation_metadata=dict(allocation_entry.signal_metadata or {}) if allocation_entry and allocation_entry.signal_metadata else None,
-                    entry_metadata=dict(signal.signal_metadata or {}),
+                    live_signal_id=signal.id if signal is not None else None,
+                    signal_key=signal_key,
+                    name=signal.name if signal is not None else (self._extract_name_from_meta(metadata) or signal_key),
+                    io_direction=direction,
+                    allocation_channel_id=allocation_entry.channel_id,
+                    allocation_metadata=metadata or None,
+                    entry_metadata=dict(signal.signal_metadata or {}) if signal is not None else metadata,
                 )
             )
 
@@ -263,3 +271,34 @@ class TestRunsRepository:
         stmt = select(Sequence.id).where(Sequence.id == sequence_id)
         result = await self.db.execute(stmt.limit(1))
         return result.scalar_one_or_none() is not None
+
+    @staticmethod
+    def _extract_signal_key_from_meta(metadata: dict) -> str | None:
+        for key_name in ("signal_key", "snapshot_signal_key", "key"):
+            value = metadata.get(key_name)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    @staticmethod
+    def _extract_name_from_meta(metadata: dict) -> str | None:
+        for key_name in ("signal_name", "name", "snapshot_signal_name"):
+            value = metadata.get(key_name)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return None
+
+    @staticmethod
+    def _extract_direction_from_meta(metadata: dict) -> SignalIODirection | None:
+        for key_name in ("signal_direction", "io_direction", "direction"):
+            raw = metadata.get(key_name)
+            if not isinstance(raw, str):
+                continue
+            normalized = raw.strip().upper()
+            if not normalized:
+                continue
+            try:
+                return SignalIODirection(normalized)
+            except ValueError:
+                continue
+        return None

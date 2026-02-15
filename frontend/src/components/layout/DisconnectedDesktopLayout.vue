@@ -35,12 +35,23 @@
 import AppAside from "./DesktopAside.vue"
 import { useWebSocketStore } from "@/stores/websocketStore"
 import { computed } from "vue"
+import { storeToRefs } from "pinia"
 
 const wsStore = useWebSocketStore()
+const {
+  isConnected: wsIsConnected,
+  everConnected: wsEverConnected,
+  hasStarted: wsHasStarted,
+  isConnecting: wsIsConnecting,
+  reconnectAttempts: wsReconnectAttempts,
+} = storeToRefs(wsStore)
 
 const status = computed(() => {
-  if (!wsStore.isConnected && !wsStore.everConnected) return "initial"
-  if (wsStore.isConnected) return "connected"
+  if (wsIsConnected.value) return "connected"
+  if (!wsHasStarted.value) return "initial"
+  if (wsIsConnecting.value && !wsEverConnected.value && wsReconnectAttempts.value === 0) {
+    return "initial"
+  }
   return "lost"
 })
 </script>

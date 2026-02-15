@@ -1,9 +1,18 @@
 import type { RouteRecordRaw } from "vue-router"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
 
 export const testRunsRoutes: RouteRecordRaw[] = [
   {
     path: "/test-runs",
     component: () => import("@/pages/testRuns/TestRunsPage.vue"),
+    beforeEnter: async () => {
+      const workspaceStore = useWorkspaceStore()
+      const ready = await workspaceStore.bootstrap()
+      if (!ready || !workspaceStore.activeWorkspaceId) {
+        return { name: "home" }
+      }
+      return true
+    },
     meta: {
       leftAside: true,
       layout: "app",

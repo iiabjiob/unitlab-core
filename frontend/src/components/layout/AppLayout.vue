@@ -6,6 +6,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount } from "vue"
 import { useRoute } from "vue-router"
+import { storeToRefs } from "pinia"
 
 import DesktopLayout from "./DesktopLayout.vue"
 import MobileLayout from "./MobileLayout.vue"
@@ -32,11 +33,21 @@ onBeforeUnmount(() => {
 
 const route = useRoute()
 const wsStore = useWebSocketStore()
+const {
+  isConnected: wsIsConnected,
+  everConnected: wsEverConnected,
+  hasStarted: wsHasStarted,
+  isConnecting: wsIsConnecting,
+  reconnectAttempts: wsReconnectAttempts,
+} = storeToRefs(wsStore)
 
 // Derived connection state
 const wsStatus = computed(() => {
-  if (!wsStore.isConnected && !wsStore.everConnected) return "initial"
-  if (wsStore.isConnected) return "connected"
+  if (wsIsConnected.value) return "connected"
+  if (!wsHasStarted.value) return "initial"
+  if (wsIsConnecting.value && !wsEverConnected.value && wsReconnectAttempts.value === 0) {
+    return "initial"
+  }
   return "lost"
 })
 

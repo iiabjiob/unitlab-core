@@ -20,8 +20,8 @@
           role="option"
           :aria-selected="isRouteActive(item.to)"
           :tabindex="isEntryFocused(item.to) ? 0 : -1"
-          class="block w-full rounded-xl pl-6 pr-3 py-2 text-left text-sm font-medium transition-all focus:outline-none"
-          :class="entryClasses(item.to, false)"
+          class="block w-full rounded-xl pl-6 pr-3 py-2 text-left text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/60"
+          :class="entryClasses(item.to, false, isEntryFocused(item.to))"
           @focus="setFocusByRoute(item.to)"
           @click="activateRoute(item.to)"
         >
@@ -35,8 +35,8 @@
           role="option"
           :aria-selected="isRouteActive(child.to)"
           :tabindex="isEntryFocused(child.to) ? 0 : -1"
-          class="mt-1 block w-full rounded-xl pl-10 pr-3 py-2 text-left text-sm font-medium transition-all focus:outline-none"
-          :class="entryClasses(child.to, true)"
+          class="mt-1 block w-full rounded-xl pl-10 pr-3 py-2 text-left text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/60"
+          :class="entryClasses(child.to, true, isEntryFocused(child.to))"
           @focus="setFocusByRoute(child.to)"
           @click="activateRoute(child.to)"
         >
@@ -90,6 +90,7 @@ const route = useRoute()
 const router = useRouter()
 const navRef = ref<HTMLElement | null>(null)
 const focusedRoute = ref<string | null>(null)
+const pendingRoute = ref<string | null>(null)
 
 const menuEntries = computed(() =>
   sections.flatMap(section =>
@@ -98,12 +99,12 @@ const menuEntries = computed(() =>
 )
 
 const activeRoute = computed(() => {
-  const currentPath = route.path
-  const exact = menuEntries.value.find(entry => currentPath === entry.to)
+  const currentPath = normalizePath(route.path)
+  const exact = menuEntries.value.find(entry => currentPath === normalizePath(entry.to))
   if (exact) {
     return exact.to
   }
-  const prefixMatch = menuEntries.value.find(entry => currentPath.startsWith(entry.to + "/"))
+  const prefixMatch = menuEntries.value.find(entry => currentPath.startsWith(normalizePath(entry.to) + "/"))
   return prefixMatch?.to ?? menuEntries.value[0]?.to ?? null
 })
 
@@ -127,17 +128,30 @@ watch(
   () => route.fullPath,
   () => {
     focusedRoute.value = activeRoute.value
+    pendingRoute.value = null
   },
   { immediate: true },
 )
+
+function normalizePath(path: string): string {
+  if (path.length > 1 && path.endsWith("/")) {
+    return path.replace(/\/+$/, "")
+  }
+  return path
+}
 
 function entryDomId(to: string): string {
   return `app-menu-option-${to.replace(/[^a-zA-Z0-9_-]/g, "-")}`
 }
 
 function isRouteActive(to: string): boolean {
-  const currentPath = route.path
-  return currentPath === to || currentPath.startsWith(to + "/")
+  const currentPath = normalizePath(route.path)
+  const targetPath = normalizePath(to)
+  return currentPath === targetPath || currentPath.startsWith(targetPath + "/")
+}
+
+function isRouteHighlighted(to: string): boolean {
+  return isRouteActive(to) || normalizePath(pendingRoute.value ?? "") === normalizePath(to)
 }
 
 function isEntryFocused(to: string): boolean {
@@ -148,10 +162,13 @@ function setFocusByRoute(to: string) {
   focusedRoute.value = to
 }
 
-function entryClasses(to: string, isChild: boolean): string {
-  const active = isRouteActive(to)
+function entryClasses(to: string, isChild: boolean, focused: boolean): string {
+  const active = isRouteHighlighted(to)
   if (active) {
-    return "bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-white"
+    return "bg-primary-100 text-primary-900 dark:bg-primary-500/25 dark:text-primary-100"
+  }
+  if (focused) {
+    return "bg-neutral-200 text-neutral-900 dark:bg-neutral-700/70 dark:text-neutral-100"
   }
   return isChild
     ? "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800/70 dark:hover:text-white"
@@ -171,8 +188,11 @@ function moveFocus(delta: number) {
 }
 
 function activateRoute(to: string) {
-  if (route.path === to) return
-  void router.push(to)
+  if (normalizePath(route.path) === normalizePath(to)) return
+  pendingRoute.value = to
+  void router.push(to).catch(() => {
+    pendingRoute.value = null
+  })
 }
 
 function handleNavFocus() {

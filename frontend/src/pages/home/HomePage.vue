@@ -4,13 +4,7 @@
       <div class="w-full space-y-10 rounded-3xl border border-neutral-200/70 bg-white/90 p-8 shadow-[0_25px_60px_rgba(15,23,42,0.15)] backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80">
         <div class="flex flex-col items-center gap-5 text-center">
           <AppLogo class="text-4xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50" />
-          <span
-            class="inline-flex items-center gap-2 rounded-full px-4 py-1 text-sm font-semibold ring-1 ring-inset"
-            :class="connectionState.chipClass"
-          >
-            <span class="h-2 w-2 rounded-full" :class="connectionState.dotClass"></span>
-            {{ connectionState.label }}
-          </span>
+          <OnlineStatusComponent :status="systemStatus" :description="systemStatusDescription" neutral-offline />
         </div>
 
         <div class="flex justify-center">
@@ -62,38 +56,17 @@
 import { computed, onMounted } from "vue"
 import { useRouter } from "vue-router"
 import AppLogo from "@/components/layout/AppLogo.vue"
+import OnlineStatusComponent from "@/components/misc/OnlineStatusComponent.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
-import { useWebSocketStore } from "@/stores/websocketStore"
+import { useSystemHealthStore } from "@/stores/systemHealthStore"
 
 const workspaceStore = useWorkspaceStore()
-const wsStore = useWebSocketStore()
+const systemHealthStore = useSystemHealthStore()
 const router = useRouter()
 
-
-const connectionState = computed(() => {
-  if (wsStore.isConnected) {
-    return {
-      label: "Connected",
-      chipClass: "bg-emerald-100/80 text-emerald-700 ring-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-200",
-      dotClass: "bg-emerald-500 animate-pulse",
-    }
-  }
-
-  if (wsStore.everConnected) {
-    return {
-      label: "Reconnecting…",
-      chipClass: "bg-amber-100/80 text-amber-700 ring-amber-400/40 dark:bg-amber-500/20 dark:text-amber-200",
-      dotClass: "bg-amber-400 animate-pulse",
-    }
-  }
-
-  return {
-    label: "Connecting…",
-    chipClass: "bg-neutral-200 text-neutral-700 ring-neutral-400/40 dark:bg-neutral-800 dark:text-neutral-200",
-    dotClass: "bg-neutral-400 animate-pulse",
-  }
-})
+const systemStatus = computed(() => systemHealthStore.status)
+const systemStatusDescription = computed(() => systemHealthStore.tooltip)
 
 const workspaceSummary = computed(() => {
   if (workspaceStore.loading) {

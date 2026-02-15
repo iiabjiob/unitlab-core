@@ -39,9 +39,33 @@ export const useSystemHealthStore = defineStore("systemHealth", () => {
   const checkedAt = computed(() => snapshot.value?.checked_at ?? null)
 
   const tooltip = computed(() => {
-    if (issues.value.length > 0) return issues.value.join("\n")
-    if (lastError.value) return `Failed to fetch status: ${lastError.value}`
-    return null
+    const workerLines = workers.value.map((worker) => {
+      const label = worker.display_name || worker.name
+      const detail = worker.detail ? ` — ${worker.detail}` : ""
+      return `• ${label}: ${worker.status}${detail}`
+    })
+
+    const headerByStatus: Record<SystemStatus, string> = {
+      online: "System is online.",
+      degraded: "System is degraded.",
+      offline: "System is offline.",
+    }
+
+    const lines: string[] = [headerByStatus[status.value]]
+
+    if (issues.value.length > 0) {
+      lines.push("", "Current issues:", ...issues.value.map((issue) => `• ${issue}`))
+    }
+
+    if (workerLines.length > 0) {
+      lines.push("", "Process health:", ...workerLines)
+    } else if (lastError.value) {
+      lines.push("", `Failed to fetch status: ${lastError.value}`)
+    } else {
+      lines.push("", "Process health data is not available yet.")
+    }
+
+    return lines.join("\n")
   })
 
   return {

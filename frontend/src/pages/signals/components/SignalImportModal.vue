@@ -59,6 +59,36 @@
           :disabled="parsing || loading"
           @change="onFileChange"
         />
+
+        <div class="mt-4 space-y-2">
+          <label class="block text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+            Preset (optional)
+          </label>
+          <select
+            v-model="selectedPresetId"
+            class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+          >
+            <option :value="null">Manual wizard</option>
+            <option v-for="preset in presets" :key="preset.id" :value="preset.id">
+              {{ preset.name }}
+            </option>
+          </select>
+          <p class="text-xs text-neutral-500 dark:text-neutral-400">
+            Choose a saved preset to prefill sheet/column/type mapping in the wizard.
+          </p>
+          <div class="flex justify-end">
+            <UiButton
+              v-if="selectedPreset"
+              type="button"
+              variant="ghost"
+              size="xs"
+              :disabled="loading || parsing"
+              @click="requestDeleteSelectedPreset"
+            >
+              Delete selected preset
+            </UiButton>
+          </div>
+        </div>
       </div>
 
       <template v-else>
@@ -199,6 +229,16 @@
             type="warning"
             message="Rows with types left as 'Skip' will not be imported."
           />
+          <div>
+            <label class="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-200">Save as preset (optional)</label>
+            <input
+              v-model="savePresetName"
+              type="text"
+              maxlength="120"
+              class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+              placeholder="e.g. Project SCADA import"
+            />
+          </div>
         </div>
       </template>
 
@@ -244,23 +284,35 @@
       </div>
     </form>
   </UiModal>
+  <ConfirmModal
+    :open="deletePresetOpen"
+    title="Delete preset"
+    :message="deletePresetMessage"
+    confirm-label="Delete"
+    cancel-label="Cancel"
+    @cancel="deletePresetOpen = false"
+    @confirm="confirmDeleteSelectedPreset"
+  />
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue"
 import * as XLSX from "xlsx"
 
+import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import UiAlert from "@/components/ui/UiAlert.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiModal from "@/components/ui/UiModal.vue"
-import { useSignalSnapshotStore } from "@/stores/signalSnapshotStore"
-import type { InternalSignalType, SignalImportMeta } from "@/types/signal"
+import { useSignalSheetStore } from "@/stores/signalSheetStore"
+import { useToastStore } from "@/stores/toastStore"
+import type { InternalSignalType, SignalImportMeta, SignalSheetPreset } from "@/types/signal"
 
-defineProps<{ open: boolean }>()
+const props = defineProps<{ open: boolean }>()
 
-const emit = defineEmits<{ (e: "close"): void; (e: "imported", snapshotId: number): void }>()
+const emit = defineEmits<{ (e: "close"): void; (e: "imported", sheetId: number): void }>()
 
-const snapshotStore = useSignalSnapshotStore()
+const signalSheetStore = useSignalSheetStore()
+const toastStore = useToastStore()
 const ALLOWED_EXTENSIONS = ["xls", "xlsx", "xlsm"]
 const INTERNAL_TYPE_COLUMN_KEY = "internal_type"
 
@@ -297,6 +349,10 @@ const selectedColumnsBySheet = ref<Record<string, number[]>>({})
 const hmiColumnIndex = ref<number | null>(null)
 const typeColumnIndex = ref<number | null>(null)
 const typeMapping = ref<Record<string, InternalSignalType>>({})
+const selectedPresetId = ref<number | null>(null)
+const savePresetName = ref("")
+const applyingPreset = ref(false)
+const deletePresetOpen = ref(false)
 
 const internalTypeOptions: Array<{ value: InternalSignalType; label: string }> = [
   { value: "di", label: "Digital input (DI)" },
@@ -336,6 +392,15 @@ const canAdvance = computed(() => {
   return false
 })
 const canSubmitFinal = computed(() => step.value === "types" && typeStepValid.value)
+const presets = computed(() => signalSheetStore.presets)
+const selectedPreset = computed<SignalSheetPreset | null>(() =>
+  presets.value.find(item => item.id === selectedPresetId.value) ?? null,
+)
+const deletePresetMessage = computed(() => {
+  const preset = selectedPreset.value
+  if (!preset) return ""
+  return `Preset "${preset.name}" will be deleted.`
+})
 
 function stepIndicatorClass(target: WizardStep) {
   const targetIndex = stepOrder.indexOf(target)
@@ -362,6 +427,7 @@ function goToPreviousStep() {
 
 function emitClose() {
   if (loading.value || parsing.value) return
+  deletePresetOpen.value = false
   resetWorkflowState()
   emit("close")
 }
@@ -379,6 +445,7 @@ function resetWorkflowState(options: { preserveError?: boolean } = {}) {
   hmiColumnIndex.value = null
   typeColumnIndex.value = null
   typeMapping.value = {}
+  savePresetName.value = ""
   if (!options.preserveError) {
     error.value = null
   }
@@ -404,8 +471,12 @@ async function handleSubmit() {
   error.value = null
   try {
     const payload = await buildPreparedImportPayload()
-    const snapshot = await snapshotStore.importSnapshot(payload.file, payload.metadata)
-    emit("imported", snapshot.id)
+    const sheet = await signalSheetStore.importSheet(payload.file, {
+      metadata: payload.metadata,
+      presetId: selectedPresetId.value,
+      savePresetName: savePresetName.value.trim() || null,
+    })
+    emit("imported", sheet.id)
     resetWorkflowState()
     emit("close")
   } catch (err) {
@@ -558,6 +629,7 @@ async function parseWorkbook(selected: File) {
     )
     const defaultSheet = findFirstSheetWithColumns(columnsBySheet, parsedWorkbook.SheetNames)
     selectedSheetName.value = defaultSheet ?? parsedWorkbook.SheetNames[0] ?? null
+    applySelectedPreset()
     step.value = "columns"
   } catch (err) {
     const message =
@@ -570,6 +642,108 @@ async function parseWorkbook(selected: File) {
   } finally {
     parsing.value = false
   }
+}
+
+function applySelectedPreset() {
+  const preset = selectedPreset.value
+  if (!preset) return
+  applyPresetToSelection(preset.import_meta)
+}
+
+function requestDeleteSelectedPreset() {
+  if (!selectedPreset.value || loading.value || parsing.value) return
+  deletePresetOpen.value = true
+}
+
+async function confirmDeleteSelectedPreset() {
+  const preset = selectedPreset.value
+  if (!preset) {
+    deletePresetOpen.value = false
+    return
+  }
+  try {
+    await signalSheetStore.deletePreset(preset.id)
+    if (selectedPresetId.value === preset.id) {
+      selectedPresetId.value = null
+    }
+    deletePresetOpen.value = false
+    toastStore.success("Preset deleted")
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+  }
+}
+
+function applyPresetToSelection(meta: SignalImportMeta) {
+  applyingPreset.value = true
+  try {
+    const requestedSheetName = meta.source_sheet_name || meta.sheet_name || null
+    if (requestedSheetName && sheetColumns.value[requestedSheetName]) {
+      selectedSheetName.value = requestedSheetName
+    }
+
+    if (!selectedSheetName.value) {
+      return
+    }
+
+    const columns = sheetColumns.value[selectedSheetName.value] ?? []
+    if (!columns.length) return
+
+    const selectedFromPreset = resolveSelectedColumnIndexes(columns, meta.selected_columns ?? [])
+    const selectedSet = new Set<number>(
+      selectedFromPreset.length ? selectedFromPreset : columns.map(column => column.index),
+    )
+
+    if (meta.hmi_representation) {
+      const hmiColumn = findColumnByHeader(columns, meta.hmi_representation)
+      if (hmiColumn) {
+        hmiColumnIndex.value = hmiColumn.index
+        selectedSet.add(hmiColumn.index)
+      }
+    }
+
+    if (meta.type_column) {
+      const typeColumn = findColumnByHeader(columns, meta.type_column)
+      if (typeColumn) {
+        typeColumnIndex.value = typeColumn.index
+        selectedSet.add(typeColumn.index)
+      }
+    }
+
+    selectedColumnsBySheet.value[selectedSheetName.value] = Array.from(selectedSet).sort((a, b) => a - b)
+
+    if (meta.type_mapping) {
+      const options = buildTypeValueOptions()
+      const mapped: Record<string, InternalSignalType> = {}
+      for (const [vendorLabel, direction] of Object.entries(meta.type_mapping)) {
+        const option = options.find(item => item.label.trim().toLowerCase() === vendorLabel.trim().toLowerCase())
+        if (!option) continue
+        mapped[option.key] = direction
+      }
+      if (Object.keys(mapped).length) {
+        typeMapping.value = mapped
+      }
+    }
+  } finally {
+    applyingPreset.value = false
+  }
+}
+
+function resolveSelectedColumnIndexes(columns: SheetColumn[], selectedHeaders: string[]): number[] {
+  if (!selectedHeaders.length) return []
+  const indices: number[] = []
+  for (const header of selectedHeaders) {
+    const column = findColumnByHeader(columns, header)
+    if (!column) continue
+    indices.push(column.index)
+  }
+  return Array.from(new Set(indices)).sort((a, b) => a - b)
+}
+
+function findColumnByHeader(columns: SheetColumn[], headerName: string): SheetColumn | undefined {
+  const exact = columns.find(column => column.header === headerName)
+  if (exact) return exact
+  const normalizedHeader = headerName.trim().toLowerCase()
+  return columns.find(column => column.header.trim().toLowerCase() === normalizedHeader)
 }
 
 function findFirstSheetWithColumns(columnsBySheet: Record<string, SheetColumn[]>, sheetNameList: string[]): string | null {
@@ -766,6 +940,7 @@ async function buildPreparedImportPayload(): Promise<{ file: File; metadata: Sig
   const metadata: SignalImportMeta = {
     sheet_name: sanitizedName,
     source_sheet_name: selectedSheetName.value,
+    selected_columns: orderedColumns.map(column => column.header),
     hmi_representation: hmiColumn.header,
     type_column: typeColumn.header,
     type_mapping: displayMapping,
@@ -796,6 +971,9 @@ watch(
 watch(
   () => ({ sheet: selectedSheetName.value, column: typeColumnIndex.value }),
   (current, previous) => {
+    if (applyingPreset.value) {
+      return
+    }
     if (!previous || current.sheet !== previous.sheet || current.column !== previous.column) {
       typeMapping.value = {}
     }
@@ -817,5 +995,21 @@ watch(
     }
   },
   { deep: true },
+)
+
+watch(
+  () => selectedPresetId.value,
+  () => {
+    applySelectedPreset()
+  },
+)
+
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) return
+    void signalSheetStore.refreshPresets()
+  },
+  { immediate: true },
 )
 </script>

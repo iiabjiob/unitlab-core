@@ -51,10 +51,15 @@ export function handleWsEvent(event: WSEvent) {
     case WSChannel.DEVICE_REGISTER:{
       const devEvent = channelEvent as DeviceRegisterEvent
       logger.debug("📡 IN ← DEVICE_REGISTER:", devEvent)
+      const parsedId = Number(devEvent.id)
+      const fallbackId = Number(deviceStore.devices.find(item => item.unit_id === devEvent.unit_id)?.id)
+      const deviceId = Number.isFinite(parsedId)
+        ? parsedId
+        : (Number.isFinite(fallbackId) ? fallbackId : devEvent.id)
 
       // Update or insert the device record first.
       deviceStore.upsertDevice({
-        id: devEvent.id,
+        id: deviceId,
         unit_id: devEvent.unit_id,
         device_type: devEvent.device_type,
         num_channels: devEvent.num_channels ?? null,
@@ -66,9 +71,14 @@ export function handleWsEvent(event: WSEvent) {
         channels: null,
       })
 
-      // Hydrate channel catalog only for currently observed units.
-      if (devEvent.channels && realtimeScopeStore.shouldProcessRealtimeForUnit(devEvent.unit_id)) {
-        channelStore.setBaseChannels(devEvent.id, devEvent.channels)
+      // Hydrate channel catalog only once for currently observed units.
+      if (
+        devEvent.channels &&
+        realtimeScopeStore.shouldProcessRealtimeForUnit(devEvent.unit_id) &&
+        Number.isFinite(Number(deviceId)) &&
+        !channelStore.hasDeviceChannels(Number(deviceId))
+      ) {
+        channelStore.setBaseChannels(Number(deviceId), devEvent.channels)
       }
       break
     }
@@ -80,7 +90,10 @@ export function handleWsEvent(event: WSEvent) {
     }
     // Device state broadcasts carry DI/DO/AO changes for visualization.
     case WSChannel.DEVICE_STATE:{
-      if (!realtimeScopeStore.shouldProcessRealtimeForUnit(channelEvent.unit_id)) {
+      if (
+        !realtimeScopeStore.shouldProcessRealtimeForUnit(channelEvent.unit_id) &&
+        !channelStore.hasPendingCommandForUnit(channelEvent.unit_id)
+      ) {
         break
       }
       logger.debug("📡 IN ← DEVICE_STATE:", channelEvent)

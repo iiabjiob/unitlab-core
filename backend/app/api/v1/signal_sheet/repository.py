@@ -1,0 +1,546 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Iterable, Sequence
+
+from sqlalchemy import Select, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.core.config import get_settings
+from app.models.channel import Channel
+from app.models.signal import Signal, SignalIODirection
+from app.models.signal_sheet import SignalAllocation, SignalSheet, SignalSheetPreset
+from app.models.workspace import Workspace
+from app.schemas.signal_snapshot_schema import SignalImportMetaSchema
+from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
+
+settings = get_settings()
+
+
+@dataclass(frozen=True)
+class SignalSheetAutoAllocateResult:
+    assigned: int
+    skipped: int
+    missing: int
+    unassigned_signal_ids: list[int]
+
+
+_DIRECTION_TO_CHANNEL_TYPE: dict[str, str] = {
+    "DI": "do",
+    "DO": "di",
+    "AI": "ao",
+    "AO": "ai",
+}
+
+
+class SignalSheetRepository:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def ensure_workspace(self, workspace_id: int) -> bool:
+        stmt = select(Workspace.id).where(Workspace.id == workspace_id)
+        result = await self.db.execute(stmt.limit(1))
+        return result.scalar_one_or_none() is not None
+
+    async def get_sheet(self, workspace_id: int) -> SignalSheet | None:
+        stmt = select(SignalSheet).where(SignalSheet.workspace_id == workspace_id)
+        result = await self.db.execute(stmt.limit(1))
+        return result.scalar_one_or_none()
+
+    async def upsert_sheet(
+        self,
+        *,
+        workspace_id: int,
+        source_filename: str | None,
+        source_hash: str | None,
+        rows_count: int,
+        schema_version: int,
+        data: dict[str, Any],
+        import_meta: dict[str, Any] | None,
+    ) -> SignalSheet:
+        sheet = await self.get_sheet(workspace_id)
+        if sheet is None:
+            sheet = SignalSheet(
+                workspace_id=workspace_id,
+                source_filename=source_filename,
+                source_hash=source_hash,
+                rows_count=rows_count,
+                schema_version=schema_version,
+                data=data,
+                import_meta=import_meta,
+            )
+            self.db.add(sheet)
+            await self.db.flush()
+            return sheet
+
+        sheet.source_filename = source_filename
+        sheet.source_hash = source_hash
+        sheet.rows_count = rows_count
+        sheet.schema_version = schema_version
+        sheet.data = data
+        sheet.import_meta = import_meta
+        await self.db.flush()
+        return sheet
+
+    async def list_presets(self, workspace_id: int) -> list[SignalSheetPreset]:
+        stmt = (
+            select(SignalSheetPreset)
+            .where(SignalSheetPreset.workspace_id == workspace_id)
+            .order_by(SignalSheetPreset.updated_at.desc(), SignalSheetPreset.id.desc())
+        )
+        rows = await self.db.execute(stmt)
+        return list(rows.scalars().all())
+
+    async def get_preset(self, preset_id: int) -> SignalSheetPreset | None:
+        stmt = select(SignalSheetPreset).where(SignalSheetPreset.id == preset_id)
+        rows = await self.db.execute(stmt.limit(1))
+        return rows.scalar_one_or_none()
+
+    async def save_preset(
+        self,
+        *,
+        workspace_id: int,
+        name: str,
+        import_meta: SignalImportMetaSchema,
+    ) -> SignalSheetPreset:
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise ValueError("Preset name is required")
+
+        stmt = select(SignalSheetPreset).where(
+            SignalSheetPreset.workspace_id == workspace_id,
+            SignalSheetPreset.name == normalized_name,
+        )
+        result = await self.db.execute(stmt.limit(1))
+        preset = result.scalar_one_or_none()
+
+        payload = import_meta.model_dump()
+        if preset is None:
+            preset = SignalSheetPreset(
+                workspace_id=workspace_id,
+                name=normalized_name,
+                import_meta=payload,
+            )
+            self.db.add(preset)
+        else:
+            preset.import_meta = payload
+
+        await self.db.commit()
+        await self.db.refresh(preset)
+        return preset
+
+    async def delete_preset(self, preset_id: int) -> bool:
+        preset = await self.get_preset(preset_id)
+        if preset is None:
+            return False
+        await self.db.delete(preset)
+        await self.db.commit()
+        return True
+
+    async def cleanup_orphan_allocations(self, workspace_id: int) -> None:
+        stmt = (
+            select(SignalAllocation)
+            .options(selectinload(SignalAllocation.signal))
+            .where(SignalAllocation.workspace_id == workspace_id)
+        )
+        allocations = list((await self.db.execute(stmt)).scalars().all())
+        removed = False
+        for allocation in allocations:
+            signal = allocation.signal
+            if signal is None:
+                await self.db.delete(allocation)
+                removed = True
+                continue
+            if signal.workspace_id != workspace_id or signal.deleted_at is not None or not signal.is_active:
+                await self.db.delete(allocation)
+                removed = True
+        if removed:
+            await self.db.flush()
+
+    async def list_allocation_rows(self, workspace_id: int) -> list[SignalAllocationRowSchema]:
+        signals = await self._list_active_signals(workspace_id)
+        allocations_by_signal = await self._allocations_by_signal_id(workspace_id)
+
+        channel_ids = {allocation.channel_id for allocation in allocations_by_signal.values()}
+        channels_by_id = await self._channels_by_ids(channel_ids)
+
+        rows: list[SignalAllocationRowSchema] = []
+        for signal in signals:
+            allocation = allocations_by_signal.get(signal.id)
+            channel = channels_by_id.get(allocation.channel_id) if allocation else None
+            unit_online = _is_unit_online(channel.device.last_seen_at) if channel and channel.device else None
+            unit_last_seen_at = channel.device.last_seen_at if channel and channel.device else None
+
+            rows.append(
+                SignalAllocationRowSchema(
+                    signal_id=signal.id,
+                    signal_key=signal.key,
+                    signal_name=signal.name,
+                    signal_direction=_normalize_direction(signal.io_direction),
+                    signal_category=signal.category,
+                    signal_metadata=dict(signal.signal_metadata or {}),
+                    channel_id=allocation.channel_id if allocation else None,
+                    channel_type=channel.channel_type if channel else None,
+                    channel_index=channel.channel_index if channel else None,
+                    channel_label=channel.resolved_name if channel else None,
+                    device_id=channel.device_id if channel else None,
+                    unit_id=channel.device.unit_id if channel and channel.device else None,
+                    unit_online=unit_online,
+                    unit_last_seen_at=unit_last_seen_at,
+                    tested_at=_parse_tested_at(signal.signal_metadata),
+                )
+            )
+        return rows
+
+    async def update_allocations(
+        self,
+        workspace_id: int,
+        entries: Sequence[dict[str, Any]],
+    ) -> None:
+        await self.cleanup_orphan_allocations(workspace_id)
+
+        if not entries:
+            await self.db.commit()
+            return
+
+        signal_ids = {int(item["signal_id"]) for item in entries}
+        active_signals = await self._active_signals_by_ids(workspace_id, signal_ids)
+        if set(active_signals.keys()) != signal_ids:
+            missing = sorted(signal_ids - set(active_signals.keys()))
+            raise ValueError(f"Unknown or inactive signal_id values: {missing}")
+
+        current_allocations = await self._allocations_by_signal_id(workspace_id)
+        desired_channel_by_signal = {signal_id: allocation.channel_id for signal_id, allocation in current_allocations.items()}
+
+        touched_meta: dict[int, dict[str, Any] | None] = {}
+        for item in entries:
+            signal_id = int(item["signal_id"])
+            channel_id_raw = item.get("channel_id")
+            if channel_id_raw is None:
+                desired_channel_by_signal.pop(signal_id, None)
+                touched_meta[signal_id] = item.get("allocation_meta")
+                continue
+            channel_id = int(channel_id_raw)
+            desired_channel_by_signal[signal_id] = channel_id
+            touched_meta[signal_id] = item.get("allocation_meta")
+
+        desired_channel_ids = set(desired_channel_by_signal.values())
+        channels_by_id = await self._channels_by_ids(desired_channel_ids)
+        if set(channels_by_id.keys()) != desired_channel_ids:
+            missing_channels = sorted(desired_channel_ids - set(channels_by_id.keys()))
+            raise ValueError(f"Unknown channel_id values: {missing_channels}")
+
+        seen_channel_owner: dict[int, int] = {}
+        for signal_id, channel_id in desired_channel_by_signal.items():
+            owner = seen_channel_owner.get(channel_id)
+            if owner is not None and owner != signal_id:
+                raise ValueError(f"Channel #{channel_id} is already allocated to another signal")
+            seen_channel_owner[channel_id] = signal_id
+
+            signal = active_signals.get(signal_id)
+            if signal is None:
+                signal = await self._signal_by_id(signal_id)
+            if signal is None:
+                raise ValueError(f"Signal #{signal_id} not found")
+            channel = channels_by_id.get(channel_id)
+            if channel is None:
+                raise ValueError(f"Channel #{channel_id} not found")
+            if not _is_channel_compatible(signal.io_direction, channel.channel_type):
+                raise ValueError(
+                    f"Channel #{channel_id} ({channel.channel_type}) is incompatible with signal #{signal_id} ({_normalize_direction(signal.io_direction)})"
+                )
+
+        touched_signal_ids = {int(item["signal_id"]) for item in entries}
+        for signal_id in touched_signal_ids:
+            desired_channel = desired_channel_by_signal.get(signal_id)
+            existing = current_allocations.get(signal_id)
+            if desired_channel is None:
+                if existing is not None:
+                    await self.db.delete(existing)
+                continue
+
+            allocation_meta = touched_meta.get(signal_id)
+            if existing is None:
+                self.db.add(
+                    SignalAllocation(
+                        workspace_id=workspace_id,
+                        signal_id=signal_id,
+                        channel_id=desired_channel,
+                        allocation_meta=allocation_meta,
+                    )
+                )
+                continue
+
+            existing.channel_id = desired_channel
+            if signal_id in touched_meta:
+                existing.allocation_meta = allocation_meta
+
+        await self.db.commit()
+
+    async def auto_allocate(
+        self,
+        *,
+        workspace_id: int,
+        signal_ids: Sequence[int] | None,
+        prefer_online: bool,
+        overwrite_existing: bool,
+    ) -> SignalSheetAutoAllocateResult:
+        await self.cleanup_orphan_allocations(workspace_id)
+
+        target_signals = await self._resolve_auto_allocate_targets(workspace_id, signal_ids)
+        current_allocations = await self._allocations_by_signal_id(workspace_id)
+
+        all_channels = await self._list_channels()
+        channel_groups: dict[str, list[Channel]] = {
+            "di": [],
+            "do": [],
+            "ai": [],
+            "ao": [],
+        }
+        for channel in all_channels:
+            key = _normalize_channel_type(channel.channel_type)
+            if key is None:
+                continue
+            channel_groups[key].append(channel)
+
+        for channels in channel_groups.values():
+            channels.sort(
+                key=lambda channel: (
+                    0 if prefer_online and _is_unit_online(channel.device.last_seen_at if channel.device else None) else 1,
+                    channel.device_id,
+                    channel.channel_index,
+                    channel.id,
+                )
+            )
+
+        used_channel_ids = {allocation.channel_id for allocation in current_allocations.values()}
+
+        assigned = 0
+        skipped = 0
+        missing = 0
+        unassigned: list[int] = []
+
+        for signal in target_signals:
+            direction = _normalize_direction(signal.io_direction)
+            required_channel_type = _required_channel_type(direction)
+            if required_channel_type is None:
+                missing += 1
+                unassigned.append(signal.id)
+                continue
+
+            existing = current_allocations.get(signal.id)
+            if existing is not None and not overwrite_existing:
+                skipped += 1
+                continue
+
+            if existing is not None and overwrite_existing:
+                used_channel_ids.discard(existing.channel_id)
+
+            candidate = _pick_candidate_channel(
+                candidates=channel_groups.get(required_channel_type, []),
+                used_channel_ids=used_channel_ids,
+            )
+            if candidate is None:
+                unassigned.append(signal.id)
+                if existing is not None and overwrite_existing:
+                    used_channel_ids.add(existing.channel_id)
+                continue
+
+            if existing is None:
+                allocation = SignalAllocation(
+                    workspace_id=workspace_id,
+                    signal_id=signal.id,
+                    channel_id=candidate.id,
+                    allocation_meta={"source": "auto"},
+                )
+                self.db.add(allocation)
+                current_allocations[signal.id] = allocation
+            else:
+                existing.channel_id = candidate.id
+                meta = dict(existing.allocation_meta or {})
+                meta["source"] = "auto"
+                existing.allocation_meta = meta
+
+            used_channel_ids.add(candidate.id)
+            assigned += 1
+
+        await self.db.commit()
+        return SignalSheetAutoAllocateResult(
+            assigned=assigned,
+            skipped=skipped,
+            missing=missing,
+            unassigned_signal_ids=sorted(set(unassigned)),
+        )
+
+    async def count_active_signals(self, workspace_id: int) -> int:
+        stmt = select(Signal.id).where(
+            Signal.workspace_id == workspace_id,
+            Signal.deleted_at.is_(None),
+            Signal.is_active.is_(True),
+        )
+        rows = await self.db.execute(stmt)
+        return len(rows.scalars().all())
+
+    async def count_allocated_signals(self, workspace_id: int) -> int:
+        stmt = select(SignalAllocation.id).where(SignalAllocation.workspace_id == workspace_id)
+        rows = await self.db.execute(stmt)
+        return len(rows.scalars().all())
+
+    async def _list_active_signals(self, workspace_id: int) -> list[Signal]:
+        stmt = (
+            select(Signal)
+            .where(
+                Signal.workspace_id == workspace_id,
+                Signal.deleted_at.is_(None),
+                Signal.is_active.is_(True),
+            )
+            .order_by(Signal.created_at.asc(), Signal.id.asc())
+        )
+        rows = await self.db.execute(stmt)
+        return list(rows.scalars().all())
+
+    async def _active_signals_by_ids(self, workspace_id: int, signal_ids: set[int]) -> dict[int, Signal]:
+        if not signal_ids:
+            return {}
+        stmt = (
+            select(Signal)
+            .where(
+                Signal.workspace_id == workspace_id,
+                Signal.deleted_at.is_(None),
+                Signal.is_active.is_(True),
+                Signal.id.in_(signal_ids),
+            )
+        )
+        rows = await self.db.execute(stmt)
+        return {signal.id: signal for signal in rows.scalars().all()}
+
+    async def _signal_by_id(self, signal_id: int) -> Signal | None:
+        stmt = select(Signal).where(Signal.id == signal_id)
+        rows = await self.db.execute(stmt.limit(1))
+        return rows.scalar_one_or_none()
+
+    async def _allocations_by_signal_id(self, workspace_id: int) -> dict[int, SignalAllocation]:
+        stmt: Select[tuple[SignalAllocation]] = (
+            select(SignalAllocation)
+            .join(Signal, SignalAllocation.signal_id == Signal.id)
+            .where(
+                SignalAllocation.workspace_id == workspace_id,
+                Signal.workspace_id == workspace_id,
+                Signal.deleted_at.is_(None),
+                Signal.is_active.is_(True),
+            )
+            .options(selectinload(SignalAllocation.signal))
+        )
+        rows = await self.db.execute(stmt)
+        allocations = list(rows.scalars().all())
+        return {item.signal_id: item for item in allocations}
+
+    async def _channels_by_ids(self, channel_ids: set[int]) -> dict[int, Channel]:
+        if not channel_ids:
+            return {}
+        stmt = (
+            select(Channel)
+            .where(Channel.id.in_(channel_ids))
+            .options(selectinload(Channel.device))
+        )
+        rows = await self.db.execute(stmt)
+        return {channel.id: channel for channel in rows.scalars().all()}
+
+    async def _list_channels(self) -> list[Channel]:
+        stmt = select(Channel).options(selectinload(Channel.device)).order_by(Channel.id.asc())
+        rows = await self.db.execute(stmt)
+        return list(rows.scalars().all())
+
+    async def _resolve_auto_allocate_targets(
+        self,
+        workspace_id: int,
+        signal_ids: Sequence[int] | None,
+    ) -> list[Signal]:
+        if signal_ids:
+            normalized = [int(item) for item in signal_ids]
+            signal_map = await self._active_signals_by_ids(workspace_id, set(normalized))
+            payload: list[Signal] = []
+            seen: set[int] = set()
+            for signal_id in normalized:
+                signal = signal_map.get(signal_id)
+                if signal is None or signal.id in seen:
+                    continue
+                payload.append(signal)
+                seen.add(signal.id)
+            return payload
+
+        return await self._list_active_signals(workspace_id)
+
+
+def _normalize_direction(value: SignalIODirection | str | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, SignalIODirection):
+        return value.value
+    return str(value).strip().upper()
+
+
+def _required_channel_type(direction: str) -> str | None:
+    return _DIRECTION_TO_CHANNEL_TYPE.get(direction.strip().upper())
+
+
+def _normalize_channel_type(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if normalized.startswith("di"):
+        return "di"
+    if normalized.startswith("do"):
+        return "do"
+    if normalized.startswith("ai"):
+        return "ai"
+    if normalized.startswith("ao"):
+        return "ao"
+    return None
+
+
+def _is_channel_compatible(direction: SignalIODirection | str | None, channel_type: str | None) -> bool:
+    required = _required_channel_type(_normalize_direction(direction))
+    if required is None:
+        return False
+    return _normalize_channel_type(channel_type) == required
+
+
+def _is_unit_online(last_seen_at: datetime | None) -> bool:
+    if last_seen_at is None:
+        return False
+    heartbeat_ttl_seconds = max(int(settings.heartbeat_ttl or 30), 10)
+    threshold = datetime.now(timezone.utc) - timedelta(seconds=heartbeat_ttl_seconds * 2)
+    return last_seen_at >= threshold
+
+
+def _parse_tested_at(metadata: dict[str, Any] | None) -> datetime | None:
+    if not isinstance(metadata, dict):
+        return None
+
+    raw_value = metadata.get("tested_at") or metadata.get("testedAt")
+    if raw_value is None:
+        return None
+    if isinstance(raw_value, datetime):
+        return raw_value
+    if isinstance(raw_value, str):
+        candidate = raw_value.strip()
+        if not candidate:
+            return None
+        if candidate.endswith("Z"):
+            candidate = candidate[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(candidate)
+        except ValueError:
+            return None
+    return None
+
+
+def _pick_candidate_channel(*, candidates: Iterable[Channel], used_channel_ids: set[int]) -> Channel | None:
+    for channel in candidates:
+        if channel.id in used_channel_ids:
+            continue
+        return channel
+    return None

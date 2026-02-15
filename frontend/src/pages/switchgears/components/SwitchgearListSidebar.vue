@@ -5,16 +5,7 @@ import { useRouter, useRoute } from "vue-router"
 import SwitchgearListItem from "./SwitchgearListItem.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiSidebarListbox from "@/components/ui/UiSidebarListbox.vue"
-import RenameModal from "@/components/ui/RenameModal.vue"
-import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
-import {
-  UiMenu,
-  UiMenuTrigger,
-  UiMenuContent,
-  UiMenuItem,
-} from "@affino/menu-vue"
-import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vue"
 
 const store = useSwitchgearStore()
 const router = useRouter()
@@ -56,69 +47,10 @@ const selectedId = computed<number | null>(() => {
   return Number.isFinite(parsed) ? parsed : null
 })
 
-const selectedSwitchgear = computed(() => {
-  if (selectedId.value === null) return null
-  return store.switchgears.find((item) => item.id === selectedId.value) ?? null
-})
-
-const renameOpen = ref(false)
-const renameValue = ref("")
-const renaming = ref(false)
-const deleteOpen = ref(false)
-
-const deleteMessage = computed(() =>
-  selectedSwitchgear.value
-    ? `Switchgear "${selectedSwitchgear.value.name}" will be deleted.`
-    : "",
-)
-
 function handleSelect(id: string | number) {
   const parsed = Number(id)
   if (!Number.isFinite(parsed)) return
   openSwitchgear(parsed)
-}
-
-function openRenameSelected() {
-  if (!selectedSwitchgear.value) return
-  renameValue.value = selectedSwitchgear.value.name
-  renameOpen.value = true
-}
-
-function cancelRenameSelected() {
-  renameOpen.value = false
-  renameValue.value = selectedSwitchgear.value?.name ?? ""
-}
-
-async function confirmRenameSelected() {
-  if (!selectedSwitchgear.value) return
-  const trimmed = renameValue.value.trim()
-  if (!trimmed || trimmed === selectedSwitchgear.value.name) {
-    renameOpen.value = false
-    return
-  }
-  renaming.value = true
-  try {
-    await store.updateField(selectedSwitchgear.value.id, { name: trimmed })
-    renameOpen.value = false
-  } finally {
-    renaming.value = false
-  }
-}
-
-async function duplicateSelected() {
-  if (!selectedSwitchgear.value) return
-  const duplicated = await store.duplicate(selectedSwitchgear.value.id)
-  await router.push({ name: "switchgears.detail", params: { id: duplicated.id } })
-}
-
-async function confirmDeleteSelected() {
-  if (!selectedSwitchgear.value) return
-  const deletingId = selectedSwitchgear.value.id
-  await store.remove(deletingId)
-  deleteOpen.value = false
-  if (selectedId.value === deletingId) {
-    await router.push({ name: "switchgears.list" })
-  }
 }
 </script>
 
@@ -127,40 +59,15 @@ async function confirmDeleteSelected() {
 
     <!-- HEADER -->
     <div class="mb-3">
-      <div class="flex items-center gap-2">
-        <UiButton
-          variant="primary"
-          size="sm"
-          full
-          :disabled="workspaceMissing"
-          @click="addSwitchgear"
-        >
-          + New Switchgear
-        </UiButton>
-        <UiMenu v-if="selectedSwitchgear">
-          <UiMenuTrigger asChild>
-            <UiButton
-              variant="icon"
-              aria-label="Switchgear actions"
-              @click.stop
-              @pointerdown.stop
-            >
-              <EllipsisHorizontalIcon size="20" />
-            </UiButton>
-          </UiMenuTrigger>
-          <UiMenuContent>
-            <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openRenameSelected">
-              Rename
-            </UiMenuItem>
-            <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="duplicateSelected">
-              Duplicate
-            </UiMenuItem>
-            <UiMenuItem danger @select="deleteOpen = true">
-              Delete
-            </UiMenuItem>
-          </UiMenuContent>
-        </UiMenu>
-      </div>
+      <UiButton
+        variant="primary"
+        size="sm"
+        full
+        :disabled="workspaceMissing"
+        @click="addSwitchgear"
+      >
+        + New Switchgear
+      </UiButton>
       <p
         v-if="workspaceMissing"
         class="mt-2 text-[11px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
@@ -212,25 +119,6 @@ async function confirmDeleteSelected() {
       </UiSidebarListbox>
       </template>
     </div>
-
-    <RenameModal
-      :open="renameOpen"
-      title="Rename switchgear"
-      v-model="renameValue"
-      :loading="renaming"
-      @cancel="cancelRenameSelected"
-      @confirm="confirmRenameSelected"
-    />
-
-    <ConfirmModal
-      :open="deleteOpen"
-      title="Delete switchgear"
-      :message="deleteMessage"
-      confirm-label="Delete"
-      cancel-label="Cancel"
-      @cancel="deleteOpen = false"
-      @confirm="confirmDeleteSelected"
-    />
 
   </div>
 </template>

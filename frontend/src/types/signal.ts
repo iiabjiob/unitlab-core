@@ -49,6 +49,7 @@ export interface AllocationMappingItem {
 export interface SignalImportMeta {
   sheet_name: string
   source_sheet_name?: string | null
+  selected_columns?: string[]
   hmi_representation?: string | null
   type_column?: string | null
   type_mapping?: Record<string, InternalSignalType>
@@ -260,4 +261,74 @@ export interface TestRunReallocationItem {
 export interface TestRunReallocatePayload {
   notes?: string | null
   reallocation: TestRunReallocationItem[]
+}
+
+export interface SignalSheet {
+  id: number
+  workspace_id: number
+  source_filename: string | null
+  source_hash: string | null
+  rows_count: number
+  schema_version: number
+  data: Record<string, unknown>
+  import_meta: SignalImportMeta | null
+  signals_count: number
+  allocated_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface SignalSheetImportResponse {
+  sheet: SignalSheet
+}
+
+export interface SignalSheetPreset {
+  id: number
+  workspace_id: number
+  name: string
+  import_meta: SignalImportMeta
+  created_at: string
+  updated_at: string
+}
+
+export interface SignalAllocationRow {
+  signal_id: number
+  signal_key: string
+  signal_name: string
+  signal_direction: SignalIODirection
+  signal_category: string | null
+  signal_metadata: Record<string, unknown>
+  channel_id: number | null
+  channel_type: string | null
+  channel_index: number | null
+  channel_label: string | null
+  device_id: number | null
+  unit_id: string | null
+  unit_online: boolean | null
+  unit_last_seen_at: string | null
+  tested_at: string | null
+}
+
+export interface SignalAllocationUpdateItem {
+  signal_id: number
+  channel_id?: number | null
+  allocation_meta?: Record<string, unknown> | null
+}
+
+export interface SignalAutoAllocatePayload {
+  signal_ids?: number[]
+  prefer_online?: boolean
+  overwrite_existing?: boolean
+}
+
+export interface SignalAutoAllocateResult {
+  assigned: number
+  skipped: number
+  missing: number
+  unassigned_signal_ids: number[]
+}
+
+export interface SignalAutoAllocateResponse {
+  result: SignalAutoAllocateResult
+  rows: SignalAllocationRow[]
 }

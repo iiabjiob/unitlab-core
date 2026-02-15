@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.api.v1.test_runs import TestRunsRepository
-from app.models.test_run import TestRun, TestRunAllocationEntry, TestRunStatus
+from app.models.test_run import TestRun, TestRunStatus
 from app.schemas.sequence_run_schema import SequenceStateSchema
 from app.services.sequence_command_service import SequenceCommandService
 from app.services.sequence_state_service import SequenceStateService
@@ -32,7 +32,6 @@ class TestRunOrchestrator:
 
         allocation_entries = run.allocation.entries if run.allocation else []
         bindings = SignalBindingService.build_bindings(allocation_entries)
-        allocation_by_key = self._allocation_by_signal_key(allocation_entries)
 
         execution_meta = dict(run.execution_meta or {})
         execution_meta.update(
@@ -43,7 +42,7 @@ class TestRunOrchestrator:
             }
         )
 
-        await self.repo.create_signal_snapshot(run, allocation_by_key)
+        await self.repo.create_signal_snapshot(run)
 
         await self.repo.mark_running(run, execution_meta)
 
@@ -78,15 +77,3 @@ class TestRunOrchestrator:
         for sequence_id in sequence_ids:
             states.append(await SequenceStateService.get_state(sequence_id))
         return states
-
-    def _allocation_by_signal_key(
-        self,
-        entries: list[TestRunAllocationEntry],
-    ) -> dict[str, TestRunAllocationEntry]:
-        payload: dict[str, TestRunAllocationEntry] = {}
-        for entry in entries:
-            key = SignalBindingService.extract_signal_key(entry)
-            if not key:
-                continue
-            payload[key] = entry
-        return payload

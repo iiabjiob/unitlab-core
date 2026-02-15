@@ -22,6 +22,7 @@ from app.infrastructure.db.database import Base
 from app.models.types import BIGINT_PK
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from app.models.signal_sheet import SignalAllocation
     from app.models.workspace import Workspace
 
 
@@ -70,3 +71,9 @@ class Signal(Base):
     )
 
     workspace: Mapped["Workspace"] = relationship("Workspace", lazy="selectin")
+    allocation: Mapped["SignalAllocation | None"] = relationship(
+        "SignalAllocation",
+        back_populates="signal",
+        uselist=False,
+        lazy="selectin",
+    )

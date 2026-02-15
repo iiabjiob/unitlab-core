@@ -28,7 +28,7 @@ import {
   type DeviceRespEvent,
 } from "@/types/ws/events"
 
-import { CHANNEL_TYPES, type Channel, type ChannelDto, type ChannelListDto, type DiChannel, type DoChannel, type DoChannelUiState } from "@/types/channel"
+import { CHANNEL_TYPES, type Channel, type ChannelDto, type ChannelListDto, type DiChannel, type DoChannel, type DoChannelUiState, type TimeoutHandle } from "@/types/channel"
 import {
   applyDeltaState,
   applyDiDiagnostics,
@@ -59,6 +59,8 @@ export const useChannelStore = defineStore("channelStore", () => {
   const actionCounters = new Map<number, number>()
   const actionQueues = new Map<number, string[]>()
   const aoActionMap = new Map<string, string>()
+  const doStateRefreshTimers = new Map<number, TimeoutHandle>()
+  const deviceLastStateAt = new Map<number, number>()
   const channelsIndexByDevice = new Map<number, Channel[]>()
   const channelsIndexByDeviceAndChannel = new Map<string, Channel>()
   const EMPTY_CHANNELS: readonly Channel[] = []
@@ -352,10 +354,15 @@ export const useChannelStore = defineStore("channelStore", () => {
     isLoading.value = true
     try {
       const { data } = await ChannelsAPI.list()
-      channels.value = data.map(normalizeChannel)
+      const payload = Array.isArray(data)
+        ? data
+        : (Array.isArray((data as ChannelListDto).items)
+          ? (data as ChannelListDto).items
+          : [])
+      channels.value = payload.map(normalizeChannel)
       rebuildChannelIndexes()
       isLoaded.value = true
-      logger.info(`📡 Loaded ${data.length} channels`)
+      logger.info(`📡 Loaded ${payload.length} channels`)
     } catch (err) {
       logger.error("Failed to load channels", err)
       throw err
@@ -365,7 +372,7 @@ export const useChannelStore = defineStore("channelStore", () => {
   }
 
   async function ensureLoaded() {
-    if (!isLoaded.value && !isLoading.value) {
+    if ((!isLoaded.value || channels.value.length === 0) && !isLoading.value) {
       await fetchAll()
     }
   }
@@ -415,6 +422,10 @@ export const useChannelStore = defineStore("channelStore", () => {
     return [...channelsByDeviceFast(deviceId)]
   }
 
+  function hasDeviceChannels(deviceId: number): boolean {
+    return channelsByDeviceFast(deviceId).length > 0
+  }
+
   /* ------------------------- MUTATIONS / PATCH ------------------------- */
 
   async function updateChannelField(id: number, changes: Partial<ChannelDto>) {
@@ -433,6 +444,11 @@ export const useChannelStore = defineStore("channelStore", () => {
   }
 
   function reset() {
+    for (const timer of doStateRefreshTimers.values()) {
+      clearTimeout(timer)
+    }
+    doStateRefreshTimers.clear()
+    deviceLastStateAt.clear()
     channels.value.forEach(ch => {
       if (ch.type === CHANNEL_TYPES.DO && ch.ui) {
         clearDoUiTimers(ch.ui)
@@ -465,8 +481,10 @@ export const useChannelStore = defineStore("channelStore", () => {
   }
 
   function setBaseChannels(deviceId: number, base: Array<Channel | ChannelDto>) {
+    const deviceStore = useDeviceStore()
+    const fallbackType = deviceStore.devices.find(device => device.id === deviceId)?.device_type ?? null
     const prepared = base.map((raw) => {
-      const normalized = ensureChannel(raw)
+      const normalized = ensureChannel(raw, fallbackType)
       return {
         ...normalized,
         // Defensive normalization: payloads can come from different WS/REST shapes.
@@ -554,6 +572,7 @@ export const useChannelStore = defineStore("channelStore", () => {
       logger.warn(`Device with unit_id=${event.unit_id} not found`)
       return
     }
+    deviceLastStateAt.set(device.id, Date.now())
 
     switch (event.mode) {
       case StateMode.STATE_SINGLE_BIT: {
@@ -711,12 +730,16 @@ export const useChannelStore = defineStore("channelStore", () => {
     const actionId = consumeAction(device.id)
 
     if (resp.status === "OK") {
-      logger.debug(`✅ Command ack from ${resp.unit_id}, packet=${resp.packet_id}`)
-      logger.info(`✅ Command acknowledged by ${resp.unit_id}`)
-      pushDeviceLog(device.id, {
-        type: "resp",
-        message: "Command acknowledged"
-      }, actionId)
+      if (actionId) {
+        logger.debug(`✅ Command ack from ${resp.unit_id}, packet=${resp.packet_id}`)
+        logger.info(`✅ Command acknowledged by ${resp.unit_id}`)
+        pushDeviceLog(device.id, {
+          type: "resp",
+          message: "Command acknowledged"
+        }, actionId)
+      } else {
+        logger.debug(`ℹ️ Device response from ${resp.unit_id}, packet=${resp.packet_id}, status=${resp.status}`)
+      }
     } else {
       logger.debug(
         `⚠️ Command resp from ${resp.unit_id}, packet=${resp.packet_id}, status=${resp.status}, error=${resp.error}`,
@@ -733,7 +756,14 @@ export const useChannelStore = defineStore("channelStore", () => {
     }
   }
 
-  function requestStates(deviceId: number) {
+  function requestStates(
+    deviceId: number,
+    options: { includeDiagnostics?: boolean; silent?: boolean } = {},
+  ) {
+    const {
+      includeDiagnostics = true,
+      silent = false,
+    } = options
     const deviceStore = useDeviceStore()
     const device = deviceStore.devices.find(d => d.id === deviceId)
     if (!device) {
@@ -752,26 +782,64 @@ export const useChannelStore = defineStore("channelStore", () => {
           : ReqStateMode.REQ_ALL_BIT,
     }
     ws.send(msg)
-    logger.info(`Requested states from ${device.unit_id}`)
+    if (!silent) {
+      logger.info(`Requested states from ${device.unit_id}`)
+    }
 
-    if (lowerType === "do") {
+    if (includeDiagnostics && lowerType === "do") {
       ws.send({
         action: WSAction.GET_STATES,
         unit_id: device.unit_id,
         mode: ReqStateMode.REQ_DIAG_ALL_BIT,
       } satisfies RequestStateMessage)
-      logger.info(`Requested DO diagnostics from ${device.unit_id}`)
-    } else if (lowerType === "di") {
+      if (!silent) {
+        logger.info(`Requested DO diagnostics from ${device.unit_id}`)
+      }
+    } else if (includeDiagnostics && lowerType === "di") {
       ws.send({
         action: WSAction.GET_STATES,
         unit_id: device.unit_id,
         mode: ReqStateMode.REQ_DIAG_DI_BIT,
       } satisfies RequestStateMessage)
-      logger.info(`Requested DI diagnostics from ${device.unit_id}`)
+      if (!silent) {
+        logger.info(`Requested DI diagnostics from ${device.unit_id}`)
+      }
     }
   }
 
   /* ----------------------------- COMMANDS ----------------------------- */
+
+  function hasPendingDoForDevice(deviceId: number): boolean {
+    for (const channel of channelsByDeviceFast(deviceId)) {
+      if (channel.type !== CHANNEL_TYPES.DO) {
+        continue
+      }
+      const stage = (channel as DoChannel).ui?.stage
+      if (stage === "pending" || stage === "debounce") {
+        return true
+      }
+    }
+    return false
+  }
+
+  function scheduleDoStateRefreshIfPending(deviceId: number, commandIssuedAt: number) {
+    const existing = doStateRefreshTimers.get(deviceId)
+    if (existing) {
+      clearTimeout(existing)
+    }
+    const timer = setTimeout(() => {
+      doStateRefreshTimers.delete(deviceId)
+      if (!hasPendingDoForDevice(deviceId)) {
+        return
+      }
+      const lastStateAt = deviceLastStateAt.get(deviceId) ?? 0
+      if (lastStateAt >= commandIssuedAt) {
+        return
+      }
+      requestStates(deviceId, { includeDiagnostics: false, silent: true })
+    }, 360)
+    doStateRefreshTimers.set(deviceId, timer)
+  }
 
   function sendDoCommand(unitId: string, chIndex: number, state: boolean) {
     const deviceStore = useDeviceStore()
@@ -798,7 +866,9 @@ export const useChannelStore = defineStore("channelStore", () => {
       ch: chIndex,
       value: state ? 1 : 0,
     }
+    const commandIssuedAt = Date.now()
     ws.send(msg)
+    scheduleDoStateRefreshIfPending(device.id, commandIssuedAt)
     const targetLabel = toDigitalLabel(state)
     logger.info(`➡️ DO cmd ${device.unit_id} ch=${chIndex} → ${targetLabel}`)
 
@@ -832,12 +902,14 @@ export const useChannelStore = defineStore("channelStore", () => {
     const maskSummary = formatSummary(summarizeMaskTargets(doChannels, mask))
 
     const ws = useWebSocketStore()
+    const commandIssuedAt = Date.now()
     ws.send({
       action: WSAction.SET_DO_COMMAND,
       unit_id: unitId,
       mode: CmdMode.SET_ALL_BIT,
       bitmask: mask,
     } satisfies SetDoCommandMessage)
+    scheduleDoStateRefreshIfPending(device.id, commandIssuedAt)
     logger.info(`➡️ DO ALL cmd ${unitId} targets → ${maskSummary}`)
 
     pushDeviceLog(device.id, {
@@ -869,6 +941,7 @@ export const useChannelStore = defineStore("channelStore", () => {
     }
 
     const ws = useWebSocketStore()
+    const commandIssuedAt = Date.now()
     ws.send({
       action: WSAction.SET_DO_COMMAND,
       unit_id: device.unit_id,
@@ -877,6 +950,7 @@ export const useChannelStore = defineStore("channelStore", () => {
       chB,
       state2b,
     } satisfies SetDoCommandMessage)
+    scheduleDoStateRefreshIfPending(device.id, commandIssuedAt)
     const pairLabels = (decodePairLabels(state2b) ?? [DIGITAL_PENDING, DIGITAL_PENDING]) as [DigitalLabel, DigitalLabel]
     logger.info(
       `➡️ DO pair cmd ${device.unit_id} [${chA}/${chB}] → CH${chA + 1}:${pairLabels[0]} / CH${chB + 1}:${pairLabels[1]}`,
@@ -944,6 +1018,26 @@ export const useChannelStore = defineStore("channelStore", () => {
     return `${resolveUnitName(ch.device_id)}/${resolveChannelLabel(ch)}`
   }
 
+  function hasPendingCommandForUnit(unitId: string): boolean {
+    const deviceStore = useDeviceStore()
+    const device = deviceStore.devices.find(d => d.unit_id === unitId)
+    if (!device) {
+      return false
+    }
+    const pendingQueue = actionQueues.get(device.id)
+    if (pendingQueue && pendingQueue.length > 0) {
+      return true
+    }
+    const doChannels = channelsByDeviceFast(device.id)
+    return doChannels.some((channel) => {
+      if (channel.type !== CHANNEL_TYPES.DO) {
+        return false
+      }
+      const stage = (channel as DoChannel).ui?.stage
+      return stage === "debounce" || stage === "pending"
+    })
+  }
+
   return {
     channels,
     responses,
@@ -957,6 +1051,7 @@ export const useChannelStore = defineStore("channelStore", () => {
     reset,
 
     channelsByDevice,
+    hasDeviceChannels,
     setBaseChannels,
     setChannels,
     setResponse,
@@ -973,5 +1068,6 @@ export const useChannelStore = defineStore("channelStore", () => {
     resolveUnitName,
     resolveChannelLabel,
     resolveChannelFullLabel,
+    hasPendingCommandForUnit,
   }
 })

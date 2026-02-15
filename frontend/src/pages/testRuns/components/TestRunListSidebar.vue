@@ -1,42 +1,9 @@
 <template>
   <div class="flex h-full flex-col">
     <div class="mb-3 space-y-2">
-      <div class="flex items-center gap-2">
-        <UiButton variant="primary" size="sm" full :disabled="workspaceMissing" @click="emit('create')">
-          + New Test Run
-        </UiButton>
-        <UiMenu v-if="selectedRun">
-          <UiMenuTrigger asChild>
-            <UiButton
-              variant="icon"
-              aria-label="Run actions"
-              @click.stop
-              @pointerdown.stop
-            >
-              <EllipsisHorizontalIcon size="20" />
-            </UiButton>
-          </UiMenuTrigger>
-          <UiMenuContent>
-            <UiMenuItem class="text-neutral-900 dark:text-neutral-100" @select="repeatSelectedRun">
-              Repeat
-            </UiMenuItem>
-            <UiMenuItem
-              v-if="selectedRun.status !== 'running'"
-              class="text-neutral-900 dark:text-neutral-100"
-              @select="startSelectedRun"
-            >
-              Start run
-            </UiMenuItem>
-            <UiMenuItem
-              v-else
-              class="text-neutral-900 dark:text-neutral-100"
-              @select="stopSelectedRun"
-            >
-              Stop run
-            </UiMenuItem>
-          </UiMenuContent>
-        </UiMenu>
-      </div>
+      <UiButton variant="primary" size="sm" full :disabled="workspaceMissing" @click="emit('create')">
+        + New Test Run
+      </UiButton>
       <p
         v-if="workspaceMissing"
         class="text-[11px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
@@ -99,22 +66,12 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue"
-import { useRouter } from "vue-router"
 
 import UiButton from "@/components/ui/UiButton.vue"
 import UiSidebarListbox from "@/components/ui/UiSidebarListbox.vue"
 import TestRunListItem from "./TestRunListItem.vue"
 import type { TestRunRecord } from "@/types/signal"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
-import { useTestRunStore } from "@/stores/testRunStore"
-import { useToastStore } from "@/stores/toastStore"
-import {
-  UiMenu,
-  UiMenuTrigger,
-  UiMenuContent,
-  UiMenuItem,
-} from "@affino/menu-vue"
-import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vue"
 
 const props = defineProps<{
   runs: TestRunRecord[]
@@ -126,9 +83,6 @@ const props = defineProps<{
 const emit = defineEmits<{ (e: "create"): void; (e: "select", id: number): void }>()
 
 const workspaceStore = useWorkspaceStore()
-const testRunStore = useTestRunStore()
-const toastStore = useToastStore()
-const router = useRouter()
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const query = ref("")
 
@@ -157,45 +111,9 @@ const filteredRuns = computed(() => {
   })
 })
 
-const selectedRun = computed(() => {
-  if (props.selectedId === null) return null
-  return props.runs.find((run) => run.id === props.selectedId) ?? null
-})
-
 function handleSelect(id: string | number) {
   const parsed = Number(id)
   if (!Number.isFinite(parsed)) return
   emit("select", parsed)
-}
-
-async function repeatSelectedRun() {
-  if (!selectedRun.value) return
-  try {
-    const clone = await testRunStore.repeatTestRun(selectedRun.value.id)
-    await router.push({ name: "testRuns.detail", params: { runId: clone.id } })
-    toastStore.success(`Created run #${clone.id}`)
-  } catch (err) {
-    toastStore.error(err instanceof Error ? err.message : String(err))
-  }
-}
-
-async function startSelectedRun() {
-  if (!selectedRun.value) return
-  try {
-    await testRunStore.startTestRun(selectedRun.value.id)
-    toastStore.success("Run start requested")
-  } catch (err) {
-    toastStore.error(err instanceof Error ? err.message : String(err))
-  }
-}
-
-async function stopSelectedRun() {
-  if (!selectedRun.value) return
-  try {
-    await testRunStore.stopTestRun(selectedRun.value.id)
-    toastStore.success("Stop request sent")
-  } catch (err) {
-    toastStore.error(err instanceof Error ? err.message : String(err))
-  }
 }
 </script>

@@ -16,17 +16,17 @@ import { useToastStore } from "@/stores/toastStore"
 
 const logger = getLogger("DEVICE")
 
-function normalizeChannels(channels: DeviceDto["channels"]): Channel[] {
+function normalizeChannels(channels: DeviceDto["channels"], fallbackType?: DeviceDto["device_type"] | null): Channel[] {
   if (!channels) {
     return []
   }
 
-  return channels.map(ensureChannel)
+  return channels.map(channel => ensureChannel(channel, fallbackType ?? null))
 }
 
 function normalizeDevice(dto: DeviceDto): Device {
   const status: DeviceStatus = dto.status === "online" ? "online" : "offline"
-  const channels = normalizeChannels(dto.channels)
+  const channels = normalizeChannels(dto.channels, dto.device_type)
   const numChannels = dto.num_channels ?? (channels?.length ?? 0)
 
   return {

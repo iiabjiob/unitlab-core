@@ -17,6 +17,7 @@ const channels = computed(() =>
 const isOffline = computed(() => props.device.status !== "online")
 
 const channelCount = computed(() => channels.value.length)
+const deviceChannelType = computed(() => props.device.device_type)
 
 const hasDoChannels = computed(() =>
   channels.value.length > 0 &&
@@ -78,6 +79,7 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
         v-for="channel in channels"
         :key="channel.id"
         :channel="channel"
+        :device-type="deviceChannelType"
         :disabled="isOffline"
         @toggle="onToggle"
         @set-ao="onSetAo"

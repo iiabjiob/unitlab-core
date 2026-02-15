@@ -38,25 +38,19 @@
 
           <div class="flex flex-col gap-2">
             <label class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Preload allocation (optional)</label>
-            <select v-model="allocationSnapshotId" class="input">
-              <option :value="null">Select locked snapshot</option>
-              <option v-for="snapshot in lockedSnapshots" :key="snapshot.id" :value="snapshot.id">
-                {{ snapshot.source_filename ?? `Snapshot #${snapshot.id}` }}
-              </option>
-            </select>
             <div class="flex gap-3">
               <button
                 class="btn-secondary flex-1"
                 type="button"
-                :disabled="!allocationSnapshotId || allocationLoading"
-                @click="loadAllocationFromSnapshot"
+                :disabled="allocationLoading || !hasAllocatedSignals"
+                @click="loadAllocationFromLiveSheet"
               >
                 <span v-if="allocationLoading">Loading allocation…</span>
-                <span v-else>Load snapshot mapping</span>
+                <span v-else>Load live signal allocations</span>
               </button>
             </div>
             <p class="text-xs text-neutral-500">
-              Snapshots remain immutable per test run. Loading a snapshot only helps seed the allocation; we still capture a fresh snapshot on dispatch.
+              Loads current live `signal -> channel` bindings from Signals page. Test run still captures immutable snapshot on dispatch.
             </p>
           </div>
 
@@ -134,7 +128,7 @@
 import { computed, onMounted, reactive, ref, watch } from "vue"
 import { useRouter } from "vue-router"
 
-import { useSignalSnapshotStore } from "@/stores/signalSnapshotStore"
+import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSignalsStore } from "@/stores/signalStore"
@@ -149,7 +143,7 @@ interface AllocationEntryDraft {
   metadataText: string
 }
 
-const snapshotStore = useSignalSnapshotStore()
+const signalSheetStore = useSignalSheetStore()
 const sequenceStore = useSequenceStore()
 const workspaceStore = useWorkspaceStore()
 const signalsStore = useSignalsStore()
@@ -159,14 +153,16 @@ const router = useRouter()
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 
-const lockedSnapshots = computed(() => snapshotStore.lockedSnapshots)
 const sequenceOptions = computed(() => sequenceStore.sequences)
 const signalOptions = computed(() => signalsStore.activeSignals)
-const signalByKey = computed(() => {
-  const map = new Map<string, Signal>()
-  signalsStore.signals.forEach(signal => map.set(signal.key, signal))
+const signalById = computed(() => {
+  const map = new Map<number, Signal>()
+  signalsStore.signals.forEach(signal => map.set(signal.id, signal))
   return map
 })
+const hasAllocatedSignals = computed(() =>
+  signalSheetStore.allocationRows.some(row => Number.isFinite(row.channel_id as number)),
+)
 
 const builder = reactive({
   sequenceIds: [] as number[],
@@ -174,8 +170,6 @@ const builder = reactive({
   allowEmptyAllocation: false,
   entries: [createEntry()],
 })
-
-const allocationSnapshotId = ref<number | null>(null)
 
 const submitLoading = ref(false)
 const allocationLoading = ref(false)
@@ -189,7 +183,6 @@ function resetBuilder() {
   builder.notes = ""
   builder.allowEmptyAllocation = false
   builder.entries = [createEntry()]
-  allocationSnapshotId.value = lockedSnapshots.value[0]?.id ?? null
 }
 
 onMounted(() => {
@@ -206,26 +199,15 @@ watch(
       builder.sequenceIds = []
       builder.notes = ""
       builder.allowEmptyAllocation = false
-      allocationSnapshotId.value = null
       return
     }
     await initializeData()
   },
 )
 
-watch(
-  () => lockedSnapshots.value,
-  (snapshots) => {
-    if (!allocationSnapshotId.value && snapshots.length) {
-      allocationSnapshotId.value = snapshots[0].id
-    }
-  },
-  { immediate: true },
-)
-
 async function initializeData() {
   await Promise.allSettled([
-    snapshotStore.refreshSnapshots(),
+    signalSheetStore.bootstrap(true),
     testRunStore.refreshRuns(),
     sequenceStore.ensureLoaded(),
     signalsStore.refreshSignals(true),
@@ -301,25 +283,26 @@ async function createRun() {
   }
 }
 
-async function loadAllocationFromSnapshot() {
-  if (!allocationSnapshotId.value) return
+async function loadAllocationFromLiveSheet() {
   allocationLoading.value = true
   try {
-    const allocation = await snapshotStore.getAllocation(allocationSnapshotId.value, true)
-    if (!allocation.mapping.length) {
-      toastStore.info("Snapshot allocation is empty")
+    await signalSheetStore.refreshAllocations()
+    const rows = signalSheetStore.allocationRows.filter(row => Number.isFinite(row.channel_id as number))
+    if (!rows.length) {
+      toastStore.info("No allocated signals in active signal sheet")
       return
     }
-    builder.entries = allocation.mapping.map(item => {
-      const match = item.signal_key ? signalByKey.value.get(item.signal_key) : null
+    builder.entries = rows.map((row) => {
+      const match = signalById.value.get(row.signal_id)
       return {
-        channelId: Number(item.channel_id) || null,
+        channelId: Number(row.channel_id) || null,
         signalId: match?.id ?? null,
         metadataText: JSON.stringify(
           {
-            snapshot_signal_key: item.signal_key ?? null,
-            snapshot_row_index: item.signal_row_index,
-            snapshot_meta: item.meta ?? null,
+            signal_key: row.signal_key,
+            signal_name: row.signal_name,
+            signal_direction: row.signal_direction,
+            source: "live_signal_sheet",
           },
           null,
           2,

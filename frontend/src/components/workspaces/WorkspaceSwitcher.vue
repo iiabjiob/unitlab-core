@@ -3,6 +3,7 @@
     <UiMenu v-model:open="menuOpen">
       <UiMenuTrigger asChild>
         <button
+          ref="triggerRef"
           type="button"
           :disabled="loading"
           :class="triggerClasses"
@@ -32,7 +33,7 @@
         </button>
       </UiMenuTrigger>
 
-      <UiMenuContent class="min-w-[320px] border border-neutral-200 p-0 dark:border-neutral-800">
+      <UiMenuContent :style="menuContentStyle" class="border border-neutral-200 p-0 dark:border-neutral-800">
         <div class="border-b border-neutral-200 px-3 py-2 text-[10px] uppercase tracking-[0.3em] text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
           Workspaces
         </div>
@@ -93,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue"
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import {
   UiMenu,
   UiMenuTrigger,
@@ -114,6 +115,9 @@ const menuOpen = ref(false)
 const createModalOpen = ref(false)
 const createName = ref("")
 const createError = ref("")
+const triggerRef = ref<HTMLElement | null>(null)
+const menuWidth = ref<number | null>(null)
+let triggerResizeObserver: ResizeObserver | null = null
 
 const wrapperClass = computed(() => {
   if (props.variant === "compact") return "w-full"
@@ -146,6 +150,21 @@ const loading = computed(() => workspaceStore.loading)
 const hasWorkspace = computed(() => Boolean(workspaceStore.activeWorkspace))
 const currentLabel = computed(() => workspaceStore.activeWorkspace?.name ?? "Select workspace")
 const menuWorkspaces = computed(() => workspaceStore.workspaces)
+const menuContentStyle = computed<Record<string, string> | undefined>(() => {
+  if (!menuWidth.value) return undefined
+  const widthPx = `${menuWidth.value}px`
+  return {
+    width: widthPx,
+    minWidth: widthPx,
+  }
+})
+
+function updateMenuWidth() {
+  const el = triggerRef.value
+  if (!el) return
+  const width = Math.max(0, Math.round(el.getBoundingClientRect().width))
+  menuWidth.value = width > 0 ? width : null
+}
 
 function formatTimestamp(value?: string | null) {
   if (!value) return "--"
@@ -198,6 +217,29 @@ async function handleCreateSubmit() {
 }
 
 onMounted(() => {
+  void nextTick(() => {
+    updateMenuWidth()
+  })
+  if (typeof ResizeObserver !== "undefined" && triggerRef.value) {
+    triggerResizeObserver = new ResizeObserver(() => {
+      updateMenuWidth()
+    })
+    triggerResizeObserver.observe(triggerRef.value)
+  }
   void workspaceStore.bootstrap()
 })
+
+onBeforeUnmount(() => {
+  triggerResizeObserver?.disconnect()
+  triggerResizeObserver = null
+})
+
+watch(
+  () => [menuOpen.value, props.variant, currentLabel.value, menuWorkspaces.value.length] as const,
+  () => {
+    void nextTick(() => {
+      updateMenuWidth()
+    })
+  },
+)
 </script>
