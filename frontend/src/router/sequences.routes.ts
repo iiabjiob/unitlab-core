@@ -2,7 +2,6 @@ import { useSequenceStepStore } from "@/stores/sequenceStepStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSelectionStore } from "@/stores/selectionStore"
-import { useChannelStore } from "@/stores/channelStore"
 import type { RouteRecordRaw } from "vue-router"
 
 // Default meta shared from index.ts
@@ -20,8 +19,6 @@ export const sequencesRoutes: RouteRecordRaw[] = [
       await workspaceStore.bootstrap()
       const store = useSequenceStore()
       await store.ensureLoaded()
-      const channelStore = useChannelStore()
-      await channelStore.ensureLoaded()
     },
     meta: {
       ...defaultMeta,
@@ -60,8 +57,6 @@ export const sequencesRoutes: RouteRecordRaw[] = [
           const stepStore = useSequenceStepStore()
 
           await seqStore.ensureLoaded()
-          const channelStore = useChannelStore()
-          await channelStore.ensureLoaded()
           await stepStore.ensureSteps(seqId)
           await seqStore.refreshState(seqId)
         }

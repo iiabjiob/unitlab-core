@@ -41,7 +41,7 @@
         </div>
 
         <div v-if="visibleNodes.length === 0" class="channel-tree-picker__empty">
-          No channels available
+          {{ catalogLoading ? "Loading channels…" : "No channels available" }}
         </div>
 
         <div
@@ -97,7 +97,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, watch, type ComponentPublicInstance } from "vue"
+import { computed, nextTick, ref, watch, type ComponentPublicInstance } from "vue"
 import { useFloatingPopover, usePopoverController } from "@affino/popover-vue"
 import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
 
@@ -145,6 +145,7 @@ const triggerProps = computed(() => popover.getTriggerProps({ type: "button", ro
 const contentProps = computed(() => popover.getContentProps({ role: "dialog", tabIndex: -1 }))
 const popoverContentStyle = computed(() => floating.contentStyle.value)
 const popoverTeleportTarget = computed(() => floating.teleportTarget.value)
+const catalogLoading = ref(false)
 
 const channelsById = computed(() => {
   const map = new Map<number, Channel>()
@@ -285,6 +286,7 @@ watch(
   () => popover.state.value.open,
   async (open) => {
     if (!open) return
+    await ensureCatalogLoadedForPicker()
     // Default state: all units collapsed.
     filteredChannels.value.forEach((entry) => {
       tree.collapse(toUnitNodeValue(entry.unitId))
@@ -593,6 +595,37 @@ function onTreeRootKeydown(event: KeyboardEvent) {
 
 function handleClear() {
   selectChannel(null)
+}
+
+async function ensureCatalogLoadedForPicker() {
+  if (catalogLoading.value) {
+    return
+  }
+  catalogLoading.value = true
+  try {
+    await deviceStore.ensureLoaded()
+
+    const requiredType = String(props.channelType ?? "").trim().toLowerCase()
+    const candidates = deviceStore.devices
+      .filter((device) => String(device.device_type ?? "").trim().toLowerCase() === requiredType)
+      .map(device => device.id)
+
+    if (candidates.length > 0) {
+      await Promise.allSettled(
+        candidates.map(deviceId => channelStore.ensureDeviceChannelsLoaded(deviceId)),
+      )
+    } else if (channelStore.channels.length === 0) {
+      await channelStore.ensureLoaded()
+    }
+
+    if (channelStore.channels.length === 0 && deviceStore.devices.length > 0) {
+      await Promise.allSettled(
+        deviceStore.devices.map(device => channelStore.ensureDeviceChannelsLoaded(device.id)),
+      )
+    }
+  } finally {
+    catalogLoading.value = false
+  }
 }
 </script>
 

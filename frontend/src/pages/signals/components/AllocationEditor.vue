@@ -17,7 +17,7 @@
           :disabled="workspaceMissing || loading || allocatedCableRows.length === 0"
           @click="exportCableJournal"
         >
-          Export Cable Diagram
+          Export Cable Schedule
         </UiButton>
       </div>
       <div class="flex flex-wrap items-center gap-2">
@@ -55,13 +55,13 @@
           De-allocate selected
         </UiButton>
         <UiButton
-          v-if="selectedAllocatedPhysicalRows.length > 0"
-          variant="success"
+          v-if="selectedAllocatedPhysicalRows.length > 0 || testRunInProgress"
+          :variant="testRunInProgress ? 'danger' : 'success'"
           size="sm"
-          :disabled="loading || testRunInProgress"
-          @click="runTestVisualOnly"
+          :disabled="loading"
+          @click="testRunInProgress ? stopTestRun() : runTestVisualOnly()"
         >
-          {{ testRunInProgress ? "Running…" : "Run test" }}
+          {{ testRunInProgress ? "Stop test" : "Run test" }}
         </UiButton>
         <UiButton
           v-if="canCreateSwitchgearFromSelection"
@@ -231,6 +231,7 @@ const importModalOpen = ref(false)
 const persistentControlMenuOptions = { closeOnSelect: false }
 const selectedRowKeys = ref<string[]>([])
 const testRunInProgress = ref(false)
+const testRunAbortRequested = ref(false)
 const switchgearCreateInProgress = ref(false)
 const testRunTotal = ref(0)
 const testRunProcessed = ref(0)
@@ -238,6 +239,7 @@ const testRunSucceeded = ref(0)
 const testRunSkipped = ref(0)
 let realtimeScopeSyncFrame: number | null = null
 const TEST_TOGGLE_STEP_MS = 1000
+const TEST_TOGGLE_PHASES_PER_SIGNAL = 2
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const loading = computed(() => loadingAllocations.value || loadingSheet.value)
@@ -386,12 +388,13 @@ const testRunProgressPercent = computed(() => {
 const testRunEtaSeconds = computed(() => {
   if (!testRunInProgress.value) return 0
   const remaining = Math.max(0, testRunTotal.value - testRunProcessed.value)
-  return remaining * (TEST_TOGGLE_STEP_MS / 1000)
+  return remaining * ((TEST_TOGGLE_STEP_MS * TEST_TOGGLE_PHASES_PER_SIGNAL) / 1000)
 })
 
 const testRunProgressText = computed(() => {
   const base = `${testRunProcessed.value}/${testRunTotal.value} · ok ${testRunSucceeded.value} · skip ${testRunSkipped.value}`
   if (!testRunInProgress.value) return base
+  if (testRunAbortRequested.value) return `${base} · stopping…`
   return `${base} · ETA ${formatDurationShort(testRunEtaSeconds.value)}`
 })
 
@@ -969,6 +972,27 @@ function wait(ms: number) {
   })
 }
 
+async function waitWithAbort(ms: number): Promise<boolean> {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < ms) {
+    if (testRunAbortRequested.value) {
+      return false
+    }
+    const elapsed = Date.now() - startedAt
+    const remaining = Math.max(0, ms - elapsed)
+    await wait(Math.min(80, remaining))
+  }
+  return !testRunAbortRequested.value
+}
+
+function stopTestRun() {
+  if (!testRunInProgress.value || testRunAbortRequested.value) {
+    return
+  }
+  testRunAbortRequested.value = true
+  toastStore.info("Stopping test run…")
+}
+
 async function runTestVisualOnly() {
   if (testRunInProgress.value) return
 
@@ -983,17 +1007,32 @@ async function runTestVisualOnly() {
   testRunProcessed.value = 0
   testRunSucceeded.value = 0
   testRunSkipped.value = 0
+  testRunAbortRequested.value = false
 
+  let interrupted = false
   try {
     for (let index = 0; index < queue.length; index += 1) {
+      if (testRunAbortRequested.value) {
+        interrupted = true
+        break
+      }
       const row = queue[index]
       const target = resolveControlTarget(row)
       if (!target || !target.online) {
         testRunSkipped.value += 1
       } else {
-        const nextState = !Boolean(target.channel.state)
-        const ok = await sendControl(row, nextState, { quiet: true })
-        if (ok) {
+        const initialState = Boolean(target.channel.state)
+        const toggledState = !initialState
+        const toggledOk = await sendControl(row, toggledState, { quiet: true })
+        let restoredOk = false
+        if (toggledOk) {
+          const continueToOff = await waitWithAbort(TEST_TOGGLE_STEP_MS)
+          if (!continueToOff) {
+            interrupted = true
+          }
+          restoredOk = await sendControl(row, initialState, { quiet: true })
+        }
+        if (toggledOk && restoredOk) {
           testRunSucceeded.value += 1
         } else {
           testRunSkipped.value += 1
@@ -1001,17 +1040,31 @@ async function runTestVisualOnly() {
       }
 
       testRunProcessed.value += 1
+      if (interrupted) {
+        break
+      }
 
       if (index < queue.length - 1) {
-        await wait(TEST_TOGGLE_STEP_MS)
+        const continueToNext = await waitWithAbort(TEST_TOGGLE_STEP_MS)
+        if (!continueToNext) {
+          interrupted = true
+          break
+        }
       }
     }
 
-    toastStore.success(
-      `Run test complete: ${testRunSucceeded.value} toggled${testRunSkipped.value ? `, ${testRunSkipped.value} skipped` : ""}.`,
-    )
+    if (interrupted) {
+      toastStore.info(
+        `Run test stopped: ${testRunProcessed.value}/${testRunTotal.value} processed, ${testRunSucceeded.value} completed.`,
+      )
+    } else {
+      toastStore.success(
+        `Run test complete: ${testRunSucceeded.value} toggled${testRunSkipped.value ? `, ${testRunSkipped.value} skipped` : ""}.`,
+      )
+    }
   } finally {
     testRunInProgress.value = false
+    testRunAbortRequested.value = false
   }
 }
 

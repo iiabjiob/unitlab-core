@@ -4,7 +4,6 @@ import { useChannelStore } from '@/stores/channelStore'
 import { getLogger } from '@/utils/logger'
 import { useSequenceStore } from '@/stores/sequenceStore'
 import { useSystemHealthStore } from '@/stores/systemHealthStore'
-import { useRealtimeScopeStore } from '@/stores/realtimeScopeStore'
 
 const logger = getLogger('ws')
 
@@ -24,7 +23,6 @@ export function handleWsEvent(event: WSEvent) {
   const channelStore = useChannelStore()
   const sequenceStore = useSequenceStore()
   const systemHealthStore = useSystemHealthStore()
-  const realtimeScopeStore = useRealtimeScopeStore()
 
   // Route sequence events into the sequence store so realtime progress stays in sync.
   if ('topic' in event && (event as SequenceWsEvent).topic === 'sequence') {
@@ -71,10 +69,9 @@ export function handleWsEvent(event: WSEvent) {
         channels: null,
       })
 
-      // Hydrate channel catalog only once for currently observed units.
+      // Hydrate channel catalog once when firmware includes channel descriptors.
       if (
         devEvent.channels &&
-        realtimeScopeStore.shouldProcessRealtimeForUnit(devEvent.unit_id) &&
         Number.isFinite(Number(deviceId)) &&
         !channelStore.hasDeviceChannels(Number(deviceId))
       ) {
@@ -90,12 +87,6 @@ export function handleWsEvent(event: WSEvent) {
     }
     // Device state broadcasts carry DI/DO/AO changes for visualization.
     case WSChannel.DEVICE_STATE:{
-      if (
-        !realtimeScopeStore.shouldProcessRealtimeForUnit(channelEvent.unit_id) &&
-        !channelStore.hasPendingCommandForUnit(channelEvent.unit_id)
-      ) {
-        break
-      }
       logger.debug("📡 IN ← DEVICE_STATE:", channelEvent)
       channelStore.setChannels(channelEvent as DeviceStateEvent)
       break

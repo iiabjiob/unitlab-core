@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, onBeforeUnmount, ref } from "vue"
 import { useAutoScroll } from "@/composables/useAutoScroll"
 
 type LogEntry = {
@@ -38,6 +38,19 @@ const props = withDefaults(defineProps<{
 const entries = computed(() => props.logs ?? [])
 const logContainer = ref<HTMLElement | null>(null)
 useAutoScroll(entries, logContainer)
+const copyButtonText = ref("Copy log")
+let copyFeedbackTimeout: number | null = null
+
+function setCopyButtonFeedback(text: string, durationMs = 1500) {
+  copyButtonText.value = text
+  if (copyFeedbackTimeout !== null) {
+    window.clearTimeout(copyFeedbackTimeout)
+  }
+  copyFeedbackTimeout = window.setTimeout(() => {
+    copyButtonText.value = "Copy log"
+    copyFeedbackTimeout = null
+  }, durationMs)
+}
 
 function dotClass(type: string) {
   return props.typeColors?.[type]?.dot ?? defaultColors[type]?.dot ?? "bg-neutral-400"
@@ -65,12 +78,65 @@ function onKeydown(event: KeyboardEvent, index: number) {
     handleSelect(index)
   }
 }
+
+function toLine(log: LogEntry): string {
+  const detail = detailText(log)
+  const detailsSuffix = detail ? ` · ${detail}` : ""
+  return `[${log.ts}] ${String(log.type).toUpperCase()}: ${log.message}${detailsSuffix}`
+}
+
+const logText = computed(() => entries.value.map(toLine).join("\n"))
+
+async function copyLogs() {
+  if (!entries.value.length) {
+    setCopyButtonFeedback("No logs")
+    return
+  }
+
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(logText.value)
+    } else if (typeof document !== "undefined") {
+      const textarea = document.createElement("textarea")
+      textarea.value = logText.value
+      textarea.style.position = "fixed"
+      textarea.style.opacity = "0"
+      document.body.appendChild(textarea)
+      textarea.focus()
+      textarea.select()
+      document.execCommand("copy")
+      document.body.removeChild(textarea)
+    } else {
+      throw new Error("Clipboard API unavailable")
+    }
+    setCopyButtonFeedback("Copied")
+  } catch {
+    setCopyButtonFeedback("Failed")
+  }
+}
+
+onBeforeUnmount(() => {
+  if (copyFeedbackTimeout !== null) {
+    window.clearTimeout(copyFeedbackTimeout)
+    copyFeedbackTimeout = null
+  }
+})
 </script>
 
 <template>
   <div class="h-full min-h-0 flex flex-col select-none">
-    <div class="p-4 text-xs uppercase tracking-wider text-neutral-500 dark:text-neutral-400 border-b border-neutral-200 dark:border-neutral-800">
-      {{ props.title }}
+    <div class="p-4 text-xs uppercase tracking-wider text-neutral-500 dark:text-neutral-400 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
+      <span>{{ props.title }}</span>
+      <button
+        type="button"
+        class="relative text-[10px] px-2 py-1 rounded border border-neutral-300 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800/60 transition-colors"
+        @click="copyLogs"
+      >
+        <span class="invisible">Copy log</span>
+        <span class="absolute inset-0 flex items-center justify-center">
+          {{ copyButtonText }}
+        </span>
+      </button>
     </div>
     <div
       ref="logContainer"

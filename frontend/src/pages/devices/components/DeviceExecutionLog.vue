@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, onBeforeUnmount, ref } from "vue"
 import { useChannelLogStore } from "@/stores/channelLogStore"
 import type { Device } from "@/types/device";
 import { useAutoScroll } from "@/composables/useAutoScroll"
@@ -15,14 +15,81 @@ const sortedLogs = computed(() =>
 
 const logContainer = ref<HTMLElement | null>(null)
 useAutoScroll(sortedLogs, logContainer)
+const copyButtonText = ref("Copy log")
+let copyFeedbackTimeout: number | null = null
+
+function setCopyButtonFeedback(text: string, durationMs = 1500) {
+  copyButtonText.value = text
+  if (copyFeedbackTimeout !== null) {
+    window.clearTimeout(copyFeedbackTimeout)
+  }
+  copyFeedbackTimeout = window.setTimeout(() => {
+    copyButtonText.value = "Copy log"
+    copyFeedbackTimeout = null
+  }, durationMs)
+}
+
+function toLine(log: (typeof sortedLogs.value)[number]): string {
+  const action = log.actionId ? ` #${log.actionId}` : ""
+  const reason = log.reason ? ` (reason: ${log.reason})` : ""
+  return `[${log.ts}] ${String(log.type).toUpperCase()}${action}: ${log.message}${reason}`
+}
+
+const logText = computed(() => sortedLogs.value.map(toLine).join("\n"))
+
+async function copyLogs() {
+  if (!sortedLogs.value.length) {
+    setCopyButtonFeedback("No logs")
+    return
+  }
+
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(logText.value)
+    } else if (typeof document !== "undefined") {
+      const textarea = document.createElement("textarea")
+      textarea.value = logText.value
+      textarea.style.position = "fixed"
+      textarea.style.opacity = "0"
+      document.body.appendChild(textarea)
+      textarea.focus()
+      textarea.select()
+      document.execCommand("copy")
+      document.body.removeChild(textarea)
+    } else {
+      throw new Error("Clipboard API unavailable")
+    }
+    setCopyButtonFeedback("Copied")
+  } catch {
+    setCopyButtonFeedback("Failed")
+  }
+}
+
+onBeforeUnmount(() => {
+  if (copyFeedbackTimeout !== null) {
+    window.clearTimeout(copyFeedbackTimeout)
+    copyFeedbackTimeout = null
+  }
+})
 </script>
 
 <template>
   <div class="h-full min-h-0 flex flex-col select-none">
 
     <div class="p-3 text-xs uppercase tracking-wider text-neutral-500 border-b
-                dark:text-neutral-400 border-neutral-200 dark:border-neutral-800">
-      Device Log
+                dark:text-neutral-400 border-neutral-200 dark:border-neutral-800
+                flex items-center justify-between gap-3">
+      <span>Device Log</span>
+      <button
+        type="button"
+        class="relative text-[10px] px-2 py-1 rounded border border-neutral-300 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800/60 transition-colors"
+        @click="copyLogs"
+      >
+        <span class="invisible">Copy log</span>
+        <span class="absolute inset-0 flex items-center justify-center">
+          {{ copyButtonText }}
+        </span>
+      </button>
     </div>
 
     <div

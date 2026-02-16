@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue"
+import { ref, watch } from "vue"
 import type { Switchgear } from "@/types/switchgear"
 import { CHANNEL_TYPES, type ChannelType } from "@/types/channel"
 import SignalBackedChannelField from "@/components/signals/SignalBackedChannelField.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
+import { useToastStore } from "@/stores/toastStore"
 
 const props = defineProps<{
   switchgear: Switchgear
 }>()
 
 const store = useSwitchgearStore()
+const toastStore = useToastStore()
 
 const ROLE_ORDER = ["do_open", "do_closed", "di_open", "di_close"] as const
 type BindingRoleKey = typeof ROLE_ORDER[number]
@@ -47,7 +49,21 @@ const ROLE_META: Record<BindingRoleKey, {
   },
 }
 
-const bindings = computed(() => props.switchgear.bindings ?? [])
+type EditableBinding = Switchgear["bindings"][number]
+
+function normalizeBindings(source: ReadonlyArray<EditableBinding> | null | undefined): EditableBinding[] {
+  return ROLE_ORDER.map((role) => {
+    const current = source?.find(binding => binding.role === role) ?? null
+    return {
+      id: current?.id ?? 0,
+      role,
+      channel_id: current?.channel_id ?? null,
+      delay_ms: current?.delay_ms ?? 0,
+    }
+  })
+}
+
+const bindingsDraft = ref<EditableBinding[]>(normalizeBindings(props.switchgear.bindings))
 const signalSelectionByRole = ref<Record<BindingRoleKey, { signalId: number | null; signalKey: string | null }>>({
   do_open: { signalId: null, signalKey: null },
   do_closed: { signalId: null, signalKey: null },
@@ -56,24 +72,38 @@ const signalSelectionByRole = ref<Record<BindingRoleKey, { signalId: number | nu
 })
 
 function bindingByRole(role: BindingRoleKey) {
-  return bindings.value.find(binding => binding.role === role) ?? null
+  return bindingsDraft.value.find(binding => binding.role === role) ?? null
 }
 
-async function updateBindings(nextBindings: typeof bindings.value) {
-  await store.updateField(props.switchgear.id, {
-    bindings: nextBindings.map(binding => ({
-      role: binding.role,
-      channel_id: binding.channel_id,
-      delay_ms: binding.delay_ms,
-    })),
-  })
+async function updateBindings(nextBindings: EditableBinding[]) {
+  const normalized = normalizeBindings(nextBindings)
+  bindingsDraft.value = normalized
+  try {
+    const updated = await store.updateField(props.switchgear.id, {
+      bindings: normalized.map(binding => ({
+        role: binding.role,
+        channel_id: binding.channel_id,
+        delay_ms: binding.delay_ms,
+      })),
+    })
+    bindingsDraft.value = normalizeBindings(updated.bindings)
+  } catch (error) {
+    bindingsDraft.value = normalizeBindings(props.switchgear.bindings)
+    throw error
+  }
+}
+
+function patchBinding(role: BindingRoleKey, patch: Partial<{ channel_id: number | null; delay_ms: number }>) {
+  return bindingsDraft.value.map(binding =>
+    binding.role === role ? { ...binding, ...patch } : binding,
+  )
 }
 
 function applyPatch(role: BindingRoleKey, patch: Partial<{ channel_id: number | null; delay_ms: number }>) {
-  const next = bindings.value.map(binding =>
-    binding.role === role ? { ...binding, ...patch } : binding
-  )
-  void updateBindings(next)
+  const next = patchBinding(role, patch)
+  void updateBindings(next).catch((error) => {
+    toastStore.error(error instanceof Error ? error.message : "Failed to update switchgear bindings")
+  })
 }
 
 function handleDelayChange(role: BindingRoleKey, value: number) {
@@ -124,6 +154,7 @@ function handleSignalChange(role: BindingRoleKey, payload: { signalId: number | 
 
 async function resetAll() {
   await store.resetBindings(props.switchgear.id)
+  bindingsDraft.value = normalizeBindings(props.switchgear.bindings)
   signalSelectionByRole.value = {
     do_open: { signalId: null, signalKey: null },
     do_closed: { signalId: null, signalKey: null },
@@ -131,6 +162,19 @@ async function resetAll() {
     di_close: { signalId: null, signalKey: null },
   }
 }
+
+watch(
+  () => [
+    props.switchgear.id,
+    (props.switchgear.bindings ?? [])
+      .map(binding => `${binding.role}:${binding.channel_id ?? "n"}:${binding.delay_ms ?? 0}`)
+      .join("|"),
+  ] as const,
+  () => {
+    bindingsDraft.value = normalizeBindings(props.switchgear.bindings)
+  },
+  { immediate: true },
+)
 
 watch(
   () => props.switchgear.id,

@@ -36,9 +36,6 @@ if TYPE_CHECKING:  # pragma: no cover - hints only
     from simulator.mqtt_client import BehaviorSettings, BrokerSettings
 
 
-COMMAND_ERROR_RATE = 0.05
-
-
 class SimulatedDODevice(SimulatedDeviceBase):
     """Emulates an ESP32 board controlling digital outputs."""
 
@@ -242,7 +239,7 @@ class SimulatedDODevice(SimulatedDeviceBase):
         if action is None:
             return
 
-        if self._rng.random() < COMMAND_ERROR_RATE:
+        if self._rng.random() < self.behavior.command_error_rate:
             await self._send_resp(
                 RespStatus.INTERNAL_ERROR,
                 RespError.HW_FAILURE,
@@ -284,9 +281,15 @@ class SimulatedDODevice(SimulatedDeviceBase):
         packet_id: Optional[int] = None,
     ) -> None:
         mapping = {
-            0b00: (1, 0),  # INTERMEDIATE
-            0b01: (0, 0),  # OFF
-            0b10: (1, 1),  # ON
+            # Switchgear contract:
+            # 00 -> UNKNOWN   (A=0, B=0)
+            # 01 -> OPEN      (A=1, B=0)
+            # 10 -> CLOSED    (A=0, B=1)
+            # 11 -> UNDEFINED (A=1, B=1)
+            0b00: (0, 0),
+            0b01: (1, 0),
+            0b10: (0, 1),
+            0b11: (1, 1),
         }
         desired = mapping.get(cmd.state2b)
         if desired is None:

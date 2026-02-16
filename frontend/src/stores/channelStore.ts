@@ -48,6 +48,8 @@ const COMMAND_FAILURE_DISPLAY_MS = 2000
 export const useChannelStore = defineStore("channelStore", () => {
   const channels = ref<Channel[]>([])
   const responses = ref<Record<string, DeviceRespEvent>>({})
+  const stateRevision = ref(0)
+  const lastStateChangedKeys = ref<Set<string>>(new Set())
 
   const isLoading = ref(false)
   const isLoaded = ref(false)
@@ -73,16 +75,6 @@ export const useChannelStore = defineStore("channelStore", () => {
     queue.push(actionId)
     actionQueues.set(deviceId, queue)
     return actionId
-  }
-
-  function consumeAction(deviceId: number): string | undefined {
-    const queue = actionQueues.get(deviceId)
-    if (!queue || queue.length === 0) return undefined
-    const id = queue.shift()
-    if (!queue.length) {
-      actionQueues.delete(deviceId)
-    }
-    return id
   }
 
   function removeAction(deviceId: number, actionId?: string) {
@@ -139,21 +131,11 @@ export const useChannelStore = defineStore("channelStore", () => {
     aoActionMap.delete(aoKey(deviceId, chIndex))
   }
 
-  function purgeAoAction(actionId?: string) {
-    if (!actionId) return
-    for (const [key, id] of aoActionMap.entries()) {
-      if (id === actionId) {
-        aoActionMap.delete(key)
-      }
-    }
-  }
-
   const DIGITAL_ON = "ON" as const
   const DIGITAL_OFF = "OFF" as const
   const DIGITAL_PENDING = "PENDING" as const
 
   type DigitalStableLabel = typeof DIGITAL_ON | typeof DIGITAL_OFF
-  type DigitalLabel = DigitalStableLabel | typeof DIGITAL_PENDING
 
   function toDigitalLabel(value: unknown): DigitalStableLabel {
     return value ? DIGITAL_ON : DIGITAL_OFF
@@ -201,16 +183,21 @@ export const useChannelStore = defineStore("channelStore", () => {
   }
 
   function decodePairLabels(state2b: number): [DigitalStableLabel, DigitalStableLabel] | null {
-    switch (state2b) {
+    switch (state2b & 0b11) {
       case 0b00:
-        return [DIGITAL_ON, DIGITAL_OFF]
-      case 0b01:
+        // Unknown: both outputs OFF
         return [DIGITAL_OFF, DIGITAL_OFF]
+      case 0b01:
+        // Open: A=ON, B=OFF
+        return [DIGITAL_ON, DIGITAL_OFF]
       case 0b10:
+        // Closed: A=OFF, B=ON
+        return [DIGITAL_OFF, DIGITAL_ON]
+      case 0b11:
+        // Undefined: both outputs ON
         return [DIGITAL_ON, DIGITAL_ON]
-      default:
-        return null
     }
+    return null
   }
 
   function decodePairTargets(state2b: number): [boolean, boolean] | null {
@@ -325,13 +312,20 @@ export const useChannelStore = defineStore("channelStore", () => {
     if (!ui) {
       return
     }
+    const actionId = ui.actionId
 
     if (ui.target === actualState || ui.stage === "error") {
+      if (actionId) {
+        removeAction(channel.device_id, actionId)
+      }
       resetDoUiState(channel)
       return
     }
 
     if (ui.stage !== "idle") {
+      if (actionId) {
+        removeAction(channel.device_id, actionId)
+      }
       clearDoUiTimers(ui)
       ui.stage = "idle"
       ui.target = undefined
@@ -457,6 +451,8 @@ export const useChannelStore = defineStore("channelStore", () => {
     channels.value = []
     rebuildChannelIndexes()
     responses.value = {}
+    stateRevision.value = 0
+    lastStateChangedKeys.value = new Set()
     isLoaded.value = false
     deviceLoaded.clear()
     deviceLoading.clear()
@@ -480,17 +476,59 @@ export const useChannelStore = defineStore("channelStore", () => {
     rebuildChannelIndexes()
   }
 
+  function preserveRuntimeState(next: Channel, previous?: Channel): Channel {
+    if (!previous || previous.type !== next.type) {
+      return next
+    }
+
+    if (next.type === CHANNEL_TYPES.DO && previous.type === CHANNEL_TYPES.DO) {
+      const nextDo = next as DoChannel
+      const previousDo = previous as DoChannel
+      return {
+        ...nextDo,
+        state: previousDo.state,
+        diagnostics: previousDo.diagnostics ? { ...previousDo.diagnostics } : undefined,
+      }
+    }
+
+    if (next.type === CHANNEL_TYPES.DI && previous.type === CHANNEL_TYPES.DI) {
+      const nextDi = next as DiChannel
+      const previousDi = previous as DiChannel
+      return {
+        ...nextDi,
+        state: previousDi.state,
+        diDiagnostics: previousDi.diDiagnostics ? { ...previousDi.diDiagnostics } : undefined,
+      }
+    }
+
+    if (next.type === CHANNEL_TYPES.AO && previous.type === CHANNEL_TYPES.AO) {
+      const nextAo = next
+      const previousAo = previous
+      return {
+        ...nextAo,
+        state: previousAo.state,
+      }
+    }
+
+    return next
+  }
+
   function setBaseChannels(deviceId: number, base: Array<Channel | ChannelDto>) {
     const deviceStore = useDeviceStore()
     const fallbackType = deviceStore.devices.find(device => device.id === deviceId)?.device_type ?? null
+    const existingByIndex = new Map<number, Channel>()
+    for (const channel of channelsByDeviceFast(deviceId)) {
+      existingByIndex.set(channel.index, channel)
+    }
     const prepared = base.map((raw) => {
       const normalized = ensureChannel(raw, fallbackType)
-      return {
+      const next = {
         ...normalized,
         // Defensive normalization: payloads can come from different WS/REST shapes.
         // For per-device hydration, the requested device is the source of truth.
         device_id: deviceId,
       }
+      return preserveRuntimeState(next, existingByIndex.get(next.index))
     })
     applyInitialChannels(deviceId, prepared)
     deviceLoaded.add(deviceId)
@@ -520,15 +558,20 @@ export const useChannelStore = defineStore("channelStore", () => {
     return { changed, actionId }
   }
 
-  function applyBitmaskState(deviceId: number, mask: number): { changed: boolean; actionIds: Set<string> } {
+  function applyBitmaskState(
+    deviceId: number,
+    mask: number,
+  ): { changed: boolean; actionIds: Set<string>; changedIndexes: number[] } {
     let changed = false
     const actionIds = new Set<string>()
+    const changedIndexes: number[] = []
     for (const ch of channelsByDeviceFast(deviceId)) {
       if (ch.type === CHANNEL_TYPES.AO) continue
       const next = ((mask >> ch.index) & 1) === 1
       if (ch.state !== next) {
         ch.state = next
         changed = true
+        changedIndexes.push(ch.index)
       }
       if (ch.type === CHANNEL_TYPES.DO) {
         const id = ch.ui?.actionId
@@ -538,7 +581,7 @@ export const useChannelStore = defineStore("channelStore", () => {
         fulfillDoPendingState(ch as DoChannel, next)
       }
     }
-    return { changed, actionIds }
+    return { changed, actionIds, changedIndexes }
   }
 
   function countBits(mask: number): number {
@@ -573,6 +616,8 @@ export const useChannelStore = defineStore("channelStore", () => {
       return
     }
     deviceLastStateAt.set(device.id, Date.now())
+    let stateChanged = false
+    const changedIndexes: number[] = []
 
     switch (event.mode) {
       case StateMode.STATE_SINGLE_BIT: {
@@ -580,6 +625,8 @@ export const useChannelStore = defineStore("channelStore", () => {
         if (!changed) {
           break
         }
+        stateChanged = true
+        changedIndexes.push(event.payload.ch)
         const singleLabel = toDigitalLabel(event.payload.value)
         pushDeviceLog(device.id, {
           type: "state",
@@ -591,10 +638,12 @@ export const useChannelStore = defineStore("channelStore", () => {
         break
       }
       case StateMode.STATE_ALL_BIT: {
-        const { changed, actionIds } = applyBitmaskState(device.id, event.payload.bitmask)
+        const { changed, actionIds, changedIndexes: indexes } = applyBitmaskState(device.id, event.payload.bitmask)
         if (!changed) {
           break
         }
+        stateChanged = true
+        changedIndexes.push(...indexes)
         const deviceType = device.device_type.toLowerCase()
         if (deviceType === "do") {
           const maskSummary = formatSummary(summarizeDoChannels(device.id))
@@ -614,6 +663,8 @@ export const useChannelStore = defineStore("channelStore", () => {
         if (!changed) {
           break
         }
+        stateChanged = true
+        changedIndexes.push(event.payload.ch)
         const aoValue = formatAoValue(Number(event.payload.value))
         pushDeviceLog(device.id, {
           type: "state",
@@ -657,6 +708,10 @@ export const useChannelStore = defineStore("channelStore", () => {
         )
         if (!changed) {
           break
+        }
+        stateChanged = true
+        for (const update of updates) {
+          changedIndexes.push(update.channel.index)
         }
         const channelDescriptions = updates
           .map(({ channel, value }) => `${resolveChannelLabel(channel)} → ${toDigitalLabel(value)}`)
@@ -711,6 +766,17 @@ export const useChannelStore = defineStore("channelStore", () => {
       default:
         logger.debug(`Unhandled device state mode=${event.mode}`)
     }
+
+    if (stateChanged) {
+      lastStateChangedKeys.value = new Set(
+        changedIndexes.map(index => channelKey(device.id, index)),
+      )
+      stateRevision.value += 1
+    }
+  }
+
+  function didChannelChangeInLastRevision(deviceId: number, chIndex: number): boolean {
+    return lastStateChangedKeys.value.has(channelKey(deviceId, chIndex))
   }
 
   function setResponse(resp: DeviceRespEvent) {
@@ -727,19 +793,10 @@ export const useChannelStore = defineStore("channelStore", () => {
       return
     }
 
-    const actionId = consumeAction(device.id)
-
+    // Runtime source of truth for channel states is DEVICE_STATE only.
+    // DEVICE_RESP is transport-level diagnostics; it must not mutate channel state.
     if (resp.status === "OK") {
-      if (actionId) {
-        logger.debug(`✅ Command ack from ${resp.unit_id}, packet=${resp.packet_id}`)
-        logger.info(`✅ Command acknowledged by ${resp.unit_id}`)
-        pushDeviceLog(device.id, {
-          type: "resp",
-          message: "Command acknowledged"
-        }, actionId)
-      } else {
-        logger.debug(`ℹ️ Device response from ${resp.unit_id}, packet=${resp.packet_id}, status=${resp.status}`)
-      }
+      logger.debug(`✅ Device response from ${resp.unit_id}, packet=${resp.packet_id}, status=${resp.status}`)
     } else {
       logger.debug(
         `⚠️ Command resp from ${resp.unit_id}, packet=${resp.packet_id}, status=${resp.status}, error=${resp.error}`,
@@ -751,8 +808,7 @@ export const useChannelStore = defineStore("channelStore", () => {
       pushDeviceLog(device.id, {
         type: "error",
         message: `Command error (${resp.status})${errorDetail}`
-      }, actionId)
-      purgeAoAction(actionId)
+      })
     }
   }
 
@@ -918,27 +974,45 @@ export const useChannelStore = defineStore("channelStore", () => {
     }, actionId)
   }
 
-  function sendDoPairCommand(unitId: string, chA: number, chB: number, state2b: 0 | 1 | 2 | 3) {
+  function sendDoPairCommand(
+    unitId: string,
+    chA: number,
+    chB: number,
+    state2b: 0 | 1 | 2 | 3,
+    options: { source?: string } = {},
+  ): { ok: true; deviceId: number; actionId: string } | { ok: false; error: string } {
     const deviceStore = useDeviceStore()
     const device = deviceStore.devices.find(d => d.unit_id === unitId)
     if (!device) {
-      logger.error(`Device ${unitId} not found for DO pair command`)
-      return
+      const error = `Device ${unitId} not found for DO pair command`
+      logger.error(error)
+      return { ok: false, error }
+    }
+    if (chA === chB) {
+      const error = `Invalid DO pair command for ${unitId}: channels must differ (ch=${chA})`
+      logger.error(error)
+      return { ok: false, error }
+    }
+
+    const pairTargets = decodePairTargets(state2b)
+    if (!pairTargets) {
+      const error = `Invalid DO pair state code for ${unitId}: ${state2b}`
+      logger.error(error)
+      return { ok: false, error }
+    }
+
+    const channelA = findDoChannel(device.id, chA)
+    const channelB = findDoChannel(device.id, chB)
+    if (!channelA || !channelB) {
+      const error = `DO pair channels not found on ${unitId}: [${chA}/${chB}]`
+      logger.error(error)
+      return { ok: false, error }
     }
 
     const actionId = enqueueAction(device.id)
 
-    const pairTargets = decodePairTargets(state2b)
-    if (pairTargets) {
-      const channelA = findDoChannel(device.id, chA)
-      if (channelA) {
-        enterDoPendingState(channelA, pairTargets[0], actionId)
-      }
-      const channelB = findDoChannel(device.id, chB)
-      if (channelB) {
-        enterDoPendingState(channelB, pairTargets[1], actionId)
-      }
-    }
+    enterDoPendingState(channelA, pairTargets[0], actionId)
+    enterDoPendingState(channelB, pairTargets[1], actionId)
 
     const ws = useWebSocketStore()
     const commandIssuedAt = Date.now()
@@ -951,14 +1025,18 @@ export const useChannelStore = defineStore("channelStore", () => {
       state2b,
     } satisfies SetDoCommandMessage)
     scheduleDoStateRefreshIfPending(device.id, commandIssuedAt)
-    const pairLabels = (decodePairLabels(state2b) ?? [DIGITAL_PENDING, DIGITAL_PENDING]) as [DigitalLabel, DigitalLabel]
+    const pairLabels = decodePairLabels(state2b)
+    const labelA = pairLabels?.[0] ?? "N/A"
+    const labelB = pairLabels?.[1] ?? "N/A"
+    const source = options.source?.trim() || "unknown"
     logger.info(
-      `➡️ DO pair cmd ${device.unit_id} [${chA}/${chB}] → CH${chA + 1}:${pairLabels[0]} / CH${chB + 1}:${pairLabels[1]}`,
+      `➡️ DO pair cmd ${device.unit_id} [${chA}/${chB}] → CH${chA + 1}:${labelA} / CH${chB + 1}:${labelB} (src=${source})`,
     )
     pushDeviceLog(device.id, {
       type: "cmd",
-      message: `User requested DO pair CH${chA + 1} → ${pairLabels[0]}, CH${chB + 1} → ${pairLabels[1]}${formatPendingSuffix(!!pairTargets)}`
+      message: `User requested DO pair CH${chA + 1} → ${labelA}, CH${chB + 1} → ${labelB}${formatPendingSuffix(Boolean(pairLabels))} [${source}]`
     }, actionId)
+    return { ok: true, deviceId: device.id, actionId }
   }
 
   function sendAoCommand(unitId: string, chIndex: number, value: number) {
@@ -1024,23 +1102,13 @@ export const useChannelStore = defineStore("channelStore", () => {
     if (!device) {
       return false
     }
-    const pendingQueue = actionQueues.get(device.id)
-    if (pendingQueue && pendingQueue.length > 0) {
-      return true
-    }
-    const doChannels = channelsByDeviceFast(device.id)
-    return doChannels.some((channel) => {
-      if (channel.type !== CHANNEL_TYPES.DO) {
-        return false
-      }
-      const stage = (channel as DoChannel).ui?.stage
-      return stage === "debounce" || stage === "pending"
-    })
+    return hasPendingDoForDevice(device.id)
   }
 
   return {
     channels,
     responses,
+    stateRevision,
     isLoading,
     isLoaded,
 
@@ -1068,6 +1136,7 @@ export const useChannelStore = defineStore("channelStore", () => {
     resolveUnitName,
     resolveChannelLabel,
     resolveChannelFullLabel,
+    didChannelChangeInLastRevision,
     hasPendingCommandForUnit,
   }
 })

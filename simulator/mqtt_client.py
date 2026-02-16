@@ -30,6 +30,14 @@ from simulator.utils import binary_tools
 OnMessageHook = Callable[[str, bytes], Awaitable[None]]
 
 
+_HEARTBEAT_MIN_INTERVAL = 0.5
+_FLAKY_DEVICE_RATIO = 0.05
+_FLAKY_HEARTBEAT_OUTAGE_PROB = 0.15
+_FLAKY_HEARTBEAT_BACKOFF_RANGE = (2.0, 10.0)
+_FLAKY_EXCHANGE_PROB = 0.2
+_FLAKY_ERROR_SHARE = 0.6
+
+
 @dataclass(slots=True)
 class BrokerSettings:
     """MQTT broker configuration derived from YAML."""
@@ -49,14 +57,9 @@ class BehaviorSettings:
     heartbeat: float
     reconnect_chance: float
     packet_loss: float
-
-
-_HEARTBEAT_MIN_INTERVAL = 0.5
-_FLAKY_DEVICE_RATIO = 0.05
-_FLAKY_HEARTBEAT_OUTAGE_PROB = 0.15
-_FLAKY_HEARTBEAT_BACKOFF_RANGE = (2.0, 10.0)
-_FLAKY_EXCHANGE_PROB = 0.2
-_FLAKY_ERROR_SHARE = 0.6
+    flaky_device_ratio: float = _FLAKY_DEVICE_RATIO
+    flaky_exchange_prob: float = _FLAKY_EXCHANGE_PROB
+    command_error_rate: float = 0.05
 
 
 class SimulatorMQTTClient:
@@ -226,7 +229,7 @@ class SimulatedDeviceBase:
         self._tasks: list[asyncio.Task[None]] = []
         self._aux_tasks: set[asyncio.Task[None]] = set()
         self._lock = asyncio.Lock()
-        self._is_flaky_device = self._rng.random() < _FLAKY_DEVICE_RATIO
+        self._is_flaky_device = self._rng.random() < self.behavior.flaky_device_ratio
         heartbeat_base = max(self.behavior.heartbeat, _HEARTBEAT_MIN_INTERVAL)
         self._heartbeat_offset = self._rng.uniform(0.0, heartbeat_base)
 
@@ -439,7 +442,7 @@ class SimulatedDeviceBase:
     def _fault_decision(self) -> Optional[str]:
         if not self._is_flaky_device:
             return None
-        if self._rng.random() >= _FLAKY_EXCHANGE_PROB:
+        if self._rng.random() >= self.behavior.flaky_exchange_prob:
             return None
         return "error" if self._rng.random() < _FLAKY_ERROR_SHARE else "drop"
 

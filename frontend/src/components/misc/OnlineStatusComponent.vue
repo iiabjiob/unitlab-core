@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, getCurrentInstance, onBeforeUnmount, watch } from "vue"
 import { useFloatingTooltip, useTooltipController } from "@affino/tooltip-vue"
+import { useRoute } from "vue-router"
 
 const props = defineProps<{
   status: "online" | "offline" | "degraded" | string
@@ -42,13 +43,15 @@ const label = computed(() => {
 })
 
 const tooltip = computed(() => props.description || null)
+const route = useRoute()
+const instanceUid = getCurrentInstance()?.uid ?? Math.floor(Math.random() * 1_000_000)
 const tooltipController = useTooltipController({
-  id: "system-status-tooltip",
+  id: `system-status-tooltip-${instanceUid}`,
   openDelay: 120,
 })
 const { triggerRef, tooltipRef, tooltipStyle, teleportTarget } = useFloatingTooltip(tooltipController, {
   placement: "bottom",
-  align: "center",
+  align: "start",
   gutter: 8,
 })
 const triggerProps = computed(() =>
@@ -58,6 +61,61 @@ const triggerProps = computed(() =>
         "aria-label": `System status: ${label.value}`,
       },
 )
+
+function isInside(node: EventTarget | null): boolean {
+  if (!(node instanceof Node)) return false
+  return Boolean(triggerRef.value?.contains(node) || tooltipRef.value?.contains(node))
+}
+
+function handleDocumentPointerDown(event: PointerEvent) {
+  if (!tooltipController.state.value.open) return
+  if (isInside(event.target)) return
+  tooltipController.close("pointer")
+}
+
+function handleDocumentKeydown(event: KeyboardEvent) {
+  if (!tooltipController.state.value.open) return
+  if (event.key !== "Escape") return
+  tooltipController.close("keyboard")
+}
+
+function handleVisibilityChange() {
+  if (typeof document === "undefined") return
+  if (!tooltipController.state.value.open) return
+  if (!document.hidden) return
+  tooltipController.close()
+}
+
+watch(
+  () => tooltipController.state.value.open,
+  (open) => {
+    if (typeof document === "undefined") return
+    if (open) {
+      document.addEventListener("pointerdown", handleDocumentPointerDown, true)
+      document.addEventListener("keydown", handleDocumentKeydown, true)
+      document.addEventListener("visibilitychange", handleVisibilityChange, true)
+      return
+    }
+    document.removeEventListener("pointerdown", handleDocumentPointerDown, true)
+    document.removeEventListener("keydown", handleDocumentKeydown, true)
+    document.removeEventListener("visibilitychange", handleVisibilityChange, true)
+  },
+)
+
+watch(
+  () => route.fullPath,
+  () => {
+    if (!tooltipController.state.value.open) return
+    tooltipController.close()
+  },
+)
+
+onBeforeUnmount(() => {
+  if (typeof document === "undefined") return
+  document.removeEventListener("pointerdown", handleDocumentPointerDown, true)
+  document.removeEventListener("keydown", handleDocumentKeydown, true)
+  document.removeEventListener("visibilitychange", handleVisibilityChange, true)
+})
 </script>
 
 <template>

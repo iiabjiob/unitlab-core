@@ -53,7 +53,7 @@
         <UiButton
           variant="ghost"
           size="xs"
-          :disabled="props.disabled || (!props.signalId && !props.signalKey)"
+          :disabled="props.disabled || !canClearSignal"
           @click="clearSignalSelection"
         >
           Clear
@@ -103,7 +103,6 @@ const props = withDefaults(defineProps<{
 }>(), {
   signalId: null,
   signalKey: null,
-  mode: "direct",
   disabled: false,
   excludeIds: () => [],
   name: undefined,
@@ -120,11 +119,17 @@ const emit = defineEmits<{
 const signalSheetStore = useSignalSheetStore()
 const toastStore = useToastStore()
 
-const mode = ref<SelectMode>(
-  props.mode === "signal" || props.signalId !== null || Boolean(props.signalKey)
-    ? "signal"
-    : "direct",
-)
+function resolveInitialMode(): SelectMode {
+  if (props.mode === "signal" || props.mode === "direct") {
+    return props.mode
+  }
+  if (props.signalId !== null || Boolean(props.signalKey)) {
+    return "signal"
+  }
+  return signalSheetStore.hasSheet ? "signal" : "direct"
+}
+
+const mode = ref<SelectMode>(resolveInitialMode())
 const signalModalOpen = ref(false)
 
 const allowedDirections = computed<SignalIODirection[]>(() => {
@@ -148,9 +153,28 @@ const selectedSignalRow = computed(() => {
     if (byId) return byId
   }
   const normalizedSignalKey = String(props.signalKey ?? "").trim()
-  if (!normalizedSignalKey) return null
-  return signalSheetStore.allocationRows.find(row => row.signal_key === normalizedSignalKey) ?? null
+  if (normalizedSignalKey) {
+    const byKey = signalSheetStore.allocationRows.find(row => row.signal_key === normalizedSignalKey)
+    if (byKey) return byKey
+  }
+  if (!Number.isFinite(props.channelId as number)) {
+    return null
+  }
+  return signalSheetStore.allocationRows.find((row) => {
+    const rowChannelId = Number.isFinite(row.channel_id as number) ? Number(row.channel_id) : null
+    if (rowChannelId !== Number(props.channelId)) {
+      return false
+    }
+    const rowChannelType = normalizeChannelType(row.channel_type)
+    return rowChannelType === props.channelType
+  }) ?? null
 })
+
+const canClearSignal = computed(() => (
+  Number.isFinite(props.channelId as number)
+  || Number.isFinite(props.signalId as number)
+  || Boolean(props.signalKey)
+))
 
 const selectedSignalLabel = computed(() => {
   const row = selectedSignalRow.value
@@ -190,8 +214,18 @@ watch(
   ([nextSignalId, nextSignalKey]) => {
     if (mode.value === "direct") return
     if (nextSignalId !== null || Boolean(nextSignalKey)) return
-    mode.value = props.mode ?? "direct"
+    mode.value = props.mode ?? (signalSheetStore.hasSheet ? "signal" : "direct")
   },
+)
+
+watch(
+  () => mode.value,
+  (nextMode) => {
+    if (nextMode !== "signal") return
+    if (signalSheetStore.allocationRows.length > 0) return
+    void signalSheetStore.refreshAllocations().catch(() => undefined)
+  },
+  { immediate: true },
 )
 
 function setMode(nextMode: SelectMode) {

@@ -82,6 +82,9 @@ behavior:
   heartbeat: 5.0
   reconnect_chance: 0.01
   packet_loss: 0.005
+	flaky_device_ratio: 0.05
+	flaky_exchange_prob: 0.20
+	command_error_rate: 0.05
 ```
 
 ### Sections
@@ -89,6 +92,24 @@ behavior:
 - **broker** — connection details for the MQTT server. You can override these per environment (e.g., `--config config.dev.yaml`).
 - **devices** — three groups (DO, DI, AO). Each group defines how many devices are created, how many signals each device exposes, and the publish interval (seconds).
 - **behavior** — controls randomness and network unreliability. Set `packet_loss` to zero for deterministic tests, or enable `--chaos` to multiply drop/reconnect rates on the fly.
+
+### Reliability mode (all packets/commands should pass)
+
+To disable all fault injection paths, set:
+
+```yaml
+behavior:
+	reconnect_chance: 0.0
+	packet_loss: 0.0
+	flaky_device_ratio: 0.0
+	flaky_exchange_prob: 0.0
+	command_error_rate: 0.0
+```
+
+- `packet_loss` disables transport drops in the simulator.
+- `reconnect_chance` disables random reconnects.
+- `flaky_device_ratio` + `flaky_exchange_prob` disable built-in flaky-device request failures.
+- `command_error_rate` disables simulated command NACK/ERROR responses.
 
 In addition to the static YAML, the simulator supports runtime scaling:
 

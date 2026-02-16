@@ -1,8 +1,12 @@
 // src/constants/switchgear.ts
 export const SWITCHGEAR_CODE = {
+  // 00
   UNKNOWN: 0b00,
+  // 01
   OPEN: 0b01,
+  // 10
   CLOSED: 0b10,
+  // 11
   INTERMEDIATE: 0b11,
 } as const
 

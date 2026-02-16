@@ -26,9 +26,6 @@ if TYPE_CHECKING:  # pragma: no cover - hints only
     from simulator.mqtt_client import BehaviorSettings, BrokerSettings
 
 
-COMMAND_ERROR_RATE = 0.05
-
-
 class SimulatedAODevice(SimulatedDeviceBase):
     """Emulates an ESP32 driving analog outputs with float precision."""
 
@@ -140,7 +137,7 @@ class SimulatedAODevice(SimulatedDeviceBase):
             )
             return
 
-        if self._rng.random() < COMMAND_ERROR_RATE:
+        if self._rng.random() < self.behavior.command_error_rate:
             await self._send_resp(
                 RespStatus.INTERNAL_ERROR,
                 RespError.HW_FAILURE,

@@ -81,11 +81,13 @@ import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useChannelStore } from "@/stores/channelStore"
+import { useSignalSheetStore } from "@/stores/signalSheetStore"
 
 const workspaceStore = useWorkspaceStore()
 const systemHealthStore = useSystemHealthStore()
 const deviceStore = useDeviceStore()
 const channelStore = useChannelStore()
+const signalSheetStore = useSignalSheetStore()
 const router = useRouter()
 
 const systemStatus = computed(() => systemHealthStore.status)
@@ -122,10 +124,19 @@ type QuickAction = {
   route: HomeRoute
 }
 
-const recommendedAction: HomeAction = {
-  label: "Import signal list from project",
-  route: { name: "signals.home", query: { import: "1" } },
-}
+const recommendedAction = computed<HomeAction>(() => {
+  if (signalSheetStore.hasSheet) {
+    return {
+      label: "Start controlling signals",
+      route: { name: "signals.home" },
+    }
+  }
+
+  return {
+    label: "Import signal list from project",
+    route: { name: "signals.home", query: { import: "1" } },
+  }
+})
 
 const scenarioCards: QuickAction[] = [
   {

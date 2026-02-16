@@ -12,8 +12,8 @@ import { getLogger } from "@/utils/logger"
 import { useChannelStore } from "./channelStore"
 import { useDeviceStore } from "./deviceStore"
 import { useWorkspaceStore } from "./workspaceStore"
-import { CHANNEL_TYPES, type ChannelType } from "@/types/channel"
-import { codeToState, type SwitchgearState } from "@/constants/switchgear"
+import { CHANNEL_TYPES, type Channel, type ChannelType } from "@/types/channel"
+import { codeToState, SWITCHGEAR_CODE, type SwitchgearState } from "@/constants/switchgear"
 
 const logger = getLogger("SG")
 
@@ -45,6 +45,8 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   const workspaceStore = useWorkspaceStore()
   const channelStore = useChannelStore()
   const deviceStore = useDeviceStore()
+  const diEdgeMemory = ref<Record<number, { diOpen: boolean | null; diClose: boolean | null }>>({})
+  const updateQueueById = new Map<number, Promise<void>>()
 
   function existingNames() {
     return new Set(switchgears.value.map(sw => sw.name))
@@ -230,19 +232,23 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
 
   // Update single field(s)
   async function updateField(id: number, changes: SwitchgearUpdateInput) {
-    try {
-
-      const { data } = await SwitchgearsAPI.update(workspaceStore.requireWorkspaceId(), id, changes)
-      const idx = switchgears.value.findIndex(s => s.id === id)
-      if (idx !== -1) {
-        switchgears.value[idx] = data
+    const previous = updateQueueById.get(id) ?? Promise.resolve()
+    const run = previous.catch(() => undefined).then(async () => {
+      try {
+        const { data } = await SwitchgearsAPI.update(workspaceStore.requireWorkspaceId(), id, changes)
+        const idx = switchgears.value.findIndex(s => s.id === id)
+        if (idx !== -1) {
+          switchgears.value[idx] = data
+        }
+        logger.debug(`✏️ Switchgear ${id} updated`, changes)
+        return data
+      } catch (err) {
+        logger.error(`💥 Failed to update switchgear ${id}:`, err)
+        throw err
       }
-      logger.debug(`✏️ Switchgear ${id} updated`, changes)
-      return data
-    } catch (err) {
-      logger.error(`💥 Failed to update switchgear ${id}:`, err)
-      throw err
-    }
+    })
+    updateQueueById.set(id, run.then(() => undefined, () => undefined))
+    return await run
   }
 
   // Delete
@@ -286,6 +292,18 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     return typeof ch.state === "boolean" ? ch.state : null
   }
 
+  function resolveTypedChannel(
+    channelId: number | null,
+    expectedType: typeof CHANNEL_TYPES[keyof typeof CHANNEL_TYPES],
+  ): Channel | null {
+    if (!channelId) return null
+    const channel = channelStore.channels.find(item => item.id === channelId) ?? null
+    if (!channel || channel.type !== expectedType) {
+      return null
+    }
+    return channel
+  }
+
   function resolvePairState(
     open: boolean | null,
     closed: boolean | null,
@@ -294,18 +312,112 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     return codeToState(open, closed)
   }
 
-  function resolveSwitchgearState(sw: Switchgear): SwitchgearState {
-    const diOpen = resolveBinaryState(
-      resolveBindingChannelId(sw, ["di_open"]),
-      CHANNEL_TYPES.DI,
-    )
-    const diClose = resolveBinaryState(
-      resolveBindingChannelId(sw, ["di_close"]),
-      CHANNEL_TYPES.DI,
-    )
-    const diState = resolvePairState(diOpen, diClose)
-    if (diState !== null) return diState
+  function resolveDoPair(sw: Switchgear): { unitId: string; chOpen: number; chClose: number } | null {
+    const doOpenId = resolveBindingChannelId(sw, ["do_open"])
+    const doCloseId = resolveBindingChannelId(sw, ["do_closed"])
+    if (!doOpenId || !doCloseId) return null
 
+    const doOpen = channelStore.channels.find(c => c.id === doOpenId)
+    const doClose = channelStore.channels.find(c => c.id === doCloseId)
+    if (!doOpen || !doClose) return null
+    if (doOpen.type !== CHANNEL_TYPES.DO || doClose.type !== CHANNEL_TYPES.DO) return null
+    if (doOpen.device_id !== doClose.device_id) return null
+
+    const unitId = channelStore.resolveUnitId(doOpen.device_id)
+    if (!unitId) return null
+
+    return {
+      unitId,
+      chOpen: doOpen.index,
+      chClose: doClose.index,
+    }
+  }
+
+  function syncDiDrivenSwitching() {
+    const activeIds = new Set<number>()
+
+    for (const sw of switchgears.value) {
+      activeIds.add(sw.id)
+      const diOpenChannel = resolveTypedChannel(
+        resolveBindingChannelId(sw, ["di_open"]),
+        CHANNEL_TYPES.DI,
+      )
+      const diCloseChannel = resolveTypedChannel(
+        resolveBindingChannelId(sw, ["di_close"]),
+        CHANNEL_TYPES.DI,
+      )
+      const diOpen = diOpenChannel && typeof diOpenChannel.state === "boolean"
+        ? diOpenChannel.state
+        : null
+      const diClose = diCloseChannel && typeof diCloseChannel.state === "boolean"
+        ? diCloseChannel.state
+        : null
+
+      const diChanged = Boolean(
+        (diOpenChannel && channelStore.didChannelChangeInLastRevision(diOpenChannel.device_id, diOpenChannel.index)) ||
+        (diCloseChannel && channelStore.didChannelChangeInLastRevision(diCloseChannel.device_id, diCloseChannel.index)),
+      )
+      if (!diChanged) {
+        continue
+      }
+
+      const prev = diEdgeMemory.value[sw.id] ?? { diOpen: null, diClose: null }
+      const openEdge = prev.diOpen === false && diOpen === true && diClose === false
+      const closeEdge = prev.diClose === false && diClose === true && diOpen === false
+
+      if (openEdge !== closeEdge) {
+        const targetStateName: SwitchgearState = openEdge ? "OPEN" : "CLOSED"
+        const currentState = resolveSwitchgearState(sw)
+        const doPair = resolveDoPair(sw)
+        if (doPair && currentState !== targetStateName) {
+          if (channelStore.hasPendingCommandForUnit(doPair.unitId)) {
+            logger.debug(
+              `Skip DI-driven ${targetStateName} for switchgear ${sw.id}: unit ${doPair.unitId} has pending command`,
+            )
+          } else {
+            const targetState = openEdge ? SWITCHGEAR_CODE.OPEN : SWITCHGEAR_CODE.CLOSED
+            const result = channelStore.sendDoPairCommand(
+              doPair.unitId,
+              doPair.chOpen,
+              doPair.chClose,
+              targetState,
+              { source: "switchgear-di-edge" },
+            )
+            if (!result.ok) {
+              logger.warn(
+                `DI edge failed for switchgear ${sw.id} -> ${targetStateName}: ${result.error}`,
+              )
+            } else {
+              logger.debug(
+                `DI edge drove switchgear ${sw.id} -> ${targetStateName} via ${doPair.unitId} [${doPair.chOpen}/${doPair.chClose}]`,
+              )
+            }
+          }
+        }
+      }
+
+      diEdgeMemory.value[sw.id] = { diOpen, diClose }
+    }
+
+    for (const key of Object.keys(diEdgeMemory.value)) {
+      const switchgearId = Number(key)
+      if (!activeIds.has(switchgearId)) {
+        delete diEdgeMemory.value[switchgearId]
+      }
+    }
+  }
+
+  function pruneDiEdgeMemory() {
+    const activeIds = new Set(switchgears.value.map(sw => sw.id))
+    for (const key of Object.keys(diEdgeMemory.value)) {
+      const switchgearId = Number(key)
+      if (!activeIds.has(switchgearId)) {
+        delete diEdgeMemory.value[switchgearId]
+      }
+    }
+  }
+
+  function resolveSwitchgearState(sw: Switchgear): SwitchgearState {
     const doOpen = resolveBinaryState(
       resolveBindingChannelId(sw, ["do_open"]),
       CHANNEL_TYPES.DO,
@@ -362,6 +474,8 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   function resetForWorkspaceChange() {
     switchgears.value = []
     loadedOnce.value = false
+    diEdgeMemory.value = {}
+    updateQueueById.clear()
   }
 
   watch(
@@ -371,6 +485,21 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
       if (workspaceId) {
         void fetchAll()
       }
+    },
+  )
+
+  watch(
+    () => switchgears.value.map(sw => sw.id).join(","),
+    () => {
+      pruneDiEdgeMemory()
+    },
+    { immediate: true },
+  )
+
+  watch(
+    () => channelStore.stateRevision,
+    () => {
+      syncDiDrivenSwitching()
     },
   )
 

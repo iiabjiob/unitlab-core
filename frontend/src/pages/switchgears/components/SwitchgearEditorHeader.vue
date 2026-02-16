@@ -64,7 +64,7 @@ async function confirmRename() {
 const unitOnline = computed(() => (store.isUnitOnline(props.switchgear) ? "online" : "offline"))
 const unitStatusDescription = computed(() => {
   if (store.isUnitOnline(props.switchgear)) return null
-  return "The device linked to these controls is offline. Control actions are unavailable until it reconnects."
+  return "Unit is offline. Control commands are disabled until reconnect.\nCheck power, wiring and Wi-Fi link to the AP."
 })
 const positionState = computed(() => store.resolveSwitchgearState(props.switchgear))
 </script>

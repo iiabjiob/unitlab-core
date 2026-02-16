@@ -136,6 +136,24 @@ def _parse_config_dict(data: dict) -> SimulatorConfig:
         heartbeat=_ensure_float(behavior.get("heartbeat", 10.0), "behavior.heartbeat", min_value=0.5),
         reconnect_chance=_ensure_float(behavior.get("reconnect_chance", 0.01), "behavior.reconnect_chance", min_value=0.0),
         packet_loss=_ensure_float(behavior.get("packet_loss", 0.0), "behavior.packet_loss", min_value=0.0, max_value=0.5),
+        flaky_device_ratio=_ensure_float(
+            behavior.get("flaky_device_ratio", 0.05),
+            "behavior.flaky_device_ratio",
+            min_value=0.0,
+            max_value=1.0,
+        ),
+        flaky_exchange_prob=_ensure_float(
+            behavior.get("flaky_exchange_prob", 0.2),
+            "behavior.flaky_exchange_prob",
+            min_value=0.0,
+            max_value=1.0,
+        ),
+        command_error_rate=_ensure_float(
+            behavior.get("command_error_rate", 0.05),
+            "behavior.command_error_rate",
+            min_value=0.0,
+            max_value=1.0,
+        ),
     )
 
     return SimulatorConfig(broker=broker_cfg, devices=devices_cfg, behavior=behavior_cfg)

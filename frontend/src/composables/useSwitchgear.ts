@@ -80,6 +80,7 @@ export function useSwitchgear(opts: UseSwitchgearOpts) {
       opts.doOpen.value.channel,
       opts.doClosed.value.channel,
       SWITCHGEAR_CODE[target],
+      { source: "switchgear-composable" },
     )
   }
 

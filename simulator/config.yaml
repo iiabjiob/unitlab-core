@@ -24,5 +24,8 @@ devices:
 behavior:
   randomize: true
   heartbeat: 5.0
-  reconnect_chance: 0.01
-  packet_loss: 0.005
+  reconnect_chance: 0.0
+  packet_loss: 0.0
+  flaky_device_ratio: 0.0
+  flaky_exchange_prob: 0.0
+  command_error_rate: 0.0

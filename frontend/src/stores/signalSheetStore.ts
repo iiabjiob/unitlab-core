@@ -31,6 +31,8 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   const loadingPresets = ref(false)
   const loadingAllocations = ref(false)
   const importing = ref(false)
+  const lastSheetLoadedAt = ref<number | null>(null)
+  const lastAllocationsLoadedAt = ref<number | null>(null)
   const allocationRevision = ref(0)
   const recentlyChangedSignalIds = ref<number[]>([])
 
@@ -275,6 +277,8 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     sheet.value = null
     presets.value = []
     allocationRows.value = []
+    lastSheetLoadedAt.value = null
+    lastAllocationsLoadedAt.value = null
     allocationIndexBySignalId.clear()
     allocationOwnerByChannelId.clear()
     allocationMutationVersionBySignalId.clear()
@@ -301,6 +305,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     try {
       const { data } = await SignalSheetAPI.get(workspaceId)
       sheet.value = data
+      lastSheetLoadedAt.value = Date.now()
       return data
     } finally {
       loadingSheet.value = false
@@ -331,6 +336,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         const { data } = await SignalSheetAPI.listAllocations(workspaceId)
         replaceAllocationRows(data)
         recomputeSheetAllocatedCount()
+        lastAllocationsLoadedAt.value = Date.now()
         return data
       } finally {
         loadingAllocations.value = false
@@ -357,6 +363,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     try {
       const { data } = await SignalSheetAPI.import(workspaceId, file, options)
       sheet.value = data.sheet
+      lastSheetLoadedAt.value = Date.now()
       await Promise.all([refreshAllocations(), refreshPresets()])
       logger.info("Imported signal sheet", {
         rows: data.sheet.rows_count,
@@ -558,6 +565,8 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     loadingPresets,
     loadingAllocations,
     importing,
+    lastSheetLoadedAt,
+    lastAllocationsLoadedAt,
     allocationRevision,
     recentlyChangedSignalIds,
     hasSheet,

@@ -12,11 +12,11 @@ const props = withDefaults(defineProps<{
 const label = computed(() => {
   switch (props.state) {
     case "OPEN":
-      return "Off"
+      return "Open"
     case "CLOSED":
-      return "On"
+      return "Closed"
     case "INTERMEDIATE":
-      return "Intermediate"
+      return "Undefined"
     default:
       return "Unknown"
   }

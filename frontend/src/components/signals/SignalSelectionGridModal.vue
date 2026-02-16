@@ -124,6 +124,7 @@ const emit = defineEmits<{
 
 const workspaceStore = useWorkspaceStore()
 const signalSheetStore = useSignalSheetStore()
+const DATA_FRESHNESS_WINDOW_MS = 20_000
 
 const loading = ref(false)
 const selectedRowKeys = ref<string[]>([])
@@ -219,6 +220,10 @@ watch(
   (open) => {
     if (!open) {
       selectedRowKeys.value = []
+      loading.value = false
+      return
+    }
+    if (!shouldRefreshOnOpen()) {
       return
     }
     void refreshData()
@@ -300,6 +305,22 @@ function formatCell(value: unknown): string {
   } catch {
     return String(value)
   }
+}
+
+function isFreshTimestamp(value: number | null | undefined, maxAgeMs: number): boolean {
+  if (!Number.isFinite(value as number)) return false
+  const ageMs = Date.now() - Number(value)
+  return ageMs >= 0 && ageMs <= maxAgeMs
+}
+
+function shouldRefreshOnOpen(): boolean {
+  if (workspaceMissing.value) return false
+  if (!signalSheetStore.sheet || signalSheetStore.allocationRows.length === 0) {
+    return true
+  }
+  const sheetFresh = isFreshTimestamp(signalSheetStore.lastSheetLoadedAt, DATA_FRESHNESS_WINDOW_MS)
+  const allocationsFresh = isFreshTimestamp(signalSheetStore.lastAllocationsLoadedAt, DATA_FRESHNESS_WINDOW_MS)
+  return !(sheetFresh && allocationsFresh)
 }
 
 async function refreshData() {
