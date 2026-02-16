@@ -302,6 +302,36 @@ class SignalSheetRepository:
 
         await self.db.commit()
 
+    async def mark_signals_tested(
+        self,
+        workspace_id: int,
+        signal_ids: Sequence[int],
+    ) -> list[int]:
+        normalized_signal_ids = sorted({int(signal_id) for signal_id in signal_ids if int(signal_id) > 0})
+        if not normalized_signal_ids:
+            return []
+
+        signals_by_id = await self._active_signals_by_ids(workspace_id, set(normalized_signal_ids))
+        if not signals_by_id:
+            return []
+
+        tested_at = datetime.now(timezone.utc).isoformat()
+        touched_ids: list[int] = []
+        for signal_id in normalized_signal_ids:
+            signal = signals_by_id.get(signal_id)
+            if signal is None:
+                continue
+            metadata = dict(signal.signal_metadata or {})
+            metadata["tested_at"] = tested_at
+            signal.signal_metadata = metadata
+            touched_ids.append(signal.id)
+
+        if not touched_ids:
+            return []
+
+        await self.db.commit()
+        return touched_ids
+
     async def auto_allocate(
         self,
         *,

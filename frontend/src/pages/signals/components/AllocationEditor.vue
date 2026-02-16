@@ -11,8 +11,31 @@
         <UiButton variant="primary" size="sm" :disabled="workspaceMissing || loading" @click="openImportModal">
           + Import Signal List
         </UiButton>
+        <UiButton
+          variant="secondary"
+          size="sm"
+          :disabled="workspaceMissing || loading || allocatedCableRows.length === 0"
+          @click="exportCableJournal"
+        >
+          Export Cable Journal
+        </UiButton>
       </div>
       <div class="flex flex-wrap items-center gap-2">
+        <div
+          v-if="showTestRunProgress"
+          class="min-w-[260px] rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-800/60"
+        >
+          <div class="flex items-center justify-between text-[11px] font-medium text-neutral-600 dark:text-neutral-300">
+            <span>{{ testRunProgressText }}</span>
+            <span>{{ testRunProgressPercent }}%</span>
+          </div>
+          <div class="mt-1 h-1.5 overflow-hidden rounded bg-neutral-200 dark:bg-neutral-700">
+            <div
+              class="h-full bg-emerald-500 transition-[width] duration-200"
+              :style="{ width: `${testRunProgressPercent}%` }"
+            ></div>
+          </div>
+        </div>
         <UiButton
           v-if="selectedUnassignedSignalIds.length > 0"
           variant="secondary"
@@ -35,10 +58,10 @@
           v-if="selectedAllocatedPhysicalRows.length > 0"
           variant="success"
           size="sm"
-          :disabled="loading"
+          :disabled="loading || testRunInProgress"
           @click="runTestVisualOnly"
         >
-          Run test
+          {{ testRunInProgress ? "Running…" : "Run test" }}
         </UiButton>
         <UiButton
           v-if="canCreateSwitchgearFromSelection"
@@ -148,6 +171,13 @@
           <span v-else class="text-xs text-neutral-400">—</span>
         </div>
 
+        <span
+          v-else-if="column.key === 'last_tested_at'"
+          class="text-xs text-neutral-700 dark:text-neutral-100"
+        >
+          {{ formatTestedAt(value) }}
+        </span>
+
         <span v-else class="text-xs text-neutral-700 dark:text-neutral-100">{{ formatCell(value) }}</span>
       </template>
     </UiAffinoDataGrid>
@@ -198,7 +228,13 @@ const scopeId = "signals:allocations"
 const importModalOpen = ref(false)
 const persistentControlMenuOptions = { closeOnSelect: false }
 const selectedRowKeys = ref<string[]>([])
+const testRunInProgress = ref(false)
+const testRunTotal = ref(0)
+const testRunProcessed = ref(0)
+const testRunSucceeded = ref(0)
+const testRunSkipped = ref(0)
 let realtimeScopeSyncFrame: number | null = null
+const TEST_TOGGLE_STEP_MS = 1000
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const loading = computed(() => loadingAllocations.value || loadingSheet.value)
@@ -324,6 +360,34 @@ const createSwitchgearButtonLabel = computed(() => (
     : `Create ${switchgearCreatableCount.value} switchgears`
 ))
 
+const allocatedCableRows = computed(() => (
+  allocationRows.value.filter((row) => (
+    Number.isFinite(row.channel_id as number)
+    && Number.isFinite(row.channel_index as number)
+    && Boolean(String(row.unit_id ?? "").trim())
+  ))
+))
+
+const showTestRunProgress = computed(() => testRunInProgress.value && testRunTotal.value > 0)
+
+const testRunProgressPercent = computed(() => {
+  const total = testRunTotal.value
+  if (!total) return 0
+  return Math.max(0, Math.min(100, Math.round((testRunProcessed.value / total) * 100)))
+})
+
+const testRunEtaSeconds = computed(() => {
+  if (!testRunInProgress.value) return 0
+  const remaining = Math.max(0, testRunTotal.value - testRunProcessed.value)
+  return remaining * (TEST_TOGGLE_STEP_MS / 1000)
+})
+
+const testRunProgressText = computed(() => {
+  const base = `${testRunProcessed.value}/${testRunTotal.value} · ok ${testRunSucceeded.value} · skip ${testRunSkipped.value}`
+  if (!testRunInProgress.value) return base
+  return `${base} · ETA ${formatDurationShort(testRunEtaSeconds.value)}`
+})
+
 const sourceColumnHeaders = computed(() => (
   resolveAllSourceColumnHeaders(signalSheetStore.sheet, allocationRows.value)
 ))
@@ -339,6 +403,7 @@ const gridColumns = computed(() => {
   return [
     ...sourceColumns,
     { key: "channel_select", label: "Unit/Channel", width: 150, minWidth: 120, pin: "right" as const },
+    { key: "last_tested_at", label: "Last tested", width: 180, minWidth: 150, pin: "right" as const },
     { key: "control", label: "Control", width: 120, minWidth: 96, pin: "right" as const, meta: { filterable: false } },
   ]
 })
@@ -360,6 +425,7 @@ function assignDynamicGridFields(payload: GridRow, row: SignalAllocationRow) {
   payload.rowId = `signal-${row.signal_id}`
   // Filtering/sorting must use the same human-readable text as in the cell.
   payload.channel_select = allocationDisplayLabel(row)
+  payload.last_tested_at = row.tested_at
   payload.control = ""
 }
 
@@ -456,6 +522,91 @@ function formatCell(value: unknown) {
   } catch {
     return String(value)
   }
+}
+
+function formatTestedAt(value: unknown): string {
+  const raw = String(value ?? "").trim()
+  if (!raw) return "—"
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) {
+    return raw
+  }
+  return parsed.toLocaleString()
+}
+
+function formatDurationShort(seconds: number): string {
+  const normalized = Math.max(0, Math.round(seconds))
+  const minutes = Math.floor(normalized / 60)
+  const remSeconds = normalized % 60
+  if (minutes <= 0) {
+    return `${remSeconds}s`
+  }
+  return `${minutes}m ${remSeconds}s`
+}
+
+function csvEscape(value: unknown): string {
+  const text = String(value ?? "")
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replaceAll("\"", "\"\"")}"`
+  }
+  return text
+}
+
+function downloadTextFile(content: string, filename: string, mimeType = "text/csv;charset=utf-8;") {
+  const blob = new Blob([`\uFEFF${content}`], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function buildCableJournalRows(): string[][] {
+  const headers = sourceColumnHeaders.value
+  const fallbackHeaders = headers.length > 0 ? headers : ["signal_name", "signal_key"]
+
+  const rows: string[][] = []
+  allocatedCableRows.value.forEach((row) => {
+    const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
+    const sourceCells = fallbackHeaders.map((header) => {
+      if (header === "signal_name") return row.signal_name
+      if (header === "signal_key") return row.signal_key
+      return sourceRow[header] ?? ""
+    })
+    const channelNumber = Number.isFinite(row.channel_index as number) ? Number(row.channel_index) + 1 : ""
+    rows.push([
+      ...sourceCells.map(item => String(item ?? "")),
+      String(row.unit_id ?? ""),
+      String(channelNumber),
+    ])
+  })
+
+  return rows
+}
+
+function exportCableJournal() {
+  if (!allocatedCableRows.value.length) {
+    toastStore.info("No allocated rows to export.")
+    return
+  }
+
+  const headers = sourceColumnHeaders.value
+  const fallbackHeaders = headers.length > 0 ? headers : ["signal_name", "signal_key"]
+  const csvHeaders = [...fallbackHeaders, "unit_id", "channel_index"]
+  const rows = buildCableJournalRows()
+  const csvContent = [
+    csvHeaders.map(csvEscape).join(","),
+    ...rows.map(row => row.map(csvEscape).join(",")),
+  ].join("\n")
+
+  const workspaceId = workspaceStore.activeWorkspaceId ?? "workspace"
+  const dateSuffix = new Date().toISOString().slice(0, 19).replaceAll(":", "-")
+  const filename = `cable-journal-ws-${workspaceId}-${dateSuffix}.csv`
+  downloadTextFile(csvContent, filename)
+  toastStore.success(`Cable journal exported: ${rows.length} rows`)
 }
 
 function requiredChannelType(signalDirection: string): "di" | "do" | "ai" | "ao" | null {
@@ -590,6 +741,10 @@ type ControlTarget = {
   online: boolean
 }
 
+type SendControlOptions = {
+  quiet?: boolean
+}
+
 function resolveControlTarget(row: SignalAllocationRow): ControlTarget | null {
   if (!Number.isFinite(row.channel_id as number)) {
     return null
@@ -677,24 +832,59 @@ function handleControlMenuSelect(row: SignalAllocationRow, state: boolean) {
   void sendControl(row, state)
 }
 
-async function sendControl(row: SignalAllocationRow, state: boolean) {
+function waitForControlResult(target: ControlTarget, expectedState: boolean, timeoutMs = 2600): Promise<boolean> {
+  const startedAt = Date.now()
+  return new Promise((resolve) => {
+    const poll = () => {
+      const stage = target.channel.ui?.stage ?? "idle"
+      if (stage === "error") {
+        resolve(false)
+        return
+      }
+      if (stage === "idle" && Boolean(target.channel.state) === expectedState) {
+        resolve(true)
+        return
+      }
+      if (Date.now() - startedAt >= timeoutMs) {
+        resolve(false)
+        return
+      }
+      setTimeout(poll, 60)
+    }
+    poll()
+  })
+}
+
+async function sendControl(row: SignalAllocationRow, state: boolean, options: SendControlOptions = {}): Promise<boolean> {
   const target = resolveControlTarget(row)
   if (!target) {
     toastStore.error("Channel not found")
-    return
+    return false
   }
   if (!target.online) {
     toastStore.error("Device is offline")
-    return
+    return false
   }
   if (controlBusy(row) && target.channel.ui?.target === state) {
-    return
+    return false
   }
 
   try {
     channelStore.sendDoCommand(target.unitId, target.channelIndex, state)
+    const succeeded = await waitForControlResult(target, state)
+    if (!succeeded) {
+      if (!options.quiet) {
+        toastStore.warning("Command not confirmed by device")
+      }
+      return false
+    }
+    void signalSheetStore.markSignalsTested([row.signal_id]).catch(() => {
+      return
+    })
+    return true
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
+    return false
   }
 }
 
@@ -766,8 +956,56 @@ async function deallocateSelected() {
   }
 }
 
-function runTestVisualOnly() {
-  toastStore.info("Run test is UI-only for now. Backend execution is disabled.")
+function wait(ms: number) {
+  return new Promise<void>(resolve => {
+    setTimeout(resolve, ms)
+  })
+}
+
+async function runTestVisualOnly() {
+  if (testRunInProgress.value) return
+
+  const queue = selectedAllocatedPhysicalRows.value.filter(row => canControl(row))
+  if (!queue.length) {
+    toastStore.info("Selected rows have no controllable DO channels.")
+    return
+  }
+
+  testRunInProgress.value = true
+  testRunTotal.value = queue.length
+  testRunProcessed.value = 0
+  testRunSucceeded.value = 0
+  testRunSkipped.value = 0
+
+  try {
+    for (let index = 0; index < queue.length; index += 1) {
+      const row = queue[index]
+      const target = resolveControlTarget(row)
+      if (!target || !target.online) {
+        testRunSkipped.value += 1
+      } else {
+        const nextState = !Boolean(target.channel.state)
+        const ok = await sendControl(row, nextState, { quiet: true })
+        if (ok) {
+          testRunSucceeded.value += 1
+        } else {
+          testRunSkipped.value += 1
+        }
+      }
+
+      testRunProcessed.value += 1
+
+      if (index < queue.length - 1) {
+        await wait(TEST_TOGGLE_STEP_MS)
+      }
+    }
+
+    toastStore.success(
+      `Run test complete: ${testRunSucceeded.value} toggled${testRunSkipped.value ? `, ${testRunSkipped.value} skipped` : ""}.`,
+    )
+  } finally {
+    testRunInProgress.value = false
+  }
 }
 
 function createSwitchgearVisualOnly() {

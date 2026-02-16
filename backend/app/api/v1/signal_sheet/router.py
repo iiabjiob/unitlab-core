@@ -17,6 +17,7 @@ from app.schemas.signal_snapshot_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import (
     SignalAllocationEnsureResponseSchema,
     SignalAllocationEnsureSchema,
+    SignalAllocationMarkTestedSchema,
     SignalAllocationBulkUpdateSchema,
     SignalAllocationRowSchema,
     SignalAutoAllocateResponseSchema,
@@ -291,6 +292,21 @@ async def ensure_signal_allocations(
         ),
         rows=rows,
     )
+
+
+@router.post("/workspaces/{workspace_id}/signal-allocations/tested", response_model=list[SignalAllocationRowSchema])
+async def mark_signal_allocations_tested(
+    workspace_id: int,
+    payload: SignalAllocationMarkTestedSchema,
+    repo: SignalSheetRepository = Depends(get_repo),
+):
+    if not await repo.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    signal_ids = await repo.mark_signals_tested(workspace_id, payload.signal_ids)
+    if not signal_ids:
+        return []
+    return await repo.list_allocation_rows_by_signal_ids(workspace_id, signal_ids)
 
 
 def _parse_metadata(raw_metadata: str | None) -> SignalImportMetaSchema | None:

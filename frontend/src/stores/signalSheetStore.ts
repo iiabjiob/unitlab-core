@@ -122,6 +122,29 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
   }
 
+  function applyLocalTestedAtPatch(signalIds: readonly number[], testedAtIso: string) {
+    if (!signalIds.length) {
+      return
+    }
+    const touched: number[] = []
+    signalIds.forEach((signalId) => {
+      const rowIndex = allocationIndexBySignalId.get(signalId)
+      if (rowIndex === undefined) return
+      const row = allocationRows.value[rowIndex]
+      if (!row) return
+      allocationRows.value[rowIndex] = {
+        ...row,
+        tested_at: testedAtIso,
+      }
+      touched.push(signalId)
+    })
+    if (!touched.length) {
+      return
+    }
+    setRecentlyChangedSignalIds(touched)
+    bumpAllocationRevision()
+  }
+
   function resolveChannelLabel(unitId: string | null, channelIndex: number | null): string | null {
     if (!Number.isFinite(channelIndex as number)) {
       return null
@@ -489,6 +512,29 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     return data
   }
 
+  async function markSignalsTested(signalIds: number[]): Promise<void> {
+    const normalizedSignalIds = Array.from(
+      new Set(signalIds.map(item => Number(item)).filter(id => Number.isFinite(id) && id > 0)),
+    )
+    if (!normalizedSignalIds.length) {
+      return
+    }
+
+    const testedAtIso = new Date().toISOString()
+    applyLocalTestedAtPatch(normalizedSignalIds, testedAtIso)
+
+    const workspaceId = requireWorkspaceId()
+    const { data } = await SignalSheetAPI.markTested(workspaceId, {
+      signal_ids: normalizedSignalIds,
+    })
+    if (Array.isArray(data) && data.length > 0) {
+      applyServerAllocationPatch(
+        data,
+        data.map(row => row.signal_id),
+      )
+    }
+  }
+
   const hasSheet = computed(() => Boolean(sheet.value && sheet.value.signals_count > 0))
   const allocatedCount = computed(() => {
     if (sheet.value) {
@@ -525,6 +571,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     setAllocation,
     autoAllocate,
     ensureAllocated,
+    markSignalsTested,
     getAllocationOwnerSignalId,
   }
 })

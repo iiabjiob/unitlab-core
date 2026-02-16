@@ -84,6 +84,10 @@ class SignalAllocationEnsureSchema(BaseModel):
     prefer_online: bool = True
 
 
+class SignalAllocationMarkTestedSchema(BaseModel):
+    signal_ids: list[int] = Field(default_factory=list)
+
+
 class SignalAutoAllocateResultSchema(BaseModel):
     assigned: int
     skipped: int

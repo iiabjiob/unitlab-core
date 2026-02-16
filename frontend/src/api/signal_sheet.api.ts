@@ -4,6 +4,7 @@ import type {
   SignalAllocationRow,
   SignalAllocationEnsurePayload,
   SignalAllocationEnsureResponse,
+  SignalAllocationMarkTestedPayload,
   SignalAllocationUpdateItem,
   SignalAutoAllocatePayload,
   SignalAutoAllocateResponse,
@@ -67,5 +68,9 @@ export const SignalSheetAPI = {
 
   ensureAllocated(workspaceId: number, payload: SignalAllocationEnsurePayload) {
     return http.post<SignalAllocationEnsureResponse>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/ensure`, payload)
+  },
+
+  markTested(workspaceId: number, payload: SignalAllocationMarkTestedPayload) {
+    return http.post<SignalAllocationRow[]>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/tested`, payload)
   },
 }

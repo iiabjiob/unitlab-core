@@ -179,3 +179,7 @@ export interface SignalAllocationEnsureResponse {
   result: SignalAutoAllocateResult
   rows: SignalAllocationRow[]
 }
+
+export interface SignalAllocationMarkTestedPayload {
+  signal_ids: number[]
+}

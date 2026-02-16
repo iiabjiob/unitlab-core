@@ -60,6 +60,10 @@ export const useToastStore = defineStore("toastStore", () => {
     return push(message, { ...options, variant: "info" })
   }
 
+  function warning(message: string, options: ToastNoVariantOptions = {}) {
+    return push(message, { ...options, variant: "info" })
+  }
+
   function remove(id: number) {
     toasts.value = toasts.value.filter(t => t.id !== id)
   }
@@ -78,6 +82,7 @@ export const useToastStore = defineStore("toastStore", () => {
     success,
     error,
     info,
+    warning,
     remove,
     clear,
     getByPosition,
