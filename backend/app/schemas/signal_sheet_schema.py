@@ -79,6 +79,11 @@ class SignalAutoAllocateSchema(BaseModel):
     overwrite_existing: bool = False
 
 
+class SignalAllocationEnsureSchema(BaseModel):
+    signal_ids: list[int] = Field(default_factory=list)
+    prefer_online: bool = True
+
+
 class SignalAutoAllocateResultSchema(BaseModel):
     assigned: int
     skipped: int
@@ -87,5 +92,10 @@ class SignalAutoAllocateResultSchema(BaseModel):
 
 
 class SignalAutoAllocateResponseSchema(BaseModel):
+    result: SignalAutoAllocateResultSchema
+    rows: list[SignalAllocationRowSchema] = Field(default_factory=list)
+
+
+class SignalAllocationEnsureResponseSchema(BaseModel):
     result: SignalAutoAllocateResultSchema
     rows: list[SignalAllocationRowSchema] = Field(default_factory=list)

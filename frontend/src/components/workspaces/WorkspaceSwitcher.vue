@@ -33,7 +33,7 @@
         </button>
       </UiMenuTrigger>
 
-      <UiMenuContent :style="menuContentStyle" class="border border-neutral-200 p-0 dark:border-neutral-800">
+      <UiMenuContent class="border border-neutral-200 p-0 dark:border-neutral-800">
         <div class="border-b border-neutral-200 px-3 py-2 text-[10px] uppercase tracking-[0.3em] text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
           Workspaces
         </div>
@@ -150,20 +150,52 @@ const loading = computed(() => workspaceStore.loading)
 const hasWorkspace = computed(() => Boolean(workspaceStore.activeWorkspace))
 const currentLabel = computed(() => workspaceStore.activeWorkspace?.name ?? "Select workspace")
 const menuWorkspaces = computed(() => workspaceStore.workspaces)
-const menuContentStyle = computed<Record<string, string> | undefined>(() => {
-  if (!menuWidth.value) return undefined
-  const widthPx = `${menuWidth.value}px`
-  return {
-    width: widthPx,
-    minWidth: widthPx,
-  }
-})
-
 function updateMenuWidth() {
   const el = triggerRef.value
   if (!el) return
-  const width = Math.max(0, Math.round(el.getBoundingClientRect().width))
+  const width = Math.max(
+    0,
+    Math.ceil(
+      Math.max(
+        el.getBoundingClientRect().width,
+        Number(el.offsetWidth) || 0,
+        Number(el.clientWidth) || 0,
+      ),
+    ),
+  )
   menuWidth.value = width > 0 ? width : null
+  if (menuOpen.value) {
+    syncOpenMenuPanelWidth()
+  }
+}
+
+function resolveOpenMenuPanelElement() {
+  if (typeof document === "undefined") return null
+  const trigger = triggerRef.value
+  if (!trigger) return null
+
+  const controlledPanelId = trigger.getAttribute("aria-controls")
+  if (controlledPanelId) {
+    const controlledPanel = document.getElementById(controlledPanelId)
+    if (controlledPanel instanceof HTMLElement) {
+      return controlledPanel
+    }
+  }
+
+  const openPanels = document.querySelectorAll<HTMLElement>('[data-ui-menu-panel="true"][data-state="open"]')
+  return openPanels.length === 1 ? openPanels[0] : null
+}
+
+function syncOpenMenuPanelWidth() {
+  const width = menuWidth.value
+  if (!width) return
+  const panel = resolveOpenMenuPanelElement()
+  if (!panel) return
+  const widthPx = `${width}px`
+  panel.style.width = widthPx
+  panel.style.minWidth = widthPx
+  panel.style.maxWidth = widthPx
+  panel.style.boxSizing = "border-box"
 }
 
 function formatTimestamp(value?: string | null) {
@@ -236,9 +268,15 @@ onBeforeUnmount(() => {
 
 watch(
   () => [menuOpen.value, props.variant, currentLabel.value, menuWorkspaces.value.length] as const,
-  () => {
+  ([isOpen]) => {
     void nextTick(() => {
       updateMenuWidth()
+      if (isOpen) {
+        if (typeof window === "undefined") return
+        window.requestAnimationFrame(() => {
+          syncOpenMenuPanelWidth()
+        })
+      }
     })
   },
 )

@@ -1,5 +1,6 @@
 <template>
   <ChannelTreePicker
+    v-bind="$attrs"
     :model-value="modelValue"
     :channel-type="channelType"
     :name="name"
@@ -12,6 +13,10 @@
 <script setup lang="ts">
 import type { ChannelType } from "@/types/channel"
 import ChannelTreePicker from "./ChannelTreePicker.vue"
+
+defineOptions({
+  inheritAttrs: false,
+})
 
 const props = defineProps<{
   modelValue: number | null

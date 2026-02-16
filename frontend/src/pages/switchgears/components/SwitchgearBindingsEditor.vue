@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref, watch } from "vue"
 import type { Switchgear } from "@/types/switchgear"
 import { CHANNEL_TYPES, type ChannelType } from "@/types/channel"
-import ChannelSelect from "@/components/ui/ChannelSelect.vue"
+import SignalBackedChannelField from "@/components/signals/SignalBackedChannelField.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 
@@ -48,6 +48,12 @@ const ROLE_META: Record<BindingRoleKey, {
 }
 
 const bindings = computed(() => props.switchgear.bindings ?? [])
+const signalSelectionByRole = ref<Record<BindingRoleKey, { signalId: number | null; signalKey: string | null }>>({
+  do_open: { signalId: null, signalKey: null },
+  do_closed: { signalId: null, signalKey: null },
+  di_open: { signalId: null, signalKey: null },
+  di_close: { signalId: null, signalKey: null },
+})
 
 function bindingByRole(role: BindingRoleKey) {
   return bindings.value.find(binding => binding.role === role) ?? null
@@ -70,21 +76,13 @@ function applyPatch(role: BindingRoleKey, patch: Partial<{ channel_id: number | 
   void updateBindings(next)
 }
 
-function handleChannelChange(role: BindingRoleKey, value: number | string | null) {
-  if (value === null || value === "") {
-    applyPatch(role, { channel_id: null })
-    return
-  }
-  const numeric = typeof value === "number" ? value : Number(value)
-  applyPatch(role, { channel_id: Number.isNaN(numeric) ? null : numeric })
-}
-
 function handleDelayChange(role: BindingRoleKey, value: number) {
   const safeValue = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0
   applyPatch(role, { delay_ms: safeValue })
 }
 
 function clearChannel(role: BindingRoleKey) {
+  signalSelectionByRole.value[role] = { signalId: null, signalKey: null }
   applyPatch(role, { channel_id: null })
 }
 
@@ -104,9 +102,47 @@ function roleLabel(role: BindingRoleKey) {
   return ROLE_META[role].label
 }
 
+function signalPickerTitle(role: BindingRoleKey) {
+  return `${roleLabel(role)} · Select signal`
+}
+
+function selectedSignalId(role: BindingRoleKey): number | null {
+  return signalSelectionByRole.value[role]?.signalId ?? null
+}
+
+function selectedSignalKey(role: BindingRoleKey): string | null {
+  return signalSelectionByRole.value[role]?.signalKey ?? null
+}
+
+function handleChannelChange(role: BindingRoleKey, channelId: number | null) {
+  applyPatch(role, { channel_id: channelId })
+}
+
+function handleSignalChange(role: BindingRoleKey, payload: { signalId: number | null; signalKey: string | null }) {
+  signalSelectionByRole.value[role] = payload
+}
+
 async function resetAll() {
   await store.resetBindings(props.switchgear.id)
+  signalSelectionByRole.value = {
+    do_open: { signalId: null, signalKey: null },
+    do_closed: { signalId: null, signalKey: null },
+    di_open: { signalId: null, signalKey: null },
+    di_close: { signalId: null, signalKey: null },
+  }
 }
+
+watch(
+  () => props.switchgear.id,
+  () => {
+    signalSelectionByRole.value = {
+      do_open: { signalId: null, signalKey: null },
+      do_closed: { signalId: null, signalKey: null },
+      di_open: { signalId: null, signalKey: null },
+      di_close: { signalId: null, signalKey: null },
+    }
+  },
+)
 </script>
 
 <template>
@@ -129,11 +165,16 @@ async function resetAll() {
           <div class="text-[11px] uppercase tracking-wide text-neutral-500">{{ role }}</div>
         </div>
 
-        <ChannelSelect
-          :model-value="channelValue(role)"
+        <SignalBackedChannelField
+          :channel-id="channelValue(role)"
           :channel-type="ROLE_META[role].channelType"
+          :signal-id="selectedSignalId(role)"
+          :signal-key="selectedSignalKey(role)"
           :name="`binding-${role}`"
-          @update:modelValue="value => handleChannelChange(role, value)"
+          :signal-picker-title="signalPickerTitle(role)"
+          :table-id="`switchgear-binding-${props.switchgear.id}-${role}`"
+          @update:channelId="value => handleChannelChange(role, value)"
+          @update:signal="value => handleSignalChange(role, value)"
         />
 
         <div v-if="ROLE_META[role].supportsDelay" class="flex items-center gap-2 text-xs text-neutral-500">

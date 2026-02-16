@@ -3,6 +3,7 @@ import { computed, ref } from "vue"
 
 import { SignalSheetAPI } from "@/api/signal_sheet.api"
 import type {
+  SignalAllocationEnsureResponse,
   SignalAllocationRow,
   SignalAllocationUpdateItem,
   SignalAutoAllocatePayload,
@@ -466,6 +467,28 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     return data
   }
 
+  async function ensureAllocated(
+    signalIds: number[],
+    options?: { preferOnline?: boolean },
+  ): Promise<SignalAllocationEnsureResponse> {
+    const normalizedSignalIds = Array.from(
+      new Set(signalIds.map(item => Number(item)).filter(id => Number.isFinite(id) && id > 0)),
+    )
+    const workspaceId = requireWorkspaceId()
+    const { data } = await SignalSheetAPI.ensureAllocated(workspaceId, {
+      signal_ids: normalizedSignalIds,
+      prefer_online: options?.preferOnline ?? true,
+    })
+    if (Array.isArray(data.rows) && data.rows.length > 0) {
+      applyServerAllocationPatch(
+        data.rows,
+        data.rows.map(row => row.signal_id),
+      )
+      recomputeSheetAllocatedCount()
+    }
+    return data
+  }
+
   const hasSheet = computed(() => Boolean(sheet.value && sheet.value.signals_count > 0))
   const allocatedCount = computed(() => {
     if (sheet.value) {
@@ -501,6 +524,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     bulkSetAllocations,
     setAllocation,
     autoAllocate,
+    ensureAllocated,
     getAllocationOwnerSignalId,
   }
 })

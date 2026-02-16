@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue"
-import ChannelSelect from "@/components/ui/ChannelSelect.vue"
+import SignalBackedChannelField from "@/components/signals/SignalBackedChannelField.vue"
 import type { SequenceStep } from "@/types/sequences"
 import { CHANNEL_TYPES } from "@/types/channel"
 import type { StepEditorChange } from "./editorTypes"
@@ -15,9 +15,28 @@ const emit = defineEmits<{
 }>()
 
 const value = computed(() => Number(props.step.payload?.value ?? 0))
+const signalId = computed(() => {
+	const raw = props.step.payload?.signal_id
+	return Number.isFinite(Number(raw)) ? Number(raw) : null
+})
+const signalKey = computed(() => {
+	const raw = props.step.payload?.signal_key
+	if (raw === null || raw === undefined) return null
+	const normalized = String(raw).trim()
+	return normalized.length > 0 ? normalized : null
+})
 
 function updateChannel(id: number | null) {
 	emit("update", { channel_id: id ?? null })
+}
+
+function updateSignal(payload: { signalId: number | null; signalKey: string | null }) {
+	emit("update", {
+		payload: {
+			signal_id: payload.signalId,
+			signal_key: payload.signalKey,
+		},
+	})
 }
 
 function handleValueChange(event: Event) {
@@ -34,12 +53,16 @@ function handleValueChange(event: Event) {
 			<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 				AO channel
 			</label>
-			<ChannelSelect
-				class="mt-1 w-64"
-				:model-value="step.channel_id ?? null"
+			<SignalBackedChannelField
+				class="mt-1"
+				:channel-id="step.channel_id ?? null"
 				:channel-type="CHANNEL_TYPES.AO"
+				:signal-id="signalId"
+				:signal-key="signalKey"
+				:signal-picker-title="'Select analog signal'"
 				:disabled="disabled"
-				@update:modelValue="updateChannel"
+				@update:channelId="updateChannel"
+				@update:signal="updateSignal"
 			/>
 		</div>
 

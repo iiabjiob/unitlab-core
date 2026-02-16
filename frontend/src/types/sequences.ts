@@ -42,6 +42,10 @@ export interface SequenceStepPayload {
   state2b?: number
   pulse_ms?: number
   channel_ids?: number[]
+  signal_id?: number | null
+  signal_key?: string | null
+  signal_ids?: Array<number | null>
+  signal_keys?: Array<string | null>
 }
 
 export interface SequenceStep {

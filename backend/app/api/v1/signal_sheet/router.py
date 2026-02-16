@@ -15,6 +15,8 @@ from app.core.config import get_settings
 from app.infrastructure.db.database import get_db
 from app.schemas.signal_snapshot_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import (
+    SignalAllocationEnsureResponseSchema,
+    SignalAllocationEnsureSchema,
     SignalAllocationBulkUpdateSchema,
     SignalAllocationRowSchema,
     SignalAutoAllocateResponseSchema,
@@ -242,6 +244,45 @@ async def auto_allocate_signal_rows(
 
     rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, result.changed_signal_ids)
     return SignalAutoAllocateResponseSchema(
+        result=SignalAutoAllocateResultSchema(
+            assigned=result.assigned,
+            skipped=result.skipped,
+            missing=result.missing,
+            unassigned_signal_ids=result.unassigned_signal_ids,
+        ),
+        rows=rows,
+    )
+
+
+@router.post("/workspaces/{workspace_id}/signal-allocations/ensure", response_model=SignalAllocationEnsureResponseSchema)
+async def ensure_signal_allocations(
+    workspace_id: int,
+    payload: SignalAllocationEnsureSchema,
+    repo: SignalSheetRepository = Depends(get_repo),
+):
+    if not await repo.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    signal_ids = [int(item) for item in payload.signal_ids if int(item) > 0]
+    if not signal_ids:
+        return SignalAllocationEnsureResponseSchema(
+            result=SignalAutoAllocateResultSchema(
+                assigned=0,
+                skipped=0,
+                missing=0,
+                unassigned_signal_ids=[],
+            ),
+            rows=[],
+        )
+
+    result: SignalSheetAutoAllocateResult = await repo.auto_allocate(
+        workspace_id=workspace_id,
+        signal_ids=signal_ids,
+        prefer_online=payload.prefer_online,
+        overwrite_existing=False,
+    )
+    rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, signal_ids)
+    return SignalAllocationEnsureResponseSchema(
         result=SignalAutoAllocateResultSchema(
             assigned=result.assigned,
             skipped=result.skipped,

@@ -159,6 +159,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, triggerRef, watch } from "vue"
 import { storeToRefs } from "pinia"
+import { useRoute, useRouter } from "vue-router"
 import {
   UiMenu,
   UiMenuContent,
@@ -170,9 +171,10 @@ import {
 import UiAffinoDataGrid from "@/components/ui/UiAffinoDataGrid.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import type { Channel, DoChannel } from "@/types/channel"
-import type { SignalAllocationRow, SignalSheet } from "@/types/signal"
+import type { SignalAllocationRow } from "@/types/signal"
 import AllocationChannelPicker from "@/pages/signals/components/AllocationChannelPicker.vue"
 import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
+import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders } from "@/pages/signals/utils/sourceColumns"
 import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
@@ -186,12 +188,13 @@ const channelStore = useChannelStore()
 const deviceStore = useDeviceStore()
 const realtimeScopeStore = useRealtimeScopeStore()
 const toastStore = useToastStore()
+const route = useRoute()
+const router = useRouter()
 
 const { allocationRows, loadingAllocations, loadingSheet, allocatedCount, allocationRevision, recentlyChangedSignalIds } = storeToRefs(signalSheetStore)
 const { channels } = storeToRefs(channelStore)
 
 const scopeId = "signals:allocations"
-const INTERNAL_TYPE_COLUMN_KEY = "internal_type"
 const importModalOpen = ref(false)
 const persistentControlMenuOptions = { closeOnSelect: false }
 const selectedRowKeys = ref<string[]>([])
@@ -321,7 +324,9 @@ const createSwitchgearButtonLabel = computed(() => (
     : `Create ${switchgearCreatableCount.value} switchgears`
 ))
 
-const sourceColumnHeaders = computed(() => resolveSourceColumnHeaders(signalSheetStore.sheet))
+const sourceColumnHeaders = computed(() => (
+  resolveAllSourceColumnHeaders(signalSheetStore.sheet, allocationRows.value)
+))
 
 const gridColumns = computed(() => {
   const sourceColumns = sourceColumnHeaders.value.map((header, index) => ({
@@ -350,61 +355,6 @@ function sourceColumnKey(index: number): string {
   return `source_col_${index}`
 }
 
-function normalizeHeaderList(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return []
-  const seen = new Set<string>()
-  const headers: string[] = []
-  raw.forEach((item) => {
-    const header = String(item ?? "").trim()
-    if (!header || seen.has(header)) return
-    seen.add(header)
-    headers.push(header)
-  })
-  return headers
-}
-
-function resolveSourceColumnHeaders(sheet: SignalSheet | null): string[] {
-  if (!sheet) return []
-
-  const explicit = normalizeHeaderList(sheet.import_meta?.selected_columns ?? [])
-  if (explicit.length > 0) {
-    return explicit
-  }
-
-  const data = sheet.data
-  if (!data || typeof data !== "object") {
-    return []
-  }
-
-  const typedData = data as {
-    default_sheet_index?: number
-    sheets?: Array<{ index?: number; headers?: unknown[] }>
-  }
-  const sheets = Array.isArray(typedData.sheets) ? typedData.sheets : []
-  if (!sheets.length) return []
-
-  const defaultSheetIndex = Number(typedData.default_sheet_index)
-  const byDefaultIndex = Number.isFinite(defaultSheetIndex)
-    ? sheets.find(item => Number(item?.index) === defaultSheetIndex) ?? null
-    : null
-  const targetSheet = byDefaultIndex ?? sheets[0]
-  const headers = normalizeHeaderList(targetSheet?.headers ?? [])
-  if (!headers.length) return []
-
-  const internalTypeColumn = String(
-    sheet.import_meta?.internal_type_column || INTERNAL_TYPE_COLUMN_KEY,
-  ).trim().toLowerCase()
-  return headers.filter(header => header.trim().toLowerCase() !== internalTypeColumn)
-}
-
-function extractSourceRow(signalMetadata: Record<string, unknown>): Record<string, unknown> {
-  const source = signalMetadata?.row
-  if (!source || typeof source !== "object" || Array.isArray(source)) {
-    return {}
-  }
-  return source as Record<string, unknown>
-}
-
 function assignDynamicGridFields(payload: GridRow, row: SignalAllocationRow) {
   Object.assign(payload, row)
   payload.rowId = `signal-${row.signal_id}`
@@ -416,7 +366,7 @@ function assignDynamicGridFields(payload: GridRow, row: SignalAllocationRow) {
 function createGridRow(row: SignalAllocationRow, headers: readonly string[]): GridRow {
   const payload: GridRow = {}
   assignDynamicGridFields(payload, row)
-  const sourceRow = extractSourceRow(row.signal_metadata)
+  const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
   headers.forEach((header, index) => {
     payload[sourceColumnKey(index)] = sourceRow[header] ?? ""
   })
@@ -771,6 +721,23 @@ async function handleImported() {
   await signalSheetStore.refreshPresets()
 }
 
+function isImportQueryRequested(raw: unknown): boolean {
+  const values = Array.isArray(raw) ? raw : [raw]
+  return values.some((value) => {
+    const normalized = String(value ?? "").trim().toLowerCase()
+    return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "open"
+  })
+}
+
+function clearImportQueryFlag() {
+  if (!("import" in route.query)) return
+  const nextQuery = { ...route.query }
+  delete nextQuery.import
+  void router.replace({ query: nextQuery }).catch(() => {
+    return
+  })
+}
+
 async function allocateSelectedUnassigned() {
   if (!selectedUnassignedSignalIds.value.length) return
   try {
@@ -893,6 +860,17 @@ watch(
     scheduleRealtimeUnitScopeSync()
   },
   { immediate: true, flush: "post" },
+)
+
+watch(
+  () => [route.query.import, workspaceMissing.value, loading.value] as const,
+  ([importFlag, missingWorkspace, isLoading]) => {
+    if (!isImportQueryRequested(importFlag)) return
+    if (missingWorkspace || isLoading) return
+    openImportModal()
+    clearImportQueryFlag()
+  },
+  { immediate: true },
 )
 
 onBeforeUnmount(() => {

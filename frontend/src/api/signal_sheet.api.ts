@@ -2,6 +2,8 @@ import { http } from "./http"
 import { API_V1 } from "./utils"
 import type {
   SignalAllocationRow,
+  SignalAllocationEnsurePayload,
+  SignalAllocationEnsureResponse,
   SignalAllocationUpdateItem,
   SignalAutoAllocatePayload,
   SignalAutoAllocateResponse,
@@ -61,5 +63,9 @@ export const SignalSheetAPI = {
 
   autoAllocate(workspaceId: number, payload: SignalAutoAllocatePayload) {
     return http.post<SignalAutoAllocateResponse>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/auto`, payload)
+  },
+
+  ensureAllocated(workspaceId: number, payload: SignalAllocationEnsurePayload) {
+    return http.post<SignalAllocationEnsureResponse>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/ensure`, payload)
   },
 }

@@ -169,3 +169,13 @@ export interface SignalAutoAllocateResponse {
   result: SignalAutoAllocateResult
   rows: SignalAllocationRow[]
 }
+
+export interface SignalAllocationEnsurePayload {
+  signal_ids: number[]
+  prefer_online?: boolean
+}
+
+export interface SignalAllocationEnsureResponse {
+  result: SignalAutoAllocateResult
+  rows: SignalAllocationRow[]
+}

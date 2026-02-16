@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue"
-import ChannelSelect from "@/components/ui/ChannelSelect.vue"
+import SignalBackedChannelField from "@/components/signals/SignalBackedChannelField.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import type { SequenceStep } from "@/types/sequences"
 import { CHANNEL_TYPES } from "@/types/channel"
@@ -17,9 +17,28 @@ const emit = defineEmits<{
 
 const currentValue = computed(() => Number(props.step.payload?.value ?? 0))
 const pulseMs = computed(() => Number(props.step.payload?.pulse_ms ?? 0))
+const signalId = computed(() => {
+	const raw = props.step.payload?.signal_id
+	return Number.isFinite(Number(raw)) ? Number(raw) : null
+})
+const signalKey = computed(() => {
+	const raw = props.step.payload?.signal_key
+	if (raw === null || raw === undefined) return null
+	const normalized = String(raw).trim()
+	return normalized.length > 0 ? normalized : null
+})
 
 function updateChannel(id: number | null) {
 	emit("update", { channel_id: id ?? null })
+}
+
+function updateSignal(payload: { signalId: number | null; signalKey: string | null }) {
+	emit("update", {
+		payload: {
+			signal_id: payload.signalId,
+			signal_key: payload.signalKey,
+		},
+	})
 }
 
 function setValue(next: number) {
@@ -41,12 +60,16 @@ function handlePulseChange(event: Event) {
 			<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 				Target DO channel
 			</label>
-			<ChannelSelect
-				class="mt-1 w-64"
-				:model-value="step.channel_id ?? null"
+			<SignalBackedChannelField
+				class="mt-1"
+				:channel-id="step.channel_id ?? null"
 				:channel-type="CHANNEL_TYPES.DO"
+				:signal-id="signalId"
+				:signal-key="signalKey"
+				:signal-picker-title="'Select pulse signal'"
 				:disabled="disabled"
-				@update:modelValue="updateChannel"
+				@update:channelId="updateChannel"
+				@update:signal="updateSignal"
 			/>
 		</div>
 

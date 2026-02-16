@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue"
-import ChannelSelect from "@/components/ui/ChannelSelect.vue"
+import SignalBackedChannelField from "@/components/signals/SignalBackedChannelField.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import type { SequenceStep } from "@/types/sequences"
 import { CHANNEL_TYPES } from "@/types/channel"
@@ -21,11 +21,38 @@ const pairChannels = computed<[number | null, number | null]>(() => {
 })
 
 const state2b = computed(() => Number(props.step.payload?.state2b ?? 0))
+const pairSignalIds = computed<[number | null, number | null]>(() => {
+	const ids = props.step.payload?.signal_ids ?? []
+	const normalize = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : null
+	return [normalize(ids[0]), normalize(ids[1])]
+})
+const pairSignalKeys = computed<[string | null, string | null]>(() => {
+	const keys = props.step.payload?.signal_keys ?? []
+	const normalize = (value: unknown) => {
+		if (value === null || value === undefined) return null
+		const text = String(value).trim()
+		return text.length > 0 ? text : null
+	}
+	return [normalize(keys[0]), normalize(keys[1])]
+})
 
 function updateChannel(index: 0 | 1, value: number | null) {
 	const next = [...pairChannels.value] as [number | null, number | null]
 	next[index] = value ?? null
 	emit("update", { payload: { channel_ids: next } })
+}
+
+function updateSignal(index: 0 | 1, payload: { signalId: number | null; signalKey: string | null }) {
+	const nextSignalIds = [...pairSignalIds.value] as [number | null, number | null]
+	const nextSignalKeys = [...pairSignalKeys.value] as [string | null, string | null]
+	nextSignalIds[index] = payload.signalId ?? null
+	nextSignalKeys[index] = payload.signalKey ?? null
+	emit("update", {
+		payload: {
+			signal_ids: nextSignalIds,
+			signal_keys: nextSignalKeys,
+		},
+	})
 }
 
 function setState(next: number) {
@@ -41,26 +68,34 @@ function setState(next: number) {
 				<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 					Channel A
 				</label>
-				<ChannelSelect
-					class="mt-1 w-full"
-					:model-value="pairChannels[0]"
+				<SignalBackedChannelField
+					class="mt-1"
+					:channel-id="pairChannels[0]"
 					:channel-type="CHANNEL_TYPES.DO"
+					:signal-id="pairSignalIds[0]"
+					:signal-key="pairSignalKeys[0]"
 					:exclude-ids="pairChannels[1] ? [pairChannels[1]] : []"
+					:signal-picker-title="'Select pair signal A'"
 					:disabled="disabled"
-					@update:modelValue="value => updateChannel(0, value)"
+					@update:channelId="value => updateChannel(0, value)"
+					@update:signal="value => updateSignal(0, value)"
 				/>
 			</div>
 			<div>
 				<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 					Channel B
 				</label>
-				<ChannelSelect
-					class="mt-1 w-full"
-					:model-value="pairChannels[1]"
+				<SignalBackedChannelField
+					class="mt-1"
+					:channel-id="pairChannels[1]"
 					:channel-type="CHANNEL_TYPES.DO"
+					:signal-id="pairSignalIds[1]"
+					:signal-key="pairSignalKeys[1]"
 					:exclude-ids="pairChannels[0] ? [pairChannels[0]] : []"
+					:signal-picker-title="'Select pair signal B'"
 					:disabled="disabled"
-					@update:modelValue="value => updateChannel(1, value)"
+					@update:channelId="value => updateChannel(1, value)"
+					@update:signal="value => updateSignal(1, value)"
 				/>
 			</div>
 		</div>

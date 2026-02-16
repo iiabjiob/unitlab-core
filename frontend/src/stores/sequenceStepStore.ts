@@ -50,8 +50,11 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
   }
 
   function getStepDescription(step: SequenceStep): string {
-    function resolve(id?: number | null): string {
-      if (!id) return "n/a"
+    function resolve(id?: number | null, fallbackSignalKey?: string | null): string {
+      if (!id) {
+        const signalKey = String(fallbackSignalKey ?? "").trim()
+        return signalKey ? `SIG:${signalKey}` : "n/a"
+      }
       const ch = channelStore.channels.find((c) => c.id === id)
       return ch ? channelStore.resolveChannelFullLabel(ch) : `CH#${id}`
     }
@@ -60,18 +63,19 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
       case SequenceStepType.WAIT:
         return `Wait ${step.payload?.ms ?? 0} ms`
       case SequenceStepType.DO_LATCH:
-        return `DO: latch ${resolve(step.channel_id)} = ${step.payload?.value ?? 0}`
+        return `DO: latch ${resolve(step.channel_id, step.payload?.signal_key)} = ${step.payload?.value ?? 0}`
       case SequenceStepType.DO_PULSE:
-        return `DO: pulse ${resolve(step.channel_id)} = ${step.payload?.value ?? 0} for ${step.payload?.pulse_ms ?? 0} ms`
+        return `DO: pulse ${resolve(step.channel_id, step.payload?.signal_key)} = ${step.payload?.value ?? 0} for ${step.payload?.pulse_ms ?? 0} ms`
       case SequenceStepType.DO_PAIR: {
         const ids = step.payload?.channel_ids ?? []
+        const keys = step.payload?.signal_keys ?? []
         const [idA, idB] = ids
-        return `DO: pair ${resolve(idA)} + ${resolve(idB)}, state=${step.payload?.state2b ?? 0}`
+        return `DO: pair ${resolve(idA, keys[0])} + ${resolve(idB, keys[1])}, state=${step.payload?.state2b ?? 0}`
       }
       case SequenceStepType.DO_BITMASK:
         return `DO: bitmask 0x${(step.payload?.bitmask ?? 0).toString(16).toUpperCase()}`
       case SequenceStepType.AO_SET:
-        return `AO: set ${resolve(step.channel_id)} = ${step.payload?.value ?? 0} mA`
+        return `AO: set ${resolve(step.channel_id, step.payload?.signal_key)} = ${step.payload?.value ?? 0} mA`
       default:
         return `❓ Unknown step type: ${step.sequence_step_type}`
     }
