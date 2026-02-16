@@ -479,7 +479,10 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
 
   async function autoAllocate(payload: SignalAutoAllocatePayload) {
     const workspaceId = requireWorkspaceId()
-    const { data } = await SignalSheetAPI.autoAllocate(workspaceId, payload)
+    const { data } = await SignalSheetAPI.autoAllocate(workspaceId, {
+      ...payload,
+      prefer_single_unit: payload.prefer_single_unit ?? true,
+    })
     if (Array.isArray(data.rows) && data.rows.length > 0) {
       applyServerAllocationPatch(
         data.rows,

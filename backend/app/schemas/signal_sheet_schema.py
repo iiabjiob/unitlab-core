@@ -76,6 +76,7 @@ class SignalAllocationBulkUpdateSchema(BaseModel):
 class SignalAutoAllocateSchema(BaseModel):
     signal_ids: list[int] = Field(default_factory=list)
     prefer_online: bool = True
+    prefer_single_unit: bool = False
     overwrite_existing: bool = False
 
 

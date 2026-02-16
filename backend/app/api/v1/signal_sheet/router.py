@@ -240,6 +240,7 @@ async def auto_allocate_signal_rows(
         workspace_id=workspace_id,
         signal_ids=payload.signal_ids,
         prefer_online=payload.prefer_online,
+        prefer_single_unit=payload.prefer_single_unit,
         overwrite_existing=payload.overwrite_existing,
     )
 
@@ -280,6 +281,7 @@ async def ensure_signal_allocations(
         workspace_id=workspace_id,
         signal_ids=signal_ids,
         prefer_online=payload.prefer_online,
+        prefer_single_unit=False,
         overwrite_existing=False,
     )
     rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, signal_ids)

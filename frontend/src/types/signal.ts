@@ -155,6 +155,7 @@ export interface SignalAllocationUpdateItem {
 export interface SignalAutoAllocatePayload {
   signal_ids?: number[]
   prefer_online?: boolean
+  prefer_single_unit?: boolean
   overwrite_existing?: boolean
 }
 

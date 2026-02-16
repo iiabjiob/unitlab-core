@@ -6,11 +6,13 @@ import SwitchgearListItem from "./SwitchgearListItem.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiSidebarListbox from "@/components/ui/UiSidebarListbox.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { useToastStore } from "@/stores/toastStore"
 
 const store = useSwitchgearStore()
 const router = useRouter()
 const route = useRoute()
 const workspaceStore = useWorkspaceStore()
+const toastStore = useToastStore()
 
 function isActive(id: number) {
   return Number(route.params.id) === id
@@ -23,6 +25,10 @@ function openSwitchgear(id: number) {
 async function addSwitchgear() {
   if (!workspaceStore.activeWorkspaceId) return
   const created = await store.createAuto()
+  const assigned = (created.bindings ?? []).filter(binding => Number.isFinite(binding.channel_id as number)).length
+  if (assigned < 4) {
+    toastStore.warning(`Auto-allocation assigned ${assigned}/4 channels. Complete remaining bindings manually.`)
+  }
   openSwitchgear(created.id)
 }
 

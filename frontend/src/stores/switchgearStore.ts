@@ -12,7 +12,7 @@ import { getLogger } from "@/utils/logger"
 import { useChannelStore } from "./channelStore"
 import { useDeviceStore } from "./deviceStore"
 import { useWorkspaceStore } from "./workspaceStore"
-import { CHANNEL_TYPES } from "@/types/channel"
+import { CHANNEL_TYPES, type ChannelType } from "@/types/channel"
 import { codeToState, type SwitchgearState } from "@/constants/switchgear"
 
 const logger = getLogger("SG")
@@ -23,6 +23,19 @@ function buildEmptyBindings() {
     channel_id: null,
     delay_ms: 0,
   }))
+}
+
+type ChannelCandidate = {
+  id: number
+  index: number
+  unitId: string
+  onlineRank: number
+}
+type AutoBindingRole = "do_open" | "do_closed" | "di_open" | "di_close"
+
+function normalizeUnitId(value: unknown): string {
+  const normalized = String(value ?? "").trim()
+  return normalized || "unknown"
 }
 
 export const useSwitchgearStore = defineStore("switchgearStore", () => {
@@ -57,6 +70,91 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
       counter += 1
     }
     return candidate
+  }
+
+  function availableCandidatesByType(
+    type: ChannelType,
+    usedChannelIds: Set<number>,
+  ): ChannelCandidate[] {
+    const deviceById = new Map(deviceStore.devices.map(device => [device.id, device] as const))
+    return channelStore.channels
+      .filter(channel => channel.type === type && !usedChannelIds.has(channel.id))
+      .map((channel) => {
+        const device = deviceById.get(channel.device_id)
+        const unitId = normalizeUnitId(device?.unit_id ?? channelStore.resolveUnitId(channel.device_id))
+        return {
+          id: channel.id,
+          index: channel.index,
+          unitId,
+          onlineRank: device?.status === "online" ? 0 : 1,
+        }
+      })
+      .sort((a, b) => {
+        if (a.onlineRank !== b.onlineRank) return a.onlineRank - b.onlineRank
+        const byUnit = a.unitId.localeCompare(b.unitId)
+        if (byUnit !== 0) return byUnit
+        return a.index - b.index
+      })
+  }
+
+  function pickPreferredChannels(
+    candidates: ChannelCandidate[],
+    count: number,
+  ): ChannelCandidate[] {
+    if (count <= 0 || !candidates.length) return []
+
+    const grouped = new Map<string, ChannelCandidate[]>()
+    candidates.forEach((candidate) => {
+      const bucket = grouped.get(candidate.unitId)
+      if (bucket) {
+        bucket.push(candidate)
+      } else {
+        grouped.set(candidate.unitId, [candidate])
+      }
+    })
+
+    for (const [, bucket] of grouped) {
+      if (bucket.length >= count) {
+        return bucket.slice(0, count)
+      }
+    }
+    return candidates.slice(0, count)
+  }
+
+  async function buildAutoBindings() {
+    await Promise.all([
+      deviceStore.ensureLoaded(),
+      channelStore.ensureLoaded(),
+    ])
+
+    const usedChannelIds = new Set<number>()
+    switchgears.value.forEach((switchgear) => {
+      switchgear.bindings.forEach((binding) => {
+        if (Number.isFinite(binding.channel_id as number)) {
+          usedChannelIds.add(Number(binding.channel_id))
+        }
+      })
+    })
+
+    const doCandidates = availableCandidatesByType(CHANNEL_TYPES.DO, usedChannelIds)
+    const selectedDo = pickPreferredChannels(doCandidates, 2)
+    selectedDo.forEach((channel) => usedChannelIds.add(channel.id))
+
+    const diCandidates = availableCandidatesByType(CHANNEL_TYPES.DI, usedChannelIds)
+    const selectedDi = pickPreferredChannels(diCandidates, 2)
+    selectedDi.forEach((channel) => usedChannelIds.add(channel.id))
+
+    const byRole: Record<AutoBindingRole, number | null> = {
+      do_open: selectedDo[0]?.id ?? null,
+      do_closed: selectedDo[1]?.id ?? null,
+      di_open: selectedDi[0]?.id ?? null,
+      di_close: selectedDi[1]?.id ?? null,
+    }
+
+    return buildEmptyBindings().map((binding) => ({
+      ...binding,
+      channel_id: byRole[binding.role as SwitchgearBindingRole] ?? null,
+    }))
   }
 
   function resolveChannel(chId: number | null) {
@@ -124,8 +222,10 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   }
 
   async function createAuto() {
+    await ensureLoaded()
     const name = nextDefaultName()
-    return await create({ name })
+    const bindings = await buildAutoBindings()
+    return await create({ name, bindings })
   }
 
   // Update single field(s)

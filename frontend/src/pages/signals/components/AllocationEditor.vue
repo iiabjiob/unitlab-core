@@ -17,7 +17,7 @@
           :disabled="workspaceMissing || loading || allocatedCableRows.length === 0"
           @click="exportCableJournal"
         >
-          Export Cable Journal
+          Export Cable Diagram
         </UiButton>
       </div>
       <div class="flex flex-wrap items-center gap-2">
@@ -67,10 +67,10 @@
           v-if="canCreateSwitchgearFromSelection"
           variant="secondary"
           size="sm"
-          :disabled="loading"
+          :disabled="loading || switchgearCreateInProgress"
           @click="createSwitchgearVisualOnly"
         >
-          {{ createSwitchgearButtonLabel }}
+          {{ switchgearCreateInProgress ? "Creating…" : createSwitchgearButtonLabel }}
         </UiButton>
       </div>
     </header>
@@ -209,6 +209,7 @@ import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
+import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 
@@ -217,6 +218,7 @@ const workspaceStore = useWorkspaceStore()
 const channelStore = useChannelStore()
 const deviceStore = useDeviceStore()
 const realtimeScopeStore = useRealtimeScopeStore()
+const switchgearStore = useSwitchgearStore()
 const toastStore = useToastStore()
 const route = useRoute()
 const router = useRouter()
@@ -229,6 +231,7 @@ const importModalOpen = ref(false)
 const persistentControlMenuOptions = { closeOnSelect: false }
 const selectedRowKeys = ref<string[]>([])
 const testRunInProgress = ref(false)
+const switchgearCreateInProgress = ref(false)
 const testRunTotal = ref(0)
 const testRunProcessed = ref(0)
 const testRunSucceeded = ref(0)
@@ -322,6 +325,22 @@ const selectedAllocatedSignalIds = computed(() => (
     .map(row => row.signal_id)
 ))
 
+const selectedSwitchgearRows = computed(() => (
+  selectedAllocationRows.value.filter(row => row.signal_direction === "DI" || row.signal_direction === "DO")
+))
+
+const selectedSwitchgearOnlyDiDo = computed(() => (
+  selectedAllocationRows.value.length > 0 && selectedSwitchgearRows.value.length === selectedAllocationRows.value.length
+))
+
+const selectedSwitchgearDiCount = computed(() => (
+  selectedSwitchgearRows.value.filter(row => row.signal_direction === "DI").length
+))
+
+const selectedSwitchgearDoCount = computed(() => (
+  selectedSwitchgearRows.value.filter(row => row.signal_direction === "DO").length
+))
+
 const selectedAllocatedPhysicalRows = computed(() => (
   selectedAllocationRows.value.filter((row) => (
     Number.isFinite(row.channel_id as number)
@@ -330,22 +349,10 @@ const selectedAllocatedPhysicalRows = computed(() => (
   ))
 ))
 
-const selectedAllocatedPhysicalDiCount = computed(() => (
-  selectedAllocatedPhysicalRows.value.filter(row => row.signal_direction === "DI").length
-))
-
-const selectedAllocatedPhysicalDoCount = computed(() => (
-  selectedAllocatedPhysicalRows.value.filter(row => row.signal_direction === "DO").length
-))
-
-const selectedAllocatedPhysicalOnlyDiDo = computed(() => (
-  selectedAllocatedPhysicalRows.value.every(row => row.signal_direction === "DI" || row.signal_direction === "DO")
-))
-
 const switchgearCreatableCount = computed(() => {
-  if (!selectedAllocatedPhysicalOnlyDiDo.value) return 0
-  const diCount = selectedAllocatedPhysicalDiCount.value
-  const doCount = selectedAllocatedPhysicalDoCount.value
+  if (!selectedSwitchgearOnlyDiDo.value) return 0
+  const diCount = selectedSwitchgearDiCount.value
+  const doCount = selectedSwitchgearDoCount.value
   if (diCount < 2 || doCount < 2) return 0
   if (diCount !== doCount) return 0
   if (diCount % 2 !== 0) return 0
@@ -547,7 +554,7 @@ function formatDurationShort(seconds: number): string {
 function csvEscape(value: unknown): string {
   const text = String(value ?? "")
   if (/[",\n\r]/.test(text)) {
-    return `"${text.replaceAll("\"", "\"\"")}"`
+    return `"${text.replace(/"/g, "\"\"")}"`
   }
   return text
 }
@@ -603,7 +610,7 @@ function exportCableJournal() {
   ].join("\n")
 
   const workspaceId = workspaceStore.activeWorkspaceId ?? "workspace"
-  const dateSuffix = new Date().toISOString().slice(0, 19).replaceAll(":", "-")
+  const dateSuffix = new Date().toISOString().slice(0, 19).replace(/:/g, "-")
   const filename = `cable-journal-ws-${workspaceId}-${dateSuffix}.csv`
   downloadTextFile(csvContent, filename)
   toastStore.success(`Cable journal exported: ${rows.length} rows`)
@@ -1009,9 +1016,150 @@ async function runTestVisualOnly() {
 }
 
 function createSwitchgearVisualOnly() {
+  void createSwitchgearsFromSelection()
+}
+
+function sortRowsByUnitChannel(rows: SignalAllocationRow[]): SignalAllocationRow[] {
+  return [...rows].sort((a, b) => {
+    const unitA = String(a.unit_id ?? "")
+    const unitB = String(b.unit_id ?? "")
+    const byUnit = unitA.localeCompare(unitB)
+    if (byUnit !== 0) return byUnit
+    const indexA = Number.isFinite(a.channel_index as number) ? Number(a.channel_index) : Number.MAX_SAFE_INTEGER
+    const indexB = Number.isFinite(b.channel_index as number) ? Number(b.channel_index) : Number.MAX_SAFE_INTEGER
+    if (indexA !== indexB) return indexA - indexB
+    return a.signal_id - b.signal_id
+  })
+}
+
+function buildPairsPreferSameUnit(rows: SignalAllocationRow[]): Array<[SignalAllocationRow, SignalAllocationRow]> {
+  const queue = sortRowsByUnitChannel(rows)
+  const pairs: Array<[SignalAllocationRow, SignalAllocationRow]> = []
+  while (queue.length >= 2) {
+    let paired = false
+    for (let i = 0; i < queue.length - 1; i += 1) {
+      const first = queue[i]
+      const second = queue[i + 1]
+      if (String(first.unit_id ?? "") === String(second.unit_id ?? "")) {
+        pairs.push([first, second])
+        queue.splice(i, 2)
+        paired = true
+        break
+      }
+    }
+    if (!paired) {
+      const first = queue.shift()
+      const second = queue.shift()
+      if (!first || !second) break
+      pairs.push([first, second])
+    }
+  }
+  return pairs
+}
+
+function makeSwitchgearName(index: number, total: number): string {
+  const stamp = new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", "-")
+  if (total <= 1) {
+    return `Signal Switchgear ${stamp}`
+  }
+  return `Signal Switchgear ${stamp} #${index + 1}`
+}
+
+async function createSwitchgearsFromSelection() {
   if (!switchgearCreatableCount.value) return
-  const noun = switchgearCreatableCount.value === 1 ? "switchgear" : "switchgears"
-  toastStore.info(`Create ${switchgearCreatableCount.value} ${noun} is UI-only for now.`)
+  if (switchgearCreateInProgress.value) return
+
+  switchgearCreateInProgress.value = true
+  const selectedSignalIds = selectedSwitchgearRows.value.map(row => row.signal_id)
+  const requestedCount = switchgearCreatableCount.value
+  const unallocatedSignalIds = selectedSwitchgearRows.value
+    .filter(row => !Number.isFinite(row.channel_id as number))
+    .map(row => row.signal_id)
+
+  try {
+    if (unallocatedSignalIds.length > 0) {
+      try {
+        const result = await signalSheetStore.autoAllocate({
+          signal_ids: unallocatedSignalIds,
+          prefer_online: true,
+          prefer_single_unit: true,
+          overwrite_existing: false,
+        })
+        if (result.result.unassigned_signal_ids.length > 0) {
+          toastStore.warning(
+            `Not enough free channels: ${result.result.unassigned_signal_ids.length} signal(s) still unassigned.`,
+          )
+        }
+      } catch (err) {
+        toastStore.error(err instanceof Error ? err.message : String(err))
+        return
+      }
+    }
+
+    const selectedSet = new Set(selectedSignalIds)
+    const resolvedRows = signalSheetStore.allocationRows.filter((row) => {
+      if (!selectedSet.has(row.signal_id)) return false
+      if (!Number.isFinite(row.channel_id as number)) return false
+      if (!Number.isFinite(row.channel_index as number)) return false
+      if (!String(row.unit_id ?? "").trim()) return false
+      return row.signal_direction === "DI" || row.signal_direction === "DO"
+    })
+
+    const diRows = resolvedRows.filter(row => row.signal_direction === "DI")
+    const doRows = resolvedRows.filter(row => row.signal_direction === "DO")
+    const diPairs = buildPairsPreferSameUnit(diRows)
+    const doPairs = buildPairsPreferSameUnit(doRows)
+    const creatableNow = Math.min(requestedCount, diPairs.length, doPairs.length)
+
+    if (creatableNow <= 0) {
+      toastStore.warning("No complete 2DI+2DO sets available after allocation.")
+      return
+    }
+
+    let created = 0
+    for (let index = 0; index < creatableNow; index += 1) {
+      const doPair = diPairs[index] // DI signals are allocated to DO channels (commands)
+      const diPair = doPairs[index] // DO signals are allocated to DI channels (feedback)
+
+      const doOpen = Number(doPair[0].channel_id)
+      const doClosed = Number(doPair[1].channel_id)
+      const diOpen = Number(diPair[0].channel_id)
+      const diClose = Number(diPair[1].channel_id)
+      if (!Number.isFinite(doOpen) || !Number.isFinite(doClosed) || !Number.isFinite(diOpen) || !Number.isFinite(diClose)) {
+        continue
+      }
+
+      try {
+        await switchgearStore.create({
+          name: makeSwitchgearName(index, creatableNow),
+          switchgear_type: "switchgear",
+          bindings: [
+            { role: "do_open", channel_id: doOpen, delay_ms: 0 },
+            { role: "do_closed", channel_id: doClosed, delay_ms: 0 },
+            { role: "di_open", channel_id: diOpen, delay_ms: 0 },
+            { role: "di_close", channel_id: diClose, delay_ms: 0 },
+          ],
+        })
+        created += 1
+      } catch (err) {
+        toastStore.error(err instanceof Error ? err.message : String(err))
+        break
+      }
+    }
+
+    if (created <= 0) {
+      return
+    }
+
+    if (created < requestedCount) {
+      toastStore.warning(`Created ${created} of ${requestedCount} switchgears (not enough paired channels).`)
+    } else {
+      const noun = created === 1 ? "switchgear" : "switchgears"
+      toastStore.success(`Created ${created} ${noun} from selected signals.`)
+    }
+  } finally {
+    switchgearCreateInProgress.value = false
+  }
 }
 
 async function ensureRuntimeCatalogLoaded() {

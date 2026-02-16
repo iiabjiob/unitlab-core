@@ -338,6 +338,7 @@ class SignalSheetRepository:
         workspace_id: int,
         signal_ids: Sequence[int] | None,
         prefer_online: bool,
+        prefer_single_unit: bool,
         overwrite_existing: bool,
     ) -> SignalSheetAutoAllocateResult:
         await self.cleanup_orphan_allocations(workspace_id)
@@ -376,6 +377,16 @@ class SignalSheetRepository:
         missing = 0
         unassigned: list[int] = []
 
+        preferred_unit_by_channel_type: dict[str, str] = {}
+        if prefer_single_unit:
+            preferred_unit_by_channel_type = _resolve_preferred_units_for_auto_allocate(
+                target_signals=target_signals,
+                current_allocations=current_allocations,
+                channel_groups=channel_groups,
+                used_channel_ids=used_channel_ids,
+                overwrite_existing=overwrite_existing,
+            )
+
         for signal in target_signals:
             direction = _normalize_direction(signal.io_direction)
             required_channel_type = _required_channel_type(direction)
@@ -392,10 +403,18 @@ class SignalSheetRepository:
             if existing is not None and overwrite_existing:
                 used_channel_ids.discard(existing.channel_id)
 
+            preferred_unit_id = preferred_unit_by_channel_type.get(required_channel_type)
             candidate = _pick_candidate_channel(
                 candidates=channel_groups.get(required_channel_type, []),
                 used_channel_ids=used_channel_ids,
+                preferred_unit_id=preferred_unit_id,
             )
+            if candidate is None and preferred_unit_id is not None:
+                candidate = _pick_candidate_channel(
+                    candidates=channel_groups.get(required_channel_type, []),
+                    used_channel_ids=used_channel_ids,
+                    preferred_unit_id=None,
+                )
             if candidate is None:
                 unassigned.append(signal.id)
                 if existing is not None and overwrite_existing:
@@ -620,9 +639,101 @@ def _parse_tested_at(metadata: dict[str, Any] | None) -> datetime | None:
     return None
 
 
-def _pick_candidate_channel(*, candidates: Iterable[Channel], used_channel_ids: set[int]) -> Channel | None:
+def _pick_candidate_channel(
+    *,
+    candidates: Iterable[Channel],
+    used_channel_ids: set[int],
+    preferred_unit_id: str | None = None,
+) -> Channel | None:
     for channel in candidates:
         if channel.id in used_channel_ids:
             continue
+        if preferred_unit_id is not None:
+            unit_id = channel.device.unit_id if channel.device else None
+            if unit_id != preferred_unit_id:
+                continue
         return channel
     return None
+
+
+def _resolve_preferred_units_for_auto_allocate(
+    *,
+    target_signals: Sequence[Signal],
+    current_allocations: dict[int, SignalAllocation],
+    channel_groups: dict[str, list[Channel]],
+    used_channel_ids: set[int],
+    overwrite_existing: bool,
+) -> dict[str, str]:
+    # Prefer channels from a single unit per channel-type bucket ("di"/"do"/"ai"/"ao")
+    # when there is enough free capacity.
+    preferred_by_type: dict[str, str] = {}
+    target_ids = {signal.id for signal in target_signals}
+    allocation_owner_by_channel_id = {
+        allocation.channel_id: signal_id
+        for signal_id, allocation in current_allocations.items()
+    }
+
+    for required_channel_type in ("di", "do", "ai", "ao"):
+        required_count = 0
+        existing_unit_weights: dict[str, int] = {}
+
+        for signal in target_signals:
+            mapped_type = _required_channel_type(_normalize_direction(signal.io_direction))
+            if mapped_type != required_channel_type:
+                continue
+
+            existing = current_allocations.get(signal.id)
+            if existing is not None and not overwrite_existing:
+                channel = next(
+                    (candidate for candidate in channel_groups.get(required_channel_type, []) if candidate.id == existing.channel_id),
+                    None,
+                )
+                unit_id = channel.device.unit_id if channel and channel.device else None
+                if unit_id:
+                    existing_unit_weights[unit_id] = existing_unit_weights.get(unit_id, 0) + 1
+                continue
+
+            required_count += 1
+
+        if required_count <= 0:
+            # Nothing new to allocate for this type, but if existing target allocations
+            # already lean to one unit, keep that as preference.
+            if existing_unit_weights:
+                preferred_by_type[required_channel_type] = max(
+                    existing_unit_weights.items(),
+                    key=lambda item: item[1],
+                )[0]
+            continue
+
+        if existing_unit_weights:
+            preferred_by_type[required_channel_type] = max(
+                existing_unit_weights.items(),
+                key=lambda item: item[1],
+            )[0]
+            continue
+
+        free_count_by_unit: dict[str, int] = {}
+        ordered_units: list[str] = []
+        for channel in channel_groups.get(required_channel_type, []):
+            unit_id = channel.device.unit_id if channel.device else None
+            if not unit_id:
+                continue
+
+            allocation_owner = allocation_owner_by_channel_id.get(channel.id)
+            if channel.id in used_channel_ids:
+                # Channel occupied by another signal and not being overwritten.
+                if allocation_owner is None or allocation_owner not in target_ids or not overwrite_existing:
+                    continue
+            if unit_id not in free_count_by_unit:
+                free_count_by_unit[unit_id] = 0
+                ordered_units.append(unit_id)
+            free_count_by_unit[unit_id] += 1
+
+        preferred_unit = next(
+            (unit_id for unit_id in ordered_units if free_count_by_unit.get(unit_id, 0) >= required_count),
+            None,
+        )
+        if preferred_unit is not None:
+            preferred_by_type[required_channel_type] = preferred_unit
+
+    return preferred_by_type
