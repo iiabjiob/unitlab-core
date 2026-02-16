@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.workspace import Workspace
-from app.services.system_sequence_seeder import ensure_default_sequences_for_workspace
 
 _SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
 
@@ -44,7 +43,6 @@ class WorkspaceRepository:
         workspace = Workspace(**payload)
         self.db.add(workspace)
         await self.db.flush()
-        await ensure_default_sequences_for_workspace(workspace.id, session=self.db)
         await self.db.commit()
         await self.db.refresh(workspace)
         return workspace

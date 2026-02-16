@@ -89,7 +89,7 @@
           <div class="ui-affino-grid__index-header" :style="indexHeaderStyle">#</div>
           <div v-if="showFilterRow" class="ui-affino-grid__index-filter" :style="indexFilterStyle"></div>
 
-          <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @wheel="handleLinkedViewportWheel">
+          <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @wheel.passive="handleLinkedViewportWheel">
             <div class="ui-affino-grid__index-canvas" :style="linkedViewportCanvasStyle">
               <template v-if="hasRenderableData">
                 <div
@@ -134,7 +134,7 @@
           </div>
           <div v-if="showFilterRow" class="ui-affino-grid__select-filter" :style="indexFilterStyle"></div>
 
-          <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @wheel="handleLinkedViewportWheel">
+          <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @wheel.passive="handleLinkedViewportWheel">
             <div class="ui-affino-grid__select-canvas" :style="linkedViewportCanvasStyle">
               <template v-if="hasRenderableData">
                 <div
@@ -221,7 +221,7 @@
             </div>
           </div>
 
-          <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel="handleLinkedViewportWheel">
+          <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel.passive="handleLinkedViewportWheel">
             <div class="ui-affino-grid__pinned-canvas" :style="linkedViewportCanvasStyle">
               <template v-if="hasRenderableData">
                 <div
@@ -464,7 +464,7 @@
             </div>
           </div>
 
-          <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel="handleLinkedViewportWheel">
+          <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel.passive="handleLinkedViewportWheel">
             <div class="ui-affino-grid__pinned-canvas" :style="linkedViewportCanvasStyle">
               <template v-if="hasRenderableData">
                 <div
@@ -1678,8 +1678,8 @@ function handleLinkedViewportWheel(event: WheelEvent) {
     }
   }
 
-  if (consumed && event.cancelable) {
-    event.preventDefault()
+  if (consumed) {
+    event.stopPropagation()
   }
 }
 

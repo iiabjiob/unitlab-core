@@ -13,7 +13,7 @@ const defaultMeta = {
 
 export const sequencesRoutes: RouteRecordRaw[] = [
   {
-    path: "/test-runs/instructions",
+    path: "/sequences",
     component: () => import("@/pages/sequences/SequencesPage.vue"),
     beforeEnter: async () => {
       const workspaceStore = useWorkspaceStore()

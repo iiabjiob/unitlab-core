@@ -108,7 +108,7 @@ async def detach_switchgear(
     return {"detail": "Switchgear detached"}
 
 
-@router.post("/{workspace_id}/sequences/{sequence_id}")
+@router.post("/{workspace_id}/sequences/{sequence_id:int}")
 async def attach_sequence(
     workspace_id: int,
     sequence_id: int,
@@ -121,7 +121,7 @@ async def attach_sequence(
     return {"detail": "Sequence attached"}
 
 
-@router.delete("/{workspace_id}/sequences/{sequence_id}")
+@router.delete("/{workspace_id}/sequences/{sequence_id:int}")
 async def detach_sequence(
     workspace_id: int,
     sequence_id: int,

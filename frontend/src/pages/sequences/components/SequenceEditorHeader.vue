@@ -20,6 +20,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "duplicate"): void
   (e: "delete"): void
+  (e: "export"): void
 }>()
 
 const store = useSequenceStore()
@@ -74,15 +75,6 @@ const createdAt = computed(() => {
   })
 })
 
-const usageTooltip = [
-  "Execution flow:",
-  "This instruction is typically queued inside a Test Run.",
-  "Build a run with the instructions you need, add an allocation, and attach a signal list when required.",
-  "",
-  "• Add the instruction to a Test Run and pick the workspace allocation.",
-  "• Assign physical channels or signals in Signals → Test Runs.",
-  "• Start or stop execution from Test Runs unless you use direct run controls.",
-].join("\n")
 </script>
 
 <template>
@@ -95,7 +87,6 @@ const usageTooltip = [
         <div class="text-lg font-medium tracking-tight text-neutral-900 dark:text-white">
           {{ sequence.name }}
         </div>
-        <!-- <UiBadge variant="info" :title="usageTooltip">Used in Test Runs</UiBadge> -->
         <UiBadge
           v-if="sequence.read_only"
           variant="warning"
@@ -127,6 +118,9 @@ const usageTooltip = [
       </UiMenuTrigger>
 
       <UiMenuContent>
+        <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="emit('export')">
+          Export
+        </UiMenuItem>
         <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="promptRename">
           Rename
         </UiMenuItem>

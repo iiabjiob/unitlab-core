@@ -6,24 +6,26 @@ import SequenceListItem from "./SequenceListItem.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiSidebarListbox from "@/components/ui/UiSidebarListbox.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { useSequenceImport } from "@/composables/useSequenceImport"
 
 const store = useSequenceStore()
 const router = useRouter()
 const route = useRoute()
 const workspaceStore = useWorkspaceStore()
+const { importing, fileInput, openFileDialog, onFileSelected } = useSequenceImport()
 
 function isActive(id: number) {
   return Number(route.params.id) === id
 }
 
 function openSequence(id: number) {
-  router.push(`/test-runs/instructions/${id}`)
+  router.push(`/sequences/${id}`)
 }
 
 function addSequence() {
   if (!workspaceStore.activeWorkspaceId) return
   store.createSequenceAuto().then(seq => {
-    router.push(`/test-runs/instructions/${seq.id}`)
+    router.push(`/sequences/${seq.id}`)
   })
 }
 
@@ -69,6 +71,23 @@ function handleSelect(id: string | number) {
       >
         + New Instruction
       </UiButton>
+      <UiButton
+        class="mt-2"
+        variant="secondary"
+        size="sm"
+        full
+        :disabled="workspaceMissing || importing"
+        @click="openFileDialog"
+      >
+        {{ importing ? "Importing…" : "Import Instructions" }}
+      </UiButton>
+      <input
+        ref="fileInput"
+        class="hidden"
+        type="file"
+        accept="application/json,.json"
+        @change="onFileSelected"
+      />
       <p
         v-if="workspaceMissing"
         class="mt-2 text-[11px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"

@@ -4,7 +4,6 @@ import { sequencesRoutes } from "./sequences.routes"
 import { devicesRoutes } from "./devices.routes"
 import { switchgearsRoutes } from "./switchgears.routes"
 import { signalsRoutes } from "./signals.routes"
-import { testRunsRoutes } from "./testRuns.routes"
 import { bootRuntime } from "@/boot/runtime"
 
 // Default layout meta (used by most screens)
@@ -28,7 +27,6 @@ const router = createRouter({
     ...devicesRoutes,
     ...switchgearsRoutes,
     ...signalsRoutes,
-    ...testRunsRoutes,
     ...sequencesRoutes,
     // Catch-all → redirect home
     {

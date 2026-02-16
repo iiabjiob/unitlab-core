@@ -2,15 +2,13 @@ import axios from "axios"
 import { defineStore } from "pinia"
 import { computed, reactive, ref, shallowRef } from "vue"
 
-import { SignalSnapshotsAPI, TestRunsAPI } from "@/api/signal_snapshots.api"
+import { SignalSnapshotsAPI } from "@/api/signal_snapshots.api"
 import type {
   Allocation,
   AllocationMappingItem,
   SignalImportMeta,
   SignalSnapshot,
   SignalSnapshotSummary,
-  TestRun,
-  TestRunCreatePayload,
 } from "@/types/signal"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { getLogger } from "@/utils/logger"
@@ -20,11 +18,9 @@ const logger = getLogger("SIGNALS")
 export const useSignalSnapshotStore = defineStore("signalSnapshotStore", () => {
   const workspaceStore = useWorkspaceStore()
   const snapshots = shallowRef<SignalSnapshotSummary[]>([])
-  const runs = ref<TestRun[]>([])
   const snapshotDetails = reactive<Record<number, SignalSnapshot>>({})
   const allocations: Record<number, Allocation> = {}
   const loading = ref(false)
-  const runsLoading = ref(false)
   let refreshSnapshotsInFlight: Promise<void> | null = null
 
   async function refreshSnapshots(options?: { force?: boolean; limit?: number; offset?: number }) {
@@ -111,50 +107,12 @@ export const useSignalSnapshotStore = defineStore("signalSnapshotStore", () => {
     return data
   }
 
-  async function refreshRuns() {
-    const workspaceId = workspaceStore.requireWorkspaceId()
-    runsLoading.value = true
-    try {
-      const { data } = await TestRunsAPI.list(workspaceId)
-      runs.value = data
-    } finally {
-      runsLoading.value = false
-    }
-  }
-
-  async function createTestRun(payload: Omit<TestRunCreatePayload, "workspace_id">) {
-    const workspaceId = workspaceStore.requireWorkspaceId()
-    const request: TestRunCreatePayload = {
-      workspace_id: workspaceId,
-      ...payload,
-    }
-    const { data } = await TestRunsAPI.create(workspaceId, request)
-    runs.value = [data, ...runs.value]
-    return data
-  }
-
-  async function repeatRun(runId: number) {
-    const { data } = await TestRunsAPI.repeat(runId)
-    runs.value = [data, ...runs.value]
-    return data
-  }
-
-  async function startTestRun(runId: number) {
-    await TestRunsAPI.start(runId)
-  }
-
-  async function stopTestRun(runId: number) {
-    await TestRunsAPI.stop(runId)
-  }
-
   const draftSnapshots = computed(() => snapshots.value.filter(s => s.status === "draft"))
   const lockedSnapshots = computed(() => snapshots.value.filter(s => s.status === "locked"))
 
   return {
     snapshots,
-    runs,
     loading,
-    runsLoading,
     refreshSnapshots,
     importSnapshot,
     lockSnapshot,
@@ -165,10 +123,5 @@ export const useSignalSnapshotStore = defineStore("signalSnapshotStore", () => {
     lockedSnapshots,
     getAllocation,
     saveAllocation,
-    refreshRuns,
-    createTestRun,
-    repeatRun,
-    startTestRun,
-    stopTestRun,
   }
 })

@@ -20,8 +20,11 @@
           role="option"
           :aria-selected="isRouteActive(item.to)"
           :tabindex="isEntryFocused(item.to) ? 0 : -1"
-          class="block w-full rounded-xl pl-6 pr-3 py-2 text-left text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/60"
-          :class="entryClasses(item.to, false, isEntryFocused(item.to))"
+          class="app-menu__entry block w-full rounded-xl pl-6 pr-3 py-2 text-left text-sm font-medium transition-all focus:outline-none"
+          :class="{
+            'is-active': isRouteHighlighted(item.to),
+            'is-focused': !isRouteHighlighted(item.to) && isEntryFocused(item.to),
+          }"
           @focus="setFocusByRoute(item.to)"
           @click="activateRoute(item.to)"
         >
@@ -35,8 +38,11 @@
           role="option"
           :aria-selected="isRouteActive(child.to)"
           :tabindex="isEntryFocused(child.to) ? 0 : -1"
-          class="mt-1 block w-full rounded-xl pl-10 pr-3 py-2 text-left text-sm font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/60"
-          :class="entryClasses(child.to, true, isEntryFocused(child.to))"
+          class="app-menu__entry is-child mt-1 block w-full rounded-xl pl-10 pr-3 py-2 text-left text-sm font-medium transition-all focus:outline-none"
+          :class="{
+            'is-active': isRouteHighlighted(child.to),
+            'is-focused': !isRouteHighlighted(child.to) && isEntryFocused(child.to),
+          }"
           @focus="setFocusByRoute(child.to)"
           @click="activateRoute(child.to)"
         >
@@ -77,11 +83,7 @@ const sections: MenuSection[] = [
   {
     title: "RUN",
     items: [
-      {
-        to: "/test-runs",
-        label: "Test Runs",
-        children: [{ to: "/test-runs/instructions", label: "Instructions" }],
-      },
+      { to: "/sequences", label: "Sequences" },
     ],
   },
 ]
@@ -162,19 +164,6 @@ function setFocusByRoute(to: string) {
   focusedRoute.value = to
 }
 
-function entryClasses(to: string, isChild: boolean, focused: boolean): string {
-  const active = isRouteHighlighted(to)
-  if (active) {
-    return "bg-primary-100 text-primary-900 dark:bg-primary-500/25 dark:text-primary-100"
-  }
-  if (focused) {
-    return "bg-neutral-200 text-neutral-900 dark:bg-neutral-700/70 dark:text-neutral-100"
-  }
-  return isChild
-    ? "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800/70 dark:hover:text-white"
-    : "text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800/70 dark:hover:text-white"
-}
-
 function moveFocus(delta: number) {
   const total = menuEntries.value.length
   if (!total) return
@@ -240,3 +229,59 @@ function handleKeydown(event: KeyboardEvent) {
   }
 }
 </script>
+
+<style scoped>
+.app-menu__entry {
+  color: rgb(64 64 64);
+}
+
+.app-menu__entry:hover {
+  background: rgb(245 245 245);
+  color: rgb(23 23 23);
+}
+
+.app-menu__entry.is-child {
+  color: rgb(82 82 82);
+}
+
+.app-menu__entry.is-focused {
+  background: rgb(229 229 229);
+  color: rgb(23 23 23);
+}
+
+.app-menu__entry.is-active {
+  background: rgb(229 231 235);
+  color: rgb(15 23 42);
+}
+
+.app-menu__entry:focus-visible {
+  box-shadow: 0 0 0 2px rgb(59 130 246 / 40%);
+}
+
+.dark .app-menu__entry {
+  color: rgb(212 212 212);
+}
+
+.dark .app-menu__entry.is-child {
+  color: rgb(163 163 163);
+}
+
+.dark .app-menu__entry:hover {
+  background: rgb(38 38 38 / 0.8);
+  color: rgb(255 255 255);
+}
+
+.dark .app-menu__entry.is-focused {
+  background: rgb(64 64 64 / 0.7);
+  color: rgb(245 245 245);
+}
+
+.dark .app-menu__entry.is-active {
+  background: rgb(59 130 246 / 0.2);
+  color: rgb(219 234 254);
+}
+
+.dark .app-menu__entry:focus-visible {
+  box-shadow: 0 0 0 2px rgb(96 165 250 / 40%);
+}
+</style>

@@ -6,10 +6,7 @@ import type {
   SignalImportMeta,
   SignalSnapshot,
   SignalSnapshotSummary,
-  TestRun,
-  TestRunCreatePayload,
 } from "@/types/signal"
-import type { SequenceState } from "@/types/sequences"
 
 export const SignalSnapshotsAPI = {
   list(workspaceId: number, options?: { limit?: number; offset?: number }) {
@@ -52,31 +49,5 @@ export const SignalSnapshotsAPI = {
     return http.put<Allocation>(`${API_V1}/signal-snapshots/${snapshotId}/allocation`, {
       mapping,
     })
-  },
-}
-
-export const TestRunsAPI = {
-  list(workspaceId: number) {
-    return http.get<TestRun[]>(`${API_V1}/workspaces/${workspaceId}/test-runs`)
-  },
-
-  create(workspaceId: number, payload: TestRunCreatePayload) {
-    return http.post<TestRun>(`${API_V1}/workspaces/${workspaceId}/test-runs`, payload)
-  },
-
-  get(runId: number) {
-    return http.get<TestRun>(`${API_V1}/test-runs/${runId}`)
-  },
-
-  repeat(runId: number) {
-    return http.post<TestRun>(`${API_V1}/test-runs/${runId}/repeat`)
-  },
-
-  start(runId: number) {
-    return http.post<SequenceState[]>(`${API_V1}/test-runs/${runId}/start`)
-  },
-
-  stop(runId: number) {
-    return http.post<SequenceState[]>(`${API_V1}/test-runs/${runId}/stop`)
   },
 }

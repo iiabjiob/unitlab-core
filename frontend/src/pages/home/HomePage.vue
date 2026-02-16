@@ -111,10 +111,10 @@ const scenarioCards = [
   },
   {
     badge: "Scenario 04",
-    title: "Test Runs",
-    description: "Use when you are ready to execute a scripted FAT batch with automatic logging and safety prompts.",
-    cta: "Review Test Runs",
-    route: { name: "testRuns.home" },
+    title: "Sequencer",
+    description: "Use when you need to create, edit, and run execution instructions in ordered steps.",
+    cta: "Open Sequencer",
+    route: { name: "instructions.list" },
   },
 ]
 

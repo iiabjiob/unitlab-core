@@ -67,6 +67,23 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     }
   }
 
+  async function exportSequenceFile(id: number) {
+    const { data } = await SequencesAPI.export(workspaceStore.requireWorkspaceId(), id)
+    return data
+  }
+
+  async function importSequencesFile(file: File) {
+    const formData = new FormData()
+    formData.append("file", file)
+
+    const { data } = await SequencesAPI.import(workspaceStore.requireWorkspaceId(), formData)
+    if (Array.isArray(data)) {
+      data.forEach(upsertSequence)
+    }
+    await fetchSequences()
+    return Array.isArray(data) ? data : []
+  }
+
   function stepsCount(seqId: number): number {
     return stepStore.stepsBySequence(seqId).value.length
   }
@@ -423,6 +440,8 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     refreshState,
     startSequence,
     stopSequence,
+    exportSequenceFile,
+    importSequencesFile,
     handleSequenceEvent,
 
     getProgress,

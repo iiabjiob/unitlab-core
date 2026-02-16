@@ -5,6 +5,7 @@ import { useRoute, useRouter } from "vue-router"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useSequenceStepStore } from "@/stores/sequenceStepStore"
 import { useSelectionStore } from "@/stores/selectionStore"
+import { useToastStore } from "@/stores/toastStore"
 import { useViewport } from "@/composables/useViewport"
 
 import SequenceEditorHeader from "./components/SequenceEditorHeader.vue"
@@ -20,6 +21,7 @@ const router = useRouter()
 const store = useSequenceStore()
 const stepStore = useSequenceStepStore()
 const selectionStore = useSelectionStore()
+const toastStore = useToastStore()
 
 const sequenceId = computed(() => Number(route.params.id))
 
@@ -57,6 +59,27 @@ async function handleDuplicate() {
   await router.push({ name: "instructions.detail", params: { id: duplicated.id } })
 }
 
+async function handleExport() {
+  if (!sequence.value) return
+  try {
+    const payload = await store.exportSequenceFile(sequence.value.id)
+    const json = JSON.stringify(payload, null, 2)
+    const blob = new Blob([json], { type: "application/json;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    const safeName = sequence.value.name.replace(/[^a-zA-Z0-9_-]/g, "_")
+    link.download = `${safeName || "sequence"}_${sequence.value.id}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toastStore.success("Instruction exported")
+  } catch (error) {
+    toastStore.error(error instanceof Error ? error.message : "Failed to export instruction")
+  }
+}
+
 function requestDelete() {
   deleteModalOpen.value = true
 }
@@ -86,6 +109,7 @@ const { isDesktop } = useViewport()
     <SequenceEditorHeader
       v-if="sequence"
       :sequence="sequence"
+      @export="handleExport"
       @duplicate="handleDuplicate"
       @delete="requestDelete"
     />

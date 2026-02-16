@@ -73,6 +73,8 @@ export const SequencesAPI = {
   },
 
   import(workspaceId: number | string, formData: FormData) {
-    return http.post(`${basePath(workspaceId)}/import-file`, formData)
+    return http.post(`${basePath(workspaceId)}/import-file`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    })
   },
 }

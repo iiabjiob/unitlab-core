@@ -10,7 +10,6 @@ from app.api.v1.sequences.router import router as sequences_router
 from app.api.v1.workspaces.router import router as workspaces_router
 from app.api.v1.signals.router import router as signals_router
 from app.api.v1.signal_sheet.router import router as signal_sheet_router
-from app.api.v1.test_runs.router import router as test_runs_router
 
 from app.ws.router import router as ws_router
 
@@ -21,7 +20,6 @@ from app.infrastructure.redis.manager import RedisManager
 from app.ws.pubsub_listener import forward_ws_events_from_pubsub
 from app.services.sequence_event_forwarder import forward_sequence_events
 from app.services.system.worker_health_aggregator import run_worker_health_aggregator
-from app.services.system_sequence_seeder import seed_default_sequences
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -43,9 +41,6 @@ async def lifespan(app: FastAPI):
         await check_database_connection()
     else:
         logger.info("⏩ Skipping DB readiness probe in %s mode", settings.app_env)
-
-    logger.info("🌱 Ensuring default sequences exist")
-    await seed_default_sequences()
 
     # Start infrastructure services
     await RedisManager.start()
@@ -96,7 +91,6 @@ app.include_router(switchgears_router)
 app.include_router(sequences_router)
 app.include_router(signals_router)
 app.include_router(signal_sheet_router)
-app.include_router(test_runs_router)
 
 logger.info("✅ REST API routers registered")
 
