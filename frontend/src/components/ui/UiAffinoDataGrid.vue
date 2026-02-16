@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="gridRootRef"
     class="ui-affino-grid"
     :class="{ 'is-row-fixed': isRowHeightFixed }"
     :style="gridStyle"
@@ -96,7 +97,7 @@
           <div v-if="showFilterRow" class="ui-affino-grid__index-filter" :style="indexFilterStyle"></div>
 
           <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @wheel.passive="handleLinkedViewportWheel">
-            <div class="ui-affino-grid__index-canvas" :style="linkedViewportCanvasStyle">
+            <div class="ui-affino-grid__index-canvas">
               <template v-if="hasRenderableData">
                 <div
                   v-if="topSpacerPx > 0"
@@ -141,7 +142,7 @@
           <div v-if="showFilterRow" class="ui-affino-grid__select-filter" :style="indexFilterStyle"></div>
 
           <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @wheel.passive="handleLinkedViewportWheel">
-            <div class="ui-affino-grid__select-canvas" :style="linkedViewportCanvasStyle">
+            <div class="ui-affino-grid__select-canvas">
               <template v-if="hasRenderableData">
                 <div
                   v-if="topSpacerPx > 0"
@@ -229,7 +230,7 @@
           </div>
 
           <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel.passive="handleLinkedViewportWheel">
-            <div class="ui-affino-grid__pinned-canvas" :style="linkedViewportCanvasStyle">
+            <div class="ui-affino-grid__pinned-canvas">
               <template v-if="hasRenderableData">
                 <div
                   v-if="topSpacerPx > 0"
@@ -470,7 +471,7 @@
           </div>
 
           <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel.passive="handleLinkedViewportWheel">
-            <div class="ui-affino-grid__pinned-canvas" :style="linkedViewportCanvasStyle">
+            <div class="ui-affino-grid__pinned-canvas">
               <template v-if="hasRenderableData">
                 <div
                   v-if="topSpacerPx > 0"
@@ -643,6 +644,7 @@ const emit = defineEmits<{
   (e: "selection-change", payload: { rowKeys: string[] }): void
 }>()
 
+const gridRootRef = ref<HTMLElement | null>(null)
 const mainViewportRef = ref<HTMLElement | null>(null)
 const viewportRef = ref<HTMLElement | null>(null)
 const indexViewportRef = ref<HTMLElement | null>(null)
@@ -673,7 +675,6 @@ const viewportMetrics = reactive<ViewportMetricsSnapshot>({
 })
 const observedViewportWidth = ref<number | null>(null)
 const observedViewportHeight = ref<number | null>(null)
-const linkedViewportScrollTop = ref(0)
 const rowModelRevision = ref(0)
 const measuredHeaderHeight = ref<number | null>(null)
 const measuredFilterHeight = ref<number | null>(null)
@@ -1100,12 +1101,6 @@ const indexHeaderStyle = computed<Record<string, string>>(() => resolveMeasuredH
 const indexFilterStyle = computed<Record<string, string>>(() => resolveMeasuredHeightStyle(measuredFilterHeight.value))
 const pinnedHeaderRowStyle = computed<Record<string, string>>(() => resolveMeasuredHeightStyle(measuredHeaderHeight.value))
 const pinnedFilterRowStyle = computed<Record<string, string>>(() => resolveMeasuredHeightStyle(measuredFilterHeight.value))
-const linkedViewportCanvasStyle = computed<Record<string, string>>(() => ({
-  transform: linkedViewportScrollTop.value !== 0
-    ? `translate3d(0, ${-linkedViewportScrollTop.value}px, 0)`
-    : "translate3d(0, 0, 0)",
-  willChange: "transform",
-}))
 const rowHeightPx = computed(() => {
   if (rowHeightMode.value === "auto") {
     return Math.max(baseRowHeight.value, measuredAutoRowHeight.value ?? baseRowHeight.value)
@@ -1604,6 +1599,7 @@ const bottomSpacerPx = computed(() => {
 
 let syncFrame: number | null = null
 let autoRowHeightMeasureFrame: number | null = null
+let linkedScrollSyncFrame: number | null = null
 let onWindowResize: (() => void) | null = null
 let viewportResizeObserver: ResizeObserver | null = null
 let resizeClickGuardTimer: ReturnType<typeof setTimeout> | null = null
@@ -1615,6 +1611,7 @@ let hoverClearTimer: ReturnType<typeof setTimeout> | null = null
 let initialViewportRecoveryAttempts = 0
 let lastHandledScrollTop = Number.NaN
 let lastHandledScrollLeft = Number.NaN
+let lastLinkedSyncedScrollTop = Number.NaN
 const resizeInteractionActive = ref(false)
 const suppressHeaderSortUntil = ref(0)
 const RESIZE_SORT_GUARD_MS = 140
@@ -1774,7 +1771,41 @@ function updateMeasuredHeaderHeights() {
 }
 
 function syncLinkedScroll(scrollTop: number) {
-  linkedViewportScrollTop.value = Math.max(0, Math.trunc(scrollTop))
+  const nextTop = Math.max(0, Number.isFinite(scrollTop) ? scrollTop : 0)
+  lastLinkedSyncedScrollTop = nextTop
+  const root = gridRootRef.value
+  if (!root) {
+    return
+  }
+  root.style.setProperty("--ui-affino-linked-scroll-top", `${-nextTop}px`)
+}
+
+function cancelLinkedScrollSyncLoop() {
+  if (linkedScrollSyncFrame === null) {
+    return
+  }
+  cancelAnimationFrame(linkedScrollSyncFrame)
+  linkedScrollSyncFrame = null
+}
+
+function runLinkedScrollSyncLoop() {
+  linkedScrollSyncFrame = null
+  const bodyViewport = viewportRef.value
+  if (!bodyViewport) {
+    return
+  }
+  const currentTop = bodyViewport.scrollTop
+  if (currentTop !== lastLinkedSyncedScrollTop) {
+    syncLinkedScroll(currentTop)
+    linkedScrollSyncFrame = requestAnimationFrame(runLinkedScrollSyncLoop)
+  }
+}
+
+function scheduleLinkedScrollSyncLoop() {
+  if (linkedScrollSyncFrame !== null) {
+    return
+  }
+  linkedScrollSyncFrame = requestAnimationFrame(runLinkedScrollSyncLoop)
 }
 
 function normalizeWheelDelta(delta: number, deltaMode: number, pageSize: number): number {
@@ -1797,6 +1828,7 @@ function handleLinkedViewportWheel(event: WheelEvent) {
     if (nextTop !== bodyViewport.scrollTop) {
       bodyViewport.scrollTop = nextTop
       syncLinkedScroll(nextTop)
+      scheduleLinkedScrollSyncLoop()
       consumed = true
     }
   }
@@ -1855,6 +1887,7 @@ function syncViewportMetrics() {
   const mainViewport = mainViewportRef.value
   if (!bodyViewport || !mainViewport) return
   syncLinkedScroll(bodyViewport.scrollTop)
+  scheduleLinkedScrollSyncLoop()
   const liveBodyHeight = Math.max(0, bodyViewport.clientHeight)
   const liveMainHeight = Math.max(0, mainViewport.clientHeight)
   const liveShellHeight = Math.max(0, mainViewport.parentElement?.clientHeight ?? 0)
@@ -1941,6 +1974,7 @@ function scheduleInitialViewportRecovery(reset = false) {
 }
 
 onMounted(() => {
+  gridRootRef.value?.style.setProperty("--ui-affino-linked-scroll-top", "0px")
   const bodyViewport = viewportRef.value
   const mainViewport = mainViewportRef.value
   if (bodyViewport || mainViewport) {
@@ -1949,6 +1983,7 @@ onMounted(() => {
     lastHandledScrollTop = bodyViewport?.scrollTop ?? 0
     lastHandledScrollLeft = mainViewport?.scrollLeft ?? 0
     syncLinkedScroll(lastHandledScrollTop)
+    scheduleLinkedScrollSyncLoop()
   }
   if (typeof window !== "undefined") {
     onWindowResize = () => {
@@ -2027,6 +2062,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  gridRootRef.value?.style.removeProperty("--ui-affino-linked-scroll-top")
   columnPanelPopover.dispose()
   persistTableSettingsNow()
   unsubscribeRowModel()
@@ -2044,6 +2080,7 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(syncFrame)
     syncFrame = null
   }
+  cancelLinkedScrollSyncLoop()
   if (autoRowHeightMeasureFrame !== null) {
     cancelAnimationFrame(autoRowHeightMeasureFrame)
     autoRowHeightMeasureFrame = null
@@ -2342,6 +2379,7 @@ function handleBodyScroll(event: Event) {
   }
   lastHandledScrollTop = nextTop
   syncLinkedScroll(nextTop)
+  scheduleLinkedScrollSyncLoop()
   if (rowHeightMode.value === "auto") {
     scheduleAutoRowHeightMeasure()
   }
@@ -3138,6 +3176,8 @@ function columnStyle(width: number) {
 .ui-affino-grid__pinned-canvas {
   width: 100%;
   min-width: 100%;
+  transform: translate3d(0, var(--ui-affino-linked-scroll-top, 0px), 0);
+  will-change: transform;
 }
 
 .ui-affino-grid__index-viewport {
@@ -3206,6 +3246,8 @@ function columnStyle(width: number) {
 .ui-affino-grid__select-canvas {
   width: 100%;
   min-width: 100%;
+  transform: translate3d(0, var(--ui-affino-linked-scroll-top, 0px), 0);
+  will-change: transform;
 }
 
 .ui-affino-grid__select-row {
@@ -3264,6 +3306,8 @@ function columnStyle(width: number) {
 .ui-affino-grid__index-canvas {
   width: 100%;
   min-width: 100%;
+  transform: translate3d(0, var(--ui-affino-linked-scroll-top, 0px), 0);
+  will-change: transform;
 }
 
 .ui-affino-grid__index-row {
