@@ -52,6 +52,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   const states = ref<Record<number, SequenceState>>({})
   const loading = ref(false)
   const loadedOnce = ref(false)
+  let tempSequenceId = -1
   const stepStore = useSequenceStepStore()
   const logStore = useSequenceLogStore()
   const workspaceStore = useWorkspaceStore()
@@ -134,6 +135,27 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     ensureState(seq.id)
   }
 
+  function createOptimisticSequence(payload: { name: string; description?: string }): SequenceDef {
+    const id = tempSequenceId--
+    const now = new Date().toISOString()
+    const optimistic: SequenceDef = {
+      id,
+      workspace_ids: workspaceStore.activeWorkspaceId ? [workspaceStore.activeWorkspaceId] : [],
+      name: payload.name,
+      description: payload.description ?? "",
+      system_key: null,
+      system_provided: false,
+      read_only: false,
+      created_at: now,
+      updated_at: now,
+      steps: [],
+    }
+
+    upsertSequence(optimistic)
+    resetState(id)
+    return optimistic
+  }
+
   async function fetchSequences() {
     if (!workspaceStore.activeWorkspaceId) return
     const workspaceId = workspaceStore.requireWorkspaceId()
@@ -184,10 +206,20 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   async function createSequence(payload: { name: string; description?: string }) {
-    const { data } = await SequencesAPI.create(workspaceStore.requireWorkspaceId(), { ...payload, steps: [] })
-    upsertSequence(data)
-    await refreshState(data.id)
-    return data
+    const optimistic = createOptimisticSequence(payload)
+
+    try {
+      const { data } = await SequencesAPI.create(workspaceStore.requireWorkspaceId(), { ...payload, steps: [] })
+      sequences.value = sequences.value.filter((sequence) => sequence.id !== optimistic.id)
+      delete states.value[optimistic.id]
+      upsertSequence(data)
+      await refreshState(data.id)
+      return data
+    } catch (error) {
+      sequences.value = sequences.value.filter((sequence) => sequence.id !== optimistic.id)
+      delete states.value[optimistic.id]
+      throw error
+    }
   }
 
   async function updateSequence(id: number, payload: Partial<SequenceDef>) {
@@ -197,10 +229,28 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   async function deleteSequence(id: number) {
-    await SequencesAPI.delete(workspaceStore.requireWorkspaceId(), id)
-    sequences.value = sequences.value.filter(s => s.id !== id)
+    const existing = sequences.value.find((sequence) => sequence.id === id)
+    const existingState = states.value[id]
+    const existingSteps = [...stepStore.stepsBySequence(id).value]
+
+    sequences.value = sequences.value.filter((sequence) => sequence.id !== id)
     delete states.value[id]
     stepStore.dropSequence(id)
+
+    try {
+      await SequencesAPI.delete(workspaceStore.requireWorkspaceId(), id)
+    } catch (error) {
+      if (existing) {
+        upsertSequence(existing)
+      }
+      if (existingState) {
+        states.value[id] = existingState
+      }
+      if (existingSteps.length) {
+        stepStore.hydrateSequence(id, existingSteps)
+      }
+      throw error
+    }
   }
 
   async function duplicateSequence(id: number) {

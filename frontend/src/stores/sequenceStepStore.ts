@@ -14,6 +14,7 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
   const steps = ref<SequenceStep[]>([])
   const loadedSequence = ref<Set<number>>(new Set())
   const activeStepId = ref<number | null>(null)
+  let tempStepId = -1
   const channelStore = useChannelStore()
   const workspaceStore = useWorkspaceStore()
 
@@ -107,6 +108,14 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
     return JSON.parse(JSON.stringify(payload)) as T
   }
 
+  function buildStepCreateFromStep(step: SequenceStep): SequenceStepCreate {
+    return {
+      sequence_step_type: step.sequence_step_type,
+      channel_id: step.channel_id ?? null,
+      payload: cloneStepPayload(step.payload ?? null),
+    }
+  }
+
   async function fetchSteps(seqId: number) {
     const { data } = await SequencesAPI.getSteps(workspaceStore.requireWorkspaceId(), seqId)
     setStepsForSequence(seqId, data)
@@ -114,14 +123,45 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
   }
 
   async function addStep(seqId: number, step: SequenceStepCreate) {
+    const now = new Date().toISOString()
+    const maxOrderIndex = stepsBySequence(seqId).value.reduce(
+      (max, item) => Math.max(max, item.order_index),
+      -1,
+    )
+
+    const optimisticStep: SequenceStep = {
+      id: tempStepId--,
+      sequence_id: seqId,
+      order_index: maxOrderIndex + 1,
+      sequence_step_type: step.sequence_step_type,
+      channel_id: step.channel_id ?? null,
+      payload: cloneStepPayload(step.payload ?? null),
+      created_at: now,
+      updated_at: now,
+    }
+
+    steps.value.push(optimisticStep)
+    steps.value.sort((a, b) => a.order_index - b.order_index)
+
     const payload = {
       ...step,
       sequence_step_type: step.sequence_step_type,
     }
-    const { data } = await SequencesAPI.addStep(workspaceStore.requireWorkspaceId(), seqId, payload)
-    steps.value.push(data)
-    steps.value.sort((a, b) => a.order_index - b.order_index)
-    return data
+
+    try {
+      const { data } = await SequencesAPI.addStep(workspaceStore.requireWorkspaceId(), seqId, payload)
+      const idx = steps.value.findIndex((item) => item.id === optimisticStep.id)
+      if (idx !== -1) {
+        steps.value[idx] = data
+      } else {
+        steps.value.push(data)
+      }
+      steps.value.sort((a, b) => a.order_index - b.order_index)
+      return data
+    } catch (error) {
+      steps.value = steps.value.filter((item) => item.id !== optimisticStep.id)
+      throw error
+    }
   }
 
   async function updateStep(seqId: number, stepId: number, changes: Partial<SequenceStep>) {
@@ -135,9 +175,19 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
   }
 
   async function deleteStep(seqId: number, stepId: number) {
-    await SequencesAPI.deleteStep(workspaceStore.requireWorkspaceId(), seqId, stepId)
-    steps.value = steps.value.filter((s) => s.id !== stepId)
-    return true
+    const removed = steps.value.find((step) => step.id === stepId && step.sequence_id === seqId)
+    steps.value = steps.value.filter((step) => step.id !== stepId)
+
+    try {
+      await SequencesAPI.deleteStep(workspaceStore.requireWorkspaceId(), seqId, stepId)
+      return true
+    } catch (error) {
+      if (removed) {
+        steps.value.push(removed)
+        steps.value.sort((a, b) => a.order_index - b.order_index)
+      }
+      throw error
+    }
   }
 
   async function reorderSteps(seqId: number, newOrder: number[]) {
@@ -152,24 +202,77 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
     return data
   }
 
-  async function duplicateStep(seqId: number, stepId: number) {
+  async function insertSteps(seqId: number, stepDrafts: SequenceStepCreate[], insertAfterStepId: number | null = null) {
+    if (!stepDrafts.length) {
+      return [] as SequenceStep[]
+    }
+
     const ordered = [...stepsBySequence(seqId).value].sort((a, b) => a.order_index - b.order_index)
-    const source = ordered.find((step) => step.id === stepId)
+    const baseOrder = ordered.map((step) => step.id)
+
+    let insertIndex = baseOrder.length
+    if (insertAfterStepId !== null) {
+      const currentIndex = baseOrder.indexOf(insertAfterStepId)
+      if (currentIndex >= 0) {
+        insertIndex = currentIndex + 1
+      }
+    }
+
+    const createdIds: number[] = []
+    for (const draft of stepDrafts) {
+      const created = await addStep(seqId, {
+        sequence_step_type: draft.sequence_step_type,
+        channel_id: draft.channel_id ?? null,
+        payload: cloneStepPayload(draft.payload ?? null),
+      })
+      createdIds.push(created.id)
+    }
+
+    const newOrder = [...baseOrder]
+    newOrder.splice(insertIndex, 0, ...createdIds)
+    await reorderSteps(seqId, newOrder)
+
+    const byId = new Map(stepsBySequence(seqId).value.map((step) => [step.id, step] as const))
+    return createdIds
+      .map((id) => byId.get(id) ?? null)
+      .filter((step): step is SequenceStep => step !== null)
+  }
+
+  async function duplicateStep(seqId: number, stepId: number) {
+    const source = stepsBySequence(seqId).value.find((step) => step.id === stepId)
     if (!source) {
       throw new Error(`Step ${stepId} not found`)
     }
 
-    const created = await addStep(seqId, {
-      sequence_step_type: source.sequence_step_type,
-      channel_id: source.channel_id ?? null,
-      payload: cloneStepPayload(source.payload ?? null),
-    })
-
-    const newOrder = ordered.map((step) => step.id)
-    const sourceIndex = newOrder.indexOf(stepId)
-    newOrder.splice(sourceIndex + 1, 0, created.id)
-    await reorderSteps(seqId, newOrder)
+    const inserted = await insertSteps(seqId, [buildStepCreateFromStep(source)], stepId)
+    const created = inserted[0]
+    if (!created) {
+      throw new Error("Failed to duplicate step")
+    }
     return created
+  }
+
+  async function duplicateSteps(seqId: number, stepIds: number[], insertAfterStepId: number | null = null) {
+    const uniqueStepIds = Array.from(new Set(stepIds))
+    if (!uniqueStepIds.length) {
+      return [] as SequenceStep[]
+    }
+
+    const ordered = [...stepsBySequence(seqId).value].sort((a, b) => a.order_index - b.order_index)
+
+    const orderedSources = ordered
+      .filter((step) => uniqueStepIds.includes(step.id))
+      .map((step) => buildStepCreateFromStep(step))
+
+    if (!orderedSources.length) {
+      return [] as SequenceStep[]
+    }
+
+    const fallbackInsertAfterStepId = insertAfterStepId
+      ?? ordered.find((step) => uniqueStepIds.includes(step.id))?.id
+      ?? null
+
+    return insertSteps(seqId, orderedSources, fallbackInsertAfterStepId)
   }
 
   function resetAll() {
@@ -198,8 +301,11 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
     updateStep,
     deleteStep,
     duplicateStep,
+    duplicateSteps,
     reorderSteps,
     replaceSteps,
+    insertSteps,
+    buildStepCreateFromStep,
     hydrateSequence: setStepsForSequence,
     dropSequence: removeSequenceSteps,
     resetAll,

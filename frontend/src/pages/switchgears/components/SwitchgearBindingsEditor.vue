@@ -4,6 +4,7 @@ import type { Switchgear } from "@/types/switchgear"
 import { CHANNEL_TYPES, type ChannelType } from "@/types/channel"
 import SignalBackedChannelField from "@/components/signals/SignalBackedChannelField.vue"
 import UiButton from "@/components/ui/UiButton.vue"
+import InlineInfoTooltip from "@/components/ui/InlineInfoTooltip.vue"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
@@ -134,6 +135,10 @@ function roleLabel(role: BindingRoleKey) {
   return ROLE_META[role].label
 }
 
+function feedbackDelayHelpText() {
+  return "Delay before feedback DI is evaluated after command execution. Use it for slow mechanics and negative feedback tests; 0 ms means immediate check."
+}
+
 function signalPickerTitle(role: BindingRoleKey) {
   return `${roleLabel(role)} · Select signal`
 }
@@ -262,7 +267,9 @@ watch(
         class="border border-neutral-200 dark:border-neutral-700 rounded-md p-3 flex flex-col gap-2"
       >
         <div class="flex items-center justify-between">
-          <div class="text-sm font-medium">{{ roleLabel(role) }}</div>
+          <div class="text-sm font-medium">
+            <span>{{ roleLabel(role) }}</span>
+          </div>
           <!-- <div class="text-[11px] tracking-wide text-neutral-500">
             <span class="uppercase">{{ role }}</span>
           </div> -->
@@ -292,6 +299,10 @@ watch(
           >
             Feedback delay
           </label>
+          <InlineInfoTooltip
+            :text="feedbackDelayHelpText()"
+            aria-label="Feedback delay help"
+          />
           <input
             type="number"
             min="0"

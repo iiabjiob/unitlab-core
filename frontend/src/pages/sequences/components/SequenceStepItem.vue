@@ -3,11 +3,13 @@
     <div
       class="group flex items-center justify-between px-2 py-1.5 text-sm select-none transition-colors"
       :class="[
-        active
-          ? 'bg-neutral-50 text-blue-900 dark:bg-neutral-900/30 dark:text-blue-100'
-          : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
+        selected
+          ? 'bg-blue-50 text-blue-900 dark:bg-blue-500/15 dark:text-blue-100'
+          : active
+            ? 'bg-neutral-50 text-blue-900 dark:bg-neutral-900/30 dark:text-blue-100'
+            : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
       ]"
-      @click="emit('select', step.id)"
+      @click="emitSelect"
       @contextmenu="openContextMenu"
     >
       <!-- LEFT -->
@@ -39,23 +41,19 @@
         </div>
       </div>
 
-      <!-- RIGHT ACTIONS (appear only on hover) -->
-      <div
-        class="flex items-center gap-2 transition-opacity"
-        :class="active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
-      >
-        <UiButton
-          size="xs"
-          variant="ghost"
-          @click.stop="emit('delete', step.id)"
-        >
-          <TrashIcon class="opacity-50 hover:opacity-100" size="12" />
-        </UiButton>
-      </div>
     </div>
     <UiMenuContent>
+      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="emit('copy', step.id)">
+        Copy
+      </UiMenuItem>
+      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="emit('pasteAfter', step.id)">
+        Paste below
+      </UiMenuItem>
       <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="emit('duplicate', step.id)">
         Duplicate
+      </UiMenuItem>
+      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="emit('selectAll')">
+        Select all
       </UiMenuItem>
       <UiMenuItem danger @select="emit('delete', step.id)">
         Delete
@@ -69,19 +67,21 @@ import { computed, ref } from "vue"
 import type { SequenceStep } from "@/types/sequences"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useSequenceStepStore } from "@/stores/sequenceStepStore"
-import TrashIcon from "@/components/icons/TrashIcon.vue";
-import UiButton from "@/components/ui/UiButton.vue";
 import { UiMenu, UiMenuContent, UiMenuItem, type MenuController } from "@affino/menu-vue"
 
 const props = defineProps<{
   step: SequenceStep
   active?: boolean
+  selected?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: "delete", stepId: number): void
   (e: "duplicate", stepId: number): void
-  (e: "select", stepId: number): void
+  (e: "copy", stepId: number): void
+  (e: "pasteAfter", stepId: number): void
+  (e: "selectAll"): void
+  (e: "select", payload: { stepId: number; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean }): void
 }>()
 
 const seqStore = useSequenceStore()
@@ -91,6 +91,15 @@ const menuRef = ref<{ controller?: MenuController } | null>(null)
 const description = computed(() =>
   stepStore.getStepDescription(props.step)
 )
+
+function emitSelect(event: MouseEvent) {
+  emit("select", {
+    stepId: props.step.id,
+    shiftKey: event.shiftKey,
+    ctrlKey: event.ctrlKey,
+    metaKey: event.metaKey,
+  })
+}
 
 function openContextMenu(event: MouseEvent) {
   event.preventDefault()

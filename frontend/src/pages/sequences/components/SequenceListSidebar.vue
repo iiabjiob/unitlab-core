@@ -7,11 +7,13 @@ import UiButton from "@/components/ui/UiButton.vue"
 import UiSidebarListbox from "@/components/ui/UiSidebarListbox.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSequenceImport } from "@/composables/useSequenceImport"
+import { useToastStore } from "@/stores/toastStore"
 
 const store = useSequenceStore()
 const router = useRouter()
 const route = useRoute()
 const workspaceStore = useWorkspaceStore()
+const toastStore = useToastStore()
 const { importing, fileInput, openFileDialog, onFileSelected } = useSequenceImport()
 
 function isActive(id: number) {
@@ -22,11 +24,14 @@ function openSequence(id: number) {
   router.push(`/sequences/${id}`)
 }
 
-function addSequence() {
+async function addSequence() {
   if (!workspaceStore.activeWorkspaceId) return
-  store.createSequenceAuto().then(seq => {
-    router.push(`/sequences/${seq.id}`)
-  })
+  try {
+    const seq = await store.createSequenceAuto()
+    await router.push(`/sequences/${seq.id}`)
+  } catch (error) {
+    toastStore.error(error instanceof Error ? error.message : "Failed to create instruction")
+  }
 }
 
 // SEARCH

@@ -9,19 +9,30 @@
       <div
         v-for="toast in toastStore.getByPosition(position)"
         :key="toast.id"
-        class="pointer-events-auto rounded border border-slate-200 bg-white/95 p-3 text-slate-900 shadow-lg shadow-slate-900/10 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/95 dark:text-slate-100 dark:shadow-black/40"
+        class="pointer-events-auto rounded-md border bg-slate-50/95 p-3 text-slate-900 shadow-md shadow-slate-900/10 backdrop-blur-sm dark:bg-slate-900/95 dark:text-slate-100 dark:shadow-black/40"
+        :class="variantFrameClass(toast.variant)"
+        role="status"
+        aria-live="polite"
       >
         <div class="flex items-start justify-between gap-3">
-          <p class="text-sm font-medium leading-5" :class="variantTextClass(toast.variant)">
-            {{ toast.message }}
-          </p>
+          <div class="min-w-0 flex items-start gap-2.5">
+            <span
+              class="mt-0.5 inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
+              :class="variantBadgeClass(toast.variant)"
+            >
+              {{ variantLabel(toast.variant) }}
+            </span>
+            <p class="text-sm leading-5 text-slate-800 dark:text-slate-100">
+              {{ toast.message }}
+            </p>
+          </div>
           <button
             type="button"
-            class="text-xs font-semibold uppercase tracking-wide text-slate-500 transition hover:text-slate-700 dark:text-slate-300 dark:hover:text-white"
+            class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 transition hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
             aria-label="Dismiss notification"
             @click="remove(toast.id)"
           >
-            close
+            dismiss
           </button>
         </div>
       </div>
@@ -47,14 +58,36 @@ function remove(id: number) {
   toastStore.remove(id)
 }
 
-function variantTextClass(variant: ToastVariant) {
+function variantLabel(variant: ToastVariant) {
   switch (variant) {
     case "success":
-      return "text-emerald-600 dark:text-emerald-300"
+      return "ok"
     case "error":
-      return "text-rose-600 dark:text-rose-300"
+      return "error"
     default:
-      return "text-slate-900 dark:text-slate-100"
+      return "info"
+  }
+}
+
+function variantFrameClass(variant: ToastVariant) {
+  switch (variant) {
+    case "success":
+      return "border-slate-300/80 border-l-4 border-l-emerald-600/60 dark:border-slate-700 dark:border-l-emerald-400/50"
+    case "error":
+      return "border-slate-300/80 border-l-4 border-l-rose-600/60 dark:border-slate-700 dark:border-l-rose-400/50"
+    default:
+      return "border-slate-300/80 border-l-4 border-l-slate-500/70 dark:border-slate-700 dark:border-l-slate-400/60"
+  }
+}
+
+function variantBadgeClass(variant: ToastVariant) {
+  switch (variant) {
+    case "success":
+      return "border-emerald-700/30 bg-emerald-600/10 text-emerald-700 dark:border-emerald-300/30 dark:bg-emerald-300/10 dark:text-emerald-200"
+    case "error":
+      return "border-rose-700/30 bg-rose-600/10 text-rose-700 dark:border-rose-300/30 dark:bg-rose-300/10 dark:text-rose-200"
+    default:
+      return "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:border-slate-300/30 dark:bg-slate-300/10 dark:text-slate-200"
   }
 }
 

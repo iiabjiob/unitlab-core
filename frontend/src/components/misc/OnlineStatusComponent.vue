@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, onBeforeUnmount, watch } from "vue"
-import { useFloatingTooltip, useTooltipController } from "@affino/tooltip-vue"
-import { useRoute } from "vue-router"
+import { computed } from "vue"
+import InlineInfoTooltip from "@/components/ui/InlineInfoTooltip.vue"
 
 const props = defineProps<{
   status: "online" | "offline" | "degraded" | string
@@ -43,99 +42,21 @@ const label = computed(() => {
 })
 
 const tooltip = computed(() => props.description || null)
-const route = useRoute()
-const instanceUid = getCurrentInstance()?.uid ?? Math.floor(Math.random() * 1_000_000)
-const tooltipController = useTooltipController({
-  id: `system-status-tooltip-${instanceUid}`,
-  openDelay: 120,
-})
-const { triggerRef, tooltipRef, tooltipStyle, teleportTarget } = useFloatingTooltip(tooltipController, {
-  placement: "bottom",
-  align: "start",
-  gutter: 8,
-})
-const triggerProps = computed(() =>
-  tooltip.value
-    ? tooltipController.getTriggerProps()
-    : {
-        "aria-label": `System status: ${label.value}`,
-      },
-)
-
-function isInside(node: EventTarget | null): boolean {
-  if (!(node instanceof Node)) return false
-  return Boolean(triggerRef.value?.contains(node) || tooltipRef.value?.contains(node))
-}
-
-function handleDocumentPointerDown(event: PointerEvent) {
-  if (!tooltipController.state.value.open) return
-  if (isInside(event.target)) return
-  tooltipController.close("pointer")
-}
-
-function handleDocumentKeydown(event: KeyboardEvent) {
-  if (!tooltipController.state.value.open) return
-  if (event.key !== "Escape") return
-  tooltipController.close("keyboard")
-}
-
-function handleVisibilityChange() {
-  if (typeof document === "undefined") return
-  if (!tooltipController.state.value.open) return
-  if (!document.hidden) return
-  tooltipController.close()
-}
-
-watch(
-  () => tooltipController.state.value.open,
-  (open) => {
-    if (typeof document === "undefined") return
-    if (open) {
-      document.addEventListener("pointerdown", handleDocumentPointerDown, true)
-      document.addEventListener("keydown", handleDocumentKeydown, true)
-      document.addEventListener("visibilitychange", handleVisibilityChange, true)
-      return
-    }
-    document.removeEventListener("pointerdown", handleDocumentPointerDown, true)
-    document.removeEventListener("keydown", handleDocumentKeydown, true)
-    document.removeEventListener("visibilitychange", handleVisibilityChange, true)
-  },
-)
-
-watch(
-  () => route.fullPath,
-  () => {
-    if (!tooltipController.state.value.open) return
-    tooltipController.close()
-  },
-)
-
-onBeforeUnmount(() => {
-  if (typeof document === "undefined") return
-  document.removeEventListener("pointerdown", handleDocumentPointerDown, true)
-  document.removeEventListener("keydown", handleDocumentKeydown, true)
-  document.removeEventListener("visibilitychange", handleVisibilityChange, true)
-})
 </script>
 
 <template>
-  <span ref="triggerRef" class="inline-flex items-center gap-2" v-bind="triggerProps">
+  <span class="inline-flex items-center gap-2" :aria-label="`System status: ${label}`">
     <span class="h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm" :class="indicatorClass" />
     <span class="text-sm font-medium" :class="labelClass">
       {{ label }}
     </span>
-    <span v-if="tooltip" class="text-xs text-neutral-400 hidden sm:inline">ⓘ</span>
+    <InlineInfoTooltip
+      v-if="tooltip"
+      class="hidden sm:inline-flex"
+      :text="tooltip"
+      aria-label="System status details"
+      placement="bottom"
+      align="start"
+    />
   </span>
-
-  <Teleport :to="teleportTarget || 'body'">
-    <div
-      v-if="tooltip && tooltipController.state.value.open"
-      ref="tooltipRef"
-      class="pointer-events-none z-50 w-max max-w-xs rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-xs text-neutral-700 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
-      v-bind="tooltipController.getTooltipProps()"
-      :style="tooltipStyle"
-    >
-      <span class="whitespace-pre-line">{{ tooltip }}</span>
-    </div>
-  </Teleport>
 </template>

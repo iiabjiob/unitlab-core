@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue"
 import { useSequenceStore } from "@/stores/sequenceStore"
+import { useToastStore } from "@/stores/toastStore"
 import type { SequenceDef } from "@/types/sequences"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiBadge from "@/components/ui/UiBadge.vue"
 import RenameModal from "@/components/ui/RenameModal.vue"
+import UiModal from "@/components/ui/UiModal.vue"
 import {
   UiMenu,
   UiMenuTrigger,
@@ -24,15 +26,28 @@ const emit = defineEmits<{
 }>()
 
 const store = useSequenceStore()
+const toastStore = useToastStore()
 const renameOpen = ref(false)
 const renameValue = ref(props.sequence.name)
 const renaming = ref(false)
+const descriptionOpen = ref(false)
+const descriptionValue = ref(props.sequence.description ?? "")
+const savingDescription = ref(false)
 
 watch(
   () => props.sequence.name,
   (value) => {
     if (!renameOpen.value) {
       renameValue.value = value
+    }
+  },
+)
+
+watch(
+  () => props.sequence.description,
+  (value) => {
+    if (!descriptionOpen.value) {
+      descriptionValue.value = value ?? ""
     }
   },
 )
@@ -45,6 +60,16 @@ function promptRename() {
 function closeRename() {
   renameOpen.value = false
   renameValue.value = props.sequence.name
+}
+
+function openDescriptionEditor() {
+  descriptionValue.value = props.sequence.description ?? ""
+  descriptionOpen.value = true
+}
+
+function closeDescriptionEditor() {
+  descriptionOpen.value = false
+  descriptionValue.value = props.sequence.description ?? ""
 }
 
 async function confirmRename() {
@@ -61,6 +86,28 @@ async function confirmRename() {
     renameOpen.value = false
   } finally {
     renaming.value = false
+  }
+}
+
+async function confirmDescription() {
+  const nextDescription = descriptionValue.value.trim()
+  const currentDescription = (props.sequence.description ?? "").trim()
+
+  if (nextDescription === currentDescription) {
+    descriptionOpen.value = false
+    return
+  }
+
+  descriptionOpen.value = false
+  savingDescription.value = true
+  try {
+    await store.updateSequence(props.sequence.id, { description: nextDescription })
+  } catch (error) {
+    descriptionOpen.value = true
+    descriptionValue.value = nextDescription
+    toastStore.error(error instanceof Error ? error.message : "Failed to save description")
+  } finally {
+    savingDescription.value = false
   }
 }
 
@@ -124,6 +171,9 @@ const createdAt = computed(() => {
         <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="promptRename">
           Rename
         </UiMenuItem>
+        <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openDescriptionEditor">
+          Edit description
+        </UiMenuItem>
         <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="emit('duplicate')">
           Duplicate
         </UiMenuItem>
@@ -143,4 +193,38 @@ const createdAt = computed(() => {
     @cancel="closeRename"
     @confirm="confirmRename"
   />
+
+  <UiModal :open="descriptionOpen" title="Edit instruction description" @close="closeDescriptionEditor">
+    <label class="block text-xs uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400" for="sequence-header-description">
+      Description
+    </label>
+    <textarea
+      id="sequence-header-description"
+      v-model="descriptionValue"
+      data-dialog-initial
+      rows="6"
+      class="mt-2 w-full rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+      :disabled="savingDescription"
+      placeholder="Add instruction description"
+    />
+
+    <template #footer>
+      <button
+        type="button"
+        class="btn btn-secondary btn-base"
+        :disabled="savingDescription"
+        @click="closeDescriptionEditor"
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        class="btn btn-primary btn-base"
+        :disabled="savingDescription"
+        @click="confirmDescription"
+      >
+        {{ savingDescription ? "Saving…" : "Save" }}
+      </button>
+    </template>
+  </UiModal>
 </template>
