@@ -83,6 +83,13 @@
             <span v-else class="channel-tree-picker__dot" aria-hidden="true">•</span>
             <span class="channel-tree-picker__label">{{ nodeLabel(node.value) }}</span>
             <span
+              v-if="isNodeSelected(node.value) && isChannelNode(node.value)"
+              class="channel-tree-picker__selected-mark"
+              aria-hidden="true"
+            >
+              ✓
+            </span>
+            <span
               v-if="isUnitNode(node.value)"
               class="channel-tree-picker__status"
               :class="unitStatusClass(node.value)"
@@ -291,26 +298,42 @@ watch(
     filteredChannels.value.forEach((entry) => {
       tree.collapse(toUnitNodeValue(entry.unitId))
     })
-    tree.clearSelection()
+    const hasSelectedNode = syncTreeSelectionFromModelValue()
 
     await nextTick()
-    const first = visibleNodes.value[0]
-    if (first) {
-      tree.focus(first.value)
-      focusNodeElement(first.value)
+    if (hasSelectedNode) {
+      focusNodeElement(tree.state.value.active ?? selectedChannelNodeValueFromModel() ?? "")
     } else {
-      focusTreeRoot()
-    }
-
-    requestAnimationFrame(() => {
-      const firstNode = visibleNodes.value[0]
-      if (firstNode) {
-        focusNodeElement(firstNode.value)
+      const first = visibleNodes.value[0]
+      if (first) {
+        tree.focus(first.value)
+        focusNodeElement(first.value)
       } else {
         focusTreeRoot()
       }
+    }
+
+    requestAnimationFrame(() => {
+      if (hasSelectedNode) {
+        focusNodeElement(tree.state.value.active ?? selectedChannelNodeValueFromModel() ?? "")
+      } else {
+        const firstNode = visibleNodes.value[0]
+        if (firstNode) {
+          focusNodeElement(firstNode.value)
+        } else {
+          focusTreeRoot()
+        }
+      }
     })
     await floating.updatePosition()
+  },
+)
+
+watch(
+  () => props.modelValue,
+  () => {
+    if (!popover.state.value.open) return
+    syncTreeSelectionFromModelValue()
   },
 )
 
@@ -403,6 +426,29 @@ function nodeLevel(value: NodeValue): number {
     cursor = parentByValue.value.get(cursor) ?? null
   }
   return level
+}
+
+function selectedChannelNodeValueFromModel(): NodeValue | null {
+  if (!Number.isFinite(props.modelValue as number)) return null
+  const channelId = Number(props.modelValue)
+  const existsInTree = filteredChannels.value.some(entry => entry.id === channelId)
+  if (!existsInTree) return null
+  return toChannelNodeValue(channelId)
+}
+
+function syncTreeSelectionFromModelValue(): boolean {
+  tree.clearSelection()
+  const selectedNodeValue = selectedChannelNodeValueFromModel()
+  if (!selectedNodeValue) {
+    return false
+  }
+  const parentNode = parentByValue.value.get(selectedNodeValue)
+  if (parentNode) {
+    tree.expand(parentNode)
+  }
+  tree.select(selectedNodeValue)
+  tree.focus(selectedNodeValue)
+  return true
 }
 
 function isExpanded(value: NodeValue): boolean {
@@ -792,11 +838,16 @@ async function ensureCatalogLoadedForPicker() {
 
 .channel-tree-picker__node.is-selected {
   background: rgb(238 242 255);
+  box-shadow: inset 0 0 0 1px rgb(165 180 252);
 }
 
 .channel-tree-picker__node.is-selected.is-active {
   background: rgb(224 231 255);
   box-shadow: inset 0 0 0 1px rgb(129 140 248);
+}
+
+.channel-tree-picker__node.is-selected .channel-tree-picker__label {
+  font-weight: 700;
 }
 
 .dark .channel-tree-picker__node {
@@ -814,11 +865,24 @@ async function ensureCatalogLoadedForPicker() {
 
 .dark .channel-tree-picker__node.is-selected {
   background: rgb(37 44 65);
+  box-shadow: inset 0 0 0 1px rgb(129 140 248 / 65%);
 }
 
 .dark .channel-tree-picker__node.is-selected.is-active {
   background: rgb(41 50 79);
   box-shadow: inset 0 0 0 1px rgb(129 140 248 / 70%);
+}
+
+.channel-tree-picker__selected-mark {
+  margin-left: 8px;
+  margin-right: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgb(79 70 229);
+}
+
+.dark .channel-tree-picker__selected-mark {
+  color: rgb(165 180 252);
 }
 
 .channel-tree-picker__indent {

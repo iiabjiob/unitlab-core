@@ -336,7 +336,15 @@ class SequenceExecutor:
             first, second = ctx.pair_channels
             if first.unit_id != second.unit_id:
                 raise SequenceNotApplicableError("Pair channels must belong to the same device")
-            state2b = int(payload.get("state2b", 0))
+            if first.id == second.id or first.channel_index == second.channel_index:
+                raise SequenceNotApplicableError("Pair channels must be different channels")
+            raw_state = payload.get("state2b", 0)
+            try:
+                state2b = int(raw_state)
+            except (TypeError, ValueError) as exc:
+                raise SequenceNotApplicableError("DO_PAIR state must be an integer in range 0..3") from exc
+            if state2b < 0 or state2b > 3:
+                raise SequenceNotApplicableError("DO_PAIR state must be in range 0..3")
             await enqueue_do_command(
                 unit_id=first.unit_id,
                 mode=Cmd.SET_PAIR_BIT,

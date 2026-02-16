@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref, watch } from "vue"
+import { computed, ref, watch } from "vue"
 import type { Switchgear } from "@/types/switchgear"
 import { CHANNEL_TYPES, type ChannelType } from "@/types/channel"
 import SignalBackedChannelField from "@/components/signals/SignalBackedChannelField.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useToastStore } from "@/stores/toastStore"
+import { useSignalSheetStore } from "@/stores/signalSheetStore"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { useTabsController } from "@affino/tabs-vue"
 
 const props = defineProps<{
   switchgear: Switchgear
@@ -13,39 +16,37 @@ const props = defineProps<{
 
 const store = useSwitchgearStore()
 const toastStore = useToastStore()
+const signalSheetStore = useSignalSheetStore()
+const workspaceStore = useWorkspaceStore()
 
 const ROLE_ORDER = ["do_open", "do_closed", "di_open", "di_close"] as const
 type BindingRoleKey = typeof ROLE_ORDER[number]
+type BindingMode = "direct" | "signal"
 
 const ROLE_META: Record<BindingRoleKey, {
   label: string
   channelType: ChannelType
-  hint: string
   supportsDelay: boolean
 }> = {
   do_open: {
-    label: "Open command",
+    label: "Set OPEN position",
     channelType: CHANNEL_TYPES.DO,
-    hint: "Pulse DO channel to open",
-    supportsDelay: true,
+    supportsDelay: false,
   },
   do_closed: {
-    label: "Close command",
+    label: "Set CLOSED position",
     channelType: CHANNEL_TYPES.DO,
-    hint: "Pulse DO channel to close",
-    supportsDelay: true,
+    supportsDelay: false,
   },
   di_open: {
-    label: "Open feedback",
+    label: "IED OPEN command",
     channelType: CHANNEL_TYPES.DI,
-    hint: "DI channel indicating open state",
-    supportsDelay: false,
+    supportsDelay: true,
   },
   di_close: {
-    label: "Close feedback",
+    label: "IED CLOSE command",
     channelType: CHANNEL_TYPES.DI,
-    hint: "DI channel indicating closed state",
-    supportsDelay: false,
+    supportsDelay: true,
   },
 }
 
@@ -69,6 +70,16 @@ const signalSelectionByRole = ref<Record<BindingRoleKey, { signalId: number | nu
   do_closed: { signalId: null, signalKey: null },
   di_open: { signalId: null, signalKey: null },
   di_close: { signalId: null, signalKey: null },
+})
+const bindingModeTabs = useTabsController<BindingMode>("direct")
+const bindingMode = computed<BindingMode>(() => (
+  bindingModeTabs.state.value.value === "signal" ? "signal" : "direct"
+))
+const signalModeAvailable = computed(() => {
+  const workspaceId = workspaceStore.activeWorkspaceId
+  const sheet = signalSheetStore.sheet
+  if (!workspaceId || !sheet) return false
+  return sheet.workspace_id === workspaceId && sheet.signals_count > 0
 })
 
 function bindingByRole(role: BindingRoleKey) {
@@ -111,21 +122,12 @@ function handleDelayChange(role: BindingRoleKey, value: number) {
   applyPatch(role, { delay_ms: safeValue })
 }
 
-function clearChannel(role: BindingRoleKey) {
-  signalSelectionByRole.value[role] = { signalId: null, signalKey: null }
-  applyPatch(role, { channel_id: null })
-}
-
 function delayFor(role: BindingRoleKey) {
   return bindingByRole(role)?.delay_ms ?? 0
 }
 
 function channelValue(role: BindingRoleKey) {
   return bindingByRole(role)?.channel_id ?? null
-}
-
-function roleHint(role: BindingRoleKey) {
-  return ROLE_META[role].hint
 }
 
 function roleLabel(role: BindingRoleKey) {
@@ -150,6 +152,13 @@ function handleChannelChange(role: BindingRoleKey, channelId: number | null) {
 
 function handleSignalChange(role: BindingRoleKey, payload: { signalId: number | null; signalKey: string | null }) {
   signalSelectionByRole.value[role] = payload
+}
+
+function setBindingMode(mode: BindingMode) {
+  if (mode === "signal" && !signalModeAvailable.value) {
+    return
+  }
+  bindingModeTabs.select(mode)
 }
 
 async function resetAll() {
@@ -185,7 +194,27 @@ watch(
       di_open: { signalId: null, signalKey: null },
       di_close: { signalId: null, signalKey: null },
     }
+    bindingModeTabs.select("direct")
   },
+)
+
+watch(
+  signalModeAvailable,
+  (available) => {
+    if (!available && bindingMode.value !== "direct") {
+      bindingModeTabs.select("direct")
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => workspaceStore.activeWorkspaceId,
+  (workspaceId) => {
+    if (!workspaceId) return
+    void signalSheetStore.refreshSheet().catch(() => undefined)
+  },
+  { immediate: true },
 )
 </script>
 
@@ -198,6 +227,34 @@ watch(
       </UiButton>
     </div>
 
+    <div class="mb-3 flex items-center gap-2" role="tablist" aria-label="Binding mode">
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="bindingMode === 'direct'"
+        class="rounded-md border px-3 py-1.5 text-xs font-semibold leading-none transition-colors"
+        :class="bindingMode === 'direct'
+          ? 'border-neutral-950 bg-neutral-950 text-white dark:border-white dark:bg-white dark:text-neutral-900'
+          : 'border-neutral-500 bg-neutral-100 text-neutral-900 dark:border-neutral-400 dark:bg-neutral-800 dark:text-neutral-100'"
+        @click="setBindingMode('direct')"
+      >
+        Direct
+      </button>
+      <button
+        v-if="signalModeAvailable"
+        type="button"
+        role="tab"
+        :aria-selected="bindingMode === 'signal'"
+        class="rounded-md border px-3 py-1.5 text-xs font-semibold leading-none transition-colors"
+        :class="bindingMode === 'signal'
+          ? 'border-neutral-950 bg-neutral-950 text-white dark:border-white dark:bg-white dark:text-neutral-900'
+          : 'border-neutral-500 bg-neutral-100 text-neutral-900 dark:border-neutral-400 dark:bg-neutral-800 dark:text-neutral-100'"
+        @click="setBindingMode('signal')"
+      >
+        By Signal
+      </button>
+    </div>
+
     <div class="space-y-3 overflow-y-auto pr-1">
       <div
         v-for="role in ROLE_ORDER"
@@ -206,7 +263,9 @@ watch(
       >
         <div class="flex items-center justify-between">
           <div class="text-sm font-medium">{{ roleLabel(role) }}</div>
-          <div class="text-[11px] uppercase tracking-wide text-neutral-500">{{ role }}</div>
+          <!-- <div class="text-[11px] tracking-wide text-neutral-500">
+            <span class="uppercase">{{ role }}</span>
+          </div> -->
         </div>
 
         <SignalBackedChannelField
@@ -217,6 +276,11 @@ watch(
           :name="`binding-${role}`"
           :signal-picker-title="signalPickerTitle(role)"
           :table-id="`switchgear-binding-${props.switchgear.id}-${role}`"
+          :mode="bindingMode"
+          :allow-signal-mode="signalModeAvailable"
+          :show-mode-toggle="false"
+          :show-signal-clear="false"
+          :empty-signal-subtitle="''"
           @update:channelId="value => handleChannelChange(role, value)"
           @update:signal="value => handleSignalChange(role, value)"
         />
@@ -226,7 +290,7 @@ watch(
             class="uppercase tracking-wide text-[11px]"
             :for="`binding-delay-${role}`"
           >
-            Pulse Duration
+            Feedback delay
           </label>
           <input
             type="number"
@@ -239,13 +303,6 @@ watch(
             @change="event => handleDelayChange(role, Number((event.target as HTMLInputElement).value))"
           />
           <span>ms</span>
-        </div>
-
-        <div class="flex items-center justify-between text-[11px] text-neutral-500">
-          <span>{{ roleHint(role) }}</span>
-          <UiButton size="xs" variant="ghost" @click="clearChannel(role)">
-            Clear
-          </UiButton>
         </div>
       </div>
     </div>

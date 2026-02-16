@@ -1,77 +1,88 @@
 <template>
   <div class="flex h-full min-h-0 min-w-0 flex-col gap-4 p-3 md:p-4">
-    <header class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
-      <div class="flex flex-wrap items-center gap-3">
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 dark:text-neutral-400">Live Signal Sheet</p>
-          <p class="text-sm text-neutral-700 dark:text-neutral-200">
-            {{ summaryText }}
-          </p>
-        </div>
-        <UiButton variant="primary" size="sm" :disabled="workspaceMissing || loading" @click="openImportModal">
-          + Import Signal List
-        </UiButton>
-        <UiButton
-          variant="secondary"
-          size="sm"
-          :disabled="workspaceMissing || loading || allocatedCableRows.length === 0"
-          @click="exportCableJournal"
-        >
-          Export Cable Schedule
-        </UiButton>
+    <header class="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 dark:text-neutral-400">Live Signal Sheet</p>
+        <p class="text-sm text-neutral-700 dark:text-neutral-200">
+          {{ summaryText }}
+        </p>
       </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <div
-          v-if="showTestRunProgress"
-          class="min-w-[260px] rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-800/60"
-        >
-          <div class="flex items-center justify-between text-[11px] font-medium text-neutral-600 dark:text-neutral-300">
-            <span>{{ testRunProgressText }}</span>
-            <span>{{ testRunProgressPercent }}%</span>
-          </div>
-          <div class="mt-1 h-1.5 overflow-hidden rounded bg-neutral-200 dark:bg-neutral-700">
-            <div
-              class="h-full bg-emerald-500 transition-[width] duration-200"
-              :style="{ width: `${testRunProgressPercent}%` }"
-            ></div>
-          </div>
+      <div class="flex flex-wrap items-start justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <UiButton variant="primary" size="sm" :disabled="workspaceMissing || loading" @click="openImportModal">
+            + Import Signal List
+          </UiButton>
+          <UiButton
+            variant="secondary"
+            size="sm"
+            :disabled="workspaceMissing || loading || allocatedCableRows.length === 0"
+            @click="exportCableJournal"
+          >
+            Export Cable Schedule
+          </UiButton>
+          <UiButton
+            variant="secondary"
+            size="sm"
+            :disabled="workspaceMissing || loading || allocationRows.length === 0"
+            @click="exportSignalReport"
+          >
+            Export Report
+          </UiButton>
         </div>
-        <UiButton
-          v-if="selectedUnassignedSignalIds.length > 0"
-          variant="secondary"
-          size="sm"
-          :disabled="loading"
-          @click="allocateSelectedUnassigned"
-        >
-          Allocate selected unassigned
-        </UiButton>
-        <UiButton
-          v-if="selectedAllocatedSignalIds.length > 0"
-          variant="ghost"
-          size="sm"
-          :disabled="loading"
-          @click="deallocateSelected"
-        >
-          De-allocate selected
-        </UiButton>
-        <UiButton
-          v-if="selectedAllocatedPhysicalRows.length > 0 || testRunInProgress"
-          :variant="testRunInProgress ? 'danger' : 'success'"
-          size="sm"
-          :disabled="loading"
-          @click="testRunInProgress ? stopTestRun() : runTestVisualOnly()"
-        >
-          {{ testRunInProgress ? "Stop test" : "Run test" }}
-        </UiButton>
-        <UiButton
-          v-if="canCreateSwitchgearFromSelection"
-          variant="secondary"
-          size="sm"
-          :disabled="loading || switchgearCreateInProgress"
-          @click="createSwitchgearVisualOnly"
-        >
-          {{ switchgearCreateInProgress ? "Creating…" : createSwitchgearButtonLabel }}
-        </UiButton>
+
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <div
+            v-if="showTestRunProgress"
+            class="min-w-[260px] rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-800/60"
+          >
+            <div class="flex items-center justify-between text-[11px] font-medium text-neutral-600 dark:text-neutral-300">
+              <span>{{ testRunProgressText }}</span>
+              <span>{{ testRunProgressPercent }}%</span>
+            </div>
+            <div class="mt-1 h-1.5 overflow-hidden rounded bg-neutral-200 dark:bg-neutral-700">
+              <div
+                class="h-full bg-emerald-500 transition-[width] duration-200"
+                :style="{ width: `${testRunProgressPercent}%` }"
+              ></div>
+            </div>
+          </div>
+          <UiButton
+            v-if="selectedUnassignedSignalIds.length > 0"
+            variant="secondary"
+            size="sm"
+            :disabled="loading"
+            @click="allocateSelectedUnassigned"
+          >
+            Allocate selected unassigned
+          </UiButton>
+          <UiButton
+            v-if="selectedAllocatedSignalIds.length > 0"
+            variant="ghost"
+            size="sm"
+            :disabled="loading"
+            @click="deallocateSelected"
+          >
+            Unassign selected
+          </UiButton>
+          <UiButton
+            v-if="selectedAllocatedPhysicalRows.length > 0 || testRunInProgress"
+            :variant="testRunInProgress ? 'danger' : 'success'"
+            size="sm"
+            :disabled="loading"
+            @click="testRunInProgress ? stopTestRun() : runTestVisualOnly()"
+          >
+            {{ testRunInProgress ? "Stop test" : "Run test" }}
+          </UiButton>
+          <UiButton
+            v-if="canCreateSwitchgearFromSelection"
+            variant="secondary"
+            size="sm"
+            :disabled="loading || switchgearCreateInProgress"
+            @click="createSwitchgearVisualOnly"
+          >
+            {{ switchgearCreateInProgress ? "Creating…" : createSwitchgearButtonLabel }}
+          </UiButton>
+        </div>
       </div>
     </header>
 
@@ -83,7 +94,25 @@
     </div>
 
     <div
-      v-else-if="!signalSheetStore.sheet || signalSheetStore.sheet.signals_count === 0"
+      v-else-if="showInitialPageLoading"
+      class="flex flex-1 flex-col gap-3 rounded-2xl border border-neutral-200 bg-white/90 p-4 dark:border-neutral-800 dark:bg-neutral-900/80"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <div class="flex items-center gap-2 text-sm font-medium text-neutral-600 dark:text-neutral-300">
+        <span class="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500"></span>
+        <span>Loading signal sheet…</span>
+      </div>
+      <div class="space-y-2">
+        <div class="h-8 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
+        <div class="h-8 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
+        <div class="h-8 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
+        <div class="h-8 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
+      </div>
+    </div>
+
+    <div
+      v-else-if="!activeSignalSheet || activeSignalSheet.signals_count === 0"
       class="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/80 p-8 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400"
     >
       Import a signal list to start allocating channels.
@@ -102,9 +131,10 @@
       :empty-text="'No signals available.'"
       :row-key="rowKey"
       :show-controls="true"
-      :table-id="'signals-live-sheet-grid'"
+      :table-id="gridTableId"
       :persist-state="true"
       :dataset-key="gridDatasetKey"
+      :selected-row-keys="selectedRowKeys"
       @row-click="handleRowClick"
       @selection-change="handleSelectionChange"
     >
@@ -243,16 +273,56 @@ const TEST_TOGGLE_PHASES_PER_SIGNAL = 2
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const loading = computed(() => loadingAllocations.value || loadingSheet.value)
+const showInitialPageLoading = computed(() => (
+  !workspaceMissing.value
+  && loading.value
+  && !signalSheetStore.sheet
+  && allocationRows.value.length === 0
+))
+const activeSignalSheet = computed(() => {
+  const workspaceId = workspaceStore.activeWorkspaceId
+  const sheet = signalSheetStore.sheet
+  if (!workspaceId || !sheet) {
+    return null
+  }
+  if (sheet.workspace_id !== workspaceId) {
+    return null
+  }
+  return sheet
+})
+
+const testedSignalsCount = computed(() => (
+  allocationRows.value.reduce((count, row) => (row.tested_at ? count + 1 : count), 0)
+))
+
+const totalSignalsCount = computed(() => {
+  const sheet = activeSignalSheet.value
+  if (!sheet) return allocationRows.value.length
+  return Math.max(0, Number(sheet.signals_count ?? 0))
+})
+
+const remainingSignalsCount = computed(() => (
+  Math.max(0, totalSignalsCount.value - testedSignalsCount.value)
+))
 
 const summaryText = computed(() => {
-  const sheet = signalSheetStore.sheet
+  const sheet = activeSignalSheet.value
   if (!sheet) return "No active sheet"
-  return `${sheet.signals_count} signals · ${allocatedCount.value} allocated · ${sheet.rows_count} source rows`
+  const total = totalSignalsCount.value
+  const allocated = Math.max(0, allocatedCount.value)
+  const tested = testedSignalsCount.value
+  const remaining = remainingSignalsCount.value
+  return [
+    `${total} signals`,
+    `${allocated} allocated (${formatPercentCompact(allocated, total)})`,
+    `${tested} tested (${formatPercentCompact(tested, total)})`,
+    `${remaining} remaining (${formatPercentCompact(remaining, total)})`,
+  ].join(" · ")
 })
 
 const gridDatasetKey = computed(() => {
-  const sheet = signalSheetStore.sheet
-  if (!sheet) return "no-sheet"
+  const sheet = activeSignalSheet.value
+  if (!sheet) return ""
   const selectedColumns = Array.isArray(sheet.import_meta?.selected_columns)
     ? sheet.import_meta?.selected_columns.map(item => String(item)).join("|")
     : ""
@@ -264,6 +334,55 @@ const gridDatasetKey = computed(() => {
     selectedColumns,
   ].join("::")
 })
+
+const gridTableId = computed(() => {
+  const workspaceId = workspaceStore.activeWorkspaceId ?? "none"
+  return `signals-live-sheet-grid::ws-${workspaceId}`
+})
+
+const selectionStorageKey = computed(() => {
+  const workspaceId = workspaceStore.activeWorkspaceId ?? "none"
+  return `signals-grid-selection::ws-${workspaceId}`
+})
+
+function restoreSelectedRowKeysFromStorage() {
+  if (typeof window === "undefined") {
+    selectedRowKeys.value = []
+    return
+  }
+  try {
+    const raw = window.localStorage.getItem(selectionStorageKey.value)
+    if (!raw) {
+      selectedRowKeys.value = []
+      return
+    }
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      selectedRowKeys.value = []
+      return
+    }
+    selectedRowKeys.value = parsed
+      .map(item => String(item ?? "").trim())
+      .filter(item => item.length > 0)
+  } catch {
+    selectedRowKeys.value = []
+  }
+}
+
+function persistSelectedRowKeysToStorage() {
+  if (typeof window === "undefined") {
+    return
+  }
+  try {
+    if (selectedRowKeys.value.length === 0) {
+      window.localStorage.removeItem(selectionStorageKey.value)
+      return
+    }
+    window.localStorage.setItem(selectionStorageKey.value, JSON.stringify(selectedRowKeys.value))
+  } catch {
+    // Ignore storage write failures and keep runtime functional.
+  }
+}
 
 const channelMap = computed(() => {
   const map = new Map<number, Channel>()
@@ -298,6 +417,14 @@ const channelUnitById = computed(() => {
   return map
 })
 
+const allocationRowBySignalId = computed(() => {
+  const map = new Map<number, SignalAllocationRow>()
+  allocationRows.value.forEach((row) => {
+    map.set(row.signal_id, row)
+  })
+  return map
+})
+
 function signalIdFromRowKey(rowKey: string): number | null {
   if (!rowKey.startsWith("signal-")) return null
   const parsed = Number(rowKey.slice("signal-".length))
@@ -310,7 +437,7 @@ const selectedAllocationRows = computed(() => (
     .map((rowKey) => {
       const signalId = signalIdFromRowKey(rowKey)
       if (signalId === null) return null
-      return findAllocationRowBySignalId(signalId)
+      return allocationRowBySignalId.value.get(signalId) ?? null
     })
     .filter((row): row is SignalAllocationRow => Boolean(row))
 ))
@@ -399,7 +526,7 @@ const testRunProgressText = computed(() => {
 })
 
 const sourceColumnHeaders = computed(() => (
-  resolveAllSourceColumnHeaders(signalSheetStore.sheet, allocationRows.value)
+  resolveAllSourceColumnHeaders(activeSignalSheet.value, allocationRows.value)
 ))
 
 const gridColumns = computed(() => {
@@ -472,8 +599,7 @@ function rebuildGridRows() {
 }
 
 function findAllocationRowBySignalId(signalId: number): SignalAllocationRow | null {
-  const row = allocationRows.value.find(item => item.signal_id === signalId)
-  return row ?? null
+  return allocationRowBySignalId.value.get(signalId) ?? null
 }
 
 function syncGridRowsBySignalIds(signalIds: readonly number[]) {
@@ -544,6 +670,13 @@ function formatTestedAt(value: unknown): string {
   return parsed.toLocaleString()
 }
 
+function formatPercentCompact(part: number, total: number): string {
+  if (!Number.isFinite(total) || total <= 0) return "0%"
+  const value = Math.max(0, (part / total) * 100)
+  const rounded = Math.round(value * 10) / 10
+  return Number.isInteger(rounded) ? `${rounded.toFixed(0)}%` : `${rounded.toFixed(1)}%`
+}
+
 function formatDurationShort(seconds: number): string {
   const normalized = Math.max(0, Math.round(seconds))
   const minutes = Math.floor(normalized / 60)
@@ -597,6 +730,28 @@ function buildCableJournalRows(): string[][] {
   return rows
 }
 
+function buildSignalReportRows(): string[][] {
+  const headers = sourceColumnHeaders.value
+  const fallbackHeaders = headers.length > 0 ? headers : ["signal_name", "signal_key"]
+
+  return allocationRows.value.map((row) => {
+    const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
+    const sourceCells = fallbackHeaders.map((header) => {
+      if (header === "signal_name") return row.signal_name
+      if (header === "signal_key") return row.signal_key
+      return sourceRow[header] ?? ""
+    })
+    const channelNumber = Number.isFinite(row.channel_index as number) ? Number(row.channel_index) + 1 : ""
+    return [
+      ...sourceCells.map(item => String(item ?? "")),
+      String(row.signal_direction ?? ""),
+      String(row.unit_id ?? ""),
+      String(channelNumber),
+      String(row.tested_at ?? ""),
+    ]
+  })
+}
+
 function exportCableJournal() {
   if (!allocatedCableRows.value.length) {
     toastStore.info("No allocated rows to export.")
@@ -617,6 +772,44 @@ function exportCableJournal() {
   const filename = `cable-journal-ws-${workspaceId}-${dateSuffix}.csv`
   downloadTextFile(csvContent, filename)
   toastStore.success(`Cable journal exported: ${rows.length} rows`)
+}
+
+function exportSignalReport() {
+  if (!allocationRows.value.length) {
+    toastStore.info("No signals to export.")
+    return
+  }
+
+  const headers = sourceColumnHeaders.value
+  const fallbackHeaders = headers.length > 0 ? headers : ["signal_name", "signal_key"]
+  const csvHeaders = [...fallbackHeaders, "signal_direction", "unit_id", "channel_index", "last_tested_at"]
+  const rows = buildSignalReportRows()
+  const workspaceId = workspaceStore.activeWorkspaceId ?? "workspace"
+  const generatedAt = new Date()
+  const tested = testedSignalsCount.value
+  const remaining = remainingSignalsCount.value
+  const total = allocationRows.value.length
+
+  const metaRows = [
+    ["report", "signal-test-report"],
+    ["workspace_id", String(workspaceId)],
+    ["generated_at", generatedAt.toISOString()],
+    ["signals_total", String(total)],
+    ["signals_tested", String(tested)],
+    ["signals_remaining", String(remaining)],
+  ]
+
+  const csvContent = [
+    ...metaRows.map(row => row.map(csvEscape).join(",")),
+    "",
+    csvHeaders.map(csvEscape).join(","),
+    ...rows.map(row => row.map(csvEscape).join(",")),
+  ].join("\n")
+
+  const dateSuffix = generatedAt.toISOString().slice(0, 19).replace(/:/g, "-")
+  const filename = `signal-report-ws-${workspaceId}-${dateSuffix}.csv`
+  downloadTextFile(csvContent, filename)
+  toastStore.success(`Report exported: tested ${tested}, remaining ${remaining}, total ${total}`)
 }
 
 function requiredChannelType(signalDirection: string): "di" | "do" | "ai" | "ao" | null {
@@ -1288,9 +1481,19 @@ watch(
   () => workspaceStore.activeWorkspaceId,
   async (workspaceId) => {
     if (!workspaceId) return
+    signalSheetStore.resetState()
+    restoreSelectedRowKeysFromStorage()
     await refreshAll()
   },
   { immediate: true },
+)
+
+watch(
+  selectedRowKeys,
+  () => {
+    persistSelectedRowKeysToStorage()
+  },
+  { deep: false },
 )
 
 watch(

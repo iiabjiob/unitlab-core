@@ -3,6 +3,7 @@ import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
+import { useSignalSheetStore } from "@/stores/signalSheetStore"
 
 let booted = false
 let bootInFlight: Promise<void> | null = null
@@ -21,6 +22,7 @@ export async function bootRuntime() {
     const deviceStore = useDeviceStore()
     const switchgearStore = useSwitchgearStore()
     const sequenceStore = useSequenceStore()
+    const signalSheetStore = useSignalSheetStore()
 
     const workspaceReady = await workspaceStore.bootstrap()
     if (!workspaceReady) {
@@ -28,9 +30,14 @@ export async function bootRuntime() {
       return
     }
 
-    await deviceStore.ensureLoaded()
-    await switchgearStore.ensureLoaded()
-    await sequenceStore.ensureLoaded()
+    await Promise.all([
+      deviceStore.ensureLoaded(),
+      switchgearStore.ensureLoaded(),
+      sequenceStore.ensureLoaded(),
+      signalSheetStore.refreshSheet().catch((error: unknown) => {
+        logger.warn("⚠️ Boot: signal sheet probe failed (welcome recommendation may be stale)", error)
+      }),
+    ])
 
     booted = true
     logger.info("✅ Boot: Runtime ready")

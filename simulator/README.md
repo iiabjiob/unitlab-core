@@ -78,13 +78,13 @@ devices:
   AO: { count: 0, signals: 10, interval: 3.0 }
 
 behavior:
-  randomize: true
+  randomize: false
   heartbeat: 5.0
   reconnect_chance: 0.01
   packet_loss: 0.005
-	flaky_device_ratio: 0.05
-	flaky_exchange_prob: 0.20
-	command_error_rate: 0.05
+  flaky_device_ratio: 0.05
+  flaky_exchange_prob: 0.20
+  command_error_rate: 0.05
 ```
 
 ### Sections
@@ -99,11 +99,12 @@ To disable all fault injection paths, set:
 
 ```yaml
 behavior:
-	reconnect_chance: 0.0
-	packet_loss: 0.0
-	flaky_device_ratio: 0.0
-	flaky_exchange_prob: 0.0
-	command_error_rate: 0.0
+  randomize: false
+  reconnect_chance: 0.0
+  packet_loss: 0.0
+  flaky_device_ratio: 0.0
+  flaky_exchange_prob: 0.0
+  command_error_rate: 0.0
 ```
 
 - `packet_loss` disables transport drops in the simulator.

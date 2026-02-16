@@ -296,6 +296,7 @@ onBeforeUnmount(() => {
       <div class="flex flex-wrap items-center gap-2">
         <UiButton
           size="sm"
+          variant="success"
           :disabled="!canOpen"
           class="min-w-[120px] justify-center"
           @click="sendSwitchgearCommand('open')"
@@ -334,16 +335,19 @@ onBeforeUnmount(() => {
         </UiButton>
       </div>
 
-      <UiBadge :variant="positionVariant" class="inline-flex min-w-[120px] justify-center">
-        {{ positionStateLabel }}
-      </UiBadge>
-
       <span
         v-if="hasPairTargets && !pairSameUnit"
         class="text-xs text-amber-600 dark:text-amber-300"
       >
         Pair commands require both DO channels on the same unit
       </span>
+
+      <div class="ml-auto inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
+        <span class="whitespace-nowrap">Current state:</span>
+        <UiBadge :variant="positionVariant" class="inline-flex min-w-[120px] justify-center">
+          {{ positionStateLabel }}
+        </UiBadge>
+      </div>
     </div>
   </section>
 </template>

@@ -81,6 +81,13 @@
           <span v-else class="allocation-picker__dot" aria-hidden="true">•</span>
           <span class="allocation-picker__label">{{ nodeLabel(node.value) }}</span>
           <span
+            v-if="isNodeSelected(node.value) && isChannelNode(node.value)"
+            class="allocation-picker__selected-mark"
+            aria-hidden="true"
+          >
+            ✓
+          </span>
+          <span
             v-if="isUnitNode(node.value)"
             class="allocation-picker__unit-status"
             :class="unitStatusClass(node.value)"
@@ -214,21 +221,39 @@ watch(
     })
     tree.clearSelection()
 
+    const selectedNode = selectedChannelNodeValueFromRow()
+    if (selectedNode) {
+      const parent = parentByValue.value.get(selectedNode)
+      if (parent) {
+        tree.expand(parent)
+      }
+      tree.select(selectedNode)
+      tree.focus(selectedNode)
+    }
+
     await nextTick()
-    const first = visibleNodes.value[0]
-    if (first) {
-      tree.focus(first.value)
-      focusNodeElement(first.value)
+    if (selectedNode) {
+      focusNodeElement(selectedNode)
     } else {
-      focusTreeRoot()
+      const first = visibleNodes.value[0]
+      if (first) {
+        tree.focus(first.value)
+        focusNodeElement(first.value)
+      } else {
+        focusTreeRoot()
+      }
     }
     // Teleported content can mount one frame later in some cases.
     requestAnimationFrame(() => {
-      const firstNode = visibleNodes.value[0]
-      if (firstNode) {
-        focusNodeElement(firstNode.value)
+      if (selectedNode) {
+        focusNodeElement(selectedNode)
       } else {
-        focusTreeRoot()
+        const firstNode = visibleNodes.value[0]
+        if (firstNode) {
+          focusNodeElement(firstNode.value)
+        } else {
+          focusTreeRoot()
+        }
       }
     })
     await floating.updatePosition()
@@ -277,6 +302,13 @@ function toUnitNodeValue(unitId: string): NodeValue {
 
 function toChannelNodeValue(channelId: number): NodeValue {
   return `channel:${channelId}`
+}
+
+function selectedChannelNodeValueFromRow(): NodeValue | null {
+  const channelId = Number.isFinite(props.row.channel_id as number) ? Number(props.row.channel_id) : null
+  if (channelId === null) return null
+  const value = toChannelNodeValue(channelId)
+  return treeNodes.value.some(node => node.value === value) ? value : null
 }
 
 function isUnitNode(value: NodeValue): boolean {
@@ -615,12 +647,17 @@ function handleUnassign() {
 }
 
 .allocation-picker__node.is-selected {
-  background: rgb(238 242 255);
+  background: rgb(224 231 255);
+  box-shadow: inset 0 0 0 1px rgb(129 140 248 / 60%);
 }
 
 .allocation-picker__node.is-selected.is-active {
-  background: rgb(224 231 255);
+  background: rgb(199 210 254);
   box-shadow: inset 0 0 0 1px rgb(129 140 248);
+}
+
+.allocation-picker__node.is-selected .allocation-picker__label {
+  font-weight: 700;
 }
 
 .allocation-picker__node.is-disabled {
@@ -641,11 +678,12 @@ function handleUnassign() {
 }
 
 .dark .allocation-picker__node.is-selected {
-  background: rgb(37 44 65);
+  background: rgb(41 50 79);
+  box-shadow: inset 0 0 0 1px rgb(129 140 248 / 65%);
 }
 
 .dark .allocation-picker__node.is-selected.is-active {
-  background: rgb(41 50 79);
+  background: rgb(49 61 96);
   box-shadow: inset 0 0 0 1px rgb(129 140 248 / 70%);
 }
 
@@ -685,6 +723,17 @@ function handleUnassign() {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
+}
+
+.allocation-picker__selected-mark {
+  margin-right: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgb(79 70 229);
+}
+
+.dark .allocation-picker__selected-mark {
+  color: rgb(165 180 252);
 }
 
 .allocation-picker__unit-status {

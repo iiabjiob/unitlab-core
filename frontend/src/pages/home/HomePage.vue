@@ -50,10 +50,8 @@
             >
               <div class="space-y-1">
                 <div class="flex items-center gap-2">
-                  <span class="inline-flex h-6 w-6 items-center justify-center rounded-md bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
-                    <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                      <path :d="scenario.iconPath" stroke-linecap="round" stroke-linejoin="round" />
-                    </svg>
+                  <span class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-300">
+                    <component :is="scenario.icon" class="h-8 w-8" aria-hidden="true" />
                   </span>
                   <h3 class="text-sm font-semibold leading-tight">{{ scenario.title }}</h3>
                 </div>
@@ -72,11 +70,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, type Component, watch } from "vue"
 import { useRouter, type RouteLocationRaw } from "vue-router"
 import AppLogo from "@/components/layout/AppLogo.vue"
 import OnlineStatusComponent from "@/components/misc/OnlineStatusComponent.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
+import HomeChipIcon from "@/components/icons/HomeChipIcon.vue"
+import HomeFlowStackIcon from "@/components/icons/HomeFlowStackIcon.vue"
+import HomeDocumentsIcon from "@/components/icons/HomeDocumentsIcon.vue"
+import HomeSwitchgearIcon from "@/components/icons/HomeSwitchgearIcon.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import { useDeviceStore } from "@/stores/deviceStore"
@@ -120,7 +122,7 @@ type QuickAction = {
   title: string
   description: string
   cta: string
-  iconPath: string
+  icon: Component
   route: HomeRoute
 }
 
@@ -143,31 +145,51 @@ const scenarioCards: QuickAction[] = [
     title: "Live Hardware",
     description: "Direct control of physical I/O channels.",
     cta: "Open",
-    iconPath: "M3 10h18M6 14h12M9 18h6M5 6l2-2h10l2 2",
+    icon: HomeChipIcon,
     route: { name: "devices.list" },
   },
   {
     title: "Signals",
     description: "Project signal names with fast channel mapping.",
     cta: "Open",
-    iconPath: "M4 17h3l3-5 3 4 4-8 3 2",
+    icon: HomeDocumentsIcon,
     route: { name: "signals.home" },
   },
   {
     title: "Switchgears",
     description: "Operate and validate disconnector feedback.",
     cta: "Open",
-    iconPath: "M12 2v8m0 0 3-3m-3 3-3-3m3 8v7m0 0 3-3m-3 3-3-3",
+    icon: HomeSwitchgearIcon,
     route: { name: "switchgears.list" },
   },
   {
     title: "Sequencer",
     description: "Build and run repeatable test instructions.",
     cta: "Open",
-    iconPath: "M6 7h12M6 12h12M6 17h8M4 7h.01M4 12h.01M4 17h.01",
+    icon: HomeFlowStackIcon,
     route: { name: "instructions.list" },
   },
 ]
+
+watch(
+  () => workspaceStore.activeWorkspaceId,
+  (workspaceId) => {
+    if (!workspaceId) {
+      return
+    }
+    const needsRefresh = (
+      !signalSheetStore.loadingSheet &&
+      (
+        signalSheetStore.lastSheetLoadedAt === null ||
+        signalSheetStore.sheet?.workspace_id !== workspaceId
+      )
+    )
+    if (needsRefresh) {
+      void signalSheetStore.refreshSheet()
+    }
+  },
+  { immediate: true },
+)
 
 function goTo(route: HomeRoute) {
   router.push(route)

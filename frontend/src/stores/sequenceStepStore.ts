@@ -59,6 +59,22 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
       return ch ? channelStore.resolveChannelFullLabel(ch) : `CH#${id}`
     }
 
+    function resolvePairStateLabel(value: unknown): string {
+      const state = Number(value ?? 0)
+      switch (state) {
+        case 0:
+          return "Unknown"
+        case 1:
+          return "Open"
+        case 2:
+          return "Closed"
+        case 3:
+          return "Undefined"
+        default:
+          return "Custom"
+      }
+    }
+
     switch (step.sequence_step_type) {
       case SequenceStepType.WAIT:
         return `Wait ${step.payload?.ms ?? 0} ms`
@@ -70,15 +86,25 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
         const ids = step.payload?.channel_ids ?? []
         const keys = step.payload?.signal_keys ?? []
         const [idA, idB] = ids
-        return `DO: pair ${resolve(idA, keys[0])} + ${resolve(idB, keys[1])}, state=${step.payload?.state2b ?? 0}`
+        return `Switch position ${resolvePairStateLabel(step.payload?.state2b)} · ${resolve(idA, keys[0])} + ${resolve(idB, keys[1])}`
       }
-      case SequenceStepType.DO_BITMASK:
-        return `DO: bitmask 0x${(step.payload?.bitmask ?? 0).toString(16).toUpperCase()}`
+      case SequenceStepType.DO_BITMASK: {
+        const deviceId = Number(step.payload?.device_id ?? NaN)
+        const unitLabel = Number.isFinite(deviceId) ? channelStore.resolveUnitId(deviceId) : "unit n/a"
+        return `Group control · ${unitLabel}`
+      }
       case SequenceStepType.AO_SET:
         return `AO: set ${resolve(step.channel_id, step.payload?.signal_key)} = ${step.payload?.value ?? 0} mA`
       default:
         return `❓ Unknown step type: ${step.sequence_step_type}`
     }
+  }
+
+  function cloneStepPayload<T>(payload: T): T {
+    if (payload === null || payload === undefined) {
+      return payload
+    }
+    return JSON.parse(JSON.stringify(payload)) as T
   }
 
   async function fetchSteps(seqId: number) {
@@ -126,6 +152,26 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
     return data
   }
 
+  async function duplicateStep(seqId: number, stepId: number) {
+    const ordered = [...stepsBySequence(seqId).value].sort((a, b) => a.order_index - b.order_index)
+    const source = ordered.find((step) => step.id === stepId)
+    if (!source) {
+      throw new Error(`Step ${stepId} not found`)
+    }
+
+    const created = await addStep(seqId, {
+      sequence_step_type: source.sequence_step_type,
+      channel_id: source.channel_id ?? null,
+      payload: cloneStepPayload(source.payload ?? null),
+    })
+
+    const newOrder = ordered.map((step) => step.id)
+    const sourceIndex = newOrder.indexOf(stepId)
+    newOrder.splice(sourceIndex + 1, 0, created.id)
+    await reorderSteps(seqId, newOrder)
+    return created
+  }
+
   function resetAll() {
     steps.value = []
     loadedSequence.value = new Set()
@@ -151,6 +197,7 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
     addStep,
     updateStep,
     deleteStep,
+    duplicateStep,
     reorderSteps,
     replaceSteps,
     hydrateSequence: setStepsForSequence,

@@ -23,6 +23,9 @@ importers:
       '@affino/popover-vue':
         specifier: ^1.0.0
         version: 1.0.0(vue@3.5.25(typescript@5.8.3))
+      '@affino/tabs-vue':
+        specifier: ^0.1.0
+        version: 0.1.0(vue@3.5.25(typescript@5.8.3))
       '@affino/tooltip-vue':
         specifier: ^1.0.0
         version: 1.0.0(vue@3.5.25(typescript@5.8.3))
@@ -144,6 +147,14 @@ packages:
 
   '@affino/surface-core@1.0.0':
     resolution: {integrity: sha512-K+7XzAFvcpXv262pe68kxq6fw51TgckbI2CyOLjKOthZPzXF7V0IJBZ5gTNq53vEqNh4qq4C5BrOKR0unbilPw==}
+
+  '@affino/tabs-core@0.1.0':
+    resolution: {integrity: sha512-HTUJw77uhrODjeeMOzQKEoOJS/FMcmTi4ZZnV+OdRoODTelBrCUt+m28Iq5fP7w5Z++pysCElvkPKXe5NWYqLQ==}
+
+  '@affino/tabs-vue@0.1.0':
+    resolution: {integrity: sha512-bNh3xP5z9/AzNARphfbpdwVskG4r1v3lG2oVUlQhirqsbVuCjY6nd4Vlz7yT4CUFJgm74YR/fDpxDDrL2j5FCg==}
+    peerDependencies:
+      vue: ^3.3.0
 
   '@affino/tooltip-core@1.0.0':
     resolution: {integrity: sha512-taq3oyVo5yzOF8dKa9N9oTK6wVVBBl8qvdVZ3oL/C4uM1KSWXy+ugCRLIOMC8gs8l4iQSvmTHgsFJop2ORgOPQ==}
@@ -1594,6 +1605,13 @@ snapshots:
       vue: 3.5.25(typescript@5.8.3)
 
   '@affino/surface-core@1.0.0': {}
+
+  '@affino/tabs-core@0.1.0': {}
+
+  '@affino/tabs-vue@0.1.0(vue@3.5.25(typescript@5.8.3))':
+    dependencies:
+      '@affino/tabs-core': 0.1.0
+      vue: 3.5.25(typescript@5.8.3)
 
   '@affino/tooltip-core@1.0.0':
     dependencies:

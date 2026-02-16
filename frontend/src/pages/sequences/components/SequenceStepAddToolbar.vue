@@ -16,8 +16,8 @@ const buttons: BtnDef[] = [
   { type: SequenceStepType.WAIT,       label: "Wait" },
   { type: SequenceStepType.DO_LATCH,   label: "Latch" },
   { type: SequenceStepType.DO_PULSE,   label: "Pulse" },
-  { type: SequenceStepType.DO_PAIR,    label: "Pair" },
-  { type: SequenceStepType.DO_BITMASK, label: "Mask" },
+  { type: SequenceStepType.DO_PAIR,    label: "Switch pos" },
+  { type: SequenceStepType.DO_BITMASK, label: "Group ctrl" },
   { type: SequenceStepType.AO_SET,     label: "AO" },
 ]
 

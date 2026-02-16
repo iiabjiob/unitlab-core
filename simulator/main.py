@@ -132,7 +132,7 @@ def _parse_config_dict(data: dict) -> SimulatorConfig:
     )
 
     behavior_cfg = BehaviorSettings(
-        randomize=bool(behavior.get("randomize", True)),
+        randomize=bool(behavior.get("randomize", False)),
         heartbeat=_ensure_float(behavior.get("heartbeat", 10.0), "behavior.heartbeat", min_value=0.5),
         reconnect_chance=_ensure_float(behavior.get("reconnect_chance", 0.01), "behavior.reconnect_chance", min_value=0.0),
         packet_loss=_ensure_float(behavior.get("packet_loss", 0.0), "behavior.packet_loss", min_value=0.0, max_value=0.5),

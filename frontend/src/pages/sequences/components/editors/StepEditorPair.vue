@@ -56,9 +56,16 @@ function updateSignal(index: 0 | 1, payload: { signalId: number | null; signalKe
 }
 
 function setState(next: number) {
-	if (props.disabled) return
-	emit("update", { payload: { state2b: next } })
+  if (props.disabled) return
+  emit("update", { payload: { state2b: next } })
 }
+
+const stateOptions = [
+	{ value: 1, label: "Open" },
+	{ value: 2, label: "Closed" },
+	{ value: 0, label: "Unknown" },
+	{ value: 3, label: "Undefined" },
+]
 </script>
 
 <template>
@@ -66,7 +73,7 @@ function setState(next: number) {
 		<div class="grid gap-4 md:grid-cols-2">
 			<div>
 				<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
-					Channel A
+					Open output
 				</label>
 				<SignalBackedChannelField
 					class="mt-1"
@@ -83,7 +90,7 @@ function setState(next: number) {
 			</div>
 			<div>
 				<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
-					Channel B
+					Close output
 				</label>
 				<SignalBackedChannelField
 					class="mt-1"
@@ -102,22 +109,22 @@ function setState(next: number) {
 
 		<div>
 			<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
-				Combined state (2-bit)
+				Switch position
 			</label>
 			<div class="mt-2 flex flex-wrap gap-2">
 				<UiButton
-					v-for="option in [0, 1, 2, 3]"
-					:key="option"
+					v-for="option in stateOptions"
+					:key="option.value"
 					size="sm"
-					:variant="state2b === option ? 'primary' : 'secondary'"
+					:variant="state2b === option.value ? 'primary' : 'secondary'"
 					:disabled="disabled"
-					@click="setState(option)"
+					@click="setState(option.value)"
 				>
-					{{ option }}
+					{{ option.label }}
 				</UiButton>
 			</div>
 			<p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-				Channels must belong to the same DO device. The state value encodes both outputs.
+				Both outputs must be allocated on the same DO unit.
 			</p>
 		</div>
 	</div>

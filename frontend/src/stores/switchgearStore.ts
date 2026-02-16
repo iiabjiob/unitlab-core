@@ -47,6 +47,21 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   const deviceStore = useDeviceStore()
   const diEdgeMemory = ref<Record<number, { diOpen: boolean | null; diClose: boolean | null }>>({})
   const updateQueueById = new Map<number, Promise<void>>()
+  const diDelayTimers = new Map<number, ReturnType<typeof setTimeout>>()
+
+  function clearDiDelayTimer(switchgearId: number) {
+    const timer = diDelayTimers.get(switchgearId)
+    if (!timer) return
+    clearTimeout(timer)
+    diDelayTimers.delete(switchgearId)
+  }
+
+  function clearAllDiDelayTimers() {
+    for (const timer of diDelayTimers.values()) {
+      clearTimeout(timer)
+    }
+    diDelayTimers.clear()
+  }
 
   function existingNames() {
     return new Set(switchgears.value.map(sw => sw.name))
@@ -367,32 +382,81 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
 
       if (openEdge !== closeEdge) {
         const targetStateName: SwitchgearState = openEdge ? "OPEN" : "CLOSED"
-        const currentState = resolveSwitchgearState(sw)
-        const doPair = resolveDoPair(sw)
-        if (doPair && currentState !== targetStateName) {
+        const feedbackDelayMsRaw = bindingByRole(sw, openEdge ? "di_open" : "di_close")?.delay_ms
+        const feedbackDelayMs = Number.isFinite(feedbackDelayMsRaw as number)
+          ? Math.max(0, Math.round(Number(feedbackDelayMsRaw)))
+          : 0
+
+        clearDiDelayTimer(sw.id)
+
+        const runDiDrivenSwitch = () => {
+          const latest = switchgears.value.find(item => item.id === sw.id)
+          if (!latest) return
+
+          const latestDiOpen = resolveBinaryState(
+            resolveBindingChannelId(latest, ["di_open"]),
+            CHANNEL_TYPES.DI,
+          )
+          const latestDiClose = resolveBinaryState(
+            resolveBindingChannelId(latest, ["di_close"]),
+            CHANNEL_TYPES.DI,
+          )
+
+          const targetStillActive = targetStateName === "OPEN"
+            ? latestDiOpen === true && latestDiClose === false
+            : latestDiClose === true && latestDiOpen === false
+
+          if (!targetStillActive) {
+            logger.debug(
+              `Skip delayed DI-driven ${targetStateName} for switchgear ${sw.id}: DI state changed during feedback delay`,
+            )
+            return
+          }
+
+          const currentState = resolveSwitchgearState(latest)
+          const doPair = resolveDoPair(latest)
+          if (!doPair || currentState === targetStateName) {
+            return
+          }
+
           if (channelStore.hasPendingCommandForUnit(doPair.unitId)) {
             logger.debug(
               `Skip DI-driven ${targetStateName} for switchgear ${sw.id}: unit ${doPair.unitId} has pending command`,
             )
-          } else {
-            const targetState = openEdge ? SWITCHGEAR_CODE.OPEN : SWITCHGEAR_CODE.CLOSED
-            const result = channelStore.sendDoPairCommand(
-              doPair.unitId,
-              doPair.chOpen,
-              doPair.chClose,
-              targetState,
-              { source: "switchgear-di-edge" },
-            )
-            if (!result.ok) {
-              logger.warn(
-                `DI edge failed for switchgear ${sw.id} -> ${targetStateName}: ${result.error}`,
-              )
-            } else {
-              logger.debug(
-                `DI edge drove switchgear ${sw.id} -> ${targetStateName} via ${doPair.unitId} [${doPair.chOpen}/${doPair.chClose}]`,
-              )
-            }
+            return
           }
+
+          const targetState = targetStateName === "OPEN" ? SWITCHGEAR_CODE.OPEN : SWITCHGEAR_CODE.CLOSED
+          const result = channelStore.sendDoPairCommand(
+            doPair.unitId,
+            doPair.chOpen,
+            doPair.chClose,
+            targetState,
+            { source: "switchgear-di-edge" },
+          )
+
+          if (!result.ok) {
+            logger.warn(
+              `DI edge failed for switchgear ${sw.id} -> ${targetStateName}: ${result.error}`,
+            )
+          } else {
+            logger.debug(
+              `DI edge drove switchgear ${sw.id} -> ${targetStateName} via ${doPair.unitId} [${doPair.chOpen}/${doPair.chClose}]`,
+            )
+          }
+        }
+
+        if (feedbackDelayMs > 0) {
+          logger.debug(
+            `Schedule DI-driven ${targetStateName} for switchgear ${sw.id} in ${feedbackDelayMs}ms`,
+          )
+          const timer = setTimeout(() => {
+            diDelayTimers.delete(sw.id)
+            runDiDrivenSwitch()
+          }, feedbackDelayMs)
+          diDelayTimers.set(sw.id, timer)
+        } else {
+          runDiDrivenSwitch()
         }
       }
 
@@ -403,6 +467,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
       const switchgearId = Number(key)
       if (!activeIds.has(switchgearId)) {
         delete diEdgeMemory.value[switchgearId]
+        clearDiDelayTimer(switchgearId)
       }
     }
   }
@@ -476,6 +541,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     loadedOnce.value = false
     diEdgeMemory.value = {}
     updateQueueById.clear()
+    clearAllDiDelayTimers()
   }
 
   watch(

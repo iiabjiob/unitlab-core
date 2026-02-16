@@ -22,7 +22,7 @@ devices:
     interval: 3.0
 
 behavior:
-  randomize: true
+  randomize: false
   heartbeat: 5.0
   reconnect_chance: 0.0
   packet_loss: 0.0

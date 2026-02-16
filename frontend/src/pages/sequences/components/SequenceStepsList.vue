@@ -32,10 +32,6 @@ function selectStep(stepId: number) {
   stepStore.setActiveStep(stepId)
 }
 
-function editStep(step: EnrichedStep) {
-  selectStep(step.id)
-}
-
 function itemKey(step: EnrichedStep) {
   return String(step.id)
 }
@@ -62,6 +58,16 @@ async function handleDelete(stepId: number) {
     }
   } catch (error) {
     console.error("Failed to delete step", error)
+  }
+}
+
+async function handleDuplicate(stepId: number) {
+  try {
+    const duplicated = await stepStore.duplicateStep(props.sequence.id, stepId)
+    sequenceStore.resetState(props.sequence.id)
+    stepStore.setActiveStep(duplicated.id)
+  } catch (error) {
+    console.error("Failed to duplicate step", error)
   }
 }
 
@@ -108,8 +114,8 @@ async function handleAdd(payload: SequenceStepCreate) {
             :step="item"
             :active="stepStore.activeStepId === item.id"
             @select="selectStep"
-            @edit="editStep"
             @delete="handleDelete"
+            @duplicate="handleDuplicate"
           />
         </template>
       </DraggableList>

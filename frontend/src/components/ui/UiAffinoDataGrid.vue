@@ -17,8 +17,6 @@
           >
             {{ filter.label }}: {{ filter.value }}
           </span>
-        </div>
-        <div class="ui-affino-grid__toolbar-actions">
           <button
             type="button"
             class="ui-affino-grid__toolbar-button"
@@ -27,6 +25,13 @@
           >
             Reset all
           </button>
+          <span v-if="selectAllInProgress" class="ui-affino-grid__toolbar-stat ui-affino-grid__toolbar-stat--busy">
+            Selecting…
+          </span>
+          <span class="ui-affino-grid__toolbar-stat">Filtered: {{ filteredRowsCount }}</span>
+          <span class="ui-affino-grid__toolbar-stat">Selected: {{ selectedRowsCount }}</span>
+        </div>
+        <div class="ui-affino-grid__toolbar-actions">
           <button
             :ref="columnPanelFloating.triggerRef"
             type="button"
@@ -39,10 +44,11 @@
       </div>
 
       <Teleport
-        v-if="props.showControls && isColumnPanelOpen && columnPanelTeleportTarget"
+        v-if="props.showControls && columnPanelTeleportTarget"
         :to="columnPanelTeleportTarget"
       >
         <div
+          v-show="isColumnPanelOpen"
           :ref="columnPanelFloating.contentRef"
           class="ui-affino-grid__column-panel ui-affino-grid__column-panel--floating"
           :style="columnPanelContentStyle"
@@ -156,7 +162,8 @@
                     class="ui-affino-grid__row-select-checkbox"
                     :checked="isRowSelected(rowNode, localIndex)"
                     :aria-label="`Select row ${resolveNodeDisplayIndex(rowNode, localIndex) + 1}`"
-                    @click.stop
+                    @click.stop="rememberCheckboxSelectionGesture"
+                    @keydown="rememberCheckboxSelectionGesture"
                     @change="event => handleRowSelectionChange(rowNode, localIndex, event)"
                   />
                 </div>
@@ -235,7 +242,6 @@
                   :key="`left-${String(rowNode.rowId)}`"
                   class="ui-affino-grid__row ui-affino-grid__row--data ui-affino-grid__row--pinned"
                   :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode) }"
-                  v-bind="grid.bindings.rowSelection(rowData(rowNode.data), resolveNodeDisplayIndex(rowNode, localIndex))"
                   @mouseenter="setHoveredRow(rowNode)"
                   @mouseleave="clearHoveredRow(rowNode)"
                   @click="emit('row-click', { row: rowData(rowNode.data), rowIndex: resolveNodeDisplayIndex(rowNode, localIndex) })"
@@ -361,7 +367,6 @@
                     :key="String(rowNode.rowId)"
                     class="ui-affino-grid__row ui-affino-grid__row--data"
                     :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode) }"
-                    v-bind="grid.bindings.rowSelection(rowData(rowNode.data), resolveNodeDisplayIndex(rowNode, localIndex))"
                     @mouseenter="setHoveredRow(rowNode)"
                     @mouseleave="clearHoveredRow(rowNode)"
                     @click="emit('row-click', { row: rowData(rowNode.data), rowIndex: resolveNodeDisplayIndex(rowNode, localIndex) })"
@@ -478,7 +483,6 @@
                   :key="`right-${String(rowNode.rowId)}`"
                   class="ui-affino-grid__row ui-affino-grid__row--data ui-affino-grid__row--pinned"
                   :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode) }"
-                  v-bind="grid.bindings.rowSelection(rowData(rowNode.data), resolveNodeDisplayIndex(rowNode, localIndex))"
                   @mouseenter="setHoveredRow(rowNode)"
                   @mouseleave="clearHoveredRow(rowNode)"
                   @click="emit('row-click', { row: rowData(rowNode.data), rowIndex: resolveNodeDisplayIndex(rowNode, localIndex) })"
@@ -617,6 +621,7 @@ const props = withDefaults(defineProps<{
   tableId?: string
   persistState?: boolean
   datasetKey?: string
+  selectedRowKeys?: readonly string[]
 }>(), {
   rowHeight: 34,
   overscanRows: 8,
@@ -630,6 +635,7 @@ const props = withDefaults(defineProps<{
   tableId: undefined,
   persistState: true,
   datasetKey: "",
+  selectedRowKeys: undefined,
 })
 
 const emit = defineEmits<{
@@ -673,6 +679,10 @@ const measuredHeaderHeight = ref<number | null>(null)
 const measuredFilterHeight = ref<number | null>(null)
 const hoveredRowId = ref<string | null>(null)
 const selectHeaderCheckboxRef = ref<HTMLInputElement | null>(null)
+const checkboxSelectionAnchorIndex = ref<number | null>(null)
+const lastCheckboxGestureShift = ref(false)
+const localSelectedRowKeySet = ref<Set<string>>(new Set())
+const selectAllInProgress = ref(false)
 
 let viewportRowModel: ViewportRowModelBridge | null = null
 let viewportColumnModel: ViewportColumnModelBridge | null = null
@@ -1129,7 +1139,10 @@ const visibleRowSelectionKeys = computed(() => {
   return allVisibleRows.map((rowNode, index) => resolveSelectionKeyFromNode(rowNode, index))
 })
 
-const selectedRowKeySet = computed(() => new Set(grid.features.selection.selectedRowKeys.value))
+const selectedRowKeySet = computed(() => localSelectedRowKeySet.value)
+
+const selectedRowsCount = computed(() => selectedRowKeySet.value.size)
+const filteredRowsCount = computed(() => totalRows.value)
 
 const selectedVisibleRowsCount = computed(() => (
   visibleRowSelectionKeys.value.reduce((count, rowKey) => (
@@ -1413,25 +1426,146 @@ function resolveRowSelectionKey(rowNode: unknown, localIndex: number): string {
   return resolveSelectionKeyFromNode(rowNode, resolveNodeDisplayIndex(rowNode, localIndex))
 }
 
+function normalizeExternalSelectedRowKeys(value: readonly string[] | undefined): Set<string> {
+  if (!Array.isArray(value) || value.length === 0) {
+    return new Set<string>()
+  }
+  return new Set(
+    value
+      .map(item => String(item ?? "").trim())
+      .filter(item => item.length > 0),
+  )
+}
+
+function areStringSetsEqual(left: Set<string>, right: Set<string>): boolean {
+  if (left.size !== right.size) {
+    return false
+  }
+  for (const key of left) {
+    if (!right.has(key)) {
+      return false
+    }
+  }
+  return true
+}
+
 function isRowSelected(rowNode: unknown, localIndex: number): boolean {
   const rowKey = resolveRowSelectionKey(rowNode, localIndex)
-  return grid.features.selection.isSelectedByKey(rowKey)
+  return selectedRowKeySet.value.has(rowKey)
+}
+
+function resolveAllFilteredRowNodes(): unknown[] {
+  const total = totalRows.value
+  if (total <= 0) {
+    return []
+  }
+  return grid.rowModel.getRowsInRange({ start: 0, end: total - 1 })
+}
+
+function setSelectionInFilteredRange(startIndex: number, endIndex: number, selected: boolean) {
+  const allNodes = resolveAllFilteredRowNodes()
+  if (!allNodes.length) {
+    return
+  }
+
+  const safeStart = Math.max(0, Math.min(allNodes.length - 1, Math.trunc(startIndex)))
+  const safeEnd = Math.max(0, Math.min(allNodes.length - 1, Math.trunc(endIndex)))
+  const from = Math.min(safeStart, safeEnd)
+  const to = Math.max(safeStart, safeEnd)
+  const next = new Set(selectedRowKeySet.value)
+
+  for (let index = from; index <= to; index += 1) {
+    const rowNode = allNodes[index]
+    if (!rowNode) {
+      continue
+    }
+    const rowKey = resolveSelectionKeyFromNode(rowNode, index)
+    if (selected) {
+      next.add(rowKey)
+    } else {
+      next.delete(rowKey)
+    }
+  }
+  localSelectedRowKeySet.value = next
+}
+
+function rememberCheckboxSelectionGesture(event: Event) {
+  lastCheckboxGestureShift.value = Boolean((event as MouseEvent).shiftKey || (event as KeyboardEvent).shiftKey)
 }
 
 function handleRowSelectionChange(rowNode: unknown, localIndex: number, event: Event) {
-  const rowKey = resolveRowSelectionKey(rowNode, localIndex)
-  const target = event.target as HTMLInputElement | null
-  grid.features.selection.setSelectedByKey(rowKey, Boolean(target?.checked))
-}
-
-function handleSelectAllVisibleChange(event: Event) {
   const target = event.target as HTMLInputElement | null
   const shouldSelect = Boolean(target?.checked)
-  if (shouldSelect) {
-    grid.actions.selectAllRows()
+  const currentIndex = resolveNodeDisplayIndex(rowNode, localIndex)
+  const shiftPressed = lastCheckboxGestureShift.value
+    || Boolean((event as MouseEvent).shiftKey || (event as KeyboardEvent).shiftKey)
+  lastCheckboxGestureShift.value = false
+  const anchorIndex = checkboxSelectionAnchorIndex.value
+
+  if (shiftPressed && anchorIndex !== null) {
+    setSelectionInFilteredRange(anchorIndex, currentIndex, shouldSelect)
+    checkboxSelectionAnchorIndex.value = currentIndex
     return
   }
-  grid.features.selection.clearSelection()
+
+  const rowKey = resolveRowSelectionKey(rowNode, localIndex)
+  const next = new Set(selectedRowKeySet.value)
+  if (shouldSelect) {
+    next.add(rowKey)
+  } else {
+    next.delete(rowKey)
+  }
+  localSelectedRowKeySet.value = next
+  checkboxSelectionAnchorIndex.value = currentIndex
+}
+
+async function handleSelectAllVisibleChange(event: Event) {
+  const target = event.target as HTMLInputElement | null
+  const shouldSelect = Boolean(target?.checked)
+  checkboxSelectionAnchorIndex.value = null
+  lastCheckboxGestureShift.value = false
+  if (shouldSelect) {
+    selectAllInProgress.value = true
+    try {
+      await nextTick()
+      await new Promise<void>((resolve) => {
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => resolve())
+          return
+        }
+        setTimeout(() => resolve(), 0)
+      })
+      localSelectedRowKeySet.value = new Set(visibleRowSelectionKeys.value)
+      await nextTick()
+    } finally {
+      selectAllInProgress.value = false
+    }
+    return
+  }
+  localSelectedRowKeySet.value = new Set()
+  selectAllInProgress.value = false
+}
+
+function pruneSelectionToCurrentRows() {
+  if (selectedRowKeySet.value.size === 0) {
+    return
+  }
+  const allowed = new Set<string>()
+  props.rows.forEach((row, index) => {
+    allowed.add(grid.bindings.getRowKey(rowData(row), index))
+  })
+  const next = new Set<string>()
+  let changed = false
+  selectedRowKeySet.value.forEach((rowKey) => {
+    if (allowed.has(rowKey)) {
+      next.add(rowKey)
+      return
+    }
+    changed = true
+  })
+  if (changed) {
+    localSelectedRowKeySet.value = next
+  }
 }
 
 const renderedDisplayRange = computed<WindowRange>(() => {
@@ -1998,11 +2132,40 @@ watch(
     if (next > 0 && next !== prev) {
       tableReadyOnce.value = false
     }
+    pruneSelectionToCurrentRows()
     void nextTick(() => {
       updateObservedViewportSize()
       scheduleViewportSync()
       scheduleInitialViewportRecovery(true)
     })
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.datasetKey,
+  () => {
+    localSelectedRowKeySet.value = new Set()
+    checkboxSelectionAnchorIndex.value = null
+    lastCheckboxGestureShift.value = false
+  },
+)
+
+watch(
+  () => props.selectedRowKeys,
+  (externalRowKeys) => {
+    if (!Array.isArray(externalRowKeys)) {
+      return
+    }
+    const normalized = normalizeExternalSelectedRowKeys(externalRowKeys)
+    if (areStringSetsEqual(localSelectedRowKeySet.value, normalized)) {
+      return
+    }
+    localSelectedRowKeySet.value = normalized
+    if (normalized.size === 0) {
+      checkboxSelectionAnchorIndex.value = null
+      lastCheckboxGestureShift.value = false
+    }
   },
   { immediate: true },
 )
@@ -2121,9 +2284,9 @@ watch(
 )
 
 watch(
-  () => grid.features.selection.selectedRowKeys.value,
+  selectedRowKeySet,
   (rowKeys) => {
-    emit("selection-change", { rowKeys: [...rowKeys] })
+    emit("selection-change", { rowKeys: Array.from(rowKeys) })
   },
   { immediate: true },
 )
@@ -2135,6 +2298,20 @@ watch(
       return
     }
     selectHeaderCheckboxRef.value.indeterminate = partial
+  },
+  { immediate: true },
+)
+
+watch(
+  () => visibleRowSelectionKeys.value.length,
+  (length) => {
+    if (length <= 0) {
+      checkboxSelectionAnchorIndex.value = null
+      return
+    }
+    if (checkboxSelectionAnchorIndex.value !== null && checkboxSelectionAnchorIndex.value >= length) {
+      checkboxSelectionAnchorIndex.value = null
+    }
   },
   { immediate: true },
 )
@@ -2410,6 +2587,9 @@ function ensurePersistedDatasetScope() {
     return
   }
   const currentDatasetKey = persistedDatasetKey.value
+  if (currentDatasetKey === "__default__") {
+    return
+  }
   const storedDatasetKey = readPersistedDatasetKey(tableId)
   if (storedDatasetKey !== null && storedDatasetKey !== currentDatasetKey) {
     dataGridSettingsAdapter.clearTable(tableId)
@@ -2721,6 +2901,25 @@ function columnStyle(width: number) {
   gap: 0.4rem;
 }
 
+.ui-affino-grid__toolbar-stat {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.ui-affino-grid__toolbar-stat--busy {
+  color: #0369a1;
+}
+
+.dark .ui-affino-grid__toolbar-stat {
+  color: var(--ui-affino-dark-text-muted);
+}
+
+.dark .ui-affino-grid__toolbar-stat--busy {
+  color: #7dd3fc;
+}
+
 .ui-affino-grid__toolbar-button,
 .ui-affino-grid__column-order-button {
   border: 1px solid rgba(148, 163, 184, 0.45);
@@ -2912,20 +3111,20 @@ function columnStyle(width: number) {
 
 .ui-affino-grid__pinned-column--left {
   grid-column: 3;
-  border-right: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: inset -2px 0 0 rgba(148, 163, 184, 0.28);
 }
 
 .ui-affino-grid__pinned-column--right {
   grid-column: 5;
-  border-left: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: inset 2px 0 0 rgba(148, 163, 184, 0.28);
 }
 
 .dark .ui-affino-grid__pinned-column--left {
-  border-right-color: var(--ui-affino-dark-border);
+  box-shadow: inset -2px 0 0 var(--ui-affino-dark-border);
 }
 
 .dark .ui-affino-grid__pinned-column--right {
-  border-left-color: var(--ui-affino-dark-border);
+  box-shadow: inset 2px 0 0 var(--ui-affino-dark-border);
 }
 
 .ui-affino-grid__pinned-viewport {

@@ -44,8 +44,8 @@ const typeLabels: Record<SequenceStepType, string> = {
   [SequenceStepType.WAIT]: "Wait",
   [SequenceStepType.DO_LATCH]: "DO · Latch",
   [SequenceStepType.DO_PULSE]: "DO · Pulse",
-  [SequenceStepType.DO_PAIR]: "DO · Pair",
-  [SequenceStepType.DO_BITMASK]: "DO · Bitmask",
+  [SequenceStepType.DO_PAIR]: "Switch position",
+  [SequenceStepType.DO_BITMASK]: "Group control",
   [SequenceStepType.AO_SET]: "AO · Set",
 }
 

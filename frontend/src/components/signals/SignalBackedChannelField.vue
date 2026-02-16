@@ -1,6 +1,6 @@
 <template>
   <div class="signal-backed-field">
-    <div class="signal-backed-field__mode">
+    <div v-if="props.showModeToggle" class="signal-backed-field__mode">
       <button
         type="button"
         class="signal-backed-field__mode-btn"
@@ -11,6 +11,7 @@
         Direct
       </button>
       <button
+        v-if="canUseSignalMode"
         type="button"
         class="signal-backed-field__mode-btn"
         :class="{ 'is-active': mode === 'signal' }"
@@ -21,7 +22,7 @@
       </button>
     </div>
 
-    <div v-if="mode === 'direct'" class="signal-backed-field__panel">
+    <div v-if="mode === 'direct' || !canUseSignalMode" class="signal-backed-field__panel">
       <ChannelSelect
         :model-value="props.channelId"
         :channel-type="props.channelType"
@@ -37,7 +38,7 @@
         <div class="signal-backed-field__signal-label">
           {{ selectedSignalLabel }}
         </div>
-        <div class="signal-backed-field__signal-subtitle">
+        <div v-if="selectedSignalSubtitle" class="signal-backed-field__signal-subtitle">
           {{ selectedSignalSubtitle }}
         </div>
       </div>
@@ -45,12 +46,13 @@
         <UiButton
           variant="secondary"
           size="xs"
-          :disabled="props.disabled"
+          :disabled="props.disabled || !canUseSignalMode"
           @click="signalModalOpen = true"
         >
           Pick signal
         </UiButton>
         <UiButton
+          v-if="props.showSignalClear"
           variant="ghost"
           size="xs"
           :disabled="props.disabled || !canClearSignal"
@@ -100,6 +102,10 @@ const props = withDefaults(defineProps<{
   name?: string
   signalPickerTitle?: string
   tableId?: string
+  allowSignalMode?: boolean
+  showModeToggle?: boolean
+  showSignalClear?: boolean
+  emptySignalSubtitle?: string
 }>(), {
   signalId: null,
   signalKey: null,
@@ -108,6 +114,10 @@ const props = withDefaults(defineProps<{
   name: undefined,
   signalPickerTitle: "Select signal",
   tableId: "signal-backed-channel-grid",
+  allowSignalMode: true,
+  showModeToggle: true,
+  showSignalClear: true,
+  emptySignalSubtitle: "Choose a signal, then allocation to hardware is ensured automatically.",
 })
 
 const emit = defineEmits<{
@@ -118,8 +128,12 @@ const emit = defineEmits<{
 
 const signalSheetStore = useSignalSheetStore()
 const toastStore = useToastStore()
+const canUseSignalMode = computed(() => props.allowSignalMode && signalSheetStore.hasSheet)
 
 function resolveInitialMode(): SelectMode {
+  if (!canUseSignalMode.value) {
+    return "direct"
+  }
   if (props.mode === "signal" || props.mode === "direct") {
     return props.mode
   }
@@ -190,7 +204,7 @@ const selectedSignalLabel = computed(() => {
 const selectedSignalSubtitle = computed(() => {
   const row = selectedSignalRow.value
   if (!row) {
-    return "Choose a signal, then allocation to hardware is ensured automatically."
+    return props.emptySignalSubtitle
   }
   if (Number.isFinite(row.channel_index as number)) {
     const suffix = `ch${Number(row.channel_index) + 1}`
@@ -203,9 +217,22 @@ const selectedSignalSubtitle = computed(() => {
 watch(
   () => props.mode,
   (nextMode) => {
+    if (nextMode === "signal" && !canUseSignalMode.value) {
+      mode.value = "direct"
+      return
+    }
     if (nextMode && nextMode !== mode.value) {
       mode.value = nextMode
     }
+  },
+)
+
+watch(
+  canUseSignalMode,
+  (enabled) => {
+    if (enabled || mode.value !== "signal") return
+    mode.value = "direct"
+    emit("update:mode", "direct")
   },
 )
 
@@ -214,13 +241,14 @@ watch(
   ([nextSignalId, nextSignalKey]) => {
     if (mode.value === "direct") return
     if (nextSignalId !== null || Boolean(nextSignalKey)) return
-    mode.value = props.mode ?? (signalSheetStore.hasSheet ? "signal" : "direct")
+    mode.value = props.mode ?? (canUseSignalMode.value ? "signal" : "direct")
   },
 )
 
 watch(
   () => mode.value,
   (nextMode) => {
+    if (!canUseSignalMode.value) return
     if (nextMode !== "signal") return
     if (signalSheetStore.allocationRows.length > 0) return
     void signalSheetStore.refreshAllocations().catch(() => undefined)
@@ -229,6 +257,7 @@ watch(
 )
 
 function setMode(nextMode: SelectMode) {
+  if (nextMode === "signal" && !canUseSignalMode.value) return
   if (props.disabled || mode.value === nextMode) return
   mode.value = nextMode
   emit("update:mode", nextMode)
@@ -314,25 +343,30 @@ async function handleSignalConfirm(rows: SignalAllocationRow[]) {
   background: transparent;
   color: rgb(82 82 82);
   border-radius: 0.375rem;
-  padding: 0.15rem 0.55rem;
-  font-size: 0.68rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  line-height: 1;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  border: 1px solid transparent;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .signal-backed-field__mode-btn.is-active {
-  background: rgb(255 255 255);
-  color: rgb(23 23 23);
+  background: rgb(23 23 23);
+  border-color: rgb(23 23 23);
+  color: rgb(255 255 255);
 }
 
 .dark .signal-backed-field__mode-btn {
-  color: rgb(163 163 163);
+  color: rgb(212 212 212);
+  border-color: rgb(82 82 82);
+  background: rgb(24 24 27);
 }
 
 .dark .signal-backed-field__mode-btn.is-active {
-  background: rgb(38 38 38);
-  color: rgb(245 245 245);
+  background: rgb(245 245 245);
+  border-color: rgb(245 245 245);
+  color: rgb(15 23 42);
 }
 
 .signal-backed-field__panel {
