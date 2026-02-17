@@ -251,8 +251,11 @@ function handleSelectionChange(payload: { rowKeys: string[] }) {
   selectedRowKeys.value = payload.rowKeys.length > 0 ? [payload.rowKeys[payload.rowKeys.length - 1]] : []
 }
 
-function handleRowClick(payload: { row: GridRow }) {
-  const rowId = String(payload.row.rowId)
+function handleRowClick(payload: { row: Record<string, unknown>; rowIndex: number }) {
+  const rowId = String(payload.row.rowId ?? "")
+  if (!rowId) {
+    return
+  }
   if (props.multiple) {
     const exists = selectedRowKeys.value.includes(rowId)
     selectedRowKeys.value = exists

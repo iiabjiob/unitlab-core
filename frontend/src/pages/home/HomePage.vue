@@ -50,7 +50,7 @@
             >
               <div class="space-y-1">
                 <div class="flex items-center gap-2">
-                  <span class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-300">
+                  <span class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300">
                     <component :is="scenario.icon" class="h-8 w-8" aria-hidden="true" />
                   </span>
                   <h3 class="text-sm font-semibold leading-tight">{{ scenario.title }}</h3>

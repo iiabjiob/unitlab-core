@@ -353,7 +353,7 @@ export const useChannelStore = defineStore("channelStore", () => {
         : (Array.isArray((data as ChannelListDto).items)
           ? (data as ChannelListDto).items
           : [])
-      channels.value = payload.map(normalizeChannel)
+      channels.value = payload.map(dto => normalizeChannel(dto))
       rebuildChannelIndexes()
       isLoaded.value = true
       logger.info(`📡 Loaded ${payload.length} channels`)

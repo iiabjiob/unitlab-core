@@ -113,9 +113,13 @@
             <UiAffinoListbox
               v-model="selectedSheetName"
               :options="worksheetListboxOptions"
+              placeholder="Select worksheet"
               aria-label="Worksheet"
               :disabled="loading || parsing || worksheetListboxOptions.length === 0"
             />
+            <p v-if="!selectedSheetName" class="mt-2 text-xs text-amber-600 dark:text-amber-300">
+              Choose a worksheet from the uploaded file to continue. The Next button stays disabled until selected.
+            </p>
           </div>
 
           <div v-if="availableColumns.length">
@@ -171,9 +175,13 @@
             <UiAffinoListbox
               v-model="typeColumnIndex"
               :options="typeColumnListboxOptions"
+              placeholder="Select type column"
               aria-label="Type column"
               :disabled="loading || parsing || typeColumnListboxOptions.length === 0"
             />
+            <p v-if="typeColumnIndex === null" class="mt-2 text-xs text-amber-600 dark:text-amber-300">
+              Select the column that contains vendor type codes to continue import.
+            </p>
           </div>
           <div v-if="typeValueOptions.length" class="space-y-2">
             <div
@@ -664,8 +672,7 @@ async function parseWorkbook(selected: File) {
     selectedColumnsBySheet.value = Object.fromEntries(
       Object.entries(columnsBySheet).map(([sheetName, columns]) => [sheetName, columns.map(column => column.index)])
     )
-    const defaultSheet = findFirstSheetWithColumns(columnsBySheet, parsedWorkbook.SheetNames)
-    selectedSheetName.value = defaultSheet ?? parsedWorkbook.SheetNames[0] ?? null
+    selectedSheetName.value = null
     applySelectedPreset()
     step.value = "columns"
   } catch (err) {
@@ -775,15 +782,6 @@ function findColumnByHeader(columns: SheetColumn[], headerName: string): SheetCo
   return columns.find(column => column.header.trim().toLowerCase() === normalizedHeader)
 }
 
-function findFirstSheetWithColumns(columnsBySheet: Record<string, SheetColumn[]>, sheetNameList: string[]): string | null {
-  for (const name of sheetNameList) {
-    if ((columnsBySheet[name] ?? []).length) {
-      return name
-    }
-  }
-  return null
-}
-
 function normalizeHeaderValue(value: unknown): string {
   if (value === null || value === undefined) return ""
   if (typeof value === "string") return value.trim()
@@ -869,7 +867,11 @@ function ensureValidColumnSelections() {
     return
   }
   if (!columns.some(column => column.index === typeColumnIndex.value)) {
-    typeColumnIndex.value = guessTypeColumnIndex(columns)
+    if (applyingPreset.value) {
+      typeColumnIndex.value = guessTypeColumnIndex(columns)
+    } else {
+      typeColumnIndex.value = null
+    }
   }
 }
 

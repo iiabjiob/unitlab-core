@@ -51,7 +51,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue"
-import type { Channel } from "@/types/channel"
+import type { Channel, DiChannel, DoChannel } from "@/types/channel"
 
 const props = withDefaults(defineProps<{
   channel: Channel
@@ -77,16 +77,21 @@ const effectiveType = computed<Channel["type"] | null>(() => {
 })
 
 const status = computed(() =>
-  effectiveType.value === "do" ? props.channel.ui?.stage ?? "idle" : "idle"
+  doChannel.value?.ui?.stage ?? "idle"
 )
 const isWaiting = computed(() => status.value === "pending" || status.value === "debounce")
 const isError = computed(() => status.value === "error")
 
+const doChannel = computed<DoChannel | null>(() => (
+  effectiveType.value === "do" && props.channel.type === "do" ? props.channel : null
+))
+
+const diChannel = computed<DiChannel | null>(() => (
+  effectiveType.value === "di" && props.channel.type === "di" ? props.channel : null
+))
+
 const diAlertActive = computed(() => {
-  if (effectiveType.value !== "di") {
-    return false
-  }
-  const diag = props.channel.diDiagnostics
+  const diag = diChannel.value?.diDiagnostics
   if (!diag) {
     return false
   }
@@ -112,7 +117,7 @@ const doControlClass = computed(() => {
   if (isError.value) {
     return "bg-red-500 border-red-500 text-white animate-pulse"
   }
-  if (props.channel.state) {
+  if (doChannel.value?.state) {
     return "bg-green-500 border-green-600 text-white"
   }
   if (isWaiting.value) {

@@ -33,6 +33,10 @@ type ChannelCandidate = {
 }
 type AutoBindingRole = "do_open" | "do_closed" | "di_open" | "di_close"
 
+function isAutoBindingRole(role: SwitchgearBindingRole): role is AutoBindingRole {
+  return role === "do_open" || role === "do_closed" || role === "di_open" || role === "di_close"
+}
+
 function normalizeUnitId(value: unknown): string {
   const normalized = String(value ?? "").trim()
   return normalized || "unknown"
@@ -170,7 +174,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
 
     return buildEmptyBindings().map((binding) => ({
       ...binding,
-      channel_id: byRole[binding.role as SwitchgearBindingRole] ?? null,
+      channel_id: isAutoBindingRole(binding.role) ? (byRole[binding.role] ?? null) : null,
     }))
   }
 

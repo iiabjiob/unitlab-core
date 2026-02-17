@@ -96,8 +96,8 @@
           <div class="ui-affino-grid__index-header" :style="indexHeaderStyle">#</div>
           <div v-if="showFilterRow" class="ui-affino-grid__index-filter" :style="indexFilterStyle"></div>
 
-          <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @wheel.passive="handleLinkedViewportWheel">
-            <div class="ui-affino-grid__index-canvas">
+          <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @wheel="handleLinkedViewportWheel">
+            <div ref="indexCanvasRef" class="ui-affino-grid__index-canvas">
               <template v-if="hasRenderableData">
                 <div
                   v-if="topSpacerPx > 0"
@@ -141,8 +141,8 @@
           </div>
           <div v-if="showFilterRow" class="ui-affino-grid__select-filter" :style="indexFilterStyle"></div>
 
-          <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @wheel.passive="handleLinkedViewportWheel">
-            <div class="ui-affino-grid__select-canvas">
+          <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @wheel="handleLinkedViewportWheel">
+            <div ref="selectionCanvasRef" class="ui-affino-grid__select-canvas">
               <template v-if="hasRenderableData">
                 <div
                   v-if="topSpacerPx > 0"
@@ -229,8 +229,8 @@
             </div>
           </div>
 
-          <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel.passive="handleLinkedViewportWheel">
-            <div class="ui-affino-grid__pinned-canvas">
+          <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel="handleLinkedViewportWheel">
+            <div ref="leftPinnedCanvasRef" class="ui-affino-grid__pinned-canvas">
               <template v-if="hasRenderableData">
                 <div
                   v-if="topSpacerPx > 0"
@@ -357,6 +357,7 @@
             <div
               ref="viewportRef"
               class="ui-affino-grid__viewport"
+              @wheel="handleBodyViewportWheel"
               @scroll.passive="handleBodyScroll"
             >
               <div class="ui-affino-grid__canvas">
@@ -470,8 +471,8 @@
             </div>
           </div>
 
-          <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel.passive="handleLinkedViewportWheel">
-            <div class="ui-affino-grid__pinned-canvas">
+          <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel="handleLinkedViewportWheel">
+            <div ref="rightPinnedCanvasRef" class="ui-affino-grid__pinned-canvas">
               <template v-if="hasRenderableData">
                 <div
                   v-if="topSpacerPx > 0"
@@ -542,15 +543,25 @@ import type {
   DataGridColumnStateSnapshot,
   DataGridColumnSnapshot,
   DataGridCoreServiceContext,
-  DataGridFilterSnapshot,
   DataGridRowModel,
+  DataGridSettingsAdapter,
   DataGridSortState,
 } from "@affino/datagrid-core"
 import { createDataGridSettingsAdapter, useAffinoDataGrid, useDataGridSettingsStore } from "@affino/datagrid-vue"
 import { useFloatingPopover, usePopoverController } from "@affino/popover-vue"
 import {
   useDataGridColumnLayoutOrchestration,
+  useDataGridViewportScrollLifecycle,
+  useDataGridRowSelectionInputHandlers,
 } from "@affino/datagrid-vue/advanced"
+import {
+  useDataGridInitialViewportRecovery,
+  useDataGridLinkedPaneScrollSync,
+  useDataGridManagedWheelScroll,
+  useDataGridResizeClickGuard,
+  useDataGridRowSelectionModel,
+  setsEqual,
+} from "@affino/datagrid-orchestration"
 
 type GridRow = Record<string, unknown>
 
@@ -607,6 +618,8 @@ type VirtualWindowSnapshot = {
   }
 }
 
+type PersistedFilterSnapshot = ReturnType<DataGridSettingsAdapter["getFilterSnapshot"]>
+
 const props = withDefaults(defineProps<{
   rows: GridRow[]
   columns: GridColumn[]
@@ -649,10 +662,14 @@ const mainViewportRef = ref<HTMLElement | null>(null)
 const viewportRef = ref<HTMLElement | null>(null)
 const indexViewportRef = ref<HTMLElement | null>(null)
 const selectionViewportRef = ref<HTMLElement | null>(null)
+const indexCanvasRef = ref<HTMLElement | null>(null)
+const selectionCanvasRef = ref<HTMLElement | null>(null)
 const headerRowRef = ref<HTMLElement | null>(null)
 const filterRowRef = ref<HTMLElement | null>(null)
 const leftPinnedViewportRef = ref<HTMLElement | null>(null)
 const rightPinnedViewportRef = ref<HTMLElement | null>(null)
+const leftPinnedCanvasRef = ref<HTMLElement | null>(null)
+const rightPinnedCanvasRef = ref<HTMLElement | null>(null)
 const leftPinnedHeaderRowRef = ref<HTMLElement | null>(null)
 const rightPinnedHeaderRowRef = ref<HTMLElement | null>(null)
 const leftPinnedFilterRowRef = ref<HTMLElement | null>(null)
@@ -721,6 +738,98 @@ const columnPanelContentProps = computed(() => columnPanelPopover.getContentProp
   role: "dialog",
   tabIndex: -1,
 }))
+
+const linkedPaneScrollSync = useDataGridLinkedPaneScrollSync({
+  resolveSourceScrollTop: () => viewportRef.value?.scrollTop ?? 0,
+  mode: "direct-transform",
+  resolvePaneElements: () => [
+    indexCanvasRef.value,
+    selectionCanvasRef.value,
+    leftPinnedCanvasRef.value,
+    rightPinnedCanvasRef.value,
+  ],
+})
+
+const managedWheelScroll = useDataGridManagedWheelScroll({
+  resolveWheelMode: () => "managed",
+  resolveWheelAxisLockMode: () => "dominant",
+  resolvePreventDefaultWhenHandled: () => true,
+  resolveBodyViewport: () => viewportRef.value,
+  resolveMainViewport: () => {
+    const mainViewport = mainViewportRef.value
+    if (!mainViewport) {
+      return null
+    }
+    return {
+      scrollLeft: mainViewport.scrollLeft,
+      scrollWidth: mainViewport.scrollWidth,
+      clientWidth: mainViewport.clientWidth,
+    }
+  },
+  setHandledScrollTop: (nextTop) => {
+    const bodyViewport = viewportRef.value
+    if (!bodyViewport) {
+      return
+    }
+    bodyViewport.scrollTop = nextTop
+    lastHandledScrollTop = nextTop
+    syncLinkedScroll(nextTop)
+    scheduleLinkedScrollSyncLoop()
+    updateObservedViewportSize()
+    scheduleViewportSync()
+  },
+  setHandledScrollLeft: (nextLeft) => {
+    const mainViewport = mainViewportRef.value
+    if (!mainViewport) {
+      return
+    }
+    mainViewport.scrollLeft = nextLeft
+    lastHandledScrollLeft = nextLeft
+    updateObservedViewportSize()
+    scheduleViewportSync()
+  },
+})
+
+const mainViewportScrollLifecycle = useDataGridViewportScrollLifecycle({
+  isContextMenuVisible: () => false,
+  closeContextMenu: () => {},
+  resolveScrollTop: () => 0,
+  resolveScrollLeft: () => lastHandledScrollLeft,
+  setScrollTop: () => {},
+  setScrollLeft: (nextLeft) => {
+    updateObservedViewportSize()
+    if (nextLeft === lastHandledScrollLeft) {
+      return
+    }
+    lastHandledScrollLeft = nextLeft
+    scheduleViewportSync()
+  },
+  hasInlineEditor: () => false,
+  commitInlineEdit: () => {},
+})
+
+const bodyViewportScrollLifecycle = useDataGridViewportScrollLifecycle({
+  isContextMenuVisible: () => false,
+  closeContextMenu: () => {},
+  resolveScrollTop: () => lastHandledScrollTop,
+  resolveScrollLeft: () => 0,
+  setScrollTop: (nextTop) => {
+    updateObservedViewportSize()
+    if (nextTop === lastHandledScrollTop) {
+      return
+    }
+    lastHandledScrollTop = nextTop
+    syncLinkedScroll(nextTop)
+    scheduleLinkedScrollSyncLoop()
+    if (rowHeightMode.value === "auto") {
+      scheduleAutoRowHeightMeasure()
+    }
+    scheduleViewportSync()
+  },
+  setScrollLeft: () => {},
+  hasInlineEditor: () => false,
+  commitInlineEdit: () => {},
+})
 
 const INDEX_COLUMN_KEYS = new Set<string>([
   "__snapshotindex__",
@@ -1433,15 +1542,7 @@ function normalizeExternalSelectedRowKeys(value: readonly string[] | undefined):
 }
 
 function areStringSetsEqual(left: Set<string>, right: Set<string>): boolean {
-  if (left.size !== right.size) {
-    return false
-  }
-  for (const key of left) {
-    if (!right.has(key)) {
-      return false
-    }
-  }
-  return true
+  return setsEqual(left, right)
 }
 
 function isRowSelected(rowNode: unknown, localIndex: number): boolean {
@@ -1454,34 +1555,13 @@ function resolveAllFilteredRowNodes(): unknown[] {
   if (total <= 0) {
     return []
   }
-  return grid.rowModel.getRowsInRange({ start: 0, end: total - 1 })
+  return [...grid.rowModel.getRowsInRange({ start: 0, end: total - 1 })]
 }
 
 function setSelectionInFilteredRange(startIndex: number, endIndex: number, selected: boolean) {
-  const allNodes = resolveAllFilteredRowNodes()
-  if (!allNodes.length) {
-    return
-  }
-
-  const safeStart = Math.max(0, Math.min(allNodes.length - 1, Math.trunc(startIndex)))
-  const safeEnd = Math.max(0, Math.min(allNodes.length - 1, Math.trunc(endIndex)))
-  const from = Math.min(safeStart, safeEnd)
-  const to = Math.max(safeStart, safeEnd)
-  const next = new Set(selectedRowKeySet.value)
-
-  for (let index = from; index <= to; index += 1) {
-    const rowNode = allNodes[index]
-    if (!rowNode) {
-      continue
-    }
-    const rowKey = resolveSelectionKeyFromNode(rowNode, index)
-    if (selected) {
-      next.add(rowKey)
-    } else {
-      next.delete(rowKey)
-    }
-  }
-  localSelectedRowKeySet.value = next
+  rowSelectionModel.setAnchorIndex(startIndex)
+  rowSelectionModel.applyShiftRange(endIndex, selected)
+  checkboxSelectionAnchorIndex.value = rowSelectionModel.getAnchorIndex()
 }
 
 function rememberCheckboxSelectionGesture(event: Event) {
@@ -1489,6 +1569,7 @@ function rememberCheckboxSelectionGesture(event: Event) {
 }
 
 function handleRowSelectionChange(rowNode: unknown, localIndex: number, event: Event) {
+  const rowKey = resolveRowSelectionKey(rowNode, localIndex)
   const target = event.target as HTMLInputElement | null
   const shouldSelect = Boolean(target?.checked)
   const currentIndex = resolveNodeDisplayIndex(rowNode, localIndex)
@@ -1499,24 +1580,14 @@ function handleRowSelectionChange(rowNode: unknown, localIndex: number, event: E
 
   if (shiftPressed && anchorIndex !== null) {
     setSelectionInFilteredRange(anchorIndex, currentIndex, shouldSelect)
-    checkboxSelectionAnchorIndex.value = currentIndex
     return
   }
 
-  const rowKey = resolveRowSelectionKey(rowNode, localIndex)
-  const next = new Set(selectedRowKeySet.value)
-  if (shouldSelect) {
-    next.add(rowKey)
-  } else {
-    next.delete(rowKey)
-  }
-  localSelectedRowKeySet.value = next
-  checkboxSelectionAnchorIndex.value = currentIndex
+  rowSelectionModel.toggleRowAtFilteredIndex(currentIndex, shouldSelect, { shiftKey: shiftPressed })
+  checkboxSelectionAnchorIndex.value = rowSelectionModel.getAnchorIndex()
 }
 
-async function handleSelectAllVisibleChange(event: Event) {
-  const target = event.target as HTMLInputElement | null
-  const shouldSelect = Boolean(target?.checked)
+async function applySelectAllVisibleSelection(shouldSelect: boolean) {
   checkboxSelectionAnchorIndex.value = null
   lastCheckboxGestureShift.value = false
   if (shouldSelect) {
@@ -1530,38 +1601,47 @@ async function handleSelectAllVisibleChange(event: Event) {
         }
         setTimeout(() => resolve(), 0)
       })
-      localSelectedRowKeySet.value = new Set(visibleRowSelectionKeys.value)
+      rowSelectionModel.toggleSelectAllFiltered(true)
       await nextTick()
     } finally {
       selectAllInProgress.value = false
     }
     return
   }
-  localSelectedRowKeySet.value = new Set()
+  rowSelectionModel.toggleSelectAllFiltered(false)
   selectAllInProgress.value = false
+}
+
+function handleSelectAllVisibleChange(event: Event) {
+  rowSelectionInputHandlers.onSelectAllChange(event)
 }
 
 function pruneSelectionToCurrentRows() {
   if (selectedRowKeySet.value.size === 0) {
     return
   }
-  const allowed = new Set<string>()
-  props.rows.forEach((row, index) => {
-    allowed.add(grid.bindings.getRowKey(rowData(row), index))
-  })
-  const next = new Set<string>()
-  let changed = false
-  selectedRowKeySet.value.forEach((rowKey) => {
-    if (allowed.has(rowKey)) {
-      next.add(rowKey)
-      return
-    }
-    changed = true
-  })
-  if (changed) {
-    localSelectedRowKeySet.value = next
-  }
+  rowSelectionModel.reconcileWithRows(props.rows)
 }
+
+const rowSelectionModel = useDataGridRowSelectionModel<string>({
+  resolveFilteredRows: () => visibleRowSelectionKeys.value,
+  resolveRowId: (rowId: string) => rowId,
+  resolveAllRows: () => props.rows.map((row, index) => grid.bindings.getRowKey(rowData(row), index)),
+  initialSelection: localSelectedRowKeySet.value,
+  onSelectionChange: (nextSelection: ReadonlySet<string>) => {
+    localSelectedRowKeySet.value = new Set(nextSelection)
+  },
+})
+
+const rowSelectionInputHandlers = useDataGridRowSelectionInputHandlers({
+  toggleSelectAllVisible: (checked) => {
+    void applySelectAllVisibleSelection(checked)
+  },
+  toggleRowSelection: (rowId, checked) => {
+    rowSelectionModel.toggleRowById(rowId, checked)
+    checkboxSelectionAnchorIndex.value = rowSelectionModel.getAnchorIndex()
+  },
+})
 
 const renderedDisplayRange = computed<WindowRange>(() => {
   const rows = visibleRowNodes.value
@@ -1599,102 +1679,24 @@ const bottomSpacerPx = computed(() => {
 
 let syncFrame: number | null = null
 let autoRowHeightMeasureFrame: number | null = null
-let linkedScrollSyncFrame: number | null = null
 let onWindowResize: (() => void) | null = null
 let viewportResizeObserver: ResizeObserver | null = null
-let resizeClickGuardTimer: ReturnType<typeof setTimeout> | null = null
-let resizeGuardReleaseTimer: ReturnType<typeof setTimeout> | null = null
-let resizeGuardPointerUpListener: ((event: PointerEvent) => void) | null = null
-let resizeGuardMouseUpListener: ((event: MouseEvent) => void) | null = null
-let initialViewportRecoveryFrame: number | null = null
 let hoverClearTimer: ReturnType<typeof setTimeout> | null = null
-let initialViewportRecoveryAttempts = 0
 let lastHandledScrollTop = Number.NaN
 let lastHandledScrollLeft = Number.NaN
-let lastLinkedSyncedScrollTop = Number.NaN
-const resizeInteractionActive = ref(false)
-const suppressHeaderSortUntil = ref(0)
-const RESIZE_SORT_GUARD_MS = 140
 const MAX_INITIAL_VIEWPORT_RECOVERY_ATTEMPTS = 12
 
-function detachResizeGuardReleaseListeners() {
-  if (typeof document === "undefined") {
-    resizeGuardPointerUpListener = null
-    resizeGuardMouseUpListener = null
-    return
-  }
-  if (resizeGuardPointerUpListener) {
-    document.removeEventListener("pointerup", resizeGuardPointerUpListener, true)
-    resizeGuardPointerUpListener = null
-  }
-  if (resizeGuardMouseUpListener) {
-    document.removeEventListener("mouseup", resizeGuardMouseUpListener, true)
-    resizeGuardMouseUpListener = null
-  }
-}
-
-function releaseResizeClickGuard() {
-  resizeInteractionActive.value = false
-  suppressHeaderSortUntil.value = Date.now() + RESIZE_SORT_GUARD_MS
-  schedulePersistTableSettings()
-  if (resizeClickGuardTimer !== null) {
-    clearTimeout(resizeClickGuardTimer)
-  }
-  resizeClickGuardTimer = setTimeout(() => {
-    suppressHeaderSortUntil.value = 0
-    resizeClickGuardTimer = null
-  }, RESIZE_SORT_GUARD_MS)
-}
+const resizeClickGuard = useDataGridResizeClickGuard({
+  guardDurationMs: 140,
+})
 
 function armResizeClickGuard() {
-  resizeInteractionActive.value = true
-  suppressHeaderSortUntil.value = Number.POSITIVE_INFINITY
-
-  if (resizeGuardReleaseTimer !== null) {
-    clearTimeout(resizeGuardReleaseTimer)
-    resizeGuardReleaseTimer = null
-  }
-
-  if (typeof document !== "undefined") {
-    detachResizeGuardReleaseListeners()
-    resizeGuardPointerUpListener = () => {
-      detachResizeGuardReleaseListeners()
-      if (resizeGuardReleaseTimer !== null) {
-        clearTimeout(resizeGuardReleaseTimer)
-      }
-      resizeGuardReleaseTimer = setTimeout(() => {
-        resizeGuardReleaseTimer = null
-        releaseResizeClickGuard()
-      }, 0)
-    }
-    resizeGuardMouseUpListener = () => {
-      detachResizeGuardReleaseListeners()
-      if (resizeGuardReleaseTimer !== null) {
-        clearTimeout(resizeGuardReleaseTimer)
-      }
-      resizeGuardReleaseTimer = setTimeout(() => {
-        resizeGuardReleaseTimer = null
-        releaseResizeClickGuard()
-      }, 0)
-    }
-    document.addEventListener("pointerup", resizeGuardPointerUpListener, true)
-    document.addEventListener("mouseup", resizeGuardMouseUpListener, true)
-  }
+  resizeClickGuard.armResizeGuard()
+  schedulePersistTableSettings()
 }
 
 function handleHeaderCellClickCapture(event: MouseEvent) {
-  if (resizeInteractionActive.value) {
-    event.preventDefault()
-    event.stopPropagation()
-    event.stopImmediatePropagation()
-    return
-  }
-  if (Date.now() > suppressHeaderSortUntil.value) {
-    return
-  }
-  event.preventDefault()
-  event.stopPropagation()
-  event.stopImmediatePropagation()
+  resizeClickGuard.onHeaderClickCapture(event)
 }
 
 function resolveRowHoverKey(rowNode: unknown): string | null {
@@ -1771,82 +1773,23 @@ function updateMeasuredHeaderHeights() {
 }
 
 function syncLinkedScroll(scrollTop: number) {
-  const nextTop = Math.max(0, Number.isFinite(scrollTop) ? scrollTop : 0)
-  lastLinkedSyncedScrollTop = nextTop
-  const root = gridRootRef.value
-  if (!root) {
-    return
-  }
-  root.style.setProperty("--ui-affino-linked-scroll-top", `${-nextTop}px`)
+  linkedPaneScrollSync.syncNow(scrollTop)
 }
 
 function cancelLinkedScrollSyncLoop() {
-  if (linkedScrollSyncFrame === null) {
-    return
-  }
-  cancelAnimationFrame(linkedScrollSyncFrame)
-  linkedScrollSyncFrame = null
-}
-
-function runLinkedScrollSyncLoop() {
-  linkedScrollSyncFrame = null
-  const bodyViewport = viewportRef.value
-  if (!bodyViewport) {
-    return
-  }
-  const currentTop = bodyViewport.scrollTop
-  if (currentTop !== lastLinkedSyncedScrollTop) {
-    syncLinkedScroll(currentTop)
-    linkedScrollSyncFrame = requestAnimationFrame(runLinkedScrollSyncLoop)
-  }
+  linkedPaneScrollSync.cancelSyncLoop()
 }
 
 function scheduleLinkedScrollSyncLoop() {
-  if (linkedScrollSyncFrame !== null) {
-    return
-  }
-  linkedScrollSyncFrame = requestAnimationFrame(runLinkedScrollSyncLoop)
-}
-
-function normalizeWheelDelta(delta: number, deltaMode: number, pageSize: number): number {
-  if (!Number.isFinite(delta)) return 0
-  if (deltaMode === 1) return delta * 16
-  if (deltaMode === 2) return delta * Math.max(1, pageSize)
-  return delta
+  linkedPaneScrollSync.scheduleSyncLoop()
 }
 
 function handleLinkedViewportWheel(event: WheelEvent) {
-  const bodyViewport = viewportRef.value
-  if (!bodyViewport) return
+  managedWheelScroll.onBodyViewportWheel(event)
+}
 
-  let consumed = false
-
-  const deltaY = normalizeWheelDelta(event.deltaY, event.deltaMode, bodyViewport.clientHeight)
-  if (deltaY !== 0) {
-    const maxTop = Math.max(0, bodyViewport.scrollHeight - bodyViewport.clientHeight)
-    const nextTop = Math.max(0, Math.min(maxTop, bodyViewport.scrollTop + deltaY))
-    if (nextTop !== bodyViewport.scrollTop) {
-      bodyViewport.scrollTop = nextTop
-      syncLinkedScroll(nextTop)
-      scheduleLinkedScrollSyncLoop()
-      consumed = true
-    }
-  }
-
-  const mainViewport = mainViewportRef.value
-  const deltaX = normalizeWheelDelta(event.deltaX, event.deltaMode, mainViewport?.clientWidth ?? 0)
-  if (mainViewport && deltaX !== 0) {
-    const maxLeft = Math.max(0, mainViewport.scrollWidth - mainViewport.clientWidth)
-    const nextLeft = Math.max(0, Math.min(maxLeft, mainViewport.scrollLeft + deltaX))
-    if (nextLeft !== mainViewport.scrollLeft) {
-      mainViewport.scrollLeft = nextLeft
-      consumed = true
-    }
-  }
-
-  if (consumed) {
-    event.stopPropagation()
-  }
+function handleBodyViewportWheel(event: WheelEvent) {
+  managedWheelScroll.onBodyViewportWheel(event)
 }
 
 function measureVisibleAutoRowHeight(): number | null {
@@ -1930,47 +1873,30 @@ function scheduleViewportSync() {
 }
 
 function cancelInitialViewportRecovery() {
-  if (initialViewportRecoveryFrame !== null) {
-    cancelAnimationFrame(initialViewportRecoveryFrame)
-    initialViewportRecoveryFrame = null
-  }
-  initialViewportRecoveryAttempts = 0
+  initialViewportRecovery.cancelRecovery()
 }
 
-function scheduleInitialViewportRecovery(reset = false) {
-  if (reset) {
-    cancelInitialViewportRecovery()
-  }
-  if (initialViewportRecoveryFrame !== null) {
-    return
-  }
-
-  initialViewportRecoveryFrame = requestAnimationFrame(() => {
-    initialViewportRecoveryFrame = null
-
+const initialViewportRecovery = useDataGridInitialViewportRecovery({
+  maxAttempts: MAX_INITIAL_VIEWPORT_RECOVERY_ATTEMPTS,
+  resolveShouldRecover: () => {
     const total = totalRows.value
     const range = visibleRowRange.value
     const rendered = range.end >= range.start ? (range.end - range.start + 1) : 0
+    return total > 1 && rendered <= 1
+  },
+  runRecoveryStep: () => {
     const bodyViewport = viewportRef.value
     const measuredHeight = bodyViewport ? Math.max(0, bodyViewport.clientHeight) : 0
-    const likelyMeasured = measuredHeight >= Math.max(rowHeightPx.value * 2, 48)
-
-    if (total <= 1 || rendered > 1) {
-      initialViewportRecoveryAttempts = 0
-      return
-    }
+    const _likelyMeasured = measuredHeight >= Math.max(rowHeightPx.value * 2, 48)
 
     updateObservedViewportSize()
     syncViewportMetrics()
+    void _likelyMeasured
+  },
+})
 
-    initialViewportRecoveryAttempts += 1
-    if (!likelyMeasured || (rendered <= 1 && initialViewportRecoveryAttempts < MAX_INITIAL_VIEWPORT_RECOVERY_ATTEMPTS)) {
-      scheduleInitialViewportRecovery(false)
-      return
-    }
-
-    initialViewportRecoveryAttempts = 0
-  })
+function scheduleInitialViewportRecovery(reset = false) {
+  initialViewportRecovery.scheduleRecovery(reset)
 }
 
 onMounted(() => {
@@ -2062,7 +1988,14 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  managedWheelScroll.reset()
+  linkedPaneScrollSync.reset()
+  resizeClickGuard.dispose()
   gridRootRef.value?.style.removeProperty("--ui-affino-linked-scroll-top")
+  indexCanvasRef.value?.style.removeProperty("transform")
+  selectionCanvasRef.value?.style.removeProperty("transform")
+  leftPinnedCanvasRef.value?.style.removeProperty("transform")
+  rightPinnedCanvasRef.value?.style.removeProperty("transform")
   columnPanelPopover.dispose()
   persistTableSettingsNow()
   unsubscribeRowModel()
@@ -2086,15 +2019,6 @@ onBeforeUnmount(() => {
     autoRowHeightMeasureFrame = null
   }
   cancelInitialViewportRecovery()
-  detachResizeGuardReleaseListeners()
-  if (resizeGuardReleaseTimer !== null) {
-    clearTimeout(resizeGuardReleaseTimer)
-    resizeGuardReleaseTimer = null
-  }
-  if (resizeClickGuardTimer !== null) {
-    clearTimeout(resizeClickGuardTimer)
-    resizeClickGuardTimer = null
-  }
   if (settingsPersistTimer !== null) {
     clearTimeout(settingsPersistTimer)
     settingsPersistTimer = null
@@ -2104,8 +2028,6 @@ onBeforeUnmount(() => {
     hoverClearTimer = null
   }
   hoveredRowId.value = null
-  resizeInteractionActive.value = false
-  suppressHeaderSortUntil.value = 0
 })
 
 watch(
@@ -2182,7 +2104,7 @@ watch(
 watch(
   () => props.datasetKey,
   () => {
-    localSelectedRowKeySet.value = new Set()
+    rowSelectionModel.clearSelection()
     checkboxSelectionAnchorIndex.value = null
     lastCheckboxGestureShift.value = false
   },
@@ -2198,8 +2120,9 @@ watch(
     if (areStringSetsEqual(localSelectedRowKeySet.value, normalized)) {
       return
     }
-    localSelectedRowKeySet.value = normalized
+    rowSelectionModel.replaceSelection(normalized)
     if (normalized.size === 0) {
+      rowSelectionModel.setAnchorIndex(null)
       checkboxSelectionAnchorIndex.value = null
       lastCheckboxGestureShift.value = false
     }
@@ -2343,47 +2266,37 @@ watch(
   () => visibleRowSelectionKeys.value.length,
   (length) => {
     if (length <= 0) {
+      rowSelectionModel.setAnchorIndex(null)
       checkboxSelectionAnchorIndex.value = null
       return
     }
     if (checkboxSelectionAnchorIndex.value !== null && checkboxSelectionAnchorIndex.value >= length) {
+      rowSelectionModel.setAnchorIndex(null)
       checkboxSelectionAnchorIndex.value = null
     }
   },
   { immediate: true },
 )
 
+watch(
+  [
+    () => leftPinnedColumns.value.length,
+    () => rightPinnedColumns.value.length,
+  ],
+  () => {
+    const currentTop = viewportRef.value?.scrollTop ?? 0
+    linkedPaneScrollSync.reset()
+    syncLinkedScroll(currentTop)
+  },
+  { flush: "post" },
+)
+
 function handleMainScroll(event: Event) {
-  const target = event.currentTarget as HTMLElement | null
-  if (!target) {
-    return
-  }
-  updateObservedViewportSize()
-  const nextLeft = target.scrollLeft
-  if (nextLeft === lastHandledScrollLeft) {
-    return
-  }
-  lastHandledScrollLeft = nextLeft
-  scheduleViewportSync()
+  mainViewportScrollLifecycle.onViewportScroll(event)
 }
 
 function handleBodyScroll(event: Event) {
-  const target = event.currentTarget as HTMLElement | null
-  if (!target) {
-    return
-  }
-  updateObservedViewportSize()
-  const nextTop = target.scrollTop
-  if (nextTop === lastHandledScrollTop) {
-    return
-  }
-  lastHandledScrollTop = nextTop
-  syncLinkedScroll(nextTop)
-  scheduleLinkedScrollSyncLoop()
-  if (rowHeightMode.value === "auto") {
-    scheduleAutoRowHeightMeasure()
-  }
-  scheduleViewportSync()
+  bodyViewportScrollLifecycle.onViewportScroll(event)
 }
 
 function handleColumnVisibilityChange(columnKey: string, event: Event) {
@@ -2474,14 +2387,17 @@ function normalizePersistedSortState(state: DataGridSortState[] | undefined): Da
     return []
   }
   return state
-    .map(item => ({
-      key: String(item?.key ?? "").trim(),
-      direction: item?.direction === "desc" ? "desc" : "asc",
-    }))
+    .map((item): DataGridSortState => {
+      const direction: DataGridSortState["direction"] = item?.direction === "desc" ? "desc" : "asc"
+      return {
+        key: String(item?.key ?? "").trim(),
+        direction,
+      }
+    })
     .filter(item => item.key.length > 0)
 }
 
-function buildFilterSnapshotFromInputs(): DataGridFilterSnapshot | null {
+function buildFilterSnapshotFromInputs(): PersistedFilterSnapshot {
   const columnFiltersSnapshot: Record<string, string[]> = {}
   Object.entries(columnFilters).forEach(([key, value]) => {
     const trimmed = value.trim()
@@ -2497,7 +2413,7 @@ function buildFilterSnapshotFromInputs(): DataGridFilterSnapshot | null {
   }
 }
 
-function applyPersistedFilterSnapshot(snapshot: DataGridFilterSnapshot | null) {
+function applyPersistedFilterSnapshot(snapshot: PersistedFilterSnapshot) {
   syncFilterKeys()
   Object.keys(columnFilters).forEach((key) => {
     columnFilters[key] = ""

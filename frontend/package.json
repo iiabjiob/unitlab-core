@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@affino/datagrid-core": "^0.1.0",
-    "@affino/datagrid-vue": "^0.1.0",
+    "@affino/datagrid-orchestration": "^0.1.2",
+    "@affino/datagrid-vue": "^0.1.2",
     "@affino/dialog-vue": "^1.1.0",
     "@affino/menu-vue": "1.0.0-alpha.6",
     "@affino/popover-vue": "^1.0.0",
