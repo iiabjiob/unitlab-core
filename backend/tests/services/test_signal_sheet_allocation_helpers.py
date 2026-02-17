@@ -12,22 +12,22 @@ from app.models.channel import Channel
 from app.models.signal import SignalIODirection
 
 
-def test_required_channel_type_maps_relay_direction() -> None:
-    assert _required_channel_type("DI") == "do"
-    assert _required_channel_type("DO") == "di"
-    assert _required_channel_type("AI") == "ao"
-    assert _required_channel_type("AO") == "ai"
+def test_required_channel_type_maps_direct_direction() -> None:
+    assert _required_channel_type("DI") == "di"
+    assert _required_channel_type("DO") == "do"
+    assert _required_channel_type("AI") == "ai"
+    assert _required_channel_type("AO") == "ao"
     assert _required_channel_type("unknown") is None
 
 
-def test_channel_compatibility_uses_relay_mapping() -> None:
-    assert _is_channel_compatible(SignalIODirection.DI, "do") is True
-    assert _is_channel_compatible(SignalIODirection.DO, "di") is True
-    assert _is_channel_compatible(SignalIODirection.AI, "ao") is True
-    assert _is_channel_compatible(SignalIODirection.AO, "ai") is True
+def test_channel_compatibility_uses_direct_mapping() -> None:
+    assert _is_channel_compatible(SignalIODirection.DI, "di") is True
+    assert _is_channel_compatible(SignalIODirection.DO, "do") is True
+    assert _is_channel_compatible(SignalIODirection.AI, "ai") is True
+    assert _is_channel_compatible(SignalIODirection.AO, "ao") is True
 
-    assert _is_channel_compatible(SignalIODirection.DI, "di") is False
-    assert _is_channel_compatible(SignalIODirection.DO, "do") is False
+    assert _is_channel_compatible(SignalIODirection.DI, "do") is False
+    assert _is_channel_compatible(SignalIODirection.DO, "di") is False
 
 
 def test_parse_tested_at_parses_iso_utc_suffix() -> None:

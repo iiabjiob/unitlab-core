@@ -3,13 +3,13 @@ import { computed, ref, watch } from "vue"
 import type { Switchgear } from "@/types/switchgear"
 import { CHANNEL_TYPES, type ChannelType } from "@/types/channel"
 import SignalBackedChannelField from "@/components/signals/SignalBackedChannelField.vue"
+import DirectSignalModeTabs from "@/components/ui/DirectSignalModeTabs.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import InlineInfoTooltip from "@/components/ui/InlineInfoTooltip.vue"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
-import { useTabsController } from "@affino/tabs-vue"
 
 const props = defineProps<{
   switchgear: Switchgear
@@ -72,10 +72,7 @@ const signalSelectionByRole = ref<Record<BindingRoleKey, { signalId: number | nu
   di_open: { signalId: null, signalKey: null },
   di_close: { signalId: null, signalKey: null },
 })
-const bindingModeTabs = useTabsController<BindingMode>("direct")
-const bindingMode = computed<BindingMode>(() => (
-  bindingModeTabs.state.value.value === "signal" ? "signal" : "direct"
-))
+const bindingMode = ref<BindingMode>("direct")
 const signalModeAvailable = computed(() => {
   const workspaceId = workspaceStore.activeWorkspaceId
   const sheet = signalSheetStore.sheet
@@ -151,7 +148,68 @@ function selectedSignalKey(role: BindingRoleKey): string | null {
   return signalSelectionByRole.value[role]?.signalKey ?? null
 }
 
+function roleForChannel(channelId: number): BindingRoleKey | null {
+  const owner = bindingsDraft.value.find((binding) => Number(binding.channel_id) === channelId)
+  if (!owner) {
+    return null
+  }
+  return ROLE_ORDER.includes(owner.role as BindingRoleKey) ? owner.role as BindingRoleKey : null
+}
+
+function excludeIdsForRole(role: BindingRoleKey): number[] {
+  return bindingsDraft.value
+    .filter((binding) => binding.role !== role)
+    .map((binding) => Number(binding.channel_id))
+    .filter((channelId) => Number.isFinite(channelId) && channelId > 0)
+}
+
+function isUsedByOtherRole(role: BindingRoleKey, channelId: number): boolean {
+  return bindingsDraft.value.some((binding) => (
+    binding.role !== role
+    && Number.isFinite(binding.channel_id as number)
+    && Number(binding.channel_id) === channelId
+  ))
+}
+
+const duplicateChannelConflicts = computed(() => {
+  const byChannel = new Map<number, BindingRoleKey[]>()
+  bindingsDraft.value.forEach((binding) => {
+    const channelId = Number(binding.channel_id)
+    if (!Number.isFinite(channelId) || channelId <= 0) {
+      return
+    }
+    const role = binding.role as BindingRoleKey
+    if (!ROLE_ORDER.includes(role)) {
+      return
+    }
+    const roles = byChannel.get(channelId) ?? []
+    roles.push(role)
+    byChannel.set(channelId, roles)
+  })
+
+  return Array.from(byChannel.entries())
+    .filter(([, roles]) => roles.length > 1)
+    .map(([channelId, roles]) => ({ channelId, roles }))
+})
+
+const hasDuplicateChannelConflicts = computed(() => duplicateChannelConflicts.value.length > 0)
+
+const duplicateChannelWarningText = computed(() => (
+  duplicateChannelConflicts.value
+    .map(({ channelId, roles }) => {
+      const roleLabels = roles.map(roleLabel).join(" / ")
+      return `ch#${channelId}: ${roleLabels}`
+    })
+    .join("; ")
+))
+
 function handleChannelChange(role: BindingRoleKey, channelId: number | null) {
+  if (Number.isFinite(channelId as number) && channelId !== null && isUsedByOtherRole(role, Number(channelId))) {
+    const owner = roleForChannel(Number(channelId))
+    const ownerLabel = owner ? roleLabel(owner) : "another role"
+    toastStore.error(`Channel is already assigned to ${ownerLabel}`)
+    return
+  }
   applyPatch(role, { channel_id: channelId })
 }
 
@@ -163,7 +221,7 @@ function setBindingMode(mode: BindingMode) {
   if (mode === "signal" && !signalModeAvailable.value) {
     return
   }
-  bindingModeTabs.select(mode)
+  bindingMode.value = mode
 }
 
 async function resetAll() {
@@ -199,7 +257,7 @@ watch(
       di_open: { signalId: null, signalKey: null },
       di_close: { signalId: null, signalKey: null },
     }
-    bindingModeTabs.select("direct")
+    bindingMode.value = "direct"
   },
 )
 
@@ -207,7 +265,7 @@ watch(
   signalModeAvailable,
   (available) => {
     if (!available && bindingMode.value !== "direct") {
-      bindingModeTabs.select("direct")
+      bindingMode.value = "direct"
     }
   },
   { immediate: true },
@@ -232,32 +290,22 @@ watch(
       </UiButton>
     </div>
 
-    <div class="mb-3 flex items-center gap-2" role="tablist" aria-label="Binding mode">
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="bindingMode === 'direct'"
-        class="rounded-md border px-3 py-1.5 text-xs font-semibold leading-none transition-colors"
-        :class="bindingMode === 'direct'
-          ? 'border-neutral-950 bg-neutral-950 text-white dark:border-white dark:bg-white dark:text-neutral-900'
-          : 'border-neutral-500 bg-neutral-100 text-neutral-900 dark:border-neutral-400 dark:bg-neutral-800 dark:text-neutral-100'"
-        @click="setBindingMode('direct')"
-      >
-        Direct
-      </button>
-      <button
-        v-if="signalModeAvailable"
-        type="button"
-        role="tab"
-        :aria-selected="bindingMode === 'signal'"
-        class="rounded-md border px-3 py-1.5 text-xs font-semibold leading-none transition-colors"
-        :class="bindingMode === 'signal'
-          ? 'border-neutral-950 bg-neutral-950 text-white dark:border-white dark:bg-white dark:text-neutral-900'
-          : 'border-neutral-500 bg-neutral-100 text-neutral-900 dark:border-neutral-400 dark:bg-neutral-800 dark:text-neutral-100'"
-        @click="setBindingMode('signal')"
-      >
-        By Signal
-      </button>
+    <div class="mb-3">
+      <DirectSignalModeTabs
+        :model-value="bindingMode"
+        :show-signal="signalModeAvailable"
+        aria-label="Binding mode"
+        @update:model-value="setBindingMode"
+      />
+    </div>
+
+    <div
+      v-if="hasDuplicateChannelConflicts"
+      class="mb-3 rounded-md border border-amber-300/70 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-300"
+      role="alert"
+    >
+      Duplicate channel bindings detected. Please keep one unique channel per role.
+      <div class="mt-1">{{ duplicateChannelWarningText }}</div>
     </div>
 
     <div class="space-y-3 overflow-y-auto pr-1">
@@ -278,6 +326,7 @@ watch(
         <SignalBackedChannelField
           :channel-id="channelValue(role)"
           :channel-type="ROLE_META[role].channelType"
+          :exclude-ids="excludeIdsForRole(role)"
           :signal-id="selectedSignalId(role)"
           :signal-key="selectedSignalKey(role)"
           :name="`binding-${role}`"

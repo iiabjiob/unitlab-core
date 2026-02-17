@@ -49,8 +49,10 @@ class SequenceRepository:
                 self.db.add(SequenceStep(**payload))
 
             await self.db.commit()
-            await self.db.refresh(seq, attribute_names=["steps"])
-            return seq
+            created = await self.get(workspace_id, seq.id)
+            if created is None:  # pragma: no cover - defensive consistency check
+                raise RuntimeError("Created sequence could not be reloaded")
+            return created
         except SQLAlchemyError as exc:  # pragma: no cover - defensive rollback
             await self.db.rollback()
             raise RuntimeError(f"DB error creating sequence: {exc}") from exc
@@ -67,8 +69,7 @@ class SequenceRepository:
         for key, value in changes.items():
             setattr(seq, key, value)
         await self.db.commit()
-        await self.db.refresh(seq, attribute_names=["steps"])
-        return seq
+        return await self.get(workspace_id, seq_id)
 
     async def delete(self, workspace_id: int, seq_id: int) -> bool:
         seq = await self.get(workspace_id, seq_id)

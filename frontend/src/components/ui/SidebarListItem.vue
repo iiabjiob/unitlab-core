@@ -15,7 +15,7 @@ const emit = defineEmits<{ (e: "select"): void }>()
 
 const rootClasses = computed(() => [
   "group",
-  props.disabled ? "cursor-default opacity-60" : "cursor-pointer",
+  props.disabled ? "cursor-default opacity-60" : "cursor-default",
   "select-none flex items-center px-3 py-2 text-neutral-400 dark:text-neutral-600 hover:bg-neutral-850 transition-colors",
   props.active ? "text-neutral-900 dark:text-white" : null,
 ])

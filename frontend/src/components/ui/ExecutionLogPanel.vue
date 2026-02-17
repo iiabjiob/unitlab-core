@@ -147,7 +147,7 @@ onBeforeUnmount(() => {
         :key="index"
         class="flex items-center gap-2 py-1 px-1 rounded-sm transition-colors"
         :class="[
-          props.selectable ? 'cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800/50 focus:outline-none focus:ring-1 focus:ring-neutral-300 dark:focus:ring-neutral-600' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800/50',
+          props.selectable ? 'cursor-default hover:bg-neutral-100 dark:hover:bg-neutral-800/50 focus:outline-none focus:ring-1 focus:ring-neutral-300 dark:focus:ring-neutral-600' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800/50',
           props.selectedIndex === index ? 'bg-neutral-100 dark:bg-neutral-800/60' : '',
         ]"
         :tabindex="props.selectable ? 0 : undefined"

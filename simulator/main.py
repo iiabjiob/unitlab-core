@@ -33,6 +33,36 @@ _PROFILE_FACTORS = {
 logger = get_logger("main")
 
 
+def _is_broken_pipe_error(exc: BaseException | None) -> bool:
+    if not isinstance(exc, OSError):
+        return False
+    if isinstance(exc, BrokenPipeError):
+        return True
+    return getattr(exc, "errno", None) == 32
+
+
+def _is_gmqtt_close_task(task: object | None) -> bool:
+    coro = getattr(task, "get_coro", lambda: None)()
+    if coro is None:
+        return False
+    code = getattr(coro, "cr_code", None)
+    qualname = getattr(code, "co_qualname", "")
+    filename = getattr(code, "co_filename", "")
+    return "MQTTConnection.close" in qualname and "gmqtt" in filename
+
+
+def _should_suppress_gmqtt_close_broken_pipe(context: dict) -> bool:
+    exc = context.get("exception")
+    if not _is_broken_pipe_error(exc):
+        return False
+    if _is_gmqtt_close_task(context.get("task")):
+        return True
+    source_future = context.get("future")
+    if _is_gmqtt_close_task(source_future):
+        return True
+    return False
+
+
 @dataclass(slots=True)
 class DeviceGroupConfig:
     count: int
@@ -183,6 +213,20 @@ def _ensure_float(value, name: str, *, min_value: float = 0.0, max_value: Option
 
 
 async def run_simulator(args: argparse.Namespace) -> None:
+    loop = asyncio.get_running_loop()
+    previous_exception_handler = loop.get_exception_handler()
+
+    def _loop_exception_handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+        if _should_suppress_gmqtt_close_broken_pipe(context):
+            logger.debug("Suppressed gmqtt close broken-pipe during reconnect/shutdown")
+            return
+        if previous_exception_handler is not None:
+            previous_exception_handler(loop, context)
+            return
+        loop.default_exception_handler(context)
+
+    loop.set_exception_handler(_loop_exception_handler)
+
     config = load_config(args.config)
     factor = _PROFILE_FACTORS.get(args.profile, 1.0)
     config = config.scaled(factor)
@@ -244,6 +288,7 @@ async def run_simulator(args: argparse.Namespace) -> None:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        loop.set_exception_handler(previous_exception_handler)
 
 
 def _build_do_devices(config: SimulatorConfig, hex_dump: bool) -> list[SimulatedDeviceBase]:

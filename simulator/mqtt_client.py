@@ -110,7 +110,8 @@ class SimulatorMQTTClient:
         async with self._lock:
             if not self._connected.is_set():
                 return
-            await self._client.disconnect()
+            with contextlib.suppress(BrokenPipeError, ConnectionResetError, OSError):
+                await self._client.disconnect()
             self._connected.clear()
 
     async def reconnect(self, broker: BrokerSettings) -> None:

@@ -470,7 +470,7 @@ onBeforeUnmount(() => {
 }
 
 .ui-table-light__cell--sortable {
-  cursor: pointer;
+  cursor: default;
 }
 
 .ui-table-light__cell--sorted {

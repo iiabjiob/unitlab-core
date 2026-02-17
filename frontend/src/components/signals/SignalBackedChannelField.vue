@@ -1,25 +1,12 @@
 <template>
   <div class="signal-backed-field">
     <div v-if="props.showModeToggle" class="signal-backed-field__mode">
-      <button
-        type="button"
-        class="signal-backed-field__mode-btn"
-        :class="{ 'is-active': mode === 'direct' }"
+      <DirectSignalModeTabs
+        :model-value="mode"
+        :show-signal="canUseSignalMode"
         :disabled="props.disabled"
-        @click="setMode('direct')"
-      >
-        Direct
-      </button>
-      <button
-        v-if="canUseSignalMode"
-        type="button"
-        class="signal-backed-field__mode-btn"
-        :class="{ 'is-active': mode === 'signal' }"
-        :disabled="props.disabled"
-        @click="setMode('signal')"
-      >
-        By Signal
-      </button>
+        @update:model-value="setMode"
+      />
     </div>
 
     <div v-if="mode === 'direct' || !canUseSignalMode" class="signal-backed-field__panel">
@@ -81,6 +68,7 @@
 import { computed, ref, watch } from "vue"
 
 import UiButton from "@/components/ui/UiButton.vue"
+import DirectSignalModeTabs from "@/components/ui/DirectSignalModeTabs.vue"
 import ChannelSelect from "@/components/ui/ChannelSelect.vue"
 import SignalSelectionGridModal from "@/components/signals/SignalSelectionGridModal.vue"
 
@@ -303,6 +291,12 @@ async function handleSignalConfirm(rows: SignalAllocationRow[]) {
     return
   }
 
+  const excludedIds = new Set((props.excludeIds ?? []).map(id => Number(id)).filter(id => Number.isFinite(id) && id > 0))
+  if (excludedIds.has(resolvedChannelId)) {
+    toastStore.error("Signal resolves to a channel that is already used by another binding")
+    return
+  }
+
   const resolvedChannelType = normalizeChannelType(resolved.channel_type)
   if (resolvedChannelType !== props.channelType) {
     toastStore.error("Signal is incompatible with the selected channel type")
@@ -324,49 +318,7 @@ async function handleSignalConfirm(rows: SignalAllocationRow[]) {
 }
 
 .signal-backed-field__mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.125rem;
-  border-radius: 0.5rem;
-  border: 1px solid rgb(212 212 212);
-  background: rgb(250 250 250);
-}
-
-.dark .signal-backed-field__mode {
-  border-color: rgb(64 64 64);
-  background: rgb(23 23 23);
-}
-
-.signal-backed-field__mode-btn {
-  border: 0;
-  background: transparent;
-  color: rgb(82 82 82);
-  border-radius: 0.375rem;
-  padding: 0.35rem 0.75rem;
-  font-size: 0.75rem;
-  line-height: 1;
-  font-weight: 700;
-  border: 1px solid transparent;
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
-}
-
-.signal-backed-field__mode-btn.is-active {
-  background: rgb(23 23 23);
-  border-color: rgb(23 23 23);
-  color: rgb(255 255 255);
-}
-
-.dark .signal-backed-field__mode-btn {
-  color: rgb(212 212 212);
-  border-color: rgb(82 82 82);
-  background: rgb(24 24 27);
-}
-
-.dark .signal-backed-field__mode-btn.is-active {
-  background: rgb(245 245 245);
-  border-color: rgb(245 245 245);
-  color: rgb(15 23 42);
+  display: block;
 }
 
 .signal-backed-field__panel {

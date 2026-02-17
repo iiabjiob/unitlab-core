@@ -8,7 +8,7 @@
       <!-- DO control -->
       <div
         v-if="effectiveType === 'do'"
-        class="w-4 h-4 rounded-sm border cursor-pointer flex items-center justify-center
+        class="w-4 h-4 rounded-sm border cursor-default flex items-center justify-center
                transition-colors"
         :class="[doControlClass, { 'cursor-not-allowed opacity-70': isWaiting || disabled }]"
         @click.stop="onToggleClick"

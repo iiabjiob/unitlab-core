@@ -26,7 +26,7 @@
       <div v-if="step === 'upload'">
         <label class="mb-1 block text-sm font-semibold text-neutral-700 dark:text-neutral-200">Signal list file</label>
         <div
-          class="group flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center text-sm transition"
+          class="group flex cursor-default flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center text-sm transition"
           :class="{
             'border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-400 dark:bg-emerald-500/20 dark:text-emerald-200': dropActive,
             'border-neutral-300 bg-white text-neutral-600 hover:border-primary-500 hover:bg-primary-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200': !dropActive,

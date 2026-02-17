@@ -1,7 +1,7 @@
 @layer components {
 /* Base class */
 .btn {
-  @apply font-mono font-medium cursor-pointer rounded-sm;
+  @apply font-mono font-medium cursor-default rounded-sm;
 }
 
 .btn:disabled {

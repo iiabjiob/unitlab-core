@@ -667,7 +667,17 @@ function formatTestedAt(value: unknown): string {
   if (Number.isNaN(parsed.getTime())) {
     return raw
   }
-  return parsed.toLocaleString()
+  const formatted = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(parsed)
+  const milliseconds = String(parsed.getMilliseconds()).padStart(3, "0")
+  return `${formatted}.${milliseconds}`
 }
 
 function formatPercentCompact(part: number, total: number): string {
@@ -814,10 +824,10 @@ function exportSignalReport() {
 
 function requiredChannelType(signalDirection: string): "di" | "do" | "ai" | "ao" | null {
   const normalized = signalDirection.trim().toUpperCase()
-  if (normalized === "DI") return "do"
-  if (normalized === "DO") return "di"
-  if (normalized === "AI") return "ao"
-  if (normalized === "AO") return "ai"
+  if (normalized === "DI") return "di"
+  if (normalized === "DO") return "do"
+  if (normalized === "AI") return "ai"
+  if (normalized === "AO") return "ao"
   return null
 }
 

@@ -29,10 +29,10 @@ class SignalSheetAutoAllocateResult:
 
 
 _DIRECTION_TO_CHANNEL_TYPE: dict[str, str] = {
-    "DI": "do",
-    "DO": "di",
-    "AI": "ao",
-    "AO": "ai",
+    "DI": "di",
+    "DO": "do",
+    "AI": "ai",
+    "AO": "ao",
 }
 
 

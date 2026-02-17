@@ -523,6 +523,30 @@
             </div>
           </div>
         </div>
+
+        <div
+          v-show="showRightScrollbar"
+          ref="rightScrollbarRef"
+          class="ui-affino-grid__right-scrollbar"
+          @scroll.passive="handleRightScrollbarScroll"
+        >
+          <div
+            class="ui-affino-grid__right-scrollbar-content"
+            :style="{ height: `${bodyScrollableHeightPx}px` }"
+          ></div>
+        </div>
+      </div>
+
+      <div
+        v-show="showBottomScrollbar"
+        ref="bottomScrollbarRef"
+        class="ui-affino-grid__bottom-scrollbar"
+        @scroll.passive="handleBottomScrollbarScroll"
+      >
+        <div
+          class="ui-affino-grid__bottom-scrollbar-content"
+          :style="{ width: `${centerScrollableWidthPx}px` }"
+        ></div>
       </div>
     </div>
 
@@ -659,6 +683,8 @@ const emit = defineEmits<{
 
 const gridRootRef = ref<HTMLElement | null>(null)
 const mainViewportRef = ref<HTMLElement | null>(null)
+const bottomScrollbarRef = ref<HTMLElement | null>(null)
+const rightScrollbarRef = ref<HTMLElement | null>(null)
 const viewportRef = ref<HTMLElement | null>(null)
 const indexViewportRef = ref<HTMLElement | null>(null)
 const selectionViewportRef = ref<HTMLElement | null>(null)
@@ -692,6 +718,8 @@ const viewportMetrics = reactive<ViewportMetricsSnapshot>({
 })
 const observedViewportWidth = ref<number | null>(null)
 const observedViewportHeight = ref<number | null>(null)
+const observedBodyScrollHeight = ref(0)
+const observedBodyClientHeight = ref(0)
 const rowModelRevision = ref(0)
 const measuredHeaderHeight = ref<number | null>(null)
 const measuredFilterHeight = ref<number | null>(null)
@@ -1422,6 +1450,27 @@ const rightSpacerPx = computed(() => {
   return Math.max(0, totalWidth - (prefix[end] ?? 0))
 })
 
+const centerScrollableWidthPx = computed(() => {
+  const prefix = centerPrefix.value
+  return Math.max(0, prefix[prefix.length - 1] ?? 0)
+})
+
+const showBottomScrollbar = computed(() => {
+  const viewportWidth = Math.max(
+    0,
+    observedViewportWidth.value
+      ?? mainViewportRef.value?.clientWidth
+      ?? 0,
+  )
+  return centerScrollableWidthPx.value > viewportWidth + 1
+})
+
+const bodyScrollableHeightPx = computed(() => Math.max(0, observedBodyScrollHeight.value))
+
+const showRightScrollbar = computed(() => (
+  observedBodyScrollHeight.value > observedBodyClientHeight.value + 1
+))
+
 const visibleColumns = computed(() => {
   const { start, end } = centerVisibleColumnWindow.value
   if (end < start) return []
@@ -1741,6 +1790,8 @@ function isRowHovered(rowNode: unknown): boolean {
 function updateObservedViewportSize() {
   const mainViewport = mainViewportRef.value
   const bodyViewport = viewportRef.value
+  const bottomScrollbar = bottomScrollbarRef.value
+  const rightScrollbar = rightScrollbarRef.value
 
   if (mainViewport) {
     const width = Math.max(0, mainViewport.clientWidth)
@@ -1749,6 +1800,14 @@ function updateObservedViewportSize() {
   if (bodyViewport) {
     const height = Math.max(0, bodyViewport.clientHeight)
     observedViewportHeight.value = height > 0 ? height : null
+    observedBodyClientHeight.value = height
+    observedBodyScrollHeight.value = Math.max(0, bodyViewport.scrollHeight)
+  }
+  if (mainViewport && bottomScrollbar && bottomScrollbar.scrollLeft !== mainViewport.scrollLeft) {
+    bottomScrollbar.scrollLeft = mainViewport.scrollLeft
+  }
+  if (bodyViewport && rightScrollbar && rightScrollbar.scrollTop !== bodyViewport.scrollTop) {
+    rightScrollbar.scrollTop = bodyViewport.scrollTop
   }
 }
 
@@ -2292,10 +2351,42 @@ watch(
 )
 
 function handleMainScroll(event: Event) {
+  const mainViewport = event.target as HTMLElement | null
+  const bottomScrollbar = bottomScrollbarRef.value
+  if (mainViewport && bottomScrollbar && bottomScrollbar.scrollLeft !== mainViewport.scrollLeft) {
+    bottomScrollbar.scrollLeft = mainViewport.scrollLeft
+  }
   mainViewportScrollLifecycle.onViewportScroll(event)
 }
 
+function handleBottomScrollbarScroll(event: Event) {
+  const bottomScrollbar = event.target as HTMLElement | null
+  const mainViewport = mainViewportRef.value
+  if (!bottomScrollbar || !mainViewport) {
+    return
+  }
+  if (mainViewport.scrollLeft !== bottomScrollbar.scrollLeft) {
+    mainViewport.scrollLeft = bottomScrollbar.scrollLeft
+  }
+}
+
+function handleRightScrollbarScroll(event: Event) {
+  const rightScrollbar = event.target as HTMLElement | null
+  const bodyViewport = viewportRef.value
+  if (!rightScrollbar || !bodyViewport) {
+    return
+  }
+  if (bodyViewport.scrollTop !== rightScrollbar.scrollTop) {
+    bodyViewport.scrollTop = rightScrollbar.scrollTop
+  }
+}
+
 function handleBodyScroll(event: Event) {
+  const bodyViewport = event.target as HTMLElement | null
+  const rightScrollbar = rightScrollbarRef.value
+  if (bodyViewport && rightScrollbar && rightScrollbar.scrollTop !== bodyViewport.scrollTop) {
+    rightScrollbar.scrollTop = bodyViewport.scrollTop
+  }
   bodyViewportScrollLifecycle.onViewportScroll(event)
 }
 
@@ -2615,6 +2706,16 @@ function syncFilterKeys() {
   })
 }
 
+function refreshViewportAfterFilterMutation() {
+  explicitRowRange = null
+  lastAppliedRowRange = null
+  void nextTick(() => {
+    updateObservedViewportSize()
+    scheduleViewportSync()
+    scheduleInitialViewportRecovery(true)
+  })
+}
+
 function applyFilters() {
   if (!props.enableFiltering || !grid.features.filtering.enabled.value) {
     if (lastAppliedFilterSignature === "__disabled__") {
@@ -2622,6 +2723,7 @@ function applyFilters() {
     }
     lastAppliedFilterSignature = "__disabled__"
     grid.features.filtering.clear()
+    refreshViewportAfterFilterMutation()
     schedulePersistTableSettings()
     return
   }
@@ -2641,6 +2743,7 @@ function applyFilters() {
 
   if (!active.length) {
     grid.features.filtering.clear()
+    refreshViewportAfterFilterMutation()
     schedulePersistTableSettings()
     return
   }
@@ -2654,6 +2757,7 @@ function applyFilters() {
     })
     first = false
   })
+  refreshViewportAfterFilterMutation()
   schedulePersistTableSettings()
 }
 
@@ -2975,6 +3079,7 @@ function columnStyle(width: number) {
   min-height: 0;
   min-width: 0;
   display: grid;
+  position: relative;
   grid-template-columns:
     var(--ui-affino-index-width, 64px)
     var(--ui-affino-select-width, 42px)
@@ -3031,15 +3136,59 @@ function columnStyle(width: number) {
   grid-column: 4;
   min-height: 0;
   min-width: 0;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
-  scrollbar-gutter: stable both-edges;
   -webkit-overflow-scrolling: touch;
   background: rgba(255, 255, 255, 0.95);
 }
 
 .dark .ui-affino-grid__main-viewport {
   background: var(--ui-affino-dark-bg-main);
+}
+
+.ui-affino-grid__bottom-scrollbar {
+  width: 100%;
+  min-height: 16px;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: auto;
+  scrollbar-color: rgba(100, 116, 139, 0.7) rgba(226, 232, 240, 0.7);
+  background: rgba(248, 250, 252, 0.75);
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.dark .ui-affino-grid__bottom-scrollbar {
+  scrollbar-color: rgba(163, 163, 163, 0.72) rgba(38, 38, 38, 0.72);
+  background: rgba(23, 23, 23, 0.86);
+  border-top-color: var(--ui-affino-dark-border);
+}
+
+.ui-affino-grid__bottom-scrollbar::-webkit-scrollbar {
+  height: 14px;
+}
+
+.ui-affino-grid__bottom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.72);
+}
+
+.ui-affino-grid__bottom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.72);
+  border-radius: 9999px;
+  border: 2px solid rgba(226, 232, 240, 0.72);
+}
+
+.dark .ui-affino-grid__bottom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(38, 38, 38, 0.72);
+}
+
+.dark .ui-affino-grid__bottom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(163, 163, 163, 0.75);
+  border-color: rgba(38, 38, 38, 0.72);
+}
+
+.ui-affino-grid__bottom-scrollbar-content {
+  height: 1px;
 }
 
 .ui-affino-grid__main-canvas {
@@ -3198,7 +3347,7 @@ function columnStyle(width: number) {
 .ui-affino-grid__row-select-checkbox {
   width: 0.9rem;
   height: 0.9rem;
-  cursor: pointer;
+  cursor: default;
 }
 
 .ui-affino-grid.is-row-fixed .ui-affino-grid__select-row {
@@ -3274,12 +3423,67 @@ function columnStyle(width: number) {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   background: rgba(255, 255, 255, 0.95);
 }
 
+.ui-affino-grid__viewport::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
 .dark .ui-affino-grid__viewport {
   background: var(--ui-affino-dark-bg-main);
+}
+
+.ui-affino-grid__right-scrollbar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: rgba(100, 116, 139, 0.75) rgba(226, 232, 240, 0.8);
+  background: rgba(248, 250, 252, 0.8);
+  border-left: 1px solid rgba(148, 163, 184, 0.24);
+  z-index: 8;
+}
+
+.ui-affino-grid__right-scrollbar::-webkit-scrollbar {
+  width: 14px;
+}
+
+.ui-affino-grid__right-scrollbar::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.8);
+}
+
+.ui-affino-grid__right-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.75);
+  border-radius: 9999px;
+  border: 2px solid rgba(226, 232, 240, 0.8);
+}
+
+.ui-affino-grid__right-scrollbar-content {
+  width: 1px;
+}
+
+.dark .ui-affino-grid__right-scrollbar {
+  scrollbar-color: rgba(163, 163, 163, 0.75) rgba(38, 38, 38, 0.78);
+  background: rgba(23, 23, 23, 0.9);
+  border-left-color: var(--ui-affino-dark-border);
+}
+
+.dark .ui-affino-grid__right-scrollbar::-webkit-scrollbar-track {
+  background: rgba(38, 38, 38, 0.78);
+}
+
+.dark .ui-affino-grid__right-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(163, 163, 163, 0.75);
+  border-color: rgba(38, 38, 38, 0.78);
 }
 
 .ui-affino-grid__canvas {
