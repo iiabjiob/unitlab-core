@@ -574,6 +574,7 @@ watch(activeTestRunJob, (job) => {
     testRunInProgress.value = false
     flushTestedAtOverlayBatch()
     clearTestedAtOverlay()
+    scheduleRealtimeUnitScopeSync()
     return
   }
 
@@ -607,7 +608,7 @@ const gridColumns = computed(() => {
     ...sourceColumns,
     { key: "channel_select", label: "Unit/Channel", width: 150, minWidth: 120, pin: "right" as const },
     { key: "last_tested_at", label: "Last tested", width: 180, minWidth: 150, pin: "right" as const },
-    { key: "control", label: "Control", width: 120, minWidth: 96, pin: "right" as const, meta: { filterable: false } },
+    { key: "control", label: "Control", width: 120, minWidth: 96, pin: "right" as const, meta: { filterable: false, sortable: false } },
   ]
 })
 
@@ -1089,7 +1090,7 @@ const channelOptionsByType = computed<Record<"di" | "do" | "ai" | "ao", ChannelO
 })
 
 function channelOptionsForRow(row: SignalAllocationRow): ChannelOption[] {
-  return channelOptionsBySignal(row.signal_direction).map((option) => {
+  const options = channelOptionsBySignal(row.signal_direction).map((option) => {
     const ownerSignalId = signalSheetStore.getAllocationOwnerSignalId(option.id)
     const allocatedToAnotherSignal = ownerSignalId !== null && ownerSignalId !== row.signal_id
     return {
@@ -1097,6 +1098,21 @@ function channelOptionsForRow(row: SignalAllocationRow): ChannelOption[] {
       disabled: option.disabled || allocatedToAnotherSignal,
     }
   })
+
+  const currentChannelId = Number(row.channel_id)
+  if (Number.isFinite(currentChannelId) && currentChannelId > 0 && !options.some(option => option.id === currentChannelId)) {
+    const currentChannel = channelMap.value.get(currentChannelId)
+    if (currentChannel) {
+      const unitId = channelStore.resolveUnitId(currentChannel.device_id) || `Device ${currentChannel.device_id}`
+      options.unshift({
+        id: currentChannel.id,
+        label: `${unitId}/ch${currentChannel.index + 1}`,
+        disabled: false,
+      })
+    }
+  }
+
+  return options
 }
 
 function buildChannelGroupsForRow(row: SignalAllocationRow): ChannelOptionGroup[] {
@@ -1162,12 +1178,13 @@ function handleAllocationPickerSelect(row: SignalAllocationRow, channelId: numbe
 }
 
 function allocationDisplayLabel(row: SignalAllocationRow): string {
-  if (row.channel_label && row.channel_label.trim().length > 0) {
-    return row.channel_label
-  }
   if (Number.isFinite(row.channel_index as number)) {
     const channelSuffix = `ch${Number(row.channel_index) + 1}`
-    return row.unit_id?.trim() ? `${row.unit_id}/${channelSuffix}` : channelSuffix
+    const unitId = String(row.unit_id ?? "").trim()
+    return unitId ? `${unitId}/${channelSuffix}` : channelSuffix
+  }
+  if (row.channel_label && row.channel_label.trim().length > 0) {
+    return row.channel_label
   }
   return "—"
 }
@@ -1843,7 +1860,18 @@ watch(
 )
 
 watch(
-  () => [allocationRevision.value, channels.value.length, deviceStore.devices.length],
+  () => allocationRevision.value,
+  () => {
+    if (isTestRunBusy.value) {
+      return
+    }
+    scheduleRealtimeUnitScopeSync()
+  },
+  { immediate: true, flush: "post" },
+)
+
+watch(
+  () => [channels.value.length, deviceStore.devices.length, workspaceStore.activeWorkspaceId],
   () => {
     scheduleRealtimeUnitScopeSync()
   },

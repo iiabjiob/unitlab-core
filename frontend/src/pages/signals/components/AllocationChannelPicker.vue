@@ -182,7 +182,7 @@ const nodeMeta = computed(() => {
     group.options.forEach((option) => {
       const channelValue = toChannelNodeValue(option.id)
       map.set(channelValue, {
-        label: channelSuffixLabel(option.label),
+        label: option.label,
         disabled: option.disabled,
       })
     })
@@ -230,7 +230,9 @@ watch(
       return
     }
     activeChannelGroups.value = resolveChannelGroups()
-    // Default state: all unit nodes collapsed on each open.
+    await nextTick()
+    tree.registerNodes(treeNodes.value)
+    // Default state: all unit nodes collapsed.
     activeChannelGroups.value.forEach((group) => {
       tree.collapse(toUnitNodeValue(group.unitId))
     })
@@ -283,6 +285,7 @@ watch(
     const element = itemElements.get(active)
     if (!element || element === document.activeElement) return
     element.focus({ preventScroll: true })
+    element.scrollIntoView({ block: "nearest" })
   },
 )
 
@@ -303,6 +306,7 @@ function focusNodeElement(value: NodeValue) {
   const element = itemElements.get(value)
   if (!element) return
   element.focus({ preventScroll: true })
+  element.scrollIntoView({ block: "nearest" })
 }
 
 function focusTreeRoot() {
@@ -320,8 +324,8 @@ function toChannelNodeValue(channelId: number): NodeValue {
 }
 
 function selectedChannelNodeValueFromRow(): NodeValue | null {
-  const channelId = Number.isFinite(props.row.channel_id as number) ? Number(props.row.channel_id) : null
-  if (channelId === null) return null
+  const channelId = Number(props.row.channel_id)
+  if (!Number.isFinite(channelId) || channelId <= 0) return null
   const value = toChannelNodeValue(channelId)
   return treeNodes.value.some(node => node.value === value) ? value : null
 }
@@ -400,12 +404,6 @@ function unitStatusClass(value: NodeValue): string {
 
 function unitStatusTitle(value: NodeValue): string {
   return unitStatus(value) === "online" ? "Online" : "Offline"
-}
-
-function channelSuffixLabel(label: string): string {
-  const slashIndex = label.indexOf("/")
-  if (slashIndex === -1 || slashIndex + 1 >= label.length) return label
-  return label.slice(slashIndex + 1)
 }
 
 function onNodeClick(value: NodeValue) {
@@ -688,18 +686,18 @@ function handleUnassign() {
 }
 
 .dark .allocation-picker__node.is-active {
-  background: rgb(31 41 55);
-  box-shadow: inset 0 0 0 1px rgb(59 130 246 / 60%);
+  background: rgb(38 38 38);
+  box-shadow: inset 0 0 0 1px rgb(115 115 115 / 55%);
 }
 
 .dark .allocation-picker__node.is-selected {
-  background: rgb(41 50 79);
-  box-shadow: inset 0 0 0 1px rgb(129 140 248 / 65%);
+  background: rgb(50 50 50);
+  box-shadow: inset 0 0 0 1px rgb(148 148 148 / 60%);
 }
 
 .dark .allocation-picker__node.is-selected.is-active {
-  background: rgb(49 61 96);
-  box-shadow: inset 0 0 0 1px rgb(129 140 248 / 70%);
+  background: rgb(64 64 64);
+  box-shadow: inset 0 0 0 1px rgb(163 163 163 / 70%);
 }
 
 .dark .allocation-picker__node.is-disabled {
@@ -748,7 +746,7 @@ function handleUnassign() {
 }
 
 .dark .allocation-picker__selected-mark {
-  color: rgb(165 180 252);
+  color: rgb(212 212 212);
 }
 
 .allocation-picker__unit-status {

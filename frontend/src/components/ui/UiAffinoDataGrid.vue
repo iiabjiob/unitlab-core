@@ -91,7 +91,10 @@
         </div>
       </Teleport>
 
-      <div class="ui-affino-grid__content-shell">
+      <div
+        class="ui-affino-grid__content-shell"
+        :class="{ 'has-right-scrollbar': showRightScrollbar }"
+      >
         <div class="ui-affino-grid__index-column">
           <div class="ui-affino-grid__index-header" :style="indexHeaderStyle" @wheel.passive="handleMainHeaderWheel">#</div>
           <div v-if="showFilterRow" class="ui-affino-grid__index-filter" :style="indexFilterStyle" @wheel.passive="handleMainHeaderWheel"></div>
@@ -188,7 +191,8 @@
               class="ui-affino-grid__cell ui-affino-grid__cell--header"
               :style="columnStyle(entry.width)"
               v-bind="grid.bindings.headerCell(entry.key)"
-              @click.capture="handleHeaderCellClickCapture"
+              @click.capture="event => handleHeaderCellClickCapture(event, entry.key)"
+              @keydown.capture="event => handleHeaderCellKeydownCapture(event, entry.key)"
               @contextmenu.capture.prevent.stop="event => openHeaderContextMenu(event, entry.key)"
             >
               <div class="ui-affino-grid__header-content">
@@ -322,7 +326,8 @@
                   class="ui-affino-grid__cell ui-affino-grid__cell--header"
                   :style="columnStyle(entry.width)"
                   v-bind="grid.bindings.headerCell(entry.key)"
-                  @click.capture="handleHeaderCellClickCapture"
+                  @click.capture="event => handleHeaderCellClickCapture(event, entry.key)"
+                  @keydown.capture="event => handleHeaderCellKeydownCapture(event, entry.key)"
                   @contextmenu.capture.prevent.stop="event => openHeaderContextMenu(event, entry.key)"
                 >
                   <div class="ui-affino-grid__header-content">
@@ -469,7 +474,8 @@
               class="ui-affino-grid__cell ui-affino-grid__cell--header"
               :style="columnStyle(entry.width)"
               v-bind="grid.bindings.headerCell(entry.key)"
-              @click.capture="handleHeaderCellClickCapture"
+              @click.capture="event => handleHeaderCellClickCapture(event, entry.key)"
+              @keydown.capture="event => handleHeaderCellKeydownCapture(event, entry.key)"
               @contextmenu.capture.prevent.stop="event => openHeaderContextMenu(event, entry.key)"
             >
               <div class="ui-affino-grid__header-content">
@@ -620,10 +626,10 @@
     <UiMenu ref="headerMenuRef">
       <span class="ui-affino-grid__header-menu-anchor" aria-hidden="true"></span>
       <UiMenuContent class="ui-affino-grid__header-context-menu">
-        <UiMenuItem :disabled="!props.enableSorting" @select="void runHeaderContextMenuAction('sort-asc')">
+        <UiMenuItem :disabled="!props.enableSorting || !headerContextColumnSortable" @select="void runHeaderContextMenuAction('sort-asc')">
           Sort Ascending
         </UiMenuItem>
-        <UiMenuItem :disabled="!props.enableSorting" @select="void runHeaderContextMenuAction('sort-desc')">
+        <UiMenuItem :disabled="!props.enableSorting || !headerContextColumnSortable" @select="void runHeaderContextMenuAction('sort-desc')">
           Sort Descending
         </UiMenuItem>
 
@@ -1540,6 +1546,19 @@ const headerContextColumnPin = computed<"left" | "right" | "none">(() => {
   return normalizePin((entry.pin ?? entry.column.pin) as GridColumn["pin"])
 })
 
+const sortableColumnsByKey = computed(() => {
+  const entries = coreColumns.value.map(column => [column.key, isColumnSortable(column)] as const)
+  return new Map(entries)
+})
+
+const headerContextColumnSortable = computed(() => {
+  const columnKey = headerContextMenuColumnKey.value
+  if (!columnKey) {
+    return false
+  }
+  return sortableColumnsByKey.value.get(columnKey) !== false
+})
+
 const visibleRowRange = computed<WindowRange>(() => {
   const window = grid.virtualWindow.value
   const total = totalRows.value
@@ -1561,6 +1580,14 @@ const orderedColumns = computed(() => columnLayout.orderedColumns.value)
 
 function isColumnFilterable(column: GridColumn): boolean {
   return column.meta?.filterable !== false
+}
+
+function isColumnSortable(column: GridColumn): boolean {
+  return column.meta?.sortable !== false
+}
+
+function isColumnKeySortable(columnKey: string): boolean {
+  return sortableColumnsByKey.value.get(columnKey) !== false
 }
 
 function normalizePin(pin: GridColumn["pin"] | ResolvedColumn["pin"]): "left" | "right" | "none" {
@@ -1942,8 +1969,23 @@ function armResizeClickGuard() {
   schedulePersistTableSettings()
 }
 
-function handleHeaderCellClickCapture(event: MouseEvent) {
+function handleHeaderCellClickCapture(event: MouseEvent, columnKey?: string) {
   resizeClickGuard.onHeaderClickCapture(event)
+  if (!columnKey || isColumnKeySortable(columnKey)) {
+    return
+  }
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation()
+}
+
+function handleHeaderCellKeydownCapture(event: KeyboardEvent, columnKey?: string) {
+  if (!columnKey || isColumnKeySortable(columnKey)) {
+    return
+  }
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation()
 }
 
 function resolveRowHoverKey(rowNode: unknown): string | null {
@@ -2095,7 +2137,7 @@ async function runHeaderContextMenuAction(actionId: "sort-asc" | "sort-desc" | "
   const columnKey = headerContextMenuColumnKey.value
   try {
     if (actionId === "sort-asc" || actionId === "sort-desc") {
-      if (!props.enableSorting || !columnKey) {
+      if (!props.enableSorting || !columnKey || !isColumnKeySortable(columnKey)) {
         return
       }
       grid.setSortState([{ key: columnKey, direction: actionId === "sort-asc" ? "asc" : "desc" }])
@@ -2737,7 +2779,7 @@ function normalizePersistedSortState(state: DataGridSortState[] | undefined): Da
         direction,
       }
     })
-    .filter(item => item.key.length > 0)
+    .filter(item => item.key.length > 0 && isColumnKeySortable(item.key))
 }
 
 function buildFilterSnapshotFromInputs(): PersistedFilterSnapshot {
@@ -3101,7 +3143,7 @@ function applyFilters() {
   }
 
 function sortDirection(columnKey: string): "asc" | "desc" | null {
-  if (!props.enableSorting) return null
+  if (!props.enableSorting || !isColumnKeySortable(columnKey)) return null
   const entry = grid.sortState.value.find(item => item.key === columnKey)
   return entry?.direction ?? null
 }
@@ -3445,6 +3487,11 @@ function columnStyle(width: number) {
     var(--ui-affino-left-width, 0px)
     minmax(0, 1fr)
     var(--ui-affino-right-width, 0px);
+}
+
+.ui-affino-grid__content-shell.has-right-scrollbar {
+  box-sizing: border-box;
+  padding-right: 16px;
 }
 
 .ui-affino-grid__index-column {
