@@ -1,7 +1,11 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance } from "vue"
+import { computed, getCurrentInstance, useAttrs } from "vue"
 import type { ComponentPublicInstance } from "vue"
 import { useFloatingTooltip, useTooltipController } from "@affino/tooltip-vue"
+
+defineOptions({
+  inheritAttrs: false,
+})
 
 type TooltipPlacement = "top" | "bottom" | "left" | "right"
 type TooltipAlign = "start" | "center" | "end"
@@ -27,6 +31,7 @@ const props = withDefaults(
 )
 
 const instanceUid = getCurrentInstance()?.uid ?? Math.floor(Math.random() * 1_000_000)
+const attrs = useAttrs()
 const tooltipController = useTooltipController({
   id: `inline-info-tooltip-${instanceUid}`,
   openDelay: props.openDelay,
@@ -45,6 +50,11 @@ function getTriggerProps() {
   }
   return tooltipController.getTriggerProps()
 }
+
+const triggerAttrs = computed(() => ({
+  ...attrs,
+  ...getTriggerProps(),
+}))
 
 function setTriggerRef(target: Element | ComponentPublicInstance | null) {
   if (target instanceof HTMLElement) {
@@ -66,10 +76,10 @@ function setTriggerRef(target: Element | ComponentPublicInstance | null) {
     v-else
     ref="triggerRef"
     class="inline-flex h-4 w-4 select-none items-center justify-center rounded-full text-[10px] font-medium leading-none text-neutral-400/80 transition-colors hover:text-neutral-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/40 dark:text-neutral-500 dark:hover:text-neutral-300"
+    v-bind="triggerAttrs"
     role="button"
     tabindex="0"
     :aria-label="ariaLabel"
-    v-bind="getTriggerProps()"
   >
     ⓘ
   </span>

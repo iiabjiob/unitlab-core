@@ -96,7 +96,7 @@
           <div class="ui-affino-grid__index-header" :style="indexHeaderStyle">#</div>
           <div v-if="showFilterRow" class="ui-affino-grid__index-filter" :style="indexFilterStyle"></div>
 
-          <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @wheel="handleLinkedViewportWheel">
+          <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @wheel.passive="handleLinkedViewportWheel">
             <div ref="indexCanvasRef" class="ui-affino-grid__index-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -113,7 +113,7 @@
                   @mouseenter="setHoveredRow(rowNode)"
                   @mouseleave="clearHoveredRow(rowNode)"
                 >
-                  {{ resolveNodeDisplayIndex(rowNode, localIndex) + 1 }}
+                  {{ isGroupRowNode(rowNode) ? "" : resolveNodeDisplayIndex(rowNode, localIndex) + 1 }}
                 </div>
 
                 <div
@@ -141,7 +141,7 @@
           </div>
           <div v-if="showFilterRow" class="ui-affino-grid__select-filter" :style="indexFilterStyle"></div>
 
-          <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @wheel="handleLinkedViewportWheel">
+          <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @wheel.passive="handleLinkedViewportWheel">
             <div ref="selectionCanvasRef" class="ui-affino-grid__select-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -159,6 +159,7 @@
                   @mouseleave="clearHoveredRow(rowNode)"
                 >
                   <input
+                    v-if="!isGroupRowNode(rowNode)"
                     type="checkbox"
                     class="ui-affino-grid__row-select-checkbox"
                     :checked="isRowSelected(rowNode, localIndex)"
@@ -188,9 +189,28 @@
               :style="columnStyle(entry.width)"
               v-bind="grid.bindings.headerCell(entry.key)"
               @click.capture="handleHeaderCellClickCapture"
+              @contextmenu.capture.prevent.stop="event => openHeaderContextMenu(event, entry.key)"
             >
               <div class="ui-affino-grid__header-content">
                 <span class="ui-affino-grid__header-label">{{ entry.label }}</span>
+                <span class="ui-affino-grid__header-state-markers">
+                  <span
+                    v-if="isColumnFiltered(entry.key)"
+                    class="ui-affino-grid__header-state-marker is-filtered"
+                    title="Column has active filter"
+                    aria-label="Column has active filter"
+                  >
+                    F
+                  </span>
+                  <span
+                    v-if="isColumnGrouped(entry.key)"
+                    class="ui-affino-grid__header-state-marker is-grouped"
+                    title="Column is used in group by"
+                    aria-label="Column is used in group by"
+                  >
+                    G
+                  </span>
+                </span>
                 <span v-if="sortDirection(entry.key)" class="ui-affino-grid__sort-indicator" :class="`is-${sortDirection(entry.key)}`">
                   {{ sortDirection(entry.key) === "asc" ? "▲" : "▼" }}
                 </span>
@@ -229,7 +249,7 @@
             </div>
           </div>
 
-          <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel="handleLinkedViewportWheel">
+          <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel.passive="handleLinkedViewportWheel">
             <div ref="leftPinnedCanvasRef" class="ui-affino-grid__pinned-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -242,10 +262,10 @@
                   v-for="(rowNode, localIndex) in visibleRowNodes"
                   :key="`left-${String(rowNode.rowId)}`"
                   class="ui-affino-grid__row ui-affino-grid__row--data ui-affino-grid__row--pinned"
-                  :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode) }"
+                  :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode), 'is-group': isGroupRowNode(rowNode) }"
                   @mouseenter="setHoveredRow(rowNode)"
                   @mouseleave="clearHoveredRow(rowNode)"
-                  @click="emit('row-click', { row: rowData(rowNode.data), rowIndex: resolveNodeDisplayIndex(rowNode, localIndex) })"
+                  @click="handleDataRowClick(rowNode, localIndex)"
                 >
                   <div
                     v-for="entry in leftPinnedColumns"
@@ -257,7 +277,7 @@
                       rowIndex: resolveNodeDisplayIndex(rowNode, localIndex),
                       columnKey: entry.key,
                       editable: false,
-                      value: resolveValue(rowData(rowNode.data), entry.key),
+                      value: resolveGroupedCellValue(rowNode, entry.key),
                     })"
                   >
                     <slot
@@ -265,9 +285,9 @@
                       :column="entry.column"
                       :row="rowNode.data"
                       :rowIndex="resolveNodeDisplayIndex(rowNode, localIndex)"
-                      :value="resolveValue(rowData(rowNode.data), entry.key)"
+                      :value="resolveGroupedCellValue(rowNode, entry.key)"
                     >
-                      <span class="ui-affino-grid__value">{{ formatValue(resolveValue(rowData(rowNode.data), entry.key)) }}</span>
+                      <span class="ui-affino-grid__value">{{ formatValue(resolveGroupedCellValue(rowNode, entry.key)) }}</span>
                     </slot>
                   </div>
                 </div>
@@ -289,7 +309,7 @@
         >
           <div class="ui-affino-grid__main-canvas">
             <div class="ui-affino-grid__canvas">
-              <div ref="headerRowRef" class="ui-affino-grid__row ui-affino-grid__row--header" @wheel="handleMainHeaderWheel">
+              <div ref="headerRowRef" class="ui-affino-grid__row ui-affino-grid__row--header" @wheel.passive="handleMainHeaderWheel">
                 <div
                   v-if="leftSpacerPx > 0"
                   class="ui-affino-grid__spacer"
@@ -302,9 +322,28 @@
                   :style="columnStyle(entry.width)"
                   v-bind="grid.bindings.headerCell(entry.key)"
                   @click.capture="handleHeaderCellClickCapture"
+                  @contextmenu.capture.prevent.stop="event => openHeaderContextMenu(event, entry.key)"
                 >
                   <div class="ui-affino-grid__header-content">
                     <span class="ui-affino-grid__header-label">{{ entry.label }}</span>
+                    <span class="ui-affino-grid__header-state-markers">
+                      <span
+                        v-if="isColumnFiltered(entry.key)"
+                        class="ui-affino-grid__header-state-marker is-filtered"
+                        title="Column has active filter"
+                        aria-label="Column has active filter"
+                      >
+                        F
+                      </span>
+                      <span
+                        v-if="isColumnGrouped(entry.key)"
+                        class="ui-affino-grid__header-state-marker is-grouped"
+                        title="Column is used in group by"
+                        aria-label="Column is used in group by"
+                      >
+                        G
+                      </span>
+                    </span>
                     <span v-if="sortDirection(entry.key)" class="ui-affino-grid__sort-indicator" :class="`is-${sortDirection(entry.key)}`">
                       {{ sortDirection(entry.key) === "asc" ? "▲" : "▼" }}
                     </span>
@@ -325,7 +364,7 @@
                 ></div>
               </div>
 
-              <div v-if="showFilterRow" ref="filterRowRef" class="ui-affino-grid__row ui-affino-grid__row--filter" @wheel="handleMainHeaderWheel">
+              <div v-if="showFilterRow" ref="filterRowRef" class="ui-affino-grid__row ui-affino-grid__row--filter" @wheel.passive="handleMainHeaderWheel">
                 <div
                   v-if="leftSpacerPx > 0"
                   class="ui-affino-grid__spacer"
@@ -357,7 +396,7 @@
             <div
               ref="viewportRef"
               class="ui-affino-grid__viewport"
-              @wheel="handleBodyViewportWheel"
+              @wheel.passive="handleBodyViewportWheel"
               @scroll.passive="handleBodyScroll"
             >
               <div class="ui-affino-grid__canvas">
@@ -368,10 +407,10 @@
                     v-for="(rowNode, localIndex) in visibleRowNodes"
                     :key="String(rowNode.rowId)"
                     class="ui-affino-grid__row ui-affino-grid__row--data"
-                    :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode) }"
+                    :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode), 'is-group': isGroupRowNode(rowNode) }"
                     @mouseenter="setHoveredRow(rowNode)"
                     @mouseleave="clearHoveredRow(rowNode)"
-                    @click="emit('row-click', { row: rowData(rowNode.data), rowIndex: resolveNodeDisplayIndex(rowNode, localIndex) })"
+                    @click="handleDataRowClick(rowNode, localIndex)"
                   >
                     <div
                       v-if="leftSpacerPx > 0"
@@ -389,7 +428,7 @@
                         rowIndex: resolveNodeDisplayIndex(rowNode, localIndex),
                         columnKey: entry.key,
                         editable: false,
-                        value: resolveValue(rowData(rowNode.data), entry.key),
+                        value: resolveGroupedCellValue(rowNode, entry.key),
                       })"
                     >
                       <slot
@@ -397,9 +436,9 @@
                         :column="entry.column"
                         :row="rowNode.data"
                         :rowIndex="resolveNodeDisplayIndex(rowNode, localIndex)"
-                        :value="resolveValue(rowData(rowNode.data), entry.key)"
+                        :value="resolveGroupedCellValue(rowNode, entry.key)"
                       >
-                        <span class="ui-affino-grid__value">{{ formatValue(resolveValue(rowData(rowNode.data), entry.key)) }}</span>
+                        <span class="ui-affino-grid__value">{{ formatValue(resolveGroupedCellValue(rowNode, entry.key)) }}</span>
                       </slot>
                     </div>
 
@@ -430,9 +469,28 @@
               :style="columnStyle(entry.width)"
               v-bind="grid.bindings.headerCell(entry.key)"
               @click.capture="handleHeaderCellClickCapture"
+              @contextmenu.capture.prevent.stop="event => openHeaderContextMenu(event, entry.key)"
             >
               <div class="ui-affino-grid__header-content">
                 <span class="ui-affino-grid__header-label">{{ entry.label }}</span>
+                <span class="ui-affino-grid__header-state-markers">
+                  <span
+                    v-if="isColumnFiltered(entry.key)"
+                    class="ui-affino-grid__header-state-marker is-filtered"
+                    title="Column has active filter"
+                    aria-label="Column has active filter"
+                  >
+                    F
+                  </span>
+                  <span
+                    v-if="isColumnGrouped(entry.key)"
+                    class="ui-affino-grid__header-state-marker is-grouped"
+                    title="Column is used in group by"
+                    aria-label="Column is used in group by"
+                  >
+                    G
+                  </span>
+                </span>
                 <span v-if="sortDirection(entry.key)" class="ui-affino-grid__sort-indicator" :class="`is-${sortDirection(entry.key)}`">
                   {{ sortDirection(entry.key) === "asc" ? "▲" : "▼" }}
                 </span>
@@ -471,7 +529,7 @@
             </div>
           </div>
 
-          <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel="handleLinkedViewportWheel">
+          <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel.passive="handleLinkedViewportWheel">
             <div ref="rightPinnedCanvasRef" class="ui-affino-grid__pinned-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -484,10 +542,10 @@
                   v-for="(rowNode, localIndex) in visibleRowNodes"
                   :key="`right-${String(rowNode.rowId)}`"
                   class="ui-affino-grid__row ui-affino-grid__row--data ui-affino-grid__row--pinned"
-                  :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode) }"
+                  :class="{ 'is-even': isEvenDisplayRow(rowNode, localIndex), 'is-hovered': isRowHovered(rowNode), 'is-group': isGroupRowNode(rowNode) }"
                   @mouseenter="setHoveredRow(rowNode)"
                   @mouseleave="clearHoveredRow(rowNode)"
-                  @click="emit('row-click', { row: rowData(rowNode.data), rowIndex: resolveNodeDisplayIndex(rowNode, localIndex) })"
+                  @click="handleDataRowClick(rowNode, localIndex)"
                 >
                   <div
                     v-for="entry in rightPinnedColumns"
@@ -499,7 +557,7 @@
                       rowIndex: resolveNodeDisplayIndex(rowNode, localIndex),
                       columnKey: entry.key,
                       editable: false,
-                      value: resolveValue(rowData(rowNode.data), entry.key),
+                      value: resolveGroupedCellValue(rowNode, entry.key),
                     })"
                   >
                     <slot
@@ -507,9 +565,9 @@
                       :column="entry.column"
                       :row="rowNode.data"
                       :rowIndex="resolveNodeDisplayIndex(rowNode, localIndex)"
-                      :value="resolveValue(rowData(rowNode.data), entry.key)"
+                      :value="resolveGroupedCellValue(rowNode, entry.key)"
                     >
-                      <span class="ui-affino-grid__value">{{ formatValue(resolveValue(rowData(rowNode.data), entry.key)) }}</span>
+                      <span class="ui-affino-grid__value">{{ formatValue(resolveGroupedCellValue(rowNode, entry.key)) }}</span>
                     </slot>
                   </div>
                 </div>
@@ -556,6 +614,57 @@
         <span>Loading table…</span>
       </div>
     </div>
+
+    <UiMenu ref="headerMenuRef">
+      <span class="ui-affino-grid__header-menu-anchor" aria-hidden="true"></span>
+      <UiMenuContent class="ui-affino-grid__header-context-menu">
+        <UiMenuItem :disabled="!props.enableSorting" @select="void runHeaderContextMenuAction('sort-asc')">
+          Sort Ascending
+        </UiMenuItem>
+        <UiMenuItem :disabled="!props.enableSorting" @select="void runHeaderContextMenuAction('sort-desc')">
+          Sort Descending
+        </UiMenuItem>
+
+        <UiSubMenu>
+          <UiSubMenuTrigger>
+            Pin Column
+          </UiSubMenuTrigger>
+          <UiSubMenuContent>
+            <UiMenuItem @select="void runHeaderContextMenuAction('pin-none')">
+              {{ headerContextColumnPin === "none" ? "✓ " : "" }}No Pin
+            </UiMenuItem>
+            <UiMenuItem @select="void runHeaderContextMenuAction('pin-left')">
+              {{ headerContextColumnPin === "left" ? "✓ " : "" }}Pin Left
+            </UiMenuItem>
+            <UiMenuItem @select="void runHeaderContextMenuAction('pin-right')">
+              {{ headerContextColumnPin === "right" ? "✓ " : "" }}Pin Right
+            </UiMenuItem>
+          </UiSubMenuContent>
+        </UiSubMenu>
+
+        <UiMenuSeparator />
+
+        <UiMenuItem @select="void runHeaderContextMenuAction('auto-size')">
+          Autosize This Column
+        </UiMenuItem>
+        <UiMenuItem @select="void runHeaderContextMenuAction('auto-size-all')">
+          Autosize All Columns
+        </UiMenuItem>
+
+        <UiMenuItem @select="void runHeaderContextMenuAction('group-by-toggle')">
+          {{ headerContextGroupActionLabel }}
+        </UiMenuItem>
+
+        <UiMenuSeparator />
+
+        <UiMenuItem @select="void runHeaderContextMenuAction('choose-columns')">
+          Choose Columns
+        </UiMenuItem>
+        <UiMenuItem @select="void runHeaderContextMenuAction('reset-columns')">
+          Reset Columns
+        </UiMenuItem>
+      </UiMenuContent>
+    </UiMenu>
   </div>
 </template>
 
@@ -572,6 +681,16 @@ import type {
   DataGridSortState,
 } from "@affino/datagrid-core"
 import { createDataGridSettingsAdapter, useAffinoDataGrid, useDataGridSettingsStore } from "@affino/datagrid-vue"
+import {
+  UiMenu,
+  UiMenuContent,
+  UiMenuItem,
+  UiMenuSeparator,
+  UiSubMenu,
+  UiSubMenuContent,
+  UiSubMenuTrigger,
+  type MenuController,
+} from "@affino/menu-vue"
 import { useFloatingPopover, usePopoverController } from "@affino/popover-vue"
 import {
   useDataGridColumnLayoutOrchestration,
@@ -643,6 +762,7 @@ type VirtualWindowSnapshot = {
 }
 
 type PersistedFilterSnapshot = ReturnType<DataGridSettingsAdapter["getFilterSnapshot"]>
+type PersistedGroupStateSnapshot = ReturnType<DataGridSettingsAdapter["getGroupState"]>
 
 const props = withDefaults(defineProps<{
   rows: GridRow[]
@@ -725,10 +845,13 @@ const measuredHeaderHeight = ref<number | null>(null)
 const measuredFilterHeight = ref<number | null>(null)
 const hoveredRowId = ref<string | null>(null)
 const selectHeaderCheckboxRef = ref<HTMLInputElement | null>(null)
+const headerMenuRef = ref<{ controller?: MenuController } | null>(null)
+const headerContextMenuColumnKey = ref<string | null>(null)
 const checkboxSelectionAnchorIndex = ref<number | null>(null)
 const lastCheckboxGestureShift = ref(false)
 const localSelectedRowKeySet = ref<Set<string>>(new Set())
 const selectAllInProgress = ref(false)
+const selectionHydrated = ref(false)
 
 let viewportRowModel: ViewportRowModelBridge | null = null
 let viewportColumnModel: ViewportColumnModelBridge | null = null
@@ -783,7 +906,7 @@ const linkedPaneScrollSync = useDataGridLinkedPaneScrollSync({
 const managedWheelScroll = useDataGridManagedWheelScroll({
   resolveWheelMode: () => "managed",
   resolveWheelAxisLockMode: () => "dominant",
-  resolvePreventDefaultWhenHandled: () => true,
+  resolvePreventDefaultWhenHandled: () => false,
   resolveBodyViewport: () => viewportRef.value,
   resolveMainViewport: () => {
     const mainViewport = mainViewportRef.value
@@ -1210,7 +1333,11 @@ const grid = useAffinoDataGrid<GridRow>({
     headerFilters: false,
     feedback: false,
     statusBar: false,
-    tree: false,
+    tree: {
+      enabled: true,
+      initialGroupBy: null,
+      groupSelectsChildren: false,
+    },
     summary: false,
     visibility: true,
   },
@@ -1298,7 +1425,7 @@ const resolvedColumns = computed<readonly ResolvedColumn[]>(() => {
     key: column.key,
     label: column.column.label ?? column.key,
     width: Math.max(column.column.minWidth ?? 80, column.width ?? column.column.width ?? 180),
-    pin: column.column.pin as "left" | "right" | "none" | undefined,
+    pin: (column.pin ?? column.column.pin) as "left" | "right" | "none" | undefined,
     column: column.column as GridColumn,
   }))
 })
@@ -1308,7 +1435,13 @@ const persistedTableId = computed(() => {
     return null
   }
   const value = String(props.tableId ?? "").trim()
-  return value.length > 0 ? value : null
+  if (value.length > 0) {
+    return value
+  }
+  if (typeof window !== "undefined") {
+    return `affino-datagrid-auto::${window.location.pathname}`
+  }
+  return "affino-datagrid-auto::__default__"
 })
 const persistedDatasetKey = computed(() => {
   const value = String(props.datasetKey ?? "").trim()
@@ -1341,6 +1474,38 @@ const columnManagerColumns = computed(() => (
     visible: column.visible,
   }))
 ))
+
+const headerContextColumnIsGrouped = computed(() => {
+  const columnKey = headerContextMenuColumnKey.value
+  if (!columnKey) {
+    return false
+  }
+  const grouped = grid.features.tree.groupBy.value?.fields ?? []
+  return grouped.includes(columnKey)
+})
+
+const headerContextGroupActionLabel = computed(() => {
+  const columnKey = headerContextMenuColumnKey.value
+  if (!columnKey) {
+    return "Group by"
+  }
+  const label = columnLabelByKey.value.get(columnKey) ?? columnKey
+  return headerContextColumnIsGrouped.value
+    ? `Ungroup by ${label}`
+    : `Group by ${label}`
+})
+
+const headerContextColumnPin = computed<"left" | "right" | "none">(() => {
+  const columnKey = headerContextMenuColumnKey.value
+  if (!columnKey) {
+    return "none"
+  }
+  const entry = grid.columnState.snapshot.value.columns.find(column => column.key === columnKey)
+  if (!entry) {
+    return "none"
+  }
+  return normalizePin((entry.pin ?? entry.column.pin) as GridColumn["pin"])
+})
 
 const visibleRowRange = computed<WindowRange>(() => {
   const window = grid.virtualWindow.value
@@ -1857,6 +2022,130 @@ function handleMainHeaderWheel(event: WheelEvent) {
   managedWheelScroll.onBodyViewportWheel(event)
 }
 
+function closeHeaderContextMenu() {
+  const controller = headerMenuRef.value?.controller
+  if (controller) {
+    controller.close("programmatic")
+    controller.setAnchor(null)
+  }
+  headerContextMenuColumnKey.value = null
+}
+
+function openHeaderContextMenu(event: MouseEvent, columnKey: string) {
+  event.preventDefault()
+  event.stopPropagation()
+  const controller = headerMenuRef.value?.controller
+  if (!controller) {
+    return
+  }
+  headerContextMenuColumnKey.value = columnKey
+  controller.setAnchor({ x: event.clientX, y: event.clientY, width: 0, height: 0 })
+  controller.open("pointer")
+}
+
+function resetColumnsToDefaults() {
+  const defaultColumns = coreColumns.value
+  grid.columnState.setOrder(defaultColumns.map(column => column.key))
+  defaultColumns.forEach((column) => {
+    grid.columnState.setVisibility(column.key, column.visible !== false)
+    grid.columnState.setPin(column.key, normalizePin(column.pin))
+    const widthSource = Number.isFinite(column.width) && (column.width as number) > 0
+      ? (column.width as number)
+      : Number.isFinite(column.minWidth) && (column.minWidth as number) > 0
+        ? (column.minWidth as number)
+        : 180
+    grid.columnState.setWidth(column.key, Math.max(1, Math.trunc(widthSource)))
+  })
+  schedulePersistTableSettings()
+  scheduleViewportSync()
+}
+
+async function runHeaderContextMenuAction(actionId: "sort-asc" | "sort-desc" | "pin-none" | "pin-left" | "pin-right" | "auto-size" | "auto-size-all" | "group-by-toggle" | "choose-columns" | "reset-columns") {
+  const columnKey = headerContextMenuColumnKey.value
+  try {
+    if (actionId === "sort-asc" || actionId === "sort-desc") {
+      if (!props.enableSorting || !columnKey) {
+        return
+      }
+      grid.setSortState([{ key: columnKey, direction: actionId === "sort-asc" ? "asc" : "desc" }])
+      schedulePersistTableSettings()
+      return
+    }
+
+    if (actionId === "auto-size") {
+      if (!columnKey) {
+        return
+      }
+      await grid.actions.runAction("auto-size", { columnKey })
+      schedulePersistTableSettings()
+      return
+    }
+
+    if (actionId === "pin-none" || actionId === "pin-left" || actionId === "pin-right") {
+      if (!columnKey) {
+        return
+      }
+      const nextPin: "none" | "left" | "right" = actionId === "pin-left"
+        ? "left"
+        : actionId === "pin-right"
+          ? "right"
+          : "none"
+      grid.columnState.setPin(columnKey, nextPin)
+      schedulePersistTableSettings()
+      scheduleViewportSync()
+      return
+    }
+
+    if (actionId === "auto-size-all") {
+      for (const column of orderedColumns.value) {
+        await grid.actions.runAction("auto-size", { columnKey: column.key })
+      }
+      schedulePersistTableSettings()
+      return
+    }
+
+    if (actionId === "group-by-toggle") {
+      if (!columnKey) {
+        return
+      }
+      const current = grid.features.tree.groupBy.value
+      const currentFields = current?.fields ?? []
+      if (currentFields.includes(columnKey)) {
+        const nextFields = currentFields.filter(field => field !== columnKey)
+        if (nextFields.length === 0) {
+          grid.features.tree.clearGroupBy()
+        } else {
+          grid.features.tree.setGroupBy({
+            fields: nextFields,
+            expandedByDefault: current?.expandedByDefault ?? true,
+          })
+        }
+      } else {
+        grid.features.tree.setGroupBy({
+          fields: [...currentFields, columnKey],
+          expandedByDefault: current?.expandedByDefault ?? true,
+        })
+      }
+      refreshViewportAfterGroupingMutation()
+      schedulePersistTableSettings()
+      scheduleViewportSync()
+      return
+    }
+
+    if (actionId === "choose-columns") {
+      columnPanelPopover.open("programmatic")
+      return
+    }
+
+    if (actionId === "reset-columns") {
+      resetColumnsToDefaults()
+      return
+    }
+  } finally {
+    closeHeaderContextMenu()
+  }
+}
+
 function measureVisibleAutoRowHeight(): number | null {
   const viewport = viewportRef.value
   if (!viewport) return null
@@ -2097,6 +2386,7 @@ onBeforeUnmount(() => {
     hoverClearTimer = null
   }
   hoveredRowId.value = null
+  closeHeaderContextMenu()
 })
 
 watch(
@@ -2118,6 +2408,15 @@ watch(
 watch(
   () => grid.sortState.value,
   () => {
+    schedulePersistTableSettings()
+  },
+  { deep: true },
+)
+
+watch(
+  () => grid.features.tree.groupBy.value,
+  () => {
+    refreshViewportAfterGroupingMutation()
     schedulePersistTableSettings()
   },
   { deep: true },
@@ -2173,9 +2472,15 @@ watch(
 watch(
   () => props.datasetKey,
   () => {
-    rowSelectionModel.clearSelection()
-    checkboxSelectionAnchorIndex.value = null
-    lastCheckboxGestureShift.value = false
+    if (Array.isArray(props.selectedRowKeys)) {
+      rowSelectionModel.clearSelection()
+      rowSelectionModel.setAnchorIndex(null)
+      checkboxSelectionAnchorIndex.value = null
+      lastCheckboxGestureShift.value = false
+      selectionHydrated.value = true
+      return
+    }
+    restorePersistedSelection()
   },
 )
 
@@ -2316,6 +2621,7 @@ watch(
   selectedRowKeySet,
   (rowKeys) => {
     emit("selection-change", { rowKeys: Array.from(rowKeys) })
+    persistSelectionNow(rowKeys)
   },
   { immediate: true },
 )
@@ -2534,6 +2840,27 @@ function applyPersistedFilterSnapshot(snapshot: PersistedFilterSnapshot) {
   })
 }
 
+function applyPersistedGroupState(snapshot: PersistedGroupStateSnapshot) {
+  if (!snapshot || !Array.isArray(snapshot.columns)) {
+    grid.features.tree.clearGroupBy()
+    refreshViewportAfterGroupingMutation()
+    return
+  }
+  const fields = snapshot.columns
+    .map(column => String(column ?? "").trim())
+    .filter(column => column.length > 0)
+  if (fields.length === 0) {
+    grid.features.tree.clearGroupBy()
+    refreshViewportAfterGroupingMutation()
+    return
+  }
+  grid.features.tree.setGroupBy({
+    fields,
+    expandedByDefault: true,
+  })
+  refreshViewportAfterGroupingMutation()
+}
+
 function persistTableSettingsNow() {
   const tableId = persistedTableId.value
   if (!tableId || restoringSettings) {
@@ -2557,6 +2884,12 @@ function persistTableSettingsNow() {
     tableId,
     buildFilterSnapshotFromInputs(),
   )
+  const groupedColumns = grid.features.tree.groupBy.value?.fields ?? []
+  dataGridSettingsAdapter.setGroupState(
+    tableId,
+    [...groupedColumns],
+    {},
+  )
 }
 
 function resolveDatasetStorageKey(tableId: string): string {
@@ -2565,6 +2898,10 @@ function resolveDatasetStorageKey(tableId: string): string {
 
 function resolveColumnWidthsStorageKey(tableId: string, datasetKey: string): string {
   return `affino-datagrid-widths::${tableId}::${datasetKey}`
+}
+
+function resolveSelectionStorageKey(tableId: string, datasetKey: string): string {
+  return `affino-datagrid-selection::${tableId}::${datasetKey}`
 }
 
 function readPersistedColumnWidths(tableId: string, datasetKey: string): Record<string, number> | null {
@@ -2602,6 +2939,76 @@ function writePersistedColumnWidths(tableId: string, datasetKey: string, widths:
   } catch {
     // Ignore storage write failures and keep runtime functional.
   }
+}
+
+function readPersistedSelection(tableId: string, datasetKey: string): Set<string> | null {
+  if (typeof window === "undefined") {
+    return null
+  }
+  try {
+    const raw = window.localStorage.getItem(resolveSelectionStorageKey(tableId, datasetKey))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      return null
+    }
+    return new Set(
+      parsed
+        .map(item => String(item ?? "").trim())
+        .filter(item => item.length > 0),
+    )
+  } catch {
+    return null
+  }
+}
+
+function writePersistedSelection(tableId: string, datasetKey: string, rowKeys: readonly string[]) {
+  if (typeof window === "undefined") {
+    return
+  }
+  try {
+    window.localStorage.setItem(
+      resolveSelectionStorageKey(tableId, datasetKey),
+      JSON.stringify([...rowKeys]),
+    )
+  } catch {
+    // Ignore storage write failures and keep runtime functional.
+  }
+}
+
+function restorePersistedSelection() {
+  selectionHydrated.value = false
+  if (Array.isArray(props.selectedRowKeys)) {
+    selectionHydrated.value = true
+    return
+  }
+  const tableId = persistedTableId.value
+  if (!tableId) {
+    rowSelectionModel.clearSelection()
+    rowSelectionModel.setAnchorIndex(null)
+    checkboxSelectionAnchorIndex.value = null
+    selectionHydrated.value = true
+    return
+  }
+  const persistedSelection = readPersistedSelection(tableId, persistedDatasetKey.value)
+  rowSelectionModel.replaceSelection(persistedSelection ?? new Set<string>())
+  rowSelectionModel.setAnchorIndex(null)
+  checkboxSelectionAnchorIndex.value = null
+  selectionHydrated.value = true
+}
+
+function persistSelectionNow(rowKeys: ReadonlySet<string>) {
+  if (Array.isArray(props.selectedRowKeys)) {
+    return
+  }
+  if (!selectionHydrated.value) {
+    return
+  }
+  const tableId = persistedTableId.value
+  if (!tableId || restoringSettings) {
+    return
+  }
+  writePersistedSelection(tableId, persistedDatasetKey.value, Array.from(rowKeys))
 }
 
 function applyPersistedColumnWidths(widths: Record<string, number> | null) {
@@ -2690,6 +3097,8 @@ function restorePersistedTableSettings() {
 
     const persistedFilterSnapshot = dataGridSettingsAdapter.getFilterSnapshot(tableId)
     applyPersistedFilterSnapshot(persistedFilterSnapshot)
+    applyPersistedGroupState(dataGridSettingsAdapter.getGroupState(tableId))
+    restorePersistedSelection()
   } finally {
     restoringSettings = false
   }
@@ -2724,6 +3133,76 @@ function refreshViewportAfterFilterMutation() {
     scheduleViewportSync()
     scheduleInitialViewportRecovery(true)
   })
+}
+
+function refreshViewportAfterGroupingMutation() {
+  explicitRowRange = null
+  lastAppliedRowRange = null
+  void nextTick(() => {
+    updateObservedViewportSize()
+    scheduleViewportSync()
+    scheduleInitialViewportRecovery(true)
+  })
+}
+
+function isGroupRowNode(rowNode: unknown): boolean {
+  const explicitGroup = Boolean((rowNode as { state?: { group?: boolean } })?.state?.group)
+  const markerGroup = Boolean((rowNode as { data?: { __group?: boolean } })?.data?.__group)
+  return explicitGroup || markerGroup
+}
+
+function resolveGroupRowMeta(rowNode: unknown): { groupKey: string; groupField: string; groupValue: string; childrenCount: number; expanded: boolean } | null {
+  if (!isGroupRowNode(rowNode)) {
+    return null
+  }
+  const meta = (rowNode as {
+    groupMeta?: { groupKey?: unknown; groupField?: unknown; groupValue?: unknown; childrenCount?: unknown }
+    state?: { expanded?: unknown }
+  }).groupMeta
+  const fallbackData = (rowNode as { data?: { groupKey?: unknown; field?: unknown; value?: unknown } }).data
+  const groupKey = String(meta?.groupKey ?? fallbackData?.groupKey ?? "").trim()
+  const groupField = String(meta?.groupField ?? fallbackData?.field ?? "").trim()
+  const groupValue = String(meta?.groupValue ?? fallbackData?.value ?? "").trim()
+  const childrenCountRaw = Number(meta?.childrenCount)
+  const childrenCount = Number.isFinite(childrenCountRaw) && childrenCountRaw > 0
+    ? Math.trunc(childrenCountRaw)
+    : 0
+  const expanded = Boolean((rowNode as { state?: { expanded?: unknown } })?.state?.expanded)
+  if (!groupKey || !groupField) {
+    return null
+  }
+  return {
+    groupKey,
+    groupField,
+    groupValue,
+    childrenCount,
+    expanded,
+  }
+}
+
+function resolveGroupedCellValue(rowNode: unknown, columnKey: string): unknown {
+  const meta = resolveGroupRowMeta(rowNode)
+  if (!meta) {
+    return resolveValue(rowData((rowNode as { data?: unknown })?.data), columnKey)
+  }
+  if (columnKey !== meta.groupField) {
+    return ""
+  }
+  const groupLabel = meta.groupValue || "(empty)"
+  const prefix = meta.expanded ? "▾" : "▸"
+  const suffix = meta.childrenCount > 0 ? ` (${meta.childrenCount})` : ""
+  return `${prefix} ${groupLabel}${suffix}`
+}
+
+function handleDataRowClick(rowNode: unknown, localIndex: number) {
+  const meta = resolveGroupRowMeta(rowNode)
+  if (meta) {
+    grid.features.tree.toggleGroup(meta.groupKey)
+    refreshViewportAfterGroupingMutation()
+    schedulePersistTableSettings()
+    return
+  }
+  emit("row-click", { row: rowData((rowNode as { data?: unknown })?.data), rowIndex: resolveNodeDisplayIndex(rowNode, localIndex) })
 }
 
 function applyFilters() {
@@ -2787,6 +3266,15 @@ function sortDirection(columnKey: string): "asc" | "desc" | null {
   return entry?.direction ?? null
 }
 
+function isColumnFiltered(columnKey: string): boolean {
+  return String(columnFilters[columnKey] ?? "").trim().length > 0
+}
+
+function isColumnGrouped(columnKey: string): boolean {
+  const fields = grid.features.tree.groupBy.value?.fields ?? []
+  return fields.includes(columnKey)
+}
+
 function resolveValue(row: GridRow, key: string): unknown {
   return row[key]
 }
@@ -2829,6 +3317,7 @@ function columnStyle(width: number) {
   height: 100%;
   min-height: 0;
   min-width: 0;
+  overscroll-behavior-x: contain;
 }
 
 .ui-affino-grid__loading-overlay {
@@ -3045,6 +3534,16 @@ function columnStyle(width: number) {
   background: #171717;
 }
 
+.ui-affino-grid__header-context-menu {
+  z-index: 1300;
+  min-width: 12rem;
+  max-width: min(20rem, calc(100vw - 1rem));
+}
+
+.ui-affino-grid__header-menu-anchor {
+  display: none;
+}
+
 .dark .ui-affino-grid__column-panel--floating {
   box-shadow: 0 14px 28px rgba(2, 6, 23, 0.5);
 }
@@ -3159,6 +3658,7 @@ function columnStyle(width: number) {
   overflow-x: hidden;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
   background: rgba(255, 255, 255, 0.95);
 }
 
@@ -3256,6 +3756,7 @@ function columnStyle(width: number) {
   overflow-y: hidden;
   overflow-x: hidden;
   position: relative;
+  overscroll-behavior-x: contain;
 }
 
 .ui-affino-grid__pinned-canvas {
@@ -3271,6 +3772,7 @@ function columnStyle(width: number) {
   overflow-y: hidden;
   overflow-x: hidden;
   position: relative;
+  overscroll-behavior-x: contain;
   border-right: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(255, 255, 255, 0.95);
 }
@@ -3319,6 +3821,7 @@ function columnStyle(width: number) {
   overflow-y: hidden;
   overflow-x: hidden;
   position: relative;
+  overscroll-behavior-x: contain;
   border-right: 1px solid rgba(148, 163, 184, 0.2);
   background: rgba(255, 255, 255, 0.95);
 }
@@ -3445,6 +3948,7 @@ function columnStyle(width: number) {
   overflow-x: hidden;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
   background: rgba(255, 255, 255, 0.95);
 }
 
@@ -3541,6 +4045,7 @@ function columnStyle(width: number) {
   padding: 0.4rem 0.55rem;
   font-size: 0.8rem;
   color: #0f172a;
+  cursor: default;
 }
 
 .ui-affino-grid.is-row-fixed .ui-affino-grid__row--data {
@@ -3603,6 +4108,45 @@ function columnStyle(width: number) {
   white-space: nowrap;
 }
 
+.ui-affino-grid__header-state-markers {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.ui-affino-grid__header-state-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 9999px;
+  font-size: 0.56rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.ui-affino-grid__header-state-marker.is-filtered {
+  color: #0c4a6e;
+  background: rgba(125, 211, 252, 0.45);
+}
+
+.ui-affino-grid__header-state-marker.is-grouped {
+  color: #1d4ed8;
+  background: rgba(147, 197, 253, 0.45);
+}
+
+.dark .ui-affino-grid__header-state-marker.is-filtered {
+  color: #bae6fd;
+  background: rgba(12, 74, 110, 0.55);
+}
+
+.dark .ui-affino-grid__header-state-marker.is-grouped {
+  color: #bfdbfe;
+  background: rgba(30, 64, 175, 0.55);
+}
+
 .ui-affino-grid__sort-indicator {
   font-size: 0.62rem;
   color: #334155;
@@ -3653,6 +4197,20 @@ function columnStyle(width: number) {
 
 .dark .ui-affino-grid__row--data.is-even .ui-affino-grid__cell {
   background: var(--ui-affino-dark-bg-even);
+}
+
+.ui-affino-grid__row--data.is-group .ui-affino-grid__cell,
+.ui-affino-grid__row--data.is-group .ui-affino-grid__spacer {
+  background: rgba(226, 232, 240, 0.35);
+}
+
+.dark .ui-affino-grid__row--data.is-group .ui-affino-grid__cell,
+.dark .ui-affino-grid__row--data.is-group .ui-affino-grid__spacer {
+  background: var(--ui-affino-dark-bg-even);
+}
+
+.ui-affino-grid__row--data.is-group .ui-affino-grid__cell {
+  font-weight: 600;
 }
 
 .ui-affino-grid__row--data:hover .ui-affino-grid__cell {
