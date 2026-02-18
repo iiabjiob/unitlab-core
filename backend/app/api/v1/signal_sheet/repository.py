@@ -347,6 +347,39 @@ class SignalSheetRepository:
         await self.db.commit()
         return touched_ids
 
+    async def mark_signals_tested_at(
+        self,
+        workspace_id: int,
+        tested_at_by_signal: dict[int, str],
+    ) -> list[int]:
+        normalized = {
+            int(signal_id): str(tested_at)
+            for signal_id, tested_at in tested_at_by_signal.items()
+            if int(signal_id) > 0 and str(tested_at).strip()
+        }
+        if not normalized:
+            return []
+
+        signals_by_id = await self._active_signals_by_ids(workspace_id, set(normalized.keys()))
+        if not signals_by_id:
+            return []
+
+        touched_ids: list[int] = []
+        for signal_id, tested_at in normalized.items():
+            signal = signals_by_id.get(signal_id)
+            if signal is None:
+                continue
+            metadata = dict(signal.signal_metadata or {})
+            metadata["tested_at"] = tested_at
+            signal.signal_metadata = metadata
+            touched_ids.append(signal.id)
+
+        if not touched_ids:
+            return []
+
+        await self.db.commit()
+        return touched_ids
+
     async def auto_allocate(
         self,
         *,

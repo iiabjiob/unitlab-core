@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, useAttrs } from "vue"
+import { computed, getCurrentInstance, onBeforeUnmount, useAttrs, watch } from "vue"
 import type { ComponentPublicInstance } from "vue"
-import { useFloatingTooltip, useTooltipController } from "@affino/tooltip-vue"
+import { useFloatingTooltip, useTooltipController, type TooltipController } from "@affino/tooltip-vue"
+
+const tooltipControllers = new Map<string, TooltipController>()
+let activeTooltipId: string | null = null
 
 defineOptions({
   inheritAttrs: false,
@@ -42,6 +45,48 @@ const { triggerRef, tooltipRef, tooltipStyle, teleportTarget } = useFloatingTool
   placement: props.placement,
   align: props.align,
   gutter: 8,
+})
+
+tooltipControllers.set(tooltipController.id, tooltipController)
+
+watch(
+  () => tooltipController.state.value.open,
+  (isOpen) => {
+    if (!isOpen) {
+      if (activeTooltipId === tooltipController.id) {
+        activeTooltipId = null
+      }
+      return
+    }
+
+    activeTooltipId = tooltipController.id
+    tooltipControllers.forEach((controller, id) => {
+      if (id === tooltipController.id) {
+        return
+      }
+      if (!controller.state.value.open) {
+        return
+      }
+      controller.close("programmatic")
+    })
+  },
+)
+
+watch(
+  () => props.disabled,
+  (disabled) => {
+    if (!disabled || !tooltipController.state.value.open) {
+      return
+    }
+    tooltipController.close("programmatic")
+  },
+)
+
+onBeforeUnmount(() => {
+  if (activeTooltipId === tooltipController.id) {
+    activeTooltipId = null
+  }
+  tooltipControllers.delete(tooltipController.id)
 })
 
 function getTriggerProps() {

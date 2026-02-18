@@ -6,6 +6,7 @@ import signal
 import socket
 import time
 from contextlib import suppress
+from datetime import datetime, timezone
 from typing import Any
 
 from redis.exceptions import ResponseError
@@ -142,7 +143,8 @@ async def _handle_bulk_update(repo: SignalSheetRepository, workspace_id: int, pa
 
 async def _handle_test_run(repo: SignalSheetRepository, workspace_id: int, payload: dict[str, Any]) -> dict[str, Any]:
     requested_ids_raw = payload.get("signal_ids") if isinstance(payload, dict) else None
-    toggle_step_ms_raw = payload.get("toggle_step_ms") if isinstance(payload, dict) else None
+    signal_interval_ms_raw = payload.get("signal_interval_ms") if isinstance(payload, dict) else None
+    toggle_mode_raw = payload.get("toggle_mode") if isinstance(payload, dict) else None
 
     requested_ids = []
     if isinstance(requested_ids_raw, list):
@@ -154,9 +156,13 @@ async def _handle_test_run(repo: SignalSheetRepository, workspace_id: int, paylo
             requested_ids.append(signal_id)
             seen.add(signal_id)
 
-    toggle_step_ms = int(toggle_step_ms_raw) if toggle_step_ms_raw is not None else 1000
-    toggle_step_ms = max(100, min(10000, toggle_step_ms))
-    toggle_sleep_seconds = toggle_step_ms / 1000
+    signal_interval_ms = int(signal_interval_ms_raw) if signal_interval_ms_raw is not None else 1000
+    signal_interval_ms = max(100, min(10000, signal_interval_ms))
+    toggle_mode = str(toggle_mode_raw or "single").strip().lower()
+    if toggle_mode not in {"single", "double"}:
+        toggle_mode = "single"
+
+    signal_interval_seconds = signal_interval_ms / 1000
 
     rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, requested_ids)
     rows_by_signal_id = {row.signal_id: row for row in rows}
@@ -166,6 +172,7 @@ async def _handle_test_run(repo: SignalSheetRepository, workspace_id: int, paylo
     last_emit_at = 0.0
 
     succeeded_signal_ids: list[int] = []
+    tested_at_by_signal: dict[int, str] = {}
     skipped = 0
 
     for index, signal_id in enumerate(requested_ids, start=1):
@@ -187,19 +194,20 @@ async def _handle_test_run(repo: SignalSheetRepository, workspace_id: int, paylo
                 value=1,
                 correlation_id=f"test-run:{signal_id}:on",
             )
-            await asyncio.sleep(toggle_sleep_seconds)
-            await enqueue_do_command(
-                unit_id=str(row.unit_id),
-                mode=Cmd.SET_SINGLE_BIT,
-                ch=int(row.channel_index),
-                value=0,
-                correlation_id=f"test-run:{signal_id}:off",
-            )
-            await asyncio.sleep(toggle_sleep_seconds)
+            if toggle_mode == "double":
+                await asyncio.sleep(signal_interval_seconds)
+                await enqueue_do_command(
+                    unit_id=str(row.unit_id),
+                    mode=Cmd.SET_SINGLE_BIT,
+                    ch=int(row.channel_index),
+                    value=0,
+                    correlation_id=f"test-run:{signal_id}:off",
+                )
             success = True
 
         if success:
             succeeded_signal_ids.append(signal_id)
+            tested_at_by_signal[signal_id] = datetime.now(timezone.utc).isoformat()
 
         should_emit = index >= total or index <= 1 or index % update_every == 0
         now = time.monotonic()
@@ -212,12 +220,17 @@ async def _handle_test_run(repo: SignalSheetRepository, workspace_id: int, paylo
                 message=f"Signals {index}/{total} · ok {len(succeeded_signal_ids)} · skip {skipped}",
             )
 
-    tested_signal_ids = await repo.mark_signals_tested(workspace_id, succeeded_signal_ids)
+        if index < total:
+            await asyncio.sleep(signal_interval_seconds)
+
+    tested_signal_ids = await repo.mark_signals_tested_at(workspace_id, tested_at_by_signal)
 
     return {
         "processed": total,
         "succeeded": len(succeeded_signal_ids),
         "skipped": skipped,
+        "toggle_mode": toggle_mode,
+        "signal_interval_ms": signal_interval_ms,
         "tested_signal_ids": tested_signal_ids,
     }
 

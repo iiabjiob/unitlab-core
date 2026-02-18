@@ -56,6 +56,7 @@
           <InlineInfoTooltip
             v-if="selectedAllocatableUnassignedSignalIds.length > 0"
             text="Auto-allocate selected unassigned signals to compatible channels."
+            :disabled="disableHeaderTooltips"
             placement="bottom"
             align="end"
             :open-delay="1000"
@@ -76,6 +77,7 @@
           <InlineInfoTooltip
             v-if="selectedAllocatedSignalIds.length > 0"
             text="Remove channel assignments from selected signals."
+            :disabled="disableHeaderTooltips"
             placement="bottom"
             align="end"
             :open-delay="1000"
@@ -98,26 +100,60 @@
             :text="testRunInProgress
               ? 'Test run is executing in background worker.'
               : 'Run ON/OFF test for selected allocated channels and update test status.'"
+            :disabled="disableTestRunTooltip"
             placement="bottom"
             align="end"
             :open-delay="1000"
             v-slot="{ setTriggerRef, getTriggerProps }"
           >
             <span :ref="setTriggerRef" v-bind="getTriggerProps()" class="inline-flex">
-              <UiButton
-                :variant="'success'"
-                size="sm"
-                :disabled="loading || testRunInProgress"
-                @click="runTestVisualOnly()"
-              >
-                {{ testRunInProgress ? "Running…" : "Run test" }}
-              </UiButton>
+              <UiMenu ref="testRunMenuRef">
+                <UiButton
+                  :variant="'success'"
+                  size="sm"
+                  :disabled="loading || testRunInProgress"
+                  @click="runTestVisualOnly()"
+                  @contextmenu.capture.prevent.stop="openTestRunContextMenu"
+                >
+                  {{ testRunInProgress ? "Running…" : "Run test" }}
+                </UiButton>
+                <UiMenuContent>
+                  <UiMenuLabel>
+                    Toggle mode
+                  </UiMenuLabel>
+                  <UiMenuItem @select="setTestRunToggleMode('single')">
+                    Single toggle (ON)
+                    <span v-if="testRunToggleMode === 'single'" class="ml-2 text-xs">✓</span>
+                  </UiMenuItem>
+                  <UiMenuItem @select="setTestRunToggleMode('double')">
+                    Double toggle (ON → OFF)
+                    <span v-if="testRunToggleMode === 'double'" class="ml-2 text-xs">✓</span>
+                  </UiMenuItem>
+                  <UiMenuSeparator />
+                  <UiMenuLabel>
+                    Interval between signals
+                  </UiMenuLabel>
+                  <UiMenuItem @select="setTestRunIntervalMs(500)">
+                    0.5 s
+                    <span v-if="testRunIntervalMs === 500" class="ml-2 text-xs">✓</span>
+                  </UiMenuItem>
+                  <UiMenuItem @select="setTestRunIntervalMs(1000)">
+                    1.0 s
+                    <span v-if="testRunIntervalMs === 1000" class="ml-2 text-xs">✓</span>
+                  </UiMenuItem>
+                  <UiMenuItem @select="setTestRunIntervalMs(2000)">
+                    2.0 s
+                    <span v-if="testRunIntervalMs === 2000" class="ml-2 text-xs">✓</span>
+                  </UiMenuItem>
+                </UiMenuContent>
+              </UiMenu>
             </span>
           </InlineInfoTooltip>
 
           <InlineInfoTooltip
             v-if="canCreateSwitchgearFromSelection"
             text="Create switchgear items from selected DI/DO signal pairs."
+            :disabled="disableHeaderTooltips"
             placement="bottom"
             align="end"
             :open-delay="1000"
@@ -276,8 +312,10 @@ import {
   UiMenu,
   UiMenuContent,
   UiMenuItem,
+  UiMenuLabel,
   UiMenuSeparator,
   UiMenuTrigger,
+  type MenuController,
 } from "@affino/menu-vue"
 
 import UiAffinoDataGrid from "@/components/ui/UiAffinoDataGrid.vue"
@@ -319,14 +357,16 @@ const selectedRowKeys = ref<string[]>([])
 const allocatingSelected = ref(false)
 const deallocatingSelected = ref(false)
 const testRunInProgress = ref(false)
+const testRunMenuRef = ref<{ controller?: MenuController } | null>(null)
+const testRunTooltipSuppressed = ref(false)
+const testRunIntervalMs = ref(1000)
+const testRunToggleMode = ref<"single" | "double">("single")
 const switchgearCreateInProgress = ref(false)
 const testRunTotal = ref(0)
 const testRunProcessed = ref(0)
 const testRunSucceeded = ref(0)
 const testRunSkipped = ref(0)
 let realtimeScopeSyncFrame: number | null = null
-const TEST_TOGGLE_STEP_MS = 1000
-const TEST_TOGGLE_PHASES_PER_SIGNAL = 2
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const loading = computed(() => loadingAllocations.value || loadingSheet.value || updatingAllocations.value)
@@ -605,6 +645,10 @@ const allocatedCableRows = computed(() => (
 
 const showTestRunProgress = computed(() => testRunInProgress.value && testRunTotal.value > 0)
 
+const isTestRunMenuOpen = computed(() => Boolean(testRunMenuRef.value?.controller?.state.open))
+const disableHeaderTooltips = computed(() => isTestRunMenuOpen.value)
+const disableTestRunTooltip = computed(() => testRunTooltipSuppressed.value || isTestRunMenuOpen.value)
+
 const testRunProgressPercent = computed(() => {
   const total = testRunTotal.value
   if (!total) return 0
@@ -614,7 +658,8 @@ const testRunProgressPercent = computed(() => {
 const testRunEtaSeconds = computed(() => {
   if (!testRunInProgress.value) return 0
   const remaining = Math.max(0, testRunTotal.value - testRunProcessed.value)
-  return remaining * ((TEST_TOGGLE_STEP_MS * TEST_TOGGLE_PHASES_PER_SIGNAL) / 1000)
+  const perSignalFactor = testRunToggleMode.value === "double" ? 2 : 1
+  return remaining * ((testRunIntervalMs.value * perSignalFactor) / 1000)
 })
 
 const testRunProgressText = computed(() => {
@@ -632,6 +677,12 @@ watch(activeTestRunJob, (job) => {
     return
   }
   updateTestRunStatsFromJob(job)
+})
+
+watch(isTestRunMenuOpen, (open) => {
+  if (!open) {
+    testRunTooltipSuppressed.value = false
+  }
 })
 
 const sourceColumnHeaders = computed(() => (
@@ -1357,6 +1408,30 @@ function updateTestRunStatsFromJob(job: SignalAllocationJob) {
   }
 }
 
+function setTestRunToggleMode(mode: "single" | "double") {
+  testRunToggleMode.value = mode
+}
+
+function setTestRunIntervalMs(intervalMs: number) {
+  const normalized = Math.max(100, Math.min(10000, Number(intervalMs)))
+  testRunIntervalMs.value = normalized
+}
+
+function openTestRunContextMenu(event: MouseEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+  const controller = testRunMenuRef.value?.controller
+  if (!controller) {
+    return
+  }
+  testRunTooltipSuppressed.value = true
+  if (controller.state.open) {
+    return
+  }
+  controller.setAnchor({ x: event.clientX, y: event.clientY, width: 0, height: 0 })
+  controller.open("pointer")
+}
+
 async function runTestVisualOnly() {
   if (testRunInProgress.value) return
 
@@ -1381,7 +1456,10 @@ async function runTestVisualOnly() {
     const completedJob = await signalAllocationJobStore.enqueueTestRunJob(
       workspaceId,
       selectedSignalIds,
-      TEST_TOGGLE_STEP_MS,
+      {
+        signalIntervalMs: testRunIntervalMs.value,
+        toggleMode: testRunToggleMode.value,
+      },
     )
     updateTestRunStatsFromJob(completedJob)
     await signalSheetStore.refreshAllocations()

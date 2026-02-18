@@ -220,11 +220,12 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
   async function enqueueTestRunJob(
     workspaceId: number,
     signalIds: number[],
-    toggleStepMs = 1000,
+    options?: { signalIntervalMs?: number; toggleMode?: "single" | "double" },
   ): Promise<SignalAllocationJob> {
     const payload = {
       signal_ids: signalIds,
-      toggle_step_ms: toggleStepMs,
+      signal_interval_ms: Math.max(100, Number(options?.signalIntervalMs ?? 1000)),
+      toggle_mode: options?.toggleMode ?? "single",
     }
     const { data: queuedJob } = await SignalSheetAPI.enqueueTestRunJob(workspaceId, payload)
     upsertJob(queuedJob)
