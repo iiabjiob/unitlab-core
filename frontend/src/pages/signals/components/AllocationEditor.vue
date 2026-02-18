@@ -96,7 +96,7 @@
           <InlineInfoTooltip
             v-if="selectedAllocatedPhysicalRows.length > 0 || testRunInProgress"
             :text="testRunInProgress
-              ? 'Stop the current test run.'
+              ? 'Test run is executing in background worker.'
               : 'Run ON/OFF test for selected allocated channels and update test status.'"
             placement="bottom"
             align="end"
@@ -105,12 +105,12 @@
           >
             <span :ref="setTriggerRef" v-bind="getTriggerProps()" class="inline-flex">
               <UiButton
-                :variant="testRunInProgress ? 'danger' : 'success'"
+                :variant="'success'"
                 size="sm"
-                :disabled="loading"
-                @click="testRunInProgress ? stopTestRun() : runTestVisualOnly()"
+                :disabled="loading || testRunInProgress"
+                @click="runTestVisualOnly()"
               >
-                {{ testRunInProgress ? "Stop test" : "Run test" }}
+                {{ testRunInProgress ? "Running…" : "Run test" }}
               </UiButton>
             </span>
           </InlineInfoTooltip>
@@ -309,7 +309,7 @@ const route = useRoute()
 const router = useRouter()
 
 const { allocationRows, loadingAllocations, loadingSheet, updatingAllocations, allocatedCount, allocationRevision, recentlyChangedSignalIds } = storeToRefs(signalSheetStore)
-const { progressText: allocationJobProgressText, isAnyRunning: allocationJobsRunning } = storeToRefs(signalAllocationJobStore)
+const { progressText: allocationJobProgressText, isAnyRunning: allocationJobsRunning, activeJobs } = storeToRefs(signalAllocationJobStore)
 const { channels } = storeToRefs(channelStore)
 
 const scopeId = "signals:allocations"
@@ -319,7 +319,6 @@ const selectedRowKeys = ref<string[]>([])
 const allocatingSelected = ref(false)
 const deallocatingSelected = ref(false)
 const testRunInProgress = ref(false)
-const testRunAbortRequested = ref(false)
 const switchgearCreateInProgress = ref(false)
 const testRunTotal = ref(0)
 const testRunProcessed = ref(0)
@@ -621,8 +620,18 @@ const testRunEtaSeconds = computed(() => {
 const testRunProgressText = computed(() => {
   const base = `${testRunProcessed.value}/${testRunTotal.value} · ok ${testRunSucceeded.value} · skip ${testRunSkipped.value}`
   if (!testRunInProgress.value) return base
-  if (testRunAbortRequested.value) return `${base} · stopping…`
   return `${base} · ETA ${formatDurationShort(testRunEtaSeconds.value)}`
+})
+
+const activeTestRunJob = computed(() => (
+  activeJobs.value.find(job => String(job.operation) === "test_run") ?? null
+))
+
+watch(activeTestRunJob, (job) => {
+  if (!testRunInProgress.value || !job) {
+    return
+  }
+  updateTestRunStatsFromJob(job)
 })
 
 const sourceColumnHeaders = computed(() => (
@@ -1323,31 +1332,29 @@ async function deallocateSelected() {
   }
 }
 
-function wait(ms: number) {
-  return new Promise<void>(resolve => {
-    setTimeout(resolve, ms)
-  })
-}
+function updateTestRunStatsFromJob(job: SignalAllocationJob) {
+  const total = Math.max(0, Number(job.progress_total ?? testRunTotal.value ?? 0))
+  const done = Math.max(0, Math.min(total || Number.MAX_SAFE_INTEGER, Number(job.progress_done ?? 0)))
+  testRunTotal.value = total || testRunTotal.value
+  testRunProcessed.value = done
 
-async function waitWithAbort(ms: number): Promise<boolean> {
-  const startedAt = Date.now()
-  while (Date.now() - startedAt < ms) {
-    if (testRunAbortRequested.value) {
-      return false
-    }
-    const elapsed = Date.now() - startedAt
-    const remaining = Math.max(0, ms - elapsed)
-    await wait(Math.min(80, remaining))
-  }
-  return !testRunAbortRequested.value
-}
-
-function stopTestRun() {
-  if (!testRunInProgress.value || testRunAbortRequested.value) {
+  const succeeded = readNumericResult(job, "succeeded")
+  const skipped = readNumericResult(job, "skipped")
+  if (succeeded > 0 || skipped > 0 || job.status === "succeeded") {
+    testRunSucceeded.value = succeeded
+    testRunSkipped.value = skipped
     return
   }
-  testRunAbortRequested.value = true
-  toastStore.info("Stopping test run…")
+
+  const message = String(job.message ?? "")
+  const okMatch = message.match(/ok\s+(\d+)/i)
+  const skipMatch = message.match(/skip\s+(\d+)/i)
+  if (okMatch) {
+    testRunSucceeded.value = Number(okMatch[1])
+  }
+  if (skipMatch) {
+    testRunSkipped.value = Number(skipMatch[1])
+  }
 }
 
 async function runTestVisualOnly() {
@@ -1364,64 +1371,26 @@ async function runTestVisualOnly() {
   testRunProcessed.value = 0
   testRunSucceeded.value = 0
   testRunSkipped.value = 0
-  testRunAbortRequested.value = false
-
-  let interrupted = false
   try {
-    for (let index = 0; index < queue.length; index += 1) {
-      if (testRunAbortRequested.value) {
-        interrupted = true
-        break
-      }
-      const row = queue[index]
-      const target = resolveControlTarget(row)
-      if (!target || !target.online) {
-        testRunSkipped.value += 1
-      } else {
-        const initialState = Boolean(target.channel.state)
-        const toggledState = !initialState
-        const toggledOk = await sendControl(row, toggledState, { quiet: true })
-        let restoredOk = false
-        if (toggledOk) {
-          const continueToOff = await waitWithAbort(TEST_TOGGLE_STEP_MS)
-          if (!continueToOff) {
-            interrupted = true
-          }
-          restoredOk = await sendControl(row, initialState, { quiet: true })
-        }
-        if (toggledOk && restoredOk) {
-          testRunSucceeded.value += 1
-        } else {
-          testRunSkipped.value += 1
-        }
-      }
-
-      testRunProcessed.value += 1
-      if (interrupted) {
-        break
-      }
-
-      if (index < queue.length - 1) {
-        const continueToNext = await waitWithAbort(TEST_TOGGLE_STEP_MS)
-        if (!continueToNext) {
-          interrupted = true
-          break
-        }
-      }
+    const workspaceId = workspaceStore.activeWorkspaceId
+    if (!workspaceId) {
+      return
     }
 
-    if (interrupted) {
-      toastStore.info(
-        `Run test stopped: ${testRunProcessed.value}/${testRunTotal.value} processed, ${testRunSucceeded.value} completed.`,
-      )
-    } else {
-      toastStore.success(
-        `Run test complete: ${testRunSucceeded.value} toggled${testRunSkipped.value ? `, ${testRunSkipped.value} skipped` : ""}.`,
-      )
-    }
+    const selectedSignalIds = queue.map(row => row.signal_id)
+    const completedJob = await signalAllocationJobStore.enqueueTestRunJob(
+      workspaceId,
+      selectedSignalIds,
+      TEST_TOGGLE_STEP_MS,
+    )
+    updateTestRunStatsFromJob(completedJob)
+    await signalSheetStore.refreshAllocations()
+
+    toastStore.success(
+      `Run test complete: ${testRunSucceeded.value} toggled${testRunSkipped.value ? `, ${testRunSkipped.value} skipped` : ""}.`,
+    )
   } finally {
     testRunInProgress.value = false
-    testRunAbortRequested.value = false
   }
 }
 

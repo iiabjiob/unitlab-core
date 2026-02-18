@@ -12,7 +12,7 @@ from app.infrastructure.redis.stream_bus import enqueue_signal_allocation_job
 settings = get_settings()
 
 SignalAllocationJobStatus = Literal["queued", "running", "succeeded", "failed"]
-SignalAllocationJobOperation = Literal["auto_allocate", "bulk_update"]
+SignalAllocationJobOperation = Literal["auto_allocate", "bulk_update", "test_run"]
 
 
 def _job_key(job_id: str) -> str:
@@ -54,6 +54,10 @@ async def create_signal_allocation_job(
         entries = payload.get("entries") if isinstance(payload, dict) else None
         if isinstance(entries, list):
             progress_total = len(entries)
+    elif operation == "test_run":
+        signal_ids = payload.get("signal_ids") if isinstance(payload, dict) else None
+        if isinstance(signal_ids, list):
+            progress_total = len(signal_ids)
 
     snapshot = {
         "job_id": job_id,

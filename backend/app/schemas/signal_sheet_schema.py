@@ -89,6 +89,11 @@ class SignalAllocationMarkTestedSchema(BaseModel):
     signal_ids: list[int] = Field(default_factory=list)
 
 
+class SignalTestRunJobSchema(BaseModel):
+    signal_ids: list[int] = Field(default_factory=list)
+    toggle_step_ms: int = Field(default=1000, ge=100, le=10000)
+
+
 class SignalAutoAllocateResultSchema(BaseModel):
     assigned: int
     skipped: int

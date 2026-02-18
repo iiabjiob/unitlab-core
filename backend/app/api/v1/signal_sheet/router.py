@@ -19,6 +19,7 @@ from app.schemas.signal_sheet_schema import (
     SignalAllocationEnsureSchema,
     SignalAllocationJobStatusSchema,
     SignalAllocationMarkTestedSchema,
+    SignalTestRunJobSchema,
     SignalAllocationBulkUpdateSchema,
     SignalAllocationRowSchema,
     SignalAutoAllocateResponseSchema,
@@ -290,6 +291,24 @@ async def enqueue_bulk_signal_allocations_update(
     snapshot = await create_signal_allocation_job(
         workspace_id=workspace_id,
         operation="bulk_update",
+        payload=payload.model_dump(),
+    )
+    await WsEventPublisher.publish(SignalAllocationJobEvent(**snapshot))
+    return SignalAllocationJobStatusSchema.model_validate(snapshot)
+
+
+@router.post("/workspaces/{workspace_id}/signal-allocations/test-run/jobs", response_model=SignalAllocationJobStatusSchema)
+async def enqueue_signal_test_run_job(
+    workspace_id: int,
+    payload: SignalTestRunJobSchema,
+    repo: SignalSheetRepository = Depends(get_repo),
+):
+    if not await repo.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    snapshot = await create_signal_allocation_job(
+        workspace_id=workspace_id,
+        operation="test_run",
         payload=payload.model_dump(),
     )
     await WsEventPublisher.publish(SignalAllocationJobEvent(**snapshot))

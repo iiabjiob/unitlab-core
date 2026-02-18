@@ -77,6 +77,10 @@ export const SignalSheetAPI = {
     })
   },
 
+  enqueueTestRunJob(workspaceId: number, payload: { signal_ids: number[]; toggle_step_ms?: number }) {
+    return http.post<SignalAllocationJob>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/test-run/jobs`, payload)
+  },
+
   getAllocationJob(workspaceId: number, jobId: string) {
     return http.get<SignalAllocationJob>(`${API_V1}/workspaces/${workspaceId}/signal-allocation-jobs/${jobId}`)
   },

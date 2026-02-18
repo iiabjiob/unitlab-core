@@ -217,6 +217,20 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
     return await awaitJobCompletion(queuedJob.job_id, workspaceId)
   }
 
+  async function enqueueTestRunJob(
+    workspaceId: number,
+    signalIds: number[],
+    toggleStepMs = 1000,
+  ): Promise<SignalAllocationJob> {
+    const payload = {
+      signal_ids: signalIds,
+      toggle_step_ms: toggleStepMs,
+    }
+    const { data: queuedJob } = await SignalSheetAPI.enqueueTestRunJob(workspaceId, payload)
+    upsertJob(queuedJob)
+    return await awaitJobCompletion(queuedJob.job_id, workspaceId, 10 * 60_000)
+  }
+
   function clearWorkspaceJobs(workspaceId: number) {
     const next: Record<string, SignalAllocationJob> = {}
     Object.values(jobsById.value).forEach((job) => {
@@ -235,6 +249,7 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
     applyJobEvent,
     enqueueAutoAllocateJob,
     enqueueBulkUpdateJob,
+    enqueueTestRunJob,
     clearWorkspaceJobs,
   }
 })

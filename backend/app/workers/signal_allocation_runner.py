@@ -16,9 +16,11 @@ from app.core.logger import get_logger
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_signal_allocation_job_entry
+from app.infrastructure.protocol.modes import Cmd
 from app.schemas.signal_sheet_schema import SignalAllocationBulkUpdateSchema, SignalAutoAllocateSchema
 from app.schemas.ws.events import SignalAllocationJobEvent
 from app.core.events.ws_event_publisher import WsEventPublisher
+from app.services.command_queue_service import enqueue_do_command
 from app.services.signal_allocation_job_service import update_signal_allocation_job
 from app.services.worker_health import clear_worker_status, start_worker_heartbeat
 
@@ -138,6 +140,88 @@ async def _handle_bulk_update(repo: SignalSheetRepository, workspace_id: int, pa
     }
 
 
+async def _handle_test_run(repo: SignalSheetRepository, workspace_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+    requested_ids_raw = payload.get("signal_ids") if isinstance(payload, dict) else None
+    toggle_step_ms_raw = payload.get("toggle_step_ms") if isinstance(payload, dict) else None
+
+    requested_ids = []
+    if isinstance(requested_ids_raw, list):
+        seen: set[int] = set()
+        for item in requested_ids_raw:
+            signal_id = int(item)
+            if signal_id <= 0 or signal_id in seen:
+                continue
+            requested_ids.append(signal_id)
+            seen.add(signal_id)
+
+    toggle_step_ms = int(toggle_step_ms_raw) if toggle_step_ms_raw is not None else 1000
+    toggle_step_ms = max(100, min(10000, toggle_step_ms))
+    toggle_sleep_seconds = toggle_step_ms / 1000
+
+    rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, requested_ids)
+    rows_by_signal_id = {row.signal_id: row for row in rows}
+
+    total = len(requested_ids)
+    update_every = max(1, total // 25) if total > 0 else 1
+    last_emit_at = 0.0
+
+    succeeded_signal_ids: list[int] = []
+    skipped = 0
+
+    for index, signal_id in enumerate(requested_ids, start=1):
+        row = rows_by_signal_id.get(signal_id)
+        success = False
+        if row is None:
+            skipped += 1
+        elif not row.unit_id or not isinstance(row.channel_index, int):
+            skipped += 1
+        elif not str(row.channel_type or "").lower().startswith("do"):
+            skipped += 1
+        elif row.unit_online is False:
+            skipped += 1
+        else:
+            await enqueue_do_command(
+                unit_id=str(row.unit_id),
+                mode=Cmd.SET_SINGLE_BIT,
+                ch=int(row.channel_index),
+                value=1,
+                correlation_id=f"test-run:{signal_id}:on",
+            )
+            await asyncio.sleep(toggle_sleep_seconds)
+            await enqueue_do_command(
+                unit_id=str(row.unit_id),
+                mode=Cmd.SET_SINGLE_BIT,
+                ch=int(row.channel_index),
+                value=0,
+                correlation_id=f"test-run:{signal_id}:off",
+            )
+            await asyncio.sleep(toggle_sleep_seconds)
+            success = True
+
+        if success:
+            succeeded_signal_ids.append(signal_id)
+
+        should_emit = index >= total or index <= 1 or index % update_every == 0
+        now = time.monotonic()
+        if should_emit or (now - last_emit_at) >= 0.35:
+            last_emit_at = now
+            await _publish_running_progress(
+                job_id=str(payload.get("job_id") or ""),
+                progress_done=index,
+                progress_total=total,
+                message=f"Signals {index}/{total} · ok {len(succeeded_signal_ids)} · skip {skipped}",
+            )
+
+    tested_signal_ids = await repo.mark_signals_tested(workspace_id, succeeded_signal_ids)
+
+    return {
+        "processed": total,
+        "succeeded": len(succeeded_signal_ids),
+        "skipped": skipped,
+        "tested_signal_ids": tested_signal_ids,
+    }
+
+
 async def _process_entries(redis, entries) -> None:
     for entry_id, fields in entries:
         job_id: str | None = None
@@ -156,6 +240,8 @@ async def _process_entries(redis, entries) -> None:
                 progress_total = len(payload.get("signal_ids") or [])
             if operation == "bulk_update" and isinstance(payload.get("entries"), list):
                 progress_total = len(payload.get("entries") or [])
+            if operation == "test_run" and isinstance(payload.get("signal_ids"), list):
+                progress_total = len(payload.get("signal_ids") or [])
 
             running_snapshot = await update_signal_allocation_job(
                 job_id,
@@ -178,6 +264,9 @@ async def _process_entries(redis, entries) -> None:
                 elif operation == "bulk_update":
                     payload["job_id"] = job_id
                     result = await _handle_bulk_update(repo, workspace_id, payload)
+                elif operation == "test_run":
+                    payload["job_id"] = job_id
+                    result = await _handle_test_run(repo, workspace_id, payload)
                 else:
                     raise ValueError(f"Unknown operation: {operation}")
 

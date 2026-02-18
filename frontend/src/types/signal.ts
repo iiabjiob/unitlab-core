@@ -190,7 +190,7 @@ export type SignalAllocationJobStatus = "queued" | "running" | "succeeded" | "fa
 export interface SignalAllocationJob {
   job_id: string
   workspace_id: number
-  operation: "auto_allocate" | "bulk_update" | string
+  operation: "auto_allocate" | "bulk_update" | "test_run" | string
   status: SignalAllocationJobStatus
   progress_total: number
   progress_done: number
