@@ -97,8 +97,8 @@
         :class="{ 'has-right-scrollbar': showRightScrollbar }"
       >
         <div class="ui-affino-grid__index-column">
-          <div class="ui-affino-grid__index-header" :style="indexHeaderStyle" @wheel.passive="handleMainHeaderWheel">#</div>
-          <div v-if="showFilterRow" class="ui-affino-grid__index-filter" :style="indexFilterStyle" @wheel.passive="handleMainHeaderWheel"></div>
+          <div class="ui-affino-grid__index-header" :style="indexHeaderStyle" @wheel="handleMainHeaderWheel">#</div>
+          <div v-if="showFilterRow" class="ui-affino-grid__index-filter" :style="indexFilterStyle" @wheel="handleMainHeaderWheel"></div>
 
           <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @wheel="handlePinnedViewportWheel">
             <div ref="indexCanvasRef" class="ui-affino-grid__index-canvas">
@@ -131,7 +131,7 @@
         </div>
 
         <div class="ui-affino-grid__select-column">
-          <div class="ui-affino-grid__select-header" :style="indexHeaderStyle" @wheel.passive="handleMainHeaderWheel">
+          <div class="ui-affino-grid__select-header" :style="indexHeaderStyle" @wheel="handleMainHeaderWheel">
             <input
               ref="selectHeaderCheckboxRef"
               type="checkbox"
@@ -145,7 +145,7 @@
               @change="handleSelectAllVisibleChange"
             />
           </div>
-          <div v-if="showFilterRow" class="ui-affino-grid__select-filter" :style="indexFilterStyle" @wheel.passive="handleMainHeaderWheel"></div>
+          <div v-if="showFilterRow" class="ui-affino-grid__select-filter" :style="indexFilterStyle" @wheel="handleMainHeaderWheel"></div>
 
           <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @wheel="handlePinnedViewportWheel">
             <div ref="selectionCanvasRef" class="ui-affino-grid__select-canvas">
@@ -189,7 +189,7 @@
         </div>
 
         <div v-if="leftPinnedColumns.length > 0" class="ui-affino-grid__pinned-column ui-affino-grid__pinned-column--left">
-          <div ref="leftPinnedHeaderRowRef" class="ui-affino-grid__row ui-affino-grid__row--header ui-affino-grid__row--pinned" :style="pinnedHeaderRowStyle" @wheel.passive="handleMainHeaderWheel">
+          <div ref="leftPinnedHeaderRowRef" class="ui-affino-grid__row ui-affino-grid__row--header ui-affino-grid__row--pinned" :style="pinnedHeaderRowStyle" @wheel="handleMainHeaderWheel">
             <div
               v-for="entry in leftPinnedColumns"
               :key="`head-left-${entry.key}`"
@@ -240,7 +240,7 @@
             ref="leftPinnedFilterRowRef"
             class="ui-affino-grid__row ui-affino-grid__row--filter ui-affino-grid__row--pinned"
             :style="pinnedFilterRowStyle"
-            @wheel.passive="handleMainHeaderWheel"
+            @wheel="handleMainHeaderWheel"
           >
             <div
               v-for="entry in leftPinnedColumns"
@@ -321,7 +321,7 @@
         >
           <div class="ui-affino-grid__main-canvas">
             <div class="ui-affino-grid__canvas">
-              <div ref="headerRowRef" class="ui-affino-grid__row ui-affino-grid__row--header" @wheel.passive="handleMainHeaderWheel">
+              <div ref="headerRowRef" class="ui-affino-grid__row ui-affino-grid__row--header" @wheel="handleMainHeaderWheel">
                 <div
                   v-if="leftSpacerPx > 0"
                   class="ui-affino-grid__spacer"
@@ -377,7 +377,7 @@
                 ></div>
               </div>
 
-              <div v-if="showFilterRow" ref="filterRowRef" class="ui-affino-grid__row ui-affino-grid__row--filter" @wheel.passive="handleMainHeaderWheel">
+              <div v-if="showFilterRow" ref="filterRowRef" class="ui-affino-grid__row ui-affino-grid__row--filter" @wheel="handleMainHeaderWheel">
                 <div
                   v-if="leftSpacerPx > 0"
                   class="ui-affino-grid__spacer"
@@ -476,7 +476,7 @@
         </div>
 
         <div v-if="rightPinnedColumns.length > 0" class="ui-affino-grid__pinned-column ui-affino-grid__pinned-column--right">
-          <div ref="rightPinnedHeaderRowRef" class="ui-affino-grid__row ui-affino-grid__row--header ui-affino-grid__row--pinned" :style="pinnedHeaderRowStyle" @wheel.passive="handleMainHeaderWheel">
+          <div ref="rightPinnedHeaderRowRef" class="ui-affino-grid__row ui-affino-grid__row--header ui-affino-grid__row--pinned" :style="pinnedHeaderRowStyle" @wheel="handleMainHeaderWheel">
             <div
               v-for="entry in rightPinnedColumns"
               :key="`head-right-${entry.key}`"
@@ -527,7 +527,7 @@
             ref="rightPinnedFilterRowRef"
             class="ui-affino-grid__row ui-affino-grid__row--filter ui-affino-grid__row--pinned"
             :style="pinnedFilterRowStyle"
-            @wheel.passive="handleMainHeaderWheel"
+            @wheel="handleMainHeaderWheel"
           >
             <div
               v-for="entry in rightPinnedColumns"

@@ -141,6 +141,7 @@ import { storeToRefs } from "pinia"
 import { useRoute, useRouter } from "vue-router"
 
 import UiAffinoDataGrid from "@/components/ui/UiAffinoDataGrid.vue"
+import { SignalSheetAPI } from "@/api/signal_sheet.api"
 import type { Channel, DoChannel } from "@/types/channel"
 import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
 import AllocationControlCell from "@/pages/signals/components/AllocationControlCell.vue"
@@ -1458,15 +1459,15 @@ async function allocateSelectedUnassigned() {
       return
     }
 
-    const completedJob = await signalJobStore.enqueueAutoAllocateJob(workspaceId, {
+    const { data } = await SignalSheetAPI.autoAllocate(workspaceId, {
       signal_ids: targetSignalIds,
       prefer_online: true,
       overwrite_existing: false,
     })
     await signalSheetStore.refreshAllocations()
 
-    const assigned = readNumericResult(completedJob, "assigned")
-    const restRaw = (completedJob.result as Record<string, unknown> | undefined)?.unassigned_signal_ids
+    const assigned = Number(data.result?.assigned ?? 0)
+    const restRaw = data.result?.unassigned_signal_ids
     const rest = Array.isArray(restRaw) ? restRaw.length : 0
     const unavailableSkipped = Math.max(0, selectedUnassignedSignalIds.value.length - targetSignalIds.length)
     toastStore.success(
@@ -1492,14 +1493,13 @@ async function deallocateSelected() {
       return
     }
 
-    const completedJob = await signalJobStore.enqueueBulkUpdateJob(
+    await SignalSheetAPI.updateAllocations(
       workspaceId,
       selectedAllocatedSignalIds.value.map(signalId => ({ signal_id: signalId, channel_id: null })),
     )
     await signalSheetStore.refreshAllocations()
 
-    const updated = readNumericResult(completedJob, "updated")
-    toastStore.success(`Unassigned ${updated || selectedAllocatedSignalIds.value.length} selected signal(s)`)
+    toastStore.success(`Unassigned ${selectedAllocatedSignalIds.value.length} selected signal(s)`)
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
   } finally {

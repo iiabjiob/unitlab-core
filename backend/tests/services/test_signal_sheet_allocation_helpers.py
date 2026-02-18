@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.api.v1.signal_sheet.repository import (
     _is_channel_compatible,
@@ -9,6 +9,7 @@ from app.api.v1.signal_sheet.repository import (
     _required_channel_type,
 )
 from app.models.channel import Channel
+from app.models.device import Device
 from app.models.signal import SignalIODirection
 
 
@@ -47,3 +48,62 @@ def test_pick_candidate_channel_skips_used_ids() -> None:
 
     assert candidate is not None
     assert candidate.id == 2
+
+
+def test_pick_candidate_channel_prefers_online_unit_when_enabled() -> None:
+    offline_device = Device(id=1, unit_id="unit-offline", last_seen_at=None)
+    online_device = Device(
+        id=2,
+        unit_id="unit-online",
+        last_seen_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    offline = Channel(
+        id=10,
+        device_id=1,
+        channel_index=0,
+        channel_type="do",
+        device=offline_device,
+    )
+    online = Channel(
+        id=20,
+        device_id=2,
+        channel_index=1,
+        channel_type="do",
+        device=online_device,
+    )
+
+    candidate = _pick_candidate_channel(
+        candidates=[offline, online],
+        used_channel_ids=set(),
+        prefer_online=True,
+    )
+
+    assert candidate is not None
+    assert candidate.id == 20
+
+
+def test_pick_candidate_channel_falls_back_when_no_online_available() -> None:
+    stale_seen = datetime.now(timezone.utc) - timedelta(hours=2)
+    first = Channel(
+        id=30,
+        device_id=1,
+        channel_index=0,
+        channel_type="do",
+        device=Device(id=1, unit_id="unit-a", last_seen_at=stale_seen),
+    )
+    second = Channel(
+        id=40,
+        device_id=2,
+        channel_index=1,
+        channel_type="do",
+        device=Device(id=2, unit_id="unit-b", last_seen_at=None),
+    )
+
+    candidate = _pick_candidate_channel(
+        candidates=[first, second],
+        used_channel_ids=set(),
+        prefer_online=True,
+    )
+
+    assert candidate is not None
+    assert candidate.id == 30

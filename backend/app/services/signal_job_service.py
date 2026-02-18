@@ -112,8 +112,8 @@ async def create_signal_job(
             else:
                 lock_owner_snapshot = await get_signal_job(lock_owner_job_id)
                 lock_owner_status = str((lock_owner_snapshot or {}).get("status") or "").strip().lower()
-                stale_cancelling = False
-                if lock_owner_status == "cancelling" and lock_owner_snapshot is not None:
+                stale_non_terminal = False
+                if lock_owner_snapshot is not None and lock_owner_status in {"queued", "running", "paused", "cancelling"}:
                     updated_at_raw = str(lock_owner_snapshot.get("updated_at") or "").strip()
                     if updated_at_raw:
                         try:
@@ -121,18 +121,18 @@ async def create_signal_job(
                             if updated_at.tzinfo is None:
                                 updated_at = updated_at.replace(tzinfo=timezone.utc)
                             age_seconds = (datetime.now(timezone.utc) - updated_at).total_seconds()
-                            stale_cancelling = age_seconds >= max(1, int(settings.signal_test_run_cancelling_stale_seconds))
+                            stale_non_terminal = age_seconds >= max(1, int(settings.signal_test_run_cancelling_stale_seconds))
                         except ValueError:
-                            stale_cancelling = True
+                            stale_non_terminal = True
                     else:
-                        stale_cancelling = True
+                        stale_non_terminal = True
 
-                if lock_owner_snapshot is None or lock_owner_status in {"succeeded", "failed", "cancelled"} or stale_cancelling:
-                    if stale_cancelling:
+                if lock_owner_snapshot is None or lock_owner_status in {"succeeded", "failed", "cancelled"} or stale_non_terminal:
+                    if stale_non_terminal:
                         await update_signal_job(
                             lock_owner_job_id,
                             status="cancelled",
-                            message="Cancelled (stale cancelling state)",
+                            message="Cancelled (stale test-run lock)",
                         )
                     await redis.delete(lock_key)
                     acquired = await redis.set(

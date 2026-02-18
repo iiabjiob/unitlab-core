@@ -411,7 +411,6 @@ class SignalSheetRepository:
         for channels in channel_groups.values():
             channels.sort(
                 key=lambda channel: (
-                    0 if prefer_online and _is_unit_online(channel.device.last_seen_at if channel.device else None) else 1,
                     channel.device_id,
                     channel.channel_index,
                     channel.id,
@@ -464,12 +463,14 @@ class SignalSheetRepository:
                 candidates=channel_groups.get(required_channel_type, []),
                 used_channel_ids=used_channel_ids,
                 preferred_unit_id=preferred_unit_id,
+                prefer_online=prefer_online,
             )
             if candidate is None and preferred_unit_id is not None:
                 candidate = _pick_candidate_channel(
                     candidates=channel_groups.get(required_channel_type, []),
                     used_channel_ids=used_channel_ids,
                     preferred_unit_id=None,
+                    prefer_online=prefer_online,
                 )
             if candidate is None:
                 unassigned.append(signal.id)
@@ -704,7 +705,20 @@ def _pick_candidate_channel(
     candidates: Iterable[Channel],
     used_channel_ids: set[int],
     preferred_unit_id: str | None = None,
+    prefer_online: bool = True,
 ) -> Channel | None:
+    if prefer_online:
+        for channel in candidates:
+            if channel.id in used_channel_ids:
+                continue
+            if preferred_unit_id is not None:
+                unit_id = channel.device.unit_id if channel.device else None
+                if unit_id != preferred_unit_id:
+                    continue
+            if not _is_unit_online(channel.device.last_seen_at if channel.device else None):
+                continue
+            return channel
+
     for channel in candidates:
         if channel.id in used_channel_ids:
             continue

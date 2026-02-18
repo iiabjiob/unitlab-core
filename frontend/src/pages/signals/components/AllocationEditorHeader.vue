@@ -1,6 +1,6 @@
 <template>
   <header class="rounded-2xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
-    <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+    <div class="grid gap-3 lg:h-full lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
       <div class="min-w-0">
         <p class="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 dark:text-neutral-400">Live Signal Sheet</p>
         <p class="mt-1 text-sm text-neutral-700 dark:text-neutral-200">
@@ -31,7 +31,7 @@
 
       <div
         v-if="showRightPanel"
-        class="grid w-full max-w-full gap-2 rounded-lg border border-neutral-200 bg-neutral-50/70 px-2.5 py-2 lg:w-auto lg:max-w-[46rem] dark:border-neutral-700 dark:bg-neutral-800/50"
+        class="grid w-full max-w-full gap-2 rounded-lg border border-neutral-200 bg-neutral-50/70 px-2.5 py-2 lg:h-full lg:w-auto lg:max-w-[46rem] lg:overflow-y-auto dark:border-neutral-700 dark:bg-neutral-800/50"
       >
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">Allocation</span>
