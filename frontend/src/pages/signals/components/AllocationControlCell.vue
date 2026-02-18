@@ -1,5 +1,5 @@
 <template>
-  <div class="flex justify-center">
+  <div class="flex h-full items-center justify-center">
     <UiMenu v-if="canControl" :options="persistentControlMenuOptions">
       <UiMenuTrigger asChild>
         <button

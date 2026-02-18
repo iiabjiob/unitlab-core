@@ -1,5 +1,5 @@
 <template>
-  <div class="signal-backed-field">
+  <div class="signal-backed-field" v-bind="rootAttrs">
     <div v-if="props.showModeToggle" class="signal-backed-field__mode">
       <DirectSignalModeTabs
         :model-value="mode"
@@ -22,10 +22,14 @@
 
     <div v-else class="signal-backed-field__panel signal-backed-field__panel--signal">
       <div class="signal-backed-field__signal-meta">
-        <div class="signal-backed-field__signal-label">
+        <div
+          class="signal-backed-field__signal-label"
+          :class="{ 'is-scrollable': props.signalLabelScrollable }"
+          :title="selectedSignalLabel"
+        >
           {{ selectedSignalLabel }}
         </div>
-        <div v-if="selectedSignalSubtitle" class="signal-backed-field__signal-subtitle">
+        <div v-if="props.showSignalSubtitle && selectedSignalSubtitle" class="signal-backed-field__signal-subtitle">
           {{ selectedSignalSubtitle }}
         </div>
       </div>
@@ -65,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue"
+import { computed, ref, watch, useAttrs } from "vue"
 
 import UiButton from "@/components/ui/UiButton.vue"
 import DirectSignalModeTabs from "@/components/ui/DirectSignalModeTabs.vue"
@@ -78,6 +82,13 @@ import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useToastStore } from "@/stores/toastStore"
 
 type SelectMode = "direct" | "signal"
+
+defineOptions({
+  inheritAttrs: false,
+})
+
+const attrs = useAttrs()
+const rootAttrs = computed(() => attrs)
 
 const props = withDefaults(defineProps<{
   channelId: number | null
@@ -94,6 +105,10 @@ const props = withDefaults(defineProps<{
   showModeToggle?: boolean
   showSignalClear?: boolean
   emptySignalSubtitle?: string
+  signalDisplayMode?: "default" | "source-row"
+  signalDisplayDelimiter?: string
+  signalLabelScrollable?: boolean
+  showSignalSubtitle?: boolean
 }>(), {
   signalId: null,
   signalKey: null,
@@ -106,6 +121,10 @@ const props = withDefaults(defineProps<{
   showModeToggle: true,
   showSignalClear: true,
   emptySignalSubtitle: "Choose a signal, then allocation to hardware is ensured automatically.",
+  signalDisplayMode: "default",
+  signalDisplayDelimiter: " | ",
+  signalLabelScrollable: false,
+  showSignalSubtitle: true,
 })
 
 const emit = defineEmits<{
@@ -178,9 +197,61 @@ const canClearSignal = computed(() => (
   || Boolean(props.signalKey)
 ))
 
+function stringifySignalSummaryValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return ""
+  }
+  if (typeof value === "string") {
+    return value.trim()
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value)
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map(item => stringifySignalSummaryValue(item))
+      .filter(item => item.length > 0)
+      .join(", ")
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return ""
+    }
+  }
+  return String(value)
+}
+
+function extractSourceRow(signalMetadata: unknown): Record<string, unknown> {
+  if (!signalMetadata || typeof signalMetadata !== "object" || Array.isArray(signalMetadata)) {
+    return {}
+  }
+  const row = (signalMetadata as Record<string, unknown>).row
+  if (!row || typeof row !== "object" || Array.isArray(row)) {
+    return {}
+  }
+  return row as Record<string, unknown>
+}
+
+function resolveSourceRowSummary(row: SignalAllocationRow): string {
+  const sourceRow = extractSourceRow(row.signal_metadata)
+  const delimiter = String(props.signalDisplayDelimiter ?? " | ") || " | "
+  const segments = Object.values(sourceRow)
+    .map(rawValue => stringifySignalSummaryValue(rawValue))
+    .filter(segment => segment.length > 0)
+  if (segments.length > 0) {
+    return segments.join(delimiter)
+  }
+  return row.signal_name || row.signal_key
+}
+
 const selectedSignalLabel = computed(() => {
   const row = selectedSignalRow.value
   if (row) {
+    if (props.signalDisplayMode === "source-row") {
+      return resolveSourceRowSummary(row)
+    }
     return row.signal_name || row.signal_key
   }
   if (props.signalKey) {
@@ -354,6 +425,20 @@ async function handleSignalConfirm(rows: SignalAllocationRow[]) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.signal-backed-field__signal-label.is-scrollable {
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-overflow: clip;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.signal-backed-field__signal-label.is-scrollable::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .dark .signal-backed-field__signal-label {

@@ -55,6 +55,11 @@ WORKER_DEFINITIONS: tuple[WorkerDefinition, ...] = (
         display_name="Signal Allocation Runner",
         impact="Async signal allocation jobs are not processed.",
     ),
+    WorkerDefinition(
+        name="signal_test_run_runner",
+        display_name="Signal Test Run Runner",
+        impact="Signal test runs cannot progress or resume.",
+    ),
 )
 
 WORKER_REGISTRY = {definition.name: definition for definition in WORKER_DEFINITIONS}

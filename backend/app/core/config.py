@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     signal_test_run_job_stream: str = "signal-test-run:jobs"
     signal_test_run_job_stream_maxlen: int = 5000
     signal_allocation_job_ttl_seconds: int = 3600
-    signal_test_run_max_signals: int = 5000
+    signal_test_run_max_signals: int = 20000
     signal_test_run_tested_at_batch_size: int = 50
     signal_test_run_ttl_refresh_seconds: int = 15
     signal_test_run_cancelling_stale_seconds: int = 90

@@ -49,9 +49,9 @@ function setValue(next: number) {
 <template>
 	<div class="space-y-4">
 		<div>
-			<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 				Target DO channel
-			</label>
+			</div>
 			<SignalBackedChannelField
 				class="mt-1"
 				:channel-id="step.channel_id ?? null"
@@ -66,9 +66,9 @@ function setValue(next: number) {
 		</div>
 
 		<div>
-			<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 				Latch state
-			</label>
+			</div>
 			<div class="mt-2 flex gap-2">
 				<UiButton
 					v-for="option in [0, 1]"

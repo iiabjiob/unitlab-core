@@ -10,6 +10,7 @@
       </template>
       <template #right>
         <div class="flex items-center gap-2">
+          <GlobalRunStatusLink compact />
           <TimeComponent />
         </div>
       </template>
@@ -45,6 +46,7 @@ import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import SlideOver from "../ui/SlideOver.vue"
 import MobileHeader from "./MobileHeader.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
+import GlobalRunStatusLink from "./GlobalRunStatusLink.vue"
 
 // Drawer state
 const isDrawerOpen = ref(false)

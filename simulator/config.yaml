@@ -9,15 +9,15 @@ broker:
 
 devices:
   DO:
-    count: 3
+    count: 200
     signals: 32
     interval: 2.0
   DI:
-    count: 1
+    count: 5
     signals: 32
     interval: 1.0
   AO:
-    count: 0
+    count: 3
     signals: 10
     interval: 3.0
 

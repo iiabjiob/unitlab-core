@@ -98,6 +98,60 @@ services:
     networks:
       - app_network
 
+  sequence_runner:
+    image: unitlab-backend:latest
+    platform: linux/arm64
+    container_name: unitlab-sequence-runner
+    command: ["python", "-m", "app.workers.sequence_runner"]
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      APP_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app_network
+
+  signal_allocation_runner:
+    image: unitlab-backend:latest
+    platform: linux/arm64
+    container_name: unitlab-signal-allocation-runner
+    command: ["python", "-m", "app.workers.signal_allocation_runner"]
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      APP_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app_network
+
+  signal_test_run_runner:
+    image: unitlab-backend:latest
+    platform: linux/arm64
+    container_name: unitlab-signal-test-run-runner
+    command: ["python", "-m", "app.workers.signal_test_run_runner"]
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      APP_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - app_network
+
   migrations:
     build:
       context: ./backend

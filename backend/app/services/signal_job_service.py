@@ -11,7 +11,7 @@ from app.infrastructure.redis.stream_bus import enqueue_signal_allocation_job, e
 
 settings = get_settings()
 
-SignalAllocationJobStatus = Literal[
+SignalJobStatus = Literal[
     "queued",
     "running",
     "paused",
@@ -20,7 +20,7 @@ SignalAllocationJobStatus = Literal[
     "succeeded",
     "failed",
 ]
-SignalAllocationJobOperation = Literal["auto_allocate", "bulk_update", "test_run"]
+SignalJobOperation = Literal["auto_allocate", "bulk_update", "test_run"]
 
 
 def _job_key(job_id: str) -> str:
@@ -51,10 +51,10 @@ def _normalize_job_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-async def create_signal_allocation_job(
+async def create_signal_job(
     *,
     workspace_id: int,
-    operation: SignalAllocationJobOperation,
+    operation: SignalJobOperation,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
     redis = RedisManager.get_instance()
@@ -110,7 +110,7 @@ async def create_signal_allocation_job(
                     nx=True,
                 )
             else:
-                lock_owner_snapshot = await get_signal_allocation_job(lock_owner_job_id)
+                lock_owner_snapshot = await get_signal_job(lock_owner_job_id)
                 lock_owner_status = str((lock_owner_snapshot or {}).get("status") or "").strip().lower()
                 stale_cancelling = False
                 if lock_owner_status == "cancelling" and lock_owner_snapshot is not None:
@@ -129,7 +129,7 @@ async def create_signal_allocation_job(
 
                 if lock_owner_snapshot is None or lock_owner_status in {"succeeded", "failed", "cancelled"} or stale_cancelling:
                     if stale_cancelling:
-                        await update_signal_allocation_job(
+                        await update_signal_job(
                             lock_owner_job_id,
                             status="cancelled",
                             message="Cancelled (stale cancelling state)",
@@ -177,7 +177,7 @@ async def create_signal_allocation_job(
     return snapshot
 
 
-async def release_test_run_workspace_lock(workspace_id: int, job_id: str) -> None:
+async def release_signal_test_run_workspace_lock(workspace_id: int, job_id: str) -> None:
     redis = RedisManager.get_instance()
     lock_key = _test_run_lock_key(workspace_id)
     lock_value = await redis.get(lock_key)
@@ -186,7 +186,7 @@ async def release_test_run_workspace_lock(workspace_id: int, job_id: str) -> Non
     await redis.delete(lock_key)
 
 
-async def get_signal_allocation_job(job_id: str) -> dict[str, Any] | None:
+async def get_signal_job(job_id: str) -> dict[str, Any] | None:
     redis = RedisManager.get_instance()
     raw = await redis.get(_job_key(job_id))
     if not raw:
@@ -200,7 +200,7 @@ async def get_signal_allocation_job(job_id: str) -> dict[str, Any] | None:
     return _normalize_job_payload(payload)
 
 
-async def get_signal_allocation_job_status(job_id: str) -> str | None:
+async def get_signal_job_status(job_id: str) -> str | None:
     redis = RedisManager.get_instance()
     raw = await redis.get(_job_status_key(job_id))
     if raw is None:
@@ -209,10 +209,10 @@ async def get_signal_allocation_job_status(job_id: str) -> str | None:
     return status or None
 
 
-async def update_signal_allocation_job(
+async def update_signal_job(
     job_id: str,
     *,
-    status: SignalAllocationJobStatus,
+    status: SignalJobStatus,
     message: str | None = None,
     error: str | None = None,
     progress_done: int | None = None,
@@ -220,7 +220,7 @@ async def update_signal_allocation_job(
     result: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     redis = RedisManager.get_instance()
-    current = await get_signal_allocation_job(job_id)
+    current = await get_signal_job(job_id)
     if current is None:
         return None
 
@@ -251,7 +251,7 @@ async def update_signal_allocation_job(
     return next_payload
 
 
-async def refresh_signal_allocation_job_ttl(
+async def refresh_signal_job_ttl(
     job_id: str,
     *,
     workspace_id: int | None = None,
@@ -269,8 +269,8 @@ async def refresh_signal_allocation_job_ttl(
             await redis.expire(lock_key, ttl_seconds)
 
 
-async def control_signal_allocation_job(job_id: str, action: Literal["pause", "resume", "stop"]) -> dict[str, Any] | None:
-    current = await get_signal_allocation_job(job_id)
+async def control_signal_job(job_id: str, action: Literal["pause", "resume", "stop"]) -> dict[str, Any] | None:
+    current = await get_signal_job(job_id)
     if current is None:
         return None
 
@@ -283,7 +283,7 @@ async def control_signal_allocation_job(job_id: str, action: Literal["pause", "r
     if action == "pause":
         if operation != "test_run" or status != "running":
             return current
-        return await update_signal_allocation_job(
+        return await update_signal_job(
             job_id,
             status="paused",
             message="Paused",
@@ -292,7 +292,7 @@ async def control_signal_allocation_job(job_id: str, action: Literal["pause", "r
     if action == "resume":
         if operation != "test_run" or status != "paused":
             return current
-        return await update_signal_allocation_job(
+        return await update_signal_job(
             job_id,
             status="running",
             message="Running",
@@ -300,7 +300,7 @@ async def control_signal_allocation_job(job_id: str, action: Literal["pause", "r
 
     if action == "stop":
         if status == "queued":
-            updated = await update_signal_allocation_job(
+            updated = await update_signal_job(
                 job_id,
                 status="cancelled",
                 message="Cancelled",
@@ -308,13 +308,25 @@ async def control_signal_allocation_job(job_id: str, action: Literal["pause", "r
             if updated and operation == "test_run":
                 workspace_id = int(updated.get("workspace_id") or 0)
                 if workspace_id > 0:
-                    await release_test_run_workspace_lock(workspace_id, job_id)
+                    await release_signal_test_run_workspace_lock(workspace_id, job_id)
             return updated
         if status in {"running", "paused", "cancelling"}:
-            return await update_signal_allocation_job(
+            return await update_signal_job(
                 job_id,
                 status="cancelling",
                 message="Cancelling",
             )
 
     return current
+
+
+# Backward-compatible aliases (temporary)
+SignalAllocationJobStatus = SignalJobStatus
+SignalAllocationJobOperation = SignalJobOperation
+create_signal_allocation_job = create_signal_job
+get_signal_allocation_job = get_signal_job
+get_signal_allocation_job_status = get_signal_job_status
+update_signal_allocation_job = update_signal_job
+refresh_signal_allocation_job_ttl = refresh_signal_job_ttl
+control_signal_allocation_job = control_signal_job
+release_test_run_workspace_lock = release_signal_test_run_workspace_lock

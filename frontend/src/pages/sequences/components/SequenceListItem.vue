@@ -212,6 +212,7 @@ function openInNewTab() {
     </label>
     <textarea
       id="sequence-description"
+      name="sequence-description"
       v-model="descriptionValue"
       data-dialog-initial
       rows="6"

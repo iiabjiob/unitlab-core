@@ -112,7 +112,7 @@ class SignalAllocationEnsureResponseSchema(BaseModel):
     rows: list[SignalAllocationRowSchema] = Field(default_factory=list)
 
 
-class SignalAllocationJobStatusSchema(BaseModel):
+class SignalJobStatusSchema(BaseModel):
     job_id: str
     workspace_id: int
     operation: str
@@ -126,5 +126,11 @@ class SignalAllocationJobStatusSchema(BaseModel):
     updated_at: datetime
 
 
-class SignalAllocationJobControlSchema(BaseModel):
+SignalAllocationJobStatusSchema = SignalJobStatusSchema
+
+
+class SignalJobControlSchema(BaseModel):
     action: str = Field(pattern="^(pause|resume|stop)$")
+
+
+SignalAllocationJobControlSchema = SignalJobControlSchema

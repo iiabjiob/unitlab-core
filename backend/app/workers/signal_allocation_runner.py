@@ -18,9 +18,9 @@ from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_signal_allocation_job_entry
 from app.schemas.signal_sheet_schema import SignalAllocationBulkUpdateSchema, SignalAutoAllocateSchema
-from app.schemas.ws.events import SignalAllocationJobEvent
+from app.schemas.ws.events import build_signal_job_event
 from app.core.events.ws_event_publisher import WsEventPublisher
-from app.services.signal_allocation_job_service import get_signal_allocation_job, update_signal_allocation_job
+from app.services.signal_job_service import get_signal_job, update_signal_job
 from app.services.worker_health import clear_worker_status, start_worker_heartbeat
 
 settings = get_settings()
@@ -177,12 +177,12 @@ async def _process_entries(redis, entries) -> None:
             if operation == "test_run" and isinstance(payload.get("signal_ids"), list):
                 progress_total = len(payload.get("signal_ids") or [])
 
-            snapshot = await get_signal_allocation_job(job_id)
+            snapshot = await get_signal_job(job_id)
             if snapshot and str(snapshot.get("status") or "") == "cancelled":
                 should_ack = True
                 continue
 
-            running_snapshot = await update_signal_allocation_job(
+            running_snapshot = await update_signal_job(
                 job_id,
                 status="running",
                 message="Running",
@@ -190,7 +190,7 @@ async def _process_entries(redis, entries) -> None:
                 progress_total=progress_total,
             )
             if running_snapshot:
-                await WsEventPublisher.publish(SignalAllocationJobEvent(**running_snapshot))
+                await WsEventPublisher.publish(build_signal_job_event(running_snapshot))
             else:
                 logger.warning("⚠️ Job snapshot missing before start, leaving entry pending: %s", job_id)
                 continue
@@ -212,7 +212,7 @@ async def _process_entries(redis, entries) -> None:
                     raise ValueError(f"Unknown operation: {operation}")
 
             cancelled = bool((result or {}).get("cancelled")) if isinstance(result, dict) else False
-            done_snapshot = await update_signal_allocation_job(
+            done_snapshot = await update_signal_job(
                 job_id,
                 status="cancelled" if cancelled else "succeeded",
                 message="Cancelled" if cancelled else "Completed",
@@ -221,19 +221,19 @@ async def _process_entries(redis, entries) -> None:
                 result=result,
             )
             if done_snapshot:
-                await WsEventPublisher.publish(SignalAllocationJobEvent(**done_snapshot))
+                await WsEventPublisher.publish(build_signal_job_event(done_snapshot))
                 should_ack = True
         except Exception as exc:  # noqa: BLE001
             logger.exception("💥 Failed to process signal allocation job %s: %s", entry_id, exc)
             if job_id:
-                failed_snapshot = await update_signal_allocation_job(
+                failed_snapshot = await update_signal_job(
                     job_id,
                     status="failed",
                     message="Failed",
                     error=str(exc),
                 )
                 if failed_snapshot:
-                    await WsEventPublisher.publish(SignalAllocationJobEvent(**failed_snapshot))
+                    await WsEventPublisher.publish(build_signal_job_event(failed_snapshot))
                     should_ack = True
             else:
                 should_ack = True
@@ -261,7 +261,7 @@ async def _publish_running_progress(
         next_snapshot["result"] = result
     next_snapshot["updated_at"] = datetime.now(timezone.utc).isoformat()
     job_snapshot.update(next_snapshot)
-    await WsEventPublisher.publish(SignalAllocationJobEvent(**next_snapshot))
+    await WsEventPublisher.publish(build_signal_job_event(next_snapshot))
 
 
 async def main() -> None:

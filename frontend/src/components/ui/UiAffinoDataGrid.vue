@@ -64,6 +64,8 @@
             <label class="ui-affino-grid__column-toggle">
               <input
                 type="checkbox"
+                :id="`grid-column-visible-${entry.key}`"
+                :name="`grid-column-visible-${entry.key}`"
                 :checked="entry.visible"
                 @change="event => handleColumnVisibilityChange(entry.key, event)"
               />
@@ -99,7 +101,7 @@
           <div class="ui-affino-grid__index-header" :style="indexHeaderStyle" @wheel.passive="handleMainHeaderWheel">#</div>
           <div v-if="showFilterRow" class="ui-affino-grid__index-filter" :style="indexFilterStyle" @wheel.passive="handleMainHeaderWheel"></div>
 
-          <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @wheel.passive="handleLinkedViewportWheel">
+          <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @wheel="handlePinnedViewportWheel">
             <div ref="indexCanvasRef" class="ui-affino-grid__index-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -134,6 +136,8 @@
             <input
               ref="selectHeaderCheckboxRef"
               type="checkbox"
+              id="grid-select-all-visible"
+              name="grid-select-all-visible"
               class="ui-affino-grid__row-select-checkbox"
               :checked="allVisibleRowsSelected"
               :disabled="visibleRowSelectionKeys.length === 0"
@@ -144,7 +148,7 @@
           </div>
           <div v-if="showFilterRow" class="ui-affino-grid__select-filter" :style="indexFilterStyle" @wheel.passive="handleMainHeaderWheel"></div>
 
-          <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @wheel.passive="handleLinkedViewportWheel">
+          <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @wheel="handlePinnedViewportWheel">
             <div ref="selectionCanvasRef" class="ui-affino-grid__select-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -164,6 +168,8 @@
                   <input
                     v-if="!isGroupRowNode(rowNode)"
                     type="checkbox"
+                    :id="`grid-row-select-${String(rowNode.rowId)}`"
+                    :name="`grid-row-select-${String(rowNode.rowId)}`"
                     class="ui-affino-grid__row-select-checkbox"
                     :checked="isRowSelected(rowNode, localIndex)"
                     :aria-label="`Select row ${resolveNodeDisplayIndex(rowNode, localIndex) + 1}`"
@@ -247,6 +253,8 @@
                 v-if="isColumnFilterable(entry.column)"
                 v-model="columnFilters[entry.key]"
                 type="text"
+                :id="`grid-filter-left-${entry.key}`"
+                :name="`grid-filter-left-${entry.key}`"
                 class="ui-affino-grid__filter-input"
                 placeholder="Filter"
                  @input="applyFiltersDebounced"
@@ -254,7 +262,7 @@
             </div>
           </div>
 
-          <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel.passive="handleLinkedViewportWheel">
+          <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel="handlePinnedViewportWheel">
             <div ref="leftPinnedCanvasRef" class="ui-affino-grid__pinned-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -386,6 +394,8 @@
                     v-if="isColumnFilterable(entry.column)"
                     v-model="columnFilters[entry.key]"
                     type="text"
+                    :id="`grid-filter-center-${entry.key}`"
+                    :name="`grid-filter-center-${entry.key}`"
                     class="ui-affino-grid__filter-input"
                     placeholder="Filter"
                      @input="applyFiltersDebounced"
@@ -530,6 +540,8 @@
                 v-if="isColumnFilterable(entry.column)"
                 v-model="columnFilters[entry.key]"
                 type="text"
+                :id="`grid-filter-right-${entry.key}`"
+                :name="`grid-filter-right-${entry.key}`"
                 class="ui-affino-grid__filter-input"
                 placeholder="Filter"
                 @input="applyFiltersDebounced"
@@ -537,7 +549,7 @@
             </div>
           </div>
 
-          <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel.passive="handleLinkedViewportWheel">
+          <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel="handlePinnedViewportWheel">
             <div ref="rightPinnedCanvasRef" class="ui-affino-grid__pinned-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -1898,6 +1910,28 @@ function pruneSelectionToCurrentRows() {
   rowSelectionModel.reconcileWithRows(props.rows)
 }
 
+function resolveSelectionKeysForEmission(rowKeys: ReadonlySet<string>): string[] {
+  if (rowKeys.size === 0) {
+    return []
+  }
+
+  const orderedVisibleSelected = visibleRowSelectionKeys.value.filter(rowKey => rowKeys.has(rowKey))
+  if (orderedVisibleSelected.length >= rowKeys.size) {
+    return orderedVisibleSelected
+  }
+
+  const emitted = [...orderedVisibleSelected]
+  const seen = new Set(emitted)
+  rowKeys.forEach((rowKey) => {
+    if (seen.has(rowKey)) {
+      return
+    }
+    emitted.push(rowKey)
+    seen.add(rowKey)
+  })
+  return emitted
+}
+
 const rowSelectionModel = useDataGridRowSelectionModel<string>({
   resolveFilteredRows: () => visibleRowSelectionKeys.value,
   resolveRowId: (rowId: string) => rowId,
@@ -2084,6 +2118,14 @@ function scheduleLinkedScrollSyncLoop() {
 }
 
 function handleLinkedViewportWheel(event: WheelEvent) {
+  managedWheelScroll.onBodyViewportWheel(event)
+}
+
+function handlePinnedViewportWheel(event: WheelEvent) {
+  if (event.cancelable) {
+    event.preventDefault()
+  }
+  event.stopPropagation()
   managedWheelScroll.onBodyViewportWheel(event)
 }
 
@@ -2596,9 +2638,9 @@ watch(
 )
 
 watch(
-  selectedRowKeySet,
-  (rowKeys) => {
-    emit("selection-change", { rowKeys: Array.from(rowKeys) })
+  [selectedRowKeySet, () => visibleRowSelectionKeys.value],
+  ([rowKeys]) => {
+    emit("selection-change", { rowKeys: resolveSelectionKeysForEmission(rowKeys) })
     persistSelectionNow(rowKeys)
   },
   { immediate: true },

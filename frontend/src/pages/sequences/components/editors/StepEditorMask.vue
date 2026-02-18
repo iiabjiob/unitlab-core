@@ -66,11 +66,12 @@ function handleMaskChange(value: number) {
 <template>
 	<div class="space-y-4">
 		<div>
-			<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<label for="sequence-step-mask-device" class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 				Target DO device
 			</label>
 			<UiSelect
 				class="mt-1 w-64"
+				id="sequence-step-mask-device"
 				:model-value="deviceId ?? ''"
 				:disabled="disabled"
 				@update:modelValue="handleDeviceChange"
@@ -89,9 +90,9 @@ function handleMaskChange(value: number) {
 		</div>
 
 		<div>
-			<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 				Output bitmask
-			</label>
+			</div>
 			<BitmaskEditor
 				class="mt-2"
 				:model-value="bitmask"

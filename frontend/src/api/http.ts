@@ -1,4 +1,5 @@
 import axios from "axios"
+import { toUserFacingErrorMessage } from "@/api/errorMessages"
 
 export const http = axios.create({
   timeout: 30000,
@@ -42,6 +43,7 @@ http.interceptors.response.use(
     const retries = Number(config.__retryCount ?? 0)
     const maxRetries = 3
     if (!isRetryableTransportError(error) || retries >= maxRetries) {
+      error.message = toUserFacingErrorMessage(error, "Request failed")
       return Promise.reject(error)
     }
 

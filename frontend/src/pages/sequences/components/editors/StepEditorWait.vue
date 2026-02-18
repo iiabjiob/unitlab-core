@@ -28,11 +28,13 @@ function handleDelayInput(event: Event) {
 <template>
   <div class="space-y-3">
     <div>
-      <label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+      <label for="sequence-step-wait-ms" class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
         Delay, ms
       </label>
       <input
         type="number"
+        id="sequence-step-wait-ms"
+        name="sequence-step-wait-ms"
         min="0"
         class="mt-1 w-32 rounded border border-neutral-300 px-2 py-1 text-sm
                dark:border-neutral-700 dark:bg-neutral-800"

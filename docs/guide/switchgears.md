@@ -18,8 +18,8 @@ Use Switchgear to bind command/feedback channels and send pair commands: **Open*
 	- **Direct**: bind channels directly.
 	- **By Signal**: bind through imported signals (available only when signal sheet exists).
 2. Set all required roles:
-	- **Set OPEN position** (DO)
-	- **Set CLOSED position** (DO)
+	- **OPEN position** (DO)
+	- **CLOSED position** (DO)
 	- **OPEN command from BCU** (DI)
 	- **CLOSE command from BCU** (DI)
 3. For DI feedback rows, set **Feedback delay** when needed.

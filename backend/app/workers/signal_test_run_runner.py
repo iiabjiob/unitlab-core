@@ -19,14 +19,14 @@ from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.protocol.modes import Cmd, State
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_signal_allocation_job_entry
-from app.schemas.ws.events import SignalAllocationJobEvent
+from app.schemas.ws.events import build_signal_job_event
 from app.services.command_queue_service import enqueue_do_command, enqueue_request_state
-from app.services.signal_allocation_job_service import (
-    get_signal_allocation_job,
-    get_signal_allocation_job_status,
-    refresh_signal_allocation_job_ttl,
-    release_test_run_workspace_lock,
-    update_signal_allocation_job,
+from app.services.signal_job_service import (
+    get_signal_job,
+    get_signal_job_status,
+    refresh_signal_job_ttl,
+    release_signal_test_run_workspace_lock,
+    update_signal_job,
 )
 from app.services.worker_health import clear_worker_status, start_worker_heartbeat
 
@@ -93,7 +93,7 @@ async def _publish_running_progress(
         next_snapshot["result"] = result
     next_snapshot["updated_at"] = datetime.now(timezone.utc).isoformat()
     job_snapshot.update(next_snapshot)
-    await WsEventPublisher.publish(SignalAllocationJobEvent(**next_snapshot))
+    await WsEventPublisher.publish(build_signal_job_event(next_snapshot))
 
 
 async def _handle_test_run(
@@ -163,7 +163,7 @@ async def _handle_test_run(
         if not force and (now_mono - last_ttl_refresh_at) < ttl_refresh_seconds:
             return
         last_ttl_refresh_at = now_mono
-        await refresh_signal_allocation_job_ttl(
+        await refresh_signal_job_ttl(
             job_id,
             workspace_id=workspace_id,
             include_test_run_lock=True,
@@ -188,9 +188,9 @@ async def _handle_test_run(
             return True
 
         while True:
-            status = str(await get_signal_allocation_job_status(job_id) or "")
+            status = str(await get_signal_job_status(job_id) or "")
             if not status:
-                snapshot = await get_signal_allocation_job(job_id)
+                snapshot = await get_signal_job(job_id)
                 status = str((snapshot or {}).get("status") or "")
 
             if status in {"cancelling", "cancelled"}:
@@ -356,13 +356,13 @@ async def _process_entries(redis, entries) -> None:
 
             progress_total = len(payload.get("signal_ids") or []) if isinstance(payload.get("signal_ids"), list) else 0
 
-            snapshot = await get_signal_allocation_job(job_id)
+            snapshot = await get_signal_job(job_id)
             if snapshot and str(snapshot.get("status") or "") == "cancelled":
-                await release_test_run_workspace_lock(workspace_id, job_id)
+                await release_signal_test_run_workspace_lock(workspace_id, job_id)
                 should_ack = True
                 continue
 
-            running_snapshot = await update_signal_allocation_job(
+            running_snapshot = await update_signal_job(
                 job_id,
                 status="running",
                 message="Running",
@@ -370,7 +370,7 @@ async def _process_entries(redis, entries) -> None:
                 progress_total=progress_total,
             )
             if running_snapshot:
-                await WsEventPublisher.publish(SignalAllocationJobEvent(**running_snapshot))
+                await WsEventPublisher.publish(build_signal_job_event(running_snapshot))
             else:
                 logger.warning("⚠️ Job snapshot missing before start, leaving entry pending: %s", job_id)
                 continue
@@ -383,7 +383,7 @@ async def _process_entries(redis, entries) -> None:
                 result = await _handle_test_run(repo, workspace_id, payload, running_snapshot)
 
             cancelled = bool((result or {}).get("cancelled")) if isinstance(result, dict) else False
-            done_snapshot = await update_signal_allocation_job(
+            done_snapshot = await update_signal_job(
                 job_id,
                 status="cancelled" if cancelled else "succeeded",
                 message="Cancelled" if cancelled else "Completed",
@@ -392,25 +392,25 @@ async def _process_entries(redis, entries) -> None:
                 result=result,
             )
             if done_snapshot:
-                await WsEventPublisher.publish(SignalAllocationJobEvent(**done_snapshot))
+                await WsEventPublisher.publish(build_signal_job_event(done_snapshot))
                 should_ack = True
         except Exception as exc:  # noqa: BLE001
             logger.exception("💥 Failed to process signal test run job %s: %s", entry_id, exc)
             if job_id:
-                failed_snapshot = await update_signal_allocation_job(
+                failed_snapshot = await update_signal_job(
                     job_id,
                     status="failed",
                     message="Failed",
                     error=str(exc),
                 )
                 if failed_snapshot:
-                    await WsEventPublisher.publish(SignalAllocationJobEvent(**failed_snapshot))
+                    await WsEventPublisher.publish(build_signal_job_event(failed_snapshot))
                     should_ack = True
             else:
                 should_ack = True
         finally:
             if job_id and workspace_id > 0:
-                await release_test_run_workspace_lock(workspace_id, job_id)
+                await release_signal_test_run_workspace_lock(workspace_id, job_id)
             if should_ack:
                 await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
             else:

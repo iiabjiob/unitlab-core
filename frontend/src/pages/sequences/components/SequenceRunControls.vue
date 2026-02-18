@@ -2,6 +2,7 @@
 import { computed, ref } from "vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiBadge from "@/components/ui/UiBadge.vue"
+import { toUserFacingErrorMessage } from "@/api/errorMessages"
 import type { SequenceDef, SequenceState } from "@/types/sequences"
 import { SequenceStatusEnum } from "@/types/sequences"
 import { useSequenceStore } from "@/stores/sequenceStore"
@@ -74,9 +75,8 @@ async function startInstruction() {
   try {
     await sequenceStore.startSequence(props.sequence.id)
     toastStore.success("Instruction started")
-  } catch (err: any) {
-    const message = err?.response?.data?.detail ?? "Failed to start instruction"
-    toastStore.error(message)
+  } catch (err) {
+    toastStore.error(toUserFacingErrorMessage(err, "Failed to start instruction"))
   } finally {
     actionLoading.value = null
   }
@@ -87,9 +87,8 @@ async function stopInstruction() {
   try {
     await sequenceStore.stopSequence(props.sequence.id)
     toastStore.success("Stop requested")
-  } catch (err: any) {
-    const message = err?.response?.data?.detail ?? "Failed to stop instruction"
-    toastStore.error(message)
+  } catch (err) {
+    toastStore.error(toUserFacingErrorMessage(err, "Failed to stop instruction"))
   } finally {
     actionLoading.value = null
   }

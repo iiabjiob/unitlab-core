@@ -1,5 +1,5 @@
 <template>
-  <div class="flex min-w-0 items-center justify-between gap-2">
+  <div class="flex w-full min-w-0 items-center justify-between gap-2">
     <span class="truncate text-xs" :class="valueClass" :title="valueLabel">
       {{ valueLabel }}
     </span>
@@ -7,7 +7,7 @@
     <button
       :ref="floating.triggerRef"
       type="button"
-      class="allocation-picker__trigger shrink-0 rounded border border-neutral-300 bg-white px-2 py-1 text-[11px] font-semibold text-neutral-700 hover:bg-neutral-100 disabled:cursor-default disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+      class="allocation-picker__trigger shrink-0 w-[84px] rounded border border-neutral-300 px-2 py-1 text-center text-[11px] font-semibold text-neutral-700 bg-white hover:bg-neutral-100 disabled:cursor-default disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
       :disabled="loading"
       v-bind="triggerProps"
       @click.stop

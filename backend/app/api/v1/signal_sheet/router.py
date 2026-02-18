@@ -17,8 +17,8 @@ from app.schemas.signal_snapshot_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import (
     SignalAllocationEnsureResponseSchema,
     SignalAllocationEnsureSchema,
-    SignalAllocationJobControlSchema,
-    SignalAllocationJobStatusSchema,
+    SignalJobControlSchema,
+    SignalJobStatusSchema,
     SignalAllocationMarkTestedSchema,
     SignalTestRunJobSchema,
     SignalAllocationBulkUpdateSchema,
@@ -31,12 +31,12 @@ from app.schemas.signal_sheet_schema import (
     SignalSheetPresetSchema,
     SignalSheetSchema,
 )
-from app.services.signal_allocation_job_service import (
-    control_signal_allocation_job,
-    create_signal_allocation_job,
-    get_signal_allocation_job,
+from app.services.signal_job_service import (
+    control_signal_job,
+    create_signal_job,
+    get_signal_job,
 )
-from app.schemas.ws.events import SignalAllocationJobEvent
+from app.schemas.ws.events import build_signal_job_event
 from app.core.events.ws_event_publisher import WsEventPublisher
 from app.services.signal_sheet_import_service import SignalSheetImportService
 
@@ -266,7 +266,7 @@ async def auto_allocate_signal_rows(
     )
 
 
-@router.post("/workspaces/{workspace_id}/signal-allocations/auto/jobs", response_model=SignalAllocationJobStatusSchema)
+@router.post("/workspaces/{workspace_id}/signal-allocations/auto/jobs", response_model=SignalJobStatusSchema)
 async def enqueue_auto_allocate_signal_rows(
     workspace_id: int,
     payload: SignalAutoAllocateSchema,
@@ -275,16 +275,16 @@ async def enqueue_auto_allocate_signal_rows(
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    snapshot = await create_signal_allocation_job(
+    snapshot = await create_signal_job(
         workspace_id=workspace_id,
         operation="auto_allocate",
         payload=payload.model_dump(),
     )
-    await WsEventPublisher.publish(SignalAllocationJobEvent(**snapshot))
-    return SignalAllocationJobStatusSchema.model_validate(snapshot)
+    await WsEventPublisher.publish(build_signal_job_event(snapshot))
+    return SignalJobStatusSchema.model_validate(snapshot)
 
 
-@router.post("/workspaces/{workspace_id}/signal-allocations/jobs", response_model=SignalAllocationJobStatusSchema)
+@router.post("/workspaces/{workspace_id}/signal-allocations/jobs", response_model=SignalJobStatusSchema)
 async def enqueue_bulk_signal_allocations_update(
     workspace_id: int,
     payload: SignalAllocationBulkUpdateSchema,
@@ -293,16 +293,16 @@ async def enqueue_bulk_signal_allocations_update(
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    snapshot = await create_signal_allocation_job(
+    snapshot = await create_signal_job(
         workspace_id=workspace_id,
         operation="bulk_update",
         payload=payload.model_dump(),
     )
-    await WsEventPublisher.publish(SignalAllocationJobEvent(**snapshot))
-    return SignalAllocationJobStatusSchema.model_validate(snapshot)
+    await WsEventPublisher.publish(build_signal_job_event(snapshot))
+    return SignalJobStatusSchema.model_validate(snapshot)
 
 
-@router.post("/workspaces/{workspace_id}/signal-allocations/test-run/jobs", response_model=SignalAllocationJobStatusSchema)
+@router.post("/workspaces/{workspace_id}/signal-allocations/test-run/jobs", response_model=SignalJobStatusSchema)
 async def enqueue_signal_test_run_job(
     workspace_id: int,
     payload: SignalTestRunJobSchema,
@@ -318,19 +318,19 @@ async def enqueue_signal_test_run_job(
         )
 
     try:
-        snapshot = await create_signal_allocation_job(
+        snapshot = await create_signal_job(
             workspace_id=workspace_id,
             operation="test_run",
             payload=payload.model_dump(),
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    await WsEventPublisher.publish(SignalAllocationJobEvent(**snapshot))
-    return SignalAllocationJobStatusSchema.model_validate(snapshot)
+    await WsEventPublisher.publish(build_signal_job_event(snapshot))
+    return SignalJobStatusSchema.model_validate(snapshot)
 
 
-@router.get("/workspaces/{workspace_id}/signal-allocation-jobs/{job_id}", response_model=SignalAllocationJobStatusSchema)
-async def get_signal_allocation_job_status(
+@router.get("/workspaces/{workspace_id}/signal-allocation-jobs/{job_id}", response_model=SignalJobStatusSchema)
+async def get_signal_job_status(
     workspace_id: int,
     job_id: str,
     repo: SignalSheetRepository = Depends(get_repo),
@@ -338,26 +338,26 @@ async def get_signal_allocation_job_status(
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    snapshot = await get_signal_allocation_job(job_id)
+    snapshot = await get_signal_job(job_id)
     if snapshot is None:
         raise HTTPException(status_code=404, detail="Job not found")
     if int(snapshot.get("workspace_id") or 0) != workspace_id:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    return SignalAllocationJobStatusSchema.model_validate(snapshot)
+    return SignalJobStatusSchema.model_validate(snapshot)
 
 
-@router.post("/workspaces/{workspace_id}/signal-allocation-jobs/{job_id}/control", response_model=SignalAllocationJobStatusSchema)
-async def control_signal_allocation_job_status(
+@router.post("/workspaces/{workspace_id}/signal-allocation-jobs/{job_id}/control", response_model=SignalJobStatusSchema)
+async def control_signal_job_status(
     workspace_id: int,
     job_id: str,
-    payload: SignalAllocationJobControlSchema,
+    payload: SignalJobControlSchema,
     repo: SignalSheetRepository = Depends(get_repo),
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    snapshot = await get_signal_allocation_job(job_id)
+    snapshot = await get_signal_job(job_id)
     if snapshot is None:
         raise HTTPException(status_code=404, detail="Job not found")
     if int(snapshot.get("workspace_id") or 0) != workspace_id:
@@ -367,12 +367,12 @@ async def control_signal_allocation_job_status(
     if action not in {"pause", "resume", "stop"}:
         raise HTTPException(status_code=400, detail="Unsupported action")
 
-    controlled = await control_signal_allocation_job(job_id, action)
+    controlled = await control_signal_job(job_id, action)
     if controlled is None:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    await WsEventPublisher.publish(SignalAllocationJobEvent(**controlled))
-    return SignalAllocationJobStatusSchema.model_validate(controlled)
+    await WsEventPublisher.publish(build_signal_job_event(controlled))
+    return SignalJobStatusSchema.model_validate(controlled)
 
 
 @router.post("/workspaces/{workspace_id}/signal-allocations/ensure", response_model=SignalAllocationEnsureResponseSchema)

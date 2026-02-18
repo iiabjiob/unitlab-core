@@ -27,6 +27,7 @@
               <WorkspaceSwitcher variant="mini" />
             </div>
             <div class="flex items-center gap-3">
+              <GlobalRunStatusLink />
               <TimeComponent class="text-sm text-neutral-500 dark:text-neutral-400" />
             </div>
           </div>
@@ -49,6 +50,7 @@ import AppAside from "./DesktopAside.vue"
 import ResizablePanel from "../ui/ResizablePanel.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
 import TimeComponent from "../misc/TimeComponent.vue"
+import GlobalRunStatusLink from "./GlobalRunStatusLink.vue"
 
 const route = useRoute()
 const meta = computed(() => ({

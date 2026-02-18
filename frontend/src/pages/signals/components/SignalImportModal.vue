@@ -24,7 +24,7 @@
       </div>
 
       <div v-if="step === 'upload'">
-        <label class="mb-1 block text-sm font-semibold text-neutral-700 dark:text-neutral-200">Signal list file</label>
+        <label for="signal-import-file" class="mb-1 block text-sm font-semibold text-neutral-700 dark:text-neutral-200">Signal list file</label>
         <div
           class="group flex cursor-default flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center text-sm transition"
           :class="{
@@ -59,6 +59,8 @@
         <input
           ref="fileInput"
           type="file"
+          id="signal-import-file"
+          name="signal-import-file"
           accept=".xls,.xlsx,.xlsm"
           class="sr-only"
           :disabled="parsing || loading"
@@ -66,9 +68,9 @@
         />
 
         <div class="mt-4 space-y-2">
-          <label class="block text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          <p class="block text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
             Preset (optional)
-          </label>
+          </p>
           <UiAffinoListbox
             v-model="selectedPresetId"
             :options="presetListboxOptions"
@@ -109,7 +111,7 @@
 
         <div v-if="step === 'columns'" class="space-y-4">
           <div>
-            <label class="mb-1 block text-sm font-semibold text-neutral-700 dark:text-neutral-200">Worksheet</label>
+            <p class="mb-1 block text-sm font-semibold text-neutral-700 dark:text-neutral-200">Worksheet</p>
             <UiAffinoListbox
               v-model="selectedSheetName"
               :options="worksheetListboxOptions"
@@ -147,6 +149,8 @@
               >
                 <input
                   type="checkbox"
+                  :id="`signal-import-column-${column.index}`"
+                  :name="`signal-import-columns-${column.index}`"
                   class="h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
                   :checked="isColumnSelected(column.index)"
                   @change="toggleColumn(column.index)"
@@ -171,7 +175,7 @@
             </p>
           </div>
           <div>
-            <label class="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-200">Type column</label>
+            <p class="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-200">Type column</p>
             <UiAffinoListbox
               v-model="typeColumnIndex"
               :options="typeColumnListboxOptions"
@@ -216,6 +220,8 @@
             <input
               v-model="savePresetName"
               type="text"
+              id="signal-import-save-preset-name"
+              name="signal-import-save-preset-name"
               maxlength="120"
               class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
               placeholder="e.g. Project SCADA import"

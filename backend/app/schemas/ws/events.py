@@ -152,6 +152,29 @@ class SignalAllocationJobEvent(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+
+class SignalTestRunJobEvent(BaseModel):
+    channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
+    event: Literal["signal_test_run_job"] = "signal_test_run_job"
+    job_id: str
+    workspace_id: int
+    operation: str
+    status: Literal["queued", "running", "paused", "cancelling", "cancelled", "succeeded", "failed"]
+    progress_total: int = 0
+    progress_done: int = 0
+    message: str | None = None
+    error: str | None = None
+    result: Dict[str, Any] = {}
+    created_at: datetime
+    updated_at: datetime
+
+
+def build_signal_job_event(snapshot: Dict[str, Any]) -> SignalAllocationJobEvent | SignalTestRunJobEvent:
+    operation = str(snapshot.get("operation") or "").strip().lower()
+    if operation == "test_run":
+        return SignalTestRunJobEvent(**snapshot)
+    return SignalAllocationJobEvent(**snapshot)
+
 # ---------------------------------------------------------------------
 # Union of all WS events
 # ---------------------------------------------------------------------
@@ -170,4 +193,5 @@ WSEvent = Union[
     SequenceCompletedEvent,
     SystemHealthChangedEvent,
     SignalAllocationJobEvent,
+    SignalTestRunJobEvent,
 ]

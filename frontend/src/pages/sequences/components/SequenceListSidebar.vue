@@ -90,6 +90,8 @@ function handleSelect(id: string | number) {
         ref="fileInput"
         class="hidden"
         type="file"
+        id="sequence-import-file"
+        name="sequence-import-file"
         accept="application/json,.json"
         @change="onFileSelected"
       />

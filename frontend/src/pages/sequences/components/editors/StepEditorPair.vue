@@ -72,9 +72,9 @@ const stateOptions = [
 	<div class="space-y-4">
 		<div class="grid gap-4 md:grid-cols-2">
 			<div>
-				<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+				<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 					Open output
-				</label>
+				</div>
 				<SignalBackedChannelField
 					class="mt-1"
 					:channel-id="pairChannels[0]"
@@ -89,9 +89,9 @@ const stateOptions = [
 				/>
 			</div>
 			<div>
-				<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+				<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 					Close output
-				</label>
+				</div>
 				<SignalBackedChannelField
 					class="mt-1"
 					:channel-id="pairChannels[1]"
@@ -108,9 +108,9 @@ const stateOptions = [
 		</div>
 
 		<div>
-			<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 				Switch position
-			</label>
+			</div>
 			<div class="mt-2 flex flex-wrap gap-2">
 				<UiButton
 					v-for="option in stateOptions"

@@ -30,12 +30,12 @@ const ROLE_META: Record<BindingRoleKey, {
   supportsDelay: boolean
 }> = {
   do_open: {
-    label: "Set OPEN position",
+    label: "OPEN position",
     channelType: CHANNEL_TYPES.DO,
     supportsDelay: false,
   },
   do_closed: {
-    label: "Set CLOSED position",
+    label: "CLOSED position",
     channelType: CHANNEL_TYPES.DO,
     supportsDelay: false,
   },
@@ -134,6 +134,18 @@ function roleLabel(role: BindingRoleKey) {
 
 function feedbackDelayHelpText() {
   return "Delay before feedback DI is evaluated after command execution. Use it for slow mechanics and negative feedback tests; 0 ms means immediate check."
+}
+
+function bindingModeHelpText() {
+  return [
+    "Direct",
+    "Bind each role directly to a hardware channel (manual channel selection).",
+    "Use when mapping is fixed and you want full manual control over channel assignment.",
+    "",
+    "By signal",
+    "Pick a signal from the signal sheet; the system resolves/keeps a compatible channel for it.",
+    "Use when engineering works from signals first, or when allocation can change but role should stay tied to the chosen signal.",
+  ].join("\n")
 }
 
 function signalPickerTitle(role: BindingRoleKey) {
@@ -290,12 +302,16 @@ watch(
       </UiButton>
     </div>
 
-    <div class="mb-3">
+    <div class="mb-3 flex items-center gap-2">
       <DirectSignalModeTabs
         :model-value="bindingMode"
         :show-signal="signalModeAvailable"
         aria-label="Binding mode"
         @update:model-value="setBindingMode"
+      />
+      <InlineInfoTooltip
+        :text="bindingModeHelpText()"
+        aria-label="Binding mode help"
       />
     </div>
 
@@ -337,6 +353,10 @@ watch(
           :show-mode-toggle="false"
           :show-signal-clear="false"
           :empty-signal-subtitle="''"
+          :signal-display-mode="'source-row'"
+          :signal-display-delimiter="' | '"
+          :signal-label-scrollable="true"
+          :show-signal-subtitle="false"
           @update:channelId="value => handleChannelChange(role, value)"
           @update:signal="value => handleSignalChange(role, value)"
         />

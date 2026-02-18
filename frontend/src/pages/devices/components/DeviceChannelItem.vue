@@ -32,6 +32,8 @@
       <input
         v-else-if="effectiveType === 'ao'"
         type="number"
+        :id="`device-channel-ao-${channel.id}`"
+        :name="`device-channel-ao-${channel.id}`"
         class="w-16 px-1 py-0.5 text-xs rounded border border-neutral-600
                bg-neutral-900 text-neutral-200"
         :disabled="disabled"

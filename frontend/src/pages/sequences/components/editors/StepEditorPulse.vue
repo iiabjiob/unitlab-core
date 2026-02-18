@@ -57,9 +57,9 @@ function handlePulseChange(event: Event) {
 <template>
 	<div class="space-y-4">
 		<div>
-			<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 				Target DO channel
-			</label>
+			</div>
 			<SignalBackedChannelField
 				class="mt-1"
 				:channel-id="step.channel_id ?? null"
@@ -74,9 +74,9 @@ function handlePulseChange(event: Event) {
 		</div>
 
 		<div>
-			<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 				Pulse state
-			</label>
+			</div>
 			<div class="mt-2 flex gap-2">
 				<UiButton
 					v-for="option in [0, 1]"
@@ -92,11 +92,13 @@ function handlePulseChange(event: Event) {
 		</div>
 
 		<div>
-			<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<label for="sequence-step-pulse-ms" class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 				Pulse duration, ms
 			</label>
 			<input
 				type="number"
+				id="sequence-step-pulse-ms"
+				name="sequence-step-pulse-ms"
 				min="0"
 				class="mt-1 w-32 rounded border border-neutral-300 px-2 py-1 text-sm
 							 dark:border-neutral-700 dark:bg-neutral-800"

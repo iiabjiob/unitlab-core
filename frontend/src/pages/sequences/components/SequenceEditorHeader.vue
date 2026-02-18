@@ -200,6 +200,7 @@ const createdAt = computed(() => {
     </label>
     <textarea
       id="sequence-header-description"
+      name="sequence-header-description"
       v-model="descriptionValue"
       data-dialog-initial
       rows="6"

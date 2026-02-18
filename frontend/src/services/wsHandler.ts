@@ -4,7 +4,7 @@ import { useChannelStore } from '@/stores/channelStore'
 import { getLogger } from '@/utils/logger'
 import { useSequenceStore } from '@/stores/sequenceStore'
 import { useSystemHealthStore } from '@/stores/systemHealthStore'
-import { useSignalAllocationJobStore } from '@/stores/signalAllocationJobStore'
+import { useSignalJobStore } from '@/stores/signalJobStore'
 import { useSignalSheetStore } from '@/stores/signalSheetStore'
 
 const logger = getLogger('ws')
@@ -19,6 +19,7 @@ import type {
   ChannelWSEvent,
   SystemHealthChangedEvent,
   SignalAllocationJobEvent,
+  SignalTestRunJobEvent,
 } from '@/types/ws/events'
 
 export function handleWsEvent(event: WSEvent) {
@@ -26,7 +27,7 @@ export function handleWsEvent(event: WSEvent) {
   const channelStore = useChannelStore()
   const sequenceStore = useSequenceStore()
   const systemHealthStore = useSystemHealthStore()
-  const signalAllocationJobStore = useSignalAllocationJobStore()
+  const signalJobStore = useSignalJobStore()
   const signalSheetStore = useSignalSheetStore()
 
   // Route sequence events into the sequence store so realtime progress stays in sync.
@@ -46,12 +47,20 @@ export function handleWsEvent(event: WSEvent) {
         systemHealthStore.applySnapshot(sysEvent.snapshot)
         break
       }
-      if ((channelEvent as SignalAllocationJobEvent).event === "signal_allocation_job") {
-        const jobEvent = channelEvent as SignalAllocationJobEvent
-        logger.debug("📡 IN ← SIGNAL_ALLOCATION_JOB:", jobEvent)
-        signalAllocationJobStore.applyJobEvent(jobEvent)
+      if (
+        (channelEvent as SignalAllocationJobEvent).event === "signal_allocation_job"
+        || (channelEvent as SignalTestRunJobEvent).event === "signal_test_run_job"
+      ) {
+        const jobEvent = channelEvent as SignalAllocationJobEvent | SignalTestRunJobEvent
+        logger.debug(
+          jobEvent.event === "signal_test_run_job"
+            ? "📡 IN ← SIGNAL_TEST_RUN_JOB:"
+            : "📡 IN ← SIGNAL_ALLOCATION_JOB:",
+          jobEvent,
+        )
+        signalJobStore.applyJobEvent(jobEvent)
 
-        if (String(jobEvent.operation) === "test_run") {
+        if (jobEvent.event === "signal_test_run_job" || String(jobEvent.operation) === "test_run") {
           const result = (jobEvent.result ?? {}) as Record<string, unknown>
           const testedAtPatch = ["tested_at_patch", "tested_at_by_signal"]
             .map(key => result[key])

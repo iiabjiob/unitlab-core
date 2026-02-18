@@ -4,7 +4,7 @@ import { computed, ref } from "vue"
 import { SignalSheetAPI } from "@/api/signal_sheet.api"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import type { SignalAllocationJob, SignalAutoAllocatePayload, SignalAllocationUpdateItem } from "@/types/signal"
-import type { SignalAllocationJobEvent } from "@/types/ws/events"
+import type { SignalAllocationJobEvent, SignalTestRunJobEvent } from "@/types/ws/events"
 
 
 type Waiter = {
@@ -38,7 +38,7 @@ function toMillis(value: string | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore", () => {
+export const useSignalJobStore = defineStore("signalJobStore", () => {
   const workspaceStore = useWorkspaceStore()
   const jobsById = ref<Record<string, SignalAllocationJob>>({})
   const waiters = new Map<string, Waiter>()
@@ -101,17 +101,22 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
       return true
     }
 
+    const existingUpdatedAt = toMillis(existing.updated_at)
+    const nextUpdatedAt = toMillis(next.updated_at)
+
     const existingRank = statusRank(existing.status)
     const nextRank = statusRank(next.status)
     if (nextRank < existingRank) {
-      return false
+      const isResumeTransition = existing.status === "paused" && next.status === "running"
+      if (!isResumeTransition) {
+        return false
+      }
+      return nextUpdatedAt >= existingUpdatedAt
     }
     if (nextRank > existingRank) {
       return true
     }
 
-    const existingUpdatedAt = toMillis(existing.updated_at)
-    const nextUpdatedAt = toMillis(next.updated_at)
     return nextUpdatedAt >= existingUpdatedAt
   }
 
@@ -186,7 +191,7 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
     }
   }
 
-  function applyJobEvent(event: SignalAllocationJobEvent) {
+  function applyJobEvent(event: SignalAllocationJobEvent | SignalTestRunJobEvent) {
     upsertJob({
       job_id: event.job_id,
       workspace_id: event.workspace_id,

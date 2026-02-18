@@ -95,28 +95,30 @@
       @selection-change="handleSelectionChange"
     >
       <template #cell="{ column, row, value }">
-        <AllocationChannelPicker
-          v-if="column.key === 'channel_select'"
-          :row="asAllocationRow(row)"
-          :loading="loading"
-          :value-label="allocationDisplayLabel(asAllocationRow(row))"
-          :value-class="allocationValueClass(asAllocationRow(row))"
-          :channel-groups-resolver="channelGroupsResolverForRow(asAllocationRow(row))"
-          :unit-status-by-id="unitStatusById"
-          @allocate="channelId => handleAllocationPickerSelect(asAllocationRow(row), channelId)"
-        />
+        <div v-if="column.key === 'channel_select'" class="flex h-full w-full items-center">
+          <AllocationChannelPicker
+            :row="asAllocationRow(row)"
+            :loading="loading"
+            :value-label="allocationDisplayLabel(asAllocationRow(row))"
+            :value-class="allocationValueClass(asAllocationRow(row))"
+            :channel-groups-resolver="channelGroupsResolverForRow(asAllocationRow(row))"
+            :unit-status-by-id="unitStatusById"
+            @allocate="channelId => handleAllocationPickerSelect(asAllocationRow(row), channelId)"
+          />
+        </div>
 
-        <AllocationControlCell
-          v-else-if="column.key === 'control'"
-          :can-control="canControl(asAllocationRow(row))"
-          :lamp-class="controlLampClass(asAllocationRow(row))"
-          :status-class="controlStatusClass(asAllocationRow(row))"
-          :status-tag="controlStatusTag(asAllocationRow(row))"
-          :state-label="controlStateLabel(asAllocationRow(row))"
-          :disabled="controlDisabled(asAllocationRow(row))"
-          @set-on="() => handleControlMenuSelect(asAllocationRow(row), true)"
-          @set-off="() => handleControlMenuSelect(asAllocationRow(row), false)"
-        />
+        <div v-else-if="column.key === 'control'" class="flex h-full items-center">
+          <AllocationControlCell
+            :can-control="canControl(asAllocationRow(row))"
+            :lamp-class="controlLampClass(asAllocationRow(row))"
+            :status-class="controlStatusClass(asAllocationRow(row))"
+            :status-tag="controlStatusTag(asAllocationRow(row))"
+            :state-label="controlStateLabel(asAllocationRow(row))"
+            :disabled="controlDisabled(asAllocationRow(row))"
+            @set-on="() => handleControlMenuSelect(asAllocationRow(row), true)"
+            @set-off="() => handleControlMenuSelect(asAllocationRow(row), false)"
+          />
+        </div>
 
         <span
           v-else-if="column.key === 'last_tested_at'"
@@ -149,7 +151,7 @@ import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders } fro
 import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
-import { useSignalAllocationJobStore } from "@/stores/signalAllocationJobStore"
+import { useSignalJobStore } from "@/stores/signalJobStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useToastStore } from "@/stores/toastStore"
@@ -161,14 +163,14 @@ const workspaceStore = useWorkspaceStore()
 const channelStore = useChannelStore()
 const deviceStore = useDeviceStore()
 const realtimeScopeStore = useRealtimeScopeStore()
-const signalAllocationJobStore = useSignalAllocationJobStore()
+const signalJobStore = useSignalJobStore()
 const switchgearStore = useSwitchgearStore()
 const toastStore = useToastStore()
 const route = useRoute()
 const router = useRouter()
 
 const { allocationRows, loadingAllocations, loadingSheet, updatingAllocations, allocatedCount, allocationRevision, recentlyChangedSignalIds } = storeToRefs(signalSheetStore)
-const { activeJobs, jobsById } = storeToRefs(signalAllocationJobStore)
+const { activeJobs, jobsById } = storeToRefs(signalJobStore)
 const { channels } = storeToRefs(channelStore)
 
 const scopeId = "signals:allocations"
@@ -547,7 +549,11 @@ const testRunProgressText = computed(() => {
 const activeTestRunJob = computed(() => (
   activeJobs.value.find(job => String(job.operation) === "test_run") ?? null
 ))
-const isTestRunBusy = computed(() => testRunInProgress.value || Boolean(activeTestRunJob.value))
+const isTestRunBusy = computed(() => {
+  const status = String(activeTestRunJob.value?.status ?? "")
+  const activeJobBusy = status === "queued" || status === "running" || status === "cancelling"
+  return testRunInProgress.value || activeJobBusy
+})
 const latestCompletedTestRunJob = computed(() => {
   const workspaceId = workspaceStore.activeWorkspaceId
   if (!workspaceId) {
@@ -578,7 +584,7 @@ watch(activeTestRunJob, (job) => {
     return
   }
 
-  testRunInProgress.value = true
+  testRunInProgress.value = String(job.status ?? "") !== "paused"
   updateTestRunStatsFromJob(job)
 }, { immediate: true })
 
@@ -1452,7 +1458,7 @@ async function allocateSelectedUnassigned() {
       return
     }
 
-    const completedJob = await signalAllocationJobStore.enqueueAutoAllocateJob(workspaceId, {
+    const completedJob = await signalJobStore.enqueueAutoAllocateJob(workspaceId, {
       signal_ids: targetSignalIds,
       prefer_online: true,
       overwrite_existing: false,
@@ -1486,7 +1492,7 @@ async function deallocateSelected() {
       return
     }
 
-    const completedJob = await signalAllocationJobStore.enqueueBulkUpdateJob(
+    const completedJob = await signalJobStore.enqueueBulkUpdateJob(
       workspaceId,
       selectedAllocatedSignalIds.value.map(signalId => ({ signal_id: signalId, channel_id: null })),
     )
@@ -1545,7 +1551,7 @@ async function controlActiveTestRun(action: "pause" | "resume" | "stop") {
 
   testRunControlBusy.value = true
   try {
-    await signalAllocationJobStore.controlJob(workspaceId, jobId, action)
+    await signalJobStore.controlJob(workspaceId, jobId, action)
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
   } finally {
@@ -1554,7 +1560,11 @@ async function controlActiveTestRun(action: "pause" | "resume" | "stop") {
 }
 
 async function runTestVisualOnly() {
-  if (testRunInProgress.value) return
+  if (canResumeActiveTestRun.value) {
+    await controlActiveTestRun("resume")
+    return
+  }
+  if (testRunInProgress.value || Boolean(activeTestRunJob.value)) return
 
   const queue = selectedAllocatedPhysicalRows.value.filter(row => canControl(row))
   if (!queue.length) {
@@ -1575,7 +1585,7 @@ async function runTestVisualOnly() {
     }
 
     const selectedSignalIds = queue.map(row => row.signal_id)
-    const completedJob = await signalAllocationJobStore.enqueueTestRunJob(
+    const completedJob = await signalJobStore.enqueueTestRunJob(
       workspaceId,
       selectedSignalIds,
       {

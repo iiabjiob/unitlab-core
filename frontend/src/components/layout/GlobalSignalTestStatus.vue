@@ -72,7 +72,7 @@ import { computed, ref } from "vue"
 import { storeToRefs } from "pinia"
 
 import UiButton from "@/components/ui/UiButton.vue"
-import { useSignalAllocationJobStore } from "@/stores/signalAllocationJobStore"
+import { useSignalJobStore } from "@/stores/signalJobStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useToastStore } from "@/stores/toastStore"
 import type { SignalAllocationJob } from "@/types/signal"
@@ -82,10 +82,10 @@ const props = withDefaults(defineProps<{ compact?: boolean }>(), {
 })
 
 const workspaceStore = useWorkspaceStore()
-const signalAllocationJobStore = useSignalAllocationJobStore()
+const signalJobStore = useSignalJobStore()
 const toastStore = useToastStore()
 
-const { activeJobs, jobsById } = storeToRefs(signalAllocationJobStore)
+const { activeJobs, jobsById } = storeToRefs(signalJobStore)
 
 const controlBusy = ref(false)
 const dismissedJobId = ref<string | null>(null)
@@ -200,7 +200,7 @@ async function control(action: "pause" | "resume" | "stop") {
 
   controlBusy.value = true
   try {
-    await signalAllocationJobStore.controlJob(workspaceId, jobId, action)
+    await signalJobStore.controlJob(workspaceId, jobId, action)
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
   } finally {

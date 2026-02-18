@@ -139,7 +139,23 @@ export interface SignalAllocationJobEvent {
   event: "signal_allocation_job"
   job_id: string
   workspace_id: number
-  operation: "auto_allocate" | "bulk_update" | string
+  operation: "auto_allocate" | "bulk_update" | "test_run" | string
+  status: "queued" | "running" | "paused" | "cancelling" | "cancelled" | "succeeded" | "failed"
+  progress_total: number
+  progress_done: number
+  message: string | null
+  error: string | null
+  result: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface SignalTestRunJobEvent {
+  channel: WSChannel.SYSTEM_INFO
+  event: "signal_test_run_job"
+  job_id: string
+  workspace_id: number
+  operation: "test_run" | string
   status: "queued" | "running" | "paused" | "cancelling" | "cancelled" | "succeeded" | "failed"
   progress_total: number
   progress_done: number
@@ -214,6 +230,7 @@ export type SequenceWsEvent =
 export type ChannelWSEvent =
   | SystemHealthChangedEvent
   | SignalAllocationJobEvent
+  | SignalTestRunJobEvent
   | DeviceStateEvent
   | DeviceRegisterEvent
   | DeviceRespEvent

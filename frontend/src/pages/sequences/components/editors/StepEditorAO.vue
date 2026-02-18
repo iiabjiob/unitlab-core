@@ -50,9 +50,9 @@ function handleValueChange(event: Event) {
 <template>
 	<div class="space-y-4">
 		<div>
-			<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 				AO channel
-			</label>
+			</div>
 			<SignalBackedChannelField
 				class="mt-1"
 				:channel-id="step.channel_id ?? null"
@@ -67,11 +67,13 @@ function handleValueChange(event: Event) {
 		</div>
 
 		<div>
-			<label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<label for="sequence-step-ao-value" class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 				Output value (mA)
 			</label>
 			<input
 				type="number"
+				id="sequence-step-ao-value"
+				name="sequence-step-ao-value"
 				step="0.01"
 				class="mt-1 w-32 rounded border border-neutral-300 px-2 py-1 text-sm
 							 dark:border-neutral-700 dark:bg-neutral-800"

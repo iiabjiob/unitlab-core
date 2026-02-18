@@ -36,12 +36,20 @@
           <input
             v-model="query"
             type="text"
+            id="live-signals-query"
+            name="live-signals-query"
             autocomplete="off"
             placeholder="Search name or key…"
             class="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 md:max-w-sm"
           />
           <label class="flex items-center gap-2 text-xs font-medium text-neutral-600 dark:text-neutral-300">
-            <input v-model="showOnlyBound" type="checkbox" class="accent-neutral-900" />
+            <input
+              v-model="showOnlyBound"
+              id="live-signals-show-only-bound"
+              name="live-signals-show-only-bound"
+              type="checkbox"
+              class="accent-neutral-900"
+            />
             Bound only
           </label>
         </div>
