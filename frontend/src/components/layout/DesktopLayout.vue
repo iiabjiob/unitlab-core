@@ -26,7 +26,9 @@
             <div class="min-w-[220px] max-w-md flex-1">
               <WorkspaceSwitcher variant="mini" />
             </div>
-            <TimeComponent class="text-sm text-neutral-500 dark:text-neutral-400" />
+            <div class="flex items-center gap-3">
+              <TimeComponent class="text-sm text-neutral-500 dark:text-neutral-400" />
+            </div>
           </div>
         </header>
 

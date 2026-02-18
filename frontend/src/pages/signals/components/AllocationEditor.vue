@@ -1,178 +1,46 @@
 <template>
   <div class="flex h-full min-h-0 min-w-0 flex-col gap-4 p-3 md:p-4">
-    <header class="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 dark:text-neutral-400">Live Signal Sheet</p>
-        <p class="text-sm text-neutral-700 dark:text-neutral-200">
-          {{ summaryText }}
-        </p>
-      </div>
-      <div class="flex flex-wrap items-start justify-between gap-2">
-        <div class="flex flex-wrap items-center gap-2">
-          <UiButton variant="primary" size="sm" :disabled="workspaceMissing || loading" @click="openImportModal">
-            + Import Signal List
-          </UiButton>
-          <UiButton
-            variant="secondary"
-            size="sm"
-            :disabled="workspaceMissing || loading || allocatedCableRows.length === 0"
-            @click="exportCableJournal"
-          >
-            Export Cable Schedule
-          </UiButton>
-          <UiButton
-            variant="secondary"
-            size="sm"
-            :disabled="workspaceMissing || loading || allocationRows.length === 0"
-            @click="exportSignalReport"
-          >
-            Export Report
-          </UiButton>
-        </div>
-
-        <div class="flex flex-wrap items-center justify-end gap-2">
-          <div
-            v-if="updatingAllocations || allocatingSelected || deallocatingSelected || allocationJobsRunning"
-            class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs font-medium text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-200"
-          >
-            <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></span>
-            <span>{{ allocationJobProgressText || "Applying allocation changes…" }}</span>
-          </div>
-          <div
-            v-if="showTestRunProgress"
-            class="min-w-[260px] rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-800/60"
-          >
-            <div class="flex items-center justify-between text-[11px] font-medium text-neutral-600 dark:text-neutral-300">
-              <span>{{ testRunProgressText }}</span>
-              <span>{{ testRunProgressPercent }}%</span>
-            </div>
-            <div class="mt-1 h-1.5 overflow-hidden rounded bg-neutral-200 dark:bg-neutral-700">
-              <div
-                class="h-full bg-emerald-500 transition-[width] duration-200"
-                :style="{ width: `${testRunProgressPercent}%` }"
-              ></div>
-            </div>
-          </div>
-          <InlineInfoTooltip
-            v-if="selectedAllocatableUnassignedSignalIds.length > 0"
-            text="Auto-allocate selected unassigned signals to compatible channels."
-            :disabled="disableHeaderTooltips"
-            placement="bottom"
-            align="end"
-            :open-delay="1000"
-            v-slot="{ setTriggerRef, getTriggerProps }"
-          >
-            <span :ref="setTriggerRef" v-bind="getTriggerProps()" class="inline-flex">
-              <UiButton
-                variant="secondary"
-                size="sm"
-                :disabled="loading || allocatingSelected"
-                @click="allocateSelectedUnassigned"
-              >
-                {{ allocatingSelected ? "Allocating…" : "Allocate" }}
-              </UiButton>
-            </span>
-          </InlineInfoTooltip>
-
-          <InlineInfoTooltip
-            v-if="selectedAllocatedSignalIds.length > 0"
-            text="Remove channel assignments from selected signals."
-            :disabled="disableHeaderTooltips"
-            placement="bottom"
-            align="end"
-            :open-delay="1000"
-            v-slot="{ setTriggerRef, getTriggerProps }"
-          >
-            <span :ref="setTriggerRef" v-bind="getTriggerProps()" class="inline-flex">
-              <UiButton
-                variant="ghost"
-                size="sm"
-                :disabled="loading || deallocatingSelected"
-                @click="deallocateSelected"
-              >
-                {{ deallocatingSelected ? "Unassigning…" : "Unassign" }}
-              </UiButton>
-            </span>
-          </InlineInfoTooltip>
-
-          <InlineInfoTooltip
-            v-if="selectedAllocatedPhysicalRows.length > 0 || testRunInProgress"
-            :text="testRunInProgress
-              ? 'Test run is executing in background worker.'
-              : 'Run ON/OFF test for selected allocated channels and update test status.'"
-            :disabled="disableTestRunTooltip"
-            placement="bottom"
-            align="end"
-            :open-delay="1000"
-            v-slot="{ setTriggerRef, getTriggerProps }"
-          >
-            <span :ref="setTriggerRef" v-bind="getTriggerProps()" class="inline-flex">
-              <UiMenu ref="testRunMenuRef">
-                <UiButton
-                  :variant="'success'"
-                  size="sm"
-                  :disabled="loading || testRunInProgress"
-                  @click="runTestVisualOnly()"
-                  @contextmenu.capture.prevent.stop="openTestRunContextMenu"
-                >
-                  {{ testRunInProgress ? "Running…" : "Run test" }}
-                </UiButton>
-                <UiMenuContent>
-                  <UiMenuLabel>
-                    Toggle mode
-                  </UiMenuLabel>
-                  <UiMenuItem @select="setTestRunToggleMode('single')">
-                    Single toggle (ON)
-                    <span v-if="testRunToggleMode === 'single'" class="ml-2 text-xs">✓</span>
-                  </UiMenuItem>
-                  <UiMenuItem @select="setTestRunToggleMode('double')">
-                    Double toggle (ON → OFF)
-                    <span v-if="testRunToggleMode === 'double'" class="ml-2 text-xs">✓</span>
-                  </UiMenuItem>
-                  <UiMenuSeparator />
-                  <UiMenuLabel>
-                    Interval between signals
-                  </UiMenuLabel>
-                  <UiMenuItem @select="setTestRunIntervalMs(500)">
-                    0.5 s
-                    <span v-if="testRunIntervalMs === 500" class="ml-2 text-xs">✓</span>
-                  </UiMenuItem>
-                  <UiMenuItem @select="setTestRunIntervalMs(1000)">
-                    1.0 s
-                    <span v-if="testRunIntervalMs === 1000" class="ml-2 text-xs">✓</span>
-                  </UiMenuItem>
-                  <UiMenuItem @select="setTestRunIntervalMs(2000)">
-                    2.0 s
-                    <span v-if="testRunIntervalMs === 2000" class="ml-2 text-xs">✓</span>
-                  </UiMenuItem>
-                </UiMenuContent>
-              </UiMenu>
-            </span>
-          </InlineInfoTooltip>
-
-          <InlineInfoTooltip
-            v-if="canCreateSwitchgearFromSelection"
-            text="Create switchgear items from selected DI/DO signal pairs."
-            :disabled="disableHeaderTooltips"
-            placement="bottom"
-            align="end"
-            :open-delay="1000"
-            v-slot="{ setTriggerRef, getTriggerProps }"
-          >
-            <span :ref="setTriggerRef" v-bind="getTriggerProps()" class="inline-flex">
-              <UiButton
-                variant="secondary"
-                size="sm"
-                :disabled="loading || switchgearCreateInProgress"
-                @click="createSwitchgearVisualOnly"
-              >
-                {{ switchgearCreateInProgress ? "Creating…" : createSwitchgearButtonLabel }}
-              </UiButton>
-            </span>
-          </InlineInfoTooltip>
-        </div>
-      </div>
-    </header>
+    <AllocationEditorHeader
+      :summary-text="summaryText"
+      :workspace-missing="workspaceMissing"
+      :loading="loading"
+      :allocated-cable-rows-count="allocatedCableRows.length"
+      :allocation-rows-count="allocationRows.length"
+      :updating-allocations="updatingAllocations"
+      :allocating-selected="allocatingSelected"
+      :deallocating-selected="deallocatingSelected"
+      :allocation-jobs-running="allocationJobsRunning"
+      :allocation-job-progress-text="allocationJobProgressText"
+      :show-test-run-progress="showTestRunProgress"
+      :test-run-progress-text="testRunProgressText"
+      :test-run-progress-percent="testRunProgressPercent"
+      :can-pause-active-test-run="canPauseActiveTestRun"
+      :can-resume-active-test-run="canResumeActiveTestRun"
+      :can-stop-active-test-run="canStopActiveTestRun"
+      :test-run-control-busy="testRunControlBusy"
+      :is-stopping-active-test-run="isStoppingActiveTestRun"
+      :last-test-summary-text="lastTestSummaryText"
+      :can-allocate-selected="selectedAllocatableUnassignedSignalIds.length > 0"
+      :can-deallocate-selected="selectedAllocatedSignalIds.length > 0"
+      :can-run-test="selectedAllocatedPhysicalRows.length > 0 || isTestRunBusy"
+      :is-test-run-busy="isTestRunBusy"
+      :test-run-toggle-mode="testRunToggleMode"
+      :test-run-interval-ms="testRunIntervalMs"
+      :can-create-switchgear-from-selection="canCreateSwitchgearFromSelection"
+      :switchgear-create-in-progress="switchgearCreateInProgress"
+      :create-switchgear-button-label="createSwitchgearButtonLabel"
+      @import="openImportModal"
+      @export-cable="exportCableJournal"
+      @export-report="exportSignalReport"
+      @allocate-selected="allocateSelectedUnassigned"
+      @deallocate-selected="deallocateSelected"
+      @run-test="runTestVisualOnly"
+      @set-toggle-mode="setTestRunToggleMode"
+      @set-interval-ms="setTestRunIntervalMs"
+      @control-test-run="controlActiveTestRun"
+      @dismiss-last-test="dismissLastTestSummary"
+      @create-switchgear="createSwitchgearVisualOnly"
+    />
 
     <div
       v-if="workspaceMissing"
@@ -238,56 +106,17 @@
           @allocate="channelId => handleAllocationPickerSelect(asAllocationRow(row), channelId)"
         />
 
-        <div v-else-if="column.key === 'control'" class="flex justify-center">
-          <UiMenu v-if="canControl(asAllocationRow(row))" :options="persistentControlMenuOptions">
-            <UiMenuTrigger asChild>
-              <button
-                type="button"
-                class="rounded border border-neutral-300 bg-white px-2 py-1 text-xs font-semibold text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
-                @click.stop
-              >
-                <span class="inline-flex items-center gap-1.5 whitespace-nowrap">
-                  <span
-                    class="h-2 w-2 shrink-0 rounded-full"
-                    :class="controlLampClass(asAllocationRow(row))"
-                  ></span>
-                  <span>Control</span>
-                  <span
-                    class="text-[10px] font-semibold uppercase tracking-[0.08em]"
-                    :class="controlStatusClass(asAllocationRow(row))"
-                  >
-                    {{ controlStatusTag(asAllocationRow(row)) }}
-                  </span>
-                </span>
-              </button>
-            </UiMenuTrigger>
-            <UiMenuContent>
-              <UiMenuItem disabled>
-                <span class="inline-flex items-center gap-2 text-xs font-semibold">
-                  <span
-                    class="h-2.5 w-2.5 shrink-0 rounded-full"
-                    :class="controlLampClass(asAllocationRow(row))"
-                  ></span>
-                  <span>State: {{ controlStateLabel(asAllocationRow(row)) }}</span>
-                </span>
-              </UiMenuItem>
-              <UiMenuSeparator />
-              <UiMenuItem
-                :disabled="controlDisabled(asAllocationRow(row))"
-                @select="() => handleControlMenuSelect(asAllocationRow(row), true)"
-              >
-                ON
-              </UiMenuItem>
-              <UiMenuItem
-                :disabled="controlDisabled(asAllocationRow(row))"
-                @select="() => handleControlMenuSelect(asAllocationRow(row), false)"
-              >
-                OFF
-              </UiMenuItem>
-            </UiMenuContent>
-          </UiMenu>
-          <span v-else class="text-xs text-neutral-400">—</span>
-        </div>
+        <AllocationControlCell
+          v-else-if="column.key === 'control'"
+          :can-control="canControl(asAllocationRow(row))"
+          :lamp-class="controlLampClass(asAllocationRow(row))"
+          :status-class="controlStatusClass(asAllocationRow(row))"
+          :status-tag="controlStatusTag(asAllocationRow(row))"
+          :state-label="controlStateLabel(asAllocationRow(row))"
+          :disabled="controlDisabled(asAllocationRow(row))"
+          @set-on="() => handleControlMenuSelect(asAllocationRow(row), true)"
+          @set-off="() => handleControlMenuSelect(asAllocationRow(row), false)"
+        />
 
         <span
           v-else-if="column.key === 'last_tested_at'"
@@ -308,21 +137,12 @@
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, triggerRef, watch } from "vue"
 import { storeToRefs } from "pinia"
 import { useRoute, useRouter } from "vue-router"
-import {
-  UiMenu,
-  UiMenuContent,
-  UiMenuItem,
-  UiMenuLabel,
-  UiMenuSeparator,
-  UiMenuTrigger,
-  type MenuController,
-} from "@affino/menu-vue"
 
 import UiAffinoDataGrid from "@/components/ui/UiAffinoDataGrid.vue"
-import UiButton from "@/components/ui/UiButton.vue"
-import InlineInfoTooltip from "@/components/ui/InlineInfoTooltip.vue"
 import type { Channel, DoChannel } from "@/types/channel"
 import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
+import AllocationControlCell from "@/pages/signals/components/AllocationControlCell.vue"
+import AllocationEditorHeader from "@/pages/signals/components/AllocationEditorHeader.vue"
 import AllocationChannelPicker from "@/pages/signals/components/AllocationChannelPicker.vue"
 import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
 import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders } from "@/pages/signals/utils/sourceColumns"
@@ -347,18 +167,15 @@ const route = useRoute()
 const router = useRouter()
 
 const { allocationRows, loadingAllocations, loadingSheet, updatingAllocations, allocatedCount, allocationRevision, recentlyChangedSignalIds } = storeToRefs(signalSheetStore)
-const { progressText: allocationJobProgressText, isAnyRunning: allocationJobsRunning, activeJobs } = storeToRefs(signalAllocationJobStore)
+const { activeJobs, jobsById } = storeToRefs(signalAllocationJobStore)
 const { channels } = storeToRefs(channelStore)
 
 const scopeId = "signals:allocations"
 const importModalOpen = ref(false)
-const persistentControlMenuOptions = { closeOnSelect: false }
 const selectedRowKeys = ref<string[]>([])
 const allocatingSelected = ref(false)
 const deallocatingSelected = ref(false)
 const testRunInProgress = ref(false)
-const testRunMenuRef = ref<{ controller?: MenuController } | null>(null)
-const testRunTooltipSuppressed = ref(false)
 const testRunIntervalMs = ref(1000)
 const testRunToggleMode = ref<"single" | "double">("single")
 const switchgearCreateInProgress = ref(false)
@@ -366,7 +183,23 @@ const testRunTotal = ref(0)
 const testRunProcessed = ref(0)
 const testRunSucceeded = ref(0)
 const testRunSkipped = ref(0)
+const testRunControlBusy = ref(false)
+const testRunStartedAtMs = ref<number | null>(null)
+
+type LastTestSummary = {
+  jobId: string
+  status: SignalAllocationJob["status"]
+  finishedAtIso: string
+  processed: number
+  succeeded: number
+  skipped: number
+  durationMs: number
+}
+
+const lastTestSummary = ref<LastTestSummary | null>(null)
+const dismissedLastTestJobId = ref<string | null>(null)
 let realtimeScopeSyncFrame: number | null = null
+let lastRealtimeScopeKey = ""
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const loading = computed(() => loadingAllocations.value || loadingSheet.value || updatingAllocations.value)
@@ -432,19 +265,21 @@ const gridDatasetKey = computed(() => {
   ].join("::")
 })
 
-const gridTableId = computed(() => {
-  const workspaceId = workspaceStore.activeWorkspaceId ?? "none"
-  return `signals-live-sheet-grid::ws-${workspaceId}`
-})
-
 const selectionStorageKey = computed(() => {
   const workspaceId = workspaceStore.activeWorkspaceId ?? "none"
-  return `signals-grid-selection::ws-${workspaceId}`
+  const sheetId = activeSignalSheet.value ? String(activeSignalSheet.value.id) : "none"
+  const datasetKey = gridDatasetKey.value || "dataset"
+  return `signals:allocations:selected:${workspaceId}:${sheetId}:${datasetKey}`
+})
+
+const gridTableId = computed(() => {
+  const workspaceId = workspaceStore.activeWorkspaceId ?? "none"
+  const sheetId = activeSignalSheet.value ? String(activeSignalSheet.value.id) : "none"
+  return `signals-allocation-grid-${workspaceId}-${sheetId}`
 })
 
 function restoreSelectedRowKeysFromStorage() {
   if (typeof window === "undefined") {
-    selectedRowKeys.value = []
     return
   }
   try {
@@ -459,7 +294,7 @@ function restoreSelectedRowKeysFromStorage() {
       return
     }
     selectedRowKeys.value = parsed
-      .map(item => String(item ?? "").trim())
+      .map(item => String(item).trim())
       .filter(item => item.length > 0)
   } catch {
     selectedRowKeys.value = []
@@ -643,11 +478,44 @@ const allocatedCableRows = computed(() => (
   ))
 ))
 
-const showTestRunProgress = computed(() => testRunInProgress.value && testRunTotal.value > 0)
+const activeAllocationJob = computed(() => (
+  activeJobs.value.find(job => String(job.operation) !== "test_run") ?? null
+))
 
-const isTestRunMenuOpen = computed(() => Boolean(testRunMenuRef.value?.controller?.state.open))
-const disableHeaderTooltips = computed(() => isTestRunMenuOpen.value)
-const disableTestRunTooltip = computed(() => testRunTooltipSuppressed.value || isTestRunMenuOpen.value)
+const allocationJobsRunning = computed(() => Boolean(activeAllocationJob.value))
+
+const allocationJobProgressText = computed(() => {
+  const job = activeAllocationJob.value
+  if (!job) return null
+  const total = Math.max(0, Number(job.progress_total ?? 0))
+  const done = Math.max(0, Number(job.progress_done ?? 0))
+  const stateLabel = job.status === "queued"
+    ? "Queued"
+    : job.status === "paused"
+      ? "Paused"
+      : job.status === "cancelling"
+        ? "Cancelling"
+        : "Running"
+  const message = String(job.message ?? "").trim()
+  if (total <= 0) {
+    return message || stateLabel
+  }
+  const safeDone = Math.min(done, total)
+  const percent = Math.max(0, Math.min(100, Math.round((safeDone / total) * 100)))
+  const detail = `${percent}% · ${safeDone}/${total}`
+  if (message && message.toLowerCase() !== stateLabel.toLowerCase()) {
+    return `${message} · ${detail}`
+  }
+  return `${stateLabel} ${detail}`
+})
+
+const showTestRunProgress = computed(() => {
+  const activeTestJob = activeJobs.value.find(job => String(job.operation) === "test_run")
+  if (activeTestJob) {
+    return Number(activeTestJob.progress_total ?? 0) > 0
+  }
+  return testRunInProgress.value && testRunTotal.value > 0
+})
 
 const testRunProgressPercent = computed(() => {
   const total = testRunTotal.value
@@ -656,7 +524,7 @@ const testRunProgressPercent = computed(() => {
 })
 
 const testRunEtaSeconds = computed(() => {
-  if (!testRunInProgress.value) return 0
+  if (!isTestRunBusy.value) return 0
   const remaining = Math.max(0, testRunTotal.value - testRunProcessed.value)
   const perSignalFactor = testRunToggleMode.value === "double" ? 2 : 1
   return remaining * ((testRunIntervalMs.value * perSignalFactor) / 1000)
@@ -664,26 +532,54 @@ const testRunEtaSeconds = computed(() => {
 
 const testRunProgressText = computed(() => {
   const base = `${testRunProcessed.value}/${testRunTotal.value} · ok ${testRunSucceeded.value} · skip ${testRunSkipped.value}`
-  if (!testRunInProgress.value) return base
+  if (!isTestRunBusy.value) return base
   return `${base} · ETA ${formatDurationShort(testRunEtaSeconds.value)}`
 })
 
 const activeTestRunJob = computed(() => (
   activeJobs.value.find(job => String(job.operation) === "test_run") ?? null
 ))
+const isTestRunBusy = computed(() => testRunInProgress.value || Boolean(activeTestRunJob.value))
+const latestCompletedTestRunJob = computed(() => {
+  const workspaceId = workspaceStore.activeWorkspaceId
+  if (!workspaceId) {
+    return null
+  }
+
+  return Object.values(jobsById.value)
+    .filter(job => job.workspace_id === workspaceId)
+    .filter(job => String(job.operation) === "test_run")
+    .filter(job => ["succeeded", "failed", "cancelled"].includes(String(job.status)))
+    .sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)))[0] ?? null
+})
+
+const canPauseActiveTestRun = computed(() => activeTestRunJob.value?.status === "running")
+const canResumeActiveTestRun = computed(() => activeTestRunJob.value?.status === "paused")
+const canStopActiveTestRun = computed(() => {
+  const status = String(activeTestRunJob.value?.status ?? "")
+  return status === "queued" || status === "running" || status === "paused"
+})
+const isStoppingActiveTestRun = computed(() => activeTestRunJob.value?.status === "cancelling")
 
 watch(activeTestRunJob, (job) => {
-  if (!testRunInProgress.value || !job) {
+  if (!job) {
+    testRunInProgress.value = false
     return
   }
-  updateTestRunStatsFromJob(job)
-})
 
-watch(isTestRunMenuOpen, (open) => {
-  if (!open) {
-    testRunTooltipSuppressed.value = false
+  testRunInProgress.value = true
+  updateTestRunStatsFromJob(job)
+}, { immediate: true })
+
+watch(latestCompletedTestRunJob, (job) => {
+  if (!job) {
+    return
   }
-})
+  if (dismissedLastTestJobId.value && dismissedLastTestJobId.value === job.job_id) {
+    return
+  }
+  setLastTestSummaryFromJob(job)
+}, { immediate: true })
 
 const sourceColumnHeaders = computed(() => (
   resolveAllSourceColumnHeaders(activeSignalSheet.value, allocationRows.value)
@@ -857,6 +753,90 @@ function formatDurationShort(seconds: number): string {
   return `${minutes}m ${remSeconds}s`
 }
 
+function formatDateTimeShort(iso: string): string {
+  const parsed = new Date(iso)
+  if (Number.isNaN(parsed.getTime())) {
+    return iso
+  }
+  const formatted = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(parsed)
+  return formatted
+}
+
+function formatLastTestSummary(summary: LastTestSummary): string {
+  const statusPrefix = summary.status === "failed"
+    ? "failed"
+    : summary.status === "cancelled"
+      ? "cancelled"
+      : "completed"
+
+  return [
+    statusPrefix,
+    `${formatDateTimeShort(summary.finishedAtIso)}`,
+    `${summary.succeeded}/${summary.processed} toggled`,
+    summary.skipped > 0 ? `${summary.skipped} skipped` : "",
+    `${formatDurationShort(summary.durationMs / 1000)}`,
+  ].filter(Boolean).join(" · ")
+}
+
+function dismissLastTestSummary() {
+  dismissedLastTestJobId.value = lastTestSummary.value?.jobId ?? null
+  lastTestSummary.value = null
+}
+
+function setLastTestSummary(job: SignalAllocationJob, startedAtMs: number | null) {
+  dismissedLastTestJobId.value = null
+  const processed = Math.max(0, readNumericResult(job, "processed") || Number(job.progress_done ?? 0) || testRunProcessed.value)
+  const succeeded = Math.max(0, readNumericResult(job, "succeeded") || testRunSucceeded.value)
+  const skipped = Math.max(0, readNumericResult(job, "skipped") || testRunSkipped.value)
+  const finishedAtMs = Date.now()
+  const durationMs = Math.max(0, startedAtMs ? finishedAtMs - startedAtMs : 0)
+  lastTestSummary.value = {
+    jobId: String(job.job_id),
+    status: job.status,
+    finishedAtIso: new Date(finishedAtMs).toISOString(),
+    processed,
+    succeeded,
+    skipped,
+    durationMs,
+  }
+}
+
+function setLastTestSummaryFromJob(job: SignalAllocationJob) {
+  dismissedLastTestJobId.value = null
+  const processed = Math.max(0, readNumericResult(job, "processed") || Number(job.progress_done ?? 0))
+  const succeeded = Math.max(0, readNumericResult(job, "succeeded"))
+  const skipped = Math.max(0, readNumericResult(job, "skipped"))
+
+  const finishedAtParsed = Date.parse(String(job.updated_at ?? ""))
+  const createdAtParsed = Date.parse(String(job.created_at ?? ""))
+  const finishedAtMs = Number.isFinite(finishedAtParsed) ? finishedAtParsed : Date.now()
+  const durationMs = (Number.isFinite(createdAtParsed) && Number.isFinite(finishedAtParsed))
+    ? Math.max(0, finishedAtParsed - createdAtParsed)
+    : 0
+
+  lastTestSummary.value = {
+    jobId: String(job.job_id),
+    status: job.status,
+    finishedAtIso: new Date(finishedAtMs).toISOString(),
+    processed,
+    succeeded,
+    skipped,
+    durationMs,
+  }
+}
+
+const lastTestSummaryText = computed(() => (
+  lastTestSummary.value ? formatLastTestSummary(lastTestSummary.value) : ""
+))
+
 function csvEscape(value: unknown): string {
   const text = String(value ?? "")
   if (/[",\n\r]/.test(text)) {
@@ -984,10 +964,10 @@ function exportSignalReport() {
 
 function requiredChannelType(signalDirection: string): "di" | "do" | "ai" | "ao" | null {
   const normalized = signalDirection.trim().toUpperCase()
-  if (normalized === "DI") return "di"
-  if (normalized === "DO") return "do"
-  if (normalized === "AI") return "ai"
-  if (normalized === "AO") return "ao"
+  if (normalized === "DI") return "do"
+  if (normalized === "DO") return "di"
+  if (normalized === "AI") return "ao"
+  if (normalized === "AO") return "ai"
   return null
 }
 
@@ -1086,6 +1066,15 @@ function setAllocationForRow(row: SignalAllocationRow, nextChannelId: number | n
 }
 
 function handleAllocationPickerSelect(row: SignalAllocationRow, channelId: number | null) {
+  if (Number.isFinite(channelId as number)) {
+    const channel = channelMap.value.get(Number(channelId))
+    const selectedType = normalizedChannelType(channel?.type)
+    const neededType = requiredChannelType(row.signal_direction)
+    if (neededType && selectedType && selectedType !== neededType) {
+      toastStore.error(`Invalid mapping: ${row.signal_direction} must be allocated to ${neededType.toUpperCase()} channel.`)
+      return
+    }
+  }
   setAllocationForRow(row, channelId)
 }
 
@@ -1318,6 +1307,35 @@ function readNumericResult(job: SignalAllocationJob, key: string): number {
   return Number.isFinite(numeric) ? numeric : 0
 }
 
+function formatTestRunSkipReasons(job: SignalAllocationJob): string {
+  const reasonsRaw = (job.result as Record<string, unknown> | undefined)?.skip_reasons
+  if (!reasonsRaw || typeof reasonsRaw !== "object") {
+    return ""
+  }
+
+  const reasons = reasonsRaw as Record<string, unknown>
+  const offline = Number(reasons.offline_unit ?? 0)
+  const nonDo = Number(reasons.non_do_channel ?? 0)
+  const invalidBinding = Number(reasons.invalid_binding ?? 0)
+  const missingRow = Number(reasons.missing_row ?? 0)
+
+  const parts: string[] = []
+  if (Number.isFinite(offline) && offline > 0) {
+    parts.push(`${offline} offline`)
+  }
+  if (Number.isFinite(nonDo) && nonDo > 0) {
+    parts.push(`${nonDo} not DO`)
+  }
+  if (Number.isFinite(invalidBinding) && invalidBinding > 0) {
+    parts.push(`${invalidBinding} invalid binding`)
+  }
+  if (Number.isFinite(missingRow) && missingRow > 0) {
+    parts.push(`${missingRow} missing`)
+  }
+
+  return parts.join(", ")
+}
+
 async function allocateSelectedUnassigned() {
   if (allocatingSelected.value) return
   if (!selectedUnassignedSignalIds.value.length) return
@@ -1417,19 +1435,22 @@ function setTestRunIntervalMs(intervalMs: number) {
   testRunIntervalMs.value = normalized
 }
 
-function openTestRunContextMenu(event: MouseEvent) {
-  event.preventDefault()
-  event.stopPropagation()
-  const controller = testRunMenuRef.value?.controller
-  if (!controller) {
+async function controlActiveTestRun(action: "pause" | "resume" | "stop") {
+  if (testRunControlBusy.value) return
+  const workspaceId = workspaceStore.activeWorkspaceId
+  const jobId = activeTestRunJob.value?.job_id
+  if (!workspaceId || !jobId) {
     return
   }
-  testRunTooltipSuppressed.value = true
-  if (controller.state.open) {
-    return
+
+  testRunControlBusy.value = true
+  try {
+    await signalAllocationJobStore.controlJob(workspaceId, jobId, action)
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+  } finally {
+    testRunControlBusy.value = false
   }
-  controller.setAnchor({ x: event.clientX, y: event.clientY, width: 0, height: 0 })
-  controller.open("pointer")
 }
 
 async function runTestVisualOnly() {
@@ -1446,6 +1467,7 @@ async function runTestVisualOnly() {
   testRunProcessed.value = 0
   testRunSucceeded.value = 0
   testRunSkipped.value = 0
+  testRunStartedAtMs.value = Date.now()
   try {
     const workspaceId = workspaceStore.activeWorkspaceId
     if (!workspaceId) {
@@ -1463,11 +1485,23 @@ async function runTestVisualOnly() {
     )
     updateTestRunStatsFromJob(completedJob)
     await signalSheetStore.refreshAllocations()
+    setLastTestSummary(completedJob, testRunStartedAtMs.value)
 
+    const skipDetails = formatTestRunSkipReasons(completedJob)
     toastStore.success(
-      `Run test complete: ${testRunSucceeded.value} toggled${testRunSkipped.value ? `, ${testRunSkipped.value} skipped` : ""}.`,
+      `Run test complete: ${testRunSucceeded.value} toggled`
+      + `${testRunSkipped.value ? `, ${testRunSkipped.value} skipped` : ""}`
+      + `${skipDetails ? ` (${skipDetails})` : ""}.`,
     )
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (message.toLowerCase().includes("cancelled")) {
+      toastStore.info("Run test cancelled")
+    } else {
+      toastStore.error(message)
+    }
   } finally {
+    testRunStartedAtMs.value = null
     testRunInProgress.value = false
   }
 }
@@ -1675,7 +1709,24 @@ function syncRealtimeUnitScope() {
     const unitId = channelUnitById.value.get(channel.id) ?? null
     if (unitId) units.add(unitId)
   })
-  realtimeScopeStore.setRealtimeUnitScope(scopeId, [...units])
+
+  const scopedUnits = [...units]
+  realtimeScopeStore.setRealtimeUnitScope(scopeId, scopedUnits)
+
+  const scopeKey = scopedUnits.slice().sort((left, right) => left.localeCompare(right)).join("|")
+  if (scopeKey === lastRealtimeScopeKey) {
+    return
+  }
+  lastRealtimeScopeKey = scopeKey
+
+  const deviceByUnit = new Map(deviceStore.devices.map(device => [device.unit_id, device.id] as const))
+  for (const unitId of scopedUnits) {
+    const deviceId = deviceByUnit.get(unitId)
+    if (!Number.isFinite(deviceId as number)) {
+      continue
+    }
+    channelStore.requestStates(Number(deviceId), { includeDiagnostics: false, silent: true })
+  }
 }
 
 function scheduleRealtimeUnitScopeSync() {

@@ -69,20 +69,31 @@ Important behavior:
 ### Allocate channels after import
 
 1. In the grid, find a signal row.
-2. In **Unit/Channel**, choose a channel manually, or select multiple rows and click **Allocate selected unassigned**.
-3. To remove assignments from selected rows, click **Unassign selected**.
+2. In **Unit/Channel**, choose a channel manually, or select multiple rows and click **Allocate**.
+3. To remove assignments from selected rows, click **Unassign**.
 4. Check the header summary (total / allocated / tested / remaining).
+
+Important behavior:
+- Bulk allocation and unassignment run as background jobs.
+- Progress is shown in the header and updates in real time.
+- When a job completes, the grid is refreshed automatically.
 
 ### Run quick control test for selected rows
 
 1. Select allocated physical rows.
 2. Click **Run test**.
-3. Watch progress in the header progress bar.
-4. If needed, click **Stop test**.
+3. To configure before launch, right-click **Run test** and choose:
+	- **Toggle mode**: `Single toggle (ON)` or `Double toggle (ON → OFF)`.
+	- **Interval between signals**: `0.5 s`, `1.0 s` (default), `2.0 s`.
+4. Watch progress in the header progress bar.
 
 Expected result:
 - Success toast with processed/failed summary.
-- **Last tested** updates for successful rows.
+- **Last tested** updates for successful rows with precise per-signal completion time.
+
+Technical note:
+- Test run is executed by backend worker job (not browser loop).
+- Progress and completion are delivered over WebSocket job events.
 
 ### Create switchgears from selected signals
 

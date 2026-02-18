@@ -15,7 +15,7 @@ const indicatorClass = computed(() => {
     case "degraded":
       return "bg-amber-400"
     case "offline":
-      return props.neutralOffline ? "bg-neutral-400" : "bg-rose-500"
+      return "bg-neutral-400"
     default:
       return "bg-neutral-400"
   }
@@ -28,7 +28,7 @@ const labelClass = computed(() => {
     case "degraded":
       return "text-amber-500"
     case "offline":
-      return props.neutralOffline ? "text-neutral-500" : "text-rose-500"
+      return "text-neutral-500"
     default:
       return "text-neutral-500"
   }

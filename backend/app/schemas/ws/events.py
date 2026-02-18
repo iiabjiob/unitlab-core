@@ -143,7 +143,7 @@ class SignalAllocationJobEvent(BaseModel):
     job_id: str
     workspace_id: int
     operation: str
-    status: Literal["queued", "running", "succeeded", "failed"]
+    status: Literal["queued", "running", "paused", "cancelling", "cancelled", "succeeded", "failed"]
     progress_total: int = 0
     progress_done: int = 0
     message: str | None = None

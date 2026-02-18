@@ -17,12 +17,12 @@ from app.core.logger import get_logger
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_signal_allocation_job_entry
-from app.infrastructure.protocol.modes import Cmd
+from app.infrastructure.protocol.modes import Cmd, State
 from app.schemas.signal_sheet_schema import SignalAllocationBulkUpdateSchema, SignalAutoAllocateSchema
 from app.schemas.ws.events import SignalAllocationJobEvent
 from app.core.events.ws_event_publisher import WsEventPublisher
-from app.services.command_queue_service import enqueue_do_command
-from app.services.signal_allocation_job_service import update_signal_allocation_job
+from app.services.command_queue_service import enqueue_do_command, enqueue_request_state
+from app.services.signal_allocation_job_service import get_signal_allocation_job, update_signal_allocation_job
 from app.services.worker_health import clear_worker_status, start_worker_heartbeat
 
 settings = get_settings()
@@ -163,6 +163,7 @@ async def _handle_test_run(repo: SignalSheetRepository, workspace_id: int, paylo
         toggle_mode = "single"
 
     signal_interval_seconds = signal_interval_ms / 1000
+    redis = RedisManager.get_instance()
 
     rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, requested_ids)
     rows_by_signal_id = {row.signal_id: row for row in rows}
@@ -174,25 +175,71 @@ async def _handle_test_run(repo: SignalSheetRepository, workspace_id: int, paylo
     succeeded_signal_ids: list[int] = []
     tested_at_by_signal: dict[int, str] = {}
     skipped = 0
+    skip_reasons = {
+        "missing_row": 0,
+        "invalid_binding": 0,
+        "non_do_channel": 0,
+        "offline_unit": 0,
+    }
+
+    job_id = str(payload.get("job_id") or "")
+
+    async def apply_control_state() -> bool:
+        if not job_id:
+            return True
+
+        while True:
+            snapshot = await get_signal_allocation_job(job_id)
+            status = str((snapshot or {}).get("status") or "")
+
+            if status in {"cancelling", "cancelled"}:
+                return False
+            if status == "paused":
+                await asyncio.sleep(0.2)
+                continue
+            return True
 
     for index, signal_id in enumerate(requested_ids, start=1):
+        if not await apply_control_state():
+            return {
+                "processed": index - 1,
+                "succeeded": len(succeeded_signal_ids),
+                "skipped": skipped,
+                "skip_reasons": skip_reasons,
+                "toggle_mode": toggle_mode,
+                "signal_interval_ms": signal_interval_ms,
+                "tested_signal_ids": sorted(tested_at_by_signal.keys()),
+                "cancelled": True,
+            }
+
         row = rows_by_signal_id.get(signal_id)
         success = False
         if row is None:
             skipped += 1
+            skip_reasons["missing_row"] += 1
         elif not row.unit_id or not isinstance(row.channel_index, int):
             skipped += 1
+            skip_reasons["invalid_binding"] += 1
         elif not str(row.channel_type or "").lower().startswith("do"):
             skipped += 1
-        elif row.unit_online is False:
-            skipped += 1
+            skip_reasons["non_do_channel"] += 1
         else:
+            bitmask_raw = await redis.get(f"device:{str(row.unit_id)}:bitmask")
+            bitmask = 0
+            if bitmask_raw is not None:
+                try:
+                    bitmask = int(bitmask_raw)
+                except (TypeError, ValueError):
+                    bitmask = 0
+
+            current_value = 1 if (bitmask & (1 << int(row.channel_index))) else 0
+            toggled_value = 0 if current_value else 1
             await enqueue_do_command(
                 unit_id=str(row.unit_id),
                 mode=Cmd.SET_SINGLE_BIT,
                 ch=int(row.channel_index),
-                value=1,
-                correlation_id=f"test-run:{signal_id}:on",
+                value=toggled_value,
+                correlation_id=f"test-run:{signal_id}:set:{toggled_value}",
             )
             if toggle_mode == "double":
                 await asyncio.sleep(signal_interval_seconds)
@@ -200,14 +247,22 @@ async def _handle_test_run(repo: SignalSheetRepository, workspace_id: int, paylo
                     unit_id=str(row.unit_id),
                     mode=Cmd.SET_SINGLE_BIT,
                     ch=int(row.channel_index),
-                    value=0,
-                    correlation_id=f"test-run:{signal_id}:off",
+                    value=current_value,
+                    correlation_id=f"test-run:{signal_id}:set:{current_value}",
                 )
+            await enqueue_request_state(
+                unit_id=str(row.unit_id),
+                mode=State.REQ_SINGLE_BIT,
+                ch=int(row.channel_index),
+                correlation_id=f"test-run:{signal_id}:state",
+            )
             success = True
 
         if success:
             succeeded_signal_ids.append(signal_id)
-            tested_at_by_signal[signal_id] = datetime.now(timezone.utc).isoformat()
+            tested_at = datetime.now(timezone.utc).isoformat()
+            tested_at_by_signal[signal_id] = tested_at
+            await repo.mark_signals_tested_at(workspace_id, {signal_id: tested_at})
 
         should_emit = index >= total or index <= 1 or index % update_every == 0
         now = time.monotonic()
@@ -218,20 +273,41 @@ async def _handle_test_run(repo: SignalSheetRepository, workspace_id: int, paylo
                 progress_done=index,
                 progress_total=total,
                 message=f"Signals {index}/{total} · ok {len(succeeded_signal_ids)} · skip {skipped}",
+                result={
+                    "processed": index,
+                    "succeeded": len(succeeded_signal_ids),
+                    "skipped": skipped,
+                    "toggle_mode": toggle_mode,
+                    "signal_interval_ms": signal_interval_ms,
+                },
             )
 
         if index < total:
-            await asyncio.sleep(signal_interval_seconds)
-
-    tested_signal_ids = await repo.mark_signals_tested_at(workspace_id, tested_at_by_signal)
+            slept = 0.0
+            while slept < signal_interval_seconds:
+                if not await apply_control_state():
+                    return {
+                        "processed": index,
+                        "succeeded": len(succeeded_signal_ids),
+                        "skipped": skipped,
+                        "skip_reasons": skip_reasons,
+                        "toggle_mode": toggle_mode,
+                        "signal_interval_ms": signal_interval_ms,
+                        "tested_signal_ids": sorted(tested_at_by_signal.keys()),
+                        "cancelled": True,
+                    }
+                step = min(0.2, signal_interval_seconds - slept)
+                await asyncio.sleep(step)
+                slept += step
 
     return {
         "processed": total,
         "succeeded": len(succeeded_signal_ids),
         "skipped": skipped,
+        "skip_reasons": skip_reasons,
         "toggle_mode": toggle_mode,
         "signal_interval_ms": signal_interval_ms,
-        "tested_signal_ids": tested_signal_ids,
+        "tested_signal_ids": sorted(tested_at_by_signal.keys()),
     }
 
 
@@ -255,6 +331,10 @@ async def _process_entries(redis, entries) -> None:
                 progress_total = len(payload.get("entries") or [])
             if operation == "test_run" and isinstance(payload.get("signal_ids"), list):
                 progress_total = len(payload.get("signal_ids") or [])
+
+            snapshot = await get_signal_allocation_job(job_id)
+            if snapshot and str(snapshot.get("status") or "") == "cancelled":
+                continue
 
             running_snapshot = await update_signal_allocation_job(
                 job_id,
@@ -283,11 +363,12 @@ async def _process_entries(redis, entries) -> None:
                 else:
                     raise ValueError(f"Unknown operation: {operation}")
 
+            cancelled = bool((result or {}).get("cancelled")) if isinstance(result, dict) else False
             done_snapshot = await update_signal_allocation_job(
                 job_id,
-                status="succeeded",
-                message="Completed",
-                progress_done=progress_total,
+                status="cancelled" if cancelled else "succeeded",
+                message="Cancelled" if cancelled else "Completed",
+                progress_done=(result.get("processed", 0) if cancelled and isinstance(result, dict) else progress_total),
                 progress_total=progress_total,
                 result=result,
             )
@@ -314,6 +395,7 @@ async def _publish_running_progress(
     progress_done: int,
     progress_total: int,
     message: str,
+    result: dict[str, Any] | None = None,
 ) -> None:
     if not job_id:
         return
@@ -323,6 +405,7 @@ async def _publish_running_progress(
         message=message,
         progress_done=progress_done,
         progress_total=progress_total,
+        result=result,
     )
     if snapshot is None:
         return

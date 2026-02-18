@@ -307,6 +307,45 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     bumpAllocationRevision()
   }
 
+  function applyTestedAtBySignalPatch(testedAtBySignal: Record<number, string> | Record<string, string>) {
+    const entries = Object.entries(testedAtBySignal ?? {})
+    if (!entries.length) {
+      return
+    }
+
+    const touched: number[] = []
+    entries.forEach(([rawSignalId, testedAtIso]) => {
+      const signalId = Number(rawSignalId)
+      if (!Number.isFinite(signalId) || signalId <= 0) {
+        return
+      }
+      const testedAt = String(testedAtIso ?? "").trim()
+      if (!testedAt) {
+        return
+      }
+      const rowIndex = allocationIndexBySignalId.get(signalId)
+      if (rowIndex === undefined) {
+        return
+      }
+      const row = allocationRows.value[rowIndex]
+      if (!row || row.tested_at === testedAt) {
+        return
+      }
+      allocationRows.value[rowIndex] = {
+        ...row,
+        tested_at: testedAt,
+      }
+      touched.push(signalId)
+    })
+
+    if (!touched.length) {
+      return
+    }
+
+    setRecentlyChangedSignalIds(touched)
+    bumpAllocationRevision()
+  }
+
   function resolveChannelLabel(unitId: string | null, channelIndex: number | null): string | null {
     if (!Number.isFinite(channelIndex as number)) {
       return null
@@ -946,6 +985,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     autoAllocate,
     ensureAllocated,
     markSignalsTested,
+    applyTestedAtBySignalPatch,
     applyAllocationRowsPatch,
     getAllocationOwnerSignalId,
   }

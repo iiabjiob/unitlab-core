@@ -11,7 +11,15 @@ from app.infrastructure.redis.stream_bus import enqueue_signal_allocation_job
 
 settings = get_settings()
 
-SignalAllocationJobStatus = Literal["queued", "running", "succeeded", "failed"]
+SignalAllocationJobStatus = Literal[
+    "queued",
+    "running",
+    "paused",
+    "cancelling",
+    "cancelled",
+    "succeeded",
+    "failed",
+]
 SignalAllocationJobOperation = Literal["auto_allocate", "bulk_update", "test_run"]
 
 
@@ -141,3 +149,49 @@ async def update_signal_allocation_job(
         ex=settings.signal_allocation_job_ttl_seconds,
     )
     return next_payload
+
+
+async def control_signal_allocation_job(job_id: str, action: Literal["pause", "resume", "stop"]) -> dict[str, Any] | None:
+    current = await get_signal_allocation_job(job_id)
+    if current is None:
+        return None
+
+    status = str(current.get("status") or "")
+    operation = str(current.get("operation") or "")
+    terminal = {"succeeded", "failed", "cancelled"}
+    if status in terminal:
+        return current
+
+    if action == "pause":
+        if operation != "test_run" or status != "running":
+            return current
+        return await update_signal_allocation_job(
+            job_id,
+            status="paused",
+            message="Paused",
+        )
+
+    if action == "resume":
+        if operation != "test_run" or status != "paused":
+            return current
+        return await update_signal_allocation_job(
+            job_id,
+            status="running",
+            message="Running",
+        )
+
+    if action == "stop":
+        if status == "queued":
+            return await update_signal_allocation_job(
+                job_id,
+                status="cancelled",
+                message="Cancelled",
+            )
+        if status in {"running", "paused", "cancelling"}:
+            return await update_signal_allocation_job(
+                job_id,
+                status="cancelling",
+                message="Cancelling",
+            )
+
+    return current

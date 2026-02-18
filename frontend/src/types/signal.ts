@@ -185,7 +185,14 @@ export interface SignalAllocationMarkTestedPayload {
   signal_ids: number[]
 }
 
-export type SignalAllocationJobStatus = "queued" | "running" | "succeeded" | "failed"
+export type SignalAllocationJobStatus =
+  | "queued"
+  | "running"
+  | "paused"
+  | "cancelling"
+  | "cancelled"
+  | "succeeded"
+  | "failed"
 
 export interface SignalAllocationJob {
   job_id: string

@@ -43,6 +43,39 @@ For one-click startup in VS Code, run task `backend: start all` (Terminal → Ru
 
 FastAPI subscribes to `ws:events` and forwards every payload to connected WebSocket clients.
 
+### Signal allocation + test run pipeline
+
+- REST endpoints enqueue jobs into Redis stream `signal-allocation:jobs`.
+- `app.workers.signal_allocation_runner` is the single consumer that executes operations and updates job state.
+- Job lifecycle (`queued` → `running` → `succeeded`/`failed`) is published to WebSocket channel as `signal_allocation_job` events.
+- Frontend waits for terminal job events and then refreshes allocations once.
+
+Supported operations:
+
+- `auto_allocate` — allocate selected signals in background.
+- `bulk_update` — batch allocation/unassignment updates in background.
+- `test_run` — execute signal test run in background with per-item progress.
+
+`test_run` payload fields:
+
+- `signal_ids: number[]`
+- `signal_interval_ms: number` (default `1000`, range `100..10000`)
+- `toggle_mode: "single" | "double"` (default `single`)
+
+`test_run` behavior:
+
+- `single`: sends `ON` command per signal.
+- `double`: sends `ON`, waits interval, then `OFF`.
+- waits `signal_interval_ms` between processed signals.
+- stores `tested_at` per successfully tested signal using per-signal completion timestamp.
+
+Main REST endpoints:
+
+- `POST /api/v1/workspaces/{workspace_id}/signal-allocations/auto/jobs`
+- `POST /api/v1/workspaces/{workspace_id}/signal-allocations/jobs`
+- `POST /api/v1/workspaces/{workspace_id}/signal-allocations/test-run/jobs`
+- `GET /api/v1/workspaces/{workspace_id}/signal-allocation-jobs/{job_id}`
+
 ### Sequence execution pipeline
 
 - REST `start/stop` endpoints enqueue control messages into the Redis stream named in `sequence_command_stream` (defaults to `sequence:commands`).

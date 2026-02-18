@@ -9,7 +9,9 @@
         </div>
       </template>
       <template #right>
-        <TimeComponent />
+        <div class="flex items-center gap-2">
+          <TimeComponent />
+        </div>
       </template>
     </MobileHeader>
 

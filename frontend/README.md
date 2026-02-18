@@ -1,33 +1,41 @@
-# frontend
+# UnitLab Frontend
 
-This template should help get you started developing with Vue 3 in Vite.
+Vue 3 + Vite frontend for UnitLab UI.
 
-## Recommended IDE Setup
-
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-## Type Support for `.vue` Imports in TS
-
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
+## Setup
 
 ```sh
-npm install
+pnpm install
 ```
 
-### Compile and Hot-Reload for Development
+## Development
 
 ```sh
-npm run dev
+pnpm dev
 ```
 
-### Type-Check, Compile and Minify for Production
+## Checks and build
 
 ```sh
-npm run build
+pnpm type-check
+pnpm build
 ```
+
+## Signals module notes
+
+Signals allocation operations are background job-based:
+
+- auto allocation and bulk allocation/unassign enqueue backend jobs
+- progress is received in real time via WebSocket `signal_allocation_job` events
+- UI updates when terminal job status is reached
+
+Run test is also backend worker-based and supports right-click configuration:
+
+- `toggle_mode`: `single` or `double`
+- `signal_interval_ms` presets via context menu
+- default: `single` + `1000 ms`
+
+For detailed product flow, see:
+
+- `docs/guide/signals.md`
+- `frontend/docs/signal-workflow.md`

@@ -16,8 +16,11 @@ type Waiter = {
 const STATUS_RANK: Record<string, number> = {
   queued: 1,
   running: 2,
-  succeeded: 3,
-  failed: 3,
+  paused: 2,
+  cancelling: 3,
+  succeeded: 4,
+  failed: 4,
+  cancelled: 4,
 }
 
 function statusRank(status: string): number {
@@ -25,7 +28,7 @@ function statusRank(status: string): number {
 }
 
 function isTerminalStatus(status: string): boolean {
-  return status === "succeeded" || status === "failed"
+  return status === "succeeded" || status === "failed" || status === "cancelled"
 }
 
 function toMillis(value: string | null | undefined): number {
@@ -49,7 +52,7 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
         }
         return job.workspace_id === activeWorkspaceId.value
       })
-      .filter(job => job.status === "queued" || job.status === "running")
+      .filter(job => ["queued", "running", "paused", "cancelling"].includes(job.status))
       .sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)))
   ))
 
@@ -60,7 +63,13 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
     if (!top) return null
     const total = Math.max(0, Number(top.progress_total ?? 0))
     const done = Math.max(0, Number(top.progress_done ?? 0))
-    const stateLabel = top.status === "queued" ? "Queued" : "Running"
+    const stateLabel = top.status === "queued"
+      ? "Queued"
+      : top.status === "paused"
+        ? "Paused"
+        : top.status === "cancelling"
+          ? "Cancelling"
+          : "Running"
     const message = String(top.message ?? "").trim()
     if (total <= 0) {
       return message || stateLabel
@@ -127,7 +136,7 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
 
     compactFinishedJobs()
 
-    if (job.status !== "succeeded" && job.status !== "failed") {
+    if (!isTerminalStatus(job.status)) {
       return
     }
 
@@ -140,6 +149,10 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
     waiters.delete(job.job_id)
     if (job.status === "succeeded") {
       waiter.resolve(job)
+      return
+    }
+    if (job.status === "cancelled") {
+      waiter.reject(new Error("Signal allocation job cancelled"))
       return
     }
     waiter.reject(new Error(job.error || job.message || "Signal allocation job failed"))
@@ -179,6 +192,9 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
     if (existing?.status === "failed") {
       return Promise.reject(new Error(existing.error || existing.message || "Signal allocation job failed"))
     }
+    if (existing?.status === "cancelled") {
+      return Promise.reject(new Error("Signal allocation job cancelled"))
+    }
 
     return new Promise<SignalAllocationJob>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -192,6 +208,10 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
           }
           if (refreshed?.status === "failed") {
             reject(new Error(refreshed.error || refreshed.message || "Signal allocation job failed"))
+            return
+          }
+          if (refreshed?.status === "cancelled") {
+            reject(new Error("Signal allocation job cancelled"))
             return
           }
 
@@ -232,6 +252,12 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
     return await awaitJobCompletion(queuedJob.job_id, workspaceId, 10 * 60_000)
   }
 
+  async function controlJob(workspaceId: number, jobId: string, action: "pause" | "resume" | "stop"): Promise<SignalAllocationJob> {
+    const { data } = await SignalSheetAPI.controlAllocationJob(workspaceId, jobId, action)
+    upsertJob(data)
+    return data
+  }
+
   function clearWorkspaceJobs(workspaceId: number) {
     const next: Record<string, SignalAllocationJob> = {}
     Object.values(jobsById.value).forEach((job) => {
@@ -251,6 +277,7 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
     enqueueAutoAllocateJob,
     enqueueBulkUpdateJob,
     enqueueTestRunJob,
+    controlJob,
     clearWorkspaceJobs,
   }
 })

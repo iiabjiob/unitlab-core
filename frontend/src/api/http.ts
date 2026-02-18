@@ -10,6 +10,7 @@ export const http = axios.create({
 type RetryableConfig = {
   __retryCount?: number
   __retryDelayMs?: number
+  params?: Record<string, unknown>
   url?: string
   method?: string
 }
@@ -39,12 +40,18 @@ http.interceptors.response.use(
 
     const config = error.config as RetryableConfig
     const retries = Number(config.__retryCount ?? 0)
-    if (!isRetryableTransportError(error) || retries >= 1) {
+    const maxRetries = 3
+    if (!isRetryableTransportError(error) || retries >= maxRetries) {
       return Promise.reject(error)
     }
 
     config.__retryCount = retries + 1
-    const delayMs = Math.max(50, Number(config.__retryDelayMs ?? 180))
+    const baseDelayMs = Math.max(80, Number(config.__retryDelayMs ?? 160))
+    const delayMs = baseDelayMs * (retries + 1)
+    const params = { ...(config.params ?? {}) }
+    params.__retryTs = Date.now()
+    config.params = params
+
     await new Promise(resolve => setTimeout(resolve, delayMs))
     return http.request(config)
   },

@@ -353,7 +353,17 @@ export const useChannelStore = defineStore("channelStore", () => {
         : (Array.isArray((data as ChannelListDto).items)
           ? (data as ChannelListDto).items
           : [])
-      channels.value = payload.map(dto => normalizeChannel(dto))
+      const existingByDeviceAndIndex = new Map<string, Channel>()
+      channels.value.forEach((channel) => {
+        existingByDeviceAndIndex.set(channelKey(channel.device_id, channel.index), channel)
+      })
+
+      channels.value = payload
+        .map(dto => normalizeChannel(dto))
+        .map((next) => {
+          const previous = existingByDeviceAndIndex.get(channelKey(next.device_id, next.index))
+          return preserveRuntimeState(next, previous)
+        })
       rebuildChannelIndexes()
       isLoaded.value = true
       logger.info(`📡 Loaded ${payload.length} channels`)

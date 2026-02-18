@@ -89,6 +89,13 @@ export const SignalSheetAPI = {
     return http.get<SignalAllocationJob>(`${API_V1}/workspaces/${workspaceId}/signal-allocation-jobs/${jobId}`)
   },
 
+  controlAllocationJob(workspaceId: number, jobId: string, action: "pause" | "resume" | "stop") {
+    return http.post<SignalAllocationJob>(
+      `${API_V1}/workspaces/${workspaceId}/signal-allocation-jobs/${jobId}/control`,
+      { action },
+    )
+  },
+
   ensureAllocated(workspaceId: number, payload: SignalAllocationEnsurePayload) {
     return http.post<SignalAllocationEnsureResponse>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/ensure`, payload)
   },

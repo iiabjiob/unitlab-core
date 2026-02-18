@@ -124,3 +124,7 @@ class SignalAllocationJobStatusSchema(BaseModel):
     result: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
+
+
+class SignalAllocationJobControlSchema(BaseModel):
+    action: str = Field(pattern="^(pause|resume|stop)$")

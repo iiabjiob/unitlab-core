@@ -140,7 +140,7 @@ export interface SignalAllocationJobEvent {
   job_id: string
   workspace_id: number
   operation: "auto_allocate" | "bulk_update" | string
-  status: "queued" | "running" | "succeeded" | "failed"
+  status: "queued" | "running" | "paused" | "cancelling" | "cancelled" | "succeeded" | "failed"
   progress_total: number
   progress_done: number
   message: string | null
