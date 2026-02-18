@@ -11,16 +11,17 @@ type Waiter = {
   resolve: (job: SignalAllocationJob) => void
   reject: (error: Error) => void
   timer: ReturnType<typeof setTimeout>
+  workspaceId: number
 }
 
 const STATUS_RANK: Record<string, number> = {
   queued: 1,
   running: 2,
-  paused: 2,
-  cancelling: 3,
-  succeeded: 4,
-  failed: 4,
-  cancelled: 4,
+  paused: 3,
+  cancelling: 4,
+  succeeded: 5,
+  failed: 5,
+  cancelled: 5,
 }
 
 function statusRank(status: string): number {
@@ -53,13 +54,25 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
         return job.workspace_id === activeWorkspaceId.value
       })
       .filter(job => ["queued", "running", "paused", "cancelling"].includes(job.status))
-      .sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)))
   ))
+
+  const latestActiveJob = computed<SignalAllocationJob | null>(() => {
+    let latest: SignalAllocationJob | null = null
+    let latestUpdatedAt = -1
+    activeJobs.value.forEach((job) => {
+      const updatedAt = toMillis(job.updated_at)
+      if (updatedAt >= latestUpdatedAt) {
+        latest = job
+        latestUpdatedAt = updatedAt
+      }
+    })
+    return latest
+  })
 
   const isAnyRunning = computed(() => activeJobs.value.length > 0)
 
   const progressText = computed(() => {
-    const top = activeJobs.value[0]
+    const top = latestActiveJob.value
     if (!top) return null
     const total = Math.max(0, Number(top.progress_total ?? 0))
     const done = Math.max(0, Number(top.progress_done ?? 0))
@@ -107,10 +120,18 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
     if (allJobs.length <= maxItems) {
       return
     }
-    const sorted = allJobs
+
+    const activeJobCount = allJobs.filter(job => !isTerminalStatus(job.status)).length
+    const terminalKeepCount = Math.max(0, maxItems - activeJobCount)
+
+    const terminalJobsToRemove = allJobs
+      .filter(job => isTerminalStatus(job.status))
       .sort((left, right) => toMillis(right.updated_at) - toMillis(left.updated_at))
-      .slice(0, maxItems)
-    jobsById.value = Object.fromEntries(sorted.map(job => [job.job_id, job]))
+      .slice(terminalKeepCount)
+
+    terminalJobsToRemove.forEach((job) => {
+      delete jobsById.value[job.job_id]
+    })
   }
 
   function upsertJob(job: SignalAllocationJob) {
@@ -125,13 +146,10 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
         : (existing?.result ?? {})
     )
 
-    jobsById.value = {
-      ...jobsById.value,
-      [job.job_id]: {
-        ...existing,
-        ...job,
-        result: mergedResult,
-      },
+    jobsById.value[job.job_id] = {
+      ...existing,
+      ...job,
+      result: mergedResult,
     }
 
     compactFinishedJobs()
@@ -217,11 +235,11 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
 
           const snapshot = refreshed ?? jobsById.value[jobId]
           const suffix = snapshot ? ` (last status: ${snapshot.status})` : ""
-          reject(new Error(`Signal allocation job update timeout${suffix}`))
+          reject(new Error(`Signal allocation job update timeout; job may still continue in background${suffix}`))
         })()
       }, timeoutMs)
 
-      waiters.set(jobId, { resolve, reject, timer })
+      waiters.set(jobId, { resolve, reject, timer, workspaceId })
     })
   }
 
@@ -259,6 +277,15 @@ export const useSignalAllocationJobStore = defineStore("signalAllocationJobStore
   }
 
   function clearWorkspaceJobs(workspaceId: number) {
+    waiters.forEach((waiter, jobId) => {
+      if (waiter.workspaceId !== workspaceId) {
+        return
+      }
+      clearTimeout(waiter.timer)
+      waiter.reject(new Error("Workspace cleared"))
+      waiters.delete(jobId)
+    })
+
     const next: Record<string, SignalAllocationJob> = {}
     Object.values(jobsById.value).forEach((job) => {
       if (job.workspace_id !== workspaceId) {

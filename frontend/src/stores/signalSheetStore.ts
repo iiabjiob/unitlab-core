@@ -15,6 +15,7 @@ import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { getLogger } from "@/utils/logger"
+import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
 
 const logger = getLogger("SIGNAL_SHEET")
 
@@ -65,12 +66,12 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     return typeof value === "number" && Number.isFinite(value)
   }
 
-  function isAllocatedChannelId(value: unknown): boolean {
-    return isFiniteChannelId(value)
+  function isAllocatedChannelId(value: unknown): value is number {
+    return typeof value === "number" && Number.isInteger(value) && value > 0
   }
 
   function normalizeChannelId(value: unknown): number | null {
-    return isFiniteChannelId(value) ? value : null
+    return isAllocatedChannelId(value) ? value : null
   }
 
   function cloneAllocationRow(row: SignalAllocationRow): SignalAllocationRow {
@@ -96,23 +97,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     })
   }
 
-  function normalizeDirection(value: unknown): "DI" | "DO" | "AI" | "AO" | null {
-    const normalized = String(value ?? "").trim().toUpperCase()
-    if (normalized === "DI" || normalized === "DO" || normalized === "AI" || normalized === "AO") {
-      return normalized
-    }
-    return null
-  }
-
-  function requiredChannelTypeForDirection(value: unknown): "di" | "do" | "ai" | "ao" | null {
-    const direction = normalizeDirection(value)
-    if (direction === "DI") return "di"
-    if (direction === "DO") return "do"
-    if (direction === "AI") return "ai"
-    if (direction === "AO") return "ao"
-    return null
-  }
-
   function normalizedChannelType(value: unknown): "di" | "do" | "ai" | "ao" | null {
     const normalized = String(value ?? "").trim().toLowerCase()
     if (normalized.startsWith("di")) return "di"
@@ -120,11 +104,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     if (normalized.startsWith("ai")) return "ai"
     if (normalized.startsWith("ao")) return "ao"
     return null
-  }
-
-  function isDeviceOnline(deviceId: number): boolean {
-    const device = deviceStore.devices.find(item => item.id === deviceId)
-    return device?.status === "online"
   }
 
   function resolveAutoAllocateAssignments(payload: SignalAutoAllocatePayload): Array<{ signalId: number; channelId: number }> {
@@ -168,9 +147,16 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       })
     }
 
+    const deviceOnlineById = new Map<number, boolean>()
+    if (preferOnline) {
+      deviceStore.devices.forEach((device) => {
+        deviceOnlineById.set(device.id, device.status === "online")
+      })
+    }
+
     const sortedChannels = [...channelStore.channels].sort((left, right) => {
-      const onlineLeft = preferOnline && isDeviceOnline(left.device_id) ? 0 : 1
-      const onlineRight = preferOnline && isDeviceOnline(right.device_id) ? 0 : 1
+      const onlineLeft = preferOnline && deviceOnlineById.get(left.device_id) ? 0 : 1
+      const onlineRight = preferOnline && deviceOnlineById.get(right.device_id) ? 0 : 1
       if (onlineLeft !== onlineRight) {
         return onlineLeft - onlineRight
       }
@@ -208,7 +194,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         return
       }
 
-      const requiredType = requiredChannelTypeForDirection(row.signal_direction)
+      const requiredType = resolveRuntimeChannelTypeForSignal(String(row.signal_direction ?? ""))
       if (!requiredType) {
         return
       }
@@ -226,6 +212,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
 
       if (existingChannelId === candidate.id) {
         usedChannelIds.add(candidate.id)
+        nextChannelIndexByType[requiredType] = cursor + 1
         return
       }
 
@@ -252,10 +239,10 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     })
   }
 
-  function replaceAllocationRows(rows: SignalAllocationRow[]) {
+  function replaceAllocationRows(rows: SignalAllocationRow[], changedSignalIds: readonly number[] = []) {
     allocationRows.value = rows
     rebuildAllocationIndexes()
-    setRecentlyChangedSignalIds(rows.map(row => row.signal_id))
+    setRecentlyChangedSignalIds(changedSignalIds)
     bumpAllocationRevision()
   }
 
@@ -370,7 +357,15 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
 
     const previousAllocated = isAllocatedChannelId(currentRow.channel_id)
     const previousChannelId = normalizeChannelId(currentRow.channel_id)
-    const nextChannelId = isFiniteChannelId(nextChannelIdRaw) ? nextChannelIdRaw : null
+    const nextChannelId = normalizeChannelId(nextChannelIdRaw)
+
+    if (nextChannelId !== null) {
+      const existingOwnerSignalId = allocationOwnerByChannelId.get(nextChannelId)
+      if (existingOwnerSignalId !== undefined && existingOwnerSignalId !== signalId) {
+        return
+      }
+    }
+
     const nextRow: SignalAllocationRow = { ...currentRow }
 
     if (nextChannelId === null) {
@@ -437,7 +432,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       allocationIndexBySignalId.has(signalId) && serverBySignalId.has(signalId)
     ))
     if (!canPatchInPlace) {
-      replaceAllocationRows(serverRows)
+      replaceAllocationRows(serverRows, signalIds)
       recomputeSheetAllocatedCount()
       return
     }
@@ -450,13 +445,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       if (!targetRow) return
       const previousAllocated = isAllocatedChannelId(targetRow.channel_id)
       const previousChannelId = normalizeChannelId(targetRow.channel_id)
-      const nextRow = {
-        ...targetRow,
-        ...serverRow,
-        signal_metadata: serverRow.signal_metadata && typeof serverRow.signal_metadata === "object"
-          ? { ...serverRow.signal_metadata }
-          : {},
-      }
+      const nextRow = cloneAllocationRow(serverRow)
       allocationRows.value[rowIndex] = nextRow
       if (previousChannelId !== null && allocationOwnerByChannelId.get(previousChannelId) === signalId) {
         allocationOwnerByChannelId.delete(previousChannelId)
@@ -598,7 +587,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
 
     const deduped = new Map<number, number | null>()
     entries.forEach((entry) => {
-      const normalizedChannelId = isFiniteChannelId(entry.channel_id) ? entry.channel_id : null
+      const normalizedChannelId = normalizeChannelId(entry.channel_id)
       deduped.set(entry.signal_id, normalizedChannelId)
     })
 
@@ -611,7 +600,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       if (rowIndex === undefined) return true
       const row = allocationRows.value[rowIndex]
       if (!row) return true
-      const current = isFiniteChannelId(row.channel_id) ? row.channel_id : null
+      const current = normalizeChannelId(row.channel_id)
       return current !== entry.channel_id
     })
     if (!effectiveEntries.length) {
@@ -667,6 +656,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       if (stillCurrentSignalIds.length > 0) {
         applyServerAllocationPatch(data, stillCurrentSignalIds)
       }
+      recomputeSheetAllocatedCount()
       return allocationRows.value
     } catch (error) {
       const rollbackEntries = Array.from(affectedSignalVersions.keys())
@@ -709,6 +699,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
           await yieldToEventLoop()
         }
       }
+      recomputeSheetAllocatedCount()
       bumpAllocationRevision()
       throw error
     } finally {

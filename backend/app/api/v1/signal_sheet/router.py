@@ -311,11 +311,20 @@ async def enqueue_signal_test_run_job(
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    snapshot = await create_signal_allocation_job(
-        workspace_id=workspace_id,
-        operation="test_run",
-        payload=payload.model_dump(),
-    )
+    if len(payload.signal_ids) > settings.signal_test_run_max_signals:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many signals for test run (max {settings.signal_test_run_max_signals})",
+        )
+
+    try:
+        snapshot = await create_signal_allocation_job(
+            workspace_id=workspace_id,
+            operation="test_run",
+            payload=payload.model_dump(),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     await WsEventPublisher.publish(SignalAllocationJobEvent(**snapshot))
     return SignalAllocationJobStatusSchema.model_validate(snapshot)
 

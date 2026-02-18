@@ -101,7 +101,7 @@
           :loading="loading"
           :value-label="allocationDisplayLabel(asAllocationRow(row))"
           :value-class="allocationValueClass(asAllocationRow(row))"
-          :channel-groups="channelGroupsForRow(asAllocationRow(row))"
+          :channel-groups-resolver="channelGroupsResolverForRow(asAllocationRow(row))"
           :unit-status-by-id="unitStatusById"
           @allocate="channelId => handleAllocationPickerSelect(asAllocationRow(row), channelId)"
         />
@@ -122,7 +122,7 @@
           v-else-if="column.key === 'last_tested_at'"
           class="text-xs text-neutral-700 dark:text-neutral-100"
         >
-          {{ formatTestedAt(value) }}
+          {{ formatTestedAt(resolveLastTestedAtValue(asAllocationRow(row), value)) }}
         </span>
 
         <span v-else class="text-xs text-neutral-700 dark:text-neutral-100">{{ formatCell(value) }}</span>
@@ -154,6 +154,7 @@ import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
 
 const signalSheetStore = useSignalSheetStore()
 const workspaceStore = useWorkspaceStore()
@@ -185,6 +186,11 @@ const testRunSucceeded = ref(0)
 const testRunSkipped = ref(0)
 const testRunControlBusy = ref(false)
 const testRunStartedAtMs = ref<number | null>(null)
+const testedAtOverlayBySignalId = shallowRef<Map<number, string>>(new Map())
+const pendingTestedAtOverlayBySignalId = new Map<number, string>()
+let testedAtOverlayFlushTimer: ReturnType<typeof setTimeout> | null = null
+const TESTED_AT_OVERLAY_FLUSH_MS = 120
+const MAX_RESTORED_SELECTION_KEYS = 2000
 
 type LastTestSummary = {
   jobId: string
@@ -295,7 +301,9 @@ function restoreSelectedRowKeysFromStorage() {
     }
     selectedRowKeys.value = parsed
       .map(item => String(item).trim())
+      .filter(item => /^signal-\d+$/.test(item))
       .filter(item => item.length > 0)
+      .slice(0, MAX_RESTORED_SELECTION_KEYS)
   } catch {
     selectedRowKeys.value = []
   }
@@ -413,7 +421,7 @@ const selectedAllocatableUnassignedSignalIds = computed(() => (
   selectedAllocationRows.value
     .filter((row) => !Number.isFinite(row.channel_id as number))
     .filter((row) => {
-      const required = requiredChannelType(row.signal_direction)
+      const required = resolveRuntimeChannelTypeForSignal(row.signal_direction)
       if (!required) {
         return false
       }
@@ -564,6 +572,8 @@ const isStoppingActiveTestRun = computed(() => activeTestRunJob.value?.status ==
 watch(activeTestRunJob, (job) => {
   if (!job) {
     testRunInProgress.value = false
+    flushTestedAtOverlayBatch()
+    clearTestedAtOverlay()
     return
   }
 
@@ -604,6 +614,7 @@ const gridColumns = computed(() => {
 const gridRows = shallowRef<GridRow[]>([])
 const gridRowBySignalId = new Map<number, GridRow>()
 const gridRowIndexBySignalId = new Map<number, number>()
+const channelGroupsResolverBySignalId = new Map<number, () => ChannelOptionGroup[]>()
 
 type GridRow = Record<string, unknown>
 type ChannelOption = { id: number; label: string; disabled: boolean }
@@ -622,6 +633,58 @@ function assignDynamicGridFields(payload: GridRow, row: SignalAllocationRow) {
   payload.control = ""
 }
 
+function flushTestedAtOverlayBatch() {
+  if (testedAtOverlayFlushTimer !== null) {
+    clearTimeout(testedAtOverlayFlushTimer)
+    testedAtOverlayFlushTimer = null
+  }
+  if (pendingTestedAtOverlayBySignalId.size === 0) {
+    return
+  }
+
+  const overlay = testedAtOverlayBySignalId.value
+  pendingTestedAtOverlayBySignalId.forEach((testedAtIso, signalId) => {
+    overlay.set(signalId, testedAtIso)
+  })
+  pendingTestedAtOverlayBySignalId.clear()
+  triggerRef(testedAtOverlayBySignalId)
+}
+
+function queueTestedAtOverlay(signalIds: readonly number[]) {
+  if (!signalIds.length) {
+    return
+  }
+
+  signalIds.forEach((signalId) => {
+    const row = findAllocationRowBySignalId(signalId)
+    if (!row) return
+    const testedAtIso = String(row.tested_at ?? "").trim()
+    if (!testedAtIso) return
+    pendingTestedAtOverlayBySignalId.set(signalId, testedAtIso)
+  })
+
+  if (pendingTestedAtOverlayBySignalId.size === 0 || testedAtOverlayFlushTimer !== null) {
+    return
+  }
+
+  testedAtOverlayFlushTimer = setTimeout(() => {
+    flushTestedAtOverlayBatch()
+  }, TESTED_AT_OVERLAY_FLUSH_MS)
+}
+
+function clearTestedAtOverlay() {
+  pendingTestedAtOverlayBySignalId.clear()
+  if (testedAtOverlayFlushTimer !== null) {
+    clearTimeout(testedAtOverlayFlushTimer)
+    testedAtOverlayFlushTimer = null
+  }
+  if (testedAtOverlayBySignalId.value.size === 0) {
+    return
+  }
+  testedAtOverlayBySignalId.value.clear()
+  triggerRef(testedAtOverlayBySignalId)
+}
+
 function createGridRow(row: SignalAllocationRow, headers: readonly string[]): GridRow {
   const payload: GridRow = {}
   assignDynamicGridFields(payload, row)
@@ -635,15 +698,23 @@ function createGridRow(row: SignalAllocationRow, headers: readonly string[]): Gr
 function rebuildGridRows() {
   const headers = sourceColumnHeaders.value
   const nextRows: GridRow[] = []
+  const activeSignalIds = new Set<number>()
   gridRowBySignalId.clear()
   gridRowIndexBySignalId.clear()
 
   allocationRows.value.forEach((row, index) => {
     const signalId = row.signal_id
+    activeSignalIds.add(signalId)
     const payload = createGridRow(row, headers)
     gridRowBySignalId.set(signalId, payload)
     gridRowIndexBySignalId.set(signalId, index)
     nextRows.push(payload)
+  })
+
+  channelGroupsResolverBySignalId.forEach((_, signalId) => {
+    if (!activeSignalIds.has(signalId)) {
+      channelGroupsResolverBySignalId.delete(signalId)
+    }
   })
 
   if (selectedRowKeys.value.length > 0) {
@@ -703,6 +774,17 @@ function asAllocationRow(row: GridRow): SignalAllocationRow {
 
 function rowKey(row: Record<string, unknown>) {
   return String(row.rowId)
+}
+
+function resolveLastTestedAtValue(row: SignalAllocationRow, fallback: unknown): unknown {
+  const signalId = Number(row.signal_id)
+  if (Number.isFinite(signalId)) {
+    const overlay = testedAtOverlayBySignalId.value.get(signalId)
+    if (overlay) {
+      return overlay
+    }
+  }
+  return fallback
 }
 
 function formatCell(value: unknown) {
@@ -962,15 +1044,6 @@ function exportSignalReport() {
   toastStore.success(`Report exported: tested ${tested}, remaining ${remaining}, total ${total}`)
 }
 
-function requiredChannelType(signalDirection: string): "di" | "do" | "ai" | "ao" | null {
-  const normalized = signalDirection.trim().toUpperCase()
-  if (normalized === "DI") return "do"
-  if (normalized === "DO") return "di"
-  if (normalized === "AI") return "ao"
-  if (normalized === "AO") return "ai"
-  return null
-}
-
 function normalizedChannelType(raw: string | null | undefined): "di" | "do" | "ai" | "ao" | null {
   const value = String(raw || "").trim().toLowerCase()
   if (value.startsWith("di")) return "di"
@@ -981,7 +1054,7 @@ function normalizedChannelType(raw: string | null | undefined): "di" | "do" | "a
 }
 
 function channelOptionsBySignal(signalDirection: string): ChannelOption[] {
-  const needed = requiredChannelType(signalDirection)
+  const needed = resolveRuntimeChannelTypeForSignal(signalDirection)
   if (!needed) return []
   return channelOptionsByType.value[needed] ?? []
 }
@@ -1005,9 +1078,10 @@ const channelOptionsByType = computed<Record<"di" | "do" | "ai" | "ao", ChannelO
   sortedChannels.forEach((channel) => {
     const type = normalizedChannelType(channel.type)
     if (!type) return
+    const unitId = channelStore.resolveUnitId(channel.device_id) || `Device ${channel.device_id}`
     grouped[type].push({
       id: channel.id,
-      label: `${channelStore.resolveUnitId(channel.device_id)}/ch${channel.index + 1}`,
+      label: `${unitId}/ch${channel.index + 1}`,
       disabled: false,
     })
   })
@@ -1042,16 +1116,25 @@ function buildChannelGroupsForRow(row: SignalAllocationRow): ChannelOptionGroup[
     .map(([unitId, options]) => ({ unitId, options }))
 }
 
-const channelGroupsBySignalId = computed(() => {
-  const map = new Map<number, ChannelOptionGroup[]>()
-  allocationRows.value.forEach((row) => {
-    map.set(row.signal_id, buildChannelGroupsForRow(row))
-  })
-  return map
-})
-
 function channelGroupsForRow(row: SignalAllocationRow): ChannelOptionGroup[] {
-  return channelGroupsBySignalId.value.get(row.signal_id) ?? []
+  return buildChannelGroupsForRow(row)
+}
+
+function channelGroupsResolverForRow(row: SignalAllocationRow): () => ChannelOptionGroup[] {
+  const signalId = Number(row.signal_id)
+  let resolver = channelGroupsResolverBySignalId.get(signalId)
+  if (resolver) {
+    return resolver
+  }
+  resolver = () => {
+    const currentRow = findAllocationRowBySignalId(signalId)
+    if (!currentRow) {
+      return []
+    }
+    return channelGroupsForRow(currentRow)
+  }
+  channelGroupsResolverBySignalId.set(signalId, resolver)
+  return resolver
 }
 
 function setAllocationForRow(row: SignalAllocationRow, nextChannelId: number | null) {
@@ -1069,7 +1152,7 @@ function handleAllocationPickerSelect(row: SignalAllocationRow, channelId: numbe
   if (Number.isFinite(channelId as number)) {
     const channel = channelMap.value.get(Number(channelId))
     const selectedType = normalizedChannelType(channel?.type)
-    const neededType = requiredChannelType(row.signal_direction)
+    const neededType = resolveRuntimeChannelTypeForSignal(row.signal_direction)
     if (neededType && selectedType && selectedType !== neededType) {
       toastStore.error(`Invalid mapping: ${row.signal_direction} must be allocated to ${neededType.toUpperCase()} channel.`)
       return
@@ -1079,12 +1162,12 @@ function handleAllocationPickerSelect(row: SignalAllocationRow, channelId: numbe
 }
 
 function allocationDisplayLabel(row: SignalAllocationRow): string {
+  if (row.channel_label && row.channel_label.trim().length > 0) {
+    return row.channel_label
+  }
   if (Number.isFinite(row.channel_index as number)) {
     const channelSuffix = `ch${Number(row.channel_index) + 1}`
     return row.unit_id?.trim() ? `${row.unit_id}/${channelSuffix}` : channelSuffix
-  }
-  if (row.channel_label && row.channel_label.trim().length > 0) {
-    return row.channel_label
   }
   return "—"
 }
@@ -1685,19 +1768,20 @@ watch(
 )
 
 watch(
-  () => allocationRows.value.length,
+  () => allocationRevision.value,
   () => {
-    rebuildGridRows()
-  },
-  { immediate: true, flush: "post" },
-)
-
-watch(
-  recentlyChangedSignalIds,
-  (signalIds) => {
+    const signalIds = recentlyChangedSignalIds.value
+    if (isTestRunBusy.value) {
+      queueTestedAtOverlay(signalIds)
+      return
+    }
+    if (!signalIds.length) {
+      rebuildGridRows()
+      return
+    }
     syncGridRowsBySignalIds(signalIds)
   },
-  { flush: "post" },
+  { immediate: true, flush: "post" },
 )
 
 function syncRealtimeUnitScope() {
@@ -1778,6 +1862,8 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  clearTestedAtOverlay()
+  channelGroupsResolverBySignalId.clear()
   if (realtimeScopeSyncFrame !== null) {
     cancelAnimationFrame(realtimeScopeSyncFrame)
     realtimeScopeSyncFrame = null

@@ -40,13 +40,18 @@ For one-click startup in VS Code, run task `backend: start all` (Terminal → Ru
 	```bash
 	uv run python -m app.workers.signal_allocation_runner
 	```
+8. **Signal test-run runner** (consumes `signal-test-run:jobs`, executes long-running test toggles):
+	```bash
+	uv run python -m app.workers.signal_test_run_runner
+	```
 
 FastAPI subscribes to `ws:events` and forwards every payload to connected WebSocket clients.
 
 ### Signal allocation + test run pipeline
 
-- REST endpoints enqueue jobs into Redis stream `signal-allocation:jobs`.
-- `app.workers.signal_allocation_runner` is the single consumer that executes operations and updates job state.
+- REST endpoints enqueue allocation jobs into `signal-allocation:jobs` and test-run jobs into `signal-test-run:jobs`.
+- `app.workers.signal_allocation_runner` executes fast allocation operations (`auto_allocate`, `bulk_update`).
+- `app.workers.signal_test_run_runner` executes slow `test_run` operations independently.
 - Job lifecycle (`queued` → `running` → `succeeded`/`failed`) is published to WebSocket channel as `signal_allocation_job` events.
 - Frontend waits for terminal job events and then refreshes allocations once.
 

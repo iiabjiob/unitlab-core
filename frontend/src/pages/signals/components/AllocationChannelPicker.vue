@@ -101,7 +101,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, watch, type ComponentPublicInstance } from "vue"
+import { computed, nextTick, ref, watch, type ComponentPublicInstance } from "vue"
 import { useFloatingPopover, usePopoverController } from "@affino/popover-vue"
 import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
 
@@ -116,7 +116,8 @@ const props = defineProps<{
   loading: boolean
   valueLabel: string
   valueClass: string
-  channelGroups: ChannelOptionGroup[]
+  channelGroups?: ChannelOptionGroup[]
+  channelGroupsResolver?: () => ChannelOptionGroup[]
   unitStatusById: Record<string, string>
 }>()
 
@@ -147,6 +148,16 @@ const tree = useTreeviewController<NodeValue>({
   loop: true,
 })
 
+const activeChannelGroups = ref<ChannelOptionGroup[]>([])
+
+function resolveChannelGroups(): ChannelOptionGroup[] {
+  if (typeof props.channelGroupsResolver === "function") {
+    const resolved = props.channelGroupsResolver()
+    return Array.isArray(resolved) ? resolved : []
+  }
+  return Array.isArray(props.channelGroups) ? props.channelGroups : []
+}
+
 const parentByValue = computed(() => {
   const map = new Map<NodeValue, NodeValue | null>()
   treeNodes.value.forEach((node) => map.set(node.value, node.parent))
@@ -165,7 +176,7 @@ const childrenByParent = computed(() => {
 
 const nodeMeta = computed(() => {
   const map = new Map<NodeValue, { label: string; disabled: boolean }>()
-  props.channelGroups.forEach((group) => {
+  activeChannelGroups.value.forEach((group) => {
     const unitValue = toUnitNodeValue(group.unitId)
     map.set(unitValue, { label: `${group.unitId} (${group.options.length})`, disabled: false })
     group.options.forEach((option) => {
@@ -183,7 +194,7 @@ const expandedSet = computed(() => new Set(tree.state.value.expanded))
 
 const treeNodes = computed<TreeviewNode<NodeValue>[]>(() => {
   const nodes: TreeviewNode<NodeValue>[] = []
-  props.channelGroups.forEach((group) => {
+  activeChannelGroups.value.forEach((group) => {
     const unitValue = toUnitNodeValue(group.unitId)
     nodes.push({ value: unitValue, parent: null })
     group.options.forEach((option) => {
@@ -214,9 +225,13 @@ watch(
 watch(
   () => popover.state.value.open,
   async (open) => {
-    if (!open) return
+    if (!open) {
+      activeChannelGroups.value = []
+      return
+    }
+    activeChannelGroups.value = resolveChannelGroups()
     // Default state: all unit nodes collapsed on each open.
-    props.channelGroups.forEach((group) => {
+    activeChannelGroups.value.forEach((group) => {
       tree.collapse(toUnitNodeValue(group.unitId))
     })
     tree.clearSelection()

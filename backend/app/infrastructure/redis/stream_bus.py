@@ -143,6 +143,16 @@ async def enqueue_signal_allocation_job(payload: Dict[str, Any]) -> str:
     )
 
 
+async def enqueue_signal_test_run_job(payload: Dict[str, Any]) -> str:
+    redis = RedisManager.get_instance()
+    return await redis.xadd(
+        settings.signal_test_run_job_stream,
+        _wrap_payload(payload),
+        maxlen=settings.signal_test_run_job_stream_maxlen,
+        approximate=True,
+    )
+
+
 def parse_signal_allocation_job_entry(entry: StreamEntry) -> Tuple[str, Dict[str, Any]]:
     return _unwrap_payload(entry)
 

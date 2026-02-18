@@ -210,6 +210,7 @@ import {
 } from "@affino/menu-vue"
 
 import UiButton from "@/components/ui/UiButton.vue"
+import InlineInfoTooltip from "@/components/ui/InlineInfoTooltip.vue"
 
 const props = defineProps<{
   summaryText: string

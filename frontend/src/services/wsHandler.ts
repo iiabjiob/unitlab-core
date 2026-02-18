@@ -5,6 +5,7 @@ import { getLogger } from '@/utils/logger'
 import { useSequenceStore } from '@/stores/sequenceStore'
 import { useSystemHealthStore } from '@/stores/systemHealthStore'
 import { useSignalAllocationJobStore } from '@/stores/signalAllocationJobStore'
+import { useSignalSheetStore } from '@/stores/signalSheetStore'
 
 const logger = getLogger('ws')
 
@@ -26,6 +27,7 @@ export function handleWsEvent(event: WSEvent) {
   const sequenceStore = useSequenceStore()
   const systemHealthStore = useSystemHealthStore()
   const signalAllocationJobStore = useSignalAllocationJobStore()
+  const signalSheetStore = useSignalSheetStore()
 
   // Route sequence events into the sequence store so realtime progress stays in sync.
   if ('topic' in event && (event as SequenceWsEvent).topic === 'sequence') {
@@ -48,6 +50,16 @@ export function handleWsEvent(event: WSEvent) {
         const jobEvent = channelEvent as SignalAllocationJobEvent
         logger.debug("📡 IN ← SIGNAL_ALLOCATION_JOB:", jobEvent)
         signalAllocationJobStore.applyJobEvent(jobEvent)
+
+        if (String(jobEvent.operation) === "test_run") {
+          const result = (jobEvent.result ?? {}) as Record<string, unknown>
+          const testedAtPatch = ["tested_at_patch", "tested_at_by_signal"]
+            .map(key => result[key])
+            .find(value => value && typeof value === "object" && !Array.isArray(value))
+          if (testedAtPatch && typeof testedAtPatch === "object") {
+            signalSheetStore.applyTestedAtBySignalPatch(testedAtPatch as Record<string, string>)
+          }
+        }
         break
       }
       logger.warn("⚠️ Unknown SYSTEM_INFO payload", sysEvent)
