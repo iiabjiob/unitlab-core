@@ -289,7 +289,7 @@
         >
           <div class="ui-affino-grid__main-canvas">
             <div class="ui-affino-grid__canvas">
-              <div ref="headerRowRef" class="ui-affino-grid__row ui-affino-grid__row--header">
+              <div ref="headerRowRef" class="ui-affino-grid__row ui-affino-grid__row--header" @wheel="handleMainHeaderWheel">
                 <div
                   v-if="leftSpacerPx > 0"
                   class="ui-affino-grid__spacer"
@@ -325,7 +325,7 @@
                 ></div>
               </div>
 
-              <div v-if="showFilterRow" ref="filterRowRef" class="ui-affino-grid__row ui-affino-grid__row--filter">
+              <div v-if="showFilterRow" ref="filterRowRef" class="ui-affino-grid__row ui-affino-grid__row--filter" @wheel="handleMainHeaderWheel">
                 <div
                   v-if="leftSpacerPx > 0"
                   class="ui-affino-grid__spacer"
@@ -1850,6 +1850,10 @@ function handleLinkedViewportWheel(event: WheelEvent) {
 }
 
 function handleBodyViewportWheel(event: WheelEvent) {
+  managedWheelScroll.onBodyViewportWheel(event)
+}
+
+function handleMainHeaderWheel(event: WheelEvent) {
   managedWheelScroll.onBodyViewportWheel(event)
 }
 

@@ -10,6 +10,8 @@ The transport layer is now split into standalone workers, so FastAPI stays a thi
 
 Before running any of the commands below in a devcontainer, activate the backend Python environment (e.g. `cd backend && source .venv/bin/activate`) or prefix commands with `uv run` so they reuse the managed virtualenv.
 
+For one-click startup in VS Code, run task `backend: start all` (Terminal → Run Task). It launches all processes below in parallel, each in its own dedicated terminal.
+
 1. FastAPI (REST + WebSockets):
 	```bash
 	uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --workers 4
