@@ -2,6 +2,7 @@
 import SidebarListItem from "@/components/ui/SidebarListItem.vue"
 import type { Device } from "@/types/device"
 import { computed, ref, watch } from "vue"
+import { useRouter } from "vue-router"
 import RenameModal from "@/components/ui/RenameModal.vue"
 import { useDeviceStore } from "@/stores/deviceStore"
 import {
@@ -18,6 +19,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ (e: "select", id: number): void }>()
 const deviceStore = useDeviceStore()
+const router = useRouter()
 const renameOpen = ref(false)
 const renameValue = ref(props.device.name ?? "")
 const renaming = ref(false)
@@ -92,6 +94,13 @@ function openContextMenu(event: MouseEvent) {
   controller.setAnchor({ x: event.clientX, y: event.clientY, width: 0, height: 0 })
   controller.open("pointer")
 }
+
+function openInNewTab() {
+  const resolved = router.resolve({ name: "devices.detail", params: { id: props.device.id } })
+  if (typeof window !== "undefined") {
+    window.open(resolved.href, "_blank", "noopener,noreferrer")
+  }
+}
 </script>
 
 <template>
@@ -113,6 +122,9 @@ function openContextMenu(event: MouseEvent) {
       </template>
     </SidebarListItem>
     <UiMenuContent>
+      <UiMenuItem class="text-neutral-900 dark:text-neutral-100" @select="openInNewTab">
+        Open in new tab
+      </UiMenuItem>
       <UiMenuItem class="text-neutral-900 dark:text-neutral-100" @select="openRename">
         Rename
       </UiMenuItem>

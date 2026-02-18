@@ -102,7 +102,7 @@ async def import_signal_sheet(
         )
 
     await signals_repo.replace_from_import(workspace_id, payload.signals)
-    await repo.cleanup_orphan_allocations(workspace_id)
+    await repo.clear_allocations(workspace_id)
 
     source_hash = hashlib.sha256(raw).hexdigest()
     await repo.upsert_sheet(

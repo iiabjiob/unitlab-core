@@ -93,6 +93,13 @@ function openContextMenu(event: MouseEvent) {
   controller.setAnchor({ x: event.clientX, y: event.clientY, width: 0, height: 0 })
   controller.open("pointer")
 }
+
+function openInNewTab() {
+  const resolved = router.resolve({ name: "switchgears.detail", params: { id: props.switchgear.id } })
+  if (typeof window !== "undefined") {
+    window.open(resolved.href, "_blank", "noopener,noreferrer")
+  }
+}
 </script>
 
 <template>
@@ -111,6 +118,9 @@ function openContextMenu(event: MouseEvent) {
       </template>
     </SidebarListItem>
     <UiMenuContent>
+      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openInNewTab">
+        Open in new tab
+      </UiMenuItem>
       <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openRename">
         Rename
       </UiMenuItem>

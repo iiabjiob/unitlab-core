@@ -20,8 +20,8 @@ Use Switchgear to bind command/feedback channels and send pair commands: **Open*
 2. Set all required roles:
 	- **Set OPEN position** (DO)
 	- **Set CLOSED position** (DO)
-	- **IED OPEN command** (DI)
-	- **IED CLOSE command** (DI)
+	- **OPEN command from BCU** (DI)
+	- **CLOSE command from BCU** (DI)
 3. For DI feedback rows, set **Feedback delay** when needed.
 4. Use **Reset** to restore default bindings for this switchgear.
 

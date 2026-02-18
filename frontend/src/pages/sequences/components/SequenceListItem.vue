@@ -123,6 +123,26 @@ async function duplicateSequence() {
   await router.push({ name: "instructions.detail", params: { id: duplicated.id } })
 }
 
+async function exportSequence() {
+  try {
+    const payload = await store.exportSequenceFile(props.sequence.id)
+    const json = JSON.stringify(payload, null, 2)
+    const blob = new Blob([json], { type: "application/json;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    const safeName = props.sequence.name.replace(/[^a-zA-Z0-9_-]/g, "_")
+    link.download = `${safeName || "sequence"}_${props.sequence.id}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toastStore.success("Instruction exported")
+  } catch (error) {
+    toastStore.error(error instanceof Error ? error.message : "Failed to export instruction")
+  }
+}
+
 async function confirmDelete() {
   await store.deleteSequence(props.sequence.id)
   deleteOpen.value = false
@@ -139,6 +159,13 @@ function openContextMenu(event: MouseEvent) {
   controller.setAnchor({ x: event.clientX, y: event.clientY, width: 0, height: 0 })
   controller.open("pointer")
 }
+
+function openInNewTab() {
+  const resolved = router.resolve({ name: "instructions.detail", params: { id: props.sequence.id } })
+  if (typeof window !== "undefined") {
+    window.open(resolved.href, "_blank", "noopener,noreferrer")
+  }
+}
 </script>
 
 <template>
@@ -149,6 +176,12 @@ function openContextMenu(event: MouseEvent) {
       </span>
     </SidebarListItem>
     <UiMenuContent>
+      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openInNewTab">
+        Open in new tab
+      </UiMenuItem>
+      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="exportSequence">
+        Export
+      </UiMenuItem>
       <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openRename">
         Rename
       </UiMenuItem>

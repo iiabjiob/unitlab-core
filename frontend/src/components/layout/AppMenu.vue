@@ -1,7 +1,8 @@
 <template>
   <nav
     ref="navRef"
-    class="flex-1 px-2 py-4 space-y-4 focus:outline-none"
+    class="flex-1 space-y-4 focus:outline-none"
+    :class="compact ? 'px-1 py-3' : 'px-2 py-4'"
     tabindex="0"
     role="listbox"
     aria-label="Primary navigation"
@@ -10,44 +11,90 @@
     @focus="handleNavFocus"
   >
     <div v-for="section in sections" :key="section.title" class="space-y-1">
-      <p class="px-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+      <p v-if="!compact" class="px-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
         {{ section.title }}
       </p>
       <div v-for="item in section.items" :key="item.to">
-        <button
-          :id="entryDomId(item.to)"
-          type="button"
-          role="option"
-          :aria-selected="isRouteActive(item.to)"
-          :tabindex="isEntryFocused(item.to) ? 0 : -1"
-          class="app-menu__entry block w-full rounded-xl pl-6 pr-3 py-2 text-left text-sm font-medium transition-all focus:outline-none"
-          :class="{
-            'is-active': isRouteHighlighted(item.to),
-            'is-focused': !isRouteHighlighted(item.to) && isEntryFocused(item.to),
-          }"
-          @focus="setFocusByRoute(item.to)"
-          @click="activateRoute(item.to)"
-        >
-          {{ item.label }}
-        </button>
-        <button
+        <RouterLink :to="item.to" custom v-slot="{ href, navigate }">
+          <UiHoverTooltip
+            :text="item.label"
+            :disabled="!compact"
+            placement="right"
+            align="center"
+            v-slot="{ setTriggerRef, triggerProps }"
+          >
+            <a
+              :ref="setTriggerRef"
+              v-bind="triggerProps"
+              :id="entryDomId(item.to)"
+              role="option"
+              :aria-selected="isRouteActive(item.to)"
+              :tabindex="isEntryFocused(item.to) ? 0 : -1"
+              :href="href"
+              :title="!compact ? item.label : undefined"
+              :aria-label="item.label"
+              class="app-menu__entry block w-full rounded-xl py-2 text-sm font-medium transition-all focus:outline-none"
+              :class="[
+                compact ? 'px-0 text-center' : 'pl-6 pr-3 text-left',
+                {
+                  'is-active': isRouteHighlighted(item.to),
+                  'is-focused': !isRouteHighlighted(item.to) && isEntryFocused(item.to),
+                  'is-compact': compact,
+                },
+              ]"
+              @focus="setFocusByRoute(item.to)"
+              @click="event => handleEntryClick(event, item.to, navigate)"
+            >
+              <span class="inline-flex items-center" :class="compact ? 'justify-center w-full' : 'gap-2'">
+                <component :is="resolveRouteIcon(item.to)" class="h-5 w-5 shrink-0" aria-hidden="true" />
+                <span v-if="!compact">{{ item.label }}</span>
+              </span>
+            </a>
+          </UiHoverTooltip>
+        </RouterLink>
+        <RouterLink
           v-for="child in item.children ?? []"
-          :id="entryDomId(child.to)"
           :key="child.to"
-          type="button"
-          role="option"
-          :aria-selected="isRouteActive(child.to)"
-          :tabindex="isEntryFocused(child.to) ? 0 : -1"
-          class="app-menu__entry is-child mt-1 block w-full rounded-xl pl-10 pr-3 py-2 text-left text-sm font-medium transition-all focus:outline-none"
-          :class="{
-            'is-active': isRouteHighlighted(child.to),
-            'is-focused': !isRouteHighlighted(child.to) && isEntryFocused(child.to),
-          }"
-          @focus="setFocusByRoute(child.to)"
-          @click="activateRoute(child.to)"
+          :to="child.to"
+          custom
+          v-slot="{ href, navigate }"
         >
-          {{ child.label }}
-        </button>
+          <UiHoverTooltip
+            :text="child.label"
+            :disabled="!compact"
+            placement="right"
+            align="center"
+            v-slot="{ setTriggerRef, triggerProps }"
+          >
+            <a
+              :ref="setTriggerRef"
+              v-bind="triggerProps"
+              :id="entryDomId(child.to)"
+              role="option"
+              :aria-selected="isRouteActive(child.to)"
+              :tabindex="isEntryFocused(child.to) ? 0 : -1"
+              :href="href"
+              :title="!compact ? child.label : undefined"
+              :aria-label="child.label"
+              class="app-menu__entry is-child mt-1 block w-full rounded-xl py-2 text-sm font-medium transition-all focus:outline-none"
+              :class="[
+                compact ? 'px-0 text-center' : 'pl-10 pr-3 text-left',
+                {
+                  'is-active': isRouteHighlighted(child.to),
+                  'is-focused': !isRouteHighlighted(child.to) && isEntryFocused(child.to),
+                  'is-compact': compact,
+                },
+              ]"
+              @focus="setFocusByRoute(child.to)"
+              @click="event => handleEntryClick(event, child.to, navigate)"
+            >
+              <span class="inline-flex items-center" :class="compact ? 'justify-center w-full' : 'gap-2'">
+                <component :is="resolveRouteIcon(child.to)" class="h-5 w-5 shrink-0" aria-hidden="true" />
+                <span v-if="!compact">{{ child.label }}</span>
+              </span>
+            </a>
+          </UiHoverTooltip>
+        </RouterLink>
       </div>
     </div>
   </nav>
@@ -55,7 +102,18 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue"
-import { useRoute, useRouter } from "vue-router"
+import { RouterLink, useRoute, useRouter } from "vue-router"
+import HomeChipIcon from "@/components/icons/HomeChipIcon.vue"
+import HomeDocumentsIcon from "@/components/icons/HomeDocumentsIcon.vue"
+import HomeSwitchgearIcon from "@/components/icons/HomeSwitchgearIcon.vue"
+import HomeFlowStackIcon from "@/components/icons/HomeFlowStackIcon.vue"
+import UiHoverTooltip from "@/components/ui/UiHoverTooltip.vue"
+
+const props = withDefaults(defineProps<{
+  compact?: boolean
+}>(), {
+  compact: false,
+})
 
 type MenuItem = {
   to: string
@@ -160,6 +218,23 @@ function isEntryFocused(to: string): boolean {
   return focusedRoute.value === to
 }
 
+function resolveRouteIcon(to: string) {
+  const normalized = normalizePath(to)
+  if (normalized.startsWith("/devices")) {
+    return HomeChipIcon
+  }
+  if (normalized.startsWith("/signals")) {
+    return HomeDocumentsIcon
+  }
+  if (normalized.startsWith("/switchgears")) {
+    return HomeSwitchgearIcon
+  }
+  if (normalized.startsWith("/sequences")) {
+    return HomeFlowStackIcon
+  }
+  return HomeDocumentsIcon
+}
+
 function setFocusByRoute(to: string) {
   focusedRoute.value = to
 }
@@ -171,7 +246,7 @@ function moveFocus(delta: number) {
   const next = Math.max(0, Math.min(total - 1, base + delta))
   focusedRoute.value = menuEntries.value[next].to
   nextTick(() => {
-    const el = document.getElementById(entryDomId(menuEntries.value[next].to)) as HTMLButtonElement | null
+    const el = document.getElementById(entryDomId(menuEntries.value[next].to)) as HTMLAnchorElement | null
     el?.focus({ preventScroll: true })
   })
 }
@@ -184,6 +259,28 @@ function activateRoute(to: string) {
   })
 }
 
+function shouldHandleInPlaceNavigation(event: MouseEvent): boolean {
+  return (
+    event.button === 0
+    && !event.metaKey
+    && !event.altKey
+    && !event.ctrlKey
+    && !event.shiftKey
+  )
+}
+
+function handleEntryClick(event: MouseEvent, to: string, navigate: (event?: MouseEvent) => void) {
+  if (normalizePath(route.path) === normalizePath(to)) {
+    event.preventDefault()
+    return
+  }
+  if (!shouldHandleInPlaceNavigation(event)) {
+    return
+  }
+  pendingRoute.value = to
+  navigate(event)
+}
+
 function handleNavFocus() {
   if (!menuEntries.value.length) return
   if (!focusedRoute.value) {
@@ -192,7 +289,7 @@ function handleNavFocus() {
   nextTick(() => {
     const target = focusedRoute.value
     if (!target) return
-    const el = document.getElementById(entryDomId(target)) as HTMLButtonElement | null
+    const el = document.getElementById(entryDomId(target)) as HTMLAnchorElement | null
     el?.focus({ preventScroll: true })
   })
 }
@@ -233,6 +330,11 @@ function handleKeydown(event: KeyboardEvent) {
 <style scoped>
 .app-menu__entry {
   color: rgb(64 64 64);
+  user-select: none;
+}
+
+.app-menu__entry.is-compact {
+  min-height: 2.5rem;
 }
 
 .app-menu__entry:hover {

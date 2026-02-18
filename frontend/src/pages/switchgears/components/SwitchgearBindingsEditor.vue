@@ -40,12 +40,12 @@ const ROLE_META: Record<BindingRoleKey, {
     supportsDelay: false,
   },
   di_open: {
-    label: "IED OPEN command",
+    label: "OPEN command from BCU",
     channelType: CHANNEL_TYPES.DI,
     supportsDelay: true,
   },
   di_close: {
-    label: "IED CLOSE command",
+    label: "CLOSE command from BCU",
     channelType: CHANNEL_TYPES.DI,
     supportsDelay: true,
   },

@@ -21,6 +21,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, type PropType } from "vue"
 
+const emit = defineEmits<{
+  (e: "size-change", size: number): void
+}>()
+
 const props = defineProps({
   placement: { type: String as PropType<"left" | "right" | "top" | "bottom">, required: true },
   storageKey: String,
@@ -87,6 +91,7 @@ function startResize(e: MouseEvent) {
     let newSize = startSize + delta
     newSize = Math.max(props.minSize ?? 160, Math.min(props.maxSize ?? 400, newSize))
     size.value = newSize
+    emit("size-change", newSize)
   }
 
   function onMouseUp() {
@@ -107,7 +112,13 @@ function startResize(e: MouseEvent) {
 onMounted(() => {
   if (props.storageKey) {
     const saved = localStorage.getItem(props.storageKey)
-    if (saved) size.value = parseInt(saved)
+    if (saved) {
+      const parsed = Number.parseInt(saved, 10)
+      if (Number.isFinite(parsed)) {
+        size.value = Math.max(props.minSize ?? 160, Math.min(props.maxSize ?? 400, parsed))
+      }
+    }
   }
+  emit("size-change", size.value)
 })
 </script>

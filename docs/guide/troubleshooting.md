@@ -53,7 +53,7 @@ Symptoms:
 - Pending/timeout behavior, missing feedback transition.
 
 Checks:
-1. Verify DI feedback bindings (**IED OPEN command**, **IED CLOSE command**).
+1. Verify DI feedback bindings (**OPEN command from BCU**, **CLOSE command from BCU**).
 2. Check **Feedback delay** value for slow mechanics.
 3. Confirm physical equipment can actually move/change state.
 

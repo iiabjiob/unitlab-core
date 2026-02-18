@@ -8,10 +8,14 @@
         placement="left"
         storageKey="left-aside-width"
         :defaultSize="240"
-        :minSize="200"
+        :minSize="72"
         :maxSize="400"
+        @size-change="handleLeftAsideSizeChange"
       >
-        <AppAside class="border-r border-neutral-200 dark:border-neutral-700"/>
+        <AppAside
+          :compact="isAsideCompact"
+          class="border-r border-neutral-200 dark:border-neutral-700"
+        />
       </ResizablePanel>
 
       <!-- Center workspace (main + bottom log) -->
@@ -36,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref } from "vue"
 import { useRoute } from "vue-router"
 
 import AppAside from "./DesktopAside.vue"
@@ -48,5 +52,16 @@ const route = useRoute()
 const meta = computed(() => ({
   leftAside: route.meta.leftAside ?? true,
 }))
+
+const leftAsideWidth = ref(240)
+const ASIDE_COMPACT_THRESHOLD_PX = 228
+const isAsideCompact = computed(() => leftAsideWidth.value <= ASIDE_COMPACT_THRESHOLD_PX)
+
+function handleLeftAsideSizeChange(size: number) {
+  if (!Number.isFinite(size)) {
+    return
+  }
+  leftAsideWidth.value = Math.max(0, Math.round(size))
+}
 
 </script>

@@ -74,7 +74,7 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
     </div>
 
     <!-- LIST -->
-    <div class="grid grid-cols-4 gap-2 mt-5">
+    <div class="mt-5 grid grid-flow-col auto-cols-fr grid-rows-8 gap-2">
       <DeviceChannelItem
         v-for="channel in channels"
         :key="channel.id"

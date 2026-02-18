@@ -224,7 +224,7 @@
                 type="text"
                 class="ui-affino-grid__filter-input"
                 placeholder="Filter"
-                @input="applyFilters"
+                 @input="applyFiltersDebounced"
               />
             </div>
           </div>
@@ -343,7 +343,7 @@
                     type="text"
                     class="ui-affino-grid__filter-input"
                     placeholder="Filter"
-                    @input="applyFilters"
+                     @input="applyFiltersDebounced"
                   />
                 </div>
                 <div
@@ -466,7 +466,7 @@
                 type="text"
                 class="ui-affino-grid__filter-input"
                 placeholder="Filter"
-                @input="applyFilters"
+                @input="applyFiltersDebounced"
               />
             </div>
           </div>
@@ -739,8 +739,10 @@ let cachedColumnWindowPrefix: number[] = []
 let lastAppliedFilterSignature: string | null = null
 let lastVirtualWindowSnapshot: VirtualWindowSnapshot | null = null
 let settingsPersistTimer: ReturnType<typeof setTimeout> | null = null
+let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null
 let restoringSettings = false
 const SETTINGS_PERSIST_DELAY_MS = 120
+const FILTER_APPLY_DEBOUNCE_MS = 250
 const dataGridSettingsAdapter = createDataGridSettingsAdapter(useDataGridSettingsStore())
 const columnPanelPopover = usePopoverController({
   role: "dialog",
@@ -2082,6 +2084,10 @@ onBeforeUnmount(() => {
     clearTimeout(settingsPersistTimer)
     settingsPersistTimer = null
   }
+    if (filterDebounceTimer !== null) {
+      clearTimeout(filterDebounceTimer)
+      filterDebounceTimer = null
+    }
   if (hoverClearTimer !== null) {
     clearTimeout(hoverClearTimer)
     hoverClearTimer = null
@@ -2760,6 +2766,16 @@ function applyFilters() {
   refreshViewportAfterFilterMutation()
   schedulePersistTableSettings()
 }
+
+  function applyFiltersDebounced() {
+    if (filterDebounceTimer !== null) {
+      clearTimeout(filterDebounceTimer)
+    }
+    filterDebounceTimer = setTimeout(() => {
+      filterDebounceTimer = null
+      applyFilters()
+    }, FILTER_APPLY_DEBOUNCE_MS)
+  }
 
 function sortDirection(columnKey: string): "asc" | "desc" | null {
   if (!props.enableSorting) return null

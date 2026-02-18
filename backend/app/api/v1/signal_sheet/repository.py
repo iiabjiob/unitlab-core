@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Sequence
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -159,6 +159,11 @@ class SignalSheetRepository:
                 removed = True
         if removed:
             await self.db.flush()
+
+    async def clear_allocations(self, workspace_id: int) -> None:
+        stmt = delete(SignalAllocation).where(SignalAllocation.workspace_id == workspace_id)
+        await self.db.execute(stmt)
+        await self.db.flush()
 
     async def list_allocation_rows(self, workspace_id: int) -> list[SignalAllocationRowSchema]:
         signals = await self._list_active_signals(workspace_id)
