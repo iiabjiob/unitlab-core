@@ -93,8 +93,8 @@
 
       <div class="ui-affino-grid__content-shell">
         <div class="ui-affino-grid__index-column">
-          <div class="ui-affino-grid__index-header" :style="indexHeaderStyle">#</div>
-          <div v-if="showFilterRow" class="ui-affino-grid__index-filter" :style="indexFilterStyle"></div>
+          <div class="ui-affino-grid__index-header" :style="indexHeaderStyle" @wheel.passive="handleMainHeaderWheel">#</div>
+          <div v-if="showFilterRow" class="ui-affino-grid__index-filter" :style="indexFilterStyle" @wheel.passive="handleMainHeaderWheel"></div>
 
           <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @wheel.passive="handleLinkedViewportWheel">
             <div ref="indexCanvasRef" class="ui-affino-grid__index-canvas">
@@ -127,7 +127,7 @@
         </div>
 
         <div class="ui-affino-grid__select-column">
-          <div class="ui-affino-grid__select-header" :style="indexHeaderStyle">
+          <div class="ui-affino-grid__select-header" :style="indexHeaderStyle" @wheel.passive="handleMainHeaderWheel">
             <input
               ref="selectHeaderCheckboxRef"
               type="checkbox"
@@ -139,7 +139,7 @@
               @change="handleSelectAllVisibleChange"
             />
           </div>
-          <div v-if="showFilterRow" class="ui-affino-grid__select-filter" :style="indexFilterStyle"></div>
+          <div v-if="showFilterRow" class="ui-affino-grid__select-filter" :style="indexFilterStyle" @wheel.passive="handleMainHeaderWheel"></div>
 
           <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @wheel.passive="handleLinkedViewportWheel">
             <div ref="selectionCanvasRef" class="ui-affino-grid__select-canvas">
@@ -181,7 +181,7 @@
         </div>
 
         <div v-if="leftPinnedColumns.length > 0" class="ui-affino-grid__pinned-column ui-affino-grid__pinned-column--left">
-          <div ref="leftPinnedHeaderRowRef" class="ui-affino-grid__row ui-affino-grid__row--header ui-affino-grid__row--pinned" :style="pinnedHeaderRowStyle">
+          <div ref="leftPinnedHeaderRowRef" class="ui-affino-grid__row ui-affino-grid__row--header ui-affino-grid__row--pinned" :style="pinnedHeaderRowStyle" @wheel.passive="handleMainHeaderWheel">
             <div
               v-for="entry in leftPinnedColumns"
               :key="`head-left-${entry.key}`"
@@ -231,6 +231,7 @@
             ref="leftPinnedFilterRowRef"
             class="ui-affino-grid__row ui-affino-grid__row--filter ui-affino-grid__row--pinned"
             :style="pinnedFilterRowStyle"
+            @wheel.passive="handleMainHeaderWheel"
           >
             <div
               v-for="entry in leftPinnedColumns"
@@ -461,7 +462,7 @@
         </div>
 
         <div v-if="rightPinnedColumns.length > 0" class="ui-affino-grid__pinned-column ui-affino-grid__pinned-column--right">
-          <div ref="rightPinnedHeaderRowRef" class="ui-affino-grid__row ui-affino-grid__row--header ui-affino-grid__row--pinned" :style="pinnedHeaderRowStyle">
+          <div ref="rightPinnedHeaderRowRef" class="ui-affino-grid__row ui-affino-grid__row--header ui-affino-grid__row--pinned" :style="pinnedHeaderRowStyle" @wheel.passive="handleMainHeaderWheel">
             <div
               v-for="entry in rightPinnedColumns"
               :key="`head-right-${entry.key}`"
@@ -511,6 +512,7 @@
             ref="rightPinnedFilterRowRef"
             class="ui-affino-grid__row ui-affino-grid__row--filter ui-affino-grid__row--pinned"
             :style="pinnedFilterRowStyle"
+            @wheel.passive="handleMainHeaderWheel"
           >
             <div
               v-for="entry in rightPinnedColumns"
@@ -698,7 +700,14 @@ import {
   useDataGridRowSelectionInputHandlers,
 } from "@affino/datagrid-vue/advanced"
 import {
-  useDataGridInitialViewportRecovery,
+  readPersistedColumnWidths,
+  readPersistedDatasetKey,
+  readPersistedSelection,
+  writePersistedColumnWidths,
+  writePersistedDatasetKey,
+  writePersistedSelection,
+} from "@/composables/useDataGridPersistenceStorage"
+import {
   useDataGridLinkedPaneScrollSync,
   useDataGridManagedWheelScroll,
   useDataGridResizeClickGuard,
@@ -852,6 +861,8 @@ const lastCheckboxGestureShift = ref(false)
 const localSelectedRowKeySet = ref<Set<string>>(new Set())
 const selectAllInProgress = ref(false)
 const selectionHydrated = ref(false)
+const pendingSelectionRestore = ref<Set<string> | null>(null)
+const viewportLayoutReady = ref(false)
 
 let viewportRowModel: ViewportRowModelBridge | null = null
 let viewportColumnModel: ViewportColumnModelBridge | null = null
@@ -1475,6 +1486,28 @@ const columnManagerColumns = computed(() => (
   }))
 ))
 
+const columnStatePersistSignature = computed(() => {
+  const snapshot = grid.columnState.snapshot.value
+  const order = snapshot.order.join("|")
+  const columns = snapshot.columns
+    .map(column => `${column.key}:${column.visible ? 1 : 0}:${column.pin}:${Number(column.width ?? 0)}`)
+    .join("|")
+  return `${order}||${columns}`
+})
+
+const sortStatePersistSignature = computed(() => (
+  grid.sortState.value
+    .map(item => `${item.key}:${item.direction}`)
+    .join("|")
+))
+
+const groupByPersistSignature = computed(() => {
+  const groupBy = grid.features.tree.groupBy.value
+  const fields = (groupBy?.fields ?? []).join("|")
+  const expanded = groupBy?.expandedByDefault === false ? "0" : "1"
+  return `${fields}::${expanded}`
+})
+
 const headerContextColumnIsGrouped = computed(() => {
   const columnKey = headerContextMenuColumnKey.value
   if (!columnKey) {
@@ -1688,7 +1721,6 @@ function forceBootstrapViewportRange() {
     return
   }
   viewportService.setViewportRange(bootstrapRange)
-  grid.syncRowsInRange(bootstrapRange)
 }
 
 const visibleRowNodes = computed(() => {
@@ -1900,7 +1932,6 @@ let viewportResizeObserver: ResizeObserver | null = null
 let hoverClearTimer: ReturnType<typeof setTimeout> | null = null
 let lastHandledScrollTop = Number.NaN
 let lastHandledScrollLeft = Number.NaN
-const MAX_INITIAL_VIEWPORT_RECOVERY_ATTEMPTS = 12
 
 const resizeClickGuard = useDataGridResizeClickGuard({
   guardDurationMs: 140,
@@ -2200,7 +2231,7 @@ function syncViewportMetrics() {
     observedViewportWidth.value ?? 0,
     liveWidth,
   )
-  const range = viewportService.setViewportMetrics({
+  viewportService.setViewportMetrics({
     scrollTop: bodyViewport.scrollTop,
     scrollLeft: mainViewport.scrollLeft,
     viewportHeight,
@@ -2209,11 +2240,6 @@ function syncViewportMetrics() {
     overscanRows: props.overscanRows,
     overscanColumns: props.overscanColumns,
   })
-  if (range) {
-    // Runtime virtualWindow recompute is tied to row/column model ticks.
-    // Force a lightweight sync so horizontal-only scroll updates column window.
-    grid.syncRowsInRange(range)
-  }
 }
 
 function scheduleViewportSync() {
@@ -2226,34 +2252,8 @@ function scheduleViewportSync() {
   })
 }
 
-function cancelInitialViewportRecovery() {
-  initialViewportRecovery.cancelRecovery()
-}
-
-const initialViewportRecovery = useDataGridInitialViewportRecovery({
-  maxAttempts: MAX_INITIAL_VIEWPORT_RECOVERY_ATTEMPTS,
-  resolveShouldRecover: () => {
-    const total = totalRows.value
-    const range = visibleRowRange.value
-    const rendered = range.end >= range.start ? (range.end - range.start + 1) : 0
-    return total > 1 && rendered <= 1
-  },
-  runRecoveryStep: () => {
-    const bodyViewport = viewportRef.value
-    const measuredHeight = bodyViewport ? Math.max(0, bodyViewport.clientHeight) : 0
-    const _likelyMeasured = measuredHeight >= Math.max(rowHeightPx.value * 2, 48)
-
-    updateObservedViewportSize()
-    syncViewportMetrics()
-    void _likelyMeasured
-  },
-})
-
-function scheduleInitialViewportRecovery(reset = false) {
-  initialViewportRecovery.scheduleRecovery(reset)
-}
-
 onMounted(() => {
+  viewportLayoutReady.value = false
   gridRootRef.value?.style.setProperty("--ui-affino-linked-scroll-top", "0px")
   const bodyViewport = viewportRef.value
   const mainViewport = mainViewportRef.value
@@ -2281,7 +2281,7 @@ onMounted(() => {
     window.addEventListener("resize", onWindowResize, { passive: true })
   }
 
-  if (typeof ResizeObserver !== "undefined" && (bodyViewport || mainViewport)) {
+  if (typeof ResizeObserver !== "undefined") {
     viewportResizeObserver = new ResizeObserver(() => {
       updateObservedViewportSize()
       updateMeasuredHeaderHeights()
@@ -2290,38 +2290,8 @@ onMounted(() => {
       }
       scheduleViewportSync()
     })
-    if (bodyViewport) {
-      viewportResizeObserver.observe(bodyViewport)
-    }
-    if (mainViewport && mainViewport !== bodyViewport) {
-      viewportResizeObserver.observe(mainViewport)
-    }
-    if (leftPinnedViewportRef.value) {
-      viewportResizeObserver.observe(leftPinnedViewportRef.value)
-    }
-    if (selectionViewportRef.value) {
-      viewportResizeObserver.observe(selectionViewportRef.value)
-    }
-    if (rightPinnedViewportRef.value) {
-      viewportResizeObserver.observe(rightPinnedViewportRef.value)
-    }
-    if (headerRowRef.value) {
-      viewportResizeObserver.observe(headerRowRef.value)
-    }
-    if (filterRowRef.value) {
-      viewportResizeObserver.observe(filterRowRef.value)
-    }
-    if (leftPinnedHeaderRowRef.value) {
-      viewportResizeObserver.observe(leftPinnedHeaderRowRef.value)
-    }
-    if (rightPinnedHeaderRowRef.value) {
-      viewportResizeObserver.observe(rightPinnedHeaderRowRef.value)
-    }
-    if (leftPinnedFilterRowRef.value) {
-      viewportResizeObserver.observe(leftPinnedFilterRowRef.value)
-    }
-    if (rightPinnedFilterRowRef.value) {
-      viewportResizeObserver.observe(rightPinnedFilterRowRef.value)
+    if (gridRootRef.value) {
+      viewportResizeObserver.observe(gridRootRef.value)
     }
   }
 
@@ -2332,12 +2302,14 @@ onMounted(() => {
     scheduleAutoRowHeightMeasure()
   }
   scheduleViewportSync()
-  scheduleInitialViewportRecovery(true)
   requestAnimationFrame(() => {
-    updateObservedViewportSize()
-    updateMeasuredHeaderHeights()
-    scheduleViewportSync()
-    scheduleInitialViewportRecovery(false)
+    requestAnimationFrame(() => {
+      viewportLayoutReady.value = true
+      updateObservedViewportSize()
+      updateMeasuredHeaderHeights()
+      forceBootstrapViewportRange()
+      scheduleViewportSync()
+    })
   })
 })
 
@@ -2361,6 +2333,7 @@ onBeforeUnmount(() => {
   viewportResizeObserver = null
   observedViewportWidth.value = null
   observedViewportHeight.value = null
+  viewportLayoutReady.value = false
   lastHandledScrollTop = Number.NaN
   lastHandledScrollLeft = Number.NaN
   if (syncFrame !== null) {
@@ -2372,7 +2345,6 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(autoRowHeightMeasureFrame)
     autoRowHeightMeasureFrame = null
   }
-  cancelInitialViewportRecovery()
   if (settingsPersistTimer !== null) {
     clearTimeout(settingsPersistTimer)
     settingsPersistTimer = null
@@ -2398,28 +2370,40 @@ watch(
 )
 
 watch(
-  () => grid.columnState.snapshot.value,
+  columnStatePersistSignature,
   () => {
     schedulePersistTableSettings()
   },
-  { deep: true },
 )
 
 watch(
-  () => grid.sortState.value,
+  sortStatePersistSignature,
   () => {
     schedulePersistTableSettings()
   },
-  { deep: true },
 )
 
 watch(
-  () => grid.features.tree.groupBy.value,
+  groupByPersistSignature,
   () => {
     refreshViewportAfterGroupingMutation()
     schedulePersistTableSettings()
   },
-  { deep: true },
+)
+
+watch(
+  () => [observedViewportWidth.value, observedViewportHeight.value] as const,
+  ([width, height]) => {
+    if (viewportLayoutReady.value) {
+      return
+    }
+    if ((width ?? 0) <= 0 || (height ?? 0) <= 0) {
+      return
+    }
+    viewportLayoutReady.value = true
+    scheduleViewportSync()
+  },
+  { immediate: true },
 )
 
 watch(
@@ -2429,24 +2413,6 @@ watch(
     applyFilters()
     void nextTick(() => {
       updateMeasuredHeaderHeights()
-      if (viewportResizeObserver && headerRowRef.value) {
-        viewportResizeObserver.observe(headerRowRef.value)
-      }
-      if (viewportResizeObserver && filterRowRef.value) {
-        viewportResizeObserver.observe(filterRowRef.value)
-      }
-      if (viewportResizeObserver && leftPinnedHeaderRowRef.value) {
-        viewportResizeObserver.observe(leftPinnedHeaderRowRef.value)
-      }
-      if (viewportResizeObserver && rightPinnedHeaderRowRef.value) {
-        viewportResizeObserver.observe(rightPinnedHeaderRowRef.value)
-      }
-      if (viewportResizeObserver && leftPinnedFilterRowRef.value) {
-        viewportResizeObserver.observe(leftPinnedFilterRowRef.value)
-      }
-      if (viewportResizeObserver && rightPinnedFilterRowRef.value) {
-        viewportResizeObserver.observe(rightPinnedFilterRowRef.value)
-      }
       restorePersistedTableSettings()
       scheduleViewportSync()
     })
@@ -2456,6 +2422,12 @@ watch(
 watch(
   () => props.rows.length,
   (next, prev) => {
+    if (next > 0 && !Array.isArray(props.selectedRowKeys) && pendingSelectionRestore.value) {
+      rowSelectionModel.replaceSelection(new Set(pendingSelectionRestore.value))
+      rowSelectionModel.setAnchorIndex(null)
+      checkboxSelectionAnchorIndex.value = null
+      pendingSelectionRestore.value = null
+    }
     if (next > 0 && next !== prev) {
       tableReadyOnce.value = false
     }
@@ -2463,7 +2435,6 @@ watch(
     void nextTick(() => {
       updateObservedViewportSize()
       scheduleViewportSync()
-      scheduleInitialViewportRecovery(true)
     })
   },
   { immediate: true },
@@ -2477,6 +2448,7 @@ watch(
       rowSelectionModel.setAnchorIndex(null)
       checkboxSelectionAnchorIndex.value = null
       lastCheckboxGestureShift.value = false
+      pendingSelectionRestore.value = null
       selectionHydrated.value = true
       return
     }
@@ -2490,6 +2462,7 @@ watch(
     if (!Array.isArray(externalRowKeys)) {
       return
     }
+    pendingSelectionRestore.value = null
     const normalized = normalizeExternalSelectedRowKeys(externalRowKeys)
     if (areStringSetsEqual(localSelectedRowKeySet.value, normalized)) {
       return
@@ -2513,7 +2486,6 @@ watch(
     if (total > 1 && rendered <= 1) {
       forceBootstrapViewportRange()
       scheduleViewportSync()
-      scheduleInitialViewportRecovery(false)
     }
   },
 )
@@ -2533,33 +2505,6 @@ watch(
   () => {
     void nextTick(() => {
       updateMeasuredHeaderHeights()
-      if (viewportResizeObserver && leftPinnedViewportRef.value) {
-        viewportResizeObserver.observe(leftPinnedViewportRef.value)
-      }
-      if (viewportResizeObserver && selectionViewportRef.value) {
-        viewportResizeObserver.observe(selectionViewportRef.value)
-      }
-      if (viewportResizeObserver && rightPinnedViewportRef.value) {
-        viewportResizeObserver.observe(rightPinnedViewportRef.value)
-      }
-      if (viewportResizeObserver && headerRowRef.value) {
-        viewportResizeObserver.observe(headerRowRef.value)
-      }
-      if (viewportResizeObserver && filterRowRef.value) {
-        viewportResizeObserver.observe(filterRowRef.value)
-      }
-      if (viewportResizeObserver && leftPinnedHeaderRowRef.value) {
-        viewportResizeObserver.observe(leftPinnedHeaderRowRef.value)
-      }
-      if (viewportResizeObserver && rightPinnedHeaderRowRef.value) {
-        viewportResizeObserver.observe(rightPinnedHeaderRowRef.value)
-      }
-      if (viewportResizeObserver && leftPinnedFilterRowRef.value) {
-        viewportResizeObserver.observe(leftPinnedFilterRowRef.value)
-      }
-      if (viewportResizeObserver && rightPinnedFilterRowRef.value) {
-        viewportResizeObserver.observe(rightPinnedFilterRowRef.value)
-      }
       scheduleViewportSync()
     })
   },
@@ -2593,15 +2538,6 @@ watch(
     }
     void nextTick(() => {
       updateMeasuredHeaderHeights()
-      if (viewportResizeObserver && filterRowRef.value) {
-        viewportResizeObserver.observe(filterRowRef.value)
-      }
-      if (viewportResizeObserver && leftPinnedFilterRowRef.value) {
-        viewportResizeObserver.observe(leftPinnedFilterRowRef.value)
-      }
-      if (viewportResizeObserver && rightPinnedFilterRowRef.value) {
-        viewportResizeObserver.observe(rightPinnedFilterRowRef.value)
-      }
       scheduleViewportSync()
     })
   },
@@ -2892,93 +2828,10 @@ function persistTableSettingsNow() {
   )
 }
 
-function resolveDatasetStorageKey(tableId: string): string {
-  return `affino-datagrid-dataset::${tableId}`
-}
-
-function resolveColumnWidthsStorageKey(tableId: string, datasetKey: string): string {
-  return `affino-datagrid-widths::${tableId}::${datasetKey}`
-}
-
-function resolveSelectionStorageKey(tableId: string, datasetKey: string): string {
-  return `affino-datagrid-selection::${tableId}::${datasetKey}`
-}
-
-function readPersistedColumnWidths(tableId: string, datasetKey: string): Record<string, number> | null {
-  if (typeof window === "undefined") {
-    return null
-  }
-  try {
-    const raw = window.localStorage.getItem(resolveColumnWidthsStorageKey(tableId, datasetKey))
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Record<string, unknown>
-    if (!parsed || typeof parsed !== "object") {
-      return null
-    }
-    const normalized: Record<string, number> = {}
-    Object.entries(parsed).forEach(([key, value]) => {
-      const width = Number(value)
-      if (!Number.isFinite(width) || width <= 0) return
-      normalized[key] = Math.max(1, Math.trunc(width))
-    })
-    return Object.keys(normalized).length ? normalized : null
-  } catch {
-    return null
-  }
-}
-
-function writePersistedColumnWidths(tableId: string, datasetKey: string, widths: Record<string, number>) {
-  if (typeof window === "undefined") {
-    return
-  }
-  try {
-    window.localStorage.setItem(
-      resolveColumnWidthsStorageKey(tableId, datasetKey),
-      JSON.stringify(widths),
-    )
-  } catch {
-    // Ignore storage write failures and keep runtime functional.
-  }
-}
-
-function readPersistedSelection(tableId: string, datasetKey: string): Set<string> | null {
-  if (typeof window === "undefined") {
-    return null
-  }
-  try {
-    const raw = window.localStorage.getItem(resolveSelectionStorageKey(tableId, datasetKey))
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) {
-      return null
-    }
-    return new Set(
-      parsed
-        .map(item => String(item ?? "").trim())
-        .filter(item => item.length > 0),
-    )
-  } catch {
-    return null
-  }
-}
-
-function writePersistedSelection(tableId: string, datasetKey: string, rowKeys: readonly string[]) {
-  if (typeof window === "undefined") {
-    return
-  }
-  try {
-    window.localStorage.setItem(
-      resolveSelectionStorageKey(tableId, datasetKey),
-      JSON.stringify([...rowKeys]),
-    )
-  } catch {
-    // Ignore storage write failures and keep runtime functional.
-  }
-}
-
 function restorePersistedSelection() {
   selectionHydrated.value = false
   if (Array.isArray(props.selectedRowKeys)) {
+    pendingSelectionRestore.value = null
     selectionHydrated.value = true
     return
   }
@@ -2987,11 +2840,19 @@ function restorePersistedSelection() {
     rowSelectionModel.clearSelection()
     rowSelectionModel.setAnchorIndex(null)
     checkboxSelectionAnchorIndex.value = null
+    pendingSelectionRestore.value = null
     selectionHydrated.value = true
     return
   }
   const persistedSelection = readPersistedSelection(tableId, persistedDatasetKey.value)
-  rowSelectionModel.replaceSelection(persistedSelection ?? new Set<string>())
+  const nextSelection = persistedSelection ?? new Set<string>()
+  if (props.rows.length <= 0) {
+    pendingSelectionRestore.value = new Set(nextSelection)
+    selectionHydrated.value = true
+    return
+  }
+  pendingSelectionRestore.value = null
+  rowSelectionModel.replaceSelection(nextSelection)
   rowSelectionModel.setAnchorIndex(null)
   checkboxSelectionAnchorIndex.value = null
   selectionHydrated.value = true
@@ -3002,6 +2863,9 @@ function persistSelectionNow(rowKeys: ReadonlySet<string>) {
     return
   }
   if (!selectionHydrated.value) {
+    return
+  }
+  if (pendingSelectionRestore.value !== null) {
     return
   }
   const tableId = persistedTableId.value
@@ -3019,28 +2883,6 @@ function applyPersistedColumnWidths(widths: Record<string, number> | null) {
     if (!Number.isFinite(width)) return
     grid.columnState.setWidth(columnKey, Math.max(1, Math.trunc(width)))
   })
-}
-
-function readPersistedDatasetKey(tableId: string): string | null {
-  if (typeof window === "undefined") {
-    return null
-  }
-  try {
-    return window.localStorage.getItem(resolveDatasetStorageKey(tableId))
-  } catch {
-    return null
-  }
-}
-
-function writePersistedDatasetKey(tableId: string, datasetKey: string) {
-  if (typeof window === "undefined") {
-    return
-  }
-  try {
-    window.localStorage.setItem(resolveDatasetStorageKey(tableId), datasetKey)
-  } catch {
-    // Ignore storage write failures and keep runtime functional.
-  }
 }
 
 function ensurePersistedDatasetScope() {
@@ -3131,7 +2973,6 @@ function refreshViewportAfterFilterMutation() {
   void nextTick(() => {
     updateObservedViewportSize()
     scheduleViewportSync()
-    scheduleInitialViewportRecovery(true)
   })
 }
 
@@ -3141,7 +2982,6 @@ function refreshViewportAfterGroupingMutation() {
   void nextTick(() => {
     updateObservedViewportSize()
     scheduleViewportSync()
-    scheduleInitialViewportRecovery(true)
   })
 }
 

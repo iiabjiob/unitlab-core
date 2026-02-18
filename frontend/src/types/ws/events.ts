@@ -134,6 +134,22 @@ export interface SystemHealthChangedEvent {
   snapshot: SystemHealthResponse
 }
 
+export interface SignalAllocationJobEvent {
+  channel: WSChannel.SYSTEM_INFO
+  event: "signal_allocation_job"
+  job_id: string
+  workspace_id: number
+  operation: "auto_allocate" | "bulk_update" | string
+  status: "queued" | "running" | "succeeded" | "failed"
+  progress_total: number
+  progress_done: number
+  message: string | null
+  error: string | null
+  result: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
 export interface TimeStatusEvent extends TimeStatus {
   channel: WSChannel.TIME_STATUS
 }
@@ -197,6 +213,7 @@ export type SequenceWsEvent =
 
 export type ChannelWSEvent =
   | SystemHealthChangedEvent
+  | SignalAllocationJobEvent
   | DeviceStateEvent
   | DeviceRegisterEvent
   | DeviceRespEvent

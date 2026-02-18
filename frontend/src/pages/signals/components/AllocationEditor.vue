@@ -32,6 +32,13 @@
 
         <div class="flex flex-wrap items-center justify-end gap-2">
           <div
+            v-if="updatingAllocations || allocatingSelected || deallocatingSelected || allocationJobsRunning"
+            class="inline-flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs font-medium text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-200"
+          >
+            <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></span>
+            <span>{{ allocationJobProgressText || "Applying allocation changes…" }}</span>
+          </div>
+          <div
             v-if="showTestRunProgress"
             class="min-w-[260px] rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-800/60"
           >
@@ -47,7 +54,7 @@
             </div>
           </div>
           <InlineInfoTooltip
-            v-if="selectedUnassignedSignalIds.length > 0"
+            v-if="selectedAllocatableUnassignedSignalIds.length > 0"
             text="Auto-allocate selected unassigned signals to compatible channels."
             placement="bottom"
             align="end"
@@ -58,10 +65,10 @@
               <UiButton
                 variant="secondary"
                 size="sm"
-                :disabled="loading"
+                :disabled="loading || allocatingSelected"
                 @click="allocateSelectedUnassigned"
               >
-                Allocate
+                {{ allocatingSelected ? "Allocating…" : "Allocate" }}
               </UiButton>
             </span>
           </InlineInfoTooltip>
@@ -78,10 +85,10 @@
               <UiButton
                 variant="ghost"
                 size="sm"
-                :disabled="loading"
+                :disabled="loading || deallocatingSelected"
                 @click="deallocateSelected"
               >
-                Unassign
+                {{ deallocatingSelected ? "Unassigning…" : "Unassign" }}
               </UiButton>
             </span>
           </InlineInfoTooltip>
@@ -262,7 +269,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, shallowRef, triggerRef, watch } from "vue"
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, triggerRef, watch } from "vue"
 import { storeToRefs } from "pinia"
 import { useRoute, useRouter } from "vue-router"
 import {
@@ -277,13 +284,14 @@ import UiAffinoDataGrid from "@/components/ui/UiAffinoDataGrid.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import InlineInfoTooltip from "@/components/ui/InlineInfoTooltip.vue"
 import type { Channel, DoChannel } from "@/types/channel"
-import type { SignalAllocationRow } from "@/types/signal"
+import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
 import AllocationChannelPicker from "@/pages/signals/components/AllocationChannelPicker.vue"
 import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
 import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders } from "@/pages/signals/utils/sourceColumns"
 import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
+import { useSignalAllocationJobStore } from "@/stores/signalAllocationJobStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useToastStore } from "@/stores/toastStore"
@@ -294,18 +302,22 @@ const workspaceStore = useWorkspaceStore()
 const channelStore = useChannelStore()
 const deviceStore = useDeviceStore()
 const realtimeScopeStore = useRealtimeScopeStore()
+const signalAllocationJobStore = useSignalAllocationJobStore()
 const switchgearStore = useSwitchgearStore()
 const toastStore = useToastStore()
 const route = useRoute()
 const router = useRouter()
 
-const { allocationRows, loadingAllocations, loadingSheet, allocatedCount, allocationRevision, recentlyChangedSignalIds } = storeToRefs(signalSheetStore)
+const { allocationRows, loadingAllocations, loadingSheet, updatingAllocations, allocatedCount, allocationRevision, recentlyChangedSignalIds } = storeToRefs(signalSheetStore)
+const { progressText: allocationJobProgressText, isAnyRunning: allocationJobsRunning } = storeToRefs(signalAllocationJobStore)
 const { channels } = storeToRefs(channelStore)
 
 const scopeId = "signals:allocations"
 const importModalOpen = ref(false)
 const persistentControlMenuOptions = { closeOnSelect: false }
 const selectedRowKeys = ref<string[]>([])
+const allocatingSelected = ref(false)
+const deallocatingSelected = ref(false)
 const testRunInProgress = ref(false)
 const testRunAbortRequested = ref(false)
 const switchgearCreateInProgress = ref(false)
@@ -318,7 +330,7 @@ const TEST_TOGGLE_STEP_MS = 1000
 const TEST_TOGGLE_PHASES_PER_SIGNAL = 2
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
-const loading = computed(() => loadingAllocations.value || loadingSheet.value)
+const loading = computed(() => loadingAllocations.value || loadingSheet.value || updatingAllocations.value)
 const showInitialPageLoading = computed(() => (
   !workspaceMissing.value
   && loading.value
@@ -471,6 +483,35 @@ const allocationRowBySignalId = computed(() => {
   return map
 })
 
+const freeChannelCountByType = computed(() => {
+  const usedChannelIds = new Set<number>()
+  allocationRows.value.forEach((row) => {
+    if (Number.isFinite(row.channel_id as number)) {
+      usedChannelIds.add(Number(row.channel_id))
+    }
+  })
+
+  const counts: Record<"di" | "do" | "ai" | "ao", number> = {
+    di: 0,
+    do: 0,
+    ai: 0,
+    ao: 0,
+  }
+
+  channels.value.forEach((channel) => {
+    if (usedChannelIds.has(channel.id)) {
+      return
+    }
+    const type = normalizedChannelType(channel.type)
+    if (!type) {
+      return
+    }
+    counts[type] += 1
+  })
+
+  return counts
+})
+
 function signalIdFromRowKey(rowKey: string): number | null {
   if (!rowKey.startsWith("signal-")) return null
   const parsed = Number(rowKey.slice("signal-".length))
@@ -491,6 +532,19 @@ const selectedAllocationRows = computed(() => (
 const selectedUnassignedSignalIds = computed(() => (
   selectedAllocationRows.value
     .filter(row => !Number.isFinite(row.channel_id as number))
+    .map(row => row.signal_id)
+))
+
+const selectedAllocatableUnassignedSignalIds = computed(() => (
+  selectedAllocationRows.value
+    .filter((row) => !Number.isFinite(row.channel_id as number))
+    .filter((row) => {
+      const required = requiredChannelType(row.signal_direction)
+      if (!required) {
+        return false
+      }
+      return freeChannelCountByType.value[required] > 0
+    })
     .map(row => row.signal_id)
 ))
 
@@ -1187,31 +1241,85 @@ function clearImportQueryFlag() {
   })
 }
 
+async function awaitUiPaintFrame() {
+  await nextTick()
+  await new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => resolve())
+      return
+    }
+    setTimeout(() => resolve(), 0)
+  })
+}
+
+function readNumericResult(job: SignalAllocationJob, key: string): number {
+  const raw = (job.result as Record<string, unknown> | undefined)?.[key]
+  const numeric = Number(raw)
+  return Number.isFinite(numeric) ? numeric : 0
+}
+
 async function allocateSelectedUnassigned() {
+  if (allocatingSelected.value) return
   if (!selectedUnassignedSignalIds.value.length) return
+  const targetSignalIds = [...selectedAllocatableUnassignedSignalIds.value]
+  if (!targetSignalIds.length) {
+    toastStore.info("No free compatible channels available for selected rows.")
+    return
+  }
+  allocatingSelected.value = true
+  await awaitUiPaintFrame()
   try {
-    const response = await signalSheetStore.autoAllocate({
-      signal_ids: [...selectedUnassignedSignalIds.value],
+    const workspaceId = workspaceStore.activeWorkspaceId
+    if (!workspaceId) {
+      return
+    }
+
+    const completedJob = await signalAllocationJobStore.enqueueAutoAllocateJob(workspaceId, {
+      signal_ids: targetSignalIds,
       prefer_online: true,
       overwrite_existing: false,
     })
-    const assigned = response.result.assigned
-    const rest = response.result.unassigned_signal_ids.length
-    toastStore.success(`Allocation complete: ${assigned} assigned${rest ? `, ${rest} left unassigned` : ""}`)
+    await signalSheetStore.refreshAllocations()
+
+    const assigned = readNumericResult(completedJob, "assigned")
+    const restRaw = (completedJob.result as Record<string, unknown> | undefined)?.unassigned_signal_ids
+    const rest = Array.isArray(restRaw) ? restRaw.length : 0
+    const unavailableSkipped = Math.max(0, selectedUnassignedSignalIds.value.length - targetSignalIds.length)
+    toastStore.success(
+      `Allocation complete: ${assigned} assigned`
+      + `${rest ? `, ${rest} left unassigned` : ""}`
+      + `${unavailableSkipped ? `, ${unavailableSkipped} skipped (no free channel)` : ""}`,
+    )
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
+  } finally {
+    allocatingSelected.value = false
   }
 }
 
 async function deallocateSelected() {
+  if (deallocatingSelected.value) return
   if (!selectedAllocatedSignalIds.value.length) return
+  deallocatingSelected.value = true
+  await awaitUiPaintFrame()
   try {
-    await signalSheetStore.bulkSetAllocations(
+    const workspaceId = workspaceStore.activeWorkspaceId
+    if (!workspaceId) {
+      return
+    }
+
+    const completedJob = await signalAllocationJobStore.enqueueBulkUpdateJob(
+      workspaceId,
       selectedAllocatedSignalIds.value.map(signalId => ({ signal_id: signalId, channel_id: null })),
     )
-    toastStore.success(`De-allocated ${selectedAllocatedSignalIds.value.length} selected signal(s)`)
+    await signalSheetStore.refreshAllocations()
+
+    const updated = readNumericResult(completedJob, "updated")
+    toastStore.success(`Unassigned ${updated || selectedAllocatedSignalIds.value.length} selected signal(s)`)
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
+  } finally {
+    deallocatingSelected.value = false
   }
 }
 

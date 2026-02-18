@@ -36,6 +36,10 @@ For one-click startup in VS Code, run task `backend: start all` (Terminal → Ru
 	```bash
 	uv run python -m app.workers.sequence_runner
 	```
+7. **Signal allocation runner** (consumes `signal-allocation:jobs`, executes allocation jobs in background):
+	```bash
+	uv run python -m app.workers.signal_allocation_runner
+	```
 
 FastAPI subscribes to `ws:events` and forwards every payload to connected WebSocket clients.
 

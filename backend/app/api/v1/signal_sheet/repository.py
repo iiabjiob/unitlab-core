@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable, Sequence
+from typing import Any, Awaitable, Callable, Iterable, Sequence
 
 from sqlalchemy import Select, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -226,6 +226,7 @@ class SignalSheetRepository:
         self,
         workspace_id: int,
         entries: Sequence[dict[str, Any]],
+        progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> None:
         await self.cleanup_orphan_allocations(workspace_id)
 
@@ -281,12 +282,17 @@ class SignalSheetRepository:
                 )
 
         touched_signal_ids = {int(item["signal_id"]) for item in entries}
+        total_steps = len(touched_signal_ids)
+        step_index = 0
         for signal_id in touched_signal_ids:
+            step_index += 1
             desired_channel = desired_channel_by_signal.get(signal_id)
             existing = current_allocations.get(signal_id)
             if desired_channel is None:
                 if existing is not None:
                     await self.db.delete(existing)
+                if progress_callback is not None:
+                    await progress_callback(step_index, total_steps)
                 continue
 
             allocation_meta = touched_meta.get(signal_id)
@@ -299,11 +305,15 @@ class SignalSheetRepository:
                         allocation_meta=allocation_meta,
                     )
                 )
+                if progress_callback is not None:
+                    await progress_callback(step_index, total_steps)
                 continue
 
             existing.channel_id = desired_channel
             if signal_id in touched_meta:
                 existing.allocation_meta = allocation_meta
+            if progress_callback is not None:
+                await progress_callback(step_index, total_steps)
 
         await self.db.commit()
 
@@ -345,6 +355,7 @@ class SignalSheetRepository:
         prefer_online: bool,
         prefer_single_unit: bool,
         overwrite_existing: bool,
+        progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
     ) -> SignalSheetAutoAllocateResult:
         await self.cleanup_orphan_allocations(workspace_id)
 
@@ -392,17 +403,24 @@ class SignalSheetRepository:
                 overwrite_existing=overwrite_existing,
             )
 
+        total_steps = len(target_signals)
+        step_index = 0
         for signal in target_signals:
+            step_index += 1
             direction = _normalize_direction(signal.io_direction)
             required_channel_type = _required_channel_type(direction)
             if required_channel_type is None:
                 missing += 1
                 unassigned.append(signal.id)
+                if progress_callback is not None:
+                    await progress_callback(step_index, total_steps)
                 continue
 
             existing = current_allocations.get(signal.id)
             if existing is not None and not overwrite_existing:
                 skipped += 1
+                if progress_callback is not None:
+                    await progress_callback(step_index, total_steps)
                 continue
 
             if existing is not None and overwrite_existing:
@@ -424,6 +442,8 @@ class SignalSheetRepository:
                 unassigned.append(signal.id)
                 if existing is not None and overwrite_existing:
                     used_channel_ids.add(existing.channel_id)
+                if progress_callback is not None:
+                    await progress_callback(step_index, total_steps)
                 continue
 
             if existing is None:
@@ -447,6 +467,8 @@ class SignalSheetRepository:
 
             used_channel_ids.add(candidate.id)
             assigned += 1
+            if progress_callback is not None:
+                await progress_callback(step_index, total_steps)
 
         await self.db.commit()
         return SignalSheetAutoAllocateResult(

@@ -184,3 +184,19 @@ export interface SignalAllocationEnsureResponse {
 export interface SignalAllocationMarkTestedPayload {
   signal_ids: number[]
 }
+
+export type SignalAllocationJobStatus = "queued" | "running" | "succeeded" | "failed"
+
+export interface SignalAllocationJob {
+  job_id: string
+  workspace_id: number
+  operation: "auto_allocate" | "bulk_update" | string
+  status: SignalAllocationJobStatus
+  progress_total: number
+  progress_done: number
+  message: string | null
+  error: string | null
+  result: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}

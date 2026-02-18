@@ -4,6 +4,7 @@ import type {
   SignalAllocationRow,
   SignalAllocationEnsurePayload,
   SignalAllocationEnsureResponse,
+  SignalAllocationJob,
   SignalAllocationMarkTestedPayload,
   SignalAllocationUpdateItem,
   SignalAutoAllocatePayload,
@@ -64,6 +65,20 @@ export const SignalSheetAPI = {
 
   autoAllocate(workspaceId: number, payload: SignalAutoAllocatePayload) {
     return http.post<SignalAutoAllocateResponse>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/auto`, payload)
+  },
+
+  enqueueAutoAllocateJob(workspaceId: number, payload: SignalAutoAllocatePayload) {
+    return http.post<SignalAllocationJob>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/auto/jobs`, payload)
+  },
+
+  enqueueBulkAllocationJob(workspaceId: number, entries: SignalAllocationUpdateItem[]) {
+    return http.post<SignalAllocationJob>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/jobs`, {
+      entries,
+    })
+  },
+
+  getAllocationJob(workspaceId: number, jobId: string) {
+    return http.get<SignalAllocationJob>(`${API_V1}/workspaces/${workspaceId}/signal-allocation-jobs/${jobId}`)
   },
 
   ensureAllocated(workspaceId: number, payload: SignalAllocationEnsurePayload) {

@@ -104,3 +104,17 @@ class SignalAutoAllocateResponseSchema(BaseModel):
 class SignalAllocationEnsureResponseSchema(BaseModel):
     result: SignalAutoAllocateResultSchema
     rows: list[SignalAllocationRowSchema] = Field(default_factory=list)
+
+
+class SignalAllocationJobStatusSchema(BaseModel):
+    job_id: str
+    workspace_id: int
+    operation: str
+    status: str
+    progress_total: int = 0
+    progress_done: int = 0
+    message: str | None = None
+    error: str | None = None
+    result: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime

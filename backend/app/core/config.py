@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     sequence_event_stream: str = "sequence:events"
     sequence_stream_maxlen: int = 5000
 
+    # ---- Signal allocation jobs ----
+    signal_allocation_job_stream: str = "signal-allocation:jobs"
+    signal_allocation_job_stream_maxlen: int = 5000
+    signal_allocation_job_ttl_seconds: int = 3600
+
     # ---- Redis ----
     redis_host: str
     redis_port: int

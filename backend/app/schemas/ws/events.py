@@ -136,6 +136,22 @@ class SystemHealthChangedEvent(BaseModel):
     diff: Dict[str, List[str]]
     snapshot: Dict[str, Any]
 
+
+class SignalAllocationJobEvent(BaseModel):
+    channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
+    event: Literal["signal_allocation_job"] = "signal_allocation_job"
+    job_id: str
+    workspace_id: int
+    operation: str
+    status: Literal["queued", "running", "succeeded", "failed"]
+    progress_total: int = 0
+    progress_done: int = 0
+    message: str | None = None
+    error: str | None = None
+    result: Dict[str, Any] = {}
+    created_at: datetime
+    updated_at: datetime
+
 # ---------------------------------------------------------------------
 # Union of all WS events
 # ---------------------------------------------------------------------
@@ -153,4 +169,5 @@ WSEvent = Union[
     SequenceStoppedEvent,
     SequenceCompletedEvent,
     SystemHealthChangedEvent,
+    SignalAllocationJobEvent,
 ]

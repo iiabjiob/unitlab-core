@@ -133,6 +133,20 @@ def parse_sequence_event_entry(entry: StreamEntry) -> Tuple[str, SequenceEvent]:
     return entry_id, SequenceEvent.from_payload(payload)
 
 
+async def enqueue_signal_allocation_job(payload: Dict[str, Any]) -> str:
+    redis = RedisManager.get_instance()
+    return await redis.xadd(
+        settings.signal_allocation_job_stream,
+        _wrap_payload(payload),
+        maxlen=settings.signal_allocation_job_stream_maxlen,
+        approximate=True,
+    )
+
+
+def parse_signal_allocation_job_entry(entry: StreamEntry) -> Tuple[str, Dict[str, Any]]:
+    return _unwrap_payload(entry)
+
+
 async def publish_ws_event(payload: Dict[str, Any]) -> None:
     redis = RedisManager.get_instance()
     await redis.publish(settings.ws_events_channel, json.dumps(payload, separators=(",", ":")))

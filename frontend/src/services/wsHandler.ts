@@ -4,6 +4,7 @@ import { useChannelStore } from '@/stores/channelStore'
 import { getLogger } from '@/utils/logger'
 import { useSequenceStore } from '@/stores/sequenceStore'
 import { useSystemHealthStore } from '@/stores/systemHealthStore'
+import { useSignalAllocationJobStore } from '@/stores/signalAllocationJobStore'
 
 const logger = getLogger('ws')
 
@@ -16,6 +17,7 @@ import type {
   SequenceWsEvent,
   ChannelWSEvent,
   SystemHealthChangedEvent,
+  SignalAllocationJobEvent,
 } from '@/types/ws/events'
 
 export function handleWsEvent(event: WSEvent) {
@@ -23,6 +25,7 @@ export function handleWsEvent(event: WSEvent) {
   const channelStore = useChannelStore()
   const sequenceStore = useSequenceStore()
   const systemHealthStore = useSystemHealthStore()
+  const signalAllocationJobStore = useSignalAllocationJobStore()
 
   // Route sequence events into the sequence store so realtime progress stays in sync.
   if ('topic' in event && (event as SequenceWsEvent).topic === 'sequence') {
@@ -39,6 +42,12 @@ export function handleWsEvent(event: WSEvent) {
       if (sysEvent.event === "system_health_changed") {
         logger.debug("📡 IN ← SYSTEM_HEALTH:", sysEvent)
         systemHealthStore.applySnapshot(sysEvent.snapshot)
+        break
+      }
+      if ((channelEvent as SignalAllocationJobEvent).event === "signal_allocation_job") {
+        const jobEvent = channelEvent as SignalAllocationJobEvent
+        logger.debug("📡 IN ← SIGNAL_ALLOCATION_JOB:", jobEvent)
+        signalAllocationJobStore.applyJobEvent(jobEvent)
         break
       }
       logger.warn("⚠️ Unknown SYSTEM_INFO payload", sysEvent)

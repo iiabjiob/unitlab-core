@@ -50,6 +50,11 @@ WORKER_DEFINITIONS: tuple[WorkerDefinition, ...] = (
         display_name="Offline Checker",
         impact="Device statuses become stale — online/offline state is not recalculated.",
     ),
+    WorkerDefinition(
+        name="signal_allocation_runner",
+        display_name="Signal Allocation Runner",
+        impact="Async signal allocation jobs are not processed.",
+    ),
 )
 
 WORKER_REGISTRY = {definition.name: definition for definition in WORKER_DEFINITIONS}
