@@ -34,7 +34,6 @@
         </div>
         <div class="ui-affino-grid__toolbar-actions">
           <button
-            :ref="columnPanelFloating.triggerRef"
             type="button"
             class="ui-affino-grid__toolbar-button"
             v-bind="columnPanelTriggerProps"
@@ -412,7 +411,7 @@
             <div
               ref="viewportRef"
               class="ui-affino-grid__viewport"
-              @wheel.passive="handleBodyViewportWheel"
+              @wheel="handleBodyViewportWheel"
               @scroll.passive="handleBodyScroll"
             >
               <div class="ui-affino-grid__canvas">
@@ -935,7 +934,7 @@ const linkedPaneScrollSync = useDataGridLinkedPaneScrollSync({
 const managedWheelScroll = useDataGridManagedWheelScroll({
   resolveWheelMode: () => "managed",
   resolveWheelAxisLockMode: () => "dominant",
-  resolvePreventDefaultWhenHandled: () => false,
+  resolvePreventDefaultWhenHandled: () => true,
   resolveBodyViewport: () => viewportRef.value,
   resolveMainViewport: () => {
     const mainViewport = mainViewportRef.value
@@ -2723,6 +2722,18 @@ function handleBodyScroll(event: Event) {
   if (bodyViewport && rightScrollbar && rightScrollbar.scrollTop !== bodyViewport.scrollTop) {
     rightScrollbar.scrollTop = bodyViewport.scrollTop
   }
+
+  if (bodyViewport) {
+    const nextTop = bodyViewport.scrollTop
+    if (nextTop !== lastHandledScrollTop) {
+      lastHandledScrollTop = nextTop
+      syncLinkedScroll(nextTop)
+      scheduleLinkedScrollSyncLoop()
+      updateObservedViewportSize()
+      scheduleViewportSync()
+    }
+  }
+
   bodyViewportScrollLifecycle.onViewportScroll(event)
 }
 
