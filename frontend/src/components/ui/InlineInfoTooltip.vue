@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, getCurrentInstance } from "vue"
+import type { ComponentPublicInstance } from "vue"
 import { useFloatingTooltip, useTooltipController } from "@affino/tooltip-vue"
 
 type TooltipPlacement = "top" | "bottom" | "left" | "right"
@@ -11,18 +12,25 @@ const props = withDefaults(
     ariaLabel?: string
     placement?: TooltipPlacement
     align?: TooltipAlign
+    disabled?: boolean
+    openDelay?: number
+    closeDelay?: number
   }>(),
   {
     ariaLabel: "Field explanation",
     placement: "top",
     align: "start",
+    disabled: false,
+    openDelay: 120,
+    closeDelay: 120,
   },
 )
 
 const instanceUid = getCurrentInstance()?.uid ?? Math.floor(Math.random() * 1_000_000)
 const tooltipController = useTooltipController({
   id: `inline-info-tooltip-${instanceUid}`,
-  openDelay: 120,
+  openDelay: props.openDelay,
+  closeDelay: props.closeDelay,
 })
 
 const { triggerRef, tooltipRef, tooltipStyle, teleportTarget } = useFloatingTooltip(tooltipController, {
@@ -31,24 +39,44 @@ const { triggerRef, tooltipRef, tooltipStyle, teleportTarget } = useFloatingTool
   gutter: 8,
 })
 
-const triggerProps = computed(() => tooltipController.getTriggerProps())
+function getTriggerProps() {
+  if (props.disabled) {
+    return {}
+  }
+  return tooltipController.getTriggerProps()
+}
+
+function setTriggerRef(target: Element | ComponentPublicInstance | null) {
+  if (target instanceof HTMLElement) {
+    triggerRef.value = target
+    return
+  }
+  if (target && "$el" in target && target.$el instanceof HTMLElement) {
+    triggerRef.value = target.$el
+    return
+  }
+  triggerRef.value = null
+}
 </script>
 
 <template>
+  <slot v-if="$slots.default" :setTriggerRef="setTriggerRef" :getTriggerProps="getTriggerProps" />
+
   <span
+    v-else
     ref="triggerRef"
     class="inline-flex h-4 w-4 select-none items-center justify-center rounded-full text-[10px] font-medium leading-none text-neutral-400/80 transition-colors hover:text-neutral-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/40 dark:text-neutral-500 dark:hover:text-neutral-300"
     role="button"
     tabindex="0"
     :aria-label="ariaLabel"
-    v-bind="triggerProps"
+    v-bind="getTriggerProps()"
   >
     ⓘ
   </span>
 
   <Teleport :to="teleportTarget || 'body'">
     <div
-      v-if="tooltipController.state.value.open"
+      v-if="!disabled && tooltipController.state.value.open"
       ref="tooltipRef"
       class="pointer-events-none z-50 w-max max-w-xs whitespace-pre-line rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-xs leading-5 text-neutral-700 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
       v-bind="tooltipController.getTooltipProps()"

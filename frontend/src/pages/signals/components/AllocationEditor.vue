@@ -46,42 +46,87 @@
               ></div>
             </div>
           </div>
-          <UiButton
+          <InlineInfoTooltip
             v-if="selectedUnassignedSignalIds.length > 0"
-            variant="secondary"
-            size="sm"
-            :disabled="loading"
-            @click="allocateSelectedUnassigned"
+            text="Auto-allocate selected unassigned signals to compatible channels."
+            placement="bottom"
+            align="end"
+            :open-delay="1000"
+            v-slot="{ setTriggerRef, getTriggerProps }"
           >
-            Allocate selected unassigned
-          </UiButton>
-          <UiButton
+            <span :ref="setTriggerRef" v-bind="getTriggerProps()" class="inline-flex">
+              <UiButton
+                variant="secondary"
+                size="sm"
+                :disabled="loading"
+                @click="allocateSelectedUnassigned"
+              >
+                Allocate
+              </UiButton>
+            </span>
+          </InlineInfoTooltip>
+
+          <InlineInfoTooltip
             v-if="selectedAllocatedSignalIds.length > 0"
-            variant="ghost"
-            size="sm"
-            :disabled="loading"
-            @click="deallocateSelected"
+            text="Remove channel assignments from selected signals."
+            placement="bottom"
+            align="end"
+            :open-delay="1000"
+            v-slot="{ setTriggerRef, getTriggerProps }"
           >
-            Unassign selected
-          </UiButton>
-          <UiButton
+            <span :ref="setTriggerRef" v-bind="getTriggerProps()" class="inline-flex">
+              <UiButton
+                variant="ghost"
+                size="sm"
+                :disabled="loading"
+                @click="deallocateSelected"
+              >
+                Unassign
+              </UiButton>
+            </span>
+          </InlineInfoTooltip>
+
+          <InlineInfoTooltip
             v-if="selectedAllocatedPhysicalRows.length > 0 || testRunInProgress"
-            :variant="testRunInProgress ? 'danger' : 'success'"
-            size="sm"
-            :disabled="loading"
-            @click="testRunInProgress ? stopTestRun() : runTestVisualOnly()"
+            :text="testRunInProgress
+              ? 'Stop the current test run.'
+              : 'Run ON/OFF test for selected allocated channels and update test status.'"
+            placement="bottom"
+            align="end"
+            :open-delay="1000"
+            v-slot="{ setTriggerRef, getTriggerProps }"
           >
-            {{ testRunInProgress ? "Stop test" : "Run test" }}
-          </UiButton>
-          <UiButton
+            <span :ref="setTriggerRef" v-bind="getTriggerProps()" class="inline-flex">
+              <UiButton
+                :variant="testRunInProgress ? 'danger' : 'success'"
+                size="sm"
+                :disabled="loading"
+                @click="testRunInProgress ? stopTestRun() : runTestVisualOnly()"
+              >
+                {{ testRunInProgress ? "Stop test" : "Run test" }}
+              </UiButton>
+            </span>
+          </InlineInfoTooltip>
+
+          <InlineInfoTooltip
             v-if="canCreateSwitchgearFromSelection"
-            variant="secondary"
-            size="sm"
-            :disabled="loading || switchgearCreateInProgress"
-            @click="createSwitchgearVisualOnly"
+            text="Create switchgear items from selected DI/DO signal pairs."
+            placement="bottom"
+            align="end"
+            :open-delay="1000"
+            v-slot="{ setTriggerRef, getTriggerProps }"
           >
-            {{ switchgearCreateInProgress ? "Creating…" : createSwitchgearButtonLabel }}
-          </UiButton>
+            <span :ref="setTriggerRef" v-bind="getTriggerProps()" class="inline-flex">
+              <UiButton
+                variant="secondary"
+                size="sm"
+                :disabled="loading || switchgearCreateInProgress"
+                @click="createSwitchgearVisualOnly"
+              >
+                {{ switchgearCreateInProgress ? "Creating…" : createSwitchgearButtonLabel }}
+              </UiButton>
+            </span>
+          </InlineInfoTooltip>
         </div>
       </div>
     </header>
@@ -230,6 +275,7 @@ import {
 
 import UiAffinoDataGrid from "@/components/ui/UiAffinoDataGrid.vue"
 import UiButton from "@/components/ui/UiButton.vue"
+import InlineInfoTooltip from "@/components/ui/InlineInfoTooltip.vue"
 import type { Channel, DoChannel } from "@/types/channel"
 import type { SignalAllocationRow } from "@/types/signal"
 import AllocationChannelPicker from "@/pages/signals/components/AllocationChannelPicker.vue"

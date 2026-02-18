@@ -39,11 +39,12 @@ const { triggerRef, tooltipRef, tooltipStyle, teleportTarget } = useFloatingTool
   gutter: 8,
 })
 
-const triggerProps = computed(() => (
-  props.disabled
-    ? {}
-    : tooltipController.getTriggerProps()
-))
+function getTriggerProps() {
+  if (props.disabled) {
+    return {}
+  }
+  return tooltipController.getTriggerProps()
+}
 
 const tooltipProps = computed(() => tooltipController.getTooltipProps())
 
@@ -61,7 +62,7 @@ function setTriggerRef(target: Element | ComponentPublicInstance | null) {
 </script>
 
 <template>
-  <slot :set-trigger-ref="setTriggerRef" :trigger-props="triggerProps" />
+  <slot :setTriggerRef="setTriggerRef" :getTriggerProps="getTriggerProps" />
 
   <Teleport :to="teleportTarget || 'body'">
     <div

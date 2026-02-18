@@ -16,41 +16,31 @@
       </p>
       <div v-for="item in section.items" :key="item.to">
         <RouterLink :to="item.to" custom v-slot="{ href, navigate }">
-          <UiHoverTooltip
-            :text="item.label"
-            :disabled="!compact"
-            placement="right"
-            align="center"
-            v-slot="{ setTriggerRef, triggerProps }"
+          <a
+            :id="entryDomId(item.to)"
+            role="option"
+            :aria-selected="isRouteActive(item.to)"
+            :tabindex="isEntryFocused(item.to) ? 0 : -1"
+            :href="href"
+            :title="item.label"
+            :aria-label="item.label"
+            class="app-menu__entry block w-full rounded-xl py-2 text-sm font-medium transition-all focus:outline-none"
+            :class="[
+              compact ? 'px-0 text-center' : 'pl-6 pr-3 text-left',
+              {
+                'is-active': isRouteHighlighted(item.to),
+                'is-focused': !isRouteHighlighted(item.to) && isEntryFocused(item.to),
+                'is-compact': compact,
+              },
+            ]"
+            @focus="setFocusByRoute(item.to)"
+            @click="event => handleEntryClick(event, item.to, navigate)"
           >
-            <a
-              :ref="setTriggerRef"
-              v-bind="triggerProps"
-              :id="entryDomId(item.to)"
-              role="option"
-              :aria-selected="isRouteActive(item.to)"
-              :tabindex="isEntryFocused(item.to) ? 0 : -1"
-              :href="href"
-              :title="!compact ? item.label : undefined"
-              :aria-label="item.label"
-              class="app-menu__entry block w-full rounded-xl py-2 text-sm font-medium transition-all focus:outline-none"
-              :class="[
-                compact ? 'px-0 text-center' : 'pl-6 pr-3 text-left',
-                {
-                  'is-active': isRouteHighlighted(item.to),
-                  'is-focused': !isRouteHighlighted(item.to) && isEntryFocused(item.to),
-                  'is-compact': compact,
-                },
-              ]"
-              @focus="setFocusByRoute(item.to)"
-              @click="event => handleEntryClick(event, item.to, navigate)"
-            >
-              <span class="inline-flex items-center" :class="compact ? 'justify-center w-full' : 'gap-2'">
-                <component :is="resolveRouteIcon(item.to)" class="h-5 w-5 shrink-0" aria-hidden="true" />
-                <span v-if="!compact">{{ item.label }}</span>
-              </span>
-            </a>
-          </UiHoverTooltip>
+            <span class="inline-flex items-center" :class="compact ? 'justify-center w-full' : 'gap-2'">
+              <component :is="resolveRouteIcon(item.to)" class="h-5 w-5 shrink-0" aria-hidden="true" />
+              <span v-if="!compact">{{ item.label }}</span>
+            </span>
+          </a>
         </RouterLink>
         <RouterLink
           v-for="child in item.children ?? []"
@@ -59,41 +49,31 @@
           custom
           v-slot="{ href, navigate }"
         >
-          <UiHoverTooltip
-            :text="child.label"
-            :disabled="!compact"
-            placement="right"
-            align="center"
-            v-slot="{ setTriggerRef, triggerProps }"
+          <a
+            :id="entryDomId(child.to)"
+            role="option"
+            :aria-selected="isRouteActive(child.to)"
+            :tabindex="isEntryFocused(child.to) ? 0 : -1"
+            :href="href"
+            :title="child.label"
+            :aria-label="child.label"
+            class="app-menu__entry is-child mt-1 block w-full rounded-xl py-2 text-sm font-medium transition-all focus:outline-none"
+            :class="[
+              compact ? 'px-0 text-center' : 'pl-10 pr-3 text-left',
+              {
+                'is-active': isRouteHighlighted(child.to),
+                'is-focused': !isRouteHighlighted(child.to) && isEntryFocused(child.to),
+                'is-compact': compact,
+              },
+            ]"
+            @focus="setFocusByRoute(child.to)"
+            @click="event => handleEntryClick(event, child.to, navigate)"
           >
-            <a
-              :ref="setTriggerRef"
-              v-bind="triggerProps"
-              :id="entryDomId(child.to)"
-              role="option"
-              :aria-selected="isRouteActive(child.to)"
-              :tabindex="isEntryFocused(child.to) ? 0 : -1"
-              :href="href"
-              :title="!compact ? child.label : undefined"
-              :aria-label="child.label"
-              class="app-menu__entry is-child mt-1 block w-full rounded-xl py-2 text-sm font-medium transition-all focus:outline-none"
-              :class="[
-                compact ? 'px-0 text-center' : 'pl-10 pr-3 text-left',
-                {
-                  'is-active': isRouteHighlighted(child.to),
-                  'is-focused': !isRouteHighlighted(child.to) && isEntryFocused(child.to),
-                  'is-compact': compact,
-                },
-              ]"
-              @focus="setFocusByRoute(child.to)"
-              @click="event => handleEntryClick(event, child.to, navigate)"
-            >
-              <span class="inline-flex items-center" :class="compact ? 'justify-center w-full' : 'gap-2'">
-                <component :is="resolveRouteIcon(child.to)" class="h-5 w-5 shrink-0" aria-hidden="true" />
-                <span v-if="!compact">{{ child.label }}</span>
-              </span>
-            </a>
-          </UiHoverTooltip>
+            <span class="inline-flex items-center" :class="compact ? 'justify-center w-full' : 'gap-2'">
+              <component :is="resolveRouteIcon(child.to)" class="h-5 w-5 shrink-0" aria-hidden="true" />
+              <span v-if="!compact">{{ child.label }}</span>
+            </span>
+          </a>
         </RouterLink>
       </div>
     </div>
@@ -107,7 +87,6 @@ import HomeChipIcon from "@/components/icons/HomeChipIcon.vue"
 import HomeDocumentsIcon from "@/components/icons/HomeDocumentsIcon.vue"
 import HomeSwitchgearIcon from "@/components/icons/HomeSwitchgearIcon.vue"
 import HomeFlowStackIcon from "@/components/icons/HomeFlowStackIcon.vue"
-import UiHoverTooltip from "@/components/ui/UiHoverTooltip.vue"
 
 const props = withDefaults(defineProps<{
   compact?: boolean
