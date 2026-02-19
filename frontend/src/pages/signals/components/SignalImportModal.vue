@@ -164,6 +164,34 @@
           </p>
         </div>
 
+        <div v-else-if="step === 'terminal'" class="space-y-4">
+          <div>
+            <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">Terminal column</p>
+            <p class="text-xs text-neutral-500 dark:text-neutral-400">
+              Select column that contains terminal block values.
+            </p>
+            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+              Terminal block of cabinet will be used for physical device connection to cabinet.
+            </p>
+          </div>
+
+          <div>
+            <p class="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-200">Terminal column</p>
+            <UiAffinoListbox
+              v-model="terminalColumnIndex"
+              id="signal-import-terminal-column"
+              name="signal-import-terminal-column"
+              :options="terminalColumnListboxOptions"
+              placeholder="Select terminal column"
+              aria-label="Terminal column"
+              :disabled="loading || parsing || terminalColumnListboxOptions.length === 0"
+            />
+            <p v-if="terminalColumnIndex === null" class="mt-2 text-xs text-amber-600 dark:text-amber-300">
+              Select terminal column to continue.
+            </p>
+          </div>
+        </div>
+
         <div v-else-if="step === 'types'" class="space-y-4">
           <div>
             <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">Type mapping</p>
@@ -311,6 +339,7 @@ const INTERNAL_TYPE_COLUMN_KEY = "internal_type"
 const STEP_ITEMS = [
   { id: "upload", label: "Upload file" },
   { id: "columns", label: "Columns" },
+  { id: "terminal", label: "Terminal" },
   { id: "types", label: "Type mapping" },
 ] as const
 type WizardStep = (typeof STEP_ITEMS)[number]["id"]
@@ -338,11 +367,13 @@ const sheetColumns = ref<Record<string, SheetColumn[]>>({})
 const sheetRows = ref<Record<string, unknown[][]>>({})
 const selectedSheetName = ref<string | null>(null)
 const selectedColumnsBySheet = ref<Record<string, number[]>>({})
+const terminalColumnIndex = ref<number | null>(null)
 const typeColumnIndex = ref<number | null>(null)
 const typeMapping = ref<Record<string, InternalSignalType>>({})
 const selectedPresetId = ref<number | null>(null)
 const savePresetName = ref("")
 const applyingPreset = ref(false)
+const suppressTypeMappingReset = ref(false)
 const deletePresetOpen = ref(false)
 
 const internalTypeOptions: Array<{ value: InternalSignalType; label: string }> = [
@@ -368,19 +399,26 @@ const selectedColumnOptions = computed(() =>
     ? (sheetColumns.value[selectedSheetName.value] ?? []).filter(column => selectedColumnSet.value.has(column.index))
     : []
 )
+const terminalColumnListboxOptions = computed(() =>
+  selectedColumnOptions.value.map(column => ({ value: column.index, label: column.header }))
+)
 const typeValueOptions = computed(() => buildTypeValueOptions())
 const hasTypeMappings = computed(() => Object.keys(typeMapping.value).length > 0)
 const activeStepIndex = computed(() => stepOrder.indexOf(step.value))
 const isFinalStep = computed(() => step.value === "types")
-const canGoBack = computed(() => step.value === "types")
+const canGoBack = computed(() => step.value === "terminal" || step.value === "types")
 const columnsStepValid = computed(
   () => !!selectedSheetName.value && availableColumns.value.length > 0 && selectedColumnCount.value > 0,
 )
+const terminalStepValid = computed(
+  () => columnsStepValid.value && terminalColumnIndex.value !== null,
+)
 const typeStepValid = computed(
-  () => columnsStepValid.value && typeColumnIndex.value !== null && typeValueOptions.value.length > 0 && hasTypeMappings.value,
+  () => terminalStepValid.value && typeColumnIndex.value !== null && typeValueOptions.value.length > 0 && hasTypeMappings.value,
 )
 const canAdvance = computed(() => {
   if (step.value === "columns") return columnsStepValid.value
+  if (step.value === "terminal") return terminalStepValid.value
   return false
 })
 const canSubmitFinal = computed(() => step.value === "types" && typeStepValid.value)
@@ -423,7 +461,7 @@ function goToNextStep() {
 function goToPreviousStep() {
   if (loading.value || parsing.value) return
   const currentIndex = activeStepIndex.value
-  if (currentIndex <= 1) return
+  if (currentIndex <= 0) return
   step.value = stepOrder[currentIndex - 1]
 }
 
@@ -444,6 +482,7 @@ function resetWorkflowState(options: { preserveError?: boolean } = {}) {
   clearWorkbookState()
   file.value = null
   fileName.value = ""
+  terminalColumnIndex.value = null
   typeColumnIndex.value = null
   typeMapping.value = {}
   savePresetName.value = ""
@@ -463,6 +502,7 @@ function clearWorkbookState() {
   sheetRows.value = {}
   selectedSheetName.value = null
   selectedColumnsBySheet.value = {}
+  terminalColumnIndex.value = null
   step.value = "upload"
 }
 
@@ -698,6 +738,10 @@ function applySelectedPreset() {
   const preset = selectedPreset.value
   if (!preset) return
   applyPresetToSelection(preset.import_meta)
+
+  if (step.value !== "upload" && typeStepValid.value) {
+    step.value = "types"
+  }
 }
 
 function requestDeleteSelectedPreset() {
@@ -724,8 +768,11 @@ async function confirmDeleteSelectedPreset() {
 }
 
 function applyPresetToSelection(meta: SignalImportMeta) {
+  suppressTypeMappingReset.value = true
   applyingPreset.value = true
   try {
+    typeMapping.value = {}
+
     const requestedSheetName = meta.source_sheet_name || meta.sheet_name || null
     if (requestedSheetName && sheetColumns.value[requestedSheetName]) {
       selectedSheetName.value = requestedSheetName
@@ -751,22 +798,42 @@ function applyPresetToSelection(meta: SignalImportMeta) {
       }
     }
 
+    if (meta.hmi_representation) {
+      const terminalColumn = findColumnByHeader(columns, meta.hmi_representation)
+      if (terminalColumn) {
+        terminalColumnIndex.value = terminalColumn.index
+        selectedSet.add(terminalColumn.index)
+      }
+    }
+
     selectedColumnsBySheet.value[selectedSheetName.value] = Array.from(selectedSet).sort((a, b) => a - b)
 
     if (meta.type_mapping) {
       const options = buildTypeValueOptions()
+      const optionsByKey = new Map(options.map(item => [item.key, item]))
+      const validInternalTypes = new Set<InternalSignalType>(["di", "do", "ai", "ao"])
       const mapped: Record<string, InternalSignalType> = {}
-      for (const [vendorLabel, direction] of Object.entries(meta.type_mapping)) {
-        const option = options.find(item => item.label.trim().toLowerCase() === vendorLabel.trim().toLowerCase())
+      for (const [rawVendorType, rawDirection] of Object.entries(meta.type_mapping)) {
+        const direction = String(rawDirection).trim().toLowerCase() as InternalSignalType
+        if (!validInternalTypes.has(direction)) {
+          continue
+        }
+
+        const normalizedVendorType = normalizeTypeKey(rawVendorType)
+        let option = optionsByKey.get(normalizedVendorType)
+        if (!option) {
+          option = options.find(item => item.label.trim().toLowerCase() === rawVendorType.trim().toLowerCase())
+        }
         if (!option) continue
         mapped[option.key] = direction
       }
-      if (Object.keys(mapped).length) {
-        typeMapping.value = mapped
-      }
+      typeMapping.value = mapped
     }
   } finally {
-    applyingPreset.value = false
+    setTimeout(() => {
+      applyingPreset.value = false
+      suppressTypeMappingReset.value = false
+    }, 0)
   }
 }
 
@@ -869,9 +936,15 @@ function buildTypeValueOptions() {
 function ensureValidColumnSelections() {
   const columns = selectedColumnOptions.value
   if (!columns.length) {
+    terminalColumnIndex.value = null
     typeColumnIndex.value = null
     return
   }
+
+  if (!columns.some(column => column.index === terminalColumnIndex.value)) {
+    terminalColumnIndex.value = applyingPreset.value ? guessTerminalColumnIndex(columns) : null
+  }
+
   if (!columns.some(column => column.index === typeColumnIndex.value)) {
     if (applyingPreset.value) {
       typeColumnIndex.value = guessTypeColumnIndex(columns)
@@ -879,6 +952,15 @@ function ensureValidColumnSelections() {
       typeColumnIndex.value = null
     }
   }
+}
+
+function guessTerminalColumnIndex(columns: SheetColumn[]): number | null {
+  const heuristics = [/terminal/i, /клем/i, /клемм/i, /xt/i]
+  for (const pattern of heuristics) {
+    const match = columns.find(column => pattern.test(column.header))
+    if (match) return match.index
+  }
+  return null
 }
 
 function guessTypeColumnIndex(columns: SheetColumn[]): number | null {
@@ -923,21 +1005,23 @@ async function buildPreparedImportPayload(): Promise<{ file: File; metadata: Sig
   if (typeColumnIndex.value === null) {
     throw new Error("Choose a type column before importing.")
   }
+  if (terminalColumnIndex.value === null) {
+    throw new Error("Choose a terminal column before importing.")
+  }
   const typeColumn = orderedColumns.find(column => column.index === typeColumnIndex.value)
   if (!typeColumn) {
     throw new Error("Type column must be part of the selection.")
+  }
+  const terminalColumn = orderedColumns.find(column => column.index === terminalColumnIndex.value)
+  if (!terminalColumn) {
+    throw new Error("Terminal column must be part of the selection.")
   }
   const mappingEntries = Object.entries(typeMapping.value)
   if (!mappingEntries.length) {
     throw new Error("Map at least one vendor type to an internal type.")
   }
   const normalizedMapping = Object.fromEntries(mappingEntries)
-  const currentTypeOptions = typeValueOptions.value
-  const displayMapping: Record<string, InternalSignalType> = {}
-  mappingEntries.forEach(([key, value]) => {
-    const label = currentTypeOptions.find(option => option.key === key)?.label ?? key
-    displayMapping[label] = value
-  })
+  const presetTypeMapping: Record<string, InternalSignalType> = Object.fromEntries(mappingEntries)
   const filteredRows: unknown[][] = [
     orderedColumns.map(column => column.header).concat(INTERNAL_TYPE_COLUMN_KEY),
   ]
@@ -969,8 +1053,9 @@ async function buildPreparedImportPayload(): Promise<{ file: File; metadata: Sig
     sheet_name: sanitizedName,
     source_sheet_name: selectedSheetName.value,
     selected_columns: orderedColumns.map(column => column.header),
+    hmi_representation: terminalColumn.header,
     type_column: typeColumn.header,
-    type_mapping: displayMapping,
+    type_mapping: presetTypeMapping,
     internal_type_column: INTERNAL_TYPE_COLUMN_KEY,
   }
 
@@ -998,7 +1083,7 @@ watch(
 watch(
   () => ({ sheet: selectedSheetName.value, column: typeColumnIndex.value }),
   (current, previous) => {
-    if (applyingPreset.value) {
+    if (applyingPreset.value || suppressTypeMappingReset.value) {
       return
     }
     if (!previous || current.sheet !== previous.sheet || current.column !== previous.column) {
