@@ -30,7 +30,7 @@
       :switchgear-create-in-progress="switchgearCreateInProgress"
       :create-switchgear-button-label="createSwitchgearButtonLabel"
       @import="openImportModal"
-      @export-cable="exportCableJournal"
+      @export-cable="openExportModal"
       @export-report="exportSignalReport"
       @allocate-selected="allocateSelectedUnassigned"
       @deallocate-selected="deallocateSelected"
@@ -132,6 +132,14 @@
     </UiAffinoDataGrid>
 
     <SignalImportModal :open="importModalOpen" @close="closeImportModal" @imported="handleImported" />
+    <SignalExportModal
+      :open="exportModalOpen"
+      :workspace-id="workspaceStore.activeWorkspaceId"
+      :required-columns="requiredExportColumnOptions"
+      :optional-columns="optionalExportColumnOptions"
+      @close="closeExportModal"
+      @export="handleExportCableFromWizard"
+    />
   </div>
 </template>
 
@@ -147,6 +155,7 @@ import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
 import AllocationControlCell from "@/pages/signals/components/AllocationControlCell.vue"
 import AllocationEditorHeader from "@/pages/signals/components/AllocationEditorHeader.vue"
 import AllocationChannelPicker from "@/pages/signals/components/AllocationChannelPicker.vue"
+import SignalExportModal, { type ExportColumnOption } from "@/pages/signals/components/SignalExportModal.vue"
 import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
 import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders } from "@/pages/signals/utils/sourceColumns"
 import { useChannelStore } from "@/stores/channelStore"
@@ -176,6 +185,7 @@ const { channels } = storeToRefs(channelStore)
 
 const scopeId = "signals:allocations"
 const importModalOpen = ref(false)
+const exportModalOpen = ref(false)
 const selectedRowKeys = ref<string[]>([])
 const allocatingSelected = ref(false)
 const deallocatingSelected = ref(false)
@@ -833,6 +843,16 @@ function formatPercentCompact(part: number, total: number): string {
   return Number.isInteger(rounded) ? `${rounded.toFixed(0)}%` : `${rounded.toFixed(1)}%`
 }
 
+function toFilenamePart(value: string | null | undefined): string {
+  const normalized = String(value ?? "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+  return normalized || "workspace"
+}
+
 function formatDurationShort(seconds: number): string {
   const normalized = Math.max(0, Math.round(seconds))
   const minutes = Math.floor(normalized / 60)
@@ -947,27 +967,141 @@ function downloadTextFile(content: string, filename: string, mimeType = "text/cs
   URL.revokeObjectURL(url)
 }
 
-function buildCableJournalRows(): string[][] {
+function resolveTerminalHeader(): string | null {
+  const fromImportMeta = String(activeSignalSheet.value?.import_meta?.hmi_representation ?? "").trim()
+  if (fromImportMeta) {
+    return fromImportMeta
+  }
+
   const headers = sourceColumnHeaders.value
-  const fallbackHeaders = headers.length > 0 ? headers : ["signal_name", "signal_key"]
+  const byHeuristic = headers.find((header) => /terminal|клем|клемм|xt/i.test(String(header)))
+  if (byHeuristic) {
+    return String(byHeuristic)
+  }
 
-  const rows: string[][] = []
-  allocatedCableRows.value.forEach((row) => {
-    const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
-    const sourceCells = fallbackHeaders.map((header) => {
-      if (header === "signal_name") return row.signal_name
-      if (header === "signal_key") return row.signal_key
-      return sourceRow[header] ?? ""
-    })
-    const channelNumber = Number.isFinite(row.channel_index as number) ? Number(row.channel_index) + 1 : ""
-    rows.push([
-      ...sourceCells.map(item => String(item ?? "")),
-      String(row.unit_id ?? ""),
-      String(channelNumber),
-    ])
-  })
+  return null
+}
 
-  return rows
+function resolveTerminalValue(row: SignalAllocationRow, terminalHeader: string | null): string {
+  if (!terminalHeader) return ""
+  const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
+  const rawValue = sourceRow[terminalHeader]
+  if (rawValue === undefined || rawValue === null) return ""
+  return String(rawValue)
+}
+
+type CableExportColumnDef = {
+  key: string
+  label: string
+  required: boolean
+  getValue: (row: SignalAllocationRow, terminalHeader: string | null) => string
+}
+
+const cableExportColumnDefs = computed<CableExportColumnDef[]>(() => {
+  const sourceColumnDefs: CableExportColumnDef[] = sourceColumnHeaders.value.map((header) => ({
+    key: `source:${header}`,
+    label: header,
+    required: false,
+    getValue: (row: SignalAllocationRow) => {
+      const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
+      const rawValue = sourceRow[header]
+      return rawValue === undefined || rawValue === null ? "" : String(rawValue)
+    },
+  }))
+
+  return [
+    {
+      key: "unit_id",
+      label: "unit_id",
+      required: true,
+      getValue: (row: SignalAllocationRow) => String(row.unit_id ?? ""),
+    },
+    {
+      key: "channel_id",
+      label: "channel_id",
+      required: true,
+      getValue: (row: SignalAllocationRow) => String(row.channel_id ?? ""),
+    },
+    {
+      key: "terminal",
+      label: "terminal",
+      required: true,
+      getValue: (row: SignalAllocationRow, terminalHeader: string | null) => resolveTerminalValue(row, terminalHeader),
+    },
+    {
+      key: "channel_index",
+      label: "channel_index",
+      required: false,
+      getValue: (row: SignalAllocationRow) => (
+        Number.isFinite(row.channel_index as number) ? String(Number(row.channel_index) + 1) : ""
+      ),
+    },
+    {
+      key: "channel_label",
+      label: "channel_label",
+      required: false,
+      getValue: (row: SignalAllocationRow) => String(row.channel_label ?? ""),
+    },
+    {
+      key: "signal_name",
+      label: "signal_name",
+      required: false,
+      getValue: (row: SignalAllocationRow) => String(row.signal_name ?? ""),
+    },
+    {
+      key: "signal_key",
+      label: "signal_key",
+      required: false,
+      getValue: (row: SignalAllocationRow) => String(row.signal_key ?? ""),
+    },
+    {
+      key: "signal_direction",
+      label: "signal_direction",
+      required: false,
+      getValue: (row: SignalAllocationRow) => String(row.signal_direction ?? ""),
+    },
+    {
+      key: "signal_category",
+      label: "signal_category",
+      required: false,
+      getValue: (row: SignalAllocationRow) => String(row.signal_category ?? ""),
+    },
+    {
+      key: "last_tested_at",
+      label: "last_tested_at",
+      required: false,
+      getValue: (row: SignalAllocationRow) => String(row.tested_at ?? ""),
+    },
+    ...sourceColumnDefs,
+  ]
+})
+
+const requiredExportColumnOptions = computed<ExportColumnOption[]>(() => (
+  cableExportColumnDefs.value
+    .filter(column => column.required)
+    .map(column => ({ key: column.key, label: column.label }))
+))
+
+const optionalExportColumnOptions = computed<ExportColumnOption[]>(() => (
+  cableExportColumnDefs.value
+    .filter(column => !column.required)
+    .map(column => ({ key: column.key, label: column.label }))
+))
+
+function resolveSelectedCableExportColumns(optionalColumnKeys: readonly string[]): CableExportColumnDef[] {
+  const byKey = new Map(cableExportColumnDefs.value.map(column => [column.key, column] as const))
+  const requiredStart = ["unit_id", "channel_id"]
+    .map(key => byKey.get(key))
+    .filter((column): column is CableExportColumnDef => Boolean(column))
+  const terminalColumn = byKey.get("terminal")
+
+  const optional = optionalColumnKeys
+    .map(key => byKey.get(key))
+    .filter((column): column is CableExportColumnDef => Boolean(column && !column.required))
+
+  return terminalColumn
+    ? [...requiredStart, ...optional, terminalColumn]
+    : [...requiredStart, ...optional]
 }
 
 function buildSignalReportRows(): string[][] {
@@ -992,26 +1126,57 @@ function buildSignalReportRows(): string[][] {
   })
 }
 
-function exportCableJournal() {
+function exportCableJournal(optionalColumnKeys: string[] = []) {
   if (!allocatedCableRows.value.length) {
     toastStore.info("No allocated rows to export.")
     return
   }
 
-  const headers = sourceColumnHeaders.value
-  const fallbackHeaders = headers.length > 0 ? headers : ["signal_name", "signal_key"]
-  const csvHeaders = [...fallbackHeaders, "unit_id", "channel_index"]
-  const rows = buildCableJournalRows()
+  const workspaceName = String(workspaceStore.activeWorkspace?.name ?? "")
+  const workspaceFilePart = toFilenamePart(workspaceName)
+  const generatedAt = new Date()
+  const terminalHeader = resolveTerminalHeader()
+  const selectedColumns = resolveSelectedCableExportColumns(optionalColumnKeys)
+  const tableHeaders = selectedColumns.map(column => column.label)
+  const rows = allocatedCableRows.value.map(row => (
+    selectedColumns.map(column => column.getValue(row, terminalHeader))
+  ))
+  const summaryRows = [
+    ["report", "cable-schedule"],
+    ["workspace_name", workspaceName],
+    ["exported_at", generatedAt.toISOString()],
+    ["total", String(allocatedCableRows.value.length)],
+  ]
+
   const csvContent = [
-    csvHeaders.map(csvEscape).join(","),
+    ...summaryRows.map(row => row.map(csvEscape).join(",")),
+    "",
+    tableHeaders.map(csvEscape).join(","),
     ...rows.map(row => row.map(csvEscape).join(",")),
   ].join("\n")
 
-  const workspaceId = workspaceStore.activeWorkspaceId ?? "workspace"
-  const dateSuffix = new Date().toISOString().slice(0, 19).replace(/:/g, "-")
-  const filename = `cable-journal-ws-${workspaceId}-${dateSuffix}.csv`
+  const dateSuffix = generatedAt.toISOString().slice(0, 19).replace(/:/g, "-")
+  const filename = `cable-schedule-ws-${workspaceFilePart}-${dateSuffix}.csv`
   downloadTextFile(csvContent, filename)
-  toastStore.success(`Cable journal exported: ${rows.length} rows`)
+  toastStore.success(`Cable schedule exported: ${rows.length} rows`)
+}
+
+function openExportModal() {
+  if (workspaceMissing.value) return
+  if (!allocatedCableRows.value.length) {
+    toastStore.info("No allocated rows to export.")
+    return
+  }
+  exportModalOpen.value = true
+}
+
+function closeExportModal() {
+  exportModalOpen.value = false
+}
+
+function handleExportCableFromWizard(payload: { optionalColumnKeys: string[] }) {
+  exportModalOpen.value = false
+  exportCableJournal(payload.optionalColumnKeys)
 }
 
 function exportSignalReport() {
@@ -1024,7 +1189,8 @@ function exportSignalReport() {
   const fallbackHeaders = headers.length > 0 ? headers : ["signal_name", "signal_key"]
   const csvHeaders = [...fallbackHeaders, "signal_direction", "unit_id", "channel_index", "last_tested_at"]
   const rows = buildSignalReportRows()
-  const workspaceId = workspaceStore.activeWorkspaceId ?? "workspace"
+  const workspaceName = String(workspaceStore.activeWorkspace?.name ?? "")
+  const workspaceFilePart = toFilenamePart(workspaceName)
   const generatedAt = new Date()
   const tested = testedSignalsCount.value
   const remaining = remainingSignalsCount.value
@@ -1032,7 +1198,6 @@ function exportSignalReport() {
 
   const metaRows = [
     ["report", "signal-test-report"],
-    ["workspace_id", String(workspaceId)],
     ["generated_at", generatedAt.toISOString()],
     ["signals_total", String(total)],
     ["signals_tested", String(tested)],
@@ -1047,7 +1212,7 @@ function exportSignalReport() {
   ].join("\n")
 
   const dateSuffix = generatedAt.toISOString().slice(0, 19).replace(/:/g, "-")
-  const filename = `signal-report-ws-${workspaceId}-${dateSuffix}.csv`
+  const filename = `signal-report-ws-${workspaceFilePart}-${dateSuffix}.csv`
   downloadTextFile(csvContent, filename)
   toastStore.success(`Report exported: tested ${tested}, remaining ${remaining}, total ${total}`)
 }
