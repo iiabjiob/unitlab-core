@@ -1624,15 +1624,16 @@ async function allocateSelectedUnassigned() {
       return
     }
 
-    const { data } = await SignalSheetAPI.autoAllocate(workspaceId, {
+    const completedJob = await signalJobStore.enqueueAutoAllocateJob(workspaceId, {
       signal_ids: targetSignalIds,
       prefer_online: true,
       overwrite_existing: false,
     })
     await signalSheetStore.refreshAllocations()
 
-    const assigned = Number(data.result?.assigned ?? 0)
-    const restRaw = data.result?.unassigned_signal_ids
+    const jobResult = (completedJob.result ?? {}) as Record<string, unknown>
+    const assigned = Number(jobResult.assigned ?? 0)
+    const restRaw = jobResult.unassigned_signal_ids
     const rest = Array.isArray(restRaw) ? restRaw.length : 0
     const unavailableSkipped = Math.max(0, selectedUnassignedSignalIds.value.length - targetSignalIds.length)
     toastStore.success(
@@ -1658,13 +1659,15 @@ async function deallocateSelected() {
       return
     }
 
-    await SignalSheetAPI.updateAllocations(
+    const completedJob = await signalJobStore.enqueueBulkUpdateJob(
       workspaceId,
       selectedAllocatedSignalIds.value.map(signalId => ({ signal_id: signalId, channel_id: null })),
     )
     await signalSheetStore.refreshAllocations()
 
-    toastStore.success(`Unassigned ${selectedAllocatedSignalIds.value.length} selected signal(s)`)
+    const jobResult = (completedJob.result ?? {}) as Record<string, unknown>
+    const updated = Number(jobResult.updated ?? selectedAllocatedSignalIds.value.length)
+    toastStore.success(`Unassigned ${updated} selected signal(s)`)
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))
   } finally {

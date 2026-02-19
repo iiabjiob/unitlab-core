@@ -23,13 +23,13 @@ function isRetryableTransportError(error: unknown): boolean {
   if (method !== "get") return false
 
   const url = String(config.url ?? "")
-  const isSignalDataReadEndpoint = /\/signal-(?:allocations|sheet)(?:\/|\?|$)/.test(url)
+  const isApiReadEndpoint = /\/api\/v\d+\//.test(url) || /^\/api\//.test(url)
   const code = String(error.code ?? "")
   const message = String(error.message ?? "")
-  const contentLengthMismatch = /content_length_mismatch|content-length/i.test(message)
+  const contentLengthMismatch = /content_length_mismatch|content-length|length\s*mismatch/i.test(message)
   const networkLike = code === "ERR_NETWORK" || code === "ECONNRESET" || code === "ETIMEDOUT"
 
-  return isSignalDataReadEndpoint && (contentLengthMismatch || networkLike)
+  return isApiReadEndpoint && (contentLengthMismatch || networkLike)
 }
 
 http.interceptors.response.use(

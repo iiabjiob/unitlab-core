@@ -40,6 +40,7 @@ class Signal(Base):
         UniqueConstraint("workspace_id", "key", name="uq_signals_workspace_key"),
         Index("ix_signals_workspace", "workspace_id"),
         Index("ix_signals_workspace_active", "workspace_id", "is_active"),
+        Index("ix_signals_workspace_tested_at", "workspace_id", "tested_at"),
     )
 
     id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
@@ -61,6 +62,7 @@ class Signal(Base):
     )
     category: Mapped[str | None] = mapped_column(String(64), nullable=True)
     signal_metadata: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, server_default="{}")
+    tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

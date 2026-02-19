@@ -47,6 +47,11 @@ export default defineConfig({
         target: 'http://localhost:8000',
         changeOrigin: true,
         ws: true,
+        headers: {
+          'accept-encoding': 'identity',
+        },
+        timeout: 30000,
+        proxyTimeout: 30000,
       },
       '/ws': {
         target: 'ws://localhost:8000',

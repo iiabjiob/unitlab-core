@@ -43,6 +43,7 @@ class SignalsRepository:
             io_direction=direction,
             category=payload.get("category"),
             signal_metadata=payload.get("metadata") or {},
+            tested_at=self._extract_tested_at_from_metadata(payload.get("metadata") or {}),
             is_active=bool(payload.get("is_active", True)),
         )
         self.db.add(signal)
@@ -63,6 +64,7 @@ class SignalsRepository:
             signal.category = payload["category"]
         if "metadata" in payload:
             signal.signal_metadata = payload["metadata"] or {}
+            signal.tested_at = self._extract_tested_at_from_metadata(signal.signal_metadata)
         if "is_active" in payload and payload["is_active"] is not None:
             signal.is_active = bool(payload["is_active"])
 
@@ -106,6 +108,7 @@ class SignalsRepository:
                     io_direction=self._parse_direction(item.io_direction),
                     category=item.category,
                     signal_metadata=item.signal_metadata,
+                    tested_at=None,
                     is_active=True,
                     deleted_at=None,
                 )
@@ -116,6 +119,7 @@ class SignalsRepository:
             current.io_direction = self._parse_direction(item.io_direction)
             current.category = item.category
             current.signal_metadata = item.signal_metadata
+            current.tested_at = None
             current.is_active = True
             current.deleted_at = None
 
@@ -159,3 +163,24 @@ class SignalsRepository:
         if isinstance(value, SignalIODirection):
             return value
         return SignalIODirection(str(value).strip().upper())
+
+    @staticmethod
+    def _extract_tested_at_from_metadata(metadata: dict | None) -> datetime | None:
+        if not isinstance(metadata, dict):
+            return None
+        raw_value = metadata.get("tested_at") or metadata.get("testedAt")
+        if raw_value is None:
+            return None
+        if isinstance(raw_value, datetime):
+            return raw_value
+        if isinstance(raw_value, str):
+            candidate = raw_value.strip()
+            if not candidate:
+                return None
+            if candidate.endswith("Z"):
+                candidate = candidate[:-1] + "+00:00"
+            try:
+                return datetime.fromisoformat(candidate)
+            except ValueError:
+                return None
+        return None

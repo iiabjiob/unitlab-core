@@ -217,7 +217,7 @@ class SignalSheetRepository:
                     unit_id=channel.device.unit_id if channel and channel.device else None,
                     unit_online=unit_online,
                     unit_last_seen_at=unit_last_seen_at,
-                    tested_at=_parse_tested_at(signal.signal_metadata),
+                    tested_at=signal.tested_at,
                 )
             )
         return rows
@@ -330,15 +330,13 @@ class SignalSheetRepository:
         if not signals_by_id:
             return []
 
-        tested_at = datetime.now(timezone.utc).isoformat()
+        tested_at_dt = datetime.now(timezone.utc)
         touched_ids: list[int] = []
         for signal_id in normalized_signal_ids:
             signal = signals_by_id.get(signal_id)
             if signal is None:
                 continue
-            metadata = dict(signal.signal_metadata or {})
-            metadata["tested_at"] = tested_at
-            signal.signal_metadata = metadata
+            signal.tested_at = tested_at_dt
             touched_ids.append(signal.id)
 
         if not touched_ids:
@@ -369,9 +367,10 @@ class SignalSheetRepository:
             signal = signals_by_id.get(signal_id)
             if signal is None:
                 continue
-            metadata = dict(signal.signal_metadata or {})
-            metadata["tested_at"] = tested_at
-            signal.signal_metadata = metadata
+            tested_at_dt = _parse_tested_at_value(tested_at)
+            if tested_at_dt is None:
+                continue
+            signal.tested_at = tested_at_dt
             touched_ids.append(signal.id)
 
         if not touched_ids:
@@ -678,11 +677,7 @@ def _is_unit_online(last_seen_at: datetime | None) -> bool:
     return last_seen_at >= threshold
 
 
-def _parse_tested_at(metadata: dict[str, Any] | None) -> datetime | None:
-    if not isinstance(metadata, dict):
-        return None
-
-    raw_value = metadata.get("tested_at") or metadata.get("testedAt")
+def _parse_tested_at_value(raw_value: Any) -> datetime | None:
     if raw_value is None:
         return None
     if isinstance(raw_value, datetime):
