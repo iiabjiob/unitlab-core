@@ -36,6 +36,7 @@
           <button
             type="button"
             class="ui-affino-grid__toolbar-button"
+            :ref="columnPanelFloating.triggerRef"
             v-bind="columnPanelTriggerProps"
           >
             {{ isColumnPanelOpen ? "Hide columns" : "Columns" }}
@@ -44,8 +45,8 @@
       </div>
 
       <Teleport
-        v-if="props.showControls && columnPanelTeleportTarget"
-        :to="columnPanelTeleportTarget"
+        v-if="props.showControls"
+        :to="columnPanelTeleportTarget || 'body'"
       >
         <div
           v-show="isColumnPanelOpen"
@@ -3442,9 +3443,9 @@ function columnStyle(width: number) {
 
 .dark .ui-affino-grid__toolbar-button,
 .dark .ui-affino-grid__column-order-button {
-  border-color: var(--ui-affino-dark-border);
-  color: var(--ui-affino-dark-text-strong);
-  background: var(--ui-affino-dark-bg-input);
+  border-color: var(--ui-affino-dark-border, rgba(115, 115, 115, 0.32));
+  color: var(--ui-affino-dark-text-strong, #d4d4d4);
+  background: var(--ui-affino-dark-bg-input, #262626);
 }
 
 .ui-affino-grid__column-panel {
@@ -3465,8 +3466,9 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__column-panel {
-  border-color: var(--ui-affino-dark-border);
+  border-color: var(--ui-affino-dark-border, rgba(115, 115, 115, 0.32));
   background: #171717;
+  color: var(--ui-affino-dark-text, #e5e5e5);
 }
 
 .ui-affino-grid__header-context-menu {
@@ -3492,7 +3494,7 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__column-panel-title {
-  color: var(--ui-affino-dark-text-strong);
+  color: var(--ui-affino-dark-text-strong, #d4d4d4);
 }
 
 .ui-affino-grid__column-panel-row {
@@ -3500,6 +3502,16 @@ function columnStyle(width: number) {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  padding: 0.28rem 0.4rem;
+  border-radius: 0.4rem;
+}
+
+.ui-affino-grid__column-panel-row:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.dark .ui-affino-grid__column-panel-row:hover {
+  background: rgba(82, 82, 82, 0.42);
 }
 
 .ui-affino-grid__column-toggle {
@@ -3512,7 +3524,17 @@ function columnStyle(width: number) {
 }
 
 .dark .ui-affino-grid__column-toggle {
-  color: var(--ui-affino-dark-text);
+  color: var(--ui-affino-dark-text, #e5e5e5);
+}
+
+.ui-affino-grid__column-toggle input[type="checkbox"] {
+  width: 0.95rem;
+  height: 0.95rem;
+  accent-color: #2563eb;
+}
+
+.dark .ui-affino-grid__column-toggle input[type="checkbox"] {
+  accent-color: #38bdf8;
 }
 
 .ui-affino-grid__column-order-actions {
@@ -3524,6 +3546,18 @@ function columnStyle(width: number) {
 .ui-affino-grid__column-order-button {
   min-width: 1.65rem;
   padding: 0.25rem 0.35rem;
+}
+
+.ui-affino-grid__column-order-button:not(:disabled):hover,
+.ui-affino-grid__toolbar-button:not(:disabled):hover {
+  border-color: rgba(100, 116, 139, 0.7);
+  background: rgba(241, 245, 249, 0.95);
+}
+
+.dark .ui-affino-grid__column-order-button:not(:disabled):hover,
+.dark .ui-affino-grid__toolbar-button:not(:disabled):hover {
+  border-color: rgba(163, 163, 163, 0.6);
+  background: rgba(64, 64, 64, 0.75);
 }
 
 .ui-affino-grid__content-shell {
