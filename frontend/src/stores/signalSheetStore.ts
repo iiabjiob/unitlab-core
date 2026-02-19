@@ -669,8 +669,8 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
           continue
         }
         const rowIndex = allocationIndexBySignalId.get(signalId)
-        const snapshotRow = rollback.get(signalId)
-        if (rowIndex === undefined || !snapshotRow) {
+        const rollbackRow = rollback.get(signalId)
+        if (rowIndex === undefined || !rollbackRow) {
           if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
             await yieldToEventLoop()
           }
@@ -685,15 +685,15 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         }
         const previousAllocated = isAllocatedChannelId(row.channel_id)
         const previousChannelId = normalizeChannelId(row.channel_id)
-        allocationRows.value[rowIndex] = cloneAllocationRow(snapshotRow)
+        allocationRows.value[rowIndex] = cloneAllocationRow(rollbackRow)
         if (previousChannelId !== null && allocationOwnerByChannelId.get(previousChannelId) === signalId) {
           allocationOwnerByChannelId.delete(previousChannelId)
         }
-        const nextChannelId = normalizeChannelId(snapshotRow.channel_id)
+        const nextChannelId = normalizeChannelId(rollbackRow.channel_id)
         if (nextChannelId !== null) {
           allocationOwnerByChannelId.set(nextChannelId, signalId)
         }
-        const nextAllocated = isAllocatedChannelId(snapshotRow.channel_id)
+        const nextAllocated = isAllocatedChannelId(rollbackRow.channel_id)
         patchSheetAllocatedCount(previousAllocated, nextAllocated)
         if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
           await yieldToEventLoop()
@@ -785,8 +785,8 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
             }
             continue
           }
-          const snapshot = rollback.get(signalId)
-          if (!snapshot) {
+          const rollbackRow = rollback.get(signalId)
+          if (!rollbackRow) {
             if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
               await yieldToEventLoop()
             }
@@ -808,15 +808,15 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
           }
           const previousAllocated = isAllocatedChannelId(row.channel_id)
           const previousChannelId = normalizeChannelId(row.channel_id)
-          allocationRows.value[rowIndex] = cloneAllocationRow(snapshot)
+          allocationRows.value[rowIndex] = cloneAllocationRow(rollbackRow)
           if (previousChannelId !== null && allocationOwnerByChannelId.get(previousChannelId) === signalId) {
             allocationOwnerByChannelId.delete(previousChannelId)
           }
-          const nextChannelId = normalizeChannelId(snapshot.channel_id)
+          const nextChannelId = normalizeChannelId(rollbackRow.channel_id)
           if (nextChannelId !== null) {
             allocationOwnerByChannelId.set(nextChannelId, signalId)
           }
-          const nextAllocated = isAllocatedChannelId(snapshot.channel_id)
+          const nextAllocated = isAllocatedChannelId(rollbackRow.channel_id)
           patchSheetAllocatedCount(previousAllocated, nextAllocated)
           rolledBack = true
           if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
@@ -834,7 +834,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       if (optimisticSignalIds.length > 0) {
         const rollbackEntries = Array.from(rollback.entries())
         for (let index = 0; index < rollbackEntries.length; index += 1) {
-          const [signalId, snapshot] = rollbackEntries[index]
+          const [signalId, rollbackRow] = rollbackEntries[index]
           const expectedVersion = optimisticSignalVersions.get(signalId)
           if (!expectedVersion || allocationMutationVersionBySignalId.get(signalId) !== expectedVersion) {
             if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
@@ -858,15 +858,15 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
           }
           const previousAllocated = isAllocatedChannelId(row.channel_id)
           const previousChannelId = normalizeChannelId(row.channel_id)
-          allocationRows.value[rowIndex] = cloneAllocationRow(snapshot)
+          allocationRows.value[rowIndex] = cloneAllocationRow(rollbackRow)
           if (previousChannelId !== null && allocationOwnerByChannelId.get(previousChannelId) === signalId) {
             allocationOwnerByChannelId.delete(previousChannelId)
           }
-          const nextChannelId = normalizeChannelId(snapshot.channel_id)
+          const nextChannelId = normalizeChannelId(rollbackRow.channel_id)
           if (nextChannelId !== null) {
             allocationOwnerByChannelId.set(nextChannelId, signalId)
           }
-          const nextAllocated = isAllocatedChannelId(snapshot.channel_id)
+          const nextAllocated = isAllocatedChannelId(rollbackRow.channel_id)
           patchSheetAllocatedCount(previousAllocated, nextAllocated)
           if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
             await yieldToEventLoop()

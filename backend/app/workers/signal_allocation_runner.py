@@ -73,7 +73,7 @@ async def _handle_auto_allocate(
     repo: SignalSheetRepository,
     workspace_id: int,
     payload: dict[str, Any],
-    job_snapshot: dict[str, Any],
+    job_state: dict[str, Any],
 ) -> dict[str, Any]:
     request = SignalAutoAllocateSchema.model_validate(payload)
 
@@ -93,7 +93,7 @@ async def _handle_auto_allocate(
             return
         last_emit_at = now
         await _publish_running_progress(
-            job_snapshot=job_snapshot,
+            job_state=job_state,
             progress_done=done,
             progress_total=max(progress_total, total),
             message=f"Signals {done}/{max(progress_total, total)}",
@@ -120,7 +120,7 @@ async def _handle_bulk_update(
     repo: SignalSheetRepository,
     workspace_id: int,
     payload: dict[str, Any],
-    job_snapshot: dict[str, Any],
+    job_state: dict[str, Any],
 ) -> dict[str, Any]:
     request = SignalAllocationBulkUpdateSchema.model_validate(payload)
     entries = [item.model_dump() for item in request.entries]
@@ -140,7 +140,7 @@ async def _handle_bulk_update(
             return
         last_emit_at = now
         await _publish_running_progress(
-            job_snapshot=job_snapshot,
+            job_state=job_state,
             progress_done=done,
             progress_total=max(progress_total, total),
             message=f"Signals {done}/{max(progress_total, total)}",
@@ -177,22 +177,22 @@ async def _process_entries(redis, entries) -> None:
             if operation == "test_run" and isinstance(payload.get("signal_ids"), list):
                 progress_total = len(payload.get("signal_ids") or [])
 
-            snapshot = await get_signal_job(job_id)
-            if snapshot and str(snapshot.get("status") or "") == "cancelled":
+            job_state = await get_signal_job(job_id)
+            if job_state and str(job_state.get("status") or "") == "cancelled":
                 should_ack = True
                 continue
 
-            running_snapshot = await update_signal_job(
+            running_state = await update_signal_job(
                 job_id,
                 status="running",
                 message="Running",
                 progress_done=0,
                 progress_total=progress_total,
             )
-            if running_snapshot:
-                await WsEventPublisher.publish(build_signal_job_event(running_snapshot))
+            if running_state:
+                await WsEventPublisher.publish(build_signal_job_event(running_state))
             else:
-                logger.warning("⚠️ Job snapshot missing before start, leaving entry pending: %s", job_id)
+                logger.warning("⚠️ Job state missing before start, leaving entry pending: %s", job_id)
                 continue
 
             async with AsyncSessionLocal() as session:
@@ -202,17 +202,17 @@ async def _process_entries(redis, entries) -> None:
 
                 if operation == "auto_allocate":
                     payload["job_id"] = job_id
-                    result = await _handle_auto_allocate(repo, workspace_id, payload, running_snapshot)
+                    result = await _handle_auto_allocate(repo, workspace_id, payload, running_state)
                 elif operation == "bulk_update":
                     payload["job_id"] = job_id
-                    result = await _handle_bulk_update(repo, workspace_id, payload, running_snapshot)
+                    result = await _handle_bulk_update(repo, workspace_id, payload, running_state)
                 elif operation == "test_run":
                     raise ValueError("test_run operation must be processed by signal_test_run_runner")
                 else:
                     raise ValueError(f"Unknown operation: {operation}")
 
             cancelled = bool((result or {}).get("cancelled")) if isinstance(result, dict) else False
-            done_snapshot = await update_signal_job(
+            completed_state = await update_signal_job(
                 job_id,
                 status="cancelled" if cancelled else "succeeded",
                 message="Cancelled" if cancelled else "Completed",
@@ -220,20 +220,20 @@ async def _process_entries(redis, entries) -> None:
                 progress_total=progress_total,
                 result=result,
             )
-            if done_snapshot:
-                await WsEventPublisher.publish(build_signal_job_event(done_snapshot))
+            if completed_state:
+                await WsEventPublisher.publish(build_signal_job_event(completed_state))
                 should_ack = True
         except Exception as exc:  # noqa: BLE001
             logger.exception("💥 Failed to process signal allocation job %s: %s", entry_id, exc)
             if job_id:
-                failed_snapshot = await update_signal_job(
+                failed_state = await update_signal_job(
                     job_id,
                     status="failed",
                     message="Failed",
                     error=str(exc),
                 )
-                if failed_snapshot:
-                    await WsEventPublisher.publish(build_signal_job_event(failed_snapshot))
+                if failed_state:
+                    await WsEventPublisher.publish(build_signal_job_event(failed_state))
                     should_ack = True
             else:
                 should_ack = True
@@ -246,22 +246,22 @@ async def _process_entries(redis, entries) -> None:
 
 async def _publish_running_progress(
     *,
-    job_snapshot: dict[str, Any],
+    job_state: dict[str, Any],
     progress_done: int,
     progress_total: int,
     message: str,
     result: dict[str, Any] | None = None,
 ) -> None:
-    next_snapshot = dict(job_snapshot)
-    next_snapshot["status"] = "running"
-    next_snapshot["message"] = message
-    next_snapshot["progress_done"] = max(0, int(progress_done))
-    next_snapshot["progress_total"] = max(0, int(progress_total))
+    next_state = dict(job_state)
+    next_state["status"] = "running"
+    next_state["message"] = message
+    next_state["progress_done"] = max(0, int(progress_done))
+    next_state["progress_total"] = max(0, int(progress_total))
     if result is not None:
-        next_snapshot["result"] = result
-    next_snapshot["updated_at"] = datetime.now(timezone.utc).isoformat()
-    job_snapshot.update(next_snapshot)
-    await WsEventPublisher.publish(build_signal_job_event(next_snapshot))
+        next_state["result"] = result
+    next_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    job_state.update(next_state)
+    await WsEventPublisher.publish(build_signal_job_event(next_state))
 
 
 async def main() -> None:

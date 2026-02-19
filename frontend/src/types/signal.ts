@@ -1,37 +1,4 @@
-export interface SnapshotSheet {
-  name: string
-  index: number
-  headers: string[]
-  rows_count: number
-  rows: Array<Record<string, unknown>>
-}
-
 export type InternalSignalType = "di" | "do" | "ao" | "ai"
-
-export interface SignalSnapshotDataV2 {
-  version: number
-  sheet_count: number
-  default_sheet_index: number
-  sheets: SnapshotSheet[]
-}
-
-export type SignalSnapshotData = Array<Record<string, unknown>> | SignalSnapshotDataV2
-
-export interface SignalSnapshot {
-  id: number
-  workspace_id: number
-  status: "draft" | "locked"
-  source_filename: string | null
-  source_hash: string | null
-  rows_count: number
-  schema_version: number
-  data: SignalSnapshotData
-  locked_at: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface SignalSnapshotSummary extends Omit<SignalSnapshot, "data"> {}
 
 export interface AllocationMappingMeta {
   sheet_index: number | null
@@ -54,15 +21,6 @@ export interface SignalImportMeta {
   type_column?: string | null
   type_mapping?: Record<string, InternalSignalType>
   internal_type_column?: string | null
-}
-
-export interface Allocation {
-  id: number
-  workspace_id: number
-  signal_snapshot_id: number
-  mapping: AllocationMappingItem[]
-  created_at: string
-  updated_at: string
 }
 
 // --- Live signal domain (in-progress migration) ---

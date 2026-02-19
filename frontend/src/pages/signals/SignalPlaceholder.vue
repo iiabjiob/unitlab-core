@@ -5,7 +5,7 @@ import WorkspacePlaceholder from "@/components/ui/WorkspacePlaceholder.vue"
 <template>
   <WorkspacePlaceholder
     tag="Signals"
-    title="Select a snapshot"
-    description="Pick a snapshot from the sidebar to review its rows before importing into allocation workflows. You can always upload a new Excel file or revisit prior imports from the list."
+    title="Open signal allocation"
+    description="Open the Signals workspace to review imported rows and manage channel allocations. You can import a new Excel file at any time."
   />
 </template>

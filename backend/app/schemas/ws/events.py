@@ -169,11 +169,11 @@ class SignalTestRunJobEvent(BaseModel):
     updated_at: datetime
 
 
-def build_signal_job_event(snapshot: Dict[str, Any]) -> SignalAllocationJobEvent | SignalTestRunJobEvent:
-    operation = str(snapshot.get("operation") or "").strip().lower()
+def build_signal_job_event(job_state: Dict[str, Any]) -> SignalAllocationJobEvent | SignalTestRunJobEvent:
+    operation = str(job_state.get("operation") or "").strip().lower()
     if operation == "test_run":
-        return SignalTestRunJobEvent(**snapshot)
-    return SignalAllocationJobEvent(**snapshot)
+        return SignalTestRunJobEvent(**job_state)
+    return SignalAllocationJobEvent(**job_state)
 
 # ---------------------------------------------------------------------
 # Union of all WS events

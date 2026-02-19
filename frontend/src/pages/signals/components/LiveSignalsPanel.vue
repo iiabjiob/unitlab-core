@@ -134,7 +134,7 @@ interface LiveSignalGridRow extends Record<string, unknown> {
   key: string
   direction: string
   channel: string
-  snapshot: string
+  source_link: string
   live: string
   action: string
   source: LiveSignalRow
@@ -179,7 +179,7 @@ const gridColumns = computed(() => [
   { key: "key", label: "Key", width: 210, minWidth: 160 },
   { key: "direction", label: "Direction", width: 120, minWidth: 110 },
   { key: "channel", label: "Channel", width: 260, minWidth: 180 },
-  { key: "snapshot", label: "Snapshot Link", width: 300, minWidth: 180 },
+  { key: "source_link", label: "Source Link", width: 300, minWidth: 180 },
   { key: "live", label: "Live State", width: 130, minWidth: 110 },
   { key: "action", label: "Action", width: 120, minWidth: 100 },
 ])
@@ -191,7 +191,7 @@ const gridRows = computed<LiveSignalGridRow[]>(() =>
     key: row.signal.key,
     direction: row.signal.io_direction,
     channel: describeChannel(row),
-    snapshot: describeMapping(row),
+    source_link: describeMapping(row),
     live: liveStateLabel(row),
     action: canToggle(row) ? toggleLabel(row) : "",
     source: row,

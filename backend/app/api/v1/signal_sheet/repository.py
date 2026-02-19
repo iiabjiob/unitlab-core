@@ -13,7 +13,7 @@ from app.models.channel import Channel
 from app.models.signal import Signal, SignalIODirection
 from app.models.signal_sheet import SignalAllocation, SignalSheet, SignalSheetPreset
 from app.models.workspace import Workspace
-from app.schemas.signal_snapshot_schema import SignalImportMetaSchema
+from app.schemas.signal_import_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
 
 settings = get_settings()

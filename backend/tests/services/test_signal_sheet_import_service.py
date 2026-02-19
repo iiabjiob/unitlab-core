@@ -4,7 +4,7 @@ from io import BytesIO
 
 from openpyxl import Workbook
 
-from app.schemas.signal_snapshot_schema import SignalImportMetaSchema
+from app.schemas.signal_import_schema import SignalImportMetaSchema
 from app.services.signal_sheet_import_service import SignalSheetImportService
 
 

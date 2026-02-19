@@ -238,8 +238,8 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
             return
           }
 
-          const snapshot = refreshed ?? jobsById.value[jobId]
-          const suffix = snapshot ? ` (last status: ${snapshot.status})` : ""
+          const lastKnownJob = refreshed ?? jobsById.value[jobId]
+          const suffix = lastKnownJob ? ` (last status: ${lastKnownJob.status})` : ""
           reject(new Error(`Signal allocation job update timeout; job may still continue in background${suffix}`))
         })()
       }, timeoutMs)

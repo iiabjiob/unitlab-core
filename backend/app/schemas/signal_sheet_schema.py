@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.signal_snapshot_schema import SignalImportMetaSchema
+from app.schemas.signal_import_schema import SignalImportMetaSchema
 
 
 class SignalSheetSchema(BaseModel):

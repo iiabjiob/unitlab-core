@@ -78,29 +78,29 @@ async def _drain_pending(redis) -> None:
 
 async def _publish_running_progress(
     *,
-    job_snapshot: dict[str, Any],
+    job_state: dict[str, Any],
     progress_done: int,
     progress_total: int,
     message: str,
     result: dict[str, Any] | None = None,
 ) -> None:
-    next_snapshot = dict(job_snapshot)
-    next_snapshot["status"] = "running"
-    next_snapshot["message"] = message
-    next_snapshot["progress_done"] = max(0, int(progress_done))
-    next_snapshot["progress_total"] = max(0, int(progress_total))
+    next_state = dict(job_state)
+    next_state["status"] = "running"
+    next_state["message"] = message
+    next_state["progress_done"] = max(0, int(progress_done))
+    next_state["progress_total"] = max(0, int(progress_total))
     if result is not None:
-        next_snapshot["result"] = result
-    next_snapshot["updated_at"] = datetime.now(timezone.utc).isoformat()
-    job_snapshot.update(next_snapshot)
-    await WsEventPublisher.publish(build_signal_job_event(next_snapshot))
+        next_state["result"] = result
+    next_state["updated_at"] = datetime.now(timezone.utc).isoformat()
+    job_state.update(next_state)
+    await WsEventPublisher.publish(build_signal_job_event(next_state))
 
 
 async def _handle_test_run(
     repo: SignalSheetRepository,
     workspace_id: int,
     payload: dict[str, Any],
-    job_snapshot: dict[str, Any],
+    job_state: dict[str, Any],
 ) -> dict[str, Any]:
     requested_ids_raw = payload.get("signal_ids") if isinstance(payload, dict) else None
     signal_interval_ms_raw = payload.get("signal_interval_ms") if isinstance(payload, dict) else None
@@ -190,8 +190,8 @@ async def _handle_test_run(
         while True:
             status = str(await get_signal_job_status(job_id) or "")
             if not status:
-                snapshot = await get_signal_job(job_id)
-                status = str((snapshot or {}).get("status") or "")
+                job_state_payload = await get_signal_job(job_id)
+                status = str((job_state_payload or {}).get("status") or "")
 
             if status in {"cancelling", "cancelled"}:
                 await flush_tested_at_batch()
@@ -294,7 +294,7 @@ async def _handle_test_run(
                 result_payload["tested_at_patch"] = dict(tested_at_patch_since_emit)
                 tested_at_patch_since_emit.clear()
             await _publish_running_progress(
-                job_snapshot=job_snapshot,
+                job_state=job_state,
                 progress_done=index,
                 progress_total=total,
                 message=f"Signals {index}/{total} · ok {len(succeeded_signal_ids)} · skip {skipped}",
@@ -356,23 +356,23 @@ async def _process_entries(redis, entries) -> None:
 
             progress_total = len(payload.get("signal_ids") or []) if isinstance(payload.get("signal_ids"), list) else 0
 
-            snapshot = await get_signal_job(job_id)
-            if snapshot and str(snapshot.get("status") or "") == "cancelled":
+            job_state = await get_signal_job(job_id)
+            if job_state and str(job_state.get("status") or "") == "cancelled":
                 await release_signal_test_run_workspace_lock(workspace_id, job_id)
                 should_ack = True
                 continue
 
-            running_snapshot = await update_signal_job(
+            running_state = await update_signal_job(
                 job_id,
                 status="running",
                 message="Running",
                 progress_done=0,
                 progress_total=progress_total,
             )
-            if running_snapshot:
-                await WsEventPublisher.publish(build_signal_job_event(running_snapshot))
+            if running_state:
+                await WsEventPublisher.publish(build_signal_job_event(running_state))
             else:
-                logger.warning("⚠️ Job snapshot missing before start, leaving entry pending: %s", job_id)
+                logger.warning("⚠️ Job state missing before start, leaving entry pending: %s", job_id)
                 continue
 
             async with AsyncSessionLocal() as session:
@@ -380,10 +380,10 @@ async def _process_entries(redis, entries) -> None:
                 if not await repo.ensure_workspace(workspace_id):
                     raise ValueError("Workspace not found")
                 payload["job_id"] = job_id
-                result = await _handle_test_run(repo, workspace_id, payload, running_snapshot)
+                result = await _handle_test_run(repo, workspace_id, payload, running_state)
 
             cancelled = bool((result or {}).get("cancelled")) if isinstance(result, dict) else False
-            done_snapshot = await update_signal_job(
+            completed_state = await update_signal_job(
                 job_id,
                 status="cancelled" if cancelled else "succeeded",
                 message="Cancelled" if cancelled else "Completed",
@@ -391,20 +391,20 @@ async def _process_entries(redis, entries) -> None:
                 progress_total=progress_total,
                 result=result,
             )
-            if done_snapshot:
-                await WsEventPublisher.publish(build_signal_job_event(done_snapshot))
+            if completed_state:
+                await WsEventPublisher.publish(build_signal_job_event(completed_state))
                 should_ack = True
         except Exception as exc:  # noqa: BLE001
             logger.exception("💥 Failed to process signal test run job %s: %s", entry_id, exc)
             if job_id:
-                failed_snapshot = await update_signal_job(
+                failed_state = await update_signal_job(
                     job_id,
                     status="failed",
                     message="Failed",
                     error=str(exc),
                 )
-                if failed_snapshot:
-                    await WsEventPublisher.publish(build_signal_job_event(failed_snapshot))
+                if failed_state:
+                    await WsEventPublisher.publish(build_signal_job_event(failed_state))
                     should_ack = True
             else:
                 should_ack = True

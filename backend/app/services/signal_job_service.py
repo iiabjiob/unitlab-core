@@ -76,7 +76,7 @@ async def create_signal_job(
         if isinstance(signal_ids, list):
             progress_total = len(signal_ids)
 
-    snapshot = {
+    job_state = {
         "job_id": job_id,
         "workspace_id": workspace_id,
         "operation": operation,
@@ -110,11 +110,11 @@ async def create_signal_job(
                     nx=True,
                 )
             else:
-                lock_owner_snapshot = await get_signal_job(lock_owner_job_id)
-                lock_owner_status = str((lock_owner_snapshot or {}).get("status") or "").strip().lower()
+                lock_owner_state = await get_signal_job(lock_owner_job_id)
+                lock_owner_status = str((lock_owner_state or {}).get("status") or "").strip().lower()
                 stale_non_terminal = False
-                if lock_owner_snapshot is not None and lock_owner_status in {"queued", "running", "paused", "cancelling"}:
-                    updated_at_raw = str(lock_owner_snapshot.get("updated_at") or "").strip()
+                if lock_owner_state is not None and lock_owner_status in {"queued", "running", "paused", "cancelling"}:
+                    updated_at_raw = str(lock_owner_state.get("updated_at") or "").strip()
                     if updated_at_raw:
                         try:
                             updated_at = datetime.fromisoformat(updated_at_raw)
@@ -127,7 +127,7 @@ async def create_signal_job(
                     else:
                         stale_non_terminal = True
 
-                if lock_owner_snapshot is None or lock_owner_status in {"succeeded", "failed", "cancelled"} or stale_non_terminal:
+                if lock_owner_state is None or lock_owner_status in {"succeeded", "failed", "cancelled"} or stale_non_terminal:
                     if stale_non_terminal:
                         await update_signal_job(
                             lock_owner_job_id,
@@ -147,12 +147,12 @@ async def create_signal_job(
 
     await redis.set(
         _job_key(job_id),
-        json.dumps(snapshot, separators=(",", ":")),
+        json.dumps(job_state, separators=(",", ":")),
         ex=settings.signal_allocation_job_ttl_seconds,
     )
     await redis.set(
         _job_status_key(job_id),
-        snapshot["status"],
+        job_state["status"],
         ex=settings.signal_allocation_job_ttl_seconds,
     )
 
@@ -174,7 +174,7 @@ async def create_signal_job(
             await redis.delete(lock_key)
         raise
 
-    return snapshot
+    return job_state
 
 
 async def release_signal_test_run_workspace_lock(workspace_id: int, job_id: str) -> None:

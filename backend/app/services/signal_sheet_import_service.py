@@ -10,7 +10,7 @@ from typing import Any
 import xlrd
 from openpyxl import load_workbook
 
-from app.schemas.signal_snapshot_schema import SignalImportMetaSchema
+from app.schemas.signal_import_schema import SignalImportMetaSchema
 
 
 _INTERNAL_TYPE_TO_DIRECTION: dict[str, str] = {
@@ -31,14 +31,14 @@ class ImportedSignalProjection:
 
 
 @dataclass(frozen=True)
-class ImportedSnapshotPayload:
+class ImportedSheetPayload:
     data: dict[str, Any]
     rows_count: int
     signals: list[ImportedSignalProjection]
 
 
 class SignalSheetImportService:
-    """Parse workbook bytes into normalized snapshot payload + optional signal projection."""
+    """Parse workbook bytes into normalized sheet payload + optional signal projection."""
 
     @staticmethod
     def parse_workbook(
@@ -46,7 +46,7 @@ class SignalSheetImportService:
         *,
         filename: str | None,
         metadata: SignalImportMetaSchema | None,
-    ) -> ImportedSnapshotPayload:
+    ) -> ImportedSheetPayload:
         matrices = SignalSheetImportService._read_workbook(file_bytes, filename)
         sheets: list[dict[str, Any]] = []
         total_rows = 0
@@ -78,7 +78,7 @@ class SignalSheetImportService:
 
         default_sheet_index = SignalSheetImportService._select_default_sheet_index(sheets, metadata)
 
-        snapshot_data = {
+        sheet_data = {
             "version": 2,
             "sheet_count": len(sheets),
             "default_sheet_index": default_sheet_index,
@@ -92,8 +92,8 @@ class SignalSheetImportService:
             metadata=metadata,
         )
 
-        return ImportedSnapshotPayload(
-            data=snapshot_data,
+        return ImportedSheetPayload(
+            data=sheet_data,
             rows_count=total_rows,
             signals=projected_signals,
         )
