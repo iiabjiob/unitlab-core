@@ -215,7 +215,7 @@ class SignalSheetImportService:
             return []
 
         headers = selected.get("headers") or []
-        hmi_column = SignalSheetImportService._pick_hmi_column(headers, metadata)
+        signal_name_column = SignalSheetImportService._pick_signal_name_column(headers)
         internal_type_column = SignalSheetImportService._pick_internal_type_column(headers, metadata)
         type_column = metadata.type_column if metadata and metadata.type_column in headers else None
         type_mapping = {
@@ -238,7 +238,11 @@ class SignalSheetImportService:
             if not direction:
                 continue
 
-            display_name = SignalSheetImportService._stringify_cell(row.get(hmi_column)).strip() if hmi_column else ""
+            display_name = (
+                SignalSheetImportService._stringify_cell(row.get(signal_name_column)).strip()
+                if signal_name_column
+                else ""
+            )
             if not display_name:
                 display_name = f"Signal {row_index + 1}"
 
@@ -278,8 +282,7 @@ class SignalSheetImportService:
         return projections
 
     @staticmethod
-    def _pick_hmi_column(headers: list[str], metadata: SignalImportMetaSchema | None) -> str | None:
-        _ = metadata
+    def _pick_signal_name_column(headers: list[str]) -> str | None:
         heuristics = ("hmi", "name", "signal", "description")
         for header in headers:
             lowered = header.lower()

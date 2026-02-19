@@ -798,8 +798,8 @@ function applyPresetToSelection(meta: SignalImportMeta) {
       }
     }
 
-    if (meta.hmi_representation) {
-      const terminalColumn = findColumnByHeader(columns, meta.hmi_representation)
+    if (meta.terminal_column) {
+      const terminalColumn = findColumnByHeader(columns, meta.terminal_column)
       if (terminalColumn) {
         terminalColumnIndex.value = terminalColumn.index
         selectedSet.add(terminalColumn.index)
@@ -1053,7 +1053,7 @@ async function buildPreparedImportPayload(): Promise<{ file: File; metadata: Sig
     sheet_name: sanitizedName,
     source_sheet_name: selectedSheetName.value,
     selected_columns: orderedColumns.map(column => column.header),
-    hmi_representation: terminalColumn.header,
+    terminal_column: terminalColumn.header,
     type_column: typeColumn.header,
     type_mapping: presetTypeMapping,
     internal_type_column: INTERNAL_TYPE_COLUMN_KEY,

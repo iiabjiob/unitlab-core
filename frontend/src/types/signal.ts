@@ -17,7 +17,7 @@ export interface SignalImportMeta {
   sheet_name: string
   source_sheet_name?: string | null
   selected_columns?: string[]
-  hmi_representation?: string | null
+  terminal_column?: string | null
   type_column?: string | null
   type_mapping?: Record<string, InternalSignalType>
   internal_type_column?: string | null

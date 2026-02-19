@@ -30,7 +30,6 @@ def test_parse_workbook_projects_signals_from_internal_type() -> None:
     )
     meta = SignalImportMetaSchema(
         sheet_name="Signals",
-        hmi_representation="Signal Name",
         type_column="VendorType",
         internal_type_column="internal_type",
     )
@@ -63,7 +62,6 @@ def test_parse_workbook_projects_signals_using_type_mapping_fallback() -> None:
     )
     meta = SignalImportMetaSchema(
         sheet_name="Signals",
-        hmi_representation="Name",
         type_column="Type",
         type_mapping={
             "Digital Output": "do",

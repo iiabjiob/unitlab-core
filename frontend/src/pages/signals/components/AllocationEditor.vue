@@ -968,7 +968,7 @@ function downloadTextFile(content: string, filename: string, mimeType = "text/cs
 }
 
 function resolveTerminalHeader(): string | null {
-  const fromImportMeta = String(activeSignalSheet.value?.import_meta?.hmi_representation ?? "").trim()
+  const fromImportMeta = String(activeSignalSheet.value?.import_meta?.terminal_column ?? "").trim()
   if (fromImportMeta) {
     return fromImportMeta
   }

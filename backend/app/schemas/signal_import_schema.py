@@ -7,7 +7,7 @@ class SignalImportMetaSchema(BaseModel):
     sheet_name: str | None = None
     source_sheet_name: str | None = None
     selected_columns: list[str] = Field(default_factory=list)
-    hmi_representation: str | None = None
+    terminal_column: str | None = None
     type_column: str | None = None
     type_mapping: dict[str, str] = Field(default_factory=dict)
     internal_type_column: str | None = None
