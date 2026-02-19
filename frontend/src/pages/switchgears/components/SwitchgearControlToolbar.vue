@@ -298,7 +298,7 @@ onBeforeUnmount(() => {
           size="sm"
           variant="success"
           :disabled="!canOpen"
-          class="min-w-[120px] justify-center"
+          class="min-w-[104px] justify-center sm:min-w-[120px]"
           @click="sendSwitchgearCommand('open')"
         >
           {{ acting === "open" ? "Opening…" : "Open" }}
@@ -308,7 +308,7 @@ onBeforeUnmount(() => {
           size="sm"
           variant="danger"
           :disabled="!canClose"
-          class="min-w-[120px] justify-center"
+          class="min-w-[104px] justify-center sm:min-w-[120px]"
           @click="sendSwitchgearCommand('close')"
         >
           {{ acting === "close" ? "Closing…" : "Close" }}
@@ -318,7 +318,7 @@ onBeforeUnmount(() => {
           size="sm"
           variant="secondary"
           :disabled="!canUndefined"
-          class="min-w-[120px] justify-center"
+          class="min-w-[104px] justify-center sm:min-w-[120px]"
           @click="sendSwitchgearCommand('intermediate')"
         >
           {{ acting === "intermediate" ? "Applying…" : "Undefined" }}
@@ -328,7 +328,7 @@ onBeforeUnmount(() => {
           size="sm"
           variant="secondary"
           :disabled="!canUnknown"
-          class="min-w-[120px] justify-center"
+          class="min-w-[104px] justify-center sm:min-w-[120px]"
           @click="sendSwitchgearCommand('unknown')"
         >
           {{ acting === "unknown" ? "Applying…" : "Unknown" }}
@@ -342,9 +342,9 @@ onBeforeUnmount(() => {
         Pair commands require both DO channels on the same unit
       </span>
 
-      <div class="ml-auto inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
+      <div class="inline-flex w-full items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300 sm:ml-auto sm:w-auto">
         <span class="whitespace-nowrap">Current state:</span>
-        <UiBadge :variant="positionVariant" class="inline-flex min-w-[120px] justify-center">
+        <UiBadge :variant="positionVariant" class="inline-flex justify-center sm:min-w-[120px]">
           {{ positionStateLabel }}
         </UiBadge>
       </div>

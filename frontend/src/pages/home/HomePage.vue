@@ -1,6 +1,6 @@
 <template>
-  <div class="h-dvh overflow-hidden bg-gradient-to-b from-neutral-50 via-white to-neutral-100 text-neutral-900 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-900 dark:text-neutral-50">
-    <div class="mx-auto flex h-full w-full max-w-6xl items-center justify-center px-4 py-4 sm:px-6 sm:py-6">
+  <div class="h-dvh overflow-y-auto bg-gradient-to-b from-neutral-50 via-white to-neutral-100 text-neutral-900 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-900 dark:text-neutral-50">
+    <div class="mx-auto flex min-h-full w-full max-w-6xl items-start justify-center px-4 py-4 sm:items-center sm:px-6 sm:py-6">
       <div class="grid w-full max-w-5xl grid-rows-[auto_auto_auto_auto] gap-4 rounded-3xl border border-neutral-200/70 bg-white/90 p-5 shadow-[0_25px_60px_rgba(15,23,42,0.15)] backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80 sm:p-6">
         <div class="flex items-center justify-between gap-4">
           <AppLogo class="text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50" />

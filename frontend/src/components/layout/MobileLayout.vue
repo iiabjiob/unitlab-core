@@ -11,7 +11,7 @@
       <template #right>
         <div class="flex items-center gap-2">
           <GlobalRunStatusLink compact />
-          <TimeComponent />
+          <TimeComponent class="hidden sm:inline-flex" />
         </div>
       </template>
     </MobileHeader>

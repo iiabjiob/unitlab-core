@@ -91,7 +91,7 @@
               v-if="lastTestSummaryText"
               class="flex min-w-0 items-center gap-2 rounded-md border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-200"
             >
-              <span class="max-w-[26rem] truncate">Last test · {{ lastTestSummaryText }}</span>
+              <span class="max-w-[16rem] truncate sm:max-w-[26rem]">Last test · {{ lastTestSummaryText }}</span>
               <button
                 type="button"
                 class="inline-flex h-4 w-4 items-center justify-center rounded text-neutral-500 hover:bg-neutral-200 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
@@ -103,7 +103,7 @@
 
             <div
               v-if="showTestRunProgress"
-              class="min-w-[220px] rounded-md border border-neutral-200 bg-white px-2 py-1 dark:border-neutral-700 dark:bg-neutral-900/60"
+              class="w-full rounded-md border border-neutral-200 bg-white px-2 py-1 sm:min-w-[220px] sm:w-auto dark:border-neutral-700 dark:bg-neutral-900/60"
             >
               <div class="flex items-center justify-between text-[11px] font-medium text-neutral-600 dark:text-neutral-300">
                 <span>{{ testRunProgressText }}</span>

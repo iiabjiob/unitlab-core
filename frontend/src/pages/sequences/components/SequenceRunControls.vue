@@ -126,7 +126,7 @@ async function toggleRun() {
           size="sm"
           :variant="runButtonVariant"
           :disabled="runButtonDisabled"
-          class="min-w-[150px] justify-center gap-2"
+          class="w-full justify-center gap-2 sm:w-auto sm:min-w-[150px]"
           @click="toggleRun"
         >
           <template v-if="isRunning">
@@ -147,7 +147,7 @@ async function toggleRun() {
       >
         {{ runDescription }}
       </div>
-      <UiBadge :variant="statusVariant" class="inline-flex min-w-[110px] justify-center">
+      <UiBadge :variant="statusVariant" class="inline-flex justify-center sm:min-w-[110px]">
         {{ status }}
       </UiBadge>
       <span class="text-xs text-neutral-500 dark:text-neutral-400">
