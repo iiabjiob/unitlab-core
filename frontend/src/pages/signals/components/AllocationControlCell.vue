@@ -8,7 +8,6 @@
       :aria-label="`Control: ${stateLabel}`"
       @click.stop="emit('toggle')"
     >
-      
       <span
         class="relative inline-flex h-4 w-8 shrink-0 items-center rounded-full border transition-colors duration-100 ease-out"
         :class="isOn ? 'border-emerald-500 bg-emerald-500/80' : 'border-neutral-400 bg-neutral-300 dark:border-neutral-600 dark:bg-neutral-700'"

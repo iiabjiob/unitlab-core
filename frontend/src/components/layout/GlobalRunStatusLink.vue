@@ -1,59 +1,75 @@
 <template>
   <div v-if="isVisible" class="flex items-center gap-1.5">
-    <button
+    <GlobalProgressStatusCard
       v-if="sequenceChipVisible"
-      type="button"
-      class="inline-flex items-center rounded-md border border-neutral-200 bg-neutral-50/85 text-neutral-700 transition hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800/70 dark:text-neutral-200 dark:hover:bg-neutral-800"
-      :class="compact ? 'gap-1 px-2 py-1 text-[10px]' : 'gap-2 px-2.5 py-1 text-[11px]'"
-      :title="sequenceTooltipText"
-      :aria-label="sequenceTooltipText"
+      :compact="compact"
+      :interactive="!sequenceControlsVisible"
+      label="Sequence"
+      :percent="sequenceProgressPercent"
+      :detail="sequenceDetailText"
+      :dot-class="sequenceIndicatorClass"
+      :bar-class="sequenceBarClass"
       @click="navigateToSequence"
     >
-      <span
-        class="h-1.5 w-1.5 rounded-full"
-        :class="sequenceIndicatorClass"
-        aria-hidden="true"
-      ></span>
-      <span class="font-semibold uppercase tracking-[0.08em]">Sequence</span>
-      <span v-if="!compact" class="max-w-[220px] truncate">{{ sequenceDetailText }}</span>
-    </button>
+      <template #actions>
+        <UiButton
+          v-if="!compact && canPauseSequence"
+          size="xs"
+          variant="ghost"
+          :disabled="sequenceControlBusy"
+          title="Pause instruction"
+          @click.stop="controlSequence('pause')"
+        >
+          ⏸
+        </UiButton>
+        <UiButton
+          v-if="!compact && canStopSequence"
+          size="xs"
+          variant="ghost"
+          :disabled="sequenceControlBusy"
+          title="Stop instruction"
+          @click.stop="controlSequence('stop')"
+        >
+          ■
+        </UiButton>
+      </template>
+    </GlobalProgressStatusCard>
 
-    <button
+    <GlobalProgressStatusCard
       v-if="signalChipVisible"
-      type="button"
-      class="inline-flex items-center rounded-md border border-neutral-200 bg-neutral-50/85 text-neutral-700 transition hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800/70 dark:text-neutral-200 dark:hover:bg-neutral-800"
-      :class="compact ? 'gap-1 px-2 py-1 text-[10px]' : 'gap-2 px-2.5 py-1 text-[11px]'"
-      :title="signalTooltipText"
-      :aria-label="signalTooltipText"
+      :compact="compact"
+      interactive
+      label="Test run"
+      :percent="signalProgressPercent"
+      :detail="signalDetailText"
+      :dot-class="signalIndicatorClass"
+      :bar-class="signalBarClass"
       @click="navigateToSignals"
-    >
-      <span
-        class="h-1.5 w-1.5 rounded-full"
-        :class="signalIndicatorClass"
-        aria-hidden="true"
-      ></span>
-      <span class="font-semibold uppercase tracking-[0.08em]">Test Run</span>
-      <span v-if="!compact" class="max-w-[220px] truncate">{{ signalDetailText }}</span>
-    </button>
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref } from "vue"
 import { storeToRefs } from "pinia"
 import { useRouter } from "vue-router"
 
+import UiButton from "@/components/ui/UiButton.vue"
 import { useSignalJobStore } from "@/stores/signalJobStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
+import { useToastStore } from "@/stores/toastStore"
 import { SequenceStatusEnum, type SequenceState } from "@/types/sequences"
+import GlobalProgressStatusCard from "./GlobalProgressStatusCard.vue"
 
-const props = withDefaults(defineProps<{ compact?: boolean }>(), {
+const props = withDefaults(defineProps<{ compact?: boolean; showSignalChip?: boolean }>(), {
   compact: false,
+  showSignalChip: true,
 })
 
 const router = useRouter()
 const signalJobStore = useSignalJobStore()
 const sequenceStore = useSequenceStore()
+const toastStore = useToastStore()
 
 const { activeJobs } = storeToRefs(signalJobStore)
 const { states, sequences } = storeToRefs(sequenceStore)
@@ -104,24 +120,120 @@ const activeSequence = computed(() => {
 })
 
 const sequenceChipVisible = computed(() => Boolean(activeSequenceState.value))
-const signalChipVisible = computed(() => Boolean(activeSignalTestRun.value))
+const signalChipVisible = computed(() => Boolean(props.showSignalChip && activeSignalTestRun.value))
 const isVisible = computed(() => sequenceChipVisible.value || signalChipVisible.value)
+const sequenceControlBusy = ref(false)
+
+const canPauseSequence = computed(() => activeSequenceState.value?.status === SequenceStatusEnum.RUNNING)
+const canStopSequence = computed(() => {
+  const status = activeSequenceState.value?.status
+  return status === SequenceStatusEnum.PENDING
+    || status === SequenceStatusEnum.RUNNING
+    || status === SequenceStatusEnum.CANCELLING
+})
+
+const sequenceControlsVisible = computed(() => !compact.value && (canPauseSequence.value || canStopSequence.value))
+
+const sequenceProgress = computed(() => {
+  const sequenceState = activeSequenceState.value
+  if (!sequenceState) {
+    return { done: 0, total: 0 }
+  }
+  const total = Math.max(0, Number(sequenceState.total_steps ?? 0))
+  const current = Math.max(0, Number(sequenceState.current_step_index ?? 0))
+  const done = total > 0 ? Math.min(total, current + 1) : 0
+  return { done, total }
+})
+
+const sequenceProgressPercent = computed(() => {
+  const { done, total } = sequenceProgress.value
+  if (!total) return 0
+  return Math.max(0, Math.min(100, Math.round((done / total) * 100)))
+})
 
 const sequenceDetailText = computed(() => {
   const sequenceState = activeSequenceState.value
   if (!sequenceState) {
     return ""
   }
-  const total = Math.max(0, Number(sequenceState.total_steps ?? 0))
-  const current = Math.max(0, Number(sequenceState.current_step_index ?? 0))
-  const step = total > 0 ? Math.min(total, current + 1) : 0
+  const { done, total } = sequenceProgress.value
   const name = activeSequence.value?.name || `#${sequenceState.sequence_id}`
   const stateLabel = sequenceState.status === SequenceStatusEnum.PENDING
     ? "queued"
     : sequenceState.status === SequenceStatusEnum.CANCELLING
       ? "cancelling"
       : "running"
-  return `${name} · ${stateLabel}${total > 0 ? ` · ${step}/${total}` : ""}`
+
+  const base = `${name} · ${stateLabel}${total > 0 ? ` · ${done}/${total}` : ""}`
+  if (!sequenceEstText.value) {
+    return base
+  }
+  return `${base} · ${sequenceEstText.value}`
+})
+
+const sequenceEstText = computed(() => {
+  const state = activeSequenceState.value
+  if (!state) {
+    return ""
+  }
+  const { done, total } = sequenceProgress.value
+  if (total <= 0 || done <= 0 || done >= total) {
+    return ""
+  }
+
+  const startedAtMs = toMillis(String(state.started_at ?? ""))
+  if (!startedAtMs) {
+    return ""
+  }
+
+  const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAtMs) / 1000))
+  const rate = done / elapsedSeconds
+  if (!Number.isFinite(rate) || rate <= 0) {
+    return ""
+  }
+
+  const remaining = Math.max(0, total - done)
+  if (remaining <= 0) {
+    return ""
+  }
+
+  const estimatedSeconds = Math.max(1, Math.round(remaining / rate))
+  return `EST ${formatDurationShort(estimatedSeconds)}`
+})
+
+const signalProgress = computed(() => {
+  const job = activeSignalTestRun.value
+  if (!job) {
+    return { done: 0, total: 0 }
+  }
+
+  let total = Math.max(0, Number(job.progress_total ?? 0))
+  let done = Math.max(0, Number(job.progress_done ?? 0))
+
+  const message = String(job.message ?? "")
+  const ratioMatch = message.match(/(\d+)\s*\/\s*(\d+)/)
+  if (ratioMatch) {
+    const parsedDone = Number(ratioMatch[1] ?? 0)
+    const parsedTotal = Number(ratioMatch[2] ?? 0)
+    if (Number.isFinite(parsedDone) && parsedDone >= 0) {
+      done = Math.max(done, parsedDone)
+    }
+    if (Number.isFinite(parsedTotal) && parsedTotal > 0) {
+      total = Math.max(total, parsedTotal)
+    }
+  }
+
+  if (total > 0 && done > total) {
+    done = total
+  }
+
+  return { done, total }
+})
+
+const signalProgressPercent = computed(() => {
+  const { done, total } = signalProgress.value
+  if (!total) return 0
+  return Math.max(0, Math.min(100, Math.round((done / total) * 100)))
 })
 
 const signalDetailText = computed(() => {
@@ -129,8 +241,7 @@ const signalDetailText = computed(() => {
   if (!job) {
     return ""
   }
-  const total = Math.max(0, Number(job.progress_total ?? 0))
-  const done = Math.max(0, Number(job.progress_done ?? 0))
+  const { done, total } = signalProgress.value
   const message = String(job.message ?? "").trim()
   if (message) {
     return message
@@ -145,6 +256,13 @@ const sequenceIndicatorClass = computed(() => {
   return "bg-emerald-500"
 })
 
+const sequenceBarClass = computed(() => {
+  if (activeSequenceState.value?.status === SequenceStatusEnum.CANCELLING) {
+    return "bg-amber-500"
+  }
+  return "bg-emerald-500"
+})
+
 const signalIndicatorClass = computed(() => {
   if (activeSignalTestRun.value?.status === "paused") {
     return "bg-amber-500"
@@ -152,15 +270,27 @@ const signalIndicatorClass = computed(() => {
   return "bg-emerald-500"
 })
 
-const sequenceTooltipText = computed(() => {
-  const suffix = sequenceDetailText.value ? `: ${sequenceDetailText.value}` : ""
-  return `Open running sequence${suffix}`
+const signalBarClass = computed(() => {
+  if (activeSignalTestRun.value?.status === "paused") {
+    return "bg-amber-500"
+  }
+  return "bg-emerald-500"
 })
 
-const signalTooltipText = computed(() => {
-  const suffix = signalDetailText.value ? `: ${signalDetailText.value}` : ""
-  return `Open active test run${suffix}`
-})
+function formatDurationShort(seconds: number): string {
+  const normalized = Math.max(0, Math.round(seconds))
+  const minutes = Math.floor(normalized / 60)
+  const remSeconds = normalized % 60
+  if (minutes <= 0) {
+    return `${remSeconds}s`
+  }
+  return `${minutes}m ${remSeconds}s`
+}
+
+function toMillis(value: string): number {
+  const parsed = Date.parse(String(value ?? ""))
+  return Number.isFinite(parsed) ? parsed : 0
+}
 
 function navigateToSequence() {
   const state = activeSequenceState.value
@@ -182,5 +312,22 @@ function navigateToSignals() {
   void router.push({ name: "signals.home" }).catch(() => {
     return
   })
+}
+
+async function controlSequence(action: "pause" | "stop") {
+  const state = activeSequenceState.value
+  if (!state || sequenceControlBusy.value) {
+    return
+  }
+
+  sequenceControlBusy.value = true
+  try {
+    await sequenceStore.stopSequence(state.sequence_id)
+  } catch (err) {
+    const fallback = action === "pause" ? "Failed to pause instruction" : "Failed to stop instruction"
+    toastStore.error(err instanceof Error ? err.message : fallback)
+  } finally {
+    sequenceControlBusy.value = false
+  }
 }
 </script>

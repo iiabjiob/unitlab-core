@@ -6,8 +6,14 @@ import { useSequenceStore } from '@/stores/sequenceStore'
 import { useSystemHealthStore } from '@/stores/systemHealthStore'
 import { useSignalJobStore } from '@/stores/signalJobStore'
 import { useSignalSheetStore } from '@/stores/signalSheetStore'
+import { useTestedAtRealtimeStore } from '@/stores/testedAtRealtimeStore'
 
 const logger = getLogger('ws')
+const TEST_RUN_JOB_EVENT_THROTTLE_MS = 150
+const lastTestRunJobEventMetaByJobId = new Map<string, { at: number; status: string; updatedAt: string }>()
+const pendingTestRunJobEventsById = new Map<string, SignalAllocationJobEvent | SignalTestRunJobEvent>()
+let testRunJobFlushFrame: number | null = null
+const pendingTestedAtPatchByJobId = new Map<string, Record<string, string>>()
 
 import type {
   WSEvent,
@@ -22,6 +28,117 @@ import type {
   SignalTestRunJobEvent,
 } from '@/types/ws/events'
 
+function isTestRunJobEvent(jobEvent: SignalAllocationJobEvent | SignalTestRunJobEvent): boolean {
+  return jobEvent.event === "signal_test_run_job" || String(jobEvent.operation) === "test_run"
+}
+
+function isTerminalJobStatus(status: unknown): boolean {
+  const normalized = String(status ?? "")
+  return normalized === "succeeded" || normalized === "failed" || normalized === "cancelled"
+}
+
+function shouldProcessTestRunJobEvent(jobEvent: SignalAllocationJobEvent | SignalTestRunJobEvent): boolean {
+  if (!isTestRunJobEvent(jobEvent)) {
+    return true
+  }
+
+  const status = String(jobEvent.status ?? "")
+  const isTerminal = isTerminalJobStatus(status)
+  if (isTerminal) {
+    lastTestRunJobEventMetaByJobId.delete(String(jobEvent.job_id))
+    return true
+  }
+
+  const now = Date.now()
+  const jobId = String(jobEvent.job_id)
+  const updatedAt = String(jobEvent.updated_at ?? "")
+  const prev = lastTestRunJobEventMetaByJobId.get(jobId)
+
+  if (prev) {
+    const unchangedState = prev.status === status && prev.updatedAt === updatedAt
+    if (unchangedState || now - prev.at < TEST_RUN_JOB_EVENT_THROTTLE_MS) {
+      return false
+    }
+  }
+
+  lastTestRunJobEventMetaByJobId.set(jobId, { at: now, status, updatedAt })
+  return true
+}
+
+type JobEventStores = {
+  signalJobStore: ReturnType<typeof useSignalJobStore>
+  signalSheetStore: ReturnType<typeof useSignalSheetStore>
+  testedAtRealtimeStore: ReturnType<typeof useTestedAtRealtimeStore>
+}
+
+function applySignalJobEvent(
+  jobEvent: SignalAllocationJobEvent | SignalTestRunJobEvent,
+  stores: JobEventStores,
+) {
+  const { signalJobStore, signalSheetStore, testedAtRealtimeStore } = stores
+
+  signalJobStore.applyJobEvent(jobEvent)
+
+  if (!isTestRunJobEvent(jobEvent)) {
+    return
+  }
+
+  const result = (jobEvent.result ?? {}) as Record<string, unknown>
+  const testedAtPatch = ["tested_at_patch", "tested_at_by_signal"]
+    .map(key => result[key])
+    .find(value => value && typeof value === "object" && !Array.isArray(value))
+  if (!testedAtPatch || typeof testedAtPatch !== "object") {
+    return
+  }
+
+  const testedAtPatchRecord = testedAtPatch as Record<string, string>
+  const jobId = String(jobEvent.job_id)
+  const isTerminal = isTerminalJobStatus(jobEvent.status)
+
+  testedAtRealtimeStore.applyPatch(jobEvent.workspace_id, testedAtPatchRecord)
+
+  if (isTerminal) {
+    const pendingForJob = pendingTestedAtPatchByJobId.get(jobId)
+    pendingTestedAtPatchByJobId.delete(jobId)
+    const mergedPatch: Record<string, string> = {
+      ...(pendingForJob ?? {}),
+      ...testedAtPatchRecord,
+    }
+    signalSheetStore.applyTestedAtBySignalPatch(mergedPatch)
+    return
+  }
+
+  const previousPatch = pendingTestedAtPatchByJobId.get(jobId)
+  pendingTestedAtPatchByJobId.set(jobId, {
+    ...(previousPatch ?? {}),
+    ...testedAtPatchRecord,
+  })
+}
+
+function flushPendingTestRunJobEvents(stores: JobEventStores) {
+  if (pendingTestRunJobEventsById.size === 0) {
+    return
+  }
+
+  const events = Array.from(pendingTestRunJobEventsById.values())
+  pendingTestRunJobEventsById.clear()
+
+  events.forEach((jobEvent) => {
+    applySignalJobEvent(jobEvent, stores)
+  })
+}
+
+function scheduleTestRunJobFlush(stores: JobEventStores) {
+  if (testRunJobFlushFrame !== null) {
+    return
+  }
+
+  testRunJobFlushFrame = requestAnimationFrame(() => {
+    testRunJobFlushFrame = null
+    flushPendingTestRunJobEvents(stores)
+  })
+}
+
 export function handleWsEvent(event: WSEvent) {
   const deviceStore = useDeviceStore()
   const channelStore = useChannelStore()
@@ -29,6 +146,7 @@ export function handleWsEvent(event: WSEvent) {
   const systemHealthStore = useSystemHealthStore()
   const signalJobStore = useSignalJobStore()
   const signalSheetStore = useSignalSheetStore()
+  const testedAtRealtimeStore = useTestedAtRealtimeStore()
 
   // Route sequence events into the sequence store so realtime progress stays in sync.
   if ('topic' in event && (event as SequenceWsEvent).topic === 'sequence') {
@@ -52,23 +170,29 @@ export function handleWsEvent(event: WSEvent) {
         || (channelEvent as SignalTestRunJobEvent).event === "signal_test_run_job"
       ) {
         const jobEvent = channelEvent as SignalAllocationJobEvent | SignalTestRunJobEvent
-        logger.debug(
-          jobEvent.event === "signal_test_run_job"
-            ? "📡 IN ← SIGNAL_TEST_RUN_JOB:"
-            : "📡 IN ← SIGNAL_ALLOCATION_JOB:",
-          jobEvent,
-        )
-        signalJobStore.applyJobEvent(jobEvent)
-
-        if (jobEvent.event === "signal_test_run_job" || String(jobEvent.operation) === "test_run") {
-          const result = (jobEvent.result ?? {}) as Record<string, unknown>
-          const testedAtPatch = ["tested_at_patch", "tested_at_by_signal"]
-            .map(key => result[key])
-            .find(value => value && typeof value === "object" && !Array.isArray(value))
-          if (testedAtPatch && typeof testedAtPatch === "object") {
-            signalSheetStore.applyTestedAtBySignalPatch(testedAtPatch as Record<string, string>)
-          }
+        if (!isTestRunJobEvent(jobEvent)) {
+          logger.debug("📡 IN ← SIGNAL_ALLOCATION_JOB:", jobEvent)
         }
+
+        if (!shouldProcessTestRunJobEvent(jobEvent)) {
+          break
+        }
+
+        const stores: JobEventStores = {
+          signalJobStore,
+          signalSheetStore,
+          testedAtRealtimeStore,
+        }
+
+        if (isTestRunJobEvent(jobEvent) && !isTerminalJobStatus(jobEvent.status)) {
+          pendingTestRunJobEventsById.set(String(jobEvent.job_id), jobEvent)
+          scheduleTestRunJobFlush(stores)
+          break
+        }
+
+        pendingTestRunJobEventsById.delete(String(jobEvent.job_id))
+        flushPendingTestRunJobEvents(stores)
+        applySignalJobEvent(jobEvent, stores)
         break
       }
       logger.warn("⚠️ Unknown SYSTEM_INFO payload", sysEvent)

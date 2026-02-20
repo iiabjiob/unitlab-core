@@ -6,20 +6,9 @@
       :loading="loading"
       :allocated-cable-rows-count="allocatedCableRows.length"
       :allocation-rows-count="allocationRows.length"
-      :updating-allocations="updatingAllocations"
       :allocating-selected="allocatingSelected"
       :deallocating-selected="deallocatingSelected"
-      :allocation-jobs-running="allocationJobsRunning"
-      :allocation-job-progress-text="allocationJobProgressText"
-      :show-test-run-progress="showTestRunProgress"
-      :test-run-progress-text="testRunProgressText"
-      :test-run-progress-percent="testRunProgressPercent"
-      :can-pause-active-test-run="canPauseActiveTestRun"
       :can-resume-active-test-run="canResumeActiveTestRun"
-      :can-stop-active-test-run="canStopActiveTestRun"
-      :test-run-control-busy="testRunControlBusy"
-      :is-stopping-active-test-run="isStoppingActiveTestRun"
-      :last-test-summary-text="lastTestSummaryText"
       :can-allocate-selected="selectedAllocatableUnassignedSignalIds.length > 0"
       :can-deallocate-selected="selectedAllocatedSignalIds.length > 0"
       :can-run-test="selectedAllocatedPhysicalRows.length > 0 || isTestRunBusy"
@@ -37,8 +26,6 @@
       @run-test="runTestVisualOnly"
       @set-toggle-mode="setTestRunToggleMode"
       @set-interval-ms="setTestRunIntervalMs"
-      @control-test-run="controlActiveTestRun"
-      @dismiss-last-test="dismissLastTestSummary"
       @create-switchgear="createSwitchgearVisualOnly"
     />
 
@@ -76,6 +63,7 @@
 
     <UiAffinoDataGrid
       v-else
+      ref="allocationGridRef"
       class="flex-1 min-h-0"
       :rows="gridRows"
       :columns="gridColumns"
@@ -109,14 +97,14 @@
 
         <div v-else-if="column.key === 'control'" class="flex h-full items-center">
           <AllocationControlCell
-            :can-control="canControl(asAllocationRow(row))"
-            :lamp-class="controlLampClass(asAllocationRow(row))"
-            :status-class="controlStatusClass(asAllocationRow(row))"
-            :status-tag="controlStatusTag(asAllocationRow(row))"
-            :state-label="controlStateLabel(asAllocationRow(row))"
-            :disabled="controlDisabled(asAllocationRow(row))"
-            :is-on="controlSwitchIsOn(asAllocationRow(row))"
-            @toggle="() => handleControlToggle(asAllocationRow(row))"
+            :can-control="canControl(resolveControlCellRow(asAllocationRow(row)))"
+            :lamp-class="controlLampClass(resolveControlCellRow(asAllocationRow(row)))"
+            :status-class="controlStatusClass(resolveControlCellRow(asAllocationRow(row)))"
+            :status-tag="controlStatusTag(resolveControlCellRow(asAllocationRow(row)))"
+            :state-label="controlStateLabel(resolveControlCellRow(asAllocationRow(row)))"
+            :disabled="controlDisabled(resolveControlCellRow(asAllocationRow(row)))"
+            :is-on="controlSwitchIsOn(resolveControlCellRow(asAllocationRow(row)))"
+            @toggle="() => handleControlToggle(resolveControlCellRow(asAllocationRow(row)))"
           />
         </div>
 
@@ -124,7 +112,7 @@
           v-else-if="column.key === 'last_tested_at'"
           class="text-xs text-neutral-700 dark:text-neutral-100"
         >
-          {{ formatTestedAt(resolveLastTestedAtValue(asAllocationRow(row), value)) }}
+          {{ formatTestedAt(resolveLastTestedAtValue(resolveLastTestedAtCellRow(asAllocationRow(row)), value)) }}
         </span>
 
         <span v-else class="text-xs text-neutral-700 dark:text-neutral-100">{{ formatCell(value) }}</span>
@@ -164,6 +152,7 @@ import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
 import { useSignalJobStore } from "@/stores/signalJobStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
+import { useTestedAtRealtimeStore } from "@/stores/testedAtRealtimeStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
@@ -177,13 +166,15 @@ const deviceStore = useDeviceStore()
 const realtimeScopeStore = useRealtimeScopeStore()
 const signalJobStore = useSignalJobStore()
 const switchgearStore = useSwitchgearStore()
+const testedAtRealtimeStore = useTestedAtRealtimeStore()
 const toastStore = useToastStore()
 const websocketStore = useWebSocketStore()
 const route = useRoute()
 const router = useRouter()
 
 const { allocationRows, loadingAllocations, loadingSheet, updatingAllocations, allocatedCount, allocationRevision, recentlyChangedSignalIds } = storeToRefs(signalSheetStore)
-const { activeJobs, jobsById } = storeToRefs(signalJobStore)
+const { activeJobs } = storeToRefs(signalJobStore)
+const { activeWorkspaceRevision: testedAtRealtimeRevision, activeWorkspacePatchedSignalIds } = storeToRefs(testedAtRealtimeStore)
 const { channels } = storeToRefs(channelStore)
 const { isConnected: isWsConnected } = storeToRefs(websocketStore)
 
@@ -202,31 +193,16 @@ const testRunProcessed = ref(0)
 const testRunSucceeded = ref(0)
 const testRunSkipped = ref(0)
 const testRunControlBusy = ref(false)
-const testRunStartedAtMs = ref<number | null>(null)
-const testedAtOverlayBySignalId = shallowRef<Map<number, string>>(new Map())
-const pendingTestedAtOverlayBySignalId = new Map<number, string>()
-let testedAtOverlayFlushTimer: ReturnType<typeof setTimeout> | null = null
-const TESTED_AT_OVERLAY_FLUSH_MS = 120
 const MAX_RESTORED_SELECTION_KEYS = 2000
-
-type LastTestSummary = {
-  jobId: string
-  status: SignalAllocationJob["status"]
-  finishedAtIso: string
-  processed: number
-  succeeded: number
-  skipped: number
-  durationMs: number
-}
-
-const lastTestSummary = ref<LastTestSummary | null>(null)
-const dismissedLastTestJobId = ref<string | null>(null)
 let realtimeScopeSyncFrame: number | null = null
 let lastRealtimeScopeKey = ""
 let refreshCycleId = 0
 const missingChannelHydrationInFlight = new Set<number>()
 const realtimeScopeChannelHydrationInFlight = new Set<number>()
 let wsScopeRetryTimer: ReturnType<typeof setTimeout> | null = null
+let allocationRevisionSyncFrame: number | null = null
+const pendingAllocationRevisionSignalIds = new Set<number>()
+let pendingAllocationRevisionFullRefresh = false
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const loading = computed(() => loadingAllocations.value || loadingSheet.value || updatingAllocations.value)
@@ -507,64 +483,6 @@ const allocatedCableRows = computed(() => (
   ))
 ))
 
-const activeAllocationJob = computed(() => (
-  activeJobs.value.find(job => String(job.operation) !== "test_run") ?? null
-))
-
-const allocationJobsRunning = computed(() => Boolean(activeAllocationJob.value))
-
-const allocationJobProgressText = computed(() => {
-  const job = activeAllocationJob.value
-  if (!job) return null
-  const total = Math.max(0, Number(job.progress_total ?? 0))
-  const done = Math.max(0, Number(job.progress_done ?? 0))
-  const stateLabel = job.status === "queued"
-    ? "Queued"
-    : job.status === "paused"
-      ? "Paused"
-      : job.status === "cancelling"
-        ? "Cancelling"
-        : "Running"
-  const message = String(job.message ?? "").trim()
-  if (total <= 0) {
-    return message || stateLabel
-  }
-  const safeDone = Math.min(done, total)
-  const percent = Math.max(0, Math.min(100, Math.round((safeDone / total) * 100)))
-  const detail = `${percent}% · ${safeDone}/${total}`
-  if (message && message.toLowerCase() !== stateLabel.toLowerCase()) {
-    return `${message} · ${detail}`
-  }
-  return `${stateLabel} ${detail}`
-})
-
-const showTestRunProgress = computed(() => {
-  const activeTestJob = activeJobs.value.find(job => String(job.operation) === "test_run")
-  if (activeTestJob) {
-    return Number(activeTestJob.progress_total ?? 0) > 0
-  }
-  return testRunInProgress.value && testRunTotal.value > 0
-})
-
-const testRunProgressPercent = computed(() => {
-  const total = testRunTotal.value
-  if (!total) return 0
-  return Math.max(0, Math.min(100, Math.round((testRunProcessed.value / total) * 100)))
-})
-
-const testRunEtaSeconds = computed(() => {
-  if (!isTestRunBusy.value) return 0
-  const remaining = Math.max(0, testRunTotal.value - testRunProcessed.value)
-  const perSignalFactor = testRunToggleMode.value === "double" ? 2 : 1
-  return remaining * ((testRunIntervalMs.value * perSignalFactor) / 1000)
-})
-
-const testRunProgressText = computed(() => {
-  const base = `${testRunProcessed.value}/${testRunTotal.value} · ok ${testRunSucceeded.value} · skip ${testRunSkipped.value}`
-  if (!isTestRunBusy.value) return base
-  return `${base} · ETA ${formatDurationShort(testRunEtaSeconds.value)}`
-})
-
 const activeTestRunJob = computed(() => (
   activeJobs.value.find(job => String(job.operation) === "test_run") ?? null
 ))
@@ -573,38 +491,18 @@ const isTestRunBusy = computed(() => {
   const activeJobBusy = status === "queued" || status === "running" || status === "cancelling"
   return testRunInProgress.value || activeJobBusy
 })
-const latestCompletedTestRunJob = computed(() => {
-  const workspaceId = workspaceStore.activeWorkspaceId
-  if (!workspaceId) {
-    return null
-  }
 
-  return Object.values(jobsById.value)
-    .filter(job => job.workspace_id === workspaceId)
-    .filter(job => String(job.operation) === "test_run")
-    .filter(job => ["succeeded", "failed", "cancelled"].includes(String(job.status)))
-    .sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)))[0] ?? null
-})
-
-const canPauseActiveTestRun = computed(() => activeTestRunJob.value?.status === "running")
 const canResumeActiveTestRun = computed(() => activeTestRunJob.value?.status === "paused")
-const canStopActiveTestRun = computed(() => {
-  const status = String(activeTestRunJob.value?.status ?? "")
-  return status === "queued" || status === "running" || status === "paused"
-})
-const isStoppingActiveTestRun = computed(() => activeTestRunJob.value?.status === "cancelling")
 
 function handleActiveTestRunJob(job: SignalAllocationJob | null) {
   if (!job) {
     testRunInProgress.value = false
-    flushTestedAtOverlayBatch()
     const changedSignalIds = recentlyChangedSignalIds.value
     if (changedSignalIds.length > 0) {
       syncGridRowsBySignalIds(changedSignalIds)
     } else {
       rebuildGridRows()
     }
-    clearTestedAtOverlay()
     scheduleRealtimeUnitScopeSync()
     return
   }
@@ -616,16 +514,6 @@ function handleActiveTestRunJob(job: SignalAllocationJob | null) {
 watch(activeTestRunJob, (job) => {
   handleActiveTestRunJob(job)
 })
-
-watch(latestCompletedTestRunJob, (job) => {
-  if (!job) {
-    return
-  }
-  if (dismissedLastTestJobId.value && dismissedLastTestJobId.value === job.job_id) {
-    return
-  }
-  setLastTestSummaryFromJob(job)
-}, { immediate: true })
 
 const sourceColumnHeaders = computed(() => (
   resolveAllSourceColumnHeaders(activeSignalSheet.value, allocationRows.value)
@@ -648,6 +536,7 @@ const gridColumns = computed(() => {
 })
 
 const gridRows = shallowRef<GridRow[]>([])
+const allocationGridRef = ref<AllocationGridExpose | null>(null)
 const gridRowBySignalId = new Map<number, GridRow>()
 const gridRowIndexBySignalId = new Map<number, number>()
 const channelGroupsResolverBySignalId = new Map<number, () => ChannelOptionGroup[]>()
@@ -657,6 +546,17 @@ handleActiveTestRunJob(activeTestRunJob.value)
 type GridRow = Record<string, unknown>
 type ChannelOption = { id: number; label: string; disabled: boolean }
 type ChannelOptionGroup = { unitId: string; options: ChannelOption[] }
+type AllocationGridExpose = {
+  refreshCellsByRowKeys: (
+    rowKeys: readonly (string | number)[],
+    columnKeys: readonly string[],
+    options?: { immediate?: boolean; reason?: string },
+  ) => void
+  refreshCellsByRanges: (
+    ranges: readonly { rowKey: string | number; columnKeys: readonly string[] }[],
+    options?: { immediate?: boolean; reason?: string },
+  ) => void
+}
 
 function sourceColumnKey(index: number): string {
   return `source_col_${index}`
@@ -669,58 +569,6 @@ function assignDynamicGridFields(payload: GridRow, row: SignalAllocationRow) {
   payload.channel_select = allocationDisplayLabel(row)
   payload.last_tested_at = row.tested_at
   payload.control = ""
-}
-
-function flushTestedAtOverlayBatch() {
-  if (testedAtOverlayFlushTimer !== null) {
-    clearTimeout(testedAtOverlayFlushTimer)
-    testedAtOverlayFlushTimer = null
-  }
-  if (pendingTestedAtOverlayBySignalId.size === 0) {
-    return
-  }
-
-  const overlay = testedAtOverlayBySignalId.value
-  pendingTestedAtOverlayBySignalId.forEach((testedAtIso, signalId) => {
-    overlay.set(signalId, testedAtIso)
-  })
-  pendingTestedAtOverlayBySignalId.clear()
-  triggerRef(testedAtOverlayBySignalId)
-}
-
-function queueTestedAtOverlay(signalIds: readonly number[]) {
-  if (!signalIds.length) {
-    return
-  }
-
-  signalIds.forEach((signalId) => {
-    const row = findAllocationRowBySignalId(signalId)
-    if (!row) return
-    const testedAtIso = String(row.tested_at ?? "").trim()
-    if (!testedAtIso) return
-    pendingTestedAtOverlayBySignalId.set(signalId, testedAtIso)
-  })
-
-  if (pendingTestedAtOverlayBySignalId.size === 0 || testedAtOverlayFlushTimer !== null) {
-    return
-  }
-
-  testedAtOverlayFlushTimer = setTimeout(() => {
-    flushTestedAtOverlayBatch()
-  }, TESTED_AT_OVERLAY_FLUSH_MS)
-}
-
-function clearTestedAtOverlay() {
-  pendingTestedAtOverlayBySignalId.clear()
-  if (testedAtOverlayFlushTimer !== null) {
-    clearTimeout(testedAtOverlayFlushTimer)
-    testedAtOverlayFlushTimer = null
-  }
-  if (testedAtOverlayBySignalId.value.size === 0) {
-    return
-  }
-  testedAtOverlayBySignalId.value.clear()
-  triggerRef(testedAtOverlayBySignalId)
 }
 
 function createGridRow(row: SignalAllocationRow, headers: readonly string[]): GridRow {
@@ -774,7 +622,6 @@ function syncGridRowsBySignalIds(signalIds: readonly number[]) {
     return
   }
 
-  const headers = sourceColumnHeaders.value
   let structuralChange = false
   let nextRows: GridRow[] | null = null
 
@@ -804,10 +651,6 @@ function syncGridRowsBySignalIds(signalIds: readonly number[]) {
 
     const nextPayload: GridRow = { ...existingPayload }
     assignDynamicGridFields(nextPayload, row)
-    const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
-    headers.forEach((header, index) => {
-      nextPayload[sourceColumnKey(index)] = sourceRow[header] ?? ""
-    })
 
     if (!nextRows) {
       nextRows = [...gridRows.value]
@@ -829,8 +672,105 @@ function syncGridRowsBySignalIds(signalIds: readonly number[]) {
   triggerRef(gridRows)
 }
 
+function flushAllocationRevisionGridSync() {
+  allocationRevisionSyncFrame = null
+
+  if (pendingAllocationRevisionFullRefresh) {
+    pendingAllocationRevisionFullRefresh = false
+    pendingAllocationRevisionSignalIds.clear()
+    rebuildGridRows()
+    void ensureAllocatedChannelsHydrated()
+    return
+  }
+
+  if (pendingAllocationRevisionSignalIds.size === 0) {
+    return
+  }
+
+  const signalIds = Array.from(pendingAllocationRevisionSignalIds)
+  pendingAllocationRevisionSignalIds.clear()
+  syncGridRowsBySignalIds(signalIds)
+  void ensureAllocatedChannelsHydrated()
+}
+
+function scheduleAllocationRevisionGridSync(signalIds: readonly number[]) {
+  if (!signalIds.length) {
+    pendingAllocationRevisionFullRefresh = true
+  } else if (!pendingAllocationRevisionFullRefresh) {
+    signalIds.forEach((signalId) => {
+      if (Number.isFinite(signalId as number)) {
+        pendingAllocationRevisionSignalIds.add(Number(signalId))
+      }
+    })
+  }
+
+  if (allocationRevisionSyncFrame !== null) {
+    return
+  }
+
+  allocationRevisionSyncFrame = requestAnimationFrame(() => {
+    flushAllocationRevisionGridSync()
+  })
+}
+
 function asAllocationRow(row: GridRow): SignalAllocationRow {
   return row as unknown as SignalAllocationRow
+}
+
+function resolveSignalIdFromGridRow(row: SignalAllocationRow): number | null {
+  const signalId = Number((row as { signal_id?: unknown }).signal_id)
+  if (Number.isFinite(signalId)) {
+    return signalId
+  }
+  const rowId = String((row as { rowId?: unknown }).rowId ?? "")
+  const match = rowId.match(/^signal-(\d+)$/)
+  if (!match) {
+    return null
+  }
+  const parsed = Number(match[1])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function requestGridCellRefresh(
+  signalIds: readonly number[],
+  columnKeys: readonly ("control" | "last_tested_at")[] = ["control", "last_tested_at"],
+) {
+  if (!signalIds.length || !columnKeys.length) {
+    return
+  }
+
+  const ranges = Array.from(new Set(signalIds))
+    .map((signalId) => Number(signalId))
+    .filter((signalId) => Number.isFinite(signalId) && signalId > 0)
+    .map((signalId) => ({
+      rowKey: `signal-${signalId}`,
+      columnKeys,
+    }))
+
+  if (!ranges.length) {
+    return
+  }
+
+  allocationGridRef.value?.refreshCellsByRanges(ranges, {
+    reason: "signals-allocation-cell-refresh",
+  })
+}
+
+function resolveLiveAllocationRowBySignalId(signalId: number | null, fallback: SignalAllocationRow): SignalAllocationRow {
+  if (!Number.isFinite(signalId as number)) {
+    return fallback
+  }
+  return findAllocationRowBySignalId(Number(signalId)) ?? fallback
+}
+
+function resolveControlCellRow(row: SignalAllocationRow): SignalAllocationRow {
+  const signalId = resolveSignalIdFromGridRow(row)
+  return resolveLiveAllocationRowBySignalId(signalId, row)
+}
+
+function resolveLastTestedAtCellRow(row: SignalAllocationRow): SignalAllocationRow {
+  const signalId = resolveSignalIdFromGridRow(row)
+  return resolveLiveAllocationRowBySignalId(signalId, row)
 }
 
 function rowKey(row: Record<string, unknown>) {
@@ -840,13 +780,25 @@ function rowKey(row: Record<string, unknown>) {
 function resolveLastTestedAtValue(row: SignalAllocationRow, fallback: unknown): unknown {
   const signalId = Number(row.signal_id)
   if (Number.isFinite(signalId)) {
-    const overlay = testedAtOverlayBySignalId.value.get(signalId)
-    if (overlay) {
-      return overlay
+    const realtimeValue = testedAtRealtimeStore.getTestedAt(signalId, workspaceStore.activeWorkspaceId ?? null)
+    if (realtimeValue) {
+      return realtimeValue
     }
   }
   return fallback
 }
+
+const testedAtFormatter = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+})
+const testedAtFormatCache = new Map<string, string>()
+const TESTED_AT_FORMAT_CACHE_LIMIT = 6000
 
 function formatCell(value: unknown) {
   if (value === null || value === undefined) return ""
@@ -862,21 +814,22 @@ function formatCell(value: unknown) {
 function formatTestedAt(value: unknown): string {
   const raw = String(value ?? "").trim()
   if (!raw) return "—"
+  const cached = testedAtFormatCache.get(raw)
+  if (cached) {
+    return cached
+  }
   const parsed = new Date(raw)
   if (Number.isNaN(parsed.getTime())) {
     return raw
   }
-  const formatted = new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(parsed)
+  const formatted = testedAtFormatter.format(parsed)
   const milliseconds = String(parsed.getMilliseconds()).padStart(3, "0")
-  return `${formatted}.${milliseconds}`
+  const rendered = `${formatted}.${milliseconds}`
+  testedAtFormatCache.set(raw, rendered)
+  if (testedAtFormatCache.size > TESTED_AT_FORMAT_CACHE_LIMIT) {
+    testedAtFormatCache.clear()
+  }
+  return rendered
 }
 
 function formatPercentCompact(part: number, total: number): string {
@@ -895,100 +848,6 @@ function toFilenamePart(value: string | null | undefined): string {
     .replace(/^-+|-+$/g, "")
   return normalized || "workspace"
 }
-
-function formatDurationShort(seconds: number): string {
-  const normalized = Math.max(0, Math.round(seconds))
-  const minutes = Math.floor(normalized / 60)
-  const remSeconds = normalized % 60
-  if (minutes <= 0) {
-    return `${remSeconds}s`
-  }
-  return `${minutes}m ${remSeconds}s`
-}
-
-function formatDateTimeShort(iso: string): string {
-  const parsed = new Date(iso)
-  if (Number.isNaN(parsed.getTime())) {
-    return iso
-  }
-  const formatted = new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(parsed)
-  return formatted
-}
-
-function formatLastTestSummary(summary: LastTestSummary): string {
-  const statusPrefix = summary.status === "failed"
-    ? "failed"
-    : summary.status === "cancelled"
-      ? "cancelled"
-      : "completed"
-
-  return [
-    statusPrefix,
-    `${formatDateTimeShort(summary.finishedAtIso)}`,
-    `${summary.succeeded}/${summary.processed} toggled`,
-    summary.skipped > 0 ? `${summary.skipped} skipped` : "",
-    `${formatDurationShort(summary.durationMs / 1000)}`,
-  ].filter(Boolean).join(" · ")
-}
-
-function dismissLastTestSummary() {
-  dismissedLastTestJobId.value = lastTestSummary.value?.jobId ?? null
-  lastTestSummary.value = null
-}
-
-function setLastTestSummary(job: SignalAllocationJob, startedAtMs: number | null) {
-  dismissedLastTestJobId.value = null
-  const processed = Math.max(0, readNumericResult(job, "processed") || Number(job.progress_done ?? 0) || testRunProcessed.value)
-  const succeeded = Math.max(0, readNumericResult(job, "succeeded") || testRunSucceeded.value)
-  const skipped = Math.max(0, readNumericResult(job, "skipped") || testRunSkipped.value)
-  const finishedAtMs = Date.now()
-  const durationMs = Math.max(0, startedAtMs ? finishedAtMs - startedAtMs : 0)
-  lastTestSummary.value = {
-    jobId: String(job.job_id),
-    status: job.status,
-    finishedAtIso: new Date(finishedAtMs).toISOString(),
-    processed,
-    succeeded,
-    skipped,
-    durationMs,
-  }
-}
-
-function setLastTestSummaryFromJob(job: SignalAllocationJob) {
-  dismissedLastTestJobId.value = null
-  const processed = Math.max(0, readNumericResult(job, "processed") || Number(job.progress_done ?? 0))
-  const succeeded = Math.max(0, readNumericResult(job, "succeeded"))
-  const skipped = Math.max(0, readNumericResult(job, "skipped"))
-
-  const finishedAtParsed = Date.parse(String(job.updated_at ?? ""))
-  const createdAtParsed = Date.parse(String(job.created_at ?? ""))
-  const finishedAtMs = Number.isFinite(finishedAtParsed) ? finishedAtParsed : Date.now()
-  const durationMs = (Number.isFinite(createdAtParsed) && Number.isFinite(finishedAtParsed))
-    ? Math.max(0, finishedAtParsed - createdAtParsed)
-    : 0
-
-  lastTestSummary.value = {
-    jobId: String(job.job_id),
-    status: job.status,
-    finishedAtIso: new Date(finishedAtMs).toISOString(),
-    processed,
-    succeeded,
-    skipped,
-    durationMs,
-  }
-}
-
-const lastTestSummaryText = computed(() => (
-  lastTestSummary.value ? formatLastTestSummary(lastTestSummary.value) : ""
-))
 
 function csvEscape(value: unknown): string {
   const text = String(value ?? "")
@@ -1606,7 +1465,7 @@ async function sendControl(row: SignalAllocationRow, state: boolean, options: Se
 
   try {
     channelStore.sendDoCommand(target.unitId, target.channelIndex, state)
-    triggerRef(gridRows)
+    requestGridCellRefresh([row.signal_id], ["control"])
     if (!target.channel) {
       void channelStore.ensureDeviceChannelsLoaded(target.deviceId)
         .then(() => {
@@ -1621,7 +1480,7 @@ async function sendControl(row: SignalAllocationRow, state: boolean, options: Se
       return true
     }
     const succeeded = await waitForControlResult(target, state)
-    triggerRef(gridRows)
+    requestGridCellRefresh([row.signal_id], ["control"])
     if (!succeeded) {
       if (!options.quiet) {
         toastStore.warning("Command not confirmed by device")
@@ -1630,14 +1489,14 @@ async function sendControl(row: SignalAllocationRow, state: boolean, options: Se
     }
     void signalSheetStore.markSignalsTested([row.signal_id], { optimistic: false })
       .then(() => {
-        syncGridRowsBySignalIds([row.signal_id])
+        requestGridCellRefresh([row.signal_id], ["last_tested_at", "control"])
       })
       .catch(() => {
         return
       })
     return true
   } catch (err) {
-    triggerRef(gridRows)
+    requestGridCellRefresh([row.signal_id], ["control"])
     toastStore.error(err instanceof Error ? err.message : String(err))
     return false
   }
@@ -1866,7 +1725,6 @@ async function runTestVisualOnly() {
   testRunProcessed.value = 0
   testRunSucceeded.value = 0
   testRunSkipped.value = 0
-  testRunStartedAtMs.value = Date.now()
   try {
     const workspaceId = workspaceStore.activeWorkspaceId
     if (!workspaceId) {
@@ -1884,7 +1742,6 @@ async function runTestVisualOnly() {
     )
     updateTestRunStatsFromJob(completedJob)
     await signalSheetStore.refreshAllocations()
-    setLastTestSummary(completedJob, testRunStartedAtMs.value)
 
     const skipDetails = formatTestRunSkipReasons(completedJob)
     toastStore.success(
@@ -1900,7 +1757,6 @@ async function runTestVisualOnly() {
       toastStore.error(message)
     }
   } finally {
-    testRunStartedAtMs.value = null
     testRunInProgress.value = false
   }
 }
@@ -2139,18 +1995,23 @@ watch(
   () => {
     const signalIds = recentlyChangedSignalIds.value
     if (isTestRunBusy.value) {
-      queueTestedAtOverlay(signalIds)
       return
     }
-    if (!signalIds.length) {
-      rebuildGridRows()
-      void ensureAllocatedChannelsHydrated()
-      return
-    }
-    syncGridRowsBySignalIds(signalIds)
-    void ensureAllocatedChannelsHydrated()
+    scheduleAllocationRevisionGridSync(signalIds)
   },
   { immediate: true, flush: "post" },
+)
+
+watch(
+  () => testedAtRealtimeRevision.value,
+  () => {
+    const signalIds = activeWorkspacePatchedSignalIds.value
+    if (!signalIds.length) {
+      return
+    }
+    requestGridCellRefresh(signalIds, ["last_tested_at"])
+  },
+  { flush: "post" },
 )
 
 function syncRealtimeUnitScope() {
@@ -2232,6 +2093,7 @@ watch(
   async (workspaceId) => {
     refreshCycleId += 1
     if (!workspaceId) return
+    testedAtRealtimeStore.clearWorkspace(workspaceId)
     signalSheetStore.resetState()
     restoreSelectedRowKeysFromStorage()
     await refreshAll()
@@ -2300,8 +2162,13 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  clearTestedAtOverlay()
   channelGroupsResolverBySignalId.clear()
+  if (allocationRevisionSyncFrame !== null) {
+    cancelAnimationFrame(allocationRevisionSyncFrame)
+    allocationRevisionSyncFrame = null
+  }
+  pendingAllocationRevisionSignalIds.clear()
+  pendingAllocationRevisionFullRefresh = false
   if (wsScopeRetryTimer !== null) {
     clearTimeout(wsScopeRetryTimer)
     wsScopeRetryTimer = null

@@ -696,6 +696,7 @@ import type {
   DataGridColumnStateSnapshot,
   DataGridColumnSnapshot,
   DataGridCoreServiceContext,
+  DataGridRowId,
   DataGridRowModel,
   DataGridSettingsAdapter,
   DataGridSortState,
@@ -790,6 +791,14 @@ type VirtualWindowSnapshot = {
 
 type PersistedFilterSnapshot = ReturnType<DataGridSettingsAdapter["getFilterSnapshot"]>
 type PersistedGroupStateSnapshot = ReturnType<DataGridSettingsAdapter["getGroupState"]>
+type UiAffinoDataGridCellRefreshOptions = {
+  immediate?: boolean
+  reason?: string
+}
+type UiAffinoDataGridCellRefreshRange = {
+  rowKey: string | number
+  columnKeys: readonly string[]
+}
 
 const props = withDefaults(defineProps<{
   rows: GridRow[]
@@ -3244,6 +3253,122 @@ function columnStyle(width: number) {
     maxWidth: `${width}px`,
   }
 }
+
+function refreshCellsByRowKeys(
+  rowKeys: readonly (string | number)[],
+  columnKeys: readonly string[],
+  options?: UiAffinoDataGridCellRefreshOptions,
+) {
+  if (!rowKeys.length || !columnKeys.length) {
+    return
+  }
+
+  const normalizedRowKeys = rowKeys
+    .map((rowKey) => {
+      if (typeof rowKey === "number") {
+        return Number.isFinite(rowKey) ? rowKey : null
+      }
+      const normalized = String(rowKey).trim()
+      return normalized.length > 0 ? normalized : null
+    })
+    .filter((rowKey): rowKey is DataGridRowId => rowKey !== null)
+
+  if (!normalizedRowKeys.length) {
+    return
+  }
+
+  const api = grid.api as {
+    refreshCellsByRowKeys?: (nextRowKeys: readonly DataGridRowId[], nextColumnKeys: readonly string[], nextOptions?: UiAffinoDataGridCellRefreshOptions) => void
+    refresh?: (nextOptions?: unknown) => void | Promise<void>
+  }
+
+  try {
+    if (typeof api.refreshCellsByRowKeys === "function") {
+      api.refreshCellsByRowKeys(normalizedRowKeys, columnKeys, options)
+      return
+    }
+    if (typeof api.refresh === "function") {
+      void api.refresh()
+    }
+  } catch {
+    if (typeof api.refresh === "function") {
+      void api.refresh()
+    }
+  }
+}
+
+function refreshCellsByRanges(
+  ranges: readonly UiAffinoDataGridCellRefreshRange[],
+  options?: UiAffinoDataGridCellRefreshOptions,
+) {
+  if (!ranges.length) {
+    return
+  }
+
+  const normalizedRanges = ranges
+    .map((range) => {
+      const rowKey = range?.rowKey
+      const normalizedRowKey = typeof rowKey === "number"
+        ? (Number.isFinite(rowKey) ? rowKey : null)
+        : (() => {
+          const normalized = String(rowKey ?? "").trim()
+          return normalized.length > 0 ? normalized : null
+        })()
+      if (normalizedRowKey === null) {
+        return null
+      }
+
+      const normalizedColumnKeys = (range?.columnKeys ?? [])
+        .map((columnKey) => String(columnKey ?? "").trim())
+        .filter((columnKey) => columnKey.length > 0)
+      if (!normalizedColumnKeys.length) {
+        return null
+      }
+
+      return {
+        rowKey: normalizedRowKey,
+        columnKeys: normalizedColumnKeys,
+      }
+    })
+    .filter((range): range is { rowKey: DataGridRowId; columnKeys: readonly string[] } => range !== null)
+
+  if (!normalizedRanges.length) {
+    return
+  }
+
+  const api = grid.api as {
+    refreshCellsByRanges?: (nextRanges: readonly { rowKey: DataGridRowId; columnKeys: readonly string[] }[], nextOptions?: UiAffinoDataGridCellRefreshOptions) => void
+    refreshCellsByRowKeys?: (nextRowKeys: readonly DataGridRowId[], nextColumnKeys: readonly string[], nextOptions?: UiAffinoDataGridCellRefreshOptions) => void
+    refresh?: (nextOptions?: unknown) => void | Promise<void>
+  }
+
+  try {
+    if (typeof api.refreshCellsByRanges === "function") {
+      api.refreshCellsByRanges(normalizedRanges, options)
+      return
+    }
+
+    if (typeof api.refreshCellsByRowKeys === "function") {
+      normalizedRanges.forEach((range) => {
+        api.refreshCellsByRowKeys?.([range.rowKey], range.columnKeys, options)
+      })
+      return
+    }
+
+    if (typeof api.refresh === "function") {
+      void api.refresh()
+    }
+  } catch {
+    if (typeof api.refresh === "function") {
+      void api.refresh()
+    }
+  }
+}
+
+defineExpose({
+  refreshCellsByRowKeys,
+  refreshCellsByRanges,
+})
 </script>
 
 <style scoped>

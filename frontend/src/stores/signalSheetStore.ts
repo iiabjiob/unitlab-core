@@ -48,6 +48,11 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   const ALLOCATION_BATCH_SIZE = 200
   const ALLOCATION_REFRESH_PAGE_SIZE = 400
   const ALLOCATION_REFRESH_MIN_PAGE_SIZE = 50
+  const TESTED_AT_PATCH_FLUSH_MS = 160
+  const TESTED_AT_PATCH_CHUNK_SIZE = 80
+  const pendingTestedAtPatchBySignalId = new Map<number, string>()
+  let testedAtPatchFlushTimer: ReturnType<typeof setTimeout> | null = null
+  let testedAtPatchFlushFrame: number | null = null
 
   function requireWorkspaceId(): number {
     return workspaceStore.requireWorkspaceId()
@@ -335,7 +340,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       return
     }
 
-    const touched: number[] = []
     entries.forEach(([rawSignalId, testedAtIso]) => {
       const signalId = Number(rawSignalId)
       if (!Number.isFinite(signalId) || signalId <= 0) {
@@ -345,27 +349,83 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       if (!testedAt) {
         return
       }
-      const rowIndex = allocationIndexBySignalId.get(signalId)
-      if (rowIndex === undefined) {
-        return
-      }
-      const row = allocationRows.value[rowIndex]
-      if (!row || row.tested_at === testedAt) {
-        return
-      }
-      allocationRows.value[rowIndex] = {
-        ...row,
-        tested_at: testedAt,
-      }
-      touched.push(signalId)
+      pendingTestedAtPatchBySignalId.set(signalId, testedAt)
     })
 
-    if (!touched.length) {
+    if (pendingTestedAtPatchBySignalId.size === 0) {
       return
     }
 
-    setRecentlyChangedSignalIds(touched)
-    bumpAllocationRevision()
+    if (testedAtPatchFlushTimer !== null || testedAtPatchFlushFrame !== null) {
+      return
+    }
+
+    testedAtPatchFlushTimer = setTimeout(() => {
+      testedAtPatchFlushTimer = null
+      flushTestedAtPatchChunk()
+    }, TESTED_AT_PATCH_FLUSH_MS)
+  }
+
+  function scheduleTestedAtPatchFrameFlush() {
+    if (pendingTestedAtPatchBySignalId.size === 0) {
+      return
+    }
+    if (testedAtPatchFlushFrame !== null || testedAtPatchFlushTimer !== null) {
+      return
+    }
+    if (typeof requestAnimationFrame === "function") {
+      testedAtPatchFlushFrame = requestAnimationFrame(() => {
+        testedAtPatchFlushFrame = null
+        flushTestedAtPatchChunk()
+      })
+      return
+    }
+    testedAtPatchFlushTimer = setTimeout(() => {
+      testedAtPatchFlushTimer = null
+      flushTestedAtPatchChunk()
+    }, 16)
+  }
+
+  function flushTestedAtPatchChunk() {
+    if (pendingTestedAtPatchBySignalId.size === 0) {
+      return
+    }
+
+    const touched: number[] = []
+    let processed = 0
+    for (const [signalId, testedAt] of pendingTestedAtPatchBySignalId.entries()) {
+      const rowIndex = allocationIndexBySignalId.get(signalId)
+      pendingTestedAtPatchBySignalId.delete(signalId)
+      if (rowIndex === undefined) {
+        processed += 1
+        if (processed >= TESTED_AT_PATCH_CHUNK_SIZE) {
+          break
+        }
+        continue
+      }
+      const row = allocationRows.value[rowIndex]
+      if (row && row.tested_at !== testedAt) {
+        allocationRows.value[rowIndex] = {
+          ...row,
+          tested_at: testedAt,
+        }
+        touched.push(signalId)
+      }
+
+      processed += 1
+      if (processed >= TESTED_AT_PATCH_CHUNK_SIZE) {
+        break
+      }
+    }
+
+    if (touched.length > 0) {
+      setRecentlyChangedSignalIds(touched)
+      bumpAllocationRevision()
+    }
+
+    if (pendingTestedAtPatchBySignalId.size > 0) {
+      scheduleTestedAtPatchFrameFlush()
+    }
   }
 
   function resolveChannelLabel(unitId: string | null, channelIndex: number | null): string | null {
@@ -505,6 +565,15 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     allocationIndexBySignalId.clear()
     allocationOwnerByChannelId.clear()
     allocationMutationVersionBySignalId.clear()
+    pendingTestedAtPatchBySignalId.clear()
+    if (testedAtPatchFlushTimer !== null) {
+      clearTimeout(testedAtPatchFlushTimer)
+      testedAtPatchFlushTimer = null
+    }
+    if (testedAtPatchFlushFrame !== null) {
+      cancelAnimationFrame(testedAtPatchFlushFrame)
+      testedAtPatchFlushFrame = null
+    }
     setRecentlyChangedSignalIds([])
     initializedWorkspaceId.value = null
     allocationsInFlight = null

@@ -10,7 +10,8 @@
       </template>
       <template #right>
         <div class="flex items-center gap-2">
-          <GlobalRunStatusLink compact />
+          <GlobalSignalTestStatus compact />
+          <GlobalRunStatusLink compact :show-signal-chip="false" />
           <TimeComponent class="hidden sm:inline-flex" />
         </div>
       </template>
@@ -47,6 +48,7 @@ import SlideOver from "../ui/SlideOver.vue"
 import MobileHeader from "./MobileHeader.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
 import GlobalRunStatusLink from "./GlobalRunStatusLink.vue"
+import GlobalSignalTestStatus from "./GlobalSignalTestStatus.vue"
 
 // Drawer state
 const isDrawerOpen = ref(false)

@@ -30,6 +30,10 @@
           neutral-offline
         />
       </div>
+      <TimeComponent
+        v-if="!compact"
+        class="text-xs text-neutral-500 dark:text-neutral-400"
+      />
     </div>
 
     <!-- Menu stretches to fill available space while leaving room for the footer -->
@@ -47,6 +51,7 @@ import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import AppMenu from "./AppMenu.vue"
 import AppLogo from "./AppLogo.vue"
 import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
+import TimeComponent from "../misc/TimeComponent.vue"
 import ThemeToggle from "../ui/ThemeToggle.vue"
 
 defineProps<{

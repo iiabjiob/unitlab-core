@@ -1,68 +1,68 @@
 <template>
-  <div
-    v-if="isVisible"
-    class="inline-flex items-center rounded-md border border-neutral-200 bg-neutral-50/80 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-200"
-    :class="compact ? 'gap-1 px-1.5 py-1 text-[10px]' : 'gap-2 px-2 py-1 text-[11px]'"
-  >
+  <div v-if="isVisible">
     <template v-if="activeTestRunJob">
-      <template v-if="compact">
-        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500" :title="activeProgressText"></span>
-        <span class="font-medium text-neutral-700 dark:text-neutral-100">{{ activeProgressPercent }}%</span>
-      </template>
-      <template v-else>
-        <span class="font-medium text-neutral-700 dark:text-neutral-100">Test run</span>
-        <span class="truncate max-w-[280px]">{{ activeProgressText }}</span>
-        <span>{{ activeProgressPercent }}%</span>
-      </template>
-
-      <UiButton
-        v-if="!compact && activeTestRunJob.status === 'running'"
-        size="xs"
-        variant="ghost"
-        :disabled="controlBusy"
-        title="Pause test run"
-        @click="control('pause')"
+      <GlobalProgressStatusCard
+        :compact="compact"
+        label="Test run"
+        :percent="activeProgressPercent"
+        :detail="activeProgressDetailText"
       >
-        ⏸
-      </UiButton>
-      <UiButton
-        v-if="!compact && activeTestRunJob.status === 'paused'"
-        size="xs"
-        variant="ghost"
-        :disabled="controlBusy"
-        title="Resume test run"
-        @click="control('resume')"
-      >
-        ▶
-      </UiButton>
-      <UiButton
-        v-if="!compact && ['queued', 'running', 'paused'].includes(activeTestRunJob.status)"
-        size="xs"
-        variant="ghost"
-        :disabled="controlBusy"
-        title="Stop test run"
-        @click="control('stop')"
-      >
-        ■
-      </UiButton>
+        <template #actions>
+          <UiButton
+            v-if="!compact && activeTestRunJob.status === 'running'"
+            size="xs"
+            variant="ghost"
+            :disabled="controlBusy"
+            title="Pause test run"
+            @click="control('pause')"
+          >
+            ⏸
+          </UiButton>
+          <UiButton
+            v-if="!compact && activeTestRunJob.status === 'paused'"
+            size="xs"
+            variant="ghost"
+            :disabled="controlBusy"
+            title="Resume test run"
+            @click="control('resume')"
+          >
+            ▶
+          </UiButton>
+          <UiButton
+            v-if="!compact && ['queued', 'running', 'paused'].includes(activeTestRunJob.status)"
+            size="xs"
+            variant="ghost"
+            :disabled="controlBusy"
+            title="Stop test run"
+            @click="control('stop')"
+          >
+            ■
+          </UiButton>
+        </template>
+      </GlobalProgressStatusCard>
     </template>
 
     <template v-else-if="latestCompletedTestRunJob && latestCompletedTestRunJob.job_id !== dismissedJobId">
-      <template v-if="compact">
-        <span class="font-medium text-neutral-700 dark:text-neutral-100" :title="completedSummaryText">Last ✓</span>
-      </template>
-      <template v-else>
-        <span class="font-medium text-neutral-700 dark:text-neutral-100">Last test</span>
-        <span class="truncate max-w-[360px]">{{ completedSummaryText }}</span>
-      </template>
-      <button
-        type="button"
-        class="inline-flex h-4 w-4 items-center justify-center rounded text-neutral-500 hover:bg-neutral-200 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
-        aria-label="Dismiss last test summary"
-        @click="dismissCompleted"
+      <div
+        class="inline-flex items-center rounded-md border border-neutral-200 bg-neutral-50/80 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-200"
+        :class="compact ? 'gap-1 px-1.5 py-1 text-[10px]' : 'gap-2 px-2 py-1 text-[11px]'"
       >
-        ×
-      </button>
+        <template v-if="compact">
+          <span class="font-medium text-neutral-700 dark:text-neutral-100" :title="completedSummaryText">Last ✓</span>
+        </template>
+        <template v-else>
+          <span class="font-medium text-neutral-700 dark:text-neutral-100">Last test</span>
+          <span class="truncate max-w-[360px]">{{ completedSummaryText }}</span>
+        </template>
+        <button
+          type="button"
+          class="inline-flex h-4 w-4 items-center justify-center rounded text-neutral-500 hover:bg-neutral-200 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
+          aria-label="Dismiss last test summary"
+          @click="dismissCompleted"
+        >
+          ×
+        </button>
+      </div>
     </template>
   </div>
 </template>
@@ -72,6 +72,7 @@ import { computed, ref } from "vue"
 import { storeToRefs } from "pinia"
 
 import UiButton from "@/components/ui/UiButton.vue"
+import GlobalProgressStatusCard from "./GlobalProgressStatusCard.vue"
 import { useSignalJobStore } from "@/stores/signalJobStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useToastStore } from "@/stores/toastStore"
@@ -116,8 +117,7 @@ const isVisible = computed(() => Boolean(
 const activeProgressPercent = computed(() => {
   const job = activeTestRunJob.value
   if (!job) return 0
-  const total = Math.max(0, Number(job.progress_total ?? 0))
-  const done = Math.max(0, Number(job.progress_done ?? 0))
+  const { done, total } = resolveActiveProgress(job)
   if (!total) return 0
   return Math.max(0, Math.min(100, Math.round((Math.min(done, total) / total) * 100)))
 })
@@ -125,12 +125,86 @@ const activeProgressPercent = computed(() => {
 const activeProgressText = computed(() => {
   const job = activeTestRunJob.value
   if (!job) return ""
-  const total = Math.max(0, Number(job.progress_total ?? 0))
-  const done = Math.max(0, Number(job.progress_done ?? 0))
+  const { done, total } = resolveActiveProgress(job)
   const msg = String(job.message ?? "").trim()
   const fallback = total > 0 ? `${done}/${total}` : (job.status === "paused" ? "paused" : "running")
   return msg || fallback
 })
+
+const activeProgressDetailText = computed(() => {
+  const job = activeTestRunJob.value
+  if (!job) return ""
+  const { done, total } = resolveActiveProgress(job)
+  if (total <= 0) {
+    return activeProgressText.value
+  }
+
+  const succeeded = Math.max(0, readNumericResult(job, "succeeded"))
+  const skipped = Math.max(0, readNumericResult(job, "skipped"))
+  const base = `${done}/${total} · ok ${succeeded} · skip ${skipped}`
+  if (!activeEstText.value) {
+    return base
+  }
+  return `${base} · ${activeEstText.value}`
+})
+
+const activeEstText = computed(() => {
+  const job = activeTestRunJob.value
+  if (!job) return ""
+  const { done, total } = resolveActiveProgress(job)
+  if (total <= 0 || done <= 0 || done >= total) {
+    return ""
+  }
+
+  const startedAtRaw = (job as unknown as Record<string, unknown>)?.started_at
+  const startedAtMs = toMillis(String(startedAtRaw ?? "")) || toMillis(String(job.created_at ?? ""))
+  if (!startedAtMs) {
+    return ""
+  }
+
+  const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAtMs) / 1000))
+  const rate = done / elapsedSeconds
+  if (!Number.isFinite(rate) || rate <= 0) {
+    return ""
+  }
+
+  const remaining = Math.max(0, total - done)
+  if (remaining <= 0) {
+    return ""
+  }
+
+  const estimatedSeconds = Math.max(1, Math.round(remaining / rate))
+  return `ETA ${formatDurationShort(estimatedSeconds)}`
+})
+
+function resolveActiveProgress(job: SignalAllocationJob): { done: number; total: number } {
+  let total = Math.max(0, Number(job.progress_total ?? 0))
+  let done = Math.max(0, Number(job.progress_done ?? 0))
+
+  const processed = readNumericResult(job, "processed")
+  if (processed > 0) {
+    done = Math.max(done, processed)
+  }
+
+  const message = String(job.message ?? "")
+  const ratioMatch = message.match(/(\d+)\s*\/\s*(\d+)/)
+  if (ratioMatch) {
+    const parsedDone = Number(ratioMatch[1] ?? 0)
+    const parsedTotal = Number(ratioMatch[2] ?? 0)
+    if (Number.isFinite(parsedDone) && parsedDone >= 0) {
+      done = Math.max(done, parsedDone)
+    }
+    if (Number.isFinite(parsedTotal) && parsedTotal > 0) {
+      total = Math.max(total, parsedTotal)
+    }
+  }
+
+  if (total > 0 && done > total) {
+    done = total
+  }
+
+  return { done, total }
+}
 
 function readNumericResult(job: SignalAllocationJob, key: string): number {
   const raw = (job.result as Record<string, unknown> | undefined)?.[key]
@@ -162,6 +236,11 @@ function formatDurationShort(seconds: number): string {
     return `${remSeconds}s`
   }
   return `${minutes}m ${remSeconds}s`
+}
+
+function toMillis(value: string): number {
+  const parsed = Date.parse(String(value ?? ""))
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 const completedSummaryText = computed(() => {

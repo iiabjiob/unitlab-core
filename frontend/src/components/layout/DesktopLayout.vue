@@ -23,12 +23,12 @@
 
         <header class="sticky top-0 z-20 border-b border-neutral-200 bg-white px-5 dark:border-neutral-800 dark:bg-neutral-900 h-20 flex items-center">
           <div class="flex flex-1 flex-wrap items-center justify-between gap-6">
-            <div class="min-w-[220px] max-w-md flex-1">
+            <div class="min-w-[110px] max-w-[14rem] flex-1">
               <WorkspaceSwitcher variant="mini" />
             </div>
             <div class="flex items-center gap-3">
-              <GlobalRunStatusLink />
-              <TimeComponent class="text-sm text-neutral-500 dark:text-neutral-400" />
+              <GlobalSignalTestStatus />
+              <GlobalRunStatusLink :show-signal-chip="false" />
             </div>
           </div>
         </header>
@@ -49,8 +49,8 @@ import { useRoute } from "vue-router"
 import AppAside from "./DesktopAside.vue"
 import ResizablePanel from "../ui/ResizablePanel.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
-import TimeComponent from "../misc/TimeComponent.vue"
 import GlobalRunStatusLink from "./GlobalRunStatusLink.vue"
+import GlobalSignalTestStatus from "./GlobalSignalTestStatus.vue"
 
 const route = useRoute()
 const meta = computed(() => ({
