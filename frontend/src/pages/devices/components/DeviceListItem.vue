@@ -10,7 +10,7 @@ import {
   UiMenuContent,
   UiMenuItem,
   type MenuController,
-} from "@affino/menu-vue"
+} from "@/components/ui/menu"
 
 const props = defineProps<{
   device: Device

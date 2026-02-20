@@ -20,9 +20,12 @@ importers:
       '@affino/dialog-vue':
         specifier: ^1.1.0
         version: 1.1.0(vue@3.5.25(typescript@5.8.3))
+      '@affino/menu-core':
+        specifier: ^1.1.0
+        version: 1.1.0
       '@affino/menu-vue':
-        specifier: 1.0.0-alpha.6
-        version: 1.0.0-alpha.6(@affino/menu-core@1.0.0-alpha.2)(vue@3.5.25(typescript@5.8.3))
+        specifier: 2.1.0
+        version: 2.1.0(@affino/menu-core@1.1.0)(vue@3.5.25(typescript@5.8.3))
       '@affino/popover-vue':
         specifier: ^1.0.0
         version: 1.0.0(vue@3.5.25(typescript@5.8.3))
@@ -131,17 +134,26 @@ packages:
     peerDependencies:
       vue: ^3.3.0
 
-  '@affino/menu-core@1.0.0-alpha.2':
-    resolution: {integrity: sha512-iLeryXMR3jkBhgYv+Eedg0h+R3+SCI0M+JhmRt+Pc0ATFE7PkgzMF6wzsk3WziKVCTfE+2hM18zvW7pOVEQAtA==}
+  '@affino/focus-utils@1.1.0':
+    resolution: {integrity: sha512-DjE9w0WLlqmtjSXbmzf2y0WNGvhQ1hTIhkiRV8DPsCmKKXREr/6sm8Yc5PrCLqzuawdYUDzyDBEPxFqhMJOOCg==}
 
-  '@affino/menu-vue@1.0.0-alpha.6':
-    resolution: {integrity: sha512-PtUR3WdBjXXgiIDtHPQT0bRom/2nIHIW12lkv/uOWt6CBjTvfW5Ekl9A5iVuYtgYZmgEJGQtGvLDesf1EB/2+g==}
+  '@affino/menu-core@1.1.0':
+    resolution: {integrity: sha512-8kXmr/ryhzXSSCF/ew813IhBr2LKztW4+hdpQzKptZnAO3oh8TIB2bY/nFpweVb4Nbl7GZtw+ZXKdKHLTKWpBw==}
+
+  '@affino/menu-vue@2.1.0':
+    resolution: {integrity: sha512-GgKnPma6A6Sfs2DZGEaSStorEaJH991bW5Udoynr5iVnTWrT529NHQSQcoHSG+4PSk4HWgUnhDgH//r1o1G/Gw==}
     peerDependencies:
-      '@affino/menu-core': ^1.0.0-alpha.4
+      '@affino/menu-core': ^1.1.0
       vue: ^3.3.0
 
   '@affino/overlay-host@1.0.0':
     resolution: {integrity: sha512-fvHMEvBPRdcrBeYaKY2Q3ZLas3D7KKDUe4nJeMMp19sY5PA/C8ylHAjhIVse2monjgJtPveVdoBGMgmcMO/K7A==}
+
+  '@affino/overlay-host@1.1.0':
+    resolution: {integrity: sha512-f1adFx/bnNuO/Z4CSeUvGtLyr09/4zDIHpJuVs8LgCEsM1hXrxX6aJ4Qir5ujI1j/y5S+R1G22fapANDYMikWQ==}
+
+  '@affino/overlay-kernel@0.2.0':
+    resolution: {integrity: sha512-yPbhRuzMKBuUEDVM8ZhKTQcWH9jonuhTEaG6UXlpYaLNNiaWofYmmqOuP3J46ZZmlbHZInXIGFNuXo5LdhzeCg==}
 
   '@affino/popover-core@1.0.0':
     resolution: {integrity: sha512-bPOVpRZ2DajkrDw8lXw+8gOx7SvwjHpCdKlz74eKJtG7LNDlm/wwTG5mC3xA57KsRS9SwEnX8N0CJi2q4GfQLQ==}
@@ -153,6 +165,9 @@ packages:
 
   '@affino/surface-core@1.0.0':
     resolution: {integrity: sha512-K+7XzAFvcpXv262pe68kxq6fw51TgckbI2CyOLjKOthZPzXF7V0IJBZ5gTNq53vEqNh4qq4C5BrOKR0unbilPw==}
+
+  '@affino/surface-core@1.1.0':
+    resolution: {integrity: sha512-9BtgLjWR6brOMMb+QQc6nlX0dY5nS1IgYZL3BhTO56Dt9XJpy0/uu00AW5dHnAIqku5VlZx1hmIW3vEBd/CWCw==}
 
   '@affino/tabs-core@0.1.0':
     resolution: {integrity: sha512-HTUJw77uhrODjeeMOzQKEoOJS/FMcmTi4ZZnV+OdRoODTelBrCUt+m28Iq5fP7w5Z++pysCElvkPKXe5NWYqLQ==}
@@ -1709,14 +1724,26 @@ snapshots:
       '@affino/dialog-core': 1.1.0
       vue: 3.5.25(typescript@5.8.3)
 
-  '@affino/menu-core@1.0.0-alpha.2': {}
+  '@affino/focus-utils@1.1.0': {}
 
-  '@affino/menu-vue@1.0.0-alpha.6(@affino/menu-core@1.0.0-alpha.2)(vue@3.5.25(typescript@5.8.3))':
+  '@affino/menu-core@1.1.0':
     dependencies:
-      '@affino/menu-core': 1.0.0-alpha.2
+      '@affino/overlay-kernel': 0.2.0
+      '@affino/surface-core': 1.1.0
+
+  '@affino/menu-vue@2.1.0(@affino/menu-core@1.1.0)(vue@3.5.25(typescript@5.8.3))':
+    dependencies:
+      '@affino/focus-utils': 1.1.0
+      '@affino/menu-core': 1.1.0
+      '@affino/overlay-host': 1.1.0
+      '@affino/overlay-kernel': 0.2.0
       vue: 3.5.25(typescript@5.8.3)
 
   '@affino/overlay-host@1.0.0': {}
+
+  '@affino/overlay-host@1.1.0': {}
+
+  '@affino/overlay-kernel@0.2.0': {}
 
   '@affino/popover-core@1.0.0':
     dependencies:
@@ -1729,6 +1756,8 @@ snapshots:
       vue: 3.5.25(typescript@5.8.3)
 
   '@affino/surface-core@1.0.0': {}
+
+  '@affino/surface-core@1.1.0': {}
 
   '@affino/tabs-core@0.1.0': {}
 

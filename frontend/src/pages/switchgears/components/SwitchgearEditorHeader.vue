@@ -9,7 +9,7 @@ import {
   UiMenuTrigger,
   UiMenuContent,
   UiMenuItem,
-} from "@affino/menu-vue"
+} from "@/components/ui/menu"
 import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vue"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import SwitchgearPositionIcon from "./SwitchgearPositionIcon.vue"

@@ -1,18 +1,18 @@
 <template>
-  <div :class="[wrapperClass, 'workspace-switcher']">
+  <div :class="[variantStyles.wrapper, 'workspace-switcher']">
     <UiMenu v-model:open="menuOpen">
       <UiMenuTrigger asChild>
         <button
           ref="triggerRef"
           type="button"
           :disabled="loading"
-          :class="triggerClasses"
+          :class="[triggerBaseClass, variantStyles.trigger]"
         >
           <div class="flex flex-col">
             <span :class="labelClass">Workspace</span>
             <span
               class="font-semibold"
-              :class="[nameClass, hasWorkspace ? 'text-neutral-900 dark:text-neutral-100' : 'text-neutral-500 dark:text-neutral-500']"
+              :class="[variantStyles.name, hasWorkspace ? 'text-neutral-900 dark:text-neutral-100' : 'text-neutral-500 dark:text-neutral-500']"
             >
               {{ currentLabel }}
             </span>
@@ -49,7 +49,7 @@
               <div class="flex flex-col">
                 <span class="font-medium text-neutral-900 dark:text-neutral-100">{{ workspace.name }}</span>
                 <span class="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  Updated {{ formatTimestamp(workspace.updated_at) }}
+                  Updated {{ workspace.updated_at ? formatDateShort(workspace.updated_at) : "--" }}
                 </span>
               </div>
               <span
@@ -94,17 +94,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
+import { computed, onMounted, ref } from "vue"
 import {
   UiMenu,
   UiMenuTrigger,
   UiMenuContent,
   UiMenuItem,
   UiMenuSeparator,
-} from "@affino/menu-vue"
+} from "@/components/ui/menu"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import RenameModal from "@/components/ui/RenameModal.vue"
+import { formatDateShort } from "@/utils/datetime"
 
 const props = withDefaults(defineProps<{ variant?: "default" | "compact" | "mini" }>(), {
   variant: "default",
@@ -116,99 +117,35 @@ const menuOpen = ref(false)
 const createModalOpen = ref(false)
 const createName = ref("")
 const createError = ref("")
-const triggerRef = ref<HTMLElement | null>(null)
-const menuWidth = ref<number | null>(null)
-let triggerResizeObserver: ResizeObserver | null = null
 
-const wrapperClass = computed(() => {
-  if (props.variant === "compact") return "w-full"
-  if (props.variant === "mini") return "w-full"
-  return "w-full max-w-2xl"
-})
-const triggerClasses = computed(() => {
-  const classes = [
-    "flex w-full items-center justify-between rounded-lg border border-neutral-300 text-left text-neutral-900 dark:border-neutral-700 dark:text-neutral-100",
-  ]
+type WorkspaceSwitcherVariant = "default" | "compact" | "mini"
 
-  if (props.variant === "compact") {
-    classes.push("h-12 px-4 text-xs bg-white dark:bg-neutral-900")
-  } else if (props.variant === "mini") {
-    classes.push("h-12 px-3 text-sm bg-neutral-100 dark:bg-neutral-800")
-  } else {
-    classes.push("h-14 px-4 text-sm bg-white dark:bg-neutral-900")
-  }
+const VARIANT_STYLES: Record<WorkspaceSwitcherVariant, { wrapper: string; trigger: string; name: string }> = {
+  default: {
+    wrapper: "w-full max-w-2xl",
+    trigger: "h-14 px-4 text-sm bg-white dark:bg-neutral-900",
+    name: "text-base",
+  },
+  compact: {
+    wrapper: "w-full",
+    trigger: "h-12 px-4 text-xs bg-white dark:bg-neutral-900",
+    name: "text-sm",
+  },
+  mini: {
+    wrapper: "w-full",
+    trigger: "h-12 px-3 text-sm bg-neutral-100 dark:bg-neutral-800",
+    name: "text-lg",
+  },
+}
 
-  return classes
-})
-const nameClass = computed(() => {
-  if (props.variant === "mini") return "text-lg"
-  if (props.variant === "compact") return "text-sm"
-  return "text-base"
-})
+const triggerBaseClass = "flex w-full items-center justify-between rounded-lg border border-neutral-300 text-left text-neutral-900 dark:border-neutral-700 dark:text-neutral-100"
+const variantStyles = computed(() => VARIANT_STYLES[props.variant])
 const labelClass = "text-[10px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
 
 const loading = computed(() => workspaceStore.loading)
 const hasWorkspace = computed(() => Boolean(workspaceStore.activeWorkspace))
 const currentLabel = computed(() => workspaceStore.activeWorkspace?.name ?? "Select workspace")
 const menuWorkspaces = computed(() => workspaceStore.workspaces)
-function updateMenuWidth() {
-  const el = triggerRef.value
-  if (!el) return
-  const width = Math.max(
-    0,
-    Math.ceil(
-      Math.max(
-        el.getBoundingClientRect().width,
-        Number(el.offsetWidth) || 0,
-        Number(el.clientWidth) || 0,
-      ),
-    ),
-  )
-  menuWidth.value = width > 0 ? width : null
-  if (menuOpen.value) {
-    syncOpenMenuPanelWidth()
-  }
-}
-
-function resolveOpenMenuPanelElement() {
-  if (typeof document === "undefined") return null
-  const trigger = triggerRef.value
-  if (!trigger) return null
-
-  const controlledPanelId = trigger.getAttribute("aria-controls")
-  if (controlledPanelId) {
-    const controlledPanel = document.getElementById(controlledPanelId)
-    if (controlledPanel instanceof HTMLElement) {
-      return controlledPanel
-    }
-  }
-
-  const openPanels = document.querySelectorAll<HTMLElement>('[data-ui-menu-panel="true"][data-state="open"]')
-  return openPanels.length === 1 ? openPanels[0] : null
-}
-
-function syncOpenMenuPanelWidth() {
-  const width = menuWidth.value
-  if (!width) return
-  const panel = resolveOpenMenuPanelElement()
-  if (!panel) return
-  const widthPx = `${width}px`
-  panel.style.width = widthPx
-  panel.style.minWidth = widthPx
-  panel.style.maxWidth = widthPx
-  panel.style.boxSizing = "border-box"
-}
-
-function formatTimestamp(value?: string | null) {
-  if (!value) return "--"
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return "--"
-  return d.toLocaleDateString("en-GB", {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-  })
-}
 
 async function select(workspaceId: number) {
   await workspaceStore.selectWorkspace(workspaceId)
@@ -250,15 +187,6 @@ async function handleCreateSubmit() {
 }
 
 onMounted(() => {
-  void nextTick(() => {
-    updateMenuWidth()
-  })
-  if (typeof ResizeObserver !== "undefined" && triggerRef.value) {
-    triggerResizeObserver = new ResizeObserver(() => {
-      updateMenuWidth()
-    })
-    triggerResizeObserver.observe(triggerRef.value)
-  }
   void runStoreBootstrap(
     ["workspace-switcher-bootstrap"],
     [() => workspaceStore.bootstrap()],
@@ -266,23 +194,4 @@ onMounted(() => {
   )
 })
 
-onBeforeUnmount(() => {
-  triggerResizeObserver?.disconnect()
-  triggerResizeObserver = null
-})
-
-watch(
-  () => [menuOpen.value, props.variant, currentLabel.value, menuWorkspaces.value.length] as const,
-  ([isOpen]) => {
-    void nextTick(() => {
-      updateMenuWidth()
-      if (isOpen) {
-        if (typeof window === "undefined") return
-        window.requestAnimationFrame(() => {
-          syncOpenMenuPanelWidth()
-        })
-      }
-    })
-  },
-)
 </script>

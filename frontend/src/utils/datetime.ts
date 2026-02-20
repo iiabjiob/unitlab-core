@@ -32,3 +32,15 @@ export function formatDate(value: string | number | Date): string {
   const ms = typeof value === "number" ? value : new Date(value).getTime()
   return formatTsFull(ms)
 }
+
+export function formatDateShort(value: string | number | Date, locale = "en-GB"): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return "--"
+  }
+  return date.toLocaleDateString(locale, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  })
+}

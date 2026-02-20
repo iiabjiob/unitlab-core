@@ -711,7 +711,7 @@ import {
   UiSubMenuContent,
   UiSubMenuTrigger,
   type MenuController,
-} from "@affino/menu-vue"
+} from "@/components/ui/menu"
 import { useFloatingPopover, usePopoverController } from "@affino/popover-vue"
 import {
   useDataGridColumnLayoutOrchestration,

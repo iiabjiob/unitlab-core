@@ -132,7 +132,7 @@ import {
   UiMenuLabel,
   UiMenuSeparator,
   type MenuController,
-} from "@affino/menu-vue"
+} from "@/components/ui/menu"
 
 import UiButton from "@/components/ui/UiButton.vue"
 import InlineInfoTooltip from "@/components/ui/InlineInfoTooltip.vue"

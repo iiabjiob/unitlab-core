@@ -12,7 +12,7 @@ import {
   UiMenuTrigger,
   UiMenuContent,
   UiMenuItem
-} from "@affino/menu-vue"
+} from "@/components/ui/menu"
 import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vue"
 
 const props = defineProps<{

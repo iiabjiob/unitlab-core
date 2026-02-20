@@ -67,7 +67,7 @@ import { computed, ref } from "vue"
 import type { SequenceStep } from "@/types/sequences"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useSequenceStepStore } from "@/stores/sequenceStepStore"
-import { UiMenu, UiMenuContent, UiMenuItem, type MenuController } from "@affino/menu-vue"
+import { UiMenu, UiMenuContent, UiMenuItem, type MenuController } from "@/components/ui/menu"
 
 const props = defineProps<{
   step: SequenceStep

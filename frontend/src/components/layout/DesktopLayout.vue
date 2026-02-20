@@ -23,7 +23,7 @@
 
         <header class="sticky top-0 z-20 border-b border-neutral-200 bg-white px-5 dark:border-neutral-800 dark:bg-neutral-900 h-20 flex items-center">
           <div class="flex flex-1 flex-wrap items-center justify-between gap-6">
-            <div class="min-w-[110px] max-w-[14rem] flex-1">
+            <div class="min-w-[110px] max-w-[20rem] flex-1">
               <WorkspaceSwitcher variant="mini" />
             </div>
             <div class="flex items-center gap-3">
