@@ -2,6 +2,7 @@ import { useSequenceStepStore } from "@/stores/sequenceStepStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSelectionStore } from "@/stores/selectionStore"
+import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import type { RouteRecordRaw } from "vue-router"
 
 // Default meta shared from index.ts
@@ -18,7 +19,11 @@ export const sequencesRoutes: RouteRecordRaw[] = [
       const workspaceStore = useWorkspaceStore()
       await workspaceStore.bootstrap()
       const store = useSequenceStore()
-      await store.ensureLoaded()
+      await runStoreBootstrap(
+        ["route-sequences", workspaceStore.activeWorkspaceId],
+        [() => store.ensureLoaded()],
+        { mode: "strict" },
+      )
     },
     meta: {
       ...defaultMeta,
@@ -56,9 +61,15 @@ export const sequencesRoutes: RouteRecordRaw[] = [
           const seqStore = useSequenceStore()
           const stepStore = useSequenceStepStore()
 
-          await seqStore.ensureLoaded()
-          await stepStore.ensureSteps(seqId)
-          await seqStore.refreshState(seqId)
+          await runStoreBootstrap(
+            ["route-sequences-detail", workspaceStore.activeWorkspaceId, seqId],
+            [
+              () => seqStore.ensureLoaded(),
+              () => stepStore.ensureSteps(seqId),
+              () => seqStore.refreshState(seqId),
+            ],
+            { mode: "strict" },
+          )
         }
       },
       

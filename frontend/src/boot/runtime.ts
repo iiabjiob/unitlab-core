@@ -4,6 +4,7 @@ import { useDeviceStore } from "@/stores/deviceStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
+import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 
 let booted = false
 let bootInFlight: Promise<void> | null = null
@@ -30,14 +31,18 @@ export async function bootRuntime() {
       return
     }
 
-    await Promise.all([
-      deviceStore.ensureLoaded(),
-      switchgearStore.ensureLoaded(),
-      sequenceStore.ensureLoaded(),
-      signalSheetStore.refreshSheet().catch((error: unknown) => {
-        logger.warn("⚠️ Boot: signal sheet probe failed (welcome recommendation may be stale)", error)
-      }),
-    ])
+    await runStoreBootstrap(
+      ["boot-runtime", workspaceStore.activeWorkspaceId],
+      [
+        () => deviceStore.ensureLoaded(),
+        () => switchgearStore.ensureLoaded(),
+        () => sequenceStore.ensureLoaded(),
+        () => signalSheetStore.refreshSheet().catch((error: unknown) => {
+          logger.warn("⚠️ Boot: signal sheet probe failed (welcome recommendation may be stale)", error)
+        }),
+      ],
+      { mode: "strict" },
+    )
 
     booted = true
     logger.info("✅ Boot: Runtime ready")

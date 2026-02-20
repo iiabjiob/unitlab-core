@@ -1,5 +1,7 @@
 import type { RouteRecordRaw } from "vue-router"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { useSignalSheetStore } from "@/stores/signalSheetStore"
+import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 
 export const signalsRoutes: RouteRecordRaw[] = [
   {
@@ -11,6 +13,12 @@ export const signalsRoutes: RouteRecordRaw[] = [
       if (!ready || !workspaceStore.activeWorkspaceId) {
         return { name: "home" }
       }
+      const signalSheetStore = useSignalSheetStore()
+      await runStoreBootstrap(
+        ["route-signals", workspaceStore.activeWorkspaceId],
+        [() => signalSheetStore.refreshSheet()],
+        { mode: "settled" },
+      )
       return true
     },
     meta: {

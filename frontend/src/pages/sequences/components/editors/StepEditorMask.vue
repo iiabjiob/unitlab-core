@@ -5,6 +5,7 @@ import UiSelect from "@/components/ui/UiSelect.vue"
 import type { SequenceStep } from "@/types/sequences"
 import type { StepEditorChange } from "./editorTypes"
 import { useDeviceStore } from "@/stores/deviceStore"
+import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import { CHANNEL_TYPES } from "@/types/channel"
 
 const props = defineProps<{
@@ -17,7 +18,11 @@ const emit = defineEmits<{
 }>()
 
 const deviceStore = useDeviceStore()
-void deviceStore.ensureLoaded()
+void runStoreBootstrap(
+	["sequence-step-mask-devices"],
+	[() => deviceStore.ensureLoaded()],
+	{ mode: "settled" },
+)
 
 const doDevices = computed(() =>
 	deviceStore.devices.filter(device => device.device_type?.toLowerCase() === CHANNEL_TYPES.DO)

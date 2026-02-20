@@ -14,6 +14,7 @@ import { useDeviceStore } from "./deviceStore"
 import { useWorkspaceStore } from "./workspaceStore"
 import { CHANNEL_TYPES, type Channel, type ChannelType } from "@/types/channel"
 import { codeToState, SWITCHGEAR_CODE, type SwitchgearState } from "@/constants/switchgear"
+import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 
 const logger = getLogger("SG")
 
@@ -143,10 +144,14 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
   }
 
   async function buildAutoBindings() {
-    await Promise.all([
-      deviceStore.ensureLoaded(),
-      channelStore.ensureLoaded(),
-    ])
+    await runStoreBootstrap(
+      ["switchgear-auto-bindings", workspaceStore.activeWorkspaceId],
+      [
+        () => deviceStore.ensureLoaded(),
+        () => channelStore.ensureLoaded(),
+      ],
+      { mode: "settled" },
+    )
 
     const usedChannelIds = new Set<number>()
     switchgears.value.forEach((switchgear) => {

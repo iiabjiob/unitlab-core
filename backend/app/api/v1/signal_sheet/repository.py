@@ -170,6 +170,22 @@ class SignalSheetRepository:
         allocations_by_signal = await self._allocations_by_signal_id(workspace_id)
         return await self._build_allocation_rows(signals, allocations_by_signal)
 
+    async def list_allocation_rows_page(
+        self,
+        workspace_id: int,
+        *,
+        offset: int,
+        limit: int,
+    ) -> list[SignalAllocationRowSchema]:
+        if limit <= 0:
+            return []
+        signals = await self._list_active_signals_page(workspace_id, offset=offset, limit=limit)
+        if not signals:
+            return []
+        signal_ids = {signal.id for signal in signals}
+        allocations_by_signal = await self._allocations_by_signal_ids(workspace_id, signal_ids)
+        return await self._build_allocation_rows(signals, allocations_by_signal)
+
     async def list_allocation_rows_by_signal_ids(
         self,
         workspace_id: int,
@@ -535,6 +551,31 @@ class SignalSheetRepository:
                 Signal.is_active.is_(True),
             )
             .order_by(Signal.created_at.asc(), Signal.id.asc())
+        )
+        rows = await self.db.execute(stmt)
+        return list(rows.scalars().all())
+
+    async def _list_active_signals_page(
+        self,
+        workspace_id: int,
+        *,
+        offset: int,
+        limit: int,
+    ) -> list[Signal]:
+        normalized_offset = max(0, int(offset))
+        normalized_limit = max(0, int(limit))
+        if normalized_limit <= 0:
+            return []
+        stmt = (
+            select(Signal)
+            .where(
+                Signal.workspace_id == workspace_id,
+                Signal.deleted_at.is_(None),
+                Signal.is_active.is_(True),
+            )
+            .order_by(Signal.created_at.asc(), Signal.id.asc())
+            .offset(normalized_offset)
+            .limit(normalized_limit)
         )
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all())

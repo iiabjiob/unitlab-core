@@ -1,6 +1,7 @@
 import type { RouteRecordRaw } from "vue-router"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useSelectionStore } from "@/stores/selectionStore"
+import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 
 // Default meta shared from index.ts
 const defaultMeta = {
@@ -14,7 +15,11 @@ export const devicesRoutes: RouteRecordRaw[] = [
     component: () => import("@/pages/devices/DevicesPage.vue"),
     beforeEnter: async () => {
       const store = useDeviceStore()
-      await store.ensureLoaded()
+      await runStoreBootstrap(
+        ["route-devices"],
+        [() => store.ensureLoaded()],
+        { mode: "strict" },
+      )
     },
     meta: {
       ...defaultMeta,

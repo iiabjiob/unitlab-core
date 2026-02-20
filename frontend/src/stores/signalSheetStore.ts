@@ -40,11 +40,14 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
 
   const initializedWorkspaceId = ref<number | null>(null)
   let allocationsInFlight: Promise<SignalAllocationRow[]> | null = null
+  let allocationsInFlightWorkspaceId: number | null = null
   const allocationIndexBySignalId = new Map<number, number>()
   const allocationOwnerByChannelId = new Map<number, number>()
   const allocationMutationVersionBySignalId = new Map<number, number>()
   let allocationMutationVersionCounter = 0
   const ALLOCATION_BATCH_SIZE = 200
+  const ALLOCATION_REFRESH_PAGE_SIZE = 400
+  const ALLOCATION_REFRESH_MIN_PAGE_SIZE = 50
 
   function requireWorkspaceId(): number {
     return workspaceStore.requireWorkspaceId()
@@ -89,6 +92,38 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
 
   function endAllocationMutation() {
     allocationMutationsInFlight.value = Math.max(0, allocationMutationsInFlight.value - 1)
+  }
+
+  function isRetryableAllocationPageError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false
+    }
+    const message = String(error.message ?? "")
+    return /content_length_mismatch|content-length|length\s*mismatch|err_network|econnreset|etimedout/i.test(message)
+  }
+
+  async function fetchAllocationPageAdaptive(
+    workspaceId: number,
+    offset: number,
+    pageSize: number,
+  ): Promise<{ rows: SignalAllocationRow[]; nextPageSize: number }> {
+    let currentLimit = Math.max(ALLOCATION_REFRESH_MIN_PAGE_SIZE, Math.floor(pageSize))
+
+    while (true) {
+      try {
+        const { data } = await SignalSheetAPI.listAllocations(workspaceId, {
+          offset,
+          limit: currentLimit,
+        })
+        const rows = Array.isArray(data) ? data : []
+        return { rows, nextPageSize: currentLimit }
+      } catch (error) {
+        if (!isRetryableAllocationPageError(error) || currentLimit <= ALLOCATION_REFRESH_MIN_PAGE_SIZE) {
+          throw error
+        }
+        currentLimit = Math.max(ALLOCATION_REFRESH_MIN_PAGE_SIZE, Math.floor(currentLimit / 2))
+      }
+    }
   }
 
   async function yieldToEventLoop() {
@@ -472,6 +507,8 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     allocationMutationVersionBySignalId.clear()
     setRecentlyChangedSignalIds([])
     initializedWorkspaceId.value = null
+    allocationsInFlight = null
+    allocationsInFlightWorkspaceId = null
   }
 
   async function bootstrap(force = false) {
@@ -492,6 +529,9 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     loadingSheet.value = true
     try {
       const { data } = await SignalSheetAPI.get(workspaceId)
+      if (workspaceStore.activeWorkspaceId !== workspaceId) {
+        return sheet.value
+      }
       sheet.value = data
       lastSheetLoadedAt.value = Date.now()
       return data
@@ -505,6 +545,9 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     loadingPresets.value = true
     try {
       const { data } = await SignalSheetAPI.listPresets(workspaceId)
+      if (workspaceStore.activeWorkspaceId !== workspaceId) {
+        return presets.value
+      }
       presets.value = data
       return data
     } finally {
@@ -513,30 +556,63 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   }
 
   async function refreshAllocations() {
-    if (allocationsInFlight) {
+    const workspaceId = requireWorkspaceId()
+    if (allocationsInFlight && allocationsInFlightWorkspaceId === workspaceId) {
       return allocationsInFlight
     }
 
-    const workspaceId = requireWorkspaceId()
     const task = (async () => {
       loadingAllocations.value = true
       try {
-        const { data } = await SignalSheetAPI.listAllocations(workspaceId)
-        replaceAllocationRows(data)
+        let rows: SignalAllocationRow[] | null = null
+
+        try {
+          rows = await SignalSheetAPI.streamAllocations(workspaceId)
+        } catch {
+          rows = null
+        }
+
+        if (rows === null) {
+          rows = []
+          let offset = 0
+          let pageSize = ALLOCATION_REFRESH_PAGE_SIZE
+          while (true) {
+            const { rows: pageRows, nextPageSize } = await fetchAllocationPageAdaptive(workspaceId, offset, pageSize)
+            pageSize = nextPageSize
+            if (workspaceStore.activeWorkspaceId !== workspaceId) {
+              return allocationRows.value
+            }
+            if (pageRows.length === 0) {
+              break
+            }
+            rows.push(...pageRows)
+            if (pageRows.length < pageSize) {
+              break
+            }
+            offset += pageRows.length
+          }
+        }
+
+        if (workspaceStore.activeWorkspaceId !== workspaceId) {
+          return allocationRows.value
+        }
+        replaceAllocationRows(rows)
         recomputeSheetAllocatedCount()
         lastAllocationsLoadedAt.value = Date.now()
-        return data
+        return rows
       } finally {
         loadingAllocations.value = false
       }
     })()
 
     allocationsInFlight = task
+    allocationsInFlightWorkspaceId = workspaceId
     try {
       return await task
     } finally {
       if (allocationsInFlight === task) {
         allocationsInFlight = null
+        allocationsInFlightWorkspaceId = null
       }
     }
   }
@@ -902,7 +978,10 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     return data
   }
 
-  async function markSignalsTested(signalIds: number[]): Promise<void> {
+  async function markSignalsTested(
+    signalIds: number[],
+    options?: { optimistic?: boolean },
+  ): Promise<void> {
     const normalizedSignalIds = Array.from(
       new Set(signalIds.map(item => Number(item)).filter(id => Number.isFinite(id) && id > 0)),
     )
@@ -910,8 +989,11 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       return
     }
 
-    const testedAtIso = new Date().toISOString()
-    applyLocalTestedAtPatch(normalizedSignalIds, testedAtIso)
+    const optimistic = options?.optimistic ?? true
+    if (optimistic) {
+      const testedAtIso = new Date().toISOString()
+      applyLocalTestedAtPatch(normalizedSignalIds, testedAtIso)
+    }
 
     const workspaceId = requireWorkspaceId()
     const { data } = await SignalSheetAPI.markTested(workspaceId, {

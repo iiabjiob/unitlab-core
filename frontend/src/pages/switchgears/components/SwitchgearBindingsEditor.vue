@@ -10,6 +10,7 @@ import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 
 const props = defineProps<{
   switchgear: Switchgear
@@ -287,7 +288,11 @@ watch(
   () => workspaceStore.activeWorkspaceId,
   (workspaceId) => {
     if (!workspaceId) return
-    void signalSheetStore.refreshSheet().catch(() => undefined)
+    void runStoreBootstrap(
+      ["switchgear-bindings-signal-sheet", workspaceId],
+      [() => signalSheetStore.refreshSheet()],
+      { mode: "settled" },
+    )
   },
   { immediate: true },
 )

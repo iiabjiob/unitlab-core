@@ -91,6 +91,7 @@ import type { SignalAllocationRow, SignalIODirection } from "@/types/signal"
 import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders } from "@/pages/signals/utils/sourceColumns"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
+import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 
 type GridRow = Record<string, unknown> & {
   signal_id: number
@@ -330,10 +331,14 @@ async function refreshData() {
   if (workspaceMissing.value) return
   loading.value = true
   try {
-    await Promise.all([
-      signalSheetStore.refreshSheet(),
-      signalSheetStore.refreshAllocations(),
-    ])
+    await runStoreBootstrap(
+      ["signal-selection-grid", workspaceStore.activeWorkspaceId],
+      [
+        () => signalSheetStore.refreshSheet(),
+        () => signalSheetStore.refreshAllocations(),
+      ],
+      { mode: "settled" },
+    )
   } finally {
     loading.value = false
   }

@@ -110,6 +110,8 @@ import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
 
 import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import type { Channel, ChannelType } from "@/types/channel"
 
 type NodeValue = string
@@ -134,6 +136,7 @@ const emit = defineEmits<{
 
 const channelStore = useChannelStore()
 const deviceStore = useDeviceStore()
+const workspaceStore = useWorkspaceStore()
 
 const popover = usePopoverController({
   closeOnInteractOutside: true,
@@ -649,26 +652,33 @@ async function ensureCatalogLoadedForPicker() {
   }
   catalogLoading.value = true
   try {
-    await deviceStore.ensureLoaded()
+    const requiredType = String(props.channelType ?? "").trim().toLowerCase() || "any"
+    const workspaceId = workspaceStore.activeWorkspaceId ?? "none"
 
-    const requiredType = String(props.channelType ?? "").trim().toLowerCase()
-    const candidates = deviceStore.devices
-      .filter((device) => String(device.device_type ?? "").trim().toLowerCase() === requiredType)
-      .map(device => device.id)
+    await runStoreBootstrap(
+      ["channel-tree-picker", workspaceId, requiredType],
+      [
+        () => deviceStore.ensureLoaded(),
+        () => {
+          const candidates = deviceStore.devices
+            .filter((device) => requiredType === "any" || String(device.device_type ?? "").trim().toLowerCase() === requiredType)
+            .map(device => device.id)
 
-    if (candidates.length > 0) {
-      await Promise.allSettled(
-        candidates.map(deviceId => channelStore.ensureDeviceChannelsLoaded(deviceId)),
-      )
-    } else if (channelStore.channels.length === 0) {
-      await channelStore.ensureLoaded()
-    }
+          if (candidates.length > 0) {
+            return Promise.allSettled(
+              candidates.map(deviceId => channelStore.ensureDeviceChannelsLoaded(deviceId)),
+            )
+          }
 
-    if (channelStore.channels.length === 0 && deviceStore.devices.length > 0) {
-      await Promise.allSettled(
-        deviceStore.devices.map(device => channelStore.ensureDeviceChannelsLoaded(device.id)),
-      )
-    }
+          if (channelStore.channels.length === 0 && deviceStore.devices.length > 0) {
+            return Promise.allSettled(
+              deviceStore.devices.map(device => channelStore.ensureDeviceChannelsLoaded(device.id)),
+            )
+          }
+        },
+      ],
+      { mode: "settled" },
+    )
   } finally {
     catalogLoading.value = false
   }

@@ -9,6 +9,7 @@ import { useDeviceStore } from "@/stores/deviceStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
 import { useSwitchgearLogStore } from "@/stores/switchgearLogStore"
+import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import { SWITCHGEAR_CODE } from "@/constants/switchgear"
 
 const props = defineProps<{
@@ -103,9 +104,11 @@ onMounted(() => {
   if (channelStore.channels.length > 0) {
     return
   }
-  void channelStore.ensureLoaded().catch(() => {
-    return
-  })
+  void runStoreBootstrap(
+    ["switchgear-toolbar-channels"],
+    [() => channelStore.ensureLoaded()],
+    { mode: "settled" },
+  )
 })
 
 watch(pairPending, (pending) => {

@@ -115,8 +115,8 @@
             :status-tag="controlStatusTag(asAllocationRow(row))"
             :state-label="controlStateLabel(asAllocationRow(row))"
             :disabled="controlDisabled(asAllocationRow(row))"
-            @set-on="() => handleControlMenuSelect(asAllocationRow(row), true)"
-            @set-off="() => handleControlMenuSelect(asAllocationRow(row), false)"
+            :is-on="controlSwitchIsOn(asAllocationRow(row))"
+            @toggle="() => handleControlToggle(asAllocationRow(row))"
           />
         </div>
 
@@ -165,8 +165,10 @@ import { useSignalJobStore } from "@/stores/signalJobStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useToastStore } from "@/stores/toastStore"
+import { useWebSocketStore } from "@/stores/websocketStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
+import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 
 const signalSheetStore = useSignalSheetStore()
 const workspaceStore = useWorkspaceStore()
@@ -176,12 +178,14 @@ const realtimeScopeStore = useRealtimeScopeStore()
 const signalJobStore = useSignalJobStore()
 const switchgearStore = useSwitchgearStore()
 const toastStore = useToastStore()
+const websocketStore = useWebSocketStore()
 const route = useRoute()
 const router = useRouter()
 
 const { allocationRows, loadingAllocations, loadingSheet, updatingAllocations, allocatedCount, allocationRevision, recentlyChangedSignalIds } = storeToRefs(signalSheetStore)
 const { activeJobs, jobsById } = storeToRefs(signalJobStore)
 const { channels } = storeToRefs(channelStore)
+const { isConnected: isWsConnected } = storeToRefs(websocketStore)
 
 const scopeId = "signals:allocations"
 const importModalOpen = ref(false)
@@ -219,6 +223,10 @@ const lastTestSummary = ref<LastTestSummary | null>(null)
 const dismissedLastTestJobId = ref<string | null>(null)
 let realtimeScopeSyncFrame: number | null = null
 let lastRealtimeScopeKey = ""
+let refreshCycleId = 0
+const missingChannelHydrationInFlight = new Set<number>()
+const realtimeScopeChannelHydrationInFlight = new Set<number>()
+let wsScopeRetryTimer: ReturnType<typeof setTimeout> | null = null
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const loading = computed(() => loadingAllocations.value || loadingSheet.value || updatingAllocations.value)
@@ -586,10 +594,16 @@ const canStopActiveTestRun = computed(() => {
 })
 const isStoppingActiveTestRun = computed(() => activeTestRunJob.value?.status === "cancelling")
 
-watch(activeTestRunJob, (job) => {
+function handleActiveTestRunJob(job: SignalAllocationJob | null) {
   if (!job) {
     testRunInProgress.value = false
     flushTestedAtOverlayBatch()
+    const changedSignalIds = recentlyChangedSignalIds.value
+    if (changedSignalIds.length > 0) {
+      syncGridRowsBySignalIds(changedSignalIds)
+    } else {
+      rebuildGridRows()
+    }
     clearTestedAtOverlay()
     scheduleRealtimeUnitScopeSync()
     return
@@ -597,7 +611,11 @@ watch(activeTestRunJob, (job) => {
 
   testRunInProgress.value = String(job.status ?? "") !== "paused"
   updateTestRunStatsFromJob(job)
-}, { immediate: true })
+}
+
+watch(activeTestRunJob, (job) => {
+  handleActiveTestRunJob(job)
+})
 
 watch(latestCompletedTestRunJob, (job) => {
   if (!job) {
@@ -633,6 +651,8 @@ const gridRows = shallowRef<GridRow[]>([])
 const gridRowBySignalId = new Map<number, GridRow>()
 const gridRowIndexBySignalId = new Map<number, number>()
 const channelGroupsResolverBySignalId = new Map<number, () => ChannelOptionGroup[]>()
+
+handleActiveTestRunJob(activeTestRunJob.value)
 
 type GridRow = Record<string, unknown>
 type ChannelOption = { id: number; label: string; disabled: boolean }
@@ -756,6 +776,7 @@ function syncGridRowsBySignalIds(signalIds: readonly number[]) {
 
   const headers = sourceColumnHeaders.value
   let structuralChange = false
+  let nextRows: GridRow[] | null = null
 
   signalIds.forEach((signalId) => {
     const row = findAllocationRowBySignalId(signalId)
@@ -774,7 +795,25 @@ function syncGridRowsBySignalIds(signalIds: readonly number[]) {
       structuralChange = true
       return
     }
-    assignDynamicGridFields(existingPayload, row)
+
+    const existingIndex = gridRowIndexBySignalId.get(signalId)
+    if (existingIndex === undefined) {
+      structuralChange = true
+      return
+    }
+
+    const nextPayload: GridRow = { ...existingPayload }
+    assignDynamicGridFields(nextPayload, row)
+    const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
+    headers.forEach((header, index) => {
+      nextPayload[sourceColumnKey(index)] = sourceRow[header] ?? ""
+    })
+
+    if (!nextRows) {
+      nextRows = [...gridRows.value]
+    }
+    nextRows[existingIndex] = nextPayload
+    gridRowBySignalId.set(signalId, nextPayload)
   })
 
   if (structuralChange) {
@@ -782,7 +821,11 @@ function syncGridRowsBySignalIds(signalIds: readonly number[]) {
     return
   }
 
-  // shallowRef: notify grid about in-place patched row objects.
+  if (nextRows) {
+    gridRows.value = nextRows
+    return
+  }
+
   triggerRef(gridRows)
 }
 
@@ -1368,10 +1411,11 @@ function allocationValueClass(row: SignalAllocationRow) {
 }
 
 type ControlTarget = {
+  channelId: number
   deviceId: number
   unitId: string
   channelIndex: number
-  channel: DoChannel
+  channel: DoChannel | null
   online: boolean
 }
 
@@ -1380,26 +1424,59 @@ type SendControlOptions = {
 }
 
 function resolveControlTarget(row: SignalAllocationRow): ControlTarget | null {
-  if (!Number.isFinite(row.channel_id as number)) {
+  const channelId = Number(row.channel_id)
+  if (!Number.isFinite(channelId) || channelId <= 0) {
     return null
   }
 
-  const linkedChannel = channelMap.value.get(Number(row.channel_id))
-  if (!linkedChannel || normalizedChannelType(linkedChannel.type) !== "do") {
+  const linkedChannel = channelMap.value.get(channelId)
+  const linkedChannelType = normalizedChannelType(linkedChannel?.type)
+  const rowChannelType = normalizedChannelType(row.channel_type)
+  const effectiveChannelType = linkedChannelType ?? rowChannelType
+  if (effectiveChannelType !== "do") {
     return null
   }
 
-  const device = deviceStore.devices.find((item) => item.id === linkedChannel.device_id)
-  if (!device) {
+  const linkedDeviceId = Number(linkedChannel?.device_id)
+  const rowDeviceId = Number(row.device_id)
+  const deviceId = Number.isFinite(linkedDeviceId)
+    ? linkedDeviceId
+    : (Number.isFinite(rowDeviceId) ? rowDeviceId : NaN)
+  if (!Number.isFinite(deviceId) || deviceId <= 0) {
     return null
   }
+
+  const linkedChannelIndex = Number(linkedChannel?.index)
+  const rowChannelIndex = Number(row.channel_index)
+  const channelIndex = Number.isFinite(linkedChannelIndex)
+    ? linkedChannelIndex
+    : (Number.isFinite(rowChannelIndex) ? rowChannelIndex : NaN)
+  if (!Number.isFinite(channelIndex) || channelIndex < 0) {
+    return null
+  }
+
+  const rowUnitId = String(row.unit_id ?? "").trim()
+  const unitId = rowUnitId || (linkedChannel ? channelStore.resolveUnitId(linkedChannel.device_id) : "")
+  if (!unitId) {
+    return null
+  }
+
+  const device = deviceStore.devices.find((item) => item.id === deviceId)
+  const online = device
+    ? device.status === "online"
+    : (typeof row.unit_online === "boolean" ? row.unit_online : true)
+
+  const doChannel = linkedChannel && linkedChannelType === "do"
+    ? (linkedChannel as DoChannel)
+    : null
 
   return {
-    deviceId: device.id,
-    unitId: device.unit_id,
-    channelIndex: linkedChannel.index,
-    channel: linkedChannel as DoChannel,
-    online: device.status === "online",
+    channelId,
+    deviceId,
+    unitId,
+    channelIndex,
+    channel: doChannel,
+    online,
   }
 }
 
@@ -1409,7 +1486,7 @@ function canControl(row: SignalAllocationRow) {
 
 function controlBusy(row: SignalAllocationRow): boolean {
   const target = resolveControlTarget(row)
-  if (!target) return false
+  if (!target || !target.channel) return false
   const stage = target.channel.ui?.stage ?? "idle"
   return stage === "pending" || stage === "debounce"
 }
@@ -1417,6 +1494,9 @@ function controlBusy(row: SignalAllocationRow): boolean {
 function controlStateLabel(row: SignalAllocationRow): string {
   const target = resolveControlTarget(row)
   if (!target) return "UNKNOWN"
+  if (!target.channel) {
+    return target.online ? "UNKNOWN" : "UNKNOWN (OFFLINE)"
+  }
   const stableLabel = target.channel.state ? "ON" : "OFF"
   const stage = target.channel.ui?.stage ?? "idle"
   if (!target.online) return `${stableLabel} (OFFLINE)`
@@ -1428,6 +1508,9 @@ function controlStateLabel(row: SignalAllocationRow): string {
 function controlLampClass(row: SignalAllocationRow): string {
   const target = resolveControlTarget(row)
   if (!target) return "bg-neutral-400 dark:bg-neutral-600"
+  if (!target.channel) {
+    return target.online ? "bg-neutral-400 dark:bg-neutral-600" : "bg-neutral-500 dark:bg-neutral-700"
+  }
   const stage = target.channel.ui?.stage ?? "idle"
   if (!target.online) return "bg-neutral-500 dark:bg-neutral-700"
   if (stage === "pending" || stage === "debounce") return "bg-amber-400 animate-pulse"
@@ -1438,6 +1521,7 @@ function controlLampClass(row: SignalAllocationRow): string {
 function controlStatusTag(row: SignalAllocationRow): string {
   const target = resolveControlTarget(row)
   if (!target) return "N/A"
+  if (!target.channel) return target.online ? "UNKN" : "OFFL"
   const stage = target.channel.ui?.stage ?? "idle"
   if (!target.online) return "OFFL"
   if (stage === "pending" || stage === "debounce") return "PEND"
@@ -1448,6 +1532,7 @@ function controlStatusTag(row: SignalAllocationRow): string {
 function controlStatusClass(row: SignalAllocationRow): string {
   const target = resolveControlTarget(row)
   if (!target || !target.online) return "text-neutral-500 dark:text-neutral-400"
+  if (!target.channel) return "text-neutral-500 dark:text-neutral-300"
   const stage = target.channel.ui?.stage ?? "idle"
   if (stage === "pending" || stage === "debounce") return "text-amber-600 dark:text-amber-300"
   if (stage === "error") return "text-red-600 dark:text-red-300"
@@ -1462,20 +1547,30 @@ function controlDisabled(row: SignalAllocationRow): boolean {
   return !target.online
 }
 
-function handleControlMenuSelect(row: SignalAllocationRow, state: boolean) {
-  void sendControl(row, state)
+function controlSwitchIsOn(row: SignalAllocationRow): boolean {
+  const target = resolveControlTarget(row)
+  return Boolean(target?.channel?.state)
+}
+
+function handleControlToggle(row: SignalAllocationRow) {
+  const nextState = !controlSwitchIsOn(row)
+  void sendControl(row, nextState)
 }
 
 function waitForControlResult(target: ControlTarget, expectedState: boolean, timeoutMs = 2600): Promise<boolean> {
+  const runtimeChannel = target.channel
+  if (!runtimeChannel) {
+    return Promise.resolve(false)
+  }
   const startedAt = Date.now()
   return new Promise((resolve) => {
     const poll = () => {
-      const stage = target.channel.ui?.stage ?? "idle"
+      const stage = runtimeChannel.ui?.stage ?? "idle"
       if (stage === "error") {
         resolve(false)
         return
       }
-      if (stage === "idle" && Boolean(target.channel.state) === expectedState) {
+      if (stage === "idle" && Boolean(runtimeChannel.state) === expectedState) {
         resolve(true)
         return
       }
@@ -1499,24 +1594,50 @@ async function sendControl(row: SignalAllocationRow, state: boolean, options: Se
     toastStore.error("Device is offline")
     return false
   }
-  if (controlBusy(row) && target.channel.ui?.target === state) {
+  if (target.channel) {
+    const stage = target.channel.ui?.stage ?? "idle"
+    if (stage === "idle" && Boolean(target.channel.state) === state) {
+      return false
+    }
+  }
+  if (controlBusy(row) && target.channel && target.channel.ui?.target === state) {
     return false
   }
 
   try {
     channelStore.sendDoCommand(target.unitId, target.channelIndex, state)
+    triggerRef(gridRows)
+    if (!target.channel) {
+      void channelStore.ensureDeviceChannelsLoaded(target.deviceId)
+        .then(() => {
+          channelStore.requestStates(target.deviceId, { includeDiagnostics: false, silent: true })
+        })
+        .catch(() => {
+          return
+        })
+      if (!options.quiet) {
+        toastStore.info("Command sent. Runtime state will update after channel sync.")
+      }
+      return true
+    }
     const succeeded = await waitForControlResult(target, state)
+    triggerRef(gridRows)
     if (!succeeded) {
       if (!options.quiet) {
         toastStore.warning("Command not confirmed by device")
       }
       return false
     }
-    void signalSheetStore.markSignalsTested([row.signal_id]).catch(() => {
-      return
-    })
+    void signalSheetStore.markSignalsTested([row.signal_id], { optimistic: false })
+      .then(() => {
+        syncGridRowsBySignalIds([row.signal_id])
+      })
+      .catch(() => {
+        return
+      })
     return true
   } catch (err) {
+    triggerRef(gridRows)
     toastStore.error(err instanceof Error ? err.message : String(err))
     return false
   }
@@ -1932,24 +2053,75 @@ async function createSwitchgearsFromSelection() {
 }
 
 async function ensureRuntimeCatalogLoaded() {
-  await deviceStore.ensureLoaded()
-  await channelStore.ensureLoaded()
+  const workspaceId = workspaceStore.activeWorkspaceId ?? "none"
+  await runStoreBootstrap(
+    ["signals-runtime-catalog", workspaceId],
+    [
+      () => deviceStore.ensureLoaded(),
+      () => {
+        if (deviceStore.devices.length === 0) {
+          return
+        }
+        return Promise.allSettled(
+          deviceStore.devices.map(device => channelStore.ensureDeviceChannelsLoaded(device.id)),
+        )
+      },
+    ],
+    { mode: "settled" },
+  )
+}
 
-  if (channels.value.length === 0 && deviceStore.devices.length > 0) {
-    await Promise.allSettled(
-      deviceStore.devices.map(device => channelStore.ensureDeviceChannelsLoaded(device.id)),
-    )
+async function ensureAllocatedChannelsHydrated() {
+  const missingDeviceIds = new Set<number>()
+  allocationRows.value.forEach((row) => {
+    const channelId = Number(row.channel_id)
+    const deviceId = Number(row.device_id)
+    if (!Number.isFinite(channelId) || channelId <= 0) {
+      return
+    }
+    if (!Number.isFinite(deviceId) || deviceId <= 0) {
+      return
+    }
+    if (!channelMap.value.has(channelId)) {
+      missingDeviceIds.add(deviceId)
+    }
+  })
+
+  if (missingDeviceIds.size === 0) {
+    return
   }
+
+  await Promise.allSettled(
+    Array.from(missingDeviceIds).map(async (deviceId) => {
+      if (missingChannelHydrationInFlight.has(deviceId)) {
+        return
+      }
+      missingChannelHydrationInFlight.add(deviceId)
+      try {
+        await channelStore.ensureDeviceChannelsLoaded(deviceId)
+      } finally {
+        missingChannelHydrationInFlight.delete(deviceId)
+      }
+    }),
+  )
 }
 
 async function refreshAll() {
+  const cycleId = ++refreshCycleId
   try {
+    await ensureRuntimeCatalogLoaded()
     await Promise.all([
       signalSheetStore.refreshSheet(),
       signalSheetStore.refreshAllocations(),
-      ensureRuntimeCatalogLoaded(),
     ])
+    if (cycleId !== refreshCycleId) {
+      return
+    }
+    syncRealtimeUnitScope()
   } catch (err) {
+    if (cycleId !== refreshCycleId) {
+      return
+    }
     toastStore.error(err instanceof Error ? err.message : String(err))
   }
 }
@@ -1972,9 +2144,11 @@ watch(
     }
     if (!signalIds.length) {
       rebuildGridRows()
+      void ensureAllocatedChannelsHydrated()
       return
     }
     syncGridRowsBySignalIds(signalIds)
+    void ensureAllocatedChannelsHydrated()
   },
   { immediate: true, flush: "post" },
 )
@@ -1982,29 +2156,64 @@ watch(
 function syncRealtimeUnitScope() {
   const units = new Set<string>()
   allocationRows.value.forEach((row) => {
-    if (!row.channel_id) return
-    const channel = channelMap.value.get(row.channel_id)
-    if (!channel) return
-    const unitId = channelUnitById.value.get(channel.id) ?? null
+    if (!Number.isFinite(row.channel_id as number) || Number(row.channel_id) <= 0) return
+    const channel = channelMap.value.get(Number(row.channel_id))
+    const unitId = channel
+      ? (channelUnitById.value.get(channel.id) ?? null)
+      : String(row.unit_id ?? "").trim()
     if (unitId) units.add(unitId)
   })
 
   const scopedUnits = [...units]
   realtimeScopeStore.setRealtimeUnitScope(scopeId, scopedUnits)
 
-  const scopeKey = scopedUnits.slice().sort((left, right) => left.localeCompare(right)).join("|")
+  const sortedUnits = scopedUnits.slice().sort((left, right) => left.localeCompare(right))
+  const deviceByUnit = new Map(deviceStore.devices.map(device => [device.unit_id, device.id] as const))
+  const resolvedDeviceIds: number[] = []
+  const readyDeviceIds: number[] = []
+  const missingChannelDeviceIds: number[] = []
+
+  for (const unitId of sortedUnits) {
+    const deviceId = deviceByUnit.get(unitId)
+    if (!Number.isFinite(deviceId as number)) {
+      continue
+    }
+    const numericDeviceId = Number(deviceId)
+    resolvedDeviceIds.push(numericDeviceId)
+    if (channelStore.hasDeviceChannels(numericDeviceId)) {
+      readyDeviceIds.push(numericDeviceId)
+      continue
+    }
+    missingChannelDeviceIds.push(numericDeviceId)
+  }
+
+  const scopeKey = [
+    sortedUnits.join("|"),
+    `resolved:${resolvedDeviceIds.slice().sort((a, b) => a - b).join(",")}`,
+    `ready:${readyDeviceIds.slice().sort((a, b) => a - b).join(",")}`,
+  ].join("::")
   if (scopeKey === lastRealtimeScopeKey) {
     return
   }
   lastRealtimeScopeKey = scopeKey
 
-  const deviceByUnit = new Map(deviceStore.devices.map(device => [device.unit_id, device.id] as const))
-  for (const unitId of scopedUnits) {
-    const deviceId = deviceByUnit.get(unitId)
-    if (!Number.isFinite(deviceId as number)) {
+  for (const deviceId of missingChannelDeviceIds) {
+    if (realtimeScopeChannelHydrationInFlight.has(deviceId)) {
       continue
     }
-    channelStore.requestStates(Number(deviceId), { includeDiagnostics: false, silent: true })
+    realtimeScopeChannelHydrationInFlight.add(deviceId)
+    void channelStore.ensureDeviceChannelsLoaded(deviceId)
+      .catch(() => {
+        return
+      })
+      .finally(() => {
+        realtimeScopeChannelHydrationInFlight.delete(deviceId)
+        scheduleRealtimeUnitScopeSync()
+      })
+  }
+
+  for (const deviceId of readyDeviceIds) {
+    channelStore.requestStates(deviceId, { includeDiagnostics: false, silent: true })
   }
 }
 
@@ -2021,6 +2230,7 @@ function scheduleRealtimeUnitScopeSync() {
 watch(
   () => workspaceStore.activeWorkspaceId,
   async (workspaceId) => {
+    refreshCycleId += 1
     if (!workspaceId) return
     signalSheetStore.resetState()
     restoreSelectedRowKeysFromStorage()
@@ -2057,6 +2267,28 @@ watch(
 )
 
 watch(
+  () => isWsConnected.value,
+  (connected) => {
+    if (!connected) {
+      if (wsScopeRetryTimer !== null) {
+        clearTimeout(wsScopeRetryTimer)
+        wsScopeRetryTimer = null
+      }
+      return
+    }
+    scheduleRealtimeUnitScopeSync()
+    if (wsScopeRetryTimer !== null) {
+      clearTimeout(wsScopeRetryTimer)
+    }
+    wsScopeRetryTimer = setTimeout(() => {
+      wsScopeRetryTimer = null
+      scheduleRealtimeUnitScopeSync()
+    }, 700)
+  },
+  { immediate: true },
+)
+
+watch(
   () => [route.query.import, workspaceMissing.value, loading.value] as const,
   ([importFlag, missingWorkspace, isLoading]) => {
     if (!isImportQueryRequested(importFlag)) return
@@ -2070,6 +2302,10 @@ watch(
 onBeforeUnmount(() => {
   clearTestedAtOverlay()
   channelGroupsResolverBySignalId.clear()
+  if (wsScopeRetryTimer !== null) {
+    clearTimeout(wsScopeRetryTimer)
+    wsScopeRetryTimer = null
+  }
   if (realtimeScopeSyncFrame !== null) {
     cancelAnimationFrame(realtimeScopeSyncFrame)
     realtimeScopeSyncFrame = null

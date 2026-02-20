@@ -542,7 +542,7 @@ export const useChannelStore = defineStore("channelStore", () => {
     })
     applyInitialChannels(deviceId, prepared)
     deviceLoaded.add(deviceId)
-    logger.info(`📡 Base channels set for ${deviceId}`, prepared)
+    logger.debug(`📡 Base channels set for ${deviceId} (${prepared.length})`)
   }
 
   function applyBitState(deviceId: number, chIndex: number, value: boolean): { changed: boolean; actionId?: string } {

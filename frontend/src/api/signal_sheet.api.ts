@@ -53,8 +53,63 @@ export const SignalSheetAPI = {
     return http.delete<void>(`${API_V1}/signal-sheet/presets/${presetId}`)
   },
 
-  listAllocations(workspaceId: number) {
-    return http.get<SignalAllocationRow[]>(`${API_V1}/workspaces/${workspaceId}/signal-allocations`)
+  listAllocations(workspaceId: number, options?: { offset?: number; limit?: number }) {
+    const params: Record<string, number> = {}
+    if (Number.isFinite(options?.offset)) {
+      params.offset = Math.max(0, Number(options?.offset))
+    }
+    if (Number.isFinite(options?.limit)) {
+      params.limit = Math.max(0, Number(options?.limit))
+    }
+    return http.get<SignalAllocationRow[]>(`${API_V1}/workspaces/${workspaceId}/signal-allocations`, {
+      params,
+    })
+  },
+
+  async streamAllocations(workspaceId: number): Promise<SignalAllocationRow[]> {
+    const response = await fetch(`${API_V1}/workspaces/${workspaceId}/signal-allocations.ndjson`, {
+      method: "GET",
+      headers: {
+        Accept: "application/x-ndjson",
+      },
+      cache: "no-store",
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to stream signal allocations (${response.status})`)
+    }
+
+    if (!response.body) {
+      return []
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    const rows: SignalAllocationRow[] = []
+    let buffer = ""
+
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      let lineBreakIndex = buffer.indexOf("\n")
+      while (lineBreakIndex !== -1) {
+        const line = buffer.slice(0, lineBreakIndex).trim()
+        buffer = buffer.slice(lineBreakIndex + 1)
+        if (line.length > 0) {
+          rows.push(JSON.parse(line) as SignalAllocationRow)
+        }
+        lineBreakIndex = buffer.indexOf("\n")
+      }
+    }
+
+    const tail = buffer.trim()
+    if (tail.length > 0) {
+      rows.push(JSON.parse(tail) as SignalAllocationRow)
+    }
+
+    return rows
   },
 
   updateAllocations(workspaceId: number, entries: SignalAllocationUpdateItem[]) {

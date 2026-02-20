@@ -103,6 +103,7 @@ import {
   UiMenuSeparator,
 } from "@affino/menu-vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import RenameModal from "@/components/ui/RenameModal.vue"
 
 const props = withDefaults(defineProps<{ variant?: "default" | "compact" | "mini" }>(), {
@@ -258,7 +259,11 @@ onMounted(() => {
     })
     triggerResizeObserver.observe(triggerRef.value)
   }
-  void workspaceStore.bootstrap()
+  void runStoreBootstrap(
+    ["workspace-switcher-bootstrap"],
+    [() => workspaceStore.bootstrap()],
+    { mode: "settled" },
+  )
 })
 
 onBeforeUnmount(() => {

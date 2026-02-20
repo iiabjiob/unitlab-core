@@ -84,6 +84,7 @@ import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useChannelStore } from "@/stores/channelStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
+import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 
 const workspaceStore = useWorkspaceStore()
 const systemHealthStore = useSystemHealthStore()
@@ -185,7 +186,11 @@ watch(
       )
     )
     if (needsRefresh) {
-      void signalSheetStore.refreshSheet()
+      void runStoreBootstrap(
+        ["home-signal-sheet", workspaceId],
+        [() => signalSheetStore.refreshSheet()],
+        { mode: "settled" },
+      )
     }
   },
   { immediate: true },

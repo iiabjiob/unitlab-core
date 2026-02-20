@@ -5,7 +5,8 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -208,12 +209,55 @@ async def delete_signal_sheet_preset(
 @router.get("/workspaces/{workspace_id}/signal-allocations", response_model=list[SignalAllocationRowSchema])
 async def list_signal_allocations(
     workspace_id: int,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=0, ge=0, le=5000),
     repo: SignalSheetRepository = Depends(get_repo),
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
+    if limit > 0:
+        return await repo.list_allocation_rows_page(
+            workspace_id,
+            offset=offset,
+            limit=limit,
+        )
+
     return await repo.list_allocation_rows(workspace_id)
+
+
+@router.get("/workspaces/{workspace_id}/signal-allocations.ndjson")
+async def stream_signal_allocations_ndjson(
+    workspace_id: int,
+    repo: SignalSheetRepository = Depends(get_repo),
+):
+    if not await repo.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    async def _iter_lines():
+        offset = 0
+        page_size = 500
+        while True:
+            rows = await repo.list_allocation_rows_page(
+                workspace_id,
+                offset=offset,
+                limit=page_size,
+            )
+            if not rows:
+                break
+
+            for row in rows:
+                yield row.model_dump_json() + "\n"
+
+            if len(rows) < page_size:
+                break
+            offset += len(rows)
+
+    return StreamingResponse(
+        _iter_lines(),
+        media_type="application/x-ndjson; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.put("/workspaces/{workspace_id}/signal-allocations", response_model=list[SignalAllocationRowSchema])
