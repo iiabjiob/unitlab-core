@@ -22,11 +22,39 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
   const messageQueue: WSMessage[] = []
   const MAX_QUEUE = 2000
   const CONNECT_TIMEOUT_MS = 5000
+  const RECONNECT_NUDGE_DEBOUNCE_MS = 1500
+  let lastReconnectNudgeAt = 0
+
+  const wsProtocol = location.protocol === "https:" ? "wss" : "ws"
+  const configuredWsUrl = String(import.meta.env.VITE_WS_URL ?? "").trim()
+  const configuredFallbackWsUrl = String(import.meta.env.VITE_WS_FALLBACK_URL ?? "").trim()
+  const proxiedWsUrl = `${wsProtocol}://${location.host}/ws/ws`
+  const directDevWsUrl = `${wsProtocol}://localhost:8000/ws/ws`
+
+  const envFallbackCandidates = configuredFallbackWsUrl
+    .split(",")
+    .map(url => url.trim())
+    .filter(url => url.length > 0)
+
+  const wsCandidates = Array.from(
+    new Set([
+      configuredWsUrl,
+      ...envFallbackCandidates,
+      proxiedWsUrl,
+      ...(import.meta.env.DEV ? [directDevWsUrl] : []),
+    ].filter(url => Boolean(url))),
+  )
+  let wsCandidateIndex = 0
 
   // reconnect backoff
   const reconnectAttempts = ref(0)
+  const maxReconnectAttempts = 100
   const reconnectDelay = 1000
   const maxReconnectDelay = 30000
+
+  function clearQueue() {
+    messageQueue.length = 0
+  }
 
   function clearConnectTimeout() {
     if (!connectTimeout) return
@@ -38,6 +66,43 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
     if (!reconnectTimer) return
     clearTimeout(reconnectTimer)
     reconnectTimer = null
+  }
+
+  function currentWsUrl(): string {
+    if (wsCandidates.length === 0) {
+      return proxiedWsUrl
+    }
+    const normalizedIndex = ((wsCandidateIndex % wsCandidates.length) + wsCandidates.length) % wsCandidates.length
+    return wsCandidates[normalizedIndex]
+  }
+
+  function rotateWsCandidate(reason: string) {
+    if (wsCandidates.length <= 1) return
+    wsCandidateIndex = (wsCandidateIndex + 1) % wsCandidates.length
+    logger.warn(`🔀 Switching WS endpoint after ${reason} → ${currentWsUrl()}`)
+  }
+
+  function recycleSocketAfterFailure(ws: WebSocket, reason: string) {
+    if (socket.value !== ws) return
+
+    clearConnectTimeout()
+    logger.warn(`♻️ Recycling socket after ${reason}`)
+    rotateWsCandidate(reason)
+
+    intentionallyClosedSocket = ws
+    try {
+      ws.close()
+    } catch {
+      // ignore close errors, we still transition state and reconnect
+    }
+
+    socket.value = null
+    isConnected.value = false
+    isConnecting.value = false
+
+    if (!manualDisconnect) {
+      scheduleReconnect()
+    }
   }
 
   /* ---------------- CONNECT ---------------- */
@@ -67,8 +132,9 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
     }
     clearConnectTimeout()
 
-    const wsProtocol = location.protocol === "https:" ? "wss" : "ws"
-    const wsUrl = `${wsProtocol}://${location.host}/ws/ws`
+    const wsUrl = currentWsUrl()
+
+    logger.info(`🔌 Connecting WS → ${wsUrl}`)
 
     const ws = new WebSocket(wsUrl)
     socket.value = ws
@@ -81,6 +147,7 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
       isConnecting.value = false
       everConnected.value = true
       reconnectAttempts.value = 0
+      wsCandidateIndex = 0
 
       logger.info(`✅ Connected (${wsUrl})`)
 
@@ -108,13 +175,16 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
       isConnecting.value = false
       socket.value = null
 
-      if (!isIntentional) scheduleReconnect()
+      if (!isIntentional) {
+        rotateWsCandidate("close")
+        scheduleReconnect()
+      }
     }
 
     ws.onerror = (err) => {
       if (socket.value !== ws) return
       logger.error("⚠️ WebSocket Error", err)
-      ws.close()
+      recycleSocketAfterFailure(ws, "error")
     }
 
     ws.onmessage = (ev) => {
@@ -131,7 +201,7 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
       if (socket.value !== ws) return
       if (ws.readyState === WebSocket.CONNECTING) {
         logger.warn(`⏱️ Connect timeout after ${CONNECT_TIMEOUT_MS}ms, restarting socket`)
-        ws.close()
+        recycleSocketAfterFailure(ws, "connect-timeout")
       }
     }, CONNECT_TIMEOUT_MS)
   }
@@ -147,7 +217,7 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
   }
 
   function send(msg: WSMessage) {
-    if (isConnected.value) {
+    if (socket.value?.readyState === WebSocket.OPEN) {
       _sendNow(msg)
     } else {
       if (messageQueue.length > MAX_QUEUE) {
@@ -164,7 +234,7 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
     if (manualDisconnect) return
     if (reconnectTimer) return
 
-    reconnectAttempts.value++
+    reconnectAttempts.value = Math.min(reconnectAttempts.value + 1, maxReconnectAttempts)
 
     const delay = Math.min(
       reconnectDelay * Math.pow(2, reconnectAttempts.value - 1),
@@ -181,11 +251,34 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
     }, delay)
   }
 
+  function nudgeReconnect(reason: "online" | "visible" | "focus" | "pageshow") {
+    if (manualDisconnect) return
+    if (isConnected.value) return
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      logger.info(`🌐 Skip reconnect nudge (${reason}): browser is offline`)
+      return
+    }
+
+    const now = Date.now()
+    if (now - lastReconnectNudgeAt < RECONNECT_NUDGE_DEBOUNCE_MS) {
+      logger.debug(`🌐 Skip reconnect nudge (${reason}): debounced`)
+      return
+    }
+    lastReconnectNudgeAt = now
+
+    logger.info(`🌐 Reconnect nudge (${reason}): retry now`)
+    reconnectAttempts.value = 0
+    clearReconnectTimer()
+    clearConnectTimeout()
+    connect()
+  }
+
   /* ---------------- MANUAL CLOSE ---------------- */
   function disconnect() {
     manualDisconnect = true
     clearReconnectTimer()
     clearConnectTimeout()
+    clearQueue()
 
     if (socket.value) {
       intentionallyClosedSocket = socket.value
@@ -205,6 +298,7 @@ export const useWebSocketStore = defineStore("websocketStore", () => {
     isConnecting,
     reconnectAttempts,
     connect,
+    nudgeReconnect,
     disconnect,
     send,
   }

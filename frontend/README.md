@@ -14,6 +14,15 @@ pnpm install
 pnpm dev
 ```
 
+Optional WebSocket endpoint overrides (useful in dev when Vite proxy drops after sleep/wake):
+
+```sh
+VITE_WS_URL=ws://localhost:5173/ws/ws
+VITE_WS_FALLBACK_URL=ws://localhost:8000/ws/ws
+```
+
+`VITE_WS_FALLBACK_URL` also supports comma-separated values.
+
 ## Checks and build
 
 ```sh
