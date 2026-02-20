@@ -1914,14 +1914,6 @@ async function ensureRuntimeCatalogLoaded() {
     ["signals-runtime-catalog", workspaceId],
     [
       () => deviceStore.ensureLoaded(),
-      () => {
-        if (deviceStore.devices.length === 0) {
-          return
-        }
-        return Promise.allSettled(
-          deviceStore.devices.map(device => channelStore.ensureDeviceChannelsLoaded(device.id)),
-        )
-      },
     ],
     { mode: "settled" },
   )
@@ -1966,8 +1958,14 @@ async function refreshAll() {
   const cycleId = ++refreshCycleId
   try {
     await ensureRuntimeCatalogLoaded()
+    const activeWorkspaceId = workspaceStore.activeWorkspaceId
+    const hasActiveWorkspaceSheet = Boolean(
+      signalSheetStore.sheet
+      && activeWorkspaceId
+      && signalSheetStore.sheet.workspace_id === activeWorkspaceId,
+    )
     await Promise.all([
-      signalSheetStore.refreshSheet(),
+      hasActiveWorkspaceSheet ? Promise.resolve(signalSheetStore.sheet) : signalSheetStore.refreshSheet(),
       signalSheetStore.refreshAllocations(),
     ])
     if (cycleId !== refreshCycleId) {

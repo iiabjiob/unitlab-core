@@ -39,6 +39,8 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   const recentlyChangedSignalIds = ref<number[]>([])
 
   const initializedWorkspaceId = ref<number | null>(null)
+  let sheetInFlight: Promise<SignalSheet | null> | null = null
+  let sheetInFlightWorkspaceId: number | null = null
   let allocationsInFlight: Promise<SignalAllocationRow[]> | null = null
   let allocationsInFlightWorkspaceId: number | null = null
   const allocationIndexBySignalId = new Map<number, number>()
@@ -576,6 +578,8 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
     setRecentlyChangedSignalIds([])
     initializedWorkspaceId.value = null
+    sheetInFlight = null
+    sheetInFlightWorkspaceId = null
     allocationsInFlight = null
     allocationsInFlightWorkspaceId = null
   }
@@ -595,17 +599,34 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
 
   async function refreshSheet() {
     const workspaceId = requireWorkspaceId()
-    loadingSheet.value = true
-    try {
-      const { data } = await SignalSheetAPI.get(workspaceId)
-      if (workspaceStore.activeWorkspaceId !== workspaceId) {
-        return sheet.value
+    if (sheetInFlight && sheetInFlightWorkspaceId === workspaceId) {
+      return sheetInFlight
+    }
+
+    const task = (async () => {
+      loadingSheet.value = true
+      try {
+        const { data } = await SignalSheetAPI.get(workspaceId)
+        if (workspaceStore.activeWorkspaceId !== workspaceId) {
+          return sheet.value
+        }
+        sheet.value = data
+        lastSheetLoadedAt.value = Date.now()
+        return data
+      } finally {
+        loadingSheet.value = false
       }
-      sheet.value = data
-      lastSheetLoadedAt.value = Date.now()
-      return data
+    })()
+
+    sheetInFlight = task
+    sheetInFlightWorkspaceId = workspaceId
+    try {
+      return await task
     } finally {
-      loadingSheet.value = false
+      if (sheetInFlight === task) {
+        sheetInFlight = null
+        sheetInFlightWorkspaceId = null
+      }
     }
   }
 

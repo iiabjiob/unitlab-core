@@ -55,6 +55,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
   const isDeleting = ref(false)
   const totalCount = ref(0)
   const toastStore = useToastStore()
+  let fetchAllInFlight: Promise<void> | null = null
 
   function reset() {
     devices.value = []
@@ -64,18 +65,34 @@ export const useDeviceStore = defineStore("deviceStore", () => {
   }
 
   async function fetchAll() {
-    isLoading.value = true
+    if (fetchAllInFlight) {
+      await fetchAllInFlight
+      return
+    }
+
+    const task = (async () => {
+      isLoading.value = true
+      try {
+        const { data } = await DevicesAPI.list()
+        const normalized = data.map(normalizeDevice)
+        devices.value = normalized
+        totalCount.value = normalized.length
+        isLoaded.value = true
+      } catch (err) {
+        logger.error("Failed to fetch devices", err)
+        throw err
+      } finally {
+        isLoading.value = false
+      }
+    })()
+
+    fetchAllInFlight = task
     try {
-      const { data } = await DevicesAPI.list()
-      const normalized = data.map(normalizeDevice)
-      devices.value = normalized
-      totalCount.value = normalized.length
-      isLoaded.value = true
-    } catch (err) {
-      logger.error("Failed to fetch devices", err)
-      throw err
+      await task
     } finally {
-      isLoading.value = false
+      if (fetchAllInFlight === task) {
+        fetchAllInFlight = null
+      }
     }
   }
 

@@ -3,7 +3,6 @@ import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
-import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 
 let booted = false
@@ -23,7 +22,6 @@ export async function bootRuntime() {
     const deviceStore = useDeviceStore()
     const switchgearStore = useSwitchgearStore()
     const sequenceStore = useSequenceStore()
-    const signalSheetStore = useSignalSheetStore()
 
     const workspaceReady = await workspaceStore.bootstrap()
     if (!workspaceReady) {
@@ -37,9 +35,6 @@ export async function bootRuntime() {
         () => deviceStore.ensureLoaded(),
         () => switchgearStore.ensureLoaded(),
         () => sequenceStore.ensureLoaded(),
-        () => signalSheetStore.refreshSheet().catch((error: unknown) => {
-          logger.warn("⚠️ Boot: signal sheet probe failed (welcome recommendation may be stale)", error)
-        }),
       ],
       { mode: "strict" },
     )
