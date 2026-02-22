@@ -924,9 +924,17 @@ let cachedColumnWindowPrefix: number[] = []
 let lastAppliedFilterSignature: string | null = null
 let lastVirtualWindowSnapshot: VirtualWindowSnapshot | null = null
 let settingsPersistTimer: ReturnType<typeof setTimeout> | null = null
+let settingsPersistIdleCallbackId: number | null = null
+let selectionPersistTimer: ReturnType<typeof setTimeout> | null = null
+let selectionPersistIdleCallbackId: number | null = null
+let pendingSelectionPersistPayload: string[] | null = null
 let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null
+let columnsSchemaReconcileTickQueued = false
+let headerMeasureViewportSyncTickQueued = false
+let observedViewportSyncTickQueued = false
 let restoringSettings = false
 const SETTINGS_PERSIST_DELAY_MS = 120
+const SELECTION_PERSIST_DELAY_MS = 80
 const FILTER_APPLY_DEBOUNCE_MS = 250
 const dataGridSettingsAdapter = createDataGridSettingsAdapter(useDataGridSettingsStore())
 const columnPanelPopover = usePopoverController({
@@ -2360,6 +2368,134 @@ function scheduleViewportSync() {
   })
 }
 
+function scheduleHeaderMeasureViewportSync() {
+  if (headerMeasureViewportSyncTickQueued) {
+    return
+  }
+  headerMeasureViewportSyncTickQueued = true
+  void nextTick(() => {
+    headerMeasureViewportSyncTickQueued = false
+    updateMeasuredHeaderHeights()
+    scheduleViewportSync()
+  })
+}
+
+function scheduleObservedViewportSync() {
+  if (observedViewportSyncTickQueued) {
+    return
+  }
+  observedViewportSyncTickQueued = true
+  void nextTick(() => {
+    observedViewportSyncTickQueued = false
+    updateObservedViewportSize()
+    scheduleViewportSync()
+  })
+}
+
+function scheduleColumnsSchemaReconcile() {
+  if (columnsSchemaReconcileTickQueued) {
+    return
+  }
+  columnsSchemaReconcileTickQueued = true
+  void nextTick(() => {
+    columnsSchemaReconcileTickQueued = false
+    updateMeasuredHeaderHeights()
+    restorePersistedTableSettings()
+    scheduleViewportSync()
+  })
+}
+
+function cancelScheduledTableSettingsPersist() {
+  if (settingsPersistTimer !== null) {
+    clearTimeout(settingsPersistTimer)
+    settingsPersistTimer = null
+  }
+  if (settingsPersistIdleCallbackId !== null && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+    window.cancelIdleCallback(settingsPersistIdleCallbackId)
+    settingsPersistIdleCallbackId = null
+  }
+}
+
+function cancelScheduledSelectionPersist() {
+  if (selectionPersistTimer !== null) {
+    clearTimeout(selectionPersistTimer)
+    selectionPersistTimer = null
+  }
+  if (selectionPersistIdleCallbackId !== null && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+    window.cancelIdleCallback(selectionPersistIdleCallbackId)
+    selectionPersistIdleCallbackId = null
+  }
+  pendingSelectionPersistPayload = null
+}
+
+function flushScheduledSelectionPersist() {
+  if (pendingSelectionPersistPayload === null) {
+    cancelScheduledSelectionPersist()
+    return
+  }
+  if (Array.isArray(props.selectedRowKeys)) {
+    cancelScheduledSelectionPersist()
+    return
+  }
+  if (!selectionHydrated.value || pendingSelectionRestore.value !== null) {
+    cancelScheduledSelectionPersist()
+    return
+  }
+  const tableId = persistedTableId.value
+  if (!tableId || restoringSettings) {
+    cancelScheduledSelectionPersist()
+    return
+  }
+  const payload = pendingSelectionPersistPayload
+  pendingSelectionPersistPayload = null
+  if (selectionPersistTimer !== null) {
+    clearTimeout(selectionPersistTimer)
+    selectionPersistTimer = null
+  }
+  if (selectionPersistIdleCallbackId !== null && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+    window.cancelIdleCallback(selectionPersistIdleCallbackId)
+    selectionPersistIdleCallbackId = null
+  }
+  writePersistedSelection(tableId, persistedDatasetKey.value, payload)
+}
+
+function schedulePersistSelection(rowKeys: ReadonlySet<string>) {
+  if (Array.isArray(props.selectedRowKeys)) {
+    return
+  }
+  if (!selectionHydrated.value) {
+    return
+  }
+  if (pendingSelectionRestore.value !== null) {
+    return
+  }
+  const tableId = persistedTableId.value
+  if (!tableId || restoringSettings) {
+    return
+  }
+
+  pendingSelectionPersistPayload = Array.from(rowKeys)
+  if (selectionPersistTimer !== null) {
+    clearTimeout(selectionPersistTimer)
+    selectionPersistTimer = null
+  }
+  if (selectionPersistIdleCallbackId !== null && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+    window.cancelIdleCallback(selectionPersistIdleCallbackId)
+    selectionPersistIdleCallbackId = null
+  }
+  selectionPersistTimer = setTimeout(() => {
+    selectionPersistTimer = null
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      selectionPersistIdleCallbackId = window.requestIdleCallback(() => {
+        selectionPersistIdleCallbackId = null
+        flushScheduledSelectionPersist()
+      }, { timeout: 250 })
+      return
+    }
+    flushScheduledSelectionPersist()
+  }, SELECTION_PERSIST_DELAY_MS)
+}
+
 onMounted(() => {
   viewportLayoutReady.value = false
   gridRootRef.value?.style.setProperty("--ui-affino-linked-scroll-top", "0px")
@@ -2453,10 +2589,8 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(autoRowHeightMeasureFrame)
     autoRowHeightMeasureFrame = null
   }
-  if (settingsPersistTimer !== null) {
-    clearTimeout(settingsPersistTimer)
-    settingsPersistTimer = null
-  }
+  cancelScheduledTableSettingsPersist()
+  flushScheduledSelectionPersist()
     if (filterDebounceTimer !== null) {
       clearTimeout(filterDebounceTimer)
       filterDebounceTimer = null
@@ -2478,23 +2612,15 @@ watch(
 )
 
 watch(
-  columnStatePersistSignature,
-  () => {
-    schedulePersistTableSettings()
-  },
-)
-
-watch(
-  sortStatePersistSignature,
-  () => {
-    schedulePersistTableSettings()
-  },
-)
-
-watch(
-  groupByPersistSignature,
-  () => {
-    refreshViewportAfterGroupingMutation()
+  [
+    columnStatePersistSignature,
+    sortStatePersistSignature,
+    groupByPersistSignature,
+  ],
+  ([, , nextGroupSignature], [, , prevGroupSignature]) => {
+    if (nextGroupSignature !== prevGroupSignature) {
+      refreshViewportAfterGroupingMutation()
+    }
     schedulePersistTableSettings()
   },
 )
@@ -2519,11 +2645,7 @@ watch(
   () => {
     syncFilterKeys()
     applyFilters()
-    void nextTick(() => {
-      updateMeasuredHeaderHeights()
-      restorePersistedTableSettings()
-      scheduleViewportSync()
-    })
+    scheduleColumnsSchemaReconcile()
   },
 )
 
@@ -2540,10 +2662,7 @@ watch(
       tableReadyOnce.value = false
     }
     pruneSelectionToCurrentRows()
-    void nextTick(() => {
-      updateObservedViewportSize()
-      scheduleViewportSync()
-    })
+    scheduleObservedViewportSync()
   },
   { immediate: true },
 )
@@ -2609,30 +2728,45 @@ watch(
 )
 
 watch(
-  renderedColumnsSignature,
-  () => {
-    void nextTick(() => {
-      updateMeasuredHeaderHeights()
-      scheduleViewportSync()
-    })
-  },
-)
+  [
+    renderedColumnsSignature,
+    () => props.overscanRows,
+    () => props.overscanColumns,
+    () => props.rowHeight,
+  ],
+  (next, prev) => {
+    const [
+      nextRenderedColumnsSignature,
+      nextOverscanRows,
+      nextOverscanColumns,
+      nextRowHeight,
+    ] = next
+    const [
+      prevRenderedColumnsSignature,
+      prevOverscanRows,
+      prevOverscanColumns,
+      prevRowHeight,
+    ] = prev
 
-watch(
-  () => [props.overscanRows, props.overscanColumns],
-  () => {
-    scheduleViewportSync()
-  },
-)
+    const renderedColumnsChanged = nextRenderedColumnsSignature !== prevRenderedColumnsSignature
+    const overscanChanged = nextOverscanRows !== prevOverscanRows || nextOverscanColumns !== prevOverscanColumns
+    const rowHeightChanged = nextRowHeight !== prevRowHeight
 
-watch(
-  () => props.rowHeight,
-  (next) => {
-    baseRowHeight.value = Math.max(1, next)
-    if (rowHeightMode.value === "auto") {
-      scheduleAutoRowHeightMeasure()
+    if (rowHeightChanged) {
+      baseRowHeight.value = Math.max(1, nextRowHeight)
+      if (rowHeightMode.value === "auto") {
+        scheduleAutoRowHeightMeasure()
+      }
     }
-    scheduleViewportSync()
+
+    if (renderedColumnsChanged) {
+      scheduleHeaderMeasureViewportSync()
+      return
+    }
+
+    if (rowHeightChanged || overscanChanged) {
+      scheduleViewportSync()
+    }
   },
 )
 
@@ -2644,10 +2778,7 @@ watch(
     } else {
       applyFilters()
     }
-    void nextTick(() => {
-      updateMeasuredHeaderHeights()
-      scheduleViewportSync()
-    })
+    scheduleHeaderMeasureViewportSync()
   },
 )
 
@@ -2665,7 +2796,7 @@ watch(
   [selectedRowKeySet, () => visibleRowSelectionKeys.value],
   ([rowKeys]) => {
     emit("selection-change", { rowKeys: resolveSelectionKeysForEmission(rowKeys) })
-    persistSelectionNow(rowKeys)
+    schedulePersistSelection(rowKeys)
   },
   { immediate: true },
 )
@@ -2951,12 +3082,14 @@ function persistTableSettingsNow() {
 function restorePersistedSelection() {
   selectionHydrated.value = false
   if (Array.isArray(props.selectedRowKeys)) {
+    cancelScheduledSelectionPersist()
     pendingSelectionRestore.value = null
     selectionHydrated.value = true
     return
   }
   const tableId = persistedTableId.value
   if (!tableId) {
+    cancelScheduledSelectionPersist()
     rowSelectionModel.clearSelection()
     rowSelectionModel.setAnchorIndex(null)
     checkboxSelectionAnchorIndex.value = null
@@ -2967,32 +3100,17 @@ function restorePersistedSelection() {
   const persistedSelection = readPersistedSelection(tableId, persistedDatasetKey.value)
   const nextSelection = persistedSelection ?? new Set<string>()
   if (props.rows.length <= 0) {
+    cancelScheduledSelectionPersist()
     pendingSelectionRestore.value = new Set(nextSelection)
     selectionHydrated.value = true
     return
   }
+  cancelScheduledSelectionPersist()
   pendingSelectionRestore.value = null
   rowSelectionModel.replaceSelection(nextSelection)
   rowSelectionModel.setAnchorIndex(null)
   checkboxSelectionAnchorIndex.value = null
   selectionHydrated.value = true
-}
-
-function persistSelectionNow(rowKeys: ReadonlySet<string>) {
-  if (Array.isArray(props.selectedRowKeys)) {
-    return
-  }
-  if (!selectionHydrated.value) {
-    return
-  }
-  if (pendingSelectionRestore.value !== null) {
-    return
-  }
-  const tableId = persistedTableId.value
-  if (!tableId || restoringSettings) {
-    return
-  }
-  writePersistedSelection(tableId, persistedDatasetKey.value, Array.from(rowKeys))
 }
 
 function applyPersistedColumnWidths(widths: Record<string, number> | null) {
@@ -3017,10 +3135,8 @@ function ensurePersistedDatasetScope() {
   const storedDatasetKey = readPersistedDatasetKey(tableId)
   if (storedDatasetKey !== null && storedDatasetKey !== currentDatasetKey) {
     dataGridSettingsAdapter.clearTable(tableId)
-    if (settingsPersistTimer !== null) {
-      clearTimeout(settingsPersistTimer)
-      settingsPersistTimer = null
-    }
+    cancelScheduledTableSettingsPersist()
+    cancelScheduledSelectionPersist()
   }
   writePersistedDatasetKey(tableId, currentDatasetKey)
 }
@@ -3029,11 +3145,16 @@ function schedulePersistTableSettings() {
   if (!persistedTableId.value || restoringSettings) {
     return
   }
-  if (settingsPersistTimer !== null) {
-    clearTimeout(settingsPersistTimer)
-  }
+  cancelScheduledTableSettingsPersist()
   settingsPersistTimer = setTimeout(() => {
     settingsPersistTimer = null
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      settingsPersistIdleCallbackId = window.requestIdleCallback(() => {
+        settingsPersistIdleCallbackId = null
+        persistTableSettingsNow()
+      }, { timeout: 300 })
+      return
+    }
     persistTableSettingsNow()
   }, SETTINGS_PERSIST_DELAY_MS)
 }
@@ -3090,19 +3211,13 @@ function syncFilterKeys() {
 function refreshViewportAfterFilterMutation() {
   explicitRowRange = null
   lastAppliedRowRange = null
-  void nextTick(() => {
-    updateObservedViewportSize()
-    scheduleViewportSync()
-  })
+  scheduleObservedViewportSync()
 }
 
 function refreshViewportAfterGroupingMutation() {
   explicitRowRange = null
   lastAppliedRowRange = null
-  void nextTick(() => {
-    updateObservedViewportSize()
-    scheduleViewportSync()
-  })
+  scheduleObservedViewportSync()
 }
 
 function isGroupRowNode(rowNode: unknown): boolean {

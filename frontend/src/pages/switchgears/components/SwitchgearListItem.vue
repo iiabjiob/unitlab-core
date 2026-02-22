@@ -77,10 +77,23 @@ async function duplicateSwitchgear() {
 }
 
 async function confirmDelete() {
+  const before = [...switchgearStore.switchgears]
+  const currentIndex = before.findIndex(item => item.id === props.switchgear.id)
+
   await switchgearStore.remove(props.switchgear.id)
   deleteOpen.value = false
   if (Number(route.params.id) === props.switchgear.id) {
-    await router.push({ name: "switchgears.list" })
+    const after = switchgearStore.switchgears
+    if (after.length === 0) {
+      await router.push({ name: "switchgears.list" })
+      return
+    }
+
+    const fallbackIndex = currentIndex < 0
+      ? 0
+      : Math.min(currentIndex, after.length - 1)
+    const fallback = after[fallbackIndex]
+    await router.push({ name: "switchgears.detail", params: { id: fallback.id } })
   }
 }
 

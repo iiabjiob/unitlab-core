@@ -4,46 +4,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from "vue"
+import { computed } from "vue"
 import { useRoute } from "vue-router"
 
 import DesktopLayout from "./DesktopLayout.vue"
 import MobileLayout from "./MobileLayout.vue"
-import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import WelcomeLayout from "./WelcomeLayout.vue"
+import { useViewport } from "@/composables/useViewport"
 
-const isMobile = ref(false)
-const systemHealthStore = useSystemHealthStore()
-let healthRefreshTimer: ReturnType<typeof setInterval> | null = null
-
-function refreshSystemHealth() {
-  void systemHealthStore.refresh()
-}
-
-function handleVisibilityChange() {
-  if (document.visibilityState === "visible") {
-    refreshSystemHealth()
-  }
-}
-
-function checkMobile() {
-  isMobile.value = window.innerWidth < 768
-}
-onMounted(() => {
-  checkMobile()
-  window.addEventListener("resize", checkMobile)
-  refreshSystemHealth()
-  document.addEventListener("visibilitychange", handleVisibilityChange)
-  healthRefreshTimer = setInterval(refreshSystemHealth, 15000)
-})
-onBeforeUnmount(() => {
-  window.removeEventListener("resize", checkMobile)
-  document.removeEventListener("visibilitychange", handleVisibilityChange)
-  if (healthRefreshTimer) {
-    clearInterval(healthRefreshTimer)
-    healthRefreshTimer = null
-  }
-})
+const { isMobile } = useViewport()
 
 const route = useRoute()
 

@@ -12,6 +12,7 @@ import type { Channel } from "@/types/channel"
 import { ensureChannel } from "@/utils/channel"
 import type { DeviceRegisterEvent, DeviceHeartbeatEvent } from "@/types/ws/events"
 import { getLogger } from "@/utils/logger"
+import { devPerfIncrement, devPerfMeasureStart } from "@/utils/devPerf"
 import { useToastStore } from "@/stores/toastStore"
 
 const logger = getLogger("DEVICE")
@@ -50,6 +51,7 @@ function normalizeDevice(dto: DeviceDto): Device {
 
 export const useDeviceStore = defineStore("deviceStore", () => {
   const devices = shallowRef<Device[]>([])
+  const devicesRevision = ref(0)
   const isLoading = ref(false)
   const isLoaded = ref(false)
   const isDeleting = ref(false)
@@ -57,29 +59,41 @@ export const useDeviceStore = defineStore("deviceStore", () => {
   const toastStore = useToastStore()
   let fetchAllInFlight: Promise<void> | null = null
 
+  function bumpDevicesRevision() {
+    devicesRevision.value += 1
+  }
+
   function reset() {
     devices.value = []
+    bumpDevicesRevision()
     isLoading.value = false
     isLoaded.value = false
     totalCount.value = 0
   }
 
   async function fetchAll() {
+    devPerfIncrement("deviceStore.fetchAll.calls")
     if (fetchAllInFlight) {
+      devPerfIncrement("deviceStore.fetchAll.dedupe_waits")
       await fetchAllInFlight
       return
     }
 
     const task = (async () => {
+      const endMeasure = devPerfMeasureStart("deviceStore.fetchAll")
       isLoading.value = true
       try {
         const { data } = await DevicesAPI.list()
         const normalized = data.map(normalizeDevice)
         devices.value = normalized
+        bumpDevicesRevision()
         totalCount.value = normalized.length
         isLoaded.value = true
+        devPerfIncrement("deviceStore.fetchAll.completed")
+        endMeasure({ count: normalized.length })
       } catch (err) {
         logger.error("Failed to fetch devices", err)
+        endMeasure({ error: true })
         throw err
       } finally {
         isLoading.value = false
@@ -97,9 +111,13 @@ export const useDeviceStore = defineStore("deviceStore", () => {
   }
 
   async function ensureLoaded() {
+    devPerfIncrement("deviceStore.ensureLoaded.calls")
     if (!isLoaded.value) {
+      devPerfIncrement("deviceStore.ensureLoaded.fetches")
       await fetchAll()
+      return
     }
+    devPerfIncrement("deviceStore.ensureLoaded.cache_hits")
   }
 
   async function updateDeviceField(deviceId: number, changes: Partial<DeviceDto>) {
@@ -112,6 +130,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
         const next = [...devices.value]
         next[index] = updated
         devices.value = next
+        bumpDevicesRevision()
       }
 
       logger.debug(`Device ${deviceId} updated`, updated)
@@ -124,6 +143,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
     try {
       await DevicesAPI.delete(deviceId)
       devices.value = devices.value.filter(d => d.id !== deviceId)
+      bumpDevicesRevision()
       totalCount.value = devices.value.length
     } catch (error) {
       logger.error("Failed to delete device", error)
@@ -143,6 +163,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
     const previous = [...devices.value]
     const removeSet = new Set(uniqueIds)
     devices.value = devices.value.filter(d => !removeSet.has(d.id))
+    bumpDevicesRevision()
 
     try {
       const { data } = await DevicesAPI.bulkDelete(uniqueIds)
@@ -156,6 +177,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
       return { requested: uniqueIds.length, deleted }
     } catch (err) {
       devices.value = previous
+      bumpDevicesRevision()
       logger.error("Failed to delete devices", err)
       throw err
     } finally {
@@ -189,6 +211,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
       next[idx] = updated
       devices.value = next
     }
+    bumpDevicesRevision()
   }
 
   function setStatus(unitId: string, status: DeviceStatus, lastSeen?: number | null) {
@@ -213,6 +236,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
     const copy = [...devices.value]
     copy[idx] = next
     devices.value = copy
+    bumpDevicesRevision()
   }
 
   async function toggleDeviceActive(deviceId: number) {
@@ -241,6 +265,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
 
   return {
     devices,
+    devicesRevision,
     isLoading,
     isLoaded,
     isDeleting,

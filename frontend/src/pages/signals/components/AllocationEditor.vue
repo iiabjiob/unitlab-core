@@ -159,7 +159,10 @@ import { useToastStore } from "@/stores/toastStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
+import { devPerfIncrement, devPerfMeasureStart } from "@/utils/devPerf"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
+import { useSignalsRealtimeUnitScope } from "@/pages/signals/composables/useSignalsRealtimeUnitScope"
+import { useSignalsPageLifecycle } from "@/pages/signals/composables/useSignalsPageLifecycle"
 
 const signalSheetStore = useSignalSheetStore()
 const workspaceStore = useWorkspaceStore()
@@ -178,6 +181,7 @@ const { allocationRows, loadingAllocations, loadingSheet, updatingAllocations, a
 const { activeJobs } = storeToRefs(signalJobStore)
 const { activeWorkspaceRevision: testedAtRealtimeRevision, activeWorkspacePatchedSignalIds } = storeToRefs(testedAtRealtimeStore)
 const { channels } = storeToRefs(channelStore)
+const { devicesRevision } = storeToRefs(deviceStore)
 const { isConnected: isWsConnected } = storeToRefs(websocketStore)
 
 const scopeId = "signals:allocations"
@@ -196,12 +200,7 @@ const testRunSucceeded = ref(0)
 const testRunSkipped = ref(0)
 const testRunControlBusy = ref(false)
 const MAX_RESTORED_SELECTION_KEYS = 2000
-let realtimeScopeSyncFrame: number | null = null
-let lastRealtimeScopeKey = ""
-let refreshCycleId = 0
 const missingChannelHydrationInFlight = new Set<number>()
-const realtimeScopeChannelHydrationInFlight = new Set<number>()
-let wsScopeRetryTimer: ReturnType<typeof setTimeout> | null = null
 let allocationRevisionSyncFrame: number | null = null
 const pendingAllocationRevisionSignalIds = new Set<number>()
 let pendingAllocationRevisionFullRefresh = false
@@ -290,22 +289,46 @@ function restoreSelectedRowKeysFromStorage() {
   try {
     const raw = window.localStorage.getItem(selectionStorageKey.value)
     if (!raw) {
-      selectedRowKeys.value = []
+      setSelectedRowKeys([], { persist: false })
       return
     }
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) {
-      selectedRowKeys.value = []
+      setSelectedRowKeys([], { persist: false })
       return
     }
-    selectedRowKeys.value = parsed
+    setSelectedRowKeys(parsed
       .map(item => String(item).trim())
       .filter(item => /^signal-\d+$/.test(item))
       .filter(item => item.length > 0)
-      .slice(0, MAX_RESTORED_SELECTION_KEYS)
+      .slice(0, MAX_RESTORED_SELECTION_KEYS), { persist: false })
   } catch {
-    selectedRowKeys.value = []
+    setSelectedRowKeys([], { persist: false })
   }
+}
+
+function areRowKeyArraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return false
+    }
+  }
+  return true
+}
+
+function setSelectedRowKeys(nextRowKeys: readonly string[], options?: { persist?: boolean }) {
+  const normalized = [...nextRowKeys]
+  if (areRowKeyArraysEqual(selectedRowKeys.value, normalized)) {
+    return
+  }
+  selectedRowKeys.value = normalized
+  if (options?.persist === false) {
+    return
+  }
+  persistSelectedRowKeysToStorage()
 }
 
 function persistSelectedRowKeysToStorage() {
@@ -537,6 +560,22 @@ const isTestRunBusy = computed(() => {
 
 const canResumeActiveTestRun = computed(() => activeTestRunJob.value?.status === "paused")
 
+const { syncRealtimeUnitScope, scheduleRealtimeUnitScopeSync } = useSignalsRealtimeUnitScope({
+  scopeId,
+  allocationRows,
+  allocationRevision,
+  channels,
+  devicesRevision,
+  activeWorkspaceId: computed(() => workspaceStore.activeWorkspaceId),
+  isTestRunBusy,
+  isWsConnected,
+  channelMap,
+  channelUnitById,
+  deviceStore,
+  channelStore,
+  realtimeScopeStore,
+})
+
 function handleActiveTestRunJob(job: SignalAllocationJob | null) {
   if (!job) {
     testRunInProgress.value = false
@@ -625,6 +664,8 @@ function createGridRow(row: SignalAllocationRow, headers: readonly string[]): Gr
 }
 
 function rebuildGridRows() {
+  devPerfIncrement("signalsUI.rebuildGridRows.calls")
+  const endMeasure = devPerfMeasureStart("signalsUI.rebuildGridRows")
   const headers = sourceColumnHeaders.value
   const nextRows: GridRow[] = []
   const activeSignalIds = new Set<number>()
@@ -648,10 +689,11 @@ function rebuildGridRows() {
 
   if (selectedRowKeys.value.length > 0) {
     const allowed = new Set(nextRows.map(item => String(item.rowId)))
-    selectedRowKeys.value = selectedRowKeys.value.filter(rowKey => allowed.has(rowKey))
+    setSelectedRowKeys(selectedRowKeys.value.filter(rowKey => allowed.has(rowKey)))
   }
 
   gridRows.value = nextRows
+  endMeasure({ rows: nextRows.length, headers: headers.length })
 }
 
 function findAllocationRowBySignalId(signalId: number): SignalAllocationRow | null {
@@ -659,9 +701,17 @@ function findAllocationRowBySignalId(signalId: number): SignalAllocationRow | nu
 }
 
 function syncGridRowsBySignalIds(signalIds: readonly number[]) {
-  if (!signalIds.length) return
+  devPerfIncrement("signalsUI.syncGridRowsBySignalIds.calls")
+  const endMeasure = devPerfMeasureStart("signalsUI.syncGridRowsBySignalIds")
+  if (!signalIds.length) {
+    devPerfIncrement("signalsUI.syncGridRowsBySignalIds.noop")
+    endMeasure({ skipped: true, reason: "empty-signal-ids" })
+    return
+  }
   if (signalIds.length > 128) {
+    devPerfIncrement("signalsUI.syncGridRowsBySignalIds.fullRefreshThreshold")
     rebuildGridRows()
+    endMeasure({ signalIds: signalIds.length, path: "full-refresh-threshold" })
     return
   }
 
@@ -703,19 +753,27 @@ function syncGridRowsBySignalIds(signalIds: readonly number[]) {
   })
 
   if (structuralChange) {
+    devPerfIncrement("signalsUI.syncGridRowsBySignalIds.structuralChange")
     rebuildGridRows()
+    endMeasure({ signalIds: signalIds.length, path: "structural-refresh" })
     return
   }
 
   if (nextRows) {
     gridRows.value = nextRows
+    devPerfIncrement("signalsUI.syncGridRowsBySignalIds.replaceRows")
+    endMeasure({ signalIds: signalIds.length, path: "replace-rows" })
     return
   }
 
   triggerRef(gridRows)
+  devPerfIncrement("signalsUI.syncGridRowsBySignalIds.triggerRef")
+  endMeasure({ signalIds: signalIds.length, path: "trigger-ref" })
 }
 
 function flushAllocationRevisionGridSync() {
+  devPerfIncrement("signalsUI.flushAllocationRevisionGridSync.calls")
+  const endMeasure = devPerfMeasureStart("signalsUI.flushAllocationRevisionGridSync")
   allocationRevisionSyncFrame = null
 
   if (pendingAllocationRevisionFullRefresh) {
@@ -723,10 +781,14 @@ function flushAllocationRevisionGridSync() {
     pendingAllocationRevisionSignalIds.clear()
     rebuildGridRows()
     void ensureAllocatedChannelsHydrated()
+    devPerfIncrement("signalsUI.flushAllocationRevisionGridSync.fullRefresh")
+    endMeasure({ path: "full-refresh" })
     return
   }
 
   if (pendingAllocationRevisionSignalIds.size === 0) {
+    devPerfIncrement("signalsUI.flushAllocationRevisionGridSync.noop")
+    endMeasure({ skipped: true, reason: "no-pending-signal-ids" })
     return
   }
 
@@ -734,11 +796,14 @@ function flushAllocationRevisionGridSync() {
   pendingAllocationRevisionSignalIds.clear()
   syncGridRowsBySignalIds(signalIds)
   void ensureAllocatedChannelsHydrated()
+  endMeasure({ path: "incremental-sync", signalIds: signalIds.length })
 }
 
 function scheduleAllocationRevisionGridSync(signalIds: readonly number[]) {
+  devPerfIncrement("signalsUI.scheduleAllocationRevisionGridSync.calls")
   if (!signalIds.length) {
     pendingAllocationRevisionFullRefresh = true
+    devPerfIncrement("signalsUI.scheduleAllocationRevisionGridSync.requestedFullRefresh")
   } else if (!pendingAllocationRevisionFullRefresh) {
     signalIds.forEach((signalId) => {
       if (Number.isFinite(signalId as number)) {
@@ -748,9 +813,11 @@ function scheduleAllocationRevisionGridSync(signalIds: readonly number[]) {
   }
 
   if (allocationRevisionSyncFrame !== null) {
+    devPerfIncrement("signalsUI.scheduleAllocationRevisionGridSync.rafCoalesced")
     return
   }
 
+  devPerfIncrement("signalsUI.scheduleAllocationRevisionGridSync.rafScheduled")
   allocationRevisionSyncFrame = requestAnimationFrame(() => {
     flushAllocationRevisionGridSync()
   })
@@ -778,7 +845,11 @@ function requestGridCellRefresh(
   signalIds: readonly number[],
   columnKeys: readonly ("control" | "last_tested_at")[] = ["control", "last_tested_at"],
 ) {
+  devPerfIncrement("signalsUI.requestGridCellRefresh.calls")
+  const endMeasure = devPerfMeasureStart("signalsUI.requestGridCellRefresh")
   if (!signalIds.length || !columnKeys.length) {
+    devPerfIncrement("signalsUI.requestGridCellRefresh.noop")
+    endMeasure({ skipped: true, reason: "empty-input" })
     return
   }
 
@@ -791,12 +862,15 @@ function requestGridCellRefresh(
     }))
 
   if (!ranges.length) {
+    devPerfIncrement("signalsUI.requestGridCellRefresh.noRanges")
+    endMeasure({ skipped: true, reason: "no-ranges" })
     return
   }
 
   allocationGridRef.value?.refreshCellsByRanges(ranges, {
     reason: "signals-allocation-cell-refresh",
   })
+  endMeasure({ signalIds: signalIds.length, ranges: ranges.length, columns: columnKeys.length })
 }
 
 function resolveLiveAllocationRowBySignalId(signalId: number | null, fallback: SignalAllocationRow): SignalAllocationRow {
@@ -1544,7 +1618,7 @@ function handleRowClick() {
 }
 
 function handleSelectionChange(payload: { rowKeys: string[] }) {
-  selectedRowKeys.value = payload.rowKeys
+  setSelectedRowKeys(payload.rowKeys)
 }
 
 function openImportModal() {
@@ -1558,8 +1632,8 @@ function closeImportModal() {
 
 async function handleImported() {
   importModalOpen.value = false
-  await refreshAll()
-  await signalSheetStore.refreshPresets()
+  await refreshAll({ force: true })
+  await signalSheetStore.ensurePresetsLoaded({ force: true })
 }
 
 function isImportQueryRequested(raw: unknown): boolean {
@@ -1647,7 +1721,7 @@ async function allocateSelectedUnassigned() {
       prefer_single_unit: false,
       overwrite_existing: false,
     })
-    await signalSheetStore.refreshAllocations()
+    await signalSheetStore.ensureAllocationsLoaded({ force: true })
 
     const jobResult = (completedJob.result ?? {}) as Record<string, unknown>
     const assigned = Number(jobResult.assigned ?? 0)
@@ -1679,7 +1753,7 @@ async function deallocateSelected() {
       workspaceId,
       selectedAllocatedSignalIds.value.map(signalId => ({ signal_id: signalId, channel_id: null })),
     )
-    await signalSheetStore.refreshAllocations()
+    await signalSheetStore.ensureAllocationsLoaded({ force: true })
 
     const jobResult = (completedJob.result ?? {}) as Record<string, unknown>
     const updated = Number(jobResult.updated ?? selectedAllocatedSignalIds.value.length)
@@ -1777,7 +1851,7 @@ async function runTestVisualOnly() {
       },
     )
     updateTestRunStatsFromJob(completedJob)
-    await signalSheetStore.refreshAllocations()
+    await signalSheetStore.ensureAllocationsLoaded({ force: true })
 
     const skipDetails = formatTestRunSkipReasons(completedJob)
     toastStore.success(
@@ -1990,31 +2064,23 @@ async function ensureAllocatedChannelsHydrated() {
   )
 }
 
-async function refreshAll() {
-  const cycleId = ++refreshCycleId
-  try {
-    await ensureRuntimeCatalogLoaded()
-    const activeWorkspaceId = workspaceStore.activeWorkspaceId
-    const hasActiveWorkspaceSheet = Boolean(
-      signalSheetStore.sheet
-      && activeWorkspaceId
-      && signalSheetStore.sheet.workspace_id === activeWorkspaceId,
-    )
-    await Promise.all([
-      hasActiveWorkspaceSheet ? Promise.resolve(signalSheetStore.sheet) : signalSheetStore.refreshSheet(),
-      signalSheetStore.refreshAllocations(),
-    ])
-    if (cycleId !== refreshCycleId) {
-      return
-    }
-    syncRealtimeUnitScope()
-  } catch (err) {
-    if (cycleId !== refreshCycleId) {
-      return
-    }
-    toastStore.error(err instanceof Error ? err.message : String(err))
-  }
-}
+const { refreshAll } = useSignalsPageLifecycle({
+  workspaceId: computed(() => workspaceStore.activeWorkspaceId),
+  workspaceMissing,
+  loading,
+  route,
+  ensureRuntimeCatalogLoaded,
+  ensureSignalSheetLoaded: (options) => signalSheetStore.ensureSheetLoaded(options),
+  ensureAllocationsLoaded: (options) => signalSheetStore.ensureAllocationsLoaded(options),
+  clearRealtimeTestedAtWorkspace: (workspaceId) => testedAtRealtimeStore.clearWorkspace(workspaceId),
+  resetSignalSheetState: () => signalSheetStore.resetState(),
+  restoreSelectedRowKeysFromStorage,
+  syncRealtimeUnitScope,
+  openImportModal,
+  isImportQueryRequested,
+  clearImportQueryFlag,
+  onError: (err) => toastStore.error(err instanceof Error ? err.message : String(err)),
+})
 
 watch(
   sourceColumnHeaders,
@@ -2048,153 +2114,6 @@ watch(
   { flush: "post" },
 )
 
-function syncRealtimeUnitScope() {
-  const units = new Set<string>()
-  allocationRows.value.forEach((row) => {
-    if (!Number.isFinite(row.channel_id as number) || Number(row.channel_id) <= 0) return
-    const channel = channelMap.value.get(Number(row.channel_id))
-    const unitId = channel
-      ? (channelUnitById.value.get(channel.id) ?? null)
-      : String(row.unit_id ?? "").trim()
-    if (unitId) units.add(unitId)
-  })
-
-  const scopedUnits = [...units]
-  realtimeScopeStore.setRealtimeUnitScope(scopeId, scopedUnits)
-
-  const sortedUnits = scopedUnits.slice().sort((left, right) => left.localeCompare(right))
-  const deviceByUnit = new Map(deviceStore.devices.map(device => [device.unit_id, device.id] as const))
-  const resolvedDeviceIds: number[] = []
-  const readyDeviceIds: number[] = []
-  const missingChannelDeviceIds: number[] = []
-
-  for (const unitId of sortedUnits) {
-    const deviceId = deviceByUnit.get(unitId)
-    if (!Number.isFinite(deviceId as number)) {
-      continue
-    }
-    const numericDeviceId = Number(deviceId)
-    resolvedDeviceIds.push(numericDeviceId)
-    if (channelStore.hasDeviceChannels(numericDeviceId)) {
-      readyDeviceIds.push(numericDeviceId)
-      continue
-    }
-    missingChannelDeviceIds.push(numericDeviceId)
-  }
-
-  const scopeKey = [
-    sortedUnits.join("|"),
-    `resolved:${resolvedDeviceIds.slice().sort((a, b) => a - b).join(",")}`,
-    `ready:${readyDeviceIds.slice().sort((a, b) => a - b).join(",")}`,
-  ].join("::")
-  if (scopeKey === lastRealtimeScopeKey) {
-    return
-  }
-  lastRealtimeScopeKey = scopeKey
-
-  for (const deviceId of missingChannelDeviceIds) {
-    if (realtimeScopeChannelHydrationInFlight.has(deviceId)) {
-      continue
-    }
-    realtimeScopeChannelHydrationInFlight.add(deviceId)
-    void channelStore.ensureDeviceChannelsLoaded(deviceId)
-      .catch(() => {
-        return
-      })
-      .finally(() => {
-        realtimeScopeChannelHydrationInFlight.delete(deviceId)
-        scheduleRealtimeUnitScopeSync()
-      })
-  }
-
-  for (const deviceId of readyDeviceIds) {
-    channelStore.requestStates(deviceId, { includeDiagnostics: false, silent: true })
-  }
-}
-
-function scheduleRealtimeUnitScopeSync() {
-  if (realtimeScopeSyncFrame !== null) {
-    return
-  }
-  realtimeScopeSyncFrame = requestAnimationFrame(() => {
-    realtimeScopeSyncFrame = null
-    syncRealtimeUnitScope()
-  })
-}
-
-watch(
-  () => workspaceStore.activeWorkspaceId,
-  async (workspaceId) => {
-    refreshCycleId += 1
-    if (!workspaceId) return
-    testedAtRealtimeStore.clearWorkspace(workspaceId)
-    signalSheetStore.resetState()
-    restoreSelectedRowKeysFromStorage()
-    await refreshAll()
-  },
-  { immediate: true },
-)
-
-watch(
-  selectedRowKeys,
-  () => {
-    persistSelectedRowKeysToStorage()
-  },
-  { deep: false },
-)
-
-watch(
-  () => allocationRevision.value,
-  () => {
-    if (isTestRunBusy.value) {
-      return
-    }
-    scheduleRealtimeUnitScopeSync()
-  },
-  { immediate: true, flush: "post" },
-)
-
-watch(
-  () => [channels.value.length, deviceStore.devices.length, workspaceStore.activeWorkspaceId],
-  () => {
-    scheduleRealtimeUnitScopeSync()
-  },
-  { immediate: true, flush: "post" },
-)
-
-watch(
-  () => isWsConnected.value,
-  (connected) => {
-    if (!connected) {
-      if (wsScopeRetryTimer !== null) {
-        clearTimeout(wsScopeRetryTimer)
-        wsScopeRetryTimer = null
-      }
-      return
-    }
-    scheduleRealtimeUnitScopeSync()
-    if (wsScopeRetryTimer !== null) {
-      clearTimeout(wsScopeRetryTimer)
-    }
-    wsScopeRetryTimer = setTimeout(() => {
-      wsScopeRetryTimer = null
-      scheduleRealtimeUnitScopeSync()
-    }, 700)
-  },
-  { immediate: true },
-)
-
-watch(
-  () => [route.query.import, workspaceMissing.value, loading.value] as const,
-  ([importFlag, missingWorkspace, isLoading]) => {
-    if (!isImportQueryRequested(importFlag)) return
-    if (missingWorkspace || isLoading) return
-    openImportModal()
-    clearImportQueryFlag()
-  },
-  { immediate: true },
-)
-
 onBeforeUnmount(() => {
   channelGroupsResolverBySignalId.clear()
   if (allocationRevisionSyncFrame !== null) {
@@ -2203,14 +2122,5 @@ onBeforeUnmount(() => {
   }
   pendingAllocationRevisionSignalIds.clear()
   pendingAllocationRevisionFullRefresh = false
-  if (wsScopeRetryTimer !== null) {
-    clearTimeout(wsScopeRetryTimer)
-    wsScopeRetryTimer = null
-  }
-  if (realtimeScopeSyncFrame !== null) {
-    cancelAnimationFrame(realtimeScopeSyncFrame)
-    realtimeScopeSyncFrame = null
-  }
-  realtimeScopeStore.clearRealtimeUnitScope(scopeId)
 })
 </script>

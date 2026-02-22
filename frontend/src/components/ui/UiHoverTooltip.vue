@@ -1,7 +1,17 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance } from "vue"
+import { computed, getCurrentInstance, onBeforeUnmount, watch } from "vue"
 import type { ComponentPublicInstance } from "vue"
-import { useFloatingTooltip, useTooltipController } from "@affino/tooltip-vue"
+import { useFloatingTooltip, useTooltipController, type TooltipController } from "@affino/tooltip-vue"
+import {
+  activateTooltipController,
+  deactivateTooltipController,
+  registerTooltipController,
+  unregisterTooltipController,
+} from "@/components/ui/tooltipSingletonRegistry"
+import {
+  DEFAULT_TOOLTIP_CLOSE_DELAY_MS,
+  DEFAULT_TOOLTIP_OPEN_DELAY_MS,
+} from "@/components/ui/tooltipDefaults"
 
 type TooltipPlacement = "top" | "bottom" | "left" | "right"
 type TooltipAlign = "start" | "center" | "end"
@@ -21,8 +31,8 @@ const props = withDefaults(
     placement: "right",
     align: "center",
     disabled: false,
-    openDelay: 120,
-    closeDelay: 120,
+    openDelay: DEFAULT_TOOLTIP_OPEN_DELAY_MS,
+    closeDelay: DEFAULT_TOOLTIP_CLOSE_DELAY_MS,
   },
 )
 
@@ -32,6 +42,8 @@ const tooltipController = useTooltipController({
   openDelay: props.openDelay,
   closeDelay: props.closeDelay,
 })
+
+registerTooltipController(tooltipController as TooltipController)
 
 const { triggerRef, tooltipRef, tooltipStyle, teleportTarget } = useFloatingTooltip(tooltipController, {
   placement: props.placement,
@@ -47,6 +59,31 @@ function getTriggerProps() {
 }
 
 const tooltipProps = computed(() => tooltipController.getTooltipProps())
+
+watch(
+  () => tooltipController.state.value.open,
+  (isOpen) => {
+    if (!isOpen) {
+      deactivateTooltipController(tooltipController.id)
+      return
+    }
+    activateTooltipController(tooltipController.id)
+  },
+)
+
+watch(
+  () => props.disabled,
+  (disabled) => {
+    if (!disabled || !tooltipController.state.value.open) {
+      return
+    }
+    tooltipController.close("programmatic")
+  },
+)
+
+onBeforeUnmount(() => {
+  unregisterTooltipController(tooltipController.id)
+})
 
 function setTriggerRef(target: Element | ComponentPublicInstance | null) {
   if (target instanceof HTMLElement) {
@@ -66,9 +103,9 @@ function setTriggerRef(target: Element | ComponentPublicInstance | null) {
 
   <Teleport :to="teleportTarget || 'body'">
     <div
-      v-if="!disabled"
+      v-if="!disabled && tooltipController.state.value.open"
       ref="tooltipRef"
-      class="ui-hover-tooltip pointer-events-none z-50 w-max max-w-xs whitespace-nowrap rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-xs leading-5 text-neutral-700 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+      class="ui-hover-tooltip z-50 w-max max-w-xs whitespace-nowrap rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-xs leading-5 text-neutral-700 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
       v-bind="tooltipProps"
       :style="tooltipStyle"
     >
@@ -76,9 +113,3 @@ function setTriggerRef(target: Element | ComponentPublicInstance | null) {
     </div>
   </Teleport>
 </template>
-
-<style scoped>
-.ui-hover-tooltip[data-state="closed"] {
-  display: none;
-}
-</style>

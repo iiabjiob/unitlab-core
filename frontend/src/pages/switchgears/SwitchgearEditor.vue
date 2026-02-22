@@ -10,6 +10,7 @@ import SwitchgearEditorHeader from "./components/SwitchgearEditorHeader.vue"
 import SwitchgearExecutionLog from "./components/SwitchgearExecutionLog.vue"
 import SwitchgearControlToolbar from "./components/SwitchgearControlToolbar.vue"
 import SwitchgearBindingsEditor from "./components/SwitchgearBindingsEditor.vue"
+import SwitchgearBindingsSummary from "./components/SwitchgearBindingsSummary.vue"
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 
@@ -17,26 +18,29 @@ const route = useRoute()
 const router = useRouter()
 const store = useSwitchgearStore()
 const selectionStore = useSelectionStore()
+const { isDesktop } = useViewport()
 
 const switchgearId = computed(() => Number(route.params.id))
+const switchgear = computed(() => (
+  store.switchgears.find(item => item.id === switchgearId.value) ?? null
+))
 
-const switchgear = computed(() =>
-  store.switchgears.find(s => s.id === switchgearId.value)
-)
+const deleteModalOpen = ref(false)
+const bindingsEditorOpen = ref(false)
+
+const deleteMessage = computed(() => (
+  switchgear.value
+    ? `Switchgear "${switchgear.value.name}" will be deleted.`
+    : ""
+))
 
 watch(
   () => switchgear.value?.id ?? null,
   (id) => {
     selectionStore.selectSwitchgear(id)
+    bindingsEditorOpen.value = false
   },
-  { immediate: true }
-)
-
-const deleteModalOpen = ref(false)
-const deleteMessage = computed(() =>
-  switchgear.value
-    ? `Switchgear "${switchgear.value.name}" will be deleted.`
-    : ""
+  { immediate: true },
 )
 
 async function handleDuplicate() {
@@ -55,43 +59,53 @@ function cancelDelete() {
 
 async function confirmDelete() {
   if (!switchgear.value) return
-  await store.remove(switchgear.value.id)
+  const deletingId = switchgear.value.id
+  const before = [...store.switchgears]
+  const currentIndex = before.findIndex(item => item.id === deletingId)
+
+  bindingsEditorOpen.value = false
+  await store.remove(deletingId)
   deleteModalOpen.value = false
-  await router.push({ name: "switchgears.list" })
+
+  const after = store.switchgears
+  if (after.length === 0) {
+    await router.push({ name: "switchgears.list" })
+    return
+  }
+
+  const fallbackIndex = currentIndex < 0
+    ? 0
+    : Math.min(currentIndex, after.length - 1)
+  const fallback = after[fallbackIndex]
+
+  await router.push({ name: "switchgears.detail", params: { id: fallback.id } })
 }
-
-const { isDesktop } = useViewport()
-
 </script>
 
 <template>
-  <div class="h-full flex flex-col">
+  <div class="h-full flex flex-col pe-4">
     <template v-if="switchgear">
-      <!-- HEADER -->
       <SwitchgearEditorHeader
         :switchgear="switchgear"
         @duplicate="handleDuplicate"
         @delete="requestDelete"
       />
 
-      <!-- CONTROL TOOLBAR -->
       <SwitchgearControlToolbar :switchgear="switchgear" />
 
       <div class="mt-5 flex flex-1 min-h-0 flex-col gap-4 overflow-hidden rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5 lg:flex-row lg:gap-5">
-
-        <!-- BINDINGS PANEL -->
         <div class="flex flex-col min-h-0 lg:flex-none">
           <ResizablePanel
             v-if="isDesktop"
             class="flex flex-col min-h-0 h-full"
             :switchgear="switchgear"
             placement="left"
-            storageKey="switchgear-list-width"
-            :minSize="380"
-            :defaultSize="380"
+            storageKey="switchgear-summary-width"
+            :minSize="320"
+            :defaultSize="360"
             :maxSize="800"
           >
-            <SwitchgearBindingsEditor :switchgear="switchgear" />
+            <SwitchgearBindingsSummary :switchgear="switchgear" @edit="bindingsEditorOpen = true" />
           </ResizablePanel>
 
           <div
@@ -99,18 +113,23 @@ const { isDesktop } = useViewport()
             class="flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
           >
             <div class="h-full min-h-0 overflow-y-auto">
-              <SwitchgearBindingsEditor :switchgear="switchgear" />
+              <SwitchgearBindingsSummary :switchgear="switchgear" @edit="bindingsEditorOpen = true" />
             </div>
           </div>
         </div>
 
-        <!-- LOG PANEL -->
         <div class="flex flex-1 min-h-0 flex-col overflow-hidden">
+          <SwitchgearBindingsEditor
+            v-if="bindingsEditorOpen"
+            class="mb-4"
+            :switchgear="switchgear"
+            @close="bindingsEditorOpen = false"
+          />
+
           <div class="flex-1 min-h-0 overflow-hidden">
             <SwitchgearExecutionLog :switchgear="switchgear" />
           </div>
         </div>
-
       </div>
     </template>
 

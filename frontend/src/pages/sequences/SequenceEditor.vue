@@ -90,9 +90,25 @@ function cancelDelete() {
 
 async function confirmDelete() {
   if (!sequence.value) return
-  await store.deleteSequence(sequence.value.id)
+  const deletingId = sequence.value.id
+  const before = [...store.sequences]
+  const currentIndex = before.findIndex(item => item.id === deletingId)
+
+  await store.deleteSequence(deletingId)
   deleteModalOpen.value = false
-  await router.push({ name: "instructions.list" })
+
+  const after = store.sequences
+  if (after.length === 0) {
+    await router.push({ name: "instructions.list" })
+    return
+  }
+
+  const fallbackIndex = currentIndex < 0
+    ? 0
+    : Math.min(currentIndex, after.length - 1)
+  const fallback = after[fallbackIndex]
+
+  await router.push({ name: "instructions.detail", params: { id: fallback.id } })
 }
 
 function exitStepEdit() {
@@ -103,7 +119,7 @@ const { isDesktop } = useViewport()
 </script>
 
 <template>
-  <div class="h-full flex flex-col">
+  <div class="h-full flex flex-col pe-4">
 
     <!-- HEADER -->
     <SequenceEditorHeader

@@ -59,7 +59,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col">
+  <div class="h-full flex flex-col pe-4">
 
     <!-- HEADER -->
     <DeviceEditorHeader

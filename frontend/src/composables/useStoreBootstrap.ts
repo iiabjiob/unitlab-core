@@ -1,3 +1,5 @@
+import { devPerfIncrement, devPerfMeasureStart } from "@/utils/devPerf"
+
 type BootstrapTask = () => Promise<unknown> | unknown
 
 const inFlightByKey = new Map<string, Promise<void>>()
@@ -22,19 +24,24 @@ export async function runStoreBootstrap(
   tasks: readonly BootstrapTask[],
   options: { mode?: "strict" | "settled" } = {},
 ): Promise<void> {
+  devPerfIncrement("runStoreBootstrap.calls")
   const key = normalizeKeyParts(keyParts)
   const existing = inFlightByKey.get(key)
   if (existing) {
+    devPerfIncrement("runStoreBootstrap.dedupe_waits")
     await existing
     return
   }
 
+  const endMeasure = devPerfMeasureStart("bootstrap.runStoreBootstrap")
   const task = Promise.resolve().then(() =>
     runTasks(tasks, options.mode ?? "strict"),
   )
   inFlightByKey.set(key, task)
   try {
     await task
+    devPerfIncrement("runStoreBootstrap.completed")
+    endMeasure({ key, taskCount: tasks.length, mode: options.mode ?? "strict" })
   } finally {
     if (inFlightByKey.get(key) === task) {
       inFlightByKey.delete(key)

@@ -143,10 +143,23 @@ async function exportSequence() {
 }
 
 async function confirmDelete() {
+  const before = [...store.sequences]
+  const currentIndex = before.findIndex(item => item.id === props.sequence.id)
+
   await store.deleteSequence(props.sequence.id)
   deleteOpen.value = false
   if (Number(route.params.id) === props.sequence.id) {
-    await router.push({ name: "instructions.list" })
+    const after = store.sequences
+    if (after.length === 0) {
+      await router.push({ name: "instructions.list" })
+      return
+    }
+
+    const fallbackIndex = currentIndex < 0
+      ? 0
+      : Math.min(currentIndex, after.length - 1)
+    const fallback = after[fallbackIndex]
+    await router.push({ name: "instructions.detail", params: { id: fallback.id } })
   }
 }
 

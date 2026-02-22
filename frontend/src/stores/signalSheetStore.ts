@@ -16,6 +16,7 @@ import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { getLogger } from "@/utils/logger"
+import { devPerfIncrement, devPerfMeasureStart } from "@/utils/devPerf"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
 
 const logger = getLogger("SIGNAL_SHEET")
@@ -35,6 +36,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   const allocationMutationsInFlight = ref(0)
   const importing = ref(false)
   const lastSheetLoadedAt = ref<number | null>(null)
+  const lastPresetsLoadedAt = ref<number | null>(null)
   const lastAllocationsLoadedAt = ref<number | null>(null)
   const allocationRevision = ref(0)
   const recentlyChangedSignalIds = ref<number[]>([])
@@ -53,12 +55,22 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   const ALLOCATION_REFRESH_MIN_PAGE_SIZE = 50
   const TESTED_AT_PATCH_FLUSH_MS = 160
   const TESTED_AT_PATCH_CHUNK_SIZE = 80
+  const DEFAULT_SHEET_TTL_MS = 1_500
+  const DEFAULT_ALLOCATIONS_TTL_MS = 1_500
+  const DEFAULT_PRESETS_TTL_MS = 10_000
   const pendingTestedAtPatchBySignalId = new Map<number, string>()
   let testedAtPatchFlushTimer: ReturnType<typeof setTimeout> | null = null
   let testedAtPatchFlushFrame: number | null = null
 
   function requireWorkspaceId(): number {
     return workspaceStore.requireWorkspaceId()
+  }
+
+  function isCacheFresh(lastLoadedAt: number | null, ttlMs: number): boolean {
+    if (!Number.isFinite(lastLoadedAt as number)) {
+      return false
+    }
+    return (Date.now() - Number(lastLoadedAt)) < Math.max(0, ttlMs)
   }
 
   function bumpAllocationRevision() {
@@ -513,7 +525,10 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     signalIds: readonly number[],
     options?: { skipRecentlyChanged?: boolean; skipRevision?: boolean },
   ) {
+    devPerfIncrement("signalSheet.applyServerAllocationPatch.calls")
+    const endMeasure = devPerfMeasureStart("signalSheet.applyServerAllocationPatch")
     if (!signalIds.length) {
+      endMeasure({ skipped: true, reason: "empty-signal-ids" })
       return
     }
     const changedSet = new Set(signalIds)
@@ -528,11 +543,13 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       allocationIndexBySignalId.has(signalId) && serverBySignalId.has(signalId)
     ))
     if (!canPatchInPlace) {
+      devPerfIncrement("signalSheet.applyServerAllocationPatch.replaceRowsPath")
       replaceAllocationRows(serverRows, signalIds, {
         skipRecentlyChanged: options?.skipRecentlyChanged,
         skipRevision: options?.skipRevision,
       })
       recomputeSheetAllocatedCount()
+      endMeasure({ mode: "replaceRows", count: signalIds.length })
       return
     }
 
@@ -562,6 +579,8 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     if (!options?.skipRevision) {
       bumpAllocationRevision()
     }
+    devPerfIncrement("signalSheet.applyServerAllocationPatch.inPlacePath")
+    endMeasure({ mode: "inPlace", count: signalIds.length })
   }
 
   function resetState() {
@@ -569,6 +588,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     presets.value = []
     allocationRows.value = []
     lastSheetLoadedAt.value = null
+    lastPresetsLoadedAt.value = null
     lastAllocationsLoadedAt.value = null
     allocationIndexBySignalId.clear()
     allocationOwnerByChannelId.clear()
@@ -604,20 +624,26 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   }
 
   async function refreshSheet() {
+    devPerfIncrement("signalSheet.refreshSheet.calls")
     const workspaceId = requireWorkspaceId()
     if (sheetInFlight && sheetInFlightWorkspaceId === workspaceId) {
+      devPerfIncrement("signalSheet.refreshSheet.dedupe_waits")
       return sheetInFlight
     }
 
     const task = (async () => {
+      const endMeasure = devPerfMeasureStart("signalSheet.refreshSheet")
       loadingSheet.value = true
       try {
         const { data } = await SignalSheetAPI.get(workspaceId)
         if (workspaceStore.activeWorkspaceId !== workspaceId) {
+          endMeasure({ workspaceId, stale: true })
           return sheet.value
         }
         sheet.value = data
         lastSheetLoadedAt.value = Date.now()
+        devPerfIncrement("signalSheet.refreshSheet.completed")
+        endMeasure({ workspaceId, hasSheet: Boolean(data) })
         return data
       } finally {
         loadingSheet.value = false
@@ -637,33 +663,79 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   }
 
   async function refreshPresets() {
+    devPerfIncrement("signalSheet.refreshPresets.calls")
     const workspaceId = requireWorkspaceId()
+    const endMeasure = devPerfMeasureStart("signalSheet.refreshPresets")
     loadingPresets.value = true
     try {
       const { data } = await SignalSheetAPI.listPresets(workspaceId)
       if (workspaceStore.activeWorkspaceId !== workspaceId) {
+        endMeasure({ workspaceId, stale: true })
         return presets.value
       }
       presets.value = data
+      lastPresetsLoadedAt.value = Date.now()
+      devPerfIncrement("signalSheet.refreshPresets.completed")
+      endMeasure({ workspaceId, count: data.length })
       return data
     } finally {
       loadingPresets.value = false
     }
   }
 
+  async function ensureSheetLoaded(options?: { force?: boolean; ttlMs?: number }) {
+    devPerfIncrement("signalSheet.ensureSheetLoaded.calls")
+    const workspaceId = requireWorkspaceId()
+    const force = options?.force ?? false
+    const ttlMs = options?.ttlMs ?? DEFAULT_SHEET_TTL_MS
+    const activeSheet = sheet.value
+
+    if (
+      !force
+      && activeSheet
+      && activeSheet.workspace_id === workspaceId
+      && isCacheFresh(lastSheetLoadedAt.value, ttlMs)
+    ) {
+      devPerfIncrement("signalSheet.ensureSheetLoaded.cache_hits")
+      return activeSheet
+    }
+
+    devPerfIncrement("signalSheet.ensureSheetLoaded.refreshes")
+    return refreshSheet()
+  }
+
+  async function ensurePresetsLoaded(options?: { force?: boolean; ttlMs?: number }) {
+    devPerfIncrement("signalSheet.ensurePresetsLoaded.calls")
+    const force = options?.force ?? false
+    const ttlMs = options?.ttlMs ?? DEFAULT_PRESETS_TTL_MS
+
+    if (!force && presets.value.length > 0 && isCacheFresh(lastPresetsLoadedAt.value, ttlMs)) {
+      devPerfIncrement("signalSheet.ensurePresetsLoaded.cache_hits")
+      return presets.value
+    }
+
+    devPerfIncrement("signalSheet.ensurePresetsLoaded.refreshes")
+    return refreshPresets()
+  }
+
   async function refreshAllocations() {
+    devPerfIncrement("signalSheet.refreshAllocations.calls")
     const workspaceId = requireWorkspaceId()
     if (allocationsInFlight && allocationsInFlightWorkspaceId === workspaceId) {
+      devPerfIncrement("signalSheet.refreshAllocations.dedupe_waits")
       return allocationsInFlight
     }
 
     const task = (async () => {
+      const endMeasure = devPerfMeasureStart("signalSheet.refreshAllocations")
       loadingAllocations.value = true
       try {
         let rows: SignalAllocationRow[] | null = null
+        let usedStream = false
 
         try {
           rows = await SignalSheetAPI.streamAllocations(workspaceId)
+          usedStream = rows !== null
         } catch {
           rows = null
         }
@@ -676,6 +748,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
             const { rows: pageRows, nextPageSize } = await fetchAllocationPageAdaptive(workspaceId, offset, pageSize)
             pageSize = nextPageSize
             if (workspaceStore.activeWorkspaceId !== workspaceId) {
+              endMeasure({ workspaceId, stale: true, mode: "paged" })
               return allocationRows.value
             }
             if (pageRows.length === 0) {
@@ -690,11 +763,18 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         }
 
         if (workspaceStore.activeWorkspaceId !== workspaceId) {
+          endMeasure({ workspaceId, stale: true, mode: usedStream ? "stream" : "paged" })
           return allocationRows.value
         }
         replaceAllocationRows(rows)
         recomputeSheetAllocatedCount()
         lastAllocationsLoadedAt.value = Date.now()
+        devPerfIncrement("signalSheet.refreshAllocations.completed")
+        endMeasure({
+          workspaceId,
+          count: rows.length,
+          mode: usedStream ? "stream" : "paged",
+        })
         return rows
       } finally {
         loadingAllocations.value = false
@@ -711,6 +791,26 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         allocationsInFlightWorkspaceId = null
       }
     }
+  }
+
+  async function ensureAllocationsLoaded(options?: { force?: boolean; ttlMs?: number }) {
+    devPerfIncrement("signalSheet.ensureAllocationsLoaded.calls")
+    const workspaceId = requireWorkspaceId()
+    const force = options?.force ?? false
+    const ttlMs = options?.ttlMs ?? DEFAULT_ALLOCATIONS_TTL_MS
+    const activeSheetWorkspaceId = sheet.value?.workspace_id ?? null
+
+    if (
+      !force
+      && activeSheetWorkspaceId === workspaceId
+      && isCacheFresh(lastAllocationsLoadedAt.value, ttlMs)
+    ) {
+      devPerfIncrement("signalSheet.ensureAllocationsLoaded.cache_hits")
+      return allocationRows.value
+    }
+
+    devPerfIncrement("signalSheet.ensureAllocationsLoaded.refreshes")
+    return refreshAllocations()
   }
 
   async function importSheet(file: File, options?: {
@@ -762,7 +862,10 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   }
 
   async function bulkSetAllocations(entries: SignalAllocationUpdateItem[]) {
+    devPerfIncrement("signalSheet.bulkSetAllocations.calls")
+    const endMeasure = devPerfMeasureStart("signalSheet.bulkSetAllocations")
     if (!entries.length) {
+      endMeasure({ skipped: true, reason: "empty-entries" })
       return allocationRows.value
     }
 
@@ -785,6 +888,8 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       return current !== entry.channel_id
     })
     if (!effectiveEntries.length) {
+      devPerfIncrement("signalSheet.bulkSetAllocations.noop")
+      endMeasure({ skipped: true, reason: "no-effective-entries", requested: entries.length })
       return allocationRows.value
     }
 
@@ -830,7 +935,9 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       bumpAllocationRevision()
 
       const workspaceId = requireWorkspaceId()
+      const endApiMeasure = devPerfMeasureStart("signalSheet.bulkSetAllocations.api")
       const { data } = await SignalSheetAPI.updateAllocations(workspaceId, effectiveEntries)
+      endApiMeasure({ workspaceId, count: effectiveEntries.length })
       const stillCurrentSignalIds = affectedSignalIds.filter((signalId) => (
         allocationMutationVersionBySignalId.get(signalId) === affectedSignalVersions.get(signalId)
       ))
@@ -838,6 +945,13 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         applyServerAllocationPatch(data, stillCurrentSignalIds)
       }
       recomputeSheetAllocatedCount()
+      devPerfIncrement("signalSheet.bulkSetAllocations.completed")
+      endMeasure({
+        ok: true,
+        requested: entries.length,
+        effective: effectiveEntries.length,
+        affected: affectedSignalIds.length,
+      })
       return allocationRows.value
     } catch (error) {
       const rollbackEntries = Array.from(affectedSignalVersions.keys())
@@ -882,6 +996,11 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       }
       recomputeSheetAllocatedCount()
       bumpAllocationRevision()
+      endMeasure({
+        ok: false,
+        requested: entries.length,
+        effective: effectiveEntries.length,
+      })
       throw error
     } finally {
       endAllocationMutation()
@@ -893,6 +1012,8 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   }
 
   async function autoAllocate(payload: SignalAutoAllocatePayload) {
+    devPerfIncrement("signalSheet.autoAllocate.calls")
+    const endMeasure = devPerfMeasureStart("signalSheet.autoAllocate")
     const optimisticAssignments = resolveAutoAllocateAssignments(payload)
     const optimisticSignalIds = optimisticAssignments.map(item => item.signalId)
     const optimisticSignalVersions = new Map<number, number>()
@@ -931,9 +1052,14 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       }
 
       const workspaceId = requireWorkspaceId()
+      const endApiMeasure = devPerfMeasureStart("signalSheet.autoAllocate.api")
       const { data } = await SignalSheetAPI.autoAllocate(workspaceId, {
         ...payload,
         prefer_single_unit: payload.prefer_single_unit ?? true,
+      })
+      endApiMeasure({
+        workspaceId,
+        optimisticAssignments: optimisticAssignments.length,
       })
 
       if (Array.isArray(data.rows) && data.rows.length > 0) {
@@ -1010,6 +1136,12 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       }
 
       recomputeSheetAllocatedCount()
+      devPerfIncrement("signalSheet.autoAllocate.completed")
+      endMeasure({
+        ok: true,
+        optimisticAssignments: optimisticAssignments.length,
+        serverRows: Array.isArray(data.rows) ? data.rows.length : 0,
+      })
       return data
     } catch (error) {
       if (optimisticSignalIds.length > 0) {
@@ -1055,6 +1187,10 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         }
         bumpAllocationRevision()
       }
+      endMeasure({
+        ok: false,
+        optimisticAssignments: optimisticAssignments.length,
+      })
       throw error
     } finally {
       endAllocationMutation()
@@ -1065,14 +1201,18 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     signalIds: number[],
     options?: { preferOnline?: boolean },
   ): Promise<SignalAllocationEnsureResponse> {
+    devPerfIncrement("signalSheet.ensureAllocated.calls")
+    const endMeasure = devPerfMeasureStart("signalSheet.ensureAllocated")
     const normalizedSignalIds = Array.from(
       new Set(signalIds.map(item => Number(item)).filter(id => Number.isFinite(id) && id > 0)),
     )
     const workspaceId = requireWorkspaceId()
+    const endApiMeasure = devPerfMeasureStart("signalSheet.ensureAllocated.api")
     const { data } = await SignalSheetAPI.ensureAllocated(workspaceId, {
       signal_ids: normalizedSignalIds,
       prefer_online: options?.preferOnline ?? true,
     })
+    endApiMeasure({ workspaceId, requested: normalizedSignalIds.length })
     if (Array.isArray(data.rows) && data.rows.length > 0) {
       applyServerAllocationPatch(
         data.rows,
@@ -1080,6 +1220,11 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       )
       recomputeSheetAllocatedCount()
     }
+    devPerfIncrement("signalSheet.ensureAllocated.completed")
+    endMeasure({
+      requested: normalizedSignalIds.length,
+      serverRows: Array.isArray(data.rows) ? data.rows.length : 0,
+    })
     return data
   }
 
@@ -1087,10 +1232,13 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     signalIds: number[],
     options?: { optimistic?: boolean },
   ): Promise<void> {
+    devPerfIncrement("signalSheet.markSignalsTested.calls")
+    const endMeasure = devPerfMeasureStart("signalSheet.markSignalsTested")
     const normalizedSignalIds = Array.from(
       new Set(signalIds.map(item => Number(item)).filter(id => Number.isFinite(id) && id > 0)),
     )
     if (!normalizedSignalIds.length) {
+      endMeasure({ skipped: true, reason: "empty-signal-ids" })
       return
     }
 
@@ -1101,9 +1249,11 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
 
     const workspaceId = requireWorkspaceId()
+    const endApiMeasure = devPerfMeasureStart("signalSheet.markSignalsTested.api")
     const { data } = await SignalSheetAPI.markTested(workspaceId, {
       signal_ids: normalizedSignalIds,
     })
+    endApiMeasure({ workspaceId, requested: normalizedSignalIds.length })
     if (Array.isArray(data) && data.length > 0) {
       applyServerAllocationPatch(
         data,
@@ -1114,6 +1264,12 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         },
       )
     }
+    devPerfIncrement("signalSheet.markSignalsTested.completed")
+    endMeasure({
+      optimistic,
+      requested: normalizedSignalIds.length,
+      serverRows: Array.isArray(data) ? data.length : 0,
+    })
   }
 
   function applyAllocationRowsPatch(rows: SignalAllocationRow[]) {
@@ -1149,6 +1305,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     updatingAllocations,
     importing,
     lastSheetLoadedAt,
+    lastPresetsLoadedAt,
     lastAllocationsLoadedAt,
     allocationRevision,
     recentlyChangedSignalIds,
@@ -1157,8 +1314,11 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     resetState,
     bootstrap,
     refreshSheet,
+    ensureSheetLoaded,
     refreshPresets,
+    ensurePresetsLoaded,
     refreshAllocations,
+    ensureAllocationsLoaded,
     previewImportSheet,
     importSheet,
     savePreset,

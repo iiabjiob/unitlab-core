@@ -2,9 +2,16 @@
 import { computed, getCurrentInstance, onBeforeUnmount, useAttrs, watch } from "vue"
 import type { ComponentPublicInstance } from "vue"
 import { useFloatingTooltip, useTooltipController, type TooltipController } from "@affino/tooltip-vue"
-
-const tooltipControllers = new Map<string, TooltipController>()
-let activeTooltipId: string | null = null
+import {
+  activateTooltipController,
+  deactivateTooltipController,
+  registerTooltipController,
+  unregisterTooltipController,
+} from "@/components/ui/tooltipSingletonRegistry"
+import {
+  DEFAULT_TOOLTIP_CLOSE_DELAY_MS,
+  DEFAULT_TOOLTIP_OPEN_DELAY_MS,
+} from "@/components/ui/tooltipDefaults"
 
 defineOptions({
   inheritAttrs: false,
@@ -28,8 +35,8 @@ const props = withDefaults(
     placement: "top",
     align: "start",
     disabled: false,
-    openDelay: 120,
-    closeDelay: 120,
+    openDelay: DEFAULT_TOOLTIP_OPEN_DELAY_MS,
+    closeDelay: DEFAULT_TOOLTIP_CLOSE_DELAY_MS,
   },
 )
 
@@ -47,28 +54,16 @@ const { triggerRef, tooltipRef, tooltipStyle, teleportTarget } = useFloatingTool
   gutter: 8,
 })
 
-tooltipControllers.set(tooltipController.id, tooltipController)
+registerTooltipController(tooltipController as TooltipController)
 
 watch(
   () => tooltipController.state.value.open,
   (isOpen) => {
     if (!isOpen) {
-      if (activeTooltipId === tooltipController.id) {
-        activeTooltipId = null
-      }
+      deactivateTooltipController(tooltipController.id)
       return
     }
-
-    activeTooltipId = tooltipController.id
-    tooltipControllers.forEach((controller, id) => {
-      if (id === tooltipController.id) {
-        return
-      }
-      if (!controller.state.value.open) {
-        return
-      }
-      controller.close("programmatic")
-    })
+    activateTooltipController(tooltipController.id)
   },
 )
 
@@ -83,10 +78,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  if (activeTooltipId === tooltipController.id) {
-    activeTooltipId = null
-  }
-  tooltipControllers.delete(tooltipController.id)
+  unregisterTooltipController(tooltipController.id)
 })
 
 function getTriggerProps() {
@@ -133,7 +125,7 @@ function setTriggerRef(target: Element | ComponentPublicInstance | null) {
     <div
       v-if="!disabled && tooltipController.state.value.open"
       ref="tooltipRef"
-      class="pointer-events-none z-50 w-max max-w-xs whitespace-pre-line rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-xs leading-5 text-neutral-700 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+      class="z-50 w-max max-w-xs whitespace-pre-line rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-xs leading-5 text-neutral-700 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
       v-bind="tooltipController.getTooltipProps()"
       :style="tooltipStyle"
     >
