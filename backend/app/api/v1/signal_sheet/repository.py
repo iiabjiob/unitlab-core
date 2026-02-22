@@ -425,10 +425,9 @@ class SignalSheetRepository:
 
         for channels in channel_groups.values():
             channels.sort(
-                key=lambda channel: (
-                    channel.device_id,
-                    channel.channel_index,
-                    channel.id,
+                key=lambda channel: _channel_auto_allocate_sort_key(
+                    channel,
+                    prefer_online=prefer_online,
                 )
             )
 
@@ -479,6 +478,7 @@ class SignalSheetRepository:
                 used_channel_ids=used_channel_ids,
                 preferred_unit_id=preferred_unit_id,
                 prefer_online=prefer_online,
+                allow_offline_fallback=not (prefer_online and preferred_unit_id is not None),
             )
             if candidate is None and preferred_unit_id is not None:
                 candidate = _pick_candidate_channel(
@@ -742,6 +742,7 @@ def _pick_candidate_channel(
     used_channel_ids: set[int],
     preferred_unit_id: str | None = None,
     prefer_online: bool = True,
+    allow_offline_fallback: bool = True,
 ) -> Channel | None:
     if prefer_online:
         for channel in candidates:
@@ -755,6 +756,9 @@ def _pick_candidate_channel(
                 continue
             return channel
 
+    if prefer_online and not allow_offline_fallback:
+        return None
+
     for channel in candidates:
         if channel.id in used_channel_ids:
             continue
@@ -764,6 +768,22 @@ def _pick_candidate_channel(
                 continue
         return channel
     return None
+
+
+def _channel_auto_allocate_sort_key(
+    channel: Channel,
+    *,
+    prefer_online: bool,
+) -> tuple[int, int, int, int]:
+    online_rank = 0
+    if prefer_online:
+        online_rank = 0 if _is_unit_online(channel.device.last_seen_at if channel.device else None) else 1
+    return (
+        online_rank,
+        int(channel.device_id),
+        int(channel.channel_index),
+        int(channel.id),
+    )
 
 
 def _resolve_preferred_units_for_auto_allocate(

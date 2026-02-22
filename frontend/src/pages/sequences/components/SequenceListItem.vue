@@ -10,9 +10,9 @@ import { useSequenceStore } from "@/stores/sequenceStore"
 import { useToastStore } from "@/stores/toastStore"
 import {
   UiMenu,
+  UiMenuTrigger,
   UiMenuContent,
   UiMenuItem,
-  type MenuController,
 } from "@/components/ui/menu"
 
 const props = defineProps<{
@@ -34,7 +34,6 @@ const descriptionOpen = ref(false)
 const descriptionValue = ref(props.sequence.description ?? "")
 const savingDescription = ref(false)
 const deleteOpen = ref(false)
-const menuRef = ref<{ controller?: MenuController } | null>(null)
 
 watch(
   () => props.sequence.name,
@@ -151,15 +150,6 @@ async function confirmDelete() {
   }
 }
 
-function openContextMenu(event: MouseEvent) {
-  event.preventDefault()
-  event.stopPropagation()
-  const controller = menuRef.value?.controller
-  if (!controller) return
-  controller.setAnchor({ x: event.clientX, y: event.clientY, width: 0, height: 0 })
-  controller.open("pointer")
-}
-
 function openInNewTab() {
   const resolved = router.resolve({ name: "instructions.detail", params: { id: props.sequence.id } })
   if (typeof window !== "undefined") {
@@ -169,12 +159,14 @@ function openInNewTab() {
 </script>
 
 <template>
-  <UiMenu ref="menuRef">
-    <SidebarListItem :active="active" class="relative" @select="handleSelect" @contextmenu="openContextMenu($event)">
+  <UiMenu>
+    <UiMenuTrigger as-child trigger="contextmenu">
+    <SidebarListItem :active="active" class="relative" @select="handleSelect">
       <span class="truncate text-sm">
         {{ sequence.name }}
       </span>
     </SidebarListItem>
+    </UiMenuTrigger>
     <UiMenuContent>
       <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openInNewTab">
         Open in new tab

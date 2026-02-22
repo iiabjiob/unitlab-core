@@ -13,6 +13,7 @@ class UnitLabMqttClient:
     def __init__(self, client_id: str):
         self.client = MQTTClient(client_id)
         self.connected = asyncio.Event()
+        self._subscriptions: dict[str, int] = {}
 
         # External async message hook (set by manager)
         self._on_message_async: Optional[OnMessageAsync] = None
@@ -36,7 +37,10 @@ class UnitLabMqttClient:
         logger.info("🛑 MQTT client stopped")
     
     def subscribe(self, topic: str, qos: int = 0):
-        self.client.subscribe(topic, qos)
+        self._subscriptions[topic] = qos
+        if self.connected.is_set():
+            self.client.subscribe(topic, qos)
+            logger.info(f"📡 Subscribing to topic: {topic}")
 
     def publish(self, topic, payload, qos=0, retain=False):
         return self.client.publish(topic, payload, qos=qos, retain=retain)
@@ -45,6 +49,9 @@ class UnitLabMqttClient:
     def on_connect(self, client, flags, rc, properties):
         logger.info("✅ Connected to MQTT broker")
         self.connected.set()
+        for topic, qos in self._subscriptions.items():
+            self.client.subscribe(topic, qos)
+            logger.info(f"📡 Subscribing to topic: {topic}")
 
     def on_disconnect(self, client, packet, exc=None):
         logger.warning("⚠️ Disconnected from MQTT broker")

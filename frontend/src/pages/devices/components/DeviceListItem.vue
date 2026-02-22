@@ -7,9 +7,9 @@ import RenameModal from "@/components/ui/RenameModal.vue"
 import { useDeviceStore } from "@/stores/deviceStore"
 import {
   UiMenu,
+  UiMenuTrigger,
   UiMenuContent,
   UiMenuItem,
-  type MenuController,
 } from "@/components/ui/menu"
 
 const props = defineProps<{
@@ -24,7 +24,6 @@ const renameOpen = ref(false)
 const renameValue = ref(props.device.name ?? "")
 const renaming = ref(false)
 const renameError = ref("")
-const menuRef = ref<{ controller?: MenuController } | null>(null)
 
 const statusClass = computed(() => {
   switch (props.device.status) {
@@ -86,15 +85,6 @@ async function confirmRename() {
   }
 }
 
-function openContextMenu(event: MouseEvent) {
-  event.preventDefault()
-  event.stopPropagation()
-  const controller = menuRef.value?.controller
-  if (!controller) return
-  controller.setAnchor({ x: event.clientX, y: event.clientY, width: 0, height: 0 })
-  controller.open("pointer")
-}
-
 function openInNewTab() {
   const resolved = router.resolve({ name: "devices.detail", params: { id: props.device.id } })
   if (typeof window !== "undefined") {
@@ -104,8 +94,9 @@ function openInNewTab() {
 </script>
 
 <template>
-  <UiMenu ref="menuRef">
-    <SidebarListItem :active="active" class="relative" @select="handleSelect" @contextmenu="openContextMenu($event)">
+  <UiMenu>
+    <UiMenuTrigger as-child trigger="contextmenu">
+    <SidebarListItem :active="active" class="relative" @select="handleSelect">
       <template #prefix>
         <span class="w-2 h-2 rounded-full transition-colors" :class="statusClass" />
       </template>
@@ -121,6 +112,7 @@ function openInNewTab() {
         </span>
       </template>
     </SidebarListItem>
+    </UiMenuTrigger>
     <UiMenuContent>
       <UiMenuItem class="text-neutral-900 dark:text-neutral-100" @select="openInNewTab">
         Open in new tab

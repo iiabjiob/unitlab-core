@@ -62,7 +62,7 @@
             :disabled="loading || allocatingSelected"
             @click="emit('allocateSelected')"
           >
-            {{ allocatingSelected ? "Assigning…" : "Assign Hardware" }}
+            {{ allocateSelectedLabel }}
           </UiButton>
 
           <UiButton
@@ -72,20 +72,21 @@
             :disabled="loading || deallocatingSelected"
             @click="emit('deallocateSelected')"
           >
-            {{ deallocatingSelected ? "Unassigning…" : "Unassign Hardware" }}
+            {{ deallocateSelectedLabel }}
           </UiButton>
 
           <span v-if="canRunTest" class="inline-flex">
             <UiMenu ref="testRunMenuRef">
-              <UiButton
-                :variant="'success'"
-                size="sm"
-                :disabled="loading || isTestRunBusy"
-                @click="emit('runTest')"
-                @contextmenu.capture.prevent.stop="openTestRunContextMenu"
-              >
-                {{ canResumeActiveTestRun ? "Resume" : (isTestRunBusy ? "Running…" : "Run test") }}
-              </UiButton>
+              <UiMenuTrigger as-child trigger="contextmenu">
+                <UiButton
+                  :variant="'success'"
+                  size="sm"
+                  :disabled="loading || isTestRunBusy"
+                  @click="emit('runTest')"
+                >
+                  {{ canResumeActiveTestRun ? "Resume" : (isTestRunBusy ? "Running…" : "Run test") }}
+                </UiButton>
+              </UiMenuTrigger>
               <UiMenuContent>
                 <UiMenuLabel>
                   Toggle mode
@@ -119,6 +120,7 @@
           </span>
         </div>
       </div>
+
     </div>
   </header>
 </template>
@@ -127,6 +129,7 @@
 import { computed, ref } from "vue"
 import {
   UiMenu,
+  UiMenuTrigger,
   UiMenuContent,
   UiMenuItem,
   UiMenuLabel,
@@ -145,6 +148,8 @@ const props = defineProps<{
   allocationRowsCount: number
   allocatingSelected: boolean
   deallocatingSelected: boolean
+  allocateSelectedLabel: string
+  deallocateSelectedLabel: string
   canResumeActiveTestRun: boolean
   canAllocateSelected: boolean
   canDeallocateSelected: boolean
@@ -171,18 +176,4 @@ const emit = defineEmits<{
 
 const testRunMenuRef = ref<{ controller?: MenuController } | null>(null)
 const isTestRunMenuOpen = computed(() => Boolean(testRunMenuRef.value?.controller?.state.open))
-
-function openTestRunContextMenu(event: MouseEvent) {
-  event.preventDefault()
-  event.stopPropagation()
-  const controller = testRunMenuRef.value?.controller
-  if (!controller) {
-    return
-  }
-  if (controller.state.open) {
-    return
-  }
-  controller.setAnchor({ x: event.clientX, y: event.clientY, width: 0, height: 0 })
-  controller.open("pointer")
-}
 </script>

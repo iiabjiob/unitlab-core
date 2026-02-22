@@ -1,5 +1,6 @@
 <template>
-  <UiMenu ref="menuRef">
+  <UiMenu>
+    <UiMenuTrigger as-child trigger="contextmenu">
     <div
       class="group flex items-center justify-between px-2 py-1.5 text-sm select-none transition-colors"
       :class="[
@@ -10,7 +11,6 @@
             : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
       ]"
       @click="emitSelect"
-      @contextmenu="openContextMenu"
     >
       <!-- LEFT -->
       <div class="flex items-center gap-3">
@@ -42,6 +42,7 @@
       </div>
 
     </div>
+    </UiMenuTrigger>
     <UiMenuContent>
       <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="emit('copy', step.id)">
         Copy
@@ -63,11 +64,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed } from "vue"
 import type { SequenceStep } from "@/types/sequences"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useSequenceStepStore } from "@/stores/sequenceStepStore"
-import { UiMenu, UiMenuContent, UiMenuItem, type MenuController } from "@/components/ui/menu"
+import { UiMenu, UiMenuTrigger, UiMenuContent, UiMenuItem } from "@/components/ui/menu"
 
 const props = defineProps<{
   step: SequenceStep
@@ -86,7 +87,6 @@ const emit = defineEmits<{
 
 const seqStore = useSequenceStore()
 const stepStore = useSequenceStepStore()
-const menuRef = ref<{ controller?: MenuController } | null>(null)
 
 const description = computed(() =>
   stepStore.getStepDescription(props.step)
@@ -99,15 +99,6 @@ function emitSelect(event: MouseEvent) {
     ctrlKey: event.ctrlKey,
     metaKey: event.metaKey,
   })
-}
-
-function openContextMenu(event: MouseEvent) {
-  event.preventDefault()
-  event.stopPropagation()
-  const controller = menuRef.value?.controller
-  if (!controller) return
-  controller.setAnchor({ x: event.clientX, y: event.clientY, width: 0, height: 0 })
-  controller.open("pointer")
 }
 
 const statusClass = computed(() => {

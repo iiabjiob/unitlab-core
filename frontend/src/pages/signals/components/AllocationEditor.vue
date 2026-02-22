@@ -8,9 +8,11 @@
       :allocation-rows-count="allocationRows.length"
       :allocating-selected="allocatingSelected"
       :deallocating-selected="deallocatingSelected"
+      :allocate-selected-label="allocateSelectedButtonLabel"
+      :deallocate-selected-label="deallocateSelectedButtonLabel"
       :can-resume-active-test-run="canResumeActiveTestRun"
-      :can-allocate-selected="selectedAllocatableUnassignedSignalIds.length > 0"
-      :can-deallocate-selected="selectedAllocatedSignalIds.length > 0"
+      :can-allocate-selected="selectedUnassignedSignalIds.length > 0 || allocatingSelected"
+      :can-deallocate-selected="selectedAllocatedSignalIds.length > 0 || deallocatingSelected"
       :can-run-test="selectedAllocatedPhysicalRows.length > 0 || isTestRunBusy"
       :is-test-run-busy="isTestRunBusy"
       :test-run-toggle-mode="testRunToggleMode"
@@ -362,35 +364,6 @@ const allocationRowBySignalId = computed(() => {
   return map
 })
 
-const freeChannelCountByType = computed(() => {
-  const usedChannelIds = new Set<number>()
-  allocationRows.value.forEach((row) => {
-    if (Number.isFinite(row.channel_id as number)) {
-      usedChannelIds.add(Number(row.channel_id))
-    }
-  })
-
-  const counts: Record<"di" | "do" | "ai" | "ao", number> = {
-    di: 0,
-    do: 0,
-    ai: 0,
-    ao: 0,
-  }
-
-  channels.value.forEach((channel) => {
-    if (usedChannelIds.has(channel.id)) {
-      return
-    }
-    const type = normalizedChannelType(channel.type)
-    if (!type) {
-      return
-    }
-    counts[type] += 1
-  })
-
-  return counts
-})
-
 function signalIdFromRowKey(rowKey: string): number | null {
   if (!rowKey.startsWith("signal-")) return null
   const parsed = Number(rowKey.slice("signal-".length))
@@ -408,23 +381,25 @@ const selectedAllocationRows = computed(() => (
     .filter((row): row is SignalAllocationRow => Boolean(row))
 ))
 
-const selectedUnassignedSignalIds = computed(() => (
-  selectedAllocationRows.value
-    .filter(row => !Number.isFinite(row.channel_id as number))
-    .map(row => row.signal_id)
-))
+function resolveSelectedUnassignedSignalIdsInSelectionOrder(): number[] {
+  const orderedIds: number[] = []
+  const seen = new Set<number>()
+  selectedAllocationRows.value.forEach((row) => {
+    const signalId = Number(row.signal_id)
+    if (!Number.isFinite(signalId) || seen.has(signalId)) {
+      return
+    }
+    if (Number.isFinite(row.channel_id as number)) {
+      return
+    }
+    seen.add(signalId)
+    orderedIds.push(signalId)
+  })
+  return orderedIds
+}
 
-const selectedAllocatableUnassignedSignalIds = computed(() => (
-  selectedAllocationRows.value
-    .filter((row) => !Number.isFinite(row.channel_id as number))
-    .filter((row) => {
-      const required = resolveRuntimeChannelTypeForSignal(row.signal_direction)
-      if (!required) {
-        return false
-      }
-      return freeChannelCountByType.value[required] > 0
-    })
-    .map(row => row.signal_id)
+const selectedUnassignedSignalIds = computed(() => (
+  resolveSelectedUnassignedSignalIdsInSelectionOrder()
 ))
 
 const selectedAllocatedSignalIds = computed(() => (
@@ -486,6 +461,74 @@ const allocatedCableRows = computed(() => (
 const activeTestRunJob = computed(() => (
   activeJobs.value.find(job => String(job.operation) === "test_run") ?? null
 ))
+
+function pickLatestActiveJobByOperation(operation: "auto_allocate" | "bulk_update"): SignalAllocationJob | null {
+  let latest: SignalAllocationJob | null = null
+  let latestUpdatedAt = -1
+  activeJobs.value.forEach((job) => {
+    if (String(job.operation) !== operation) {
+      return
+    }
+    const updatedAt = Date.parse(String(job.updated_at ?? ""))
+    const normalizedUpdatedAt = Number.isFinite(updatedAt) ? updatedAt : 0
+    if (normalizedUpdatedAt >= latestUpdatedAt) {
+      latest = job
+      latestUpdatedAt = normalizedUpdatedAt
+    }
+  })
+  return latest
+}
+
+const activeAutoAllocateJob = computed(() => pickLatestActiveJobByOperation("auto_allocate"))
+const activeBulkUpdateJob = computed(() => pickLatestActiveJobByOperation("bulk_update"))
+
+function formatOperationProgressLabel(
+  fallbackBusyLabel: string,
+  idleLabel: string,
+  activeFlag: boolean,
+  job: SignalAllocationJob | null,
+): string {
+  if (!activeFlag) {
+    return idleLabel
+  }
+
+  if (!job) {
+    return fallbackBusyLabel
+  }
+
+  const status = String(job.status ?? "")
+  const total = Math.max(0, Number(job.progress_total ?? 0))
+  const done = Math.max(0, Number(job.progress_done ?? 0))
+  const safeDone = total > 0 ? Math.min(done, total) : done
+
+  if (status === "queued") {
+    return total > 0 ? `Queued ${safeDone}/${total}…` : "Queued…"
+  }
+  if (status === "cancelling") {
+    return total > 0 ? `Cancelling ${safeDone}/${total}…` : "Cancelling…"
+  }
+
+  return total > 0 ? `${fallbackBusyLabel.replace("…", "")} ${safeDone}/${total}…` : fallbackBusyLabel
+}
+
+const allocateSelectedButtonLabel = computed(() => (
+  formatOperationProgressLabel(
+    "Assigning…",
+    "Assign Hardware",
+    allocatingSelected.value,
+    activeAutoAllocateJob.value,
+  )
+))
+
+const deallocateSelectedButtonLabel = computed(() => (
+  formatOperationProgressLabel(
+    "Unassigning…",
+    "Unassign Hardware",
+    deallocatingSelected.value,
+    activeBulkUpdateJob.value,
+  )
+))
+
 const isTestRunBusy = computed(() => {
   const status = String(activeTestRunJob.value?.status ?? "")
   const activeJobBusy = status === "queued" || status === "running" || status === "cancelling"
@@ -785,7 +828,7 @@ function resolveLastTestedAtValue(row: SignalAllocationRow, fallback: unknown): 
       return realtimeValue
     }
   }
-  return fallback
+  return row.tested_at ?? fallback
 }
 
 const testedAtFormatter = new Intl.DateTimeFormat(undefined, {
@@ -919,12 +962,6 @@ const cableExportColumnDefs = computed<CableExportColumnDef[]>(() => {
       getValue: (row: SignalAllocationRow) => String(row.unit_id ?? ""),
     },
     {
-      key: "channel_id",
-      label: "channel_id",
-      required: true,
-      getValue: (row: SignalAllocationRow) => String(row.channel_id ?? ""),
-    },
-    {
       key: "terminal",
       label: "terminal",
       required: true,
@@ -933,9 +970,9 @@ const cableExportColumnDefs = computed<CableExportColumnDef[]>(() => {
     {
       key: "channel_index",
       label: "channel_index",
-      required: false,
+      required: true,
       getValue: (row: SignalAllocationRow) => (
-        Number.isFinite(row.channel_index as number) ? String(Number(row.channel_index) + 1) : ""
+        Number.isFinite(row.channel_index as number) ? String(Number(row.channel_index)) : ""
       ),
     },
     {
@@ -992,7 +1029,7 @@ const optionalExportColumnOptions = computed<ExportColumnOption[]>(() => (
 
 function resolveSelectedCableExportColumns(optionalColumnKeys: readonly string[]): CableExportColumnDef[] {
   const byKey = new Map(cableExportColumnDefs.value.map(column => [column.key, column] as const))
-  const requiredStart = ["unit_id", "channel_id"]
+  const requiredStart = ["unit_id", "channel_index"]
     .map(key => byKey.get(key))
     .filter((column): column is CableExportColumnDef => Boolean(column))
   const terminalColumn = byKey.get("terminal")
@@ -1017,7 +1054,7 @@ function buildSignalReportRows(): string[][] {
       if (header === "signal_key") return row.signal_key
       return sourceRow[header] ?? ""
     })
-    const channelNumber = Number.isFinite(row.channel_index as number) ? Number(row.channel_index) + 1 : ""
+    const channelNumber = Number.isFinite(row.channel_index as number) ? Number(row.channel_index) : ""
     return [
       ...sourceCells.map(item => String(item ?? "")),
       String(row.signal_direction ?? ""),
@@ -1591,7 +1628,7 @@ function formatTestRunSkipReasons(job: SignalAllocationJob): string {
 async function allocateSelectedUnassigned() {
   if (allocatingSelected.value) return
   if (!selectedUnassignedSignalIds.value.length) return
-  const targetSignalIds = [...selectedAllocatableUnassignedSignalIds.value]
+  const targetSignalIds = resolveSelectedUnassignedSignalIdsInSelectionOrder()
   if (!targetSignalIds.length) {
     toastStore.info("No free compatible channels available for selected rows.")
     return
@@ -1607,6 +1644,7 @@ async function allocateSelectedUnassigned() {
     const completedJob = await signalJobStore.enqueueAutoAllocateJob(workspaceId, {
       signal_ids: targetSignalIds,
       prefer_online: true,
+      prefer_single_unit: false,
       overwrite_existing: false,
     })
     await signalSheetStore.refreshAllocations()
@@ -1615,11 +1653,9 @@ async function allocateSelectedUnassigned() {
     const assigned = Number(jobResult.assigned ?? 0)
     const restRaw = jobResult.unassigned_signal_ids
     const rest = Array.isArray(restRaw) ? restRaw.length : 0
-    const unavailableSkipped = Math.max(0, selectedUnassignedSignalIds.value.length - targetSignalIds.length)
     toastStore.success(
       `Allocation complete: ${assigned} assigned`
       + `${rest ? `, ${rest} left unassigned` : ""}`
-      + `${unavailableSkipped ? `, ${unavailableSkipped} skipped (no free channel)` : ""}`,
     )
   } catch (err) {
     toastStore.error(err instanceof Error ? err.message : String(err))

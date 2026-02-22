@@ -1,10 +1,12 @@
 import time
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.redis.manager import RedisManager
+from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.mqtt import topics
 from app.core.events.ws_event_publisher import WsEventPublisher
 from app.schemas.ws.events import DeviceHeartbeatEvent
 from app.services.command_queue_service import enqueue_scan_devices
+from app.services.device_service import DeviceService
 from app.core.utils import to_str
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -26,6 +28,9 @@ async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
         str(ts).encode(),
         ex=settings.heartbeat_ttl
     )
+
+    async with AsyncSessionLocal() as session:
+        await DeviceService(session).touch_last_seen(unit_id, ts)
 
     # Add the device into the global set if it is new
     await redis.sadd("devices:all", unit_id.encode())

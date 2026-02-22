@@ -20,7 +20,8 @@ async def device_offline_checker():
 
             for raw_id in all_units:
                 unit_id = to_str(raw_id, "")
-                status = await redis.get(f"device:{unit_id}:status")
+                status_raw = await redis.get(f"device:{unit_id}:status")
+                status = to_str(status_raw)
                 last_seen = await redis.get(f"device:{unit_id}:last_seen")
 
                 # --- OFFLINE ---

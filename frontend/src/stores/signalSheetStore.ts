@@ -281,11 +281,19 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     })
   }
 
-  function replaceAllocationRows(rows: SignalAllocationRow[], changedSignalIds: readonly number[] = []) {
+  function replaceAllocationRows(
+    rows: SignalAllocationRow[],
+    changedSignalIds: readonly number[] = [],
+    options?: { skipRecentlyChanged?: boolean; skipRevision?: boolean },
+  ) {
     allocationRows.value = rows
     rebuildAllocationIndexes()
-    setRecentlyChangedSignalIds(changedSignalIds)
-    bumpAllocationRevision()
+    if (!options?.skipRecentlyChanged) {
+      setRecentlyChangedSignalIds(changedSignalIds)
+    }
+    if (!options?.skipRevision) {
+      bumpAllocationRevision()
+    }
   }
 
   function recomputeSheetAllocatedCount() {
@@ -317,7 +325,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     if (!signalIds.length) {
       return
     }
-    const touched: number[] = []
     signalIds.forEach((signalId) => {
       const rowIndex = allocationIndexBySignalId.get(signalId)
       if (rowIndex === undefined) return
@@ -327,13 +334,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         ...row,
         tested_at: testedAtIso,
       }
-      touched.push(signalId)
     })
-    if (!touched.length) {
-      return
-    }
-    setRecentlyChangedSignalIds(touched)
-    bumpAllocationRevision()
   }
 
   function applyTestedAtBySignalPatch(testedAtBySignal: Record<number, string> | Record<string, string>) {
@@ -393,7 +394,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       return
     }
 
-    const touched: number[] = []
     let processed = 0
     for (const [signalId, testedAt] of pendingTestedAtPatchBySignalId.entries()) {
       const rowIndex = allocationIndexBySignalId.get(signalId)
@@ -411,18 +411,12 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
           ...row,
           tested_at: testedAt,
         }
-        touched.push(signalId)
       }
 
       processed += 1
       if (processed >= TESTED_AT_PATCH_CHUNK_SIZE) {
         break
       }
-    }
-
-    if (touched.length > 0) {
-      setRecentlyChangedSignalIds(touched)
-      bumpAllocationRevision()
     }
 
     if (pendingTestedAtPatchBySignalId.size > 0) {
@@ -513,7 +507,11 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
   }
 
-  function applyServerAllocationPatch(serverRows: SignalAllocationRow[], signalIds: readonly number[]) {
+  function applyServerAllocationPatch(
+    serverRows: SignalAllocationRow[],
+    signalIds: readonly number[],
+    options?: { skipRecentlyChanged?: boolean; skipRevision?: boolean },
+  ) {
     if (!signalIds.length) {
       return
     }
@@ -529,7 +527,10 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       allocationIndexBySignalId.has(signalId) && serverBySignalId.has(signalId)
     ))
     if (!canPatchInPlace) {
-      replaceAllocationRows(serverRows, signalIds)
+      replaceAllocationRows(serverRows, signalIds, {
+        skipRecentlyChanged: options?.skipRecentlyChanged,
+        skipRevision: options?.skipRevision,
+      })
       recomputeSheetAllocatedCount()
       return
     }
@@ -554,8 +555,12 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       const nextAllocated = isAllocatedChannelId(nextRow.channel_id)
       patchSheetAllocatedCount(previousAllocated, nextAllocated)
     })
-    setRecentlyChangedSignalIds(signalIds)
-    bumpAllocationRevision()
+    if (!options?.skipRecentlyChanged) {
+      setRecentlyChangedSignalIds(signalIds)
+    }
+    if (!options?.skipRevision) {
+      bumpAllocationRevision()
+    }
   }
 
   function resetState() {
@@ -1093,6 +1098,10 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       applyServerAllocationPatch(
         data,
         data.map(row => row.signal_id),
+        {
+          skipRecentlyChanged: true,
+          skipRevision: true,
+        },
       )
     }
   }

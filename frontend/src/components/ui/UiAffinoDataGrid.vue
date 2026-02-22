@@ -5,6 +5,7 @@
     :class="{ 'is-row-fixed': isRowHeightFixed }"
     :style="gridStyle"
   >
+    <UiMenu ref="headerMenuRef">
     <div class="ui-affino-grid__layout">
       <div v-if="props.showControls" class="ui-affino-grid__toolbar">
         <div class="ui-affino-grid__toolbar-filters">
@@ -191,15 +192,19 @@
 
         <div v-if="leftPinnedColumns.length > 0" class="ui-affino-grid__pinned-column ui-affino-grid__pinned-column--left">
           <div ref="leftPinnedHeaderRowRef" class="ui-affino-grid__row ui-affino-grid__row--header ui-affino-grid__row--pinned" :style="pinnedHeaderRowStyle" @wheel="handleMainHeaderWheel">
-            <div
+            <UiMenuTrigger
               v-for="entry in leftPinnedColumns"
               :key="`head-left-${entry.key}`"
+              as-child
+              trigger="contextmenu"
+            >
+            <div
               class="ui-affino-grid__cell ui-affino-grid__cell--header"
               :style="columnStyle(entry.width)"
               v-bind="grid.bindings.headerCell(entry.key)"
               @click.capture="event => handleHeaderCellClickCapture(event, entry.key)"
               @keydown.capture="event => handleHeaderCellKeydownCapture(event, entry.key)"
-              @contextmenu.capture.prevent.stop="event => openHeaderContextMenu(event, entry.key)"
+              @contextmenu.capture="selectHeaderContextColumn(entry.key)"
             >
               <div class="ui-affino-grid__header-content">
                 <span class="ui-affino-grid__header-label">{{ entry.label }}</span>
@@ -234,6 +239,7 @@
                 @click.stop.prevent="armResizeClickGuard"
               ></span>
             </div>
+            </UiMenuTrigger>
           </div>
 
           <div
@@ -328,15 +334,19 @@
                   class="ui-affino-grid__spacer"
                   :style="{ width: `${leftSpacerPx}px`, minWidth: `${leftSpacerPx}px` }"
                 ></div>
-                <div
+                <UiMenuTrigger
                   v-for="entry in visibleColumns"
                   :key="`head-${entry.key}`"
+                  as-child
+                  trigger="contextmenu"
+                >
+                <div
                   class="ui-affino-grid__cell ui-affino-grid__cell--header"
                   :style="columnStyle(entry.width)"
                   v-bind="grid.bindings.headerCell(entry.key)"
                   @click.capture="event => handleHeaderCellClickCapture(event, entry.key)"
                   @keydown.capture="event => handleHeaderCellKeydownCapture(event, entry.key)"
-                  @contextmenu.capture.prevent.stop="event => openHeaderContextMenu(event, entry.key)"
+                  @contextmenu.capture="selectHeaderContextColumn(entry.key)"
                 >
                   <div class="ui-affino-grid__header-content">
                     <span class="ui-affino-grid__header-label">{{ entry.label }}</span>
@@ -371,6 +381,7 @@
                     @click.stop.prevent="armResizeClickGuard"
                   ></span>
                 </div>
+                </UiMenuTrigger>
                 <div
                   v-if="rightSpacerPx > 0"
                   class="ui-affino-grid__spacer"
@@ -478,15 +489,19 @@
 
         <div v-if="rightPinnedColumns.length > 0" class="ui-affino-grid__pinned-column ui-affino-grid__pinned-column--right">
           <div ref="rightPinnedHeaderRowRef" class="ui-affino-grid__row ui-affino-grid__row--header ui-affino-grid__row--pinned" :style="pinnedHeaderRowStyle" @wheel="handleMainHeaderWheel">
-            <div
+            <UiMenuTrigger
               v-for="entry in rightPinnedColumns"
               :key="`head-right-${entry.key}`"
+              as-child
+              trigger="contextmenu"
+            >
+            <div
               class="ui-affino-grid__cell ui-affino-grid__cell--header"
               :style="columnStyle(entry.width)"
               v-bind="grid.bindings.headerCell(entry.key)"
               @click.capture="event => handleHeaderCellClickCapture(event, entry.key)"
               @keydown.capture="event => handleHeaderCellKeydownCapture(event, entry.key)"
-              @contextmenu.capture.prevent.stop="event => openHeaderContextMenu(event, entry.key)"
+              @contextmenu.capture="selectHeaderContextColumn(entry.key)"
             >
               <div class="ui-affino-grid__header-content">
                 <span class="ui-affino-grid__header-label">{{ entry.label }}</span>
@@ -521,6 +536,7 @@
                 @click.stop.prevent="armResizeClickGuard"
               ></span>
             </div>
+            </UiMenuTrigger>
           </div>
 
           <div
@@ -635,8 +651,6 @@
       </div>
     </div>
 
-    <UiMenu ref="headerMenuRef">
-      <span class="ui-affino-grid__header-menu-anchor" aria-hidden="true"></span>
       <UiMenuContent class="ui-affino-grid__header-context-menu">
         <UiMenuItem :disabled="!props.enableSorting || !headerContextColumnSortable" @select="void runHeaderContextMenuAction('sort-asc')">
           Sort Ascending
@@ -700,10 +714,11 @@ import type {
   DataGridRowModel,
   DataGridSettingsAdapter,
   DataGridSortState,
-} from "@affino/datagrid-core"
+} from "@affino/datagrid-vue"
 import { createDataGridSettingsAdapter, useAffinoDataGrid, useDataGridSettingsStore } from "@affino/datagrid-vue"
 import {
   UiMenu,
+  UiMenuTrigger,
   UiMenuContent,
   UiMenuItem,
   UiMenuSeparator,
@@ -717,6 +732,10 @@ import {
   useDataGridColumnLayoutOrchestration,
   useDataGridViewportScrollLifecycle,
   useDataGridRowSelectionInputHandlers,
+  useDataGridLinkedPaneScrollSync,
+  useDataGridManagedWheelScroll,
+  useDataGridResizeClickGuard,
+  useDataGridRowSelectionModel,
 } from "@affino/datagrid-vue/advanced"
 import {
   readPersistedColumnWidths,
@@ -726,15 +745,20 @@ import {
   writePersistedDatasetKey,
   writePersistedSelection,
 } from "@/composables/useDataGridPersistenceStorage"
-import {
-  useDataGridLinkedPaneScrollSync,
-  useDataGridManagedWheelScroll,
-  useDataGridResizeClickGuard,
-  useDataGridRowSelectionModel,
-  setsEqual,
-} from "@affino/datagrid-orchestration"
 
 type GridRow = Record<string, unknown>
+
+function setsEqual<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
+  if (left.size !== right.size) {
+    return false
+  }
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false
+    }
+  }
+  return true
+}
 
 type GridColumn = {
   key: string
@@ -2150,21 +2174,12 @@ function closeHeaderContextMenu() {
   const controller = headerMenuRef.value?.controller
   if (controller) {
     controller.close("programmatic")
-    controller.setAnchor(null)
   }
   headerContextMenuColumnKey.value = null
 }
 
-function openHeaderContextMenu(event: MouseEvent, columnKey: string) {
-  event.preventDefault()
-  event.stopPropagation()
-  const controller = headerMenuRef.value?.controller
-  if (!controller) {
-    return
-  }
+function selectHeaderContextColumn(columnKey: string) {
   headerContextMenuColumnKey.value = columnKey
-  controller.setAnchor({ x: event.clientX, y: event.clientY, width: 0, height: 0 })
-  controller.open("pointer")
 }
 
 function resetColumnsToDefaults() {
@@ -3305,8 +3320,12 @@ function refreshCellsByRanges(
     return
   }
 
-  const normalizedRanges = ranges
-    .map((range) => {
+  type NormalizedRefreshRange = {
+    rowKey: DataGridRowId
+    columnKeys: readonly string[]
+  }
+
+  const normalizedRanges = ranges.reduce<NormalizedRefreshRange[]>((acc, range) => {
       const rowKey = range?.rowKey
       const normalizedRowKey = typeof rowKey === "number"
         ? (Number.isFinite(rowKey) ? rowKey : null)
@@ -3315,22 +3334,23 @@ function refreshCellsByRanges(
           return normalized.length > 0 ? normalized : null
         })()
       if (normalizedRowKey === null) {
-        return null
+        return acc
       }
 
       const normalizedColumnKeys = (range?.columnKeys ?? [])
         .map((columnKey) => String(columnKey ?? "").trim())
         .filter((columnKey) => columnKey.length > 0)
       if (!normalizedColumnKeys.length) {
-        return null
+        return acc
       }
 
-      return {
+      acc.push({
         rowKey: normalizedRowKey,
         columnKeys: normalizedColumnKeys,
-      }
-    })
-    .filter((range): range is { rowKey: DataGridRowId; columnKeys: readonly string[] } => range !== null)
+      })
+
+      return acc
+    }, [])
 
   if (!normalizedRanges.length) {
     return

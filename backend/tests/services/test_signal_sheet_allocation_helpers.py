@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from app.api.v1.signal_sheet.repository import (
+    _channel_auto_allocate_sort_key,
     _is_channel_compatible,
     _parse_tested_at,
     _pick_candidate_channel,
@@ -107,3 +108,45 @@ def test_pick_candidate_channel_falls_back_when_no_online_available() -> None:
 
     assert candidate is not None
     assert candidate.id == 30
+
+
+def test_channel_auto_allocate_sort_key_prefers_online_then_channel_index() -> None:
+    offline_device = Device(id=1, unit_id="unit-offline", last_seen_at=None)
+    online_device = Device(
+        id=2,
+        unit_id="unit-online",
+        last_seen_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    channels = [
+        Channel(id=101, device_id=1, channel_index=0, channel_type="do", device=offline_device),
+        Channel(id=202, device_id=2, channel_index=2, channel_type="do", device=online_device),
+        Channel(id=201, device_id=2, channel_index=1, channel_type="do", device=online_device),
+    ]
+
+    ordered = sorted(
+        channels,
+        key=lambda channel: _channel_auto_allocate_sort_key(channel, prefer_online=True),
+    )
+
+    assert [channel.id for channel in ordered] == [201, 202, 101]
+
+
+def test_channel_auto_allocate_sort_key_without_online_priority() -> None:
+    offline_device = Device(id=1, unit_id="unit-offline", last_seen_at=None)
+    online_device = Device(
+        id=2,
+        unit_id="unit-online",
+        last_seen_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+    channels = [
+        Channel(id=202, device_id=2, channel_index=2, channel_type="do", device=online_device),
+        Channel(id=101, device_id=1, channel_index=0, channel_type="do", device=offline_device),
+        Channel(id=201, device_id=2, channel_index=1, channel_type="do", device=online_device),
+    ]
+
+    ordered = sorted(
+        channels,
+        key=lambda channel: _channel_auto_allocate_sort_key(channel, prefer_online=False),
+    )
+
+    assert [channel.id for channel in ordered] == [101, 201, 202]

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from "vue"
+import { ref, computed, watch } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useRouter, useRoute } from "vue-router"
 import DeviceListItem from "./DeviceListItem.vue"
@@ -23,13 +23,37 @@ function openDevice(id: number) {
 
 // SEARCH
 const query = ref("")
+const onlineOnly = ref(false)
+const ONLINE_ONLY_STORAGE_KEY = "unitlab.devices.sidebar.online-only"
+
+function restoreOnlineOnlyFilter() {
+  if (typeof window === "undefined") return
+  const raw = window.localStorage.getItem(ONLINE_ONLY_STORAGE_KEY)
+  if (raw === null) return
+  onlineOnly.value = raw === "1" || raw === "true"
+}
+
+function persistOnlineOnlyFilter(value: boolean) {
+  if (typeof window === "undefined") return
+  window.localStorage.setItem(ONLINE_ONLY_STORAGE_KEY, value ? "1" : "0")
+}
+
+restoreOnlineOnlyFilter()
+
+watch(onlineOnly, (value) => {
+  persistOnlineOnlyFilter(value)
+})
 
 const filteredDevices = computed(() => {
-  if (!query.value.trim()) return store.devices
+  const source = onlineOnly.value
+    ? store.devices.filter(device => device.online)
+    : store.devices
+
+  if (!query.value.trim()) return source
 
   const q = query.value.toLowerCase()
 
-  return store.devices.filter(s =>
+  return source.filter(s =>
     s.unit_id.toLowerCase().includes(q) ||
     s.display_name.toLowerCase().includes(q) ||
     (s.name && s.name.toLowerCase().includes(q))
@@ -50,6 +74,18 @@ function handleSelect(id: string | number) {
 
 <template>
   <div class="h-full flex flex-col">
+
+    <div class="mb-2">
+      <label class="inline-flex items-center gap-2 text-xs text-neutral-700 dark:text-neutral-300 cursor-pointer select-none">
+        <input
+          v-model="onlineOnly"
+          type="checkbox"
+          name="device-online-only"
+          class="h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+        />
+        <span>Online only</span>
+      </label>
+    </div>
 
     <!-- SEARCH FIELD -->
     <div class="mb-3">

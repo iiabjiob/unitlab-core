@@ -254,6 +254,12 @@ const completedSummaryText = computed(() => {
       : "completed"
   const processed = Math.max(0, readNumericResult(job, "processed") || Number(job.progress_done ?? 0))
   const succeeded = Math.max(0, readNumericResult(job, "succeeded"))
+  const skipped = Math.max(0, readNumericResult(job, "skipped"))
+  const total = Math.max(
+    processed,
+    Math.max(0, Number(job.progress_total ?? 0)),
+    succeeded + skipped,
+  )
 
   const finishedAtParsed = Date.parse(String(job.updated_at ?? ""))
   const createdAtParsed = Date.parse(String(job.created_at ?? ""))
@@ -264,7 +270,7 @@ const completedSummaryText = computed(() => {
   return [
     status,
     formatDateTimeShort(String(job.updated_at ?? "")),
-    `${succeeded}/${processed} toggled`,
+    `ok ${succeeded} · skip ${skipped} · total ${total}`,
     formatDurationShort(durationMs / 1000),
   ].join(" · ")
 })

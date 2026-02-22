@@ -145,6 +145,27 @@ async def _handle_test_run(
         "offline_unit": 0,
     }
 
+    runnable_ids: list[int] = []
+    for signal_id in requested_ids:
+        row = rows_by_signal_id.get(signal_id)
+        if row is None:
+            skipped += 1
+            skip_reasons["missing_row"] += 1
+            continue
+        if not row.unit_id or not isinstance(row.channel_index, int):
+            skipped += 1
+            skip_reasons["invalid_binding"] += 1
+            continue
+        if not str(row.channel_type or "").lower().startswith("do"):
+            skipped += 1
+            skip_reasons["non_do_channel"] += 1
+            continue
+        if row.unit_online is False:
+            skipped += 1
+            skip_reasons["offline_unit"] += 1
+            continue
+        runnable_ids.append(signal_id)
+
     job_id = str(payload.get("job_id") or "")
     pending_tested_at_by_signal: dict[int, str] = {}
     tested_at_patch_since_emit: dict[int, str] = {}
@@ -202,7 +223,24 @@ async def _handle_test_run(
                 continue
             return True
 
-    for index, signal_id in enumerate(requested_ids, start=1):
+    if skipped > 0:
+        await _publish_running_progress(
+            job_state=job_state,
+            progress_done=min(total, skipped),
+            progress_total=total,
+            message=f"Signals {min(total, skipped)}/{total} · ok 0 · skip {skipped}",
+            result={
+                "processed": min(total, skipped),
+                "succeeded": 0,
+                "skipped": skipped,
+                "skip_reasons": dict(skip_reasons),
+                "toggle_mode": toggle_mode,
+                "signal_interval_ms": signal_interval_ms,
+            },
+        )
+
+    for runnable_index, signal_id in enumerate(runnable_ids, start=1):
+        index = skipped + runnable_index
         if not await apply_control_state():
             return {
                 "processed": index - 1,
@@ -217,16 +255,7 @@ async def _handle_test_run(
 
         row = rows_by_signal_id.get(signal_id)
         success = False
-        if row is None:
-            skipped += 1
-            skip_reasons["missing_row"] += 1
-        elif not row.unit_id or not isinstance(row.channel_index, int):
-            skipped += 1
-            skip_reasons["invalid_binding"] += 1
-        elif not str(row.channel_type or "").lower().startswith("do"):
-            skipped += 1
-            skip_reasons["non_do_channel"] += 1
-        else:
+        if row is not None:
             unit_id = str(row.unit_id)
             bitmask = unit_bitmasks.get(unit_id, 0)
 
@@ -301,7 +330,7 @@ async def _handle_test_run(
                 result=result_payload,
             )
 
-        if index < total:
+        if runnable_index < len(runnable_ids):
             slept = 0.0
             while slept < signal_interval_seconds:
                 if not await apply_control_state():

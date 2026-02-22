@@ -73,4 +73,37 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url))
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('/node_modules/')) {
+            return undefined
+          }
+
+          if (id.includes('/node_modules/vue/') || id.includes('/node_modules/vue-router/') || id.includes('/node_modules/pinia/')) {
+            return 'framework-vue'
+          }
+
+          if (id.includes('/node_modules/xlsx/')) {
+            return 'vendor-xlsx'
+          }
+
+          if (id.includes('/node_modules/@affino/datagrid-')) {
+            return 'vendor-affino-datagrid'
+          }
+
+          if (id.includes('/node_modules/@affino/menu-')) {
+            return 'vendor-affino-menu'
+          }
+
+          if (id.includes('/node_modules/@affino/')) {
+            return 'vendor-affino-ui'
+          }
+
+          return 'vendor-misc'
+        },
+      },
+    },
+  },
 })

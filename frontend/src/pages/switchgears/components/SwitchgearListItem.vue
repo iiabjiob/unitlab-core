@@ -9,9 +9,9 @@ import { useSwitchgearStore } from "@/stores/switchgearStore"
 import SwitchgearPositionIcon from "./SwitchgearPositionIcon.vue"
 import {
   UiMenu,
+  UiMenuTrigger,
   UiMenuContent,
   UiMenuItem,
-  type MenuController,
 } from "@/components/ui/menu"
 
 const props = defineProps<{
@@ -30,7 +30,6 @@ const renameOpen = ref(false)
 const renameValue = ref(props.switchgear.name)
 const renaming = ref(false)
 const deleteOpen = ref(false)
-const menuRef = ref<{ controller?: MenuController } | null>(null)
 
 watch(
   () => props.switchgear.name,
@@ -85,15 +84,6 @@ async function confirmDelete() {
   }
 }
 
-function openContextMenu(event: MouseEvent) {
-  event.preventDefault()
-  event.stopPropagation()
-  const controller = menuRef.value?.controller
-  if (!controller) return
-  controller.setAnchor({ x: event.clientX, y: event.clientY, width: 0, height: 0 })
-  controller.open("pointer")
-}
-
 function openInNewTab() {
   const resolved = router.resolve({ name: "switchgears.detail", params: { id: props.switchgear.id } })
   if (typeof window !== "undefined") {
@@ -103,8 +93,9 @@ function openInNewTab() {
 </script>
 
 <template>
-  <UiMenu ref="menuRef">
-    <SidebarListItem :active="active" class="relative" @select="handleSelect" @contextmenu="openContextMenu($event)">
+  <UiMenu>
+    <UiMenuTrigger as-child trigger="contextmenu">
+    <SidebarListItem :active="active" class="relative" @select="handleSelect">
       <span class="truncate text-sm font-medium">
         {{ switchgear.name }}
       </span>
@@ -117,6 +108,7 @@ function openInNewTab() {
         {{ switchgear.switchgear_type }}
       </template>
     </SidebarListItem>
+    </UiMenuTrigger>
     <UiMenuContent>
       <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openInNewTab">
         Open in new tab

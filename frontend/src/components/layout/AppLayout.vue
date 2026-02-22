@@ -14,6 +14,17 @@ import WelcomeLayout from "./WelcomeLayout.vue"
 
 const isMobile = ref(false)
 const systemHealthStore = useSystemHealthStore()
+let healthRefreshTimer: ReturnType<typeof setInterval> | null = null
+
+function refreshSystemHealth() {
+  void systemHealthStore.refresh()
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === "visible") {
+    refreshSystemHealth()
+  }
+}
 
 function checkMobile() {
   isMobile.value = window.innerWidth < 768
@@ -21,10 +32,17 @@ function checkMobile() {
 onMounted(() => {
   checkMobile()
   window.addEventListener("resize", checkMobile)
-  void systemHealthStore.refresh()
+  refreshSystemHealth()
+  document.addEventListener("visibilitychange", handleVisibilityChange)
+  healthRefreshTimer = setInterval(refreshSystemHealth, 15000)
 })
 onBeforeUnmount(() => {
   window.removeEventListener("resize", checkMobile)
+  document.removeEventListener("visibilitychange", handleVisibilityChange)
+  if (healthRefreshTimer) {
+    clearInterval(healthRefreshTimer)
+    healthRefreshTimer = null
+  }
 })
 
 const route = useRoute()
