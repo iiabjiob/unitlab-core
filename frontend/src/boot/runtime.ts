@@ -3,6 +3,7 @@ import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
+import { pinia } from "@/stores/pinia"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 
 let booted = false
@@ -18,10 +19,10 @@ export async function bootRuntime() {
   bootInFlight = (async () => {
     logger.info("🧠 Boot: Runtime…")
 
-    const workspaceStore = useWorkspaceStore()
-    const deviceStore = useDeviceStore()
-    const switchgearStore = useSwitchgearStore()
-    const sequenceStore = useSequenceStore()
+    const workspaceStore = useWorkspaceStore(pinia)
+    const deviceStore = useDeviceStore(pinia)
+    const switchgearStore = useSwitchgearStore(pinia)
+    const sequenceStore = useSequenceStore(pinia)
 
     const workspaceReady = await workspaceStore.bootstrap()
     if (!workspaceReady) {

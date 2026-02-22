@@ -9,6 +9,7 @@ import type {
   SignalAutoAllocatePayload,
   SignalImportMeta,
   SignalSheet,
+  SignalSheetImportPreviewResponse,
   SignalSheetPreset,
 } from "@/types/signal"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
@@ -734,6 +735,15 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
   }
 
+  async function previewImportSheet(file: File, options?: {
+    metadata?: SignalImportMeta | null
+    presetId?: number | null
+  }): Promise<SignalSheetImportPreviewResponse> {
+    const workspaceId = requireWorkspaceId()
+    const { data } = await SignalSheetAPI.previewImport(workspaceId, file, options)
+    return data
+  }
+
   async function savePreset(payload: { name: string; import_meta: SignalImportMeta }) {
     const workspaceId = requireWorkspaceId()
     const { data } = await SignalSheetAPI.savePreset(workspaceId, payload)
@@ -1149,6 +1159,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     refreshSheet,
     refreshPresets,
     refreshAllocations,
+    previewImportSheet,
     importSheet,
     savePreset,
     deletePreset,

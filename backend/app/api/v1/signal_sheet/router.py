@@ -31,6 +31,8 @@ from app.schemas.signal_sheet_schema import (
     SignalSheetPresetCreateSchema,
     SignalSheetPresetSchema,
     SignalSheetSchema,
+    SignalSheetImportPreviewResponseSchema,
+    SignalSheetImportPreviewSheetSchema,
 )
 from app.services.signal_job_service import (
     control_signal_job,
@@ -137,6 +139,80 @@ async def import_signal_sheet(
     sheet = await repo.get_sheet(workspace_id)
     response = SignalSheetImportResponseSchema(sheet=await _build_sheet_schema(repo, workspace_id, sheet))
     return response
+
+
+@router.post(
+    "/workspaces/{workspace_id}/signal-sheet/import/preview",
+    response_model=SignalSheetImportPreviewResponseSchema,
+)
+async def preview_signal_sheet_import(
+    workspace_id: int,
+    file: UploadFile = File(...),
+    metadata: str | None = Form(default=None),
+    preset_id: int | None = Form(default=None),
+    repo: SignalSheetRepository = Depends(get_repo),
+):
+    if not await repo.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    explicit_meta = _parse_metadata(metadata)
+    preset_meta = None
+    if preset_id is not None:
+        preset = await repo.get_preset(preset_id)
+        if preset is None or preset.workspace_id != workspace_id:
+            raise HTTPException(status_code=404, detail="Preset not found")
+        try:
+            preset_meta = SignalImportMetaSchema.model_validate(preset.import_meta)
+        except ValidationError:
+            raise HTTPException(status_code=400, detail="Preset metadata is invalid")
+
+    effective_meta = explicit_meta or preset_meta
+
+    try:
+        payload = SignalSheetImportService.parse_workbook(
+            raw,
+            filename=file.filename,
+            metadata=effective_meta,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Unable to parse workbook: {exc}")
+
+    max_rows = max(1, int(settings.signal_import_max_rows))
+    if payload.rows_count > max_rows:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Import limit exceeded: {payload.rows_count} rows (max {max_rows})",
+        )
+
+    raw_data = payload.data if isinstance(payload.data, dict) else {}
+    raw_sheets = raw_data.get("sheets") if isinstance(raw_data.get("sheets"), list) else []
+
+    sheets: list[SignalSheetImportPreviewSheetSchema] = []
+    for item in raw_sheets:
+        if not isinstance(item, dict):
+            continue
+        rows = item.get("rows") if isinstance(item.get("rows"), list) else []
+        normalized_rows = [row for row in rows if isinstance(row, dict)]
+        sheets.append(
+            SignalSheetImportPreviewSheetSchema(
+                name=str(item.get("name") or "Sheet"),
+                index=int(item.get("index") or 0),
+                headers=[str(header) for header in (item.get("headers") or []) if str(header).strip()],
+                rows_count=int(item.get("rows_count") or len(normalized_rows)),
+                rows=normalized_rows,
+            )
+        )
+
+    return SignalSheetImportPreviewResponseSchema(
+        rows_count=payload.rows_count,
+        sheet_count=int(raw_data.get("sheet_count") or len(sheets)),
+        default_sheet_index=int(raw_data.get("default_sheet_index") or 0),
+        sheets=sheets,
+    )
 
 
 @router.get("/workspaces/{workspace_id}/signal-sheet/presets", response_model=list[SignalSheetPresetSchema])

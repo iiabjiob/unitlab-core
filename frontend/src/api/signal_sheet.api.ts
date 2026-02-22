@@ -12,6 +12,7 @@ import type {
   SignalImportMeta,
   SignalSheet,
   SignalSheetImportResponse,
+  SignalSheetImportPreviewResponse,
   SignalSheetPreset,
 } from "@/types/signal"
 
@@ -39,6 +40,27 @@ export const SignalSheetAPI = {
     return http.post<SignalSheetImportResponse>(`${API_V1}/workspaces/${workspaceId}/signal-sheet/import`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     })
+  },
+
+  previewImport(workspaceId: number, file: File, options?: {
+    metadata?: SignalImportMeta | null
+    presetId?: number | null
+  }) {
+    const formData = new FormData()
+    formData.append("file", file)
+    if (options?.metadata) {
+      formData.append("metadata", JSON.stringify(options.metadata))
+    }
+    if (Number.isFinite(options?.presetId)) {
+      formData.append("preset_id", String(options?.presetId))
+    }
+    return http.post<SignalSheetImportPreviewResponse>(
+      `${API_V1}/workspaces/${workspaceId}/signal-sheet/import/preview`,
+      formData,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+      },
+    )
   },
 
   listPresets(workspaceId: number) {

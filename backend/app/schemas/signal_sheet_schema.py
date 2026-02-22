@@ -45,6 +45,21 @@ class SignalSheetImportResponseSchema(BaseModel):
     sheet: SignalSheetSchema
 
 
+class SignalSheetImportPreviewSheetSchema(BaseModel):
+    name: str
+    index: int
+    headers: list[str] = Field(default_factory=list)
+    rows_count: int = 0
+    rows: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SignalSheetImportPreviewResponseSchema(BaseModel):
+    rows_count: int = 0
+    sheet_count: int = 0
+    default_sheet_index: int = 0
+    sheets: list[SignalSheetImportPreviewSheetSchema] = Field(default_factory=list)
+
+
 class SignalAllocationRowSchema(BaseModel):
     signal_id: int
     signal_key: str

@@ -77,6 +77,21 @@ export interface SignalSheetImportResponse {
   sheet: SignalSheet
 }
 
+export interface SignalSheetImportPreviewSheet {
+  name: string
+  index: number
+  headers: string[]
+  rows_count: number
+  rows: Array<Record<string, unknown>>
+}
+
+export interface SignalSheetImportPreviewResponse {
+  rows_count: number
+  sheet_count: number
+  default_sheet_index: number
+  sheets: SignalSheetImportPreviewSheet[]
+}
+
 export interface SignalSheetPreset {
   id: number
   workspace_id: number

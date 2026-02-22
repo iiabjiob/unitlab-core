@@ -316,7 +316,6 @@
 <script setup lang="ts">
 import axios from "axios"
 import { computed, nextTick, ref, watch } from "vue"
-import * as XLSX from "xlsx"
 
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import UiAlert from "@/components/ui/UiAlert.vue"
@@ -334,7 +333,6 @@ const emit = defineEmits<{ (e: "close"): void; (e: "imported", sheetId: number):
 const signalSheetStore = useSignalSheetStore()
 const toastStore = useToastStore()
 const ALLOWED_EXTENSIONS = ["xls", "xlsx", "xlsm"]
-const INTERNAL_TYPE_COLUMN_KEY = "internal_type"
 
 const STEP_ITEMS = [
   { id: "upload", label: "Upload file" },
@@ -354,7 +352,6 @@ const error = ref<string | null>(null)
 const errorAnchorRef = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 const parsing = ref(false)
-const workbook = ref<XLSX.WorkBook | null>(null)
 const dropActive = ref(false)
 const dragCounter = ref(0)
 
@@ -387,7 +384,7 @@ const typeMappingListboxOptions: Array<{ value: InternalSignalType | ""; label: 
   ...internalTypeOptions,
 ]
 
-const sheetNames = computed(() => workbook.value?.SheetNames ?? [])
+const sheetNames = computed(() => Object.keys(sheetColumns.value))
 const availableColumns = computed(() => (selectedSheetName.value ? sheetColumns.value[selectedSheetName.value] ?? [] : []))
 const selectedColumnIndexes = computed(() =>
   selectedSheetName.value ? selectedColumnsBySheet.value[selectedSheetName.value] ?? [] : []
@@ -497,7 +494,6 @@ function resetWorkflowState(options: { preserveError?: boolean } = {}) {
 }
 
 function clearWorkbookState() {
-  workbook.value = null
   sheetColumns.value = {}
   sheetRows.value = {}
   selectedSheetName.value = null
@@ -675,29 +671,16 @@ async function onDrop(event: DragEvent) {
 async function parseWorkbook(selected: File) {
   parsing.value = true
   try {
-    const buffer = await selected.arrayBuffer()
-    const parsedWorkbook = XLSX.read(buffer, { type: "array" })
-    if (!parsedWorkbook.SheetNames.length) {
+    const preview = await signalSheetStore.previewImportSheet(selected)
+    if (!preview.sheets.length) {
       throw new Error("Workbook does not contain any worksheets.")
     }
 
     const columnsBySheet: Record<string, SheetColumn[]> = {}
     const rowsBySheet: Record<string, unknown[][]> = {}
-    parsedWorkbook.SheetNames.forEach(sheetName => {
-      const sheet = parsedWorkbook.Sheets[sheetName]
-      if (!sheet) {
-        columnsBySheet[sheetName] = []
-        rowsBySheet[sheetName] = []
-        return
-      }
-      const matrix = XLSX.utils.sheet_to_json(sheet, {
-        header: 1,
-        raw: false,
-        blankrows: false,
-        defval: null,
-      }) as unknown[][]
-      rowsBySheet[sheetName] = matrix
-      const headerRow = Array.isArray(matrix[0]) ? matrix[0] : []
+    preview.sheets.forEach(sheet => {
+      const sheetName = String(sheet.name || "Sheet")
+      const headerRow = Array.isArray(sheet.headers) ? sheet.headers : []
       const columns: SheetColumn[] = []
       headerRow.forEach((value, idx) => {
         const normalized = normalizeHeaderValue(value)
@@ -705,14 +688,27 @@ async function parseWorkbook(selected: File) {
           columns.push({ header: normalized, index: idx })
         }
       })
+
+      const orderedHeaders = columns.map(column => column.header)
+      const matrix: unknown[][] = orderedHeaders.length ? [orderedHeaders] : []
+      if (orderedHeaders.length) {
+        const parsedRows = Array.isArray(sheet.rows) ? sheet.rows : []
+        parsedRows.forEach(rawRow => {
+          const row = rawRow && typeof rawRow === "object" && !Array.isArray(rawRow)
+            ? (rawRow as Record<string, unknown>)
+            : {}
+          matrix.push(orderedHeaders.map(header => row[header] ?? null))
+        })
+      }
+
       columnsBySheet[sheetName] = columns
+      rowsBySheet[sheetName] = matrix
     })
 
     if (!Object.values(columnsBySheet).some(columns => columns.length)) {
       throw new Error("Unable to find any column headers. Make sure the first row contains column names.")
     }
 
-    workbook.value = parsedWorkbook
     sheetColumns.value = columnsBySheet
     sheetRows.value = rowsBySheet
     selectedColumnsBySheet.value = Object.fromEntries(
@@ -860,16 +856,6 @@ function normalizeHeaderValue(value: unknown): string {
   if (typeof value === "string") return value.trim()
   if (value instanceof Date) return value.toISOString()
   return String(value).trim()
-}
-
-function stripExtension(name: string) {
-  const lastDot = name.lastIndexOf(".")
-  return lastDot === -1 ? name : name.slice(0, lastDot)
-}
-
-function sanitizeSheetName(name: string) {
-  const cleaned = name.replace(/[:\\/?*\[\]]/g, "").trim() || "Sheet1"
-  return cleaned.slice(0, 31)
 }
 
 function sampleColumnValues(columnIndex: number | null, limit = 5): string[] {
@@ -1022,44 +1008,33 @@ async function buildPreparedImportPayload(): Promise<{ file: File; metadata: Sig
   }
   const normalizedMapping = Object.fromEntries(mappingEntries)
   const presetTypeMapping: Record<string, InternalSignalType> = Object.fromEntries(mappingEntries)
-  const filteredRows: unknown[][] = [
-    orderedColumns.map(column => column.header).concat(INTERNAL_TYPE_COLUMN_KEY),
-  ]
+
+  let matchedRows = 0
   for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
     const row = Array.isArray(rows[rowIndex]) ? rows[rowIndex] : []
     const normalized = normalizeTypeKey(row[typeColumnIndex.value])
     if (!normalized) continue
     const mappedType = normalizedMapping[normalized]
     if (!mappedType) continue
-    const filteredRow = orderedColumns.map(column => row[column.index] ?? null)
-    filteredRow.push(mappedType)
-    filteredRows.push(filteredRow)
+    matchedRows += 1
   }
-  if (filteredRows.length === 1) {
+  if (matchedRows === 0) {
     throw new Error("No rows match the selected type mapping.")
   }
-
-  const trimmedWorkbook = XLSX.utils.book_new()
-  const sanitizedName = sanitizeSheetName(selectedSheetName.value)
-  const newSheet = XLSX.utils.aoa_to_sheet(filteredRows)
-  XLSX.utils.book_append_sheet(trimmedWorkbook, newSheet, sanitizedName)
-  const buffer = XLSX.write(trimmedWorkbook, { bookType: "xlsx", type: "array" })
-  const suggestedName = `${stripExtension(fileName.value) || "signal-list"}-prepared.xlsx`
-  const preparedFile = new File([buffer], suggestedName, {
-    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  })
+  if (!file.value) {
+    throw new Error("Upload file before importing.")
+  }
 
   const metadata: SignalImportMeta = {
-    sheet_name: sanitizedName,
+    sheet_name: selectedSheetName.value,
     source_sheet_name: selectedSheetName.value,
     selected_columns: orderedColumns.map(column => column.header),
     terminal_column: terminalColumn.header,
     type_column: typeColumn.header,
     type_mapping: presetTypeMapping,
-    internal_type_column: INTERNAL_TYPE_COLUMN_KEY,
   }
 
-  return { file: preparedFile, metadata }
+  return { file: file.value, metadata }
 }
 
 watch(
