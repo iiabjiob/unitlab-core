@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, watch } from "vue"
+import { computed, ref, watch } from "vue"
 
-import type { Switchgear, SwitchgearBindingRole } from "@/types/switchgear"
+import type { Switchgear } from "@/types/switchgear"
 import { CHANNEL_TYPES, type ChannelType } from "@/types/channel"
 import { useChannelStore } from "@/stores/channelStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { useSwitchgearStore } from "@/stores/switchgearStore"
+import { useToastStore } from "@/stores/toastStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import { extractSourceRowFromSignalMetadata } from "@/pages/signals/utils/sourceColumns"
 import UiButton from "@/components/ui/UiButton.vue"
@@ -21,6 +23,8 @@ const emit = defineEmits<{
 const channelStore = useChannelStore()
 const signalSheetStore = useSignalSheetStore()
 const workspaceStore = useWorkspaceStore()
+const switchgearStore = useSwitchgearStore()
+const toastStore = useToastStore()
 
 type BindingRoleKey = "do_open" | "do_closed" | "di_open" | "di_close"
 
@@ -38,6 +42,20 @@ const GROUPS: Array<{ id: "do" | "di"; title: string; roles: BindingRoleKey[] }>
   { id: "do", title: "indication", roles: ["do_open", "do_closed"] },
   { id: "di", title: "control from BCU", roles: ["di_open", "di_close"] },
 ]
+
+const delayDraft = ref<Record<BindingRoleKey, number>>({
+  do_open: 0,
+  do_closed: 0,
+  di_open: 0,
+  di_close: 0,
+})
+
+const savingDelay = ref<Record<BindingRoleKey, boolean>>({
+  do_open: false,
+  do_closed: false,
+  di_open: false,
+  di_close: false,
+})
 
 function channelIdForRole(role: BindingRoleKey): number | null {
   const binding = props.switchgear.bindings.find(item => item.role === role)
@@ -109,6 +127,74 @@ function bindingLine(role: BindingRoleKey): string {
   return channelStore.resolveChannelFullLabel(channel)
 }
 
+function delayForRole(role: BindingRoleKey): number {
+  const binding = props.switchgear.bindings.find(item => item.role === role)
+  const delay = Number(binding?.delay_ms)
+  return Number.isFinite(delay) ? Math.max(0, Math.round(delay)) : 0
+}
+
+function showFeedbackDelay(role: BindingRoleKey): boolean {
+  return role === "di_open" || role === "di_close"
+}
+
+function syncDelayDraftFromSwitchgear() {
+  const next: Record<BindingRoleKey, number> = {
+    do_open: 0,
+    do_closed: 0,
+    di_open: 0,
+    di_close: 0,
+  }
+
+  props.switchgear.bindings.forEach((binding) => {
+    const role = binding.role as BindingRoleKey
+    if (!(role in next)) return
+    const delay = Number(binding.delay_ms)
+    next[role] = Number.isFinite(delay) ? Math.max(0, Math.round(delay)) : 0
+  })
+
+  delayDraft.value = next
+}
+
+async function saveDelay(role: BindingRoleKey) {
+  if (!showFeedbackDelay(role)) return
+
+  const nextDelay = Number.isFinite(delayDraft.value[role])
+    ? Math.max(0, Math.round(delayDraft.value[role]))
+    : 0
+
+  delayDraft.value[role] = nextDelay
+
+  if (nextDelay === delayForRole(role)) {
+    return
+  }
+
+  savingDelay.value = {
+    ...savingDelay.value,
+    [role]: true,
+  }
+
+  try {
+    const bindingsPayload = props.switchgear.bindings.map(binding => ({
+      role: binding.role,
+      channel_id: binding.channel_id,
+      delay_ms: binding.role === role ? nextDelay : (Number.isFinite(binding.delay_ms as number) ? Math.max(0, Math.round(Number(binding.delay_ms))) : 0),
+    }))
+
+    await switchgearStore.updateField(props.switchgear.id, {
+      bindings: bindingsPayload,
+    })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update feedback delay"
+    toastStore.error(message)
+    syncDelayDraftFromSwitchgear()
+  } finally {
+    savingDelay.value = {
+      ...savingDelay.value,
+      [role]: false,
+    }
+  }
+}
+
 const hasAnyBinding = computed(() => (
   GROUPS.some(group => group.roles.some(role => channelIdForRole(role) !== null))
 ))
@@ -127,6 +213,14 @@ watch(
     )
   },
   { immediate: true },
+)
+
+watch(
+  () => props.switchgear.bindings,
+  () => {
+    syncDelayDraftFromSwitchgear()
+  },
+  { immediate: true, deep: true },
 )
 </script>
 
@@ -174,6 +268,24 @@ watch(
               :title="signalLine(role)"
             >
               {{ signalLine(role) }}
+            </div>
+            <div
+              v-if="showFeedbackDelay(role)"
+              class="mt-1 flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300"
+            >
+              <span>Feedback delay</span>
+              <input
+                type="number"
+                min="0"
+                step="50"
+                class="w-24 rounded border border-neutral-300 bg-white px-2 py-1 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                :name="`summary-feedback-delay-${role}`"
+                :value="delayDraft[role]"
+                :disabled="savingDelay[role]"
+                @input="event => { delayDraft[role] = Number((event.target as HTMLInputElement).value) }"
+                @change="() => void saveDelay(role)"
+              />
+              <span>ms</span>
             </div>
           </div>
         </div>

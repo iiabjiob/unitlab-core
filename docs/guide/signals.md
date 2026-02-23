@@ -43,28 +43,32 @@ If needed:
 
 1. In **Worksheet**, choose the sheet to import.
 2. In **Columns**, select fields you want to keep.
-3. Use **Select all** or **Clear** for fast selection.
-4. Click **Next**.
+3. Make sure the **terminal / terminal block / cabinet terminal** column is included (if present in the project file).
+4. Use **Select all** or **Clear** for fast selection.
+5. Click **Next**.
 
 Required outcome for this step:
 - A worksheet is selected.
 - At least one column is selected.
+- Terminal/cabinet terminal column is selected when available (recommended for cable schedule export).
 
 ### Step 3 — Type mapping
 
 1. In **Type column**, choose the vendor column that contains type codes.
-2. For each detected vendor value, choose an internal type:
+2. (Recommended) Confirm/select the **terminal / terminal block** source column used for cabinet wiring reference (if your import flow exposes this mapping in this step).
+3. For each detected vendor value, choose an internal type:
 	- Digital input (DI)
 	- Digital output (DO)
 	- Analog input (AI)
 	- Analog output (AO)
 	- or **Skip**
-3. (Optional) Fill **Save as preset**.
-4. Click **Import**.
+4. (Optional) Fill **Save as preset**.
+5. Click **Import**.
 
 Important behavior:
 - Rows mapped to **Skip** are not imported.
 - If nothing is mapped, import is blocked.
+- Presets should include your terminal-column selection so the same project format can be imported faster next time.
 
 ### Allocate channels after import
 
@@ -89,11 +93,12 @@ Important behavior:
 
 Expected result:
 - Success toast with processed/failed summary.
-- **Last tested** updates for successful rows with precise per-signal completion time.
+- **Last tested** updates in UnitLab for successful rows with precise per-signal completion time (local test record).
 
 Technical note:
 - Test run is executed by backend worker job (not browser loop).
 - Progress and completion are delivered over WebSocket job events.
+- **Last tested** is a UnitLab-side timestamp and should be compared with the target SCADA/IED/controller view for final validation.
 
 ### Create switchgears from selected signals
 
@@ -106,6 +111,7 @@ Technical note:
 ### Export outputs
 
 - **Export Cable Schedule**: cable allocation export.
+- **Export Cable Schedule** is most useful when the signal sheet includes a terminal-block/cabinet-terminal column selected during import.
 - **Export Report**: signal report with direction, unit/channel, and last tested timestamp.
 
 ## Common issues

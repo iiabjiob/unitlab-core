@@ -15,6 +15,7 @@ export const useTestedAtRealtimeStore = defineStore("testedAtRealtimeStore", () 
   const activeWorkspacePatchedSignalIds = ref<number[]>([])
 
   let flushFrame: number | null = null
+  let flushMicrotaskScheduled = false
 
   function normalizeWorkspaceId(workspaceId: number | null | undefined): number | null {
     const parsed = Number(workspaceId)
@@ -33,15 +34,46 @@ export const useTestedAtRealtimeStore = defineStore("testedAtRealtimeStore", () 
     return map
   }
 
-  function scheduleFlush() {
+  function scheduleMicrotaskFlush() {
+    if (flushMicrotaskScheduled) {
+      return
+    }
+    flushMicrotaskScheduled = true
+    const run = () => {
+      flushMicrotaskScheduled = false
+      flushPendingPatches()
+    }
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(run)
+      return
+    }
+    Promise.resolve().then(run)
+  }
+
+  function scheduleRafFlush() {
     if (flushFrame !== null) {
       return
     }
-
     flushFrame = requestAnimationFrame(() => {
       flushFrame = null
       flushPendingPatches()
     })
+  }
+
+  function scheduleFlush(mode: "raf" | "microtask" = "raf") {
+    if (mode === "microtask") {
+      // Upgrade existing RAF flush to same-tick flush when realtime UI feedback matters.
+      if (flushFrame !== null) {
+        cancelAnimationFrame(flushFrame)
+        flushFrame = null
+      }
+      scheduleMicrotaskFlush()
+      return
+    }
+    if (flushMicrotaskScheduled) {
+      return
+    }
+    scheduleRafFlush()
   }
 
   function flushPendingPatches() {
@@ -81,6 +113,7 @@ export const useTestedAtRealtimeStore = defineStore("testedAtRealtimeStore", () 
   function applyPatch(
     workspaceIdRaw: number | null | undefined,
     testedAtBySignal: Record<number, string> | Record<string, string>,
+    options?: { flush?: "raf" | "microtask" },
   ) {
     const workspaceId = normalizeWorkspaceId(workspaceIdRaw)
     if (workspaceId === null) {
@@ -114,7 +147,7 @@ export const useTestedAtRealtimeStore = defineStore("testedAtRealtimeStore", () 
       return
     }
 
-    scheduleFlush()
+    scheduleFlush(options?.flush ?? "raf")
   }
 
   function getTestedAt(signalIdRaw: number | null | undefined, workspaceIdRaw?: number | null): string | null {
@@ -162,6 +195,7 @@ export const useTestedAtRealtimeStore = defineStore("testedAtRealtimeStore", () 
       cancelAnimationFrame(flushFrame)
       flushFrame = null
     }
+    flushMicrotaskScheduled = false
   }
 
   return {

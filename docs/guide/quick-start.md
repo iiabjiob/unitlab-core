@@ -4,11 +4,17 @@
 
 Use this quick start to move from login to first safe operations in Signals, Switchgears, and Instructions.
 
+For the full field engineer workflow (Wi-Fi connection -> unit identification -> signal import -> allocation -> test -> SCADA comparison), use:
+- [Field Workflow (Engineer)](/guide/field-workflow)
+
 ## Step 1 — Open the system and verify connection
 
-1. Open the web interface.
-2. Confirm the system status indicator is healthy.
-3. If status is degraded/offline, stop and resolve connection issues first.
+1. Connect to the UnitLab Wi-Fi AP:
+   - SSID: `unitlab-core-ABCD`
+   - Password: `pwd!ABCD` (`ABCD` matches the AP suffix)
+2. Open the web interface at `http://10.42.0.1` (default UnitLab core / RPi5 AP address).
+3. Confirm the system status indicator is healthy.
+4. If status is degraded/offline, stop and resolve connection issues first.
 
 Expected result:
 - Main UI is loaded.
@@ -51,6 +57,7 @@ Expected result:
 ## Next pages
 
 - For signal import/allocation: [Signals](/guide/signals)
+- For full cabinet verification workflow: [Field Workflow (Engineer)](/guide/field-workflow)
 - For command control: [Switchgear](/guide/switchgears)
 - For repeatable procedures: [Instructions (Sequences)](/guide/sequences)
 - For incident handling: [Troubleshooting](/guide/troubleshooting)

@@ -15,6 +15,7 @@ export default defineConfig({
         text: "Quick Start",
         items: [
           { text: "Getting Started", link: "/guide/quick-start" },
+          { text: "Field Workflow (Engineer)", link: "/guide/field-workflow" },
           { text: "Interface", link: "/guide/interface" },
         ],
       },

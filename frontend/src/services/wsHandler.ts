@@ -95,7 +95,7 @@ function applySignalJobEvent(
   const jobId = String(jobEvent.job_id)
   const isTerminal = isTerminalJobStatus(jobEvent.status)
 
-  testedAtRealtimeStore.applyPatch(jobEvent.workspace_id, testedAtPatchRecord)
+  testedAtRealtimeStore.applyPatch(jobEvent.workspace_id, testedAtPatchRecord, { flush: "microtask" })
 
   if (isTerminal) {
     const pendingForJob = pendingTestedAtPatchByJobId.get(jobId)

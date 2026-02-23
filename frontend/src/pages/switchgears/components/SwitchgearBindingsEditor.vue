@@ -163,10 +163,6 @@ function channelValue(role: BindingRoleKey): number | null {
   return roleBinding(role)?.channel_id ?? null
 }
 
-function delayFor(role: BindingRoleKey): number {
-  return roleBinding(role)?.delay_ms ?? 0
-}
-
 function patchRole(role: BindingRoleKey, patch: Partial<EditableBinding>) {
   bindingsDraft.value = bindingsDraft.value.map((binding) => (
     binding.role === role ? { ...binding, ...patch } : binding
@@ -187,12 +183,6 @@ function handleChannelChange(role: BindingRoleKey, channelId: number | null) {
 
 function handleSignalChange(role: BindingRoleKey, payload: { signalId: number | null; signalKey: string | null }) {
   signalSelectionByRole.value[role] = payload
-}
-
-function handleDelayChange(role: BindingRoleKey, value: number) {
-  const safeValue = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0
-  patchRole(role, { delay_ms: safeValue })
-  void persistBindingsDraft()
 }
 
 function excludeIdsForRole(role: BindingRoleKey): number[] {
@@ -555,20 +545,6 @@ watch(
                 @update:channelId="value => handleChannelChange(role, value)"
                 @update:signal="value => handleSignalChange(role, value)"
               />
-
-              <div class="flex items-center gap-2 text-xs text-neutral-500">
-                <span class="uppercase tracking-wide text-[11px]">Feedback delay</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="50"
-                  class="w-24 rounded border border-neutral-300 bg-white px-2 py-1 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
-                  :name="`binding-delay-${role}`"
-                  :value="delayFor(role)"
-                  @change="event => handleDelayChange(role, Number((event.target as HTMLInputElement).value))"
-                />
-                <span>ms</span>
-              </div>
             </div>
           </div>
         </section>

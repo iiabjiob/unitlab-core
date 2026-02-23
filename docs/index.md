@@ -18,9 +18,10 @@ This is a practical guide to everyday system operations in plain language.
 
 ### I am an Engineer
 
-1. Start with [Signals](/guide/signals) to import and allocate signal lists.
-2. Continue with [Instructions (Sequences)](/guide/sequences) to build repeatable procedures.
-3. Keep [Interface](/guide/interface) open for cross-module navigation.
+1. Start with [Field Workflow (Engineer)](/guide/field-workflow) for the full cabinet verification flow.
+2. Use [Signals](/guide/signals) for import/allocation details.
+3. Continue with [Instructions (Sequences)](/guide/sequences) to build repeatable procedures.
+4. Keep [Interface](/guide/interface) open for cross-module navigation.
 
 ### I need incident recovery now
 
@@ -30,8 +31,9 @@ This is a practical guide to everyday system operations in plain language.
 ## Standard learning path
 
 1. Open [Getting Started](/guide/quick-start).
-2. Read [Interface](/guide/interface).
-3. Go to the module you need:
+2. Read [Field Workflow (Engineer)](/guide/field-workflow).
+3. Read [Interface](/guide/interface).
+4. Go to the module you need:
    - [Signals](/guide/signals)
    - [Switchgear](/guide/switchgears)
    - [Instructions (Sequences)](/guide/sequences)
