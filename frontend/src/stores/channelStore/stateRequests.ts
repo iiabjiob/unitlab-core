@@ -66,6 +66,15 @@ export function createChannelStateRequests(params: Params) {
       if (!silent) {
         params.logger.info(`Requested DI diagnostics from ${device.unit_id}`)
       }
+    } else if (includeDiagnostics && lowerType === "ao") {
+      ws.send({
+        action: WSAction.GET_STATES,
+        unit_id: device.unit_id,
+        mode: ReqStateMode.REQ_DIAG_AO_FLOAT,
+      } satisfies RequestStateMessage)
+      if (!silent) {
+        params.logger.info(`Requested AO diagnostics from ${device.unit_id}`)
+      }
     }
   }
 

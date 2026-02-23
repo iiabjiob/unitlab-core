@@ -36,7 +36,6 @@ class MqttManager:
         if subscriptions:
             for topic in subscriptions:
                 client.subscribe(topic)
-                logger.info(f"📡 Subscribing to topic: {topic}")
 
         logger.info(f"✅ MQTT client '{client_id}' connected and subscribed.")
         cls._instance = client

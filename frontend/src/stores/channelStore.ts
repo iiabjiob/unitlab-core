@@ -235,6 +235,7 @@ export const useChannelStore = defineStore("channelStore", () => {
     enqueueAction,
     enterDoPendingState,
     scheduleDoStateRefreshIfPending,
+    requestStates,
     registerAoAction,
     pushDeviceLog,
     toDigitalLabel,

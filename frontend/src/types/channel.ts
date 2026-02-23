@@ -65,6 +65,13 @@ export interface DiChannelDiagnostics {
   latchedCause: boolean
 }
 
+export type AoChannelQuality = "valid" | "pending" | "fault"
+
+export interface AoChannelDiagnostics {
+  quality: AoChannelQuality
+  hasError: boolean
+}
+
 export interface DiChannel extends ChannelBase {
   type: "di"
   state: boolean
@@ -81,6 +88,7 @@ export interface DoChannel extends ChannelBase {
 export interface AoChannel extends ChannelBase {
   type: "ao"
   state: number
+  diagnostics?: AoChannelDiagnostics
 }
 
 export type Channel = DiChannel | DoChannel | AoChannel

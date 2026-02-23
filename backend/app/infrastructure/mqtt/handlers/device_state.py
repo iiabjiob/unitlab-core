@@ -39,6 +39,8 @@ async def handle_device_state(topic: str, payload: bytes, unit_id: str):
         decoded = bit_decode.state_latched(body)
     elif hdr.mode == State.STATE_SINGLE_FLOAT:
         decoded = float_decode.state_single(body)
+    elif hdr.mode == State.DIAG_AO_FLOAT:
+        decoded = float_decode.diag_all(body)
     else:
         decoded = None
 
@@ -55,4 +57,3 @@ async def handle_device_state(topic: str, payload: bytes, unit_id: str):
     logger.debug(f"📥 IN ← {unit_id}: {event.model_dump()}")
 
     await WsEventPublisher.publish(event)
-

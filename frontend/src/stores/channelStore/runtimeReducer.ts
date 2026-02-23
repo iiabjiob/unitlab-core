@@ -2,9 +2,11 @@ import type { Ref } from "vue"
 
 import { formatAoValue } from "@/utils/channel"
 import {
+  applyAoDiagnostics,
   applyDeltaState,
   applyDiDiagnostics,
   applyDoDiagnostics,
+  type AoDiagnosticsBitmasks,
   type DiDiagnosticsBitmasks,
   type DoDiagnosticsBitmasks,
 } from "@/stores/utils/diagnostics"
@@ -13,7 +15,7 @@ import {
   type DeviceRespEvent,
   type DeviceStateEvent,
 } from "@/types/ws/events"
-import { CHANNEL_TYPES, type Channel, type DiChannel, type DoChannel } from "@/types/channel"
+import { CHANNEL_TYPES, type AoChannel, type Channel, type DiChannel, type DoChannel } from "@/types/channel"
 
 type DeviceLike = {
   id: number
@@ -117,6 +119,15 @@ export function createChannelRuntimeReducer(params: Params) {
     return count
   }
 
+  function summarizeAoDiagnostics(diag: AoDiagnosticsBitmasks) {
+    return {
+      valid: countBits(diag.valid_mask),
+      pending: countBits(diag.pending_mask),
+      fault: countBits(diag.fault_mask),
+      error: countBits(diag.error_mask),
+    }
+  }
+
   function applyFloatState(deviceId: number, chIndex: number, value: number): { changed: boolean; actionId?: string } {
     const ch = params.channelByDeviceAndIndex(deviceId, chIndex)
     if (!ch || ch.type !== CHANNEL_TYPES.AO) {
@@ -215,6 +226,27 @@ export function createChannelRuntimeReducer(params: Params) {
         params.pushDeviceLog(device.id, {
           type: "state",
           message: `Diagnostics updated (${summary})`,
+        })
+        break
+      }
+      case StateMode.DIAG_AO_FLOAT: {
+        const diagPayload: AoDiagnosticsBitmasks = {
+          valid_mask: Number(event.payload.valid_mask) >>> 0,
+          pending_mask: Number(event.payload.pending_mask) >>> 0,
+          fault_mask: Number(event.payload.fault_mask) >>> 0,
+          error_mask: Number(event.payload.error_mask) >>> 0,
+        }
+        const aoChannels = params.channelsByDevice(device.id).filter(
+          ch => ch.type === CHANNEL_TYPES.AO,
+        ) as AoChannel[]
+        const changes = applyAoDiagnostics(aoChannels, diagPayload)
+        if (!changes.length) {
+          break
+        }
+        const summary = summarizeAoDiagnostics(diagPayload)
+        params.pushDeviceLog(device.id, {
+          type: "state",
+          message: `AO diagnostics updated (valid=${summary.valid}, pending=${summary.pending}, fault=${summary.fault}, error=${summary.error})`,
         })
         break
       }

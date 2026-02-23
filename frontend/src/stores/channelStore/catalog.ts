@@ -3,7 +3,7 @@ import type { Ref } from "vue"
 import { ChannelsAPI } from "@/api/channels.api"
 import { DevicesAPI } from "@/api/devices.api"
 import { normalizeChannel, ensureChannel } from "@/utils/channel"
-import { CHANNEL_TYPES, type Channel, type ChannelDto, type ChannelListDto, type ChannelType, type DiChannel, type DoChannel, type DoChannelUiState } from "@/types/channel"
+import { CHANNEL_TYPES, type AoChannel, type Channel, type ChannelDto, type ChannelListDto, type ChannelType, type DiChannel, type DoChannel, type DoChannelUiState } from "@/types/channel"
 
 type LoggerLike = {
   info: (message: string) => void
@@ -89,11 +89,12 @@ export function createChannelCatalog(params: Params) {
     }
 
     if (next.type === CHANNEL_TYPES.AO && previous.type === CHANNEL_TYPES.AO) {
-      const nextAo = next
-      const previousAo = previous
+      const nextAo = next as AoChannel
+      const previousAo = previous as AoChannel
       return {
         ...nextAo,
         state: previousAo.state,
+        diagnostics: previousAo.diagnostics ? { ...previousAo.diagnostics } : undefined,
       }
     }
 

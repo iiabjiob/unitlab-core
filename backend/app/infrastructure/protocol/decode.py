@@ -16,6 +16,7 @@ from .packet_structures import (
     CmdSetPairBit,
     CmdSetPulseBit,
     StateSingleFloat,
+    DiagAllAo,
     CmdSetSingleFloat,
     Resp,
     Register,
@@ -146,6 +147,17 @@ class afloat:
             return None
         value = struct.unpack(">f", data[1:5])[0]
         return StateSingleFloat(ch=data[0], value=value)
+
+    @staticmethod
+    def diag_all(data: bytes) -> Optional[DiagAllAo]:
+        if len(data) != 16:
+            return None
+        return DiagAllAo(
+            valid_mask=endian.read_u32_be(data, 0),
+            pending_mask=endian.read_u32_be(data, 4),
+            fault_mask=endian.read_u32_be(data, 8),
+            error_mask=endian.read_u32_be(data, 12),
+        )
 
     @staticmethod
     def cmd_set_single(data: bytes) -> Optional[CmdSetSingleFloat]:

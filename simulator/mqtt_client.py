@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import random
+import time
 import signal
 import contextlib
 from dataclasses import dataclass
@@ -31,6 +33,7 @@ OnMessageHook = Callable[[str, bytes], Awaitable[None]]
 
 
 _HEARTBEAT_MIN_INTERVAL = 0.5
+_HEARTBEAT_DIAG_INTERVAL = 60.0
 _FLAKY_DEVICE_RATIO = 0.05
 _FLAKY_HEARTBEAT_OUTAGE_PROB = 0.15
 _FLAKY_HEARTBEAT_BACKOFF_RANGE = (2.0, 10.0)
@@ -179,6 +182,10 @@ def topic_heartbeat(unit_id: str) -> str:
     return f"{unit_id}/h"
 
 
+def topic_heartbeat_diag(unit_id: str) -> str:
+    return f"{unit_id}/hd"
+
+
 def topic_state(unit_id: str) -> str:
     return f"{unit_id}/s"
 
@@ -243,6 +250,10 @@ class SimulatedDeviceBase:
         self._is_flaky_device = self._rng.random() < self.behavior.flaky_device_ratio
         heartbeat_base = max(self.behavior.heartbeat, _HEARTBEAT_MIN_INTERVAL)
         self._heartbeat_offset = self._rng.uniform(0.0, heartbeat_base)
+        self._heartbeat_started_at = time.monotonic()
+        self._heartbeat_fast_seq = 0
+        self._heartbeat_diag_seq = 0
+        self._heartbeat_diag_last_sent_at: float | None = None
 
     # --- lifecycle ------------------------------------------------------
     async def run(self) -> None:
@@ -368,11 +379,80 @@ class SimulatedDeviceBase:
                     )
                     await asyncio.sleep(backoff)
                     continue
-                await self._publish_packet(topic_heartbeat(self.unit_id), Sys.HEARTBEAT, b"")
+                await self._publish_heartbeat_telemetry()
                 jitter = self._rng.uniform(-0.25, 0.35) * interval
                 await asyncio.sleep(max(_HEARTBEAT_MIN_INTERVAL, interval + jitter))
         except asyncio.CancelledError:  # pragma: no cover - cooperative cancellation
             pass
+
+    async def _publish_heartbeat_telemetry(self) -> None:
+        uptime_s = max(0, int(time.monotonic() - self._heartbeat_started_at))
+
+        self._heartbeat_fast_seq += 1
+        fast_payload = {
+            "kind": "fast",
+            "seq": self._heartbeat_fast_seq,
+            "state": 1,
+            "degraded": 0,
+            "faults": 0,
+            "up_s": uptime_s,
+            "mqtt": 1 if self._connected.is_set() else 0,
+            "mem": {"free": 180000 + self._rng.randint(-5000, 5000)},
+            "last_comp": "SIM",
+            "last_reason": "ok",
+            "last_ms": uptime_s * 1000,
+        }
+        self._mqtt.publish(topic_heartbeat(self.unit_id), json.dumps(fast_payload, separators=(",", ":")).encode("utf-8"))
+
+        now = time.monotonic()
+        if self._heartbeat_diag_last_sent_at is None or (now - self._heartbeat_diag_last_sent_at) >= _HEARTBEAT_DIAG_INTERVAL:
+            self._heartbeat_diag_seq += 1
+            diag_payload = {
+                "kind": "diag",
+                "seq": self._heartbeat_diag_seq,
+                "state": 1,
+                "degraded": 0,
+                "faults": 0,
+                "up_s": uptime_s,
+                "last_comp": "SIM",
+                "last_reason": "ok",
+                "last_ms": uptime_s * 1000,
+                "proto": {
+                    "short": 0,
+                    "payload": 0,
+                    "truncated": 0,
+                    "version": 0,
+                    "no_handler": 0,
+                    "dispatched": 0,
+                },
+                "mqtt_in": {
+                    "enq": 0,
+                    "disp": 0,
+                    "ovf": 0,
+                    "large": 0,
+                    "noq": 0,
+                    "depth": 0,
+                    "depth_max": 0,
+                },
+                "mem": {
+                    "free": 180000 + self._rng.randint(-5000, 5000),
+                    "min": 170000 + self._rng.randint(-5000, 5000),
+                    "largest": 90000 + self._rng.randint(-4000, 4000),
+                },
+                "reset": {
+                    "code": 1,
+                    "label": "simulator",
+                    "boot": 1,
+                    "hist": 1,
+                },
+                "tasks": {"stale": 0},
+                "stack": [
+                    {"task": "StateTask", "min_words": 1024, "last_seen_ms": uptime_s * 1000},
+                    {"task": "HeartbeatTask", "min_words": 768, "last_seen_ms": uptime_s * 1000},
+                ],
+            }
+            self._mqtt.publish(topic_heartbeat_diag(self.unit_id), json.dumps(diag_payload, separators=(",", ":")).encode("utf-8"))
+            self._heartbeat_diag_last_sent_at = now
 
     async def _simulate_reconnect(self) -> None:
         async with self._lock:

@@ -106,6 +106,13 @@ class StateSingleFloat(BaseModel):
     value: float  # big-endian encoded float
 
 
+class DiagAllAo(BaseModel):
+    valid_mask: int
+    pending_mask: int
+    fault_mask: int
+    error_mask: int
+
+
 
 class CmdSetSingleFloat(BaseModel):
     ch: int

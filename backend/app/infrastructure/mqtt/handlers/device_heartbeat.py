@@ -1,4 +1,7 @@
+import json
 import time
+from typing import Any
+
 from app.infrastructure.mqtt.handler_registry import registry
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.mqtt import topics
@@ -12,13 +15,57 @@ from app.core.logger import get_logger
 settings = get_settings()
 logger = get_logger("mqtt")
 
+
+def _heartbeat_kind_from_topic(topic: str) -> str | None:
+    if topic.endswith('/hd'):
+        return 'diag'
+    if topic.endswith('/h'):
+        return 'fast'
+    return None
+
+
+def _heartbeat_redis_key(unit_id: str, kind: str | None) -> str | None:
+    if kind == 'fast':
+        return f"device:{unit_id}:hb_fast"
+    if kind == 'diag':
+        return f"device:{unit_id}:hb_diag"
+    return None
+
+
+def _parse_heartbeat_payload(payload: bytes) -> dict[str, Any] | None:
+    if not payload:
+        return None
+    try:
+        decoded = json.loads(payload.decode('utf-8'))
+    except Exception as exc:
+        logger.warning("Invalid heartbeat JSON payload: %s", exc)
+        return None
+    if not isinstance(decoded, dict):
+        logger.warning("Unexpected heartbeat payload type: %s", type(decoded).__name__)
+        return None
+    return decoded
+
+
+@registry.mqtt_handler(topics.DEVICE_HEARTBEAT_DIAG)
 @registry.mqtt_handler(topics.DEVICE_HEARTBEAT)
 async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
     start_total = time.perf_counter()
     ts = int(time.time() * 1000)
-    logger.debug(f"📥 IN ← {unit_id}: heartbeat @ {ts}")
+    hb_kind = _heartbeat_kind_from_topic(topic)
+    logger.debug(f"📥 IN ← {unit_id}: heartbeat ({hb_kind or 'unknown'}) @ {ts}")
 
     redis = RedisManager.get_instance()
+
+    heartbeat_payload = _parse_heartbeat_payload(payload)
+    heartbeat_fast = heartbeat_payload if hb_kind == 'fast' else None
+    heartbeat_diag = heartbeat_payload if hb_kind == 'diag' else None
+
+    telemetry_set_latency = 0.0
+    telemetry_key = _heartbeat_redis_key(unit_id, hb_kind)
+    if telemetry_key and heartbeat_payload is not None:
+        start_telemetry_set = time.perf_counter()
+        await redis.set(telemetry_key, json.dumps(heartbeat_payload, separators=(",", ":")))
+        telemetry_set_latency = (time.perf_counter() - start_telemetry_set) * 1000
 
     # Update last_seen (this key uses TTL)
     start_redis_touch = time.perf_counter()
@@ -50,18 +97,22 @@ async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
         start_status_set = time.perf_counter()
         await redis.set(f"device:{unit_id}:status", "online")
         status_set_latency = (time.perf_counter() - start_status_set) * 1000
-        
-        event = DeviceHeartbeatEvent(
-                unit_id=unit_id,
-                status="online",
-                last_seen=ts,
-            )
-        start_ws_publish = time.perf_counter()
-        await WsEventPublisher.publish(event)
-        ws_publish_latency = (time.perf_counter() - start_ws_publish) * 1000
 
+    event = DeviceHeartbeatEvent(
+        unit_id=unit_id,
+        status="online",
+        last_seen=ts,
+        heartbeat_kind=hb_kind,
+        heartbeat_fast=heartbeat_fast,
+        heartbeat_diag=heartbeat_diag,
+    )
+    start_ws_publish = time.perf_counter()
+    await WsEventPublisher.publish(event)
+    ws_publish_latency = (time.perf_counter() - start_ws_publish) * 1000
+
+    if transitioned_online:
         logger.info(f"Device {unit_id} came online")
-        
+
         # Request fresh device info and states
         start_enqueue_scan = time.perf_counter()
         await enqueue_scan_devices(correlation_id=0, unit_id=unit_id)
@@ -70,7 +121,9 @@ async def handle_device_heartbeat(topic: str, payload: bytes, unit_id: str):
     total_latency = (time.perf_counter() - start_total) * 1000
     logger.debug(
         f"[HBRT] {unit_id} | "
+        f"kind={hb_kind or '-'}, "
         f"touch={redis_touch_latency:.1f} ms, "
+        f"telemetry_set={telemetry_set_latency:.1f} ms, "
         f"sadd={redis_sadd_latency:.1f} ms, "
         f"status_get={status_get_latency:.1f} ms, "
         f"transition={'yes' if transitioned_online else 'no'}, "

@@ -15,6 +15,7 @@ type LoggerLike = {
 }
 
 type DigitalStableLabel = "ON" | "OFF"
+type RequestStatesFn = (deviceId: number, options?: { includeDiagnostics?: boolean; silent?: boolean }) => void
 
 type ChannelLogPayload = {
   type: "cmd" | "state" | "error"
@@ -31,6 +32,7 @@ type Params = {
   enqueueAction: (deviceId: number) => string
   enterDoPendingState: (channel: DoChannel, target: boolean, actionId?: string) => void
   scheduleDoStateRefreshIfPending: (deviceId: number, commandIssuedAt: number) => void
+  requestStates: RequestStatesFn
   registerAoAction: (deviceId: number, chIndex: number, actionId: string) => void
   pushDeviceLog: (deviceId: number, entry: ChannelLogPayload, actionId?: string) => void
   toDigitalLabel: (value: unknown) => DigitalStableLabel
@@ -199,6 +201,11 @@ export function createChannelTransportActions(params: Params) {
       ch: chIndex,
       value,
     } satisfies SetAoCommandMessage)
+    // AO value and diagnostics are separate frames; pull both after the command to avoid
+    // showing a stale number without the corresponding quality/fault state.
+    setTimeout(() => {
+      params.requestStates(device.id, { includeDiagnostics: true, silent: true })
+    }, 220)
     const aoValue = formatAoValue(value)
     params.logger.info(`➡️ AO cmd ${device.unit_id} ch=${chIndex} → ${aoValue} mA`)
 

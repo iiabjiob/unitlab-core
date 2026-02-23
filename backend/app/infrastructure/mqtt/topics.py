@@ -1,6 +1,7 @@
 DEVICE_STATE     = "+/s"
 DEVICE_REQ_STATE = "+/q"
 DEVICE_HEARTBEAT = "+/h"
+DEVICE_HEARTBEAT_DIAG = "+/hd"
 DEVICE_CMD       = "+/c"
 DEVICE_RESP      = "+/r"
 DEVICE_INFO      = "+/i"
@@ -10,6 +11,7 @@ DEVICE_SCAN      = "scan"
 CORE_TOPICS = [
     DEVICE_STATE,
     DEVICE_HEARTBEAT,
+    DEVICE_HEARTBEAT_DIAG,
     DEVICE_RESP,
     DEVICE_REGISTER,
 ]
@@ -28,6 +30,9 @@ def register(unit_id: str) -> str:
 
 def heartbeat(unit_id: str) -> str:
     return f"{unit_id}/h"
+
+def heartbeat_diag(unit_id: str) -> str:
+    return f"{unit_id}/hd"
 
 def state(unit_id: str) -> str:
     return f"{unit_id}/s"

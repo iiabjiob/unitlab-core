@@ -29,17 +29,26 @@
       />
 
       <!-- AO input -->
-      <input
-        v-else-if="effectiveType === 'ao'"
-        type="number"
-        :id="`device-channel-ao-${channel.id}`"
-        :name="`device-channel-ao-${channel.id}`"
-        class="w-16 px-1 py-0.5 text-xs rounded border border-neutral-600
-               bg-neutral-900 text-neutral-200"
-        :disabled="disabled"
-        :value="channel.state"
-        @change="onAoChange"
-      />
+      <div v-else-if="effectiveType === 'ao'" class="flex items-center gap-1.5">
+        <input
+          type="number"
+          :id="`device-channel-ao-${channel.id}`"
+          :name="`device-channel-ao-${channel.id}`"
+          class="w-16 px-1 py-0.5 text-xs rounded border border-neutral-600
+                 bg-neutral-900 text-neutral-200"
+          :disabled="disabled"
+          :value="channel.state"
+          @change="onAoChange"
+        />
+        <span
+          v-if="aoStatusClass"
+          class="inline-flex items-center rounded px-1 py-0.5 text-[10px] font-medium border"
+          :class="aoStatusClass"
+          :title="aoStatusTitle"
+        >
+          {{ aoStatusLabel }}
+        </span>
+      </div>
 
       <!-- Label -->
       <div class="text-xs text-neutral-700 dark:text-neutral-300">
@@ -53,7 +62,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue"
-import type { Channel, DiChannel, DoChannel } from "@/types/channel"
+import type { AoChannel, Channel, DiChannel, DoChannel } from "@/types/channel"
 
 const props = withDefaults(defineProps<{
   channel: Channel
@@ -92,6 +101,10 @@ const diChannel = computed<DiChannel | null>(() => (
   effectiveType.value === "di" && props.channel.type === "di" ? props.channel : null
 ))
 
+const aoChannel = computed<AoChannel | null>(() => (
+  effectiveType.value === "ao" && props.channel.type === "ao" ? props.channel : null
+))
+
 const diAlertActive = computed(() => {
   const diag = diChannel.value?.diDiagnostics
   if (!diag) {
@@ -126,6 +139,41 @@ const doControlClass = computed(() => {
     return "bg-yellow-400/80 border-yellow-500 text-yellow-900"
   }
   return "bg-neutral-300 dark:bg-neutral-700 border-neutral-600 hover:bg-neutral-600"
+})
+
+const aoStatus = computed(() => aoChannel.value?.diagnostics?.quality)
+const aoHasError = computed(() => Boolean(aoChannel.value?.diagnostics?.hasError))
+
+const aoStatusLabel = computed(() => {
+  if (aoStatus.value === "valid") return "OK"
+  if (aoStatus.value === "pending") return "PEND"
+  if (aoStatus.value === "fault") return "FAULT"
+  return ""
+})
+
+const aoStatusClass = computed(() => {
+  if (!aoStatus.value) {
+    return ""
+  }
+  if (aoStatus.value === "valid") {
+    return aoHasError.value
+      ? "border-amber-500 text-amber-200 bg-amber-900/40"
+      : "border-emerald-500 text-emerald-200 bg-emerald-900/40"
+  }
+  if (aoStatus.value === "pending") {
+    return "border-yellow-500 text-yellow-100 bg-yellow-900/50 animate-pulse"
+  }
+  return "border-red-500 text-red-100 bg-red-900/50 animate-pulse"
+})
+
+const aoStatusTitle = computed(() => {
+  if (!aoStatus.value) {
+    return "AO diagnostics unavailable"
+  }
+  if (aoHasError.value) {
+    return `AO ${aoStatus.value.toUpperCase()} (backend error latched)`
+  }
+  return `AO ${aoStatus.value.toUpperCase()}`
 })
 
 function onToggleClick() {

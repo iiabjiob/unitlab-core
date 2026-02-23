@@ -7,6 +7,8 @@ import type {
   DeviceDto,
   DeviceStatus,
   DeviceBulkDeleteResponse,
+  DeviceHeartbeatFastSnapshot,
+  DeviceHeartbeatDiagSnapshot,
 } from "@/types/device"
 import type { Channel } from "@/types/channel"
 import { ensureChannel } from "@/utils/channel"
@@ -46,6 +48,8 @@ function normalizeDevice(dto: DeviceDto): Device {
     type: dto.device_type,
     is_active: true,
     location: undefined,
+    heartbeat_fast: dto.heartbeat_fast ?? undefined,
+    heartbeat_diag: dto.heartbeat_diag ?? undefined,
   }
 }
 
@@ -201,8 +205,13 @@ export const useDeviceStore = defineStore("deviceStore", () => {
   }
 
   function upsertDevice(dto: DeviceDto) {
-    const updated = normalizeDevice(dto)
-    const idx = devices.value.findIndex(d => d.id === updated.id)
+    const idx = devices.value.findIndex(d => d.id === dto.id)
+    const previous = idx >= 0 ? devices.value[idx] : null
+    const updated = normalizeDevice({
+      ...dto,
+      heartbeat_fast: dto.heartbeat_fast ?? previous?.heartbeat_fast ?? null,
+      heartbeat_diag: dto.heartbeat_diag ?? previous?.heartbeat_diag ?? null,
+    })
 
     if (idx === -1) {
       devices.value = [...devices.value, updated]
@@ -214,7 +223,15 @@ export const useDeviceStore = defineStore("deviceStore", () => {
     bumpDevicesRevision()
   }
 
-  function setStatus(unitId: string, status: DeviceStatus, lastSeen?: number | null) {
+  function setStatus(
+    unitId: string,
+    status: DeviceStatus,
+    lastSeen?: number | null,
+    telemetry?: {
+      heartbeat_fast?: DeviceHeartbeatFastSnapshot | null
+      heartbeat_diag?: DeviceHeartbeatDiagSnapshot | null
+    },
+  ) {
     const idx = devices.value.findIndex(d => d.unit_id === unitId)
     if (idx === -1) return
 
@@ -230,6 +247,8 @@ export const useDeviceStore = defineStore("deviceStore", () => {
       last_seen: lastSeen ?? dev.last_seen ?? null,
       registered_at: dev.registered_at ?? null,
       channels: dev.channels,
+      heartbeat_fast: telemetry?.heartbeat_fast ?? dev.heartbeat_fast ?? null,
+      heartbeat_diag: telemetry?.heartbeat_diag ?? dev.heartbeat_diag ?? null,
     }
 
     const next = normalizeDevice(dto)
@@ -247,7 +266,10 @@ export const useDeviceStore = defineStore("deviceStore", () => {
     const existing = devices.value.find(d => d.unit_id === event.unit_id)
     const previousStatus = existing?.status
 
-    setStatus(event.unit_id, event.status, event.last_seen)
+    setStatus(event.unit_id, event.status, event.last_seen, {
+      heartbeat_fast: event.heartbeat_fast ?? undefined,
+      heartbeat_diag: event.heartbeat_diag ?? undefined,
+    })
 
     if (!previousStatus || previousStatus === event.status) {
       return

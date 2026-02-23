@@ -19,6 +19,8 @@ class WebSocketManager:
         self._sender_tasks: dict[WebSocket, asyncio.Task[None]] = {}
         self._sync_tasks: dict[WebSocket, asyncio.Task[None]] = {}
         self._counters: dict[str, int] = defaultdict(int)
+        self._channel_log_last_at: dict[str, float] = {}
+        self._channel_log_suppressed: dict[str, int] = defaultdict(int)
 
     @classmethod
     def get_instance(cls):
@@ -103,9 +105,37 @@ class WebSocketManager:
         self._inc("broadcast.clients.total", amount=len(sockets))
         self._inc("broadcast.clients.sent", amount=sent)
         self._inc("broadcast.clients.failed", amount=failed)
+        self._log_broadcast(channel=channel, clients=len(sockets), sent=sent, failed=failed, total_latency=total_latency)
+
+    def _log_broadcast(
+        self,
+        *,
+        channel: str | None,
+        clients: int,
+        sent: int,
+        failed: int,
+        total_latency: float,
+    ) -> None:
+        if channel != "devices/status":
+            logger.debug(
+                f"📡 Broadcast channel={channel} clients={clients} sent={sent} "
+                f"failed={failed} total={total_latency:.1f} ms"
+            )
+            return
+
+        now = time.monotonic()
+        window_sec = 5.0
+        last_at = self._channel_log_last_at.get(channel)
+        if last_at is not None and (now - last_at) < window_sec:
+            self._channel_log_suppressed[channel] += 1
+            return
+
+        suppressed = self._channel_log_suppressed.pop(channel, 0)
+        self._channel_log_last_at[channel] = now
+        suffix = f" (+{suppressed} suppressed)" if suppressed > 0 else ""
         logger.debug(
-            f"📡 Broadcast channel={channel} clients={len(sockets)} sent={sent} "
-            f"failed={failed} total={total_latency:.1f} ms"
+            f"📡 Broadcast channel={channel} clients={clients} sent={sent} "
+            f"failed={failed} total={total_latency:.1f} ms{suffix}"
         )
 
     def _serialize_event(self, event: Union[BaseModel, Dict[str, Any]]) -> tuple[Dict[str, Any], str | None]:

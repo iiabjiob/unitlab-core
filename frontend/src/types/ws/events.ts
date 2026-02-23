@@ -1,4 +1,5 @@
 import type { Channel } from "../channel"
+import type { DeviceHeartbeatDiagSnapshot, DeviceHeartbeatFastSnapshot } from "../device"
 import type { SystemHealthResponse, SystemStatus } from "../health"
 import type { TimeStatus } from "../time"
 // ---------------------------------------------------------------------
@@ -52,6 +53,13 @@ export interface DeviceDiLatchedPayload {
   latched: number
   changed: number
   cause: number
+}
+
+export interface DeviceAoDiagnosticsPayload {
+  valid_mask: number
+  pending_mask: number
+  fault_mask: number
+  error_mask: number
 }
 
 // ---------------------------------------------------------------------
@@ -119,6 +127,9 @@ export interface DeviceHeartbeatEvent {
   unit_id: string
   status: "online" | "offline"
   last_seen: number
+  heartbeat_kind?: "fast" | "diag" | null
+  heartbeat_fast?: DeviceHeartbeatFastSnapshot | null
+  heartbeat_diag?: DeviceHeartbeatDiagSnapshot | null
 }
 
 export interface SystemHealthChangedEvent {

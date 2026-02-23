@@ -1,4 +1,4 @@
-import { CHANNEL_TYPES, type Channel, type ChannelDiagnostics, type DiChannel, type DoChannel } from "@/types/channel"
+import { CHANNEL_TYPES, type AoChannel, type AoChannelDiagnostics, type Channel, type ChannelDiagnostics, type DiChannel, type DoChannel } from "@/types/channel"
 
 export type DoDiagnosticsBitmasks = {
   open_mask: number
@@ -15,6 +15,13 @@ export type DiDiagnosticsBitmasks = Partial<{
   latched_cause_mask: number
 }>
 
+export type AoDiagnosticsBitmasks = {
+  valid_mask: number
+  pending_mask: number
+  fault_mask: number
+  error_mask: number
+}
+
 export type DiDiagnosticField =
   | "seen"
   | "stuck"
@@ -26,6 +33,14 @@ export type DiDiagnosticField =
 export type DiDiagnosticsChange = {
   channel: DiChannel
   updates: Array<{ field: DiDiagnosticField; value: boolean }>
+}
+
+export type AoDiagnosticsChange = {
+  channel: AoChannel
+  previousQuality?: AoChannelDiagnostics["quality"]
+  nextQuality: AoChannelDiagnostics["quality"]
+  previousHasError: boolean
+  nextHasError: boolean
 }
 
 export const DI_DIAG_LABELS: Record<DiDiagnosticField, { on: string; off: string; alert?: boolean; log?: boolean }> = {
@@ -58,6 +73,13 @@ export function ensureDiDiagnostics(channel: DiChannel) {
   return channel.diDiagnostics
 }
 
+export function ensureAoDiagnostics(channel: AoChannel): AoChannelDiagnostics {
+  if (!channel.diagnostics) {
+    channel.diagnostics = { quality: "fault", hasError: false }
+  }
+  return channel.diagnostics
+}
+
 export function applyDoDiagnostics(doChannels: DoChannel[], diag: DoDiagnosticsBitmasks): boolean {
   if (!doChannels.length) {
     return false
@@ -77,6 +99,48 @@ export function applyDoDiagnostics(doChannels: DoChannel[], diag: DoDiagnosticsB
     }
   })
   return changed
+}
+
+export function applyAoDiagnostics(aoChannels: AoChannel[], diag: AoDiagnosticsBitmasks): AoDiagnosticsChange[] {
+  if (!aoChannels.length) {
+    return []
+  }
+
+  const changes: AoDiagnosticsChange[] = []
+  aoChannels.forEach(ch => {
+    const bit = 1 << ch.index
+    const nextHasError = (diag.error_mask & bit) !== 0
+    const inValid = (diag.valid_mask & bit) !== 0
+    const inPending = (diag.pending_mask & bit) !== 0
+    const inFault = (diag.fault_mask & bit) !== 0
+
+    const state = ensureAoDiagnostics(ch)
+    const previousQuality = state.quality
+    const previousHasError = state.hasError
+
+    let nextQuality = previousQuality
+    if (inFault) {
+      nextQuality = "fault"
+    } else if (inPending) {
+      nextQuality = "pending"
+    } else if (inValid) {
+      nextQuality = "valid"
+    }
+
+    if (previousQuality !== nextQuality || previousHasError !== nextHasError) {
+      state.quality = nextQuality
+      state.hasError = nextHasError
+      changes.push({
+        channel: ch,
+        previousQuality,
+        nextQuality,
+        previousHasError,
+        nextHasError,
+      })
+    }
+  })
+
+  return changes
 }
 
 export function applyDiDiagnostics(diChannels: DiChannel[], diag: DiDiagnosticsBitmasks): DiDiagnosticsChange[] {

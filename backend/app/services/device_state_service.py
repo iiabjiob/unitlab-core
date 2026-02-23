@@ -53,6 +53,19 @@ class DeviceStateService:
                 await redis.hset(f"device:{unit_id}:ao", str(decoded.ch), new_val)
                 changed = True
 
+        elif hdr.mode == State.DIAG_AO_FLOAT:
+            diag_key = f"device:{unit_id}:diag_ao"
+            current_diag = await redis.hgetall(diag_key)
+            new_mapping = {
+                "valid_mask": str(decoded.valid_mask),
+                "pending_mask": str(decoded.pending_mask),
+                "fault_mask": str(decoded.fault_mask),
+                "error_mask": str(decoded.error_mask),
+            }
+            if any(current_diag.get(k) != v for k, v in new_mapping.items()):
+                await redis.hset(diag_key, mapping=new_mapping)
+                changed = True
+
         elif hdr.mode == State.DIAG_ALL_BIT:
             diag_key = f"device:{unit_id}:diag"
             current_diag = await redis.hgetall(diag_key)
@@ -137,6 +150,15 @@ class DeviceStateService:
             val = await redis.hget(f"device:{unit_id}:ao", str(ch))
             payload = {"ch": ch, "value": float(to_str(val) or 0)}
 
+        elif mode == State.DIAG_AO_FLOAT:
+            diag = await redis.hgetall(f"device:{unit_id}:diag_ao")
+            payload = {
+                "valid_mask": to_int(diag.get("valid_mask"), 0),
+                "pending_mask": to_int(diag.get("pending_mask"), 0),
+                "fault_mask": to_int(diag.get("fault_mask"), 0),
+                "error_mask": to_int(diag.get("error_mask"), 0),
+            }
+
         elif mode == State.DIAG_ALL_BIT:
             diag = await redis.hgetall(f"device:{unit_id}:diag")
             payload = {
@@ -183,6 +205,7 @@ class DeviceStateService:
         - Current bitmask
         - Aggregated DO diagnostics (if available)
         - Aggregated DI diagnostics + latched info (if available)
+        - AO diagnostics (if available)
         - All AO channels
         """
         redis = RedisManager.get_instance()
@@ -204,6 +227,10 @@ class DeviceStateService:
         di_latched_exists = await redis.hlen(f"device:{unit_id}:diag_di_latched")
         if di_latched_exists:
             events.append(await DeviceStateService.build_event_from_redis(unit_id, State.STATE_LATCHED_BIT))
+
+        ao_diag_exists = await redis.hlen(f"device:{unit_id}:diag_ao")
+        if ao_diag_exists:
+            events.append(await DeviceStateService.build_event_from_redis(unit_id, State.DIAG_AO_FLOAT))
 
         # Include AO channels if exist
         ao_channels = await redis.hkeys(f"device:{unit_id}:ao")

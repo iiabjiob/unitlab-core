@@ -4,6 +4,9 @@ export type DeviceType = "do" | "di" | "ao"
 
 export type DeviceStatus = "online" | "offline"
 
+export type DeviceHeartbeatFastSnapshot = Record<string, unknown>
+export type DeviceHeartbeatDiagSnapshot = Record<string, unknown>
+
 export interface DeviceDto {
   id: number
   unit_id: string
@@ -15,6 +18,8 @@ export interface DeviceDto {
   last_seen?: number | null
   registered_at?: number | null
   channels?: Array<ChannelDto | Channel> | null
+  heartbeat_fast?: DeviceHeartbeatFastSnapshot | null
+  heartbeat_diag?: DeviceHeartbeatDiagSnapshot | null
 }
 
 export interface Device {
@@ -35,6 +40,8 @@ export interface Device {
   is_active?: boolean
   name?: string | null
   location?: string | null
+  heartbeat_fast?: DeviceHeartbeatFastSnapshot | null
+  heartbeat_diag?: DeviceHeartbeatDiagSnapshot | null
 }
 
 export interface DeviceBulkDeletePayload {

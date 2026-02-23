@@ -77,6 +77,9 @@ class DeviceHeartbeatEvent(BaseModel):
     unit_id: str
     status: Literal["online", "offline"]
     last_seen: int
+    heartbeat_kind: Literal["fast", "diag"] | None = None
+    heartbeat_fast: Dict[str, Any] | None = None
+    heartbeat_diag: Dict[str, Any] | None = None
 
 class SequenceEventBase(BaseModel):
     topic: Literal["sequence"] = "sequence"

@@ -1,3 +1,5 @@
+import json
+
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.infrastructure.db.database import AsyncSessionLocal
@@ -6,7 +8,7 @@ from app.models.device import Device
 from app.infrastructure.redis.manager import RedisManager
 from app.ws.manager import WebSocketManager
 from app.schemas.device_schema import DeviceSchema
-from app.schemas.ws.events import DeviceRegisterEvent
+from app.schemas.ws.events import DeviceHeartbeatEvent, DeviceRegisterEvent
 from app.services.device_state_service import DeviceStateService
 from app.schemas.channel_schema import ChannelSchema
 from app.core.utils import to_str
@@ -57,6 +59,34 @@ class WsStateService:
                 schema.channels = [ChannelSchema.model_validate(ch) for ch in device.channels]
                 reg_event = DeviceRegisterEvent(**schema.model_dump())
                 await ws_manager.send_event(ws, reg_event)
+
+                heartbeat_fast = None
+                heartbeat_diag = None
+                hb_fast_raw = await redis.get(f"device:{device.unit_id}:hb_fast")
+                hb_diag_raw = await redis.get(f"device:{device.unit_id}:hb_diag")
+                try:
+                    if hb_fast_raw:
+                        parsed = json.loads(to_str(hb_fast_raw, "{}"))
+                        if isinstance(parsed, dict):
+                            heartbeat_fast = parsed
+                except Exception:
+                    heartbeat_fast = None
+                try:
+                    if hb_diag_raw:
+                        parsed = json.loads(to_str(hb_diag_raw, "{}"))
+                        if isinstance(parsed, dict):
+                            heartbeat_diag = parsed
+                except Exception:
+                    heartbeat_diag = None
+
+                status_event = DeviceHeartbeatEvent(
+                    unit_id=device.unit_id,
+                    status=schema.status,
+                    last_seen=schema.last_seen or 0,
+                    heartbeat_fast=heartbeat_fast,
+                    heartbeat_diag=heartbeat_diag,
+                )
+                await ws_manager.send_event(ws, status_event)
 
                 # STATE snapshot
                 await WsStateService.send_cached_state_to_ui(device.unit_id, target=ws)
