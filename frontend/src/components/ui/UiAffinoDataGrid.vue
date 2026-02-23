@@ -35,6 +35,15 @@
         </div>
         <div class="ui-affino-grid__toolbar-actions">
           <button
+            v-if="props.enableBulkDeleteSelected && (selectedRowsCount > 0 || bulkDeleteInFlight)"
+            type="button"
+            class="ui-affino-grid__toolbar-button ui-affino-grid__toolbar-button--danger"
+            :disabled="selectedRowsCount === 0 || bulkDeleteInFlight"
+            @click="requestBulkDeleteSelected"
+          >
+            {{ bulkDeleteInFlight ? (props.bulkDeleteInFlightLabel || "Deleting…") : (props.bulkDeleteButtonLabel || "Delete selected") }}
+          </button>
+          <button
             type="button"
             class="ui-affino-grid__toolbar-button"
             :ref="columnPanelFloating.triggerRef"
@@ -698,6 +707,16 @@
           Reset Columns
         </UiMenuItem>
       </UiMenuContent>
+
+        <ConfirmModal
+          :open="bulkDeleteConfirmOpen"
+          :title="props.bulkDeleteConfirmTitle || 'Delete selected rows'"
+          :message="bulkDeleteConfirmMessage"
+          :confirm-label="props.bulkDeleteConfirmLabel || 'Delete'"
+          :cancel-label="props.bulkDeleteCancelLabel || 'Cancel'"
+          @confirm="confirmBulkDeleteSelected"
+          @cancel="cancelBulkDeleteSelected"
+        />
     </UiMenu>
   </div>
 </template>
@@ -727,6 +746,7 @@ import {
   UiSubMenuTrigger,
   type MenuController,
 } from "@/components/ui/menu"
+import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import { useFloatingPopover, usePopoverController } from "@affino/popover-vue"
 import {
   useDataGridColumnLayoutOrchestration,
@@ -840,6 +860,14 @@ const props = withDefaults(defineProps<{
   persistState?: boolean
   datasetKey?: string
   selectedRowKeys?: readonly string[]
+  enableBulkDeleteSelected?: boolean
+  bulkDeleteButtonLabel?: string
+  bulkDeleteInFlightLabel?: string
+  bulkDeleteConfirmTitle?: string
+  bulkDeleteConfirmMessage?: string
+  bulkDeleteConfirmLabel?: string
+  bulkDeleteCancelLabel?: string
+  onBulkDeleteSelected?: (payload: { rowKeys: string[]; rows: GridRow[] }) => Promise<void> | void
 }>(), {
   rowHeight: 34,
   overscanRows: 8,
@@ -854,11 +882,20 @@ const props = withDefaults(defineProps<{
   persistState: true,
   datasetKey: "",
   selectedRowKeys: undefined,
+  enableBulkDeleteSelected: false,
+  bulkDeleteButtonLabel: "Delete selected",
+  bulkDeleteInFlightLabel: "Deleting…",
+  bulkDeleteConfirmTitle: "Delete selected rows",
+  bulkDeleteConfirmMessage: undefined,
+  bulkDeleteConfirmLabel: "Delete",
+  bulkDeleteCancelLabel: "Cancel",
+  onBulkDeleteSelected: undefined,
 })
 
 const emit = defineEmits<{
   (e: "row-click", payload: { row: GridRow; rowIndex: number }): void
   (e: "selection-change", payload: { rowKeys: string[] }): void
+  (e: "bulk-delete-selected", payload: { rowKeys: string[]; rows: GridRow[] }): void
 }>()
 
 const gridRootRef = ref<HTMLElement | null>(null)
@@ -911,6 +948,8 @@ const checkboxSelectionAnchorIndex = ref<number | null>(null)
 const lastCheckboxGestureShift = ref(false)
 const localSelectedRowKeySet = ref<Set<string>>(new Set())
 const selectAllInProgress = ref(false)
+const bulkDeleteInFlight = ref(false)
+const bulkDeleteConfirmOpen = ref(false)
 const selectionHydrated = ref(false)
 const pendingSelectionRestore = ref<Set<string> | null>(null)
 const viewportLayoutReady = ref(false)
@@ -1971,6 +2010,97 @@ function resolveSelectionKeysForEmission(rowKeys: ReadonlySet<string>): string[]
     seen.add(rowKey)
   })
   return emitted
+}
+
+const rowBySelectionKey = computed(() => {
+  const map = new Map<string, GridRow>()
+  props.rows.forEach((row, index) => {
+    const key = grid.bindings.getRowKey(rowData(row), index)
+    map.set(key, rowData(row))
+  })
+  return map
+})
+
+const pendingBulkDeletePayload = ref<{ rowKeys: string[]; rows: GridRow[] } | null>(null)
+
+const bulkDeleteConfirmMessage = computed(() => {
+  const explicit = String(props.bulkDeleteConfirmMessage ?? "").trim()
+  if (explicit.length > 0) {
+    return explicit
+  }
+
+  const count = pendingBulkDeletePayload.value?.rowKeys.length ?? selectedRowsCount.value
+  if (count <= 0) {
+    return "Selected rows will be deleted."
+  }
+  return count === 1
+    ? "1 selected row will be deleted."
+    : `${count} selected rows will be deleted.`
+})
+
+async function handleBulkDeleteSelected(payload: { rowKeys: string[]; rows: GridRow[] }) {
+  if (bulkDeleteInFlight.value) {
+    return
+  }
+
+  if (!payload.rowKeys.length) {
+    return
+  }
+
+  const previousSelection = new Set(selectedRowKeySet.value)
+
+  bulkDeleteInFlight.value = true
+  rowSelectionModel.clearSelection()
+  rowSelectionModel.setAnchorIndex(null)
+  checkboxSelectionAnchorIndex.value = null
+
+  try {
+    emit("bulk-delete-selected", payload)
+    if (typeof props.onBulkDeleteSelected === "function") {
+      await props.onBulkDeleteSelected(payload)
+    }
+  } catch (error) {
+    rowSelectionModel.replaceSelection(previousSelection)
+    rowSelectionModel.setAnchorIndex(null)
+    checkboxSelectionAnchorIndex.value = null
+    throw error
+  } finally {
+    bulkDeleteInFlight.value = false
+  }
+}
+
+function requestBulkDeleteSelected() {
+  if (bulkDeleteInFlight.value) {
+    return
+  }
+
+  const rowKeys = resolveSelectionKeysForEmission(selectedRowKeySet.value)
+  if (!rowKeys.length) {
+    return
+  }
+
+  const rows = rowKeys
+    .map(rowKey => rowBySelectionKey.value.get(rowKey))
+    .filter((row): row is GridRow => Boolean(row))
+
+  pendingBulkDeletePayload.value = { rowKeys, rows }
+  bulkDeleteConfirmOpen.value = true
+}
+
+function cancelBulkDeleteSelected() {
+  bulkDeleteConfirmOpen.value = false
+  pendingBulkDeletePayload.value = null
+}
+
+async function confirmBulkDeleteSelected() {
+  const payload = pendingBulkDeletePayload.value
+  bulkDeleteConfirmOpen.value = false
+  pendingBulkDeletePayload.value = null
+
+  if (!payload) {
+    return
+  }
+  await handleBulkDeleteSelected(payload)
 }
 
 const rowSelectionModel = useDataGridRowSelectionModel<string>({
@@ -3695,6 +3825,16 @@ defineExpose({
   padding: 0.3rem 0.5rem;
 }
 
+.ui-affino-grid__toolbar-button--danger {
+  border-color: rgba(220, 38, 38, 0.4);
+  color: #b91c1c;
+}
+
+.ui-affino-grid__toolbar-button--danger:not(:disabled):hover {
+  border-color: rgba(220, 38, 38, 0.65);
+  background: rgba(254, 242, 242, 0.95);
+}
+
 .ui-affino-grid__toolbar-button:disabled,
 .ui-affino-grid__column-order-button:disabled {
   opacity: 0.5;
@@ -3706,6 +3846,16 @@ defineExpose({
   border-color: var(--ui-affino-dark-border, rgba(115, 115, 115, 0.32));
   color: var(--ui-affino-dark-text-strong, #d4d4d4);
   background: var(--ui-affino-dark-bg-input, #262626);
+}
+
+.dark .ui-affino-grid__toolbar-button--danger {
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fca5a5;
+}
+
+.dark .ui-affino-grid__toolbar-button--danger:not(:disabled):hover {
+  border-color: rgba(248, 113, 113, 0.7);
+  background: rgba(127, 29, 29, 0.35);
 }
 
 .ui-affino-grid__column-panel {

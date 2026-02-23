@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Iterable
+from typing import Iterable, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.signal import Signal, SignalIODirection
+from app.models.signal_sheet import SignalAllocation
 from app.models.workspace import Workspace
 from app.services.signal_sheet_import_service import ImportedSignalProjection
 
@@ -77,10 +78,50 @@ class SignalsRepository:
         if not signal:
             return False
 
+        await self.db.execute(
+            delete(SignalAllocation).where(
+                SignalAllocation.workspace_id == signal.workspace_id,
+                SignalAllocation.signal_id == signal.id,
+            )
+        )
+
         signal.deleted_at = datetime.now(timezone.utc)
         signal.is_active = False
         await self.db.commit()
         return True
+
+    async def delete_many(self, workspace_id: int, signal_ids: Sequence[int]) -> int:
+        normalized_ids = {
+            int(signal_id)
+            for signal_id in signal_ids
+            if isinstance(signal_id, int) and signal_id > 0
+        }
+        if not normalized_ids:
+            return 0
+
+        await self.db.execute(
+            delete(SignalAllocation).where(
+                SignalAllocation.workspace_id == workspace_id,
+                SignalAllocation.signal_id.in_(normalized_ids),
+            )
+        )
+
+        deleted_at = datetime.now(timezone.utc)
+        stmt = (
+            update(Signal)
+            .where(
+                Signal.workspace_id == workspace_id,
+                Signal.deleted_at.is_(None),
+                Signal.id.in_(normalized_ids),
+            )
+            .values(
+                deleted_at=deleted_at,
+                is_active=False,
+            )
+        )
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return int(result.rowcount or 0)
 
     async def upsert_imported(
         self,

@@ -32,6 +32,15 @@ class SignalUpdateSchema(BaseModel):
     is_active: bool | None = None
 
 
+class SignalBulkDeleteRequestSchema(BaseModel):
+    signal_ids: list[int] = Field(default_factory=list)
+
+
+class SignalBulkDeleteResponseSchema(BaseModel):
+    requested_count: int
+    deleted_count: int
+
+
 class SignalSchema(SignalBaseSchema):
     id: int
     workspace_id: int

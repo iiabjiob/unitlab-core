@@ -5,7 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.signals import SignalsRepository
 from app.infrastructure.db.database import get_db
-from app.schemas.signal_schema import SignalCreateSchema, SignalSchema, SignalUpdateSchema
+from app.schemas.signal_schema import (
+    SignalBulkDeleteRequestSchema,
+    SignalBulkDeleteResponseSchema,
+    SignalCreateSchema,
+    SignalSchema,
+    SignalUpdateSchema,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["Signals"])
 
@@ -64,3 +70,25 @@ async def delete_signal(signal_id: int, repo: SignalsRepository = Depends(get_re
     if not deleted:
         raise HTTPException(status_code=404, detail="Signal not found")
     return {"detail": "Signal deleted"}
+
+
+@router.post("/workspaces/{workspace_id}/signals/bulk-delete", response_model=SignalBulkDeleteResponseSchema)
+async def bulk_delete_signals(
+    workspace_id: int,
+    payload: SignalBulkDeleteRequestSchema,
+    repo: SignalsRepository = Depends(get_repo),
+):
+    if not await repo.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    normalized_ids = {
+        int(signal_id)
+        for signal_id in payload.signal_ids
+        if isinstance(signal_id, int) and signal_id > 0
+    }
+
+    deleted_count = await repo.delete_many(workspace_id, list(normalized_ids))
+    return SignalBulkDeleteResponseSchema(
+        requested_count=len(normalized_ids),
+        deleted_count=deleted_count,
+    )

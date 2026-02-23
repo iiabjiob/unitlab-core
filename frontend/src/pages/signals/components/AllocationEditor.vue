@@ -81,6 +81,12 @@
       :persist-state="true"
       :dataset-key="gridDatasetKey"
       :selected-row-keys="selectedRowKeys"
+      :enable-bulk-delete-selected="true"
+      :bulk-delete-button-label="deleteSelectedButtonLabel"
+      :bulk-delete-in-flight-label="deleteSelectedInFlightLabel"
+      :bulk-delete-confirm-title="'Delete selected signals'"
+      :bulk-delete-confirm-message="'Selected signals will be permanently removed from the current sheet and automatically unbound from hardware.'"
+      :on-bulk-delete-selected="handleBulkDeleteSignals"
       @row-click="handleRowClick"
       @selection-change="handleSelectionChange"
     >
@@ -139,7 +145,7 @@ import { storeToRefs } from "pinia"
 import { useRoute, useRouter } from "vue-router"
 
 import UiAffinoDataGrid from "@/components/ui/UiAffinoDataGrid.vue"
-import { SignalSheetAPI } from "@/api/signal_sheet.api"
+import { SignalsAPI } from "@/api/signals.api"
 import type { Channel, DoChannel } from "@/types/channel"
 import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
 import AllocationControlCell from "@/pages/signals/components/AllocationControlCell.vue"
@@ -190,6 +196,9 @@ const exportModalOpen = ref(false)
 const selectedRowKeys = ref<string[]>([])
 const allocatingSelected = ref(false)
 const deallocatingSelected = ref(false)
+const deletingSelected = ref(false)
+const deletingProgressDone = ref(0)
+const deletingProgressTotal = ref(0)
 const testRunInProgress = ref(false)
 const testRunIntervalMs = ref(1000)
 const testRunToggleMode = ref<"single" | "double">("single")
@@ -207,6 +216,15 @@ let pendingAllocationRevisionFullRefresh = false
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const loading = computed(() => loadingAllocations.value || loadingSheet.value || updatingAllocations.value)
+const deleteSelectedButtonLabel = computed(() => "Delete selected")
+const deleteSelectedInFlightLabel = computed(() => {
+  if (!deletingSelected.value) {
+    return "Deleting…"
+  }
+  const total = Math.max(0, deletingProgressTotal.value)
+  const done = Math.max(0, Math.min(total, deletingProgressDone.value))
+  return total > 0 ? `Deleting ${done}/${total}…` : "Deleting…"
+})
 const showInitialPageLoading = computed(() => (
   !workspaceMissing.value
   && loading.value
@@ -396,6 +414,83 @@ function signalIdFromRowKey(rowKey: string): number | null {
   const parsed = Number(rowKey.slice("signal-".length))
   if (!Number.isFinite(parsed)) return null
   return parsed
+}
+
+function resolveUniqueSignalIdsForDeletion(payload: { rowKeys: string[]; rows: Record<string, unknown>[] }): number[] {
+  const signalIds = new Set<number>()
+
+  payload.rows.forEach((row) => {
+    const value = Number((row as { signal_id?: unknown }).signal_id)
+    if (Number.isFinite(value) && value > 0) {
+      signalIds.add(value)
+    }
+  })
+
+  payload.rowKeys.forEach((rowKey) => {
+    const signalId = signalIdFromRowKey(rowKey)
+    if (signalId !== null && signalId > 0) {
+      signalIds.add(signalId)
+    }
+  })
+
+  return Array.from(signalIds)
+}
+
+async function handleBulkDeleteSignals(payload: { rowKeys: string[]; rows: Record<string, unknown>[] }) {
+  const signalIds = resolveUniqueSignalIdsForDeletion(payload)
+  if (!signalIds.length) {
+    return
+  }
+
+  const workspaceId = workspaceStore.activeWorkspaceId
+  if (!workspaceId) {
+    return
+  }
+
+  const chunkSize = 500
+  let requestedTotal = 0
+  let deletedTotal = 0
+  let failedTotal = 0
+
+  deletingSelected.value = true
+  deletingProgressDone.value = 0
+  deletingProgressTotal.value = signalIds.length
+  await awaitUiPaintFrame()
+
+  try {
+    for (let offset = 0; offset < signalIds.length; offset += chunkSize) {
+      const chunk = signalIds.slice(offset, offset + chunkSize)
+      const { data } = await SignalsAPI.bulkDelete(workspaceId, chunk)
+      const requested = Number(data?.requested_count ?? chunk.length)
+      const deleted = Number(data?.deleted_count ?? 0)
+      const failed = Math.max(0, requested - deleted)
+
+      requestedTotal += requested
+      deletedTotal += deleted
+      failedTotal += failed
+
+      deletingProgressDone.value = Math.min(signalIds.length, requestedTotal)
+      await nextTick()
+    }
+
+    await Promise.all([
+      signalSheetStore.ensureSheetLoaded({ force: true }),
+      signalSheetStore.ensureAllocationsLoaded({ force: true }),
+    ])
+
+    if (failedTotal > 0) {
+      toastStore.warning(`Deleted ${deletedTotal} signal(s), failed to delete ${failedTotal}.`)
+      return
+    }
+
+    toastStore.success(`Deleted ${deletedTotal} signal(s).`)
+  } catch (error) {
+    toastStore.error(error instanceof Error ? error.message : String(error))
+  } finally {
+    deletingSelected.value = false
+    deletingProgressDone.value = 0
+    deletingProgressTotal.value = 0
+  }
 }
 
 const selectedAllocationRows = computed(() => (
@@ -1891,7 +1986,7 @@ function formatTestRunResumeMeta(job: SignalAllocationJob): string {
     return `resumed from ${resumeOffset}`
   }
   if (!resumeApplied && cursorReason && cursorReason !== "disabled") {
-    return `resume: ${cursorReason.replaceAll("_", " ")}`
+    return `resume: ${cursorReason.replace(/_/g, " ")}`
   }
   return ""
 }

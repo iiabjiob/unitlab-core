@@ -227,7 +227,7 @@ function formatResumeMeta(job: SignalAllocationJob): string {
     return `resumed ${resumeOffset}`
   }
   if (!resumeApplied && cursorReason && cursorReason !== "disabled") {
-    return `resume ${cursorReason.replaceAll("_", " ")}`
+    return `resume ${cursorReason.replace(/_/g, " ")}`
   }
   return ""
 }

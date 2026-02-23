@@ -276,7 +276,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
     }
 
     const displayName = existing?.display_name ?? event.unit_id
-    const variant = event.status === "online" ? "success" : "error"
+    const variant = event.status === "online" ? "success" : "info"
     const message =
       event.status === "online"
         ? `${displayName} is back online`

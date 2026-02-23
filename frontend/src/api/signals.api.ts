@@ -22,4 +22,11 @@ export const SignalsAPI = {
   delete(signalId: number) {
     return http.delete<void>(`${API_V1}/signals/${signalId}`)
   },
+
+  bulkDelete(workspaceId: number, signalIds: number[]) {
+    return http.post<{ requested_count: number; deleted_count: number }>(
+      `${API_V1}/workspaces/${workspaceId}/signals/bulk-delete`,
+      { signal_ids: signalIds },
+    )
+  },
 }
