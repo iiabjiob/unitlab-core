@@ -67,6 +67,22 @@ class Settings(BaseSettings):
     ws_events_channel: str = "ws:events"
     ws_send_timeout_ms: int = 1500
     ws_outbound_queue_size: int = 2048
+    core_net_command_stream: str = "core_net:commands"
+    core_net_event_stream: str = "core_net:events"
+    core_net_state_key: str = "core_net:state"
+    core_net_command_stream_maxlen: int = 2000
+    core_ntp_command_stream: str = "core_ntp:commands"
+    core_ntp_event_stream: str = "core_ntp:events"
+    core_ntp_state_key: str = "core_ntp:state"
+    core_ntp_command_stream_maxlen: int = 2000
+    core_diag_command_stream: str = "core_diag:commands"
+    core_diag_event_stream: str = "core_diag:events"
+    core_diag_state_key: str = "core_diag:state"
+    core_diag_command_stream_maxlen: int = 2000
+    core_provision_command_stream: str = "core_provision:commands"
+    core_provision_event_stream: str = "core_provision:events"
+    core_provision_state_key: str = "core_provision:state"
+    core_provision_command_stream_maxlen: int = 2000
 
     # ---- Heartbeat ----
     heartbeat_ttl: int = 30

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unitlab-rpi-core-diag-agent"
+version = "0.1.0"
+description = "UnitLab host diagnostics agent for Raspberry Pi core unit"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "redis>=5.0.0",
+]
+
+[project.scripts]
+unitlab-rpi-core-diag-agent = "unitlab_rpi_core_diag_agent.__main__:main"
+
+[tool.setuptools]
+packages = ["unitlab_rpi_core_diag_agent"]
+

@@ -1,0 +1,16 @@
+[project]
+name = "unitlab-rpi-net-agent"
+version = "0.1.0"
+description = "Host-side Wi-Fi AP/STA agent for UnitLab core on Raspberry Pi"
+requires-python = ">=3.11"
+dependencies = [
+  "redis>=5.0.0",
+]
+
+[project.scripts]
+unitlab-rpi-net-agent = "unitlab_rpi_net_agent.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+

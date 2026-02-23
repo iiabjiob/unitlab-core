@@ -10,7 +10,7 @@ For the full field engineer workflow (Wi-Fi connection -> unit identification ->
 ## Step 1 — Open the system and verify connection
 
 1. Connect to the UnitLab Wi-Fi AP:
-   - SSID: `unitlab-core-ABCD`
+   - SSID: `[unitlab]-core-ABCD`
    - Password: `pwd!ABCD` (`ABCD` matches the AP suffix)
 2. Open the web interface at `http://10.42.0.1` (default UnitLab core / RPi5 AP address).
 3. Confirm the system status indicator is healthy.

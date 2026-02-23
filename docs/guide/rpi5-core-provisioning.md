@@ -1,0 +1,508 @@
+# RPi5 Core Provisioning (Full UnitLab Core on Bare Raspberry Pi 5)
+
+This guide describes the exact order to deploy a full **UnitLab Core** on a fresh **Raspberry Pi 5 (Bookworm)** using an **image-based frontend** (no `frontend/src` on the device):
+
+- Docker stack (`backend`, `frontend web image`, `db`, `redis`, `mosquitto`, workers)
+- Host Wi‑Fi service (`AP/STA`, NetworkManager)
+- Host NTP service (`chrony`)
+- Host diagnostics service (RPi core health/thermals/services)
+- Host provisioning service (repair actions + smoke checks)
+- Web UI access via AP (`http://10.42.0.1`)
+
+## Result (What You Get)
+
+After provisioning and reboot:
+
+- UnitLab stack is running in Docker
+- Host AP starts automatically:
+  - `SSID`: `[unitlab]-core-ABCD`
+  - `Password`: `pwd!ABCD`
+- Web UI is available at:
+  - `http://10.42.0.1`
+- `/settings` contains (engineer mode):
+  - `Core Network` (AP/STA uplink management)
+  - `Core Diagnostics` (RPi health and service status)
+  - `Time / NTP Sync` (chrony server management)
+- `/settings/Provisioning` is available in service mode (hidden by default):
+  - smoke-checks and host-agent repair actions
+
+## 1. Prepare Raspberry Pi OS (Bookworm)
+
+Recommended first setup path: **Ethernet connected**.
+
+### 1.1 Update OS
+
+```bash
+sudo apt-get update
+sudo apt-get upgrade -y
+sudo reboot
+```
+
+### 1.2 Install basic tools
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl ca-certificates rsync jq
+```
+
+### 1.3 Ensure NetworkManager is installed and active
+
+```bash
+systemctl status NetworkManager
+```
+
+If not installed:
+
+```bash
+sudo apt-get install -y network-manager
+sudo systemctl enable --now NetworkManager
+```
+
+Verify `wlan0` is managed:
+
+```bash
+nmcli device status
+```
+
+## 2. Install Docker + Compose Plugin
+
+If Docker is not installed yet:
+
+```bash
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+newgrp docker
+sudo apt-get install -y docker-compose-plugin
+```
+
+Verify:
+
+```bash
+docker --version
+docker compose version
+```
+
+## 3. Copy Runtime Bundle to RPi5 (Recommended)
+
+Recommended: deploy a **runtime bundle** (frontend source omitted) instead of cloning the full monorepo to the field device.
+
+### 3.1 Build runtime bundle on dev/CI machine
+
+```bash
+cd /Users/anton/Projects/unitlab-core
+./scripts/create-rpi-runtime-bundle.sh
+```
+
+This creates a bundle under:
+
+```text
+/Users/anton/Projects/unitlab-core/dist-release/unitlab-core-rpi-runtime-<timestamp>
+```
+
+### 3.2 Copy bundle to RPi5
+
+Target path on `RPi5` must be:
+
+```text
+/opt/unitlab/unitlab-core
+```
+
+Example:
+
+```bash
+rsync -av /Users/anton/Projects/unitlab-core/dist-release/unitlab-core-rpi-runtime-<timestamp>/ pi@<rpi-ip>:/opt/unitlab/unitlab-core/
+```
+
+### 3.3 Alternative (full repo clone)
+
+If you want full source on the device for debugging, cloning the repo is still valid:
+
+```bash
+cd /opt
+sudo mkdir -p /opt/unitlab
+sudo chown -R $USER:$USER /opt/unitlab
+cd /opt/unitlab
+git clone <YOUR_REPO_URL> unitlab-core
+cd unitlab-core
+```
+
+## 4. Prepare Release Images on Dev/CI (Backend + Frontend)
+
+Production deployment on `RPi5` should use prebuilt images for:
+- backend (`API + workers + migrations`)
+- frontend web runtime (`nginx + dist`)
+
+This avoids local builds on the device and makes rollout/rollback predictable.
+
+### What to do on dev/CI machine (before deploying to RPi)
+
+Build the backend image:
+
+```bash
+cd /Users/anton/Projects/unitlab-core
+./scripts/build-backend-image.sh unitlab-backend:2026.02.23
+```
+
+Build the frontend web image:
+
+```bash
+cd /Users/anton/Projects/unitlab-core
+./scripts/build-web-image.sh unitlab-web:2026.02.23
+```
+
+Then either:
+
+- push to your registry (recommended), or
+- export and transfer as tar (offline deployment)
+
+Detailed build/release instructions:
+
+- `/Users/anton/Projects/unitlab-core/docs/guide/frontend-web-image-release.md`
+
+### What to do on RPi5
+
+Create or update root `.env` (same directory as `docker-compose.prod.yml`) and set backend/frontend image tags:
+
+```env
+UNITLAB_BACKEND_IMAGE=unitlab-backend:2026.02.23
+UNITLAB_WEB_IMAGE=unitlab-web:2026.02.23
+```
+
+If you use a registry:
+
+```env
+UNITLAB_BACKEND_IMAGE=ghcr.io/your-org/unitlab-backend:2026.02.23
+UNITLAB_WEB_IMAGE=ghcr.io/your-org/unitlab-web:2026.02.23
+```
+
+If you deploy offline, load the image first:
+
+```bash
+docker load -i /path/to/unitlab-release-images.tar
+```
+
+## 5. Create/Update Env Files
+
+`docker-compose.prod.yml` / services expect:
+
+- `backend/.env.prod`
+- `backend/.env.db.prod`
+- root `.env` (for `UNITLAB_BACKEND_IMAGE`, `UNITLAB_WEB_IMAGE`)
+
+### 5.1 `backend/.env.db.prod`
+
+Example:
+
+```env
+POSTGRES_USER=unitlab_pg_user
+POSTGRES_PASSWORD=unitlab_pg_password
+POSTGRES_DB=unitlab_pg
+```
+
+### 5.2 `backend/.env.prod`
+
+Minimal required values (example):
+
+```env
+APP_ENV=production
+DEBUG=false
+DEBUG_LEVEL=INFO
+
+POSTGRES_USER=unitlab_pg_user
+POSTGRES_PASSWORD=unitlab_pg_password
+POSTGRES_HOST=db
+POSTGRES_PORT=5432
+POSTGRES_DB=unitlab_pg
+
+REDIS_HOST=redis
+REDIS_PORT=6379
+
+MQTT_HOST=mosquitto
+MQTT_PORT=1883
+```
+
+Add any other required backend variables used in your build/environment.
+
+### 5.3 Root `.env` (backend + frontend image tags)
+
+Create `/opt/unitlab/unitlab-core/.env` (or update it) with:
+
+```env
+UNITLAB_BACKEND_IMAGE=unitlab-backend:2026.02.23
+UNITLAB_WEB_IMAGE=unitlab-web:2026.02.23
+```
+
+Registry example:
+
+```env
+UNITLAB_BACKEND_IMAGE=ghcr.io/your-org/unitlab-backend:2026.02.23
+UNITLAB_WEB_IMAGE=ghcr.io/your-org/unitlab-web:2026.02.23
+```
+
+## 6. Start Docker Stack (API/UI/Workers/DB/Redis/MQTT)
+
+From project root:
+
+```bash
+cd /opt/unitlab/unitlab-core
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Check status:
+
+```bash
+docker compose -f docker-compose.prod.yml ps
+```
+
+Key containers:
+
+- `unitlab-db`
+- `unitlab-redis`
+- `unitlab-backend`
+- `unitlab-nginx`
+- `unitlab-mosquitto`
+- `unitlab-signal-allocation-runner`
+- `unitlab-signal-test-run-runner`
+- `unitlab-sequence-runner`
+
+Check backend health:
+
+```bash
+curl -s http://127.0.0.1/api/v1/health | jq .
+```
+
+## 7. Install Host Wi‑Fi AP/STA Service (NetworkManager Agent)
+
+This service manages:
+
+- AP mode on boot (`[unitlab]-core-ABCD`)
+- STA scan/connect/fallback
+- Redis contract used by backend/frontend `/settings`
+
+### 7.1 Install and start
+
+```bash
+cd /opt/unitlab/unitlab-core
+sudo ./host-services/rpi-net-agent/install/install_rpi_net_agent.sh
+```
+
+### 7.2 Verify service
+
+```bash
+systemctl status unitlab-rpi-net-agent --no-pager
+journalctl -u unitlab-rpi-net-agent -n 100 --no-pager
+```
+
+### 7.3 Expected behavior
+
+On startup it should create/start AP:
+
+- `SSID`: `[unitlab]-core-ABCD`
+- `Password`: `pwd!ABCD`
+- AP IP: `10.42.0.1/24`
+
+## 8. Install Host NTP Service (Chrony Agent)
+
+This service manages `chrony` natively and exposes state/actions to UI via Redis/backend.
+
+### 8.1 Install and start
+
+```bash
+cd /opt/unitlab/unitlab-core
+sudo ./host-services/rpi-ntp-agent/install/install_rpi_ntp_agent.sh
+```
+
+This installer:
+
+- installs `chrony` (if missing)
+- installs host NTP agent
+- enables and starts `unitlab-rpi-ntp-agent`
+
+### 8.2 Verify service
+
+```bash
+systemctl status unitlab-rpi-ntp-agent --no-pager
+journalctl -u unitlab-rpi-ntp-agent -n 100 --no-pager
+```
+
+### 8.3 Verify backend sees NTP state
+
+```bash
+curl -s http://127.0.0.1/api/v1/core-ntp/state | jq .
+```
+
+## 8A. Install Host Diagnostics Service (RPi Core Health)
+
+This service publishes central-module diagnostics (temperature/load/memory/disk/systemd services) to Redis for UI display in `/settings/diagnostics`.
+
+### 8A.1 Install and start
+
+```bash
+cd /opt/unitlab/unitlab-core
+sudo ./host-services/rpi-core-diag-agent/install/install_rpi_core_diag_agent.sh
+```
+
+### 8A.2 Verify service
+
+```bash
+systemctl status unitlab-rpi-core-diag-agent --no-pager
+journalctl -u unitlab-rpi-core-diag-agent -n 100 --no-pager
+```
+
+### 8A.3 Verify backend sees diagnostics state
+
+```bash
+curl -s http://127.0.0.1/api/v1/core-diagnostics/state | jq .
+```
+
+## 9. Verify UI End-to-End
+
+Connect a laptop/tablet to the AP:
+
+- `SSID`: `[unitlab]-core-ABCD`
+- `Password`: `pwd!ABCD`
+
+Open:
+
+- `http://10.42.0.1`
+
+### 9.1 Settings → Core Network
+
+Verify:
+
+- AP status / SSID / password / IP shown
+- `Scan Wi‑Fi` works
+- `Connect STA` works
+- on failed connect it returns to AP
+
+### 9.2 Settings → Time / NTP Sync
+
+Verify:
+
+- chrony service status (`ACTIVE/INACTIVE`)
+- sync status (`SYNCED / NOT SYNCED`)
+- effective sources visible
+- add/remove NTP servers
+- `Apply servers`
+- `Restore defaults`
+- `Reload Chrony`
+
+### 9.3 Settings → Core Diagnostics
+
+Verify:
+
+- mode (`OK / DEGRADED / ERROR`)
+- hostname / model / OS / kernel shown
+- CPU temperature and load values update
+- memory and disk usage shown
+- host service statuses visible (`docker`, `NetworkManager`, `chrony`, host agents)
+
+### 9.4 Settings → Provisioning
+
+After installing the provisioning agent (see **10A**) and enabling service mode, verify:
+
+- provisioning checks list is populated (project files, docker, compose, host agents, frontend delivery mode)
+- `Run smoke check` populates local API checks
+- install/repair buttons are visible for host agents
+- last action result block updates after a provisioning action
+
+Note:
+- In normal engineer mode, `Provisioning` is hidden from the Settings sidebar.
+- Enable frontend service mode (`VITE_SETTINGS_SERVICE_MODE=true`) to access service-only actions.
+
+## 10. Operational Checks (Required)
+
+### 10.1 Redis is available to host services only on localhost
+
+```bash
+ss -ltnp | rg 6379
+```
+
+Expected:
+
+- `127.0.0.1:6379`
+
+### 10.2 Reboot behavior (critical)
+
+```bash
+sudo reboot
+```
+
+After reboot verify:
+
+- AP starts again (`[unitlab]-core-ABCD`)
+- UI works at `http://10.42.0.1`
+- Docker stack is healthy
+- `/settings` shows Core Network + Diagnostics + NTP state
+
+### 10.3 STA failure fallback
+
+From `/settings`, try connecting to an invalid/unknown SSID:
+
+- the agent should report connection failure
+- AP should be restored automatically
+- local UI access should remain available via AP
+
+## 10A. Install Host Provisioning Service (Repair / Smoke Checks)
+
+This service runs host-side provisioning checks and can execute host-agent install scripts from the UI (`/settings/provisioning`).
+
+### 10A.1 Install and start
+
+```bash
+cd /opt/unitlab/unitlab-core
+sudo ./host-services/rpi-provision-agent/install/install_rpi_provision_agent.sh
+```
+
+### 10A.2 Verify service
+
+```bash
+systemctl status unitlab-rpi-provision-agent --no-pager
+journalctl -u unitlab-rpi-provision-agent -n 100 --no-pager
+```
+
+### 10A.3 Verify backend sees provisioning state
+
+```bash
+curl -s http://127.0.0.1/api/v1/core-provision/state | jq .
+```
+
+## 11. Golden Flash / One-Command Strategy (Recommended)
+
+For future central modules, build a golden image that already includes:
+
+- Raspberry Pi OS Bookworm (64-bit)
+- Docker + compose plugin
+- `NetworkManager`
+- runtime bundle files in `/opt/unitlab/unitlab-core` (frontend source omitted)
+- root `.env` with:
+  - `UNITLAB_BACKEND_IMAGE=<release-tag>`
+  - `UNITLAB_WEB_IMAGE=<release-tag>`
+- production env files (or first-boot templates)
+
+Then per-device provisioning becomes approximately:
+
+```bash
+cd /opt/unitlab/unitlab-core
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+sudo ./host-services/rpi-net-agent/install/install_rpi_net_agent.sh
+sudo ./host-services/rpi-core-diag-agent/install/install_rpi_core_diag_agent.sh
+sudo ./host-services/rpi-ntp-agent/install/install_rpi_ntp_agent.sh
+sudo ./host-services/rpi-provision-agent/install/install_rpi_provision_agent.sh
+```
+
+## 12. Short Version (Checklist)
+
+1. Update OS and install Docker + Compose + NetworkManager
+2. Copy runtime bundle (recommended) or clone repo to `/opt/unitlab/unitlab-core`
+3. Build/push (or export/load) backend + frontend images and set `UNITLAB_BACKEND_IMAGE` / `UNITLAB_WEB_IMAGE` in root `.env`
+4. Create `backend/.env.prod` and `backend/.env.db.prod`
+5. Run Docker stack: `docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d`
+6. Install host Wi‑Fi service: `install_rpi_net_agent.sh`
+7. Install host diagnostics service: `install_rpi_core_diag_agent.sh`
+8. Install host NTP service: `install_rpi_ntp_agent.sh`
+9. Install host provisioning service: `install_rpi_provision_agent.sh`
+10. Connect to AP and open `http://10.42.0.1`
+11. Configure STA and NTP in `/settings`, verify `/settings/diagnostics`, run `/settings/provisioning` smoke check (service mode)

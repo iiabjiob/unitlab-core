@@ -2,6 +2,10 @@ import type { Channel } from "../channel"
 import type { DeviceHeartbeatDiagSnapshot, DeviceHeartbeatFastSnapshot } from "../device"
 import type { SystemHealthResponse, SystemStatus } from "../health"
 import type { TimeStatus } from "../time"
+import type { CoreNetworkSnapshot } from "../coreNetwork"
+import type { CoreNtpSnapshot } from "../coreNtp"
+import type { CoreDiagnosticsSnapshot } from "../coreDiagnostics"
+import type { CoreProvisionSnapshot } from "../coreProvision"
 // ---------------------------------------------------------------------
 // WS channels (Backend → Frontend)
 // ---------------------------------------------------------------------
@@ -145,6 +149,34 @@ export interface SystemHealthChangedEvent {
   snapshot: SystemHealthResponse
 }
 
+export interface CoreNetworkStateWsEvent {
+  channel: WSChannel.SYSTEM_INFO
+  event: "core_network_state"
+  snapshot: CoreNetworkSnapshot
+  changed_at: string
+}
+
+export interface CoreNtpStateWsEvent {
+  channel: WSChannel.SYSTEM_INFO
+  event: "core_ntp_state"
+  snapshot: CoreNtpSnapshot
+  changed_at: string
+}
+
+export interface CoreDiagnosticsStateWsEvent {
+  channel: WSChannel.SYSTEM_INFO
+  event: "core_diagnostics_state"
+  snapshot: CoreDiagnosticsSnapshot
+  changed_at: string
+}
+
+export interface CoreProvisionStateWsEvent {
+  channel: WSChannel.SYSTEM_INFO
+  event: "core_provision_state"
+  snapshot: CoreProvisionSnapshot
+  changed_at: string
+}
+
 export interface SignalAllocationJobEvent {
   channel: WSChannel.SYSTEM_INFO
   event: "signal_allocation_job"
@@ -241,6 +273,10 @@ export type SequenceWsEvent =
 export type ChannelWSEvent =
   | SystemHealthChangedEvent
   | SignalAllocationJobEvent
+  | CoreNetworkStateWsEvent
+  | CoreNtpStateWsEvent
+  | CoreDiagnosticsStateWsEvent
+  | CoreProvisionStateWsEvent
   | SignalTestRunJobEvent
   | DeviceStateEvent
   | DeviceRegisterEvent

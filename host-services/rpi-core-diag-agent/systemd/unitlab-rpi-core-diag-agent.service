@@ -1,0 +1,17 @@
+[Unit]
+Description=UnitLab RPi Core Diagnostics Agent
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/unitlab/rpi-core-diag-agent
+EnvironmentFile=-/etc/unitlab/rpi-core-diag-agent.env
+ExecStart=/opt/unitlab/rpi-core-diag-agent/.venv/bin/python -m unitlab_rpi_core_diag_agent
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,20 @@
+[Unit]
+Description=UnitLab RPi Network Agent (AP/STA controller)
+After=network-online.target NetworkManager.service redis.service docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/unitlab/rpi-net-agent
+EnvironmentFile=-/etc/unitlab/rpi-net-agent.env
+ExecStart=/opt/unitlab/rpi-net-agent/.venv/bin/python -m unitlab_rpi_net_agent
+Restart=always
+RestartSec=2
+TimeoutStopSec=10
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+

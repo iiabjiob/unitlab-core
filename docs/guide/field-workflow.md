@@ -29,7 +29,7 @@ Where:
 - The same suffix is used in both SSID and password.
 
 Example:
-- SSID: `unitlab-core-7F2A`
+- SSID: `[unitlab]-core-7F2A`
 - Password: `pwd!7F2A`
 
 ### Web interface address (default)

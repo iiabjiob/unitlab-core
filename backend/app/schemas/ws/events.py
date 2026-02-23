@@ -140,6 +140,34 @@ class SystemHealthChangedEvent(BaseModel):
     snapshot: Dict[str, Any]
 
 
+class CoreNetworkStateEvent(BaseModel):
+    channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
+    event: Literal["core_network_state"] = "core_network_state"
+    snapshot: Dict[str, Any]
+    changed_at: datetime
+
+
+class CoreNtpStateEvent(BaseModel):
+    channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
+    event: Literal["core_ntp_state"] = "core_ntp_state"
+    snapshot: Dict[str, Any]
+    changed_at: datetime
+
+
+class CoreDiagnosticsStateEvent(BaseModel):
+    channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
+    event: Literal["core_diagnostics_state"] = "core_diagnostics_state"
+    snapshot: Dict[str, Any]
+    changed_at: datetime
+
+
+class CoreProvisionStateEvent(BaseModel):
+    channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
+    event: Literal["core_provision_state"] = "core_provision_state"
+    snapshot: Dict[str, Any]
+    changed_at: datetime
+
+
 class SignalAllocationJobEvent(BaseModel):
     channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
     event: Literal["signal_allocation_job"] = "signal_allocation_job"
@@ -195,6 +223,10 @@ WSEvent = Union[
     SequenceStoppedEvent,
     SequenceCompletedEvent,
     SystemHealthChangedEvent,
+    CoreNetworkStateEvent,
+    CoreNtpStateEvent,
+    CoreDiagnosticsStateEvent,
+    CoreProvisionStateEvent,
     SignalAllocationJobEvent,
     SignalTestRunJobEvent,
 ]

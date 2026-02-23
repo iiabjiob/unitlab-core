@@ -1,0 +1,17 @@
+[Unit]
+Description=UnitLab RPi Provision Agent
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/unitlab/rpi-provision-agent
+EnvironmentFile=-/etc/unitlab/rpi-provision-agent.env
+ExecStart=/opt/unitlab/rpi-provision-agent/.venv/bin/python -m unitlab_rpi_provision_agent
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+

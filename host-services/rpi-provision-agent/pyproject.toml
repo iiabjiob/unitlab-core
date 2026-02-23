@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unitlab-rpi-provision-agent"
+version = "0.1.0"
+description = "UnitLab host provisioning/smoke-check agent for Raspberry Pi core unit"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "redis>=5.0.0",
+]
+
+[project.scripts]
+unitlab-rpi-provision-agent = "unitlab_rpi_provision_agent.__main__:main"
+
+[tool.setuptools]
+packages = ["unitlab_rpi_provision_agent"]
+

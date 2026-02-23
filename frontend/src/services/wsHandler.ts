@@ -7,6 +7,10 @@ import { useSystemHealthStore } from '@/stores/systemHealthStore'
 import { useSignalJobStore } from '@/stores/signalJobStore'
 import { useSignalSheetStore } from '@/stores/signalSheetStore'
 import { useTestedAtRealtimeStore } from '@/stores/testedAtRealtimeStore'
+import { useCoreNetworkStore } from '@/stores/coreNetworkStore'
+import { useCoreNtpStore } from '@/stores/coreNtpStore'
+import { useCoreDiagnosticsStore } from '@/stores/coreDiagnosticsStore'
+import { useCoreProvisionStore } from '@/stores/coreProvisionStore'
 
 const logger = getLogger('ws')
 const TEST_RUN_JOB_EVENT_THROTTLE_MS = 150
@@ -24,6 +28,10 @@ import type {
   SequenceWsEvent,
   ChannelWSEvent,
   SystemHealthChangedEvent,
+  CoreNetworkStateWsEvent,
+  CoreNtpStateWsEvent,
+  CoreDiagnosticsStateWsEvent,
+  CoreProvisionStateWsEvent,
   SignalAllocationJobEvent,
   SignalTestRunJobEvent,
 } from '@/types/ws/events'
@@ -147,6 +155,10 @@ export function handleWsEvent(event: WSEvent) {
   const signalJobStore = useSignalJobStore()
   const signalSheetStore = useSignalSheetStore()
   const testedAtRealtimeStore = useTestedAtRealtimeStore()
+  const coreNetworkStore = useCoreNetworkStore()
+  const coreNtpStore = useCoreNtpStore()
+  const coreDiagnosticsStore = useCoreDiagnosticsStore()
+  const coreProvisionStore = useCoreProvisionStore()
 
   // Route sequence events into the sequence store so realtime progress stays in sync.
   if ('topic' in event && (event as SequenceWsEvent).topic === 'sequence') {
@@ -159,10 +171,37 @@ export function handleWsEvent(event: WSEvent) {
   switch (channelEvent.channel) {
 
     case WSChannel.SYSTEM_INFO: {
-      const sysEvent = channelEvent as SystemHealthChangedEvent
+      const sysEvent = channelEvent as
+        | SystemHealthChangedEvent
+        | CoreNetworkStateWsEvent
+        | CoreNtpStateWsEvent
+        | CoreDiagnosticsStateWsEvent
+        | CoreProvisionStateWsEvent
+        | SignalAllocationJobEvent
+        | SignalTestRunJobEvent
       if (sysEvent.event === "system_health_changed") {
         logger.debug("📡 IN ← SYSTEM_HEALTH:", sysEvent)
         systemHealthStore.applySnapshot(sysEvent.snapshot)
+        break
+      }
+      if (sysEvent.event === "core_network_state") {
+        logger.debug("📡 IN ← CORE_NETWORK_STATE:", sysEvent)
+        coreNetworkStore.applySnapshot((sysEvent as CoreNetworkStateWsEvent).snapshot)
+        break
+      }
+      if (sysEvent.event === "core_ntp_state") {
+        logger.debug("📡 IN ← CORE_NTP_STATE:", sysEvent)
+        coreNtpStore.applySnapshot((sysEvent as CoreNtpStateWsEvent).snapshot)
+        break
+      }
+      if (sysEvent.event === "core_diagnostics_state") {
+        logger.debug("📡 IN ← CORE_DIAGNOSTICS_STATE:", sysEvent)
+        coreDiagnosticsStore.applySnapshot((sysEvent as CoreDiagnosticsStateWsEvent).snapshot)
+        break
+      }
+      if (sysEvent.event === "core_provision_state") {
+        logger.debug("📡 IN ← CORE_PROVISION_STATE:", sysEvent)
+        coreProvisionStore.applySnapshot((sysEvent as CoreProvisionStateWsEvent).snapshot)
         break
       }
       if (

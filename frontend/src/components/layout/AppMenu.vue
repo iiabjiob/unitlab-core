@@ -87,11 +87,14 @@ import HomeChipIcon from "@/components/icons/HomeChipIcon.vue"
 import HomeDocumentsIcon from "@/components/icons/HomeDocumentsIcon.vue"
 import HomeSwitchgearIcon from "@/components/icons/HomeSwitchgearIcon.vue"
 import HomeFlowStackIcon from "@/components/icons/HomeFlowStackIcon.vue"
+import SystemIcon from "@/components/icons/SystemIcon.vue"
 
 const props = withDefaults(defineProps<{
   compact?: boolean
+  includeSettings?: boolean
 }>(), {
   compact: false,
+  includeSettings: true,
 })
 
 type MenuItem = {
@@ -105,7 +108,7 @@ type MenuSection = {
   items: MenuItem[]
 }
 
-const sections: MenuSection[] = [
+const baseSections: MenuSection[] = [
   {
     title: "HARDWARE",
     items: [{ to: "/devices", label: "Devices" }],
@@ -125,6 +128,19 @@ const sections: MenuSection[] = [
   },
 ]
 
+const sections = computed<MenuSection[]>(() => {
+  if (props.includeSettings) {
+    return [
+      ...baseSections,
+      {
+        title: "SETTINGS",
+        items: [{ to: "/settings", label: "Settings" }],
+      },
+    ]
+  }
+  return baseSections
+})
+
 const route = useRoute()
 const router = useRouter()
 const navRef = ref<HTMLElement | null>(null)
@@ -132,7 +148,7 @@ const focusedRoute = ref<string | null>(null)
 const pendingRoute = ref<string | null>(null)
 
 const menuEntries = computed(() =>
-  sections.flatMap(section =>
+  sections.value.flatMap(section =>
     section.items.flatMap(item => [item, ...(item.children ?? [])]),
   ),
 )
@@ -210,6 +226,9 @@ function resolveRouteIcon(to: string) {
   }
   if (normalized.startsWith("/sequences")) {
     return HomeFlowStackIcon
+  }
+  if (normalized.startsWith("/settings")) {
+    return SystemIcon
   }
   return HomeDocumentsIcon
 }

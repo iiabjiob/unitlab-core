@@ -37,9 +37,23 @@
     </div>
 
     <!-- Menu stretches to fill available space while leaving room for the footer -->
-    <AppMenu :compact="compact" class="text-base overflow-y-auto overflow-x-visible"/>
+    <AppMenu :compact="compact" :include-settings="false" class="text-base overflow-y-auto overflow-x-visible"/>
 
-    <div v-if="!compact" class="p-5 mx-auto"><ThemeToggle /></div>
+    <div class="border-t border-neutral-200 dark:border-neutral-700" :class="compact ? 'p-2' : 'p-4'">
+      <div class="flex items-center justify-center gap-2" :class="compact ? 'flex-col' : ''">
+        <RouterLink
+          to="/settings"
+          class="inline-flex items-center justify-center rounded-lg border border-neutral-300 text-neutral-700 transition hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+          :class="compact ? 'h-10 w-10' : 'h-9 px-3 gap-2'"
+          title="Settings"
+          aria-label="Settings"
+        >
+          <SystemIcon class="h-4 w-4" />
+          <span v-if="!compact" class="text-xs font-semibold">Settings</span>
+        </RouterLink>
+        <ThemeToggle v-if="!compact" />
+      </div>
+    </div>
 
   </aside>
 </template>
@@ -53,6 +67,7 @@ import AppLogo from "./AppLogo.vue"
 import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
 import TimeComponent from "../misc/TimeComponent.vue"
 import ThemeToggle from "../ui/ThemeToggle.vue"
+import SystemIcon from "@/components/icons/SystemIcon.vue"
 
 defineProps<{
   compact?: boolean
