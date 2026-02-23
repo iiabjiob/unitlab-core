@@ -407,6 +407,14 @@ class SimulatedDeviceBase:
         now = time.monotonic()
         if self._heartbeat_diag_last_sent_at is None or (now - self._heartbeat_diag_last_sent_at) >= _HEARTBEAT_DIAG_INTERVAL:
             self._heartbeat_diag_seq += 1
+            diag_mem_free = 180000 + self._rng.randint(-5000, 5000)
+            diag_mem_min = 170000 + self._rng.randint(-5000, 5000)
+            diag_mem_largest = 90000 + self._rng.randint(-4000, 4000)
+            mem_stab_ready = 1 if uptime_s >= 30 else 0
+            mem_stab_base_ms = 30000 if mem_stab_ready else 0
+            mem_stab_base_free = 184000 if mem_stab_ready else 0
+            mem_stab_base_largest = 90000 if mem_stab_ready else 0
+
             diag_payload = {
                 "kind": "diag",
                 "seq": self._heartbeat_diag_seq,
@@ -431,13 +439,36 @@ class SimulatedDeviceBase:
                     "ovf": 0,
                     "large": 0,
                     "noq": 0,
+                    "rlim": 0,
+                    "rl_scan": 0,
+                    "rl_req": 0,
+                    "rl_cmd": 0,
                     "depth": 0,
                     "depth_max": 0,
                 },
                 "mem": {
-                    "free": 180000 + self._rng.randint(-5000, 5000),
-                    "min": 170000 + self._rng.randint(-5000, 5000),
-                    "largest": 90000 + self._rng.randint(-4000, 4000),
+                    "free": diag_mem_free,
+                    "min": diag_mem_min,
+                    "largest": diag_mem_largest,
+                },
+                "mem_stab": {
+                    "ready": mem_stab_ready,
+                    "base_ms": mem_stab_base_ms,
+                    "base_free": mem_stab_base_free,
+                    "base_largest": mem_stab_base_largest,
+                    "max_d_free": abs(diag_mem_free - mem_stab_base_free) if mem_stab_ready else 0,
+                    "max_d_largest": abs(diag_mem_largest - mem_stab_base_largest) if mem_stab_ready else 0,
+                    "chg": max(0, int((uptime_s - 30) // 60)) if mem_stab_ready else 0,
+                    "samples": max(0, int((uptime_s - 30) // 5) + 1) if mem_stab_ready else 0,
+                },
+                "alloc": {
+                    "boot_done": 1 if uptime_s >= 5 else 0,
+                    "boot_ms": 5000 if uptime_s >= 5 else 0,
+                    "boot_new": 24,
+                    "boot_del": 19,
+                    "run_new": max(0, int(uptime_s // 90)),
+                    "run_del": max(0, int(uptime_s // 95)),
+                    "new_fail": 0,
                 },
                 "reset": {
                     "code": 1,

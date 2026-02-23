@@ -2,6 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from "vue"
 import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
 import type { Device } from "@/types/device"
+import UiAffinoDisclosure from "@/components/ui/UiAffinoDisclosure.vue"
+import InlineInfoTooltip from "@/components/ui/InlineInfoTooltip.vue"
 
 const props = defineProps<{ device: Device }>()
 const MEM_FREE_LOW_THRESHOLD = 150000
@@ -38,6 +40,8 @@ const diag = computed<JsonRecord | null>(() => asRecord(props.device.heartbeat_d
 
 const fastMem = computed(() => asRecord(fast.value?.mem))
 const diagMem = computed(() => asRecord(diag.value?.mem))
+const diagMemStab = computed(() => asRecord(diag.value?.mem_stab))
+const diagAlloc = computed(() => asRecord(diag.value?.alloc))
 const diagMqttIn = computed(() => asRecord(diag.value?.mqtt_in))
 const diagReset = computed(() => asRecord(diag.value?.reset))
 const diagTasks = computed(() => asRecord(diag.value?.tasks))
@@ -54,7 +58,81 @@ const staleTasks = computed(() => asNumber(diagTasks.value?.stale))
 const faults = computed(() => asNumber((fast.value?.faults ?? diag.value?.faults) ?? null))
 const degraded = computed(() => asNumber((fast.value?.degraded ?? diag.value?.degraded) ?? null))
 const mqttOverflow = computed(() => asNumber(diagMqttIn.value?.ovf))
+const mqttRateLimited = computed(() => asNumber(diagMqttIn.value?.rlim))
 const memFree = computed(() => asNumber((diagMem.value?.free ?? fastMem.value?.free) ?? null))
+const memStabilityRows = computed(() => {
+  const ready = asNumber(diagMemStab.value?.ready)
+  return [
+    { key: "baseline", label: "Baseline", value: ready === 1 ? "captured" : "warming" },
+    { key: "base_ms", label: "Baseline ms", value: asNumber(diagMemStab.value?.base_ms) ?? '—' },
+    { key: "base_free", label: "Base free", value: asNumber(diagMemStab.value?.base_free) ?? '—' },
+    { key: "base_largest", label: "Base largest", value: asNumber(diagMemStab.value?.base_largest) ?? '—' },
+    { key: "max_d_free", label: "Max drift free", value: asNumber(diagMemStab.value?.max_d_free) ?? '—' },
+    { key: "max_d_largest", label: "Max drift largest", value: asNumber(diagMemStab.value?.max_d_largest) ?? '—' },
+    { key: "chg", label: "Changes", value: asNumber(diagMemStab.value?.chg) ?? '—' },
+    { key: "samples", label: "Samples", value: asNumber(diagMemStab.value?.samples) ?? '—' },
+  ]
+})
+const allocRows = computed(() => [
+  { key: "boot_done", label: "Boot complete", value: asNumber(diagAlloc.value?.boot_done) === 1 ? "yes" : (diagAlloc.value ? "no" : "—") },
+  { key: "boot_ms", label: "Boot ms", value: asNumber(diagAlloc.value?.boot_ms) ?? '—' },
+  { key: "boot_new", label: "Boot new", value: asNumber(diagAlloc.value?.boot_new) ?? '—' },
+  { key: "boot_del", label: "Boot delete", value: asNumber(diagAlloc.value?.boot_del) ?? '—' },
+  { key: "run_new", label: "Run new", value: asNumber(diagAlloc.value?.run_new) ?? '—' },
+  { key: "run_del", label: "Run delete", value: asNumber(diagAlloc.value?.run_del) ?? '—' },
+  { key: "new_fail", label: "New fail", value: asNumber(diagAlloc.value?.new_fail) ?? '—' },
+])
+
+const keyAlertTooltipByKey: Record<string, string> = {
+  faults: "Firmware-reported active fault count.",
+  degraded: "Non-fatal degraded mode indicator count.",
+  ovf: "Inbound MQTT queue overflow counter (dropped due to queue full).",
+  rlim: "Messages dropped by ingress rate limiter.",
+  stale: "Tasks that missed expected heartbeat/window.",
+  mem: "Current free heap words/bytes from telemetry snapshot.",
+}
+
+const freshnessTooltipByKey: Record<string, string> = {
+  fast: "Age since last fast heartbeat (/h) seen by frontend.",
+  diag: "Age since last diagnostic heartbeat (/hd) seen by frontend.",
+}
+
+const summaryTooltipByKey: Record<string, string> = {
+  State: "Normalized firmware runtime state.",
+  MQTT: "Normalized MQTT connectivity status.",
+  "Fast seq": "Sequence number of fast heartbeat packets.",
+  "Diag seq": "Sequence number of diagnostic heartbeat packets.",
+  Uptime: "Firmware uptime from heartbeat payload.",
+  "Last component": "Last component that reported status/reason.",
+  "Last reason": "Last reported reason code/label from firmware.",
+  "Diag stale tasks": "Count of stale tasks from diag.tasks.stale.",
+}
+
+const memStabilityTooltipByKey: Record<string, string> = {
+  baseline: "Whether baseline memory snapshot is captured.",
+  base_ms: "Timestamp/ms when baseline was captured.",
+  base_free: "Baseline free memory value.",
+  base_largest: "Baseline largest free block.",
+  max_d_free: "Maximum observed drift of free memory from baseline.",
+  max_d_largest: "Maximum observed drift of largest free block from baseline.",
+  chg: "Detected memory change events count.",
+  samples: "Number of samples used in stability estimate.",
+}
+
+const allocTooltipByKey: Record<string, string> = {
+  boot_done: "Allocator boot initialization completed.",
+  boot_ms: "Allocator boot initialization duration in ms.",
+  boot_new: "new() calls during boot phase.",
+  boot_del: "delete() calls during boot phase.",
+  run_new: "new() calls during runtime phase.",
+  run_del: "delete() calls during runtime phase.",
+  new_fail: "Failed new() allocations count.",
+}
+
+function tooltipFromMap(map: Record<string, string>, key: string): string {
+  return map[key] ?? ""
+}
+
 const saveButtonText = ref("Save JSON")
 let saveFeedbackTimeout: number | null = null
 const nowMs = ref(Date.now())
@@ -155,6 +233,7 @@ const keyAlerts = computed(() => {
   const faultsCount = asPositiveNumber(faults.value)
   const degradedCount = asPositiveNumber(degraded.value)
   const overflowCount = asPositiveNumber(mqttOverflow.value)
+  const rateLimitDrops = asPositiveNumber(mqttRateLimited.value)
   const staleCount = asPositiveNumber(staleTasks.value)
   const free = memFree.value
   const memLow = free != null && free < MEM_FREE_LOW_THRESHOLD
@@ -163,6 +242,7 @@ const keyAlerts = computed(() => {
     { key: "faults", label: "Faults", value: faultsCount, isAlert: faultsCount > 0 },
     { key: "degraded", label: "Degraded", value: degradedCount, isAlert: degradedCount > 0 },
     { key: "ovf", label: "MQTT overflow", value: overflowCount, isAlert: overflowCount > 0 },
+    { key: "rlim", label: "MQTT rate drops", value: rateLimitDrops, isAlert: rateLimitDrops > 0 },
     { key: "stale", label: "Stale tasks", value: staleCount, isAlert: staleCount > 0 },
     {
       key: "mem",
@@ -219,6 +299,34 @@ const diagnosticsPayload = computed(() => {
     },
     heartbeat_fast: fast.value,
     heartbeat_diag: diag.value,
+    diagnostics_view: {
+      summary: summaryRows.value,
+      key_alerts: keyAlerts.value,
+      freshness: freshnessRows.value,
+      mem_stability: memStabilityRows.value,
+      allocation_counters: allocRows.value,
+      stack: stackRows.value,
+      reset: {
+        code: asNumber(diagReset.value?.code),
+        label: asString(diagReset.value?.label),
+        boot: asNumber(diagReset.value?.boot),
+      },
+      raw_sections: {
+        mem: diagMem.value,
+        mem_stab: diagMemStab.value,
+        alloc: diagAlloc.value,
+        mqtt_in: diagMqttIn.value,
+        tasks: diagTasks.value,
+        reset: diagReset.value,
+        stack: diagStack.value,
+      },
+      thresholds: {
+        mem_free_low: MEM_FREE_LOW_THRESHOLD,
+        fast_stale_ms: FAST_STALE_THRESHOLD_MS,
+        diag_stale_ms: DIAG_STALE_THRESHOLD_MS,
+      },
+      exported_from_ui_at_ms: Date.now(),
+    },
   }
 })
 
@@ -615,9 +723,8 @@ onBeforeUnmount(() => {
       </div>
 
       <template v-else>
-        <div class="rounded-lg border border-neutral-200 dark:border-neutral-700 p-3">
-          <div class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">Key alerts</div>
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+        <UiAffinoDisclosure title="Key alerts">
+          <div class="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
             <div
               v-for="item in keyAlerts"
               :key="item.key"
@@ -626,15 +733,22 @@ onBeforeUnmount(() => {
                 ? 'border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200'
                 : 'border-neutral-200 bg-neutral-50 text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-200'"
             >
-              <div class="text-[10px] uppercase tracking-wide opacity-80">{{ item.label }}</div>
+              <div class="text-[10px] uppercase tracking-wide opacity-80 flex items-center gap-1">
+                <span>{{ item.label }}</span>
+                <InlineInfoTooltip
+                  v-if="tooltipFromMap(keyAlertTooltipByKey, item.key)"
+                  :text="tooltipFromMap(keyAlertTooltipByKey, item.key)"
+                  placement="top"
+                  align="start"
+                />
+              </div>
               <div class="mt-1 text-sm font-semibold break-all">{{ item.value }}</div>
               <div v-if="item.hint" class="text-[10px] mt-0.5 uppercase tracking-wide opacity-80">{{ item.hint }}</div>
             </div>
           </div>
-        </div>
+        </UiAffinoDisclosure>
 
-        <div class="rounded-lg border border-neutral-200 dark:border-neutral-700 p-3">
-          <div class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">Freshness</div>
+        <UiAffinoDisclosure title="Freshness">
           <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div
               v-for="row in freshnessRows"
@@ -644,27 +758,46 @@ onBeforeUnmount(() => {
                 ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200'
                 : 'border-neutral-200 bg-neutral-50 text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-200'"
             >
-              <div class="text-[10px] uppercase tracking-wide opacity-80">{{ row.label }}</div>
+              <div class="text-[10px] uppercase tracking-wide opacity-80 flex items-center gap-1">
+                <span>{{ row.label }}</span>
+                <InlineInfoTooltip
+                  v-if="tooltipFromMap(freshnessTooltipByKey, row.key)"
+                  :text="tooltipFromMap(freshnessTooltipByKey, row.key)"
+                  placement="top"
+                  align="start"
+                />
+              </div>
               <div class="mt-1 text-sm font-semibold">{{ row.value }}</div>
             </div>
           </div>
-        </div>
+        </UiAffinoDisclosure>
 
-        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <UiAffinoDisclosure title="Summary">
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <div
             v-for="row in summaryRows"
             :key="row.key"
             class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900/60"
           >
-            <div class="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{{ row.key }}</div>
+            <div class="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+              <span>{{ row.key }}</span>
+              <InlineInfoTooltip
+                v-if="tooltipFromMap(summaryTooltipByKey, String(row.key))"
+                :text="tooltipFromMap(summaryTooltipByKey, String(row.key))"
+                placement="top"
+                align="start"
+              />
+            </div>
             <div class="mt-1 text-sm font-medium break-all">{{ row.value }}</div>
           </div>
-        </div>
+          </div>
+        </UiAffinoDisclosure>
 
-        <section class="rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
-          <header class="px-3 py-2 text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/70 border-b border-neutral-200 dark:border-neutral-700">
-            Telemetry tree
-          </header>
+        <UiAffinoDisclosure
+          title="Telemetry tree"
+          containerClass="rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden"
+          headerClass="w-full px-3 py-2 text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/70 border-b border-neutral-200 dark:border-neutral-700"
+        >
           <div class="max-h-72 overflow-auto p-1.5 text-[11px]" tabindex="0" @keydown="onTelemetryTreeRootKeydown">
             <button
               v-for="row in visibleTelemetryRows"
@@ -685,12 +818,58 @@ onBeforeUnmount(() => {
               <span v-if="row.valueLabel !== null" class="ml-auto font-mono text-neutral-800 dark:text-neutral-100 break-all">{{ row.valueLabel }}</span>
             </button>
           </div>
-        </section>
+        </UiAffinoDisclosure>
 
         <div class="grid grid-cols-1 gap-4 xl:grid-cols-1">
-          <section class="rounded-lg border border-neutral-200 dark:border-neutral-700 p-3">
-            <h4 class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-2">Tasks / Stack</h4>
+          <UiAffinoDisclosure title="Memory Stability">
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <div
+                v-for="row in memStabilityRows"
+                :key="row.key"
+                class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900/60"
+              >
+                <div class="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+                  <span>{{ row.label }}</span>
+                  <InlineInfoTooltip
+                    v-if="tooltipFromMap(memStabilityTooltipByKey, row.key)"
+                    :text="tooltipFromMap(memStabilityTooltipByKey, row.key)"
+                    placement="top"
+                    align="start"
+                  />
+                </div>
+                <div class="mt-1 text-sm font-medium break-all">{{ row.value }}</div>
+              </div>
+            </div>
+            <div class="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+              Proxy telemetry for heap plateau after warmup (`mem_stab` from diagnostic heartbeat).
+            </div>
+          </UiAffinoDisclosure>
 
+          <UiAffinoDisclosure title="Allocation Counters">
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <div
+                v-for="row in allocRows"
+                :key="row.key"
+                class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900/60"
+              >
+                <div class="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+                  <span>{{ row.label }}</span>
+                  <InlineInfoTooltip
+                    v-if="tooltipFromMap(allocTooltipByKey, row.key)"
+                    :text="tooltipFromMap(allocTooltipByKey, row.key)"
+                    placement="top"
+                    align="start"
+                  />
+                </div>
+                <div class="mt-1 text-sm font-medium break-all">{{ row.value }}</div>
+              </div>
+            </div>
+            <div class="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+              Best-effort C++ new/delete counters from firmware (`diag.alloc`); use with `mem_stab` because third-party malloc/free may be outside coverage.
+            </div>
+          </UiAffinoDisclosure>
+
+          <UiAffinoDisclosure title="Tasks / Stack">
             <div class="rounded-md border border-neutral-200 dark:border-neutral-700 px-2 py-1.5 text-[11px] mb-2">
               <span class="uppercase tracking-wide text-neutral-500 dark:text-neutral-400">stale</span>
               <span class="ml-2 font-semibold">{{ staleTasks ?? '—' }}</span>
@@ -700,9 +879,24 @@ onBeforeUnmount(() => {
               <table class="min-w-full text-[11px]">
                 <thead class="bg-neutral-50 dark:bg-neutral-900/70 text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
                   <tr>
-                    <th class="text-left px-2 py-1 border-b border-neutral-200 dark:border-neutral-700">task</th>
-                    <th class="text-left px-2 py-1 border-b border-neutral-200 dark:border-neutral-700">min_words</th>
-                    <th class="text-left px-2 py-1 border-b border-neutral-200 dark:border-neutral-700">last_seen_ms</th>
+                    <th class="text-left px-2 py-1 border-b border-neutral-200 dark:border-neutral-700">
+                      <span class="inline-flex items-center gap-1">
+                        <span>task</span>
+                        <InlineInfoTooltip text="RTOS/firmware task name from stack diagnostics." placement="top" align="start" />
+                      </span>
+                    </th>
+                    <th class="text-left px-2 py-1 border-b border-neutral-200 dark:border-neutral-700">
+                      <span class="inline-flex items-center gap-1">
+                        <span>min_words</span>
+                        <InlineInfoTooltip text="Minimum observed stack free words for the task." placement="top" align="start" />
+                      </span>
+                    </th>
+                    <th class="text-left px-2 py-1 border-b border-neutral-200 dark:border-neutral-700">
+                      <span class="inline-flex items-center gap-1">
+                        <span>last_seen_ms</span>
+                        <InlineInfoTooltip text="Timestamp (ms) of last scheduler/task heartbeat observation." placement="top" align="start" />
+                      </span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -728,7 +922,7 @@ onBeforeUnmount(() => {
                 <span class="font-mono">boot:</span> {{ asNumber(diagReset?.boot) ?? '—' }}
               </div>
             </div>
-          </section>
+          </UiAffinoDisclosure>
         </div>
       </template>
     </div>

@@ -17,6 +17,9 @@ importers:
       '@affino/dialog-vue':
         specifier: ^1.1.0
         version: 1.1.0(vue@3.5.25(typescript@5.8.3))
+      '@affino/disclosure-vue':
+        specifier: ^0.1.0
+        version: 0.1.0(vue@3.5.25(typescript@5.8.3))
       '@affino/menu-core':
         specifier: ^1.1.0
         version: 1.1.0
@@ -125,6 +128,14 @@ packages:
 
   '@affino/dialog-vue@1.1.0':
     resolution: {integrity: sha512-80MKrX9H+YQ/5v3otx6SDGV/ew6CxsAVKwHOAFLESlTR7+ZqsFmJ1iTm2eNWXeplYr6Okn58Q+xKEd9/9lloow==}
+    peerDependencies:
+      vue: ^3.3.0
+
+  '@affino/disclosure-core@0.1.0':
+    resolution: {integrity: sha512-Px1/9Dn10sHUFscueL8z4CtAm0NEexn41INGng+fAQDb8H2EgROyJ4JPFXOg0iGYZlM/8E9iP2rfqI0NKMc/4A==}
+
+  '@affino/disclosure-vue@0.1.0':
+    resolution: {integrity: sha512-eZkTjgG+VYx8HPchpHtYx7HATyVGjw0ohGqekw66/eZys4VQ0lUK6mmEeLO+OqJ1AFxRlD98gMFLaweBFkV5Xw==}
     peerDependencies:
       vue: ^3.3.0
 
@@ -1682,6 +1693,13 @@ snapshots:
   '@affino/dialog-vue@1.1.0(vue@3.5.25(typescript@5.8.3))':
     dependencies:
       '@affino/dialog-core': 1.1.0
+      vue: 3.5.25(typescript@5.8.3)
+
+  '@affino/disclosure-core@0.1.0': {}
+
+  '@affino/disclosure-vue@0.1.0(vue@3.5.25(typescript@5.8.3))':
+    dependencies:
+      '@affino/disclosure-core': 0.1.0
       vue: 3.5.25(typescript@5.8.3)
 
   '@affino/focus-utils@1.1.0': {}

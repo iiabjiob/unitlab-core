@@ -15,6 +15,8 @@ from app.core.logger import get_logger
 settings = get_settings()
 logger = get_logger("mqtt")
 
+MAX_HEARTBEAT_JSON_BYTES = 2048
+
 
 def _heartbeat_kind_from_topic(topic: str) -> str | None:
     if topic.endswith('/hd'):
@@ -34,6 +36,13 @@ def _heartbeat_redis_key(unit_id: str, kind: str | None) -> str | None:
 
 def _parse_heartbeat_payload(payload: bytes) -> dict[str, Any] | None:
     if not payload:
+        return None
+    if len(payload) > MAX_HEARTBEAT_JSON_BYTES:
+        logger.warning(
+            "Heartbeat JSON payload too large: %d bytes (max %d)",
+            len(payload),
+            MAX_HEARTBEAT_JSON_BYTES,
+        )
         return None
     try:
         decoded = json.loads(payload.decode('utf-8'))
