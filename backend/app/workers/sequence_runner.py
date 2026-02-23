@@ -1,12 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import signal
-import socket
+import time
 from contextlib import suppress
-
-from redis.exceptions import ResponseError
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -19,52 +15,60 @@ from app.services.sequence_runner import (
     SequenceNotFoundError,
     SequenceRunner,
 )
+from app.workers.stream_worker_runtime import (
+    build_worker_consumer_name,
+    drain_pending_stream_entries,
+    ensure_stream_consumer_group,
+    fetch_stream_group_entries,
+)
+from app.workers.worker_lifecycle import install_stop_signal_handlers, run_consume_loop
 
 settings = get_settings()
 logger = get_logger("worker.sequence")
 
 STREAM_NAME = settings.sequence_command_stream
 GROUP_NAME = "sequence-runner"
-CONSUMER_NAME = f"{socket.gethostname()}-{os.getpid()}"
+CONSUMER_NAME = build_worker_consumer_name()
 MAX_RETRIES = 5
 
 
 async def _ensure_group(redis) -> None:
-    try:
-        await redis.xgroup_create(STREAM_NAME, GROUP_NAME, id="0", mkstream=True)
-        logger.info("✅ Created sequence command consumer group %s", GROUP_NAME)
-    except ResponseError as exc:
-        if "BUSYGROUP" in str(exc):
-            logger.info("ℹ️ Sequence command consumer group already exists")
-        else:
-            raise
+    await ensure_stream_consumer_group(
+        redis,
+        stream_name=STREAM_NAME,
+        group_name=GROUP_NAME,
+        logger=logger,
+        create_label="sequence command",
+        exists_label="Sequence command",
+    )
 
 
 async def _fetch(redis, stream_id: str, block_ms: int = 5000):
-    result = await redis.xreadgroup(
-        GROUP_NAME,
-        CONSUMER_NAME,
-        streams={STREAM_NAME: stream_id},
+    return await fetch_stream_group_entries(
+        redis,
+        stream_name=STREAM_NAME,
+        group_name=GROUP_NAME,
+        consumer_name=CONSUMER_NAME,
+        stream_id=stream_id,
         count=20,
-        block=block_ms,
+        block_ms=block_ms,
     )
-    if not result:
-        return []
-    return result[0][1]
 
 
 async def _drain_pending(redis, runner: SequenceRunner) -> None:
-    while True:
-        entries = await _fetch(redis, "0", block_ms=100)
-        if not entries:
-            break
-        logger.info("🔁 Replaying %d pending sequence commands", len(entries))
-        await _process_entries(redis, runner, entries)
+    await drain_pending_stream_entries(
+        fetch_pending=lambda stream_id, block_ms: _fetch(redis, stream_id, block_ms=block_ms),
+        process_entries=lambda entries: _process_entries(redis, runner, entries),
+        logger=logger,
+        replay_label="sequence commands",
+        replay_limit=1000,
+    )
 
 
 async def _process_entries(redis, runner: SequenceRunner, entries) -> None:
     for entry_id, fields in entries:
         command: SequenceCommand | None = None
+        started_monotonic: float | None = None
         try:
             _, command = parse_sequence_command_entry((entry_id, fields))
         except Exception as exc:  # noqa: BLE001
@@ -72,13 +76,68 @@ async def _process_entries(redis, runner: SequenceRunner, entries) -> None:
             await redis.xack(STREAM_NAME, GROUP_NAME, entry_id)
             continue
 
+        op_name = str(command.type.value if hasattr(command.type, "value") else command.type).lower()
+        request_id = str(command.request_id or "").strip() or "-"
+        bindings_count = len(_coerce_signal_bindings(command.extra)) if command.type == SequenceCommandType.START else 0
+        started_monotonic = time.monotonic()
+        logger.info(
+            "▶️ Sequence command start | sequence=%s op=%s request=%s attempt=%s bindings=%s entry=%s",
+            command.sequence_id,
+            op_name,
+            request_id,
+            command.attempts,
+            bindings_count,
+            entry_id,
+        )
         try:
             await _handle_command(runner, command)
+            duration_ms = int((time.monotonic() - started_monotonic) * 1000) if started_monotonic else 0
+            logger.info(
+                "✅ Sequence command complete | sequence=%s op=%s request=%s attempt=%s duration=%sms entry=%s",
+                command.sequence_id,
+                op_name,
+                request_id,
+                command.attempts,
+                duration_ms,
+                entry_id,
+            )
         except SequenceNotFoundError as exc:
+            duration_ms = int((time.monotonic() - started_monotonic) * 1000) if started_monotonic else 0
+            logger.error(
+                "❌ Sequence command failed | sequence=%s op=%s request=%s attempt=%s duration=%sms err=%s entry=%s",
+                command.sequence_id,
+                op_name,
+                request_id,
+                command.attempts,
+                duration_ms,
+                str(exc),
+                entry_id,
+            )
             logger.error("💥 Sequence not found for command %s: %s", entry_id, exc)
         except SequenceAlreadyRunningError as exc:
+            duration_ms = int((time.monotonic() - started_monotonic) * 1000) if started_monotonic else 0
+            logger.warning(
+                "⚠️ Sequence command rejected | sequence=%s op=%s request=%s attempt=%s duration=%sms reason=already_running entry=%s",
+                command.sequence_id,
+                op_name,
+                request_id,
+                command.attempts,
+                duration_ms,
+                entry_id,
+            )
             logger.warning("⚠️ Sequence already running: %s", exc)
         except Exception as exc:  # noqa: BLE001
+            duration_ms = int((time.monotonic() - started_monotonic) * 1000) if started_monotonic else 0
+            logger.error(
+                "❌ Sequence command failed | sequence=%s op=%s request=%s attempt=%s duration=%sms err=%s entry=%s",
+                command.sequence_id,
+                op_name,
+                request_id,
+                command.attempts,
+                duration_ms,
+                str(exc),
+                entry_id,
+            )
             logger.exception("💥 Failed to process sequence command %s: %s", entry_id, exc)
             if command:
                 await _retry_or_dlq(command, exc)
@@ -156,17 +215,11 @@ async def main() -> None:
     heartbeat_task = start_worker_heartbeat("sequence_runner")
 
     stop_event = asyncio.Event()
-
-    def _signal_handler() -> None:
-        logger.info("🛑 Stop signal received, shutting down sequence runner worker...")
-        stop_event.set()
-
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        try:
-            loop.add_signal_handler(sig, _signal_handler)
-        except NotImplementedError:
-            pass
+    install_stop_signal_handlers(
+        stop_event=stop_event,
+        logger=logger,
+        stop_message="🛑 Stop signal received, shutting down sequence runner worker...",
+    )
 
     logger.info(
         "🚀 Sequence runner worker ready (stream=%s, group=%s, consumer=%s)",
@@ -176,11 +229,11 @@ async def main() -> None:
     )
 
     try:
-        while not stop_event.is_set():
-            entries = await _fetch(redis, ">")
-            if not entries:
-                continue
-            await _process_entries(redis, runner, entries)
+        await run_consume_loop(
+            stop_event=stop_event,
+            fetch_entries=lambda: _fetch(redis, ">"),
+            process_entries=lambda entries: _process_entries(redis, runner, entries),
+        )
     finally:
         heartbeat_task.cancel()
         with suppress(asyncio.CancelledError):

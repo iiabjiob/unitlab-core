@@ -141,7 +141,8 @@ const activeProgressDetailText = computed(() => {
 
   const succeeded = Math.max(0, readNumericResult(job, "succeeded"))
   const skipped = Math.max(0, readNumericResult(job, "skipped"))
-  const base = `${done}/${total} · ok ${succeeded} · skip ${skipped}`
+  const resumeMeta = formatResumeMeta(job)
+  const base = `${done}/${total} · ok ${succeeded} · skip ${skipped}${resumeMeta ? ` · ${resumeMeta}` : ""}`
   if (!activeEstText.value) {
     return base
   }
@@ -212,6 +213,25 @@ function readNumericResult(job: SignalAllocationJob, key: string): number {
   return Number.isFinite(numeric) ? numeric : 0
 }
 
+function readStringResult(job: SignalAllocationJob, key: string): string {
+  const raw = (job.result as Record<string, unknown> | undefined)?.[key]
+  return String(raw ?? "").trim()
+}
+
+function formatResumeMeta(job: SignalAllocationJob): string {
+  const result = (job.result as Record<string, unknown> | undefined) ?? {}
+  const resumeApplied = Boolean(result.resume_applied ?? result.resumed_from_cursor)
+  const resumeOffset = Number(result.resume_offset ?? 0)
+  const cursorReason = readStringResult(job, "cursor_reason")
+  if (resumeApplied && Number.isFinite(resumeOffset) && resumeOffset > 0) {
+    return `resumed ${resumeOffset}`
+  }
+  if (!resumeApplied && cursorReason && cursorReason !== "disabled") {
+    return `resume ${cursorReason.replaceAll("_", " ")}`
+  }
+  return ""
+}
+
 function formatDateTimeShort(value: string): string {
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) {
@@ -260,6 +280,7 @@ const completedSummaryText = computed(() => {
     Math.max(0, Number(job.progress_total ?? 0)),
     succeeded + skipped,
   )
+  const resumeMeta = formatResumeMeta(job)
 
   const finishedAtParsed = Date.parse(String(job.updated_at ?? ""))
   const createdAtParsed = Date.parse(String(job.created_at ?? ""))
@@ -271,6 +292,7 @@ const completedSummaryText = computed(() => {
     status,
     formatDateTimeShort(String(job.updated_at ?? "")),
     `ok ${succeeded} · skip ${skipped} · total ${total}`,
+    ...(resumeMeta ? [resumeMeta] : []),
     formatDurationShort(durationMs / 1000),
   ].join(" · ")
 })

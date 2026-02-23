@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime, timezone
 from typing import Any
@@ -13,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.signal_sheet import SignalSheetAutoAllocateResult, SignalSheetRepository
 from app.api.v1.signals import SignalsRepository
 from app.core.config import get_settings
+from app.core.logger import get_logger
 from app.infrastructure.db.database import get_db
 from app.schemas.signal_import_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import (
@@ -42,9 +42,11 @@ from app.services.signal_job_service import (
 from app.schemas.ws.events import build_signal_job_event
 from app.core.events.ws_event_publisher import WsEventPublisher
 from app.services.signal_sheet_import_service import SignalSheetImportService
+from app.services.signal_sheet_write_service import SignalSheetWriteService
 
 router = APIRouter(prefix="/api/v1", tags=["Signal Sheet"])
 settings = get_settings()
+logger = get_logger("api.signal_sheet")
 
 
 def get_repo(db: AsyncSession = Depends(get_db)) -> SignalSheetRepository:
@@ -53,6 +55,14 @@ def get_repo(db: AsyncSession = Depends(get_db)) -> SignalSheetRepository:
 
 def get_signals_repo(db: AsyncSession = Depends(get_db)) -> SignalsRepository:
     return SignalsRepository(db)
+
+
+def get_write_service(
+    db: AsyncSession = Depends(get_db),
+    repo: SignalSheetRepository = Depends(get_repo),
+    signals_repo: SignalsRepository = Depends(get_signals_repo),
+) -> SignalSheetWriteService:
+    return SignalSheetWriteService(db=db, repo=repo, signals_repo=signals_repo)
 
 
 @router.get("/workspaces/{workspace_id}/signal-sheet", response_model=SignalSheetSchema)
@@ -75,8 +85,7 @@ async def import_signal_sheet(
     preset_id: int | None = Form(default=None),
     save_preset_name: str | None = Form(default=None),
     repo: SignalSheetRepository = Depends(get_repo),
-    signals_repo: SignalsRepository = Depends(get_signals_repo),
-    db: AsyncSession = Depends(get_db),
+    write_service: SignalSheetWriteService = Depends(get_write_service),
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -114,27 +123,16 @@ async def import_signal_sheet(
             detail=f"Import limit exceeded: {payload.rows_count} rows (max {max_rows})",
         )
 
-    await signals_repo.replace_from_import(workspace_id, payload.signals)
-    await repo.clear_allocations(workspace_id)
-
-    source_hash = hashlib.sha256(raw).hexdigest()
-    await repo.upsert_sheet(
+    await write_service.import_sheet_from_parsed_payload(
         workspace_id=workspace_id,
+        raw_file_bytes=raw,
         source_filename=file.filename,
-        source_hash=source_hash,
         rows_count=payload.rows_count,
-        schema_version=2,
-        data=payload.data,
-        import_meta=effective_meta.model_dump() if effective_meta else None,
+        parsed_data=payload.data,
+        parsed_signals=payload.signals,
+        import_meta=effective_meta,
+        save_preset_name=save_preset_name,
     )
-    await db.commit()
-
-    if save_preset_name and effective_meta is not None:
-        await repo.save_preset(
-            workspace_id=workspace_id,
-            name=save_preset_name,
-            import_meta=effective_meta,
-        )
 
     sheet = await repo.get_sheet(workspace_id)
     response = SignalSheetImportResponseSchema(sheet=await _build_sheet_schema(repo, workspace_id, sheet))
@@ -248,12 +246,13 @@ async def save_signal_sheet_preset(
     workspace_id: int,
     payload: SignalSheetPresetCreateSchema,
     repo: SignalSheetRepository = Depends(get_repo),
+    write_service: SignalSheetWriteService = Depends(get_write_service),
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
     try:
-        preset = await repo.save_preset(
+        preset = await write_service.save_preset(
             workspace_id=workspace_id,
             name=payload.name,
             import_meta=payload.import_meta,
@@ -274,9 +273,9 @@ async def save_signal_sheet_preset(
 @router.delete("/signal-sheet/presets/{preset_id}")
 async def delete_signal_sheet_preset(
     preset_id: int,
-    repo: SignalSheetRepository = Depends(get_repo),
+    write_service: SignalSheetWriteService = Depends(get_write_service),
 ):
-    deleted = await repo.delete_preset(preset_id)
+    deleted = await write_service.delete_preset(preset_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Preset not found")
     return {"detail": "Preset deleted"}
@@ -341,15 +340,13 @@ async def update_signal_allocations(
     workspace_id: int,
     payload: SignalAllocationBulkUpdateSchema,
     repo: SignalSheetRepository = Depends(get_repo),
+    write_service: SignalSheetWriteService = Depends(get_write_service),
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
     try:
-        await repo.update_allocations(
-            workspace_id,
-            [item.model_dump() for item in payload.entries],
-        )
+        await write_service.update_allocations(workspace_id, [item.model_dump() for item in payload.entries])
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -362,17 +359,21 @@ async def auto_allocate_signal_rows(
     workspace_id: int,
     payload: SignalAutoAllocateSchema,
     repo: SignalSheetRepository = Depends(get_repo),
+    write_service: SignalSheetWriteService = Depends(get_write_service),
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    result: SignalSheetAutoAllocateResult = await repo.auto_allocate(
-        workspace_id=workspace_id,
-        signal_ids=payload.signal_ids,
-        prefer_online=payload.prefer_online,
-        prefer_single_unit=payload.prefer_single_unit,
-        overwrite_existing=payload.overwrite_existing,
-    )
+    try:
+        result: SignalSheetAutoAllocateResult = await write_service.auto_allocate(
+            workspace_id=workspace_id,
+            signal_ids=payload.signal_ids,
+            prefer_online=payload.prefer_online,
+            prefer_single_unit=payload.prefer_single_unit,
+            overwrite_existing=payload.overwrite_existing,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, result.changed_signal_ids)
     return SignalAutoAllocateResponseSchema(
@@ -400,6 +401,12 @@ async def enqueue_auto_allocate_signal_rows(
         operation="auto_allocate",
         payload=payload.model_dump(),
     )
+    logger.info(
+        "🧰 Enqueued signal allocation job | workspace=%s op=auto_allocate mode=async job_id=%s requested=%s",
+        workspace_id,
+        str(job_state.get("job_id") or ""),
+        len(payload.signal_ids or []),
+    )
     await WsEventPublisher.publish(build_signal_job_event(job_state))
     return SignalJobStatusSchema.model_validate(job_state)
 
@@ -417,6 +424,12 @@ async def enqueue_bulk_signal_allocations_update(
         workspace_id=workspace_id,
         operation="bulk_update",
         payload=payload.model_dump(),
+    )
+    logger.info(
+        "🧰 Enqueued signal allocation job | workspace=%s op=bulk_update mode=async job_id=%s entries=%s",
+        workspace_id,
+        str(job_state.get("job_id") or ""),
+        len(payload.entries or []),
     )
     await WsEventPublisher.publish(build_signal_job_event(job_state))
     return SignalJobStatusSchema.model_validate(job_state)
@@ -500,6 +513,7 @@ async def ensure_signal_allocations(
     workspace_id: int,
     payload: SignalAllocationEnsureSchema,
     repo: SignalSheetRepository = Depends(get_repo),
+    write_service: SignalSheetWriteService = Depends(get_write_service),
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -516,13 +530,16 @@ async def ensure_signal_allocations(
             rows=[],
         )
 
-    result: SignalSheetAutoAllocateResult = await repo.auto_allocate(
-        workspace_id=workspace_id,
-        signal_ids=signal_ids,
-        prefer_online=payload.prefer_online,
-        prefer_single_unit=False,
-        overwrite_existing=False,
-    )
+    try:
+        result: SignalSheetAutoAllocateResult = await write_service.auto_allocate(
+            workspace_id=workspace_id,
+            signal_ids=signal_ids,
+            prefer_online=payload.prefer_online,
+            prefer_single_unit=False,
+            overwrite_existing=False,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, signal_ids)
     return SignalAllocationEnsureResponseSchema(
         result=SignalAutoAllocateResultSchema(
@@ -540,11 +557,12 @@ async def mark_signal_allocations_tested(
     workspace_id: int,
     payload: SignalAllocationMarkTestedSchema,
     repo: SignalSheetRepository = Depends(get_repo),
+    write_service: SignalSheetWriteService = Depends(get_write_service),
 ):
     if not await repo.ensure_workspace(workspace_id):
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    signal_ids = await repo.mark_signals_tested(workspace_id, payload.signal_ids)
+    signal_ids = await write_service.mark_signals_tested(workspace_id, payload.signal_ids)
     if not signal_ids:
         return []
     return await repo.list_allocation_rows_by_signal_ids(workspace_id, signal_ids)

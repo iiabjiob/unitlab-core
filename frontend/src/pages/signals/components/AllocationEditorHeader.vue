@@ -75,7 +75,7 @@
             {{ deallocateSelectedLabel }}
           </UiButton>
 
-          <span v-if="canRunTest" class="inline-flex">
+          <span v-if="canRunTest" class="inline-flex items-center gap-2">
             <UiMenu ref="testRunMenuRef">
               <UiMenuTrigger as-child trigger="contextmenu">
                 <UiButton

@@ -1,15 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import signal
-import socket
 import time
 from contextlib import suppress
 from datetime import datetime, timezone
 from typing import Any
-
-from redis.exceptions import ResponseError
 
 from app.api.v1.signal_sheet import SignalSheetRepository
 from app.core.config import get_settings
@@ -21,52 +16,58 @@ from app.schemas.signal_sheet_schema import SignalAllocationBulkUpdateSchema, Si
 from app.schemas.ws.events import build_signal_job_event
 from app.core.events.ws_event_publisher import WsEventPublisher
 from app.services.signal_job_service import get_signal_job, update_signal_job
+from app.services.processed_job_service import (
+    try_acquire_processed_job,
+)
 from app.services.worker_health import clear_worker_status, start_worker_heartbeat
+from app.workers.stream_worker_runtime import (
+    build_worker_consumer_name,
+    drain_pending_stream_entries,
+    ensure_stream_consumer_group,
+    fetch_stream_group_entries,
+)
+from app.workers.worker_lifecycle import install_stop_signal_handlers, run_consume_loop
 
 settings = get_settings()
 logger = get_logger("worker.signal_allocation")
 
 STREAM_NAME = settings.signal_allocation_job_stream
 GROUP_NAME = "signal-allocation-runner"
-CONSUMER_NAME = f"{socket.gethostname()}-{os.getpid()}"
+CONSUMER_NAME = build_worker_consumer_name()
+WORKER_NAME = "signal_allocation_runner"
 
 
 async def _ensure_group(redis) -> None:
-    try:
-        await redis.xgroup_create(STREAM_NAME, GROUP_NAME, id="0", mkstream=True)
-        logger.info("✅ Created signal allocation consumer group %s", GROUP_NAME)
-    except ResponseError as exc:
-        if "BUSYGROUP" in str(exc):
-            logger.info("ℹ️ Signal allocation consumer group already exists")
-        else:
-            raise
+    await ensure_stream_consumer_group(
+        redis,
+        stream_name=STREAM_NAME,
+        group_name=GROUP_NAME,
+        logger=logger,
+        create_label="signal allocation",
+        exists_label="Signal allocation",
+    )
 
 
 async def _fetch(redis, stream_id: str, block_ms: int = 5000):
-    result = await redis.xreadgroup(
-        GROUP_NAME,
-        CONSUMER_NAME,
-        streams={STREAM_NAME: stream_id},
+    return await fetch_stream_group_entries(
+        redis,
+        stream_name=STREAM_NAME,
+        group_name=GROUP_NAME,
+        consumer_name=CONSUMER_NAME,
+        stream_id=stream_id,
         count=10,
-        block=block_ms,
+        block_ms=block_ms,
     )
-    if not result:
-        return []
-    return result[0][1]
 
 
 async def _drain_pending(redis) -> None:
-    replayed = 0
-    replay_limit = 1000
-    while replayed < replay_limit:
-        entries = await _fetch(redis, "0", block_ms=100)
-        if not entries:
-            break
-        replayed += len(entries)
-        logger.info("🔁 Replaying %d pending signal allocation jobs", len(entries))
-        await _process_entries(redis, entries)
-    if replayed >= replay_limit:
-        logger.warning("⚠️ Pending replay limit reached (%d), leaving remaining pending entries for next cycle", replay_limit)
+    await drain_pending_stream_entries(
+        fetch_pending=lambda stream_id, block_ms: _fetch(redis, stream_id, block_ms=block_ms),
+        process_entries=lambda entries: _process_entries(redis, entries),
+        logger=logger,
+        replay_label="signal allocation jobs",
+        replay_limit=1000,
+    )
 
 
 async def _handle_auto_allocate(
@@ -106,6 +107,7 @@ async def _handle_auto_allocate(
         prefer_single_unit=request.prefer_single_unit,
         overwrite_existing=request.overwrite_existing,
         progress_callback=progress_callback,
+        commit=False,
     )
     return {
         "assigned": result.assigned,
@@ -146,7 +148,7 @@ async def _handle_bulk_update(
             message=f"Signals {done}/{max(progress_total, total)}",
         )
 
-    await repo.update_allocations(workspace_id, entries, progress_callback=progress_callback)
+    await repo.update_allocations(workspace_id, entries, progress_callback=progress_callback, commit=False)
     signal_ids = sorted({int(item["signal_id"]) for item in entries})
     return {
         "updated": len(signal_ids),
@@ -158,6 +160,7 @@ async def _process_entries(redis, entries) -> None:
     for entry_id, fields in entries:
         job_id: str | None = None
         should_ack = False
+        op_started_at = time.monotonic()
         try:
             _, envelope = parse_signal_allocation_job_entry((entry_id, fields))
             job_id = str(envelope.get("job_id") or "").strip()
@@ -177,10 +180,22 @@ async def _process_entries(redis, entries) -> None:
             if operation == "test_run" and isinstance(payload.get("signal_ids"), list):
                 progress_total = len(payload.get("signal_ids") or [])
 
+            logger.info(
+                "▶️ Signal allocation job start | workspace=%s job_id=%s op=%s entries=%s entry_id=%s",
+                workspace_id,
+                job_id,
+                operation,
+                progress_total,
+                entry_id,
+            )
+
             job_state = await get_signal_job(job_id)
-            if job_state and str(job_state.get("status") or "") == "cancelled":
-                should_ack = True
-                continue
+            if job_state:
+                current_status = str(job_state.get("status") or "").strip().lower()
+                if current_status in {"cancelled", "succeeded", "failed"}:
+                    should_ack = True
+                    logger.info("ℹ️ Skipping terminal signal allocation job %s (status=%s)", job_id, current_status)
+                    continue
 
             running_state = await update_signal_job(
                 job_id,
@@ -196,20 +211,51 @@ async def _process_entries(redis, entries) -> None:
                 continue
 
             async with AsyncSessionLocal() as session:
-                repo = SignalSheetRepository(session)
-                if not await repo.ensure_workspace(workspace_id):
-                    raise ValueError("Workspace not found")
+                try:
+                    acquired = await try_acquire_processed_job(
+                        session,
+                        worker_name=WORKER_NAME,
+                        job_id=job_id,
+                        stream_name=STREAM_NAME,
+                        entry_id=entry_id,
+                    )
+                    if not acquired:
+                        logger.warning(
+                            "⚠️ Replayed already-processed signal allocation job %s; recovering terminal state only",
+                            job_id,
+                        )
+                        recovered_state = await update_signal_job(
+                            job_id,
+                            status="succeeded",
+                            message="Completed (recovered from replay)",
+                            progress_done=progress_total,
+                            progress_total=progress_total,
+                        )
+                        if recovered_state:
+                            await WsEventPublisher.publish(build_signal_job_event(recovered_state))
+                            should_ack = True
+                        await session.rollback()
+                        continue
 
-                if operation == "auto_allocate":
-                    payload["job_id"] = job_id
-                    result = await _handle_auto_allocate(repo, workspace_id, payload, running_state)
-                elif operation == "bulk_update":
-                    payload["job_id"] = job_id
-                    result = await _handle_bulk_update(repo, workspace_id, payload, running_state)
-                elif operation == "test_run":
-                    raise ValueError("test_run operation must be processed by signal_test_run_runner")
-                else:
-                    raise ValueError(f"Unknown operation: {operation}")
+                    repo = SignalSheetRepository(session)
+                    if not await repo.ensure_workspace(workspace_id):
+                        raise ValueError("Workspace not found")
+
+                    payload_with_job_id = {**payload, "job_id": job_id}
+
+                    if operation == "auto_allocate":
+                        result = await _handle_auto_allocate(repo, workspace_id, payload_with_job_id, running_state)
+                    elif operation == "bulk_update":
+                        result = await _handle_bulk_update(repo, workspace_id, payload_with_job_id, running_state)
+                    elif operation == "test_run":
+                        raise ValueError("test_run operation must be processed by signal_test_run_runner")
+                    else:
+                        raise ValueError(f"Unknown operation: {operation}")
+
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    raise
 
             cancelled = bool((result or {}).get("cancelled")) if isinstance(result, dict) else False
             completed_state = await update_signal_job(
@@ -222,6 +268,20 @@ async def _process_entries(redis, entries) -> None:
             )
             if completed_state:
                 await WsEventPublisher.publish(build_signal_job_event(completed_state))
+                duration_ms = (time.monotonic() - op_started_at) * 1000
+                result_data = result if isinstance(result, dict) else {}
+                logger.info(
+                    "✅ Signal allocation job complete | workspace=%s job_id=%s op=%s duration=%.1f ms assigned=%s updated=%s skipped=%s missing=%s changed=%s",
+                    workspace_id,
+                    job_id,
+                    operation,
+                    duration_ms,
+                    result_data.get("assigned"),
+                    result_data.get("updated"),
+                    result_data.get("skipped"),
+                    result_data.get("missing"),
+                    len(result_data.get("changed_signal_ids") or []) if isinstance(result_data.get("changed_signal_ids"), list) else 0,
+                )
                 should_ack = True
         except Exception as exc:  # noqa: BLE001
             logger.exception("💥 Failed to process signal allocation job %s: %s", entry_id, exc)
@@ -234,6 +294,15 @@ async def _process_entries(redis, entries) -> None:
                 )
                 if failed_state:
                     await WsEventPublisher.publish(build_signal_job_event(failed_state))
+                    duration_ms = (time.monotonic() - op_started_at) * 1000
+                    logger.error(
+                        "❌ Signal allocation job failed | workspace=%s job_id=%s op=%s duration=%.1f ms error=%s",
+                        workspace_id if 'workspace_id' in locals() else 0,
+                        job_id,
+                        locals().get("operation", ""),
+                        duration_ms,
+                        str(exc),
+                    )
                     should_ack = True
             else:
                 should_ack = True
@@ -268,22 +337,16 @@ async def main() -> None:
     await RedisManager.start()
     redis = RedisManager.get_instance()
 
-    await _ensure_group(redis)
-    await _drain_pending(redis)
-
     heartbeat_task = start_worker_heartbeat("signal_allocation_runner")
     stop_event = asyncio.Event()
+    install_stop_signal_handlers(
+        stop_event=stop_event,
+        logger=logger,
+        stop_message="🛑 Stop signal received, shutting down signal allocation runner...",
+    )
 
-    def _signal_handler() -> None:
-        logger.info("🛑 Stop signal received, shutting down signal allocation runner...")
-        stop_event.set()
-
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        try:
-            loop.add_signal_handler(sig, _signal_handler)
-        except NotImplementedError:
-            pass
+    await _ensure_group(redis)
+    await _drain_pending(redis)
 
     logger.info(
         "🚀 Signal allocation runner ready (stream=%s, group=%s, consumer=%s)",
@@ -293,11 +356,11 @@ async def main() -> None:
     )
 
     try:
-        while not stop_event.is_set():
-            entries = await _fetch(redis, ">")
-            if not entries:
-                continue
-            await _process_entries(redis, entries)
+        await run_consume_loop(
+            stop_event=stop_event,
+            fetch_entries=lambda: _fetch(redis, ">"),
+            process_entries=lambda entries: _process_entries(redis, entries),
+        )
     finally:
         heartbeat_task.cancel()
         with suppress(asyncio.CancelledError):

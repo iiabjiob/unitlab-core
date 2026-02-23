@@ -347,7 +347,7 @@ function parseWidth(width: string | number | undefined) {
 function startResize(event: MouseEvent, column: TableColumn) {
   if (!canResize(column)) return
   const initialWidth = columnWidths.value[column.key] ?? parseWidth(column.width) ?? column.minWidth ?? 120
-  const minWidth = column.minWidth ?? 80
+  const minWidth = column.minWidth ?? 10
   const maxWidth = column.maxWidth
   resizeState.value = {
     columnKey: column.key,

@@ -225,9 +225,13 @@ const activeSignalSheet = computed(() => {
   return sheet
 })
 
-const testedSignalsCount = computed(() => (
-  allocationRows.value.reduce((count, row) => (row.tested_at ? count + 1 : count), 0)
-))
+const testedSignalsCount = computed(() => {
+  // Recompute summary counters when realtime tested_at overlay changes.
+  void testedAtRealtimeRevision.value
+  return allocationRows.value.reduce((count, row) => (
+    resolveLastTestedAtValue(row, row.tested_at) ? count + 1 : count
+  ), 0)
+})
 
 const totalSignalsCount = computed(() => {
   const sheet = activeSignalSheet.value
@@ -559,7 +563,6 @@ const isTestRunBusy = computed(() => {
 })
 
 const canResumeActiveTestRun = computed(() => activeTestRunJob.value?.status === "paused")
-
 const { syncRealtimeUnitScope, scheduleRealtimeUnitScopeSync } = useSignalsRealtimeUnitScope({
   scopeId,
   allocationRows,
@@ -1817,11 +1820,7 @@ async function controlActiveTestRun(action: "pause" | "resume" | "stop") {
   }
 }
 
-async function runTestVisualOnly() {
-  if (canResumeActiveTestRun.value) {
-    await controlActiveTestRun("resume")
-    return
-  }
+async function startTestRunJob(options?: { resumeFromCursor?: boolean; resumeJobId?: string }) {
   if (testRunInProgress.value || Boolean(activeTestRunJob.value)) return
 
   const queue = selectedAllocatedPhysicalRows.value.filter(row => canControl(row))
@@ -1848,16 +1847,20 @@ async function runTestVisualOnly() {
       {
         signalIntervalMs: testRunIntervalMs.value,
         toggleMode: testRunToggleMode.value,
+        resumeFromCursor: Boolean(options?.resumeFromCursor),
+        resumeJobId: options?.resumeJobId,
       },
     )
     updateTestRunStatsFromJob(completedJob)
     await signalSheetStore.ensureAllocationsLoaded({ force: true })
 
     const skipDetails = formatTestRunSkipReasons(completedJob)
+    const resumeMeta = formatTestRunResumeMeta(completedJob)
     toastStore.success(
       `Run test complete: ${testRunSucceeded.value} toggled`
       + `${testRunSkipped.value ? `, ${testRunSkipped.value} skipped` : ""}`
-      + `${skipDetails ? ` (${skipDetails})` : ""}.`,
+      + `${skipDetails ? ` (${skipDetails})` : ""}`
+      + `${resumeMeta ? ` · ${resumeMeta}` : ""}.`,
     )
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -1869,6 +1872,28 @@ async function runTestVisualOnly() {
   } finally {
     testRunInProgress.value = false
   }
+}
+
+async function runTestVisualOnly() {
+  if (canResumeActiveTestRun.value) {
+    await controlActiveTestRun("resume")
+    return
+  }
+  await startTestRunJob({ resumeFromCursor: false })
+}
+
+function formatTestRunResumeMeta(job: SignalAllocationJob): string {
+  const result = (job.result ?? {}) as Record<string, unknown>
+  const resumeApplied = Boolean(result.resume_applied ?? result.resumed_from_cursor)
+  const resumeOffset = Number(result.resume_offset ?? 0)
+  const cursorReason = String(result.cursor_reason ?? "").trim()
+  if (resumeApplied && Number.isFinite(resumeOffset) && resumeOffset > 0) {
+    return `resumed from ${resumeOffset}`
+  }
+  if (!resumeApplied && cursorReason && cursorReason !== "disabled") {
+    return `resume: ${cursorReason.replaceAll("_", " ")}`
+  }
+  return ""
 }
 
 function createSwitchgearVisualOnly() {

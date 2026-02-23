@@ -1,3 +1,4 @@
+from functools import lru_cache
 from pathlib import Path
 import os
 from urllib.parse import quote
@@ -7,8 +8,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 REPO_ROOT = Path(__file__).resolve().parents[2]
 APP_ENV = os.getenv("APP_ENV", "development").lower()
 ENV_FILE = None if APP_ENV in ("production", "prod") else REPO_ROOT / ".env.dev"
-
-print("ENV_FILE resolved to:", ENV_FILE)
 
 if ENV_FILE and not ENV_FILE.exists():
     raise FileNotFoundError("❌ ENV FILE NOT FOUND: .env.dev")
@@ -29,6 +28,7 @@ class Settings(BaseSettings):
     app_env: str = "production"
     debug: bool = False
     debug_level: str = "INFO"
+    db_echo: bool = False
 
     # ---- DB ----
     postgres_user: str
@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     redis_host: str
     redis_port: int
     ws_events_channel: str = "ws:events"
+    ws_send_timeout_ms: int = 1500
+    ws_outbound_queue_size: int = 2048
 
     # ---- Heartbeat ----
     heartbeat_ttl: int = 30
@@ -97,5 +99,6 @@ class Settings(BaseSettings):
         return f"redis://{self.redis_host}:{self.redis_port}/0"
 
 
+@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()

@@ -391,6 +391,7 @@ function handleListKeydown(event: KeyboardEvent) {
     }
 
     event.preventDefault()
+    event.stopPropagation()
 
     const direction = event.key === "ArrowDown" ? 1 : -1
 
@@ -425,6 +426,25 @@ function handleListKeydown(event: KeyboardEvent) {
     }
 
     applySelection([nextId], nextId, nextId)
+    return
+  }
+
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const activeId = stepStore.activeStepId
+    if (activeId === null) {
+      const fallbackId = orderedIds[0]
+      if (fallbackId !== undefined) {
+        applySelection([fallbackId], fallbackId, fallbackId)
+      }
+      return
+    }
+
+    if (!selectedStepIdSet.value.has(activeId)) {
+      applySelection([activeId], activeId, activeId)
+    }
     return
   }
 
@@ -478,7 +498,7 @@ function handleListKeydown(event: KeyboardEvent) {
         aria-label="Sequence steps"
         aria-multiselectable="true"
         class="h-full rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
-        @keydown="handleListKeydown"
+        @keydown.capture="handleListKeydown"
       >
         <DraggableList
           :items="draggableSteps"

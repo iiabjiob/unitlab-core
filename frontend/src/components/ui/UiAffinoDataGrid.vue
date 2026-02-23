@@ -1494,7 +1494,7 @@ const resolvedColumns = computed<readonly ResolvedColumn[]>(() => {
   return snapshot.visibleColumns.map((column) => ({
     key: column.key,
     label: column.column.label ?? column.key,
-    width: Math.max(column.column.minWidth ?? 80, column.width ?? column.column.width ?? 180),
+    width: Math.max(column.column.minWidth ?? 10, column.width ?? column.column.width ?? 180),
     pin: (column.pin ?? column.column.pin) as "left" | "right" | "none" | undefined,
     column: column.column as GridColumn,
   }))

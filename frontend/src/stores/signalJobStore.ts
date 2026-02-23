@@ -263,12 +263,19 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
   async function enqueueTestRunJob(
     workspaceId: number,
     signalIds: number[],
-    options?: { signalIntervalMs?: number; toggleMode?: "single" | "double" },
+    options?: {
+      signalIntervalMs?: number
+      toggleMode?: "single" | "double"
+      resumeFromCursor?: boolean
+      resumeJobId?: string
+    },
   ): Promise<SignalAllocationJob> {
     const payload = {
       signal_ids: signalIds,
       signal_interval_ms: Math.max(100, Number(options?.signalIntervalMs ?? 1000)),
       toggle_mode: options?.toggleMode ?? "single",
+      resume_from_cursor: Boolean(options?.resumeFromCursor),
+      ...(options?.resumeJobId ? { resume_job_id: String(options.resumeJobId) } : {}),
     }
     const { data: queuedJob } = await SignalSheetAPI.enqueueTestRunJob(workspaceId, payload)
     upsertJob(queuedJob)

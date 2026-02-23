@@ -158,6 +158,8 @@ export const SignalSheetAPI = {
     signal_ids: number[]
     signal_interval_ms?: number
     toggle_mode?: "single" | "double"
+    resume_from_cursor?: boolean
+    resume_job_id?: string
   }) {
     return http.post<SignalAllocationJob>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/test-run/jobs`, payload)
   },

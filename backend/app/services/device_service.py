@@ -4,13 +4,13 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import update
 
 from app.api.v1.devices.repository import DeviceRepository
 from app.models.channel import Channel
 from app.models.device import Device
 from app.schemas.device_schema import DeviceSchema, DeviceSummary
 from app.core.config import get_settings
+from app.services.device_presence_service import DevicePresenceService
 
 settings = get_settings()
 
@@ -24,19 +24,33 @@ class DeviceService:
 
     async def list(self) -> list[DeviceSummary]:
         devices = await self.repo.list(with_channels=False)
-        return [self._to_summary(dev) for dev in devices]
+        summaries = [self._to_summary(dev) for dev in devices]
+        await self._overlay_presence_summaries(summaries)
+        return summaries
 
     async def get(self, device_id: int) -> Optional[DeviceSchema]:
         dev = await self.repo.get(device_id, with_channels=True)
-        return self._to_schema(dev) if dev else None
+        if not dev:
+            return None
+        schema = self._to_schema(dev)
+        await self._overlay_presence_schema(schema)
+        return schema
 
     async def get_by_unit_id(self, unit_id: str, with_channels: bool = False) -> Optional[DeviceSchema]:
         dev = await self.repo.get_by_unit_id(unit_id, with_channels=with_channels)
-        return self._to_schema(dev) if dev else None
+        if not dev:
+            return None
+        schema = self._to_schema(dev)
+        await self._overlay_presence_schema(schema)
+        return schema
 
     async def update(self, device_id: int, changes: dict) -> Optional[DeviceSchema]:
         dev = await self.repo.update(device_id, changes)
-        return self._to_schema(dev) if dev else None
+        if not dev:
+            return None
+        schema = self._to_schema(dev)
+        await self._overlay_presence_schema(schema)
+        return schema
 
     async def delete(self, device_id: int) -> bool:
         return await self.repo.delete(device_id)
@@ -79,31 +93,20 @@ class DeviceService:
 
         await self._sync_channels(dev, num_channels, normalized_type)
         await self.db.refresh(dev, ["channels"])
-        return self._to_schema(dev), created
+        schema = self._to_schema(dev)
+        await self._overlay_presence_schema(schema)
+        return schema, created
 
     async def set_last_seen(self, unit_id: str, ts_ms: Optional[int]) -> Optional[DeviceSchema]:
         timestamp = None
         if ts_ms is not None:
             timestamp = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
         dev = await self.repo.set_last_seen(unit_id, timestamp)
-        return self._to_schema(dev) if dev else None
-
-    async def touch_last_seen(self, unit_id: str, ts_ms: Optional[int]) -> None:
-        """Fast path for heartbeats: update last_seen_at without loading Device."""
-        if ts_ms is None:
-            return
-
-        timestamp = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
-
-        await self.db.execute(
-            update(Device)
-            .where(Device.unit_id == unit_id)
-            .values(
-                last_seen_at=timestamp,
-                updated_at=datetime.now(timezone.utc),
-            )
-        )
-        await self.db.commit()
+        if not dev:
+            return None
+        schema = self._to_schema(dev)
+        await self._overlay_presence_schema(schema)
+        return schema
 
     async def _sync_channels(self, dev: Device, num_channels: Optional[int], dev_type: Optional[str]):
         if not hasattr(dev, "channels") or dev.channels is None:
@@ -160,3 +163,21 @@ class DeviceService:
         ttl_ms = settings.heartbeat_ttl * 1000
         now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
         return "online" if now_ms - last_seen <= ttl_ms else "offline"
+
+    async def _overlay_presence_schema(self, schema: DeviceSchema) -> None:
+        presence = await DevicePresenceService().get_presence(schema.unit_id)
+        schema.status = "online" if presence.online else "offline"
+        if presence.last_seen_ms is not None:
+            schema.last_seen = presence.last_seen_ms
+
+    async def _overlay_presence_summaries(self, summaries: list[DeviceSummary]) -> None:
+        if not summaries:
+            return
+        presence_map = await DevicePresenceService().get_presence_map(summary.unit_id for summary in summaries)
+        for summary in summaries:
+            presence = presence_map.get(summary.unit_id)
+            if presence is None:
+                continue
+            summary.status = "online" if presence.online else "offline"
+            if presence.last_seen_ms is not None:
+                summary.last_seen = presence.last_seen_ms

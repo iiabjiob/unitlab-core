@@ -9,7 +9,6 @@ type RequestStatesFn = (deviceId: number, options?: { includeDiagnostics?: boole
 type CreateChannelCommandRuntimeParams = {
   channelsByDeviceFast: (deviceId: number) => readonly Channel[]
   requestStates: RequestStatesFn
-  getDeviceLastStateAt: (deviceId: number) => number
 }
 
 export function createChannelCommandRuntime(params: CreateChannelCommandRuntimeParams) {
@@ -128,17 +127,8 @@ export function createChannelCommandRuntime(params: CreateChannelCommandRuntimeP
       resetDoUiState(channel)
       return
     }
-
-    if (ui.stage !== "idle") {
-      if (actionId) {
-        removeAction(channel.device_id, actionId)
-      }
-      clearDoUiTimers(ui)
-      ui.stage = "idle"
-      ui.target = undefined
-      ui.previous = undefined
-      ui.actionId = undefined
-    }
+    // Keep pending/debounce active if the observed state does not match the target yet.
+    // This is important for pair commands where partial/intermediate updates can arrive first.
   }
 
   function hasPendingDoForDevice(deviceId: number): boolean {
@@ -164,10 +154,9 @@ export function createChannelCommandRuntime(params: CreateChannelCommandRuntimeP
       if (!hasPendingDoForDevice(deviceId)) {
         return
       }
-      const lastStateAt = params.getDeviceLastStateAt(deviceId)
-      if (lastStateAt >= commandIssuedAt) {
-        return
-      }
+      // Any state event (including diagnostics / unrelated channel updates) may arrive
+      // after the command and should not suppress the fallback DO state request.
+      // The authoritative guard is the actual pending UI state above.
       params.requestStates(deviceId, { includeDiagnostics: false, silent: true })
     }, 360)
     doStateRefreshTimers.set(deviceId, timer)

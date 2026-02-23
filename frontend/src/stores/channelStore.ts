@@ -212,7 +212,6 @@ export const useChannelStore = defineStore("channelStore", () => {
   const commandRuntime = createChannelCommandRuntime({
     channelsByDeviceFast,
     requestStates,
-    getDeviceLastStateAt: (deviceId) => deviceLastStateAt.get(deviceId) ?? 0,
   })
   const {
     enqueueAction,

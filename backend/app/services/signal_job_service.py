@@ -31,8 +31,20 @@ def _job_status_key(job_id: str) -> str:
     return f"signal:allocation:job:{job_id}:status"
 
 
+def _job_cursor_key(job_id: str) -> str:
+    return f"signal:allocation:job:{job_id}:cursor"
+
+
 def _test_run_lock_key(workspace_id: int) -> str:
     return f"signal:allocation:test-run:lock:{workspace_id}"
+
+
+def _test_run_execution_lease_key(job_id: str) -> str:
+    return f"signal:allocation:test-run:exec:{job_id}"
+
+
+def _test_run_execution_lease_stats_key() -> str:
+    return "signal:allocation:test-run:exec:lease-stats"
 
 
 def _now_iso() -> str:
@@ -186,6 +198,95 @@ async def release_signal_test_run_workspace_lock(workspace_id: int, job_id: str)
     await redis.delete(lock_key)
 
 
+def _signal_test_run_execution_lease_ttl_seconds() -> int:
+    refresh_seconds = max(1, int(settings.signal_test_run_ttl_refresh_seconds))
+    return max(refresh_seconds * 3, refresh_seconds + 5)
+
+
+async def acquire_signal_test_run_execution_lease(*, job_id: str, owner: str) -> bool:
+    redis = RedisManager.get_instance()
+    acquired = await redis.set(
+        _test_run_execution_lease_key(job_id),
+        owner,
+        ex=_signal_test_run_execution_lease_ttl_seconds(),
+        nx=True,
+    )
+    return bool(acquired)
+
+
+async def refresh_signal_test_run_execution_lease(*, job_id: str, owner: str) -> bool:
+    redis = RedisManager.get_instance()
+    key = _test_run_execution_lease_key(job_id)
+    ttl_seconds = _signal_test_run_execution_lease_ttl_seconds()
+    # Refresh only if the same worker still owns the lease.
+    script = """
+    local v = redis.call('GET', KEYS[1])
+    if not v then
+      return 0
+    end
+    if v ~= ARGV[1] then
+      return 0
+    end
+    redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+    return 1
+    """
+    result = await redis.eval(script, 1, key, owner, str(ttl_seconds))
+    return bool(int(result or 0))
+
+
+async def release_signal_test_run_execution_lease(*, job_id: str, owner: str) -> bool:
+    redis = RedisManager.get_instance()
+    key = _test_run_execution_lease_key(job_id)
+    # Release only if the same worker still owns the lease.
+    script = """
+    local v = redis.call('GET', KEYS[1])
+    if not v then
+      return 0
+    end
+    if v ~= ARGV[1] then
+      return 0
+    end
+    redis.call('DEL', KEYS[1])
+    return 1
+    """
+    result = await redis.eval(script, 1, key, owner)
+    return bool(int(result or 0))
+
+
+async def increment_signal_test_run_execution_lease_stat(name: str, delta: int = 1) -> int:
+    redis = RedisManager.get_instance()
+    key = _test_run_execution_lease_stats_key()
+    value = await redis.hincrby(key, name, int(delta))
+    await redis.hset(key, mapping={"updated_at": _now_iso()})
+    return int(value)
+
+
+async def get_signal_test_run_execution_lease_stats() -> dict[str, Any]:
+    redis = RedisManager.get_instance()
+    raw = await redis.hgetall(_test_run_execution_lease_stats_key())
+    counters: dict[str, int] = {}
+    updated_at = None
+    for key, value in (raw or {}).items():
+        if key == "updated_at":
+            updated_at = str(value)
+            continue
+        try:
+            counters[str(key)] = int(value)
+        except (TypeError, ValueError):
+            continue
+    return {
+        "updated_at": updated_at,
+        "counters": counters,
+    }
+
+
+async def reset_signal_test_run_execution_lease_stats() -> dict[str, Any]:
+    redis = RedisManager.get_instance()
+    key = _test_run_execution_lease_stats_key()
+    await redis.delete(key)
+    return await get_signal_test_run_execution_lease_stats()
+
+
 async def get_signal_job(job_id: str) -> dict[str, Any] | None:
     redis = RedisManager.get_instance()
     raw = await redis.get(_job_key(job_id))
@@ -197,7 +298,11 @@ async def get_signal_job(job_id: str) -> dict[str, Any] | None:
         return None
     if not isinstance(payload, dict):
         return None
-    return _normalize_job_payload(payload)
+    normalized = _normalize_job_payload(payload)
+    cursor = await get_signal_job_progress_cursor(job_id)
+    if cursor is not None:
+        normalized["progress_cursor"] = cursor
+    return normalized
 
 
 async def get_signal_job_status(job_id: str) -> str | None:
@@ -251,6 +356,31 @@ async def update_signal_job(
     return next_payload
 
 
+async def set_signal_job_progress_cursor(job_id: str, cursor: dict[str, Any]) -> None:
+    redis = RedisManager.get_instance()
+    payload = dict(cursor)
+    payload.setdefault("updated_at", _now_iso())
+    await redis.set(
+        _job_cursor_key(job_id),
+        json.dumps(payload, separators=(",", ":")),
+        ex=settings.signal_allocation_job_ttl_seconds,
+    )
+
+
+async def get_signal_job_progress_cursor(job_id: str) -> dict[str, Any] | None:
+    redis = RedisManager.get_instance()
+    raw = await redis.get(_job_cursor_key(job_id))
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
 async def refresh_signal_job_ttl(
     job_id: str,
     *,
@@ -261,6 +391,7 @@ async def refresh_signal_job_ttl(
     ttl_seconds = max(1, int(settings.signal_allocation_job_ttl_seconds))
     await redis.expire(_job_key(job_id), ttl_seconds)
     await redis.expire(_job_status_key(job_id), ttl_seconds)
+    await redis.expire(_job_cursor_key(job_id), ttl_seconds)
 
     if include_test_run_lock and workspace_id and workspace_id > 0:
         lock_key = _test_run_lock_key(workspace_id)
@@ -310,6 +441,17 @@ async def control_signal_job(job_id: str, action: Literal["pause", "resume", "st
                 if workspace_id > 0:
                     await release_signal_test_run_workspace_lock(workspace_id, job_id)
             return updated
+        if status == "paused":
+            updated = await update_signal_job(
+                job_id,
+                status="cancelled",
+                message="Cancelled",
+            )
+            if updated and operation == "test_run":
+                workspace_id = int(updated.get("workspace_id") or 0)
+                if workspace_id > 0:
+                    await release_signal_test_run_workspace_lock(workspace_id, job_id)
+            return updated
         if status in {"running", "paused", "cancelling"}:
             return await update_signal_job(
                 job_id,
@@ -330,3 +472,6 @@ update_signal_allocation_job = update_signal_job
 refresh_signal_allocation_job_ttl = refresh_signal_job_ttl
 control_signal_allocation_job = control_signal_job
 release_test_run_workspace_lock = release_signal_test_run_workspace_lock
+acquire_test_run_execution_lease = acquire_signal_test_run_execution_lease
+refresh_test_run_execution_lease = refresh_signal_test_run_execution_lease
+release_test_run_execution_lease = release_signal_test_run_execution_lease

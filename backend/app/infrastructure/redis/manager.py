@@ -21,9 +21,15 @@ class RedisManager:
                     logger.info("✅ Connected to Redis!")
                 else:
                     logger.error("💥 Redis ping failed!")
+                    await cls._instance.close()
+                    cls._instance = None
+                    raise RuntimeError("Redis ping failed during startup")
             except Exception as e:
                 logger.error(f"💥 Redis connection failed: {e}")
+                if cls._instance is not None:
+                    await cls._instance.close()
                 cls._instance = None
+                raise
 
     @classmethod
     async def stop(cls):

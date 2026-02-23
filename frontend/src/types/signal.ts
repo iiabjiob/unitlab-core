@@ -177,6 +177,7 @@ export interface SignalAllocationJob {
   message: string | null
   error: string | null
   result: Record<string, unknown>
+  progress_cursor?: Record<string, unknown> | null
   created_at: string
   updated_at: string
 }

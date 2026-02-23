@@ -36,6 +36,8 @@ _FLAKY_HEARTBEAT_OUTAGE_PROB = 0.15
 _FLAKY_HEARTBEAT_BACKOFF_RANGE = (2.0, 10.0)
 _FLAKY_EXCHANGE_PROB = 0.2
 _FLAKY_ERROR_SHARE = 0.6
+_RECONNECT_BACKOFF_INITIAL = 1.0
+_RECONNECT_BACKOFF_MAX = 30.0
 
 
 @dataclass(slots=True)
@@ -134,7 +136,13 @@ class SimulatorMQTTClient:
     def publish(self, topic: str, payload: bytes, *, qos: int = 0, retain: bool = False) -> None:
         if not topic:
             raise ValueError("Topic must be provided")
-        self._client.publish(topic, payload, qos=qos, retain=retain)
+        try:
+            self._client.publish(topic, payload, qos=qos, retain=retain)
+        except (BrokenPipeError, ConnectionResetError, OSError) as exc:
+            self._logger.warning("Publish failed on %s: %s", topic, exc)
+            self._connected.clear()
+            if self._on_disconnect:
+                self._on_disconnect(exc)
 
     # --- gmqtt callbacks -------------------------------------------------
     def _handle_connect(self, client, flags, rc, properties):  # pragma: no cover - gmqtt callback
@@ -230,6 +238,8 @@ class SimulatedDeviceBase:
         self._tasks: list[asyncio.Task[None]] = []
         self._aux_tasks: set[asyncio.Task[None]] = set()
         self._lock = asyncio.Lock()
+        self._reconnect_task: Optional[asyncio.Task[None]] = None
+        self._suspend_auto_reconnect = False
         self._is_flaky_device = self._rng.random() < self.behavior.flaky_device_ratio
         heartbeat_base = max(self.behavior.heartbeat, _HEARTBEAT_MIN_INTERVAL)
         self._heartbeat_offset = self._rng.uniform(0.0, heartbeat_base)
@@ -252,6 +262,11 @@ class SimulatedDeviceBase:
         self._stop_event.set()
 
     async def _shutdown(self) -> None:
+        self._suspend_auto_reconnect = True
+        if self._reconnect_task:
+            self._reconnect_task.cancel()
+            await asyncio.gather(self._reconnect_task, return_exceptions=True)
+            self._reconnect_task = None
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
@@ -277,9 +292,20 @@ class SimulatedDeviceBase:
     # --- gmqtt hooks ----------------------------------------------------
     def _on_connect(self) -> None:  # pragma: no cover - event hook
         self._connected.set()
+        if self._reconnect_task:
+            self._reconnect_task.cancel()
+            self._reconnect_task = None
 
     def _on_disconnect(self, exc: Optional[BaseException]) -> None:  # pragma: no cover - event hook
         self._connected.clear()
+        if self._stop_event.is_set() or self._suspend_auto_reconnect:
+            return
+        if self._reconnect_task and not self._reconnect_task.done():
+            return
+        self._reconnect_task = asyncio.create_task(
+            self._restore_connection_loop(),
+            name=f"reconnect:{self.unit_id}",
+        )
 
     async def _on_message(self, topic: str, payload: bytes) -> None:
         if not payload:
@@ -353,11 +379,43 @@ class SimulatedDeviceBase:
             if not self._mqtt.is_connected:
                 return
             self._logger.debug("Simulating reconnect")
-            await self._mqtt.disconnect()
-            await asyncio.sleep(0.2 + self._rng.random())
-            await self._mqtt.connect(self.broker)
-            await self._mqtt.wait_connected()
-            await self._post_connect()
+            self._suspend_auto_reconnect = True
+            try:
+                await self._mqtt.disconnect()
+                await asyncio.sleep(0.2 + self._rng.random())
+                await self._mqtt.connect(self.broker)
+                await self._mqtt.wait_connected()
+                await self._post_connect()
+            except Exception:
+                self._logger.warning("Simulated reconnect failed; scheduling recovery loop", exc_info=True)
+                if not self._stop_event.is_set():
+                    if not self._reconnect_task or self._reconnect_task.done():
+                        self._reconnect_task = asyncio.create_task(
+                            self._restore_connection_loop(),
+                            name=f"reconnect:{self.unit_id}",
+                        )
+            finally:
+                self._suspend_auto_reconnect = False
+
+    async def _restore_connection_loop(self) -> None:
+        backoff = _RECONNECT_BACKOFF_INITIAL
+        while not self._stop_event.is_set():
+            try:
+                await self._mqtt.connect(self.broker)
+                await self._mqtt.wait_connected()
+                await self._post_connect()
+                self._logger.info("MQTT reconnect succeeded")
+                return
+            except asyncio.CancelledError:  # pragma: no cover - cooperative cancellation
+                raise
+            except Exception as exc:
+                self._logger.warning(
+                    "MQTT reconnect failed (%s); retry in %.1fs",
+                    type(exc).__name__,
+                    backoff,
+                )
+                await asyncio.sleep(backoff + self._rng.uniform(0.0, 0.5))
+                backoff = min(_RECONNECT_BACKOFF_MAX, backoff * 2)
 
     # --- public helpers -------------------------------------------------
     async def publish_state(self, *, packet_id: Optional[int] = None) -> None:

@@ -108,6 +108,8 @@ class SignalTestRunJobSchema(BaseModel):
     signal_ids: list[int] = Field(default_factory=list)
     signal_interval_ms: int = Field(default=1000, ge=100, le=10000)
     toggle_mode: str = Field(default="single", pattern="^(single|double)$")
+    resume_from_cursor: bool = False
+    resume_job_id: str | None = None
 
 
 class SignalAutoAllocateResultSchema(BaseModel):
@@ -137,6 +139,7 @@ class SignalJobStatusSchema(BaseModel):
     message: str | None = None
     error: str | None = None
     result: dict[str, Any] = Field(default_factory=dict)
+    progress_cursor: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 

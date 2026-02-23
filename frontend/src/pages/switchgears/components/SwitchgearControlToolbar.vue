@@ -10,7 +10,7 @@ import { useToastStore } from "@/stores/toastStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
 import { useSwitchgearLogStore } from "@/stores/switchgearLogStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
-import { SWITCHGEAR_CODE } from "@/constants/switchgear"
+import { SWITCHGEAR_CODE, type SwitchgearState } from "@/constants/switchgear"
 
 const props = defineProps<{
   switchgear: Switchgear
@@ -27,6 +27,7 @@ const wsStore = useWebSocketStore()
 const switchgearLogStore = useSwitchgearLogStore()
 
 const acting = ref<CommandAction | null>(null)
+const pendingPairTargetState = ref<SwitchgearState | null>(null)
 const expectedCommandResponses = ref(0)
 let commandWatchdog: ReturnType<typeof setTimeout> | null = null
 
@@ -114,6 +115,7 @@ onMounted(() => {
 watch(pairPending, (pending) => {
   if (!pending) {
     acting.value = null
+    pendingPairTargetState.value = null
     expectedCommandResponses.value = 0
     clearCommandWatchdog()
   }
@@ -136,6 +138,7 @@ watch(
       type: "error",
       message: `Command error #${pairResponse.value.packet_id}: ${pairResponse.value.status}${pairResponse.value.error ? ` (${pairResponse.value.error})` : ""}`,
     })
+    pendingPairTargetState.value = null
     acting.value = null
   },
 )
@@ -144,6 +147,9 @@ watch(
   () => positionState.value,
   (next, prev) => {
     if (!prev || next === prev) return
+    if (pendingPairTargetState.value && next !== pendingPairTargetState.value) {
+      return
+    }
     const label = next === "INTERMEDIATE" ? "UNDEFINED" : next
     switchgearLogStore.push(props.switchgear.id, {
       type: "info",
@@ -175,6 +181,19 @@ function actionLabel(action: CommandAction): string {
       return "Undefined"
     case "unknown":
       return "Unknown"
+  }
+}
+
+function targetStateForAction(action: CommandAction): SwitchgearState {
+  switch (action) {
+    case "open":
+      return "OPEN"
+    case "close":
+      return "CLOSED"
+    case "intermediate":
+      return "INTERMEDIATE"
+    case "unknown":
+      return "UNKNOWN"
   }
 }
 
@@ -238,6 +257,7 @@ async function sendSwitchgearCommand(action: CommandAction) {
     return
   }
   acting.value = action
+  pendingPairTargetState.value = targetStateForAction(action)
   try {
     const result = channelStore.sendDoPairCommand(
       unitId,
@@ -268,12 +288,14 @@ async function sendSwitchgearCommand(action: CommandAction) {
         message: `${actionLabel(action)} command timed out waiting for state feedback`,
       })
       expectedCommandResponses.value = 0
+      pendingPairTargetState.value = null
       acting.value = null
       commandWatchdog = null
     }, 3000)
     toastStore.success(`${actionLabel(action)} command queued`)
   } catch (error) {
     expectedCommandResponses.value = 0
+    pendingPairTargetState.value = null
     toastStore.error(error instanceof Error ? error.message : "Failed to send pair command")
     switchgearLogStore.push(props.switchgear.id, {
       type: "error",
@@ -282,6 +304,7 @@ async function sendSwitchgearCommand(action: CommandAction) {
     acting.value = null
   } finally {
     if (!pairPending.value) {
+      pendingPairTargetState.value = null
       acting.value = null
       clearCommandWatchdog()
     }

@@ -1,22 +1,30 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Iterable, Sequence
 
 from sqlalchemy import Select, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.config import get_settings
 from app.models.channel import Channel
-from app.models.signal import Signal, SignalIODirection
+from app.models.signal import Signal
 from app.models.signal_sheet import SignalAllocation, SignalSheet, SignalSheetPreset
 from app.models.workspace import Workspace
 from app.schemas.signal_import_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
-
-settings = get_settings()
+from app.services.device_presence_service import DevicePresenceService
+from app.api.v1.signal_sheet.allocation_policy import (
+    channel_auto_allocate_sort_key as _channel_auto_allocate_sort_key,
+    is_channel_compatible as _is_channel_compatible,
+    normalize_channel_type as _normalize_channel_type,
+    normalize_direction as _normalize_direction,
+    parse_tested_at_value as _parse_tested_at_value,
+    pick_candidate_channel as _pick_candidate_channel,
+    required_channel_type as _required_channel_type,
+    resolve_preferred_units_for_auto_allocate as _resolve_preferred_units_for_auto_allocate,
+)
 
 
 @dataclass(frozen=True)
@@ -26,14 +34,6 @@ class SignalSheetAutoAllocateResult:
     missing: int
     unassigned_signal_ids: list[int]
     changed_signal_ids: list[int]
-
-
-_DIRECTION_TO_CHANNEL_TYPE: dict[str, str] = {
-    "DI": "do",
-    "DO": "di",
-    "AI": "ao",
-    "AO": "ai",
-}
 
 
 class SignalSheetRepository:
@@ -105,6 +105,7 @@ class SignalSheetRepository:
         workspace_id: int,
         name: str,
         import_meta: SignalImportMetaSchema,
+        commit: bool = True,
     ) -> SignalSheetPreset:
         normalized_name = name.strip()
         if not normalized_name:
@@ -128,16 +129,22 @@ class SignalSheetRepository:
         else:
             preset.import_meta = payload
 
-        await self.db.commit()
+        if commit:
+            await self.db.commit()
+        else:
+            await self.db.flush()
         await self.db.refresh(preset)
         return preset
 
-    async def delete_preset(self, preset_id: int) -> bool:
+    async def delete_preset(self, preset_id: int, *, commit: bool = True) -> bool:
         preset = await self.get_preset(preset_id)
         if preset is None:
             return False
         await self.db.delete(preset)
-        await self.db.commit()
+        if commit:
+            await self.db.commit()
+        else:
+            await self.db.flush()
         return True
 
     async def cleanup_orphan_allocations(self, workspace_id: int) -> None:
@@ -209,13 +216,23 @@ class SignalSheetRepository:
     ) -> list[SignalAllocationRowSchema]:
         channel_ids = {allocation.channel_id for allocation in allocations_by_signal.values()}
         channels_by_id = await self._channels_by_ids(channel_ids)
+        unit_ids = {
+            channel.device.unit_id
+            for channel in channels_by_id.values()
+            if channel.device is not None and channel.device.unit_id
+        }
+        presence_map = await DevicePresenceService().get_presence_map(unit_ids)
 
         rows: list[SignalAllocationRowSchema] = []
         for signal in signals:
             allocation = allocations_by_signal.get(signal.id)
             channel = channels_by_id.get(allocation.channel_id) if allocation else None
-            unit_online = _is_unit_online(channel.device.last_seen_at) if channel and channel.device else None
-            unit_last_seen_at = channel.device.last_seen_at if channel and channel.device else None
+            unit_id = channel.device.unit_id if channel and channel.device else None
+            presence = presence_map.get(unit_id) if unit_id else None
+            unit_online = presence.online if presence is not None else None
+            unit_last_seen_at = presence.last_seen_at if presence is not None else (
+                channel.device.last_seen_at if channel and channel.device else None
+            )
 
             rows.append(
                 SignalAllocationRowSchema(
@@ -230,7 +247,7 @@ class SignalSheetRepository:
                     channel_index=channel.channel_index if channel else None,
                     channel_label=channel.resolved_name if channel else None,
                     device_id=channel.device_id if channel else None,
-                    unit_id=channel.device.unit_id if channel and channel.device else None,
+                    unit_id=unit_id,
                     unit_online=unit_online,
                     unit_last_seen_at=unit_last_seen_at,
                     tested_at=signal.tested_at,
@@ -243,11 +260,13 @@ class SignalSheetRepository:
         workspace_id: int,
         entries: Sequence[dict[str, Any]],
         progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
+        commit: bool = True,
     ) -> None:
         await self.cleanup_orphan_allocations(workspace_id)
 
         if not entries:
-            await self.db.commit()
+            if commit:
+                await self.db.commit()
             return
 
         signal_ids = {int(item["signal_id"]) for item in entries}
@@ -331,12 +350,16 @@ class SignalSheetRepository:
             if progress_callback is not None:
                 await progress_callback(step_index, total_steps)
 
-        await self.db.commit()
+        if commit:
+            await self.db.commit()
+        else:
+            await self.db.flush()
 
     async def mark_signals_tested(
         self,
         workspace_id: int,
         signal_ids: Sequence[int],
+        commit: bool = True,
     ) -> list[int]:
         normalized_signal_ids = sorted({int(signal_id) for signal_id in signal_ids if int(signal_id) > 0})
         if not normalized_signal_ids:
@@ -358,13 +381,17 @@ class SignalSheetRepository:
         if not touched_ids:
             return []
 
-        await self.db.commit()
+        if commit:
+            await self.db.commit()
+        else:
+            await self.db.flush()
         return touched_ids
 
     async def mark_signals_tested_at(
         self,
         workspace_id: int,
         tested_at_by_signal: dict[int, str],
+        commit: bool = True,
     ) -> list[int]:
         normalized = {
             int(signal_id): str(tested_at)
@@ -392,7 +419,10 @@ class SignalSheetRepository:
         if not touched_ids:
             return []
 
-        await self.db.commit()
+        if commit:
+            await self.db.commit()
+        else:
+            await self.db.flush()
         return touched_ids
 
     async def auto_allocate(
@@ -404,6 +434,7 @@ class SignalSheetRepository:
         prefer_single_unit: bool,
         overwrite_existing: bool,
         progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
+        commit: bool = True,
     ) -> SignalSheetAutoAllocateResult:
         await self.cleanup_orphan_allocations(workspace_id)
 
@@ -423,11 +454,20 @@ class SignalSheetRepository:
                 continue
             channel_groups[key].append(channel)
 
+        unit_ids = {
+            channel.device.unit_id
+            for channel in all_channels
+            if channel.device is not None and channel.device.unit_id
+        }
+        presence_map = await DevicePresenceService().get_presence_map(unit_ids)
+        online_by_unit_id = {unit_id: presence.online for unit_id, presence in presence_map.items()}
+
         for channels in channel_groups.values():
             channels.sort(
                 key=lambda channel: _channel_auto_allocate_sort_key(
                     channel,
                     prefer_online=prefer_online,
+                    online_by_unit_id=online_by_unit_id,
                 )
             )
 
@@ -479,6 +519,7 @@ class SignalSheetRepository:
                 preferred_unit_id=preferred_unit_id,
                 prefer_online=prefer_online,
                 allow_offline_fallback=not (prefer_online and preferred_unit_id is not None),
+                online_by_unit_id=online_by_unit_id,
             )
             if candidate is None and preferred_unit_id is not None:
                 candidate = _pick_candidate_channel(
@@ -486,6 +527,7 @@ class SignalSheetRepository:
                     used_channel_ids=used_channel_ids,
                     preferred_unit_id=None,
                     prefer_online=prefer_online,
+                    online_by_unit_id=online_by_unit_id,
                 )
             if candidate is None:
                 unassigned.append(signal.id)
@@ -519,7 +561,10 @@ class SignalSheetRepository:
             if progress_callback is not None:
                 await progress_callback(step_index, total_steps)
 
-        await self.db.commit()
+        if commit:
+            await self.db.commit()
+        else:
+            await self.db.flush()
         return SignalSheetAutoAllocateResult(
             assigned=assigned,
             skipped=skipped,
@@ -674,196 +719,3 @@ class SignalSheetRepository:
             return payload
 
         return await self._list_active_signals(workspace_id)
-
-
-def _normalize_direction(value: SignalIODirection | str | None) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, SignalIODirection):
-        return value.value
-    return str(value).strip().upper()
-
-
-def _required_channel_type(direction: str) -> str | None:
-    return _DIRECTION_TO_CHANNEL_TYPE.get(direction.strip().upper())
-
-
-def _normalize_channel_type(value: str | None) -> str | None:
-    if value is None:
-        return None
-    normalized = str(value).strip().lower()
-    if normalized.startswith("di"):
-        return "di"
-    if normalized.startswith("do"):
-        return "do"
-    if normalized.startswith("ai"):
-        return "ai"
-    if normalized.startswith("ao"):
-        return "ao"
-    return None
-
-
-def _is_channel_compatible(direction: SignalIODirection | str | None, channel_type: str | None) -> bool:
-    required = _required_channel_type(_normalize_direction(direction))
-    if required is None:
-        return False
-    return _normalize_channel_type(channel_type) == required
-
-
-def _is_unit_online(last_seen_at: datetime | None) -> bool:
-    if last_seen_at is None:
-        return False
-    heartbeat_ttl_seconds = max(int(settings.heartbeat_ttl or 30), 10)
-    threshold = datetime.now(timezone.utc) - timedelta(seconds=heartbeat_ttl_seconds * 2)
-    return last_seen_at >= threshold
-
-
-def _parse_tested_at_value(raw_value: Any) -> datetime | None:
-    if raw_value is None:
-        return None
-    if isinstance(raw_value, datetime):
-        return raw_value
-    if isinstance(raw_value, str):
-        candidate = raw_value.strip()
-        if not candidate:
-            return None
-        if candidate.endswith("Z"):
-            candidate = candidate[:-1] + "+00:00"
-        try:
-            return datetime.fromisoformat(candidate)
-        except ValueError:
-            return None
-    return None
-
-
-def _pick_candidate_channel(
-    *,
-    candidates: Iterable[Channel],
-    used_channel_ids: set[int],
-    preferred_unit_id: str | None = None,
-    prefer_online: bool = True,
-    allow_offline_fallback: bool = True,
-) -> Channel | None:
-    if prefer_online:
-        for channel in candidates:
-            if channel.id in used_channel_ids:
-                continue
-            if preferred_unit_id is not None:
-                unit_id = channel.device.unit_id if channel.device else None
-                if unit_id != preferred_unit_id:
-                    continue
-            if not _is_unit_online(channel.device.last_seen_at if channel.device else None):
-                continue
-            return channel
-
-    if prefer_online and not allow_offline_fallback:
-        return None
-
-    for channel in candidates:
-        if channel.id in used_channel_ids:
-            continue
-        if preferred_unit_id is not None:
-            unit_id = channel.device.unit_id if channel.device else None
-            if unit_id != preferred_unit_id:
-                continue
-        return channel
-    return None
-
-
-def _channel_auto_allocate_sort_key(
-    channel: Channel,
-    *,
-    prefer_online: bool,
-) -> tuple[int, int, int, int]:
-    online_rank = 0
-    if prefer_online:
-        online_rank = 0 if _is_unit_online(channel.device.last_seen_at if channel.device else None) else 1
-    return (
-        online_rank,
-        int(channel.device_id),
-        int(channel.channel_index),
-        int(channel.id),
-    )
-
-
-def _resolve_preferred_units_for_auto_allocate(
-    *,
-    target_signals: Sequence[Signal],
-    current_allocations: dict[int, SignalAllocation],
-    channel_groups: dict[str, list[Channel]],
-    used_channel_ids: set[int],
-    overwrite_existing: bool,
-) -> dict[str, str]:
-    # Prefer channels from a single unit per channel-type bucket ("di"/"do"/"ai"/"ao")
-    # when there is enough free capacity.
-    preferred_by_type: dict[str, str] = {}
-    target_ids = {signal.id for signal in target_signals}
-    allocation_owner_by_channel_id = {
-        allocation.channel_id: signal_id
-        for signal_id, allocation in current_allocations.items()
-    }
-
-    for required_channel_type in ("di", "do", "ai", "ao"):
-        required_count = 0
-        existing_unit_weights: dict[str, int] = {}
-
-        for signal in target_signals:
-            mapped_type = _required_channel_type(_normalize_direction(signal.io_direction))
-            if mapped_type != required_channel_type:
-                continue
-
-            existing = current_allocations.get(signal.id)
-            if existing is not None and not overwrite_existing:
-                channel = next(
-                    (candidate for candidate in channel_groups.get(required_channel_type, []) if candidate.id == existing.channel_id),
-                    None,
-                )
-                unit_id = channel.device.unit_id if channel and channel.device else None
-                if unit_id:
-                    existing_unit_weights[unit_id] = existing_unit_weights.get(unit_id, 0) + 1
-                continue
-
-            required_count += 1
-
-        if required_count <= 0:
-            # Nothing new to allocate for this type, but if existing target allocations
-            # already lean to one unit, keep that as preference.
-            if existing_unit_weights:
-                preferred_by_type[required_channel_type] = max(
-                    existing_unit_weights.items(),
-                    key=lambda item: item[1],
-                )[0]
-            continue
-
-        if existing_unit_weights:
-            preferred_by_type[required_channel_type] = max(
-                existing_unit_weights.items(),
-                key=lambda item: item[1],
-            )[0]
-            continue
-
-        free_count_by_unit: dict[str, int] = {}
-        ordered_units: list[str] = []
-        for channel in channel_groups.get(required_channel_type, []):
-            unit_id = channel.device.unit_id if channel.device else None
-            if not unit_id:
-                continue
-
-            allocation_owner = allocation_owner_by_channel_id.get(channel.id)
-            if channel.id in used_channel_ids:
-                # Channel occupied by another signal and not being overwritten.
-                if allocation_owner is None or allocation_owner not in target_ids or not overwrite_existing:
-                    continue
-            if unit_id not in free_count_by_unit:
-                free_count_by_unit[unit_id] = 0
-                ordered_units.append(unit_id)
-            free_count_by_unit[unit_id] += 1
-
-        preferred_unit = next(
-            (unit_id for unit_id in ordered_units if free_count_by_unit.get(unit_id, 0) >= required_count),
-            None,
-        )
-        if preferred_unit is not None:
-            preferred_by_type[required_channel_type] = preferred_unit
-
-    return preferred_by_type

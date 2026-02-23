@@ -48,4 +48,4 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.exception(f"💥 Unexpected WS error: {e}")
     finally:
-        ws_manager.disconnect(websocket)
+        ws_manager.disconnect(websocket, reason="router_finally")

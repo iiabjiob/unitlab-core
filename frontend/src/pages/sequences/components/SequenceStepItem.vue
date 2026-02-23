@@ -2,7 +2,7 @@
   <UiMenu>
     <UiMenuTrigger as-child trigger="contextmenu">
     <div
-      class="group flex items-center justify-between px-2 py-1.5 text-sm select-none transition-colors"
+      class="group flex items-center justify-between px-2 py-1.5 text-sm select-none transition-colors outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0"
       :class="[
         selected
           ? 'bg-blue-50 text-blue-900 dark:bg-blue-500/15 dark:text-blue-100'
