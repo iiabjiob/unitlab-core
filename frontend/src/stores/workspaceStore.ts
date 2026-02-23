@@ -172,8 +172,17 @@ export const useWorkspaceStore = defineStore("workspaceStore", () => {
   async function deleteWorkspace(workspaceId: number) {
     await WorkspacesAPI.remove(workspaceId)
     workspaces.value = workspaces.value.filter(workspace => workspace.id !== workspaceId)
-    if (activeWorkspaceId.value === workspaceId) {
+    const wasActiveWorkspace = activeWorkspaceId.value === workspaceId
+    if (wasActiveWorkspace) {
       setActiveWorkspace(null)
+    }
+
+    if (!workspaces.value.length) {
+      await ensureDefaultWorkspace()
+      return
+    }
+
+    if (wasActiveWorkspace) {
       reconcileActiveSelection()
     }
   }

@@ -68,13 +68,24 @@
         <UiMenuSeparator />
 
         <div class="px-3 py-3">
-          <button
-            type="button"
-            class="w-full rounded-md border border-dashed border-neutral-400 px-3 py-2 text-sm font-semibold text-neutral-900 transition hover:border-neutral-900 dark:border-neutral-600 dark:text-neutral-50 dark:hover:border-neutral-200"
-            @click.stop="openCreateModal"
-          >
-            + New workspace
-          </button>
+          <div class="flex flex-col gap-2">
+            <button
+              type="button"
+              class="w-full rounded-md border border-dashed border-neutral-400 px-3 py-2 text-sm font-semibold text-neutral-900 transition hover:border-neutral-900 dark:border-neutral-600 dark:text-neutral-50 dark:hover:border-neutral-200"
+              @click.stop="openCreateModal"
+            >
+              + New workspace
+            </button>
+            <UiButton
+              type="button"
+              variant="danger"
+              size="sm"
+              :disabled="!canDeleteActiveWorkspace || isDeleting"
+              @click.stop="openDeleteModal"
+            >
+              Delete active workspace
+            </UiButton>
+          </div>
         </div>
       </UiMenuContent>
     </UiMenu>
@@ -90,6 +101,16 @@
       @cancel="handleCreateCancel"
       @confirm="handleCreateSubmit"
     />
+
+    <ConfirmModal
+      :open="deleteModalOpen"
+      title="Delete workspace"
+      :message="deleteModalMessage"
+      confirm-label="Delete"
+      cancel-label="Cancel"
+      @cancel="handleDeleteCancel"
+      @confirm="handleDeleteConfirm"
+    />
   </div>
 </template>
 
@@ -103,8 +124,11 @@ import {
   UiMenuSeparator,
 } from "@/components/ui/menu"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { useToastStore } from "@/stores/toastStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import RenameModal from "@/components/ui/RenameModal.vue"
+import ConfirmModal from "@/components/ui/ConfirmModal.vue"
+import UiButton from "@/components/ui/UiButton.vue"
 import { formatDateShort } from "@/utils/datetime"
 
 const props = withDefaults(defineProps<{ variant?: "default" | "compact" | "mini" }>(), {
@@ -112,11 +136,14 @@ const props = withDefaults(defineProps<{ variant?: "default" | "compact" | "mini
 })
 
 const workspaceStore = useWorkspaceStore()
+const toastStore = useToastStore()
 const isCreating = ref(false)
 const menuOpen = ref(false)
 const createModalOpen = ref(false)
 const createName = ref("")
 const createError = ref("")
+const deleteModalOpen = ref(false)
+const isDeleting = ref(false)
 
 type WorkspaceSwitcherVariant = "default" | "compact" | "mini"
 
@@ -146,6 +173,11 @@ const loading = computed(() => workspaceStore.loading)
 const hasWorkspace = computed(() => Boolean(workspaceStore.activeWorkspace))
 const currentLabel = computed(() => workspaceStore.activeWorkspace?.name ?? "Select workspace")
 const menuWorkspaces = computed(() => workspaceStore.workspaces)
+const canDeleteActiveWorkspace = computed(() => Boolean(workspaceStore.activeWorkspaceId))
+const deleteModalMessage = computed(() => {
+  const name = workspaceStore.activeWorkspace?.name ?? "this workspace"
+  return `Workspace "${name}" will be deleted.`
+})
 
 async function select(workspaceId: number) {
   await workspaceStore.selectWorkspace(workspaceId)
@@ -157,6 +189,12 @@ function openCreateModal() {
   createName.value = ""
   createError.value = ""
   createModalOpen.value = true
+  menuOpen.value = false
+}
+
+function openDeleteModal() {
+  if (!canDeleteActiveWorkspace.value || isDeleting.value) return
+  deleteModalOpen.value = true
   menuOpen.value = false
 }
 
@@ -183,6 +221,32 @@ async function handleCreateSubmit() {
     createError.value = error instanceof Error ? error.message : "Failed to create workspace"
   } finally {
     isCreating.value = false
+  }
+}
+
+function handleDeleteCancel() {
+  if (isDeleting.value) return
+  deleteModalOpen.value = false
+}
+
+async function handleDeleteConfirm() {
+  const workspaceId = workspaceStore.activeWorkspaceId
+  if (!workspaceId || isDeleting.value) {
+    deleteModalOpen.value = false
+    return
+  }
+
+  isDeleting.value = true
+  try {
+    const workspaceName = workspaceStore.activeWorkspace?.name ?? "Workspace"
+    await workspaceStore.deleteWorkspace(workspaceId)
+    deleteModalOpen.value = false
+    toastStore.success(`${workspaceName} deleted`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to delete workspace"
+    toastStore.error(message)
+  } finally {
+    isDeleting.value = false
   }
 }
 
