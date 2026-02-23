@@ -22,6 +22,60 @@ _INTERNAL_TYPE_TO_DIRECTION: dict[str, str] = {
 
 
 @dataclass(frozen=True)
+class PackedSignalRole:
+    suffix: str
+    role_key: str
+
+
+@dataclass(frozen=True)
+class PackedSignalProfile:
+    kind: str
+    default_internal_type: str
+    roles: tuple[PackedSignalRole, PackedSignalRole]
+
+
+_PACKED_SIGNAL_PROFILES: dict[str, PackedSignalProfile] = {
+    "dps": PackedSignalProfile(
+        kind="dps",
+        default_internal_type="di",
+        roles=(
+            PackedSignalRole(suffix=" / OPEN FB", role_key="open_fb"),
+            PackedSignalRole(suffix=" / CLOSE FB", role_key="close_fb"),
+        ),
+    ),
+    "dpc": PackedSignalProfile(
+        kind="dpc",
+        default_internal_type="do",
+        roles=(
+            PackedSignalRole(suffix=" / OPEN CMD", role_key="open_cmd"),
+            PackedSignalRole(suffix=" / CLOSE CMD", role_key="close_cmd"),
+        ),
+    ),
+}
+
+_PACKED_SIGNAL_TYPE_ALIASES: dict[str, str] = {
+    # DPC (double-point command)
+    "dpc": "dpc",
+    "dpc.": "dpc",
+    "double point command": "dpc",
+    "double-point command": "dpc",
+    "double_point_command": "dpc",
+    "doublepointcommand": "dpc",
+    "dp command": "dpc",
+    "double command": "dpc",
+    # DPS (double-point status)
+    "dps": "dps",
+    "dps.": "dps",
+    "double point status": "dps",
+    "double-point status": "dps",
+    "double_point_status": "dps",
+    "doublepointstatus": "dps",
+    "dp status": "dps",
+    "double status": "dps",
+}
+
+
+@dataclass(frozen=True)
 class ImportedSignalProjection:
     key: str
     name: str
@@ -78,19 +132,25 @@ class SignalSheetImportService:
 
         default_sheet_index = SignalSheetImportService._select_default_sheet_index(sheets, metadata)
 
-        sheet_data = {
-            "version": 2,
-            "sheet_count": len(sheets),
-            "default_sheet_index": default_sheet_index,
-            "sheets": sheets,
-        }
-
         projected_signals = SignalSheetImportService._project_signals(
             sheets=sheets,
             default_sheet_index=default_sheet_index,
             filename=filename,
             metadata=metadata,
         )
+
+        compact_sheets = SignalSheetImportService._project_sheet_data_columns(
+            sheets=sheets,
+            default_sheet_index=default_sheet_index,
+            metadata=metadata,
+        )
+
+        sheet_data = {
+            "version": 2,
+            "sheet_count": len(compact_sheets),
+            "default_sheet_index": default_sheet_index,
+            "sheets": compact_sheets,
+        }
 
         return ImportedSheetPayload(
             data=sheet_data,
@@ -226,14 +286,20 @@ class SignalSheetImportService:
 
         projections: list[ImportedSignalProjection] = []
         seen_keys: set[str] = set()
+        selected_columns = [
+            column
+            for column in ((metadata.selected_columns if metadata else []) or [])
+            if column in headers
+        ]
 
         for row_index, row in enumerate(rows):
-            internal_type = SignalSheetImportService._resolve_internal_type(
+            type_info = SignalSheetImportService._resolve_type_info(
                 row=row,
                 internal_type_column=internal_type_column,
                 type_column=type_column,
                 type_mapping=type_mapping,
             )
+            internal_type = type_info["internal_type"]
             direction = _INTERNAL_TYPE_TO_DIRECTION.get(internal_type)
             if not direction:
                 continue
@@ -246,27 +312,73 @@ class SignalSheetImportService:
             if not display_name:
                 display_name = f"Signal {row_index + 1}"
 
-            base_key = SignalSheetImportService._slugify(display_name)
-            key = base_key
-            suffix = 2
-            while key in seen_keys:
-                key = f"{base_key}_{suffix}"
-                suffix += 1
-            seen_keys.add(key)
-
             category = None
             if type_column:
                 category_raw = row.get(type_column)
                 category_str = SignalSheetImportService._stringify_cell(category_raw).strip()
                 category = category_str or None
 
+            packed_profile = SignalSheetImportService._resolve_packed_profile(type_info)
+            if packed_profile:
+                source_group_id = f"{selected.get('index')}:{row_index}"
+                terminal_values = SignalSheetImportService._split_terminal_values(
+                    row=row,
+                    terminal_column=metadata.terminal_column if metadata else None,
+                    expected=len(packed_profile.roles),
+                )
+                for packed_pos, role in enumerate(packed_profile.roles):
+                    packed_name = f"{display_name}{role.suffix}"
+                    packed_key = SignalSheetImportService._make_unique_signal_key(packed_name, seen_keys)
+                    row_payload = SignalSheetImportService._project_row_payload(
+                        row=row,
+                        selected_columns=selected_columns,
+                    )
+                    if (
+                        terminal_values
+                        and metadata
+                        and metadata.terminal_column
+                        and (
+                            not selected_columns
+                            or metadata.terminal_column in row_payload
+                        )
+                    ):
+                        row_payload[metadata.terminal_column] = terminal_values[packed_pos]
+                    signal_metadata = {
+                        "source": "signal_sheet_import",
+                        "source_filename": filename,
+                        "sheet_name": selected.get("name"),
+                        "sheet_index": selected.get("index"),
+                        "row_index": row_index,
+                        "row": row_payload,
+                        "packed_group": {
+                            "kind": packed_profile.kind,
+                            "source_group_id": source_group_id,
+                            "position": packed_pos,
+                            "role": role.role_key,
+                        },
+                    }
+                    projections.append(
+                        ImportedSignalProjection(
+                            key=packed_key,
+                            name=packed_name,
+                            io_direction=direction,
+                            category=category,
+                            signal_metadata=signal_metadata,
+                        )
+                    )
+                continue
+
+            key = SignalSheetImportService._make_unique_signal_key(display_name, seen_keys)
             signal_metadata = {
                 "source": "signal_sheet_import",
                 "source_filename": filename,
                 "sheet_name": selected.get("name"),
                 "sheet_index": selected.get("index"),
                 "row_index": row_index,
-                "row": row,
+                "row": SignalSheetImportService._project_row_payload(
+                    row=row,
+                    selected_columns=selected_columns,
+                ),
             }
 
             projections.append(
@@ -303,25 +415,130 @@ class SignalSheetImportService:
         return None
 
     @staticmethod
-    def _resolve_internal_type(
+    def _resolve_type_info(
         *,
         row: dict[str, Any],
         internal_type_column: str | None,
         type_column: str | None,
         type_mapping: dict[str, str],
-    ) -> str:
+    ) -> dict[str, str]:
+        raw_internal_type = ""
+        raw_type = ""
         if internal_type_column:
-            raw = SignalSheetImportService._stringify_cell(row.get(internal_type_column)).strip().lower()
-            if raw in _INTERNAL_TYPE_TO_DIRECTION:
-                return raw
+            raw_internal_type = SignalSheetImportService._normalize_type_token(row.get(internal_type_column))
+            if raw_internal_type in _INTERNAL_TYPE_TO_DIRECTION:
+                return {"internal_type": raw_internal_type, "raw_type": raw_internal_type}
 
         if type_column:
-            raw_type = SignalSheetImportService._stringify_cell(row.get(type_column)).strip().lower()
+            raw_type = SignalSheetImportService._normalize_type_token(row.get(type_column))
             mapped = type_mapping.get(raw_type)
             if mapped in _INTERNAL_TYPE_TO_DIRECTION:
-                return mapped
+                return {"internal_type": mapped, "raw_type": raw_type}
 
-        return ""
+        packed_profile = SignalSheetImportService._resolve_packed_profile(
+            {"internal_type": "", "raw_type": raw_type or raw_internal_type}
+        )
+        if packed_profile:
+            return {"internal_type": packed_profile.default_internal_type, "raw_type": packed_profile.kind}
+
+        return {"internal_type": "", "raw_type": raw_type or raw_internal_type}
+
+    @staticmethod
+    def _resolve_packed_profile(type_info: dict[str, str]) -> PackedSignalProfile | None:
+        raw_type = (type_info.get("raw_type") or "").strip().lower()
+        if not raw_type:
+            return None
+        normalized = _PACKED_SIGNAL_TYPE_ALIASES.get(raw_type, raw_type)
+        return _PACKED_SIGNAL_PROFILES.get(normalized)
+
+    @staticmethod
+    def _normalize_type_token(value: Any) -> str:
+        token = SignalSheetImportService._stringify_cell(value).strip().lower()
+        token = re.sub(r"\s+", " ", token)
+        return token
+
+    @staticmethod
+    def _make_unique_signal_key(display_name: str, seen_keys: set[str]) -> str:
+        base_key = SignalSheetImportService._slugify(display_name)
+        key = base_key
+        suffix = 2
+        while key in seen_keys:
+            key = f"{base_key}_{suffix}"
+            suffix += 1
+        seen_keys.add(key)
+        return key
+
+    @staticmethod
+    def _split_terminal_values(
+        *,
+        row: dict[str, Any],
+        terminal_column: str | None,
+        expected: int,
+    ) -> list[str] | None:
+        if expected <= 1 or not terminal_column or terminal_column not in row:
+            return None
+
+        raw = SignalSheetImportService._stringify_cell(row.get(terminal_column)).strip()
+        if not raw:
+            return None
+
+        # Typical engineering sheets store paired terminals as "XT1:1 / XT1:2" or "XT1:1,XT1:2".
+        parts = [part.strip() for part in re.split(r"\s*[/,;|]\s*", raw) if part and part.strip()]
+        if len(parts) < expected:
+            return None
+        return parts[:expected]
+
+    @staticmethod
+    def _project_row_payload(*, row: dict[str, Any], selected_columns: list[str]) -> dict[str, Any]:
+        if not selected_columns:
+            return dict(row)
+        return {column: row.get(column) for column in selected_columns}
+
+    @staticmethod
+    def _project_sheet_data_columns(
+        *,
+        sheets: list[dict[str, Any]],
+        default_sheet_index: int,
+        metadata: SignalImportMetaSchema | None,
+    ) -> list[dict[str, Any]]:
+        selected_columns = set(((metadata.selected_columns if metadata else []) or []))
+        if not selected_columns:
+            return [
+                {
+                    **sheet,
+                    "headers": list(sheet.get("headers") or []),
+                    "rows": [dict(row) for row in (sheet.get("rows") or []) if isinstance(row, dict)],
+                }
+                for sheet in sheets
+            ]
+
+        projected_sheets: list[dict[str, Any]] = []
+        for sheet in sheets:
+            headers = [str(header) for header in (sheet.get("headers") or [])]
+            rows = [row for row in (sheet.get("rows") or []) if isinstance(row, dict)]
+            if int(sheet.get("index") or 0) == int(default_sheet_index):
+                filtered_headers = [header for header in headers if header in selected_columns]
+                filtered_rows = [
+                    {header: row.get(header) for header in filtered_headers}
+                    for row in rows
+                ]
+                projected_sheets.append(
+                    {
+                        **sheet,
+                        "headers": filtered_headers,
+                        "rows": filtered_rows,
+                    }
+                )
+                continue
+
+            projected_sheets.append(
+                {
+                    **sheet,
+                    "headers": headers,
+                    "rows": [dict(row) for row in rows],
+                }
+            )
+        return projected_sheets
 
     @staticmethod
     def _slugify(value: str) -> str:

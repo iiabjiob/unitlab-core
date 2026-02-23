@@ -103,10 +103,23 @@
               <p class="font-semibold text-neutral-800 dark:text-neutral-100">File ready</p>
               <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ fileName }}</p>
             </div>
-            <UiButton type="button" variant="ghost" size="sm" @click="replaceFile" :disabled="loading || parsing">
+            <UiButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              class="whitespace-nowrap"
+              @click="replaceFile"
+              :disabled="loading || parsing"
+            >
               Choose different file
             </UiButton>
           </div>
+          <UiAlert
+            v-if="signalSheetStore.hasSheet"
+            type="warning"
+            class="mt-3"
+            message="Re-import overwrites existing signal rows in this workspace. If you need to preserve existing test results, create a new workspace before importing."
+          />
         </div>
 
         <div v-if="step === 'columns'" class="space-y-4">

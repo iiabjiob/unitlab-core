@@ -37,6 +37,8 @@
           <button
             v-if="props.enableBulkDeleteSelected && (selectedRowsCount > 0 || bulkDeleteInFlight)"
             type="button"
+            id="grid-bulk-delete-selected"
+            name="grid-bulk-delete-selected"
             class="ui-affino-grid__toolbar-button ui-affino-grid__toolbar-button--danger"
             :disabled="selectedRowsCount === 0 || bulkDeleteInFlight"
             @click="requestBulkDeleteSelected"

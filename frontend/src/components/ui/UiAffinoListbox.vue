@@ -287,6 +287,7 @@ function onTriggerKeydown(event: KeyboardEvent) {
     case "Escape":
       if (!isOpen.value) return
       event.preventDefault()
+      event.stopPropagation()
       closeList()
       return
     case "Tab":

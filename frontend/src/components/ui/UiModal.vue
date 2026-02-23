@@ -75,6 +75,9 @@ function requestClose(reason: DialogCloseReason) {
 }
 
 function onDialogKeydown(e: KeyboardEvent) {
+  if (e.defaultPrevented) {
+    return
+  }
   if (e.key === "Escape" && isOpen.value) {
     requestClose("escape-key")
   }
