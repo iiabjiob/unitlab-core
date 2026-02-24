@@ -64,6 +64,118 @@ Verify `wlan0` is managed:
 nmcli device status
 ```
 
+### 1.4 Run host pre-provision script (recommended)
+
+Instead of running host setup steps manually, run the provisioning script from this repository:
+
+```bash
+cd /opt/unitlab/unitlab-core
+sudo ./scripts/provision-rpi.sh --timezone Europe/London
+```
+
+Useful variants:
+
+```bash
+# Skip full OS upgrade (faster first pass)
+sudo ./scripts/provision-rpi.sh --skip-upgrade
+
+# Use environment variable override
+sudo TIMEZONE=Etc/UTC ./scripts/provision-rpi.sh
+```
+
+What it configures:
+
+- apt update/full-upgrade
+- timezone validation + apply
+- chrony install/enable
+- docker + compose plugin install/enable
+- `/opt/unitlab/releases` and `/opt/unitlab/shared` directories
+- docker daemon log rotation (`max-size=10m`, `max-file=3`)
+
+After completion, reboot is recommended.
+
+## 1.5 Current Release/Deploy Flow (Recommended)
+
+Use a strict split between **dev machine** and **RPi runtime host**:
+
+- Dev machine: `scripts/release.sh` (build/export/bundle only)
+- RPi host: `scripts/deploy-rpi.sh` (switch/start/verify/rollback/cleanup)
+
+### One-time on RPi (device bootstrap)
+
+```bash
+scp scripts/provision-rpi.sh pi@<rpi-ip>:/tmp/
+ssh pi@<rpi-ip>
+sudo bash /tmp/provision-rpi.sh --timezone Europe/Berlin
+sudo reboot
+```
+
+Expected host layout after bootstrap:
+
+```text
+/opt/unitlab/
+  releases/
+  shared/
+  current -> <set during deploy>
+```
+
+### Dev machine: build release artifacts
+
+```bash
+cd /path/to/unitlab-core
+./scripts/release.sh
+```
+
+Result:
+
+```text
+dist-release/
+  unitlab-core-rpi-runtime-<timestamp>/
+  release-images-<timestamp>.tar
+```
+
+### Copy artifacts to RPi
+
+Offline mode:
+
+```bash
+scp -r dist-release/unitlab-core-rpi-runtime-<timestamp> pi@<rpi-ip>:/opt/unitlab/releases/
+scp dist-release/release-images-<timestamp>.tar pi@<rpi-ip>:/opt/unitlab/
+```
+
+Registry mode:
+
+```bash
+scp -r dist-release/unitlab-core-rpi-runtime-<timestamp> pi@<rpi-ip>:/opt/unitlab/releases/
+```
+
+### RPi: deploy release
+
+Offline mode:
+
+```bash
+sudo /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/scripts/deploy-rpi.sh \
+  --bundle-dir /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp> \
+  --images-archive /opt/unitlab/release-images-<timestamp>.tar
+```
+
+Registry mode:
+
+```bash
+sudo /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/scripts/deploy-rpi.sh \
+  --bundle-dir /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>
+```
+
+`deploy-rpi.sh` behavior:
+
+1. Validate compose in target release
+2. Load images (offline mode only)
+3. Switch `current` symlink atomically
+4. Run `docker compose up -d --remove-orphans`
+5. Run runtime verify
+6. If verify fails → rollback to previous release
+7. If verify succeeds → cleanup old releases (keep current + previous)
+
 ## 2. Install Docker + Compose Plugin
 
 If Docker is not installed yet:

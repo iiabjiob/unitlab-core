@@ -1,16 +1,27 @@
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-release-labels: &release-labels
+  unitlab.release: ${RELEASE_VERSION:-unknown}
+
 services:
   backend:
-    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:latest}
-    platform: linux/arm64
+    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSION:-dev}}
     container_name: unitlab-backend
+    labels:
+      <<: *release-labels
     mem_limit: 1024m
     cpus: 2.0
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/api/v1/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v1/health || exit 1"]
       interval: 5s
       timeout: 2s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
     env_file: 
       - ./backend/.env.prod
     environment:
@@ -26,11 +37,15 @@ services:
       - app_network
 
   mqtt_ingress:
-    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:latest}
-    platform: linux/arm64
+    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSION:-dev}}
     container_name: unitlab-mqtt-ingress
+    labels:
+      <<: *release-labels
     command: ["python", "-m", "app.workers.mqtt_ingress"]
     restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.50
+    logging: *default-logging
     env_file:
       - ./backend/.env.prod
     environment:
@@ -44,11 +59,15 @@ services:
       - app_network
 
   inbound_processor:
-    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:latest}
-    platform: linux/arm64
+    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSION:-dev}}
     container_name: unitlab-inbound-processor
+    labels:
+      <<: *release-labels
     command: ["python", "-m", "app.workers.inbound_processor"]
     restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.50
+    logging: *default-logging
     env_file:
       - ./backend/.env.prod
     environment:
@@ -62,11 +81,15 @@ services:
       - app_network
 
   mqtt_outbound:
-    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:latest}
-    platform: linux/arm64
+    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSION:-dev}}
     container_name: unitlab-mqtt-outbound
+    labels:
+      <<: *release-labels
     command: ["python", "-m", "app.workers.mqtt_outbound"]
     restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.50
+    logging: *default-logging
     env_file:
       - ./backend/.env.prod
     environment:
@@ -80,11 +103,15 @@ services:
       - app_network
 
   device_offline:
-    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:latest}
-    platform: linux/arm64
+    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSION:-dev}}
     container_name: unitlab-device-offline
+    labels:
+      <<: *release-labels
     command: ["python", "-m", "app.workers.device_offline"]
     restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.50
+    logging: *default-logging
     env_file:
       - ./backend/.env.prod
     environment:
@@ -96,11 +123,15 @@ services:
       - app_network
 
   sequence_runner:
-    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:latest}
-    platform: linux/arm64
+    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSION:-dev}}
     container_name: unitlab-sequence-runner
+    labels:
+      <<: *release-labels
     command: ["python", "-m", "app.workers.sequence_runner"]
     restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.50
+    logging: *default-logging
     env_file:
       - ./backend/.env.prod
     environment:
@@ -114,11 +145,15 @@ services:
       - app_network
 
   signal_allocation_runner:
-    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:latest}
-    platform: linux/arm64
+    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSION:-dev}}
     container_name: unitlab-signal-allocation-runner
+    labels:
+      <<: *release-labels
     command: ["python", "-m", "app.workers.signal_allocation_runner"]
     restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.50
+    logging: *default-logging
     env_file:
       - ./backend/.env.prod
     environment:
@@ -132,11 +167,15 @@ services:
       - app_network
 
   signal_test_run_runner:
-    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:latest}
-    platform: linux/arm64
+    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSION:-dev}}
     container_name: unitlab-signal-test-run-runner
+    labels:
+      <<: *release-labels
     command: ["python", "-m", "app.workers.signal_test_run_runner"]
     restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.50
+    logging: *default-logging
     env_file:
       - ./backend/.env.prod
     environment:
@@ -150,10 +189,13 @@ services:
       - app_network
 
   migrations:
-    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:latest}
+    image: ${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSION:-dev}}
     container_name: unitlab-migrations
-    platform: linux/arm64
+    labels:
+      <<: *release-labels
     command: ["/app/.venv/bin/alembic", "upgrade", "head"]
+    restart: "no"
+    logging: *default-logging
     env_file:
       - ./backend/.env.prod
       - ./backend/.env.db.prod
@@ -166,13 +208,16 @@ services:
   db:
     image: postgres:16
     container_name: unitlab-db
+    labels:
+      <<: *release-labels
     restart: unless-stopped
     mem_limit: 1024m
     cpus: 1.5
+    logging: *default-logging
     env_file: 
       - ./backend/.env.db.prod
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U unitlab_pg_user -d unitlab_pg -h db"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB -h db"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -184,11 +229,13 @@ services:
       - app_network
 
   nginx:
-    image: ${UNITLAB_WEB_IMAGE:-unitlab-web:latest}
+    image: ${UNITLAB_WEB_IMAGE:-unitlab-web:${RELEASE_VERSION:-dev}}
     container_name: unitlab-nginx
-    platform: linux/arm64
+    labels:
+      <<: *release-labels
     mem_limit: 256m
     cpus: 0.25
+    logging: *default-logging
     depends_on:
       backend:
         condition: service_healthy
@@ -201,12 +248,15 @@ services:
   redis:
     image: redis:7
     container_name: unitlab-redis
+    labels:
+      <<: *release-labels
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     tmpfs:
       - /data
     restart: unless-stopped
     mem_limit: 512m
     cpus: 0.50
+    logging: *default-logging
     ports:
       - "127.0.0.1:6379:6379"
     expose:
@@ -217,12 +267,15 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: unitlab-mosquitto
+    labels:
+      <<: *release-labels
     restart: unless-stopped
     tmpfs:
       - /mosquitto/data
       - /mosquitto/log
     mem_limit: 256m
     cpus: 0.25
+    logging: *default-logging
     ports:
       - "1883:1883"
     volumes:
