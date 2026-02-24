@@ -11,6 +11,8 @@ EnvironmentFile=-/etc/unitlab/rpi-core-diag-agent.env
 ExecStart=/opt/unitlab/rpi-core-diag-agent/.venv/bin/python -m unitlab_rpi_core_diag_agent
 Restart=always
 RestartSec=2
+PrivateTmp=true
+ProtectHome=true
 
 [Install]
 WantedBy=multi-user.target

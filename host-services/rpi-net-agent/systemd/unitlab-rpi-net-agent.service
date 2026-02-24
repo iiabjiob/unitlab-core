@@ -1,6 +1,6 @@
 [Unit]
 Description=UnitLab RPi Network Agent (AP/STA controller)
-After=network-online.target NetworkManager.service redis.service docker.service
+After=network-online.target NetworkManager.service docker.service
 Wants=network-online.target
 
 [Service]
@@ -14,6 +14,8 @@ Restart=always
 RestartSec=2
 TimeoutStopSec=10
 NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
 
 [Install]
 WantedBy=multi-user.target
