@@ -540,8 +540,27 @@ async function handleSubmit() {
 
 function toReadableImportError(err: unknown): string {
   if (axios.isAxiosError(err)) {
+    const code = String(err.code ?? "").toUpperCase()
+    const status = Number(err.response?.status)
     const detail = typeof err.response?.data?.detail === "string" ? err.response.data.detail : ""
     const normalized = detail.replace(/^Unable to parse workbook:\s*/i, "").trim()
+
+    if (code === "ECONNABORTED") {
+      return "Import timed out on the first attempt. Please retry; if it repeats, reduce file size or check device load."
+    }
+    if (!err.response && (code === "ERR_NETWORK" || code === "ECONNRESET" || code === "ETIMEDOUT")) {
+      return "Network connection was interrupted during import. Please retry."
+    }
+
+    if (status === 413) {
+      return "The uploaded file is too large for the server limit. Reduce file size and try again."
+    }
+    if (status === 415) {
+      return "Unsupported file type. Upload .xls, .xlsx, or .xlsm."
+    }
+    if (status === 502 || status === 503 || status === 504) {
+      return "Import service is temporarily unavailable. Please try again in a moment."
+    }
 
     const limit = detail.match(/Import limit exceeded:\s*(\d+)\s*rows\s*\(max\s*(\d+)\)/i)
     if (limit) {

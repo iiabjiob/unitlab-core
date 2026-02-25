@@ -114,6 +114,7 @@ export const useCoreNetworkStore = defineStore("coreNetworkStore", () => {
     monitorSubscribers += 1
     if (monitorSubscribers > 1) return
     void ensureFresh({ force: true })
+    void requestStatus().catch(() => undefined)
     pollTimer = setInterval(() => {
       void ensureFresh({ force: true })
     }, POLL_MS)

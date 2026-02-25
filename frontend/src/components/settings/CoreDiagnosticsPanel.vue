@@ -30,6 +30,36 @@
     </div>
 
     <div class="mt-3 grid gap-3 xl:grid-cols-2">
+      <div class="rounded-xl border border-neutral-200/80 bg-neutral-50/80 p-3 dark:border-neutral-800 dark:bg-neutral-900/60 xl:col-span-2">
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <p class="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Backend Health</p>
+          <span class="text-[11px] text-neutral-500 dark:text-neutral-400">{{ healthCheckedAtText }}</span>
+        </div>
+        <div class="grid gap-2 text-xs">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-neutral-500 dark:text-neutral-400">Overall status</span>
+            <span
+              class="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+              :class="systemStatusPillClass"
+            >
+              {{ systemStatusText }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-neutral-500 dark:text-neutral-400">Workers</span>
+            <span class="font-medium text-neutral-800 dark:text-neutral-100">{{ healthyWorkersCount }} / {{ healthWorkers.length }} online</span>
+          </div>
+        </div>
+        <div v-if="healthIssues.length > 0" class="mt-3 max-h-32 overflow-y-auto rounded-lg border border-neutral-200 bg-white/80 p-2 dark:border-neutral-800 dark:bg-neutral-950/50">
+          <p class="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-500 dark:text-neutral-400">Issues</p>
+          <ul class="space-y-1">
+            <li v-for="issue in healthIssues" :key="issue" class="text-xs text-rose-600 dark:text-rose-300">
+              {{ issue }}
+            </li>
+          </ul>
+        </div>
+      </div>
+
       <div class="rounded-xl border border-neutral-200/80 bg-neutral-50/80 p-3 dark:border-neutral-800 dark:bg-neutral-900/60">
         <p class="mb-2 text-xs font-semibold text-neutral-700 dark:text-neutral-200">System</p>
         <div class="grid gap-2 text-xs">
@@ -70,14 +100,35 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, onUnmounted } from "vue"
 import { useCoreDiagnosticsStore } from "@/stores/coreDiagnosticsStore"
+import { useSystemHealthStore } from "@/stores/systemHealthStore"
 
 const store = useCoreDiagnosticsStore()
+const systemHealthStore = useSystemHealthStore()
 
 const snapshot = computed(() => store.snapshot)
 const services = computed(() => store.services)
 const busy = computed(() => store.loading || store.commandPending)
 const errorText = computed(() => store.lastError || snapshot.value?.last_error || null)
 const modeText = computed(() => String(store.mode).toUpperCase())
+const systemStatusText = computed(() => String(systemHealthStore.status).toUpperCase())
+const healthIssues = computed(() => systemHealthStore.issues)
+const healthWorkers = computed(() => systemHealthStore.workers)
+const healthyWorkersCount = computed(() => healthWorkers.value.filter(worker => worker.status === "online").length)
+const healthCheckedAtText = computed(() => {
+  const raw = systemHealthStore.checkedAt
+  return raw ? String(raw) : "—"
+})
+
+const systemStatusPillClass = computed(() => {
+  const status = String(systemHealthStore.status).toLowerCase()
+  if (status === "online") {
+    return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+  }
+  if (status === "offline") {
+    return "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200"
+  }
+  return "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+})
 
 const cpuTempText = computed(() => {
   const t = store.cpu?.temperature_c
@@ -158,10 +209,12 @@ async function refreshStatus() {
 
 onMounted(() => {
   store.startMonitoring()
+  systemHealthStore.startMonitoring()
 })
 
 onUnmounted(() => {
   store.stopMonitoring()
+  systemHealthStore.stopMonitoring()
 })
 
 const Row = defineComponent({

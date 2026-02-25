@@ -7,7 +7,7 @@ import socket
 from contextlib import suppress
 from typing import List, Tuple
 
-from redis.exceptions import ResponseError
+from redis.exceptions import ConnectionError as RedisConnectionError, ResponseError
 
 from app.core.config import get_settings
 from app.core.logger import get_logger
@@ -102,7 +102,15 @@ async def main() -> None:
 
     try:
         while not stop_event.is_set():
-            entries = await _fetch(redis, ">")
+            try:
+                entries = await _fetch(redis, ">")
+            except RedisConnectionError as exc:
+                if stop_event.is_set():
+                    logger.info("Inbound processor stopping after Redis disconnect: %s", exc)
+                    break
+                logger.warning("Inbound processor Redis fetch failed, retrying: %s", exc)
+                await asyncio.sleep(0.5)
+                continue
             if not entries:
                 continue
             await _process_entries(redis, entries)

@@ -95,10 +95,6 @@ class Settings(BaseSettings):
     # ---- Signal Import ----
     signal_import_max_rows: int = 20000
 
-    # ---- Time Sync ----
-    ntp_server_1: str | None = None
-    ntp_server_2: str | None = None
-
     # ---- Database URL ----
     @property
     def database_url(self) -> str:

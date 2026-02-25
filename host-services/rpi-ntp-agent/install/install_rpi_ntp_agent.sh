@@ -35,7 +35,6 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   cat > "${ENV_FILE}" <<'EOF'
 UNITLAB_NTP_AGENT_REDIS_URL=redis://127.0.0.1:6379/0
 UNITLAB_NTP_AGENT_LOG_LEVEL=INFO
-UNITLAB_NTP_AGENT_DEFAULT_SERVERS=pool.ntp.org,time.google.com
 EOF
 fi
 

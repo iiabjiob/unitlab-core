@@ -116,7 +116,10 @@ async def write_worker_status(worker_name: str, *, status: WorkerStatus = "onlin
 
 async def clear_worker_status(worker_name: str) -> None:
     redis = RedisManager.get_instance()
-    await redis.delete(_worker_key(worker_name))
+    try:
+        await redis.delete(_worker_key(worker_name))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to clear worker status for %s: %s", worker_name, exc)
 
 
 async def _worker_heartbeat_loop(worker_name: str, *, status: WorkerStatus, detail: str | None) -> None:

@@ -39,20 +39,20 @@
     </div>
 
     <div
-      v-else-if="showInitialPageLoading"
+      v-else-if="showInitialPageLoadingDebounced"
       class="flex flex-1 flex-col gap-3 rounded-2xl border border-neutral-200 bg-white/90 p-4 dark:border-neutral-800 dark:bg-neutral-900/80"
       aria-live="polite"
       aria-busy="true"
     >
       <div class="flex items-center gap-2 text-sm font-medium text-neutral-600 dark:text-neutral-300">
-        <span class="h-2.5 w-2.5 animate-pulse rounded-full bg-emerald-500"></span>
+        <span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
         <span>Loading signal sheet…</span>
       </div>
       <div class="space-y-2">
-        <div class="h-8 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
-        <div class="h-8 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
-        <div class="h-8 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
-        <div class="h-8 animate-pulse rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
+        <div class="h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
+        <div class="h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
+        <div class="h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
+        <div class="h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
       </div>
     </div>
 
@@ -209,8 +209,10 @@ const testRunSucceeded = ref(0)
 const testRunSkipped = ref(0)
 const testRunControlBusy = ref(false)
 const MAX_RESTORED_SELECTION_KEYS = 2000
+const INITIAL_LOADING_PLACEHOLDER_DEBOUNCE_MS = 260
 const missingChannelHydrationInFlight = new Set<number>()
 let allocationRevisionSyncFrame: number | null = null
+let initialLoadingPlaceholderTimer: ReturnType<typeof setTimeout> | null = null
 const pendingAllocationRevisionSignalIds = new Set<number>()
 let pendingAllocationRevisionFullRefresh = false
 
@@ -231,6 +233,28 @@ const showInitialPageLoading = computed(() => (
   && !signalSheetStore.sheet
   && allocationRows.value.length === 0
 ))
+const showInitialPageLoadingDebounced = ref(false)
+
+watch(
+  showInitialPageLoading,
+  (next) => {
+    if (initialLoadingPlaceholderTimer !== null) {
+      clearTimeout(initialLoadingPlaceholderTimer)
+      initialLoadingPlaceholderTimer = null
+    }
+
+    if (!next) {
+      showInitialPageLoadingDebounced.value = false
+      return
+    }
+
+    initialLoadingPlaceholderTimer = setTimeout(() => {
+      showInitialPageLoadingDebounced.value = true
+      initialLoadingPlaceholderTimer = null
+    }, INITIAL_LOADING_PLACEHOLDER_DEBOUNCE_MS)
+  },
+  { immediate: true },
+)
 const activeSignalSheet = computed(() => {
   const workspaceId = workspaceStore.activeWorkspaceId
   const sheet = signalSheetStore.sheet
@@ -2235,6 +2259,10 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  if (initialLoadingPlaceholderTimer !== null) {
+    clearTimeout(initialLoadingPlaceholderTimer)
+    initialLoadingPlaceholderTimer = null
+  }
   channelGroupsResolverBySignalId.clear()
   if (allocationRevisionSyncFrame !== null) {
     cancelAnimationFrame(allocationRevisionSyncFrame)

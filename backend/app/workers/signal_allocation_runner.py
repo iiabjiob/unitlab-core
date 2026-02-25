@@ -360,6 +360,7 @@ async def main() -> None:
             stop_event=stop_event,
             fetch_entries=lambda: _fetch(redis, ">"),
             process_entries=lambda entries: _process_entries(redis, entries),
+            logger=logger,
         )
     finally:
         heartbeat_task.cancel()

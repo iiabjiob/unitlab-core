@@ -16,6 +16,8 @@ import type {
   SignalSheetPreset,
 } from "@/types/signal"
 
+const SIGNAL_IMPORT_REQUEST_TIMEOUT_MS = 120_000
+
 export const SignalSheetAPI = {
   get(workspaceId: number) {
     return http.get<SignalSheet>(`${API_V1}/workspaces/${workspaceId}/signal-sheet`)
@@ -39,6 +41,7 @@ export const SignalSheetAPI = {
     }
     return http.post<SignalSheetImportResponse>(`${API_V1}/workspaces/${workspaceId}/signal-sheet/import`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
+      timeout: SIGNAL_IMPORT_REQUEST_TIMEOUT_MS,
     })
   },
 
@@ -59,6 +62,7 @@ export const SignalSheetAPI = {
       formData,
       {
         headers: { "Content-Type": "multipart/form-data" },
+        timeout: SIGNAL_IMPORT_REQUEST_TIMEOUT_MS,
       },
     )
   },
