@@ -10,7 +10,7 @@ TARGET_PLATFORM="${TARGET_PLATFORM:-linux/arm64}"
 BACKEND_IMAGE_TAG="${BACKEND_IMAGE_TAG:-unitlab-backend:${RELEASE_VERSION}}"
 WEB_IMAGE_TAG="${WEB_IMAGE_TAG:-unitlab-web:${RELEASE_VERSION}}"
 RELEASE_DIR="${RELEASE_DIR:-$ROOT_DIR/dist-release}"
-BUNDLE_OUT="${BUNDLE_OUT:-$RELEASE_DIR/unitlab-core-rpi-runtime-${PROFILE}-${RELEASE_VERSION}}"
+BUNDLE_OUT="${BUNDLE_OUT:-}"
 IMAGES_OUT="${IMAGES_OUT:-$RELEASE_DIR/release-images-${RELEASE_VERSION}.tar}"
 COMPRESS_EXPORT="${COMPRESS_EXPORT:-0}"
 
@@ -120,6 +120,14 @@ if [[ "$PROFILE" != "min" && "$PROFILE" != "service" ]]; then
   echo "[unitlab] ERROR: unsupported profile '$PROFILE' (expected min|service)" >&2
   usage
   exit 1
+fi
+
+if [[ -z "$BUNDLE_OUT" ]]; then
+  if [[ "$PROFILE" == "min" ]]; then
+    BUNDLE_OUT="$RELEASE_DIR/unitlab-core-rpi-runtime-${RELEASE_VERSION}"
+  else
+    BUNDLE_OUT="$RELEASE_DIR/unitlab-core-rpi-runtime-${PROFILE}-${RELEASE_VERSION}"
+  fi
 fi
 
 if [[ "$OFFLINE_EXPORT" != "0" && "$OFFLINE_EXPORT" != "1" ]]; then

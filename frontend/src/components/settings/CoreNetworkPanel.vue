@@ -63,9 +63,10 @@ const coreNetMode = computed(() => {
   const rawMode = String(coreNetworkStore.mode || "unknown").toLowerCase()
   if (rawMode !== "unknown") return rawMode.toUpperCase()
   const snap = coreNetworkStore.snapshot
+  const staState = String(coreNetworkStore.sta?.state ?? "").toLowerCase()
   if (snap?.ap?.active) return "AP"
-  if (snap?.sta?.state === "connected") return "STA"
-  if ((snap?.ap?.ip || snap?.ap?.ssid) && snap?.sta?.state !== "connected") return "AP"
+  if (staState === "connected") return "STA"
+  if ((snap?.ap?.ip || snap?.ap?.ssid) && staState !== "connected") return "AP"
   return "OFFLINE"
 })
 const coreNetStaState = computed(() => String(coreNetworkStore.sta?.state ?? "disconnected").toUpperCase())
