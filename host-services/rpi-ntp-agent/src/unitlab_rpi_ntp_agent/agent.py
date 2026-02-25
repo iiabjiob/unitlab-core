@@ -126,8 +126,6 @@ class CoreNtpAgent:
         if not isinstance(raw_servers, list):
             raise ChronyError("servers[] is required")
         servers = [str(item).strip() for item in raw_servers if str(item).strip()]
-        if not servers:
-            raise ChronyError("At least one NTP server is required")
         await self.redis.publish_event(
             "chrony_apply_started",
             {"request_id": cmd.request_id, "servers": servers},

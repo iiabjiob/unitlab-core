@@ -274,44 +274,42 @@
     </form>
 
     <template #footer>
-      <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex w-full flex-wrap items-center justify-end gap-2">
         <UiButton type="button" variant="secondary" @click="emitClose" :disabled="loading || parsing">
           Cancel
         </UiButton>
-        <div class="flex gap-2">
-          <UiButton
-            v-if="canGoBack"
-            type="button"
-            variant="ghost"
-            @click="goToPreviousStep"
-            :disabled="loading || parsing"
-          >
-            Back
-          </UiButton>
-          <UiButton
-            v-if="!isFinalStep"
-            type="button"
-            variant="primary"
-            :disabled="!canAdvance || loading"
-            @click="goToNextStep"
-          >
-            Next
-          </UiButton>
-          <UiButton
-            v-else
-            type="submit"
-            form="signal-import-form"
-            variant="primary"
-            :disabled="!canSubmitFinal || loading"
-          >
-            <template v-if="loading">
-              Importing…
-            </template>
-            <template v-else>
-              Import
-            </template>
-          </UiButton>
-        </div>
+        <UiButton
+          v-if="canGoBack"
+          type="button"
+          variant="ghost"
+          @click="goToPreviousStep"
+          :disabled="loading || parsing"
+        >
+          Back
+        </UiButton>
+        <UiButton
+          v-if="!isFinalStep"
+          type="button"
+          variant="primary"
+          :disabled="!canAdvance || loading"
+          @click="goToNextStep"
+        >
+          Next
+        </UiButton>
+        <UiButton
+          v-else
+          type="submit"
+          form="signal-import-form"
+          variant="primary"
+          :disabled="!canSubmitFinal || loading"
+        >
+          <template v-if="loading">
+            Importing…
+          </template>
+          <template v-else>
+            Import
+          </template>
+        </UiButton>
       </div>
     </template>
   </UiModal>

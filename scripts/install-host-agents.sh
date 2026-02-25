@@ -16,6 +16,7 @@ DRY_RUN=0
 NO_RESTART=0
 SKIP_PIP_UPGRADE=0
 ONLY_RAW=""
+APT_EXECUTED=0
 
 readonly KNOWN_AGENTS=(
   rpi-net-agent
@@ -54,6 +55,11 @@ declare -A AGENT_APT_DEPS=(
 
 readonly COMMON_APT_DEPS=(python3-venv python3-pip)
 
+is_pkg_installed() {
+  local pkg="$1"
+  dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -62,7 +68,7 @@ Usage:
 Options:
   --only <agent1,agent2>   Install subset only (default: all known agents)
   --wheels-dir <path>      Wheelhouse directory (default: <bundle>/wheels)
-  --skip-apt               Skip apt update/install steps
+  --skip-apt               Skip apt dependency checks/install completely
   --skip-pip-upgrade       Skip pip self-upgrade inside agent virtualenv
   --dry-run                Print actions without changing system
   --no-restart             Install/update but do not restart services
@@ -249,29 +255,46 @@ if (( SKIP_APT == 0 )); then
     err "apt-get not found (use --skip-apt only if dependencies are already installed)"
     exit 1
   fi
+  if ! command -v dpkg-query >/dev/null 2>&1; then
+    err "dpkg-query not found (cannot validate apt dependencies)"
+    exit 1
+  fi
 fi
 
 mkdir -p "$INSTALL_ROOT" "$ENV_ROOT"
 
+declare -A DEP_SET=()
+local_dep=""
+for dep in "${COMMON_APT_DEPS[@]}"; do DEP_SET["$dep"]=1; done
+for agent in "${SELECTED_AGENTS[@]}"; do
+  local_dep="${AGENT_APT_DEPS[$agent]}"
+  if [[ -n "$local_dep" ]]; then
+    for dep in $local_dep; do DEP_SET["$dep"]=1; done
+  fi
+done
+
+declare -a ALL_DEPS=()
+for dep in "${!DEP_SET[@]}"; do ALL_DEPS+=("$dep"); done
+if [[ ${#ALL_DEPS[@]} -gt 0 ]]; then
+  IFS=$'\n' ALL_DEPS=($(printf '%s\n' "${ALL_DEPS[@]}" | sort -u))
+  unset IFS
+fi
+
 if (( SKIP_APT == 0 )); then
-  log "[1/6] Installing apt dependencies"
-  declare -A DEP_SET=()
-  local_dep=""
-  for dep in "${COMMON_APT_DEPS[@]}"; do DEP_SET["$dep"]=1; done
-  for agent in "${SELECTED_AGENTS[@]}"; do
-    local_dep="${AGENT_APT_DEPS[$agent]}"
-    if [[ -n "$local_dep" ]]; then
-      for dep in $local_dep; do DEP_SET["$dep"]=1; done
+  declare -a MISSING_DEPS=()
+  for dep in "${ALL_DEPS[@]}"; do
+    if ! is_pkg_installed "$dep"; then
+      MISSING_DEPS+=("$dep")
     fi
   done
 
-  declare -a ALL_DEPS=()
-  for dep in "${!DEP_SET[@]}"; do ALL_DEPS+=("$dep"); done
-  if [[ ${#ALL_DEPS[@]} -gt 0 ]]; then
-    IFS=$'\n' ALL_DEPS=($(printf '%s\n' "${ALL_DEPS[@]}" | sort -u))
-    unset IFS
+  if [[ ${#MISSING_DEPS[@]} -eq 0 ]]; then
+    log "[1/6] Apt dependencies already present; skipping apt update/install"
+  else
+    log "[1/6] Installing missing apt dependencies: ${MISSING_DEPS[*]}"
     run apt-get update
-    run apt-get install -y "${ALL_DEPS[@]}"
+    run apt-get install -y "${MISSING_DEPS[@]}"
+    APT_EXECUTED=1
   fi
 else
   log "[1/6] Skipping apt dependencies (--skip-apt)"
@@ -309,7 +332,7 @@ for agent in "${SELECTED_AGENTS[@]}"; do
 
   log "[agent:$agent] venv + wheel install"
   run python3 -m venv "$dest_dir/.venv"
-  if (( SKIP_PIP_UPGRADE == 0 && SKIP_APT == 0 )); then
+  if (( SKIP_PIP_UPGRADE == 0 && APT_EXECUTED == 1 )); then
     if ! run "$dest_dir/.venv/bin/pip" install --upgrade pip; then
       log "[agent:$agent] pip self-upgrade failed, continuing"
     fi

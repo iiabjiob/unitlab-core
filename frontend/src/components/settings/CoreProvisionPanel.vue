@@ -17,14 +17,6 @@
           type="button"
           class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-neutral-500 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-500"
           :disabled="busy"
-          @click="refreshStatus"
-        >
-          Refresh
-        </button>
-        <button
-          type="button"
-          class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-neutral-500 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-500"
-          :disabled="busy"
           @click="runSmokeCheck"
         >
           Run smoke check
@@ -124,10 +116,6 @@ const busy = computed(() => store.loading || store.commandPending)
 const modeText = computed(() => String(store.mode).toUpperCase())
 const errorText = computed(() => store.lastError || snapshot.value?.last_error || null)
 
-async function refreshStatus() {
-  await store.ensureFresh({ force: true })
-  await store.requestStatus().catch(() => undefined)
-}
 async function runSmokeCheck() {
   await store.runSmokeCheck().catch(() => undefined)
 }

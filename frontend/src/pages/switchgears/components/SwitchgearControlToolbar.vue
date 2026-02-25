@@ -319,12 +319,12 @@ onBeforeUnmount(() => {
 <template>
   <section class="mt-4 rounded-2xl border border-neutral-200 bg-white/80 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
     <div class="flex flex-wrap items-center gap-3">
-      <div class="flex flex-wrap items-center gap-2">
+      <div class="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
         <UiButton
           size="sm"
           variant="success"
           :disabled="!canOpen"
-          class="min-w-[104px] justify-center sm:min-w-[120px]"
+          class="w-full justify-center sm:w-auto sm:min-w-[120px]"
           @click="sendSwitchgearCommand('open')"
         >
           {{ acting === "open" ? "Opening…" : "Open" }}
@@ -334,7 +334,7 @@ onBeforeUnmount(() => {
           size="sm"
           variant="danger"
           :disabled="!canClose"
-          class="min-w-[104px] justify-center sm:min-w-[120px]"
+          class="w-full justify-center sm:w-auto sm:min-w-[120px]"
           @click="sendSwitchgearCommand('close')"
         >
           {{ acting === "close" ? "Closing…" : "Close" }}
@@ -344,7 +344,7 @@ onBeforeUnmount(() => {
           size="sm"
           variant="secondary"
           :disabled="!canUndefined"
-          class="min-w-[104px] justify-center sm:min-w-[120px]"
+          class="w-full justify-center sm:w-auto sm:min-w-[120px]"
           @click="sendSwitchgearCommand('intermediate')"
         >
           {{ acting === "intermediate" ? "Applying…" : "Undefined" }}
@@ -354,7 +354,7 @@ onBeforeUnmount(() => {
           size="sm"
           variant="secondary"
           :disabled="!canUnknown"
-          class="min-w-[104px] justify-center sm:min-w-[120px]"
+          class="w-full justify-center sm:w-auto sm:min-w-[120px]"
           @click="sendSwitchgearCommand('unknown')"
         >
           {{ acting === "unknown" ? "Applying…" : "Unknown" }}

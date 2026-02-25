@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import UiSidebarListbox from "@/components/ui/UiSidebarListbox.vue"
 import { SETTINGS_SERVICE_MODE_ENABLED } from "@/config/settingsFeatures"
+import { useSelectionStore } from "@/stores/selectionStore"
 import SettingsListItem from "./SettingsListItem.vue"
 
 type SettingsNavItem = {
@@ -14,14 +15,10 @@ type SettingsNavItem = {
 
 const route = useRoute()
 const router = useRouter()
+const selectionStore = useSelectionStore()
+selectionStore.restore()
 
 const baseItems: SettingsNavItem[] = [
-  {
-    id: "network",
-    label: "Core Network",
-    description: "AP / STA uplink and access point lifecycle",
-    routeName: "settings.network",
-  },
   {
     id: "diagnostics",
     label: "Core Diagnostics",
@@ -33,6 +30,12 @@ const baseItems: SettingsNavItem[] = [
     label: "Time / NTP Sync",
     description: "Chrony servers and sync health",
     routeName: "settings.ntp",
+  },
+  {
+    id: "network",
+    label: "Core Network",
+    description: "AP / STA uplink and access point lifecycle",
+    routeName: "settings.network",
   },
   {
     id: "updates",
@@ -62,8 +65,18 @@ const selectedId = computed<string | null>(() => {
   if (name === "settings.ntp") return "ntp"
   if (name === "settings.diagnostics") return "diagnostics"
   if (name === "settings.network") return "network"
-  return "network"
+  return "diagnostics"
 })
+
+watch(
+  () => route.name,
+  (name) => {
+    const routeName = name ? String(name) : null
+    if (!routeName?.startsWith("settings.")) return
+    selectionStore.selectSettingsRoute(routeName)
+  },
+  { immediate: true },
+)
 
 function handleSelect(id: string | number) {
   const target = items.value.find(item => item.id === String(id))

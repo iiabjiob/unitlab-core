@@ -65,8 +65,9 @@ If you already know the platform, use this exact sequence:
 5. Install host agents
   ```bash
   cd /opt/unitlab/current
-  sudo ./scripts/install-host-agents.sh
+  sudo ./scripts/install-host-agents.sh --skip-apt --skip-pip-upgrade
   ```
+  - For strict offline updates, always keep `--skip-apt --skip-pip-upgrade`.
   - Note: during `rpi-net-agent` restart, the host can switch AP/STA mode and current SSH session may disconnect.
     Reconnect and continue with step 6.
 
@@ -481,7 +482,7 @@ This service manages:
 
 ```bash
 cd /opt/unitlab/unitlab-core
-sudo ./scripts/install-host-agents.sh
+sudo ./scripts/install-host-agents.sh --skip-apt --skip-pip-upgrade
 ./scripts/verify-host-agents.sh
 ```
 
@@ -508,7 +509,7 @@ This service manages `chrony` natively and exposes state/actions to UI via Redis
 
 ```bash
 cd /opt/unitlab/unitlab-core
-sudo ./scripts/install-host-agents.sh
+sudo ./scripts/install-host-agents.sh --skip-apt --skip-pip-upgrade
 ./scripts/verify-host-agents.sh
 ```
 
@@ -517,6 +518,10 @@ Unified installer behavior:
 - installs `chrony` (if missing)
 - installs/updates all host agents from bundled wheels
 - enables and starts corresponding systemd services
+
+Offline update behavior:
+
+- `--skip-apt --skip-pip-upgrade` guarantees no apt/pip index network calls during agent reinstall/update.
 
 ### 8.2 Verify service
 
@@ -539,7 +544,7 @@ This service publishes central-module diagnostics (temperature/load/memory/disk/
 
 ```bash
 cd /opt/unitlab/unitlab-core
-sudo ./scripts/install-host-agents.sh
+sudo ./scripts/install-host-agents.sh --skip-apt --skip-pip-upgrade
 ./scripts/verify-host-agents.sh
 ```
 
@@ -652,7 +657,7 @@ This service runs host-side provisioning checks and can execute host-agent insta
 
 ```bash
 cd /opt/unitlab/unitlab-core
-sudo ./scripts/install-host-agents.sh
+sudo ./scripts/install-host-agents.sh --skip-apt --skip-pip-upgrade
 ./scripts/verify-host-agents.sh
 ```
 
@@ -686,9 +691,8 @@ Then per-device provisioning becomes approximately:
 
 ```bash
 cd /opt/unitlab/unitlab-core
-docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
-sudo ./scripts/install-host-agents.sh
+sudo ./scripts/install-host-agents.sh --skip-apt --skip-pip-upgrade
 ./scripts/verify-host-agents.sh
 ```
 
@@ -698,5 +702,5 @@ sudo ./scripts/install-host-agents.sh
 2. Build release artifacts and copy runtime bundle + image archive to RPi
 3. Configure `/opt/unitlab/shared/backend.env` and `/opt/unitlab/shared/db.env`
 4. Run deploy script for selected release (`deploy-rpi.sh`)
-5. Install host agents: `sudo ./scripts/install-host-agents.sh`
+5. Install host agents: `sudo ./scripts/install-host-agents.sh --skip-apt --skip-pip-upgrade`
 6. Verify runtime and agents, then open UI at `http://10.42.0.1`

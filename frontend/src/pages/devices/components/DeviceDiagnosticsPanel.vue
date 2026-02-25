@@ -696,7 +696,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="h-full min-h-0 flex flex-col select-none">
+  <div class="flex flex-col select-none lg:h-full lg:min-h-0">
     <div class="p-3 text-xs uppercase tracking-wider text-neutral-500 border-b dark:text-neutral-400 border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
       <span>Device Diagnostics</span>
       <div class="flex items-center gap-2">
@@ -717,7 +717,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 text-sm text-neutral-700 dark:text-neutral-200">
+    <div class="p-4 space-y-4 text-sm text-neutral-700 dark:text-neutral-200 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
       <div v-if="!fast && !diag" class="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700 px-4 py-3 text-sm italic text-neutral-500 dark:text-neutral-400">
         Waiting for heartbeat diagnostics. Firmware should publish fast <code>/h</code> and diagnostic <code>/hd</code> heartbeats.
       </div>

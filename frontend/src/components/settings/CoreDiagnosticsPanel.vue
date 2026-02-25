@@ -17,16 +17,6 @@
         </p>
         <p v-if="errorText" class="mt-1 text-xs text-rose-500">{{ errorText }}</p>
       </div>
-      <div class="flex items-center gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-neutral-500 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-500"
-          :disabled="busy"
-          @click="refreshStatus"
-        >
-          Refresh
-        </button>
-      </div>
     </div>
 
     <div class="mt-3 grid gap-3 xl:grid-cols-2">
@@ -66,9 +56,17 @@
           <Row label="Time (UTC)" :value="snapshot?.time_utc || '—'" />
           <Row label="Uptime" :value="uptimeText" />
           <Row label="CPU temp" :value="cpuTempText" />
-          <Row label="Load" :value="loadText" />
+          <Row
+            label="Load (1m/5m/15m)"
+            tooltip="Средняя системная нагрузка за 1, 5 и 15 минут. Это не процент CPU: 1.00 примерно равен полной загрузке одного CPU-ядра."
+            :value="loadText"
+          />
           <Row label="Memory" :value="memoryText" />
-          <Row label="Disk /" :value="diskText" />
+          <Row
+            label="Disk (root fs)"
+            tooltip="Использование корневой файловой системы Linux (точка монтирования /), где лежат системные файлы и приложения."
+            :value="diskText"
+          />
         </div>
       </div>
 
@@ -101,6 +99,7 @@
 import { computed, defineComponent, h, onMounted, onUnmounted } from "vue"
 import { useCoreDiagnosticsStore } from "@/stores/coreDiagnosticsStore"
 import { useSystemHealthStore } from "@/stores/systemHealthStore"
+import InlineInfoTooltip from "@/components/ui/InlineInfoTooltip.vue"
 
 const store = useCoreDiagnosticsStore()
 const systemHealthStore = useSystemHealthStore()
@@ -202,11 +201,6 @@ function statusPillClass(active: boolean | null): string {
   return "bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
 }
 
-async function refreshStatus() {
-  await store.ensureFresh({ force: true })
-  await store.requestStatus().catch(() => undefined)
-}
-
 onMounted(() => {
   store.startMonitoring()
   systemHealthStore.startMonitoring()
@@ -221,11 +215,22 @@ const Row = defineComponent({
   name: "CoreDiagRow",
   props: {
     label: { type: String, required: true },
+    tooltip: { type: String, default: null },
     value: { type: String, required: true },
   },
   setup(props) {
     return () => h("div", { class: "flex items-center justify-between gap-2" }, [
-      h("span", { class: "text-neutral-500 dark:text-neutral-400" }, props.label),
+      h("span", { class: "inline-flex items-center gap-1 text-neutral-500 dark:text-neutral-400" }, [
+        h("span", props.label),
+        props.tooltip
+          ? h(InlineInfoTooltip, {
+            text: props.tooltip,
+            placement: "top",
+            align: "start",
+            iconClass: "h-3.5 w-3.5",
+          })
+          : null,
+      ]),
       h("span", { class: "text-right font-medium text-neutral-800 dark:text-neutral-100" }, props.value),
     ])
   },

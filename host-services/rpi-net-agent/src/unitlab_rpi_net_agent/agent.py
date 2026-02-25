@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import suppress
 import logging
+import re
 from dataclasses import replace
 from typing import Any
 
@@ -74,9 +75,22 @@ class CoreNetworkAgent:
         finally:
             await self.stop()
 
+    @staticmethod
+    def _normalize_suffix(raw_suffix: str | None) -> str:
+        if not raw_suffix:
+            return "0000"
+        pairs = re.findall(r"[0-9A-Fa-f]{2}", raw_suffix)
+        if len(pairs) >= 2:
+            return "".join(pairs[-2:]).upper()
+        hex_only = "".join(ch for ch in raw_suffix if ch.lower() in "0123456789abcdef")
+        return hex_only[-4:].upper().rjust(4, "0")
+
     async def _initialize_ap_identity(self) -> None:
         self._mac = await self.nmcli.get_mac()
-        self._suffix = await self.nmcli.get_mac_suffix()
+        raw_suffix = await self.nmcli.get_mac_suffix()
+        self._suffix = self._normalize_suffix(raw_suffix)
+        if raw_suffix != self._suffix:
+            logger.warning("Normalized MAC suffix | raw=%s normalized=%s", raw_suffix, self._suffix)
         self._ap_ssid = f"{self.config.ap_ssid_prefix}-{self._suffix}"
         self._ap_password = f"{self.config.ap_password_prefix}{self._suffix}"
         self._snapshot.ap.ssid = self._ap_ssid
@@ -277,12 +291,19 @@ class CoreNetworkAgent:
         last_event: str | None = None,
     ) -> None:
         status = await self.nmcli.current_device_status()
+        previous_ap_ip = self._snapshot.ap.ip
+        reported_ip = status.ip4
+        profile_matches = status.connection == self.config.ap_profile_name
+        was_ap_mode = self._snapshot.mode == "ap"
+        ap_ip_matches = bool(previous_ap_ip and reported_ip and previous_ap_ip.split("/", 1)[0] == reported_ip.split("/", 1)[0])
+        ap_fallback_active = (status.connection is None) and was_ap_mode and ap_ip_matches
+        ap_active = profile_matches or ap_fallback_active
         self._snapshot.mac = self._mac or self._snapshot.mac
         self._snapshot.suffix = self._suffix or self._snapshot.suffix
         self._snapshot.ap = replace(
             self._snapshot.ap,
-            active=(status.connection == self.config.ap_profile_name),
-            ip=status.ip4 if status.connection == self.config.ap_profile_name else self._snapshot.ap.ip,
+            active=ap_active,
+            ip=reported_ip if ap_active else self._snapshot.ap.ip,
         )
         if status.connection and status.connection != self.config.ap_profile_name:
             self._snapshot.mode = "sta"
@@ -293,7 +314,7 @@ class CoreNetworkAgent:
                 ip=status.ip4,
                 last_error=self._snapshot.sta.last_error,
             )
-        elif status.connection == self.config.ap_profile_name:
+        elif ap_active:
             self._snapshot.mode = "ap"
             if self._snapshot.sta.state != "failed":
                 self._snapshot.sta = StaInfo(state="disconnected")

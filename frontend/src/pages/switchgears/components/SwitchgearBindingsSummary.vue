@@ -240,7 +240,7 @@ watch(
       No bindings configured yet.
     </div>
 
-    <div class="space-y-3 overflow-y-auto pr-1">
+    <div class="space-y-3 pr-1 lg:overflow-y-auto">
       <div
         v-for="group in GROUPS"
         :key="group.id"

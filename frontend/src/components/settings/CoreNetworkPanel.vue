@@ -22,24 +22,6 @@
         </p>
         <p v-if="coreNetErrorText" class="mt-1 text-xs text-rose-500">{{ coreNetErrorText }}</p>
       </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-neutral-500 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-500"
-          :disabled="coreNetBusy"
-          @click="refreshCoreNetworkStatus"
-        >
-          Refresh
-        </button>
-        <button
-          type="button"
-          class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-neutral-500 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-500"
-          :disabled="coreNetBusy"
-          @click="restartCoreAp"
-        >
-          Restart AP
-        </button>
-      </div>
     </div>
 
     <div class="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
@@ -83,6 +65,7 @@ const coreNetMode = computed(() => {
   const snap = coreNetworkStore.snapshot
   if (snap?.ap?.active) return "AP"
   if (snap?.sta?.state === "connected") return "STA"
+  if ((snap?.ap?.ip || snap?.ap?.ssid) && snap?.sta?.state !== "connected") return "AP"
   return "OFFLINE"
 })
 const coreNetStaState = computed(() => String(coreNetworkStore.sta?.state ?? "disconnected").toUpperCase())
@@ -90,15 +73,6 @@ const coreNetApIp = computed(() => coreNetworkStore.ap?.ip ?? "10.42.0.1")
 const coreNetWebUrl = computed(() => coreNetworkStore.webUiUrl)
 const coreNetBusy = computed(() => coreNetworkStore.commandPending || coreNetworkStore.loading)
 const coreNetErrorText = computed(() => coreNetworkStore.lastError || coreNetworkStore.snapshot?.last_error || null)
-
-async function refreshCoreNetworkStatus() {
-  await coreNetworkStore.ensureFresh({ force: true })
-  await coreNetworkStore.requestStatus().catch(() => undefined)
-}
-
-async function restartCoreAp() {
-  await coreNetworkStore.restartAp().catch(() => undefined)
-}
 
 onMounted(() => {
   coreNetworkStore.startMonitoring()

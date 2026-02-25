@@ -74,7 +74,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="h-full min-h-0 flex flex-col select-none">
+  <div class="flex flex-col select-none lg:h-full lg:min-h-0">
 
     <div class="p-3 text-xs uppercase tracking-wider text-neutral-500 border-b
                 dark:text-neutral-400 border-neutral-200 dark:border-neutral-800
@@ -94,7 +94,7 @@ onBeforeUnmount(() => {
 
     <div
       ref="logContainer"
-      class="flex-1 min-h-0 overflow-y-auto px-4 py-2 space-y-0.5
+      class="px-4 py-2 space-y-0.5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto
              font-mono text-[11px] leading-tight
              text-neutral-700 dark:text-neutral-300"
     >

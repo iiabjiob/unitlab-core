@@ -115,8 +115,6 @@ class ChronyAdapter:
                 continue
             seen.add(value)
             result.append(value)
-        if not result:
-            raise ChronyError("At least one NTP server is required")
         return result
 
     def read_configured_servers(self) -> list[str]:

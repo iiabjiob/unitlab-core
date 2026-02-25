@@ -6,6 +6,7 @@ type SelectionState = {
   lastDeviceId: number | null
   lastSwitchgearId: number | null
   lastSequenceId: number | null
+  lastSettingsRouteName: string | null
 }
 
 const STORAGE_KEY = "unitlab.selection"
@@ -16,6 +17,7 @@ export const useSelectionStore = defineStore("selection", () => {
   const lastDeviceId = ref<number | null>(null)
   const lastSwitchgearId = ref<number | null>(null)
   const lastSequenceId = ref<number | null>(null)
+  const lastSettingsRouteName = ref<string | null>(null)
   let restored = false
 
   function normalizeId(id: number | null | undefined): number | null {
@@ -37,6 +39,7 @@ export const useSelectionStore = defineStore("selection", () => {
         lastDeviceId: lastDeviceId.value,
         lastSwitchgearId: lastSwitchgearId.value,
         lastSequenceId: lastSequenceId.value,
+        lastSettingsRouteName: lastSettingsRouteName.value,
       })
     )
   }
@@ -55,6 +58,7 @@ export const useSelectionStore = defineStore("selection", () => {
       lastDeviceId.value = data.lastDeviceId ?? null
       lastSwitchgearId.value = data.lastSwitchgearId ?? null
       lastSequenceId.value = data.lastSequenceId ?? null
+      lastSettingsRouteName.value = data.lastSettingsRouteName ?? null
     } catch (err) {
       console.warn("Failed to restore selection:", err)
     } finally {
@@ -74,6 +78,13 @@ export const useSelectionStore = defineStore("selection", () => {
 
   function selectSequence(id: number | null) {
     setSelection(lastSequenceId, id)
+  }
+
+  function selectSettingsRoute(routeName: string | null) {
+    const next = routeName ? String(routeName) : null
+    if (lastSettingsRouteName.value === next) return
+    lastSettingsRouteName.value = next
+    persist()
   }
 
   // --- NAVIGATION ----------------------------------------------------
@@ -101,11 +112,13 @@ export const useSelectionStore = defineStore("selection", () => {
     lastDeviceId,
     lastSequenceId,
     lastSwitchgearId,
+    lastSettingsRouteName,
 
     // actions
     selectDevice,
     selectSequence,
     selectSwitchgear,
+    selectSettingsRoute,
 
     // persistence
     restore,

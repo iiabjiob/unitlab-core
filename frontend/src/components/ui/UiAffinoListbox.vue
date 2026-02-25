@@ -89,10 +89,13 @@ watch(
 
 watch(isOpen, (open) => {
   if (typeof window === "undefined") return
+  const viewport = window.visualViewport
   if (open) {
     window.addEventListener("pointerdown", onDocumentPointerDown, true)
     window.addEventListener("resize", updatePanelPosition, { passive: true })
     window.addEventListener("scroll", updatePanelPosition, true)
+    viewport?.addEventListener("resize", updatePanelPosition)
+    viewport?.addEventListener("scroll", updatePanelPosition)
     nextTick(() => {
       updatePanelPosition()
     })
@@ -101,13 +104,18 @@ watch(isOpen, (open) => {
   window.removeEventListener("pointerdown", onDocumentPointerDown, true)
   window.removeEventListener("resize", updatePanelPosition)
   window.removeEventListener("scroll", updatePanelPosition, true)
+  viewport?.removeEventListener("resize", updatePanelPosition)
+  viewport?.removeEventListener("scroll", updatePanelPosition)
 })
 
 onBeforeUnmount(() => {
   if (typeof window !== "undefined") {
+    const viewport = window.visualViewport
     window.removeEventListener("pointerdown", onDocumentPointerDown, true)
     window.removeEventListener("resize", updatePanelPosition)
     window.removeEventListener("scroll", updatePanelPosition, true)
+    viewport?.removeEventListener("resize", updatePanelPosition)
+    viewport?.removeEventListener("scroll", updatePanelPosition)
   }
   if (typeaheadTimer) {
     clearTimeout(typeaheadTimer)
@@ -357,17 +365,27 @@ function updatePanelPosition() {
   if (!trigger) return
 
   const rect = trigger.getBoundingClientRect()
+  const viewport = window.visualViewport
   const gap = 6
-  const viewportHeight = window.innerHeight
-  const viewportWidth = window.innerWidth
+  const viewportHeight = viewport?.height ?? window.innerHeight
+  const viewportWidth = viewport?.width ?? window.innerWidth
+  const viewportTop = viewport?.offsetTop ?? 0
+  const viewportLeft = viewport?.offsetLeft ?? 0
   const desiredMaxHeight = 240
-  const spaceBelow = viewportHeight - rect.bottom - gap
-  const spaceAbove = rect.top - gap
+  const viewportBottom = viewportTop + viewportHeight
+  const viewportRight = viewportLeft + viewportWidth
+  const spaceBelow = viewportBottom - rect.bottom - gap
+  const spaceAbove = rect.top - viewportTop - gap
   const openUpward = spaceBelow < 160 && spaceAbove > spaceBelow
   const maxHeight = Math.max(120, Math.min(desiredMaxHeight, openUpward ? spaceAbove : spaceBelow))
 
-  const left = Math.min(Math.max(8, rect.left), Math.max(8, viewportWidth - rect.width - 8))
-  const top = openUpward ? Math.max(8, rect.top - gap - maxHeight) : Math.min(viewportHeight - 8 - maxHeight, rect.bottom + gap)
+  const minLeft = viewportLeft + 8
+  const maxLeft = Math.max(minLeft, viewportRight - rect.width - 8)
+  const left = Math.min(Math.max(minLeft, rect.left), maxLeft)
+  const minTop = viewportTop + 8
+  const maxTop = Math.max(minTop, viewportBottom - 8 - maxHeight)
+  const preferredTop = openUpward ? (rect.top - gap - maxHeight) : (rect.bottom + gap)
+  const top = Math.min(Math.max(minTop, preferredTop), maxTop)
 
   panelStyle.value = {
     position: "fixed",

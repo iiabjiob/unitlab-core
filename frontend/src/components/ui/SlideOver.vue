@@ -163,11 +163,14 @@ const defaultWidthClasses = computed(() => (!props.widthPx ? "w-80 md:w-96" : ""
 const startY = ref(0)
 const deltaY = ref(0)
 const dragging = ref(false)
-const bottomStyles = computed(() => ({
-  bottom: "0",
-  // Apply translate based on drag delta
-  transform: `translateY(${Math.max(0, deltaY.value)}px)`,
-}))
+const openedAtMs = ref<number>(0)
+const bottomStyles = computed(() => {
+  const dragOffset = Math.max(0, deltaY.value)
+  return {
+    bottom: "0",
+    ...(dragOffset > 0 ? { transform: `translateY(${dragOffset}px)` } : {}),
+  }
+})
 
 function onTouchStart(e: TouchEvent) {
   const container = dialogRef.value
@@ -196,6 +199,7 @@ function onTouchEnd() {
 
 function requestClose(reason: DialogCloseReason) {
   if (reason === "backdrop" && !props.closeOnBackdrop) return
+  if (reason === "backdrop" && Date.now() - openedAtMs.value < 260) return
   void dialog.close(reason).then((closed) => {
     if (closed) {
       emit("close")
@@ -242,6 +246,7 @@ watch(() => isOpen.value, (v) => lockScroll(v), { immediate: true })
 
 watch(() => props.open, (open) => {
   if (open && !isOpen.value) {
+    openedAtMs.value = Date.now()
     deltaY.value = 0
     dragging.value = false
     dialog.open("programmatic")

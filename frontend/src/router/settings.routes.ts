@@ -1,4 +1,5 @@
 import type { RouteRecordRaw } from "vue-router"
+import { useSelectionStore } from "@/stores/selectionStore"
 
 const defaultMeta = {
   leftAside: true,
@@ -17,7 +18,22 @@ export const settingsRoutes: RouteRecordRaw[] = [
     children: [
       {
         path: "",
-        redirect: { name: "settings.network" },
+        redirect: () => {
+          const selectionStore = useSelectionStore()
+          selectionStore.restore()
+          const routeName = selectionStore.lastSettingsRouteName
+          const allowedRouteNames = new Set([
+            "settings.diagnostics",
+            "settings.ntp",
+            "settings.network",
+            "settings.updates",
+            "settings.provisioning",
+          ])
+          if (routeName && allowedRouteNames.has(routeName)) {
+            return { name: routeName }
+          }
+          return { name: "settings.diagnostics" }
+        },
       },
       {
         path: "network",

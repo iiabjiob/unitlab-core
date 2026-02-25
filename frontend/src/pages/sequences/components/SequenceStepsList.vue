@@ -476,7 +476,7 @@ function handleListKeydown(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="flex flex-col h-full overflow-hidden p-4">
+  <div class="flex flex-col p-4 lg:h-full lg:overflow-hidden">
 
     <!-- HEADER -->
     <div class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
@@ -491,13 +491,13 @@ function handleListKeydown(event: KeyboardEvent) {
     </div>
 
     <!-- LIST -->
-    <div class="flex-1 overflow-y-auto mt-5">
+    <div class="mt-5 lg:flex-1 lg:overflow-y-auto">
       <div
         tabindex="0"
         role="listbox"
         aria-label="Sequence steps"
         aria-multiselectable="true"
-        class="h-full rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+        class="rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 lg:h-full"
         @keydown.capture="handleListKeydown"
       >
         <DraggableList

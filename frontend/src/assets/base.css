@@ -13,3 +13,32 @@
   --text-2xl: 1.5rem;   /* 24px — view titles, dialog headers */
   --text-3xl: 1.875rem; /* 30px — top-level titles or key readings */
 }
+
+@layer base {
+  html,
+  body,
+  #app {
+    touch-action: manipulation;
+  }
+
+  @media (hover: none) and (pointer: coarse) {
+    :where(button, [role="button"]):not(:disabled):not([aria-disabled="true"]) {
+      transition: filter 120ms ease, opacity 120ms ease;
+      will-change: filter;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :where(button, [role="button"]):not(:disabled):not([aria-disabled="true"]):active {
+      filter: brightness(0.92);
+      opacity: 0.94;
+    }
+  }
+
+  @media (max-width: 768px) {
+    input,
+    textarea,
+    select {
+      font-size: 16px !important;
+    }
+  }
+}

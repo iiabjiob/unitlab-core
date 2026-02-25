@@ -58,7 +58,7 @@ const meta = computed(() => ({
 }))
 
 const leftAsideWidth = ref(240)
-const ASIDE_COMPACT_THRESHOLD_PX = 228
+const ASIDE_COMPACT_THRESHOLD_PX = 130
 const isAsideCompact = computed(() => leftAsideWidth.value <= ASIDE_COMPACT_THRESHOLD_PX)
 
 function handleLeftAsideSizeChange(size: number) {

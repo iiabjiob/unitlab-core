@@ -1,6 +1,6 @@
 <template>
-  <div class="h-dvh overflow-y-auto bg-gradient-to-b from-neutral-50 via-white to-neutral-100 text-neutral-900 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-900 dark:text-neutral-50">
-    <div class="mx-auto flex min-h-full w-full max-w-6xl items-start justify-center px-4 py-4 sm:items-center sm:px-6 sm:py-6">
+  <div class="min-h-screen min-h-[100svh] bg-gradient-to-b from-neutral-50 via-white to-neutral-100 text-neutral-900 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-900 dark:text-neutral-50">
+    <div class="mx-auto flex min-h-screen min-h-[100svh] w-full max-w-6xl items-start justify-center px-4 py-4 sm:items-center sm:px-6 sm:py-6">
       <div class="grid w-full max-w-5xl grid-rows-[auto_auto_auto_auto] gap-4 rounded-3xl border border-neutral-200/70 bg-white/90 p-5 shadow-[0_25px_60px_rgba(15,23,42,0.15)] backdrop-blur dark:border-neutral-800/80 dark:bg-neutral-900/80 sm:p-6">
         <div class="flex items-center justify-between gap-4">
           <AppLogo class="text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50" />
@@ -75,10 +75,7 @@ import { useRouter, type RouteLocationRaw } from "vue-router"
 import AppLogo from "@/components/layout/AppLogo.vue"
 import OnlineStatusComponent from "@/components/misc/OnlineStatusComponent.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
-import HomeChipIcon from "@/components/icons/HomeChipIcon.vue"
-import HomeFlowStackIcon from "@/components/icons/HomeFlowStackIcon.vue"
-import HomeDocumentsIcon from "@/components/icons/HomeDocumentsIcon.vue"
-import HomeSwitchgearIcon from "@/components/icons/HomeSwitchgearIcon.vue"
+import PlaceholderUiIcon from "@/components/icons/PlaceholderUiIcon.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import { useDeviceStore } from "@/stores/deviceStore"
@@ -146,28 +143,28 @@ const scenarioCards: QuickAction[] = [
     title: "Live Hardware",
     description: "Direct control of physical I/O channels.",
     cta: "Open",
-    icon: HomeChipIcon,
+    icon: PlaceholderUiIcon,
     route: { name: "devices.list" },
   },
   {
     title: "Signals",
     description: "Project signal names with fast channel mapping.",
     cta: "Open",
-    icon: HomeDocumentsIcon,
+    icon: PlaceholderUiIcon,
     route: { name: "signals.home" },
   },
   {
     title: "Switchgears",
     description: "Operate and validate disconnector feedback.",
     cta: "Open",
-    icon: HomeSwitchgearIcon,
+    icon: PlaceholderUiIcon,
     route: { name: "switchgears.list" },
   },
   {
     title: "Sequencer",
     description: "Build and run repeatable test instructions.",
     cta: "Open",
-    icon: HomeFlowStackIcon,
+    icon: PlaceholderUiIcon,
     route: { name: "instructions.list" },
   },
 ]

@@ -3,9 +3,12 @@
     <div class="flex gap-2 items-center">
 
       <button
+        type="button"
         class="w-9 h-9 inline-flex items-center justify-center rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800"
         aria-label="Open menu"
-        @click="$emit('open-drawer')"
+        @pointerup.stop.prevent="$emit('open-drawer')"
+        @touchend.stop.prevent="$emit('open-drawer')"
+        @click.stop.prevent="$emit('open-drawer')"
       >
         <!-- burger icon -->
         <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

@@ -136,11 +136,11 @@ const { isDesktop } = useViewport()
       :state="state"
     />
 
-    <div class="mt-5 flex flex-1 min-h-0 flex-col gap-4 overflow-hidden rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5 lg:flex-row lg:gap-5">
+    <div class="mt-5 flex flex-col gap-4 rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5 lg:flex-1 lg:min-h-0 lg:flex-row lg:gap-5 lg:overflow-hidden">
 
       <div
         v-if="sequence"
-        class="flex flex-col min-h-0 lg:flex-none"
+        class="flex flex-col lg:min-h-0 lg:flex-none"
       >
         <ResizablePanel
           v-if="isDesktop"
@@ -157,16 +157,16 @@ const { isDesktop } = useViewport()
 
         <div
           v-else
-          class="flex-1 min-h-0 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
+          class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
         >
-          <div class="h-full min-h-0 overflow-y-auto">
+          <div>
             <SequenceStepsList :sequence="sequence" />
           </div>
         </div>
       </div>
 
       <!-- PANEL -->
-      <div v-if="sequence && state" class="flex flex-1 min-h-0 flex-col overflow-hidden">
+      <div v-if="sequence && state" class="flex flex-col lg:flex-1 lg:min-h-0 lg:overflow-hidden">
 
         <!-- EDITOR -->
         <SequenceStepEditor
@@ -176,7 +176,7 @@ const { isDesktop } = useViewport()
         />
 
         <!-- LOG -->
-        <div class="mt-4 flex-1 min-h-0 overflow-hidden">
+        <div class="mt-4 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
           <SequenceExecutionLog :sequence="sequence" :state="state" />
         </div>
 

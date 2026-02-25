@@ -22,48 +22,12 @@
         </p>
         <p v-if="ntpErrorText" class="mt-1 text-xs text-rose-500">{{ ntpErrorText }}</p>
       </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-neutral-500 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-500"
-          :disabled="ntpBusy"
-          @click="refreshCoreNtpStatus"
-        >
-          Refresh
-        </button>
-        <button
-          type="button"
-          class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-neutral-500 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-500"
-          :disabled="ntpBusy"
-          @click="reloadChronySources"
-        >
-          Reload Chrony
-        </button>
-      </div>
     </div>
 
     <div class="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
       <div class="rounded-xl border border-neutral-200/80 bg-neutral-50/80 p-3 dark:border-neutral-800 dark:bg-neutral-900/60">
         <div class="mb-2 flex items-center justify-between gap-2">
           <p class="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Configured NTP Servers (Chrony)</p>
-          <div class="flex items-center gap-2">
-            <button
-              type="button"
-              class="rounded-md border border-neutral-300 px-2 py-1 text-[11px] font-semibold text-neutral-700 hover:border-neutral-500 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-500"
-              :disabled="ntpBusy"
-              @click="resetDraftServers"
-            >
-              Reset
-            </button>
-            <button
-              type="button"
-              class="rounded-md border border-neutral-300 px-2 py-1 text-[11px] font-semibold text-neutral-700 hover:border-neutral-500 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-500"
-              :disabled="ntpBusy"
-              @click="restoreNtpDefaults"
-            >
-              Restore defaults
-            </button>
-          </div>
         </div>
 
         <div class="space-y-2">
@@ -82,7 +46,7 @@
             <button
               type="button"
               class="rounded-md border border-rose-300 px-2 py-1 text-[11px] font-semibold text-rose-700 hover:border-rose-500 dark:border-rose-700 dark:text-rose-200 dark:hover:border-rose-500"
-              :disabled="draftServers.length <= 1 || ntpBusy"
+              :disabled="ntpBusy"
               @click="removeServer(idx)"
             >
               Remove
@@ -251,7 +215,6 @@ function addServer() {
 }
 
 function removeServer(index: number) {
-  if (draftServers.value.length <= 1) return
   draftServers.value = draftServers.value.filter((_, idx) => idx !== index)
   ntpDirty.value = true
 }
@@ -262,27 +225,12 @@ function resetDraftServers() {
 
 const normalizedDraftServers = computed(() => normalizeServerList(draftServers.value))
 const draftServersCount = computed(() => normalizedDraftServers.value.length)
-const canApplyServers = computed(() => normalizedDraftServers.value.length > 0)
-
-async function refreshCoreNtpStatus() {
-  await coreNtpStore.ensureFresh({ force: true })
-  await coreNtpStore.requestStatus().catch(() => undefined)
-}
+const canApplyServers = computed(() => ntpDirty.value && !ntpBusy.value)
 
 async function applyNtpServers() {
   const servers = normalizedDraftServers.value
-  if (servers.length === 0) return
   await coreNtpStore.applyServers(servers).catch(() => undefined)
   ntpDirty.value = false
-}
-
-async function restoreNtpDefaults() {
-  await coreNtpStore.restoreDefaults().catch(() => undefined)
-  ntpDirty.value = false
-}
-
-async function reloadChronySources() {
-  await coreNtpStore.reloadSources().catch(() => undefined)
 }
 
 onMounted(() => {

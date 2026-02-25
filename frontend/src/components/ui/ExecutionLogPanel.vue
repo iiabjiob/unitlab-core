@@ -124,7 +124,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="h-full min-h-0 flex flex-col select-none">
+  <div class="flex flex-col select-none lg:h-full lg:min-h-0">
     <div class="p-4 text-xs uppercase tracking-wider text-neutral-500 dark:text-neutral-400 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
       <span>{{ props.title }}</span>
       <button
@@ -140,7 +140,7 @@ onBeforeUnmount(() => {
     </div>
     <div
       ref="logContainer"
-      class="flex-1 min-h-0 overflow-y-auto px-4 py-2 space-y-0.5 font-mono text-[11px] leading-tight text-neutral-700 dark:text-neutral-300"
+      class="px-4 py-2 space-y-0.5 font-mono text-[11px] leading-tight text-neutral-700 dark:text-neutral-300 lg:flex-1 lg:min-h-0 lg:overflow-y-auto"
     >
       <div
         v-for="(log, index) in entries"
