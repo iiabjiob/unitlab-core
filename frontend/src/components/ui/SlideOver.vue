@@ -1,9 +1,9 @@
 <template>
   <teleport to="body">
-    <div v-if="isOpen" class="fixed inset-0 z-40 ">
+    <div v-if="isOpen" class="fixed inset-0 z-1000">
       <!-- Backdrop -->
       <div
-        class="absolute inset-0 bg-black/10"
+        class="absolute inset-0 bg-black/50 dark:bg-black/70"
         @click="requestClose('backdrop')"
       />
 
@@ -57,7 +57,7 @@
           tabindex="-1"
           @keydown="onDialogKeydown"
           @touchstart.passive="onTouchStart"
-          @touchmove.prevent="onTouchMove"
+          @touchmove="onTouchMove"
           @touchend="onTouchEnd"
         >
           <span class="sr-only" tabindex="0" @focus="loopFocus('end')" />
@@ -81,7 +81,7 @@
           </div>
 
           <!-- Content -->
-          <div class="px-4 pb-4 overflow-y-auto" :style="{ maxHeight: `${maxHeightVh}vh` }" @click="closeOnItemClick && requestClose('pointer')">
+          <div class="px-4 pb-4 overflow-y-auto" :style="{ maxHeight: `${maxHeightVh}dvh` }" @click="closeOnItemClick && requestClose('pointer')">
             <slot />
           </div>
           <span class="sr-only" tabindex="0" @focus="loopFocus('start')" />
@@ -92,7 +92,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted, onBeforeUnmount } from "vue"
+import { computed, ref, watch, onBeforeUnmount } from "vue"
 import { createDialogFocusOrchestrator, type DialogCloseReason, useDialogController } from "@affino/dialog-vue"
 
 type Placement = "left" | "right" | "bottom"
@@ -162,6 +162,7 @@ const defaultWidthClasses = computed(() => (!props.widthPx ? "w-80 md:w-96" : ""
 // Bottom sheet drag-to-close logic
 const startY = ref(0)
 const deltaY = ref(0)
+const dragging = ref(false)
 const bottomStyles = computed(() => ({
   bottom: "0",
   // Apply translate based on drag delta
@@ -169,19 +170,27 @@ const bottomStyles = computed(() => ({
 }))
 
 function onTouchStart(e: TouchEvent) {
-  // Start tracking only if started near the handle/top area to avoid conflicts with inner scrolls
+  const container = dialogRef.value
+  if (!container) return
+  const rect = container.getBoundingClientRect()
+  dragging.value = e.touches[0].clientY - rect.top <= 64
+  if (!dragging.value) return
   startY.value = e.touches[0].clientY
   deltaY.value = 0
 }
 function onTouchMove(e: TouchEvent) {
+  if (!dragging.value) return
+  e.preventDefault()
   const currentY = e.touches[0].clientY
   deltaY.value = Math.max(0, currentY - startY.value)
 }
 function onTouchEnd() {
+  if (!dragging.value) return
   // Close if dragged enough, otherwise snap back
   if (deltaY.value > 80) {
     requestClose("pointer")
   }
+  dragging.value = false
   deltaY.value = 0
 }
 
@@ -233,6 +242,8 @@ watch(() => isOpen.value, (v) => lockScroll(v), { immediate: true })
 
 watch(() => props.open, (open) => {
   if (open && !isOpen.value) {
+    deltaY.value = 0
+    dragging.value = false
     dialog.open("programmatic")
     return
   }

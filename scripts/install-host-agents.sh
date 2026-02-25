@@ -366,8 +366,21 @@ if command -v systemd-analyze >/dev/null 2>&1; then
   done
 fi
 
-log "[6/6] Enabling services${NO_RESTART:+ (no restart mode) }"
+if (( NO_RESTART == 1 )); then
+  log "[6/6] Enabling services (no restart mode)"
+else
+  log "[6/6] Enabling and restarting services"
+fi
+
+net_agent_selected=0
+if contains "rpi-net-agent" "${SELECTED_AGENTS[@]}"; then
+  net_agent_selected=1
+fi
+
 for agent in "${SELECTED_AGENTS[@]}"; do
+  if [[ "$agent" == "rpi-net-agent" ]]; then
+    continue
+  fi
   unit_name="${AGENT_UNITS[$agent]}"
   log "[agent:$agent] enable $unit_name"
   run systemctl enable "$unit_name"
@@ -378,6 +391,21 @@ for agent in "${SELECTED_AGENTS[@]}"; do
     log "[agent:$agent] restart skipped (--no-restart)"
   fi
 done
+
+if (( net_agent_selected == 1 )); then
+  agent="rpi-net-agent"
+  unit_name="${AGENT_UNITS[$agent]}"
+  log "[agent:$agent] enable $unit_name"
+  run systemctl enable "$unit_name"
+
+  if (( NO_RESTART == 0 )); then
+    log "[agent:$agent] restarting last (AP/STA switch may drop current SSH session)"
+    log "[agent:$agent] if session drops, reconnect and run: /opt/unitlab/current/scripts/verify-host-agents.sh"
+    run systemctl restart --no-block "$unit_name"
+  else
+    log "[agent:$agent] restart skipped (--no-restart)"
+  fi
+fi
 
 echo
 echo "Agent | Unit | Status | Install Path | Env Path"

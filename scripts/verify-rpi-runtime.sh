@@ -9,6 +9,8 @@ MAX_DISK_USED_PCT="${MAX_DISK_USED_PCT:-90}"
 RESTART_LOOP_THRESHOLD="${RESTART_LOOP_THRESHOLD:-3}"
 MAX_IMAGE_COUNT_WARN="${MAX_IMAGE_COUNT_WARN:-30}"
 MAX_VOLUME_COUNT_WARN="${MAX_VOLUME_COUNT_WARN:-20}"
+HEALTH_STARTUP_GRACE_SEC="${HEALTH_STARTUP_GRACE_SEC:-20}"
+HEALTH_POLL_INTERVAL_SEC="${HEALTH_POLL_INTERVAL_SEC:-2}"
 RELEASE_VERSION="${RELEASE_VERSION:-}"
 
 fail_count=0
@@ -28,13 +30,17 @@ Options:
   --restart-threshold <int>     RestartCount threshold for restart-loop check (default: 3)
   --max-image-count-warn <int>  Warn threshold for local docker images count (default: 30)
   --max-volume-count-warn <int> Warn threshold for docker volumes count (default: 20)
+  --health-startup-grace-sec <int>  Grace wait for container health=starting (default: 20)
+  --health-poll-interval-sec <int>  Poll interval during health grace wait (default: 2)
   --release-version <value>     Expected release version label (unitlab.release)
   -h, --help                    Show this help
 
 Environment overrides:
   PROJECT_DIR, COMPOSE_FILE, HEALTH_URL,
   MIN_MEM_AVAILABLE_MB, MAX_DISK_USED_PCT, RESTART_LOOP_THRESHOLD,
-  MAX_IMAGE_COUNT_WARN, MAX_VOLUME_COUNT_WARN, RELEASE_VERSION
+  MAX_IMAGE_COUNT_WARN, MAX_VOLUME_COUNT_WARN,
+  HEALTH_STARTUP_GRACE_SEC, HEALTH_POLL_INTERVAL_SEC,
+  RELEASE_VERSION
 EOF
 }
 
@@ -78,6 +84,16 @@ while [[ $# -gt 0 ]]; do
     --max-volume-count-warn)
       [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --max-volume-count-warn requires a value" >&2; usage; exit 1; }
       MAX_VOLUME_COUNT_WARN="$2"
+      shift 2
+      ;;
+    --health-startup-grace-sec)
+      [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --health-startup-grace-sec requires a value" >&2; usage; exit 1; }
+      HEALTH_STARTUP_GRACE_SEC="$2"
+      shift 2
+      ;;
+    --health-poll-interval-sec)
+      [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --health-poll-interval-sec requires a value" >&2; usage; exit 1; }
+      HEALTH_POLL_INTERVAL_SEC="$2"
       shift 2
       ;;
     --release-version)
@@ -166,6 +182,14 @@ if ! [[ "$MAX_IMAGE_COUNT_WARN" =~ ^[0-9]+$ ]]; then
 fi
 if ! [[ "$MAX_VOLUME_COUNT_WARN" =~ ^[0-9]+$ ]]; then
   echo "[unitlab] ERROR: --max-volume-count-warn must be integer" >&2
+  exit 2
+fi
+if ! [[ "$HEALTH_STARTUP_GRACE_SEC" =~ ^[0-9]+$ ]]; then
+  echo "[unitlab] ERROR: --health-startup-grace-sec must be integer" >&2
+  exit 2
+fi
+if ! [[ "$HEALTH_POLL_INTERVAL_SEC" =~ ^[0-9]+$ ]]; then
+  echo "[unitlab] ERROR: --health-poll-interval-sec must be integer" >&2
   exit 2
 fi
 
@@ -275,7 +299,25 @@ for container in "${expected_running_containers[@]}"; do
     fail "$container unhealthy"
   fi
   if [[ "$health" == "starting" ]]; then
-    warn "$container health=starting"
+    if (( HEALTH_STARTUP_GRACE_SEC > 0 && HEALTH_POLL_INTERVAL_SEC > 0 )); then
+      waited=0
+      while (( waited < HEALTH_STARTUP_GRACE_SEC )); do
+        sleep "$HEALTH_POLL_INTERVAL_SEC"
+        waited=$((waited + HEALTH_POLL_INTERVAL_SEC))
+        health="$(container_health "$container")"
+        if [[ "$health" == "healthy" ]]; then
+          ok "$container health=healthy after ${waited}s grace"
+          break
+        fi
+        if [[ "$health" == "unhealthy" ]]; then
+          fail "$container unhealthy after ${waited}s grace"
+          break
+        fi
+      done
+    fi
+    if [[ "$health" == "starting" ]]; then
+      warn "$container health=starting after ${HEALTH_STARTUP_GRACE_SEC}s grace"
+    fi
   fi
 
   restart_count="$(container_restart_count "$container")"
@@ -351,7 +393,7 @@ fi
 
 echo "[unitlab] --- Application level ---"
 if [[ -n "$health_body" ]]; then
-  if grep -Eqi 'ok|healthy|"status"\s*:\s*"ok"' <<<"$health_body"; then
+  if grep -Eqi 'ok|healthy|"status"\s*:\s*"ok"|"status"\s*:\s*"online"' <<<"$health_body"; then
     ok "/api/v1/health status OK"
   else
     warn "/api/v1/health responded but payload has no explicit ok marker"

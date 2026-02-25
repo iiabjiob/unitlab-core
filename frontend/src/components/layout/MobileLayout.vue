@@ -29,7 +29,14 @@
 
 
     <!-- Navigation -->
-    <SlideOver :open="isDrawerOpen" placement="right" title="Menu" :widthPx="360" @close="isDrawerOpen = false">
+    <SlideOver
+      :open="isDrawerOpen"
+      placement="bottom"
+      title="Menu"
+      :max-height-vh="78"
+      :close-on-item-click="true"
+      @close="isDrawerOpen = false"
+    >
       <AppMenu />
     </SlideOver>
 
@@ -37,7 +44,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue"
+import { ref, computed, watch } from "vue"
+import { useRoute } from "vue-router"
 
 import AppMenu from "./AppMenu.vue"
 import AppLogo from "./AppLogo.vue"
@@ -52,10 +60,18 @@ import GlobalSignalTestStatus from "./GlobalSignalTestStatus.vue"
 
 // Drawer state
 const isDrawerOpen = ref(false)
+const route = useRoute()
 
 const systemHealthStore = useSystemHealthStore()
 
 const status = computed(() => systemHealthStore.status)
 const statusDescription = computed(() => systemHealthStore.tooltip)
+
+watch(
+  () => route.fullPath,
+  () => {
+    isDrawerOpen.value = false
+  },
+)
 
 </script>

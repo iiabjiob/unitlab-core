@@ -26,6 +26,56 @@ After provisioning and reboot:
 - `/settings/Provisioning` is available in service mode (hidden by default):
   - smoke-checks and host-agent repair actions
 
+## Fast Path (6 Steps)
+
+If you already know the platform, use this exact sequence:
+
+1. Preinstall clean RPi host
+  - Run host bootstrap/provisioning once:
+  ```bash
+  sudo ./scripts/provision-rpi.sh --timezone Europe/Berlin
+  sudo reboot
+  ```
+
+2. Build and copy runtime bundle + images
+  - On dev machine:
+  ```bash
+  ./scripts/release.sh
+  ```
+  - Copy bundle and image archive to RPi (`/tmp` first, then move with `sudo` to `/opt/unitlab/releases` and `/opt/unitlab`).
+
+3. Configure env
+  - Create/update shared env files:
+  ```bash
+  sudo mkdir -p /opt/unitlab/shared
+  sudo cp -n /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/shared/backend.env.example /opt/unitlab/shared/backend.env
+  sudo cp -n /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/shared/db.env.example /opt/unitlab/shared/db.env
+  sudo nano /opt/unitlab/shared/backend.env
+  sudo nano /opt/unitlab/shared/db.env
+  ```
+
+4. Deploy runtime
+  - Offline mode:
+  ```bash
+  sudo /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/scripts/deploy-rpi.sh \
+    --bundle-dir /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp> \
+    --images-archive /opt/unitlab/release-images-<timestamp>.tar
+  ```
+
+5. Install host agents
+  ```bash
+  cd /opt/unitlab/current
+  sudo ./scripts/install-host-agents.sh
+  ```
+  - Note: during `rpi-net-agent` restart, the host can switch AP/STA mode and current SSH session may disconnect.
+    Reconnect and continue with step 6.
+
+6. Verify
+  ```bash
+  /opt/unitlab/current/scripts/verify-host-agents.sh
+  /opt/unitlab/current/scripts/verify-rpi-runtime.sh --project-dir /opt/unitlab/current --compose-file /opt/unitlab/current/docker-compose.prod.yml
+  ```
+
 ## 1. Prepare Raspberry Pi OS (Bookworm)
 
 Recommended first setup path: **Ethernet connected**.
@@ -91,6 +141,7 @@ What it configures:
 - docker + compose plugin install/enable
 - `/opt/unitlab/releases` and `/opt/unitlab/shared` directories
 - docker daemon log rotation (`max-size=10m`, `max-file=3`)
+- kernel cgroup args for Docker memory/swap limits (`cgroup_enable=memory cgroup_memory=1`)
 
 After completion, reboot is recommended.
 
@@ -139,17 +190,40 @@ dist-release/
 Offline mode:
 
 ```bash
-scp -r dist-release/unitlab-core-rpi-runtime-<timestamp> pi@<rpi-ip>:/opt/unitlab/releases/
-scp dist-release/release-images-<timestamp>.tar pi@<rpi-ip>:/opt/unitlab/
+scp -r dist-release/unitlab-core-rpi-runtime-<timestamp> pi@<rpi-ip>:/tmp/
+scp dist-release/release-images-<timestamp>.tar pi@<rpi-ip>:/tmp/
+
+ssh pi@<rpi-ip>
+sudo mkdir -p /opt/unitlab/releases /opt/unitlab
+sudo rm -rf /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>
+sudo mv /tmp/unitlab-core-rpi-runtime-<timestamp> /opt/unitlab/releases/
+sudo mv /tmp/release-images-<timestamp>.tar /opt/unitlab/
 ```
 
 Registry mode:
 
 ```bash
-scp -r dist-release/unitlab-core-rpi-runtime-<timestamp> pi@<rpi-ip>:/opt/unitlab/releases/
+scp -r dist-release/unitlab-core-rpi-runtime-<timestamp> pi@<rpi-ip>:/tmp/
+
+ssh pi@<rpi-ip>
+sudo mkdir -p /opt/unitlab/releases
+sudo rm -rf /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>
+sudo mv /tmp/unitlab-core-rpi-runtime-<timestamp> /opt/unitlab/releases/
 ```
 
 ### RPi: deploy release
+
+Before first deploy, create shared env files expected by `docker-compose.prod.yml`:
+
+```bash
+sudo mkdir -p /opt/unitlab/shared
+sudo cp -n /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/shared/backend.env.example /opt/unitlab/shared/backend.env
+sudo cp -n /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/shared/db.env.example /opt/unitlab/shared/db.env
+
+# edit values (especially secrets) before deploy
+sudo nano /opt/unitlab/shared/db.env
+sudo nano /opt/unitlab/shared/backend.env
+```
 
 Offline mode:
 
@@ -165,6 +239,8 @@ Registry mode:
 sudo /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/scripts/deploy-rpi.sh \
   --bundle-dir /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>
 ```
+
+Retry note: if deploy fails due transient network/pull errors, rerunning the same command for the same `<timestamp>` is safe.
 
 `deploy-rpi.sh` behavior:
 
@@ -297,11 +373,11 @@ docker load -i /path/to/unitlab-release-images.tar
 
 `docker-compose.prod.yml` / services expect:
 
-- `backend/.env.prod`
-- `backend/.env.db.prod`
+- `/opt/unitlab/shared/backend.env`
+- `/opt/unitlab/shared/db.env`
 - root `.env` (for `UNITLAB_BACKEND_IMAGE`, `UNITLAB_WEB_IMAGE`)
 
-### 5.1 `backend/.env.db.prod`
+### 5.1 `/opt/unitlab/shared/db.env`
 
 Example:
 
@@ -309,9 +385,10 @@ Example:
 POSTGRES_USER=unitlab_pg_user
 POSTGRES_PASSWORD=unitlab_pg_password
 POSTGRES_DB=unitlab_pg
+POSTGRES_HOST_AUTH_METHOD=md5
 ```
 
-### 5.2 `backend/.env.prod`
+### 5.2 `/opt/unitlab/shared/backend.env`
 
 Minimal required values (example):
 
@@ -334,6 +411,14 @@ MQTT_PORT=1883
 ```
 
 Add any other required backend variables used in your build/environment.
+
+Create/update shared env files (persistent across releases):
+
+```bash
+sudo mkdir -p /opt/unitlab/shared
+sudo nano /opt/unitlab/shared/db.env
+sudo nano /opt/unitlab/shared/backend.env
+```
 
 ### 5.3 Root `.env` (backend + frontend image tags)
 
@@ -396,7 +481,8 @@ This service manages:
 
 ```bash
 cd /opt/unitlab/unitlab-core
-sudo ./host-services/rpi-net-agent/install/install_rpi_net_agent.sh
+sudo ./scripts/install-host-agents.sh
+./scripts/verify-host-agents.sh
 ```
 
 ### 7.2 Verify service
@@ -422,14 +508,15 @@ This service manages `chrony` natively and exposes state/actions to UI via Redis
 
 ```bash
 cd /opt/unitlab/unitlab-core
-sudo ./host-services/rpi-ntp-agent/install/install_rpi_ntp_agent.sh
+sudo ./scripts/install-host-agents.sh
+./scripts/verify-host-agents.sh
 ```
 
-This installer:
+Unified installer behavior:
 
 - installs `chrony` (if missing)
-- installs host NTP agent
-- enables and starts `unitlab-rpi-ntp-agent`
+- installs/updates all host agents from bundled wheels
+- enables and starts corresponding systemd services
 
 ### 8.2 Verify service
 
@@ -452,7 +539,8 @@ This service publishes central-module diagnostics (temperature/load/memory/disk/
 
 ```bash
 cd /opt/unitlab/unitlab-core
-sudo ./host-services/rpi-core-diag-agent/install/install_rpi_core_diag_agent.sh
+sudo ./scripts/install-host-agents.sh
+./scripts/verify-host-agents.sh
 ```
 
 ### 8A.2 Verify service
@@ -564,7 +652,8 @@ This service runs host-side provisioning checks and can execute host-agent insta
 
 ```bash
 cd /opt/unitlab/unitlab-core
-sudo ./host-services/rpi-provision-agent/install/install_rpi_provision_agent.sh
+sudo ./scripts/install-host-agents.sh
+./scripts/verify-host-agents.sh
 ```
 
 ### 10A.2 Verify service
@@ -599,22 +688,15 @@ Then per-device provisioning becomes approximately:
 cd /opt/unitlab/unitlab-core
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
-sudo ./host-services/rpi-net-agent/install/install_rpi_net_agent.sh
-sudo ./host-services/rpi-core-diag-agent/install/install_rpi_core_diag_agent.sh
-sudo ./host-services/rpi-ntp-agent/install/install_rpi_ntp_agent.sh
-sudo ./host-services/rpi-provision-agent/install/install_rpi_provision_agent.sh
+sudo ./scripts/install-host-agents.sh
+./scripts/verify-host-agents.sh
 ```
 
 ## 12. Short Version (Checklist)
 
 1. Update OS and install Docker + Compose + NetworkManager
-2. Copy runtime bundle (recommended) or clone repo to `/opt/unitlab/unitlab-core`
-3. Build/push (or export/load) backend + frontend images and set `UNITLAB_BACKEND_IMAGE` / `UNITLAB_WEB_IMAGE` in root `.env`
-4. Create `backend/.env.prod` and `backend/.env.db.prod`
-5. Run Docker stack: `docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d`
-6. Install host Wi‑Fi service: `install_rpi_net_agent.sh`
-7. Install host diagnostics service: `install_rpi_core_diag_agent.sh`
-8. Install host NTP service: `install_rpi_ntp_agent.sh`
-9. Install host provisioning service: `install_rpi_provision_agent.sh`
-10. Connect to AP and open `http://10.42.0.1`
-11. Configure STA and NTP in `/settings`, verify `/settings/diagnostics`, run `/settings/provisioning` smoke check (service mode)
+2. Build release artifacts and copy runtime bundle + image archive to RPi
+3. Configure `/opt/unitlab/shared/backend.env` and `/opt/unitlab/shared/db.env`
+4. Run deploy script for selected release (`deploy-rpi.sh`)
+5. Install host agents: `sudo ./scripts/install-host-agents.sh`
+6. Verify runtime and agents, then open UI at `http://10.42.0.1`

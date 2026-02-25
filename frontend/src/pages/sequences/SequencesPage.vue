@@ -2,8 +2,10 @@
   <div class="flex h-full flex-col md:flex-row">
 
     <div class="border-b border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900 md:hidden">
-      <button
-        class="flex w-full items-center justify-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-semibold text-neutral-700 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+      <UiButton
+        variant="secondary"
+        size="base"
+        :full="true"
         type="button"
         @click="sidebarOpen = true"
       >
@@ -11,7 +13,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h12M4 18h8" />
         </svg>
         Browse instructions
-      </button>
+      </UiButton>
     </div>
 
     <ResizablePanel
@@ -36,8 +38,9 @@
       v-if="!isDesktop"
       :open="sidebarOpen"
       title="Instructions"
-      placement="left"
-      :widthPx="360"
+      placement="bottom"
+      :max-height-vh="78"
+      :close-on-item-click="true"
       @close="sidebarOpen = false"
     >
       <div class="p-4">
@@ -49,16 +52,26 @@
 
 <script setup lang="ts">
 import { ref, watch } from "vue"
+import { useRoute } from "vue-router"
 
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import SequenceListSidebar from "./components/SequenceListSidebar.vue"
 import SlideOver from "@/components/ui/SlideOver.vue"
+import UiButton from "@/components/ui/UiButton.vue"
 import { useViewport } from "@/composables/useViewport"
 
 const { isDesktop } = useViewport()
 const sidebarOpen = ref(false)
+const route = useRoute()
 
 watch(isDesktop, (next) => {
   if (next) sidebarOpen.value = false
 })
+
+watch(
+  () => route.fullPath,
+  () => {
+    sidebarOpen.value = false
+  },
+)
 </script>

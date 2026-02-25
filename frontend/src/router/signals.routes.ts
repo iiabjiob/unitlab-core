@@ -7,15 +7,12 @@ export const signalsRoutes: RouteRecordRaw[] = [
     component: () => import("@/pages/signals/SignalsPage.vue"),
     beforeEnter: async () => {
       const workspaceStore = useWorkspaceStore()
-      const ready = await workspaceStore.bootstrap()
-      if (!ready || !workspaceStore.activeWorkspaceId) {
-        return { name: "home" }
-      }
+      await workspaceStore.bootstrap()
       return true
     },
     meta: {
       leftAside: true,
-      layout: "app",
+      layout: "auto",
     },
     children: [
       {
