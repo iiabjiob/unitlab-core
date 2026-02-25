@@ -8,11 +8,19 @@ UNITLAB_BACKEND_IMAGE="${UNITLAB_BACKEND_IMAGE:-unitlab-backend:${RELEASE_VERSIO
 UNITLAB_WEB_IMAGE="${UNITLAB_WEB_IMAGE:-unitlab-web:${RELEASE_VERSION}}"
 PROFILE="min"
 OUT_DIR=""
+BUILD_HOST_AGENT_WHEELS="${BUILD_HOST_AGENT_WHEELS:-1}"
 
 usage() {
   cat <<'EOF'
 Usage:
   create-rpi-runtime-bundle.sh [--profile min|service] [output_dir]
+
+Options:
+  --skip-host-agent-wheels   Skip wheelhouse build (not recommended)
+
+Environment overrides:
+  BUILD_HOST_AGENT_WHEELS=0|1
+  PYTHON_BIN=<python interpreter used for wheel build>
 
 Profiles:
   min      Minimal production runtime bundle (default)
@@ -33,6 +41,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --profile requires a value" >&2; usage; exit 1; }
       PROFILE="$2"
       shift 2
+      ;;
+    --skip-host-agent-wheels)
+      BUILD_HOST_AGENT_WHEELS="0"
+      shift
       ;;
     --help|-h)
       usage
@@ -62,6 +74,11 @@ fi
 
 command -v rsync >/dev/null 2>&1 || {
   echo "[unitlab] ERROR: rsync not found" >&2
+  exit 1
+}
+
+command -v python3 >/dev/null 2>&1 || {
+  echo "[unitlab] ERROR: python3 not found (required for host-agent wheel build)" >&2
   exit 1
 }
 
@@ -96,6 +113,70 @@ required_dir() {
   }
 }
 
+build_host_agent_wheelhouse() {
+  local wheelhouse_dir="$1"
+  local py_bin
+  local wheel_mode=""
+  local agents=(
+    rpi-net-agent
+    rpi-ntp-agent
+    rpi-core-diag-agent
+    rpi-provision-agent
+  )
+
+  resolve_python_for_wheels() {
+    local candidates=()
+    local candidate
+
+    if [[ -n "${PYTHON_BIN:-}" ]]; then
+      candidates+=("$PYTHON_BIN")
+    fi
+    candidates+=("python3" "/usr/bin/python3")
+
+    for candidate in "${candidates[@]}"; do
+      command -v "$candidate" >/dev/null 2>&1 || continue
+
+      if "$candidate" -m pip --version >/dev/null 2>&1; then
+        echo "$candidate"
+        return 0
+      fi
+
+      if "$candidate" -m ensurepip --upgrade >/dev/null 2>&1 && "$candidate" -m pip --version >/dev/null 2>&1; then
+        echo "$candidate"
+        return 0
+      fi
+    done
+
+    return 1
+  }
+
+  if py_bin="$(resolve_python_for_wheels)"; then
+    wheel_mode="python-pip"
+    echo "[unitlab] Host-agent wheel build python: $py_bin"
+  elif command -v uv >/dev/null 2>&1; then
+    wheel_mode="uv-pip"
+    echo "[unitlab] Host-agent wheel build via uv tool run (pip)"
+  else
+    echo "[unitlab] ERROR: no usable Python with pip found for wheel build" >&2
+    echo "[unitlab] HINT: install pip for system python (e.g. apt install python3-pip), set PYTHON_BIN, or install uv" >&2
+    exit 1
+  fi
+
+  mkdir -p "$wheelhouse_dir"
+  rm -f "$wheelhouse_dir"/*.whl
+
+  for agent in "${agents[@]}"; do
+    local agent_dir="$ROOT_DIR/host-services/$agent"
+    [[ -d "$agent_dir" ]] || { echo "[unitlab] ERROR: missing host agent dir: $agent_dir" >&2; exit 1; }
+    echo "[unitlab] Building wheel for $agent"
+    if [[ "$wheel_mode" == "python-pip" ]]; then
+      "$py_bin" -m pip wheel --wheel-dir "$wheelhouse_dir" "$agent_dir"
+    else
+      uv tool run --from pip pip wheel --wheel-dir "$wheelhouse_dir" "$agent_dir"
+    fi
+  done
+}
+
 # Validate required inputs early for clear operator errors
 required_file "$ROOT_DIR/docker-compose.prod.yml"
 required_dir "$ROOT_DIR/config"
@@ -115,15 +196,27 @@ rsync -a \
   --exclude '.DS_Store' \
   "$ROOT_DIR/host-services/" "$OUT_DIR/host-services/"
 
+# Host-agent wheelhouse (offline install source for installer)
+if [[ "$BUILD_HOST_AGENT_WHEELS" == "1" ]]; then
+  echo "[unitlab] Building host-agent wheelhouse"
+  build_host_agent_wheelhouse "$OUT_DIR/wheels"
+else
+  echo "[unitlab] WARN: skipping host-agent wheelhouse build (--skip-host-agent-wheels)"
+fi
+
 # Core deploy/runtime scripts (required on RPi in all profiles)
 mkdir -p "$OUT_DIR/scripts"
 copy "$ROOT_DIR/scripts/deploy-rpi.sh" "$OUT_DIR/scripts/"
 copy "$ROOT_DIR/scripts/verify-rpi-runtime.sh" "$OUT_DIR/scripts/"
 copy "$ROOT_DIR/scripts/cleanup-rpi-releases.sh" "$OUT_DIR/scripts/"
+copy "$ROOT_DIR/scripts/install-host-agents.sh" "$OUT_DIR/scripts/"
+copy "$ROOT_DIR/scripts/verify-host-agents.sh" "$OUT_DIR/scripts/"
 chmod +x \
   "$OUT_DIR/scripts/deploy-rpi.sh" \
   "$OUT_DIR/scripts/verify-rpi-runtime.sh" \
-  "$OUT_DIR/scripts/cleanup-rpi-releases.sh"
+  "$OUT_DIR/scripts/cleanup-rpi-releases.sh" \
+  "$OUT_DIR/scripts/install-host-agents.sh" \
+  "$OUT_DIR/scripts/verify-host-agents.sh"
 
 # Optional service/debug extras
 if [[ "$PROFILE" == "service" ]]; then
@@ -136,9 +229,9 @@ if [[ "$PROFILE" == "service" ]]; then
   copy "$ROOT_DIR/docs/guide/frontend-web-image-release.md" "$OUT_DIR/docs/guide/"
 fi
 
-# Backend env templates (avoid shipping full backend source in runtime bundle)
-mkdir -p "$OUT_DIR/backend"
-cat > "$OUT_DIR/backend/.env.prod.example" <<'EOF'
+# Shared host env templates (persist across release rollbacks)
+mkdir -p "$OUT_DIR/shared"
+cat > "$OUT_DIR/shared/backend.env.example" <<'EOF'
 APP_ENV=production
 DEBUG=false
 DEBUG_LEVEL=INFO
@@ -156,10 +249,11 @@ MQTT_HOST=mosquitto
 MQTT_PORT=1883
 EOF
 
-cat > "$OUT_DIR/backend/.env.db.prod.example" <<'EOF'
+cat > "$OUT_DIR/shared/db.env.example" <<'EOF'
 POSTGRES_USER=unitlab_pg_user
 POSTGRES_PASSWORD=unitlab_pg_password
 POSTGRES_DB=unitlab_pg
+POSTGRES_HOST_AUTH_METHOD=md5
 EOF
 
 cat > "$OUT_DIR/.env.example" <<'EOF'
@@ -189,19 +283,24 @@ cat > "$OUT_DIR/README_DEPLOY.md" <<'EOF'
 # UnitLab RPi Runtime Deploy
 
 1. Copy this bundle to `/opt/unitlab/releases/<bundle>` on RPi5.
-2. Create/update symlink:
+2. Create shared env files once (persist across releases):
   ```bash
-  ln -sfn /opt/unitlab/releases/<bundle> /opt/unitlab/current
+  sudo mkdir -p /opt/unitlab/shared
+  sudo cp -n /opt/unitlab/releases/<bundle>/shared/backend.env.example /opt/unitlab/shared/backend.env
+  sudo cp -n /opt/unitlab/releases/<bundle>/shared/db.env.example /opt/unitlab/shared/db.env
   ```
-3. Add env files from examples (`backend/.env.prod`, `backend/.env.db.prod`, `.env`).
-4. Deploy:
+3. Deploy via script (it updates `/opt/unitlab/current` symlink automatically):
   ```bash
-  cd /opt/unitlab/current
-  docker compose -f docker-compose.prod.yml pull
-  docker compose -f docker-compose.prod.yml up -d
+  sudo /opt/unitlab/releases/<bundle>/scripts/deploy-rpi.sh \
+    --bundle-dir /opt/unitlab/releases/<bundle>
+  ```
+4. Install/update host agents from bundled wheels:
+  ```bash
+  sudo /opt/unitlab/current/scripts/install-host-agents.sh
+  sudo /opt/unitlab/current/scripts/verify-host-agents.sh
   ```
 
-Rollback: point `/opt/unitlab/current` to previous release and rerun `docker compose ... up -d`.
+Rollback: rerun deploy for previous bundle (script handles symlink switch and stack up).
 EOF
 
 echo
@@ -212,6 +311,6 @@ if [[ "$PROFILE" == "service" ]]; then
 fi
 echo "[unitlab] Next (recommended on RPi5):"
 echo "[unitlab]   1) Copy bundle to: /opt/unitlab/releases/<bundle>"
-echo "[unitlab]   2) Update symlink: ln -sfn /opt/unitlab/releases/<bundle> /opt/unitlab/current"
-echo "[unitlab]   3) Deploy from symlink target: cd /opt/unitlab/current && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d"
-echo "[unitlab] Rollback: repoint /opt/unitlab/current to previous release and run docker compose up -d"
+echo "[unitlab]   2) Deploy: sudo /opt/unitlab/releases/<bundle>/scripts/deploy-rpi.sh --bundle-dir /opt/unitlab/releases/<bundle>"
+echo "[unitlab]   3) deploy-rpi.sh updates /opt/unitlab/current automatically"
+echo "[unitlab] Rollback: deploy previous bundle path with deploy-rpi.sh"

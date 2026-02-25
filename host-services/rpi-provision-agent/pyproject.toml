@@ -16,5 +16,8 @@ dependencies = [
 unitlab-rpi-provision-agent = "unitlab_rpi_provision_agent.__main__:main"
 
 [tool.setuptools]
-packages = ["unitlab_rpi_provision_agent"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 

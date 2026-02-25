@@ -1,0 +1,2 @@
+[console_scripts]
+unitlab-rpi-ntp-agent = unitlab_rpi_ntp_agent.__main__:main

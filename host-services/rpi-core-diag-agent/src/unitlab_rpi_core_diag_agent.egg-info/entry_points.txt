@@ -1,0 +1,2 @@
+[console_scripts]
+unitlab-rpi-core-diag-agent = unitlab_rpi_core_diag_agent.__main__:main

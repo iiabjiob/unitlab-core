@@ -1,0 +1,2 @@
+[console_scripts]
+unitlab-rpi-net-agent = unitlab_rpi_net_agent.__main__:main

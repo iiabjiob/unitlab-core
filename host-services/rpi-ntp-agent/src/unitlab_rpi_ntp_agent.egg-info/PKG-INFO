@@ -1,0 +1,6 @@
+Metadata-Version: 2.4
+Name: unitlab-rpi-ntp-agent
+Version: 0.1.0
+Summary: Host-side Chrony/NTP management agent for UnitLab core on Raspberry Pi
+Requires-Python: >=3.11
+Requires-Dist: redis>=5.0.0

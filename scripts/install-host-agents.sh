@@ -6,6 +6,8 @@ HOST_AGENTS_DIR="${HOST_AGENTS_DIR:-$ROOT_DIR/host-services}"
 if [[ ! -d "$HOST_AGENTS_DIR" && -d "$ROOT_DIR/host-agents" ]]; then
   HOST_AGENTS_DIR="$ROOT_DIR/host-agents"
 fi
+BUNDLE_ROOT="${BUNDLE_ROOT:-$ROOT_DIR}"
+WHEELS_DIR="${WHEELS_DIR:-$BUNDLE_ROOT/wheels}"
 
 INSTALL_ROOT="/opt/unitlab"
 ENV_ROOT="/etc/unitlab"
@@ -36,6 +38,13 @@ declare -A AGENT_MODULES=(
   [rpi-provision-agent]="unitlab_rpi_provision_agent"
 )
 
+declare -A AGENT_WHEEL_GLOBS=(
+  [rpi-net-agent]="unitlab_rpi_net_agent-*.whl"
+  [rpi-ntp-agent]="unitlab_rpi_ntp_agent-*.whl"
+  [rpi-core-diag-agent]="unitlab_rpi_core_diag_agent-*.whl"
+  [rpi-provision-agent]="unitlab_rpi_provision_agent-*.whl"
+)
+
 declare -A AGENT_APT_DEPS=(
   [rpi-net-agent]="network-manager"
   [rpi-ntp-agent]="chrony"
@@ -43,7 +52,7 @@ declare -A AGENT_APT_DEPS=(
   [rpi-provision-agent]="curl"
 )
 
-readonly COMMON_APT_DEPS=(rsync python3-venv python3-pip)
+readonly COMMON_APT_DEPS=(python3-venv python3-pip)
 
 usage() {
   cat <<'EOF'
@@ -52,6 +61,7 @@ Usage:
 
 Options:
   --only <agent1,agent2>   Install subset only (default: all known agents)
+  --wheels-dir <path>      Wheelhouse directory (default: <bundle>/wheels)
   --skip-apt               Skip apt update/install steps
   --skip-pip-upgrade       Skip pip self-upgrade inside agent virtualenv
   --dry-run                Print actions without changing system
@@ -60,6 +70,8 @@ Options:
 
 Environment overrides:
   HOST_AGENTS_DIR
+  BUNDLE_ROOT
+  WHEELS_DIR
 EOF
 }
 
@@ -174,6 +186,11 @@ while [[ $# -gt 0 ]]; do
       ONLY_RAW="$2"
       shift 2
       ;;
+    --wheels-dir)
+      [[ $# -ge 2 ]] || { err "--wheels-dir requires a value"; usage; exit 1; }
+      WHEELS_DIR="$2"
+      shift 2
+      ;;
     --skip-apt)
       SKIP_APT=1
       shift
@@ -221,6 +238,7 @@ fi
 
 log "Selected agents: ${SELECTED_AGENTS[*]}"
 log "Source root: $HOST_AGENTS_DIR"
+log "Wheelhouse: $WHEELS_DIR"
 
 if (( SKIP_APT == 1 )); then
   log "--skip-apt enabled, pip self-upgrade will be skipped"
@@ -259,34 +277,37 @@ else
   log "[1/6] Skipping apt dependencies (--skip-apt)"
 fi
 
-log "[2/6] Validating agent paths"
+log "[2/6] Validating agent paths and wheelhouse"
+[[ -d "$WHEELS_DIR" ]] || { err "wheelhouse directory missing: $WHEELS_DIR"; exit 1; }
 for agent in "${SELECTED_AGENTS[@]}"; do
   src_dir="$HOST_AGENTS_DIR/$agent"
   unit_name="${AGENT_UNITS[$agent]}"
   unit_src="$src_dir/systemd/$unit_name"
+  wheel_glob="${AGENT_WHEEL_GLOBS[$agent]}"
 
   [[ -d "$src_dir" ]] || { err "agent source dir missing: $src_dir"; exit 1; }
   [[ -f "$unit_src" ]] || { err "systemd unit missing: $unit_src"; exit 1; }
-  if [[ ! -f "$src_dir/pyproject.toml" && ! -f "$src_dir/setup.py" && ! -f "$src_dir/setup.cfg" ]]; then
-    err "python package metadata missing for $agent (expected pyproject.toml or setup.py/setup.cfg)"
+  if ! compgen -G "$WHEELS_DIR/$wheel_glob" >/dev/null; then
+    err "wheel not found for $agent (expected pattern: $WHEELS_DIR/$wheel_glob)"
     exit 1
   fi
 done
 
-log "[3/6] Syncing code and creating virtualenvs"
+if ! compgen -G "$WHEELS_DIR/redis-*.whl" >/dev/null; then
+  err "redis dependency wheel missing (expected: $WHEELS_DIR/redis-*.whl)"
+  exit 1
+fi
+
+log "[3/6] Creating virtualenvs and installing wheels"
 for agent in "${SELECTED_AGENTS[@]}"; do
-  src_dir="$HOST_AGENTS_DIR/$agent"
   dest_dir="$INSTALL_ROOT/$agent"
+  wheel_glob="${AGENT_WHEEL_GLOBS[$agent]}"
+  wheel_path="$(ls -1 "$WHEELS_DIR"/$wheel_glob | sort -V | tail -n1)"
 
-  log "[agent:$agent] sync -> $dest_dir"
+  log "[agent:$agent] ensure runtime dir -> $dest_dir"
   run mkdir -p "$dest_dir"
-  run rsync -a --delete \
-    --exclude '.venv' \
-    --exclude '__pycache__' \
-    --exclude '*.pyc' \
-    "$src_dir/" "$dest_dir/"
 
-  log "[agent:$agent] venv + pip install -e"
+  log "[agent:$agent] venv + wheel install"
   run python3 -m venv "$dest_dir/.venv"
   if (( SKIP_PIP_UPGRADE == 0 && SKIP_APT == 0 )); then
     if ! run "$dest_dir/.venv/bin/pip" install --upgrade pip; then
@@ -295,7 +316,8 @@ for agent in "${SELECTED_AGENTS[@]}"; do
   else
     log "[agent:$agent] pip self-upgrade skipped"
   fi
-  run "$dest_dir/.venv/bin/pip" install -e "$dest_dir"
+  run "$dest_dir/.venv/bin/pip" install --no-cache-dir --no-index --find-links "$WHEELS_DIR" --upgrade redis
+  run "$dest_dir/.venv/bin/pip" install --no-cache-dir --no-index --find-links "$WHEELS_DIR" --upgrade "$wheel_path"
 done
 
 log "[4/6] Ensuring env files"

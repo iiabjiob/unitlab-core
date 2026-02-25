@@ -16,5 +16,8 @@ dependencies = [
 unitlab-rpi-core-diag-agent = "unitlab_rpi_core_diag_agent.__main__:main"
 
 [tool.setuptools]
-packages = ["unitlab_rpi_core_diag_agent"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 

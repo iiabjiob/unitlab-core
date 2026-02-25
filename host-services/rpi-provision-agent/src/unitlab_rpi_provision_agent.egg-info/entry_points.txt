@@ -1,0 +1,2 @@
+[console_scripts]
+unitlab-rpi-provision-agent = unitlab_rpi_provision_agent.__main__:main
