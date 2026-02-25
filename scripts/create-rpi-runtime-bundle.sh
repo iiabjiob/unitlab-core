@@ -168,8 +168,6 @@ build_host_agent_wheelhouse() {
   for agent in "${agents[@]}"; do
     local agent_dir="$ROOT_DIR/host-services/$agent"
     [[ -d "$agent_dir" ]] || { echo "[unitlab] ERROR: missing host agent dir: $agent_dir" >&2; exit 1; }
-    rm -rf "$agent_dir/build" "$agent_dir/dist"
-    find "$agent_dir" -maxdepth 1 -type d -name '*.egg-info' -exec rm -rf {} +
     echo "[unitlab] Building wheel for $agent"
     if [[ "$wheel_mode" == "python-pip" ]]; then
       "$py_bin" -m pip wheel --wheel-dir "$wheelhouse_dir" "$agent_dir"

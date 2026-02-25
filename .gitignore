@@ -38,6 +38,9 @@ coverage
 # FastAPI
 __pycache__/
 *.pyc
+host-services/**/build/
+host-services/**/dist/
+host-services/**/*.egg-info/
 
 .venv/
 .python-version
