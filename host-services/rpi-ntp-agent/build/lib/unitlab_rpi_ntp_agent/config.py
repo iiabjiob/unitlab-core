@@ -48,15 +48,9 @@ class AgentConfig:
 def load_config() -> AgentConfig:
     host = socket.gethostname().strip() or "unitlab-core"
     pid = os.getpid()
-    sources_dir = os.getenv("UNITLAB_NTP_AGENT_CHRONY_SOURCES_DIR", "/etc/chrony/sources.d")
-    source_file = os.getenv(
-        "UNITLAB_NTP_AGENT_CHRONY_SOURCE_FILE",
-        os.path.join(sources_dir, "unitlab-ntp.sources"),
-    )
-    defaults_raw = os.getenv("UNITLAB_NTP_AGENT_DEFAULT_SERVERS", "pool.ntp.org,time.google.com")
-    default_servers = tuple(
-        item.strip() for item in defaults_raw.split(",") if item.strip()
-    )
+    sources_dir = "/etc/chrony/sources.d"
+    source_file = os.path.join(sources_dir, "unitlab-ntp.sources")
+    default_servers = ("pool.ntp.org", "time.google.com")
 
     return AgentConfig(
         redis_url=os.getenv("UNITLAB_NTP_AGENT_REDIS_URL", "redis://127.0.0.1:6379/0"),
@@ -69,8 +63,8 @@ def load_config() -> AgentConfig:
         command_block_ms=max(100, _env_int("UNITLAB_NTP_AGENT_COMMAND_BLOCK_MS", 5000)),
         chrony_sources_dir=sources_dir,
         chrony_source_file=source_file,
-        chronyc_bin=os.getenv("UNITLAB_NTP_AGENT_CHRONYC_BIN", "chronyc"),
-        systemctl_bin=os.getenv("UNITLAB_NTP_AGENT_SYSTEMCTL_BIN", "systemctl"),
+        chronyc_bin="chronyc",
+        systemctl_bin="systemctl",
         command_timeout_sec=max(2, _env_int("UNITLAB_NTP_AGENT_COMMAND_TIMEOUT_SEC", 10)),
         status_publish_interval_sec=max(2, _env_int("UNITLAB_NTP_AGENT_STATUS_PUBLISH_INTERVAL_SEC", 10)),
         default_servers=default_servers,

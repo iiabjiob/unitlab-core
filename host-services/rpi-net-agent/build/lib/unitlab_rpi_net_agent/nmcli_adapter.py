@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 from dataclasses import dataclass
 
 from .config import AgentConfig
@@ -66,10 +67,11 @@ class NmcliAdapter:
         mac = await self.get_mac()
         if not mac:
             return "0000"
-        chunks = [chunk.strip().upper() for chunk in mac.split(":") if chunk.strip()]
-        if len(chunks) >= 2:
-            return f"{chunks[-2]}{chunks[-1]}"
-        return "".join(chunks)[-4:].rjust(4, "0")
+        pairs = re.findall(r"[0-9A-Fa-f]{2}", mac)
+        if len(pairs) >= 2:
+            return "".join(pairs[-2:]).upper()
+        hex_only = "".join(ch for ch in mac if ch.lower() in "0123456789abcdef")
+        return hex_only[-4:].upper().rjust(4, "0")
 
     async def connection_exists(self, profile_name: str) -> bool:
         out = await self._run("-t", "-f", "NAME", "connection", "show", check=False)
