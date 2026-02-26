@@ -114,7 +114,7 @@ function exitEditMode() {
 
 <template>
   
-    <div v-if="step && editorComponent" class="space-y-4 p-5 ml-3 border rounded-md bg-neutral-50 dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 overflow-y-auto">
+    <div v-if="step && editorComponent" class="space-y-4 p-5 border rounded-md bg-neutral-50 dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 overflow-y-auto">
       <div class="flex items-start justify-between gap-4">
         <div>
           <div class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">

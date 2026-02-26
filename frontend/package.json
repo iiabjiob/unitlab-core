@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@affino/datagrid-theme": "^0.2.1",
-    "@affino/datagrid-vue": "^0.2.1",
+    "@affino/datagrid-vue": "^0.3.2",
     "@affino/disclosure-vue": "^0.1.0",
     "@affino/dialog-vue": "^1.1.0",
     "@affino/menu-core": "^1.1.0",

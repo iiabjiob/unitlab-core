@@ -12,8 +12,8 @@
         <div
           v-if="isSide"
           ref="dialogRef"
-          class="absolute top-0 h-full border-neutral-200 dark:border-neutral-800 shadow-xl
-                 transform will-change-transform bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+             class="absolute top-0 h-full border-neutral-200 dark:border-neutral-800 shadow-xl
+               bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
           :class="[sideClasses, defaultWidthClasses]"
           :style="sideStyles"
           role="dialog"
@@ -37,7 +37,7 @@
           </div>
 
           <!-- Content -->
-          <div class="h-[calc(100%-2.5rem)] overflow-y-auto" @click="closeOnItemClick && requestClose('pointer')">
+          <div class="h-[calc(100%-2.5rem)] overflow-y-auto" @click="onContentClick">
             <slot />
           </div>
           <span class="sr-only" tabindex="0" @focus="loopFocus('start')" />
@@ -49,8 +49,8 @@
         <div
           v-if="isBottom"
           ref="dialogRef"
-          class="absolute left-0 right-0 rounded-t-2xl shadow-2xl border-t border-neutral-200 dark:border-neutral-800
-                 transform will-change-transform bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+             class="absolute left-0 right-0 rounded-t-2xl shadow-2xl border-t border-neutral-200 dark:border-neutral-800
+               bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
           :style="bottomStyles"
           role="dialog"
           aria-modal="true"
@@ -81,7 +81,7 @@
           </div>
 
           <!-- Content -->
-          <div class="px-4 pb-4 overflow-y-auto" :style="{ maxHeight: `${maxHeightVh}dvh` }" @click="closeOnItemClick && requestClose('pointer')">
+          <div class="px-4 pb-4 overflow-y-auto" :style="{ maxHeight: `${maxHeightVh}dvh` }" @click="onContentClick">
             <slot />
           </div>
           <span class="sr-only" tabindex="0" @focus="loopFocus('start')" />
@@ -205,6 +205,19 @@ function requestClose(reason: DialogCloseReason) {
       emit("close")
     }
   })
+}
+
+function onContentClick(event: MouseEvent) {
+  if (!props.closeOnItemClick) return
+  const target = event.target as HTMLElement | null
+  if (!target) {
+    requestClose("pointer")
+    return
+  }
+  if (target.closest("input, label, select, textarea, option")) {
+    return
+  }
+  requestClose("pointer")
 }
 
 function onDialogKeydown(e: KeyboardEvent) {

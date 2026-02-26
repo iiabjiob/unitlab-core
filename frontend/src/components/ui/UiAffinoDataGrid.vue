@@ -113,7 +113,19 @@
           <div class="ui-affino-grid__index-header" :style="indexHeaderStyle" @wheel="handleMainHeaderWheel">#</div>
           <div v-if="showFilterRow" class="ui-affino-grid__index-filter" :style="indexFilterStyle" @wheel="handleMainHeaderWheel"></div>
 
-          <div ref="indexViewportRef" class="ui-affino-grid__index-viewport" @wheel="handlePinnedViewportWheel">
+          <div
+            ref="indexViewportRef"
+            class="ui-affino-grid__index-viewport"
+            @wheel="handlePinnedViewportWheel"
+            @touchstart="handleTouchStart"
+            @touchmove="handleTouchMove"
+            @touchend="handleTouchEnd"
+            @touchcancel="handleTouchCancel"
+            @pointerdown="handleTouchPointerDown"
+            @pointermove="handleTouchPointerMove"
+            @pointerup="handleTouchPointerUp"
+            @pointercancel="handleTouchPointerCancel"
+          >
             <div ref="indexCanvasRef" class="ui-affino-grid__index-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -160,7 +172,19 @@
           </div>
           <div v-if="showFilterRow" class="ui-affino-grid__select-filter" :style="indexFilterStyle" @wheel="handleMainHeaderWheel"></div>
 
-          <div ref="selectionViewportRef" class="ui-affino-grid__select-viewport" @wheel="handlePinnedViewportWheel">
+          <div
+            ref="selectionViewportRef"
+            class="ui-affino-grid__select-viewport"
+            @wheel="handlePinnedViewportWheel"
+            @touchstart="handleTouchStart"
+            @touchmove="handleTouchMove"
+            @touchend="handleTouchEnd"
+            @touchcancel="handleTouchCancel"
+            @pointerdown="handleTouchPointerDown"
+            @pointermove="handleTouchPointerMove"
+            @pointerup="handleTouchPointerUp"
+            @pointercancel="handleTouchPointerCancel"
+          >
             <div ref="selectionCanvasRef" class="ui-affino-grid__select-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -279,7 +303,19 @@
             </div>
           </div>
 
-          <div ref="leftPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel="handlePinnedViewportWheel">
+          <div
+            ref="leftPinnedViewportRef"
+            class="ui-affino-grid__pinned-viewport"
+            @wheel="handlePinnedViewportWheel"
+            @touchstart="handleTouchStart"
+            @touchmove="handleTouchMove"
+            @touchend="handleTouchEnd"
+            @touchcancel="handleTouchCancel"
+            @pointerdown="handleTouchPointerDown"
+            @pointermove="handleTouchPointerMove"
+            @pointerup="handleTouchPointerUp"
+            @pointercancel="handleTouchPointerCancel"
+          >
             <div ref="leftPinnedCanvasRef" class="ui-affino-grid__pinned-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -435,6 +471,14 @@
               ref="viewportRef"
               class="ui-affino-grid__viewport"
               @wheel="handleBodyViewportWheel"
+              @touchstart="handleTouchStart"
+              @touchmove="handleTouchMove"
+              @touchend="handleTouchEnd"
+              @touchcancel="handleTouchCancel"
+              @pointerdown="handleTouchPointerDown"
+              @pointermove="handleTouchPointerMove"
+              @pointerup="handleTouchPointerUp"
+              @pointercancel="handleTouchPointerCancel"
               @scroll.passive="handleBodyScroll"
             >
               <div class="ui-affino-grid__canvas">
@@ -576,7 +620,19 @@
             </div>
           </div>
 
-          <div ref="rightPinnedViewportRef" class="ui-affino-grid__pinned-viewport" @wheel="handlePinnedViewportWheel">
+          <div
+            ref="rightPinnedViewportRef"
+            class="ui-affino-grid__pinned-viewport"
+            @wheel="handlePinnedViewportWheel"
+            @touchstart="handleTouchStart"
+            @touchmove="handleTouchMove"
+            @touchend="handleTouchEnd"
+            @touchcancel="handleTouchCancel"
+            @pointerdown="handleTouchPointerDown"
+            @pointermove="handleTouchPointerMove"
+            @pointerup="handleTouchPointerUp"
+            @pointercancel="handleTouchPointerCancel"
+          >
             <div ref="rightPinnedCanvasRef" class="ui-affino-grid__pinned-canvas">
               <template v-if="hasRenderableData">
                 <div
@@ -662,7 +718,7 @@
       </div>
     </div>
 
-      <UiMenuContent class="ui-affino-grid__header-context-menu">
+      <UiMenuContent class="ui-affino-grid__header-context-menu" @keydown="handleHeaderContextMenuKeydown">
         <UiMenuItem :disabled="!props.enableSorting || !headerContextColumnSortable" @select="void runHeaderContextMenuAction('sort-asc')">
           Sort Ascending
         </UiMenuItem>
@@ -671,6 +727,90 @@
         </UiMenuItem>
 
         <UiSubMenu>
+          <UiSubMenuTrigger>
+            Filter by values
+          </UiSubMenuTrigger>
+          <UiSubMenuContent class="ui-affino-grid__value-filter-menu">
+            <div class="ui-affino-grid__value-filter-panel" @click.stop>
+              <template v-if="props.enableFiltering && headerContextColumnFilterable">
+                <input
+                  v-model="headerContextUniqueFilterQuery"
+                  type="text"
+                  :id="`grid-value-filter-search-${headerContextFieldToken}`"
+                  :name="`grid-value-filter-search-${headerContextFieldToken}`"
+                  class="ui-affino-grid__value-filter-search"
+                  :placeholder="`Search ${headerContextColumnLabel} values`"
+                  @click.stop
+                  @keydown="handleValueFilterFieldKeydown"
+                />
+
+                <div class="ui-affino-grid__value-filter-actions">
+                  <button
+                    type="button"
+                    class="ui-affino-grid__value-filter-action"
+                    @click.stop="selectAllHeaderContextFilterValues"
+                  >
+                    Select all
+                  </button>
+                  <button
+                    type="button"
+                    class="ui-affino-grid__value-filter-action"
+                    @click.stop="clearHeaderContextFilterValues"
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                <div class="ui-affino-grid__value-filter-list">
+                  <label
+                    v-for="entry in headerContextUniqueValues"
+                    :key="entry.key"
+                    class="ui-affino-grid__value-filter-entry"
+                  >
+                    <input
+                      type="checkbox"
+                      :id="resolveValueFilterCheckboxId(entry.key)"
+                      :name="resolveValueFilterCheckboxId(entry.key)"
+                      :checked="entry.selected"
+                      @click.stop
+                      @keydown="handleValueFilterFieldKeydown"
+                      @change="event => toggleHeaderContextFilterValue(entry.key, event)"
+                    />
+                    <span class="ui-affino-grid__value-filter-entry-label">{{ entry.label || "(empty)" }}</span>
+                    <span class="ui-affino-grid__value-filter-entry-count">{{ entry.count }}</span>
+                  </label>
+                  <div v-if="headerContextUniqueValues.length === 0" class="ui-affino-grid__value-filter-empty">
+                    No values found
+                  </div>
+                </div>
+
+                <div class="ui-affino-grid__value-filter-footer">
+                  <button
+                    type="button"
+                    class="ui-affino-grid__value-filter-action"
+                    :disabled="!headerContextFilterDraftDirty"
+                    @click.stop="cancelHeaderContextFilterValues"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    class="ui-affino-grid__value-filter-action ui-affino-grid__value-filter-action--primary"
+                    :disabled="!headerContextFilterDraftDirty"
+                    @click.stop="applyHeaderContextFilterValues"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </template>
+              <div v-else class="ui-affino-grid__value-filter-empty">
+                Column filtering is disabled for this column
+              </div>
+            </div>
+          </UiSubMenuContent>
+        </UiSubMenu>
+
+        <UiSubMenu v-if="!isMobile">
           <UiSubMenuTrigger>
             Pin Column
           </UiSubMenuTrigger>
@@ -759,6 +899,7 @@ import {
   useDataGridResizeClickGuard,
   useDataGridRowSelectionModel,
 } from "@affino/datagrid-vue/advanced"
+import * as DataGridAdvanced from "@affino/datagrid-vue/advanced"
 import {
   readPersistedColumnWidths,
   readPersistedDatasetKey,
@@ -767,6 +908,7 @@ import {
   writePersistedDatasetKey,
   writePersistedSelection,
 } from "@/composables/useDataGridPersistenceStorage"
+import { useViewport } from "@/composables/useViewport"
 
 type GridRow = Record<string, unknown>
 
@@ -781,6 +923,8 @@ function setsEqual<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): boolean {
   }
   return true
 }
+
+const { isMobile } = useViewport()
 
 type GridColumn = {
   key: string
@@ -896,7 +1040,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (e: "row-click", payload: { row: GridRow; rowIndex: number }): void
-  (e: "selection-change", payload: { rowKeys: string[] }): void
+  (e: "selection-change", payload: { rowKeys: string[]; selectedVisibleRowKeys: string[] }): void
   (e: "bulk-delete-selected", payload: { rowKeys: string[]; rows: GridRow[] }): void
 }>()
 
@@ -946,6 +1090,9 @@ const hoveredRowId = ref<string | null>(null)
 const selectHeaderCheckboxRef = ref<HTMLInputElement | null>(null)
 const headerMenuRef = ref<{ controller?: MenuController } | null>(null)
 const headerContextMenuColumnKey = ref<string | null>(null)
+const headerContextUniqueFilterQuery = ref("")
+const headerContextValueDraftSelectedKeys = ref<Set<string>>(new Set())
+const headerContextValueDraftTotalKeys = ref<Set<string>>(new Set())
 const checkboxSelectionAnchorIndex = ref<number | null>(null)
 const lastCheckboxGestureShift = ref(false)
 const localSelectedRowKeySet = ref<Set<string>>(new Set())
@@ -1014,6 +1161,30 @@ const linkedPaneScrollSync = useDataGridLinkedPaneScrollSync({
   ],
 })
 
+function applyHandledScrollTop(nextTop: number) {
+  const bodyViewport = viewportRef.value
+  if (!bodyViewport) {
+    return
+  }
+  bodyViewport.scrollTop = nextTop
+  lastHandledScrollTop = nextTop
+  syncLinkedScroll(nextTop)
+  scheduleLinkedScrollSyncLoop()
+  updateObservedViewportSize()
+  scheduleViewportSync()
+}
+
+function applyHandledScrollLeft(nextLeft: number) {
+  const mainViewport = mainViewportRef.value
+  if (!mainViewport) {
+    return
+  }
+  mainViewport.scrollLeft = nextLeft
+  lastHandledScrollLeft = nextLeft
+  updateObservedViewportSize()
+  scheduleViewportSync()
+}
+
 const managedWheelScroll = useDataGridManagedWheelScroll({
   resolveWheelMode: () => "managed",
   resolveWheelAxisLockMode: () => "dominant",
@@ -1031,28 +1202,55 @@ const managedWheelScroll = useDataGridManagedWheelScroll({
     }
   },
   setHandledScrollTop: (nextTop) => {
-    const bodyViewport = viewportRef.value
-    if (!bodyViewport) {
-      return
-    }
-    bodyViewport.scrollTop = nextTop
-    lastHandledScrollTop = nextTop
-    syncLinkedScroll(nextTop)
-    scheduleLinkedScrollSyncLoop()
-    updateObservedViewportSize()
-    scheduleViewportSync()
+    applyHandledScrollTop(nextTop)
   },
   setHandledScrollLeft: (nextLeft) => {
-    const mainViewport = mainViewportRef.value
-    if (!mainViewport) {
-      return
-    }
-    mainViewport.scrollLeft = nextLeft
-    lastHandledScrollLeft = nextLeft
-    updateObservedViewportSize()
-    scheduleViewportSync()
+    applyHandledScrollLeft(nextLeft)
   },
 })
+
+const managedTouchScroll = typeof DataGridAdvanced.useDataGridManagedTouchScroll === "function"
+  ? DataGridAdvanced.useDataGridManagedTouchScroll({
+    resolveTouchMode: () => "managed",
+    resolveTouchAxisLockMode: () => "dominant",
+    resolvePreventDefaultWhenHandled: () => true,
+    resolveBodyViewport: () => viewportRef.value,
+    resolveMainViewport: () => {
+      const mainViewport = mainViewportRef.value
+      if (!mainViewport) {
+        return null
+      }
+      return {
+        scrollLeft: mainViewport.scrollLeft,
+        scrollWidth: mainViewport.scrollWidth,
+        clientWidth: mainViewport.clientWidth,
+      }
+    },
+    setHandledScrollTop: (nextTop: number) => {
+      applyHandledScrollTop(nextTop)
+    },
+    setHandledScrollLeft: (nextLeft: number) => {
+      applyHandledScrollLeft(nextLeft)
+    },
+    syncLinkedScroll: (nextTop: number) => {
+      syncLinkedScroll(nextTop)
+    },
+    scheduleLinkedScrollSyncLoop: () => {
+      scheduleLinkedScrollSyncLoop()
+    },
+  })
+  : {
+    applyPanDeltaToViewports: () => ({ consumedX: false, consumedY: false, consumedAny: false }),
+    onPointerDown: () => {},
+    onPointerMove: () => {},
+    onPointerUp: () => {},
+    onPointerCancel: () => {},
+    onTouchStart: () => {},
+    onTouchMove: () => {},
+    onTouchEnd: () => {},
+    onTouchCancel: () => {},
+    reset: () => {},
+  }
 
 const mainViewportScrollLifecycle = useDataGridViewportScrollLifecycle({
   isContextMenuVisible: () => false,
@@ -1441,7 +1639,10 @@ const grid = useAffinoDataGrid<GridRow>({
       base: baseRowHeight.value,
     },
     interactions: false,
-    headerFilters: false,
+    headerFilters: {
+      enabled: props.enableFiltering,
+      maxUniqueValues: 500,
+    },
     feedback: false,
     statusBar: false,
     tree: {
@@ -1522,6 +1723,10 @@ const selectedVisibleRowsCount = computed(() => (
   ), 0)
 ))
 
+const selectedVisibleRowKeys = computed(() => (
+  visibleRowSelectionKeys.value.filter(rowKey => selectedRowKeySet.value.has(rowKey))
+))
+
 const allVisibleRowsSelected = computed(() => (
   visibleRowSelectionKeys.value.length > 0 && selectedVisibleRowsCount.value === visibleRowSelectionKeys.value.length
 ))
@@ -1568,13 +1773,28 @@ const columnLabelByKey = computed(() => {
 })
 
 const activeFilters = computed(() => (
-  Object.entries(columnFilters)
-    .map(([key, rawValue]) => ({
-      key,
-      label: columnLabelByKey.value.get(key) ?? key,
-      value: rawValue.trim(),
-    }))
-    .filter(item => item.value.length > 0)
+  [
+    ...Object.entries(columnFilters)
+      .map(([key, rawValue]) => ({
+        key: `text:${key}`,
+        label: columnLabelByKey.value.get(key) ?? key,
+        value: rawValue.trim(),
+      }))
+      .filter(item => item.value.length > 0),
+    ...coreColumns.value
+      .map((column) => {
+        const selection = resolveColumnUniqueSelection(column.key)
+        if (selection.total <= 0 || selection.selected <= 0 || selection.selected >= selection.total) {
+          return null
+        }
+        return {
+          key: `set:${column.key}`,
+          label: column.label ?? column.key,
+          value: `${selection.selected}/${selection.total} values`,
+        }
+      })
+      .filter((item): item is { key: string; label: string; value: string } => item !== null),
+  ]
     .sort((left, right) => left.label.localeCompare(right.label))
 ))
 
@@ -1606,6 +1826,26 @@ const groupByPersistSignature = computed(() => {
   const fields = (groupBy?.fields ?? []).join("|")
   const expanded = groupBy?.expandedByDefault === false ? "0" : "1"
   return `${fields}::${expanded}`
+})
+
+const headerContextColumnLabel = computed(() => {
+  const columnKey = headerContextMenuColumnKey.value
+  if (!columnKey) {
+    return "column"
+  }
+  return columnLabelByKey.value.get(columnKey) ?? columnKey
+})
+
+const headerContextColumnFilterable = computed(() => {
+  const columnKey = headerContextMenuColumnKey.value
+  if (!columnKey) {
+    return false
+  }
+  const column = coreColumns.value.find(entry => entry.key === columnKey)
+  if (!column) {
+    return false
+  }
+  return isColumnFilterable(column)
 })
 
 const headerContextColumnIsGrouped = computed(() => {
@@ -1685,6 +1925,9 @@ function isColumnKeySortable(columnKey: string): boolean {
 }
 
 function normalizePin(pin: GridColumn["pin"] | ResolvedColumn["pin"]): "left" | "right" | "none" {
+  if (isMobile.value) {
+    return "none"
+  }
   if (pin === "left" || pin === "right") {
     return pin
   }
@@ -2310,16 +2553,270 @@ function handleMainHeaderWheel(event: WheelEvent) {
   managedWheelScroll.onBodyViewportWheel(event)
 }
 
+function handleTouchStart(event: TouchEvent) {
+  managedTouchScroll.onTouchStart(event)
+}
+
+function handleTouchMove(event: TouchEvent) {
+  managedTouchScroll.onTouchMove(event)
+}
+
+function handleTouchEnd(event: TouchEvent) {
+  managedTouchScroll.onTouchEnd(event)
+}
+
+function handleTouchCancel(event: TouchEvent) {
+  managedTouchScroll.onTouchCancel(event)
+}
+
+function handleTouchPointerDown(event: PointerEvent) {
+  if (event.pointerType !== "touch") {
+    return
+  }
+  managedTouchScroll.onPointerDown(event)
+}
+
+function handleTouchPointerMove(event: PointerEvent) {
+  if (event.pointerType !== "touch") {
+    return
+  }
+  managedTouchScroll.onPointerMove(event)
+}
+
+function handleTouchPointerUp(event: PointerEvent) {
+  if (event.pointerType !== "touch") {
+    return
+  }
+  managedTouchScroll.onPointerUp(event)
+}
+
+function handleTouchPointerCancel(event: PointerEvent) {
+  if (event.pointerType !== "touch") {
+    return
+  }
+  managedTouchScroll.onPointerCancel(event)
+}
+
+function handleValueFilterFieldKeydown(event: KeyboardEvent) {
+  if (event.key === "Escape") {
+    return
+  }
+  event.stopPropagation()
+}
+
+function handleHeaderContextMenuKeydown(event: KeyboardEvent) {
+  if (event.key !== "Escape") {
+    return
+  }
+
+  if (typeof document !== "undefined") {
+    const hasOpenSubmenu = Boolean(document.querySelector(".ui-submenu-content[data-state='open']"))
+    if (hasOpenSubmenu) {
+      return
+    }
+  }
+
+  event.preventDefault()
+  event.stopPropagation()
+  closeHeaderContextMenu()
+}
+
 function closeHeaderContextMenu() {
   const controller = headerMenuRef.value?.controller
   if (controller) {
     controller.close("programmatic")
   }
   headerContextMenuColumnKey.value = null
+  headerContextUniqueFilterQuery.value = ""
+  headerContextValueDraftSelectedKeys.value = new Set()
+  headerContextValueDraftTotalKeys.value = new Set()
 }
 
 function selectHeaderContextColumn(columnKey: string) {
   headerContextMenuColumnKey.value = columnKey
+  headerContextUniqueFilterQuery.value = ""
+  initializeHeaderContextFilterDraft(columnKey)
+}
+
+function resolveHeaderFiltersApi() {
+  return grid.features.headerFilters ?? null
+}
+
+function sanitizeFieldToken(value: string): string {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+  return normalized || "field"
+}
+
+const headerContextFieldToken = computed(() => {
+  const columnKey = headerContextMenuColumnKey.value
+  return sanitizeFieldToken(columnKey ?? "column")
+})
+
+function resolveValueFilterCheckboxId(entryKey: string): string {
+  return `grid-value-filter-item-${headerContextFieldToken.value}-${sanitizeFieldToken(entryKey)}`
+}
+
+function initializeHeaderContextFilterDraft(columnKey: string) {
+  const headerFilters = resolveHeaderFiltersApi()
+  if (!headerFilters) {
+    headerContextValueDraftSelectedKeys.value = new Set()
+    headerContextValueDraftTotalKeys.value = new Set()
+    return
+  }
+  const values = headerFilters.getUniqueValues(columnKey)
+  headerContextValueDraftSelectedKeys.value = new Set(
+    values
+      .filter(entry => entry.selected)
+      .map(entry => entry.key),
+  )
+  headerContextValueDraftTotalKeys.value = new Set(values.map(entry => entry.key))
+}
+
+function resetHeaderContextFilterDraft() {
+  const columnKey = headerContextMenuColumnKey.value
+  if (!columnKey) {
+    headerContextValueDraftSelectedKeys.value = new Set()
+    headerContextValueDraftTotalKeys.value = new Set()
+    return
+  }
+  initializeHeaderContextFilterDraft(columnKey)
+}
+
+function resolveColumnUniqueSelection(columnKey: string): { selected: number; total: number } {
+  const headerFilters = resolveHeaderFiltersApi()
+  if (!headerFilters || !props.enableFiltering) {
+    return { selected: 0, total: 0 }
+  }
+  const values = headerFilters.getUniqueValues(columnKey)
+  const total = values.length
+  if (total === 0) {
+    return { selected: 0, total: 0 }
+  }
+  const selected = values.reduce((count, entry) => count + (entry.selected ? 1 : 0), 0)
+  return { selected, total }
+}
+
+const headerContextUniqueValues = computed(() => {
+  const columnKey = headerContextMenuColumnKey.value
+  if (!columnKey || !headerContextColumnFilterable.value || !props.enableFiltering) {
+    return []
+  }
+  const headerFilters = resolveHeaderFiltersApi()
+  if (!headerFilters) {
+    return []
+  }
+  const query = headerContextUniqueFilterQuery.value.trim().toLowerCase()
+  const values = headerFilters.getUniqueValues(columnKey).map(entry => ({
+    ...entry,
+    selected: headerContextValueDraftSelectedKeys.value.has(entry.key),
+  }))
+  if (!query) {
+    return values
+  }
+  return values.filter(entry => entry.label.toLowerCase().includes(query))
+})
+
+const headerContextFilterDraftDirty = computed(() => {
+  const columnKey = headerContextMenuColumnKey.value
+  if (!columnKey) {
+    return false
+  }
+  const headerFilters = resolveHeaderFiltersApi()
+  if (!headerFilters) {
+    return false
+  }
+  const liveSelected = new Set(
+    headerFilters
+      .getUniqueValues(columnKey)
+      .filter(entry => entry.selected)
+      .map(entry => entry.key),
+  )
+  return !setsEqual(liveSelected, headerContextValueDraftSelectedKeys.value)
+})
+
+function commitHeaderValueFilterMutation() {
+  refreshViewportAfterFilterMutation()
+  schedulePersistTableSettings()
+}
+
+function toggleHeaderContextFilterValue(valueKey: string, event: Event) {
+  const target = event.target as HTMLInputElement | null
+  if (!target || !valueKey || !props.enableFiltering || !headerContextColumnFilterable.value) {
+    return
+  }
+  const next = new Set(headerContextValueDraftSelectedKeys.value)
+  if (target.checked) {
+    next.add(valueKey)
+  } else {
+    next.delete(valueKey)
+  }
+  headerContextValueDraftSelectedKeys.value = next
+}
+
+function selectAllHeaderContextFilterValues() {
+  if (!props.enableFiltering || !headerContextColumnFilterable.value) {
+    return
+  }
+  headerContextValueDraftSelectedKeys.value = new Set(headerContextValueDraftTotalKeys.value)
+}
+
+function clearHeaderContextFilterValues() {
+  if (!props.enableFiltering || !headerContextColumnFilterable.value) {
+    return
+  }
+  headerContextValueDraftSelectedKeys.value = new Set()
+}
+
+function applyHeaderContextFilterValues() {
+  const columnKey = headerContextMenuColumnKey.value
+  if (!columnKey || !props.enableFiltering || !headerContextColumnFilterable.value) {
+    return
+  }
+  const headerFilters = resolveHeaderFiltersApi()
+  if (!headerFilters) {
+    return
+  }
+  const values = headerFilters.getUniqueValues(columnKey)
+  const selectedKeys = new Set(headerContextValueDraftSelectedKeys.value)
+
+  if (values.length === 0) {
+    return
+  }
+
+  if (selectedKeys.size === 0) {
+    headerFilters.clearValues(columnKey)
+    commitHeaderValueFilterMutation()
+    resetHeaderContextFilterDraft()
+    closeHeaderContextMenu()
+    return
+  }
+
+  if (selectedKeys.size >= values.length) {
+    headerFilters.selectAllValues(columnKey)
+    commitHeaderValueFilterMutation()
+    resetHeaderContextFilterDraft()
+    closeHeaderContextMenu()
+    return
+  }
+
+  headerFilters.clearValues(columnKey)
+  values.forEach((entry) => {
+    if (!selectedKeys.has(entry.key)) {
+      return
+    }
+    headerFilters.setValueSelected(columnKey, entry.value, true, { mode: "append" })
+  })
+  commitHeaderValueFilterMutation()
+  resetHeaderContextFilterDraft()
+  closeHeaderContextMenu()
+}
+
+function cancelHeaderContextFilterValues() {
+  resetHeaderContextFilterDraft()
 }
 
 function resetColumnsToDefaults() {
@@ -2691,6 +3188,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   managedWheelScroll.reset()
+  managedTouchScroll.reset()
   linkedPaneScrollSync.reset()
   resizeClickGuard.dispose()
   gridRootRef.value?.style.removeProperty("--ui-affino-linked-scroll-top")
@@ -2927,7 +3425,10 @@ watch(
 watch(
   [selectedRowKeySet, () => visibleRowSelectionKeys.value],
   ([rowKeys]) => {
-    emit("selection-change", { rowKeys: resolveSelectionKeysForEmission(rowKeys) })
+    emit("selection-change", {
+      rowKeys: resolveSelectionKeysForEmission(rowKeys),
+      selectedVisibleRowKeys: selectedVisibleRowKeys.value,
+    })
     schedulePersistSelection(rowKeys)
   },
   { immediate: true },
@@ -3057,6 +3558,8 @@ function resetAllFilters() {
   Object.keys(columnFilters).forEach((key) => {
     columnFilters[key] = ""
   })
+  grid.features.filtering.clear()
+  lastAppliedFilterSignature = null
   applyFilters()
 }
 
@@ -3474,7 +3977,11 @@ function sortDirection(columnKey: string): "asc" | "desc" | null {
 }
 
 function isColumnFiltered(columnKey: string): boolean {
-  return String(columnFilters[columnKey] ?? "").trim().length > 0
+  if (String(columnFilters[columnKey] ?? "").trim().length > 0) {
+    return true
+  }
+  const selection = resolveColumnUniqueSelection(columnKey)
+  return selection.total > 0 && selection.selected > 0 && selection.selected < selection.total
 }
 
 function isColumnGrouped(columnKey: string): boolean {
@@ -3887,6 +4394,170 @@ defineExpose({
   z-index: 1300;
   min-width: 12rem;
   max-width: min(20rem, calc(100vw - 1rem));
+}
+
+.ui-affino-grid__value-filter-menu {
+  min-width: 16rem;
+  max-width: min(20rem, calc(100vw - 1rem));
+}
+
+.ui-affino-grid__value-filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.ui-affino-grid__value-filter-search {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.4rem;
+  padding: 0.35rem 0.45rem;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  background: #fff;
+  color: #334155;
+}
+
+.dark .ui-affino-grid__value-filter-search {
+  border-color: var(--ui-affino-dark-border, rgba(115, 115, 115, 0.32));
+  background: var(--ui-affino-dark-bg-input, #262626);
+  color: var(--ui-affino-dark-text, #e5e5e5);
+}
+
+.ui-affino-grid__value-filter-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.ui-affino-grid__value-filter-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.ui-affino-grid__value-filter-action {
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: 0.4rem;
+  background: #fff;
+  color: #334155;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.22rem 0.42rem;
+}
+
+.ui-affino-grid__value-filter-action:hover {
+  border-color: rgba(100, 116, 139, 0.72);
+  background: rgba(241, 245, 249, 0.95);
+}
+
+.ui-affino-grid__value-filter-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ui-affino-grid__value-filter-action--primary {
+  border-color: rgba(37, 99, 235, 0.5);
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
+.ui-affino-grid__value-filter-action--primary:not(:disabled):hover {
+  border-color: rgba(37, 99, 235, 0.72);
+  background: rgba(37, 99, 235, 0.18);
+}
+
+.dark .ui-affino-grid__value-filter-action {
+  border-color: var(--ui-affino-dark-border, rgba(115, 115, 115, 0.32));
+  background: var(--ui-affino-dark-bg-input, #262626);
+  color: var(--ui-affino-dark-text-strong, #d4d4d4);
+}
+
+.dark .ui-affino-grid__value-filter-action:hover {
+  border-color: rgba(163, 163, 163, 0.6);
+  background: rgba(64, 64, 64, 0.75);
+}
+
+.dark .ui-affino-grid__value-filter-action--primary {
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(14, 116, 144, 0.32);
+  color: #67e8f9;
+}
+
+.dark .ui-affino-grid__value-filter-action--primary:not(:disabled):hover {
+  border-color: rgba(56, 189, 248, 0.72);
+  background: rgba(8, 145, 178, 0.38);
+}
+
+.ui-affino-grid__value-filter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-height: 13rem;
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.ui-affino-grid__value-filter-entry {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 0.35rem;
+  padding: 0.2rem 0.28rem;
+  font-size: 0.7rem;
+  color: #334155;
+}
+
+.ui-affino-grid__value-filter-entry:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.dark .ui-affino-grid__value-filter-entry {
+  color: var(--ui-affino-dark-text, #e5e5e5);
+}
+
+.dark .ui-affino-grid__value-filter-entry:hover {
+  background: rgba(82, 82, 82, 0.42);
+}
+
+.ui-affino-grid__value-filter-entry input[type="checkbox"] {
+  width: 0.9rem;
+  height: 0.9rem;
+  accent-color: #2563eb;
+}
+
+.dark .ui-affino-grid__value-filter-entry input[type="checkbox"] {
+  accent-color: #38bdf8;
+}
+
+.ui-affino-grid__value-filter-entry-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-affino-grid__value-filter-entry-count {
+  font-size: 0.66rem;
+  color: #64748b;
+}
+
+.dark .ui-affino-grid__value-filter-entry-count {
+  color: var(--ui-affino-dark-text-muted, #a3a3a3);
+}
+
+.ui-affino-grid__value-filter-empty {
+  font-size: 0.7rem;
+  color: #64748b;
+  padding: 0.22rem 0.1rem;
+}
+
+.dark .ui-affino-grid__value-filter-empty {
+  color: var(--ui-affino-dark-text-muted, #a3a3a3);
 }
 
 .ui-affino-grid__header-menu-anchor {

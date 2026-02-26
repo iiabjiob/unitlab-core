@@ -44,6 +44,15 @@ If you already know the platform, use this exact sequence:
   ```
   - Copy bundle and image archive to RPi (`/tmp` first, then move with `sudo` to `/opt/unitlab/releases` and `/opt/unitlab`).
 
+  ```bash
+  scp dist-release/release-images-<timestamp>.tar pi@<rpi-ip>:/tmp/
+  scp -r dist-release/unitlab-core-rpi-runtime-<timestamp> pi@<rpi-ip>:/tmp/
+
+  sudo mv /tmp/unitlab-core-rpi-runtime-<timestamp> /opt/unitlab/releases/
+  sudo mv /tmp/release-images-<timestamp>.tar /opt/unitlab/
+  ```
+  
+
 3. Configure env
   - Create/update shared env files:
   ```bash

@@ -13,7 +13,7 @@
       :can-resume-active-test-run="canResumeActiveTestRun"
       :can-allocate-selected="selectedUnassignedSignalIds.length > 0 || allocatingSelected"
       :can-deallocate-selected="selectedAllocatedSignalIds.length > 0 || deallocatingSelected"
-      :can-run-test="selectedAllocatedPhysicalRows.length > 0 || isTestRunBusy"
+      :can-run-test="selectedVisibleAllocatedPhysicalRows.length > 0 || isTestRunBusy"
       :is-test-run-busy="isTestRunBusy"
       :test-run-toggle-mode="testRunToggleMode"
       :test-run-interval-ms="testRunIntervalMs"
@@ -194,6 +194,7 @@ const scopeId = "signals:allocations"
 const importModalOpen = ref(false)
 const exportModalOpen = ref(false)
 const selectedRowKeys = ref<string[]>([])
+const selectedVisibleRowKeys = ref<string[]>([])
 const allocatingSelected = ref(false)
 const deallocatingSelected = ref(false)
 const deletingSelected = ref(false)
@@ -371,6 +372,9 @@ function setSelectedRowKeys(nextRowKeys: readonly string[], options?: { persist?
     return
   }
   selectedRowKeys.value = normalized
+  if (normalized.length === 0) {
+    selectedVisibleRowKeys.value = []
+  }
   if (options?.persist === false) {
     return
   }
@@ -572,6 +576,24 @@ const selectedSwitchgearDoCount = computed(() => (
 
 const selectedAllocatedPhysicalRows = computed(() => (
   selectedAllocationRows.value.filter((row) => (
+    Number.isFinite(row.channel_id as number)
+    && Number.isFinite(row.device_id as number)
+    && Boolean(row.unit_id)
+  ))
+))
+
+const selectedVisibleAllocationRows = computed(() => (
+  selectedVisibleRowKeys.value
+    .map((rowKey) => {
+      const signalId = signalIdFromRowKey(rowKey)
+      if (signalId === null) return null
+      return allocationRowBySignalId.value.get(signalId) ?? null
+    })
+    .filter((row): row is SignalAllocationRow => Boolean(row))
+))
+
+const selectedVisibleAllocatedPhysicalRows = computed(() => (
+  selectedVisibleAllocationRows.value.filter((row) => (
     Number.isFinite(row.channel_id as number)
     && Number.isFinite(row.device_id as number)
     && Boolean(row.unit_id)
@@ -1739,8 +1761,9 @@ function handleRowClick() {
   return
 }
 
-function handleSelectionChange(payload: { rowKeys: string[] }) {
+function handleSelectionChange(payload: { rowKeys: string[]; selectedVisibleRowKeys?: string[] }) {
   setSelectedRowKeys(payload.rowKeys)
+  selectedVisibleRowKeys.value = payload.selectedVisibleRowKeys ?? payload.rowKeys
 }
 
 function openImportModal() {
@@ -1942,7 +1965,7 @@ async function controlActiveTestRun(action: "pause" | "resume" | "stop") {
 async function startTestRunJob(options?: { resumeFromCursor?: boolean; resumeJobId?: string }) {
   if (testRunInProgress.value || Boolean(activeTestRunJob.value)) return
 
-  const queue = selectedAllocatedPhysicalRows.value.filter(row => canControl(row))
+  const queue = selectedVisibleAllocatedPhysicalRows.value.filter(row => canControl(row))
   if (!queue.length) {
     toastStore.info("Selected rows have no controllable DO channels.")
     return
