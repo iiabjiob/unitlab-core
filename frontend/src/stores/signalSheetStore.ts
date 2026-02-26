@@ -21,8 +21,6 @@ import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping
 
 const logger = getLogger("SIGNAL_SHEET")
 
-type AllocationLoadOptions = { force?: boolean; ttlMs?: number; initialPageSize?: number }
-
 export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   const workspaceStore = useWorkspaceStore()
   const channelStore = useChannelStore()
@@ -53,7 +51,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   const allocationMutationVersionBySignalId = new Map<number, number>()
   let allocationMutationVersionCounter = 0
   const ALLOCATION_BATCH_SIZE = 200
-  const ALLOCATION_INITIAL_RENDER_PAGE_SIZE = 160
   const ALLOCATION_REFRESH_PAGE_SIZE = 400
   const ALLOCATION_REFRESH_MIN_PAGE_SIZE = 50
   const TESTED_AT_PATCH_FLUSH_MS = 160
@@ -123,17 +120,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
     const message = String(error.message ?? "")
     return /content_length_mismatch|content-length|length\s*mismatch|err_network|econnreset|etimedout/i.test(message)
-  }
-
-  function normalizeInitialAllocationPageSize(value: unknown): number {
-    const parsed = Number(value)
-    if (!Number.isFinite(parsed)) {
-      return ALLOCATION_INITIAL_RENDER_PAGE_SIZE
-    }
-    return Math.max(
-      ALLOCATION_REFRESH_MIN_PAGE_SIZE,
-      Math.min(ALLOCATION_REFRESH_PAGE_SIZE, Math.floor(parsed)),
-    )
   }
 
   async function fetchAllocationPageAdaptive(
@@ -732,7 +718,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     return refreshPresets()
   }
 
-  async function refreshAllocations(options?: AllocationLoadOptions) {
+  async function refreshAllocations() {
     devPerfIncrement("signalSheet.refreshAllocations.calls")
     const workspaceId = requireWorkspaceId()
     if (allocationsInFlight && allocationsInFlightWorkspaceId === workspaceId) {
@@ -744,57 +730,40 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       const endMeasure = devPerfMeasureStart("signalSheet.refreshAllocations")
       loadingAllocations.value = true
       try {
-        const rows: SignalAllocationRow[] = []
-        let offset = 0
-        let pageSize = ALLOCATION_REFRESH_PAGE_SIZE
-        const initialPageSize = normalizeInitialAllocationPageSize(options?.initialPageSize)
+        let rows: SignalAllocationRow[] | null = null
+        let usedStream = false
 
-        const { rows: firstPageRows, nextPageSize: firstPageSize } = await fetchAllocationPageAdaptive(
-          workspaceId,
-          0,
-          initialPageSize,
-        )
-
-        if (workspaceStore.activeWorkspaceId !== workspaceId) {
-          endMeasure({ workspaceId, stale: true, mode: "paged" })
-          return allocationRows.value
+        try {
+          rows = await SignalSheetAPI.streamAllocations(workspaceId)
+          usedStream = rows !== null
+        } catch {
+          rows = null
         }
 
-        if (firstPageRows.length > 0) {
-          rows.push(...firstPageRows)
-          replaceAllocationRows(rows)
-          recomputeSheetAllocatedCount()
-        } else {
-          replaceAllocationRows([])
-          recomputeSheetAllocatedCount()
-          lastAllocationsLoadedAt.value = Date.now()
-          devPerfIncrement("signalSheet.refreshAllocations.completed")
-          endMeasure({ workspaceId, count: 0, mode: "paged" })
-          return rows
-        }
-
-        pageSize = Math.max(firstPageSize, ALLOCATION_REFRESH_PAGE_SIZE)
-        offset = firstPageRows.length
-
-        while (true) {
-          const { rows: pageRows, nextPageSize } = await fetchAllocationPageAdaptive(workspaceId, offset, pageSize)
-          pageSize = nextPageSize
-          if (workspaceStore.activeWorkspaceId !== workspaceId) {
-            endMeasure({ workspaceId, stale: true, mode: "paged" })
-            return allocationRows.value
+        if (rows === null) {
+          rows = []
+          let offset = 0
+          let pageSize = ALLOCATION_REFRESH_PAGE_SIZE
+          while (true) {
+            const { rows: pageRows, nextPageSize } = await fetchAllocationPageAdaptive(workspaceId, offset, pageSize)
+            pageSize = nextPageSize
+            if (workspaceStore.activeWorkspaceId !== workspaceId) {
+              endMeasure({ workspaceId, stale: true, mode: "paged" })
+              return allocationRows.value
+            }
+            if (pageRows.length === 0) {
+              break
+            }
+            rows.push(...pageRows)
+            if (pageRows.length < pageSize) {
+              break
+            }
+            offset += pageRows.length
           }
-          if (pageRows.length === 0) {
-            break
-          }
-          rows.push(...pageRows)
-          if (pageRows.length < pageSize) {
-            break
-          }
-          offset += pageRows.length
         }
 
         if (workspaceStore.activeWorkspaceId !== workspaceId) {
-          endMeasure({ workspaceId, stale: true, mode: "paged" })
+          endMeasure({ workspaceId, stale: true, mode: usedStream ? "stream" : "paged" })
           return allocationRows.value
         }
         replaceAllocationRows(rows)
@@ -804,7 +773,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         endMeasure({
           workspaceId,
           count: rows.length,
-          mode: "paged",
+          mode: usedStream ? "stream" : "paged",
         })
         return rows
       } finally {
@@ -824,7 +793,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
   }
 
-  async function ensureAllocationsLoaded(options?: AllocationLoadOptions) {
+  async function ensureAllocationsLoaded(options?: { force?: boolean; ttlMs?: number }) {
     devPerfIncrement("signalSheet.ensureAllocationsLoaded.calls")
     const workspaceId = requireWorkspaceId()
     const force = options?.force ?? false
@@ -841,7 +810,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
 
     devPerfIncrement("signalSheet.ensureAllocationsLoaded.refreshes")
-    return refreshAllocations(options)
+    return refreshAllocations()
   }
 
   async function importSheet(file: File, options?: {
