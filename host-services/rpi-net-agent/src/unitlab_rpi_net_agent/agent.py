@@ -85,14 +85,30 @@ class CoreNetworkAgent:
         hex_only = "".join(ch for ch in raw_suffix if ch.lower() in "0123456789abcdef")
         return hex_only[-4:].upper().rjust(4, "0")
 
+    @staticmethod
+    def _sanitize_ap_prefix(prefix: str | None, fallback: str) -> str:
+        value = (prefix or fallback).strip()
+        value = value.rstrip("\\")
+        return value or fallback
+
     async def _initialize_ap_identity(self) -> None:
         self._mac = await self.nmcli.get_mac()
         raw_suffix = await self.nmcli.get_mac_suffix()
         self._suffix = self._normalize_suffix(raw_suffix)
         if raw_suffix != self._suffix:
             logger.warning("Normalized MAC suffix | raw=%s normalized=%s", raw_suffix, self._suffix)
-        self._ap_ssid = f"{self.config.ap_ssid_prefix}-{self._suffix}"
-        self._ap_password = f"{self.config.ap_password_prefix}{self._suffix}"
+        ssid_prefix = self._sanitize_ap_prefix(self.config.ap_ssid_prefix, "[unitlab]-core")
+        password_prefix = self._sanitize_ap_prefix(self.config.ap_password_prefix, "pwd!")
+        if ssid_prefix != self.config.ap_ssid_prefix:
+            logger.warning("Sanitized AP SSID prefix | raw=%s sanitized=%s", self.config.ap_ssid_prefix, ssid_prefix)
+        if password_prefix != self.config.ap_password_prefix:
+            logger.warning(
+                "Sanitized AP password prefix | raw=%s sanitized=%s",
+                self.config.ap_password_prefix,
+                password_prefix,
+            )
+        self._ap_ssid = f"{ssid_prefix}-{self._suffix}"
+        self._ap_password = f"{password_prefix}{self._suffix}"
         self._snapshot.ap.ssid = self._ap_ssid
         self._snapshot.ap.password = self._ap_password
         self._snapshot.mac = self._mac

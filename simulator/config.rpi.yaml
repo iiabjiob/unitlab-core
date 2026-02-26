@@ -1,0 +1,29 @@
+broker:
+  host: 10.42.0.1
+  port: 1883
+  keepalive: 30
+  username: null
+  password: null
+
+devices:
+  DO:
+    count: 5
+    signals: 32
+    interval: 2.0
+  DI:
+    count: 1
+    signals: 32
+    interval: 1.0
+  AO:
+    count: 1
+    signals: 10
+    interval: 3.0
+
+behavior:
+  randomize: false
+  heartbeat: 5.0
+  reconnect_chance: 0.0
+  packet_loss: 0.0
+  flaky_device_ratio: 0.0
+  flaky_exchange_prob: 0.0
+  command_error_rate: 0.0
