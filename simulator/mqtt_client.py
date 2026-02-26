@@ -245,6 +245,7 @@ class SimulatedDeviceBase:
         self._tasks: list[asyncio.Task[None]] = []
         self._aux_tasks: set[asyncio.Task[None]] = set()
         self._lock = asyncio.Lock()
+        self._message_lock = asyncio.Lock()
         self._reconnect_task: Optional[asyncio.Task[None]] = None
         self._suspend_auto_reconnect = False
         self._is_flaky_device = self._rng.random() < self.behavior.flaky_device_ratio
@@ -319,15 +320,16 @@ class SimulatedDeviceBase:
         )
 
     async def _on_message(self, topic: str, payload: bytes) -> None:
-        if not payload:
-            self._logger.debug("Received empty payload from %s", topic)
-            return
-        try:
-            header, body = parse_packet(payload)
-        except ValueError as exc:
-            self._logger.warning("Failed to parse packet from %s: %s", topic, exc)
-            return
-        await self.handle_packet(topic, header, body)
+        async with self._message_lock:
+            if not payload:
+                self._logger.debug("Received empty payload from %s", topic)
+                return
+            try:
+                header, body = parse_packet(payload)
+            except ValueError as exc:
+                self._logger.warning("Failed to parse packet from %s: %s", topic, exc)
+                return
+            await self.handle_packet(topic, header, body)
 
     # --- core loops -----------------------------------------------------
     async def _state_loop(self) -> None:

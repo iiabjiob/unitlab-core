@@ -2,6 +2,7 @@ import { watch, type ComputedRef } from "vue"
 import type { RouteLocationNormalizedLoaded } from "vue-router"
 
 type RefreshOptions = { force?: boolean }
+type AllocationLoadOptions = { force?: boolean; ttlMs?: number; initialPageSize?: number }
 
 type Params = {
   workspaceId: ComputedRef<number | null>
@@ -10,7 +11,7 @@ type Params = {
   route: RouteLocationNormalizedLoaded
   ensureRuntimeCatalogLoaded: () => Promise<void>
   ensureSignalSheetLoaded: (options?: { force?: boolean; ttlMs?: number }) => Promise<unknown>
-  ensureAllocationsLoaded: (options?: { force?: boolean; ttlMs?: number }) => Promise<unknown>
+  ensureAllocationsLoaded: (options?: AllocationLoadOptions) => Promise<unknown>
   clearRealtimeTestedAtWorkspace: (workspaceId: number) => void
   resetSignalSheetState: () => void
   restoreSelectedRowKeysFromStorage: () => void

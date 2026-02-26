@@ -211,6 +211,10 @@ const testRunSkipped = ref(0)
 const testRunControlBusy = ref(false)
 const MAX_RESTORED_SELECTION_KEYS = 2000
 const INITIAL_LOADING_PLACEHOLDER_DEBOUNCE_MS = 260
+const GRID_ROW_HEIGHT_PX = 34
+const GRID_OVERSCAN_ROWS = 10
+const GRID_MIN_INITIAL_FETCH_ROWS = 60
+const GRID_LAYOUT_RESERVED_HEIGHT_PX = 280
 const missingChannelHydrationInFlight = new Set<number>()
 let allocationRevisionSyncFrame: number | null = null
 let initialLoadingPlaceholderTimer: ReturnType<typeof setTimeout> | null = null
@@ -328,6 +332,17 @@ const gridTableId = computed(() => {
   const sheetId = activeSignalSheet.value ? String(activeSignalSheet.value.id) : "none"
   return `signals-allocation-grid-${workspaceId}-${sheetId}`
 })
+
+function resolveInitialAllocationPageSize(): number {
+  if (typeof window === "undefined") {
+    return GRID_MIN_INITIAL_FETCH_ROWS
+  }
+
+  const viewportHeight = Math.max(480, Math.floor(window.innerHeight || 0))
+  const estimatedGridViewportHeight = Math.max(220, viewportHeight - GRID_LAYOUT_RESERVED_HEIGHT_PX)
+  const visibleRows = Math.ceil(estimatedGridViewportHeight / GRID_ROW_HEIGHT_PX)
+  return Math.max(GRID_MIN_INITIAL_FETCH_ROWS, visibleRows + (GRID_OVERSCAN_ROWS * 2))
+}
 
 function restoreSelectedRowKeysFromStorage() {
   if (typeof window === "undefined") {
@@ -2238,7 +2253,10 @@ const { refreshAll } = useSignalsPageLifecycle({
   route,
   ensureRuntimeCatalogLoaded,
   ensureSignalSheetLoaded: (options) => signalSheetStore.ensureSheetLoaded(options),
-  ensureAllocationsLoaded: (options) => signalSheetStore.ensureAllocationsLoaded(options),
+  ensureAllocationsLoaded: (options) => signalSheetStore.ensureAllocationsLoaded({
+    ...options,
+    initialPageSize: resolveInitialAllocationPageSize(),
+  }),
   clearRealtimeTestedAtWorkspace: (workspaceId) => testedAtRealtimeStore.clearWorkspace(workspaceId),
   resetSignalSheetState: () => signalSheetStore.resetState(),
   restoreSelectedRowKeysFromStorage,

@@ -66,9 +66,16 @@ If you already know the platform, use this exact sequence:
 4. Deploy runtime
   - Offline mode:
   ```bash
+  # Option A: bundle/image already moved into /opt
   sudo /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp>/scripts/deploy-rpi.sh \
     --bundle-dir /opt/unitlab/releases/unitlab-core-rpi-runtime-<timestamp> \
     --images-archive /opt/unitlab/release-images-<timestamp>.tar
+
+  # Option B: deploy directly from /tmp (no pre-move required)
+  sudo /tmp/unitlab-core-rpi-runtime-<timestamp>/scripts/deploy-rpi.sh \
+    --bundle-dir /tmp/unitlab-core-rpi-runtime-<timestamp> \
+    --images-archive /tmp/release-images-<timestamp>.tar
+
   ```
 
 5. Install host agents

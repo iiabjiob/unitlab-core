@@ -12,6 +12,7 @@ MAX_VOLUME_COUNT_WARN="${MAX_VOLUME_COUNT_WARN:-20}"
 HEALTH_STARTUP_GRACE_SEC="${HEALTH_STARTUP_GRACE_SEC:-20}"
 HEALTH_POLL_INTERVAL_SEC="${HEALTH_POLL_INTERVAL_SEC:-2}"
 RELEASE_VERSION="${RELEASE_VERSION:-}"
+REQUIRE_TIME_SYNC="${REQUIRE_TIME_SYNC:-0}"
 
 fail_count=0
 warn_count=0
@@ -33,6 +34,7 @@ Options:
   --health-startup-grace-sec <int>  Grace wait for container health=starting (default: 20)
   --health-poll-interval-sec <int>  Poll interval during health grace wait (default: 2)
   --release-version <value>     Expected release version label (unitlab.release)
+  --require-time-sync <0|1>     Fail if chrony is not synchronised (default: 0)
   -h, --help                    Show this help
 
 Environment overrides:
@@ -40,7 +42,7 @@ Environment overrides:
   MIN_MEM_AVAILABLE_MB, MAX_DISK_USED_PCT, RESTART_LOOP_THRESHOLD,
   MAX_IMAGE_COUNT_WARN, MAX_VOLUME_COUNT_WARN,
   HEALTH_STARTUP_GRACE_SEC, HEALTH_POLL_INTERVAL_SEC,
-  RELEASE_VERSION
+  RELEASE_VERSION, REQUIRE_TIME_SYNC
 EOF
 }
 
@@ -99,6 +101,11 @@ while [[ $# -gt 0 ]]; do
     --release-version)
       [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --release-version requires a value" >&2; usage; exit 1; }
       RELEASE_VERSION="$2"
+      shift 2
+      ;;
+    --require-time-sync)
+      [[ $# -ge 2 ]] || { echo "[unitlab] ERROR: --require-time-sync requires a value" >&2; usage; exit 1; }
+      REQUIRE_TIME_SYNC="$2"
       shift 2
       ;;
     -h|--help)
@@ -192,6 +199,10 @@ if ! [[ "$HEALTH_POLL_INTERVAL_SEC" =~ ^[0-9]+$ ]]; then
   echo "[unitlab] ERROR: --health-poll-interval-sec must be integer" >&2
   exit 2
 fi
+if [[ "$REQUIRE_TIME_SYNC" != "0" && "$REQUIRE_TIME_SYNC" != "1" ]]; then
+  echo "[unitlab] ERROR: --require-time-sync must be 0 or 1" >&2
+  exit 2
+fi
 
 echo "[unitlab] Verify runtime health"
 echo "[unitlab] PROJECT_DIR=$PROJECT_DIR"
@@ -209,7 +220,11 @@ if command -v chronyc >/dev/null 2>&1; then
   if [[ -n "$tracking_output" ]] && ! grep -qi 'Not synchronised' <<<"$tracking_output"; then
     ok "time synchronised (chronyc tracking)"
   else
-    fail "time not synchronised (chronyc tracking)"
+    if [[ "$REQUIRE_TIME_SYNC" == "1" ]]; then
+      fail "time not synchronised (chronyc tracking)"
+    else
+      warn "time not synchronised (chronyc tracking); tolerated (set --require-time-sync 1 to fail)"
+    fi
   fi
 else
   warn "chronyc not installed; sync status check skipped"

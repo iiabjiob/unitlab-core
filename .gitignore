@@ -38,9 +38,18 @@ coverage
 # FastAPI
 __pycache__/
 *.pyc
+
+# Host agents (host-services) build artifacts
 host-services/**/build/
+host-services/**/build/**
 host-services/**/dist/
+host-services/**/dist/**
 host-services/**/*.egg-info/
+host-services/**/*.egg-info/**
+host-services/**/__pycache__/
+host-services/**/*.py[cod]
+host-services/**/.pytest_cache/
+host-services/**/.mypy_cache/
 
 .venv/
 .python-version
