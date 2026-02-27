@@ -58,13 +58,13 @@
           <Row label="CPU temp" :value="cpuTempText" />
           <Row
             label="Load (1m/5m/15m)"
-            tooltip="Средняя системная нагрузка за 1, 5 и 15 минут. Это не процент CPU: 1.00 примерно равен полной загрузке одного CPU-ядра."
+            tooltip="Average system load over 1, 5, and 15 minutes. This is not CPU percent: 1.00 is roughly equal to one fully utilized CPU core."
             :value="loadText"
           />
           <Row label="Memory" :value="memoryText" />
           <Row
             label="Disk (root fs)"
-            tooltip="Использование корневой файловой системы Linux (точка монтирования /), где лежат системные файлы и приложения."
+            tooltip="Usage of the Linux root filesystem (mount point /), where system files and applications are stored."
             :value="diskText"
           />
         </div>

@@ -32,12 +32,6 @@ const baseItems: SettingsNavItem[] = [
     routeName: "settings.ntp",
   },
   {
-    id: "network",
-    label: "Core Network",
-    description: "AP / STA uplink and access point lifecycle",
-    routeName: "settings.network",
-  },
-  {
     id: "updates",
     label: "Updates",
     description: "Core software updates (planned)",
@@ -64,7 +58,6 @@ const selectedId = computed<string | null>(() => {
   if (SETTINGS_SERVICE_MODE_ENABLED && name === "settings.updates") return "updates"
   if (name === "settings.ntp") return "ntp"
   if (name === "settings.diagnostics") return "diagnostics"
-  if (name === "settings.network") return "network"
   return "diagnostics"
 })
 
@@ -91,7 +84,7 @@ function handleSelect(id: string | number) {
       <p class="text-[11px] uppercase tracking-[0.26em] text-neutral-500 dark:text-neutral-400">Settings</p>
       <h2 class="mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-100">Core Services</h2>
       <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-        Host-level services for the central module (network, time sync, and future infrastructure tools).
+        Host-level services for the central module (diagnostics, time sync, and future infrastructure tools).
       </p>
     </div>
 

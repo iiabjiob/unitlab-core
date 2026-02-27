@@ -25,7 +25,6 @@ export const settingsRoutes: RouteRecordRaw[] = [
           const allowedRouteNames = new Set([
             "settings.diagnostics",
             "settings.ntp",
-            "settings.network",
             "settings.updates",
             "settings.provisioning",
           ])
@@ -34,11 +33,6 @@ export const settingsRoutes: RouteRecordRaw[] = [
           }
           return { name: "settings.diagnostics" }
         },
-      },
-      {
-        path: "network",
-        name: "settings.network",
-        component: () => import("@/pages/settings/SettingsCoreNetworkPage.vue"),
       },
       {
         path: "diagnostics",

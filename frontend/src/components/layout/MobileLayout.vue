@@ -65,7 +65,9 @@ const route = useRoute()
 const systemHealthStore = useSystemHealthStore()
 
 const status = computed(() => systemHealthStore.status)
-const statusDescription = computed(() => systemHealthStore.tooltip)
+const statusDescription = computed(() => (
+  status.value === "degraded" ? systemHealthStore.tooltip : null
+))
 
 watch(
   () => route.fullPath,

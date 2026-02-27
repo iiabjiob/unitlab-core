@@ -91,7 +91,9 @@ const signalSheetStore = useSignalSheetStore()
 const router = useRouter()
 
 const systemStatus = computed(() => systemHealthStore.status)
-const systemStatusDescription = computed(() => systemHealthStore.tooltip)
+const systemStatusDescription = computed(() => (
+  systemStatus.value === "degraded" ? systemHealthStore.tooltip : null
+))
 const onlineDevicesCount = computed(() => deviceStore.devices.filter((device) => device.status === "online").length)
 const totalChannelsCount = computed(() => channelStore.channels.length)
 

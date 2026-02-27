@@ -76,7 +76,9 @@ defineProps<{
 const systemHealthStore = useSystemHealthStore()
 
 const status = computed(() => systemHealthStore.status)
-const statusDescription = computed(() => systemHealthStore.tooltip)
+const statusDescription = computed(() => (
+  status.value === "degraded" ? systemHealthStore.tooltip : null
+))
 const compactStatusClass = computed(() => {
   if (status.value === "online") return "bg-green-400"
   if (status.value === "degraded") return "bg-amber-400"
