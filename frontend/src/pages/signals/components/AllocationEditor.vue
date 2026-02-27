@@ -69,12 +69,13 @@
       class="flex-1 min-h-0"
       :rows="gridRows"
       :columns="gridColumns"
+      :loading="loading || gridHydrationActive"
       :row-height="34"
       :overscan-rows="10"
       :overscan-columns="2"
       :enable-filtering="true"
       :enable-column-resize="true"
-      :empty-text="'No signals available.'"
+      :empty-text="gridHydrationActive ? 'Preparing table…' : 'No signals available.'"
       :row-key="rowKey"
       :show-controls="true"
       :table-id="gridTableId"
@@ -126,6 +127,24 @@
         <span v-else class="text-xs text-neutral-700 dark:text-neutral-100">{{ formatCell(value) }}</span>
       </template>
     </UiAffinoDataGrid>
+
+    <div
+      v-if="gridHydrationVisible"
+      class="rounded-xl border border-neutral-200 bg-white/90 px-3 py-2 text-xs text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-neutral-200"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <div class="mb-1 flex items-center justify-between gap-2">
+        <span class="font-medium">Preparing signal table…</span>
+        <span>{{ gridHydrationDone }} / {{ gridHydrationTotal }}</span>
+      </div>
+      <div class="h-1.5 w-full overflow-hidden rounded bg-neutral-200 dark:bg-neutral-800">
+        <div
+          class="h-full rounded bg-emerald-500 transition-[width] duration-150"
+          :style="{ width: `${gridHydrationPercent}%` }"
+        ></div>
+      </div>
+    </div>
 
     <SignalImportModal :open="importModalOpen" @close="closeImportModal" @imported="handleImported" />
     <SignalExportModal
@@ -211,9 +230,13 @@ const testRunSkipped = ref(0)
 const testRunControlBusy = ref(false)
 const MAX_RESTORED_SELECTION_KEYS = 2000
 const INITIAL_LOADING_PLACEHOLDER_DEBOUNCE_MS = 260
+const PROGRESSIVE_HYDRATION_THRESHOLD = 350
+const PROGRESSIVE_HYDRATION_BATCH_SIZE = 180
 const missingChannelHydrationInFlight = new Set<number>()
 let allocationRevisionSyncFrame: number | null = null
 let initialLoadingPlaceholderTimer: ReturnType<typeof setTimeout> | null = null
+let gridHydrationFrame: number | null = null
+let gridHydrationRunToken = 0
 const pendingAllocationRevisionSignalIds = new Set<number>()
 let pendingAllocationRevisionFullRefresh = false
 
@@ -235,6 +258,22 @@ const showInitialPageLoading = computed(() => (
   && allocationRows.value.length === 0
 ))
 const showInitialPageLoadingDebounced = ref(false)
+const gridHydrationActive = ref(false)
+const gridHydrationDone = ref(0)
+const gridHydrationTotal = ref(0)
+
+const gridHydrationVisible = computed(() => (
+  gridHydrationActive.value && gridHydrationTotal.value > 0
+))
+
+const gridHydrationPercent = computed(() => {
+  const total = Math.max(0, gridHydrationTotal.value)
+  if (total <= 0) {
+    return 0
+  }
+  const done = Math.max(0, Math.min(total, gridHydrationDone.value))
+  return Math.max(0, Math.min(100, Math.round((done / total) * 100)))
+})
 
 watch(
   showInitialPageLoading,
@@ -807,7 +846,33 @@ function createGridRow(row: SignalAllocationRow, headers: readonly string[]): Gr
   return payload
 }
 
-function rebuildGridRows() {
+function cleanupChannelResolvers(activeSignalIds: ReadonlySet<number>) {
+  channelGroupsResolverBySignalId.forEach((_, signalId) => {
+    if (!activeSignalIds.has(signalId)) {
+      channelGroupsResolverBySignalId.delete(signalId)
+    }
+  })
+}
+
+function syncSelectionWithGridRows(nextRows: readonly GridRow[]) {
+  if (selectedRowKeys.value.length > 0) {
+    const allowed = new Set(nextRows.map(item => String(item.rowId)))
+    setSelectedRowKeys(selectedRowKeys.value.filter(rowKey => allowed.has(rowKey)))
+  }
+}
+
+function cancelGridHydration() {
+  gridHydrationRunToken += 1
+  if (gridHydrationFrame !== null) {
+    cancelAnimationFrame(gridHydrationFrame)
+    gridHydrationFrame = null
+  }
+  gridHydrationActive.value = false
+  gridHydrationDone.value = 0
+  gridHydrationTotal.value = 0
+}
+
+function rebuildGridRowsImmediate() {
   devPerfIncrement("signalsUI.rebuildGridRows.calls")
   const endMeasure = devPerfMeasureStart("signalsUI.rebuildGridRows")
   const headers = sourceColumnHeaders.value
@@ -825,19 +890,80 @@ function rebuildGridRows() {
     nextRows.push(payload)
   })
 
-  channelGroupsResolverBySignalId.forEach((_, signalId) => {
-    if (!activeSignalIds.has(signalId)) {
-      channelGroupsResolverBySignalId.delete(signalId)
-    }
-  })
-
-  if (selectedRowKeys.value.length > 0) {
-    const allowed = new Set(nextRows.map(item => String(item.rowId)))
-    setSelectedRowKeys(selectedRowKeys.value.filter(rowKey => allowed.has(rowKey)))
-  }
+  cleanupChannelResolvers(activeSignalIds)
+  syncSelectionWithGridRows(nextRows)
 
   gridRows.value = nextRows
   endMeasure({ rows: nextRows.length, headers: headers.length })
+}
+
+function rebuildGridRowsProgressive() {
+  devPerfIncrement("signalsUI.rebuildGridRows.calls")
+  const endMeasure = devPerfMeasureStart("signalsUI.rebuildGridRows")
+  const runToken = ++gridHydrationRunToken
+  const headers = sourceColumnHeaders.value
+  const rowsSnapshot = [...allocationRows.value]
+  const activeSignalIds = new Set<number>()
+  const nextRows: GridRow[] = []
+
+  if (gridHydrationFrame !== null) {
+    cancelAnimationFrame(gridHydrationFrame)
+    gridHydrationFrame = null
+  }
+
+  gridRowBySignalId.clear()
+  gridRowIndexBySignalId.clear()
+  gridRows.value = []
+
+  gridHydrationActive.value = true
+  gridHydrationTotal.value = rowsSnapshot.length
+  gridHydrationDone.value = 0
+
+  let cursor = 0
+
+  const pump = () => {
+    if (runToken !== gridHydrationRunToken) {
+      return
+    }
+
+    const nextCursor = Math.min(rowsSnapshot.length, cursor + PROGRESSIVE_HYDRATION_BATCH_SIZE)
+    for (let index = cursor; index < nextCursor; index += 1) {
+      const row = rowsSnapshot[index]
+      const signalId = row.signal_id
+      activeSignalIds.add(signalId)
+      const payload = createGridRow(row, headers)
+      gridRowBySignalId.set(signalId, payload)
+      gridRowIndexBySignalId.set(signalId, index)
+      nextRows.push(payload)
+    }
+
+    cursor = nextCursor
+    gridHydrationDone.value = nextRows.length
+    gridRows.value = [...nextRows]
+
+    if (cursor < rowsSnapshot.length) {
+      gridHydrationFrame = requestAnimationFrame(pump)
+      return
+    }
+
+    gridHydrationFrame = null
+    cleanupChannelResolvers(activeSignalIds)
+    syncSelectionWithGridRows(nextRows)
+    gridHydrationActive.value = false
+    gridHydrationDone.value = rowsSnapshot.length
+    endMeasure({ rows: nextRows.length, headers: headers.length, mode: "progressive" })
+  }
+
+  gridHydrationFrame = requestAnimationFrame(pump)
+}
+
+function rebuildGridRows() {
+  if (allocationRows.value.length >= PROGRESSIVE_HYDRATION_THRESHOLD) {
+    rebuildGridRowsProgressive()
+    return
+  }
+  cancelGridHydration()
+  rebuildGridRowsImmediate()
 }
 
 function findAllocationRowBySignalId(signalId: number): SignalAllocationRow | null {
@@ -850,6 +976,12 @@ function syncGridRowsBySignalIds(signalIds: readonly number[]) {
   if (!signalIds.length) {
     devPerfIncrement("signalsUI.syncGridRowsBySignalIds.noop")
     endMeasure({ skipped: true, reason: "empty-signal-ids" })
+    return
+  }
+  if (gridHydrationActive.value) {
+    pendingAllocationRevisionFullRefresh = true
+    devPerfIncrement("signalsUI.syncGridRowsBySignalIds.deferDuringHydration")
+    endMeasure({ signalIds: signalIds.length, path: "defer-during-hydration" })
     return
   }
   if (signalIds.length > 128) {
@@ -2291,6 +2423,7 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(allocationRevisionSyncFrame)
     allocationRevisionSyncFrame = null
   }
+  cancelGridHydration()
   pendingAllocationRevisionSignalIds.clear()
   pendingAllocationRevisionFullRefresh = false
 })

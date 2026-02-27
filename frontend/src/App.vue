@@ -7,9 +7,9 @@
     aria-busy="true"
   >
     <div class="app-bootstrap-placeholder__card border border-neutral-200/80 bg-white/95 px-5 py-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/90">
-      <img :src="logoUrl" alt="UnitLab" class="app-bootstrap-placeholder__logo" />
-      <div class="app-bootstrap-placeholder__headline">UnitLab Core</div>
-      <div class="app-bootstrap-placeholder__description">Industrial test and commissioning platform</div>
+      <!-- <img :src="logoUrl" alt="UnitLab" class="app-bootstrap-placeholder__logo" /> -->
+      <div class="app-bootstrap-placeholder__headline">UnitLab</div>
+      <!-- <div class="app-bootstrap-placeholder__description">Industrial test and commissioning platform</div> -->
       <div class="app-bootstrap-placeholder__chip">
         <span class="app-bootstrap-placeholder__spinner" aria-hidden="true"></span>
         <span>Loading…</span>
