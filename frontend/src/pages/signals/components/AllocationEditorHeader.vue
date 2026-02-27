@@ -11,7 +11,7 @@
       <div class="flex w-full flex-wrap items-center justify-between gap-2">
         <div class="flex flex-wrap items-center gap-2">
           <UiButton variant="primary" size="sm" :disabled="workspaceMissing || loading" @click="emit('import')">
-            + Import Signal List
+            📥 Import Signal List
           </UiButton>
 
           <UiButton
@@ -20,7 +20,7 @@
             :disabled="workspaceMissing || loading || allocatedCableRowsCount === 0"
             @click="emit('exportCable')"
           >
-            Export Cable Schedule
+            📤 Export Cable Schedule
           </UiButton>
 
           <UiButton
@@ -29,7 +29,7 @@
             :disabled="workspaceMissing || loading || allocationRowsCount === 0"
             @click="emit('exportReport')"
           >
-            Export Report
+            📤 Export Report
           </UiButton>
         </div>
 

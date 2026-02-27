@@ -38,7 +38,7 @@ if [[ "$SKIP_FRONTEND_BUILD" != "1" ]]; then
   fi
   echo "[unitlab] Building frontend dist..."
   rm -rf "$FRONTEND_DIR/dist"
-  (cd "$FRONTEND_DIR" && pnpm build)
+  (cd "$FRONTEND_DIR" && VITE_RELEASE_VERSION="$RELEASE_VERSION" pnpm build)
 fi
 
 if [[ ! -f "$FRONTEND_DIR/dist/index.html" ]]; then

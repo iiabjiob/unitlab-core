@@ -1,12 +1,12 @@
 <template>
   <div
     v-if="!appReady"
-    class="app-bootstrap-placeholder bg-neutral-50/85 text-neutral-700 dark:bg-neutral-950/75 dark:text-neutral-200"
+    class="app-bootstrap-placeholder bg-neutral-50/85 text-neutral-700 dark:bg-neutral-950/90 dark:text-neutral-200"
     role="status"
     aria-live="polite"
     aria-busy="true"
   >
-    <div class="app-bootstrap-placeholder__card border border-neutral-200/80 bg-white/95 px-5 py-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/90">
+    <div class="app-bootstrap-placeholder__card border border-neutral-200/80 bg-white/95 px-5 py-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-950/95">
       <!-- <img :src="logoUrl" alt="UnitLab" class="app-bootstrap-placeholder__logo" /> -->
       <div class="app-bootstrap-placeholder__headline">UnitLab</div>
       <!-- <div class="app-bootstrap-placeholder__description">Industrial test and commissioning platform</div> -->

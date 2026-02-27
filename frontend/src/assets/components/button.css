@@ -1,7 +1,7 @@
 @layer components {
 /* Base class */
 .btn {
-  @apply font-mono font-medium cursor-default rounded-sm;
+  @apply font-mono font-medium cursor-default rounded-sm transition-colors duration-150 focus:outline-none;
 }
 
 .btn:disabled {
@@ -27,35 +27,35 @@
 
 /* Primary styles */
 .btn-primary {
-  @apply bg-neutral-800 text-white focus:ring-2 focus:ring-neutral-400 transition-colors duration-150
-    hover:bg-neutral-700 active:bg-neutral-900
-    dark:bg-neutral-200 dark:text-neutral-900 dark:focus:ring-neutral-300
-    dark:hover:bg-neutral-100 dark:active:bg-white;
+  @apply border border-neutral-300 bg-white text-neutral-700 font-semibold shadow-sm focus:ring-2 focus:ring-neutral-300
+    hover:bg-neutral-100 active:bg-neutral-200
+    dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:focus:ring-neutral-500
+    dark:hover:bg-neutral-700 dark:active:bg-neutral-600;
 }
 
 .btn-secondary {
-  @apply border border-neutral-300 bg-neutral-100 text-neutral-700 shadow-sm transition-colors duration-150
-    hover:bg-neutral-200 active:bg-neutral-300
-    dark:border-neutral-600 dark:bg-neutral-700 dark:text-neutral-200
-    dark:hover:bg-neutral-600 dark:active:bg-neutral-500;
+  @apply border border-neutral-300 bg-white text-neutral-700 shadow-sm focus:ring-2 focus:ring-neutral-300
+    hover:bg-neutral-100 active:bg-neutral-200
+    dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:focus:ring-neutral-500
+    dark:hover:bg-neutral-700 dark:active:bg-neutral-600;
 }
 
 .btn-success {
-  @apply bg-green-600 text-white focus:ring-2 focus:ring-green-400 transition-colors duration-150
-    hover:bg-green-700 active:bg-green-800
-    dark:bg-green-400 dark:text-neutral-900 dark:focus:ring-green-300
-    dark:hover:bg-green-300 dark:active:bg-green-200;
+  @apply bg-emerald-600 text-white shadow-sm focus:ring-2 focus:ring-emerald-300
+    hover:bg-emerald-500 active:bg-emerald-700
+    dark:bg-emerald-500 dark:text-white dark:focus:ring-emerald-400
+    dark:hover:bg-emerald-400 dark:active:bg-emerald-600;
 }
 
 .btn-danger {
-  @apply bg-red-600 text-white focus:ring-2 focus:ring-red-400 transition-colors duration-150
-    hover:bg-red-700 active:bg-red-800
-    dark:bg-red-400 dark:text-neutral-900 dark:focus:ring-red-300
-    dark:hover:bg-red-300 dark:active:bg-red-200;
+  @apply bg-rose-600 text-white shadow-sm focus:ring-2 focus:ring-rose-300
+    hover:bg-rose-500 active:bg-rose-700
+    dark:bg-rose-500 dark:text-white dark:focus:ring-rose-400
+    dark:hover:bg-rose-400 dark:active:bg-rose-600;
 }
 
 .btn-toolbar {
-  @apply text-neutral-700 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700
+  @apply text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700
          px-2 py-1 text-sm rounded-sm;
 }
 
@@ -64,7 +64,23 @@
 }
 
 .btn-dashed {
-  @apply border border-dashed border-neutral-400 text-neutral-500 
-         hover:text-neutral-700 rounded bg-transparent;
+  @apply border border-dashed border-neutral-400 bg-transparent text-neutral-600 focus:ring-2 focus:ring-neutral-300
+         hover:border-neutral-500 hover:text-neutral-800
+         dark:border-neutral-600 dark:text-neutral-300 dark:focus:ring-neutral-500
+         dark:hover:border-neutral-500 dark:hover:text-neutral-100 rounded;
+}
+
+.btn-ghost {
+  @apply bg-transparent text-neutral-700 focus:ring-2 focus:ring-neutral-300
+         hover:bg-neutral-100 active:bg-neutral-200
+         dark:text-neutral-200 dark:focus:ring-neutral-500
+         dark:hover:bg-neutral-800 dark:active:bg-neutral-700;
+}
+
+.btn-icon {
+  @apply inline-flex items-center justify-center border border-neutral-300 bg-white text-neutral-700 shadow-sm focus:ring-2 focus:ring-neutral-300
+         hover:bg-neutral-100 active:bg-neutral-200
+         dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 dark:focus:ring-neutral-500
+         dark:hover:bg-neutral-700 dark:active:bg-neutral-600;
 }
 }

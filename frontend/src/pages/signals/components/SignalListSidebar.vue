@@ -2,7 +2,7 @@
   <div class="h-full flex flex-col gap-4">
     <div class="space-y-3">
       <UiButton variant="primary" size="sm" full :disabled="workspaceMissing" @click="emit('import')">
-        + Import Signal List
+        📥 Import Signal List
       </UiButton>
       <UiButton variant="ghost" size="sm" full :disabled="workspaceMissing || loading" @click="emit('refresh')">
         Refresh

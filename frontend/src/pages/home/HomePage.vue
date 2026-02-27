@@ -50,9 +50,7 @@
             >
               <div class="space-y-1">
                 <div class="flex items-center gap-2">
-                  <span class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300">
-                    <component :is="scenario.icon" class="h-8 w-8" aria-hidden="true" />
-                  </span>
+                  <span class="text-4xl leading-none" aria-hidden="true">{{ scenario.emoji }}</span>
                   <h3 class="text-sm font-semibold leading-tight">{{ scenario.title }}</h3>
                 </div>
                 <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ scenario.description }}</p>
@@ -70,12 +68,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, type Component, watch } from "vue"
+import { computed, watch } from "vue"
 import { useRouter, type RouteLocationRaw } from "vue-router"
 import AppLogo from "@/components/layout/AppLogo.vue"
 import OnlineStatusComponent from "@/components/misc/OnlineStatusComponent.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
-import PlaceholderUiIcon from "@/components/icons/PlaceholderUiIcon.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import { useDeviceStore } from "@/stores/deviceStore"
@@ -122,7 +119,7 @@ type QuickAction = {
   title: string
   description: string
   cta: string
-  icon: Component
+  emoji: string
   route: HomeRoute
 }
 
@@ -145,28 +142,28 @@ const scenarioCards: QuickAction[] = [
     title: "Live Hardware",
     description: "Direct control of physical I/O channels.",
     cta: "Open",
-    icon: PlaceholderUiIcon,
+    emoji: "🎛️",
     route: { name: "devices.list" },
   },
   {
     title: "Signals",
     description: "Project signal names with fast channel mapping.",
     cta: "Open",
-    icon: PlaceholderUiIcon,
+    emoji: "📄",
     route: { name: "signals.home" },
   },
   {
     title: "Switchgears",
     description: "Operate and validate disconnector feedback.",
     cta: "Open",
-    icon: PlaceholderUiIcon,
+    emoji: "🔀",
     route: { name: "switchgears.list" },
   },
   {
     title: "Sequencer",
     description: "Build and run repeatable test instructions.",
     cta: "Open",
-    icon: PlaceholderUiIcon,
+    emoji: "📋",
     route: { name: "instructions.list" },
   },
 ]

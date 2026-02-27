@@ -769,8 +769,8 @@ function formatOperationProgressLabel(
 
 const allocateSelectedButtonLabel = computed(() => (
   formatOperationProgressLabel(
-    "Assigning…",
-    "Assign Hardware",
+    "🔗 Assigning…",
+    "🔗 Assign Hardware",
     allocatingSelected.value,
     activeAutoAllocateJob.value,
   )
@@ -778,8 +778,8 @@ const allocateSelectedButtonLabel = computed(() => (
 
 const deallocateSelectedButtonLabel = computed(() => (
   formatOperationProgressLabel(
-    "Unassigning…",
-    "Unassign Hardware",
+    "⛓️‍💥 Unassigning…",
+    "⛓️‍💥 Unassign Hardware",
     deallocatingSelected.value,
     activeBulkUpdateJob.value,
   )

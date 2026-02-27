@@ -84,7 +84,7 @@ function handleSelect(id: string | number) {
         :disabled="workspaceMissing || importing"
         @click="openFileDialog"
       >
-        {{ importing ? "Importing…" : "Import Instructions" }}
+        {{ importing ? "📥 Importing…" : "📥 Import Instructions" }}
       </UiButton>
       <input
         ref="fileInput"

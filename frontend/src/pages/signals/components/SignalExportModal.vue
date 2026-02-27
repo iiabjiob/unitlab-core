@@ -84,7 +84,7 @@
     <template #footer>
       <div class="flex w-full flex-wrap items-center justify-end gap-2">
         <UiButton type="button" variant="secondary" @click="emitClose">Cancel</UiButton>
-        <UiButton type="submit" form="signal-export-form" variant="primary">Export CSV</UiButton>
+        <UiButton type="submit" form="signal-export-form" variant="primary">📤 Export CSV</UiButton>
       </div>
     </template>
   </UiModal>

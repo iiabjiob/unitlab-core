@@ -41,7 +41,7 @@
                 @click="event => handleEntryClick(event, item.to, navigate)"
               >
                 <span class="inline-flex items-center" :class="compact ? 'justify-center w-full' : 'gap-2'">
-                  <component :is="resolveRouteIcon(item.to)" class="h-5 w-5 shrink-0" aria-hidden="true" />
+                  <span class="text-2xl leading-none shrink-0" aria-hidden="true">{{ resolveRouteEmoji(item.to) }}</span>
                   <span v-if="!compact">{{ item.label }}</span>
                 </span>
               </a>
@@ -80,7 +80,7 @@
                 @click="event => handleEntryClick(event, child.to, navigate)"
               >
                 <span class="inline-flex items-center" :class="compact ? 'justify-center w-full' : 'gap-2'">
-                  <component :is="resolveRouteIcon(child.to)" class="h-5 w-5 shrink-0" aria-hidden="true" />
+                  <span class="text-2xl leading-none shrink-0" aria-hidden="true">{{ resolveRouteEmoji(child.to) }}</span>
                   <span v-if="!compact">{{ child.label }}</span>
                 </span>
               </a>
@@ -95,7 +95,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue"
 import { RouterLink, useRoute, useRouter } from "vue-router"
-import PlaceholderUiIcon from "@/components/icons/PlaceholderUiIcon.vue"
 import UiHoverTooltip from "@/components/ui/UiHoverTooltip.vue"
 
 const props = withDefaults(defineProps<{
@@ -222,24 +221,24 @@ function isEntryFocused(to: string): boolean {
   return focusedRoute.value === to
 }
 
-function resolveRouteIcon(to: string) {
+function resolveRouteEmoji(to: string): string {
   const normalized = normalizePath(to)
   if (normalized.startsWith("/devices")) {
-    return PlaceholderUiIcon
+    return "🎛️"
   }
   if (normalized.startsWith("/signals")) {
-    return PlaceholderUiIcon
+    return "📄"
   }
   if (normalized.startsWith("/switchgears")) {
-    return PlaceholderUiIcon
+    return "🔀"
   }
   if (normalized.startsWith("/sequences")) {
-    return PlaceholderUiIcon
+    return "📋"
   }
   if (normalized.startsWith("/settings")) {
-    return PlaceholderUiIcon
+    return "⚙️"
   }
-  return PlaceholderUiIcon
+  return "•"
 }
 
 function setFocusByRoute(to: string) {

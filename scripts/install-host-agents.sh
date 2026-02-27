@@ -340,7 +340,7 @@ for agent in "${SELECTED_AGENTS[@]}"; do
     log "[agent:$agent] pip self-upgrade skipped"
   fi
   run "$dest_dir/.venv/bin/pip" install --no-cache-dir --no-index --find-links "$WHEELS_DIR" --upgrade redis
-  run "$dest_dir/.venv/bin/pip" install --no-cache-dir --no-index --find-links "$WHEELS_DIR" --upgrade "$wheel_path"
+  run "$dest_dir/.venv/bin/pip" install --no-cache-dir --no-index --find-links "$WHEELS_DIR" --upgrade --force-reinstall "$wheel_path"
 done
 
 log "[4/6] Ensuring env files"

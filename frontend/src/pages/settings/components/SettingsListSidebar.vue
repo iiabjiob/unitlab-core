@@ -17,6 +17,7 @@ const route = useRoute()
 const router = useRouter()
 const selectionStore = useSelectionStore()
 selectionStore.restore()
+const releaseVersion = import.meta.env.VITE_RELEASE_VERSION ?? "dev"
 
 const baseItems: SettingsNavItem[] = [
   {
@@ -104,5 +105,7 @@ function handleSelect(id: string | number) {
         </template>
       </UiSidebarListbox>
     </div>
+
+    <p class="mt-3 text-[11px] text-neutral-500 dark:text-neutral-400">Build {{ releaseVersion }}</p>
   </div>
 </template>

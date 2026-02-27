@@ -43,12 +43,12 @@
       <div class="flex items-center justify-center gap-2" :class="compact ? 'flex-col' : ''">
         <RouterLink
           to="/settings"
-          class="inline-flex items-center justify-center rounded-lg border border-neutral-300 bg-white text-neutral-700 transition hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+          class="inline-flex cursor-default items-center justify-center rounded-lg border border-neutral-300 bg-white text-neutral-700 transition hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
           :class="compact ? 'h-10 w-10' : 'h-9 px-3 gap-2'"
           title="Settings"
           aria-label="Settings"
         >
-          <SystemIcon class="h-4 w-4" />
+          <span class="text-2xl leading-none shrink-0" aria-hidden="true">⚙️</span>
           <span v-if="!compact" class="text-xs font-medium">Settings</span>
         </RouterLink>
         <ThemeToggle v-if="!compact" />
@@ -67,7 +67,6 @@ import AppLogo from "./AppLogo.vue"
 import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
 import TimeComponent from "../misc/TimeComponent.vue"
 import ThemeToggle from "../ui/ThemeToggle.vue"
-import SystemIcon from "@/components/icons/SystemIcon.vue"
 
 defineProps<{
   compact?: boolean

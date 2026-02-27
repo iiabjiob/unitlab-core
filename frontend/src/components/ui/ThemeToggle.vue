@@ -3,12 +3,11 @@
     <UiMenuTrigger asChild>
       <button
         type="button"
-        class="inline-flex h-9 items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 text-xs font-medium text-neutral-700 transition hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+        class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-300 bg-white text-base text-neutral-700 transition hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
         :aria-label="`Theme: ${activeLabel}`"
         :title="`Theme: ${activeLabel}`"
       >
-        <span class="inline-flex h-2 w-2 rounded-full" :class="activeDotClass" aria-hidden="true" />
-        <span>{{ activeLabel }}</span>
+        <span aria-hidden="true">{{ activeIcon }}</span>
       </button>
     </UiMenuTrigger>
     <UiMenuContent>
@@ -21,7 +20,7 @@
         @select="selectTheme(opt.value)"
       >
         <span class="inline-flex min-w-0 items-center gap-2">
-          <span class="inline-flex h-2 w-2 rounded-full" :class="dotClass(opt.value)" aria-hidden="true" />
+          <span aria-hidden="true">{{ iconFor(opt.value) }}</span>
           <span>{{ opt.label }}</span>
           <span v-if="themeStore.mode === opt.value" class="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
             current
@@ -47,21 +46,29 @@ import { computed } from "vue"
 const themeStore = useThemeStore()
 
 const options: { label: string; value: ThemeMode }[] = [
-  { label: "Light", value: "light" },
-  { label: "Dark", value: "dark" },
-  { label: "Auto", value: "auto" },
+  { label: "light", value: "light" },
+  { label: "dark", value: "dark" },
+  { label: "system", value: "auto" },
 ]
 
 const activeLabel = computed(() => {
-  return options.find(opt => opt.value === themeStore.mode)?.label ?? "Theme"
+  if (themeStore.mode === "auto") {
+    return "system"
+  }
+  return themeStore.currentTheme === "dark" ? "dark" : "light"
 })
 
-const activeDotClass = computed(() => dotClass(themeStore.mode))
+const activeIcon = computed(() => {
+  if (themeStore.mode === "auto") {
+    return "🖥"
+  }
+  return iconFor(themeStore.mode)
+})
 
-function dotClass(value: ThemeMode) {
-  if (value === "light") return "bg-amber-400"
-  if (value === "dark") return "bg-indigo-400"
-  return "bg-emerald-400"
+function iconFor(value: ThemeMode) {
+  if (value === "light") return "☀"
+  if (value === "dark") return "☾"
+  return "🖥"
 }
 
 function selectTheme(value: ThemeMode) {

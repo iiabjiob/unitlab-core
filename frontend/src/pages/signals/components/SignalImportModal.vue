@@ -307,10 +307,10 @@
           :disabled="!canSubmitFinal || loading"
         >
           <template v-if="loading">
-            Importing…
+            📥 Importing…
           </template>
           <template v-else>
-            Import
+            📥 Import
           </template>
         </UiButton>
       </div>
