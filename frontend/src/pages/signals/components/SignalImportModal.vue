@@ -59,6 +59,7 @@
         <input
           ref="fileInput"
           type="file"
+          autocomplete="off"
           id="signal-import-file"
           name="signal-import-file"
           accept=".xls,.xlsx,.xlsm"
@@ -162,6 +163,7 @@
               >
                 <input
                   type="checkbox"
+                  autocomplete="off"
                   :id="`signal-import-column-${column.index}`"
                   :name="`signal-import-columns-${column.index}`"
                   class="h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
@@ -261,6 +263,7 @@
             <input
               v-model="savePresetName"
               type="text"
+              autocomplete="off"
               id="signal-import-save-preset-name"
               name="signal-import-save-preset-name"
               maxlength="120"

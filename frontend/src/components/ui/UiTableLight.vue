@@ -41,6 +41,7 @@
                 v-if="canFilter(column)"
                 v-model="filters[column.key]"
                 type="text"
+                autocomplete="off"
                 :name="`ui-table-light-filter-${column.key}`"
                 class="ui-table-light__filter-input"
                 placeholder="Filter"

@@ -80,6 +80,7 @@ function handleSelect(id: string | number) {
         <input
           v-model="onlineOnly"
           type="checkbox"
+          autocomplete="off"
           name="device-online-only"
           class="h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
         />

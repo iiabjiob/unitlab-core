@@ -32,6 +32,7 @@
       <div v-else-if="effectiveType === 'ao'" class="flex items-center gap-1.5">
         <input
           type="number"
+          autocomplete="off"
           :id="`device-channel-ao-${channel.id}`"
           :name="`device-channel-ao-${channel.id}`"
           class="w-16 px-1 py-0.5 text-xs rounded border border-neutral-600

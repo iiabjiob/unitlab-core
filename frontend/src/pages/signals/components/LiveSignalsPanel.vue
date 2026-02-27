@@ -48,6 +48,7 @@
               id="live-signals-show-only-bound"
               name="live-signals-show-only-bound"
               type="checkbox"
+              autocomplete="off"
               class="accent-neutral-900"
             />
             Bound only

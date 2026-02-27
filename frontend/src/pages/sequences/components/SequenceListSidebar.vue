@@ -90,6 +90,7 @@ function handleSelect(id: string | number) {
         ref="fileInput"
         class="hidden"
         type="file"
+        autocomplete="off"
         id="sequence-import-file"
         name="sequence-import-file"
         accept="application/json,.json"

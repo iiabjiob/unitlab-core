@@ -57,6 +57,7 @@
           >
             <input
               type="checkbox"
+              autocomplete="off"
               class="h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
               :checked="isOptionalSelected(column.key)"
               @change="toggleOptional(column.key)"
@@ -72,6 +73,7 @@
         <input
           v-model="savePresetName"
           type="text"
+          autocomplete="off"
           maxlength="120"
           class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
           placeholder="e.g. Cabinet wiring schedule"

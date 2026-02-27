@@ -97,6 +97,7 @@ function handlePulseChange(event: Event) {
 			</label>
 			<input
 				type="number"
+				autocomplete="off"
 				id="sequence-step-pulse-ms"
 				name="sequence-step-pulse-ms"
 				min="0"

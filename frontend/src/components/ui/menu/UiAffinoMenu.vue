@@ -1,5 +1,6 @@
 <template>
   <AffinoUiMenu
+    ref="affinoMenuRef"
     :options="mergedOptions"
     :callbacks="callbacks"
     :placement="placement"
@@ -12,11 +13,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref } from "vue"
 import {
   UiMenu as AffinoUiMenu,
   type Alignment,
   type MenuCallbacks,
+  type MenuController,
   type MenuOptions,
   type Placement,
 } from "@affino/menu-vue"
@@ -29,6 +31,8 @@ const props = defineProps<{
   gutter?: number
   viewportPadding?: number
 }>()
+
+const affinoMenuRef = ref<{ controller?: MenuController } | null>(null)
 
 const defaultMenuOptions: MenuOptions = {
   mousePrediction: {},
@@ -46,4 +50,10 @@ const placement = computed(() => props.placement)
 const align = computed(() => props.align)
 const gutter = computed(() => props.gutter)
 const viewportPadding = computed(() => props.viewportPadding)
+
+defineExpose({
+  get controller(): MenuController | undefined {
+    return affinoMenuRef.value?.controller
+  },
+})
 </script>

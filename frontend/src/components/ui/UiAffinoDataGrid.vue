@@ -68,6 +68,15 @@
           v-bind="columnPanelContentProps"
         >
           <div class="ui-affino-grid__column-panel-title">Column visibility and order</div>
+          <div class="ui-affino-grid__column-panel-tools">
+            <button
+              type="button"
+              class="ui-affino-grid__toolbar-button"
+              @click="void autosizeAllColumns()"
+            >
+              Autosize all columns
+            </button>
+          </div>
           <div
             v-for="entry in columnManagerColumns"
             :key="`column-panel-${entry.key}`"
@@ -76,6 +85,7 @@
             <label class="ui-affino-grid__column-toggle">
               <input
                 type="checkbox"
+                autocomplete="off"
                 :id="`grid-column-visible-${entry.key}`"
                 :name="`grid-column-visible-${entry.key}`"
                 :checked="entry.visible"
@@ -160,6 +170,7 @@
             <input
               ref="selectHeaderCheckboxRef"
               type="checkbox"
+              autocomplete="off"
               id="grid-select-all-visible"
               name="grid-select-all-visible"
               class="ui-affino-grid__row-select-checkbox"
@@ -204,6 +215,7 @@
                   <input
                     v-if="!isGroupRowNode(rowNode)"
                     type="checkbox"
+                    autocomplete="off"
                     :id="`grid-row-select-${String(rowNode.rowId)}`"
                     :name="`grid-row-select-${String(rowNode.rowId)}`"
                     class="ui-affino-grid__row-select-checkbox"
@@ -294,6 +306,7 @@
                 v-if="isColumnFilterable(entry.column)"
                 v-model="columnFilters[entry.key]"
                 type="text"
+                autocomplete="off"
                 :id="`grid-filter-left-${entry.key}`"
                 :name="`grid-filter-left-${entry.key}`"
                 class="ui-affino-grid__filter-input"
@@ -452,6 +465,7 @@
                     v-if="isColumnFilterable(entry.column)"
                     v-model="columnFilters[entry.key]"
                     type="text"
+                    autocomplete="off"
                     :id="`grid-filter-center-${entry.key}`"
                     :name="`grid-filter-center-${entry.key}`"
                     class="ui-affino-grid__filter-input"
@@ -611,6 +625,7 @@
                 v-if="isColumnFilterable(entry.column)"
                 v-model="columnFilters[entry.key]"
                 type="text"
+                autocomplete="off"
                 :id="`grid-filter-right-${entry.key}`"
                 :name="`grid-filter-right-${entry.key}`"
                 class="ui-affino-grid__filter-input"
@@ -718,24 +733,52 @@
       </div>
     </div>
 
-      <UiMenuContent class="ui-affino-grid__header-context-menu" @keydown="handleHeaderContextMenuKeydown">
+      <UiMenuContent class="ui-affino-grid__header-context-menu ui-affino-grid__header-context-menu--compact" @keydown="handleHeaderContextMenuKeydown">
         <UiMenuItem :disabled="!props.enableSorting || !headerContextColumnSortable" @select="void runHeaderContextMenuAction('sort-asc')">
-          Sort Ascending
+          Sort A to Z
         </UiMenuItem>
         <UiMenuItem :disabled="!props.enableSorting || !headerContextColumnSortable" @select="void runHeaderContextMenuAction('sort-desc')">
-          Sort Descending
+          Sort Z to A
         </UiMenuItem>
 
-        <UiSubMenu>
+        <UiSubMenu v-if="!isMobile" :options="headerContextSubmenuOptions">
           <UiSubMenuTrigger>
-            Filter by values
+            Pin Column
           </UiSubMenuTrigger>
-          <UiSubMenuContent class="ui-affino-grid__value-filter-menu">
-            <div class="ui-affino-grid__value-filter-panel" @click.stop>
+          <UiSubMenuContent>
+            <UiMenuItem @select="void runHeaderContextMenuAction('pin-none')">
+              {{ headerContextColumnPin === "none" ? "✓ " : "" }}No Pin
+            </UiMenuItem>
+            <UiMenuItem @select="void runHeaderContextMenuAction('pin-left')">
+              {{ headerContextColumnPin === "left" ? "✓ " : "" }}Pin Left
+            </UiMenuItem>
+            <UiMenuItem @select="void runHeaderContextMenuAction('pin-right')">
+              {{ headerContextColumnPin === "right" ? "✓ " : "" }}Pin Right
+            </UiMenuItem>
+          </UiSubMenuContent>
+        </UiSubMenu>
+
+        <UiMenuSeparator />
+
+        <UiMenuItem @select="void runHeaderContextMenuAction('auto-size')">
+          Autosize Column
+        </UiMenuItem>
+
+        <UiMenuItem @select="void runHeaderContextMenuAction('group-by-toggle')">
+          {{ headerContextGroupActionLabel }}
+        </UiMenuItem>
+
+        <UiMenuSeparator />
+
+        <div class="ui-affino-grid__value-filter-disclosure" @click.stop>
+          <details open class="ui-affino-grid__value-filter-details">
+            <summary class="ui-affino-grid__value-filter-summary">Filter by values</summary>
+            <div class="ui-affino-grid__value-filter-panel">
               <template v-if="props.enableFiltering && headerContextColumnFilterable">
                 <input
                   v-model="headerContextUniqueFilterQuery"
                   type="text"
+                  autocomplete="off"
                   :id="`grid-value-filter-search-${headerContextFieldToken}`"
                   :name="`grid-value-filter-search-${headerContextFieldToken}`"
                   class="ui-affino-grid__value-filter-search"
@@ -769,6 +812,7 @@
                   >
                     <input
                       type="checkbox"
+                      autocomplete="off"
                       :id="resolveValueFilterCheckboxId(entry.key)"
                       :name="resolveValueFilterCheckboxId(entry.key)"
                       :checked="entry.selected"
@@ -807,47 +851,8 @@
                 Column filtering is disabled for this column
               </div>
             </div>
-          </UiSubMenuContent>
-        </UiSubMenu>
-
-        <UiSubMenu v-if="!isMobile">
-          <UiSubMenuTrigger>
-            Pin Column
-          </UiSubMenuTrigger>
-          <UiSubMenuContent>
-            <UiMenuItem @select="void runHeaderContextMenuAction('pin-none')">
-              {{ headerContextColumnPin === "none" ? "✓ " : "" }}No Pin
-            </UiMenuItem>
-            <UiMenuItem @select="void runHeaderContextMenuAction('pin-left')">
-              {{ headerContextColumnPin === "left" ? "✓ " : "" }}Pin Left
-            </UiMenuItem>
-            <UiMenuItem @select="void runHeaderContextMenuAction('pin-right')">
-              {{ headerContextColumnPin === "right" ? "✓ " : "" }}Pin Right
-            </UiMenuItem>
-          </UiSubMenuContent>
-        </UiSubMenu>
-
-        <UiMenuSeparator />
-
-        <UiMenuItem @select="void runHeaderContextMenuAction('auto-size')">
-          Autosize This Column
-        </UiMenuItem>
-        <UiMenuItem @select="void runHeaderContextMenuAction('auto-size-all')">
-          Autosize All Columns
-        </UiMenuItem>
-
-        <UiMenuItem @select="void runHeaderContextMenuAction('group-by-toggle')">
-          {{ headerContextGroupActionLabel }}
-        </UiMenuItem>
-
-        <UiMenuSeparator />
-
-        <UiMenuItem @select="void runHeaderContextMenuAction('choose-columns')">
-          Choose Columns
-        </UiMenuItem>
-        <UiMenuItem @select="void runHeaderContextMenuAction('reset-columns')">
-          Reset Columns
-        </UiMenuItem>
+          </details>
+        </div>
       </UiMenuContent>
 
         <ConfirmModal
@@ -1149,6 +1154,10 @@ const columnPanelContentProps = computed(() => columnPanelPopover.getContentProp
   role: "dialog",
   tabIndex: -1,
 }))
+const headerContextSubmenuOptions = {
+  openDelay: 90,
+  closeDelay: 160,
+} as const
 
 const linkedPaneScrollSync = useDataGridLinkedPaneScrollSync({
   resolveSourceScrollTop: () => viewportRef.value?.scrollTop ?? 0,
@@ -2641,6 +2650,19 @@ function closeHeaderContextMenu() {
   headerContextValueDraftTotalKeys.value = new Set()
 }
 
+function closeHeaderContextMenuCascade() {
+  closeHeaderContextMenu()
+  if (typeof window === "undefined") {
+    return
+  }
+  requestAnimationFrame(() => {
+    headerMenuRef.value?.controller?.close("programmatic")
+    window.setTimeout(() => {
+      headerMenuRef.value?.controller?.close("programmatic")
+    }, 0)
+  })
+}
+
 function selectHeaderContextColumn(columnKey: string) {
   headerContextMenuColumnKey.value = columnKey
   headerContextUniqueFilterQuery.value = ""
@@ -2770,7 +2792,14 @@ function selectAllHeaderContextFilterValues() {
   if (!props.enableFiltering || !headerContextColumnFilterable.value) {
     return
   }
-  headerContextValueDraftSelectedKeys.value = new Set(headerContextValueDraftTotalKeys.value)
+  const query = headerContextUniqueFilterQuery.value.trim()
+  if (!query) {
+    headerContextValueDraftSelectedKeys.value = new Set(headerContextValueDraftTotalKeys.value)
+    return
+  }
+
+  const filteredKeys = new Set(headerContextUniqueValues.value.map(entry => entry.key))
+  headerContextValueDraftSelectedKeys.value = filteredKeys
 }
 
 function clearHeaderContextFilterValues() {
@@ -2800,7 +2829,7 @@ function applyHeaderContextFilterValues() {
     headerFilters.clearValues(columnKey)
     commitHeaderValueFilterMutation()
     resetHeaderContextFilterDraft()
-    closeHeaderContextMenu()
+    closeHeaderContextMenuCascade()
     return
   }
 
@@ -2808,20 +2837,29 @@ function applyHeaderContextFilterValues() {
     headerFilters.selectAllValues(columnKey)
     commitHeaderValueFilterMutation()
     resetHeaderContextFilterDraft()
-    closeHeaderContextMenu()
+    closeHeaderContextMenuCascade()
+    return
+  }
+
+  const selectedValues = values
+    .filter(entry => selectedKeys.has(entry.key))
+    .map(entry => entry.value)
+
+  if (selectedValues.length === 0) {
+    headerFilters.clearValues(columnKey)
+    commitHeaderValueFilterMutation()
+    resetHeaderContextFilterDraft()
+    closeHeaderContextMenuCascade()
     return
   }
 
   headerFilters.clearValues(columnKey)
-  values.forEach((entry) => {
-    if (!selectedKeys.has(entry.key)) {
-      return
-    }
-    headerFilters.setValueSelected(columnKey, entry.value, true, { mode: "append" })
+  selectedValues.forEach((value, index) => {
+    headerFilters.setValueSelected(columnKey, value, true, { mode: index === 0 ? "replace" : "append" })
   })
   commitHeaderValueFilterMutation()
   resetHeaderContextFilterDraft()
-  closeHeaderContextMenu()
+  closeHeaderContextMenuCascade()
 }
 
 function cancelHeaderContextFilterValues() {
@@ -2845,7 +2883,14 @@ function resetColumnsToDefaults() {
   scheduleViewportSync()
 }
 
-async function runHeaderContextMenuAction(actionId: "sort-asc" | "sort-desc" | "pin-none" | "pin-left" | "pin-right" | "auto-size" | "auto-size-all" | "group-by-toggle" | "choose-columns" | "reset-columns") {
+async function autosizeAllColumns() {
+  for (const column of orderedColumns.value) {
+    await grid.actions.runAction("auto-size", { columnKey: column.key })
+  }
+  schedulePersistTableSettings()
+}
+
+async function runHeaderContextMenuAction(actionId: "sort-asc" | "sort-desc" | "pin-none" | "pin-left" | "pin-right" | "auto-size" | "group-by-toggle") {
   const columnKey = headerContextMenuColumnKey.value
   try {
     if (actionId === "sort-asc" || actionId === "sort-desc") {
@@ -2881,14 +2926,6 @@ async function runHeaderContextMenuAction(actionId: "sort-asc" | "sort-desc" | "
       return
     }
 
-    if (actionId === "auto-size-all") {
-      for (const column of orderedColumns.value) {
-        await grid.actions.runAction("auto-size", { columnKey: column.key })
-      }
-      schedulePersistTableSettings()
-      return
-    }
-
     if (actionId === "group-by-toggle") {
       if (!columnKey) {
         return
@@ -2914,16 +2951,6 @@ async function runHeaderContextMenuAction(actionId: "sort-asc" | "sort-desc" | "
       refreshViewportAfterGroupingMutation()
       schedulePersistTableSettings()
       scheduleViewportSync()
-      return
-    }
-
-    if (actionId === "choose-columns") {
-      columnPanelPopover.open("programmatic")
-      return
-    }
-
-    if (actionId === "reset-columns") {
-      resetColumnsToDefaults()
       return
     }
   } finally {
@@ -4405,9 +4432,52 @@ defineExpose({
   max-width: min(20rem, calc(100vw - 1rem));
 }
 
+.ui-affino-grid__header-context-menu--compact :deep(.ui-menu-item),
+.ui-affino-grid__header-context-menu--compact :deep(.ui-submenu-trigger) {
+  font-size: 0.66rem;
+  line-height: 1.1;
+  padding: 0.24rem 0.58rem;
+}
+
 .ui-affino-grid__value-filter-menu {
   min-width: 16rem;
   max-width: min(20rem, calc(100vw - 1rem));
+}
+
+.ui-affino-grid__value-filter-disclosure {
+  margin: 0.2rem 0.1rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 0.45rem;
+  background: rgba(248, 250, 252, 0.72);
+}
+
+.ui-affino-grid__value-filter-details {
+  display: block;
+}
+
+.ui-affino-grid__value-filter-summary {
+  list-style: none;
+  cursor: default;
+  user-select: none;
+  padding: 0.32rem 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+.ui-affino-grid__value-filter-summary::-webkit-details-marker {
+  display: none;
+}
+
+.dark .ui-affino-grid__value-filter-disclosure {
+  border-color: var(--ui-affino-dark-border, rgba(115, 115, 115, 0.32));
+  background: rgba(23, 23, 23, 0.7);
+}
+
+.dark .ui-affino-grid__value-filter-summary {
+  color: var(--ui-affino-dark-text-strong, #d4d4d4);
 }
 
 .ui-affino-grid__value-filter-panel {
@@ -4415,6 +4485,7 @@ defineExpose({
   flex-direction: column;
   gap: 0.45rem;
   min-width: 0;
+  padding: 0 0.45rem 0.45rem;
 }
 
 .ui-affino-grid__value-filter-search {
@@ -4422,7 +4493,7 @@ defineExpose({
   border: 1px solid rgba(148, 163, 184, 0.35);
   border-radius: 0.4rem;
   padding: 0.35rem 0.45rem;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   line-height: 1.2;
   background: #fff;
   color: #334155;
@@ -4505,7 +4576,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  max-height: 13rem;
+  max-height: 8.2rem;
   overflow: auto;
   padding-right: 0.15rem;
 }
@@ -4583,6 +4654,11 @@ defineExpose({
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #475569;
+}
+
+.ui-affino-grid__column-panel-tools {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .dark .ui-affino-grid__column-panel-title {

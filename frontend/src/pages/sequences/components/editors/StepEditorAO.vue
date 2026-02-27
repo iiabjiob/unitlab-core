@@ -72,6 +72,7 @@ function handleValueChange(event: Event) {
 			</label>
 			<input
 				type="number"
+				autocomplete="off"
 				id="sequence-step-ao-value"
 				name="sequence-step-ao-value"
 				step="0.01"

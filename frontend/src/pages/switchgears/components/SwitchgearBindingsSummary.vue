@@ -276,6 +276,7 @@ watch(
               <span>Feedback delay</span>
               <input
                 type="number"
+                autocomplete="off"
                 min="0"
                 step="50"
                 class="w-24 rounded border border-neutral-300 bg-white px-2 py-1 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"

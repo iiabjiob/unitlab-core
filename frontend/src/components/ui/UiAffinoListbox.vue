@@ -425,7 +425,7 @@ function updatePanelPosition() {
       </span>
     </button>
 
-    <input v-if="name" :name="name" type="hidden" :value="hiddenInputValue">
+    <input v-if="name" :name="name" type="hidden" autocomplete="off" :value="hiddenInputValue">
 
     <teleport to="body">
       <div

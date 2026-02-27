@@ -33,6 +33,7 @@ function handleDelayInput(event: Event) {
       </label>
       <input
         type="number"
+        autocomplete="off"
         id="sequence-step-wait-ms"
         name="sequence-step-wait-ms"
         min="0"

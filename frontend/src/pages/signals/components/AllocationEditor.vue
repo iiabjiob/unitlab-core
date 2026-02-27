@@ -40,6 +40,7 @@
 
     <div
       v-else-if="showInitialPageLoadingDebounced"
+      ref="initialLoadingPlaceholderRef"
       class="flex flex-1 flex-col gap-3 rounded-2xl border border-neutral-200 bg-white/90 p-4 dark:border-neutral-800 dark:bg-neutral-900/80"
       aria-live="polite"
       aria-busy="true"
@@ -49,10 +50,11 @@
         <span>Loading signal sheet…</span>
       </div>
       <div class="space-y-2">
-        <div class="h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
-        <div class="h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
-        <div class="h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
-        <div class="h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800"></div>
+        <div
+          v-for="rowIndex in initialLoadingPlaceholderRowCount"
+          :key="`signals-loading-placeholder-row-${rowIndex}`"
+          class="h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800"
+        ></div>
       </div>
     </div>
 
@@ -159,7 +161,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, shallowRef, triggerRef, watch } from "vue"
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, triggerRef, watch } from "vue"
 import { storeToRefs } from "pinia"
 import { useRoute, useRouter } from "vue-router"
 
@@ -235,10 +237,13 @@ const PROGRESSIVE_HYDRATION_BATCH_SIZE = 180
 const missingChannelHydrationInFlight = new Set<number>()
 let allocationRevisionSyncFrame: number | null = null
 let initialLoadingPlaceholderTimer: ReturnType<typeof setTimeout> | null = null
+let initialLoadingPlaceholderResizeObserver: ResizeObserver | null = null
 let gridHydrationFrame: number | null = null
 let gridHydrationRunToken = 0
 const pendingAllocationRevisionSignalIds = new Set<number>()
 let pendingAllocationRevisionFullRefresh = false
+const initialLoadingPlaceholderRef = ref<HTMLElement | null>(null)
+const initialLoadingPlaceholderRowCount = ref(4)
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const loading = computed(() => loadingAllocations.value || loadingSheet.value || updatingAllocations.value)
@@ -295,6 +300,50 @@ watch(
   },
   { immediate: true },
 )
+
+function updateInitialLoadingPlaceholderRows() {
+  const element = initialLoadingPlaceholderRef.value
+  if (!element) {
+    return
+  }
+  const containerHeight = Math.max(0, element.clientHeight)
+  const reservedHeight = 64
+  const rowHeight = 32
+  const rowGap = 8
+  const availableHeight = Math.max(rowHeight, containerHeight - reservedHeight)
+  const rows = Math.max(4, Math.ceil((availableHeight + rowGap) / (rowHeight + rowGap)))
+  if (initialLoadingPlaceholderRowCount.value !== rows) {
+    initialLoadingPlaceholderRowCount.value = rows
+  }
+}
+
+watch(showInitialPageLoadingDebounced, (visible) => {
+  if (!visible) {
+    return
+  }
+  void nextTick(() => {
+    updateInitialLoadingPlaceholderRows()
+  })
+})
+
+watch(initialLoadingPlaceholderRef, (element) => {
+  if (initialLoadingPlaceholderResizeObserver) {
+    initialLoadingPlaceholderResizeObserver.disconnect()
+    initialLoadingPlaceholderResizeObserver = null
+  }
+  if (!element || typeof ResizeObserver === "undefined") {
+    return
+  }
+  initialLoadingPlaceholderResizeObserver = new ResizeObserver(() => {
+    updateInitialLoadingPlaceholderRows()
+  })
+  initialLoadingPlaceholderResizeObserver.observe(element)
+  updateInitialLoadingPlaceholderRows()
+})
+
+onMounted(() => {
+  updateInitialLoadingPlaceholderRows()
+})
 const activeSignalSheet = computed(() => {
   const workspaceId = workspaceStore.activeWorkspaceId
   const sheet = signalSheetStore.sheet
@@ -2417,6 +2466,10 @@ onBeforeUnmount(() => {
   if (initialLoadingPlaceholderTimer !== null) {
     clearTimeout(initialLoadingPlaceholderTimer)
     initialLoadingPlaceholderTimer = null
+  }
+  if (initialLoadingPlaceholderResizeObserver) {
+    initialLoadingPlaceholderResizeObserver.disconnect()
+    initialLoadingPlaceholderResizeObserver = null
   }
   channelGroupsResolverBySignalId.clear()
   if (allocationRevisionSyncFrame !== null) {
