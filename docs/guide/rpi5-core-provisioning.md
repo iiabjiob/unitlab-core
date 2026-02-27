@@ -47,9 +47,6 @@ If you already know the platform, use this exact sequence:
   ```bash
   scp dist-release/release-images-<timestamp>.tar pi@<rpi-ip>:/tmp/
   scp -r dist-release/unitlab-core-rpi-runtime-<timestamp> pi@<rpi-ip>:/tmp/
-
-  sudo mv /tmp/unitlab-core-rpi-runtime-<timestamp> /opt/unitlab/releases/
-  sudo mv /tmp/release-images-<timestamp>.tar /opt/unitlab/
   ```
   
 
