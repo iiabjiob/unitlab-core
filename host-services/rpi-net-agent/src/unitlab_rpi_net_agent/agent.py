@@ -76,27 +76,34 @@ class CoreNetworkAgent:
             await self.stop()
 
     @staticmethod
-    def _normalize_suffix(raw_suffix: str | None) -> str:
-        if not raw_suffix:
+    def _normalize_suffix(raw: str | None) -> str:
+        if not raw:
             return "0000"
-        pairs = re.findall(r"[0-9A-Fa-f]{2}", raw_suffix)
+        pairs = re.findall(r"[0-9A-Fa-f]{2}", raw)
         if len(pairs) >= 2:
-            return "".join(pairs[-2:]).upper()
-        hex_only = "".join(ch for ch in raw_suffix if ch.lower() in "0123456789abcdef")
+            return (pairs[-2] + pairs[-1]).upper()
+        hex_only = "".join(ch for ch in raw if ch.lower() in "0123456789abcdef")
         return hex_only[-4:].upper().rjust(4, "0")
 
     @staticmethod
     def _sanitize_ap_prefix(prefix: str | None, fallback: str) -> str:
         value = (prefix or fallback).strip()
-        value = value.rstrip("\\")
+        value = value.replace("\\", "")
         return value or fallback
 
     async def _initialize_ap_identity(self) -> None:
         self._mac = await self.nmcli.get_mac()
+        self._suffix = self._normalize_suffix(self._mac)
         raw_suffix = await self.nmcli.get_mac_suffix()
-        self._suffix = self._normalize_suffix(raw_suffix)
-        if raw_suffix != self._suffix:
-            logger.warning("Normalized MAC suffix | raw=%s normalized=%s", raw_suffix, self._suffix)
+        normalized_from_raw = self._normalize_suffix(raw_suffix)
+        if normalized_from_raw != self._suffix:
+            logger.warning(
+                "MAC suffix mismatch | mac=%r suffix_from_mac=%s raw_suffix=%r suffix_from_raw=%s",
+                self._mac,
+                self._suffix,
+                raw_suffix,
+                normalized_from_raw,
+            )
         ssid_prefix = self._sanitize_ap_prefix(self.config.ap_ssid_prefix, "[unitlab]-core")
         password_prefix = self._sanitize_ap_prefix(self.config.ap_password_prefix, "pwd!")
         if ssid_prefix != self.config.ap_ssid_prefix:
@@ -247,7 +254,18 @@ class CoreNetworkAgent:
 
     async def _enter_ap_mode(self, *, reason: str, request_id: str | None = None, error: str | None = None) -> None:
         if not self._ap_ssid or not self._ap_password:
-            await self._initialize_ap_identity()
+            try:
+                await self._initialize_ap_identity()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to init AP identity, using fallback | error=%s", exc)
+                self._suffix = self._suffix or "0000"
+                ssid_prefix = self._sanitize_ap_prefix(self.config.ap_ssid_prefix, "[unitlab]-core")
+                password_prefix = self._sanitize_ap_prefix(self.config.ap_password_prefix, "pwd!")
+                self._ap_ssid = f"{ssid_prefix}-{self._suffix}"
+                self._ap_password = f"{password_prefix}{self._suffix}"
+                self._snapshot.ap.ssid = self._ap_ssid
+                self._snapshot.ap.password = self._ap_password
+                self._snapshot.suffix = self._suffix
         assert self._ap_ssid is not None
         assert self._ap_password is not None
 
