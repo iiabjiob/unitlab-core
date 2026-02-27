@@ -750,7 +750,7 @@ const gridColumns = computed(() => {
     key: sourceColumnKey(index),
     label: header,
     width: Math.min(Math.max(header.length * 11, 140), 360),
-    minWidth: 120,
+    minWidth: 50,
   }))
 
   return [

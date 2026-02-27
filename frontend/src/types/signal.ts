@@ -16,6 +16,7 @@ export interface AllocationMappingItem {
 export interface SignalImportMeta {
   sheet_name: string
   source_sheet_name?: string | null
+  header_row_index?: number | null
   selected_columns?: string[]
   terminal_column?: string | null
   type_column?: string | null

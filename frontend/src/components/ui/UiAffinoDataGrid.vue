@@ -1798,13 +1798,22 @@ const activeFilters = computed(() => (
     .sort((left, right) => left.label.localeCompare(right.label))
 ))
 
-const columnManagerColumns = computed(() => (
-  grid.columnState.snapshot.value.columns.map(column => ({
+const columnManagerColumns = computed(() => {
+  const snapshot = grid.columnState.snapshot.value
+  const columnByKey = new Map(snapshot.columns.map(column => [column.key, column]))
+  const ordered = snapshot.order
+    .map((key) => columnByKey.get(key))
+    .filter((column): column is NonNullable<typeof column> => Boolean(column))
+
+  const orderedKeys = new Set(ordered.map(column => column.key))
+  const remainder = snapshot.columns.filter(column => !orderedKeys.has(column.key))
+
+  return [...ordered, ...remainder].map(column => ({
     key: column.key,
     label: column.column.label ?? column.key,
     visible: column.visible,
   }))
-))
+})
 
 const columnStatePersistSignature = computed(() => {
   const snapshot = grid.columnState.snapshot.value

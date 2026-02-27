@@ -173,7 +173,7 @@
             </div>
           </div>
           <p v-else class="text-sm text-neutral-500 dark:text-neutral-400">
-            Selected worksheet has no readable header row. Choose another sheet or upload a different file.
+            Selected worksheet has no detectable header row. Choose another sheet or upload a different file.
           </p>
         </div>
 
@@ -574,7 +574,7 @@ function toReadableImportError(err: unknown): string {
     }
 
     if (/Unable to find any column headers/i.test(normalized)) {
-      return "Column headers could not be found. Make sure the first row contains column names."
+      return "Column headers could not be found. Make sure at least one row contains column names."
     }
 
     if (/Preset metadata is invalid/i.test(detail)) {
@@ -736,7 +736,7 @@ async function parseWorkbook(selected: File) {
     })
 
     if (!Object.values(columnsBySheet).some(columns => columns.length)) {
-      throw new Error("Unable to find any column headers. Make sure the first row contains column names.")
+      throw new Error("Unable to find any column headers. Make sure at least one row contains column names.")
     }
 
     sheetColumns.value = columnsBySheet

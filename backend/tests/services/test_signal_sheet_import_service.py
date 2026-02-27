@@ -176,3 +176,46 @@ def test_parse_workbook_projects_only_selected_columns_for_metadata_row() -> Non
     assert sheet["headers"] == ["Name", "Type", "Terminal", "Cabinet"]
     assert "Comment" not in sheet["headers"]
     assert all(set(item.keys()) == {"Name", "Type", "Terminal", "Cabinet"} for item in sheet["rows"])
+
+
+def test_parse_workbook_detects_header_row_after_preamble() -> None:
+    raw = _build_workbook(
+        [
+            ["Signal list export", None, None],
+            [None, None, None],
+            ["Signal Name", "Vendor Type", "internal_type"],
+            ["Pump Start", "DIGITAL OUTPUT", "do"],
+            ["Pump Feedback", "DIGITAL INPUT", "di"],
+        ]
+    )
+    meta = SignalImportMetaSchema(sheet_name="Signals", type_column="Vendor Type", internal_type_column="internal_type")
+
+    payload = SignalSheetImportService.parse_workbook(raw, filename="preamble.xlsx", metadata=meta)
+
+    assert payload.rows_count == 2
+    assert payload.data["sheets"][0]["headers"] == ["Signal Name", "Vendor Type", "internal_type"]
+    assert len(payload.signals) == 2
+    assert {signal.io_direction for signal in payload.signals} == {"DI", "DO"}
+
+
+def test_parse_workbook_honors_explicit_header_row_index() -> None:
+    raw = _build_workbook(
+        [
+            ["Title", "Description", None],
+            ["Signal Name", "Vendor Type", "internal_type"],
+            ["Pump Start", "DIGITAL OUTPUT", "do"],
+        ]
+    )
+    meta = SignalImportMetaSchema(
+        sheet_name="Signals",
+        header_row_index=1,
+        type_column="Vendor Type",
+        internal_type_column="internal_type",
+    )
+
+    payload = SignalSheetImportService.parse_workbook(raw, filename="explicit_header.xlsx", metadata=meta)
+
+    assert payload.rows_count == 1
+    assert payload.data["sheets"][0]["headers"] == ["Signal Name", "Vendor Type", "internal_type"]
+    assert len(payload.signals) == 1
+    assert payload.signals[0].name == "Pump Start"

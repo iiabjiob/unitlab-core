@@ -106,8 +106,9 @@ class SignalSheetImportService:
         total_rows = 0
 
         for sheet_index, (sheet_name, matrix) in enumerate(matrices):
-            headers = SignalSheetImportService._normalize_headers(matrix[0] if matrix else [])
-            rows = SignalSheetImportService._rows_to_objects(matrix[1:], headers)
+            header_row_index = SignalSheetImportService._resolve_header_row_index(matrix, metadata)
+            headers = SignalSheetImportService._normalize_headers(matrix[header_row_index] if matrix else [])
+            rows = SignalSheetImportService._rows_to_objects(matrix[header_row_index + 1 :], headers)
             total_rows += len(rows)
             sheets.append(
                 {
@@ -206,6 +207,61 @@ class SignalSheetImportService:
             normalized.append(header)
 
         return normalized
+
+    @staticmethod
+    def _resolve_header_row_index(matrix: list[list[Any]], metadata: SignalImportMetaSchema | None) -> int:
+        if not matrix:
+            return 0
+
+        if metadata and metadata.header_row_index is not None:
+            explicit_index = int(metadata.header_row_index)
+            if 0 <= explicit_index < len(matrix):
+                explicit_row = matrix[explicit_index] if explicit_index < len(matrix) else []
+                if SignalSheetImportService._count_non_empty_cells(explicit_row) > 0:
+                    return explicit_index
+
+        return SignalSheetImportService._detect_header_row_index(matrix)
+
+    @staticmethod
+    def _detect_header_row_index(matrix: list[list[Any]]) -> int:
+        best_index: int | None = None
+        best_score = -1
+        first_non_empty_index: int | None = None
+
+        for row_index, row in enumerate(matrix):
+            non_empty = SignalSheetImportService._count_non_empty_cells(row)
+            if non_empty == 0:
+                continue
+
+            if first_non_empty_index is None:
+                first_non_empty_index = row_index
+
+            if non_empty < 2:
+                continue
+
+            data_like_rows = SignalSheetImportService._count_data_like_rows_after(matrix, row_index)
+            score = data_like_rows * 10 + non_empty
+            if score > best_score:
+                best_score = score
+                best_index = row_index
+
+        if best_index is not None:
+            return best_index
+        if first_non_empty_index is not None:
+            return first_non_empty_index
+        return 0
+
+    @staticmethod
+    def _count_non_empty_cells(row: list[Any]) -> int:
+        return sum(1 for cell in row if SignalSheetImportService._stringify_cell(cell).strip())
+
+    @staticmethod
+    def _count_data_like_rows_after(matrix: list[list[Any]], header_index: int, max_rows: int = 25) -> int:
+        count = 0
+        for row in matrix[header_index + 1 : header_index + 1 + max_rows]:
+            if SignalSheetImportService._count_non_empty_cells(row) > 0:
+                count += 1
+        return count
 
     @staticmethod
     def _rows_to_objects(rows: list[list[Any]], headers: list[str]) -> list[dict[str, Any]]:
