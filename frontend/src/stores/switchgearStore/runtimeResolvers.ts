@@ -31,6 +31,14 @@ export function createSwitchgearRuntimeResolvers(params: Params) {
     return null
   }
 
+  function isChannelOnline(channelId: number | null): boolean {
+    if (!channelId) return false
+    const channel = params.channels.value.find(item => item.id === channelId)
+    if (!channel) return false
+    const device = params.devices.value.find(item => item.id === channel.device_id)
+    return device?.status === "online"
+  }
+
   function resolveBinaryState(
     channelId: number | null,
     expectedType: typeof CHANNEL_TYPES[keyof typeof CHANNEL_TYPES],
@@ -83,12 +91,18 @@ export function createSwitchgearRuntimeResolvers(params: Params) {
   }
 
   function resolveSwitchgearState(sw: Switchgear): SwitchgearState {
+    const doOpenChannelId = resolveBindingChannelId(sw, ["do_open"])
+    const doCloseChannelId = resolveBindingChannelId(sw, ["do_closed"])
+    if (!isChannelOnline(doOpenChannelId) || !isChannelOnline(doCloseChannelId)) {
+      return "UNKNOWN"
+    }
+
     const doOpen = resolveBinaryState(
-      resolveBindingChannelId(sw, ["do_open"]),
+      doOpenChannelId,
       CHANNEL_TYPES.DO,
     )
     const doClose = resolveBinaryState(
-      resolveBindingChannelId(sw, ["do_closed"]),
+      doCloseChannelId,
       CHANNEL_TYPES.DO,
     )
     return resolvePairState(doOpen, doClose) ?? "UNKNOWN"
