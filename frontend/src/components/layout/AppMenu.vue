@@ -338,6 +338,7 @@ function handleKeydown(event: KeyboardEvent) {
 .app-menu__entry {
   color: rgb(64 64 64);
   user-select: none;
+  cursor: default;
 }
 
 .app-menu__entry.is-compact {

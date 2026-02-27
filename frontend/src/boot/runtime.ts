@@ -3,6 +3,7 @@ import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
+import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { pinia } from "@/stores/pinia"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import { devPerfIncrement, devPerfMeasureStart } from "@/utils/devPerf"
@@ -27,6 +28,7 @@ export async function bootRuntime() {
     const deviceStore = useDeviceStore(pinia)
     const switchgearStore = useSwitchgearStore(pinia)
     const sequenceStore = useSequenceStore(pinia)
+    const signalSheetStore = useSignalSheetStore(pinia)
 
     const endWorkspaceBootstrapMeasure = devPerfMeasureStart("boot.runtime.workspaceBootstrap")
     const workspaceReady = await workspaceStore.bootstrap()
@@ -47,6 +49,14 @@ export async function bootRuntime() {
         () => sequenceStore.ensureLoaded(),
       ],
       { mode: "strict" },
+    )
+
+    await runStoreBootstrap(
+      ["boot-runtime-signal-sheet", workspaceStore.activeWorkspaceId],
+      [
+        () => signalSheetStore.ensureSheetLoaded({ force: false }),
+      ],
+      { mode: "settled" },
     )
     endRuntimeStoresBootstrapMeasure({
       workspaceId: workspaceStore.activeWorkspaceId ?? null,

@@ -45,7 +45,7 @@
               v-for="scenario in scenarioCards"
               :key="scenario.title"
               type="button"
-              class="flex h-28 min-h-0 flex-col justify-between rounded-2xl border border-neutral-200 bg-white/90 px-4 py-3 text-left text-neutral-900 transition hover:-translate-y-0.5 hover:border-neutral-900 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:border-neutral-700 dark:bg-neutral-950/40 dark:text-neutral-50 dark:hover:border-neutral-200/80 dark:hover:bg-neutral-900"
+              class="group flex h-28 min-h-0 flex-col justify-between rounded-2xl border border-neutral-200 bg-white/90 px-4 py-3 text-left text-neutral-900 transition hover:border-neutral-300 hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-900 dark:border-neutral-700 dark:bg-neutral-950/40 dark:text-neutral-50 dark:hover:border-neutral-600 dark:hover:bg-neutral-900"
               @click="goTo(scenario.route)"
             >
               <div class="space-y-1">
@@ -57,7 +57,7 @@
                 </div>
                 <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ scenario.description }}</p>
               </div>
-              <span class="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-300">
+              <span class="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 decoration-current underline-offset-2 group-hover:underline [text-decoration-skip-ink:none] dark:text-emerald-300">
                 {{ scenario.cta }}
                 <span aria-hidden="true">↗</span>
               </span>
