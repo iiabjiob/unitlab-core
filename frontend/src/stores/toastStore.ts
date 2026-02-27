@@ -16,6 +16,8 @@ export interface ToastItem {
   variant: ToastVariant
   timeout: number | null
   position: ToastPosition
+  actionLabel: string | null
+  onAction: (() => void) | null
 }
 
 const DEFAULT_TIMEOUT = 5000
@@ -35,8 +37,12 @@ export const useToastStore = defineStore("toastStore", () => {
       id,
       message,
       variant: options.variant ?? "info",
-      timeout: options.timeout ?? DEFAULT_TIMEOUT,
+      timeout: options.timeout === undefined ? DEFAULT_TIMEOUT : options.timeout,
       position: options.position ?? DEFAULT_POSITION,
+      actionLabel: typeof options.actionLabel === "string" && options.actionLabel.trim().length > 0
+        ? options.actionLabel.trim()
+        : null,
+      onAction: typeof options.onAction === "function" ? options.onAction : null,
     }
 
     toasts.value.push(toast)

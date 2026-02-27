@@ -11,6 +11,10 @@ import { useCoreNetworkStore } from '@/stores/coreNetworkStore'
 import { useCoreNtpStore } from '@/stores/coreNtpStore'
 import { useCoreDiagnosticsStore } from '@/stores/coreDiagnosticsStore'
 import { useCoreProvisionStore } from '@/stores/coreProvisionStore'
+import { useToastStore } from '@/stores/toastStore'
+import type { SystemHealthResponse } from '@/types/health'
+import type { CoreDiagnosticsSnapshot } from '@/types/coreDiagnostics'
+import router from '@/router'
 
 const logger = getLogger('ws')
 const TEST_RUN_JOB_EVENT_THROTTLE_MS = 150
@@ -18,6 +22,14 @@ const lastTestRunJobEventMetaByJobId = new Map<string, { at: number; status: str
 const pendingTestRunJobEventsById = new Map<string, SignalAllocationJobEvent | SignalTestRunJobEvent>()
 let testRunJobFlushFrame: number | null = null
 const pendingTestedAtPatchByJobId = new Map<string, Record<string, string>>()
+const systemHealthCriticalToastState = {
+  id: null as number | null,
+  signature: null as string | null,
+}
+const coreDiagnosticsCriticalToastState = {
+  id: null as number | null,
+  signature: null as string | null,
+}
 
 import type {
   WSEvent,
@@ -147,6 +159,126 @@ function scheduleTestRunJobFlush(stores: JobEventStores) {
   })
 }
 
+function syncStickyCriticalToast(
+  toastStore: ReturnType<typeof useToastStore>,
+  state: { id: number | null; signature: string | null },
+  nextSignature: string | null,
+  message: string,
+) {
+  if (!nextSignature) {
+    if (state.id !== null) {
+      toastStore.remove(state.id)
+      state.id = null
+    }
+    state.signature = null
+    return
+  }
+
+  if (state.signature === nextSignature && state.id !== null) {
+    return
+  }
+
+  if (state.id !== null) {
+    toastStore.remove(state.id)
+    state.id = null
+  }
+
+  state.id = toastStore.error(message, { timeout: null })
+  state.signature = nextSignature
+}
+
+function syncSystemHealthCriticalAlert(
+  toastStore: ReturnType<typeof useToastStore>,
+  snapshot: SystemHealthResponse,
+) {
+  const status = String(snapshot.status ?? "online").toLowerCase()
+  const issues = Array.isArray(snapshot.issues) ? snapshot.issues.map(item => String(item).trim()).filter(Boolean) : []
+  const isCritical = status !== "online" || issues.length > 0
+
+  if (!isCritical) {
+    syncStickyCriticalToast(toastStore, systemHealthCriticalToastState, null, "")
+    return
+  }
+
+  const signature = JSON.stringify({ status, issues })
+  const issuePreview = issues.slice(0, 3).join("; ")
+  const message = issuePreview
+    ? `System ${status.toUpperCase()}: ${issuePreview}`
+    : `System ${status.toUpperCase()}: critical health condition detected`
+
+  if (systemHealthCriticalToastState.signature === signature && systemHealthCriticalToastState.id !== null) {
+    return
+  }
+  if (systemHealthCriticalToastState.id !== null) {
+    toastStore.remove(systemHealthCriticalToastState.id)
+    systemHealthCriticalToastState.id = null
+  }
+  systemHealthCriticalToastState.id = toastStore.error(message, {
+    timeout: null,
+    actionLabel: "Open Diagnostics",
+    onAction: () => {
+      void router.push({ name: "settings.diagnostics" }).catch(() => undefined)
+    },
+  })
+  systemHealthCriticalToastState.signature = signature
+}
+
+function syncCoreDiagnosticsCriticalAlert(
+  toastStore: ReturnType<typeof useToastStore>,
+  snapshot: CoreDiagnosticsSnapshot,
+) {
+  const issues: string[] = []
+  const mode = String(snapshot.mode ?? "unknown").toLowerCase()
+  if (mode === "error" || mode === "degraded") {
+    issues.push(`mode ${mode.toUpperCase()}`)
+  }
+
+  const cpuTemp = Number(snapshot.cpu?.temperature_c)
+  if (Number.isFinite(cpuTemp) && cpuTemp >= 85) {
+    issues.push(`CPU temp ${cpuTemp.toFixed(1)}°C`)
+  }
+
+  const memoryUsed = Number(snapshot.memory?.used_percent)
+  if (Number.isFinite(memoryUsed) && memoryUsed >= 95) {
+    issues.push(`memory ${memoryUsed.toFixed(1)}%`)
+  }
+
+  const diskUsed = Number(snapshot.disk_root?.used_percent)
+  if (Number.isFinite(diskUsed) && diskUsed >= 95) {
+    issues.push(`disk ${diskUsed.toFixed(1)}%`)
+  }
+
+  const inactiveServices = (Array.isArray(snapshot.services) ? snapshot.services : [])
+    .filter(service => service.active === false)
+    .map(service => String(service.name ?? "").trim())
+    .filter(Boolean)
+  if (inactiveServices.length > 0) {
+    issues.push(`services inactive (${inactiveServices.slice(0, 3).join(", ")}${inactiveServices.length > 3 ? ", …" : ""})`)
+  }
+
+  if (issues.length === 0) {
+    syncStickyCriticalToast(toastStore, coreDiagnosticsCriticalToastState, null, "")
+    return
+  }
+
+  const signature = JSON.stringify({ mode, issues })
+  if (coreDiagnosticsCriticalToastState.signature === signature && coreDiagnosticsCriticalToastState.id !== null) {
+    return
+  }
+  if (coreDiagnosticsCriticalToastState.id !== null) {
+    toastStore.remove(coreDiagnosticsCriticalToastState.id)
+    coreDiagnosticsCriticalToastState.id = null
+  }
+  coreDiagnosticsCriticalToastState.id = toastStore.error(`Core diagnostics alert: ${issues.join("; ")}`, {
+    timeout: null,
+    actionLabel: "Open Diagnostics",
+    onAction: () => {
+      void router.push({ name: "settings.diagnostics" }).catch(() => undefined)
+    },
+  })
+  coreDiagnosticsCriticalToastState.signature = signature
+}
+
 export function handleWsEvent(event: WSEvent) {
   const deviceStore = useDeviceStore()
   const channelStore = useChannelStore()
@@ -159,6 +291,7 @@ export function handleWsEvent(event: WSEvent) {
   const coreNtpStore = useCoreNtpStore()
   const coreDiagnosticsStore = useCoreDiagnosticsStore()
   const coreProvisionStore = useCoreProvisionStore()
+  const toastStore = useToastStore()
 
   // Route sequence events into the sequence store so realtime progress stays in sync.
   if ('topic' in event && (event as SequenceWsEvent).topic === 'sequence') {
@@ -182,6 +315,7 @@ export function handleWsEvent(event: WSEvent) {
       if (sysEvent.event === "system_health_changed") {
         logger.debug("📡 IN ← SYSTEM_HEALTH:", sysEvent)
         systemHealthStore.applySnapshot(sysEvent.snapshot)
+        syncSystemHealthCriticalAlert(toastStore, sysEvent.snapshot)
         break
       }
       if (sysEvent.event === "core_network_state") {
@@ -196,7 +330,9 @@ export function handleWsEvent(event: WSEvent) {
       }
       if (sysEvent.event === "core_diagnostics_state") {
         logger.debug("📡 IN ← CORE_DIAGNOSTICS_STATE:", sysEvent)
-        coreDiagnosticsStore.applySnapshot((sysEvent as CoreDiagnosticsStateWsEvent).snapshot)
+        const diagnosticsSnapshot = (sysEvent as CoreDiagnosticsStateWsEvent).snapshot
+        coreDiagnosticsStore.applySnapshot(diagnosticsSnapshot)
+        syncCoreDiagnosticsCriticalAlert(toastStore, diagnosticsSnapshot)
         break
       }
       if (sysEvent.event === "core_provision_state") {

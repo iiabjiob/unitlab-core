@@ -16,6 +16,7 @@ import type { DeviceRegisterEvent, DeviceHeartbeatEvent } from "@/types/ws/event
 import { getLogger } from "@/utils/logger"
 import { devPerfIncrement, devPerfMeasureStart } from "@/utils/devPerf"
 import { useToastStore } from "@/stores/toastStore"
+import router from "@/router"
 
 const logger = getLogger("DEVICE")
 
@@ -61,6 +62,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
   const isDeleting = ref(false)
   const totalCount = ref(0)
   const toastStore = useToastStore()
+  const offlineToastIdByUnitId = new Map<string, number>()
   let fetchAllInFlight: Promise<void> | null = null
 
   function bumpDevicesRevision() {
@@ -276,13 +278,29 @@ export const useDeviceStore = defineStore("deviceStore", () => {
     }
 
     const displayName = existing?.display_name ?? event.unit_id
-    const variant = event.status === "online" ? "success" : "info"
-    const message =
-      event.status === "online"
-        ? `${displayName} is back online`
-        : `${displayName} went offline`
+    if (event.status === "online") {
+      const staleOfflineToastId = offlineToastIdByUnitId.get(event.unit_id)
+      if (staleOfflineToastId !== undefined) {
+        toastStore.remove(staleOfflineToastId)
+        offlineToastIdByUnitId.delete(event.unit_id)
+      }
+      toastStore.success(`${displayName} is back online`)
+      return
+    }
 
-    toastStore.push(message, { variant })
+    const staleOfflineToastId = offlineToastIdByUnitId.get(event.unit_id)
+    if (staleOfflineToastId !== undefined) {
+      toastStore.remove(staleOfflineToastId)
+      offlineToastIdByUnitId.delete(event.unit_id)
+    }
+    const toastId = toastStore.error(`${displayName} went offline`, {
+      timeout: null,
+      actionLabel: "Open Devices",
+      onAction: () => {
+        void router.push({ name: "devices.list" }).catch(() => undefined)
+      },
+    })
+    offlineToastIdByUnitId.set(event.unit_id, toastId)
   }
 
   return {

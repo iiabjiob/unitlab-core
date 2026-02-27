@@ -27,6 +27,15 @@
             </p>
           </div>
           <button
+            v-if="toast.actionLabel && toast.onAction"
+            type="button"
+            class="text-[10px] font-medium uppercase tracking-[0.06em] text-primary-600 transition hover:text-primary-700 dark:text-primary-300 dark:hover:text-primary-200"
+            :aria-label="toast.actionLabel"
+            @click="runAction(toast.id, toast.onAction)"
+          >
+            {{ toast.actionLabel }}
+          </button>
+          <button
             type="button"
             class="text-[10px] font-medium uppercase tracking-[0.06em] text-neutral-500 transition hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
             aria-label="Dismiss notification"
@@ -55,6 +64,11 @@ const positions: ToastPosition[] = [
 ]
 
 function remove(id: number) {
+  toastStore.remove(id)
+}
+
+function runAction(id: number, action: () => void) {
+  action()
   toastStore.remove(id)
 }
 
