@@ -12,6 +12,7 @@ import {
   DEFAULT_TOOLTIP_CLOSE_DELAY_MS,
   DEFAULT_TOOLTIP_OPEN_DELAY_MS,
 } from "@/components/ui/tooltipDefaults"
+import { APP_OVERLAY_HOST_SELECTOR } from "@/utils/overlayHost"
 
 defineOptions({
   inheritAttrs: false,
@@ -52,6 +53,7 @@ const { triggerRef, tooltipRef, tooltipStyle, teleportTarget } = useFloatingTool
   placement: props.placement,
   align: props.align,
   gutter: 8,
+  teleportTo: APP_OVERLAY_HOST_SELECTOR,
 })
 
 registerTooltipController(tooltipController as TooltipController)
@@ -121,7 +123,7 @@ function setTriggerRef(target: Element | ComponentPublicInstance | null) {
     ⓘ
   </span>
 
-  <Teleport :to="teleportTarget || 'body'">
+  <Teleport :to="teleportTarget || APP_OVERLAY_HOST_SELECTOR">
     <div
       v-if="!disabled && tooltipController.state.value.open"
       ref="tooltipRef"

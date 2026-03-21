@@ -114,6 +114,7 @@ import { useDeviceStore } from "@/stores/deviceStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import type { Channel, ChannelType } from "@/types/channel"
+import { APP_OVERLAY_HOST_SELECTOR } from "@/utils/overlayHost"
 
 type NodeValue = string
 
@@ -149,6 +150,7 @@ const floating = useFloatingPopover(popover, {
   align: "start",
   gutter: 6,
   viewportPadding: 8,
+  teleportTo: APP_OVERLAY_HOST_SELECTOR,
   zIndex: 1300,
 })
 

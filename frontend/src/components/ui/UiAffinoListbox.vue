@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue"
 import type { ComponentPublicInstance } from "vue"
+import { APP_OVERLAY_HOST_SELECTOR } from "@/utils/overlayHost"
 
 type ListboxValue = string | number | null
 
@@ -427,7 +428,7 @@ function updatePanelPosition() {
 
     <input v-if="name" :name="name" type="hidden" autocomplete="off" :value="hiddenInputValue">
 
-    <teleport to="body">
+    <teleport :to="APP_OVERLAY_HOST_SELECTOR">
       <div
         v-if="isOpen"
         ref="panelRef"

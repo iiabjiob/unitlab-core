@@ -4,9 +4,13 @@
       v-if="canControl"
       type="button"
       class="inline-flex items-center justify-start gap-1.5 text-xs font-semibold text-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 dark:text-neutral-200"
+      tabindex="-1"
       :disabled="disabled"
-      :aria-label="`Control: ${stateLabel}`"
-      @click.stop="emit('toggle')"
+      :aria-label="ariaLabel ?? `Control: ${stateLabel}`"
+      :aria-pressed="ariaPressed"
+      @click.stop="activate()"
+      @keydown.enter.stop.prevent="activate()"
+      @keydown.space.stop.prevent="activate()"
     >
       <span
         class="relative inline-flex h-4 w-8 shrink-0 items-center rounded-full border transition-colors duration-100 ease-out"
@@ -19,7 +23,7 @@
       </span>
       <span class="inline-flex items-center gap-1 whitespace-nowrap">
         <span class="h-2 w-2 shrink-0 rounded-full" :class="lampClass"></span>
-        <span class="inline-flex min-w-[4ch] justify-center text-[10px] uppercase tracking-[0.08em]" :class="statusClass">{{ statusTag }}</span>
+        <span v-if="statusTag" class="inline-flex min-w-[4ch] justify-center text-[10px] uppercase tracking-[0.08em]" :class="statusClass">{{ statusTag }}</span>
       </span>
     </button>
     <span v-else class="text-xs text-neutral-400">—</span>
@@ -27,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
+const props = defineProps<{
   canControl: boolean
   lampClass: string
   statusClass: string
@@ -35,9 +39,8 @@ defineProps<{
   stateLabel: string
   disabled: boolean
   isOn: boolean
-}>()
-
-const emit = defineEmits<{
-  (event: "toggle"): void
+  activate: () => void
+  ariaLabel?: string
+  ariaPressed?: "true" | "false" | "mixed"
 }>()
 </script>

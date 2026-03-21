@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from "vue"
+import { computed, h, nextTick, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from "vue"
+import { DataGrid, type DataGridAppColumnInput } from "@affino/datagrid-vue-app"
 import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
 import type { Device } from "@/types/device"
 import UiAffinoDisclosure from "@/components/ui/UiAffinoDisclosure.vue"
@@ -270,21 +271,53 @@ const freshnessRows = computed(() => [
 ])
 
 type StackRow = {
+  rowId: string
   task: string
   minWords: number | null
   lastSeenMs: number | null
 }
 
 const stackRows = computed<StackRow[]>(() =>
-  diagStack.value.map((entry) => {
+  diagStack.value.map((entry, index) => {
     const row = asRecord(entry)
     return {
+      rowId: `stack-${index}-${String(row?.task ?? "unknown")}`,
       task: asString(row?.task) ?? "—",
       minWords: asNumber(row?.min_words),
       lastSeenMs: asNumber(row?.last_seen_ms),
     }
   })
 )
+
+const stackGridColumns = computed<DataGridAppColumnInput<StackRow>[]>(() => [
+  {
+    key: "task",
+    label: "task",
+    minWidth: 180,
+    initialState: { width: 220 },
+    cellRenderer: ({ row }) => h("span", { class: "font-mono text-[11px]" }, String(row?.task ?? "—")),
+  },
+  {
+    key: "minWords",
+    label: "min_words",
+    minWidth: 120,
+    initialState: { width: 140 },
+    presentation: { align: "right", headerAlign: "right" },
+    cellRenderer: ({ row }) => h("span", { class: "font-mono text-[11px]" }, String(row?.minWords ?? "—")),
+  },
+  {
+    key: "lastSeenMs",
+    label: "last_seen_ms",
+    minWidth: 140,
+    initialState: { width: 160 },
+    presentation: { align: "right", headerAlign: "right" },
+    cellRenderer: ({ row }) => h("span", { class: "font-mono text-[11px]" }, String(row?.lastSeenMs ?? "—")),
+  },
+])
+
+const stackGridRowModelOptions = {
+  resolveRowId: (row: StackRow) => row.rowId,
+}
 
 const diagnosticsPayload = computed(() => {
   const nowIso = new Date().toISOString()
@@ -875,38 +908,32 @@ onBeforeUnmount(() => {
               <span class="ml-2 font-semibold">{{ staleTasks ?? '—' }}</span>
             </div>
 
-            <div v-if="stackRows.length" class="overflow-x-auto rounded-md border border-neutral-200 dark:border-neutral-700">
-              <table class="min-w-full text-[11px]">
-                <thead class="bg-neutral-50 dark:bg-neutral-900/70 text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
-                  <tr>
-                    <th class="text-left px-2 py-1 border-b border-neutral-200 dark:border-neutral-700">
-                      <span class="inline-flex items-center gap-1">
-                        <span>task</span>
-                        <InlineInfoTooltip text="RTOS/firmware task name from stack diagnostics." placement="top" align="start" />
-                      </span>
-                    </th>
-                    <th class="text-left px-2 py-1 border-b border-neutral-200 dark:border-neutral-700">
-                      <span class="inline-flex items-center gap-1">
-                        <span>min_words</span>
-                        <InlineInfoTooltip text="Minimum observed stack free words for the task." placement="top" align="start" />
-                      </span>
-                    </th>
-                    <th class="text-left px-2 py-1 border-b border-neutral-200 dark:border-neutral-700">
-                      <span class="inline-flex items-center gap-1">
-                        <span>last_seen_ms</span>
-                        <InlineInfoTooltip text="Timestamp (ms) of last scheduler/task heartbeat observation." placement="top" align="start" />
-                      </span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(row, idx) in stackRows" :key="`${row.task}-${idx}`" class="border-b last:border-b-0 border-neutral-200 dark:border-neutral-700">
-                    <td class="px-2 py-1.5 font-mono">{{ row.task }}</td>
-                    <td class="px-2 py-1.5 font-mono">{{ row.minWords ?? '—' }}</td>
-                    <td class="px-2 py-1.5 font-mono">{{ row.lastSeenMs ?? '—' }}</td>
-                  </tr>
-                </tbody>
-              </table>
+            <div v-if="stackRows.length" class="overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-700">
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-neutral-200 px-2 py-1.5 text-[10px] uppercase tracking-wide text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+                <span class="inline-flex items-center gap-1">
+                  <span>task</span>
+                  <InlineInfoTooltip text="RTOS/firmware task name from stack diagnostics." placement="top" align="start" />
+                </span>
+                <span class="inline-flex items-center gap-1">
+                  <span>min_words</span>
+                  <InlineInfoTooltip text="Minimum observed stack free words for the task." placement="top" align="start" />
+                </span>
+                <span class="inline-flex items-center gap-1">
+                  <span>last_seen_ms</span>
+                  <InlineInfoTooltip text="Timestamp (ms) of last scheduler/task heartbeat observation." placement="top" align="start" />
+                </span>
+              </div>
+              <div class="h-[220px] min-h-[120px]">
+                <DataGrid
+                  :rows="stackRows"
+                  :columns="stackGridColumns"
+                  :client-row-model-options="stackGridRowModelOptions"
+                  :virtualization="{ rowOverscan: 4, columnOverscan: 1 }"
+                  :base-row-height="30"
+                  layout-mode="fill"
+                  theme="industrial-neutral"
+                />
+              </div>
             </div>
             <div v-else class="text-[11px] italic text-neutral-500 dark:text-neutral-400">
               No stack data

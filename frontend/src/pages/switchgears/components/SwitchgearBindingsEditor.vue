@@ -427,142 +427,144 @@ watch(
 </script>
 
 <template>
-  <div class="space-y-4 rounded-md border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900">
-    <div class="flex items-start justify-between gap-3">
-      <div>
-        <div class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-          Editing bindings
+  <div>
+    <div class="space-y-4 rounded-md border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+            Editing bindings
+          </div>
+          <div class="text-sm font-semibold text-neutral-900 dark:text-white">
+            Pair mapping (2 actions)
+          </div>
+          <div class="mt-2">
+            <UiButton size="xs" variant="ghost" @click="resetAll">
+              Reset
+            </UiButton>
+          </div>
         </div>
-        <div class="text-sm font-semibold text-neutral-900 dark:text-white">
-          Pair mapping (2 actions)
-        </div>
-        <div class="mt-2">
-          <UiButton size="xs" variant="ghost" @click="resetAll">
-            Reset
+
+        <div class="flex items-center">
+          <UiButton size="xs" variant="ghost" @click="emit('close')">
+            ×
           </UiButton>
         </div>
       </div>
 
-      <div class="flex items-center">
-        <UiButton size="xs" variant="ghost" @click="emit('close')">
-          ×
-        </UiButton>
+      <div class="flex items-center gap-2">
+        <DirectSignalModeTabs
+          :model-value="bindingMode"
+          :show-signal="signalModeAvailable"
+          aria-label="Binding mode"
+          @update:model-value="setMode"
+        />
+        <InlineInfoTooltip :text="bindingModeHelpText()" aria-label="Binding mode help" />
       </div>
+
+      <template v-if="bindingMode === 'signal'">
+        <div class="rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-800">
+          <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+            Signals selection
+          </div>
+
+          <div class="mb-3 text-sm text-neutral-700 dark:text-neutral-200">
+            {{ signalSelectionSummary }}
+          </div>
+
+          <div class="flex items-center gap-2">
+            <UiButton size="sm" variant="secondary" @click="openSignalPicker">
+              Pick signals
+            </UiButton>
+            <UiButton size="sm" variant="ghost" :disabled="selectedSignalRows.length === 0" @click="clearSignalSelection">
+              Clear
+            </UiButton>
+          </div>
+        </div>
+      </template>
+
+      <template v-else>
+        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <section class="rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-800">
+            <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+              indication
+            </div>
+
+            <div class="space-y-3">
+              <div v-for="role in DO_ROLES" :key="role" class="space-y-1">
+                <div class="text-xs text-neutral-500 dark:text-neutral-400">{{ ROLE_META[role].label }}</div>
+                <SignalBackedChannelField
+                  :channel-id="channelValue(role)"
+                  :channel-type="ROLE_META[role].channelType"
+                  :exclude-ids="excludeIdsForRole(role)"
+                  :signal-id="signalSelectionByRole[role].signalId"
+                  :signal-key="signalSelectionByRole[role].signalKey"
+                  :name="`binding-${role}`"
+                  :signal-picker-title="`${ROLE_META[role].label} · Select signal`"
+                  :table-id="`switchgear-binding-${props.switchgear.id}-${role}`"
+                  :mode="bindingMode"
+                  :allow-signal-mode="signalModeAvailable"
+                  :show-mode-toggle="false"
+                  :show-signal-clear="false"
+                  :empty-signal-subtitle="''"
+                  :signal-display-mode="'source-row'"
+                  :signal-display-delimiter="' | '"
+                  :signal-label-scrollable="true"
+                  :show-signal-subtitle="false"
+                  @update:channelId="value => handleChannelChange(role, value)"
+                  @update:signal="value => handleSignalChange(role, value)"
+                />
+              </div>
+            </div>
+          </section>
+
+          <section class="rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-800">
+            <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+              control from BCU
+            </div>
+
+            <div class="space-y-3">
+              <div v-for="role in DI_ROLES" :key="role" class="space-y-1">
+                <div class="text-xs text-neutral-500 dark:text-neutral-400">{{ ROLE_META[role].label }}</div>
+                <SignalBackedChannelField
+                  :channel-id="channelValue(role)"
+                  :channel-type="ROLE_META[role].channelType"
+                  :exclude-ids="excludeIdsForRole(role)"
+                  :signal-id="signalSelectionByRole[role].signalId"
+                  :signal-key="signalSelectionByRole[role].signalKey"
+                  :name="`binding-${role}`"
+                  :signal-picker-title="`${ROLE_META[role].label} · Select signal`"
+                  :table-id="`switchgear-binding-${props.switchgear.id}-${role}`"
+                  :mode="bindingMode"
+                  :allow-signal-mode="signalModeAvailable"
+                  :show-mode-toggle="false"
+                  :show-signal-clear="false"
+                  :empty-signal-subtitle="''"
+                  :signal-display-mode="'source-row'"
+                  :signal-display-delimiter="' | '"
+                  :signal-label-scrollable="true"
+                  :show-signal-subtitle="false"
+                  @update:channelId="value => handleChannelChange(role, value)"
+                  @update:signal="value => handleSignalChange(role, value)"
+                />
+              </div>
+            </div>
+          </section>
+        </div>
+      </template>
+
+      <UiAlert v-if="error" type="error" :message="error" />
     </div>
 
-    <div class="flex items-center gap-2">
-      <DirectSignalModeTabs
-        :model-value="bindingMode"
-        :show-signal="signalModeAvailable"
-        aria-label="Binding mode"
-        @update:model-value="setMode"
-      />
-      <InlineInfoTooltip :text="bindingModeHelpText()" aria-label="Binding mode help" />
-    </div>
-
-    <template v-if="bindingMode === 'signal'">
-      <div class="rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-800">
-        <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-          Signals selection
-        </div>
-
-        <div class="mb-3 text-sm text-neutral-700 dark:text-neutral-200">
-          {{ signalSelectionSummary }}
-        </div>
-
-        <div class="flex items-center gap-2">
-          <UiButton size="sm" variant="secondary" @click="openSignalPicker">
-            Pick signals
-          </UiButton>
-          <UiButton size="sm" variant="ghost" :disabled="selectedSignalRows.length === 0" @click="clearSignalSelection">
-            Clear
-          </UiButton>
-        </div>
-      </div>
-    </template>
-
-    <template v-else>
-      <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <section class="rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-800">
-          <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-            indication
-          </div>
-
-          <div class="space-y-3">
-            <div v-for="role in DO_ROLES" :key="role" class="space-y-1">
-              <div class="text-xs text-neutral-500 dark:text-neutral-400">{{ ROLE_META[role].label }}</div>
-              <SignalBackedChannelField
-                :channel-id="channelValue(role)"
-                :channel-type="ROLE_META[role].channelType"
-                :exclude-ids="excludeIdsForRole(role)"
-                :signal-id="signalSelectionByRole[role].signalId"
-                :signal-key="signalSelectionByRole[role].signalKey"
-                :name="`binding-${role}`"
-                :signal-picker-title="`${ROLE_META[role].label} · Select signal`"
-                :table-id="`switchgear-binding-${props.switchgear.id}-${role}`"
-                :mode="bindingMode"
-                :allow-signal-mode="signalModeAvailable"
-                :show-mode-toggle="false"
-                :show-signal-clear="false"
-                :empty-signal-subtitle="''"
-                :signal-display-mode="'source-row'"
-                :signal-display-delimiter="' | '"
-                :signal-label-scrollable="true"
-                :show-signal-subtitle="false"
-                @update:channelId="value => handleChannelChange(role, value)"
-                @update:signal="value => handleSignalChange(role, value)"
-              />
-            </div>
-          </div>
-        </section>
-
-        <section class="rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-800">
-          <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-            control from BCU
-          </div>
-
-          <div class="space-y-3">
-            <div v-for="role in DI_ROLES" :key="role" class="space-y-1">
-              <div class="text-xs text-neutral-500 dark:text-neutral-400">{{ ROLE_META[role].label }}</div>
-              <SignalBackedChannelField
-                :channel-id="channelValue(role)"
-                :channel-type="ROLE_META[role].channelType"
-                :exclude-ids="excludeIdsForRole(role)"
-                :signal-id="signalSelectionByRole[role].signalId"
-                :signal-key="signalSelectionByRole[role].signalKey"
-                :name="`binding-${role}`"
-                :signal-picker-title="`${ROLE_META[role].label} · Select signal`"
-                :table-id="`switchgear-binding-${props.switchgear.id}-${role}`"
-                :mode="bindingMode"
-                :allow-signal-mode="signalModeAvailable"
-                :show-mode-toggle="false"
-                :show-signal-clear="false"
-                :empty-signal-subtitle="''"
-                :signal-display-mode="'source-row'"
-                :signal-display-delimiter="' | '"
-                :signal-label-scrollable="true"
-                :show-signal-subtitle="false"
-                @update:channelId="value => handleChannelChange(role, value)"
-                @update:signal="value => handleSignalChange(role, value)"
-              />
-            </div>
-          </div>
-        </section>
-      </div>
-    </template>
-
-    <UiAlert v-if="error" type="error" :message="error" />
+    <SignalSelectionGridModal
+      :open="signalModalOpen"
+      title="Select switchgear signals"
+      :allowed-directions="['DI', 'DO'] as SignalIODirection[]"
+      :multiple="true"
+      :min-selected="2"
+      confirm-label="Use selected signals"
+      :table-id="`switchgear-signals-${props.switchgear.id}`"
+      @close="signalModalOpen = false"
+      @confirm="handleSignalPickerConfirm"
+    />
   </div>
-
-  <SignalSelectionGridModal
-    :open="signalModalOpen"
-    title="Select switchgear signals"
-    :allowed-directions="['DI', 'DO'] as SignalIODirection[]"
-    :multiple="true"
-    :min-selected="2"
-    confirm-label="Use selected signals"
-    :table-id="`switchgear-signals-${props.switchgear.id}`"
-    @close="signalModalOpen = false"
-    @confirm="handleSignalPickerConfirm"
-  />
 </template>

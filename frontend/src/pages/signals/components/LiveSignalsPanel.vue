@@ -55,43 +55,22 @@
           </label>
         </div>
 
-        <div class="flex-1 min-h-0">
-          <UiAffinoDataGrid
-            :rows="gridRows"
-            :columns="gridColumns"
-            :row-height="38"
-            :overscan-rows="10"
-            :overscan-columns="2"
-            :enable-filtering="true"
-            :enable-column-resize="true"
-            :empty-text="'No signals match your filters.'"
-            :row-key="gridRowKey"
-          >
-            <template #cell="{ column, row, value }">
-              <template v-if="column.key === 'direction'">
-                <UiBadge :variant="resolveDirectionBadge(rowAsGridRow(row).source.signal.io_direction)">
-                  {{ rowAsGridRow(row).source.signal.io_direction }}
-                </UiBadge>
-              </template>
-
-              <template v-else-if="column.key === 'action'">
-                <UiButton
-                  v-if="canToggle(rowAsGridRow(row).source)"
-                  size="sm"
-                  variant="secondary"
-                  :disabled="isChannelBusy(rowAsGridRow(row).source)"
-                  @click.stop="toggleDigital(rowAsGridRow(row).source)"
-                >
-                  {{ toggleLabel(rowAsGridRow(row).source) }}
-                </UiButton>
-                <span v-else class="text-xs text-neutral-400">—</span>
-              </template>
-
-              <template v-else>
-                <span class="truncate">{{ String(value ?? '') }}</span>
-              </template>
-            </template>
-          </UiAffinoDataGrid>
+        <div class="affino-native-data-grid flex-1 min-h-0">
+          <div class="affino-native-data-grid__shell">
+            <DataGrid
+              class="affino-native-data-grid__grid"
+              :rows="gridRows"
+              :columns="resolvedColumns"
+              :theme="theme"
+              :client-row-model-options="clientRowModelOptions"
+              :virtualization="virtualizationOptions"
+              :base-row-height="38"
+              render-mode="virtualization"
+              layout-mode="fill"
+              row-hover
+              striped-rows
+            />
+          </div>
         </div>
       </template>
     </div>
@@ -99,11 +78,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, h, ref } from "vue"
+import { DataGrid, type DataGridAppCellRendererContext, type DataGridAppColumnInput } from "@affino/datagrid-vue-app"
 
-import UiAffinoDataGrid from "@/components/ui/UiAffinoDataGrid.vue"
 import UiBadge from "@/components/ui/UiBadge.vue"
 import UiButton from "@/components/ui/UiButton.vue"
+import { useAffinoDataGridTheme } from "@/components/ui/affinoDataGridTheme"
+import "@/components/ui/affinoDataGridNative.css"
 import { useChannelStore } from "@/stores/channelStore"
 import { CHANNEL_TYPES, type Channel, type DoChannel } from "@/types/channel"
 import type { AllocationMappingItem, Signal } from "@/types/signal"
@@ -122,6 +103,7 @@ const emit = defineEmits<{ (e: "refresh-signals"): void; (e: "refresh-channels")
 
 const query = ref("")
 const showOnlyBound = ref(false)
+const { theme } = useAffinoDataGridTheme()
 
 interface LiveSignalRow {
   signal: Signal
@@ -137,7 +119,6 @@ interface LiveSignalGridRow extends Record<string, unknown> {
   channel: string
   source_link: string
   live: string
-  action: string
   source: LiveSignalRow
 }
 
@@ -175,15 +156,75 @@ const filteredRows = computed(() => {
   })
 })
 
-const gridColumns = computed(() => [
-  { key: "name", label: "Signal", width: 260, minWidth: 180 },
-  { key: "key", label: "Key", width: 210, minWidth: 160 },
-  { key: "direction", label: "Direction", width: 120, minWidth: 110 },
-  { key: "channel", label: "Channel", width: 260, minWidth: 180 },
-  { key: "source_link", label: "Source Link", width: 300, minWidth: 180 },
-  { key: "live", label: "Live State", width: 130, minWidth: 110 },
-  { key: "action", label: "Action", width: 120, minWidth: 100 },
+function renderLiveSignalsDefaultCell(context: DataGridAppCellRendererContext<LiveSignalGridRow>) {
+  return h("span", { class: "truncate" }, String(context.value ?? ""))
+}
+
+const resolvedColumns = computed<DataGridAppColumnInput<LiveSignalGridRow>[]>(() => [
+  {
+    key: "name",
+    label: "Signal",
+    minWidth: 180,
+    initialState: { width: 260 },
+    presentation: { align: "left", headerAlign: "left" },
+    cellRenderer: renderLiveSignalsDefaultCell,
+  },
+  {
+    key: "key",
+    label: "Key",
+    minWidth: 160,
+    initialState: { width: 210 },
+    presentation: { align: "left", headerAlign: "left" },
+    cellRenderer: renderLiveSignalsDefaultCell,
+  },
+  {
+    key: "direction",
+    label: "Direction",
+    minWidth: 110,
+    initialState: { width: 120 },
+    presentation: { align: "left", headerAlign: "left" },
+    cellRenderer: (context: DataGridAppCellRendererContext<LiveSignalGridRow>) => h(
+      UiBadge,
+      { variant: resolveDirectionBadge(context.row?.source.signal.io_direction ?? "DI") },
+      () => context.row?.source.signal.io_direction ?? "—",
+    ),
+  },
+  {
+    key: "channel",
+    label: "Channel",
+    minWidth: 180,
+    initialState: { width: 260 },
+    presentation: { align: "left", headerAlign: "left" },
+    cellRenderer: renderLiveSignalsDefaultCell,
+  },
+  {
+    key: "source_link",
+    label: "Source Link",
+    minWidth: 180,
+    initialState: { width: 300 },
+    presentation: { align: "left", headerAlign: "left" },
+    cellRenderer: renderLiveSignalsDefaultCell,
+  },
+  {
+    key: "live",
+    label: "Live State",
+    minWidth: 110,
+    initialState: { width: 130 },
+    presentation: { align: "left", headerAlign: "left" },
+    cellRenderer: renderLiveSignalsDefaultCell,
+  },
 ])
+
+const clientRowModelOptions = computed(() => ({
+  resolveRowId: (row: unknown) => gridRowKey(row as Record<string, unknown>),
+}))
+
+const virtualizationOptions = computed(() => ({
+  rows: true,
+  columns: true,
+  rowOverscan: 10,
+  columnOverscan: 2,
+}))
 
 const gridRows = computed<LiveSignalGridRow[]>(() =>
   filteredRows.value.map((row) => ({
@@ -194,7 +235,6 @@ const gridRows = computed<LiveSignalGridRow[]>(() =>
     channel: describeChannel(row),
     source_link: describeMapping(row),
     live: liveStateLabel(row),
-    action: canToggle(row) ? toggleLabel(row) : "",
     source: row,
   })),
 )
@@ -209,10 +249,6 @@ const summaryLine = computed(() => {
 
 const workspaceReady = computed(() => props.workspaceReady)
 const loading = computed(() => props.loading)
-
-function rowAsGridRow(value: unknown): LiveSignalGridRow {
-  return value as LiveSignalGridRow
-}
 
 function gridRowKey(row: Record<string, unknown>): string {
   return String(row.rowId ?? "")
@@ -267,28 +303,5 @@ function resolveDirectionBadge(direction: Signal["io_direction"]) {
   if (direction === "DO" || direction === "AO") return "info"
   if (direction === "DI" || direction === "AI") return "success"
   return "neutral"
-}
-
-function canToggle(row: LiveSignalRow): boolean {
-  return Boolean(row.channel && row.channel.type === CHANNEL_TYPES.DO)
-}
-
-function isChannelBusy(row: LiveSignalRow): boolean {
-  if (!row.channel || row.channel.type !== CHANNEL_TYPES.DO) return false
-  const stage = (row.channel as DoChannel).ui?.stage
-  return stage === "pending" || stage === "debounce"
-}
-
-function toggleLabel(row: LiveSignalRow): string {
-  if (!row.channel || row.channel.type !== CHANNEL_TYPES.DO) return "Toggle"
-  return row.channel.state ? "Turn off" : "Turn on"
-}
-
-function toggleDigital(row: LiveSignalRow) {
-  if (!row.channel || row.channel.type !== CHANNEL_TYPES.DO) return
-  if (isChannelBusy(row)) return
-  const next = !row.channel.state
-  const unitId = channelStore.resolveUnitId(row.channel.device_id)
-  channelStore.sendDoCommand(unitId, row.channel.index, next)
 }
 </script>

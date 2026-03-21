@@ -4,6 +4,7 @@ import { useWorkspaceStore } from "@/stores/workspaceStore"
 export const signalsRoutes: RouteRecordRaw[] = [
   {
     path: "/signals",
+    name: "signals.home",
     component: () => import("@/pages/signals/SignalsPage.vue"),
     beforeEnter: async () => {
       const workspaceStore = useWorkspaceStore()
@@ -14,12 +15,5 @@ export const signalsRoutes: RouteRecordRaw[] = [
       leftAside: true,
       layout: "auto",
     },
-    children: [
-      {
-        path: "",
-        name: "signals.home",
-        component: () => import("@/pages/signals/components/AllocationEditor.vue"),
-      },
-    ],
   },
 ]

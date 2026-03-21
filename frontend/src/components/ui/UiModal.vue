@@ -1,5 +1,5 @@
 <template>
-  <teleport to="body">
+  <teleport :to="APP_OVERLAY_HOST_SELECTOR">
     <transition name="fade-modal">
       <div
         v-if="isOpen"
@@ -49,6 +49,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue"
 import { createDialogFocusOrchestrator, type DialogCloseReason, useDialogController } from "@affino/dialog-vue"
 import { useViewport } from "@/composables/useViewport"
+import { APP_OVERLAY_HOST_SELECTOR } from "@/utils/overlayHost"
 
 const props = defineProps<{
   open: boolean

@@ -1,11 +1,13 @@
 <template>
-  <div v-if="isVisible">
+  <div v-if="isVisible" class="flex items-center gap-1.5">
     <template v-if="activeTestRunJob">
       <GlobalProgressStatusCard
         :compact="compact"
+        interactive
         label="Test run"
         :percent="activeProgressPercent"
         :detail="activeProgressDetailText"
+        @click="navigateToSignals"
       >
         <template #actions>
           <UiButton
@@ -42,7 +44,20 @@
       </GlobalProgressStatusCard>
     </template>
 
-    <template v-else-if="latestCompletedTestRunJob && latestCompletedTestRunJob.job_id !== dismissedJobId">
+    <template v-if="activeAllocationJob">
+      <GlobalProgressStatusCard
+        :compact="compact"
+        interactive
+        :label="activeAllocationLabel"
+        :percent="activeAllocationProgressPercent"
+        :detail="activeAllocationDetailText"
+        :dot-class="activeAllocationDotClass"
+        :bar-class="activeAllocationBarClass"
+        @click="navigateToSignals"
+      />
+    </template>
+
+    <template v-if="!activeTestRunJob && !activeAllocationJob && latestCompletedTestRunJob && latestCompletedTestRunJob.job_id !== dismissedJobId">
       <div
         class="inline-flex items-center rounded-md border border-neutral-200 bg-neutral-50/80 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-200"
         :class="compact ? 'gap-1 px-1.5 py-1 text-[10px]' : 'gap-2 px-2 py-1 text-[11px]'"
@@ -70,6 +85,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue"
 import { storeToRefs } from "pinia"
+import { useRouter } from "vue-router"
 
 import UiButton from "@/components/ui/UiButton.vue"
 import GlobalProgressStatusCard from "./GlobalProgressStatusCard.vue"
@@ -82,6 +98,7 @@ const props = withDefaults(defineProps<{ compact?: boolean }>(), {
   compact: false,
 })
 
+const router = useRouter()
 const workspaceStore = useWorkspaceStore()
 const signalJobStore = useSignalJobStore()
 const toastStore = useToastStore()
@@ -95,6 +112,13 @@ const compact = computed(() => Boolean(props.compact))
 const activeTestRunJob = computed(() => (
   activeJobs.value.find(job => String(job.operation) === "test_run") ?? null
 ))
+
+const activeAllocationJob = computed(() => {
+  const candidates = activeJobs.value
+    .filter(job => ["auto_allocate", "bulk_update"].includes(String(job.operation)))
+    .sort((left, right) => toMillis(String(right.updated_at ?? "")) - toMillis(String(left.updated_at ?? "")))
+  return candidates[0] ?? null
+})
 
 const latestCompletedTestRunJob = computed(() => {
   const workspaceId = workspaceStore.activeWorkspaceId
@@ -111,6 +135,7 @@ const latestCompletedTestRunJob = computed(() => {
 
 const isVisible = computed(() => Boolean(
   activeTestRunJob.value
+  || activeAllocationJob.value
   || (latestCompletedTestRunJob.value && latestCompletedTestRunJob.value.job_id !== dismissedJobId.value),
 ))
 
@@ -176,6 +201,98 @@ const activeEstText = computed(() => {
 
   const estimatedSeconds = Math.max(1, Math.round(remaining / rate))
   return `ETA ${formatDurationShort(estimatedSeconds)}`
+})
+
+const activeAllocationLabel = computed(() => {
+  const job = activeAllocationJob.value
+  if (!job) return "Signals"
+  if (String(job.operation) === "bulk_update") {
+    return "Unassign"
+  }
+  return "Assign"
+})
+
+const activeAllocationProgress = computed(() => {
+  const job = activeAllocationJob.value
+  if (!job) {
+    return { done: 0, total: 0 }
+  }
+  return resolveActiveProgress(job)
+})
+
+const activeAllocationProgressPercent = computed(() => {
+  const { done, total } = activeAllocationProgress.value
+  if (!total) return 0
+  return Math.max(0, Math.min(100, Math.round((Math.min(done, total) / total) * 100)))
+})
+
+const activeAllocationEstText = computed(() => {
+  const job = activeAllocationJob.value
+  if (!job) return ""
+
+  const { done, total } = activeAllocationProgress.value
+  if (total <= 0 || done <= 0 || done >= total) {
+    return ""
+  }
+
+  const startedAtRaw = (job as unknown as Record<string, unknown>)?.started_at
+  const startedAtMs = toMillis(String(startedAtRaw ?? "")) || toMillis(String(job.created_at ?? ""))
+  if (!startedAtMs) {
+    return ""
+  }
+
+  const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAtMs) / 1000))
+  const rate = done / elapsedSeconds
+  if (!Number.isFinite(rate) || rate <= 0) {
+    return ""
+  }
+
+  const remaining = Math.max(0, total - done)
+  if (remaining <= 0) {
+    return ""
+  }
+
+  const estimatedSeconds = Math.max(1, Math.round(remaining / rate))
+  return `ETA ${formatDurationShort(estimatedSeconds)}`
+})
+
+const activeAllocationDetailText = computed(() => {
+  const job = activeAllocationJob.value
+  if (!job) return ""
+
+  const { done, total } = activeAllocationProgress.value
+  const message = String(job.message ?? "").trim()
+  const state = String(job.status)
+  const stateLabel = state === "queued"
+    ? "queued"
+    : state === "cancelling"
+      ? "cancelling"
+      : state === "paused"
+        ? "paused"
+        : "running"
+  const ratio = total > 0 ? `${done}/${total}` : ""
+    const base = ratio ? `${stateLabel} · ${ratio}` : stateLabel
+
+  if (message) {
+      const withRatio = ratio && !message.includes(ratio) ? `${message} · ${ratio}` : message
+      return activeAllocationEstText.value ? `${withRatio} · ${activeAllocationEstText.value}` : withRatio
+  }
+
+    return activeAllocationEstText.value ? `${base} · ${activeAllocationEstText.value}` : base
+})
+
+const activeAllocationDotClass = computed(() => {
+  const job = activeAllocationJob.value
+  if (!job) return "bg-emerald-500"
+  if (String(job.status) === "cancelling") return "bg-amber-500"
+  return String(job.operation) === "bulk_update" ? "bg-amber-500" : "bg-sky-500"
+})
+
+const activeAllocationBarClass = computed(() => {
+  const job = activeAllocationJob.value
+  if (!job) return "bg-emerald-500"
+  if (String(job.status) === "cancelling") return "bg-amber-500"
+  return String(job.operation) === "bulk_update" ? "bg-amber-500" : "bg-sky-500"
 })
 
 function resolveActiveProgress(job: SignalAllocationJob): { done: number; total: number } {
@@ -313,6 +430,12 @@ async function control(action: "pause" | "resume" | "stop") {
   } finally {
     controlBusy.value = false
   }
+}
+
+function navigateToSignals() {
+  void router.push({ name: "signals.home" }).catch(() => {
+    return
+  })
 }
 
 function dismissCompleted() {

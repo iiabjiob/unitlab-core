@@ -1,0 +1,132 @@
+.affino-native-data-grid {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.affino-native-data-grid__toolbar-module {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.affino-native-data-grid__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.affino-native-data-grid__toolbar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.affino-native-data-grid__shell {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: visible;
+  border-radius: 1rem;
+  background: transparent;
+}
+
+.affino-native-data-grid .affino-datagrid-app-root {
+  background: transparent;
+}
+
+.affino-native-data-grid__grid {
+  min-height: 0;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.affino-native-data-grid__button {
+  border: 1px solid rgb(212 212 212);
+  border-radius: 9999px;
+  background: white;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  color: rgb(38 38 38);
+}
+
+.affino-native-data-grid__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.affino-native-data-grid__stat {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgb(82 82 82);
+}
+
+.affino-native-data-grid .affino-native-data-grid__toolbar-button--danger {
+  border-color: rgb(248 113 113);
+  color: rgb(153 27 27);
+}
+
+.affino-native-data-grid .grid-cell--index,
+.affino-native-data-grid .grid-cell--index-header {
+  color: rgb(55 65 81);
+}
+
+.affino-native-data-grid .grid-cell--index-number,
+.affino-native-data-grid .grid-cell--index-header {
+  font-weight: 600;
+}
+
+.affino-native-data-grid .grid-row--checkbox-selected .grid-cell--index,
+.affino-native-data-grid .grid-row--focused .grid-cell--index,
+.affino-native-data-grid .grid-row--hoverable.grid-row--hovered .grid-cell--index {
+  color: rgb(31 41 55);
+}
+
+.dark .affino-native-data-grid__shell {
+  background: transparent;
+  box-shadow: none;
+}
+
+.dark .affino-native-data-grid__button {
+  border-color: rgb(64 64 64);
+  background: rgb(23 23 23);
+  color: rgb(229 229 229);
+}
+
+.dark .affino-native-data-grid__stat {
+  color: rgb(212 212 212);
+}
+
+.dark .affino-native-data-grid .affino-native-data-grid__toolbar-button--danger {
+  border-color: rgb(153 27 27);
+  color: rgb(252 165 165);
+}
+
+.dark .affino-native-data-grid .grid-cell--index,
+.dark .affino-native-data-grid .grid-cell--index-header {
+  color: rgb(212 212 212);
+}
+
+.affino-native-data-grid .grid-stage--canvas-chrome .grid-header-pane,
+.affino-native-data-grid .grid-stage--canvas-chrome .grid-body-pane,
+.affino-native-data-grid .grid-stage--canvas-chrome .grid-header-pane--left,
+.affino-native-data-grid .grid-stage--canvas-chrome .grid-header-pane--right,
+.affino-native-data-grid .grid-stage--canvas-chrome .grid-body-pane--left,
+.affino-native-data-grid .grid-stage--canvas-chrome .grid-body-pane--right,
+.affino-native-data-grid .grid-stage--canvas-chrome .grid-header-viewport,
+.affino-native-data-grid .grid-stage--canvas-chrome .grid-header-shell--pivot-groups .grid-header-row:not(.grid-header-row--pivot-groups) .grid-cell--header,
+.affino-native-data-grid .grid-stage--canvas-chrome .grid-header-shell--pivot-groups .grid-header-row--pivot-groups .grid-cell--header-group,
+.affino-native-data-grid .grid-stage--canvas-chrome .grid-cell--header-group {
+  border: 0 !important;
+}

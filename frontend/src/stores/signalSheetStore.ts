@@ -343,10 +343,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       if (rowIndex === undefined) return
       const row = allocationRows.value[rowIndex]
       if (!row) return
-      allocationRows.value[rowIndex] = {
-        ...row,
-        tested_at: testedAtIso,
-      }
+      row.tested_at = testedAtIso
     })
   }
 
@@ -420,10 +417,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       }
       const row = allocationRows.value[rowIndex]
       if (row && row.tested_at !== testedAt) {
-        allocationRows.value[rowIndex] = {
-          ...row,
-          tested_at: testedAt,
-        }
+        row.tested_at = testedAt
       }
 
       processed += 1

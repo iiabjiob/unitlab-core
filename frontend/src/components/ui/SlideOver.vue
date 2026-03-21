@@ -1,5 +1,5 @@
 <template>
-  <teleport to="body">
+  <teleport :to="APP_OVERLAY_HOST_SELECTOR">
     <div v-if="isOpen" class="fixed inset-0 z-1000">
       <!-- Backdrop -->
       <div
@@ -94,6 +94,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount } from "vue"
 import { createDialogFocusOrchestrator, type DialogCloseReason, useDialogController } from "@affino/dialog-vue"
+import { APP_OVERLAY_HOST_SELECTOR } from "@/utils/overlayHost"
 
 type Placement = "left" | "right" | "bottom"
 
@@ -226,6 +227,13 @@ function onDialogKeydown(e: KeyboardEvent) {
   }
 }
 
+function onWindowKeydown(e: KeyboardEvent) {
+  if (e.key !== "Escape" || !isOpen.value) {
+    return
+  }
+  requestClose("escape-key")
+}
+
 function loopFocus(edge: "start" | "end") {
   const container = dialogRef.value
   if (!container) return
@@ -257,6 +265,17 @@ function lockScroll(lock: boolean) {
 }
 watch(() => isOpen.value, (v) => lockScroll(v), { immediate: true })
 
+watch(() => isOpen.value, (open) => {
+  if (typeof window === "undefined") {
+    return
+  }
+  if (open) {
+    window.addEventListener("keydown", onWindowKeydown, true)
+    return
+  }
+  window.removeEventListener("keydown", onWindowKeydown, true)
+}, { immediate: true })
+
 watch(() => props.open, (open) => {
   if (open && !isOpen.value) {
     openedAtMs.value = Date.now()
@@ -271,6 +290,9 @@ watch(() => props.open, (open) => {
 }, { immediate: true })
 
 onBeforeUnmount(() => {
+  if (typeof window !== "undefined") {
+    window.removeEventListener("keydown", onWindowKeydown, true)
+  }
   lockScroll(false)
 })
 </script>

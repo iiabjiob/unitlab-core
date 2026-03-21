@@ -12,11 +12,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@affino/datagrid-theme": "^0.2.1",
-    "@affino/datagrid-vue": "^0.3.2",
-    "@affino/disclosure-vue": "^0.1.0",
+    "@affino/datagrid-vue-app": "^0.1.16",
     "@affino/dialog-vue": "^1.1.0",
-    "@affino/menu-core": "^1.1.0",
+    "@affino/disclosure-vue": "^0.1.0",
     "@affino/menu-vue": "2.1.1",
     "@affino/popover-vue": "^1.0.0",
     "@affino/tabs-vue": "^0.1.0",
@@ -30,9 +28,9 @@
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.1.10",
     "@tsconfig/node22": "^22.0.1",
     "@types/node": "^22.14.0",
-    "@tailwindcss/vite": "^4.1.10",
     "@vitejs/plugin-vue": "^5.2.3",
     "@vue/tsconfig": "^0.7.0",
     "npm-run-all2": "^7.0.2",

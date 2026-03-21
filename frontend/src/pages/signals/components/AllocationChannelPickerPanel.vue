@@ -1,0 +1,653 @@
+<template>
+  <SlideOver
+    :open="open"
+    placement="right"
+    title="Assign unit/channel"
+    :width-px="560"
+    :close-on-backdrop="!saving"
+    @close="emit('close')"
+  >
+    <div class="flex h-full min-h-0 flex-col" @keydown.capture="onPanelKeydownCapture">
+      <div class="border-b border-neutral-200 px-4 py-4 dark:border-neutral-700">
+        <div class="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+          {{ signalDirection }} signal
+        </div>
+        <div class="mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+          {{ signalTitle }}
+        </div>
+        <div v-if="signalKeyText" class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+          {{ signalKeyText }}
+        </div>
+
+        <div class="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 dark:border-neutral-700 dark:bg-neutral-900/70">
+          <div class="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+            Current allocation
+          </div>
+          <div class="mt-1 text-sm font-medium text-neutral-900 dark:text-neutral-100">
+            {{ currentLabel }}
+          </div>
+        </div>
+
+        <label class="mt-4 block">
+          <span class="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300">Search channels</span>
+          <input
+            ref="searchInputRef"
+            v-model="query"
+            data-dialog-initial
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            class="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition focus:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:focus:border-neutral-500"
+            placeholder="Filter by unit, channel, or name"
+            :disabled="loading || saving"
+            @focus="treeDomFocusActive = false"
+            @keydown.down.prevent="focusNextVisibleNode()"
+            @keydown.up.prevent="focusPreviousVisibleNode()"
+            @keydown.enter.prevent="selectActiveNode()"
+          />
+        </label>
+
+        <div class="mt-3 flex items-center justify-between gap-3 text-xs text-neutral-500 dark:text-neutral-400">
+          <span>{{ resultsSummary }}</span>
+          <button
+            v-if="currentChannelId !== null"
+            type="button"
+            class="rounded-lg border border-neutral-300 px-2 py-1 font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-600 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            :disabled="saving"
+            @click="emit('select', null)"
+          >
+            Clear allocation
+          </button>
+        </div>
+      </div>
+
+      <div class="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        <div v-if="loading" class="rounded-2xl border border-dashed border-neutral-300 px-4 py-6 text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+          Loading channel catalog…
+        </div>
+
+        <div v-else-if="error" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/70 dark:bg-rose-950/30 dark:text-rose-200">
+          {{ error }}
+        </div>
+
+        <div v-else-if="visibleNodes.length === 0" class="rounded-2xl border border-dashed border-neutral-300 px-4 py-6 text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+          No compatible free channels found.
+        </div>
+
+        <div
+          v-else
+          class="rounded-2xl border border-neutral-200 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900/70"
+          role="tree"
+          aria-label="Channel tree"
+          @keydown="onTreeRootKeydown"
+        >
+          <button
+            v-for="node in visibleNodes"
+            :key="node.value"
+            :ref="bindItemElement(node.value)"
+            type="button"
+            class="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition"
+            :class="nodeClass(node.value)"
+            :aria-level="nodeLevel(node.value)"
+            :aria-expanded="isUnitNode(node.value) ? isExpanded(node.value) : undefined"
+            :aria-selected="isChannelNode(node.value) ? isNodeSelected(node.value) : undefined"
+            role="treeitem"
+            :tabindex="isNodeActive(node.value) ? 0 : -1"
+            @focus="handleTreeNodeFocus(node.value)"
+            @keydown="onNodeKeydown($event, node.value)"
+            @click="onNodeClick(node.value)"
+          >
+            <span class="channel-picker-tree__indent" :style="{ width: `${(nodeLevel(node.value) - 1) * 14}px` }"></span>
+            <span
+              v-if="isUnitNode(node.value)"
+              class="shrink-0 text-[10px] text-neutral-500 transition-transform dark:text-neutral-400"
+              :class="isExpanded(node.value) ? 'rotate-90' : ''"
+              aria-hidden="true"
+            >
+              ▶
+            </span>
+            <span v-else class="h-1.5 w-1.5 shrink-0 rounded-full" :class="channelIndicatorClass(node.value)" aria-hidden="true"></span>
+            <span
+              v-if="isUnitNode(node.value)"
+              class="h-2 w-2 shrink-0 rounded-full"
+              :class="unitIndicatorClass(node.value)"
+              aria-hidden="true"
+            ></span>
+            <span class="min-w-0 flex-1 truncate" :class="isUnitNode(node.value) ? 'text-sm font-semibold text-neutral-900 dark:text-neutral-100' : 'text-sm text-neutral-800 dark:text-neutral-200'">
+              {{ nodeLabel(node.value) }}
+            </span>
+            <span
+              v-if="isChannelNode(node.value) && isCurrentChannel(node.value)"
+              class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400"
+            >
+              Current
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div class="border-t border-neutral-200 px-4 py-3 text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+        Search narrows units and channels. Enter selects a channel, arrows navigate the tree.
+      </div>
+    </div>
+  </SlideOver>
+</template>
+
+<script setup lang="ts">
+import { computed, nextTick, ref, watch, type ComponentPublicInstance } from "vue"
+import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
+
+import SlideOver from "@/components/ui/SlideOver.vue"
+
+type AllocationChannelCandidate = {
+  id: number
+  unitId: string
+  channelIndex: number
+  label: string
+  metaLabel: string
+  online: boolean
+  searchText: string
+}
+
+type NodeValue = string
+
+const props = defineProps<{
+  open: boolean
+  signalName: string
+  signalKey: string
+  signalDirection: string
+  currentLabel: string
+  currentChannelId: number | null
+  channels: AllocationChannelCandidate[]
+  loading: boolean
+  saving: boolean
+  error: string | null
+}>()
+
+const emit = defineEmits<{
+  (event: "close"): void
+  (event: "select", channelId: number | null): void
+}>()
+
+const query = ref("")
+const searchInputRef = ref<HTMLInputElement | null>(null)
+const itemElements = new Map<NodeValue, HTMLButtonElement>()
+const treeDomFocusActive = ref(false)
+const tree = useTreeviewController<NodeValue>({
+  nodes: [],
+  loop: true,
+})
+
+const normalizedQuery = computed(() => query.value.trim().toLowerCase())
+
+const signalTitle = computed(() => {
+  const signalName = props.signalName.trim()
+  if (signalName) return signalName
+  const signalKey = props.signalKey.trim()
+  if (signalKey) return signalKey
+  return "Selected signal"
+})
+
+const signalKeyText = computed(() => {
+  const signalKey = props.signalKey.trim()
+  const signalName = props.signalName.trim()
+  if (!signalKey || signalKey === signalName) {
+    return ""
+  }
+  return signalKey
+})
+
+const matchingChannels = computed(() => {
+  const needle = normalizedQuery.value
+  if (!needle) {
+    return props.channels
+  }
+  return props.channels.filter(channel => channel.searchText.includes(needle))
+})
+
+const groupedChannels = computed(() => {
+  const groups = new Map<string, AllocationChannelCandidate[]>()
+  matchingChannels.value.forEach((channel) => {
+    const bucket = groups.get(channel.unitId) ?? []
+    bucket.push(channel)
+    groups.set(channel.unitId, bucket)
+  })
+  return Array.from(groups.entries())
+    .map(([unitId, entries]) => ({
+      unitId,
+      entries: [...entries].sort((left, right) => left.channelIndex - right.channelIndex),
+    }))
+    .sort((left, right) => left.unitId.localeCompare(right.unitId, undefined, { numeric: true, sensitivity: "base" }))
+})
+
+const treeNodes = computed<TreeviewNode<NodeValue>[]>(() => {
+  const nodes: TreeviewNode<NodeValue>[] = []
+  groupedChannels.value.forEach((group) => {
+    const unitValue = toUnitNodeValue(group.unitId)
+    nodes.push({ value: unitValue, parent: null })
+    group.entries.forEach((channel) => {
+      nodes.push({
+        value: toChannelNodeValue(channel.id),
+        parent: unitValue,
+      })
+    })
+  })
+  return nodes
+})
+
+const parentByValue = computed(() => {
+  const map = new Map<NodeValue, NodeValue | null>()
+  treeNodes.value.forEach((node) => map.set(node.value, node.parent))
+  return map
+})
+
+const childrenByParent = computed(() => {
+  const map = new Map<NodeValue | null, NodeValue[]>()
+  treeNodes.value.forEach((node) => {
+    const bucket = map.get(node.parent) ?? []
+    bucket.push(node.value)
+    map.set(node.parent, bucket)
+  })
+  return map
+})
+
+const channelById = computed(() => {
+  const map = new Map<number, AllocationChannelCandidate>()
+  matchingChannels.value.forEach((channel) => {
+    map.set(channel.id, channel)
+  })
+  return map
+})
+
+const unitStatusById = computed(() => {
+  const map = new Map<string, boolean>()
+  groupedChannels.value.forEach((group) => {
+    map.set(group.unitId, group.entries.some(entry => entry.online))
+  })
+  return map
+})
+
+const nodeMeta = computed(() => {
+  const map = new Map<NodeValue, { label: string }>()
+  groupedChannels.value.forEach((group) => {
+    map.set(toUnitNodeValue(group.unitId), {
+      label: `${group.unitId} (${group.entries.length})`,
+    })
+    group.entries.forEach((channel) => {
+      map.set(toChannelNodeValue(channel.id), {
+        label: `ch${channel.channelIndex + 1}${channel.metaLabel ? ` · ${channel.metaLabel}` : ""}`,
+      })
+    })
+  })
+  return map
+})
+
+const expandedSet = computed(() => new Set(tree.state.value.expanded))
+
+const visibleNodes = computed(() => treeNodes.value.filter((node) => isNodeVisible(node.value)))
+
+const resultsSummary = computed(() => {
+  const units = groupedChannels.value.length
+  const channels = matchingChannels.value.length
+  if (props.loading) return "Loading channels…"
+  if (channels === 0) return "No compatible channels"
+  return `${units} unit${units === 1 ? "" : "s"} · ${channels} channel${channels === 1 ? "" : "s"}`
+})
+
+watch(treeNodes, (nodes) => {
+  tree.registerNodes(nodes)
+}, { immediate: true })
+
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) {
+      query.value = ""
+      return
+    }
+    syncTreeState()
+    void nextTick(() => {
+      searchInputRef.value?.focus({ preventScroll: true })
+    })
+  },
+)
+
+watch(
+  () => [normalizedQuery.value, props.currentChannelId, treeNodes.value] as const,
+  () => {
+    if (!props.open) return
+    syncTreeState()
+  },
+)
+
+watch(
+  () => tree.state.value.active,
+  (active) => {
+    if (!treeDomFocusActive.value || !active) {
+      return
+    }
+    void nextTick(() => {
+      focusNodeElement(active)
+    })
+  },
+)
+
+function toUnitNodeValue(unitId: string): NodeValue {
+  return `unit:${unitId}`
+}
+
+function toChannelNodeValue(channelId: number): NodeValue {
+  return `channel:${channelId}`
+}
+
+function isUnitNode(value: NodeValue): boolean {
+  return value.startsWith("unit:")
+}
+
+function isChannelNode(value: NodeValue): boolean {
+  return value.startsWith("channel:")
+}
+
+function parseUnitId(value: NodeValue): string | null {
+  if (!isUnitNode(value)) return null
+  const unitId = value.slice("unit:".length).trim()
+  return unitId || null
+}
+
+function parseChannelId(value: NodeValue): number | null {
+  if (!isChannelNode(value)) return null
+  const parsed = Number(value.slice("channel:".length))
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function bindItemElement(value: NodeValue) {
+  return (element: Element | ComponentPublicInstance | null) => {
+    const resolved = element instanceof Element
+      ? element
+      : (element?.$el instanceof Element ? element.$el : null)
+    if (resolved instanceof HTMLButtonElement) {
+      itemElements.set(value, resolved)
+      return
+    }
+    itemElements.delete(value)
+  }
+}
+
+function handleTreeNodeFocus(value: NodeValue) {
+  treeDomFocusActive.value = true
+  tree.focus(value)
+}
+
+function focusNodeElement(value: NodeValue | null) {
+  if (!value) return
+  const element = itemElements.get(value)
+  if (!element) return
+  element.focus({ preventScroll: true })
+  element.scrollIntoView({ block: "nearest" })
+}
+
+function syncTreeState() {
+  groupedChannels.value.forEach((group) => {
+    tree.collapse(toUnitNodeValue(group.unitId))
+  })
+
+  if (normalizedQuery.value) {
+    groupedChannels.value.forEach((group) => {
+      tree.expand(toUnitNodeValue(group.unitId))
+    })
+  }
+
+  const currentNode = props.currentChannelId !== null ? toChannelNodeValue(props.currentChannelId) : null
+  if (currentNode && treeNodes.value.some(node => node.value === currentNode)) {
+    const parent = parentByValue.value.get(currentNode)
+    if (parent) {
+      tree.expand(parent)
+    }
+    tree.clearSelection()
+    tree.select(currentNode)
+    tree.focus(currentNode)
+    return
+  }
+
+  tree.clearSelection()
+  const first = visibleNodes.value[0]?.value ?? null
+  if (first) {
+    tree.focus(first)
+  }
+}
+
+function isNodeVisible(value: NodeValue): boolean {
+  let cursor = parentByValue.value.get(value) ?? null
+  while (cursor) {
+    if (!expandedSet.value.has(cursor)) return false
+    cursor = parentByValue.value.get(cursor) ?? null
+  }
+  return true
+}
+
+function nodeLevel(value: NodeValue): number {
+  let level = 1
+  let cursor = parentByValue.value.get(value) ?? null
+  while (cursor) {
+    level += 1
+    cursor = parentByValue.value.get(cursor) ?? null
+  }
+  return level
+}
+
+function isExpanded(value: NodeValue): boolean {
+  return tree.isExpanded(value)
+}
+
+function isNodeSelected(value: NodeValue): boolean {
+  return tree.isSelected(value)
+}
+
+function isNodeActive(value: NodeValue): boolean {
+  return tree.isActive(value)
+}
+
+function nodeLabel(value: NodeValue): string {
+  return nodeMeta.value.get(value)?.label ?? value
+}
+
+function isCurrentChannel(value: NodeValue): boolean {
+  const channelId = parseChannelId(value)
+  return channelId !== null && channelId === props.currentChannelId
+}
+
+function channelIndicatorClass(value: NodeValue): string {
+  const channelId = parseChannelId(value)
+  if (channelId === null) return "bg-neutral-400 dark:bg-neutral-600"
+  const channel = channelById.value.get(channelId)
+  if (!channel) return "bg-neutral-400 dark:bg-neutral-600"
+  return channel.online ? "bg-emerald-500" : "bg-amber-500"
+}
+
+function unitIndicatorClass(value: NodeValue): string {
+  const unitId = parseUnitId(value)
+  if (!unitId) return "bg-neutral-400 dark:bg-neutral-600"
+  return unitStatusById.value.get(unitId) ? "bg-emerald-500" : "bg-amber-500"
+}
+
+function nodeClass(value: NodeValue): string {
+  if (isCurrentChannel(value)) {
+    return "bg-neutral-100 dark:bg-neutral-800"
+  }
+  if (isNodeActive(value)) {
+    return "bg-neutral-50 dark:bg-neutral-800/70"
+  }
+  return "hover:bg-neutral-50 dark:hover:bg-neutral-800/60"
+}
+
+function onNodeClick(value: NodeValue) {
+  tree.focus(value)
+  if (isUnitNode(value)) {
+    tree.toggle(value)
+    return
+  }
+  const channelId = parseChannelId(value)
+  if (channelId === null || props.saving) return
+  tree.clearSelection()
+  tree.select(value)
+  emit("select", channelId)
+}
+
+function focusNextVisibleNode() {
+  if (!visibleNodes.value.length) return
+  treeDomFocusActive.value = true
+  tree.focusNext()
+  void nextTick(() => {
+    focusNodeElement(tree.state.value.active ?? visibleNodes.value[0]?.value ?? null)
+  })
+}
+
+function focusPreviousVisibleNode() {
+  if (!visibleNodes.value.length) return
+  treeDomFocusActive.value = true
+  tree.focusPrevious()
+  void nextTick(() => {
+    focusNodeElement(tree.state.value.active ?? visibleNodes.value[visibleNodes.value.length - 1]?.value ?? null)
+  })
+}
+
+function selectActiveNode() {
+  const active = tree.state.value.active
+  if (!active) return
+  onNodeClick(active)
+}
+
+function onNodeKeydown(event: KeyboardEvent, value: NodeValue) {
+  switch (event.key) {
+    case "ArrowDown":
+      event.preventDefault()
+      event.stopPropagation()
+      tree.focusNext()
+      return
+    case "ArrowUp":
+      event.preventDefault()
+      event.stopPropagation()
+      tree.focusPrevious()
+      return
+    case "ArrowRight":
+      if (!isUnitNode(value)) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (!tree.isExpanded(value)) {
+        tree.expand(value)
+        return
+      }
+      tree.focus(childrenByParent.value.get(value)?.[0] ?? value)
+      return
+    case "ArrowLeft":
+      if (isUnitNode(value) && tree.isExpanded(value)) {
+        event.preventDefault()
+        event.stopPropagation()
+        tree.collapse(value)
+        return
+      }
+      if (isChannelNode(value)) {
+        const parent = parentByValue.value.get(value)
+        if (parent) {
+          event.preventDefault()
+          event.stopPropagation()
+          tree.focus(parent)
+        }
+      }
+      return
+    case "Home":
+      event.preventDefault()
+      event.stopPropagation()
+      tree.focusFirst()
+      return
+    case "End":
+      event.preventDefault()
+      event.stopPropagation()
+      tree.focusLast()
+      return
+    case "Enter":
+    case " ":
+      event.preventDefault()
+      event.stopPropagation()
+      onNodeClick(value)
+      return
+    default:
+      return
+  }
+}
+
+function onTreeRootKeydown(event: KeyboardEvent) {
+  const active = tree.state.value.active
+  switch (event.key) {
+    case "ArrowDown":
+      event.preventDefault()
+      event.stopPropagation()
+      if (active) {
+        tree.focusNext()
+      } else {
+        tree.focusFirst()
+      }
+      return
+    case "ArrowUp":
+      event.preventDefault()
+      event.stopPropagation()
+      if (active) {
+        tree.focusPrevious()
+      } else {
+        tree.focusLast()
+      }
+      return
+    case "Home":
+      event.preventDefault()
+      event.stopPropagation()
+      tree.focusFirst()
+      return
+    case "End":
+      event.preventDefault()
+      event.stopPropagation()
+      tree.focusLast()
+      return
+    case "ArrowRight":
+      if (!active) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (isUnitNode(active)) {
+        if (!tree.isExpanded(active)) {
+          tree.expand(active)
+          return
+        }
+        const firstChild = childrenByParent.value.get(active)?.[0]
+        if (firstChild) {
+          tree.focus(firstChild)
+        }
+      }
+      return
+    case "ArrowLeft":
+      if (!active) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (isUnitNode(active) && tree.isExpanded(active)) {
+        tree.collapse(active)
+        return
+      }
+      if (isChannelNode(active)) {
+        const parent = parentByValue.value.get(active)
+        if (parent) {
+          tree.focus(parent)
+        }
+      }
+      return
+    default:
+      return
+  }
+}
+
+function onPanelKeydownCapture(event: KeyboardEvent) {
+  if (event.key !== "Escape" || props.saving) {
+    return
+  }
+  event.preventDefault()
+  event.stopPropagation()
+  emit("close")
+}
+</script>

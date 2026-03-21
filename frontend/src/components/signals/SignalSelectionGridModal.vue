@@ -33,35 +33,41 @@
         No matching signals found.
       </div>
 
-      <UiAffinoDataGrid
-        v-else
-        class="h-full min-h-0"
-        :rows="gridRows"
-        :columns="columns"
-        :row-height="34"
-        :overscan-rows="8"
-        :overscan-columns="2"
-        :enable-filtering="true"
-        :enable-column-resize="true"
-        :show-controls="true"
-        :row-key="rowKey"
-        :table-id="props.tableId"
-        :persist-state="false"
-        :empty-text="'No matching signals.'"
-        @row-click="handleRowClick"
-        @selection-change="handleSelectionChange"
-      >
-        <template #cell="{ column, value }">
-          <span
-            v-if="column.key === 'allocation_status'"
-            class="text-xs font-semibold uppercase tracking-[0.08em]"
-            :class="String(value) === 'allocated' ? 'text-emerald-600 dark:text-emerald-300' : 'text-amber-600 dark:text-amber-300'"
-          >
-            {{ String(value) === "allocated" ? "Allocated" : "Unallocated" }}
-          </span>
-          <span v-else class="text-xs text-neutral-700 dark:text-neutral-100">{{ formatCell(value) }}</span>
-        </template>
-      </UiAffinoDataGrid>
+      <div v-else class="affino-native-data-grid h-full">
+        <div class="affino-native-data-grid__toolbar">
+          <div class="affino-native-data-grid__toolbar-meta">
+            <span class="affino-native-data-grid__stat">Selected: {{ selectedCount }}</span>
+            <button
+              v-if="selectedCount > 0"
+              type="button"
+              class="affino-native-data-grid__button"
+              @click="clearSelection"
+            >
+              Clear selection
+            </button>
+          </div>
+        </div>
+
+        <div class="affino-native-data-grid__shell">
+          <DataGrid
+            class="affino-native-data-grid__grid"
+            :rows="gridRows"
+            :columns="resolvedColumns"
+            :theme="theme"
+            :state="gridState"
+            :client-row-model-options="clientRowModelOptions"
+            :virtualization="virtualizationOptions"
+            :base-row-height="34"
+            :row-selection="true"
+            render-mode="virtualization"
+            layout-mode="fill"
+            row-hover
+            striped-rows
+            @selection-change="handleGridSelectionChange"
+            @update:state="handleGridStateUpdate"
+          />
+        </div>
+      </div>
     </div>
 
     <template #footer>
@@ -81,11 +87,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue"
+import { computed, h, ref, watch } from "vue"
+import { DataGrid, type DataGridAppCellRendererContext, type DataGridAppColumnInput } from "@affino/datagrid-vue-app"
 
 import UiModal from "@/components/ui/UiModal.vue"
 import UiButton from "@/components/ui/UiButton.vue"
-import UiAffinoDataGrid from "@/components/ui/UiAffinoDataGrid.vue"
+import { useAffinoDataGridTheme } from "@/components/ui/affinoDataGridTheme"
+import "@/components/ui/affinoDataGridNative.css"
 
 import type { SignalAllocationRow, SignalIODirection } from "@/types/signal"
 import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders } from "@/pages/signals/utils/sourceColumns"
@@ -96,6 +104,20 @@ import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 type GridRow = Record<string, unknown> & {
   signal_id: number
   rowId: string
+}
+
+type RowSelectionSnapshot = {
+  focusedRow: string | number | null
+  selectedRows: Array<string | number>
+}
+
+type UnifiedGridState = {
+  version: 1
+  rows: unknown
+  columns: unknown
+  selection: unknown
+  rowSelection: RowSelectionSnapshot | null
+  transaction: unknown
 }
 
 const props = withDefaults(defineProps<{
@@ -129,6 +151,8 @@ const DATA_FRESHNESS_WINDOW_MS = 20_000
 
 const loading = ref(false)
 const selectedRowKeys = ref<string[]>([])
+const gridState = ref<UnifiedGridState | null>(null)
+const { theme } = useAffinoDataGridTheme()
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 
@@ -153,21 +177,68 @@ const sourceColumnHeaders = computed(() => (
   resolveAllSourceColumnHeaders(signalSheetStore.sheet, filteredRows.value)
 ))
 
-const columns = computed(() => {
-  const sourceColumns = sourceColumnHeaders.value.map((header, index) => ({
+function renderDefaultCell(context: DataGridAppCellRendererContext<GridRow>) {
+  return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, formatCell(context.value))
+}
+
+const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
+  const sourceColumns: DataGridAppColumnInput<GridRow>[] = sourceColumnHeaders.value.map((header, index) => ({
     key: sourceColumnKey(index),
     label: header,
-    width: Math.min(Math.max(header.length * 11, 140), 360),
     minWidth: 120,
+    initialState: { width: Math.min(Math.max(header.length * 11, 140), 360) },
+    presentation: { align: "left", headerAlign: "left" },
+    cellRenderer: renderDefaultCell,
   }))
 
   return [
     ...sourceColumns,
-    { key: "signal_direction", label: "Type", width: 110, minWidth: 90, pin: "right" as const },
-    { key: "unit_channel", label: "Unit/Channel", width: 170, minWidth: 130, pin: "right" as const },
-    { key: "allocation_status", label: "Status", width: 130, minWidth: 110, pin: "right" as const },
+    {
+      key: "signal_direction",
+      label: "Type",
+      minWidth: 90,
+      initialState: { width: 110, pin: "right" as const },
+      presentation: { align: "left", headerAlign: "left" },
+      cellRenderer: renderDefaultCell,
+    },
+    {
+      key: "unit_channel",
+      label: "Unit/Channel",
+      minWidth: 130,
+      initialState: { width: 170, pin: "right" as const },
+      presentation: { align: "left", headerAlign: "left" },
+      cellRenderer: renderDefaultCell,
+    },
+    {
+      key: "allocation_status",
+      label: "Status",
+      minWidth: 110,
+      initialState: { width: 130, pin: "right" as const },
+      presentation: { align: "left", headerAlign: "left" },
+      cellRenderer: (context: DataGridAppCellRendererContext<GridRow>) => h(
+        "span",
+        {
+          class: [
+            "text-xs font-semibold uppercase tracking-[0.08em]",
+            String(context.value) === "allocated" ? "text-emerald-600 dark:text-emerald-300" : "text-amber-600 dark:text-amber-300",
+          ],
+        },
+        String(context.value) === "allocated" ? "Allocated" : "Unallocated",
+      ),
+    },
   ]
 })
+
+const clientRowModelOptions = computed(() => ({
+  resolveRowId: (row: unknown) => rowKey(row as Record<string, unknown>),
+}))
+
+const virtualizationOptions = computed(() => ({
+  rows: true,
+  columns: true,
+  rowOverscan: 8,
+  columnOverscan: 2,
+}))
 
 const gridRows = computed<GridRow[]>(() => (
   filteredRows.value.map((row) => createGridRow(row, sourceColumnHeaders.value))
@@ -244,27 +315,51 @@ function rowKey(row: Record<string, unknown>) {
   return String(row.rowId ?? "")
 }
 
-function handleSelectionChange(payload: { rowKeys: string[] }) {
-  if (props.multiple) {
-    selectedRowKeys.value = payload.rowKeys
-    return
+function clearSelection() {
+  selectedRowKeys.value = []
+  if (gridState.value) {
+    gridState.value = {
+      ...gridState.value,
+      rowSelection: {
+        focusedRow: null,
+        selectedRows: [],
+      },
+    }
   }
-  selectedRowKeys.value = payload.rowKeys.length > 0 ? [payload.rowKeys[payload.rowKeys.length - 1]] : []
 }
 
-function handleRowClick(payload: { row: Record<string, unknown>; rowIndex: number }) {
-  const rowId = String(payload.row.rowId ?? "")
-  if (!rowId) {
-    return
-  }
+function handleGridStateUpdate(state: UnifiedGridState) {
+  gridState.value = state
+}
+
+function rowKeysFromSelectionSnapshot(snapshot: RowSelectionSnapshot | null | undefined): string[] {
+  return (snapshot?.selectedRows ?? []).map(rowKey => String(rowKey))
+}
+
+function syncSelectedRowKeysFromSnapshot(snapshot: RowSelectionSnapshot | null | undefined) {
+  const rowKeys = rowKeysFromSelectionSnapshot(snapshot)
   if (props.multiple) {
-    const exists = selectedRowKeys.value.includes(rowId)
-    selectedRowKeys.value = exists
-      ? selectedRowKeys.value.filter(item => item !== rowId)
-      : [...selectedRowKeys.value, rowId]
+    selectedRowKeys.value = rowKeys
     return
   }
-  selectedRowKeys.value = [rowId]
+  selectedRowKeys.value = rowKeys.length > 0 ? [rowKeys[rowKeys.length - 1]] : []
+}
+
+function hasUnknownRowSelectionShape(snapshot: unknown): snapshot is RowSelectionSnapshot {
+  return Boolean(
+    snapshot
+    && typeof snapshot === "object"
+    && Array.isArray((snapshot as Record<string, unknown>).selectedRows),
+  )
+}
+
+function handleGridSelectionChange(snapshot?: unknown) {
+  if (hasUnknownRowSelectionShape(snapshot)) {
+    syncSelectedRowKeysFromSnapshot(snapshot)
+    return
+  }
+
+  syncSelectedRowKeysFromSnapshot(gridState.value?.rowSelection ?? null)
 }
 
 function parseSignalId(rowKey: string): number | null {

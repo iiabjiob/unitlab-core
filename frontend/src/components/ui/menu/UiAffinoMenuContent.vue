@@ -4,6 +4,7 @@
     :align="align"
     :gutter="gutter"
     :viewport-padding="viewportPadding"
+    :teleport-to="APP_OVERLAY_HOST_SELECTOR"
   >
     <slot />
   </AffinoUiMenuContent>
@@ -16,6 +17,7 @@ import {
   type Alignment,
   type Placement,
 } from "@affino/menu-vue"
+import { APP_OVERLAY_HOST_SELECTOR } from "@/utils/overlayHost"
 
 const props = defineProps<{
   placement?: Placement

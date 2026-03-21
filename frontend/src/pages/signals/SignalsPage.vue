@@ -1,7 +1,1745 @@
 <template>
-  <div class="flex h-full min-h-0 min-w-0 flex-col">
-    <section class="flex-1 min-h-0 min-w-0">
-      <RouterView />
+  <div class="flex h-full min-h-0 min-w-0 flex-col gap-4 p-3 md:p-4">
+    <AllocationEditorHeader
+      :summary-text="summaryText"
+      :workspace-missing="workspaceMissing"
+      :loading="loading"
+      :allocated-cable-rows-count="allocatedCableRows.length"
+      :allocation-rows-count="allocationRows.length"
+      :allocating-selected="allocatingSelected"
+      :deallocating-selected="deallocatingSelected"
+      :allocate-selected-label="allocateSelectedButtonLabel"
+      :deallocate-selected-label="deallocateSelectedButtonLabel"
+      :can-resume-active-test-run="canResumeActiveTestRun"
+      :can-allocate-selected="selectedUnassignedSignalIds.length > 0 || allocatingSelected"
+      :can-deallocate-selected="selectedAllocatedSignalIds.length > 0 || deallocatingSelected"
+      :can-run-test="selectedVisibleAllocatedPhysicalRows.length > 0 || isTestRunBusy || canResumeActiveTestRun"
+      :is-test-run-busy="isTestRunBusy"
+      :test-run-toggle-mode="testRunToggleMode"
+      :test-run-interval-ms="testRunIntervalMs"
+      :can-create-switchgear-from-selection="false"
+      :switchgear-create-in-progress="false"
+      create-switchgear-button-label="Create switchgear"
+      @import="openImportModal"
+      @export-cable="openExportModal"
+      @export-report="exportSignalReport"
+      @allocate-selected="allocateSelectedUnassigned"
+      @deallocate-selected="deallocateSelected"
+      @run-test="runTestVisualOnly"
+      @set-toggle-mode="setTestRunToggleMode"
+      @set-interval-ms="setTestRunIntervalMs"
+    />
+
+    <div
+      v-if="workspaceMissing"
+      class="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/80 p-8 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400"
+    >
+      Select a workspace first.
+    </div>
+
+    <div
+      v-else-if="loading && gridRows.length === 0"
+      class="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/80 p-8 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400"
+    >
+      Loading signals from store...
+    </div>
+
+    <div
+      v-else-if="error"
+      class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200"
+    >
+      {{ error }}
+    </div>
+
+    <div
+      v-else-if="gridRows.length === 0"
+      class="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/80 p-8 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400"
+    >
+      No signals found.
+    </div>
+
+    <section v-else class="affino-native-data-grid min-h-0 min-w-0 flex-1">
+      <div class="affino-native-data-grid__shell">
+        <DataGrid
+          ref="allocationGridRef"
+          :rows="gridRows"
+          :columns="resolvedColumns"
+          :state="gridState"
+          :row-selection-state="rowSelectionState"
+          :theme="theme"
+          :client-row-model-options="clientRowModelOptions"
+          :virtualization="virtualizationOptions"
+          :toolbar-modules="toolbarModules"
+          :column-layout="true"
+          :advanced-filter="true"
+          :row-selection="true"
+          render-mode="virtualization"
+          layout-mode="fill"
+          row-hover
+          striped-rows
+          @update:rowSelectionState="handleAllocationRowSelectionStateUpdate"
+          @update:state="handleAllocationGridStateUpdate"
+        />
+      </div>
     </section>
+
+    <AllocationChannelPickerPanel
+      :open="allocationChannelPickerRow !== null"
+      :signal-name="allocationChannelPickerRow?.signal_name ?? ''"
+      :signal-key="allocationChannelPickerRow?.signal_key ?? ''"
+      :signal-direction="allocationChannelPickerRow?.signal_direction ?? ''"
+      :current-label="allocationChannelPickerCurrentLabel"
+      :current-channel-id="allocationChannelPickerCurrentChannelId"
+      :channels="allocationChannelPickerChannels"
+      :loading="allocationChannelPickerLoading"
+      :saving="allocationChannelPickerSaving"
+      :error="allocationChannelPickerError"
+      @close="closeAllocationChannelPicker"
+      @select="handleAllocationChannelPicked"
+    />
+
+    <SignalImportModal :open="importModalOpen" @close="closeImportModal" @imported="handleImported" />
+    <SignalExportModal
+      :open="exportModalOpen"
+      :workspace-id="workspaceStore.activeWorkspaceId"
+      :required-columns="requiredExportColumnOptions"
+      :optional-columns="optionalExportColumnOptions"
+      @close="closeExportModal"
+      @export="handleExportCableFromWizard"
+    />
   </div>
 </template>
+
+<script setup lang="ts">
+import { computed, defineComponent, h, nextTick, onMounted, ref, watch, type PropType } from "vue"
+import { useRoute, useRouter } from "vue-router"
+import { storeToRefs } from "pinia"
+import { DataGrid, type DataGridAppCellRendererContext, type DataGridAppColumnInput, type DataGridAppToolbarModule, type DataGridSavedViewSnapshot, writeDataGridSavedViewToStorage } from "@affino/datagrid-vue-app"
+
+import { SignalsAPI } from "@/api/signals.api"
+import type { DoChannel } from "@/types/channel"
+import AllocationEditorHeader from "@/pages/signals/components/AllocationEditorHeader.vue"
+import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders } from "@/pages/signals/utils/sourceColumns"
+import AllocationChannelCell from "@/pages/signals/components/AllocationChannelCell.vue"
+import AllocationChannelPickerPanel from "@/pages/signals/components/AllocationChannelPickerPanel.vue"
+import AllocationControlCell from "@/pages/signals/components/AllocationControlCell.vue"
+import SignalExportModal, { type ExportColumnOption } from "@/pages/signals/components/SignalExportModal.vue"
+import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
+import { useAffinoDataGridTheme } from "@/components/ui/affinoDataGridTheme"
+import "@/components/ui/affinoDataGridNative.css"
+import { useChannelStore } from "@/stores/channelStore"
+import { useDeviceStore } from "@/stores/deviceStore"
+import { useSignalJobStore } from "@/stores/signalJobStore"
+import { useSignalSheetStore } from "@/stores/signalSheetStore"
+import { useToastStore } from "@/stores/toastStore"
+import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
+import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
+
+const workspaceStore = useWorkspaceStore()
+const signalSheetStore = useSignalSheetStore()
+const signalJobStore = useSignalJobStore()
+const channelStore = useChannelStore()
+const deviceStore = useDeviceStore()
+const toastStore = useToastStore()
+const route = useRoute()
+const router = useRouter()
+const { allocationRows, loadingAllocations, loadingSheet, updatingAllocations, sheet } = storeToRefs(signalSheetStore)
+const { channels } = storeToRefs(channelStore)
+const { activeJobs } = storeToRefs(signalJobStore)
+
+const error = ref<string | null>(null)
+const importModalOpen = ref(false)
+const exportModalOpen = ref(false)
+const allocationGridRef = ref<{
+  getSavedView?: () => DataGridSavedViewSnapshot<Record<string, unknown>> | null
+} | null>(null)
+const allocationChannelPickerSignalId = ref<number | null>(null)
+const allocationChannelPickerLoading = ref(false)
+const allocationChannelPickerSaving = ref(false)
+const allocationChannelPickerError = ref<string | null>(null)
+const gridState = ref<UnifiedGridState | null>(null)
+const rowSelectionState = ref<RowSelectionSnapshot | null>(null)
+const deletingSelected = ref(false)
+const deletingProgressDone = ref(0)
+const deletingProgressTotal = ref(0)
+const allocatingSelected = ref(false)
+const deallocatingSelected = ref(false)
+const testRunInProgress = ref(false)
+const testRunIntervalMs = ref(1000)
+const testRunToggleMode = ref<"single" | "double">("single")
+const { theme } = useAffinoDataGridTheme()
+
+type GridRow = Record<string, unknown> & {
+  signal_id: number
+  rowId: string
+}
+
+type RowSelectionSnapshot = {
+  focusedRow: string | number | null
+  selectedRows: Array<string | number>
+}
+
+type UnifiedGridState = {
+  version: 1
+  rows: unknown
+  columns: unknown
+  selection: unknown
+  rowSelection: RowSelectionSnapshot | null
+  transaction: unknown
+}
+
+const SIGNALS_GRID_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
+
+const SignalsSelectionToolbarModule = defineComponent({
+  name: "SignalsSelectionToolbarModule",
+  props: {
+    selectedCount: {
+      type: Number,
+      required: true,
+    },
+    showClearSelection: {
+      type: Boolean,
+      required: true,
+    },
+    deleteDisabled: {
+      type: Boolean,
+      required: true,
+    },
+    deleteLabel: {
+      type: String,
+      required: true,
+    },
+    onClearSelection: {
+      type: Function as PropType<() => void>,
+      required: true,
+    },
+    onDeleteSelected: {
+      type: Function as PropType<() => void>,
+      required: true,
+    },
+  },
+  setup(props) {
+    return () => h("div", { class: "affino-native-data-grid__toolbar-module" }, [
+      h("span", { class: "affino-native-data-grid__stat" }, `Selected: ${props.selectedCount}`),
+      props.showClearSelection
+        ? h(
+          "button",
+          {
+            type: "button",
+            class: "datagrid-app-toolbar__button",
+            onClick: () => props.onClearSelection(),
+          },
+          "Clear selection",
+        )
+        : null,
+      h(
+        "button",
+        {
+          type: "button",
+          class: "datagrid-app-toolbar__button affino-native-data-grid__toolbar-button--danger",
+          disabled: props.deleteDisabled,
+          onClick: () => props.onDeleteSelected(),
+        },
+        props.deleteLabel,
+      ),
+    ])
+  },
+})
+
+const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
+const loading = computed(() => loadingAllocations.value || loadingSheet.value || updatingAllocations.value)
+const activeSignalSheet = computed(() => {
+  const workspaceId = workspaceStore.activeWorkspaceId
+  const currentSheet = sheet.value
+  if (!workspaceId || !currentSheet) {
+    return null
+  }
+  return currentSheet.workspace_id === workspaceId ? currentSheet : null
+})
+const sourceHeaders = computed(() => {
+  const headersFromSheet = resolveAllSourceColumnHeaders(activeSignalSheet.value, [])
+  if (headersFromSheet.length > 0) {
+    return headersFromSheet
+  }
+  return resolveAllSourceColumnHeaders(null, allocationRows.value)
+})
+
+const summaryText = computed(() => {
+  if (workspaceMissing.value) {
+    return "Workspace is not selected"
+  }
+  if (loading.value) {
+    return "Loading static signals view"
+  }
+  const total = allocationRows.value.length
+  const allocated = allocationRows.value.filter(row => Number.isFinite(row.channel_id as number)).length
+  const tested = allocationRows.value.filter(row => Boolean(String(row.tested_at ?? "").trim())).length
+  const remaining = Math.max(0, total - tested)
+  const allocatedPercent = total > 0 ? ((allocated / total) * 100) : 0
+  const testedPercent = total > 0 ? ((tested / total) * 100) : 0
+  const remainingPercent = total > 0 ? ((remaining / total) * 100) : 0
+  const formatPercent = (value: number) => {
+    const rounded = Math.round(value * 10) / 10
+    return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1)
+  }
+  return `${total} signals · ${allocated} allocated (${formatPercent(allocatedPercent)}%) · ${tested} tested (${formatPercent(testedPercent)}%) · ${remaining} remaining (${formatPercent(remainingPercent)}%)`
+})
+
+const clientRowModelOptions = computed(() => ({
+  resolveRowId: (row: unknown) => String((row as Record<string, unknown>).rowId ?? ""),
+}))
+
+const selectedAllocationRows = computed(() => (
+  selectedRowKeys.value
+    .map((rowKey) => {
+      const signalId = signalIdFromRowKey(rowKey)
+      if (signalId === null) return null
+      return allocationRowBySignalId.value.get(signalId) ?? null
+    })
+    .filter((row): row is SignalAllocationRow => Boolean(row))
+))
+
+function resolveSelectedUnassignedSignalIdsInSelectionOrder(): number[] {
+  const orderedIds: number[] = []
+  const seen = new Set<number>()
+  selectedAllocationRows.value.forEach((row) => {
+    const signalId = Number(row.signal_id)
+    if (!Number.isFinite(signalId) || seen.has(signalId)) {
+      return
+    }
+    if (Number.isFinite(row.channel_id as number)) {
+      return
+    }
+    seen.add(signalId)
+    orderedIds.push(signalId)
+  })
+  return orderedIds
+}
+
+const selectedUnassignedSignalIds = computed(() => (
+  resolveSelectedUnassignedSignalIdsInSelectionOrder()
+))
+
+const selectedAllocatedSignalIds = computed(() => (
+  selectedAllocationRows.value
+    .filter(row => Number.isFinite(row.channel_id as number))
+    .map(row => row.signal_id)
+))
+
+const selectedVisibleAllocatedPhysicalRows = computed(() => (
+  selectedAllocationRows.value.filter((row) => (
+    Number.isFinite(row.channel_id as number)
+    && Number.isFinite(row.device_id as number)
+    && Boolean(row.unit_id)
+  ))
+))
+
+const allocatedCableRows = computed(() => (
+  allocationRows.value.filter((row) => (
+    Number.isFinite(row.channel_id as number)
+    && Number.isFinite(row.channel_index as number)
+    && Boolean(String(row.unit_id ?? "").trim())
+  ))
+))
+
+const activeTestRunJob = computed(() => (
+  activeJobs.value.find(job => String(job.operation) === "test_run") ?? null
+))
+
+function pickLatestActiveJobByOperation(operation: "auto_allocate" | "bulk_update"): SignalAllocationJob | null {
+  let latest: SignalAllocationJob | null = null
+  let latestUpdatedAt = -1
+  activeJobs.value.forEach((job) => {
+    if (String(job.operation) !== operation) {
+      return
+    }
+    const updatedAt = Date.parse(String(job.updated_at ?? ""))
+    const normalizedUpdatedAt = Number.isFinite(updatedAt) ? updatedAt : 0
+    if (normalizedUpdatedAt >= latestUpdatedAt) {
+      latest = job
+      latestUpdatedAt = normalizedUpdatedAt
+    }
+  })
+  return latest
+}
+
+const activeAutoAllocateJob = computed(() => pickLatestActiveJobByOperation("auto_allocate"))
+const activeBulkUpdateJob = computed(() => pickLatestActiveJobByOperation("bulk_update"))
+
+function formatOperationProgressLabel(
+  fallbackBusyLabel: string,
+  idleLabel: string,
+  activeFlag: boolean,
+  job: SignalAllocationJob | null,
+): string {
+  if (!activeFlag) {
+    return idleLabel
+  }
+
+  if (!job) {
+    return fallbackBusyLabel
+  }
+
+  const status = String(job.status ?? "")
+  const total = Math.max(0, Number(job.progress_total ?? 0))
+  const done = Math.max(0, Number(job.progress_done ?? 0))
+  const safeDone = total > 0 ? Math.min(done, total) : done
+
+  if (status === "queued") {
+    return total > 0 ? `Queued ${safeDone}/${total}...` : "Queued..."
+  }
+  if (status === "cancelling") {
+    return total > 0 ? `Cancelling ${safeDone}/${total}...` : "Cancelling..."
+  }
+
+  return total > 0 ? `${fallbackBusyLabel.replace("...", "")} ${safeDone}/${total}...` : fallbackBusyLabel
+}
+
+const allocateSelectedButtonLabel = computed(() => (
+  formatOperationProgressLabel(
+    "🔗 Assigning...",
+    "🔗 Assign Hardware",
+    allocatingSelected.value,
+    activeAutoAllocateJob.value,
+  )
+))
+
+const deallocateSelectedButtonLabel = computed(() => (
+  formatOperationProgressLabel(
+    "⛓️‍💥 Unassigning...",
+    "⛓️‍💥 Unassign Hardware",
+    deallocatingSelected.value,
+    activeBulkUpdateJob.value,
+  )
+))
+
+const deleteSelectedToolbarLabel = computed(() => (
+  deletingSelected.value
+    ? `Deleting ${deletingProgressDone.value}/${deletingProgressTotal.value}...`
+    : "Delete selected"
+))
+
+const selectedRowKeys = computed(() => (
+  (rowSelectionState.value?.selectedRows ?? []).map((rowKey) => String(rowKey))
+))
+
+const toolbarModules = computed<DataGridAppToolbarModule[]>(() => ([
+  {
+    key: "signals-selection-actions",
+    component: SignalsSelectionToolbarModule,
+    props: {
+      selectedCount: selectedRowKeys.value.length,
+      showClearSelection: selectedRowKeys.value.length > 0,
+      deleteDisabled: deletingSelected.value || selectedRowKeys.value.length === 0,
+      deleteLabel: deleteSelectedToolbarLabel.value,
+      onClearSelection: clearGridSelection,
+      onDeleteSelected: () => {
+        void handleDeleteSelected()
+      },
+    },
+  },
+]))
+
+function getSignalsGridStorageKey(workspaceId: number | null): string | null {
+  if (!Number.isFinite(workspaceId as number) || Number(workspaceId) <= 0) {
+    return null
+  }
+  return `${SIGNALS_GRID_STORAGE_KEY_PREFIX}:workspace:${Number(workspaceId)}`
+}
+
+function persistSignalsGridState() {
+  if (typeof window === "undefined") {
+    return
+  }
+
+  const storageKey = getSignalsGridStorageKey(workspaceStore.activeWorkspaceId)
+  if (!storageKey) {
+    return
+  }
+
+  const savedView = allocationGridRef.value?.getSavedView?.()
+  if (!savedView) {
+    return
+  }
+
+  writeDataGridSavedViewToStorage(window.localStorage, storageKey, savedView)
+}
+
+function restoreSignalsGridState() {
+  if (typeof window === "undefined") {
+    gridState.value = null
+    rowSelectionState.value = null
+    return
+  }
+
+  const storageKey = getSignalsGridStorageKey(workspaceStore.activeWorkspaceId)
+  if (!storageKey) {
+    gridState.value = null
+    rowSelectionState.value = null
+    return
+  }
+
+  const raw = window.localStorage.getItem(storageKey)
+  if (!raw) {
+    gridState.value = null
+    rowSelectionState.value = null
+    return
+  }
+
+  try {
+    const savedView = JSON.parse(raw) as Partial<DataGridSavedViewSnapshot<Record<string, unknown>>>
+    const nextState = savedView?.state
+    if (!nextState || typeof nextState !== "object") {
+      gridState.value = null
+      rowSelectionState.value = null
+      return
+    }
+
+    const restoredState = nextState as UnifiedGridState
+    gridState.value = restoredState
+    rowSelectionState.value = restoredState.rowSelection ?? null
+  } catch (error) {
+    console.warn("Failed to restore signals grid state:", error)
+    gridState.value = null
+    rowSelectionState.value = null
+  }
+}
+
+const isTestRunBusy = computed(() => {
+  const status = String(activeTestRunJob.value?.status ?? "")
+  const activeJobBusy = status === "queued" || status === "running" || status === "cancelling"
+  return testRunInProgress.value || activeJobBusy
+})
+
+const canResumeActiveTestRun = computed(() => activeTestRunJob.value?.status === "paused")
+
+type CableExportColumnDef = {
+  key: string
+  label: string
+  required: boolean
+  getValue: (row: SignalAllocationRow, terminalHeader: string | null) => string
+}
+
+const cableExportColumnDefs = computed<CableExportColumnDef[]>(() => {
+  const sourceColumnDefs: CableExportColumnDef[] = sourceHeaders.value.map((header) => ({
+    key: `source:${header}`,
+    label: header,
+    required: false,
+    getValue: (row: SignalAllocationRow) => {
+      const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
+      const rawValue = sourceRow[header]
+      return rawValue === undefined || rawValue === null ? "" : String(rawValue)
+    },
+  }))
+
+  return [
+    {
+      key: "unit_id",
+      label: "unit_id",
+      required: true,
+      getValue: (row: SignalAllocationRow) => String(row.unit_id ?? ""),
+    },
+    {
+      key: "terminal",
+      label: "terminal",
+      required: true,
+      getValue: (row: SignalAllocationRow, terminalHeader: string | null) => resolveTerminalValue(row, terminalHeader),
+    },
+    {
+      key: "channel_index",
+      label: "channel_index",
+      required: true,
+      getValue: (row: SignalAllocationRow) => (
+        Number.isFinite(row.channel_index as number) ? String(Number(row.channel_index)) : ""
+      ),
+    },
+    {
+      key: "channel_label",
+      label: "channel_label",
+      required: false,
+      getValue: (row: SignalAllocationRow) => String(row.channel_label ?? ""),
+    },
+    {
+      key: "signal_name",
+      label: "signal_name",
+      required: false,
+      getValue: (row: SignalAllocationRow) => String(row.signal_name ?? ""),
+    },
+    {
+      key: "signal_key",
+      label: "signal_key",
+      required: false,
+      getValue: (row: SignalAllocationRow) => String(row.signal_key ?? ""),
+    },
+    {
+      key: "signal_direction",
+      label: "signal_direction",
+      required: false,
+      getValue: (row: SignalAllocationRow) => String(row.signal_direction ?? ""),
+    },
+    {
+      key: "signal_category",
+      label: "signal_category",
+      required: false,
+      getValue: (row: SignalAllocationRow) => String(row.signal_category ?? ""),
+    },
+    {
+      key: "last_tested_at",
+      label: "last_tested_at",
+      required: false,
+      getValue: (row: SignalAllocationRow) => String(row.tested_at ?? ""),
+    },
+    ...sourceColumnDefs,
+  ]
+})
+
+const requiredExportColumnOptions = computed<ExportColumnOption[]>(() => (
+  cableExportColumnDefs.value
+    .filter(column => column.required)
+    .map(column => ({ key: column.key, label: column.label }))
+))
+
+const optionalExportColumnOptions = computed<ExportColumnOption[]>(() => (
+  cableExportColumnDefs.value
+    .filter(column => !column.required)
+    .map(column => ({ key: column.key, label: column.label }))
+))
+
+const allocationRowBySignalId = computed(() => {
+  const map = new Map<number, SignalAllocationRow>()
+  allocationRows.value.forEach((row) => {
+    const signalId = Number(row.signal_id)
+    if (Number.isFinite(signalId)) {
+      map.set(signalId, row)
+    }
+  })
+  return map
+})
+
+const channelMap = computed(() => {
+  const map = new Map<number, typeof channels.value[number]>()
+  channels.value.forEach((channel) => {
+    map.set(channel.id, channel)
+  })
+  return map
+})
+
+const deviceStatusById = computed(() => {
+  const map = new Map<number, string>()
+  deviceStore.devices.forEach((device) => {
+    map.set(device.id, device.status)
+  })
+  return map
+})
+
+const channelUnitById = computed(() => {
+  const map = new Map<number, string>()
+  channels.value.forEach((channel) => {
+    const unitId = channelStore.resolveUnitId(channel.device_id)
+    map.set(channel.id, unitId || `Device ${channel.device_id}`)
+  })
+  return map
+})
+
+const allocatedSignalIdByChannelId = computed(() => {
+  const map = new Map<number, number>()
+  allocationRows.value.forEach((row) => {
+    const channelId = Number(row.channel_id)
+    if (!Number.isFinite(channelId) || channelId <= 0) {
+      return
+    }
+    map.set(channelId, row.signal_id)
+  })
+  return map
+})
+
+function sourceColumnKey(index: number): string {
+  return `source_col_${index}`
+}
+
+function handleAllocationGridStateUpdate(state: UnifiedGridState | null) {
+  gridState.value = state
+  rowSelectionState.value = state?.rowSelection ?? null
+  persistSignalsGridState()
+}
+
+function handleAllocationRowSelectionStateUpdate(state: RowSelectionSnapshot | null) {
+  rowSelectionState.value = state
+}
+
+function signalIdFromRowKey(rowKey: string): number | null {
+  const match = String(rowKey).match(/^signal-(\d+)$/)
+  if (!match) {
+    return null
+  }
+  const parsed = Number(match[1])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function clearGridSelection() {
+  rowSelectionState.value = {
+    focusedRow: null,
+    selectedRows: [],
+  }
+}
+
+function isImportQueryRequested(raw: unknown): boolean {
+  const values = Array.isArray(raw) ? raw : [raw]
+  return values.some((value) => {
+    const normalized = String(value ?? "").trim().toLowerCase()
+    return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "open"
+  })
+}
+
+function clearImportQueryFlag() {
+  if (!("import" in route.query)) {
+    return
+  }
+  const nextQuery = { ...route.query }
+  delete nextQuery.import
+  void router.replace({ query: nextQuery }).catch(() => {
+    return
+  })
+}
+
+function syncImportModalFromRoute() {
+  if (!isImportQueryRequested(route.query.import)) {
+    return
+  }
+  importModalOpen.value = true
+  clearImportQueryFlag()
+}
+
+async function awaitUiPaintFrame() {
+  await nextTick()
+  await new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => resolve())
+      return
+    }
+    setTimeout(() => resolve(), 0)
+  })
+}
+
+function csvEscape(value: unknown): string {
+  const text = String(value ?? "")
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`
+  }
+  return text
+}
+
+function toFilenamePart(value: string | null | undefined): string {
+  const normalized = String(value ?? "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+  return normalized || "workspace"
+}
+
+function downloadTextFile(content: string, filename: string, mimeType = "text/csv;charset=utf-8;") {
+  const blob = new Blob([`\uFEFF${content}`], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement("a")
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function resolveTerminalHeader(): string | null {
+  const fromImportMeta = String(activeSignalSheet.value?.import_meta?.terminal_column ?? "").trim()
+  if (fromImportMeta) {
+    return fromImportMeta
+  }
+
+  const byHeuristic = sourceHeaders.value.find((header) => /terminal|клем|клемм|xt/i.test(String(header)))
+  if (byHeuristic) {
+    return String(byHeuristic)
+  }
+
+  return null
+}
+
+function resolveTerminalValue(row: SignalAllocationRow, terminalHeader: string | null): string {
+  if (!terminalHeader) return ""
+  const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
+  const rawValue = sourceRow[terminalHeader]
+  if (rawValue === undefined || rawValue === null) return ""
+  return String(rawValue)
+}
+
+function resolveSelectedCableExportColumns(optionalColumnKeys: readonly string[]): CableExportColumnDef[] {
+  const byKey = new Map(cableExportColumnDefs.value.map(column => [column.key, column] as const))
+  const requiredStart = ["unit_id", "channel_index"]
+    .map(key => byKey.get(key))
+    .filter((column): column is CableExportColumnDef => Boolean(column))
+  const terminalColumn = byKey.get("terminal")
+
+  const optional = optionalColumnKeys
+    .map(key => byKey.get(key))
+    .filter((column): column is CableExportColumnDef => Boolean(column && !column.required))
+
+  return terminalColumn
+    ? [...requiredStart, ...optional, terminalColumn]
+    : [...requiredStart, ...optional]
+}
+
+function buildSignalReportRows(): string[][] {
+  const headers = sourceHeaders.value
+  const fallbackHeaders = headers.length > 0 ? headers : ["signal_name", "signal_key"]
+
+  return allocationRows.value.map((row) => {
+    const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
+    const sourceCells = fallbackHeaders.map((header) => {
+      if (header === "signal_name") return row.signal_name
+      if (header === "signal_key") return row.signal_key
+      return sourceRow[header] ?? ""
+    })
+    const channelNumber = Number.isFinite(row.channel_index as number) ? Number(row.channel_index) : ""
+    return [
+      ...sourceCells.map(item => String(item ?? "")),
+      String(row.signal_direction ?? ""),
+      String(row.unit_id ?? ""),
+      String(channelNumber),
+      String(row.tested_at ?? ""),
+    ]
+  })
+}
+
+function openImportModal() {
+  if (workspaceMissing.value) return
+  importModalOpen.value = true
+}
+
+function closeImportModal() {
+  importModalOpen.value = false
+}
+
+async function handleImported() {
+  importModalOpen.value = false
+  await refreshSignalsStatic()
+  await signalSheetStore.ensurePresetsLoaded({ force: true })
+}
+
+function exportCableJournal(optionalColumnKeys: string[] = []) {
+  if (!allocatedCableRows.value.length) {
+    toastStore.info("No allocated rows to export.")
+    return
+  }
+
+  const workspaceName = String(workspaceStore.activeWorkspace?.name ?? "")
+  const workspaceFilePart = toFilenamePart(workspaceName)
+  const generatedAt = new Date()
+  const terminalHeader = resolveTerminalHeader()
+  const selectedColumns = resolveSelectedCableExportColumns(optionalColumnKeys)
+  const tableHeaders = selectedColumns.map(column => column.label)
+  const rows = allocatedCableRows.value.map(row => (
+    selectedColumns.map(column => column.getValue(row, terminalHeader))
+  ))
+  const summaryRows = [
+    ["report", "cable-schedule"],
+    ["workspace_name", workspaceName],
+    ["exported_at", generatedAt.toISOString()],
+    ["total", String(allocatedCableRows.value.length)],
+  ]
+
+  const csvContent = [
+    ...summaryRows.map(row => row.map(csvEscape).join(",")),
+    "",
+    tableHeaders.map(csvEscape).join(","),
+    ...rows.map(row => row.map(csvEscape).join(",")),
+  ].join("\n")
+
+  const dateSuffix = generatedAt.toISOString().slice(0, 19).replace(/:/g, "-")
+  const filename = `cable-schedule-ws-${workspaceFilePart}-${dateSuffix}.csv`
+  downloadTextFile(csvContent, filename)
+  toastStore.success(`Cable schedule exported: ${rows.length} rows`)
+}
+
+function openExportModal() {
+  if (workspaceMissing.value) return
+  if (!allocatedCableRows.value.length) {
+    toastStore.info("No allocated rows to export.")
+    return
+  }
+  exportModalOpen.value = true
+}
+
+function closeExportModal() {
+  exportModalOpen.value = false
+}
+
+function handleExportCableFromWizard(payload: { optionalColumnKeys: string[] }) {
+  exportModalOpen.value = false
+  exportCableJournal(payload.optionalColumnKeys)
+}
+
+function exportSignalReport() {
+  if (!allocationRows.value.length) {
+    toastStore.info("No signals to export.")
+    return
+  }
+
+  const headers = sourceHeaders.value
+  const fallbackHeaders = headers.length > 0 ? headers : ["signal_name", "signal_key"]
+  const csvHeaders = [...fallbackHeaders, "signal_direction", "unit_id", "channel_index", "last_tested_at"]
+  const rows = buildSignalReportRows()
+  const workspaceName = String(workspaceStore.activeWorkspace?.name ?? "")
+  const workspaceFilePart = toFilenamePart(workspaceName)
+  const generatedAt = new Date()
+  const tested = allocationRows.value.filter(row => Boolean(String(row.tested_at ?? "").trim())).length
+  const remaining = Math.max(0, allocationRows.value.length - tested)
+  const total = allocationRows.value.length
+
+  const metaRows = [
+    ["report", "signal-test-report"],
+    ["generated_at", generatedAt.toISOString()],
+    ["signals_total", String(total)],
+    ["signals_tested", String(tested)],
+    ["signals_remaining", String(remaining)],
+  ]
+
+  const csvContent = [
+    ...metaRows.map(row => row.map(csvEscape).join(",")),
+    "",
+    csvHeaders.map(csvEscape).join(","),
+    ...rows.map(row => row.map(csvEscape).join(",")),
+  ].join("\n")
+
+  const dateSuffix = generatedAt.toISOString().slice(0, 19).replace(/:/g, "-")
+  const filename = `signal-report-ws-${workspaceFilePart}-${dateSuffix}.csv`
+  downloadTextFile(csvContent, filename)
+  toastStore.success(`Report exported: tested ${tested}, remaining ${remaining}, total ${total}`)
+}
+
+function normalizedChannelType(raw: string | null | undefined): "di" | "do" | "ai" | "ao" | null {
+  const value = String(raw || "").trim().toLowerCase()
+  if (value.startsWith("di")) return "di"
+  if (value.startsWith("do")) return "do"
+  if (value.startsWith("ai")) return "ai"
+  if (value.startsWith("ao")) return "ao"
+  return null
+}
+
+function allocationDisplayLabel(row: SignalAllocationRow): string {
+  if (Number.isFinite(row.channel_index as number)) {
+    const channelSuffix = `ch${Number(row.channel_index) + 1}`
+    const unitId = String(row.unit_id ?? "").trim()
+    return unitId ? `${unitId}/${channelSuffix}` : channelSuffix
+  }
+  if (row.channel_label && row.channel_label.trim().length > 0) {
+    return row.channel_label
+  }
+  return "-"
+}
+
+function createGridRow(row: SignalAllocationRow, headers: readonly string[]): GridRow {
+  const payload: GridRow = {
+    signal_id: row.signal_id,
+    rowId: `signal-${row.signal_id}`,
+    channel_select: allocationDisplayLabel(row),
+    tested_at: row.tested_at,
+    allocation_status: Number.isFinite(row.channel_id as number) ? "allocated" : "unallocated",
+  }
+  const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
+  headers.forEach((header, index) => {
+    payload[sourceColumnKey(index)] = sourceRow[header] ?? ""
+  })
+  return payload
+}
+
+function asAllocationRow(row: GridRow): SignalAllocationRow {
+  return row as unknown as SignalAllocationRow
+}
+
+function resolveSignalIdFromGridRow(row: SignalAllocationRow): number | null {
+  const signalId = Number((row as { signal_id?: unknown }).signal_id)
+  if (Number.isFinite(signalId)) {
+    return signalId
+  }
+  const rowId = String((row as { rowId?: unknown }).rowId ?? "")
+  const match = rowId.match(/^signal-(\d+)$/)
+  if (!match) {
+    return null
+  }
+  const parsed = Number(match[1])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function resolveLiveAllocationRowBySignalId(signalId: number | null, fallback: SignalAllocationRow): SignalAllocationRow {
+  if (!Number.isFinite(signalId as number)) {
+    return fallback
+  }
+  return allocationRowBySignalId.value.get(Number(signalId)) ?? fallback
+}
+
+function resolveControlCellRow(row: SignalAllocationRow): SignalAllocationRow {
+  const signalId = resolveSignalIdFromGridRow(row)
+  return resolveLiveAllocationRowBySignalId(signalId, row)
+}
+
+function resolveAllocationChannelCellRow(row: SignalAllocationRow): SignalAllocationRow {
+  const signalId = resolveSignalIdFromGridRow(row)
+  return resolveLiveAllocationRowBySignalId(signalId, row)
+}
+
+type AllocationChannelPickerCandidate = {
+  id: number
+  unitId: string
+  channelIndex: number
+  label: string
+  metaLabel: string
+  online: boolean
+  searchText: string
+}
+
+const allocationChannelPickerRow = computed(() => {
+  const signalId = allocationChannelPickerSignalId.value
+  if (!Number.isFinite(signalId as number)) {
+    return null
+  }
+  return allocationRowBySignalId.value.get(Number(signalId)) ?? null
+})
+
+const allocationChannelPickerCurrentChannelId = computed<number | null>(() => {
+  const channelId = Number(allocationChannelPickerRow.value?.channel_id)
+  return Number.isFinite(channelId) && channelId > 0 ? channelId : null
+})
+
+const allocationChannelPickerCurrentLabel = computed(() => {
+  const row = allocationChannelPickerRow.value
+  return row ? allocationDisplayLabel(row) : "-"
+})
+
+const allocationChannelPickerRequiredType = computed(() => {
+  const direction = String(allocationChannelPickerRow.value?.signal_direction ?? "").trim()
+  return direction ? resolveRuntimeChannelTypeForSignal(direction) : null
+})
+
+const allocationChannelPickerChannels = computed<AllocationChannelPickerCandidate[]>(() => {
+  const row = allocationChannelPickerRow.value
+  const requiredType = allocationChannelPickerRequiredType.value
+  if (!row || !requiredType) {
+    return []
+  }
+
+  const currentChannelId = allocationChannelPickerCurrentChannelId.value
+
+  return channels.value
+    .filter(channel => String(channel.type).trim().toLowerCase() === requiredType)
+    .filter((channel) => {
+      const allocatedSignalId = allocatedSignalIdByChannelId.value.get(channel.id)
+      return allocatedSignalId === undefined || allocatedSignalId === row.signal_id
+    })
+    .map((channel) => {
+      const unitId = channelUnitById.value.get(channel.id) ?? channelStore.resolveUnitId(channel.device_id)
+      const label = `${unitId}/ch${channel.index + 1}`
+      const resolvedName = String(channel.resolved_name ?? channel.name ?? "").trim()
+      const online = deviceStatusById.value.get(channel.device_id) === "online"
+      const metaParts = [
+        resolvedName || null,
+        `Device ${channel.device_id}`,
+        `CH${channel.index + 1}`,
+      ].filter((value): value is string => Boolean(value))
+
+      return {
+        id: channel.id,
+        unitId,
+        channelIndex: channel.index,
+        label,
+        metaLabel: metaParts.join(" · "),
+        online,
+        searchText: [label, unitId, resolvedName, channel.name, channel.resolved_name, String(channel.device_id)]
+          .filter((value): value is string => Boolean(value))
+          .join(" ")
+          .toLowerCase(),
+      }
+    })
+    .sort((left, right) => {
+      if (left.id === currentChannelId) return -1
+      if (right.id === currentChannelId) return 1
+      if (left.online !== right.online) return left.online ? -1 : 1
+      return left.label.localeCompare(right.label, undefined, { numeric: true, sensitivity: "base" })
+    })
+})
+
+async function openAllocationChannelPicker(row: SignalAllocationRow) {
+  const signalId = Number(row.signal_id)
+  if (!Number.isFinite(signalId) || signalId <= 0) {
+    return
+  }
+
+  allocationChannelPickerSignalId.value = signalId
+  allocationChannelPickerError.value = null
+  allocationChannelPickerLoading.value = true
+
+  try {
+    await ensureRuntimeCatalogLoaded()
+  } catch (pickerError) {
+    allocationChannelPickerError.value = pickerError instanceof Error ? pickerError.message : String(pickerError)
+  } finally {
+    allocationChannelPickerLoading.value = false
+  }
+}
+
+function closeAllocationChannelPicker() {
+  if (allocationChannelPickerSaving.value) {
+    return
+  }
+  allocationChannelPickerSignalId.value = null
+  allocationChannelPickerLoading.value = false
+  allocationChannelPickerError.value = null
+}
+
+async function handleAllocationChannelPicked(channelId: number | null) {
+  const row = allocationChannelPickerRow.value
+  if (!row) {
+    return
+  }
+
+  const signalId = Number(row.signal_id)
+  if (!Number.isFinite(signalId) || signalId <= 0) {
+    return
+  }
+
+  allocationChannelPickerSaving.value = true
+  allocationChannelPickerError.value = null
+
+  try {
+    await signalSheetStore.setAllocation(signalId, channelId)
+    if (channelId === null) {
+      toastStore.success(`Cleared allocation for ${row.signal_name || row.signal_key}.`)
+    } else {
+      const nextLabel = allocationChannelPickerChannels.value.find(channel => channel.id === channelId)?.label ?? allocationDisplayLabel(row)
+      toastStore.success(`Assigned ${row.signal_name || row.signal_key} to ${nextLabel}.`)
+    }
+    closeAllocationChannelPicker()
+  } catch (pickerError) {
+    const message = pickerError instanceof Error ? pickerError.message : String(pickerError)
+    allocationChannelPickerError.value = message
+    toastStore.error(message)
+  } finally {
+    allocationChannelPickerSaving.value = false
+  }
+}
+
+async function handleDeleteSelected() {
+  const signalIds = selectedRowKeys.value
+    .map(signalIdFromRowKey)
+    .filter((signalId): signalId is number => Number.isFinite(signalId as number) && Number(signalId) > 0)
+
+  if (!signalIds.length) {
+    return
+  }
+
+  const workspaceId = workspaceStore.activeWorkspaceId
+  if (!workspaceId) {
+    return
+  }
+
+  deletingSelected.value = true
+  deletingProgressDone.value = 0
+  deletingProgressTotal.value = signalIds.length
+
+  try {
+    const chunkSize = 500
+    let deletedTotal = 0
+    let failedTotal = 0
+
+    for (let index = 0; index < signalIds.length; index += chunkSize) {
+      const chunk = signalIds.slice(index, index + chunkSize)
+      try {
+        await SignalsAPI.bulkDelete(workspaceId, chunk)
+        deletedTotal += chunk.length
+      } catch {
+        failedTotal += chunk.length
+      } finally {
+        deletingProgressDone.value = Math.min(signalIds.length, index + chunk.length)
+      }
+      await nextTick()
+    }
+
+    clearGridSelection()
+    await Promise.all([
+      signalSheetStore.ensureSheetLoaded({ force: true }),
+      signalSheetStore.ensureAllocationsLoaded({ force: true }),
+    ])
+
+    if (failedTotal > 0) {
+      toastStore.warning(`Deleted ${deletedTotal} signal(s), failed to delete ${failedTotal}.`)
+    } else {
+      toastStore.success(`Deleted ${deletedTotal} signal(s).`)
+    }
+  } catch (deleteError) {
+    toastStore.error(deleteError instanceof Error ? deleteError.message : String(deleteError))
+  } finally {
+    deletingSelected.value = false
+    deletingProgressDone.value = 0
+    deletingProgressTotal.value = 0
+  }
+}
+
+async function allocateSelectedUnassigned() {
+  if (allocatingSelected.value) return
+  if (!selectedUnassignedSignalIds.value.length) return
+  const targetSignalIds = resolveSelectedUnassignedSignalIdsInSelectionOrder()
+  if (!targetSignalIds.length) {
+    toastStore.info("No free compatible channels available for selected rows.")
+    return
+  }
+
+  allocatingSelected.value = true
+  await awaitUiPaintFrame()
+  try {
+    const workspaceId = workspaceStore.activeWorkspaceId
+    if (!workspaceId) {
+      return
+    }
+
+    const completedJob = await signalJobStore.enqueueAutoAllocateJob(workspaceId, {
+      signal_ids: targetSignalIds,
+      prefer_online: true,
+      prefer_single_unit: false,
+      overwrite_existing: false,
+    })
+
+    await signalSheetStore.ensureAllocationsLoaded({ force: true })
+
+    const result = (completedJob.result ?? {}) as Record<string, unknown>
+    const assigned = Number(result.assigned ?? 0)
+    const restRaw = result.unassigned_signal_ids
+    const rest = Array.isArray(restRaw) ? restRaw.length : 0
+    toastStore.success(
+      `Allocation complete: ${assigned} assigned`
+      + `${rest ? `, ${rest} left unassigned` : ""}`,
+    )
+  } catch (allocateError) {
+    toastStore.error(allocateError instanceof Error ? allocateError.message : String(allocateError))
+  } finally {
+    allocatingSelected.value = false
+  }
+}
+
+async function deallocateSelected() {
+  if (deallocatingSelected.value) return
+  if (!selectedAllocatedSignalIds.value.length) return
+  const targetSignalIds = [...selectedAllocatedSignalIds.value]
+
+  deallocatingSelected.value = true
+  await awaitUiPaintFrame()
+  try {
+    const workspaceId = workspaceStore.activeWorkspaceId
+    if (!workspaceId) {
+      return
+    }
+
+    const completedJob = await signalJobStore.enqueueBulkUpdateJob(
+      workspaceId,
+      targetSignalIds.map(signalId => ({ signal_id: signalId, channel_id: null })),
+    )
+
+    await signalSheetStore.ensureAllocationsLoaded({ force: true })
+
+    const result = (completedJob.result ?? {}) as Record<string, unknown>
+    const updated = Number(result.updated ?? targetSignalIds.length)
+    toastStore.success(`Unassigned ${updated} selected signal(s)`)
+  } catch (deallocateError) {
+    toastStore.error(deallocateError instanceof Error ? deallocateError.message : String(deallocateError))
+  } finally {
+    deallocatingSelected.value = false
+  }
+}
+
+function applyCompletedTestRunPatch(job: SignalAllocationJob) {
+  const testedIdsRaw = (job.result as Record<string, unknown> | undefined)?.tested_signal_ids
+  const testedIds = Array.isArray(testedIdsRaw)
+    ? testedIdsRaw.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+    : []
+  if (!testedIds.length) {
+    return
+  }
+  void signalSheetStore.markSignalsTested(testedIds, { optimistic: false }).catch(() => {
+    return
+  })
+}
+
+function setTestRunToggleMode(mode: "single" | "double") {
+  testRunToggleMode.value = mode
+}
+
+function setTestRunIntervalMs(intervalMs: number) {
+  const normalized = Math.max(100, Math.min(10000, Number(intervalMs)))
+  testRunIntervalMs.value = normalized
+}
+
+async function controlActiveTestRun(action: "pause" | "resume" | "stop") {
+  const workspaceId = workspaceStore.activeWorkspaceId
+  const jobId = activeTestRunJob.value?.job_id
+  if (!workspaceId || !jobId) {
+    return
+  }
+
+  try {
+    await signalJobStore.controlJob(workspaceId, jobId, action)
+  } catch (controlError) {
+    toastStore.error(controlError instanceof Error ? controlError.message : String(controlError))
+  }
+}
+
+async function startTestRunJob(options?: { resumeFromCursor?: boolean; resumeJobId?: string }) {
+  if (testRunInProgress.value || Boolean(activeTestRunJob.value)) return
+
+  const queue = selectedVisibleAllocatedPhysicalRows.value.filter(row => canControl(row))
+  if (!queue.length) {
+    toastStore.info("Selected rows have no controllable DO channels.")
+    return
+  }
+
+  testRunInProgress.value = true
+  try {
+    const workspaceId = workspaceStore.activeWorkspaceId
+    if (!workspaceId) {
+      return
+    }
+
+    const selectedSignalIds = queue.map(row => row.signal_id)
+    const completedJob = await signalJobStore.enqueueTestRunJob(
+      workspaceId,
+      selectedSignalIds,
+      {
+        signalIntervalMs: testRunIntervalMs.value,
+        toggleMode: testRunToggleMode.value,
+        resumeFromCursor: Boolean(options?.resumeFromCursor),
+        resumeJobId: options?.resumeJobId,
+      },
+    )
+
+    applyCompletedTestRunPatch(completedJob)
+    toastStore.success("Run test complete.")
+  } catch (runError) {
+    const message = runError instanceof Error ? runError.message : String(runError)
+    if (message.toLowerCase().includes("cancelled")) {
+      toastStore.info("Run test cancelled")
+    } else {
+      toastStore.error(message)
+    }
+  } finally {
+    testRunInProgress.value = false
+  }
+}
+
+async function runTestVisualOnly() {
+  if (canResumeActiveTestRun.value) {
+    await controlActiveTestRun("resume")
+    return
+  }
+  await startTestRunJob({ resumeFromCursor: false })
+}
+
+type ControlTarget = {
+  channelId: number
+  deviceId: number
+  unitId: string
+  channelIndex: number
+  channel: DoChannel | null
+  online: boolean
+}
+
+function resolveControlTarget(row: SignalAllocationRow): ControlTarget | null {
+  const channelId = Number(row.channel_id)
+  if (!Number.isFinite(channelId) || channelId <= 0) {
+    return null
+  }
+
+  const linkedChannel = channelMap.value.get(channelId)
+  const linkedChannelType = normalizedChannelType(linkedChannel?.type)
+  const rowChannelType = normalizedChannelType(row.channel_type)
+  const effectiveChannelType = linkedChannelType ?? rowChannelType
+  if (effectiveChannelType !== "do") {
+    return null
+  }
+
+  const linkedDeviceId = Number(linkedChannel?.device_id)
+  const rowDeviceId = Number(row.device_id)
+  const deviceId = Number.isFinite(linkedDeviceId)
+    ? linkedDeviceId
+    : (Number.isFinite(rowDeviceId) ? rowDeviceId : NaN)
+  if (!Number.isFinite(deviceId) || deviceId <= 0) {
+    return null
+  }
+
+  const linkedChannelIndex = Number(linkedChannel?.index)
+  const rowChannelIndex = Number(row.channel_index)
+  const channelIndex = Number.isFinite(linkedChannelIndex)
+    ? linkedChannelIndex
+    : (Number.isFinite(rowChannelIndex) ? rowChannelIndex : NaN)
+  if (!Number.isFinite(channelIndex) || channelIndex < 0) {
+    return null
+  }
+
+  const rowUnitId = String(row.unit_id ?? "").trim()
+  const unitId = rowUnitId || (linkedChannel ? channelStore.resolveUnitId(linkedChannel.device_id) : "")
+  if (!unitId) {
+    return null
+  }
+
+  const online = deviceStatusById.value.get(deviceId) === "online"
+  const doChannel = linkedChannel && linkedChannelType === "do"
+    ? (linkedChannel as DoChannel)
+    : null
+
+  return {
+    channelId,
+    deviceId,
+    unitId,
+    channelIndex,
+    channel: doChannel,
+    online,
+  }
+}
+
+function canControl(row: SignalAllocationRow) {
+  return resolveControlTarget(row) !== null
+}
+
+function controlBusy(row: SignalAllocationRow): boolean {
+  const target = resolveControlTarget(row)
+  if (!target || !target.channel) return false
+  const stage = target.channel.ui?.stage ?? "idle"
+  return stage === "pending" || stage === "debounce"
+}
+
+function controlStateLabel(row: SignalAllocationRow): string {
+  const target = resolveControlTarget(row)
+  if (!target) return "UNKNOWN"
+  if (!target.channel) {
+    return "UNKNOWN"
+  }
+  const stableLabel = target.channel.state ? "ON" : "OFF"
+  const stage = target.channel.ui?.stage ?? "idle"
+  if (!target.online) return stableLabel
+  if (stage === "pending" || stage === "debounce") return `${stableLabel} (PENDING)`
+  if (stage === "error") return `${stableLabel} (ERROR)`
+  return stableLabel
+}
+
+function controlLampClass(row: SignalAllocationRow): string {
+  const target = resolveControlTarget(row)
+  if (!target) return "bg-neutral-400 dark:bg-neutral-600"
+  if (!target.channel) {
+    return target.online ? "bg-neutral-400 dark:bg-neutral-600" : "bg-neutral-500 dark:bg-neutral-700"
+  }
+  const stage = target.channel.ui?.stage ?? "idle"
+  if (!target.online) return "bg-neutral-500 dark:bg-neutral-700"
+  if (stage === "pending" || stage === "debounce") return "bg-amber-400 animate-pulse"
+  if (stage === "error") return "bg-red-500 animate-pulse"
+  return target.channel.state ? "bg-emerald-500" : "bg-neutral-400 dark:bg-neutral-600"
+}
+
+function controlStatusTag(row: SignalAllocationRow): string {
+  const target = resolveControlTarget(row)
+  if (!target) return "N/A"
+  if (!target.channel) return target.online ? "UNKN" : ""
+  const stage = target.channel.ui?.stage ?? "idle"
+  if (!target.online) return ""
+  if (stage === "pending" || stage === "debounce") return "PEND"
+  if (stage === "error") return "ERR"
+  return target.channel.state ? "ON" : "OFF"
+}
+
+function controlStatusClass(row: SignalAllocationRow): string {
+  const target = resolveControlTarget(row)
+  if (!target || !target.online) return "text-neutral-500 dark:text-neutral-400"
+  if (!target.channel) return "text-neutral-500 dark:text-neutral-300"
+  const stage = target.channel.ui?.stage ?? "idle"
+  if (stage === "pending" || stage === "debounce") return "text-amber-600 dark:text-amber-300"
+  if (stage === "error") return "text-red-600 dark:text-red-300"
+  return target.channel.state
+    ? "text-emerald-600 dark:text-emerald-300"
+    : "text-neutral-500 dark:text-neutral-300"
+}
+
+function controlStateIsOn(row: SignalAllocationRow): boolean {
+  const target = resolveControlTarget(row)
+  return Boolean(target?.channel?.state)
+}
+
+function waitForControlResult(target: ControlTarget, expectedState: boolean, timeoutMs = 2600): Promise<boolean> {
+  const runtimeChannel = target.channel
+  if (!runtimeChannel) {
+    return Promise.resolve(false)
+  }
+  const startedAt = Date.now()
+  return new Promise((resolve) => {
+    const poll = () => {
+      const stage = runtimeChannel.ui?.stage ?? "idle"
+      if (stage === "error") {
+        resolve(false)
+        return
+      }
+      if (stage === "idle" && Boolean(runtimeChannel.state) === expectedState) {
+        resolve(true)
+        return
+      }
+      if (Date.now() - startedAt >= timeoutMs) {
+        resolve(false)
+        return
+      }
+      setTimeout(poll, 60)
+    }
+    poll()
+  })
+}
+
+async function sendControl(row: SignalAllocationRow, state: boolean): Promise<boolean> {
+  const target = resolveControlTarget(row)
+  if (!target) {
+    toastStore.error("Channel not found")
+    return false
+  }
+  if (!target.online) {
+    toastStore.error("Device is offline")
+    return false
+  }
+  if (target.channel) {
+    const stage = target.channel.ui?.stage ?? "idle"
+    if (stage === "idle" && Boolean(target.channel.state) === state) {
+      return false
+    }
+  }
+  if (controlBusy(row) && target.channel && target.channel.ui?.target === state) {
+    return false
+  }
+
+  try {
+    channelStore.sendDoCommand(target.unitId, target.channelIndex, state)
+    if (!target.channel) {
+      void channelStore.ensureDeviceChannelsLoaded(target.deviceId)
+        .then(() => {
+          channelStore.requestStates(target.deviceId, { includeDiagnostics: false, silent: true })
+        })
+        .catch(() => {
+          return
+        })
+      toastStore.info("Command sent. Runtime state will update after channel sync.")
+      return true
+    }
+
+    const succeeded = await waitForControlResult(target, state)
+    if (!succeeded) {
+      toastStore.warning("Command not confirmed by device")
+      return false
+    }
+
+    void signalSheetStore.markSignalsTested([row.signal_id], { optimistic: false }).catch(() => {
+      return
+    })
+    return true
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+    return false
+  }
+}
+
+async function ensureRuntimeCatalogLoaded() {
+  await Promise.all([
+    deviceStore.ensureLoaded(),
+    channelStore.ensureLoaded(),
+  ])
+}
+
+function renderDefaultCell(context: DataGridAppCellRendererContext<GridRow>) {
+  const displayValue = context.displayValue || "-"
+  return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, displayValue)
+}
+
+const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
+  const sourceColumns: DataGridAppColumnInput<GridRow>[] = sourceHeaders.value.map((header, index) => ({
+    key: sourceColumnKey(index),
+    label: header,
+    minWidth: 120,
+    initialState: { width: Math.min(Math.max(header.length * 11, 140), 320) },
+    presentation: { align: "left", headerAlign: "left" },
+    capabilities: { editable: false },
+    cellRenderer: renderDefaultCell,
+  }))
+
+  return [
+    ...sourceColumns,
+    {
+      key: "channel_select",
+      label: "Unit/Channel",
+      minWidth: 196,
+      initialState: { width: 220, pin: "right" },
+      presentation: { align: "left", headerAlign: "left" },
+      capabilities: { editable: false, sortable: false },
+      cellInteraction: {
+        click: false,
+        keyboard: ["enter", "space"],
+        role: "button",
+        label: ({ row }) => {
+          const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((row ?? {}) as GridRow))
+          return Number.isFinite(allocationRow.channel_id as number)
+            ? `Change hardware allocation for ${allocationRow.signal_name || allocationRow.signal_key}`
+            : `Assign hardware for ${allocationRow.signal_name || allocationRow.signal_key}`
+        },
+        onInvoke: ({ row }) => {
+          const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((row ?? {}) as GridRow))
+          void openAllocationChannelPicker(allocationRow)
+        },
+      },
+      cellRenderer: ({ row, interactive }) => {
+        const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((row ?? {}) as GridRow))
+        return h(AllocationChannelCell, {
+          label: allocationDisplayLabel(allocationRow),
+          assigned: Number.isFinite(allocationRow.channel_id as number),
+          online: typeof allocationRow.unit_online === "boolean" ? allocationRow.unit_online : null,
+          active: allocationChannelPickerSignalId.value === allocationRow.signal_id,
+          disabled: interactive?.enabled === false || (allocationChannelPickerSaving.value && allocationChannelPickerSignalId.value === allocationRow.signal_id),
+          ariaLabel: interactive?.ariaLabel,
+          activate: () => {
+            const handled = interactive?.activate("click") ?? false
+            if (!handled) {
+              void openAllocationChannelPicker(allocationRow)
+            }
+          },
+        })
+      },
+    },
+    {
+      key: "tested_at",
+      label: "Tested At",
+      dataType: "datetime",
+      minWidth: 180,
+      initialState: { width: 210, pin: "right" },
+      presentation: {
+        align: "left",
+        headerAlign: "left",
+        dateTimeFormat: {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false,
+        },
+      },
+      capabilities: { editable: false },
+      cellRenderer: renderDefaultCell,
+    },
+    {
+      key: "control",
+      label: "Control",
+      minWidth: 96,
+      initialState: { width: 120, pin: "right" },
+      presentation: { align: "left", headerAlign: "left" },
+      capabilities: { editable: false, sortable: false, filterable: false },
+      cellInteraction: {
+        click: false,
+        keyboard: ["enter", "space"],
+        role: "button",
+        label: ({ row }) => {
+          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
+          const nextState = controlStateIsOn(controlRow) ? "off" : "on"
+          return `Turn ${nextState} control for ${controlRow.signal_name || controlRow.signal_key}`
+        },
+        pressed: ({ row }) => {
+          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
+          return controlStateIsOn(controlRow)
+        },
+        onInvoke: ({ row }) => {
+          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
+          const isOn = controlStateIsOn(controlRow)
+          void sendControl(controlRow, !isOn)
+        },
+      },
+      cellRenderer: (context: DataGridAppCellRendererContext<GridRow>) => {
+        const controlRow = resolveControlCellRow(asAllocationRow((context.row ?? {}) as GridRow))
+        const isOn = controlStateIsOn(controlRow)
+
+        return h(AllocationControlCell, {
+          canControl: canControl(controlRow),
+          lampClass: controlLampClass(controlRow),
+          statusClass: controlStatusClass(controlRow),
+          statusTag: controlStatusTag(controlRow),
+          stateLabel: controlStateLabel(controlRow),
+          disabled: context.interactive?.enabled === false || controlBusy(controlRow),
+          isOn,
+          activate: () => {
+            const handled = context.interactive?.activate("click") ?? false
+            if (!handled) {
+              void sendControl(controlRow, !isOn)
+            }
+          },
+          ariaLabel: context.interactive?.ariaLabel,
+          ariaPressed: context.interactive?.ariaPressed,
+        })
+      },
+    },
+  ]
+})
+
+// const clientRowModelOptions = computed(() => ({
+//   resolveRowId: (row: unknown) => String((row as Record<string, unknown>).rowId ?? ""),
+// }))
+
+const virtualizationOptions = computed(() => ({
+  rows: true,
+  columns: true,
+  rowOverscan: 10,
+  columnOverscan: 2,
+}))
+
+const gridRows = computed<GridRow[]>(() => (
+  allocationRows.value.map((row) => createGridRow(row, sourceHeaders.value))
+))
+
+async function refreshSignalsStatic() {
+  const workspaceId = workspaceStore.activeWorkspaceId
+  if (!workspaceId) {
+    error.value = null
+    return
+  }
+
+  error.value = null
+
+  try {
+    await Promise.all([
+      signalSheetStore.ensureSheetLoaded({ force: true }),
+      signalSheetStore.ensureAllocationsLoaded({ force: true }),
+      ensureRuntimeCatalogLoaded(),
+    ])
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : String(err)
+  }
+}
+
+watch(
+  () => workspaceStore.activeWorkspaceId,
+  () => {
+    restoreSignalsGridState()
+    void refreshSignalsStatic()
+  },
+)
+
+watch(
+  () => route.query.import,
+  () => {
+    syncImportModalFromRoute()
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  restoreSignalsGridState()
+  void refreshSignalsStatic()
+  syncImportModalFromRoute()
+})
+</script>
