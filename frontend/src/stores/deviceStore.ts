@@ -293,7 +293,7 @@ export const useDeviceStore = defineStore("deviceStore", () => {
       toastStore.remove(staleOfflineToastId)
       offlineToastIdByUnitId.delete(event.unit_id)
     }
-    const toastId = toastStore.error(`${displayName} went offline`, {
+    const toastId = toastStore.info(`${displayName} went offline`, {
       timeout: null,
       actionLabel: "Open Devices",
       onAction: () => {

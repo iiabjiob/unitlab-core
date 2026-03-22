@@ -18,6 +18,11 @@ const isOffline = computed(() => props.device.status !== "online")
 
 const channelCount = computed(() => channels.value.length)
 const deviceChannelType = computed(() => props.device.device_type)
+const channelListClass = computed(() => (
+  deviceChannelType.value === "ao"
+    ? "mt-5 flex min-h-0 flex-col gap-1.5 overflow-y-auto pr-1"
+    : "mt-5 grid grid-flow-col auto-cols-fr grid-rows-8 gap-2 overflow-y-auto pr-1"
+))
 
 const hasDoChannels = computed(() =>
   channels.value.length > 0 &&
@@ -74,7 +79,7 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
     </div>
 
     <!-- LIST -->
-    <div class="mt-5 grid grid-flow-col auto-cols-fr grid-rows-8 gap-2">
+    <div :class="channelListClass">
       <DeviceChannelItem
         v-for="channel in channels"
         :key="channel.id"

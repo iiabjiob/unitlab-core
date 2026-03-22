@@ -1,9 +1,14 @@
 <template>
   <div
-    class="group flex items-center justify-between px-2 py-1.5 text-sm select-none"
+    class="group flex justify-center px-2 py-1.5 text-sm select-none"
     :class="{ 'opacity-60': disabled }"
   >
-    <div class="flex items-center gap-3">
+    <div class="grid w-full max-w-[40rem] min-w-0 grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-3">
+
+      <!-- Label -->
+      <div class="flex min-w-0 items-center justify-center text-center text-xs text-neutral-700 dark:text-neutral-300">
+        <span class="block min-w-0 truncate">{{ channel.resolved_name }}</span>
+      </div>
 
       <!-- DO control -->
       <div
@@ -29,31 +34,56 @@
       />
 
       <!-- AO input -->
-      <div v-else-if="effectiveType === 'ao'" class="flex items-center gap-1.5">
-        <input
-          type="number"
-          autocomplete="off"
-          :id="`device-channel-ao-${channel.id}`"
-          :name="`device-channel-ao-${channel.id}`"
-          class="w-16 px-1 py-0.5 text-xs rounded border border-neutral-600
-                 bg-neutral-900 text-neutral-200"
-          :disabled="disabled"
-          :value="channel.state"
-          @change="onAoChange"
-        />
-        <span
-          v-if="aoStatusClass"
-          class="inline-flex items-center rounded px-1 py-0.5 text-[10px] font-medium border"
-          :class="aoStatusClass"
-          :title="aoStatusTitle"
-        >
-          {{ aoStatusLabel }}
-        </span>
-      </div>
+      <div v-else-if="effectiveType === 'ao'" class="flex min-w-0 flex-1 items-center gap-2">
+        <div class="flex min-w-0 items-center gap-2">
+          <label
+            class="flex min-w-0 flex-1 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400"
+            :for="`device-channel-ao-${channel.id}`"
+          >
+            <input
+              ref="aoInputRef"
+              :id="`device-channel-ao-${channel.id}`"
+              :name="`device-channel-ao-${channel.id}`"
+              v-model="aoDraftValue"
+              type="number"
+              inputmode="decimal"
+              min="4"
+              max="20"
+              step="0.1"
+              autocomplete="off"
+              class="w-24 min-w-0 flex-1 rounded border border-neutral-300 bg-white px-2 py-1 text-right text-xs font-semibold text-neutral-900 outline-none transition focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
+              :disabled="disabled"
+              @keydown.enter.prevent="submitAoValue"
+            />
+            <span class="shrink-0 text-neutral-400 dark:text-neutral-500">mA</span>
+          </label>
+          <UiButton
+            type="button"
+            size="xs"
+            variant="secondary"
+            class="h-5 shrink-0 px-1.5 text-[10px] uppercase tracking-[0.08em]"
+            :disabled="!aoCanSubmit"
+            :title="aoSetButtonTitle"
+            @click.stop="submitAoValue"
+          >
+            {{ aoSetButtonLabel }}
+          </UiButton>
 
-      <!-- Label -->
-      <div class="text-xs text-neutral-700 dark:text-neutral-300">
-        {{ channel.resolved_name }}
+          <div class="inline-flex items-center gap-1 px-0.5 py-0.5">
+            <span class="text-[9px] uppercase tracking-[0.08em] text-neutral-400 dark:text-neutral-500">Value</span>
+            <span class="font-mono text-[10px] text-neutral-600 dark:text-neutral-300">{{ aoActualValueLabel }}</span>
+            <span class="text-[9px] text-neutral-400 dark:text-neutral-500">mA</span>
+          </div>
+
+          <span
+            v-if="aoStatusClass"
+            class="inline-flex items-center rounded px-1.5 py-1 text-[10px] font-medium border"
+            :class="aoStatusClass"
+            :title="aoStatusTitle"
+          >
+            {{ aoStatusLabel }}
+          </span>
+        </div>
       </div>
 
     </div>
@@ -62,8 +92,10 @@
 
 
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref, watch } from "vue"
+import UiButton from "@/components/ui/UiButton.vue"
 import type { AoChannel, Channel, DiChannel, DoChannel } from "@/types/channel"
+import { formatAoValue } from "@/utils/channel"
 
 const props = withDefaults(defineProps<{
   channel: Channel
@@ -106,6 +138,21 @@ const aoChannel = computed<AoChannel | null>(() => (
   effectiveType.value === "ao" && props.channel.type === "ao" ? props.channel : null
 ))
 
+const aoInputRef = ref<HTMLInputElement | null>(null)
+const aoDraftValue = ref("")
+
+watch(
+  () => [aoChannel.value?.id ?? null, aoChannel.value?.state ?? null] as const,
+  ([, state]) => {
+    if (typeof state === "number" && Number.isFinite(state)) {
+      aoDraftValue.value = formatAoValue(state)
+      return
+    }
+    aoDraftValue.value = ""
+  },
+  { immediate: true }
+)
+
 const diAlertActive = computed(() => {
   const diag = diChannel.value?.diDiagnostics
   if (!diag) {
@@ -144,6 +191,41 @@ const doControlClass = computed(() => {
 
 const aoStatus = computed(() => aoChannel.value?.diagnostics?.quality)
 const aoHasError = computed(() => Boolean(aoChannel.value?.diagnostics?.hasError))
+const aoActualValueLabel = computed(() => {
+  if (typeof aoChannel.value?.state !== "number" || !Number.isFinite(aoChannel.value.state)) {
+    return "—"
+  }
+  return formatAoValue(aoChannel.value.state)
+})
+
+const aoDraftNumber = computed<number | null>(() => {
+  const raw = aoDraftValue.value.trim()
+  if (!raw) return null
+  const parsed = Number.parseFloat(raw)
+  if (!Number.isFinite(parsed)) return null
+  return parsed
+})
+
+const aoDraftChanged = computed(() => {
+  if (aoDraftNumber.value == null || aoChannel.value == null) return false
+  return formatAoValue(aoDraftNumber.value) !== formatAoValue(aoChannel.value.state)
+})
+
+const aoCanSubmit = computed(() => !props.disabled && aoDraftNumber.value !== null)
+
+const aoSetButtonLabel = computed(() => {
+  if (aoStatus.value === "pending") return "Wait"
+  if (aoHasError.value) return "Retry"
+  return "Set"
+})
+
+const aoSetButtonTitle = computed(() => {
+  if (props.disabled) return "Device is offline"
+  if (!aoDraftValue.value.trim()) return "Enter a numeric AO value"
+  if (aoDraftNumber.value == null) return "Value must be numeric"
+  if (!aoDraftChanged.value) return `Send ${formatAoValue(aoDraftNumber.value)} mA again`
+  return `Send ${formatAoValue(aoDraftNumber.value)} mA to device`
+})
 
 const aoStatusLabel = computed(() => {
   if (aoStatus.value === "valid") return "OK"
@@ -184,14 +266,16 @@ function onToggleClick() {
   emit("toggle", props.channel)
 }
 
-function onAoChange(event: Event) {
-  if (props.disabled) {
+function submitAoValue() {
+  const raw = aoInputRef.value?.value?.trim() ?? aoDraftValue.value.trim()
+  if (!raw) {
     return
   }
-  const raw = (event.target as HTMLInputElement).value
-  const num = Number(raw)
-  if (!isNaN(num)) {
-    emit("set-ao", { channel: props.channel, value: num })
+  const exactValue = Number.parseFloat(raw)
+  if (!Number.isFinite(exactValue) || props.disabled) {
+    return
   }
+  aoDraftValue.value = raw
+  emit("set-ao", { channel: props.channel, value: exactValue })
 }
 </script>

@@ -117,7 +117,7 @@ import { storeToRefs } from "pinia"
 import { DataGrid, type DataGridAppCellRendererContext, type DataGridAppColumnInput, type DataGridAppToolbarModule, type DataGridSavedViewSnapshot, writeDataGridSavedViewToStorage } from "@affino/datagrid-vue-app"
 
 import { SignalsAPI } from "@/api/signals.api"
-import type { DoChannel } from "@/types/channel"
+import type { AoChannel, DoChannel } from "@/types/channel"
 import AllocationEditorHeader from "@/pages/signals/components/AllocationEditorHeader.vue"
 import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders } from "@/pages/signals/utils/sourceColumns"
 import AllocationChannelCell from "@/pages/signals/components/AllocationChannelCell.vue"
@@ -131,8 +131,11 @@ import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useSignalJobStore } from "@/stores/signalJobStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
+import { useTestedAtRealtimeStore } from "@/stores/testedAtRealtimeStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { formatDate } from "@/utils/datetime"
+import { formatAoValue, parseAoInput } from "@/utils/channel"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
 import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
 
@@ -141,12 +144,14 @@ const signalSheetStore = useSignalSheetStore()
 const signalJobStore = useSignalJobStore()
 const channelStore = useChannelStore()
 const deviceStore = useDeviceStore()
+const testedAtRealtimeStore = useTestedAtRealtimeStore()
 const toastStore = useToastStore()
 const route = useRoute()
 const router = useRouter()
 const { allocationRows, loadingAllocations, loadingSheet, updatingAllocations, sheet } = storeToRefs(signalSheetStore)
 const { channels } = storeToRefs(channelStore)
 const { activeJobs } = storeToRefs(signalJobStore)
+const { activeWorkspaceRevision } = storeToRefs(testedAtRealtimeStore)
 
 const error = ref<string | null>(null)
 const importModalOpen = ref(false)
@@ -168,6 +173,9 @@ const deallocatingSelected = ref(false)
 const testRunInProgress = ref(false)
 const testRunIntervalMs = ref(1000)
 const testRunToggleMode = ref<"single" | "double">("single")
+const activeAoControlSignalId = ref<number | null>(null)
+const activeAoControlDraftValue = ref("")
+const activeAoSubmittingSignalId = ref<number | null>(null)
 const { theme } = useAffinoDataGridTheme()
 
 type GridRow = Record<string, unknown> & {
@@ -265,6 +273,21 @@ const sourceHeaders = computed(() => {
   return resolveAllSourceColumnHeaders(null, allocationRows.value)
 })
 
+const displayAllocationRows = computed(() => {
+  void activeWorkspaceRevision.value
+  const workspaceId = workspaceStore.activeWorkspaceId
+  return allocationRows.value.map((row) => {
+    const patchedTestedAt = testedAtRealtimeStore.getTestedAt(row.signal_id, workspaceId)
+    if (!patchedTestedAt || patchedTestedAt === row.tested_at) {
+      return row
+    }
+    return {
+      ...row,
+      tested_at: patchedTestedAt,
+    }
+  })
+})
+
 const summaryText = computed(() => {
   if (workspaceMissing.value) {
     return "Workspace is not selected"
@@ -272,9 +295,9 @@ const summaryText = computed(() => {
   if (loading.value) {
     return "Loading static signals view"
   }
-  const total = allocationRows.value.length
-  const allocated = allocationRows.value.filter(row => Number.isFinite(row.channel_id as number)).length
-  const tested = allocationRows.value.filter(row => Boolean(String(row.tested_at ?? "").trim())).length
+  const total = displayAllocationRows.value.length
+  const allocated = displayAllocationRows.value.filter(row => Number.isFinite(row.channel_id as number)).length
+  const tested = displayAllocationRows.value.filter(row => Boolean(String(row.tested_at ?? "").trim())).length
   const remaining = Math.max(0, total - tested)
   const allocatedPercent = total > 0 ? ((allocated / total) * 100) : 0
   const testedPercent = total > 0 ? ((tested / total) * 100) : 0
@@ -336,7 +359,7 @@ const selectedVisibleAllocatedPhysicalRows = computed(() => (
 ))
 
 const allocatedCableRows = computed(() => (
-  allocationRows.value.filter((row) => (
+  displayAllocationRows.value.filter((row) => (
     Number.isFinite(row.channel_id as number)
     && Number.isFinite(row.channel_index as number)
     && Boolean(String(row.unit_id ?? "").trim())
@@ -608,7 +631,7 @@ const optionalExportColumnOptions = computed<ExportColumnOption[]>(() => (
 
 const allocationRowBySignalId = computed(() => {
   const map = new Map<number, SignalAllocationRow>()
-  allocationRows.value.forEach((row) => {
+  displayAllocationRows.value.forEach((row) => {
     const signalId = Number(row.signal_id)
     if (Number.isFinite(signalId)) {
       map.set(signalId, row)
@@ -644,7 +667,7 @@ const channelUnitById = computed(() => {
 
 const allocatedSignalIdByChannelId = computed(() => {
   const map = new Map<number, number>()
-  allocationRows.value.forEach((row) => {
+  displayAllocationRows.value.forEach((row) => {
     const channelId = Number(row.channel_id)
     if (!Number.isFinite(channelId) || channelId <= 0) {
       return
@@ -794,7 +817,7 @@ function buildSignalReportRows(): string[][] {
   const headers = sourceHeaders.value
   const fallbackHeaders = headers.length > 0 ? headers : ["signal_name", "signal_key"]
 
-  return allocationRows.value.map((row) => {
+  return displayAllocationRows.value.map((row) => {
     const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
     const sourceCells = fallbackHeaders.map((header) => {
       if (header === "signal_name") return row.signal_name
@@ -881,7 +904,7 @@ function handleExportCableFromWizard(payload: { optionalColumnKeys: string[] }) 
 }
 
 function exportSignalReport() {
-  if (!allocationRows.value.length) {
+  if (!displayAllocationRows.value.length) {
     toastStore.info("No signals to export.")
     return
   }
@@ -893,9 +916,9 @@ function exportSignalReport() {
   const workspaceName = String(workspaceStore.activeWorkspace?.name ?? "")
   const workspaceFilePart = toFilenamePart(workspaceName)
   const generatedAt = new Date()
-  const tested = allocationRows.value.filter(row => Boolean(String(row.tested_at ?? "").trim())).length
-  const remaining = Math.max(0, allocationRows.value.length - tested)
-  const total = allocationRows.value.length
+  const tested = displayAllocationRows.value.filter(row => Boolean(String(row.tested_at ?? "").trim())).length
+  const remaining = Math.max(0, displayAllocationRows.value.length - tested)
+  const total = displayAllocationRows.value.length
 
   const metaRows = [
     ["report", "signal-test-report"],
@@ -939,10 +962,35 @@ function allocationDisplayLabel(row: SignalAllocationRow): string {
   return "-"
 }
 
+function resolveInternalSignalType(row: SignalAllocationRow): string {
+  const resolved = resolveRuntimeChannelTypeForSignal(String(row.signal_direction ?? "").trim())
+  return resolved ?? "-"
+}
+
+function resolveAllocationOnlineState(row: SignalAllocationRow): boolean | null {
+  const channelId = Number(row.channel_id)
+  const linkedChannel = Number.isFinite(channelId) && channelId > 0
+    ? channelMap.value.get(channelId)
+    : null
+
+  const linkedDeviceId = Number(linkedChannel?.device_id)
+  const rowDeviceId = Number(row.device_id)
+  const deviceId = Number.isFinite(linkedDeviceId)
+    ? linkedDeviceId
+    : (Number.isFinite(rowDeviceId) ? rowDeviceId : NaN)
+
+  if (Number.isFinite(deviceId) && deviceId > 0) {
+    return deviceStatusById.value.get(deviceId) === "online"
+  }
+
+  return typeof row.unit_online === "boolean" ? row.unit_online : null
+}
+
 function createGridRow(row: SignalAllocationRow, headers: readonly string[]): GridRow {
   const payload: GridRow = {
     signal_id: row.signal_id,
     rowId: `signal-${row.signal_id}`,
+    internal_signal_type: resolveInternalSignalType(row),
     channel_select: allocationDisplayLabel(row),
     tested_at: row.tested_at,
     allocation_status: Number.isFinite(row.channel_id as number) ? "allocated" : "unallocated",
@@ -1297,7 +1345,7 @@ async function startTestRunJob(options?: { resumeFromCursor?: boolean; resumeJob
 
   const queue = selectedVisibleAllocatedPhysicalRows.value.filter(row => canControl(row))
   if (!queue.length) {
-    toastStore.info("Selected rows have no controllable DO channels.")
+    toastStore.info("Selected rows have no controllable channels.")
     return
   }
 
@@ -1342,14 +1390,25 @@ async function runTestVisualOnly() {
   await startTestRunJob({ resumeFromCursor: false })
 }
 
-type ControlTarget = {
+type ControlTargetBase = {
   channelId: number
   deviceId: number
   unitId: string
   channelIndex: number
-  channel: DoChannel | null
   online: boolean
 }
+
+type DoControlTarget = ControlTargetBase & {
+  kind: "do"
+  channel: DoChannel | null
+}
+
+type AoControlTarget = ControlTargetBase & {
+  kind: "ao"
+  channel: AoChannel | null
+}
+
+type ControlTarget = DoControlTarget | AoControlTarget
 
 function resolveControlTarget(row: SignalAllocationRow): ControlTarget | null {
   const channelId = Number(row.channel_id)
@@ -1361,7 +1420,7 @@ function resolveControlTarget(row: SignalAllocationRow): ControlTarget | null {
   const linkedChannelType = normalizedChannelType(linkedChannel?.type)
   const rowChannelType = normalizedChannelType(row.channel_type)
   const effectiveChannelType = linkedChannelType ?? rowChannelType
-  if (effectiveChannelType !== "do") {
+  if (effectiveChannelType !== "do" && effectiveChannelType !== "ao") {
     return null
   }
 
@@ -1390,16 +1449,33 @@ function resolveControlTarget(row: SignalAllocationRow): ControlTarget | null {
   }
 
   const online = deviceStatusById.value.get(deviceId) === "online"
-  const doChannel = linkedChannel && linkedChannelType === "do"
-    ? (linkedChannel as DoChannel)
+  if (effectiveChannelType === "do") {
+    const doChannel = linkedChannel && linkedChannelType === "do"
+      ? (linkedChannel as DoChannel)
+      : null
+
+    return {
+      kind: "do",
+      channelId,
+      deviceId,
+      unitId,
+      channelIndex,
+      channel: doChannel,
+      online,
+    }
+  }
+
+  const aoChannel = linkedChannel && linkedChannelType === "ao"
+    ? (linkedChannel as AoChannel)
     : null
 
   return {
+    kind: "ao",
     channelId,
     deviceId,
     unitId,
     channelIndex,
-    channel: doChannel,
+    channel: aoChannel,
     online,
   }
 }
@@ -1408,9 +1484,17 @@ function canControl(row: SignalAllocationRow) {
   return resolveControlTarget(row) !== null
 }
 
+function canDoControl(row: SignalAllocationRow) {
+  return resolveControlTarget(row)?.kind === "do"
+}
+
 function controlBusy(row: SignalAllocationRow): boolean {
   const target = resolveControlTarget(row)
-  if (!target || !target.channel) return false
+  if (!target) return false
+  if (target.kind === "ao") {
+    return activeAoSubmittingSignalId.value === row.signal_id
+  }
+  if (!target.channel) return false
   const stage = target.channel.ui?.stage ?? "idle"
   return stage === "pending" || stage === "debounce"
 }
@@ -1418,6 +1502,13 @@ function controlBusy(row: SignalAllocationRow): boolean {
 function controlStateLabel(row: SignalAllocationRow): string {
   const target = resolveControlTarget(row)
   if (!target) return "UNKNOWN"
+  if (target.kind === "ao") {
+    if (!target.channel) return "UNKNOWN"
+    const valueLabel = `${formatAoValue(target.channel.state)} mA`
+    if (!target.online) return valueLabel
+    if (activeAoSubmittingSignalId.value === row.signal_id) return `${valueLabel} (PENDING)`
+    return valueLabel
+  }
   if (!target.channel) {
     return "UNKNOWN"
   }
@@ -1432,6 +1523,16 @@ function controlStateLabel(row: SignalAllocationRow): string {
 function controlLampClass(row: SignalAllocationRow): string {
   const target = resolveControlTarget(row)
   if (!target) return "bg-neutral-400 dark:bg-neutral-600"
+  if (target.kind === "ao") {
+    if (!target.online) return "bg-neutral-500 dark:bg-neutral-700"
+    if (activeAoSubmittingSignalId.value === row.signal_id) return "bg-amber-400 animate-pulse"
+    if (!target.channel) return "bg-neutral-400 dark:bg-neutral-600"
+    if (target.channel.diagnostics?.hasError) return "bg-red-500"
+    const quality = target.channel.diagnostics?.quality
+    if (quality === "fault") return "bg-red-500"
+    if (quality === "pending") return "bg-amber-400 animate-pulse"
+    return "bg-sky-500"
+  }
   if (!target.channel) {
     return target.online ? "bg-neutral-400 dark:bg-neutral-600" : "bg-neutral-500 dark:bg-neutral-700"
   }
@@ -1445,6 +1546,17 @@ function controlLampClass(row: SignalAllocationRow): string {
 function controlStatusTag(row: SignalAllocationRow): string {
   const target = resolveControlTarget(row)
   if (!target) return "N/A"
+  if (target.kind === "ao") {
+    if (!target.online) return ""
+    if (activeAoSubmittingSignalId.value === row.signal_id) return "PEND"
+    if (!target.channel) return "UNKN"
+    if (target.channel.diagnostics?.hasError) return "ERR"
+    const quality = target.channel.diagnostics?.quality
+    if (quality === "pending") return "PEND"
+    if (quality === "fault") return "FAULT"
+    if (quality === "valid") return "OK"
+    return ""
+  }
   if (!target.channel) return target.online ? "UNKN" : ""
   const stage = target.channel.ui?.stage ?? "idle"
   if (!target.online) return ""
@@ -1456,6 +1568,17 @@ function controlStatusTag(row: SignalAllocationRow): string {
 function controlStatusClass(row: SignalAllocationRow): string {
   const target = resolveControlTarget(row)
   if (!target || !target.online) return "text-neutral-500 dark:text-neutral-400"
+  if (target.kind === "ao") {
+    if (!target.channel) return "border-neutral-300 text-neutral-500 dark:border-neutral-700 dark:text-neutral-300"
+    if (activeAoSubmittingSignalId.value === row.signal_id) return "border-amber-500 text-amber-700 dark:text-amber-300"
+    if (target.channel.diagnostics?.hasError || target.channel.diagnostics?.quality === "fault") {
+      return "border-red-500 text-red-700 dark:text-red-300"
+    }
+    if (target.channel.diagnostics?.quality === "pending") {
+      return "border-amber-500 text-amber-700 dark:text-amber-300"
+    }
+    return "border-sky-500 text-sky-700 dark:text-sky-300"
+  }
   if (!target.channel) return "text-neutral-500 dark:text-neutral-300"
   const stage = target.channel.ui?.stage ?? "idle"
   if (stage === "pending" || stage === "debounce") return "text-amber-600 dark:text-amber-300"
@@ -1467,10 +1590,83 @@ function controlStatusClass(row: SignalAllocationRow): string {
 
 function controlStateIsOn(row: SignalAllocationRow): boolean {
   const target = resolveControlTarget(row)
+  if (target?.kind !== "do") return false
   return Boolean(target?.channel?.state)
 }
 
+function aoValueLabel(row: SignalAllocationRow): string {
+  const target = resolveControlTarget(row)
+  if (!target || target.kind !== "ao") {
+    return ""
+  }
+  if (!target.online || !target.channel) {
+    return ""
+  }
+  return formatAoValue(target.channel.state)
+}
+
+function aoStatusTitle(row: SignalAllocationRow): string {
+  const target = resolveControlTarget(row)
+  if (!target || target.kind !== "ao") {
+    return ""
+  }
+  if (!target.online) {
+    return "Device is offline"
+  }
+  if (!target.channel) {
+    return "AO runtime state is not available yet"
+  }
+  if (activeAoSubmittingSignalId.value === row.signal_id) {
+    return "Waiting for AO confirmation from device"
+  }
+  if (target.channel.diagnostics?.hasError) {
+    return "AO backend error is latched"
+  }
+  const quality = target.channel.diagnostics?.quality
+  if (quality === "pending") return "AO diagnostics pending"
+  if (quality === "fault") return "AO diagnostics fault"
+  if (quality === "valid") return "AO diagnostics valid"
+  return "AO runtime value"
+}
+
+function resolveCurrentAoChannel(target: AoControlTarget): AoChannel | null {
+  const current = channelMap.value.get(target.channelId)
+  return current && normalizedChannelType(current.type) === "ao"
+    ? (current as AoChannel)
+    : target.channel
+}
+
+function aoControlActive(row: SignalAllocationRow): boolean {
+  return activeAoControlSignalId.value === row.signal_id
+}
+
+function beginAoControlEdit(row: SignalAllocationRow) {
+  const target = resolveControlTarget(row)
+  if (!target || target.kind !== "ao") return
+  if (!target.online || controlBusy(row)) return
+  activeAoControlSignalId.value = row.signal_id
+  activeAoControlDraftValue.value = target.channel ? formatAoValue(target.channel.state) : "4.00"
+}
+
+function cancelAoControlEdit(signalId?: number | null) {
+  if (signalId != null && activeAoControlSignalId.value !== signalId) {
+    return
+  }
+  if (activeAoSubmittingSignalId.value != null && activeAoSubmittingSignalId.value === activeAoControlSignalId.value) {
+    return
+  }
+  activeAoControlSignalId.value = null
+  activeAoControlDraftValue.value = ""
+}
+
+function updateActiveAoControlDraftValue(value: string) {
+  activeAoControlDraftValue.value = value
+}
+
 function waitForControlResult(target: ControlTarget, expectedState: boolean, timeoutMs = 2600): Promise<boolean> {
+  if (target.kind !== "do") {
+    return Promise.resolve(false)
+  }
   const runtimeChannel = target.channel
   if (!runtimeChannel) {
     return Promise.resolve(false)
@@ -1497,6 +1693,29 @@ function waitForControlResult(target: ControlTarget, expectedState: boolean, tim
   })
 }
 
+function waitForAoControlResult(target: AoControlTarget, expectedValue: number, timeoutMs = 2800): Promise<boolean> {
+  const startedAt = Date.now()
+  return new Promise((resolve) => {
+    const poll = () => {
+      const runtimeChannel = resolveCurrentAoChannel(target)
+      if (runtimeChannel) {
+        const currentValue = Number(runtimeChannel.state)
+        const quality = runtimeChannel.diagnostics?.quality
+        if (Math.abs(currentValue - expectedValue) <= 0.05 && quality !== "pending") {
+          resolve(true)
+          return
+        }
+      }
+      if (Date.now() - startedAt >= timeoutMs) {
+        resolve(false)
+        return
+      }
+      setTimeout(poll, 80)
+    }
+    poll()
+  })
+}
+
 async function sendControl(row: SignalAllocationRow, state: boolean): Promise<boolean> {
   const target = resolveControlTarget(row)
   if (!target) {
@@ -1505,6 +1724,9 @@ async function sendControl(row: SignalAllocationRow, state: boolean): Promise<bo
   }
   if (!target.online) {
     toastStore.error("Device is offline")
+    return false
+  }
+  if (target.kind !== "do") {
     return false
   }
   if (target.channel) {
@@ -1547,6 +1769,51 @@ async function sendControl(row: SignalAllocationRow, state: boolean): Promise<bo
   }
 }
 
+async function sendAoControl(row: SignalAllocationRow): Promise<boolean> {
+  const target = resolveControlTarget(row)
+  if (!target || target.kind !== "ao") {
+    toastStore.error("Analog output channel not found")
+    return false
+  }
+  if (!target.online) {
+    toastStore.error("Device is offline")
+    return false
+  }
+  if (controlBusy(row)) {
+    return false
+  }
+
+  const nextValue = parseAoInput(activeAoControlDraftValue.value)
+  const currentValue = target.channel ? Number(target.channel.state) : NaN
+  if (Number.isFinite(currentValue) && Math.abs(currentValue - nextValue) <= 0.05) {
+    cancelAoControlEdit(row.signal_id)
+    return false
+  }
+
+  activeAoControlSignalId.value = null
+  activeAoControlDraftValue.value = ""
+  activeAoSubmittingSignalId.value = row.signal_id
+  try {
+    channelStore.sendAoCommand(target.unitId, target.channelIndex, nextValue)
+
+    const confirmed = await waitForAoControlResult(target, nextValue)
+    if (!confirmed) {
+      toastStore.warning("AO command not confirmed by device")
+      return false
+    }
+
+    void signalSheetStore.markSignalsTested([row.signal_id], { optimistic: false }).catch(() => {
+      return
+    })
+    return true
+  } catch (err) {
+    toastStore.error(err instanceof Error ? err.message : String(err))
+    return false
+  } finally {
+    activeAoSubmittingSignalId.value = null
+  }
+}
+
 async function ensureRuntimeCatalogLoaded() {
   await Promise.all([
     deviceStore.ensureLoaded(),
@@ -1559,7 +1826,17 @@ function renderDefaultCell(context: DataGridAppCellRendererContext<GridRow>) {
   return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, displayValue)
 }
 
+function renderTestedAtCell(context: DataGridAppCellRendererContext<GridRow>) {
+  const raw = String(context.row?.tested_at ?? "").trim()
+  if (!raw) {
+    return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, "-")
+  }
+
+  return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, formatDate(raw))
+}
+
 const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
+  const controlCellRenderVersion = `${activeAoControlSignalId.value ?? "idle"}:${activeAoSubmittingSignalId.value ?? "idle"}`
   const sourceColumns: DataGridAppColumnInput<GridRow>[] = sourceHeaders.value.map((header, index) => ({
     key: sourceColumnKey(index),
     label: header,
@@ -1572,6 +1849,15 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
 
   return [
     ...sourceColumns,
+    {
+      key: "internal_signal_type",
+      label: "Internal Signal Type",
+      minWidth: 136,
+      initialState: { width: 160 },
+      presentation: { align: "left", headerAlign: "left" },
+      capabilities: { editable: false },
+      cellRenderer: renderDefaultCell,
+    },
     {
       key: "channel_select",
       label: "Unit/Channel",
@@ -1599,7 +1885,7 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
         return h(AllocationChannelCell, {
           label: allocationDisplayLabel(allocationRow),
           assigned: Number.isFinite(allocationRow.channel_id as number),
-          online: typeof allocationRow.unit_online === "boolean" ? allocationRow.unit_online : null,
+          online: resolveAllocationOnlineState(allocationRow),
           active: allocationChannelPickerSignalId.value === allocationRow.signal_id,
           disabled: interactive?.enabled === false || (allocationChannelPickerSaving.value && allocationChannelPickerSignalId.value === allocationRow.signal_id),
           ariaLabel: interactive?.ariaLabel,
@@ -1621,65 +1907,54 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       presentation: {
         align: "left",
         headerAlign: "left",
-        dateTimeFormat: {
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: false,
-        },
       },
       capabilities: { editable: false },
-      cellRenderer: renderDefaultCell,
+      cellRenderer: renderTestedAtCell,
     },
     {
       key: "control",
       label: "Control",
-      minWidth: 96,
-      initialState: { width: 120, pin: "right" },
+      minWidth: 164,
+      initialState: { width: 220, pin: "right" },
       presentation: { align: "left", headerAlign: "left" },
       capabilities: { editable: false, sortable: false, filterable: false },
-      cellInteraction: {
-        click: false,
-        keyboard: ["enter", "space"],
-        role: "button",
-        label: ({ row }) => {
-          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
-          const nextState = controlStateIsOn(controlRow) ? "off" : "on"
-          return `Turn ${nextState} control for ${controlRow.signal_name || controlRow.signal_key}`
-        },
-        pressed: ({ row }) => {
-          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
-          return controlStateIsOn(controlRow)
-        },
-        onInvoke: ({ row }) => {
-          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
-          const isOn = controlStateIsOn(controlRow)
-          void sendControl(controlRow, !isOn)
-        },
-      },
       cellRenderer: (context: DataGridAppCellRendererContext<GridRow>) => {
         const controlRow = resolveControlCellRow(asAllocationRow((context.row ?? {}) as GridRow))
+        const target = resolveControlTarget(controlRow)
         const isOn = controlStateIsOn(controlRow)
 
         return h(AllocationControlCell, {
-          canControl: canControl(controlRow),
+          key: `${controlRow.signal_id}:${controlCellRenderVersion}`,
+          mode: target?.kind ?? "none",
           lampClass: controlLampClass(controlRow),
           statusClass: controlStatusClass(controlRow),
           statusTag: controlStatusTag(controlRow),
+          statusTitle: aoStatusTitle(controlRow),
           stateLabel: controlStateLabel(controlRow),
-          disabled: context.interactive?.enabled === false || controlBusy(controlRow),
+          disabled: controlBusy(controlRow),
           isOn,
           activate: () => {
-            const handled = context.interactive?.activate("click") ?? false
-            if (!handled) {
-              void sendControl(controlRow, !isOn)
-            }
+            void sendControl(controlRow, !isOn)
           },
-          ariaLabel: context.interactive?.ariaLabel,
-          ariaPressed: context.interactive?.ariaPressed,
+          ariaLabel: target?.kind === "ao"
+            ? `Double click to edit analog output for ${controlRow.signal_name || controlRow.signal_key}`
+            : `Turn ${isOn ? 'off' : 'on'} control for ${controlRow.signal_name || controlRow.signal_key}`,
+          ariaPressed: target?.kind === "do" ? (isOn ? "true" : "false") : undefined,
+          aoActive: aoControlActive(controlRow),
+          aoPending: activeAoSubmittingSignalId.value === controlRow.signal_id,
+          aoValueLabel: aoValueLabel(controlRow),
+          aoInputValue: aoControlActive(controlRow) ? activeAoControlDraftValue.value : aoValueLabel(controlRow),
+          aoOpenHint: "Double click to edit",
+          beginAoEdit: () => {
+            beginAoControlEdit(controlRow)
+          },
+          cancelAoEdit: () => {
+            cancelAoControlEdit(controlRow.signal_id)
+          },
+          commitAoEdit: () => {
+            void sendAoControl(controlRow)
+          },
+          updateAoInput: updateActiveAoControlDraftValue,
         })
       },
     },
@@ -1698,7 +1973,7 @@ const virtualizationOptions = computed(() => ({
 }))
 
 const gridRows = computed<GridRow[]>(() => (
-  allocationRows.value.map((row) => createGridRow(row, sourceHeaders.value))
+  displayAllocationRows.value.map((row) => createGridRow(row, sourceHeaders.value))
 ))
 
 async function refreshSignalsStatic() {

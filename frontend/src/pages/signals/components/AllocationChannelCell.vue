@@ -59,7 +59,7 @@ const buttonClass = computed(() => {
     return "cursor-not-allowed text-neutral-400 opacity-60 dark:text-neutral-500"
   }
   if (props.active) {
-    return "bg-neutral-200 text-neutral-800 dark:bg-neutral-700 dark:text-neutral-100"
+    return "border border-sky-200 bg-sky-50 text-sky-800 shadow-sm dark:border-sky-800 dark:bg-sky-900/40 dark:text-sky-100"
   }
   return "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
 })

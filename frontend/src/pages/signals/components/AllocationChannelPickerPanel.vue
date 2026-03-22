@@ -472,10 +472,10 @@ function unitIndicatorClass(value: NodeValue): string {
 
 function nodeClass(value: NodeValue): string {
   if (isCurrentChannel(value)) {
-    return "bg-neutral-100 dark:bg-neutral-800"
+    return "bg-sky-50 ring-1 ring-inset ring-sky-200 dark:bg-sky-900/30 dark:ring-sky-800"
   }
   if (isNodeActive(value)) {
-    return "bg-neutral-50 dark:bg-neutral-800/70"
+    return "bg-neutral-100 dark:bg-neutral-800/70"
   }
   return "hover:bg-neutral-50 dark:hover:bg-neutral-800/60"
 }

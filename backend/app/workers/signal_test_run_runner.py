@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 import time
 from collections import defaultdict
 from contextlib import suppress
@@ -17,7 +18,7 @@ from app.infrastructure.protocol.modes import Cmd, State
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_signal_allocation_job_entry
 from app.schemas.ws.events import build_signal_job_event
-from app.services.command_queue_service import enqueue_do_command, enqueue_request_state
+from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command, enqueue_request_state
 from app.services.signal_job_service import (
     acquire_signal_test_run_execution_lease,
     get_signal_job,
@@ -169,7 +170,11 @@ async def _handle_test_run(
     signal_interval_ms = int(signal_interval_ms_raw) if signal_interval_ms_raw is not None else 1000
     signal_interval_ms = max(100, min(10000, signal_interval_ms))
     toggle_mode = str(toggle_mode_raw or "single").strip().lower()
-    if toggle_mode not in {"single", "double"}:
+    if toggle_mode not in {"single", "double", "ao_random"}:
+        toggle_mode = "single"
+    if toggle_mode == "ao_random":
+        # Backward compatibility for older queued jobs: DO falls back to single toggle,
+        # while AO rows are still handled via the random analog branch below.
         toggle_mode = "single"
 
     signal_interval_seconds = signal_interval_ms / 1000
@@ -242,7 +247,7 @@ async def _handle_test_run(
     skip_reasons = {
         "missing_row": 0,
         "invalid_binding": 0,
-        "non_do_channel": 0,
+        "incompatible_channel_mode": 0,
         "offline_unit": 0,
     }
 
@@ -257,9 +262,12 @@ async def _handle_test_run(
             skipped += 1
             skip_reasons["invalid_binding"] += 1
             continue
-        if not str(row.channel_type or "").lower().startswith("do"):
+        channel_type = str(row.channel_type or "").strip().lower()
+        is_do = channel_type.startswith("do")
+        is_ao = channel_type.startswith("ao")
+        if not is_do and not is_ao:
             skipped += 1
-            skip_reasons["non_do_channel"] += 1
+            skip_reasons["incompatible_channel_mode"] += 1
             continue
         if row.unit_online is False:
             skipped += 1
@@ -443,45 +451,60 @@ async def _handle_test_run(
         success = False
         if row is not None:
             unit_id = str(row.unit_id)
-            bitmask = unit_bitmasks.get(unit_id, 0)
-
             channel_index = int(row.channel_index)
-            current_value = 1 if (bitmask & (1 << channel_index)) else 0
-            toggled_value = 0 if current_value else 1
-            await enqueue_do_command(
-                unit_id=unit_id,
-                mode=Cmd.SET_SINGLE_BIT,
-                ch=channel_index,
-                value=toggled_value,
-                correlation_id=f"test-run:{signal_id}:set:{toggled_value}",
-            )
-
-            if toggled_value:
-                bitmask = bitmask | (1 << channel_index)
+            channel_type = str(row.channel_type or "").strip().lower()
+            if channel_type.startswith("ao"):
+                random_value = round(random.uniform(0.0, 24.0), 2)
+                await enqueue_ao_command(
+                    unit_id=unit_id,
+                    ch=channel_index,
+                    value=random_value,
+                    correlation_id=f"test-run:{signal_id}:ao:{random_value}",
+                )
+                await enqueue_request_state(
+                    unit_id=unit_id,
+                    mode=State.REQ_SINGLE_FLOAT,
+                    ch=channel_index,
+                    correlation_id=f"test-run:{signal_id}:state-float",
+                )
             else:
-                bitmask = bitmask & ~(1 << channel_index)
-
-            if toggle_mode == "double":
-                await asyncio.sleep(signal_interval_seconds)
+                bitmask = unit_bitmasks.get(unit_id, 0)
+                current_value = 1 if (bitmask & (1 << channel_index)) else 0
+                toggled_value = 0 if current_value else 1
                 await enqueue_do_command(
                     unit_id=unit_id,
                     mode=Cmd.SET_SINGLE_BIT,
                     ch=channel_index,
-                    value=current_value,
-                    correlation_id=f"test-run:{signal_id}:set:{current_value}",
+                    value=toggled_value,
+                    correlation_id=f"test-run:{signal_id}:set:{toggled_value}",
                 )
-                if current_value:
+
+                if toggled_value:
                     bitmask = bitmask | (1 << channel_index)
                 else:
                     bitmask = bitmask & ~(1 << channel_index)
 
-            unit_bitmasks[unit_id] = bitmask
-            await enqueue_request_state(
-                unit_id=unit_id,
-                mode=State.REQ_SINGLE_BIT,
-                ch=channel_index,
-                correlation_id=f"test-run:{signal_id}:state",
-            )
+                if toggle_mode == "double":
+                    await asyncio.sleep(signal_interval_seconds)
+                    await enqueue_do_command(
+                        unit_id=unit_id,
+                        mode=Cmd.SET_SINGLE_BIT,
+                        ch=channel_index,
+                        value=current_value,
+                        correlation_id=f"test-run:{signal_id}:set:{current_value}",
+                    )
+                    if current_value:
+                        bitmask = bitmask | (1 << channel_index)
+                    else:
+                        bitmask = bitmask & ~(1 << channel_index)
+
+                unit_bitmasks[unit_id] = bitmask
+                await enqueue_request_state(
+                    unit_id=unit_id,
+                    mode=State.REQ_SINGLE_BIT,
+                    ch=channel_index,
+                    correlation_id=f"test-run:{signal_id}:state",
+                )
             success = True
 
         if success:

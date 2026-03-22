@@ -5,8 +5,11 @@ import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
 import type { Device } from "@/types/device"
 import UiAffinoDisclosure from "@/components/ui/UiAffinoDisclosure.vue"
 import InlineInfoTooltip from "@/components/ui/InlineInfoTooltip.vue"
+import { useAffinoDataGridTheme } from "@/components/ui/affinoDataGridTheme"
+import "@/components/ui/affinoDataGridNative.css"
 
 const props = defineProps<{ device: Device }>()
+const { theme } = useAffinoDataGridTheme()
 const MEM_FREE_LOW_THRESHOLD = 150000
 const FAST_STALE_THRESHOLD_MS = 15_000
 const DIAG_STALE_THRESHOLD_MS = 180_000
@@ -293,8 +296,10 @@ const stackGridColumns = computed<DataGridAppColumnInput<StackRow>[]>(() => [
   {
     key: "task",
     label: "task",
+    flex: 1,
     minWidth: 180,
     initialState: { width: 220 },
+    capabilities: { editable: false },
     cellRenderer: ({ row }) => h("span", { class: "font-mono text-[11px]" }, String(row?.task ?? "—")),
   },
   {
@@ -302,6 +307,7 @@ const stackGridColumns = computed<DataGridAppColumnInput<StackRow>[]>(() => [
     label: "min_words",
     minWidth: 120,
     initialState: { width: 140 },
+    capabilities: { editable: false },
     presentation: { align: "right", headerAlign: "right" },
     cellRenderer: ({ row }) => h("span", { class: "font-mono text-[11px]" }, String(row?.minWords ?? "—")),
   },
@@ -310,6 +316,7 @@ const stackGridColumns = computed<DataGridAppColumnInput<StackRow>[]>(() => [
     label: "last_seen_ms",
     minWidth: 140,
     initialState: { width: 160 },
+    capabilities: { editable: false },
     presentation: { align: "right", headerAlign: "right" },
     cellRenderer: ({ row }) => h("span", { class: "font-mono text-[11px]" }, String(row?.lastSeenMs ?? "—")),
   },
@@ -903,13 +910,16 @@ onBeforeUnmount(() => {
           </UiAffinoDisclosure>
 
           <UiAffinoDisclosure title="Tasks / Stack">
-            <div class="rounded-md border border-neutral-200 dark:border-neutral-700 px-2 py-1.5 text-[11px] mb-2">
+            <div class="mb-2 rounded-md border border-neutral-200 bg-white/80 px-2 py-1.5 text-[11px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-950/40 dark:text-neutral-200">
               <span class="uppercase tracking-wide text-neutral-500 dark:text-neutral-400">stale</span>
               <span class="ml-2 font-semibold">{{ staleTasks ?? '—' }}</span>
             </div>
 
-            <div v-if="stackRows.length" class="overflow-hidden rounded-md border border-neutral-200 dark:border-neutral-700">
-              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-neutral-200 px-2 py-1.5 text-[10px] uppercase tracking-wide text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+            <div
+              v-if="stackRows.length"
+              class="overflow-hidden rounded-md border border-neutral-200 bg-white shadow-sm dark:border-neutral-700 dark:bg-neutral-950/60"
+            >
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-neutral-200 bg-neutral-50/90 px-2 py-1.5 text-[10px] uppercase tracking-wide text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-neutral-400">
                 <span class="inline-flex items-center gap-1">
                   <span>task</span>
                   <InlineInfoTooltip text="RTOS/firmware task name from stack diagnostics." placement="top" align="start" />
@@ -923,16 +933,20 @@ onBeforeUnmount(() => {
                   <InlineInfoTooltip text="Timestamp (ms) of last scheduler/task heartbeat observation." placement="top" align="start" />
                 </span>
               </div>
-              <div class="h-[220px] min-h-[120px]">
-                <DataGrid
-                  :rows="stackRows"
-                  :columns="stackGridColumns"
-                  :client-row-model-options="stackGridRowModelOptions"
-                  :virtualization="{ rowOverscan: 4, columnOverscan: 1 }"
-                  :base-row-height="30"
-                  layout-mode="fill"
-                  theme="industrial-neutral"
-                />
+              <div class="affino-native-data-grid h-[220px] min-h-[120px] bg-white dark:bg-neutral-950/60">
+                <div class="affino-native-data-grid__shell bg-white dark:bg-neutral-950/60">
+                  <DataGrid
+                    :rows="stackRows"
+                    :columns="stackGridColumns"
+                    :client-row-model-options="stackGridRowModelOptions"
+                    :virtualization="{ rowOverscan: 4, columnOverscan: 1 }"
+                    :base-row-height="30"
+                    :show-row-index="false"
+                    :row-selection="false"
+                    layout-mode="fill"
+                    :theme="theme"
+                  />
+                </div>
               </div>
             </div>
             <div v-else class="text-[11px] italic text-neutral-500 dark:text-neutral-400">

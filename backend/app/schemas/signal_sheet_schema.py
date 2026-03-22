@@ -107,7 +107,7 @@ class SignalAllocationMarkTestedSchema(BaseModel):
 class SignalTestRunJobSchema(BaseModel):
     signal_ids: list[int] = Field(default_factory=list)
     signal_interval_ms: int = Field(default=1000, ge=100, le=10000)
-    toggle_mode: str = Field(default="single", pattern="^(single|double)$")
+    toggle_mode: str = Field(default="single", pattern="^(single|double|ao_random)$")
     resume_from_cursor: bool = False
     resume_job_id: str | None = None
 
