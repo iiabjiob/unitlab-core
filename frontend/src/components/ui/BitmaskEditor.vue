@@ -31,7 +31,7 @@
         :disabled="isDisabled"
         @click="toggleBit(i - 1)"
       >
-        {{ i - 1 }}
+        {{ i }}
       </button>
     </div>
   </div>

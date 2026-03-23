@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, ref, watch } from "vue"
 import SignalBackedChannelField from "@/components/signals/SignalBackedChannelField.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import type { SequenceStep } from "@/types/sequences"
@@ -36,23 +36,41 @@ const pairSignalKeys = computed<[string | null, string | null]>(() => {
 	return [normalize(keys[0]), normalize(keys[1])]
 })
 
+const draftChannels = ref<[number | null, number | null]>([null, null])
+const draftSignalIds = ref<[number | null, number | null]>([null, null])
+const draftSignalKeys = ref<[string | null, string | null]>([null, null])
+
+watch(
+	[pairChannels, pairSignalIds, pairSignalKeys],
+	([nextChannels, nextSignalIds, nextSignalKeys]) => {
+		draftChannels.value = [...nextChannels] as [number | null, number | null]
+		draftSignalIds.value = [...nextSignalIds] as [number | null, number | null]
+		draftSignalKeys.value = [...nextSignalKeys] as [string | null, string | null]
+	},
+	{ immediate: true },
+)
+
+function emitPairPayloadPatch() {
+	emit("update", {
+		payload: {
+			channel_ids: [...draftChannels.value],
+			signal_ids: [...draftSignalIds.value],
+			signal_keys: [...draftSignalKeys.value],
+		},
+	})
+}
+
 function updateChannel(index: 0 | 1, value: number | null) {
-	const next = [...pairChannels.value] as [number | null, number | null]
-	next[index] = value ?? null
-	emit("update", { payload: { channel_ids: next } })
+	draftChannels.value[index] = value ?? null
+	draftSignalIds.value[index] = null
+	draftSignalKeys.value[index] = null
+	emitPairPayloadPatch()
 }
 
 function updateSignal(index: 0 | 1, payload: { signalId: number | null; signalKey: string | null }) {
-	const nextSignalIds = [...pairSignalIds.value] as [number | null, number | null]
-	const nextSignalKeys = [...pairSignalKeys.value] as [string | null, string | null]
-	nextSignalIds[index] = payload.signalId ?? null
-	nextSignalKeys[index] = payload.signalKey ?? null
-	emit("update", {
-		payload: {
-			signal_ids: nextSignalIds,
-			signal_keys: nextSignalKeys,
-		},
-	})
+	draftSignalIds.value[index] = payload.signalId ?? null
+	draftSignalKeys.value[index] = payload.signalKey ?? null
+	emitPairPayloadPatch()
 }
 
 function setState(next: number) {
