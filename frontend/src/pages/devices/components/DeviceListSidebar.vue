@@ -76,7 +76,7 @@ function handleSelect(id: string | number) {
   <div class="h-full flex flex-col">
 
     <div class="mb-2">
-      <label class="inline-flex items-center gap-2 text-xs text-neutral-700 dark:text-neutral-300 cursor-pointer select-none">
+      <label class="inline-flex items-center gap-2 text-xs text-neutral-700 dark:text-neutral-300 cursor-default select-none">
         <input
           v-model="onlineOnly"
           type="checkbox"

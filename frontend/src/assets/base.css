@@ -21,6 +21,10 @@
     touch-action: manipulation;
   }
 
+  :where(button, [role="button"], a, label, summary, .cursor-pointer) {
+    cursor: default !important;
+  }
+
   @media (hover: none) and (pointer: coarse) {
     :where(button, [role="button"]):not(:disabled):not([aria-disabled="true"]) {
       transition: filter 120ms ease, opacity 120ms ease;

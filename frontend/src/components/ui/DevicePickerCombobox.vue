@@ -697,7 +697,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
   color: var(--picker-muted);
   padding: 0.1rem;
   border-radius: 999px;
-  cursor: pointer;
+  cursor: default;
   transition: color 120ms ease, background 120ms ease;
 }
 
@@ -770,7 +770,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
   color: var(--picker-muted);
   font-weight: 600;
   white-space: nowrap;
-  cursor: pointer;
+  cursor: default;
 }
 
 .device-picker-combobox__filter-checkbox input {
@@ -806,7 +806,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
   text-align: left;
   background: var(--picker-surface-muted);
   color: var(--picker-text);
-  cursor: pointer;
+  cursor: default;
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
   min-height: 2.5rem;
 }

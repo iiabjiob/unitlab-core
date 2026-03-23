@@ -6,7 +6,7 @@
       :is="ntpBadgeInteractive ? 'button' : 'span'"
       :type="ntpBadgeInteractive ? 'button' : undefined"
       class="inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-      :class="[ntpBadgeClass, ntpBadgeInteractive ? 'cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500' : 'cursor-default']"
+      :class="[ntpBadgeClass, 'cursor-default', ntpBadgeInteractive ? 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500' : '']"
       :title="ntpTitle"
       :aria-label="ntpTitle"
       @click="handleNtpBadgeClick"

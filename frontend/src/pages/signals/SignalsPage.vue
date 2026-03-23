@@ -1985,6 +1985,34 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       initialState: { width: 220, pin: "right" },
       presentation: { align: "left", headerAlign: "left" },
       capabilities: { editable: false, sortable: false, filterable: false },
+      cellInteraction: {
+        click: false,
+        keyboard: ["enter", "space"],
+        role: "button",
+        label: ({ row }) => {
+          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
+          const target = resolveControlTarget(controlRow)
+          const signalLabel = controlRow.signal_name || controlRow.signal_key
+
+          if (target?.kind === "do") {
+            return `Turn ${controlStateIsOn(controlRow) ? 'off' : 'on'} control for ${signalLabel}`
+          }
+
+          if (target?.kind === "ao") {
+            return `Analog output control for ${signalLabel}`
+          }
+
+          return `Control is unavailable for ${signalLabel}`
+        },
+        onInvoke: ({ row }) => {
+          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
+          const target = resolveControlTarget(controlRow)
+
+          if (target?.kind === "do") {
+            void sendControl(controlRow, !controlStateIsOn(controlRow))
+          }
+        },
+      },
       cellRenderer: (context: DataGridAppCellRendererContext<GridRow>) => {
         const controlRow = resolveControlCellRow(asAllocationRow((context.row ?? {}) as GridRow))
         const target = resolveControlTarget(controlRow)
