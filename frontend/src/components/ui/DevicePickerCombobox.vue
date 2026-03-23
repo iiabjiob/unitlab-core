@@ -5,6 +5,7 @@ import { usePopoverController, useFloatingPopover } from "@affino/popover-vue"
 import { createListboxStore, useListboxStore } from "@affino/listbox-vue"
 
 import { useDeviceStore } from "@/stores/deviceStore"
+import { useThemeStore } from "@/stores/themeStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import type { Device, DeviceStatus, DeviceType } from "@/types/device"
 import { APP_OVERLAY_HOST_SELECTOR } from "@/utils/overlayHost"
@@ -36,6 +37,7 @@ const emit = defineEmits<{
 }>()
 
 const deviceStore = useDeviceStore()
+const themeStore = useThemeStore()
 void runStoreBootstrap(
   ["device-picker-combobox"],
   [() => deviceStore.ensureLoaded()],
@@ -46,6 +48,7 @@ const searchQuery = ref("")
 const showOnlineOnly = ref(Boolean(props.onlineOnly))
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const listRef = ref<HTMLDivElement | null>(null)
+const isDarkTheme = computed(() => themeStore.currentTheme === "dark")
 
 const allowedTypeSet = computed(() => {
   const raw = props.allowedTypes?.map(type => type?.toLowerCase().trim()).filter(Boolean) ?? []
@@ -432,11 +435,11 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 <template>
   <div
     class="device-picker-combobox"
-    :class="{ 'is-disabled': props.disabled }"
+    :class="{ 'is-disabled': props.disabled, 'is-dark': isDarkTheme }"
   >
     <button
       :ref="floating.triggerRef"
-      class="device-picker-combobox__trigger"
+      class="device-picker-combobox__trigger !dark:bg-neutral-900 !dark:text-neutral-100"
       :class="{ 'has-value': selectedDevice }"
       :disabled="props.disabled"
       v-bind="triggerProps"
@@ -474,6 +477,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
       <div
         :ref="setFloatingContentRef"
         class="device-picker-combobox__popover"
+        :class="{ 'is-dark': isDarkTheme }"
         :style="contentStyle"
         v-bind="contentProps"
         :aria-labelledby="triggerId"
@@ -487,16 +491,20 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
             class="device-picker-combobox__search"
             placeholder="Search devices"
             spellcheck="false"
+            autocomplete="off"
+            :disabled="props.disabled"
             @keydown="handleSearchKeydown"
           >
-          <button
-            type="button"
-            class="device-picker-combobox__filter"
-            :class="{ 'is-active': showOnlineOnly }"
-            @click="showOnlineOnly = !showOnlineOnly"
-          >
-            Online only
-          </button>
+          <label class="device-picker-combobox__filter-checkbox">
+            <input
+              v-model="showOnlineOnly"
+              type="checkbox"
+              autocomplete="off"
+              name="device-picker-online-only"
+              :disabled="props.disabled"
+            >
+            <span>Online only</span>
+          </label>
         </div>
 
         <div
@@ -526,22 +534,27 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
             @click="handleOptionClick(index)"
             :ref="(el) => setOptionRef(index, el)"
           >
-            <div class="device-picker-combobox__option-text">
+            <span
+              class="device-picker-combobox__status-dot"
+              :class="device.status === 'online' ? 'is-online' : 'is-offline'"
+              aria-hidden="true"
+            ></span>
+            <span class="device-picker-combobox__option-body">
               <span class="device-picker-combobox__option-label">{{ device.label }}</span>
-              <span class="device-picker-combobox__option-meta">{{ device.unitId }}</span>
-            </div>
-            <div class="device-picker-combobox__option-info">
-              <span class="device-picker-combobox__status" :class="device.status === 'online' ? 'is-online' : 'is-offline'">
-                {{ device.status === "online" ? "Online" : "Offline" }}
-              </span>
               <span
-                v-if="device.id === props.modelValue"
-                class="device-picker-combobox__selected-mark"
-                aria-hidden="true"
+                v-if="device.unitId && device.unitId !== device.label"
+                class="device-picker-combobox__option-unit"
               >
-                ✓
+                · {{ device.unitId }}
               </span>
-            </div>
+            </span>
+            <span
+              v-if="device.id === props.modelValue"
+              class="device-picker-combobox__selected-mark"
+              aria-hidden="true"
+            >
+              ✓
+            </span>
           </button>
 
           <div v-if="!filteredDevices.length" class="device-picker-combobox__empty">
@@ -559,11 +572,67 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
   width: 100%;
 }
 
+.device-picker-combobox,
+.device-picker-combobox__popover {
+  --picker-surface: #ffffff;
+  --picker-surface-muted: #f8fafc;
+  --picker-border: rgba(15, 23, 42, 0.15);
+  --picker-border-hover: rgba(37, 99, 235, 0.65);
+  --picker-text: #0f172a;
+  --picker-muted: #4b5563;
+  --picker-placeholder: #6b7280;
+  --picker-accent: #2563eb;
+  --picker-accent-soft: rgba(37, 99, 235, 0.08);
+  --picker-outline: rgba(37, 99, 235, 0.35);
+  --picker-shadow: 0 18px 45px rgba(15, 23, 42, 0.14);
+  --picker-trigger-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --picker-option-border: rgba(15, 23, 42, 0.08);
+  --picker-option-hover: rgba(15, 23, 42, 0.04);
+  --picker-divider: rgba(15, 23, 42, 0.06);
+  --picker-status-online-bg: rgba(34, 197, 94, 0.15);
+  --picker-status-online-text: #15803d;
+  --picker-status-offline-bg: rgba(248, 113, 113, 0.2);
+  --picker-status-offline-text: #b91c1c;
+  --picker-input-bg: #ffffff;
+  --picker-input-border: rgba(15, 23, 42, 0.15);
+  --picker-input-text: #0f172a;
+  --picker-input-placeholder: #6b7280;
+}
+
+.device-picker-combobox.is-dark,
+.device-picker-combobox__popover.is-dark,
+:global(.dark) .device-picker-combobox,
+:global(.dark) .device-picker-combobox__popover {
+  --picker-surface: rgba(9, 12, 20, 0.98);
+  --picker-surface-muted: rgba(20, 26, 38, 0.92);
+  --picker-border: rgba(148, 163, 184, 0.38);
+  --picker-border-hover: rgba(129, 140, 248, 0.85);
+  --picker-text: #f3f4f6;
+  --picker-muted: #a5b4cf;
+  --picker-placeholder: #94a3b8;
+  --picker-accent: #93c5fd;
+  --picker-accent-soft: rgba(147, 197, 253, 0.18);
+  --picker-outline: rgba(147, 197, 253, 0.65);
+  --picker-shadow: 0 28px 60px rgba(2, 6, 23, 0.75);
+  --picker-trigger-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  --picker-option-border: rgba(255, 255, 255, 0.08);
+  --picker-option-hover: rgba(255, 255, 255, 0.04);
+  --picker-divider: rgba(255, 255, 255, 0.09);
+  --picker-status-online-bg: rgba(34, 197, 94, 0.2);
+  --picker-status-online-text: #4ade80;
+  --picker-status-offline-bg: rgba(248, 113, 113, 0.2);
+  --picker-status-offline-text: #fca5a5;
+  --picker-input-bg: rgba(15, 23, 42, 0.92);
+  --picker-input-border: rgba(148, 163, 184, 0.45);
+  --picker-input-text: #f1f5f9;
+  --picker-input-placeholder: #94a3b8;
+}
+
 .device-picker-combobox__trigger {
   width: 100%;
-  border-radius: 0.5rem;
-  border: 1px solid hsl(0 0% 82%);
-  background: var(--device-picker-trigger-bg, #fff);
+  border-radius: 0.45rem;
+  border: 1px solid var(--picker-border);
+  background: var(--picker-surface);
   padding: 0.65rem 0.85rem;
   display: flex;
   justify-content: space-between;
@@ -572,16 +641,17 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
   text-align: left;
   font-size: 0.85rem;
   line-height: 1.2;
-  color: #1f2937;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  color: var(--picker-text);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+  box-shadow: var(--picker-trigger-shadow);
 }
 
 .device-picker-combobox__trigger:hover {
-  border-color: hsl(222 47% 55%);
+  border-color: var(--picker-border-hover);
 }
 
 .device-picker-combobox__trigger:focus-visible {
-  outline: 2px solid hsl(222 90% 60% / 0.35);
+  outline: 2px solid var(--picker-outline);
   outline-offset: 2px;
 }
 
@@ -598,7 +668,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 
 .device-picker-combobox__label {
   font-weight: 600;
-  color: inherit;
+  color: var(--picker-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -606,12 +676,12 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 
 .device-picker-combobox__label.is-placeholder {
   font-weight: 500;
-  color: #6b7280;
+  color: var(--picker-placeholder);
 }
 
 .device-picker-combobox__meta {
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--picker-muted);
 }
 
 .device-picker-combobox__actions {
@@ -624,245 +694,194 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
   border: none;
   background: transparent;
   font-size: 0.85rem;
-  color: #9ca3af;
+  color: var(--picker-muted);
   padding: 0.1rem;
   border-radius: 999px;
   cursor: pointer;
-  transition: color 100ms ease, background 100ms ease;
+  transition: color 120ms ease, background 120ms ease;
 }
 
 .device-picker-combobox__clear:hover {
-  color: #111827;
-  background: rgba(15, 23, 42, 0.08);
+  color: var(--picker-text);
+  background: var(--picker-option-hover);
 }
 
 .device-picker-combobox__chevron {
-  color: #9ca3af;
+  color: var(--picker-muted);
   font-size: 0.85rem;
 }
 
 .device-picker-combobox__popover {
   width: 320px;
   max-height: min(360px, 70vh);
-  border-radius: 0.75rem;
-  border: 1px solid hsl(0 0% 82%);
-  background: #fff;
-  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.15);
-  padding: 0.85rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--picker-border);
+  background: var(--picker-surface);
+  box-shadow: var(--picker-shadow);
+  padding: 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.55rem;
 }
 
 .device-picker-combobox__controls {
   display: flex;
+  align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--picker-divider);
 }
 
 .device-picker-combobox__search {
   flex: 1;
-  border-radius: 999px;
-  border: 1px solid hsl(214 11% 80%);
-  padding: 0.45rem 0.85rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--picker-input-border);
+  padding: 0.5rem 0.9rem;
   font-size: 0.85rem;
+  line-height: 1.3;
+  background: var(--picker-input-bg);
+  color: var(--picker-input-text);
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
 }
 
-.device-picker-combobox__filter {
-  border-radius: 999px;
-  border: 1px solid hsl(214 11% 80%);
-  padding: 0.45rem 0.9rem;
-  font-size: 0.8rem;
-  background: #f9fafb;
-  color: #6b7280;
-  transition: all 120ms ease;
+.device-picker-combobox__search::placeholder {
+  color: var(--picker-input-placeholder);
 }
 
-.device-picker-combobox__filter.is-active {
-  background: hsl(222 85% 55% / 0.12);
-  color: #1f2a4a;
-  border-color: hsl(222 85% 55%);
+.device-picker-combobox__search:focus-visible {
+  border-color: var(--picker-border-hover);
+  outline: none;
+  background: var(--picker-surface);
+  box-shadow: 0 0 0 1px var(--picker-accent-soft);
+}
+
+.device-picker-combobox__search:disabled {
+  opacity: 0.55;
+}
+
+.device-picker-combobox__filter-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--picker-muted);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.device-picker-combobox__filter-checkbox input {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--picker-border);
+  background: var(--picker-surface);
+  accent-color: var(--picker-accent);
+}
+
+.device-picker-combobox__filter-checkbox input:disabled + span {
+  opacity: 0.5;
 }
 
 .device-picker-combobox__list {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.35rem;
   max-height: 240px;
   overflow-y: auto;
   outline: none;
+  padding: 0.2rem 0;
 }
 
 .device-picker-combobox__option {
-  border-radius: 0.65rem;
+  border-radius: 0.55rem;
   border: 1px solid transparent;
   padding: 0.55rem 0.65rem;
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
   text-align: left;
-  background: #f9fafb;
+  background: var(--picker-surface-muted);
+  color: var(--picker-text);
   cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+  min-height: 2.5rem;
 }
 
 .device-picker-combobox__option:hover {
-  border-color: hsl(222 47% 62%);
-  background: #fff;
+  background: var(--picker-option-hover);
+  border-color: var(--picker-option-border);
 }
 
 .device-picker-combobox__option.is-active {
-  border-color: hsl(222 85% 60%);
-  background: hsl(222 85% 60% / 0.08);
+  border-color: var(--picker-accent);
+  background: var(--picker-accent-soft);
 }
 
 .device-picker-combobox__option.is-selected {
-  border-color: hsl(221 83% 53%);
-  background: hsl(221 83% 53% / 0.12);
+  border-color: var(--picker-accent);
+  background: var(--picker-accent-soft);
 }
 
 .device-picker-combobox__option.is-offline {
-  opacity: 0.78;
+  opacity: 0.85;
 }
 
-.device-picker-combobox__option-text {
+.device-picker-combobox__status-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+  border: 2px solid transparent;
+}
+
+.device-picker-combobox__status-dot.is-online {
+  background: var(--picker-status-online-bg);
+  border-color: var(--picker-status-online-text);
+}
+
+.device-picker-combobox__status-dot.is-offline {
+  background: var(--picker-status-offline-bg);
+  border-color: var(--picker-status-offline-text);
+}
+
+.device-picker-combobox__option-body {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
   min-width: 0;
+  flex: 1;
 }
 
 .device-picker-combobox__option-label {
   font-weight: 600;
-  color: #111827;
+  color: var(--picker-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.device-picker-combobox__option-meta {
-  font-size: 0.75rem;
-  color: #6b7280;
-}
-
-.device-picker-combobox__option-info {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.device-picker-combobox__status {
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.25rem 0.55rem;
-  border-radius: 999px;
-}
-
-.device-picker-combobox__status.is-online {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.device-picker-combobox__status.is-offline {
-  background: #fee2e2;
-  color: #9f1239;
+.device-picker-combobox__option-unit {
+  font-size: 0.78rem;
+  color: var(--picker-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .device-picker-combobox__selected-mark {
-  font-size: 0.85rem;
-  color: #2563eb;
+  font-size: 0.9rem;
+  color: var(--picker-accent);
+  margin-left: auto;
 }
 
 .device-picker-combobox__empty {
   font-size: 0.85rem;
-  color: #6b7280;
+  color: var(--picker-muted);
   text-align: center;
   padding: 1rem 0.5rem;
-}
-
-:global(.dark) .device-picker-combobox__trigger {
-  border-color: rgba(148, 163, 184, 0.4);
-  background: rgba(15, 23, 42, 0.75);
-  color: #e5e7eb;
-}
-
-:global(.dark) .device-picker-combobox__label.is-placeholder {
-  color: #94a3b8;
-}
-
-:global(.dark) .device-picker-combobox__meta {
-  color: #94a3b8;
-}
-
-:global(.dark) .device-picker-combobox__popover {
-  background: #0f172a;
-  border-color: rgba(148, 163, 184, 0.3);
-}
-
-:global(.dark) .device-picker-combobox__search {
-  border-color: rgba(148, 163, 184, 0.4);
-  background: rgba(15, 23, 42, 0.85);
-  color: #e2e8f0;
-}
-
-:global(.dark) .device-picker-combobox__filter {
-  border-color: rgba(148, 163, 184, 0.4);
-  background: rgba(15, 23, 42, 0.65);
-  color: #cbd5f5;
-}
-
-:global(.dark) .device-picker-combobox__filter.is-active {
-  background: rgba(99, 102, 241, 0.25);
-  border-color: rgba(129, 140, 248, 0.9);
-  color: #e0e7ff;
-}
-
-:global(.dark) .device-picker-combobox__list {
-  background: transparent;
-}
-
-:global(.dark) .device-picker-combobox__option {
-  background: rgba(15, 23, 42, 0.75);
-  border-color: transparent;
-}
-
-:global(.dark) .device-picker-combobox__option:hover {
-  background: rgba(30, 41, 59, 0.9);
-  border-color: rgba(191, 219, 254, 0.4);
-}
-
-:global(.dark) .device-picker-combobox__option.is-active {
-  background: rgba(59, 130, 246, 0.15);
-  border-color: rgba(59, 130, 246, 0.6);
-}
-
-:global(.dark) .device-picker-combobox__option.is-selected {
-  background: rgba(59, 130, 246, 0.22);
-  border-color: rgba(59, 130, 246, 0.85);
-}
-
-:global(.dark) .device-picker-combobox__option-label {
-  color: #e2e8f0;
-}
-
-:global(.dark) .device-picker-combobox__option-meta {
-  color: #cbd5f5;
-}
-
-:global(.dark) .device-picker-combobox__status.is-online {
-  background: rgba(34, 197, 94, 0.25);
-  color: #4ade80;
-}
-
-:global(.dark) .device-picker-combobox__status.is-offline {
-  background: rgba(248, 113, 113, 0.25);
-  color: #fca5a5;
-}
-
-:global(.dark) .device-picker-combobox__selected-mark {
-  color: #93c5fd;
-}
-
-:global(.dark) .device-picker-combobox__empty {
-  color: #94a3b8;
 }
 </style>
