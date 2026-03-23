@@ -262,8 +262,6 @@ class SignalSheetRepository:
         progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
         commit: bool = True,
     ) -> None:
-        await self.cleanup_orphan_allocations(workspace_id)
-
         if not entries:
             if commit:
                 await self.db.commit()
@@ -275,7 +273,7 @@ class SignalSheetRepository:
             missing = sorted(signal_ids - set(active_signals.keys()))
             raise ValueError(f"Unknown or inactive signal_id values: {missing}")
 
-        current_allocations = await self._allocations_by_signal_id(workspace_id)
+        current_allocations = await self._allocations_by_signal_ids(workspace_id, signal_ids)
         desired_channel_by_signal = {signal_id: allocation.channel_id for signal_id, allocation in current_allocations.items()}
 
         touched_meta: dict[int, dict[str, Any] | None] = {}
@@ -296,7 +294,10 @@ class SignalSheetRepository:
             missing_channels = sorted(desired_channel_ids - set(channels_by_id.keys()))
             raise ValueError(f"Unknown channel_id values: {missing_channels}")
 
-        seen_channel_owner: dict[int, int] = {}
+        seen_channel_owner = {
+            allocation.channel_id: allocation.signal_id
+            for allocation in await self._allocations_by_channel_ids(workspace_id, desired_channel_ids)
+        }
         for signal_id, channel_id in desired_channel_by_signal.items():
             owner = seen_channel_owner.get(channel_id)
             if owner is not None and owner != signal_id:
@@ -683,6 +684,23 @@ class SignalSheetRepository:
         rows = await self.db.execute(stmt)
         allocations = list(rows.scalars().all())
         return {item.signal_id: item for item in allocations}
+
+    async def _allocations_by_channel_ids(
+        self,
+        workspace_id: int,
+        channel_ids: set[int],
+    ) -> list[SignalAllocation]:
+        if not channel_ids:
+            return []
+        stmt: Select[tuple[SignalAllocation]] = (
+            select(SignalAllocation)
+            .where(
+                SignalAllocation.workspace_id == workspace_id,
+                SignalAllocation.channel_id.in_(channel_ids),
+            )
+        )
+        rows = await self.db.execute(stmt)
+        return list(rows.scalars().all())
 
     async def _channels_by_ids(self, channel_ids: set[int]) -> dict[int, Channel]:
         if not channel_ids:

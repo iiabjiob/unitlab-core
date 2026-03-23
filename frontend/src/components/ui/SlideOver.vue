@@ -201,11 +201,10 @@ function onTouchEnd() {
 function requestClose(reason: DialogCloseReason) {
   if (reason === "backdrop" && !props.closeOnBackdrop) return
   if (reason === "backdrop" && Date.now() - openedAtMs.value < 260) return
-  void dialog.close(reason).then((closed) => {
-    if (closed) {
-      emit("close")
-    }
-  })
+  emit("close")
+  if (isOpen.value) {
+    void dialog.close(reason)
+  }
 }
 
 function onContentClick(event: MouseEvent) {

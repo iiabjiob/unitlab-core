@@ -84,7 +84,8 @@
     </section>
 
     <AllocationChannelPickerPanel
-      :open="allocationChannelPickerRow !== null"
+      :key="allocationChannelPickerInstanceKey"
+      :open="allocationChannelPickerOpen"
       :signal-name="allocationChannelPickerRow?.signal_name ?? ''"
       :signal-key="allocationChannelPickerRow?.signal_key ?? ''"
       :signal-direction="allocationChannelPickerRow?.signal_direction ?? ''"
@@ -160,6 +161,8 @@ const allocationGridRef = ref<{
   getSavedView?: () => DataGridSavedViewSnapshot<Record<string, unknown>> | null
 } | null>(null)
 const allocationChannelPickerSignalId = ref<number | null>(null)
+const allocationChannelPickerOpen = ref(false)
+const allocationChannelPickerInstanceKey = ref(0)
 const allocationChannelPickerLoading = ref(false)
 const allocationChannelPickerSaving = ref(false)
 const allocationChannelPickerError = ref<string | null>(null)
@@ -656,6 +659,14 @@ const deviceStatusById = computed(() => {
   return map
 })
 
+const deviceNameById = computed(() => {
+  const map = new Map<number, string>()
+  deviceStore.devices.forEach((device) => {
+    map.set(device.id, String(device.name ?? "").trim())
+  })
+  return map
+})
+
 const channelUnitById = computed(() => {
   const map = new Map<number, string>()
   channels.value.forEach((channel) => {
@@ -1040,9 +1051,9 @@ function resolveAllocationChannelCellRow(row: SignalAllocationRow): SignalAlloca
 type AllocationChannelPickerCandidate = {
   id: number
   unitId: string
+  unitLabel: string
   channelIndex: number
-  label: string
-  metaLabel: string
+  channelLabel: string
   online: boolean
   searchText: string
 }
@@ -1087,23 +1098,21 @@ const allocationChannelPickerChannels = computed<AllocationChannelPickerCandidat
     })
     .map((channel) => {
       const unitId = channelUnitById.value.get(channel.id) ?? channelStore.resolveUnitId(channel.device_id)
-      const label = `${unitId}/ch${channel.index + 1}`
       const resolvedName = String(channel.resolved_name ?? channel.name ?? "").trim()
+      const unitName = deviceNameById.value.get(channel.device_id) ?? ""
+      const unitLabel = unitName ? `${unitId} ${unitName}` : unitId
+      const channelCode = `CH${channel.index + 1}`
+      const channelLabel = resolvedName || channelCode
       const online = deviceStatusById.value.get(channel.device_id) === "online"
-      const metaParts = [
-        resolvedName || null,
-        `Device ${channel.device_id}`,
-        `CH${channel.index + 1}`,
-      ].filter((value): value is string => Boolean(value))
 
       return {
         id: channel.id,
         unitId,
+        unitLabel,
         channelIndex: channel.index,
-        label,
-        metaLabel: metaParts.join(" · "),
+        channelLabel,
         online,
-        searchText: [label, unitId, resolvedName, channel.name, channel.resolved_name, String(channel.device_id)]
+        searchText: [unitId, unitName, unitLabel, channelCode, String(channel.index + 1), resolvedName, channel.name, channel.resolved_name, String(channel.device_id)]
           .filter((value): value is string => Boolean(value))
           .join(" ")
           .toLowerCase(),
@@ -1113,7 +1122,7 @@ const allocationChannelPickerChannels = computed<AllocationChannelPickerCandidat
       if (left.id === currentChannelId) return -1
       if (right.id === currentChannelId) return 1
       if (left.online !== right.online) return left.online ? -1 : 1
-      return left.label.localeCompare(right.label, undefined, { numeric: true, sensitivity: "base" })
+      return `${left.unitId}/${left.channelIndex}`.localeCompare(`${right.unitId}/${right.channelIndex}`, undefined, { numeric: true, sensitivity: "base" })
     })
 })
 
@@ -1123,7 +1132,9 @@ async function openAllocationChannelPicker(row: SignalAllocationRow) {
     return
   }
 
+  allocationChannelPickerInstanceKey.value += 1
   allocationChannelPickerSignalId.value = signalId
+  allocationChannelPickerOpen.value = true
   allocationChannelPickerError.value = null
   allocationChannelPickerLoading.value = true
 
@@ -1140,9 +1151,11 @@ function closeAllocationChannelPicker() {
   if (allocationChannelPickerSaving.value) {
     return
   }
+  allocationChannelPickerOpen.value = false
   allocationChannelPickerSignalId.value = null
   allocationChannelPickerLoading.value = false
   allocationChannelPickerError.value = null
+  allocationChannelPickerInstanceKey.value += 1
 }
 
 async function handleAllocationChannelPicked(channelId: number | null) {
@@ -1158,22 +1171,27 @@ async function handleAllocationChannelPicked(channelId: number | null) {
 
   allocationChannelPickerSaving.value = true
   allocationChannelPickerError.value = null
+  let shouldClosePicker = false
 
   try {
     await signalSheetStore.setAllocation(signalId, channelId)
     if (channelId === null) {
       toastStore.success(`Cleared allocation for ${row.signal_name || row.signal_key}.`)
     } else {
-      const nextLabel = allocationChannelPickerChannels.value.find(channel => channel.id === channelId)?.label ?? allocationDisplayLabel(row)
+      const nextChannel = allocationChannelPickerChannels.value.find(channel => channel.id === channelId)
+      const nextLabel = nextChannel ? `${nextChannel.unitId}/${nextChannel.channelLabel}` : allocationDisplayLabel(row)
       toastStore.success(`Assigned ${row.signal_name || row.signal_key} to ${nextLabel}.`)
     }
-    closeAllocationChannelPicker()
+    shouldClosePicker = true
   } catch (pickerError) {
     const message = pickerError instanceof Error ? pickerError.message : String(pickerError)
     allocationChannelPickerError.value = message
     toastStore.error(message)
   } finally {
     allocationChannelPickerSaving.value = false
+    if (shouldClosePicker) {
+      closeAllocationChannelPicker()
+    }
   }
 }
 

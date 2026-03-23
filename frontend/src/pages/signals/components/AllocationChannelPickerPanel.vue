@@ -142,9 +142,9 @@ import SlideOver from "@/components/ui/SlideOver.vue"
 type AllocationChannelCandidate = {
   id: number
   unitId: string
+  unitLabel: string
   channelIndex: number
-  label: string
-  metaLabel: string
+  channelLabel: string
   online: boolean
   searchText: string
 }
@@ -271,11 +271,11 @@ const nodeMeta = computed(() => {
   const map = new Map<NodeValue, { label: string }>()
   groupedChannels.value.forEach((group) => {
     map.set(toUnitNodeValue(group.unitId), {
-      label: `${group.unitId} (${group.entries.length})`,
+      label: group.entries[0]?.unitLabel || group.unitId,
     })
     group.entries.forEach((channel) => {
       map.set(toChannelNodeValue(channel.id), {
-        label: `ch${channel.channelIndex + 1}${channel.metaLabel ? ` · ${channel.metaLabel}` : ""}`,
+        label: channel.channelLabel,
       })
     })
   })

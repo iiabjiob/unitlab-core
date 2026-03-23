@@ -1,91 +1,99 @@
 <template>
   <div
-    class="group flex justify-center px-2 py-1.5 text-sm select-none"
+    class="group px-2 py-1.5 text-sm select-none"
     :class="{ 'opacity-60': disabled }"
   >
-    <div class="grid w-full max-w-[40rem] min-w-0 grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-3">
+    <div v-if="effectiveType === 'ao'" class="flex justify-center">
+      <div class="grid w-full max-w-[40rem] min-w-0 grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-3">
 
-      <!-- Label -->
-      <div class="flex min-w-0 items-center justify-center text-center text-xs text-neutral-700 dark:text-neutral-300">
-        <span class="block min-w-0 truncate">{{ channel.resolved_name }}</span>
+        <!-- Label -->
+        <div class="flex min-w-0 items-center justify-center text-center text-xs text-neutral-700 dark:text-neutral-300">
+          <span class="block min-w-0 truncate">{{ channel.resolved_name }}</span>
+        </div>
+
+        <!-- AO input -->
+        <div class="flex min-w-0 flex-1 items-center gap-2">
+          <div class="flex min-w-0 items-center gap-2">
+            <label
+              class="flex min-w-0 flex-1 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400"
+              :for="`device-channel-ao-${channel.id}`"
+            >
+              <input
+                ref="aoInputRef"
+                :id="`device-channel-ao-${channel.id}`"
+                :name="`device-channel-ao-${channel.id}`"
+                v-model="aoDraftValue"
+                type="number"
+                inputmode="decimal"
+                min="4"
+                max="20"
+                step="0.1"
+                autocomplete="off"
+                class="w-24 min-w-0 flex-1 rounded border border-neutral-300 bg-white px-2 py-1 text-right text-xs font-semibold text-neutral-900 outline-none transition focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
+                :disabled="disabled"
+                @keydown.enter.prevent="submitAoValue"
+              />
+              <span class="shrink-0 text-neutral-400 dark:text-neutral-500">mA</span>
+            </label>
+            <UiButton
+              type="button"
+              size="xs"
+              variant="secondary"
+              class="h-5 shrink-0 px-1.5 text-[10px] uppercase tracking-[0.08em]"
+              :disabled="!aoCanSubmit"
+              :title="aoSetButtonTitle"
+              @click.stop="submitAoValue"
+            >
+              {{ aoSetButtonLabel }}
+            </UiButton>
+
+            <div class="inline-flex items-center gap-1 px-0.5 py-0.5">
+              <span class="text-[9px] uppercase tracking-[0.08em] text-neutral-400 dark:text-neutral-500">Value</span>
+              <span class="font-mono text-[10px] text-neutral-600 dark:text-neutral-300">{{ aoActualValueLabel }}</span>
+              <span class="text-[9px] text-neutral-400 dark:text-neutral-500">mA</span>
+            </div>
+
+            <span
+              v-if="aoStatusClass"
+              class="inline-flex items-center rounded px-1.5 py-1 text-[10px] font-medium border"
+              :class="aoStatusClass"
+              :title="aoStatusTitle"
+            >
+              {{ aoStatusLabel }}
+            </span>
+          </div>
+        </div>
       </div>
+    </div>
+
+    <div v-else class="flex min-w-0 items-center gap-3">
 
       <!-- DO control -->
       <div
         v-if="effectiveType === 'do'"
-        class="w-4 h-4 rounded-sm border cursor-default flex items-center justify-center
-               transition-colors"
+        class="flex h-5 w-5 cursor-default items-center justify-center rounded-sm border transition-colors"
         :class="[doControlClass, { 'cursor-not-allowed opacity-70': isWaiting || disabled }]"
         @click.stop="onToggleClick"
       >
         <span
           v-if="isWaiting"
-          class="w-2.5 h-2.5 border-[1.5px] border-white/80 border-t-transparent rounded-full animate-spin"
+          class="h-4 w-4 rounded-full border-2 border-white/85 border-t-transparent animate-spin"
         />
-        <span v-else-if="isError" class="text-[10px] font-semibold text-white">!</span>
-        <span v-else-if="channel.state" class="text-[10px] text-white">✓</span>
+        <span v-else-if="isError" class="text-[11px] font-semibold leading-none text-white">!</span>
+        <span v-else-if="channel.state" class="text-[11px] font-semibold leading-none text-white">✓</span>
       </div>
 
       <!-- DI indicator -->
       <div
         v-else-if="effectiveType === 'di'"
-        class="w-4 h-4 rounded-full border transition-all duration-200"
+        class="h-4 w-4 rounded-full border transition-all duration-200"
         :class="diIndicatorClass"
       />
 
-      <!-- AO input -->
-      <div v-else-if="effectiveType === 'ao'" class="flex min-w-0 flex-1 items-center gap-2">
-        <div class="flex min-w-0 items-center gap-2">
-          <label
-            class="flex min-w-0 flex-1 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400"
-            :for="`device-channel-ao-${channel.id}`"
-          >
-            <input
-              ref="aoInputRef"
-              :id="`device-channel-ao-${channel.id}`"
-              :name="`device-channel-ao-${channel.id}`"
-              v-model="aoDraftValue"
-              type="number"
-              inputmode="decimal"
-              min="4"
-              max="20"
-              step="0.1"
-              autocomplete="off"
-              class="w-24 min-w-0 flex-1 rounded border border-neutral-300 bg-white px-2 py-1 text-right text-xs font-semibold text-neutral-900 outline-none transition focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
-              :disabled="disabled"
-              @keydown.enter.prevent="submitAoValue"
-            />
-            <span class="shrink-0 text-neutral-400 dark:text-neutral-500">mA</span>
-          </label>
-          <UiButton
-            type="button"
-            size="xs"
-            variant="secondary"
-            class="h-5 shrink-0 px-1.5 text-[10px] uppercase tracking-[0.08em]"
-            :disabled="!aoCanSubmit"
-            :title="aoSetButtonTitle"
-            @click.stop="submitAoValue"
-          >
-            {{ aoSetButtonLabel }}
-          </UiButton>
-
-          <div class="inline-flex items-center gap-1 px-0.5 py-0.5">
-            <span class="text-[9px] uppercase tracking-[0.08em] text-neutral-400 dark:text-neutral-500">Value</span>
-            <span class="font-mono text-[10px] text-neutral-600 dark:text-neutral-300">{{ aoActualValueLabel }}</span>
-            <span class="text-[9px] text-neutral-400 dark:text-neutral-500">mA</span>
-          </div>
-
-          <span
-            v-if="aoStatusClass"
-            class="inline-flex items-center rounded px-1.5 py-1 text-[10px] font-medium border"
-            :class="aoStatusClass"
-            :title="aoStatusTitle"
-          >
-            {{ aoStatusLabel }}
-          </span>
-        </div>
+      <!-- Label -->
+      <div class="min-w-0 text-xs text-neutral-700 dark:text-neutral-300">
+        <span class="block min-w-0 truncate">{{ channel.resolved_name }}</span>
       </div>
-
     </div>
   </div>
 </template>
