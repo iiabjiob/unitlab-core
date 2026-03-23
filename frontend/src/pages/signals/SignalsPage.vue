@@ -64,7 +64,6 @@
           ref="allocationGridRef"
           :rows="gridRows"
           :columns="resolvedColumns"
-          :state="gridState"
           :row-selection-state="rowSelectionState"
           :theme="theme"
           :client-row-model-options="clientRowModelOptions"
@@ -159,6 +158,8 @@ const importModalOpen = ref(false)
 const exportModalOpen = ref(false)
 const allocationGridRef = ref<{
   getSavedView?: () => DataGridSavedViewSnapshot<Record<string, unknown>> | null
+  migrateSavedView?: (savedView: unknown) => DataGridSavedViewSnapshot<Record<string, unknown>> | null
+  applySavedView?: (savedView: DataGridSavedViewSnapshot<Record<string, unknown>>) => boolean
 } | null>(null)
 const allocationChannelPickerSignalId = ref<number | null>(null)
 const allocationChannelPickerOpen = ref(false)
@@ -166,8 +167,8 @@ const allocationChannelPickerInstanceKey = ref(0)
 const allocationChannelPickerLoading = ref(false)
 const allocationChannelPickerSaving = ref(false)
 const allocationChannelPickerError = ref<string | null>(null)
-const gridState = ref<UnifiedGridState | null>(null)
 const rowSelectionState = ref<RowSelectionSnapshot | null>(null)
+const pendingSignalsGridSavedView = ref<unknown | null>(null)
 const deletingSelected = ref(false)
 const deletingProgressDone = ref(0)
 const deletingProgressTotal = ref(0)
@@ -492,24 +493,72 @@ function persistSignalsGridState() {
   writeDataGridSavedViewToStorage(window.localStorage, storageKey, savedView)
 }
 
+function areSavedViewColumnsReady(savedView: unknown): boolean {
+  if (!savedView || typeof savedView !== "object") {
+    return false
+  }
+
+  const currentColumnKeys = new Set(
+    resolvedColumns.value
+      .map(column => String(column.key ?? "").trim())
+      .filter(Boolean),
+  )
+
+  if (currentColumnKeys.size === 0) {
+    return false
+  }
+
+  const columns = (savedView as { state?: { columns?: { order?: unknown } } }).state?.columns
+  const savedOrder = Array.isArray(columns?.order)
+    ? columns.order.map((key) => String(key ?? "").trim()).filter(Boolean)
+    : []
+
+  return savedOrder.every(key => currentColumnKeys.has(key))
+}
+
+function tryApplyPendingSignalsGridSavedView() {
+  const pendingSavedView = pendingSignalsGridSavedView.value
+  if (!pendingSavedView) {
+    return
+  }
+
+  if (loading.value || workspaceMissing.value) {
+    return
+  }
+
+  if (!areSavedViewColumnsReady(pendingSavedView)) {
+    return
+  }
+
+  const migratedSavedView = allocationGridRef.value?.migrateSavedView?.(pendingSavedView)
+  if (!migratedSavedView) {
+    return
+  }
+
+  const applied = allocationGridRef.value?.applySavedView?.(migratedSavedView) ?? false
+  if (applied) {
+    pendingSignalsGridSavedView.value = null
+  }
+}
+
 function restoreSignalsGridState() {
   if (typeof window === "undefined") {
-    gridState.value = null
     rowSelectionState.value = null
+    pendingSignalsGridSavedView.value = null
     return
   }
 
   const storageKey = getSignalsGridStorageKey(workspaceStore.activeWorkspaceId)
   if (!storageKey) {
-    gridState.value = null
     rowSelectionState.value = null
+    pendingSignalsGridSavedView.value = null
     return
   }
 
   const raw = window.localStorage.getItem(storageKey)
   if (!raw) {
-    gridState.value = null
     rowSelectionState.value = null
+    pendingSignalsGridSavedView.value = null
     return
   }
 
@@ -517,18 +566,19 @@ function restoreSignalsGridState() {
     const savedView = JSON.parse(raw) as Partial<DataGridSavedViewSnapshot<Record<string, unknown>>>
     const nextState = savedView?.state
     if (!nextState || typeof nextState !== "object") {
-      gridState.value = null
       rowSelectionState.value = null
+      pendingSignalsGridSavedView.value = null
       return
     }
 
     const restoredState = nextState as UnifiedGridState
-    gridState.value = restoredState
     rowSelectionState.value = restoredState.rowSelection ?? null
+    pendingSignalsGridSavedView.value = savedView
+    tryApplyPendingSignalsGridSavedView()
   } catch (error) {
     console.warn("Failed to restore signals grid state:", error)
-    gridState.value = null
     rowSelectionState.value = null
+    pendingSignalsGridSavedView.value = null
   }
 }
 
@@ -693,7 +743,6 @@ function sourceColumnKey(index: number): string {
 }
 
 function handleAllocationGridStateUpdate(state: UnifiedGridState | null) {
-  gridState.value = state
   rowSelectionState.value = state?.rowSelection ?? null
   persistSignalsGridState()
 }
@@ -2020,6 +2069,14 @@ watch(
     restoreSignalsGridState()
     void refreshSignalsStatic()
   },
+)
+
+watch(
+  [allocationGridRef, sourceHeaders, loading],
+  () => {
+    tryApplyPendingSignalsGridSavedView()
+  },
+  { flush: "post" },
 )
 
 watch(

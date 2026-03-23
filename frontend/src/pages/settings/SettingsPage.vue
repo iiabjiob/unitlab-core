@@ -1,6 +1,6 @@
 <template>
   <div class="flex h-full flex-col md:flex-row">
-    <div class="border-b border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900 md:hidden">
+    <div class="border-b border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900 lg:hidden">
       <UiButton
         variant="secondary"
         size="base"

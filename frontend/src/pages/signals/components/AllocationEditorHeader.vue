@@ -77,16 +77,28 @@
 
           <span v-if="canRunTest" class="inline-flex items-center gap-2">
             <UiMenu ref="testRunMenuRef">
-              <UiMenuTrigger as-child trigger="contextmenu">
+              <div class="inline-flex overflow-hidden rounded-lg border border-emerald-500/30 bg-emerald-500/10 divide-x divide-emerald-500/30 shadow-sm shadow-emerald-500/25 dark:border-emerald-400/40 dark:bg-emerald-400/10 dark:divide-emerald-300/30">
                 <UiButton
                   :variant="'success'"
                   size="sm"
+                  class="flex items-center gap-2 rounded-none px-3 text-sm font-semibold tracking-tight"
                   :disabled="loading || isTestRunBusy"
                   @click="emit('runTest')"
                 >
                   {{ canResumeActiveTestRun ? "Resume" : (isTestRunBusy ? "Running…" : "Run test") }}
                 </UiButton>
-              </UiMenuTrigger>
+                <UiMenuTrigger as-child>
+                  <UiButton
+                    :variant="'success'"
+                    size="sm"
+                    class="rounded-none px-2.5 text-base font-semibold"
+                    :disabled="loading || isTestRunBusy"
+                    aria-label="Test run options"
+                  >
+                    <span aria-hidden="true">▾</span>
+                  </UiButton>
+                </UiMenuTrigger>
+              </div>
               <UiMenuContent>
                 <UiMenuLabel>
                   Toggle mode
