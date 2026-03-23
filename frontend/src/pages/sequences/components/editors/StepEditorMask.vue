@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue"
 import BitmaskEditor from "@/components/ui/BitmaskEditor.vue"
-import UiSelect from "@/components/ui/UiSelect.vue"
+import DevicePickerCombobox from "@/components/ui/DevicePickerCombobox.vue"
 import type { SequenceStep } from "@/types/sequences"
 import type { StepEditorChange } from "./editorTypes"
 import { useDeviceStore } from "@/stores/deviceStore"
@@ -54,9 +54,9 @@ function clampMask(value: number, count = channelCount.value): number {
 	return (value & mask) >>> 0
 }
 
-function handleDeviceChange(value: string | number | null) {
+function handleDeviceChange(value: number | null) {
 	if (props.disabled) return
-	const parsed = value === null || value === "" ? null : Number(value)
+	const parsed = value === null ? null : Number(value)
 	const count = channelCountForDevice(parsed)
 	const safeMask = clampMask(bitmask.value, count)
 	emit("update", { payload: { device_id: parsed, bitmask: parsed ? safeMask : 0 } })
@@ -74,24 +74,15 @@ function handleMaskChange(value: number) {
 			<label for="sequence-step-mask-device" class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
 				Target DO device
 			</label>
-			<UiSelect
+			<DevicePickerCombobox
 				class="mt-1 w-64"
 				id="sequence-step-mask-device"
-				:model-value="deviceId ?? ''"
+				:model-value="deviceId"
+				:devices="doDevices"
+				:allowed-types="[CHANNEL_TYPES.DO]"
 				:disabled="disabled"
 				@update:modelValue="handleDeviceChange"
-			>
-				<option value="">
-					— select device —
-				</option>
-				<option
-					v-for="device in doDevices"
-					:key="device.id"
-					:value="device.id"
-				>
-					{{ device.display_name }}
-				</option>
-			</UiSelect>
+			/>
 		</div>
 
 		<div>

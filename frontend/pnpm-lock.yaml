@@ -17,6 +17,9 @@ importers:
       '@affino/disclosure-vue':
         specifier: ^0.1.0
         version: 0.1.0(vue@3.5.25(typescript@5.8.3))
+      '@affino/listbox-vue':
+        specifier: ^1.1.0
+        version: 1.1.0(vue@3.5.25(typescript@5.8.3))
       '@affino/menu-vue':
         specifier: 2.1.1
         version: 2.1.1(@affino/menu-core@1.1.0)(vue@3.5.25(typescript@5.8.3))
@@ -154,6 +157,14 @@ packages:
   '@affino/focus-utils@1.1.0':
     resolution: {integrity: sha512-DjE9w0WLlqmtjSXbmzf2y0WNGvhQ1hTIhkiRV8DPsCmKKXREr/6sm8Yc5PrCLqzuawdYUDzyDBEPxFqhMJOOCg==}
 
+  '@affino/listbox-core@1.1.0':
+    resolution: {integrity: sha512-qJbLMSpmTmcCq9hfPulLn0LYvl6k4onX6ibQiM4TRtlo682JBt0UYJ3w0M5rYtd9Ze2FuD8x1WITuvUNCeoFUw==}
+
+  '@affino/listbox-vue@1.1.0':
+    resolution: {integrity: sha512-i95td269wJ/gkUbsE0ah6qi5ShzrrN0/+mQ5MA/OzByN/VwIBBGvo5rOCWVUk0kpY47HZbgCRVcSAIwG3tqIbg==}
+    peerDependencies:
+      vue: ^3.3.0
+
   '@affino/menu-core@1.1.0':
     resolution: {integrity: sha512-8kXmr/ryhzXSSCF/ew813IhBr2LKztW4+hdpQzKptZnAO3oh8TIB2bY/nFpweVb4Nbl7GZtw+ZXKdKHLTKWpBw==}
 
@@ -190,6 +201,14 @@ packages:
 
   '@affino/projection-engine@0.2.2':
     resolution: {integrity: sha512-nHw1bl3gkZeq2R6y7T5O4tZ3ur9XCBR9MY8BQy7wIWBEzIs26R54+KYim81AFVNc4zFwl0Iyr2nI6Yg4Lo/QGA==}
+
+  '@affino/selection-core@1.1.1':
+    resolution: {integrity: sha512-mwP4URl+AuDsMdg9InkYcKIH367U+CdL/jPkBX74Wh4q/AaRhz0GMpe98DOF1O0fB/5p5vIxdFGA06qEx/5GTg==}
+
+  '@affino/selection-vue@1.1.0':
+    resolution: {integrity: sha512-RoQC9C2e/EK0i9NPM5UequBgXmgazAP5TsRo7NYUaB5bWuxLlcV/MxyJVLPD3uz7Hh7KP4qOfplzAqWyCvIPcQ==}
+    peerDependencies:
+      vue: ^3.3.0
 
   '@affino/surface-core@1.0.0':
     resolution: {integrity: sha512-K+7XzAFvcpXv262pe68kxq6fw51TgckbI2CyOLjKOthZPzXF7V0IJBZ5gTNq53vEqNh4qq4C5BrOKR0unbilPw==}
@@ -1790,6 +1809,16 @@ snapshots:
 
   '@affino/focus-utils@1.1.0': {}
 
+  '@affino/listbox-core@1.1.0':
+    dependencies:
+      '@affino/selection-core': 1.1.1
+
+  '@affino/listbox-vue@1.1.0(vue@3.5.25(typescript@5.8.3))':
+    dependencies:
+      '@affino/listbox-core': 1.1.0
+      '@affino/selection-vue': 1.1.0(vue@3.5.25(typescript@5.8.3))
+      vue: 3.5.25(typescript@5.8.3)
+
   '@affino/menu-core@1.1.0':
     dependencies:
       '@affino/overlay-kernel': 0.2.0
@@ -1832,6 +1861,14 @@ snapshots:
       vue: 3.5.25(typescript@5.8.3)
 
   '@affino/projection-engine@0.2.2': {}
+
+  '@affino/selection-core@1.1.1': {}
+
+  '@affino/selection-vue@1.1.0(vue@3.5.25(typescript@5.8.3))':
+    dependencies:
+      '@affino/listbox-core': 1.1.0
+      '@affino/selection-core': 1.1.1
+      vue: 3.5.25(typescript@5.8.3)
 
   '@affino/surface-core@1.0.0': {}
 
