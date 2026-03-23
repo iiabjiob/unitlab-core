@@ -85,7 +85,7 @@ export const useChannelStore = defineStore("channelStore", () => {
     let on = 0
     let off = 0
     doChannels.forEach(ch => {
-      const target = ((mask >> ch.index) & 1) === 1
+      const target = ((mask >>> ch.index) & 1) === 1
       if (target) {
         on += 1
       } else {
@@ -220,6 +220,7 @@ export const useChannelStore = defineStore("channelStore", () => {
     peekAoAction,
     clearAoAction,
     clearDoUiTimers,
+    resetDoUiState,
     enterDoPendingState,
     fulfillDoPendingState,
     hasPendingDoForDevice,
@@ -234,6 +235,7 @@ export const useChannelStore = defineStore("channelStore", () => {
     findDoChannel,
     enqueueAction,
     enterDoPendingState,
+    resetDoUiState,
     scheduleDoStateRefreshIfPending,
     requestStates,
     registerAoAction,

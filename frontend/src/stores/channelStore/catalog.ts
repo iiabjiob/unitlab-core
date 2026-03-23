@@ -53,6 +53,15 @@ export function createChannelCatalog(params: Params) {
       }
       channelsIndexByDeviceAndChannel.set(params.channelKey(channel.device_id, channel.index), channel)
     }
+
+    for (const byDevice of channelsIndexByDevice.values()) {
+      byDevice.sort((left, right) => {
+        if (left.index !== right.index) {
+          return left.index - right.index
+        }
+        return left.id - right.id
+      })
+    }
   }
 
   function channelsByDeviceFast(deviceId: number): readonly Channel[] {
@@ -227,12 +236,23 @@ export function createChannelCatalog(params: Params) {
       const updated = normalizeChannel(data)
       const idx = params.channels.value.findIndex(c => c.id === id)
       if (idx !== -1) {
-        params.channels.value[idx] = updated
-        rebuildChannelIndexes()
+        const current = params.channels.value[idx]
+        const needsReindex =
+          current.device_id !== updated.device_id ||
+          current.index !== updated.index ||
+          current.type !== updated.type
+
+        Object.assign(current, updated)
+
+        if (needsReindex) {
+          rebuildChannelIndexes()
+        }
       }
       params.logger.debug(`Channel ${id} updated`, updated)
+      return updated
     } catch (error) {
       params.logger.error(`Failed to update channel ${id}`, error)
+      throw error
     }
   }
 

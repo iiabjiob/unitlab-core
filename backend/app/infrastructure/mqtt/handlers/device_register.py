@@ -63,6 +63,7 @@ async def handle_device_register(topic: str, payload: bytes, unit_id: str):
 
     # enrich with Redis dynamic info
     redis_client = RedisManager.get_instance()
+    await redis_client.set(f"device:{unit_id}:type", str(device.device_type or type_).strip().lower())
     last_seen = await redis_client.get(f"device:{unit_id}:last_seen")
     status = "online" if last_seen else "offline"
 

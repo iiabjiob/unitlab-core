@@ -1,5 +1,9 @@
 import { CHANNEL_TYPES, type AoChannel, type AoChannelDiagnostics, type Channel, type ChannelDiagnostics, type DiChannel, type DoChannel } from "@/types/channel"
 
+function channelBit(index: number): number {
+  return 2 ** index
+}
+
 export type DoDiagnosticsBitmasks = {
   open_mask: number
   fault_mask: number
@@ -88,9 +92,9 @@ export function applyDoDiagnostics(doChannels: DoChannel[], diag: DoDiagnosticsB
   let changed = false
   doChannels.forEach(ch => {
     const state = ensureDoDiagnostics(ch)
-    const nextOpen = ((diag.open_mask >> ch.index) & 1) === 1
-    const nextFault = ((diag.fault_mask >> ch.index) & 1) === 1
-    const nextSoft = ((diag.soft_mask >> ch.index) & 1) === 1
+    const nextOpen = ((diag.open_mask >>> ch.index) & 1) === 1
+    const nextFault = ((diag.fault_mask >>> ch.index) & 1) === 1
+    const nextSoft = ((diag.soft_mask >>> ch.index) & 1) === 1
     if (state.open !== nextOpen || state.fault !== nextFault || state.soft !== nextSoft) {
       state.open = nextOpen
       state.fault = nextFault
@@ -108,7 +112,7 @@ export function applyAoDiagnostics(aoChannels: AoChannel[], diag: AoDiagnosticsB
 
   const changes: AoDiagnosticsChange[] = []
   aoChannels.forEach(ch => {
-    const bit = 1 << ch.index
+    const bit = channelBit(ch.index)
     const nextHasError = (diag.error_mask & bit) !== 0
     const inValid = (diag.valid_mask & bit) !== 0
     const inPending = (diag.pending_mask & bit) !== 0
@@ -154,7 +158,7 @@ export function applyDiDiagnostics(diChannels: DiChannel[], diag: DiDiagnosticsB
     const updates: DiDiagnosticsChange["updates"] = []
 
     if (diag.seen_mask !== undefined) {
-      const next = ((diag.seen_mask >> ch.index) & 1) === 1
+      const next = ((diag.seen_mask >>> ch.index) & 1) === 1
       if (state.seen !== next) {
         state.seen = next
         updates.push({ field: "seen", value: next })
@@ -162,7 +166,7 @@ export function applyDiDiagnostics(diChannels: DiChannel[], diag: DiDiagnosticsB
     }
 
     if (diag.stuck_mask !== undefined) {
-      const next = ((diag.stuck_mask >> ch.index) & 1) === 1
+      const next = ((diag.stuck_mask >>> ch.index) & 1) === 1
       if (state.stuck !== next) {
         state.stuck = next
         updates.push({ field: "stuck", value: next })
@@ -170,7 +174,7 @@ export function applyDiDiagnostics(diChannels: DiChannel[], diag: DiDiagnosticsB
     }
 
     if (diag.lost_mask !== undefined) {
-      const next = ((diag.lost_mask >> ch.index) & 1) === 1
+      const next = ((diag.lost_mask >>> ch.index) & 1) === 1
       if (state.lost !== next) {
         state.lost = next
         updates.push({ field: "lost", value: next })
@@ -178,7 +182,7 @@ export function applyDiDiagnostics(diChannels: DiChannel[], diag: DiDiagnosticsB
     }
 
     if (diag.latched_mask !== undefined) {
-      const next = ((diag.latched_mask >> ch.index) & 1) === 1
+      const next = ((diag.latched_mask >>> ch.index) & 1) === 1
       if (state.latched !== next) {
         state.latched = next
         updates.push({ field: "latched", value: next })
@@ -186,7 +190,7 @@ export function applyDiDiagnostics(diChannels: DiChannel[], diag: DiDiagnosticsB
     }
 
     if (diag.latched_changed_mask !== undefined) {
-      const next = ((diag.latched_changed_mask >> ch.index) & 1) === 1
+      const next = ((diag.latched_changed_mask >>> ch.index) & 1) === 1
       if (state.latchedChanged !== next) {
         state.latchedChanged = next
         updates.push({ field: "latchedChanged", value: next })
@@ -194,7 +198,7 @@ export function applyDiDiagnostics(diChannels: DiChannel[], diag: DiDiagnosticsB
     }
 
     if (diag.latched_cause_mask !== undefined) {
-      const next = ((diag.latched_cause_mask >> ch.index) & 1) === 1
+      const next = ((diag.latched_cause_mask >>> ch.index) & 1) === 1
       if (state.latchedCause !== next) {
         state.latchedCause = next
         updates.push({ field: "latchedCause", value: next })
@@ -225,7 +229,7 @@ export function applyDeltaState(
     if (ch.device_id !== deviceId || ch.type === CHANNEL_TYPES.AO) {
       return
     }
-    const bit = 1 << ch.index
+    const bit = channelBit(ch.index)
     if ((changedMask & bit) === 0) {
       return
     }

@@ -1,14 +1,17 @@
 <template>
-  <div
-    class="group px-2 py-1.5 text-sm select-none"
-    :class="{ 'opacity-60': disabled }"
-  >
+  <UiMenu>
+    <UiMenuTrigger as-child trigger="contextmenu">
+      <div
+        class="group rounded-md px-2 py-1.5 text-sm select-none"
+        :class="{ 'opacity-60': disabled }"
+      >
     <div v-if="effectiveType === 'ao'" class="flex justify-center">
-      <div class="grid w-full max-w-[40rem] min-w-0 grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-3">
+      <div class="grid w-full max-w-[40rem] min-w-0 grid-cols-[9rem_minmax(0,1fr)] items-start gap-3">
 
         <!-- Label -->
-        <div class="flex min-w-0 items-center justify-center text-center text-xs text-neutral-700 dark:text-neutral-300">
-          <span class="block min-w-0 truncate">{{ channel.resolved_name }}</span>
+        <div class="min-w-0 space-y-0.5 text-center">
+          <span class="block min-w-0 truncate text-xs font-semibold text-neutral-800 dark:text-neutral-100">{{ primaryChannelLabel }}</span>
+          <span v-if="secondaryChannelLabel" class="block min-w-0 truncate text-[10px] text-neutral-500 dark:text-neutral-400">{{ secondaryChannelLabel }}</span>
         </div>
 
         <!-- AO input -->
@@ -66,12 +69,12 @@
       </div>
     </div>
 
-    <div v-else class="flex min-w-0 items-center gap-3">
+    <div v-else class="grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-x-3 gap-y-0.5">
 
       <!-- DO control -->
       <div
         v-if="effectiveType === 'do'"
-        class="flex h-5 w-5 cursor-default items-center justify-center rounded-sm border transition-colors"
+        class="col-start-1 row-start-1 mt-0.5 flex h-5 w-5 cursor-default items-center justify-center rounded-sm border transition-colors"
         :class="[doControlClass, { 'cursor-not-allowed opacity-70': isWaiting || disabled }]"
         @click.stop="onToggleClick"
       >
@@ -86,22 +89,50 @@
       <!-- DI indicator -->
       <div
         v-else-if="effectiveType === 'di'"
-        class="h-4 w-4 rounded-full border transition-all duration-200"
+        class="col-start-1 row-start-1 mt-0.5 h-4 w-4 rounded-full border transition-all duration-200"
         :class="diIndicatorClass"
       />
 
       <!-- Label -->
-      <div class="min-w-0 text-xs text-neutral-700 dark:text-neutral-300">
-        <span class="block min-w-0 truncate">{{ channel.resolved_name }}</span>
+      <div class="col-start-2 row-start-1 min-w-0 leading-tight">
+        <span class="block min-w-0 truncate text-xs font-semibold text-neutral-800 dark:text-neutral-100">{{ primaryChannelLabel }}</span>
+        <span v-if="secondaryChannelLabel" class="mt-0.5 block min-w-0 truncate text-[10px] text-neutral-500 dark:text-neutral-400">{{ secondaryChannelLabel }}</span>
       </div>
     </div>
-  </div>
+      </div>
+    </UiMenuTrigger>
+
+    <UiMenuContent>
+      <UiMenuItem class="text-neutral-900 dark:text-neutral-100" @select="openRename">
+        Rename
+      </UiMenuItem>
+    </UiMenuContent>
+  </UiMenu>
+
+  <RenameModal
+    :open="renameOpen"
+    title="Rename channel"
+    label="Name"
+    v-model="renameValue"
+    :loading="renaming"
+    :error="renameError"
+    @cancel="cancelRename"
+    @confirm="confirmRename"
+  />
 </template>
 
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
 import UiButton from "@/components/ui/UiButton.vue"
+import RenameModal from "@/components/ui/RenameModal.vue"
+import { useChannelStore } from "@/stores/channelStore"
+import {
+  UiMenu,
+  UiMenuTrigger,
+  UiMenuContent,
+  UiMenuItem,
+} from "@/components/ui/menu"
 import type { AoChannel, Channel, DiChannel, DoChannel } from "@/types/channel"
 import { formatAoValue } from "@/utils/channel"
 
@@ -118,6 +149,12 @@ const emit = defineEmits<{
   (e: "toggle", ch: Channel): void
   (e: "set-ao", payload: { channel: Channel; value: number }): void
 }>()
+
+const channelStore = useChannelStore()
+const renameOpen = ref(false)
+const renameValue = ref(props.channel.name ?? "")
+const renaming = ref(false)
+const renameError = ref("")
 
 const effectiveType = computed<Channel["type"] | null>(() => {
   const channelType = props.channel.type
@@ -149,6 +186,24 @@ const aoChannel = computed<AoChannel | null>(() => (
 const aoInputRef = ref<HTMLInputElement | null>(null)
 const aoDraftValue = ref("")
 
+const fallbackChannelLabel = computed(() => `CH${props.channel.index + 1}`)
+const primaryChannelLabel = computed(() => {
+  const explicitName = String(props.channel.name ?? "").trim()
+  if (explicitName) {
+    return explicitName
+  }
+  const resolved = String(props.channel.resolved_name ?? "").trim()
+  return resolved || fallbackChannelLabel.value
+})
+
+const secondaryChannelLabel = computed(() => {
+  const explicitName = String(props.channel.name ?? "").trim()
+  if (!explicitName) {
+    return ""
+  }
+  return fallbackChannelLabel.value
+})
+
 watch(
   () => [aoChannel.value?.id ?? null, aoChannel.value?.state ?? null] as const,
   ([, state]) => {
@@ -159,6 +214,15 @@ watch(
     aoDraftValue.value = ""
   },
   { immediate: true }
+)
+
+watch(
+  () => props.channel.name,
+  (value) => {
+    if (!renameOpen.value) {
+      renameValue.value = value ?? ""
+    }
+  },
 )
 
 const diAlertActive = computed(() => {
@@ -188,11 +252,11 @@ const doControlClass = computed(() => {
   if (isError.value) {
     return "bg-red-500 border-red-500 text-white animate-pulse"
   }
-  if (doChannel.value?.state) {
-    return "bg-green-500 border-green-600 text-white"
-  }
   if (isWaiting.value) {
     return "bg-yellow-400/80 border-yellow-500 text-yellow-900"
+  }
+  if (doChannel.value?.state) {
+    return "bg-green-500 border-green-600 text-white"
   }
   return "bg-neutral-300 dark:bg-neutral-700 border-neutral-600 hover:bg-neutral-600"
 })
@@ -272,6 +336,44 @@ function onToggleClick() {
     return
   }
   emit("toggle", props.channel)
+}
+
+function openRename() {
+  renameValue.value = props.channel.name ?? ""
+  renameError.value = ""
+  renameOpen.value = true
+}
+
+function cancelRename() {
+  if (renaming.value) return
+  renameOpen.value = false
+  renameError.value = ""
+  renameValue.value = props.channel.name ?? ""
+}
+
+async function confirmRename() {
+  if (renaming.value) return
+
+  const trimmed = renameValue.value.trim()
+  const nextName = trimmed.length > 0 ? trimmed : null
+  const currentName = String(props.channel.name ?? "").trim() || null
+
+  if (nextName === currentName) {
+    renameOpen.value = false
+    return
+  }
+
+  renameError.value = ""
+  renaming.value = true
+
+  try {
+    await channelStore.updateChannelField(props.channel.id, { name: nextName })
+    renameOpen.value = false
+  } catch (error) {
+    renameError.value = error instanceof Error ? error.message : "Failed to rename channel"
+  } finally {
+    renaming.value = false
+  }
 }
 
 function submitAoValue() {

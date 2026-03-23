@@ -1,8 +1,9 @@
 import { CHANNEL_TYPES, type Channel, type DoChannel, type DoChannelUiState, type TimeoutHandle } from "@/types/channel"
 
-const COMMAND_PENDING_DEBOUNCE_MS = 150
+const COMMAND_PENDING_DEBOUNCE_MS = 50
 const COMMAND_TIMEOUT_MS = 2000
 const COMMAND_FAILURE_DISPLAY_MS = 2000
+const COMMAND_STATE_REFRESH_FALLBACK_MS = 120
 
 type RequestStatesFn = (deviceId: number, options?: { includeDiagnostics?: boolean; silent?: boolean }) => void
 
@@ -158,7 +159,7 @@ export function createChannelCommandRuntime(params: CreateChannelCommandRuntimeP
       // after the command and should not suppress the fallback DO state request.
       // The authoritative guard is the actual pending UI state above.
       params.requestStates(deviceId, { includeDiagnostics: false, silent: true })
-    }, 360)
+    }, COMMAND_STATE_REFRESH_FALLBACK_MS)
     doStateRefreshTimers.set(deviceId, timer)
   }
 

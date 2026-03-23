@@ -2,6 +2,8 @@ import { formatTs } from "@/utils/datetime"
 import { defineStore } from "pinia"
 import { ref } from "vue"
 
+const MAX_LOGS_PER_DEVICE = 500
+
 export type ChannelLogEntry = {
   ts: string
   t: number
@@ -21,11 +23,16 @@ export const useChannelLogStore = defineStore("channelLogStore", () => {
 
     if (!logs.value[deviceId]) logs.value[deviceId] = []
 
-    logs.value[deviceId].push({
+    const deviceLogs = logs.value[deviceId]
+    deviceLogs.push({
       ts: formatTs(now),
       t: now,
       ...entry,
     })
+
+    if (deviceLogs.length > MAX_LOGS_PER_DEVICE) {
+      deviceLogs.splice(0, deviceLogs.length - MAX_LOGS_PER_DEVICE)
+    }
   }
 
   function clear(deviceId: number) {

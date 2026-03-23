@@ -8,13 +8,9 @@ const props = defineProps<{ device: Device }>()
 
 const logStore = useChannelLogStore()
 const logs = computed(() => logStore.logs[props.device.id] ?? [])
-const sortedLogs = computed(() =>
-  [...(logStore.logs[props.device.id] ?? [])]
-    .sort((a, b) => a.t - b.t)
-)
 
 const logContainer = ref<HTMLElement | null>(null)
-useAutoScroll(sortedLogs, logContainer)
+useAutoScroll(logs, logContainer)
 const copyButtonText = ref("Copy log")
 let copyFeedbackTimeout: number | null = null
 
@@ -29,16 +25,16 @@ function setCopyButtonFeedback(text: string, durationMs = 1500) {
   }, durationMs)
 }
 
-function toLine(log: (typeof sortedLogs.value)[number]): string {
+function toLine(log: (typeof logs.value)[number]): string {
   const action = log.actionId ? ` #${log.actionId}` : ""
   const reason = log.reason ? ` (reason: ${log.reason})` : ""
   return `[${log.ts}] ${String(log.type).toUpperCase()}${action}: ${log.message}${reason}`
 }
 
-const logText = computed(() => sortedLogs.value.map(toLine).join("\n"))
+const logText = computed(() => logs.value.map(toLine).join("\n"))
 
 async function copyLogs() {
-  if (!sortedLogs.value.length) {
+  if (!logs.value.length) {
     setCopyButtonFeedback("No logs")
     return
   }
@@ -99,9 +95,9 @@ onBeforeUnmount(() => {
              text-neutral-700 dark:text-neutral-300"
     >
 
-      <template v-for="(log, i) in sortedLogs" :key="i">
+      <template v-for="(log, i) in logs" :key="i">
         <div
-          v-if="log.actionId && (i === 0 || log.actionId !== sortedLogs[i - 1]?.actionId)"
+          v-if="log.actionId && (i === 0 || log.actionId !== logs[i - 1]?.actionId)"
           class="text-[10px] uppercase tracking-wide text-blue-400/80 mt-1"
         >
           Action {{ log.actionId }}

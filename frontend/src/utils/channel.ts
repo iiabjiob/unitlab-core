@@ -71,10 +71,14 @@ export function ensureChannel(entity: Channel | ChannelDto, fallbackType?: Chann
   return normalizeChannel(entity as ChannelDto, fallbackType)
 }
 
+function channelBit(index: number): number {
+  return 2 ** index
+}
+
 export function buildBitmask(channels: Channel[], state: boolean): number {
   const mask = channels.reduce((mask, ch) => {
     if (ch.type !== CHANNEL_TYPES.DO) return mask
-    const bit = 1 << ch.index
+    const bit = channelBit(ch.index)
     return state ? (mask | bit) : (mask & ~bit)
   }, 0)
 
@@ -84,7 +88,7 @@ export function buildBitmask(channels: Channel[], state: boolean): number {
 export function buildToggleBitmask(channels: Channel[]): number {
   const mask = channels.reduce((mask, ch) => {
     if (ch.type !== CHANNEL_TYPES.DO) return mask
-    const bit = 1 << ch.index
+    const bit = channelBit(ch.index)
     return ch.state ? (mask & ~bit) : (mask | bit)
   }, 0)
 

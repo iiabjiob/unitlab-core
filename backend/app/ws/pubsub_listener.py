@@ -13,6 +13,7 @@ from app.ws.manager import WebSocketManager
 
 logger = get_logger("ws.sub")
 
+_STATE_FLUSH_DEBOUNCE_SEC = 0.03
 _STATUS_FAST_THROTTLE_SEC = 1.0
 _STATUS_PENDING_MAX = 512
 
@@ -100,6 +101,49 @@ async def forward_ws_events_from_pubsub():
     throttled_status_events = 0
     retry_delay_sec = 1.0
     pubsub = None
+    state_flush_task: asyncio.Task[None] | None = None
+
+    async def flush_state_events(reason: str) -> None:
+        nonlocal coalesced_state_replacements, state_flush_task
+        if state_flush_task is not None and state_flush_task is not asyncio.current_task():
+            state_flush_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await state_flush_task
+            state_flush_task = None
+        if pending_state_events:
+            logger.debug(
+                "WS state coalesce flush: pending=%d replacements=%d (%s)",
+                len(pending_state_events),
+                coalesced_state_replacements,
+                reason,
+            )
+            await _flush_pending_state_events(manager, pending_state_events)
+            coalesced_state_replacements = 0
+
+    def ensure_state_flush_timer() -> None:
+        nonlocal state_flush_task, coalesced_state_replacements
+        if state_flush_task is not None and not state_flush_task.done():
+            return
+
+        async def _delayed_flush() -> None:
+            nonlocal state_flush_task, coalesced_state_replacements
+            try:
+                await asyncio.sleep(_STATE_FLUSH_DEBOUNCE_SEC)
+                if pending_state_events:
+                    logger.debug(
+                        "WS state coalesce flush: pending=%d replacements=%d (debounce %.0f ms)",
+                        len(pending_state_events),
+                        coalesced_state_replacements,
+                        _STATE_FLUSH_DEBOUNCE_SEC * 1000,
+                    )
+                    await _flush_pending_state_events(manager, pending_state_events)
+                    coalesced_state_replacements = 0
+            except asyncio.CancelledError:
+                raise
+            finally:
+                state_flush_task = None
+
+        state_flush_task = asyncio.create_task(_delayed_flush(), name="ws-state-flush")
 
     try:
         while True:
@@ -128,14 +172,9 @@ async def forward_ws_events_from_pubsub():
                         if hb_kind == "diag":
                             pending_status_events.pop(status_key, None)
                             if pending_state_events:
-                                logger.debug(
-                                    "WS state coalesce flush: pending=%d replacements=%d (boundary channel=%s)",
-                                    len(pending_state_events),
-                                    coalesced_state_replacements,
-                                    data.get("channel") if isinstance(data, dict) else None,
+                                await flush_state_events(
+                                    f"diag boundary channel={data.get('channel') if isinstance(data, dict) else None}"
                                 )
-                                await _flush_pending_state_events(manager, pending_state_events)
-                                coalesced_state_replacements = 0
 
                             await manager.broadcast(data)
                             last_status_emit_at[status_key] = now
@@ -161,14 +200,9 @@ async def forward_ws_events_from_pubsub():
                         can_emit_now = last_emit is None or (now - last_emit) >= _STATUS_FAST_THROTTLE_SEC
                         if can_emit_now:
                             if pending_state_events:
-                                logger.debug(
-                                    "WS state coalesce flush: pending=%d replacements=%d (boundary channel=%s)",
-                                    len(pending_state_events),
-                                    coalesced_state_replacements,
-                                    data.get("channel") if isinstance(data, dict) else None,
+                                await flush_state_events(
+                                    f"status boundary channel={data.get('channel') if isinstance(data, dict) else None}"
                                 )
-                                await _flush_pending_state_events(manager, pending_state_events)
-                                coalesced_state_replacements = 0
 
                             await manager.broadcast(data)
                             last_status_emit_at[status_key] = now
@@ -233,25 +267,15 @@ async def forward_ws_events_from_pubsub():
                         if state_key in pending_state_events:
                             coalesced_state_replacements += 1
                         pending_state_events[state_key] = data
+                        ensure_state_flush_timer()
                         if len(pending_state_events) >= 512:
-                            logger.debug(
-                                "WS state coalesce flush: pending=%d replacements=%d (threshold)",
-                                len(pending_state_events),
-                                coalesced_state_replacements,
-                            )
-                            await _flush_pending_state_events(manager, pending_state_events)
-                            coalesced_state_replacements = 0
+                            await flush_state_events("threshold")
                         continue
 
                     if pending_state_events:
-                        logger.debug(
-                            "WS state coalesce flush: pending=%d replacements=%d (boundary channel=%s)",
-                            len(pending_state_events),
-                            coalesced_state_replacements,
-                            data.get("channel") if isinstance(data, dict) else None,
+                        await flush_state_events(
+                            f"boundary channel={data.get('channel') if isinstance(data, dict) else None}"
                         )
-                        await _flush_pending_state_events(manager, pending_state_events)
-                        coalesced_state_replacements = 0
 
                     flushed_status = await _flush_pending_status_events(
                         manager,
@@ -279,6 +303,10 @@ async def forward_ws_events_from_pubsub():
             finally:
                 if pubsub is not None:
                     with suppress(asyncio.CancelledError):
+                        if state_flush_task is not None:
+                            state_flush_task.cancel()
+                            await asyncio.gather(state_flush_task, return_exceptions=True)
+                            state_flush_task = None
                         await _flush_pending_state_events(manager, pending_state_events)
                         final_now = time.monotonic()
                         await _flush_pending_status_events(

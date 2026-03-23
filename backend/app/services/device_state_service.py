@@ -9,6 +9,24 @@ from app.core.utils import to_str, to_int
 
 class DeviceStateService:
     @staticmethod
+    async def _should_emit_unchanged_event(unit_id: str, raw_mode: int, redis) -> bool:
+        """Allow authoritative state snapshots for controllable devices without flooding passive DI streams."""
+        if raw_mode == State.STATE_SINGLE_FLOAT:
+            return True
+
+        if raw_mode not in (State.STATE_ALL_BIT, State.STATE_SINGLE_BIT):
+            return False
+
+        device_type_raw = await redis.get(f"device:{unit_id}:type")
+        device_type = to_str(device_type_raw, "").strip().lower()
+        if not device_type:
+            prefix = unit_id.split("-", 1)[0].strip().lower()
+            if prefix in {"do", "di", "ao"}:
+                device_type = prefix
+
+        return device_type in {"do", "ao"}
+
+    @staticmethod
     def _normalize_state_mode(raw_mode: int) -> State:
         """Collapse firmware-specific aliases to a canonical State enum."""
         if raw_mode == State.DIAG_DI_BIT_V2:
@@ -116,7 +134,7 @@ class DeviceStateService:
                 await redis.hset(latched_key, mapping=new_mapping)
                 changed = True
 
-        if not changed:
+        if not changed and not await DeviceStateService._should_emit_unchanged_event(unit_id, hdr.mode, redis):
             return False, None
 
         event = DeviceStateEvent(

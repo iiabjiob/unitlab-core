@@ -92,7 +92,7 @@ export function createChannelRuntimeReducer(params: Params) {
     const changedIndexes: number[] = []
     for (const ch of params.channelsByDeviceFast(deviceId)) {
       if (ch.type === CHANNEL_TYPES.AO) continue
-      const next = ((mask >> ch.index) & 1) === 1
+      const next = ((mask >>> ch.index) & 1) === 1
       if (ch.state !== next) {
         ch.state = next
         changed = true

@@ -9,6 +9,9 @@ import {
 } from "@/types/ws/messages"
 import { CHANNEL_TYPES, type Channel, type DoChannel } from "@/types/channel"
 
+const AO_STATE_REFRESH_FALLBACK_MS = 100
+const DO_BULK_STATE_RECONCILE_MS = 120
+
 type LoggerLike = {
   info: (message: string) => void
   error: (message: string) => void
@@ -31,6 +34,7 @@ type Params = {
   findDoChannel: (deviceId: number, chIndex: number) => DoChannel | undefined
   enqueueAction: (deviceId: number) => string
   enterDoPendingState: (channel: DoChannel, target: boolean, actionId?: string) => void
+  resetDoUiState: (channel: DoChannel) => void
   scheduleDoStateRefreshIfPending: (deviceId: number, commandIssuedAt: number) => void
   requestStates: RequestStatesFn
   registerAoAction: (deviceId: number, chIndex: number, actionId: string) => void
@@ -44,6 +48,10 @@ type Params = {
 }
 
 export function createChannelTransportActions(params: Params) {
+  function applyOptimisticDoState(channel: DoChannel, target: boolean) {
+    channel.state = target
+  }
+
   function sendDoCommand(unitId: string, chIndex: number, state: boolean) {
     const deviceStore = useDeviceStore()
     const device = deviceStore.devices.find(d => d.unit_id === unitId)
@@ -52,13 +60,8 @@ export function createChannelTransportActions(params: Params) {
       return
     }
 
-    const actionId = params.enqueueAction(device.id)
-    const channel = params.findDoChannel(device.id, chIndex)
-    if (channel) {
-      params.enterDoPendingState(channel, state, actionId)
-    }
-
     const ws = useWebSocketStore()
+    const actionId = params.enqueueAction(device.id)
     const msg: SetDoCommandMessage = {
       action: WSAction.SET_DO_COMMAND,
       unit_id: device.unit_id,
@@ -68,6 +71,12 @@ export function createChannelTransportActions(params: Params) {
     }
     const commandIssuedAt = Date.now()
     ws.send(msg)
+
+    const channel = params.findDoChannel(device.id, chIndex)
+    if (channel) {
+      params.enterDoPendingState(channel, state, actionId)
+    }
+
     params.scheduleDoStateRefreshIfPending(device.id, commandIssuedAt)
     const targetLabel = params.toDigitalLabel(state)
     params.logger.info(`➡️ DO cmd ${device.unit_id} ch=${chIndex} → ${targetLabel}`)
@@ -93,29 +102,31 @@ export function createChannelTransportActions(params: Params) {
       ch => ch.type === CHANNEL_TYPES.DO,
     ) as DoChannel[]
 
-    const actionId = params.enqueueAction(device.id)
-
-    doChannels.forEach(ch => {
-      const target = ((mask >> ch.index) & 1) === 1
-      params.enterDoPendingState(ch, target, actionId)
-    })
-    const maskSummary = params.formatSummary(params.summarizeMaskTargets(doChannels, mask))
-
     const ws = useWebSocketStore()
-    const commandIssuedAt = Date.now()
+    const maskSummary = params.formatSummary(params.summarizeMaskTargets(doChannels, mask))
     ws.send({
       action: WSAction.SET_DO_COMMAND,
       unit_id: unitId,
       mode: CmdMode.SET_ALL_BIT,
       bitmask: mask,
     } satisfies SetDoCommandMessage)
-    params.scheduleDoStateRefreshIfPending(device.id, commandIssuedAt)
+
+    doChannels.forEach(ch => {
+      const target = ((mask >>> ch.index) & 1) === 1
+      params.resetDoUiState(ch)
+      applyOptimisticDoState(ch, target)
+    })
+
+    setTimeout(() => {
+      params.requestStates(device.id, { includeDiagnostics: false, silent: true })
+    }, DO_BULK_STATE_RECONCILE_MS)
+
     params.logger.info(`➡️ DO ALL cmd ${unitId} targets → ${maskSummary}`)
 
     params.pushDeviceLog(device.id, {
       type: "cmd",
-      message: `User requested DO ALL (${maskSummary})${params.formatPendingSuffix(doChannels.length > 0)}`,
-    }, actionId)
+      message: `User requested DO ALL (${maskSummary})`,
+    })
   }
 
   function sendDoPairCommand(
@@ -153,11 +164,8 @@ export function createChannelTransportActions(params: Params) {
       return { ok: false, error }
     }
 
-    const actionId = params.enqueueAction(device.id)
-    params.enterDoPendingState(channelA, pairTargets[0], actionId)
-    params.enterDoPendingState(channelB, pairTargets[1], actionId)
-
     const ws = useWebSocketStore()
+    const actionId = params.enqueueAction(device.id)
     const commandIssuedAt = Date.now()
     ws.send({
       action: WSAction.SET_DO_COMMAND,
@@ -167,6 +175,12 @@ export function createChannelTransportActions(params: Params) {
       chB,
       state2b,
     } satisfies SetDoCommandMessage)
+
+    params.enterDoPendingState(channelA, pairTargets[0], actionId)
+    params.enterDoPendingState(channelB, pairTargets[1], actionId)
+    applyOptimisticDoState(channelA, pairTargets[0])
+    applyOptimisticDoState(channelB, pairTargets[1])
+
     params.scheduleDoStateRefreshIfPending(device.id, commandIssuedAt)
 
     const pairLabels = params.decodePairLabels(state2b)
@@ -191,21 +205,22 @@ export function createChannelTransportActions(params: Params) {
       return
     }
 
-    const actionId = params.enqueueAction(device.id)
-    params.registerAoAction(device.id, chIndex, actionId)
-
     const ws = useWebSocketStore()
+    const actionId = params.enqueueAction(device.id)
     ws.send({
       action: WSAction.SET_AO_COMMAND,
       unit_id: device.unit_id,
       ch: chIndex,
       value,
     } satisfies SetAoCommandMessage)
+
+    params.registerAoAction(device.id, chIndex, actionId)
+
     // AO value and diagnostics are separate frames; pull both after the command to avoid
     // showing a stale number without the corresponding quality/fault state.
     setTimeout(() => {
       params.requestStates(device.id, { includeDiagnostics: true, silent: true })
-    }, 220)
+    }, AO_STATE_REFRESH_FALLBACK_MS)
     const aoValue = formatAoValue(value)
     params.logger.info(`➡️ AO cmd ${device.unit_id} ch=${chIndex} → ${aoValue} mA`)
 
