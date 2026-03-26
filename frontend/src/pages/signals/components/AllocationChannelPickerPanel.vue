@@ -126,9 +126,9 @@
         </div>
       </div>
 
-      <div class="border-t border-neutral-200 px-4 py-3 text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+      <!-- <div class="border-t border-neutral-200 px-4 py-3 text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
         Search narrows units and channels. Enter selects a channel, arrows navigate the tree.
-      </div>
+      </div> -->
     </div>
   </SlideOver>
 </template>
