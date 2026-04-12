@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from app.core.sequence_dto import SequenceEvent, SequenceEventType
 from app.infrastructure.redis.stream_bus import append_sequence_event
+from app.schemas.sequence_run_schema import SequenceRuntimeSchema
 
 
 class SequenceEventStream:
@@ -16,6 +17,7 @@ class SequenceEventStream:
         total_steps: int,
         request_id: Optional[str] = None,
         requested_by: Optional[str] = None,
+        runtime: Optional[SequenceRuntimeSchema] = None,
     ) -> None:
         await SequenceEventStream._emit(
             SequenceEvent(
@@ -26,6 +28,7 @@ class SequenceEventStream:
                     "total_steps": total_steps,
                     "request_id": request_id,
                     "requested_by": requested_by,
+                    "runtime": runtime.model_dump() if runtime else None,
                 },
             )
         )
@@ -36,6 +39,7 @@ class SequenceEventStream:
         run_id: int,
         current_step_index: int,
         total_steps: int,
+        runtime: Optional[SequenceRuntimeSchema] = None,
     ) -> None:
         await SequenceEventStream._emit(
             SequenceEvent(
@@ -45,6 +49,7 @@ class SequenceEventStream:
                 data={
                     "current_step_index": current_step_index,
                     "total_steps": total_steps,
+                    "runtime": runtime.model_dump() if runtime else None,
                 },
             )
         )
@@ -77,9 +82,11 @@ class SequenceEventStream:
         step_index: int,
         step_id: int,
         step_type: str,
+        progress_scope: str,
         step_elapsed_ms: int,
         run_elapsed_ms: int,
         completed_step_ids: List[int],
+        runtime: Optional[SequenceRuntimeSchema] = None,
     ) -> None:
         await SequenceEventStream._emit(
             SequenceEvent(
@@ -90,9 +97,11 @@ class SequenceEventStream:
                     "step_index": step_index,
                     "step_id": step_id,
                     "step_type": step_type,
+                    "progress_scope": progress_scope,
                     "step_elapsed_ms": step_elapsed_ms,
                     "run_elapsed_ms": run_elapsed_ms,
                     "completed_step_ids": completed_step_ids,
+                    "runtime": runtime.model_dump() if runtime else None,
                 },
             )
         )
@@ -105,6 +114,7 @@ class SequenceEventStream:
         elapsed_ms: int,
         current_step_index: Optional[int] = None,
         total_steps: Optional[int] = None,
+        runtime: Optional[SequenceRuntimeSchema] = None,
     ) -> None:
         payload: Dict[str, Any] = {
             "status": status,
@@ -114,6 +124,8 @@ class SequenceEventStream:
             payload["current_step_index"] = current_step_index
         if total_steps is not None:
             payload["total_steps"] = total_steps
+        if runtime is not None:
+            payload["runtime"] = runtime.model_dump()
 
         await SequenceEventStream._emit(
             SequenceEvent(
@@ -131,6 +143,7 @@ class SequenceEventStream:
         message: str,
         step_index: Optional[int] = None,
         step_id: Optional[int] = None,
+        runtime: Optional[SequenceRuntimeSchema] = None,
     ) -> None:
         await SequenceEventStream._emit(
             SequenceEvent(
@@ -141,6 +154,7 @@ class SequenceEventStream:
                     "message": message,
                     "step_index": step_index,
                     "step_id": step_id,
+                    "runtime": runtime.model_dump() if runtime else None,
                 },
             )
         )

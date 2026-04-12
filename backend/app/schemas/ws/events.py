@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from app.infrastructure.protocol.modes import State
 from app.infrastructure.protocol.packet_structures import RespStatus, RespError
 from app.schemas.device_schema import DeviceSchema
+from app.schemas.sequence_run_schema import SequenceRuntimeSchema
 from enum import Enum
 
 # -----------------------------------------------------------------
@@ -90,6 +91,7 @@ class SequenceEventBase(BaseModel):
 class SequenceStartedEvent(SequenceEventBase):
     event: Literal["started"] = "started"
     total_steps: int
+    runtime: SequenceRuntimeSchema | None = None
 
 
 class SequenceProgressEvent(SequenceEventBase):
@@ -97,9 +99,11 @@ class SequenceProgressEvent(SequenceEventBase):
     step_index: int
     step_id: int
     step_type: str
+    progress_scope: Literal["step", "nested_step"] = "step"
     step_elapsed_ms: int
     run_elapsed_ms: int
     completed_steps: List[int]
+    runtime: SequenceRuntimeSchema | None = None
 
 
 class SequenceStepErrorEvent(SequenceEventBase):
@@ -107,26 +111,31 @@ class SequenceStepErrorEvent(SequenceEventBase):
     step_index: int
     step_id: int
     message: str
+    runtime: SequenceRuntimeSchema | None = None
 
 
 class SequenceErrorEvent(SequenceEventBase):
     event: Literal["error"] = "error"
     message: str
+    runtime: SequenceRuntimeSchema | None = None
 
 
 class SequenceStoppingEvent(SequenceEventBase):
     event: Literal["stopping"] = "stopping"
     current_step_index: int
     total_steps: int
+    runtime: SequenceRuntimeSchema | None = None
 
 
 class SequenceStoppedEvent(SequenceEventBase):
     event: Literal["stopped"] = "stopped"
+    runtime: SequenceRuntimeSchema | None = None
 
 
 class SequenceCompletedEvent(SequenceEventBase):
     event: Literal["completed"] = "completed"
     elapsed_ms: int
+    runtime: SequenceRuntimeSchema | None = None
 
 
 class SystemHealthChangedEvent(BaseModel):

@@ -70,6 +70,70 @@ const progressText = computed(() => {
   return `Progress: ${progress.value}% · step ${stepLabel.value} of ${total}`
 })
 
+function formatElapsed(ms?: number | null) {
+  if (!Number.isFinite(ms ?? NaN) || !ms || ms < 0) {
+    return null
+  }
+
+  const totalSeconds = Math.floor(ms / 1000)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  return [hours, minutes, seconds]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":")
+}
+
+const runtimeStepText = computed(() => {
+  const runtime = state.value.runtime
+  if (!runtime?.active_sequence_name) {
+    return null
+  }
+
+  if (
+    typeof runtime.active_step_index === "number"
+    && typeof runtime.active_total_steps === "number"
+  ) {
+    return `${runtime.active_sequence_name} · step ${runtime.active_step_index + 1}/${runtime.active_total_steps}`
+  }
+
+  return runtime.active_sequence_name
+})
+
+const runtimePathText = computed(() => {
+  const path = state.value.runtime?.execution_path?.filter(Boolean) ?? []
+  if (path.length <= 1) {
+    return null
+  }
+  return path.join(" -> ")
+})
+
+const runtimeIterationText = computed(() => {
+  const runtime = state.value.runtime
+  if (!runtime?.repeat_mode || typeof runtime.iteration_current !== "number") {
+    return null
+  }
+
+  if (runtime.repeat_mode === "times") {
+    if (typeof runtime.iteration_total === "number") {
+      return `Iteration ${runtime.iteration_current} / ${runtime.iteration_total}`
+    }
+    return `Iteration ${runtime.iteration_current}`
+  }
+
+  if (runtime.repeat_mode === "duration") {
+    return `Iteration ${runtime.iteration_current} · timed run`
+  }
+
+  return `Iteration ${runtime.iteration_current} · until stopped`
+})
+
+const runtimeElapsedText = computed(() => {
+  const formatted = formatElapsed(state.value.runtime?.run_elapsed_ms)
+  return formatted ? `Elapsed ${formatted}` : null
+})
+
 async function startInstruction() {
   actionLoading.value = "start"
   try {
@@ -153,6 +217,15 @@ async function toggleRun() {
       <span class="text-xs text-neutral-500 dark:text-neutral-400">
         {{ progressText }}
       </span>
+    </div>
+    <div
+      v-if="runtimeStepText || runtimePathText || runtimeIterationText || runtimeElapsedText"
+      class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400"
+    >
+      <span v-if="runtimeStepText">{{ runtimeStepText }}</span>
+      <span v-if="runtimePathText">Path: {{ runtimePathText }}</span>
+      <span v-if="runtimeIterationText">{{ runtimeIterationText }}</span>
+      <span v-if="runtimeElapsedText">{{ runtimeElapsedText }}</span>
     </div>
     <p v-if="state.last_error" class="mt-3 text-xs text-red-600 dark:text-red-300">
       Error: {{ state.last_error }}

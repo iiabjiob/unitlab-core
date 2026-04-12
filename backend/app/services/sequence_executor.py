@@ -250,6 +250,28 @@ class SequenceExecutor:
         self._last_probe_at.pop(id(cancel_event), None)
         return result
 
+    async def execute_step(
+        self,
+        *,
+        ctx: StepContext,
+        cancel_event: asyncio.Event,
+        cancellation_probe: Optional[CancellationProbe] = None,
+    ) -> None:
+        async def _probe() -> None:
+            if not cancellation_probe:
+                return
+            now = time.monotonic()
+            last_checked = self._last_probe_at.get(id(cancel_event))
+            if last_checked is not None and now - last_checked < self._cancellation_probe_min_interval:
+                return
+            self._last_probe_at[id(cancel_event)] = now
+            await cancellation_probe()
+
+        try:
+            await self._execute_step(ctx, cancel_event, _probe)
+        finally:
+            self._last_probe_at.pop(id(cancel_event), None)
+
     async def _handle_cancellation(
         self,
         ctx: StepContext,

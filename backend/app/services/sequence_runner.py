@@ -4,7 +4,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -14,14 +14,14 @@ from app.core.logger import get_logger
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.models.channel import Channel
 from app.models.device import Device
-from app.models.sequence import Sequence, SequenceStep
+from app.models.sequence import Sequence, SequenceStep, SequenceStepType
 from app.models.sequence_run import (
     SequenceRun,
     SequenceRunStatus,
     SequenceRunStep,
     SequenceRunStepStatus,
 )
-from app.schemas.sequence_run_schema import SequenceStateSchema
+from app.schemas.sequence_run_schema import SequenceRuntimeSchema, SequenceStateSchema
 from app.services.domain_errors import (
     ChannelNotFoundError,
     SequenceNotApplicableError,
@@ -31,6 +31,7 @@ from app.services.sequence_executor import (
     ChannelInfo,
     DeviceInfo,
     RunStartedEvent,
+    SequenceCancellationRequested,
     SequenceExecutionResult,
     SequenceExecutor,
     SequenceExecutorHooks,
@@ -65,6 +66,69 @@ class ActiveRun:
     task: asyncio.Task[None]
 
 
+@dataclass(frozen=True)
+class ResolvedSequenceStep:
+    sequence_id: int
+    sequence_name: str
+    sequence_step_id: int
+    order_index: int
+    total_steps: int
+    step_type: SequenceStepType
+    payload: dict[str, Any]
+    primary_channel: Optional[ChannelInfo]
+    pair_channels: List[ChannelInfo]
+    target_device: Optional[DeviceInfo]
+    run_step_id: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class ResolvedSequenceDefinition:
+    id: int
+    name: str
+    steps: List[ResolvedSequenceStep]
+
+
+@dataclass(frozen=True)
+class RepeatStepConfig:
+    mode: str
+    iterations: Optional[int] = None
+    duration_ms: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class ExecutionLoopState:
+    current: int
+    total: Optional[int]
+    mode: str
+
+
+@dataclass(frozen=True)
+class RuntimeCursor:
+    active_sequence_id: int
+    active_sequence_name: str
+    active_step_id: int
+    active_step_index: int
+    active_total_steps: int
+    active_step_type: str
+    execution_path: tuple[str, ...]
+    loop_state: Optional[ExecutionLoopState] = None
+
+    def to_schema(self, *, start_time: float) -> SequenceRuntimeSchema:
+        return SequenceRuntimeSchema(
+            execution_path=list(self.execution_path),
+            active_sequence_id=self.active_sequence_id,
+            active_sequence_name=self.active_sequence_name,
+            active_step_id=self.active_step_id,
+            active_step_index=self.active_step_index,
+            active_total_steps=self.active_total_steps,
+            active_step_type=self.active_step_type,
+            iteration_current=self.loop_state.current if self.loop_state else None,
+            iteration_total=self.loop_state.total if self.loop_state else None,
+            repeat_mode=self.loop_state.mode if self.loop_state else None,
+            run_elapsed_ms=int((time.monotonic() - start_time) * 1000),
+        )
+
+
 class SequenceRunner:
     """Coordinates asynchronous sequence executions directly from stored sequences."""
 
@@ -92,7 +156,7 @@ class SequenceRunner:
             if sequence_id in self._active_runs:
                 raise SequenceAlreadyRunningError(f"Sequence {sequence_id} already running")
 
-            run_id, contexts = await self._create_run(
+            run_id, root_sequence, resolved_sequences = await self._create_run(
                 sequence_id,
                 signal_bindings=signal_bindings or {},
             )
@@ -101,7 +165,8 @@ class SequenceRunner:
                 self._execute_run(
                     sequence_id=sequence_id,
                     run_id=run_id,
-                    contexts=contexts,
+                    root_sequence=root_sequence,
+                    resolved_sequences=resolved_sequences,
                     cancel_event=cancel_event,
                     request_id=request_id,
                     requested_by=requested_by,
@@ -265,6 +330,7 @@ class SequenceRunner:
         started_at: datetime,
         start_time: float,
         last_error: Optional[str] = None,
+        runtime: Optional[SequenceRuntimeSchema] = None,
     ) -> None:
         elapsed_total = int((time.monotonic() - start_time) * 1000)
         finished_at = datetime.now(timezone.utc)
@@ -296,6 +362,7 @@ class SequenceRunner:
                 last_error=last_error,
                 started_at=started_at,
                 finished_at=finished_at,
+                runtime=runtime,
             ),
         )
         self._reset_cancellation_probe(run_id)
@@ -369,6 +436,7 @@ class SequenceRunner:
         started_at: datetime,
         request_id: Optional[str],
         requested_by: Optional[str],
+        runtime: Optional[SequenceRuntimeSchema] = None,
     ) -> None:
         await SequenceEventStream.started(
             sequence_id=sequence_id,
@@ -376,6 +444,7 @@ class SequenceRunner:
             total_steps=total_steps,
             request_id=request_id,
             requested_by=requested_by,
+            runtime=runtime,
         )
         self._cache_state(
             sequence_id,
@@ -389,6 +458,7 @@ class SequenceRunner:
                 last_error=None,
                 started_at=started_at,
                 finished_at=None,
+                runtime=runtime,
             ),
         )
         logger.info(
@@ -396,6 +466,33 @@ class SequenceRunner:
             sequence_id,
             run_id,
             total_steps,
+        )
+
+    def _cache_running_state(
+        self,
+        *,
+        sequence_id: int,
+        run_id: int,
+        current_step_index: int,
+        total_steps: int,
+        completed_step_ids: List[int],
+        started_at: datetime,
+        runtime: Optional[SequenceRuntimeSchema],
+    ) -> None:
+        self._cache_state(
+            sequence_id,
+            SequenceStateSchema(
+                sequence_id=sequence_id,
+                status="running",
+                run_id=run_id,
+                current_step_index=current_step_index,
+                total_steps=total_steps,
+                completed_step_ids=list(completed_step_ids),
+                last_error=None,
+                started_at=started_at,
+                finished_at=None,
+                runtime=runtime,
+            ),
         )
 
 
@@ -451,7 +548,7 @@ class SequenceRunner:
         sequence_id: int,
         *,
         signal_bindings: dict[str, int] | None = None,
-    ) -> tuple[int, List[StepContext]]:
+    ) -> tuple[int, ResolvedSequenceDefinition, dict[int, ResolvedSequenceDefinition]]:
         signal_bindings = signal_bindings or {}
         async with AsyncSessionLocal() as session:
             sequence = await self._load_sequence(session, sequence_id, include_steps=True)
@@ -479,112 +576,25 @@ class SequenceRunner:
 
             try:
                 await session.flush()
-
-                primary_channel_ids: set[int] = set()
-                payload_channel_ids: set[int] = set()
-                device_ids: set[int] = set()
-                payload_by_step_id: Dict[int, dict] = {}
-                primary_channel_by_step_id: Dict[int, int | None] = {}
-
-                for step in ordered_steps:
-                    payload = self._resolve_payload_channel_ids(
-                        step.payload or {},
-                        signal_bindings=signal_bindings,
-                    )
-                    resolved_primary = self._resolve_primary_channel_id(
-                        step=step,
-                        payload=payload,
-                        signal_bindings=signal_bindings,
-                    )
-
-                    payload_by_step_id[step.id] = payload
-                    primary_channel_by_step_id[step.id] = resolved_primary
-
-                    if resolved_primary is not None:
-                        primary_channel_ids.add(int(resolved_primary))
-
-                    for channel_id in payload.get("channel_ids") or []:
-                        if channel_id is None:
-                            continue
-                        payload_channel_ids.add(int(channel_id))
-                    device_id = payload.get("device_id")
-                    if device_id is not None:
-                        device_ids.add(int(device_id))
-
-                all_channel_ids = primary_channel_ids | payload_channel_ids
-                channel_lookup: Dict[int, ChannelInfo] = {}
-                if all_channel_ids:
-                    channel_stmt = (
-                        select(Channel)
-                        .options(selectinload(Channel.device))
-                        .where(Channel.id.in_(all_channel_ids))
-                    )
-                    channel_rows = await session.execute(channel_stmt)
-                    channels = {channel.id: channel for channel in channel_rows.scalars()}
-                    missing_channels = sorted(all_channel_ids - channels.keys())
-                    if missing_channels:
-                        raise ChannelNotFoundError(
-                            "Channels not found: " + ", ".join(map(str, missing_channels))
-                        )
-                    for channel in channels.values():
-                        if channel.device is None:
-                            raise SequenceNotApplicableError(
-                                f"Channel {channel.id} is not attached to a device"
-                            )
-                        channel_lookup[channel.id] = ChannelInfo(
-                            id=channel.id,
-                            device_id=channel.device_id,
-                            unit_id=channel.device.unit_id,
-                            channel_index=channel.channel_index,
-                        )
-                        device_ids.add(channel.device_id)
-
-                device_lookup: Dict[int, DeviceInfo] = {}
-                if device_ids:
-                    device_stmt = select(Device).where(Device.id.in_(device_ids))
-                    device_rows = await session.execute(device_stmt)
-                    devices = {device.id: device for device in device_rows.scalars()}
-                    missing_devices = sorted(device_ids - devices.keys())
-                    if missing_devices:
-                        raise SequenceNotApplicableError(
-                            "Devices not found: " + ", ".join(map(str, missing_devices))
-                        )
-                    for device in devices.values():
-                        device_lookup[device.id] = DeviceInfo(id=device.id, unit_id=device.unit_id)
-
-                contexts: List[StepContext] = []
-                for index, (step, run_step) in enumerate(zip(ordered_steps, run.steps)):
-                    payload = dict(payload_by_step_id.get(step.id) or {})
-                    primary_channel_id = primary_channel_by_step_id.get(step.id)
-                    primary = channel_lookup.get(primary_channel_id) if primary_channel_id else None
-                    pair_channels = []
-                    for channel_id in payload.get("channel_ids") or []:
-                        info = channel_lookup.get(int(channel_id))
-                        if info:
-                            pair_channels.append(info)
-                    target_device = None
-                    payload_device_id = payload.get("device_id")
-                    if payload_device_id is not None:
-                        target_device = device_lookup.get(int(payload_device_id))
-                    elif primary:
-                        target_device = device_lookup.get(primary.device_id)
-
-                    contexts.append(
-                        StepContext(
-                            index=index,
-                            sequence_step_id=step.id,
-                            run_step_id=run_step.id,
-                            step_type=step.sequence_step_type,
-                            payload=payload,
-                            primary_channel=primary,
-                            pair_channels=pair_channels,
-                            target_device=target_device,
-                        )
-                    )
-
+                resolved_cache: dict[int, ResolvedSequenceDefinition] = {}
+                resolved_root = await self._build_resolved_sequence(
+                    session,
+                    sequence_id,
+                    signal_bindings=signal_bindings,
+                    resolved_cache=resolved_cache,
+                    channel_cache={},
+                    device_cache={},
+                    stack=(),
+                )
+                run_step_id_by_step_id = {
+                    step.id: run_step.id
+                    for step, run_step in zip(ordered_steps, run.steps)
+                }
+                root_with_run_steps = self._attach_run_step_ids(resolved_root, run_step_id_by_step_id)
+                resolved_cache[sequence_id] = root_with_run_steps
                 await session.commit()
-                return run.id, contexts
-            except (ChannelNotFoundError, SequenceNotApplicableError):
+                return run.id, root_with_run_steps, resolved_cache
+            except (ChannelNotFoundError, SequenceNotApplicableError, SequenceNotFoundError):
                 await session.rollback()
                 raise
             except IntegrityError as exc:
@@ -592,6 +602,284 @@ class SequenceRunner:
                 if self._is_active_run_violation(exc):
                     raise SequenceAlreadyRunningError(f"Sequence {sequence.id} already running") from exc
                 raise
+
+    async def _build_resolved_sequence(
+        self,
+        session,
+        sequence_id: int,
+        *,
+        signal_bindings: dict[str, int],
+        resolved_cache: dict[int, ResolvedSequenceDefinition],
+        channel_cache: dict[int, ChannelInfo],
+        device_cache: dict[int, DeviceInfo],
+        stack: tuple[int, ...],
+    ) -> ResolvedSequenceDefinition:
+        cached = resolved_cache.get(sequence_id)
+        if cached is not None:
+            return cached
+
+        if sequence_id in stack:
+            cycle = " -> ".join(map(str, [*stack, sequence_id]))
+            raise SequenceNotApplicableError(f"Sequence call cycle detected: {cycle}")
+
+        sequence = await self._load_sequence(session, sequence_id, include_steps=True)
+        if not sequence:
+            raise SequenceNotFoundError(f"Sequence {sequence_id} not found")
+
+        ordered_steps = sorted(sequence.steps, key=lambda step: step.order_index)
+        if not ordered_steps:
+            raise SequenceNotApplicableError(f"Sequence {sequence.name} has no steps to execute")
+
+        payload_by_step_id: Dict[int, dict[str, Any]] = {}
+        primary_channel_by_step_id: Dict[int, int | None] = {}
+        primary_channel_ids: set[int] = set()
+        payload_channel_ids: set[int] = set()
+        device_ids: set[int] = set()
+
+        for step in ordered_steps:
+            payload = self._resolve_payload_channel_ids(
+                step.payload or {},
+                signal_bindings=signal_bindings,
+            )
+            resolved_primary = self._resolve_primary_channel_id(
+                step=step,
+                payload=payload,
+                signal_bindings=signal_bindings,
+            )
+            target_sequence_id = self._resolve_target_sequence_id(step=step, payload=payload)
+            if target_sequence_id is not None:
+                payload["target_sequence_id"] = target_sequence_id
+
+            payload_by_step_id[step.id] = payload
+            primary_channel_by_step_id[step.id] = resolved_primary
+
+            if resolved_primary is not None:
+                primary_channel_ids.add(int(resolved_primary))
+
+            for channel_id in payload.get("channel_ids") or []:
+                if channel_id is None:
+                    continue
+                payload_channel_ids.add(int(channel_id))
+
+            device_id = payload.get("device_id")
+            if device_id is not None:
+                device_ids.add(int(device_id))
+
+        all_channel_ids = primary_channel_ids | payload_channel_ids
+        channel_lookup = await self._load_channel_infos(
+            session,
+            all_channel_ids,
+            channel_cache=channel_cache,
+        )
+        for channel in channel_lookup.values():
+            device_ids.add(channel.device_id)
+
+        device_lookup = await self._load_device_infos(
+            session,
+            device_ids,
+            device_cache=device_cache,
+        )
+
+        next_stack = (*stack, sequence_id)
+        steps: list[ResolvedSequenceStep] = []
+        for step in ordered_steps:
+            payload = dict(payload_by_step_id.get(step.id) or {})
+            target_sequence_id = payload.get("target_sequence_id")
+            if target_sequence_id is not None:
+                await self._build_resolved_sequence(
+                    session,
+                    int(target_sequence_id),
+                    signal_bindings=signal_bindings,
+                    resolved_cache=resolved_cache,
+                    channel_cache=channel_cache,
+                    device_cache=device_cache,
+                    stack=next_stack,
+                )
+
+            primary_channel_id = primary_channel_by_step_id.get(step.id)
+            primary = channel_lookup.get(primary_channel_id) if primary_channel_id else None
+            pair_channels: list[ChannelInfo] = []
+            for channel_id in payload.get("channel_ids") or []:
+                info = channel_lookup.get(int(channel_id))
+                if info:
+                    pair_channels.append(info)
+
+            target_device = None
+            payload_device_id = payload.get("device_id")
+            if payload_device_id is not None:
+                target_device = device_lookup.get(int(payload_device_id))
+            elif primary:
+                target_device = device_lookup.get(primary.device_id)
+
+            steps.append(
+                ResolvedSequenceStep(
+                    sequence_id=sequence.id,
+                    sequence_name=sequence.name,
+                    sequence_step_id=step.id,
+                    order_index=step.order_index,
+                    total_steps=len(ordered_steps),
+                    step_type=step.sequence_step_type,
+                    payload=payload,
+                    primary_channel=primary,
+                    pair_channels=pair_channels,
+                    target_device=target_device,
+                )
+            )
+
+        resolved = ResolvedSequenceDefinition(id=sequence.id, name=sequence.name, steps=steps)
+        resolved_cache[sequence_id] = resolved
+        return resolved
+
+    async def _load_channel_infos(
+        self,
+        session,
+        channel_ids: set[int],
+        *,
+        channel_cache: dict[int, ChannelInfo],
+    ) -> dict[int, ChannelInfo]:
+        if not channel_ids:
+            return {}
+
+        missing_ids = sorted(channel_ids - channel_cache.keys())
+        if missing_ids:
+            channel_stmt = (
+                select(Channel)
+                .options(selectinload(Channel.device))
+                .where(Channel.id.in_(missing_ids))
+            )
+            channel_rows = await session.execute(channel_stmt)
+            channels = {channel.id: channel for channel in channel_rows.scalars()}
+            missing_channels = sorted(set(missing_ids) - channels.keys())
+            if missing_channels:
+                raise ChannelNotFoundError(
+                    "Channels not found: " + ", ".join(map(str, missing_channels))
+                )
+            for channel in channels.values():
+                if channel.device is None:
+                    raise SequenceNotApplicableError(
+                        f"Channel {channel.id} is not attached to a device"
+                    )
+                channel_cache[channel.id] = ChannelInfo(
+                    id=channel.id,
+                    device_id=channel.device_id,
+                    unit_id=channel.device.unit_id,
+                    channel_index=channel.channel_index,
+                )
+
+        return {
+            channel_id: channel_cache[channel_id]
+            for channel_id in channel_ids
+            if channel_id in channel_cache
+        }
+
+    async def _load_device_infos(
+        self,
+        session,
+        device_ids: set[int],
+        *,
+        device_cache: dict[int, DeviceInfo],
+    ) -> dict[int, DeviceInfo]:
+        if not device_ids:
+            return {}
+
+        missing_ids = sorted(device_ids - device_cache.keys())
+        if missing_ids:
+            device_stmt = select(Device).where(Device.id.in_(missing_ids))
+            device_rows = await session.execute(device_stmt)
+            devices = {device.id: device for device in device_rows.scalars()}
+            missing_devices = sorted(set(missing_ids) - devices.keys())
+            if missing_devices:
+                raise SequenceNotApplicableError(
+                    "Devices not found: " + ", ".join(map(str, missing_devices))
+                )
+            for device in devices.values():
+                device_cache[device.id] = DeviceInfo(id=device.id, unit_id=device.unit_id)
+
+        return {
+            device_id: device_cache[device_id]
+            for device_id in device_ids
+            if device_id in device_cache
+        }
+
+    @staticmethod
+    def _attach_run_step_ids(
+        sequence: ResolvedSequenceDefinition,
+        run_step_id_by_step_id: dict[int, int],
+    ) -> ResolvedSequenceDefinition:
+        return ResolvedSequenceDefinition(
+            id=sequence.id,
+            name=sequence.name,
+            steps=[
+                ResolvedSequenceStep(
+                    sequence_id=step.sequence_id,
+                    sequence_name=step.sequence_name,
+                    sequence_step_id=step.sequence_step_id,
+                    order_index=step.order_index,
+                    total_steps=step.total_steps,
+                    step_type=step.step_type,
+                    payload=dict(step.payload),
+                    primary_channel=step.primary_channel,
+                    pair_channels=list(step.pair_channels),
+                    target_device=step.target_device,
+                    run_step_id=run_step_id_by_step_id.get(step.sequence_step_id),
+                )
+                for step in sequence.steps
+            ],
+        )
+
+    @staticmethod
+    def _resolve_target_sequence_id(*, step, payload: dict[str, Any]) -> int | None:
+        step_type = getattr(step.sequence_step_type, "value", str(step.sequence_step_type))
+        if step_type not in {"CALL_SEQUENCE", "REPEAT_SEQUENCE"}:
+            return None
+
+        raw_target = payload.get("target_sequence_id")
+        if raw_target is None or str(raw_target).strip() == "":
+            raise SequenceNotApplicableError(f"{step_type} step requires target_sequence_id")
+
+        try:
+            target_sequence_id = int(raw_target)
+        except (TypeError, ValueError) as exc:
+            raise SequenceNotApplicableError(
+                f"{step_type} target_sequence_id must be a positive integer"
+            ) from exc
+
+        if target_sequence_id <= 0:
+            raise SequenceNotApplicableError(
+                f"{step_type} target_sequence_id must be a positive integer"
+            )
+
+        return target_sequence_id
+
+    @staticmethod
+    def _parse_repeat_config(payload: dict[str, Any]) -> RepeatStepConfig:
+        raw_mode = str(payload.get("repeat_mode") or "times").strip().lower()
+        if raw_mode == "times":
+            raw_iterations = payload.get("iterations")
+            try:
+                iterations = int(raw_iterations)
+            except (TypeError, ValueError) as exc:
+                raise SequenceNotApplicableError("REPEAT_SEQUENCE iterations must be a positive integer") from exc
+            if iterations <= 0:
+                raise SequenceNotApplicableError("REPEAT_SEQUENCE iterations must be a positive integer")
+            return RepeatStepConfig(mode="times", iterations=iterations)
+
+        if raw_mode == "duration":
+            raw_duration = payload.get("duration_ms")
+            try:
+                duration_ms = int(raw_duration)
+            except (TypeError, ValueError) as exc:
+                raise SequenceNotApplicableError("REPEAT_SEQUENCE duration_ms must be a positive integer") from exc
+            if duration_ms <= 0:
+                raise SequenceNotApplicableError("REPEAT_SEQUENCE duration_ms must be a positive integer")
+            return RepeatStepConfig(mode="duration", duration_ms=duration_ms)
+
+        if raw_mode == "until_stopped":
+            return RepeatStepConfig(mode="until_stopped")
+
+        raise SequenceNotApplicableError(
+            "REPEAT_SEQUENCE repeat_mode must be one of: times, duration, until_stopped"
+        )
 
     @staticmethod
     def _resolve_payload_channel_ids(
@@ -659,12 +947,13 @@ class SequenceRunner:
         self,
         sequence_id: int,
         run_id: int,
-        contexts: List[StepContext],
+        root_sequence: ResolvedSequenceDefinition,
+        resolved_sequences: dict[int, ResolvedSequenceDefinition],
         cancel_event: asyncio.Event,
         request_id: Optional[str],
         requested_by: Optional[str],
     ) -> None:
-        total_steps = len(contexts)
+        total_steps = len(root_sequence.steps)
         start_time = time.monotonic()
         started_at = datetime.now(timezone.utc)
         completed_step_ids: List[int] = []
@@ -699,23 +988,195 @@ class SequenceRunner:
                     return
 
                 await session.commit()
-
-                hooks = self._build_executor_hooks(
-                    session=session,
+                await self._on_run_started(
                     sequence_id=sequence_id,
                     run_id=run_id,
                     total_steps=total_steps,
                     started_at=started_at,
-                    start_time=start_time,
                     request_id=request_id,
                     requested_by=requested_by,
                 )
 
-                await self._executor.run(
-                    contexts=contexts,
-                    cancel_event=cancel_event,
-                    hooks=hooks,
-                    cancellation_probe=lambda: self._probe_cancellation_from_db(run_id, cancel_event),
+                for top_step in root_sequence.steps:
+                    await self._probe_cancellation_from_db(run_id, cancel_event)
+                    if cancel_event.is_set():
+                        cancellation_index = await self._record_cancellation(
+                            session=session,
+                            run_id=run_id,
+                            current_step=None,
+                            step_started_monotonic=None,
+                            fallback_index=len(completed_step_ids),
+                        )
+                        await session.commit()
+                        await self._publish_terminal_state(
+                            sequence_id=sequence_id,
+                            run_id=run_id,
+                            status="stopped",
+                            current_step_index=cancellation_index,
+                            total_steps=total_steps,
+                            completed_step_ids=completed_step_ids,
+                            started_at=started_at,
+                            start_time=start_time,
+                        )
+                        return
+
+                    top_step_started_at = datetime.now(timezone.utc)
+                    top_step_started_monotonic = time.monotonic()
+                    top_runtime_cursor = self._build_runtime_cursor(
+                        active_sequence=root_sequence,
+                        active_step=top_step,
+                        execution_path=(root_sequence.name,),
+                    )
+                    top_runtime = top_runtime_cursor.to_schema(start_time=start_time)
+
+                    if top_step.run_step_id is not None:
+                        await self._set_step_running(session, top_step.run_step_id, top_step_started_at)
+                    await session.commit()
+
+                    self._cache_running_state(
+                        sequence_id=sequence_id,
+                        run_id=run_id,
+                        current_step_index=top_step.order_index,
+                        total_steps=total_steps,
+                        completed_step_ids=completed_step_ids,
+                        started_at=started_at,
+                        runtime=top_runtime,
+                    )
+                    await SequenceEventStream.step_started(
+                        sequence_id=sequence_id,
+                        run_id=run_id,
+                        step_index=top_step.order_index,
+                        step_id=top_step.sequence_step_id,
+                        step_type=top_step.step_type.value,
+                    )
+
+                    try:
+                        await self._execute_resolved_step(
+                            sequence_id=sequence_id,
+                            run_id=run_id,
+                            total_steps=total_steps,
+                            started_at=started_at,
+                            start_time=start_time,
+                            completed_step_ids=completed_step_ids,
+                            cancel_event=cancel_event,
+                            top_level_step=top_step,
+                            active_sequence=root_sequence,
+                            active_step=top_step,
+                            execution_path=(root_sequence.name,),
+                            resolved_sequences=resolved_sequences,
+                        )
+                    except SequenceCancellationRequested:
+                        cancel_event.set()
+                        cancellation_index = await self._record_cancellation(
+                            session=session,
+                            run_id=run_id,
+                            current_step=self._build_step_context(top_step=top_step, active_step=top_step),
+                            step_started_monotonic=top_step_started_monotonic,
+                            fallback_index=len(completed_step_ids),
+                        )
+                        await session.commit()
+                        await self._publish_terminal_state(
+                            sequence_id=sequence_id,
+                            run_id=run_id,
+                            status="stopped",
+                            current_step_index=cancellation_index,
+                            total_steps=total_steps,
+                            completed_step_ids=completed_step_ids,
+                            started_at=started_at,
+                            start_time=start_time,
+                            runtime=top_runtime_cursor.to_schema(start_time=start_time),
+                        )
+                        return
+                    except SequenceNotApplicableError as exc:
+                        failure_runtime = self._state_cache.get(sequence_id)
+                        await self._handle_step_failure(
+                            session=session,
+                            sequence_id=sequence_id,
+                            run_id=run_id,
+                            total_steps=total_steps,
+                            started_at=started_at,
+                            start_time=start_time,
+                            completed_step_ids=completed_step_ids,
+                            top_level_step=top_step,
+                            top_step_started_monotonic=top_step_started_monotonic,
+                            message=str(exc),
+                            runtime=failure_runtime.runtime if failure_runtime else top_runtime_cursor.to_schema(start_time=start_time),
+                        )
+                        return
+                    except Exception as exc:  # noqa: BLE001
+                        logger.exception(
+                            "Sequence step failed unexpectedly (sequence=%s, run=%s, step=%s)",
+                            sequence_id,
+                            run_id,
+                            top_step.sequence_step_id,
+                        )
+                        await self._handle_step_failure(
+                            session=session,
+                            sequence_id=sequence_id,
+                            run_id=run_id,
+                            total_steps=total_steps,
+                            started_at=started_at,
+                            start_time=start_time,
+                            completed_step_ids=completed_step_ids,
+                            top_level_step=top_step,
+                            top_step_started_monotonic=top_step_started_monotonic,
+                            message=str(exc),
+                            runtime=(
+                                self._state_cache.get(sequence_id).runtime
+                                if self._state_cache.get(sequence_id)
+                                else top_runtime_cursor.to_schema(start_time=start_time)
+                            ),
+                        )
+                        return
+
+                    if top_step.run_step_id is not None:
+                        await self._mark_step_status(
+                            session,
+                            top_step.run_step_id,
+                            SequenceRunStepStatus.COMPLETED,
+                            top_step_started_monotonic,
+                        )
+                    completed_step_ids.append(top_step.sequence_step_id)
+                    await session.execute(
+                        update(SequenceRun)
+                        .where(SequenceRun.id == run_id)
+                        .values(current_step_index=top_step.order_index + 1)
+                    )
+                    await session.commit()
+
+                    await SequenceEventStream.step_completed(
+                        sequence_id=sequence_id,
+                        run_id=run_id,
+                        step_index=top_step.order_index,
+                        step_id=top_step.sequence_step_id,
+                        step_type=top_step.step_type.value,
+                        progress_scope="step",
+                        step_elapsed_ms=int((time.monotonic() - top_step_started_monotonic) * 1000),
+                        run_elapsed_ms=int((time.monotonic() - start_time) * 1000),
+                        completed_step_ids=list(completed_step_ids),
+                        runtime=top_runtime_cursor.to_schema(start_time=start_time),
+                    )
+                    self._cache_running_state(
+                        sequence_id=sequence_id,
+                        run_id=run_id,
+                        current_step_index=top_step.order_index + 1,
+                        total_steps=total_steps,
+                        completed_step_ids=completed_step_ids,
+                        started_at=started_at,
+                        runtime=top_runtime_cursor.to_schema(start_time=start_time),
+                    )
+
+                await self._mark_run_completed(session, run_id)
+                await session.commit()
+                await self._publish_terminal_state(
+                    sequence_id=sequence_id,
+                    run_id=run_id,
+                    status="completed",
+                    current_step_index=total_steps,
+                    total_steps=total_steps,
+                    completed_step_ids=completed_step_ids,
+                    started_at=started_at,
+                    start_time=start_time,
                 )
         except Exception as exc:  # noqa: BLE001
             logger.exception(
@@ -724,6 +1185,232 @@ class SequenceRunner:
                 run_id,
             )
             raise
+
+    @staticmethod
+    def _build_runtime_cursor(
+        *,
+        active_sequence: ResolvedSequenceDefinition,
+        active_step: ResolvedSequenceStep,
+        execution_path: tuple[str, ...],
+        loop_state: Optional[ExecutionLoopState] = None,
+    ) -> RuntimeCursor:
+        return RuntimeCursor(
+            active_sequence_id=active_sequence.id,
+            active_sequence_name=active_sequence.name,
+            active_step_id=active_step.sequence_step_id,
+            active_step_index=active_step.order_index,
+            active_total_steps=active_step.total_steps,
+            active_step_type=active_step.step_type.value,
+            execution_path=execution_path,
+            loop_state=loop_state,
+        )
+
+    @staticmethod
+    def _build_step_context(
+        *,
+        top_step: ResolvedSequenceStep,
+        active_step: ResolvedSequenceStep,
+    ) -> StepContext:
+        return StepContext(
+            index=top_step.order_index,
+            sequence_step_id=top_step.sequence_step_id,
+            run_step_id=top_step.run_step_id,
+            step_type=active_step.step_type,
+            payload=dict(active_step.payload),
+            primary_channel=active_step.primary_channel,
+            pair_channels=list(active_step.pair_channels),
+            target_device=active_step.target_device,
+        )
+
+    async def _execute_resolved_step(
+        self,
+        *,
+        sequence_id: int,
+        run_id: int,
+        total_steps: int,
+        started_at: datetime,
+        start_time: float,
+        completed_step_ids: List[int],
+        cancel_event: asyncio.Event,
+        top_level_step: ResolvedSequenceStep,
+        active_sequence: ResolvedSequenceDefinition,
+        active_step: ResolvedSequenceStep,
+        execution_path: tuple[str, ...],
+        resolved_sequences: dict[int, ResolvedSequenceDefinition],
+        loop_state: Optional[ExecutionLoopState] = None,
+    ) -> None:
+        await self._probe_cancellation_from_db(run_id, cancel_event)
+        if cancel_event.is_set():
+            raise SequenceCancellationRequested()
+
+        runtime_cursor = self._build_runtime_cursor(
+            active_sequence=active_sequence,
+            active_step=active_step,
+            execution_path=execution_path,
+            loop_state=loop_state,
+        )
+        self._cache_running_state(
+            sequence_id=sequence_id,
+            run_id=run_id,
+            current_step_index=top_level_step.order_index,
+            total_steps=total_steps,
+            completed_step_ids=completed_step_ids,
+            started_at=started_at,
+            runtime=runtime_cursor.to_schema(start_time=start_time),
+        )
+
+        if active_step.step_type == SequenceStepType.CALL_SEQUENCE:
+            target_sequence_id = int(active_step.payload["target_sequence_id"])
+            child_sequence = resolved_sequences.get(target_sequence_id)
+            if child_sequence is None:
+                raise SequenceNotApplicableError(f"Target sequence {target_sequence_id} is not available")
+            child_path = (*execution_path, child_sequence.name)
+            for child_step in child_sequence.steps:
+                await self._execute_resolved_step(
+                    sequence_id=sequence_id,
+                    run_id=run_id,
+                    total_steps=total_steps,
+                    started_at=started_at,
+                    start_time=start_time,
+                    completed_step_ids=completed_step_ids,
+                    cancel_event=cancel_event,
+                    top_level_step=top_level_step,
+                    active_sequence=child_sequence,
+                    active_step=child_step,
+                    execution_path=child_path,
+                    resolved_sequences=resolved_sequences,
+                    loop_state=loop_state,
+                )
+            return
+
+        if active_step.step_type == SequenceStepType.REPEAT_SEQUENCE:
+            target_sequence_id = int(active_step.payload["target_sequence_id"])
+            child_sequence = resolved_sequences.get(target_sequence_id)
+            if child_sequence is None:
+                raise SequenceNotApplicableError(f"Target sequence {target_sequence_id} is not available")
+            repeat = self._parse_repeat_config(active_step.payload)
+            deadline = (
+                time.monotonic() + (repeat.duration_ms / 1000)
+                if repeat.duration_ms is not None
+                else None
+            )
+            iteration = 0
+            child_path = (*execution_path, child_sequence.name)
+
+            while True:
+                await self._probe_cancellation_from_db(run_id, cancel_event)
+                if cancel_event.is_set():
+                    raise SequenceCancellationRequested()
+
+                if repeat.mode == "times" and iteration >= (repeat.iterations or 0):
+                    break
+                if repeat.mode == "duration" and deadline is not None and time.monotonic() >= deadline:
+                    break
+
+                iteration += 1
+                child_loop = ExecutionLoopState(
+                    current=iteration,
+                    total=repeat.iterations if repeat.mode == "times" else None,
+                    mode=repeat.mode,
+                )
+                for child_step in child_sequence.steps:
+                    await self._execute_resolved_step(
+                        sequence_id=sequence_id,
+                        run_id=run_id,
+                        total_steps=total_steps,
+                        started_at=started_at,
+                        start_time=start_time,
+                        completed_step_ids=completed_step_ids,
+                        cancel_event=cancel_event,
+                        top_level_step=top_level_step,
+                        active_sequence=child_sequence,
+                        active_step=child_step,
+                        execution_path=child_path,
+                        resolved_sequences=resolved_sequences,
+                        loop_state=child_loop,
+                    )
+
+                if repeat.mode == "duration" and deadline is not None and time.monotonic() >= deadline:
+                    break
+            return
+
+        atomic_started_monotonic = time.monotonic()
+        await self._executor.execute_step(
+            ctx=self._build_step_context(top_step=top_level_step, active_step=active_step),
+            cancel_event=cancel_event,
+            cancellation_probe=lambda: self._probe_cancellation_from_db(run_id, cancel_event),
+        )
+
+        is_nested_progress = (
+            active_sequence.id != top_level_step.sequence_id
+            or active_step.sequence_step_id != top_level_step.sequence_step_id
+            or loop_state is not None
+        )
+        if not is_nested_progress:
+            return
+
+        await SequenceEventStream.step_completed(
+            sequence_id=sequence_id,
+            run_id=run_id,
+            step_index=top_level_step.order_index,
+            step_id=top_level_step.sequence_step_id,
+            step_type=top_level_step.step_type.value,
+            progress_scope="nested_step",
+            step_elapsed_ms=int((time.monotonic() - atomic_started_monotonic) * 1000),
+            run_elapsed_ms=int((time.monotonic() - start_time) * 1000),
+            completed_step_ids=list(completed_step_ids),
+            runtime=runtime_cursor.to_schema(start_time=start_time),
+        )
+
+    async def _handle_step_failure(
+        self,
+        *,
+        session,
+        sequence_id: int,
+        run_id: int,
+        total_steps: int,
+        started_at: datetime,
+        start_time: float,
+        completed_step_ids: List[int],
+        top_level_step: ResolvedSequenceStep,
+        top_step_started_monotonic: float,
+        message: str,
+        runtime: Optional[SequenceRuntimeSchema],
+    ) -> None:
+        if top_level_step.run_step_id is not None:
+            await self._mark_step_status(
+                session,
+                top_level_step.run_step_id,
+                SequenceRunStepStatus.ERROR,
+                top_step_started_monotonic,
+                message,
+            )
+        await self._mark_run_error(session, run_id, top_level_step.order_index, message)
+        await session.commit()
+        await SequenceEventStream.failed(
+            sequence_id=sequence_id,
+            run_id=run_id,
+            message=message,
+            step_index=top_level_step.order_index,
+            step_id=top_level_step.sequence_step_id,
+            runtime=runtime,
+        )
+        self._cache_state(
+            sequence_id,
+            SequenceStateSchema(
+                sequence_id=sequence_id,
+                status="error",
+                run_id=run_id,
+                current_step_index=top_level_step.order_index,
+                total_steps=total_steps,
+                completed_step_ids=list(completed_step_ids),
+                last_error=message,
+                started_at=started_at,
+                finished_at=datetime.now(timezone.utc),
+                runtime=runtime,
+            ),
+        )
+        self._reset_cancellation_probe(run_id)
 
     def _build_executor_hooks(
         self,
@@ -788,6 +1475,7 @@ class SequenceRunner:
                 step_index=ctx.index,
                 step_id=ctx.sequence_step_id,
                 step_type=ctx.step_type.value,
+                progress_scope="step",
                 step_elapsed_ms=event.step_elapsed_ms,
                 run_elapsed_ms=event.run_elapsed_ms,
                 completed_step_ids=completed_cache,

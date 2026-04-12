@@ -43,6 +43,39 @@ async def _ensure_sequence_in_workspace(
         raise HTTPException(status_code=404, detail="Sequence not found")
 
 
+async def _validate_nested_sequence_steps(
+    repo: SequenceRepository,
+    workspace_id: int,
+    steps: list[dict],
+    *,
+    current_sequence_id: int | None = None,
+) -> None:
+    for step in steps:
+        step_type = step.get("sequence_step_type") or step.get("type") or step.get("kind")
+        if step_type not in {"CALL_SEQUENCE", "REPEAT_SEQUENCE"}:
+            continue
+
+        payload = step.get("payload") or {}
+        raw_target = payload.get("target_sequence_id")
+        if raw_target is None or str(raw_target).strip() == "":
+            # Allow drafts in the editor. Runtime validation still rejects unresolved targets on run.
+            continue
+
+        try:
+            target_sequence_id = int(raw_target)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=422, detail=f"{step_type} target_sequence_id must be an integer")
+
+        if target_sequence_id <= 0:
+            raise HTTPException(status_code=422, detail=f"{step_type} target_sequence_id must be positive")
+
+        if current_sequence_id is not None and target_sequence_id == current_sequence_id:
+            raise HTTPException(status_code=422, detail=f"{step_type} cannot target the current sequence")
+
+        if not await repo.ensure(workspace_id, target_sequence_id):
+            raise HTTPException(status_code=422, detail=f"Target sequence {target_sequence_id} is not available in this workspace")
+
+
 # ---------------------------------------------------------------------------
 # CRUD
 # ---------------------------------------------------------------------------
@@ -70,6 +103,7 @@ async def create_sequence(
     repo = SequenceRepository(db)
     data = payload.model_dump(exclude={"steps"})
     steps = [step.model_dump() for step in payload.steps]
+    await _validate_nested_sequence_steps(repo, workspace_id, steps)
     return await repo.create(workspace_id, data, steps)
 
 
@@ -123,6 +157,7 @@ async def create_step(
     seq_repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
     repo = SequenceStepRepository(db)
+    await _validate_nested_sequence_steps(seq_repo, workspace_id, [payload.model_dump(exclude_unset=True)], current_sequence_id=seq_id)
     try:
         step = await repo.create(seq_id, payload.model_dump(exclude_unset=True))
     except ReadOnlySequenceError as exc:
@@ -141,6 +176,16 @@ async def update_step(
     seq_repo = SequenceRepository(db)
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
     repo = SequenceStepRepository(db)
+    existing = await repo.get(step_id)
+    update_payload = payload.model_dump(exclude_unset=True)
+    if existing:
+        if "sequence_step_type" not in update_payload and existing.sequence_step_type is not None:
+            update_payload["sequence_step_type"] = existing.sequence_step_type.value
+        if "payload" not in update_payload and existing.payload is not None:
+            update_payload["payload"] = existing.payload
+        elif "payload" in update_payload and isinstance(existing.payload, dict):
+            update_payload["payload"] = {**existing.payload, **(update_payload.get("payload") or {})}
+    await _validate_nested_sequence_steps(seq_repo, workspace_id, [update_payload], current_sequence_id=seq_id)
     try:
         step = await repo.update(step_id, payload.model_dump(exclude_unset=True))
     except ReadOnlySequenceError as exc:
@@ -194,6 +239,7 @@ async def replace_steps(
     await _ensure_sequence_in_workspace(seq_repo, workspace_id, seq_id)
     repo = SequenceStepRepository(db)
     payload = [step.model_dump() for step in steps]
+    await _validate_nested_sequence_steps(seq_repo, workspace_id, payload, current_sequence_id=seq_id)
     try:
         result = await repo.replace(seq_id, payload)
     except ReadOnlySequenceError as exc:
@@ -324,6 +370,8 @@ async def import_sequences_file(
                     "payload": step.payload,
                 }
             )
+
+        await _validate_nested_sequence_steps(repo, workspace_id, steps_data)
 
         created = await repo.create(
             workspace_id,

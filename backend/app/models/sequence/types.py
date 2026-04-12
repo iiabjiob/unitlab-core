@@ -10,3 +10,5 @@ class SequenceStepType(str, Enum):
     DO_PAIR = "DO_PAIR"
     DO_BITMASK = "DO_BITMASK"
     AO_SET = "AO_SET"
+    CALL_SEQUENCE = "CALL_SEQUENCE"
+    REPEAT_SEQUENCE = "REPEAT_SEQUENCE"

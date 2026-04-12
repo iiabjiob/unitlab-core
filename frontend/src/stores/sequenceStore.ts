@@ -4,6 +4,7 @@ import { SequencesAPI } from "@/api/sequences.api"
 import {
   SequenceStatusEnum,
   type SequenceDef,
+  type SequenceRuntimeState,
   type SequenceState,
   type SequenceStep,
 } from "@/types/sequences"
@@ -27,6 +28,7 @@ function createEmptyState(seqId: number, totalSteps: number): SequenceState {
     last_error: null,
     started_at: null,
     finished_at: null,
+    runtime: null,
   }
 }
 
@@ -43,6 +45,51 @@ const mapStatus = (raw: string): SequenceStatusEnum => {
       console.warn("Unknown sequence status:", raw)
       return SequenceStatusEnum.IDLE
   }
+}
+
+function normalizeRuntime(runtime?: SequenceRuntimeState | null): SequenceRuntimeState | null {
+  if (!runtime) {
+    return null
+  }
+
+  return {
+    ...runtime,
+    execution_path: [...(runtime.execution_path ?? [])],
+  }
+}
+
+function describeRuntime(runtime?: SequenceRuntimeState | null): string {
+  if (!runtime) {
+    return ""
+  }
+
+  const parts: string[] = []
+  const path = runtime.execution_path?.filter(Boolean) ?? []
+  if (path.length > 1) {
+    parts.push(path.join(" -> "))
+  } else if (runtime.active_sequence_name) {
+    parts.push(runtime.active_sequence_name)
+  }
+
+  if (typeof runtime.active_step_index === "number" && typeof runtime.active_total_steps === "number") {
+    parts.push(`step ${runtime.active_step_index + 1}/${runtime.active_total_steps}`)
+  }
+
+  if (runtime.repeat_mode === "times" && typeof runtime.iteration_current === "number") {
+    if (typeof runtime.iteration_total === "number") {
+      parts.push(`iteration ${runtime.iteration_current}/${runtime.iteration_total}`)
+    } else {
+      parts.push(`iteration ${runtime.iteration_current}`)
+    }
+  } else if (runtime.repeat_mode === "duration" && typeof runtime.iteration_current === "number") {
+    parts.push(`iteration ${runtime.iteration_current}`)
+    parts.push("timed run")
+  } else if (runtime.repeat_mode === "until_stopped" && typeof runtime.iteration_current === "number") {
+    parts.push(`iteration ${runtime.iteration_current}`)
+    parts.push("until stopped")
+  }
+
+  return parts.join(" · ")
 }
 
 
@@ -115,6 +162,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
       status: mapStatus(snapshot.status as any),
       total_steps: total,
       completed_step_ids: [...(snapshot.completed_step_ids ?? [])],
+      runtime: normalizeRuntime(snapshot.runtime),
     }
 
     return states.value[seqId]
@@ -307,6 +355,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           current_step_index: 0,
           completed_step_ids: [],
           last_error: null,
+          runtime: normalizeRuntime(event.runtime),
         }
 
         logStore.push(event.sequence_id, {
@@ -320,14 +369,21 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
         states.value[event.sequence_id] = {
           ...prev,
           status: SequenceStatusEnum.RUNNING,
-          current_step_index: event.step_index,
-          completed_step_ids: [...event.completed_steps],
+          current_step_index: event.progress_scope === "step"
+            ? Math.min(event.step_index + 1, prev.total_steps)
+            : event.step_index,
+          completed_step_ids: event.progress_scope === "step"
+            ? [...event.completed_steps]
+            : [...prev.completed_step_ids],
           last_error: null,
+          runtime: normalizeRuntime(event.runtime) ?? prev.runtime ?? null,
         }
 
         logStore.push(event.sequence_id, {
           type: "step",
-          message: `Step ${event.step_index + 1}/${prev.total_steps} completed`,
+          message: event.progress_scope === "step"
+            ? `Step ${event.step_index + 1}/${prev.total_steps} completed`
+            : `Nested step completed${describeRuntime(event.runtime) ? ` · ${describeRuntime(event.runtime)}` : ""}`,
           run_id: event.run_id,
           ...buildStepLogMeta(event.sequence_id, {
             stepId: event.step_id,
@@ -343,6 +399,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           status: SequenceStatusEnum.CANCELLING,
           current_step_index: event.current_step_index,
           total_steps: event.total_steps ?? prev.total_steps,
+          runtime: normalizeRuntime(event.runtime) ?? prev.runtime ?? null,
         }
 
         logStore.push(event.sequence_id, {
@@ -358,6 +415,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           status: SequenceStatusEnum.ERROR,
           current_step_index: event.step_index,
           last_error: event.message,
+          runtime: normalizeRuntime(event.runtime) ?? prev.runtime ?? null,
         }
 
         logStore.push(event.sequence_id, {
@@ -365,6 +423,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           message: `Step ${event.step_index + 1} error: ${event.message}`,
           run_id: event.run_id,
           ...buildStepLogMeta(event.sequence_id, {
+            stepId: event.step_id,
             stepIndex: event.step_index,
           }),
         })
@@ -375,6 +434,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           ...prev,
           status: SequenceStatusEnum.ERROR,
           last_error: event.message,
+          runtime: normalizeRuntime(event.runtime) ?? prev.runtime ?? null,
         }
 
         logStore.push(event.sequence_id, {
@@ -388,6 +448,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
         states.value[event.sequence_id] = {
           ...prev,
           status: SequenceStatusEnum.STOPPED,
+          runtime: normalizeRuntime(event.runtime) ?? prev.runtime ?? null,
         }
 
         logStore.push(event.sequence_id, {
@@ -403,6 +464,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
           status: SequenceStatusEnum.COMPLETED,
           current_step_index: prev.total_steps,
           completed_step_ids: [...prev.completed_step_ids],
+          runtime: normalizeRuntime(event.runtime),
         }
 
         logStore.push(event.sequence_id, {

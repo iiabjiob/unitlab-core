@@ -7,6 +7,7 @@ import { useChannelStore } from "./channelStore"
 import { getLogger } from "@/utils/logger"
 import { SequencesAPI } from "@/api/sequences.api"
 import { useWorkspaceStore } from "./workspaceStore"
+import { useSequenceStore } from "./sequenceStore"
 
 const logger = getLogger("SEQS")
 
@@ -96,6 +97,28 @@ export const useSequenceStepStore = defineStore("sequenceStepStore", () => {
       }
       case SequenceStepType.AO_SET:
         return `AO: set ${resolve(step.channel_id, step.payload?.signal_key)} = ${step.payload?.value ?? 0} mA`
+      case SequenceStepType.CALL_SEQUENCE: {
+        const targetSequenceId = Number(step.payload?.target_sequence_id ?? NaN)
+        const targetSequence = Number.isFinite(targetSequenceId)
+          ? useSequenceStore().sequences.find((sequence) => sequence.id === targetSequenceId)
+          : null
+        return `Call instruction ${targetSequence?.name ?? (Number.isFinite(targetSequenceId) ? `#${targetSequenceId}` : "n/a")}`
+      }
+      case SequenceStepType.REPEAT_SEQUENCE: {
+        const targetSequenceId = Number(step.payload?.target_sequence_id ?? NaN)
+        const targetSequence = Number.isFinite(targetSequenceId)
+          ? useSequenceStore().sequences.find((sequence) => sequence.id === targetSequenceId)
+          : null
+        const targetLabel = targetSequence?.name ?? (Number.isFinite(targetSequenceId) ? `#${targetSequenceId}` : "n/a")
+        const mode = String(step.payload?.repeat_mode ?? "times")
+        if (mode === "duration") {
+          return `Repeat ${targetLabel} for ${step.payload?.duration_ms ?? 0} ms`
+        }
+        if (mode === "until_stopped") {
+          return `Repeat ${targetLabel} until stopped`
+        }
+        return `Repeat ${targetLabel} × ${step.payload?.iterations ?? 1}`
+      }
       default:
         return `❓ Unknown step type: ${step.sequence_step_type}`
     }

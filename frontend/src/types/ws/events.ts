@@ -6,6 +6,7 @@ import type { CoreNetworkSnapshot } from "../coreNetwork"
 import type { CoreNtpSnapshot } from "../coreNtp"
 import type { CoreDiagnosticsSnapshot } from "../coreDiagnostics"
 import type { CoreProvisionSnapshot } from "../coreProvision"
+import type { SequenceRuntimeState } from "../sequences"
 // ---------------------------------------------------------------------
 // WS channels (Backend → Frontend)
 // ---------------------------------------------------------------------
@@ -222,6 +223,7 @@ export interface SequenceEventBase {
 export interface SequenceStartedEvent extends SequenceEventBase {
   event: "started"
   total_steps: number
+  runtime?: SequenceRuntimeState | null
 }
 
 export interface SequenceProgressEvent extends SequenceEventBase {
@@ -229,35 +231,43 @@ export interface SequenceProgressEvent extends SequenceEventBase {
   step_index: number
   step_id: number
   step_type: string
+  progress_scope: "step" | "nested_step"
   step_elapsed_ms: number
   run_elapsed_ms: number
   completed_steps: number[]
+  runtime?: SequenceRuntimeState | null
 }
 
 export interface SequenceStepErrorEvent extends SequenceEventBase {
   event: "step_error"
   step_index: number
+  step_id: number
   message: string
+  runtime?: SequenceRuntimeState | null
 }
 
 export interface SequenceErrorEvent extends SequenceEventBase {
   event: "error"
   message: string
+  runtime?: SequenceRuntimeState | null
 }
 
 export interface SequenceStoppingEvent extends SequenceEventBase {
   event: "stopping"
   current_step_index: number
   total_steps: number
+  runtime?: SequenceRuntimeState | null
 }
 
 export interface SequenceStoppedEvent extends SequenceEventBase {
   event: "stopped"
+  runtime?: SequenceRuntimeState | null
 }
 
 export interface SequenceCompletedEvent extends SequenceEventBase {
   event: "completed"
   elapsed_ms: number
+  runtime?: SequenceRuntimeState | null
 }
 
 export type SequenceWsEvent =

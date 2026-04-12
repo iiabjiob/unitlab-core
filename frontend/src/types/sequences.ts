@@ -5,7 +5,11 @@ export enum SequenceStepType {
   DO_PAIR = "DO_PAIR",
   DO_BITMASK = "DO_BITMASK",
   AO_SET = "AO_SET",
+  CALL_SEQUENCE = "CALL_SEQUENCE",
+  REPEAT_SEQUENCE = "REPEAT_SEQUENCE",
 }
+
+export type SequenceRepeatMode = "times" | "duration" | "until_stopped"
 
 export enum SequenceStatusEnum {
   IDLE = "idle",
@@ -46,6 +50,24 @@ export interface SequenceStepPayload {
   signal_key?: string | null
   signal_ids?: Array<number | null>
   signal_keys?: Array<string | null>
+  target_sequence_id?: number | null
+  repeat_mode?: SequenceRepeatMode | null
+  iterations?: number | null
+  duration_ms?: number | null
+}
+
+export interface SequenceRuntimeState {
+  execution_path: string[]
+  active_sequence_id?: number | null
+  active_sequence_name?: string | null
+  active_step_id?: number | null
+  active_step_index?: number | null
+  active_total_steps?: number | null
+  active_step_type?: string | null
+  iteration_current?: number | null
+  iteration_total?: number | null
+  repeat_mode?: SequenceRepeatMode | null
+  run_elapsed_ms?: number | null
 }
 
 export interface SequenceStep {
@@ -111,4 +133,5 @@ export interface SequenceState {
   last_error?: string | null
   started_at?: string | null
   finished_at?: string | null
+  runtime?: SequenceRuntimeState | null
 }

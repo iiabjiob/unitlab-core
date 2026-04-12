@@ -43,6 +43,20 @@ class SequenceRunSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SequenceRuntimeSchema(BaseModel):
+    execution_path: List[str] = Field(default_factory=list)
+    active_sequence_id: Optional[int] = None
+    active_sequence_name: Optional[str] = None
+    active_step_id: Optional[int] = None
+    active_step_index: Optional[int] = None
+    active_total_steps: Optional[int] = None
+    active_step_type: Optional[str] = None
+    iteration_current: Optional[int] = None
+    iteration_total: Optional[int] = None
+    repeat_mode: Optional[Literal["times", "duration", "until_stopped"]] = None
+    run_elapsed_ms: Optional[int] = None
+
+
 class SequenceStateSchema(BaseModel):
     sequence_id: int
     status: Literal["idle", "pending", "running", "cancelling", "completed", "stopped", "error"]
@@ -53,3 +67,4 @@ class SequenceStateSchema(BaseModel):
     last_error: Optional[str] = None
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
+    runtime: Optional[SequenceRuntimeSchema] = None

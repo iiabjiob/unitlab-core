@@ -11,6 +11,8 @@ SequenceStepTypeLiteral = Literal[
     "DO_PAIR",
     "DO_BITMASK",
     "AO_SET",
+    "CALL_SEQUENCE",
+    "REPEAT_SEQUENCE",
 ]
 
 

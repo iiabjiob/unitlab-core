@@ -98,6 +98,7 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
                 sequence_id=sequence_id,
                 run_id=run_id,
                 total_steps=int(data.get("total_steps", 0)),
+                runtime=data.get("runtime"),
             )
         )
         return
@@ -113,6 +114,7 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
                 run_id=run_id,
                 current_step_index=int(data.get("current_step_index", 0)),
                 total_steps=int(data.get("total_steps", 0)),
+                runtime=data.get("runtime"),
             )
         )
         _stopping_emitted_runs.add(run_id)
@@ -126,9 +128,11 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
                 step_index=int(data.get("step_index", 0)),
                 step_id=int(data.get("step_id", 0)),
                 step_type=str(data.get("step_type", "")),
+                progress_scope=str(data.get("progress_scope", "step")),
                 step_elapsed_ms=int(data.get("step_elapsed_ms", 0)),
                 run_elapsed_ms=int(data.get("run_elapsed_ms", 0)),
                 completed_steps=list(data.get("completed_step_ids", [])),
+                runtime=data.get("runtime"),
             )
         )
         return
@@ -140,7 +144,12 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
             _stopping_emitted_runs.discard(run_id)
             _mark_run_finished(run_id)
             await WsEventPublisher.publish(
-                SequenceCompletedEvent(sequence_id=sequence_id, run_id=run_id, elapsed_ms=elapsed_ms)
+                SequenceCompletedEvent(
+                    sequence_id=sequence_id,
+                    run_id=run_id,
+                    elapsed_ms=elapsed_ms,
+                    runtime=data.get("runtime"),
+                )
             )
         elif status == "stopped":
             current_step_index = int(data.get("current_step_index", 0))
@@ -152,13 +161,20 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
                         run_id=run_id,
                         current_step_index=current_step_index,
                         total_steps=total_steps,
+                        runtime=data.get("runtime"),
                     )
                 )
             else:
                 _stopping_emitted_runs.discard(run_id)
 
             _mark_run_finished(run_id)
-            await WsEventPublisher.publish(SequenceStoppedEvent(sequence_id=sequence_id, run_id=run_id))
+            await WsEventPublisher.publish(
+                SequenceStoppedEvent(
+                    sequence_id=sequence_id,
+                    run_id=run_id,
+                    runtime=data.get("runtime"),
+                )
+            )
         else:
             logger.warning("⚠️ Unknown finished status %s", status)
         return
@@ -175,10 +191,16 @@ async def _forward(event_type: SequenceEventType, sequence_id: int, run_id: int,
                     step_index=int(step_index),
                     step_id=int(step_id),
                     message=message,
+                    runtime=data.get("runtime"),
                 )
             )
         await WsEventPublisher.publish(
-            SequenceErrorEvent(sequence_id=sequence_id, run_id=run_id, message=message)
+            SequenceErrorEvent(
+                sequence_id=sequence_id,
+                run_id=run_id,
+                message=message,
+                runtime=data.get("runtime"),
+            )
         )
         return
 

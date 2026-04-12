@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
+import { toUserFacingErrorMessage } from "@/api/errorMessages"
 import { useSequenceStepStore } from "@/stores/sequenceStepStore"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useToastStore } from "@/stores/toastStore"
@@ -197,6 +198,7 @@ async function handleAdd(payload: SequenceStepCreate) {
     stepStore.setActiveStep(created.id)
   } catch (error) {
     console.error("Failed to add step", error)
+    toastStore.error(toUserFacingErrorMessage(error, "Failed to add step"))
   }
 }
 
@@ -486,6 +488,7 @@ function handleListKeydown(event: KeyboardEvent) {
     <!-- TOOLBAR -->
     <div class="py-2">
       <SequenceStepAddToolbar
+        :sequence-id="props.sequence.id"
         @add="handleAdd"
       />
     </div>

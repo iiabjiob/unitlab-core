@@ -90,6 +90,8 @@ Use the add toolbar buttons:
 - **Switch pos**
 - **Group ctrl**
 - **AO**
+- **Call**
+- **Repeat**
 
 ### Edit a step
 
@@ -111,9 +113,14 @@ Use the add toolbar buttons:
 2. If the sequence is tied to project signals, verify signal allocations and physical wiring first.
 3. Click **Run** in run controls.
 4. Watch status badge and progress line (`Progress: X% · step N of M`).
-5. Click **Stop** to request cancellation when needed.
+5. For nested or stress instructions, watch the live runtime line for the active child instruction, iteration, and elapsed time.
+6. Click **Stop** to request cancellation when needed.
 
 Possible statuses include running, completed, cancelling, and error.
+
+Control-flow steps:
+- **Call** runs another instruction once as a reusable child block.
+- **Repeat** loops another instruction by fixed count, for a duration window, or until the operator stops the run.
 
 Important:
 - **Completed** means the sequence executed successfully on the UnitLab side.

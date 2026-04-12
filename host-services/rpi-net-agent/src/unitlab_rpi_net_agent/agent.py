@@ -45,9 +45,11 @@ class CoreNetworkAgent:
         )
 
     async def start(self) -> None:
-        await self.redis.ensure_group()
         await self._initialize_ap_identity()
-        await self._enter_ap_mode(reason="boot")
+        reused_existing_ap = await self._restore_existing_ap_mode()
+        if not reused_existing_ap:
+            await self._enter_ap_mode(reason="boot")
+        await self._ensure_redis_group_best_effort("startup")
         self._status_task = asyncio.create_task(self._status_loop(), name="unitlab-net-agent-status")
         self._command_task = asyncio.create_task(self._command_loop(), name="unitlab-net-agent-commands")
         logger.info(
@@ -121,6 +123,59 @@ class CoreNetworkAgent:
         self._snapshot.mac = self._mac
         self._snapshot.suffix = self._suffix
 
+    async def _restore_existing_ap_mode(self) -> bool:
+        try:
+            status = await self.nmcli.current_device_status()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to inspect startup Wi-Fi state: %s", exc)
+            return False
+
+        if status.connection != self.config.ap_profile_name or not status.ip4:
+            return False
+
+        self._snapshot.mode = "ap"
+        self._snapshot.ap = replace(
+            self._snapshot.ap,
+            ssid=self._ap_ssid or self._snapshot.ap.ssid,
+            password=self._ap_password or self._snapshot.ap.password,
+            profile=self.config.ap_profile_name,
+            iface=self.config.wifi_interface,
+            ip=status.ip4,
+            active=True,
+        )
+        self._snapshot.sta = StaInfo(state="disconnected")
+        self._snapshot.last_error = None
+        logger.info(
+            "Reusing active AP on startup | profile=%s ip=%s",
+            self.config.ap_profile_name,
+            status.ip4,
+        )
+        return True
+
+    async def _ensure_redis_group_best_effort(self, context: str) -> bool:
+        try:
+            await self.redis.ensure_group()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Redis group ensure failed during %s: %s", context, exc)
+            return False
+        return True
+
+    async def _publish_event_best_effort(self, event_type: str, payload: dict[str, Any]) -> bool:
+        try:
+            await self.redis.publish_event(event_type, payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to publish Redis event | event=%s error=%s", event_type, exc)
+            return False
+        return True
+
+    async def _ack_best_effort(self, entry_id: str) -> bool:
+        try:
+            await self.redis.ack(entry_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to ack Redis command | entry=%s error=%s", entry_id, exc)
+            return False
+        return True
+
     async def _status_loop(self) -> None:
         while not self._stop.is_set():
             try:
@@ -142,6 +197,7 @@ class CoreNetworkAgent:
                 raise
             except Exception as exc:  # noqa: BLE001
                 logger.exception("Command loop failed: %s", exc)
+                await self._ensure_redis_group_best_effort("command loop recovery")
                 await self._publish_error("command_loop_error", str(exc))
                 await asyncio.sleep(1)
 
@@ -162,7 +218,7 @@ class CoreNetworkAgent:
             elif action == "restart_ap":
                 await self._enter_ap_mode(reason="restart_ap", request_id=cmd.request_id)
             else:
-                await self.redis.publish_event(
+                await self._publish_event_best_effort(
                     "command_rejected",
                     {
                         "request_id": cmd.request_id,
@@ -173,7 +229,7 @@ class CoreNetworkAgent:
                 )
         except Exception as exc:  # noqa: BLE001
             logger.exception("Command failed | request=%s action=%s", cmd.request_id, cmd.action)
-            await self.redis.publish_event(
+            await self._publish_event_best_effort(
                 "command_failed",
                 {
                     "request_id": cmd.request_id,
@@ -185,17 +241,17 @@ class CoreNetworkAgent:
         finally:
             await self._clear_request_in_flight()
             if should_ack:
-                await self.redis.ack(cmd.entry_id)
+                await self._ack_best_effort(cmd.entry_id)
 
     async def _handle_scan(self, cmd: CommandEnvelope) -> None:
-        await self.redis.publish_event(
+        await self._publish_event_best_effort(
             "scan_started",
             {"request_id": cmd.request_id, "action": cmd.action},
         )
         networks = await self.nmcli.scan_networks()
         self._snapshot.available_networks = networks
         await self._refresh_runtime_status(publish=True, request_id=cmd.request_id, last_event="scan_result")
-        await self.redis.publish_event(
+        await self._publish_event_best_effort(
             "scan_result",
             {
                 "request_id": cmd.request_id,
@@ -217,7 +273,7 @@ class CoreNetworkAgent:
         self._snapshot.mode = "switching"
         self._snapshot.sta = StaInfo(state="connecting", ssid=ssid)
         await self._publish_snapshot(last_event="sta_connecting", request_id=cmd.request_id)
-        await self.redis.publish_event(
+        await self._publish_event_best_effort(
             "sta_connecting",
             {"request_id": cmd.request_id, "ssid": ssid, "hidden": hidden},
         )
@@ -232,13 +288,13 @@ class CoreNetworkAgent:
             logger.warning("STA connect failed | request=%s ssid=%s error=%s", cmd.request_id, ssid, err)
             self._snapshot.sta = StaInfo(state="failed", ssid=ssid, profile=profile_name, last_error=err)
             self._snapshot.last_error = err
-            await self.redis.publish_event(
+            await self._publish_event_best_effort(
                 "sta_connect_failed",
                 {"request_id": cmd.request_id, "ssid": ssid, "error": err},
             )
             await self._enter_ap_mode(reason="sta_connect_failed", request_id=cmd.request_id, error=err)
         else:
-            await self.redis.publish_event(
+            await self._publish_event_best_effort(
                 "sta_connected",
                 {
                     "request_id": cmd.request_id,
@@ -286,7 +342,7 @@ class CoreNetworkAgent:
         self._snapshot.sta = StaInfo(state="disconnected")
         self._snapshot.last_error = error
         await self._publish_snapshot(last_event="ap_active", request_id=request_id)
-        await self.redis.publish_event(
+        await self._publish_event_best_effort(
             "ap_active",
             {
                 "request_id": request_id,
@@ -362,19 +418,28 @@ class CoreNetworkAgent:
         *,
         last_event: str | None = None,
         request_id: str | None = None,
-    ) -> None:
+    ) -> bool:
         self._snapshot.last_event = last_event or self._snapshot.last_event
         snapshot = self._snapshot.to_dict()
         if request_id:
             snapshot["request_id"] = request_id
-        await self.redis.set_state(snapshot)
-        await self.redis.publish_event("state", snapshot)
+        try:
+            await self.redis.set_state(snapshot)
+            await self.redis.publish_event("state", snapshot)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Failed to publish snapshot to Redis | event=%s error=%s",
+                self._snapshot.last_event,
+                exc,
+            )
+            return False
+        return True
 
     async def _publish_error(self, event_type: str, error: str) -> None:
         self._snapshot.mode = "error"
         self._snapshot.last_error = error
         await self._publish_snapshot(last_event=event_type)
-        await self.redis.publish_event(event_type, {"error": error})
+        await self._publish_event_best_effort(event_type, {"error": error})
 
     async def _set_request_in_flight(self, cmd: CommandEnvelope) -> None:
         self._snapshot.request_in_flight = {

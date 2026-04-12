@@ -14,6 +14,8 @@ import StepEditorPulse from "./editors/StepEditorPulse.vue"
 import StepEditorPair from "./editors/StepEditorPair.vue"
 import StepEditorMask from "./editors/StepEditorMask.vue"
 import StepEditorAO from "./editors/StepEditorAO.vue"
+import StepEditorCallSequence from "./editors/StepEditorCallSequence.vue"
+import StepEditorRepeatSequence from "./editors/StepEditorRepeatSequence.vue"
 import type { StepEditorChange } from "./editors/editorTypes"
 
 const props = defineProps<{
@@ -38,6 +40,8 @@ const componentMap: Record<SequenceStepType, Component> = {
   [SequenceStepType.DO_PAIR]: StepEditorPair,
   [SequenceStepType.DO_BITMASK]: StepEditorMask,
   [SequenceStepType.AO_SET]: StepEditorAO,
+  [SequenceStepType.CALL_SEQUENCE]: StepEditorCallSequence,
+  [SequenceStepType.REPEAT_SEQUENCE]: StepEditorRepeatSequence,
 }
 
 const typeLabels: Record<SequenceStepType, string> = {
@@ -47,6 +51,8 @@ const typeLabels: Record<SequenceStepType, string> = {
   [SequenceStepType.DO_PAIR]: "Switch position",
   [SequenceStepType.DO_BITMASK]: "Group control",
   [SequenceStepType.AO_SET]: "AO · Set",
+  [SequenceStepType.CALL_SEQUENCE]: "Call instruction",
+  [SequenceStepType.REPEAT_SEQUENCE]: "Repeat instruction",
 }
 
 const editorComponent = computed(() => {
