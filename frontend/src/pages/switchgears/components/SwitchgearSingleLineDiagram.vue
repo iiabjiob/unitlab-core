@@ -176,6 +176,7 @@ const edges = ref<DiagramEdge[]>([])
 const staticElements = ref<DiagramStaticElement[]>([])
 const viewState = ref<DiagramViewState>({ ...DEFAULT_VIEW })
 const interactionTool = ref<InteractionTool>("hand")
+const snapEnabled = ref(true)
 const selectedEdgeId = ref<string | null>(null)
 const selectedNodeIds = ref<number[]>([])
 const selectedEdgeIds = ref<string[]>([])
@@ -585,6 +586,9 @@ function setNodeLayout(id: number, patch: DiagramNodeLayout) {
 }
 
 function snapWorldValue(value: number): number {
+  if (!snapEnabled.value) {
+    return value
+  }
   return Math.round(value / GRID_STEP) * GRID_STEP
 }
 
@@ -676,6 +680,10 @@ function applyPortSnapToNodeLayout(
   excludedNodeIds: Set<number> = new Set<number>([nodeId]),
   excludedEdgeIds: Set<string> = new Set<string>(),
 ): DiagramNodeLayout {
+  if (!snapEnabled.value) {
+    return layout
+  }
+
   const correction = findBestPortCorrection(
     buildNodePortsForLayout(nodeId, layout),
     collectStationaryPorts(excludedNodeIds, excludedEdgeIds),
@@ -692,6 +700,10 @@ function applyPortSnapToNodeLayout(
 }
 
 function applyPortSnapToLinePoint(point: { x: number; y: number }, excludedEdgeIds: Set<string> = new Set<string>()) {
+  if (!snapEnabled.value) {
+    return point
+  }
+
   const correction = findBestPortCorrection(
     [{ ownerType: "line", ownerId: "moving", x: point.x, y: point.y }],
     collectStationaryPorts(new Set<number>(), excludedEdgeIds),
@@ -715,6 +727,10 @@ function computeSnappedTranslation(
   excludedNodeIds: Set<number> = new Set<number>(),
   excludedEdgeIds: Set<string> = new Set<string>(),
 ) {
+  if (!snapEnabled.value) {
+    return { dx: deltaX, dy: deltaY }
+  }
+
   let snappedDeltaX = snapWorldValue(anchor.x + deltaX) - anchor.x
   let snappedDeltaY = snapWorldValue(anchor.y + deltaY) - anchor.y
 
@@ -786,6 +802,7 @@ function ensureLayoutDefaults(): boolean {
 function restoreDiagramState() {
   hydrating.value = true
   clearHistory()
+  snapEnabled.value = true
   selectedEdgeId.value = null
   selectedNodeIds.value = []
   selectedEdgeIds.value = []
@@ -808,6 +825,7 @@ function restoreDiagramState() {
           edges?: DiagramEdge[]
           lines?: DiagramEdge[]
           staticElements?: DiagramStaticElement[]
+          snapEnabled?: boolean
           viewState?: DiagramViewState
         }
         if (parsed.layoutById && typeof parsed.layoutById === "object") {
@@ -846,6 +864,7 @@ function restoreDiagramState() {
             rotation: normalizeRotation(element.rotation),
           }))
         }
+        snapEnabled.value = parsed.snapEnabled !== false
         if (parsed.viewState) {
           const parsedZoom = Number(parsed.viewState.zoom)
           viewState.value = {
@@ -881,8 +900,13 @@ function persistDiagramState() {
     edges: edges.value,
     lines: edges.value,
     staticElements: staticElements.value,
+    snapEnabled: snapEnabled.value,
     viewState: viewState.value,
   }))
+}
+
+function toggleSnapEnabled() {
+  snapEnabled.value = !snapEnabled.value
 }
 
 function buildEdgeId(): string {
@@ -2180,7 +2204,7 @@ watch(switchgearIdsSignature, () => {
 })
 
 watch(
-  [layoutById, labelOffsetById, edges, staticElements, viewState],
+  [layoutById, labelOffsetById, edges, staticElements, viewState, snapEnabled],
   () => {
     persistDiagramState()
   },
@@ -2247,6 +2271,24 @@ onBeforeUnmount(() => {
           </svg>
         </button>
       </div>
+
+      <button
+        type="button"
+        class="flex h-7 w-8 items-center justify-center rounded-lg border border-neutral-300 transition focus-visible:outline-none dark:border-neutral-700"
+        :class="snapEnabled
+          ? 'bg-sky-600 text-white'
+          : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'"
+        :title="snapEnabled ? 'Disable magnetic snap' : 'Enable magnetic snap'"
+        :aria-label="snapEnabled ? 'Disable magnetic snap' : 'Enable magnetic snap'"
+        @click="toggleSnapEnabled()"
+      >
+        <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 2v3" />
+          <path d="M11 2v3" />
+          <path d="M5 5H3.5A1.5 1.5 0 0 0 2 6.5V9a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V6.5A1.5 1.5 0 0 0 12.5 5H11" />
+          <path d="M5 8h6" />
+        </svg>
+      </button>
 
       <UiButton size="sm" variant="secondary" class="w-8 px-0" title="Undo" aria-label="Undo" :disabled="!canUndo" @click="undo()">
         <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
