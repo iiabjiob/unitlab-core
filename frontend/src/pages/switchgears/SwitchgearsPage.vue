@@ -1,6 +1,5 @@
 <template>
   <div class="flex h-full flex-col md:flex-row">
-
     <div class="border-b border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900 lg:hidden">
       <UiButton
         variant="secondary"
@@ -29,9 +28,38 @@
         <DeviceListSidebar />
       </aside>
     </ResizablePanel>
-    
-    <section class="flex-1 overflow-y-auto p-3 md:p-4">
-      <router-view />
+
+    <section class="flex min-h-0 flex-1 flex-col p-3 md:p-4">
+      <div class="mb-3 inline-flex w-fit rounded-xl border border-neutral-200 bg-white/85 p-1 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
+        <button
+          type="button"
+          class="rounded-lg px-3 py-2 text-sm font-medium transition"
+          :class="activeView === 'manage'
+            ? 'bg-neutral-100 text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100'
+            : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'"
+          @click="setActiveView('manage')"
+        >
+          Manage
+        </button>
+        <button
+          type="button"
+          class="rounded-lg px-3 py-2 text-sm font-medium transition"
+          :class="activeView === 'sld'
+            ? 'bg-neutral-100 text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100'
+            : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'"
+          @click="setActiveView('sld')"
+        >
+          Single Line Diagram
+        </button>
+      </div>
+
+      <div v-if="activeView === 'manage'" class="min-h-0 flex-1 overflow-y-auto">
+        <router-view />
+      </div>
+
+      <div v-else class="min-h-0 flex-1 overflow-hidden">
+        <SwitchgearSingleLineDiagram />
+      </div>
     </section>
 
     <SlideOver
@@ -58,17 +86,26 @@ import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import DeviceListSidebar from "./components/SwitchgearListSidebar.vue"
 import SlideOver from "@/components/ui/SlideOver.vue"
 import UiButton from "@/components/ui/UiButton.vue"
+import SwitchgearSingleLineDiagram from "./components/SwitchgearSingleLineDiagram.vue"
 import { useViewport } from "@/composables/useViewport"
 import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
 
 const { isDesktop } = useViewport()
 const sidebarOpen = ref(false)
+const activeView = ref<"manage" | "sld">("manage")
 const route = useRoute()
 const realtimeScopeStore = useRealtimeScopeStore()
 const scopeId = "switchgears:page"
+const ACTIVE_VIEW_STORAGE_KEY = "unitlab.switchgears.active-view"
 
 onMounted(() => {
   realtimeScopeStore.setGlobalRealtimeScope(scopeId, true)
+  if (typeof window !== "undefined") {
+    const raw = window.localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY)
+    if (raw === "manage" || raw === "sld") {
+      activeView.value = raw
+    }
+  }
 })
 
 onBeforeUnmount(() => {
@@ -85,4 +122,11 @@ watch(
     sidebarOpen.value = false
   },
 )
+
+function setActiveView(view: "manage" | "sld") {
+  activeView.value = view
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, view)
+  }
+}
 </script>
