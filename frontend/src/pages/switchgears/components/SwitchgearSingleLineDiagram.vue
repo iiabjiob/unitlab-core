@@ -533,7 +533,9 @@ function clearHistory() {
 }
 
 function undo() {
-  const previous = undoStack.value.at(-1)
+  const previous = undoStack.value.length > 0
+    ? undoStack.value[undoStack.value.length - 1]
+    : null
   if (!previous) {
     return
   }
@@ -544,7 +546,9 @@ function undo() {
 }
 
 function redo() {
-  const next = redoStack.value.at(-1)
+  const next = redoStack.value.length > 0
+    ? redoStack.value[redoStack.value.length - 1]
+    : null
   if (!next) {
     return
   }
@@ -657,21 +661,25 @@ function collectStationaryPorts(
 function findBestPortCorrection(movingPorts: DiagramPort[], stationaryPorts: DiagramPort[]) {
   let best: { dx: number; dy: number; distance: number } | null = null
 
-  movingPorts.forEach((movingPort) => {
-    stationaryPorts.forEach((stationaryPort) => {
+  for (const movingPort of movingPorts) {
+    for (const stationaryPort of stationaryPorts) {
       const dx = stationaryPort.x - movingPort.x
       const dy = stationaryPort.y - movingPort.y
       const distance = Math.hypot(dx, dy)
       if (distance > PORT_SNAP_DISTANCE) {
-        return
+        continue
       }
       if (!best || distance < best.distance) {
         best = { dx, dy, distance }
       }
-    })
-  })
+    }
+  }
 
-  return best ? { dx: best.dx, dy: best.dy } : null
+  if (best === null) {
+    return null
+  }
+
+  return { dx: best.dx, dy: best.dy }
 }
 
 function applyPortSnapToNodeLayout(
@@ -1739,12 +1747,13 @@ function onWindowPointerMove(event: PointerEvent) {
   }
 
   if (dragState.value.type === "static") {
+    const staticDragState = dragState.value
     const point = snapWorldPoint({
-      x: dragState.value.originX + deltaX,
-      y: dragState.value.originY + deltaY,
+      x: staticDragState.originX + deltaX,
+      y: staticDragState.originY + deltaY,
     })
     staticElements.value = staticElements.value.map(element => (
-      element.id === dragState.value?.id
+      element.id === staticDragState.id
         ? { ...element, x: point.x, y: point.y }
         : element
     ))
