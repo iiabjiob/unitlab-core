@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@affino/datagrid-vue-app": "^0.1.22",
+    "@affino/datagrid-vue-app": "^0.1.27",
     "@affino/dialog-vue": "^1.1.0",
     "@affino/disclosure-vue": "^0.1.0",
     "@affino/listbox-vue": "^1.1.0",

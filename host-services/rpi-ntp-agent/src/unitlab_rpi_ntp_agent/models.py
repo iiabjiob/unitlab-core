@@ -49,6 +49,8 @@ class CoreNtpSnapshot:
     mode: NtpMode
     chrony_service_active: bool | None
     chrony_service_name: str | None
+    system_time_utc: str | None
+    system_time_local: str | None
     configured_servers: list[str]
     effective_servers: list[str]
     tracking: ChronyTracking | None

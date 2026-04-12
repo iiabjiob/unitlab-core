@@ -51,7 +51,7 @@ export const DI_DIAG_LABELS: Record<DiDiagnosticField, { on: string; off: string
   seen: { on: "activity detected", off: "activity reset" },
   stuck: { on: "channel stuck", off: "stuck cleared", alert: true },
   lost: { on: "signal lost", off: "signal restored", alert: true },
-  latched: { on: "latched", off: "latch cleared", alert: true },
+  latched: { on: "latched", off: "latch cleared" },
   latchedChanged: { on: "latchedΔ changed", off: "latchedΔ cleared", log: false },
   latchedCause: { on: "cause updated", off: "cause cleared", log: false },
 }

@@ -266,6 +266,12 @@ Retry note: if deploy fails due transient network/pull errors, rerunning the sam
 6. If verify fails → rollback to previous release
 7. If verify succeeds → cleanup old releases (keep current + previous)
 
+Notes:
+
+- `unitlab-migrations` is a one-shot container (`restart: "no"`).
+- It is expected to exit successfully after applying migrations.
+- If you later run cleanup for stopped containers, `unitlab-migrations` can disappear completely; this does not mean the runtime is broken if backend/db are healthy.
+
 ## 2. Install Docker + Compose Plugin
 
 If Docker is not installed yet:
@@ -517,6 +523,7 @@ On startup it should create/start AP:
 ## 8. Install Host NTP Service (Chrony Agent)
 
 This service manages `chrony` natively and exposes state/actions to UI via Redis/backend.
+It also configures the host to keep serving NTP on the UnitLab AP subnet (`10.42.0.0/24`) from the RPi local clock, so ESP32 peripheral modules can keep a common time base even while upstream NTP sync is unavailable.
 
 ### 8.1 Install and start
 
@@ -601,6 +608,7 @@ Verify:
 - chrony service status (`ACTIVE/INACTIVE`)
 - sync status (`SYNCED / NOT SYNCED`)
 - effective sources visible
+- when upstream NTP is unavailable, host can remain `NOT SYNCED` but still serve the RPi time base to peripherals on the AP subnet
 - add/remove NTP servers
 - `Apply servers`
 - `Restore defaults`
@@ -661,6 +669,18 @@ From `/settings`, try connecting to an invalid/unknown SSID:
 - the agent should report connection failure
 - AP should be restored automatically
 - local UI access should remain available via AP
+
+### 10.4 Docker cleanup note
+
+If you run Docker cleanup commands such as `docker container prune`, the stopped one-shot container `unitlab-migrations` may be removed.
+
+That is acceptable if:
+
+- backend is healthy
+- database is healthy
+- the runtime verify passes except for the missing historical migrations container
+
+Do not treat a missing `unitlab-migrations` container by itself as a runtime outage.
 
 ## 10A. Install Host Provisioning Service (Repair / Smoke Checks)
 

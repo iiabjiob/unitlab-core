@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import ipaddress
 import logging
 import os
@@ -24,6 +25,8 @@ class ChronyError(RuntimeError):
 class ChronyStatus:
     service_active: bool | None
     service_name: str | None
+    system_time_utc: str | None
+    system_time_local: str | None
     configured_servers: list[str]
     effective_servers: list[str]
     tracking: ChronyTracking | None
@@ -62,17 +65,28 @@ class ChronyAdapter:
     async def get_status(self) -> ChronyStatus:
         service_active, service_name = await self._detect_chrony_service()
         configured_servers = self.read_configured_servers()
+        system_time_utc = datetime.now(timezone.utc).isoformat()
+        system_time_local = datetime.now().astimezone().isoformat()
         tracking = await self._read_tracking()
         sources = await self._read_sources()
         effective_servers = [src.name for src in sources if src.name]
         return ChronyStatus(
             service_active=service_active,
             service_name=service_name,
+            system_time_utc=system_time_utc,
+            system_time_local=system_time_local,
             configured_servers=configured_servers,
             effective_servers=effective_servers,
             tracking=tracking,
             sources=sources,
         )
+
+    async def set_system_time(self, timestamp: datetime) -> str:
+        target = timestamp.astimezone(timezone.utc)
+        epoch_seconds = str(int(target.timestamp()))
+        await self._run(self.config.date_bin, "--utc", f"--set=@{epoch_seconds}")
+        await self._run(self.config.hwclock_bin, "--systohc", check=False)
+        return target.isoformat()
 
     async def _detect_chrony_service(self) -> tuple[bool | None, str | None]:
         for service_name in ("chrony", "chronyd"):
@@ -87,15 +101,23 @@ class ChronyAdapter:
     async def apply_servers(self, servers: list[str]) -> list[str]:
         normalized = self.normalize_servers(servers)
         await self._write_source_file(normalized)
-        await self.reload_sources()
+        await self.reload_sources(bring_online=True)
         return normalized
 
     async def restore_defaults(self) -> list[str]:
         defaults = list(self.config.default_servers)
         return await self.apply_servers(defaults)
 
-    async def reload_sources(self) -> None:
+    async def reload_sources(self, *, bring_online: bool = False) -> None:
         await self._run(self.config.chronyc_bin, "reload", "sources")
+        if bring_online:
+            await self.online_sources()
+
+    async def online_sources(self) -> None:
+        await self._run(self.config.chronyc_bin, "online", check=False)
+
+    async def offline_sources(self) -> None:
+        await self._run(self.config.chronyc_bin, "offline", check=False)
 
     def normalize_servers(self, servers: Iterable[str]) -> list[str]:
         result: list[str] = []

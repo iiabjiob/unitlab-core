@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from app.services.core_ntp_service import (
     CoreNtpApplyServersPayload,
     CoreNtpCommandAccepted,
+    CoreNtpSetTimePayload,
     enqueue_core_ntp_command,
     get_core_ntp_state,
 )
@@ -62,5 +63,14 @@ async def restore_core_ntp_defaults() -> CoreNtpCommandAcceptedResponse:
 @router.post("/reload", response_model=CoreNtpCommandAcceptedResponse)
 async def reload_core_ntp_sources() -> CoreNtpCommandAcceptedResponse:
     accepted = await enqueue_core_ntp_command("reload")
+    return _accepted_to_response(accepted)
+
+
+@router.post("/set-time", response_model=CoreNtpCommandAcceptedResponse)
+async def set_core_ntp_time(payload: CoreNtpSetTimePayload) -> CoreNtpCommandAcceptedResponse:
+    accepted = await enqueue_core_ntp_command(
+        "set_time",
+        payload={"timestamp": payload.timestamp.isoformat()},
+    )
     return _accepted_to_response(accepted)
 

@@ -59,6 +59,8 @@
             :virtualization="virtualizationOptions"
             :base-row-height="34"
             :row-selection="true"
+            column-menu
+            column-layout
             render-mode="virtualization"
             layout-mode="fill"
             row-hover

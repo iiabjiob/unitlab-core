@@ -23,6 +23,10 @@ class CoreNtpApplyServersPayload(BaseModel):
     servers: list[str] = Field(default_factory=list)
 
 
+class CoreNtpSetTimePayload(BaseModel):
+    timestamp: datetime
+
+
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 

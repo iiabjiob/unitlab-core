@@ -6,6 +6,7 @@ Purpose:
 - manage Chrony sources (`/etc/chrony/sources.d/unitlab-ntp.sources`)
 - expose status + tracking + sources to backend/frontend via Redis
 - allow UI to add/remove arbitrary number of NTP servers
+- keep the RPi serving NTP to peripheral devices on `10.42.0.0/24` even if upstream sync is temporarily unavailable
 
 This service runs on the host OS (Bookworm / Raspberry Pi 5), not in Docker.
 
@@ -38,5 +39,8 @@ sudo /opt/unitlab/install/install_rpi_ntp_agent.sh
 
 - Agent writes only its managed file:
   - `/etc/chrony/sources.d/unitlab-ntp.sources`
+- Installer also places a host chrony drop-in:
+  - `/etc/chrony/conf.d/unitlab-local-master.conf`
 - It uses `chronyc reload sources` (no full `chronyd` restart by default).
+- If upstream servers are unavailable, UI/backend can still show `NOT SYNCED`, but the host keeps serving its local clock to AP-side peripherals so all modules share the RPi time base.
 

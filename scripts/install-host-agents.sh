@@ -54,6 +54,9 @@ declare -A AGENT_APT_DEPS=(
 )
 
 readonly COMMON_APT_DEPS=(python3-venv python3-pip)
+readonly CHRONY_MAIN_CONF="/etc/chrony/chrony.conf"
+readonly CHRONY_DROPIN_DIR="/etc/chrony/conf.d"
+readonly CHRONY_DROPIN_PATH="$CHRONY_DROPIN_DIR/unitlab-local-master.conf"
 
 is_pkg_installed() {
   local pkg="$1"
@@ -99,6 +102,39 @@ run_shell() {
     return 0
   fi
   bash -lc "$command"
+}
+
+ensure_chrony_confdir_enabled() {
+  local include_line="confdir /etc/chrony/conf.d"
+  local include_regex='^[[:space:]]*confdir[[:space:]]+/etc/chrony/conf\.d([[:space:]]|$)'
+
+  if [[ ! -f "$CHRONY_MAIN_CONF" ]]; then
+    err "chrony main config not found: $CHRONY_MAIN_CONF"
+    exit 1
+  fi
+
+  if grep -Eq "$include_regex" "$CHRONY_MAIN_CONF"; then
+    return 0
+  fi
+
+  log "[chrony] enabling conf.d include in $CHRONY_MAIN_CONF"
+  if (( DRY_RUN == 1 )); then
+    echo "[DRY-RUN] append '$include_line' to $CHRONY_MAIN_CONF"
+    return 0
+  fi
+
+  printf '\n# UnitLab host-service drop-ins\n%s\n' "$include_line" >> "$CHRONY_MAIN_CONF"
+}
+
+install_chrony_local_master_config() {
+  local src="$HOST_AGENTS_DIR/rpi-ntp-agent/chrony/unitlab-local-master.conf"
+
+  [[ -f "$src" ]] || { err "chrony local master config missing: $src"; exit 1; }
+
+  ensure_chrony_confdir_enabled
+  log "[chrony] installing local master config -> $CHRONY_DROPIN_PATH"
+  run mkdir -p "$CHRONY_DROPIN_DIR"
+  run install -m 0644 "$src" "$CHRONY_DROPIN_PATH"
 }
 
 contains() {
@@ -242,6 +278,11 @@ else
   declare -a SELECTED_AGENTS=("${KNOWN_AGENTS[@]}")
 fi
 
+chrony_config_selected=0
+if contains "rpi-ntp-agent" "${SELECTED_AGENTS[@]}"; then
+  chrony_config_selected=1
+fi
+
 log "Selected agents: ${SELECTED_AGENTS[*]}"
 log "Source root: $HOST_AGENTS_DIR"
 log "Wheelhouse: $WHEELS_DIR"
@@ -372,6 +413,10 @@ EOF
   fi
 done
 
+if (( chrony_config_selected == 1 )); then
+  install_chrony_local_master_config
+fi
+
 log "[5/6] Installing systemd units"
 for agent in "${SELECTED_AGENTS[@]}"; do
   unit_name="${AGENT_UNITS[$agent]}"
@@ -393,6 +438,17 @@ if (( NO_RESTART == 1 )); then
   log "[6/6] Enabling services (no restart mode)"
 else
   log "[6/6] Enabling and restarting services"
+fi
+
+if (( chrony_config_selected == 1 )); then
+  log "[chrony] enable chrony service"
+  run systemctl enable chrony
+  if (( NO_RESTART == 0 )); then
+    log "[chrony] restart chrony to apply local master config"
+    run systemctl restart chrony
+  else
+    log "[chrony] restart skipped (--no-restart); config applies after next chrony restart"
+  fi
 fi
 
 net_agent_selected=0

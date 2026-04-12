@@ -5,6 +5,14 @@ import tailwindcss from '@tailwindcss/vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
+const affinoDataGridChunkRules: Array<[chunkName: string, packagePath: string]> = [
+  ['vendor-affino-datagrid-app', '/node_modules/@affino/datagrid-vue-app/'],
+  ['vendor-affino-datagrid-vue', '/node_modules/@affino/datagrid-vue/'],
+  ['vendor-affino-datagrid-chrome', '/node_modules/@affino/datagrid-chrome/'],
+  ['vendor-affino-datagrid-theme', '/node_modules/@affino/datagrid-theme/'],
+  ['vendor-affino-datagrid-gantt', '/node_modules/@affino/datagrid-gantt/'],
+]
+
 function patchAffinoMenuPointerRelatedTarget(): Plugin {
   const marker = 'const i = c.relatedTarget instanceof HTMLElement ? c.relatedTarget : null;'
   return {
@@ -81,16 +89,18 @@ export default defineConfig({
             return undefined
           }
 
+          for (const [chunkName, packagePath] of affinoDataGridChunkRules) {
+            if (id.includes(packagePath)) {
+              return chunkName
+            }
+          }
+
           if (id.includes('/node_modules/vue/') || id.includes('/node_modules/vue-router/') || id.includes('/node_modules/pinia/')) {
             return 'framework-vue'
           }
 
           if (id.includes('/node_modules/xlsx/')) {
             return 'vendor-xlsx'
-          }
-
-          if (id.includes('/node_modules/@affino/datagrid-')) {
-            return 'vendor-affino-datagrid'
           }
 
           if (id.includes('/node_modules/@affino/menu-')) {

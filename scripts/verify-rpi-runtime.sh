@@ -426,7 +426,7 @@ if container_exists unitlab-migrations; then
     fail "migrations state=${migration_status:-unknown} exit=${migration_exit}"
   fi
 else
-  fail "migrations container missing"
+  warn "migrations container missing (often expected after stopped-container cleanup)"
 fi
 
 echo "---------------------------------"

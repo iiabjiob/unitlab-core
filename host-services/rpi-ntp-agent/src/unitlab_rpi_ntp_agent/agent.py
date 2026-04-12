@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from datetime import datetime
 import logging
 from typing import Any
 
@@ -26,6 +27,8 @@ class CoreNtpAgent:
             mode="unknown",
             chrony_service_active=None,
             chrony_service_name=None,
+            system_time_utc=None,
+            system_time_local=None,
             configured_servers=[],
             effective_servers=[],
             tracking=None,
@@ -90,9 +93,11 @@ class CoreNtpAgent:
             elif action == "restore_defaults":
                 await self._handle_restore_defaults(cmd)
             elif action == "reload":
-                await self.chrony.reload_sources()
+                await self.chrony.reload_sources(bring_online=True)
                 await self._refresh_status(publish=True, request_id=cmd.request_id, last_event="chrony_reloaded")
                 await self.redis.publish_event("chrony_reloaded", {"request_id": cmd.request_id})
+            elif action == "set_time":
+                await self._handle_set_time(cmd)
             else:
                 await self.redis.publish_event(
                     "command_rejected",
@@ -149,6 +154,31 @@ class CoreNtpAgent:
             {"request_id": cmd.request_id, "servers": applied},
         )
 
+    async def _handle_set_time(self, cmd: CommandEnvelope) -> None:
+        raw_timestamp = cmd.payload.get("timestamp")
+        if not isinstance(raw_timestamp, str) or not raw_timestamp.strip():
+            raise ChronyError("timestamp is required")
+        try:
+            parsed = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ChronyError(f"Invalid timestamp: {raw_timestamp}") from exc
+
+        await self.redis.publish_event(
+            "system_time_set_started",
+            {"request_id": cmd.request_id, "timestamp": raw_timestamp},
+        )
+        await self.chrony.offline_sources()
+        applied = await self.chrony.set_system_time(parsed)
+        await self._refresh_status(publish=True, request_id=cmd.request_id, last_event="system_time_set")
+        await self.redis.publish_event(
+            "system_time_set_success",
+            {
+                "request_id": cmd.request_id,
+                "timestamp": applied,
+                "note": "chrony sources forced offline until reload/apply restores upstream sync",
+            },
+        )
+
     async def _refresh_status(
         self,
         *,
@@ -170,6 +200,8 @@ class CoreNtpAgent:
         self._snapshot.mode = mode
         self._snapshot.chrony_service_active = status.service_active
         self._snapshot.chrony_service_name = status.service_name
+        self._snapshot.system_time_utc = status.system_time_utc
+        self._snapshot.system_time_local = status.system_time_local
         self._snapshot.configured_servers = status.configured_servers
         self._snapshot.effective_servers = status.effective_servers
         self._snapshot.tracking = tracking

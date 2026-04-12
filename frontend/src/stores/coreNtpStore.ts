@@ -4,6 +4,7 @@ import {
   enqueueCoreNtpApplyServers,
   enqueueCoreNtpReload,
   enqueueCoreNtpRestoreDefaults,
+  enqueueCoreNtpSetTime,
   enqueueCoreNtpStatus,
   fetchCoreNtpState,
 } from "@/api/core_ntp.api"
@@ -100,6 +101,10 @@ export const useCoreNtpStore = defineStore("coreNtpStore", () => {
     return runCommand(() => enqueueCoreNtpReload(), "Queued core-ntp reload")
   }
 
+  async function setTime(timestamp: string) {
+    return runCommand(() => enqueueCoreNtpSetTime({ timestamp }), "Queued core-ntp set_time")
+  }
+
   function handleVisibilityChange() {
     if (document.visibilityState === "visible") {
       void ensureFresh({ force: true })
@@ -134,7 +139,10 @@ export const useCoreNtpStore = defineStore("coreNtpStore", () => {
   const effectiveServers = computed(() => snapshot.value?.effective_servers ?? [])
   const tracking = computed(() => snapshot.value?.tracking ?? null)
   const sources = computed(() => snapshot.value?.sources ?? [])
-  const isSynced = computed(() => snapshot.value?.tracking?.synced === true)
+  const selectedUpstreamSource = computed(() =>
+    sources.value.find((source) => source.mode_mark === "^" && source.state_mark === "*") ?? null,
+  )
+  const isSynced = computed(() => snapshot.value?.tracking?.synced === true && selectedUpstreamSource.value !== null)
 
   return {
     snapshot,
@@ -147,6 +155,7 @@ export const useCoreNtpStore = defineStore("coreNtpStore", () => {
     effectiveServers,
     tracking,
     sources,
+    selectedUpstreamSource,
     isSynced,
     applySnapshot,
     refreshState,
@@ -157,6 +166,7 @@ export const useCoreNtpStore = defineStore("coreNtpStore", () => {
     applyServers,
     restoreDefaults,
     reloadSources,
+    setTime,
   }
 })
 

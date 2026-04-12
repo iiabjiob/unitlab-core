@@ -27,3 +27,8 @@ export async function enqueueCoreNtpReload() {
   return data
 }
 
+export async function enqueueCoreNtpSetTime(payload: { timestamp: string }) {
+  const { data } = await http.post<CoreNtpCommandAccepted>(`${API_V1}/core-ntp/set-time`, payload)
+  return data
+}
+

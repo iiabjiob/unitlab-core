@@ -230,7 +230,7 @@ const diAlertActive = computed(() => {
   if (!diag) {
     return false
   }
-  return Boolean(diag.stuck || diag.lost || diag.latched)
+  return Boolean(diag.stuck || diag.lost)
 })
 
 const diIndicatorClass = computed(() => {

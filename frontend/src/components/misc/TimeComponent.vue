@@ -54,17 +54,19 @@ const formattedTime = computed(() => (now.value ? formatter.format(now.value) : 
 
 const ntpLabel = computed(() => {
   if (coreNtpStore.isSynced) {
-    return "NTP"
+    return "SYNC"
   }
   return "UNSYNC"
 })
 
 const ntpTitle = computed(() => {
   if (coreNtpStore.isSynced) {
-    const source = String(coreNtpStore.tracking?.source ?? "").trim()
-    return source ? `Time synchronized via ${source}` : "Time synchronized via NTP"
+    const source = String(coreNtpStore.selectedUpstreamSource?.name ?? coreNtpStore.tracking?.source ?? "").trim()
+    return source
+      ? `RPi5 synchronized with upstream NTP source ${source}`
+      : "RPi5 synchronized with an upstream NTP source"
   }
-  return "Time is not synchronized. Click to open Time / NTP settings"
+  return "RPi5 is not synchronized with an upstream precise time source. It still serves NTP to peripherals. Click to open Time / NTP settings."
 })
 
 const ntpBadgeInteractive = computed(() => !coreNtpStore.isSynced)

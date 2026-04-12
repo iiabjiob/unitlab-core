@@ -40,6 +40,8 @@ export interface CoreNtpSnapshot {
   mode: CoreNtpMode
   chrony_service_active: boolean | null
   chrony_service_name: string | null
+  system_time_utc?: string | null
+  system_time_local?: string | null
   configured_servers: string[]
   effective_servers: string[]
   tracking: CoreNtpTracking | null

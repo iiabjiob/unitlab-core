@@ -14,16 +14,31 @@ const channels = computed(() =>
   channelStore.channelsByDevice(props.device.id)
 )
 
+const orderedChannels = computed(() =>
+  [...channels.value].sort((left, right) => left.index - right.index)
+)
+
 const isOffline = computed(() => props.device.status !== "online")
 
 const channelCount = computed(() => channels.value.length)
 const deviceChannelType = computed(() => props.device.device_type)
+const digitalColumnCount = computed(() => Math.max(1, Math.ceil(orderedChannels.value.length / 8)))
 
 const channelListClass = computed(() => (
   deviceChannelType.value === "ao"
     ? "mt-5 flex min-h-0 flex-col gap-1.5 overflow-y-auto pr-1"
-    : "mt-5 grid grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 2xl:grid-cols-3"
+    : "mt-5 grid min-h-0 grid-flow-col grid-rows-8 content-start gap-x-1 gap-y-2 overflow-y-auto pr-1"
 ))
+
+const channelListStyle = computed(() => {
+  if (deviceChannelType.value === "ao") {
+    return undefined
+  }
+
+  return {
+    gridTemplateColumns: `repeat(${digitalColumnCount.value}, minmax(0, 1fr))`,
+  }
+})
 
 const hasDoChannels = computed(() =>
   channels.value.length > 0 &&
@@ -80,9 +95,9 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
     </div>
 
     <!-- LIST -->
-    <div :class="channelListClass">
+    <div :class="channelListClass" :style="channelListStyle">
       <DeviceChannelItem
-        v-for="channel in channels"
+        v-for="channel in orderedChannels"
         :key="channel.id"
         :channel="channel"
         :device-type="deviceChannelType"

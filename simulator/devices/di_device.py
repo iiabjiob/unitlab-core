@@ -238,7 +238,6 @@ class SimulatedDIDevice(SimulatedDeviceBase):
         async with self._diag_lock:
             self._diag_seen |= limited_mask
             if event == "latch" and latched_active:
-                self._diag_stuck |= limited_mask
                 self._latched_mask |= limited_mask
                 self._diag_latched_delta = limited_mask
                 self._diag_latched_cause = limited_mask
@@ -246,8 +245,6 @@ class SimulatedDIDevice(SimulatedDeviceBase):
                 self._latched_mask &= ~limited_mask
                 self._diag_latched_delta = limited_mask
                 self._diag_latched_cause = 0
-                if self._rng.random() < 0.6:
-                    self._diag_stuck &= ~limited_mask
             elif event == "pulse":
                 if self._rng.random() < 0.5:
                     self._diag_lost |= limited_mask
