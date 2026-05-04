@@ -13,68 +13,6 @@ const affinoDataGridChunkRules: Array<[chunkName: string, packagePath: string]> 
   ['vendor-affino-datagrid-gantt', '/node_modules/@affino/datagrid-gantt/'],
 ]
 
-function resolveAffinoChunkName(id: string): string | undefined {
-  const affinoPackageMatch = id.match(/\/node_modules\/@affino\/([^/]+)\//)
-  const affinoPackageName = affinoPackageMatch?.[1]
-
-  if (!affinoPackageName) {
-    return undefined
-  }
-
-  if (affinoPackageName.startsWith('datagrid-')) {
-    return undefined
-  }
-
-  if (affinoPackageName.startsWith('menu-')) {
-    return 'vendor-affino-menu'
-  }
-
-  return 'vendor-affino-ui'
-}
-
-function resolveAffinoDataGridCoreChunkName(id: string): string | undefined {
-  const match = id.match(/\/node_modules\/@affino\/datagrid-core\/dist\/src\/([^/]+)(?:\/([^/]+))?\//)
-  if (!match) {
-    return undefined
-  }
-
-  const primarySegment = match[1]
-  const secondarySegment = primarySegment === 'models' ? match[2] : undefined
-
-  if (primarySegment === 'cells') {
-    return 'vendor-affino-datagrid-core-cells'
-  }
-
-  if (primarySegment === 'core') {
-    return 'vendor-affino-datagrid-core-core'
-  }
-
-  if (primarySegment === 'models') {
-    const allowedModelSegments = new Set([
-      'aggregation',
-      'bootstrap',
-      'compute',
-      'filters',
-      'host',
-      'materialization',
-      'mutation',
-      'pivot',
-      'projection',
-      'snapshot',
-      'state',
-      'tree',
-    ])
-
-    if (secondarySegment && allowedModelSegments.has(secondarySegment)) {
-      return `vendor-affino-datagrid-core-models-${secondarySegment}`
-    }
-
-    return 'vendor-affino-datagrid-core-models'
-  }
-
-  return undefined
-}
-
 function patchAffinoMenuPointerRelatedTarget(): Plugin {
   const marker = 'const i = c.relatedTarget instanceof HTMLElement ? c.relatedTarget : null;'
   return {
@@ -107,7 +45,7 @@ function patchAffinoMenuPointerRelatedTarget(): Plugin {
 }
 
 // https://vite.dev/config/
-export default defineConfig(({ command }) => ({
+export default defineConfig({
   server: {
     host: true,
     port: 5173,
@@ -135,9 +73,9 @@ export default defineConfig(({ command }) => ({
   plugins: [
     patchAffinoMenuPointerRelatedTarget(),
     vue(),
-    command === 'serve' ? vueDevTools() : null,
+    vueDevTools(),
     tailwindcss(),
-  ].filter((plugin): plugin is Plugin => plugin !== null),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
@@ -157,11 +95,6 @@ export default defineConfig(({ command }) => ({
             }
           }
 
-          const affinoDataGridCoreChunkName = resolveAffinoDataGridCoreChunkName(id)
-          if (affinoDataGridCoreChunkName) {
-            return affinoDataGridCoreChunkName
-          }
-
           if (id.includes('/node_modules/vue/') || id.includes('/node_modules/vue-router/') || id.includes('/node_modules/pinia/')) {
             return 'framework-vue'
           }
@@ -170,17 +103,12 @@ export default defineConfig(({ command }) => ({
             return 'vendor-xlsx'
           }
 
-          const affinoChunkName = resolveAffinoChunkName(id)
-          if (affinoChunkName) {
-            return affinoChunkName
+          if (id.includes('/node_modules/@affino/menu-')) {
+            return 'vendor-affino-menu'
           }
 
-          if (id.includes('/node_modules/axios/')) {
-            return 'vendor-axios'
-          }
-
-          if (id.includes('/node_modules/pinia-plugin-persistedstate/')) {
-            return 'vendor-pinia-plugin-persistedstate'
+          if (id.includes('/node_modules/@affino/')) {
+            return 'vendor-affino-ui'
           }
 
           return 'vendor-misc'
@@ -188,4 +116,4 @@ export default defineConfig(({ command }) => ({
       },
     },
   },
-}))
+})

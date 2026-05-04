@@ -16,3 +16,14 @@
 	position: relative;
 	z-index: 1300;
 }
+
+#affino-menu-host {
+	position: fixed;
+	inset: 0;
+	z-index: 1300;
+	pointer-events: none;
+}
+
+#affino-menu-host > * {
+	pointer-events: auto;
+}
