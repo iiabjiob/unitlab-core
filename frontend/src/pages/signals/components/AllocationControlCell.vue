@@ -86,12 +86,13 @@
         v-else
         type="button"
         class="inline-flex items-center gap-1.5 rounded border border-transparent px-1.5 py-1 text-xs font-medium text-neutral-700 transition hover:border-neutral-200 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-neutral-200 dark:hover:border-neutral-700 dark:hover:bg-neutral-900"
+        tabindex="-1"
         :disabled="disabled || aoPending"
         :aria-label="ariaLabel ?? `Set analog output to ${aoValueLabel}`"
-        @click.stop
+        :title="aoOpenHint || undefined"
+        @click.stop.prevent="beginAoEdit()"
         @mousedown.stop
         @pointerdown.stop
-        @dblclick.stop="beginAoEdit()"
       >
         <span class="h-2 w-2 shrink-0 rounded-full" :class="lampClass"></span>
         <span v-if="aoValueLabel" class="tabular-nums">{{ aoValueLabel }}</span>

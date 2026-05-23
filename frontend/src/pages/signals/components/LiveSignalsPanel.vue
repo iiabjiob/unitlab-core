@@ -79,7 +79,7 @@
 
 <script setup lang="ts">
 import { computed, h, ref } from "vue"
-import { DataGrid, type DataGridAppCellRendererContext, type DataGridAppColumnInput } from "@affino/datagrid-vue-app"
+import { defineDataGridComponent, type DataGridAppCellRendererContext, type DataGridAppColumnInput, type DataGridProps } from "@affino/datagrid-vue-app"
 
 import UiBadge from "@/components/ui/UiBadge.vue"
 import UiButton from "@/components/ui/UiButton.vue"
@@ -121,6 +121,8 @@ interface LiveSignalGridRow extends Record<string, unknown> {
   live: string
   source: LiveSignalRow
 }
+
+const DataGrid = defineDataGridComponent<LiveSignalGridRow>()
 
 const rows = computed<LiveSignalRow[]>(() => {
   const mappingBySignal = new Map<string, AllocationMappingItem>()
@@ -215,9 +217,9 @@ const resolvedColumns = computed<DataGridAppColumnInput<LiveSignalGridRow>[]>(()
   },
 ])
 
-const clientRowModelOptions = computed(() => ({
-  resolveRowId: (row: unknown) => gridRowKey(row as Record<string, unknown>),
-}))
+const clientRowModelOptions: NonNullable<DataGridProps<LiveSignalGridRow>["clientRowModelOptions"]> = {
+  resolveRowId: row => gridRowKey(row),
+}
 
 const virtualizationOptions = computed(() => ({
   rows: true,

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, nextTick, onBeforeUnmount, ref, watch, type ComponentPublicInstance } from "vue"
-import { DataGrid, type DataGridAppColumnInput } from "@affino/datagrid-vue-app"
+import { defineDataGridComponent, type DataGridAppColumnInput, type DataGridProps } from "@affino/datagrid-vue-app"
 import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
 import type { Device } from "@/types/device"
 import UiAffinoDisclosure from "@/components/ui/UiAffinoDisclosure.vue"
@@ -280,6 +280,8 @@ type StackRow = {
   lastSeenMs: number | null
 }
 
+const DataGrid = defineDataGridComponent<StackRow>()
+
 const stackRows = computed<StackRow[]>(() =>
   diagStack.value.map((entry, index) => {
     const row = asRecord(entry)
@@ -322,7 +324,7 @@ const stackGridColumns = computed<DataGridAppColumnInput<StackRow>[]>(() => [
   },
 ])
 
-const stackGridRowModelOptions = {
+const stackGridRowModelOptions: NonNullable<DataGridProps<StackRow>["clientRowModelOptions"]> = {
   resolveRowId: (row: StackRow) => row.rowId,
 }
 

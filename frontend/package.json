@@ -12,13 +12,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@affino/datagrid-server-adapters": "^0.1.0",
-    "@affino/datagrid-server-client": "^0.1.0",
-    "@affino/datagrid-vue-app": "^0.1.47",
+    "@affino/datagrid-vue-app": "^0.4.5",
     "@affino/dialog-vue": "^1.1.0",
     "@affino/disclosure-vue": "^0.1.0",
     "@affino/listbox-vue": "^1.1.0",
     "@affino/menu-vue": "2.1.1",
+    "@affino/overlay-host": "^1.1.0",
     "@affino/popover-vue": "^1.0.0",
     "@affino/tabs-vue": "^0.1.0",
     "@affino/tooltip-vue": "^1.0.0",

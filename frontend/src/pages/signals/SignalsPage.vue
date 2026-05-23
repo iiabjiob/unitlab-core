@@ -114,7 +114,7 @@
 import { computed, defineComponent, h, nextTick, onMounted, ref, watch, type PropType } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { storeToRefs } from "pinia"
-import { DataGrid, type DataGridAppCellRendererContext, type DataGridAppColumnInput, type DataGridAppToolbarModule, type DataGridSavedViewSnapshot, writeDataGridSavedViewToStorage } from "@affino/datagrid-vue-app"
+import { defineDataGridComponent, useDataGridRef, type DataGridAppCellRendererContext, type DataGridAppColumnInput, type DataGridAppToolbarModule, type DataGridProps, type DataGridSavedViewSnapshot, writeDataGridSavedViewToStorage } from "@affino/datagrid-vue-app"
 
 import { SignalsAPI } from "@/api/signals.api"
 import type { AoChannel, DoChannel } from "@/types/channel"
@@ -156,11 +156,7 @@ const { activeWorkspaceRevision } = storeToRefs(testedAtRealtimeStore)
 const error = ref<string | null>(null)
 const importModalOpen = ref(false)
 const exportModalOpen = ref(false)
-const allocationGridRef = ref<{
-  getSavedView?: () => DataGridSavedViewSnapshot<Record<string, unknown>> | null
-  migrateSavedView?: (savedView: unknown) => DataGridSavedViewSnapshot<Record<string, unknown>> | null
-  applySavedView?: (savedView: DataGridSavedViewSnapshot<Record<string, unknown>>) => boolean
-} | null>(null)
+const allocationGridRef = useDataGridRef<GridRow>()
 const allocationChannelPickerSignalId = ref<number | null>(null)
 const allocationChannelPickerOpen = ref(false)
 const allocationChannelPickerInstanceKey = ref(0)
@@ -187,19 +183,12 @@ type GridRow = Record<string, unknown> & {
   rowId: string
 }
 
-type RowSelectionSnapshot = {
-  focusedRow: string | number | null
-  selectedRows: Array<string | number>
-}
+type RowSelectionSnapshot = NonNullable<DataGridProps<GridRow>["rowSelectionState"]>
+type GridState = NonNullable<DataGridProps<GridRow>["state"]>
+type DataGridStateUpdate = NonNullable<DataGridProps<Record<string, unknown>>["state"]>
+type GridCellInteractiveContext = DataGridAppCellRendererContext<GridRow>["interactive"]
 
-type UnifiedGridState = {
-  version: 1
-  rows: unknown
-  columns: unknown
-  selection: unknown
-  rowSelection: RowSelectionSnapshot | null
-  transaction: unknown
-}
+const DataGrid = defineDataGridComponent<GridRow>()
 
 const SIGNALS_GRID_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
 
@@ -313,9 +302,9 @@ const summaryText = computed(() => {
   return `${total} signals · ${allocated} allocated (${formatPercent(allocatedPercent)}%) · ${tested} tested (${formatPercent(testedPercent)}%) · ${remaining} remaining (${formatPercent(remainingPercent)}%)`
 })
 
-const clientRowModelOptions = computed(() => ({
-  resolveRowId: (row: unknown) => String((row as Record<string, unknown>).rowId ?? ""),
-}))
+const clientRowModelOptions: NonNullable<DataGridProps<GridRow>["clientRowModelOptions"]> = {
+  resolveRowId: row => row.rowId,
+}
 
 const selectedAllocationRows = computed(() => (
   selectedRowKeys.value
@@ -563,7 +552,7 @@ function restoreSignalsGridState() {
   }
 
   try {
-    const savedView = JSON.parse(raw) as Partial<DataGridSavedViewSnapshot<Record<string, unknown>>>
+    const savedView = JSON.parse(raw) as Partial<DataGridSavedViewSnapshot<GridRow>>
     const nextState = savedView?.state
     if (!nextState || typeof nextState !== "object") {
       rowSelectionState.value = null
@@ -571,7 +560,7 @@ function restoreSignalsGridState() {
       return
     }
 
-    const restoredState = nextState as UnifiedGridState
+    const restoredState = nextState as GridState
     rowSelectionState.value = restoredState.rowSelection ?? null
     pendingSignalsGridSavedView.value = savedView
     tryApplyPendingSignalsGridSavedView()
@@ -742,13 +731,21 @@ function sourceColumnKey(index: number): string {
   return `source_col_${index}`
 }
 
-function handleAllocationGridStateUpdate(state: UnifiedGridState | null) {
+function invokeRenderedCellAction(interactive: GridCellInteractiveContext) {
+  if (!interactive?.enabled) {
+    return
+  }
+  interactive.activate("click")
+}
+
+function handleAllocationGridStateUpdate(state: DataGridStateUpdate | null) {
   rowSelectionState.value = state?.rowSelection ?? null
   persistSignalsGridState()
 }
 
 function handleAllocationRowSelectionStateUpdate(state: RowSelectionSnapshot | null) {
   rowSelectionState.value = state
+  persistSignalsGridState()
 }
 
 function signalIdFromRowKey(rowKey: string): number | null {
@@ -1933,7 +1930,7 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       presentation: { align: "left", headerAlign: "left" },
       capabilities: { editable: false, sortable: false },
       cellInteraction: {
-        click: false,
+        click: true,
         keyboard: ["enter", "space"],
         role: "button",
         label: ({ row }) => {
@@ -1941,6 +1938,10 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
           return Number.isFinite(allocationRow.channel_id as number)
             ? `Change hardware allocation for ${allocationRow.signal_name || allocationRow.signal_key}`
             : `Assign hardware for ${allocationRow.signal_name || allocationRow.signal_key}`
+        },
+        disabled: ({ row }) => {
+          const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((row ?? {}) as GridRow))
+          return allocationChannelPickerSaving.value && allocationChannelPickerSignalId.value === allocationRow.signal_id
         },
         onInvoke: ({ row }) => {
           const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((row ?? {}) as GridRow))
@@ -1954,13 +1955,10 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
           assigned: Number.isFinite(allocationRow.channel_id as number),
           online: resolveAllocationOnlineState(allocationRow),
           active: allocationChannelPickerSignalId.value === allocationRow.signal_id,
-          disabled: interactive?.enabled === false || (allocationChannelPickerSaving.value && allocationChannelPickerSignalId.value === allocationRow.signal_id),
+          disabled: interactive?.enabled !== true,
           ariaLabel: interactive?.ariaLabel,
           activate: () => {
-            const handled = interactive?.activate("click") ?? false
-            if (!handled) {
-              void openAllocationChannelPicker(allocationRow)
-            }
+            invokeRenderedCellAction(interactive)
           },
         })
       },
@@ -1986,7 +1984,7 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       presentation: { align: "left", headerAlign: "left" },
       capabilities: { editable: false, sortable: false, filterable: false },
       cellInteraction: {
-        click: false,
+        click: true,
         keyboard: ["enter", "space"],
         role: "button",
         label: ({ row }) => {
@@ -2004,17 +2002,32 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
 
           return `Control is unavailable for ${signalLabel}`
         },
+        disabled: ({ row }) => {
+          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
+          return controlBusy(controlRow)
+        },
+        pressed: ({ row }) => {
+          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
+          return resolveControlTarget(controlRow)?.kind === "do"
+            ? controlStateIsOn(controlRow)
+            : undefined
+        },
         onInvoke: ({ row }) => {
           const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
           const target = resolveControlTarget(controlRow)
 
           if (target?.kind === "do") {
             void sendControl(controlRow, !controlStateIsOn(controlRow))
+            return
+          }
+
+          if (target?.kind === "ao") {
+            beginAoControlEdit(controlRow)
           }
         },
       },
-      cellRenderer: (context: DataGridAppCellRendererContext<GridRow>) => {
-        const controlRow = resolveControlCellRow(asAllocationRow((context.row ?? {}) as GridRow))
+      cellRenderer: ({ row, interactive }: DataGridAppCellRendererContext<GridRow>) => {
+        const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
         const target = resolveControlTarget(controlRow)
         const isOn = controlStateIsOn(controlRow)
 
@@ -2026,22 +2039,22 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
           statusTag: controlStatusTag(controlRow),
           statusTitle: aoStatusTitle(controlRow),
           stateLabel: controlStateLabel(controlRow),
-          disabled: controlBusy(controlRow),
+          disabled: interactive?.enabled !== true,
           isOn,
           activate: () => {
-            void sendControl(controlRow, !isOn)
+            invokeRenderedCellAction(interactive)
           },
-          ariaLabel: target?.kind === "ao"
-            ? `Double click to edit analog output for ${controlRow.signal_name || controlRow.signal_key}`
-            : `Turn ${isOn ? 'off' : 'on'} control for ${controlRow.signal_name || controlRow.signal_key}`,
-          ariaPressed: target?.kind === "do" ? (isOn ? "true" : "false") : undefined,
+          ariaLabel: interactive?.ariaLabel ?? (target?.kind === "ao"
+            ? `Click to edit analog output for ${controlRow.signal_name || controlRow.signal_key}`
+            : `Turn ${isOn ? 'off' : 'on'} control for ${controlRow.signal_name || controlRow.signal_key}`),
+          ariaPressed: target?.kind === "do" ? (interactive?.ariaPressed ?? (isOn ? "true" : "false")) : undefined,
           aoActive: aoControlActive(controlRow),
           aoPending: activeAoSubmittingSignalId.value === controlRow.signal_id,
           aoValueLabel: aoValueLabel(controlRow),
           aoInputValue: aoControlActive(controlRow) ? activeAoControlDraftValue.value : aoValueLabel(controlRow),
-          aoOpenHint: "Double click to edit",
+          aoOpenHint: "Click to edit",
           beginAoEdit: () => {
-            beginAoControlEdit(controlRow)
+            invokeRenderedCellAction(interactive)
           },
           cancelAoEdit: () => {
             cancelAoControlEdit(controlRow.signal_id)
@@ -2055,10 +2068,6 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
     },
   ]
 })
-
-// const clientRowModelOptions = computed(() => ({
-//   resolveRowId: (row: unknown) => String((row as Record<string, unknown>).rowId ?? ""),
-// }))
 
 const virtualizationOptions = computed(() => ({
   rows: true,

@@ -1,0 +1,4 @@
+interface:
+  display_name: "unitlab Token Saver"
+  short_description: "Concise, validation-first unitlab workflows"
+  default_prompt: "Use $unitlab-token-saver for concise, validation-first unitlab refactors and repetitive engineering tasks."

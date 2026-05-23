@@ -54,7 +54,7 @@
             :rows="gridRows"
             :columns="resolvedColumns"
             :theme="theme"
-            :state="gridState"
+            :row-selection-state="rowSelectionState"
             :client-row-model-options="clientRowModelOptions"
             :virtualization="virtualizationOptions"
             :base-row-height="34"
@@ -65,8 +65,7 @@
             layout-mode="fill"
             row-hover
             striped-rows
-            @selection-change="handleGridSelectionChange"
-            @update:state="handleGridStateUpdate"
+            @update:rowSelectionState="handleGridRowSelectionStateUpdate"
           />
         </div>
       </div>
@@ -90,7 +89,7 @@
 
 <script setup lang="ts">
 import { computed, h, ref, watch } from "vue"
-import { DataGrid, type DataGridAppCellRendererContext, type DataGridAppColumnInput } from "@affino/datagrid-vue-app"
+import { defineDataGridComponent, type DataGridAppCellRendererContext, type DataGridAppColumnInput, type DataGridProps } from "@affino/datagrid-vue-app"
 
 import UiModal from "@/components/ui/UiModal.vue"
 import UiButton from "@/components/ui/UiButton.vue"
@@ -108,19 +107,9 @@ type GridRow = Record<string, unknown> & {
   rowId: string
 }
 
-type RowSelectionSnapshot = {
-  focusedRow: string | number | null
-  selectedRows: Array<string | number>
-}
+type RowSelectionSnapshot = NonNullable<DataGridProps<GridRow>["rowSelectionState"]>
 
-type UnifiedGridState = {
-  version: 1
-  rows: unknown
-  columns: unknown
-  selection: unknown
-  rowSelection: RowSelectionSnapshot | null
-  transaction: unknown
-}
+const DataGrid = defineDataGridComponent<GridRow>()
 
 const props = withDefaults(defineProps<{
   open: boolean
@@ -153,7 +142,7 @@ const DATA_FRESHNESS_WINDOW_MS = 20_000
 
 const loading = ref(false)
 const selectedRowKeys = ref<string[]>([])
-const gridState = ref<UnifiedGridState | null>(null)
+const rowSelectionState = ref<RowSelectionSnapshot | null>(null)
 const { theme } = useAffinoDataGridTheme()
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
@@ -231,9 +220,9 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
   ]
 })
 
-const clientRowModelOptions = computed(() => ({
-  resolveRowId: (row: unknown) => rowKey(row as Record<string, unknown>),
-}))
+const clientRowModelOptions: NonNullable<DataGridProps<GridRow>["clientRowModelOptions"]> = {
+  resolveRowId: row => rowKey(row),
+}
 
 const virtualizationOptions = computed(() => ({
   rows: true,
@@ -309,7 +298,7 @@ watch(
   (rows) => {
     if (selectedRowKeys.value.length === 0) return
     const allowed = new Set(rows.map(row => row.rowId))
-    selectedRowKeys.value = selectedRowKeys.value.filter(key => allowed.has(key))
+    setControlledRowSelection(selectedRowKeys.value.filter(key => allowed.has(key)))
   },
 )
 
@@ -318,50 +307,31 @@ function rowKey(row: Record<string, unknown>) {
 }
 
 function clearSelection() {
-  selectedRowKeys.value = []
-  if (gridState.value) {
-    gridState.value = {
-      ...gridState.value,
-      rowSelection: {
-        focusedRow: null,
-        selectedRows: [],
-      },
-    }
-  }
-}
-
-function handleGridStateUpdate(state: UnifiedGridState) {
-  gridState.value = state
+  setControlledRowSelection([])
 }
 
 function rowKeysFromSelectionSnapshot(snapshot: RowSelectionSnapshot | null | undefined): string[] {
   return (snapshot?.selectedRows ?? []).map(rowKey => String(rowKey))
 }
 
+function setControlledRowSelection(rowKeys: string[], focusedRow: string | number | null = null) {
+  selectedRowKeys.value = rowKeys
+  rowSelectionState.value = {
+    focusedRow: focusedRow !== null && rowKeys.includes(String(focusedRow))
+      ? focusedRow
+      : (rowKeys[rowKeys.length - 1] ?? null),
+    selectedRows: [...rowKeys],
+  }
+}
+
 function syncSelectedRowKeysFromSnapshot(snapshot: RowSelectionSnapshot | null | undefined) {
   const rowKeys = rowKeysFromSelectionSnapshot(snapshot)
-  if (props.multiple) {
-    selectedRowKeys.value = rowKeys
-    return
-  }
-  selectedRowKeys.value = rowKeys.length > 0 ? [rowKeys[rowKeys.length - 1]] : []
+  const nextRowKeys = props.multiple ? rowKeys : rowKeys.slice(-1)
+  setControlledRowSelection(nextRowKeys, snapshot?.focusedRow ?? null)
 }
 
-function hasUnknownRowSelectionShape(snapshot: unknown): snapshot is RowSelectionSnapshot {
-  return Boolean(
-    snapshot
-    && typeof snapshot === "object"
-    && Array.isArray((snapshot as Record<string, unknown>).selectedRows),
-  )
-}
-
-function handleGridSelectionChange(snapshot?: unknown) {
-  if (hasUnknownRowSelectionShape(snapshot)) {
-    syncSelectedRowKeysFromSnapshot(snapshot)
-    return
-  }
-
-  syncSelectedRowKeysFromSnapshot(gridState.value?.rowSelection ?? null)
+function handleGridRowSelectionStateUpdate(snapshot: RowSelectionSnapshot | null) {
+  syncSelectedRowKeysFromSnapshot(snapshot)
 }
 
 function parseSignalId(rowKey: string): number | null {
