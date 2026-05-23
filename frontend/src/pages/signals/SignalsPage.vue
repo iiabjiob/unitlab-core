@@ -59,7 +59,11 @@
     </div>
 
     <section v-else class="affino-native-data-grid min-h-0 min-w-0 flex-1">
-      <div class="affino-native-data-grid__shell">
+      <div
+        class="affino-native-data-grid__shell"
+        :style="allocationGridReadyForDisplay ? undefined : { visibility: 'hidden', pointerEvents: 'none' }"
+        :aria-busy="allocationGridReadyForDisplay ? undefined : 'true'"
+      >
         <DataGrid
           ref="allocationGridRef"
           :rows="gridRows"
@@ -120,7 +124,7 @@ import { defineDataGridComponent, parseDataGridSavedView, useDataGridRef, type D
 import { SignalsAPI } from "@/api/signals.api"
 import type { AoChannel, DoChannel } from "@/types/channel"
 import AllocationEditorHeader from "@/pages/signals/components/AllocationEditorHeader.vue"
-import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders } from "@/pages/signals/utils/sourceColumns"
+import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders, resolveSourceColumnInitialWidth, resolveSourceColumnMinWidth } from "@/pages/signals/utils/sourceColumns"
 import AllocationChannelCell from "@/pages/signals/components/AllocationChannelCell.vue"
 import AllocationChannelPickerPanel from "@/pages/signals/components/AllocationChannelPickerPanel.vue"
 import AllocationControlCell from "@/pages/signals/components/AllocationControlCell.vue"
@@ -257,6 +261,9 @@ const loading = computed(() => (
   || loadingAllocations.value
   || loadingSheet.value
   || updatingAllocations.value
+))
+const allocationGridReadyForDisplay = computed(() => (
+  signalsGridStatePersistenceReady.value && !restoringSignalsGridState.value
 ))
 const activeSignalSheet = computed(() => {
   const workspaceId = workspaceStore.activeWorkspaceId
@@ -555,6 +562,10 @@ function tryApplyPendingSignalsGridSavedView() {
 
   if (!areSavedViewColumnsReady(migratedSavedView)) {
     pendingSignalsGridSavedView.value = migratedSavedView
+    if (!loading.value && resolvedColumns.value.length > 0) {
+      pendingSignalsGridSavedView.value = null
+      markSignalsGridStateRestored()
+    }
     return
   }
 
@@ -1938,8 +1949,8 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
   const sourceColumns: DataGridAppColumnInput<GridRow>[] = sourceHeaders.value.map((header, index) => ({
     key: sourceColumnKey(index),
     label: header,
-    minWidth: 120,
-    initialState: { width: Math.min(Math.max(header.length * 11, 140), 320) },
+    minWidth: resolveSourceColumnMinWidth(header),
+    initialState: { width: resolveSourceColumnInitialWidth(header) },
     presentation: { align: "left", headerAlign: "left" },
     capabilities: { editable: false },
     cellRenderer: renderDefaultCell,
@@ -1950,8 +1961,8 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
     {
       key: "internal_signal_type",
       label: "Internal Signal Type",
-      minWidth: 136,
-      initialState: { width: 160 },
+      minWidth: 96,
+      initialState: { width: 140 },
       presentation: { align: "left", headerAlign: "left" },
       capabilities: { editable: false },
       cellRenderer: renderDefaultCell,
@@ -1959,8 +1970,8 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
     {
       key: "channel_select",
       label: "Unit/Channel",
-      minWidth: 196,
-      initialState: { width: 220, pin: "right" },
+      minWidth: 136,
+      initialState: { width: 190, pin: "right" },
       presentation: { align: "left", headerAlign: "left" },
       capabilities: { editable: false, sortable: false },
       cellInteraction: {
@@ -2001,8 +2012,8 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       key: "tested_at",
       label: "Tested At",
       dataType: "datetime",
-      minWidth: 180,
-      initialState: { width: 210, pin: "right" },
+      minWidth: 128,
+      initialState: { width: 176, pin: "right" },
       presentation: {
         align: "left",
         headerAlign: "left",
@@ -2013,8 +2024,8 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
     {
       key: "control",
       label: "Control",
-      minWidth: 164,
-      initialState: { width: 220, pin: "right" },
+      minWidth: 136,
+      initialState: { width: 188, pin: "right" },
       presentation: { align: "left", headerAlign: "left" },
       capabilities: { editable: false, sortable: false, filterable: false },
       cellInteraction: {

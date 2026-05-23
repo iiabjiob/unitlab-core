@@ -1,5 +1,11 @@
 import type { SignalAllocationRow, SignalSheet } from "@/types/signal"
 
+const SOURCE_COLUMN_MIN_WIDTH = 36
+const SOURCE_COLUMN_INITIAL_MIN_WIDTH = 44
+const SOURCE_COLUMN_INITIAL_MAX_WIDTH = 240
+const SOURCE_COLUMN_CHARACTER_WIDTH = 8
+const SOURCE_COLUMN_HORIZONTAL_PADDING = 32
+
 type SheetData = {
   default_sheet_index?: number
   sheets?: Array<{ index?: number; headers?: unknown[] }>
@@ -71,4 +77,21 @@ export function resolveAllSourceColumnHeaders(
     return fromSheet
   }
   return resolveHeadersFromRows(rows)
+}
+
+function countColumnLabelCharacters(label: string): number {
+  return Array.from(label.trim()).length
+}
+
+export function resolveSourceColumnMinWidth(_header?: string): number {
+  return SOURCE_COLUMN_MIN_WIDTH
+}
+
+export function resolveSourceColumnInitialWidth(header: string): number {
+  const characterCount = Math.max(1, countColumnLabelCharacters(header))
+  const estimatedWidth = characterCount * SOURCE_COLUMN_CHARACTER_WIDTH + SOURCE_COLUMN_HORIZONTAL_PADDING
+  return Math.min(
+    Math.max(estimatedWidth, SOURCE_COLUMN_INITIAL_MIN_WIDTH),
+    SOURCE_COLUMN_INITIAL_MAX_WIDTH,
+  )
 }

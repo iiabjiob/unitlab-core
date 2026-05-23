@@ -98,7 +98,7 @@ import { useAffinoDataGridTheme } from "@/components/ui/affinoDataGridTheme"
 import "@/components/ui/affinoDataGridNative.css"
 
 import type { SignalAllocationRow, SignalIODirection } from "@/types/signal"
-import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders } from "@/pages/signals/utils/sourceColumns"
+import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders, resolveSourceColumnInitialWidth, resolveSourceColumnMinWidth } from "@/pages/signals/utils/sourceColumns"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
@@ -177,8 +177,8 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
   const sourceColumns: DataGridAppColumnInput<GridRow>[] = sourceColumnHeaders.value.map((header, index) => ({
     key: sourceColumnKey(index),
     label: header,
-    minWidth: 120,
-    initialState: { width: Math.min(Math.max(header.length * 11, 140), 360) },
+    minWidth: resolveSourceColumnMinWidth(header),
+    initialState: { width: resolveSourceColumnInitialWidth(header) },
     presentation: { align: "left", headerAlign: "left" },
     cellRenderer: renderDefaultCell,
   }))
