@@ -1,6 +1,6 @@
 # Signal List and Allocation Migration Plan
 
-Status: Slice 1 complete, Slice 2 next
+Status: Slice 3 complete, Slice 4 next
 Last reviewed: 2026-05-23
 
 ## Scope
@@ -448,6 +448,8 @@ Rollback:
 
 ### Slice 2 - Frontend Grid Patch Queue
 
+Status: done.
+
 Goal:
 
 - introduce a patch queue that can patch DataGrid rows/cells while preserving current full reload behavior.
@@ -461,13 +463,16 @@ Frontend:
 Tests:
 
 - unit tests for coalescing patches by row id;
-- component/browser test for selection and scroll preservation.
+- frontend type check.
+- browser-level selection and scroll preservation still needs manual verification under live updates.
 
 Rollback:
 
 - disable patch queue and keep full-row prop flow.
 
 ### Slice 3 - Allocation Job Changed Rows
+
+Status: done.
 
 Goal:
 
@@ -485,8 +490,9 @@ Frontend:
 
 Tests:
 
-- allocation worker tests for terminal payload;
-- frontend test for changed rows path and fallback path.
+- allocation worker serialization test for terminal `changed_rows` payload;
+- frontend type check;
+- existing full reload fallback remains when a job result has no changed row payload.
 
 Rollback:
 
@@ -699,6 +705,6 @@ Acceptance targets:
 
 ## Immediate Next Step
 
-Start with Slice 2, because the projection contract now exposes stable row identity and allocation health/status fields.
+Start with Slice 4, because async allocation jobs now return changed row projections and the frontend can consume them without a normal full reload.
 
-Slice 2 should introduce the patch queue behind the existing full-row prop flow so rollback is immediate if grid behavior regresses.
+Slice 4 should add explicit assign, unassign, and reassign actions on the backend, returning the same changed row projection and structured conflict/rejection data.

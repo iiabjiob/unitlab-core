@@ -12,7 +12,7 @@ from app.core.logger import get_logger
 from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_signal_allocation_job_entry
-from app.schemas.signal_sheet_schema import SignalAllocationBulkUpdateSchema, SignalAutoAllocateSchema
+from app.schemas.signal_sheet_schema import SignalAllocationBulkUpdateSchema, SignalAllocationRowSchema, SignalAutoAllocateSchema
 from app.schemas.ws.events import build_signal_job_event
 from app.core.events.ws_event_publisher import WsEventPublisher
 from app.services.signal_job_service import get_signal_job, update_signal_job
@@ -35,6 +35,10 @@ STREAM_NAME = settings.signal_allocation_job_stream
 GROUP_NAME = "signal-allocation-runner"
 CONSUMER_NAME = build_worker_consumer_name()
 WORKER_NAME = "signal_allocation_runner"
+
+
+def _serialize_allocation_job_rows(rows: list[SignalAllocationRowSchema]) -> list[dict[str, Any]]:
+    return [row.model_dump(mode="json") for row in rows]
 
 
 async def _ensure_group(redis) -> None:
@@ -109,12 +113,14 @@ async def _handle_auto_allocate(
         progress_callback=progress_callback,
         commit=False,
     )
+    changed_rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, result.changed_signal_ids)
     return {
         "assigned": result.assigned,
         "skipped": result.skipped,
         "missing": result.missing,
         "unassigned_signal_ids": result.unassigned_signal_ids,
         "changed_signal_ids": result.changed_signal_ids,
+        "changed_rows": _serialize_allocation_job_rows(changed_rows),
     }
 
 
@@ -150,9 +156,11 @@ async def _handle_bulk_update(
 
     await repo.update_allocations(workspace_id, entries, progress_callback=progress_callback, commit=False)
     signal_ids = sorted({int(item["signal_id"]) for item in entries})
+    changed_rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, signal_ids)
     return {
         "updated": len(signal_ids),
         "changed_signal_ids": signal_ids,
+        "changed_rows": _serialize_allocation_job_rows(changed_rows),
     }
 
 
