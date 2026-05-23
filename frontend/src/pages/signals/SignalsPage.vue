@@ -166,6 +166,9 @@ const allocationChannelPickerSaving = ref(false)
 const allocationChannelPickerError = ref<string | null>(null)
 const rowSelectionState = ref<RowSelectionSnapshot | null>(null)
 const pendingSignalsGridSavedView = ref<string | DataGridSavedViewSnapshot<GridRow> | null>(null)
+const restoringSignalsGridState = ref(false)
+const signalsGridStatePersistenceReady = ref(false)
+const refreshingSignalsStatic = ref(false)
 const deletingSelected = ref(false)
 const deletingProgressDone = ref(0)
 const deletingProgressTotal = ref(0)
@@ -249,7 +252,12 @@ const SignalsSelectionToolbarModule = defineComponent({
 })
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
-const loading = computed(() => loadingAllocations.value || loadingSheet.value || updatingAllocations.value)
+const loading = computed(() => (
+  refreshingSignalsStatic.value
+  || loadingAllocations.value
+  || loadingSheet.value
+  || updatingAllocations.value
+))
 const activeSignalSheet = computed(() => {
   const workspaceId = workspaceStore.activeWorkspaceId
   const currentSheet = sheet.value
@@ -469,6 +477,15 @@ function persistSignalsGridState() {
     return
   }
 
+  if (
+    !signalsGridStatePersistenceReady.value
+    || restoringSignalsGridState.value
+    || pendingSignalsGridSavedView.value
+    || loading.value
+  ) {
+    return
+  }
+
   const storageKey = getSignalsGridStorageKey(workspaceStore.activeWorkspaceId)
   if (!storageKey) {
     return
@@ -480,6 +497,11 @@ function persistSignalsGridState() {
   }
 
   writeDataGridSavedViewToStorage(window.localStorage, storageKey, savedView)
+}
+
+function markSignalsGridStateRestored() {
+  restoringSignalsGridState.value = false
+  signalsGridStatePersistenceReady.value = true
 }
 
 function areSavedViewColumnsReady(savedView: DataGridSavedViewSnapshot<GridRow>): boolean {
@@ -503,6 +525,9 @@ function areSavedViewColumnsReady(savedView: DataGridSavedViewSnapshot<GridRow>)
 function tryApplyPendingSignalsGridSavedView() {
   const pendingSavedView = pendingSignalsGridSavedView.value
   if (!pendingSavedView) {
+    if (restoringSignalsGridState.value && !loading.value) {
+      markSignalsGridStateRestored()
+    }
     return
   }
 
@@ -522,6 +547,7 @@ function tryApplyPendingSignalsGridSavedView() {
   if (!migratedSavedView) {
     rowSelectionState.value = null
     pendingSignalsGridSavedView.value = null
+    markSignalsGridStateRestored()
     return
   }
 
@@ -535,13 +561,18 @@ function tryApplyPendingSignalsGridSavedView() {
   const applied = grid.applySavedView(migratedSavedView)
   if (applied) {
     pendingSignalsGridSavedView.value = null
+    markSignalsGridStateRestored()
   }
 }
 
 function restoreSignalsGridState() {
+  restoringSignalsGridState.value = true
+  signalsGridStatePersistenceReady.value = false
+
   if (typeof window === "undefined") {
     rowSelectionState.value = null
     pendingSignalsGridSavedView.value = null
+    markSignalsGridStateRestored()
     return
   }
 
@@ -549,6 +580,7 @@ function restoreSignalsGridState() {
   if (!storageKey) {
     rowSelectionState.value = null
     pendingSignalsGridSavedView.value = null
+    markSignalsGridStateRestored()
     return
   }
 
@@ -556,6 +588,7 @@ function restoreSignalsGridState() {
   if (!raw) {
     rowSelectionState.value = null
     pendingSignalsGridSavedView.value = null
+    markSignalsGridStateRestored()
     return
   }
 
@@ -732,11 +765,19 @@ function invokeRenderedCellAction(interactive: GridCellInteractiveContext) {
 }
 
 function handleAllocationGridStateUpdate(state: DataGridStateUpdate | null) {
+  if (!signalsGridStatePersistenceReady.value || restoringSignalsGridState.value || loading.value) {
+    return
+  }
+
   rowSelectionState.value = state?.rowSelection ?? null
   persistSignalsGridState()
 }
 
 function handleAllocationRowSelectionStateUpdate(state: RowSelectionSnapshot | null) {
+  if (!signalsGridStatePersistenceReady.value || restoringSignalsGridState.value || loading.value) {
+    return
+  }
+
   rowSelectionState.value = state
   persistSignalsGridState()
 }
@@ -2081,6 +2122,7 @@ async function refreshSignalsStatic() {
   }
 
   error.value = null
+  refreshingSignalsStatic.value = true
 
   try {
     await Promise.all([
@@ -2090,14 +2132,18 @@ async function refreshSignalsStatic() {
     ])
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    refreshingSignalsStatic.value = false
+    tryApplyPendingSignalsGridSavedView()
   }
 }
 
 watch(
   () => workspaceStore.activeWorkspaceId,
   () => {
+    const refreshPromise = refreshSignalsStatic()
     restoreSignalsGridState()
-    void refreshSignalsStatic()
+    void refreshPromise
   },
 )
 
@@ -2118,8 +2164,9 @@ watch(
 )
 
 onMounted(() => {
+  const refreshPromise = refreshSignalsStatic()
   restoreSignalsGridState()
-  void refreshSignalsStatic()
+  void refreshPromise
   syncImportModalFromRoute()
 })
 </script>
