@@ -7,9 +7,11 @@ from types import SimpleNamespace
 from app.api.v1.signal_sheet import repository as signal_sheet_repository
 from app.api.v1.signal_sheet.repository import (
     _build_allocation_health,
+    _build_signal_sheet_revision_token,
     _channel_auto_allocate_sort_key,
     _is_channel_compatible,
     _parse_tested_at,
+    _revision_datetime_token,
     _pick_candidate_channel,
     _resolve_allocation_status,
     _required_channel_type,
@@ -130,6 +132,45 @@ def test_parse_tested_at_parses_iso_utc_suffix() -> None:
     assert parsed is not None
     assert parsed.tzinfo is not None
     assert parsed == datetime(2026, 2, 13, 12, 34, 56, tzinfo=timezone.utc)
+
+
+def test_signal_sheet_revision_token_is_stable_and_changes_with_sheet_revision() -> None:
+    sheet_updated_at = datetime(2026, 2, 13, 12, 34, 56, tzinfo=timezone.utc)
+
+    token = _build_signal_sheet_revision_token(
+        workspace_id=1,
+        sheet_id=2,
+        source_hash="abc",
+        rows_count=10,
+        signals_count=10,
+        sheet_updated_at=sheet_updated_at,
+    )
+    same_token = _build_signal_sheet_revision_token(
+        workspace_id=1,
+        sheet_id=2,
+        source_hash="abc",
+        rows_count=10,
+        signals_count=10,
+        sheet_updated_at=sheet_updated_at,
+    )
+    changed_token = _build_signal_sheet_revision_token(
+        workspace_id=1,
+        sheet_id=2,
+        source_hash="abc",
+        rows_count=10,
+        signals_count=10,
+        sheet_updated_at=sheet_updated_at + timedelta(seconds=1),
+    )
+
+    assert token == same_token
+    assert token != changed_token
+
+
+def test_revision_datetime_token_normalizes_naive_datetime_to_utc() -> None:
+    assert (
+        _revision_datetime_token(datetime(2026, 2, 13, 12, 34, 56))
+        == "2026-02-13T12:34:56.000000+00:00"
+    )
 
 
 def test_pick_candidate_channel_skips_used_ids() -> None:

@@ -1,10 +1,25 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
-from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
+import pytest
+
+from app.api.v1.signal_sheet.router import _build_signal_test_run_job_payload
+from app.schemas.signal_sheet_schema import SignalAllocationRowSchema, SignalTestRunJobSchema
 from app.schemas.ws.events import SignalTestRuntimePatchEvent, WSChannel
 from app.workers.signal_allocation_runner import _serialize_allocation_job_rows
+from app.workers.signal_test_run_runner import _handle_test_run
+
+
+def run_async(awaitable):
+    return asyncio.run(awaitable)
+
+
+class FakeRevisionRepo:
+    async def get_sheet_revision_snapshot(self, workspace_id: int):
+        return SimpleNamespace(revision_token="current")
 
 
 def test_serialize_allocation_job_rows_returns_json_safe_projection_rows() -> None:
@@ -47,3 +62,29 @@ def test_signal_test_runtime_patch_event_serializes_tested_at_by_signal() -> Non
     assert payload["patch_type"] == "tested_at"
     assert payload["tested_at_by_signal"] == {"1": "2026-01-01T12:30:00+00:00"}
     assert payload["emitted_at"].startswith("2026-01-01T12:30:00")
+
+
+def test_signal_test_run_rejects_stale_signal_sheet_revision() -> None:
+    payload = {
+        "signal_ids": [1],
+        "signal_interval_ms": 100,
+        "toggle_mode": "single",
+        "signal_sheet_revision": {"revision_token": "queued"},
+    }
+
+    with pytest.raises(ValueError, match="revision changed"):
+        run_async(_handle_test_run(FakeRevisionRepo(), 7, payload, {}))  # type: ignore[arg-type]
+
+
+def test_signal_test_run_job_payload_includes_queued_revision() -> None:
+    request = SignalTestRunJobSchema(
+        signal_ids=[1, 2],
+        signal_interval_ms=100,
+        toggle_mode="single",
+    )
+    revision = SimpleNamespace(to_payload=lambda: {"revision_token": "rev-1"})
+
+    payload = _build_signal_test_run_job_payload(request, revision)
+
+    assert payload["signal_ids"] == [1, 2]
+    assert payload["signal_sheet_revision"] == {"revision_token": "rev-1"}

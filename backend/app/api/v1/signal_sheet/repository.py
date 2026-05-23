@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Iterable, Sequence
 
-from sqlalchemy import Select, delete, select
+from sqlalchemy import Select, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -46,6 +47,56 @@ class SignalSheetAutoAllocateResult:
     missing: int
     unassigned_signal_ids: list[int]
     changed_signal_ids: list[int]
+
+
+@dataclass(frozen=True)
+class SignalSheetRevisionSnapshot:
+    workspace_id: int
+    sheet_id: int | None
+    revision_token: str
+    source_hash: str | None
+    rows_count: int
+    signals_count: int
+    sheet_updated_at: datetime | None
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "workspace_id": self.workspace_id,
+            "sheet_id": self.sheet_id,
+            "revision_token": self.revision_token,
+            "source_hash": self.source_hash,
+            "rows_count": self.rows_count,
+            "signals_count": self.signals_count,
+            "sheet_updated_at": _revision_datetime_token(self.sheet_updated_at) or None,
+        }
+
+
+def _revision_datetime_token(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat(timespec="microseconds")
+
+
+def _build_signal_sheet_revision_token(
+    *,
+    workspace_id: int,
+    sheet_id: int | None,
+    source_hash: str | None,
+    rows_count: int,
+    signals_count: int,
+    sheet_updated_at: datetime | None,
+) -> str:
+    parts = [
+        str(int(workspace_id)),
+        str(int(sheet_id)) if sheet_id is not None else "",
+        str(source_hash or ""),
+        str(int(rows_count)),
+        str(int(signals_count)),
+        _revision_datetime_token(sheet_updated_at),
+    ]
+    return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
 
 
 def _build_allocation_health(
@@ -141,6 +192,41 @@ class SignalSheetRepository:
         stmt = select(SignalSheet).where(SignalSheet.workspace_id == workspace_id)
         result = await self.db.execute(stmt.limit(1))
         return result.scalar_one_or_none()
+
+    async def get_sheet_revision_snapshot(self, workspace_id: int) -> SignalSheetRevisionSnapshot:
+        sheet = await self.get_sheet(workspace_id)
+        signal_count_stmt = (
+            select(func.count(Signal.id))
+            .where(
+                Signal.workspace_id == workspace_id,
+                Signal.deleted_at.is_(None),
+                Signal.is_active.is_(True),
+            )
+        )
+        result = await self.db.execute(signal_count_stmt)
+        signals_count_raw = result.scalar_one()
+        signals_count = int(signals_count_raw or 0)
+        sheet_id = int(sheet.id) if sheet is not None else None
+        rows_count = int(sheet.rows_count or 0) if sheet is not None else 0
+        source_hash = str(sheet.source_hash or "").strip() if sheet is not None else None
+        sheet_updated_at = sheet.updated_at if sheet is not None else None
+        revision_token = _build_signal_sheet_revision_token(
+            workspace_id=workspace_id,
+            sheet_id=sheet_id,
+            source_hash=source_hash,
+            rows_count=rows_count,
+            signals_count=signals_count,
+            sheet_updated_at=sheet_updated_at,
+        )
+        return SignalSheetRevisionSnapshot(
+            workspace_id=workspace_id,
+            sheet_id=sheet_id,
+            revision_token=revision_token,
+            source_hash=source_hash or None,
+            rows_count=rows_count,
+            signals_count=signals_count,
+            sheet_updated_at=sheet_updated_at,
+        )
 
     async def upsert_sheet(
         self,

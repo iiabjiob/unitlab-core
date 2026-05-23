@@ -160,6 +160,14 @@ def _extract_job_attempt_meta(job_state: dict[str, Any] | None) -> tuple[str | N
     return (attempt_id or None), attempt_no
 
 
+def _extract_expected_signal_sheet_revision_token(payload: dict[str, Any]) -> str | None:
+    revision_payload = payload.get("signal_sheet_revision") if isinstance(payload, dict) else None
+    if not isinstance(revision_payload, dict):
+        return None
+    revision_token = str(revision_payload.get("revision_token") or "").strip()
+    return revision_token or None
+
+
 async def _handle_test_run(
     repo: SignalSheetRepository,
     workspace_id: int,
@@ -194,6 +202,22 @@ async def _handle_test_run(
         # Backward compatibility for older queued jobs: DO falls back to single toggle,
         # while AO rows are still handled via the random analog branch below.
         toggle_mode = "single"
+
+    expected_revision_token = _extract_expected_signal_sheet_revision_token(payload)
+    if expected_revision_token is not None:
+        current_revision = await repo.get_sheet_revision_snapshot(workspace_id)
+        if current_revision.revision_token != expected_revision_token:
+            raise ValueError("Signal sheet revision changed since test run was queued")
+    queued_revision_payload = (
+        payload.get("signal_sheet_revision")
+        if isinstance(payload.get("signal_sheet_revision"), dict)
+        else None
+    )
+
+    def attach_signal_sheet_revision(result_payload: dict[str, Any]) -> dict[str, Any]:
+        if isinstance(queued_revision_payload, dict):
+            result_payload.setdefault("signal_sheet_revision", dict(queued_revision_payload))
+        return result_payload
 
     signal_interval_seconds = signal_interval_ms / 1000
     resume_from_cursor = bool(resume_from_cursor_raw)
@@ -298,6 +322,7 @@ async def _handle_test_run(
     tested_at_patch_since_emit: dict[int, str] = {}
 
     async def attach_and_publish_tested_at_patch(result_payload: dict[str, Any]) -> None:
+        attach_signal_sheet_revision(result_payload)
         if not tested_at_patch_since_emit:
             return
         patch = dict(tested_at_patch_since_emit)
@@ -435,7 +460,7 @@ async def _handle_test_run(
             progress_done=precheck_done_global,
             progress_total=progress_total_global,
             message=f"Signals {precheck_done_global}/{progress_total_global} · ok {resume_base_succeeded} · skip {resume_base_skipped + skipped}",
-            result={
+            result=attach_signal_sheet_revision({
                 "processed": precheck_done_global,
                 "succeeded": resume_base_succeeded,
                 "skipped": resume_base_skipped + skipped,
@@ -449,7 +474,7 @@ async def _handle_test_run(
                 "resume_job_id": resume_cursor_job_id or None,
                 "attempt_id": execution_attempt_id,
                 "attempt_no": execution_attempt_no,
-            },
+            }),
         )
 
     for runnable_index, signal_id in enumerate(runnable_ids, start=1):
@@ -776,6 +801,20 @@ async def _process_entries(redis, entries) -> None:
             execution_attempt_id = uuid4().hex
             _, prev_attempt_no = _extract_job_attempt_meta(job_state)
             execution_attempt_no = max(1, prev_attempt_no + 1)
+            queued_revision_payload = (
+                payload.get("signal_sheet_revision")
+                if isinstance(payload.get("signal_sheet_revision"), dict)
+                else None
+            )
+            running_result: dict[str, Any] = {
+                "attempt_id": execution_attempt_id,
+                "attempt_no": execution_attempt_no,
+                "execution_lease_owner": execution_lease_owner,
+                "execution_started_at": datetime.now(timezone.utc).isoformat(),
+                "execution_policy": "lease+cursor+explicit_replay_fail",
+            }
+            if isinstance(queued_revision_payload, dict):
+                running_result["signal_sheet_revision"] = dict(queued_revision_payload)
 
             running_state = await update_signal_job(
                 job_id,
@@ -783,13 +822,7 @@ async def _process_entries(redis, entries) -> None:
                 message="Running",
                 progress_done=0,
                 progress_total=progress_total,
-                result={
-                    "attempt_id": execution_attempt_id,
-                    "attempt_no": execution_attempt_no,
-                    "execution_lease_owner": execution_lease_owner,
-                    "execution_started_at": datetime.now(timezone.utc).isoformat(),
-                    "execution_policy": "lease+cursor+explicit_replay_fail",
-                },
+                result=running_result,
             )
             if running_state:
                 await WsEventPublisher.publish(build_signal_job_event(running_state))

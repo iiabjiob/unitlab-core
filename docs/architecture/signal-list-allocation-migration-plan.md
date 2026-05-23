@@ -1,6 +1,6 @@
 # Signal List and Allocation Migration Plan
 
-Status: Slice 9 complete, Slice 10 next
+Status: Slice 10A complete, Slice 10B next
 Last reviewed: 2026-05-23
 
 ## Scope
@@ -692,6 +692,15 @@ Backend:
 - add revisions and revision-scoped signal items.
 - bind allocation and test run evidence to revision ids.
 
+Implemented in Slice 10A:
+
+- backend computes a signal-sheet revision token from sheet identity/source hash/row count plus active signal count.
+- direct signal CRUD touches the sheet revision marker; runtime `tested_at` updates do not change the signal-list revision token.
+- test-run job enqueue stores the queued revision token inside the job payload.
+- test-run worker rejects a queued job if the signal sheet revision changed before execution starts.
+- test-run running/progress/final job results echo the queued revision payload for traceability.
+- this is a transitional guard, not the final durable revision model.
+
 Frontend:
 
 - show active revision and stale allocation indicators.
@@ -701,6 +710,9 @@ Tests:
 - import creates revision;
 - report remains tied to original revision;
 - retest reuse compatibility.
+- current coverage verifies deterministic revision tokens and stale queued test-run rejection.
+
+Status: partial. Full revision tables, revision-scoped signal items, report evidence binding, and frontend stale indicators remain pending.
 
 Rollback:
 
@@ -742,6 +754,6 @@ Acceptance targets:
 
 ## Immediate Next Step
 
-Start with Slice 10.
+Continue with Slice 10B.
 
-Slice 10 should make signal-list revisions explicit so tests, reports, and allocation reuse are tied to the revision that was actually used.
+Slice 10B should add durable revision records and bind signal imports/test evidence to explicit revision ids instead of transitional revision tokens.
