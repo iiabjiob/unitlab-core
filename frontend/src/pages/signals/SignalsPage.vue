@@ -38,7 +38,7 @@
     </div>
 
     <div
-      v-else-if="loading && gridRows.length === 0"
+      v-else-if="loading && allocationRows.length === 0"
       class="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/80 p-8 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400"
     >
       Loading signals from store...
@@ -52,7 +52,7 @@
     </div>
 
     <div
-      v-else-if="gridRows.length === 0"
+      v-else-if="allocationRows.length === 0"
       class="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/80 p-8 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400"
     >
       No signals found.
@@ -163,6 +163,16 @@ import AllocationControlCell from "@/pages/signals/components/AllocationControlC
 import SignalExportModal, { type ExportColumnOption } from "@/pages/signals/components/SignalExportModal.vue"
 import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
 import { useSignalGridPatchQueue } from "@/pages/signals/composables/useSignalGridPatchQueue"
+import {
+  SIGNAL_ALLOCATION_QUICK_FILTERS,
+  countSignalAllocationQuickFilters,
+  matchesSignalAllocationQuickFilter,
+  resolveSignalAllocationHealthLabel,
+  resolveSignalAllocationStatus,
+  resolveSignalAllocationStatusLabel,
+  type SignalAllocationQuickFilter,
+  type SignalAllocationQuickFilterCounts,
+} from "@/pages/signals/utils/allocationHealth"
 import { useAffinoDataGridTheme } from "@/components/ui/affinoDataGridTheme"
 import "@/components/ui/affinoDataGridNative.css"
 import { useChannelStore } from "@/stores/channelStore"
@@ -214,6 +224,7 @@ const deletingProgressDone = ref(0)
 const deletingProgressTotal = ref(0)
 const allocatingSelected = ref(false)
 const deallocatingSelected = ref(false)
+const allocationQuickFilter = ref<SignalAllocationQuickFilter>("all")
 const testRunInProgress = ref(false)
 const testRunIntervalMs = ref(1000)
 const testRunToggleMode = ref<"single" | "double">("single")
@@ -234,7 +245,7 @@ type GridCellInteractiveContext = DataGridAppCellRendererContext<GridRow>["inter
 const DataGrid = defineDataGridComponent<GridRow>()
 
 const SIGNALS_GRID_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
-const SIGNAL_GRID_PATCH_COLUMNS = ["internal_signal_type", "channel_select", "tested_at", "allocation_status"] as const
+const SIGNAL_GRID_PATCH_COLUMNS = ["internal_signal_type", "channel_select", "tested_at", "allocation_status", "allocation_health"] as const
 
 const SignalsSelectionToolbarModule = defineComponent({
   name: "SignalsSelectionToolbarModule",
@@ -292,6 +303,56 @@ const SignalsSelectionToolbarModule = defineComponent({
   },
 })
 
+const allocationQuickFilterLabels: Record<SignalAllocationQuickFilter, string> = {
+  all: "All",
+  unassigned: "Unassigned",
+  assigned: "Assigned",
+  issues: "Issues",
+  conflicts: "Conflict",
+  invalid: "Invalid",
+  offline_missing: "Offline/Missing",
+}
+
+const SignalsAllocationFilterToolbarModule = defineComponent({
+  name: "SignalsAllocationFilterToolbarModule",
+  props: {
+    activeFilter: {
+      type: String as PropType<SignalAllocationQuickFilter>,
+      required: true,
+    },
+    counts: {
+      type: Object as PropType<SignalAllocationQuickFilterCounts>,
+      required: true,
+    },
+    onSetFilter: {
+      type: Function as PropType<(filter: SignalAllocationQuickFilter) => void>,
+      required: true,
+    },
+  },
+  setup(props) {
+    return () => h("div", { class: "affino-native-data-grid__toolbar-module" }, [
+      h("span", { class: "affino-native-data-grid__stat" }, "Allocation"),
+      ...SIGNAL_ALLOCATION_QUICK_FILTERS.map((filter) => {
+        const active = props.activeFilter === filter
+        const className = [
+          "datagrid-app-toolbar__button",
+          active ? "affino-native-data-grid__toolbar-button--active" : "",
+        ].filter(Boolean).join(" ")
+        return h(
+          "button",
+          {
+            type: "button",
+            class: className,
+            "aria-pressed": active ? "true" : "false",
+            onClick: () => props.onSetFilter(filter),
+          },
+          `${allocationQuickFilterLabels[filter]} ${props.counts[filter] ?? 0}`,
+        )
+      }),
+    ])
+  },
+})
+
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const loading = computed(() => (
   refreshingSignalsStatic.value
@@ -333,6 +394,27 @@ const displayAllocationRows = computed(() => {
   })
 })
 
+const filteredStaticAllocationRows = computed(() => {
+  const filter = allocationQuickFilter.value
+  if (filter === "all") {
+    return allocationRows.value
+  }
+  return allocationRows.value.filter(row => matchesSignalAllocationQuickFilter(row, filter))
+})
+
+const visibleSignalIds = computed(() => {
+  const ids = new Set<number>()
+  filteredStaticAllocationRows.value.forEach((row) => {
+    const signalId = Number(row.signal_id)
+    if (Number.isFinite(signalId)) {
+      ids.add(signalId)
+    }
+  })
+  return ids
+})
+
+const allocationQuickFilterCounts = computed(() => countSignalAllocationQuickFilters(allocationRows.value))
+
 const summaryText = computed(() => {
   if (workspaceMissing.value) {
     return "Workspace is not selected"
@@ -363,6 +445,7 @@ const selectedAllocationRows = computed(() => (
     .map((rowKey) => {
       const signalId = signalIdFromRowKey(rowKey)
       if (signalId === null) return null
+      if (!visibleSignalIds.value.has(signalId)) return null
       return allocationRowBySignalId.value.get(signalId) ?? null
     })
     .filter((row): row is SignalAllocationRow => Boolean(row))
@@ -527,14 +610,25 @@ const selectedRowKeys = computed(() => (
   (rowSelectionState.value?.selectedRows ?? []).map((rowKey) => String(rowKey))
 ))
 
+const selectedVisibleRowCount = computed(() => selectedAllocationRows.value.length)
+
 const toolbarModules = computed<DataGridAppToolbarModule[]>(() => ([
+  {
+    key: "signals-allocation-filters",
+    component: SignalsAllocationFilterToolbarModule,
+    props: {
+      activeFilter: allocationQuickFilter.value,
+      counts: allocationQuickFilterCounts.value,
+      onSetFilter: setAllocationQuickFilter,
+    },
+  },
   {
     key: "signals-selection-actions",
     component: SignalsSelectionToolbarModule,
     props: {
-      selectedCount: selectedRowKeys.value.length,
+      selectedCount: selectedVisibleRowCount.value,
       showClearSelection: selectedRowKeys.value.length > 0,
-      deleteDisabled: deletingSelected.value || selectedRowKeys.value.length === 0,
+      deleteDisabled: deletingSelected.value || selectedVisibleRowCount.value === 0,
       deleteLabel: deleteSelectedToolbarLabel.value,
       onClearSelection: clearGridSelection,
       onDeleteSelected: () => {
@@ -881,6 +975,14 @@ function clearGridSelection() {
   }
 }
 
+function setAllocationQuickFilter(filter: SignalAllocationQuickFilter) {
+  if (allocationQuickFilter.value === filter) {
+    return
+  }
+  allocationQuickFilter.value = filter
+  clearGridSelection()
+}
+
 function isImportQueryRequested(raw: unknown): boolean {
   const values = Array.isArray(raw) ? raw : [raw]
   return values.some((value) => {
@@ -1178,7 +1280,8 @@ function createGridRow(row: SignalAllocationRow, headers: readonly string[]): Gr
     internal_signal_type: resolveInternalSignalType(row),
     channel_select: allocationDisplayLabel(row),
     tested_at: row.tested_at,
-    allocation_status: Number.isFinite(row.channel_id as number) ? "allocated" : "unallocated",
+    allocation_status: resolveSignalAllocationStatus(row),
+    allocation_health: resolveSignalAllocationHealthLabel(row),
   }
   const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
   headers.forEach((header, index) => {
@@ -1394,9 +1497,9 @@ async function handleAllocationChannelPicked(channelId: number | null) {
 }
 
 async function handleDeleteSelected() {
-  const signalIds = selectedRowKeys.value
-    .map(signalIdFromRowKey)
-    .filter((signalId): signalId is number => Number.isFinite(signalId as number) && Number(signalId) > 0)
+  const signalIds = selectedAllocationRows.value
+    .map(row => Number(row.signal_id))
+    .filter((signalId): signalId is number => Number.isFinite(signalId) && signalId > 0)
 
   if (!signalIds.length) {
     return
@@ -2051,6 +2154,41 @@ function renderTestedAtCell(context: DataGridAppCellRendererContext<GridRow>) {
   return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, formatDate(raw))
 }
 
+function allocationBadgeClass(kind: string): string {
+  const normalized = String(kind ?? "").trim().toLowerCase()
+  const base = "inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-none"
+  if (normalized.includes("conflict")) {
+    return `${base} border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200`
+  }
+  if (normalized.includes("invalid")) {
+    return `${base} border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200`
+  }
+  if (normalized.includes("missing") || normalized.includes("offline") || normalized.includes("stale")) {
+    return `${base} border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-200`
+  }
+  if (normalized === "assigned" || normalized === "ok") {
+    return `${base} border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200`
+  }
+  return `${base} border-neutral-300 bg-neutral-50 text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200`
+}
+
+function renderAllocationStatusCell(context: DataGridAppCellRendererContext<GridRow>) {
+  const status = String(context.row?.allocation_status ?? context.displayValue ?? "").trim()
+  if (!status) {
+    return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, "-")
+  }
+  const label = resolveSignalAllocationStatusLabel({ allocation_status: status } as SignalAllocationRow)
+  return h("span", { class: allocationBadgeClass(status) }, label)
+}
+
+function renderAllocationHealthCell(context: DataGridAppCellRendererContext<GridRow>) {
+  const health = String(context.row?.allocation_health ?? context.displayValue ?? "").trim()
+  if (!health) {
+    return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, "-")
+  }
+  return h("span", { class: allocationBadgeClass(health) }, health)
+}
+
 const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
   const controlCellRenderVersion = `${activeAoControlSignalId.value ?? "idle"}:${activeAoSubmittingSignalId.value ?? "idle"}`
   const sourceColumns: DataGridAppColumnInput<GridRow>[] = sourceHeaders.value.map((header, index) => ({
@@ -2073,6 +2211,24 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       presentation: { align: "left", headerAlign: "left" },
       capabilities: { editable: false },
       cellRenderer: renderDefaultCell,
+    },
+    {
+      key: "allocation_status",
+      label: "Allocation",
+      minWidth: 104,
+      initialState: { width: 128 },
+      presentation: { align: "left", headerAlign: "left" },
+      capabilities: { editable: false },
+      cellRenderer: renderAllocationStatusCell,
+    },
+    {
+      key: "allocation_health",
+      label: "Health",
+      minWidth: 112,
+      initialState: { width: 136 },
+      presentation: { align: "left", headerAlign: "left" },
+      capabilities: { editable: false },
+      cellRenderer: renderAllocationHealthCell,
     },
     {
       key: "channel_select",
@@ -2229,7 +2385,7 @@ const virtualizationOptions = computed(() => ({
 }))
 
 const gridRows = computed<GridRow[]>(() => (
-  allocationRows.value.map((row) => createGridRow(resolveGridProjectionRow(row), sourceHeaders.value))
+  filteredStaticAllocationRows.value.map((row) => createGridRow(resolveGridProjectionRow(row), sourceHeaders.value))
 ))
 
 function enqueueSignalGridRowPatches(
@@ -2249,6 +2405,9 @@ function enqueueSignalGridRowPatches(
       return
     }
     seen.add(signalId)
+    if (!visibleSignalIds.value.has(signalId)) {
+      return
+    }
 
     const row = allocationRowBySignalId.value.get(signalId)
     if (!row) {

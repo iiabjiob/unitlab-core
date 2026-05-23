@@ -1,6 +1,6 @@
 # Signal List and Allocation Migration Plan
 
-Status: Slice 5 complete, Slice 6 next
+Status: Slice 6 complete, Slice 7 next
 Last reviewed: 2026-05-23
 
 ## Scope
@@ -46,7 +46,7 @@ Gaps:
 - swap is not supported.
 - allocation job results do not consistently carry changed rows.
 - frontend refreshes all allocation rows after async allocation jobs.
-- conflicts, invalid type, occupied owner, missing device, and stale/offline states are not visible enough in the grid and picker.
+- conflict, invalid type, missing, stale, and offline health are visible in the grid and quick filters; dedicated resolution workflows are still pending.
 - bulk/auto allocation has no preview step.
 
 ### Live Test Updates
@@ -119,7 +119,7 @@ Core rules:
 | Async job result | changed ids, then reload | changed row patches |
 | Auto allocation | apply directly | preview then apply |
 | Runtime test state | mixed into row data | patch stream, optionally separate runtime store |
-| Allocation health | implicit | explicit health/status fields |
+| Allocation health | projection fields + grid badges/filters | resolution workflows and event history |
 | Conflict UX | mostly hidden | visible conflict state and resolution actions |
 | Revision safety | workspace-level active signals | explicit signal-list revisions used by tests/reports |
 
@@ -558,6 +558,8 @@ Rollback:
 
 ### Slice 6 - Allocation Health and Filters
 
+Status: done.
+
 Goal:
 
 - make conflict/invalid/offline/missing states visible and filterable.
@@ -569,12 +571,16 @@ Backend:
 Frontend:
 
 - add status badges and quick filters.
+- implemented signal-grid `Allocation` and `Health` columns backed by flat projection fields.
+- implemented quick filters for all, unassigned, assigned, issues, conflicts, invalid, and offline/missing rows.
+- quick filters are computed over the loaded client-side projection; channel occupancy lookup still uses the full projection so filtered-out owners are not treated as free.
 
 Tests:
 
 - projection fixtures;
 - DataGrid filter tests;
 - visual/manual verification for badge states.
+- current frontend coverage includes pure allocation health/filter helper tests and existing patch queue tests.
 
 Rollback:
 
@@ -711,6 +717,6 @@ Acceptance targets:
 
 ## Immediate Next Step
 
-Start with Slice 6, because assign/reassign/unassign/swap now return changed rows and the UI can expose the resulting health states without full reloads.
+Start with Slice 7.
 
-Slice 6 should make allocation health/status visible and filterable in the signal grid, while keeping quick filters cheap for 20,000 rows.
+Slice 7 should add a dry-run preview path for auto/bulk allocation so large changes show proposed bindings, skipped rows, conflicts, and overwrite risk before apply.
