@@ -21,7 +21,7 @@
     touch-action: manipulation;
   }
 
-  :where(button, [role="button"], a, label, summary, .cursor-pointer) {
+  :where(button, [role="button"], a, label, summary, .cursor-pointer):not(:where(.affino-datagrid-app-root *)) {
     cursor: default !important;
   }
 

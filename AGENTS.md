@@ -118,6 +118,13 @@ Do not collapse these concepts into one generic table unless there is a strong r
 - Avoid new managers/controllers/services unless existing ownership is clearly insufficient.
 - Prefer extending existing systems over introducing parallel abstractions.
 
+## Dependency and package bugs
+- If a defect is in an internal or external package, do not hide it with an app-local workaround unless the user explicitly asks for a temporary mitigation.
+- Prefer fixing the owning package when its source is available and the task scope allows it.
+- When the owning package cannot be edited in the current slice, state that the package must be fixed and provide a concise repair prompt instead of landing a workaround.
+- The repair prompt should name the package/version, affected behavior, reproduction path, root cause, expected package-level fix, and validation to run.
+- Temporary shims must be clearly labeled as temporary and removed as soon as the package update lands.
+
 ## Safety and traceability
 - Treat FAT operations as industrial workflows, not casual CRUD.
 - Any action that can affect real hardware or test evidence must be logged.

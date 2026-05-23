@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@affino/datagrid-vue-app':
-        specifier: ^0.4.5
-        version: 0.4.5(@affino/menu-core@1.1.0)(pinia@3.0.4(typescript@5.8.3)(vue@3.5.25(typescript@5.8.3)))(vue@3.5.25(typescript@5.8.3))
+        specifier: ^0.4.6
+        version: 0.4.6(@affino/menu-core@1.1.0)(pinia@3.0.4(typescript@5.8.3)(vue@3.5.25(typescript@5.8.3)))(vue@3.5.25(typescript@5.8.3))
       '@affino/dialog-vue':
         specifier: ^1.1.0
         version: 1.1.0(vue@3.5.25(typescript@5.8.3))
@@ -129,8 +129,8 @@ packages:
   '@affino/datagrid-theme@0.2.4':
     resolution: {integrity: sha512-LWBrFvOfDKEwkqNYAOaMrPFEBQKpph0MZTiUhs9EiOq0cZqDpPV6+DCdCCdU8td/588AIrRau3Sm+tTYBsb6wQ==}
 
-  '@affino/datagrid-vue-app@0.4.5':
-    resolution: {integrity: sha512-LGzB5BHsxcyx1530nATkiO7o1sQrNLDbGSbduQLeUORw+/xW9cSamZQwbyw7Zgc5E91lJ2a20/c70H//5FOMOA==}
+  '@affino/datagrid-vue-app@0.4.6':
+    resolution: {integrity: sha512-MUrXJD7tNrLKKMmoUuLlmV3RmA5bOtKBQ+QcvpCO364pHYO3l1VPZhXup11i8cp+HoYbeuqXyyT9T10tWxL03w==}
     peerDependencies:
       vue: ^3.3.0
 
@@ -1769,7 +1769,7 @@ snapshots:
 
   '@affino/datagrid-theme@0.2.4': {}
 
-  '@affino/datagrid-vue-app@0.4.5(@affino/menu-core@1.1.0)(pinia@3.0.4(typescript@5.8.3)(vue@3.5.25(typescript@5.8.3)))(vue@3.5.25(typescript@5.8.3))':
+  '@affino/datagrid-vue-app@0.4.6(@affino/menu-core@1.1.0)(pinia@3.0.4(typescript@5.8.3)(vue@3.5.25(typescript@5.8.3)))(vue@3.5.25(typescript@5.8.3))':
     dependencies:
       '@affino/datagrid-chrome': 0.1.1
       '@affino/datagrid-gantt': 0.1.2

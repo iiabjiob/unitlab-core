@@ -66,6 +66,7 @@
           :columns="resolvedColumns"
           :row-selection-state="rowSelectionState"
           :theme="theme"
+          :grid-lines="gridLines"
           :client-row-model-options="clientRowModelOptions"
           :virtualization="virtualizationOptions"
           :toolbar-modules="toolbarModules"
@@ -114,7 +115,7 @@
 import { computed, defineComponent, h, nextTick, onMounted, ref, watch, type PropType } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { storeToRefs } from "pinia"
-import { defineDataGridComponent, useDataGridRef, type DataGridAppCellRendererContext, type DataGridAppColumnInput, type DataGridAppToolbarModule, type DataGridProps, type DataGridSavedViewSnapshot, writeDataGridSavedViewToStorage } from "@affino/datagrid-vue-app"
+import { defineDataGridComponent, parseDataGridSavedView, useDataGridRef, type DataGridAppCellRendererContext, type DataGridAppColumnInput, type DataGridAppToolbarModule, type DataGridProps, type DataGridSavedViewSnapshot, writeDataGridSavedViewToStorage } from "@affino/datagrid-vue-app"
 
 import { SignalsAPI } from "@/api/signals.api"
 import type { AoChannel, DoChannel } from "@/types/channel"
@@ -164,7 +165,7 @@ const allocationChannelPickerLoading = ref(false)
 const allocationChannelPickerSaving = ref(false)
 const allocationChannelPickerError = ref<string | null>(null)
 const rowSelectionState = ref<RowSelectionSnapshot | null>(null)
-const pendingSignalsGridSavedView = ref<unknown | null>(null)
+const pendingSignalsGridSavedView = ref<string | DataGridSavedViewSnapshot<GridRow> | null>(null)
 const deletingSelected = ref(false)
 const deletingProgressDone = ref(0)
 const deletingProgressTotal = ref(0)
@@ -176,7 +177,7 @@ const testRunToggleMode = ref<"single" | "double">("single")
 const activeAoControlSignalId = ref<number | null>(null)
 const activeAoControlDraftValue = ref("")
 const activeAoSubmittingSignalId = ref<number | null>(null)
-const { theme } = useAffinoDataGridTheme()
+const { gridLines, theme } = useAffinoDataGridTheme()
 
 type GridRow = Record<string, unknown> & {
   signal_id: number
@@ -184,7 +185,6 @@ type GridRow = Record<string, unknown> & {
 }
 
 type RowSelectionSnapshot = NonNullable<DataGridProps<GridRow>["rowSelectionState"]>
-type GridState = NonNullable<DataGridProps<GridRow>["state"]>
 type DataGridStateUpdate = NonNullable<DataGridProps<Record<string, unknown>>["state"]>
 type GridCellInteractiveContext = DataGridAppCellRendererContext<GridRow>["interactive"]
 
@@ -482,11 +482,7 @@ function persistSignalsGridState() {
   writeDataGridSavedViewToStorage(window.localStorage, storageKey, savedView)
 }
 
-function areSavedViewColumnsReady(savedView: unknown): boolean {
-  if (!savedView || typeof savedView !== "object") {
-    return false
-  }
-
+function areSavedViewColumnsReady(savedView: DataGridSavedViewSnapshot<GridRow>): boolean {
   const currentColumnKeys = new Set(
     resolvedColumns.value
       .map(column => String(column.key ?? "").trim())
@@ -497,10 +493,9 @@ function areSavedViewColumnsReady(savedView: unknown): boolean {
     return false
   }
 
-  const columns = (savedView as { state?: { columns?: { order?: unknown } } }).state?.columns
-  const savedOrder = Array.isArray(columns?.order)
-    ? columns.order.map((key) => String(key ?? "").trim()).filter(Boolean)
-    : []
+  const savedOrder = savedView.state.columns.order
+    .map((key) => String(key ?? "").trim())
+    .filter(Boolean)
 
   return savedOrder.every(key => currentColumnKeys.has(key))
 }
@@ -515,16 +510,29 @@ function tryApplyPendingSignalsGridSavedView() {
     return
   }
 
-  if (!areSavedViewColumnsReady(pendingSavedView)) {
+  const grid = allocationGridRef.value
+  if (!grid) {
     return
   }
 
-  const migratedSavedView = allocationGridRef.value?.migrateSavedView?.(pendingSavedView)
+  const migratedSavedView = typeof pendingSavedView === "string"
+    ? parseDataGridSavedView<GridRow>(pendingSavedView, grid.migrateState)
+    : grid.migrateSavedView(pendingSavedView)
+
   if (!migratedSavedView) {
+    rowSelectionState.value = null
+    pendingSignalsGridSavedView.value = null
     return
   }
 
-  const applied = allocationGridRef.value?.applySavedView?.(migratedSavedView) ?? false
+  rowSelectionState.value = migratedSavedView.state.rowSelection ?? null
+
+  if (!areSavedViewColumnsReady(migratedSavedView)) {
+    pendingSignalsGridSavedView.value = migratedSavedView
+    return
+  }
+
+  const applied = grid.applySavedView(migratedSavedView)
   if (applied) {
     pendingSignalsGridSavedView.value = null
   }
@@ -551,24 +559,9 @@ function restoreSignalsGridState() {
     return
   }
 
-  try {
-    const savedView = JSON.parse(raw) as Partial<DataGridSavedViewSnapshot<GridRow>>
-    const nextState = savedView?.state
-    if (!nextState || typeof nextState !== "object") {
-      rowSelectionState.value = null
-      pendingSignalsGridSavedView.value = null
-      return
-    }
-
-    const restoredState = nextState as GridState
-    rowSelectionState.value = restoredState.rowSelection ?? null
-    pendingSignalsGridSavedView.value = savedView
-    tryApplyPendingSignalsGridSavedView()
-  } catch (error) {
-    console.warn("Failed to restore signals grid state:", error)
-    rowSelectionState.value = null
-    pendingSignalsGridSavedView.value = null
-  }
+  rowSelectionState.value = null
+  pendingSignalsGridSavedView.value = raw
+  tryApplyPendingSignalsGridSavedView()
 }
 
 const isTestRunBusy = computed(() => {

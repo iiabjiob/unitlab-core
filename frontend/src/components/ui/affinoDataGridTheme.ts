@@ -1,4 +1,11 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue"
+import type { DataGridGridLinesProp } from "@affino/datagrid-vue-app"
+
+const gridLines = {
+  body: "all",
+  header: "columns",
+  pinnedSeparators: true,
+} satisfies DataGridGridLinesProp
 
 export function useAffinoDataGridTheme() {
   const documentThemeVariant = ref<"light" | "dark">("light")
@@ -250,6 +257,7 @@ export function useAffinoDataGridTheme() {
   }))
 
   return {
+    gridLines,
     theme,
   }
 }

@@ -54,6 +54,7 @@
             :rows="gridRows"
             :columns="resolvedColumns"
             :theme="theme"
+            :grid-lines="gridLines"
             :row-selection-state="rowSelectionState"
             :client-row-model-options="clientRowModelOptions"
             :virtualization="virtualizationOptions"
@@ -143,7 +144,7 @@ const DATA_FRESHNESS_WINDOW_MS = 20_000
 const loading = ref(false)
 const selectedRowKeys = ref<string[]>([])
 const rowSelectionState = ref<RowSelectionSnapshot | null>(null)
-const { theme } = useAffinoDataGridTheme()
+const { gridLines, theme } = useAffinoDataGridTheme()
 
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 

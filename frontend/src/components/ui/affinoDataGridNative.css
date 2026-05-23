@@ -100,22 +100,6 @@
   color: rgb(153 27 27);
 }
 
-.affino-native-data-grid .grid-cell--index,
-.affino-native-data-grid .grid-cell--index-header {
-  color: rgb(55 65 81);
-}
-
-.affino-native-data-grid .grid-cell--index-number,
-.affino-native-data-grid .grid-cell--index-header {
-  font-weight: 600;
-}
-
-.affino-native-data-grid .grid-row--checkbox-selected .grid-cell--index,
-.affino-native-data-grid .grid-row--focused .grid-cell--index,
-.affino-native-data-grid .grid-row--hoverable.grid-row--hovered .grid-cell--index {
-  color: rgb(31 41 55);
-}
-
 .dark .affino-native-data-grid__shell {
   background: transparent;
   box-shadow: none;
@@ -134,45 +118,4 @@
 .dark .affino-native-data-grid .affino-native-data-grid__toolbar-button--danger {
   border-color: rgb(153 27 27);
   color: rgb(252 165 165);
-}
-
-.dark .affino-native-data-grid .grid-cell--index,
-.dark .affino-native-data-grid .grid-cell--index-header {
-  color: rgb(212 212 212);
-}
-
-.affino-native-data-grid .grid-stage--canvas-chrome .grid-header-pane,
-.affino-native-data-grid .grid-stage--canvas-chrome .grid-body-pane,
-.affino-native-data-grid .grid-stage--canvas-chrome .grid-header-pane--left,
-.affino-native-data-grid .grid-stage--canvas-chrome .grid-header-pane--right,
-.affino-native-data-grid .grid-stage--canvas-chrome .grid-body-pane--left,
-.affino-native-data-grid .grid-stage--canvas-chrome .grid-body-pane--right,
-.affino-native-data-grid .grid-stage--canvas-chrome .grid-header-viewport,
-.affino-native-data-grid .grid-stage--canvas-chrome .grid-header-shell--pivot-groups .grid-header-row:not(.grid-header-row--pivot-groups) .grid-cell--header,
-.affino-native-data-grid .grid-stage--canvas-chrome .grid-header-shell--pivot-groups .grid-header-row--pivot-groups .grid-cell--header-group,
-.affino-native-data-grid .grid-stage--canvas-chrome .grid-cell--header-group {
-  border: 0 !important;
-}
-
-.affino-native-data-grid .col-menu-trigger--grouped,
-.affino-native-data-grid .col-menu-trigger--open {
-  border-color: rgba(161, 161, 170, 0.32);
-  background: rgba(244, 244, 245, 0.92);
-  color: rgb(82 82 91);
-}
-
-.affino-native-data-grid .col-menu-trigger--grouped:hover,
-.affino-native-data-grid .col-menu-trigger--open:hover {
-  border-color: rgba(113, 113, 122, 0.38);
-  background: rgba(228, 228, 231, 0.96);
-  color: rgb(63 63 70);
-}
-
-.dark .affino-native-data-grid .col-menu-trigger--grouped,
-.dark .affino-native-data-grid .col-menu-trigger--open,
-.dark .affino-native-data-grid .col-menu-trigger--grouped:hover,
-.dark .affino-native-data-grid .col-menu-trigger--open:hover {
-  border-color: initial;
-  background: initial;
-  color: initial;
 }

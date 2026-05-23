@@ -9,7 +9,7 @@ import { useAffinoDataGridTheme } from "@/components/ui/affinoDataGridTheme"
 import "@/components/ui/affinoDataGridNative.css"
 
 const props = defineProps<{ device: Device }>()
-const { theme } = useAffinoDataGridTheme()
+const { gridLines, theme } = useAffinoDataGridTheme()
 const MEM_FREE_LOW_THRESHOLD = 150000
 const FAST_STALE_THRESHOLD_MS = 15_000
 const DIAG_STALE_THRESHOLD_MS = 180_000
@@ -946,6 +946,7 @@ onBeforeUnmount(() => {
                     :row-selection="false"
                     layout-mode="fill"
                     :theme="theme"
+                    :grid-lines="gridLines"
                   />
                 </div>
               </div>

@@ -62,6 +62,7 @@
               :rows="gridRows"
               :columns="resolvedColumns"
               :theme="theme"
+              :grid-lines="gridLines"
               :client-row-model-options="clientRowModelOptions"
               :virtualization="virtualizationOptions"
               :base-row-height="38"
@@ -103,7 +104,7 @@ const emit = defineEmits<{ (e: "refresh-signals"): void; (e: "refresh-channels")
 
 const query = ref("")
 const showOnlyBound = ref(false)
-const { theme } = useAffinoDataGridTheme()
+const { gridLines, theme } = useAffinoDataGridTheme()
 
 interface LiveSignalRow {
   signal: Signal
