@@ -103,12 +103,24 @@ export interface SignalSheetPreset {
 }
 
 export interface SignalAllocationRow {
+  row_id?: string
   signal_id: number
   signal_key: string
   signal_name: string
   signal_direction: SignalIODirection
   signal_category: string | null
   signal_metadata: Record<string, unknown>
+  allocation_id?: number | null
+  allocation_status?: "unassigned" | "assigned" | "conflict" | "invalid" | "missing" | string
+  allocation_health?: {
+    conflict?: boolean
+    invalid_type?: boolean
+    missing_device?: boolean
+    missing_channel?: boolean
+    offline_device?: boolean
+    stale_device?: boolean
+    [key: string]: boolean | undefined
+  } | null
   channel_id: number | null
   channel_type: string | null
   channel_index: number | null

@@ -1123,7 +1123,7 @@ function resolveAllocationOnlineState(row: SignalAllocationRow): boolean | null 
 function createGridRow(row: SignalAllocationRow, headers: readonly string[]): GridRow {
   const payload: GridRow = {
     signal_id: row.signal_id,
-    rowId: `signal-${row.signal_id}`,
+    rowId: row.row_id || `signal-${row.signal_id}`,
     internal_signal_type: resolveInternalSignalType(row),
     channel_select: allocationDisplayLabel(row),
     tested_at: row.tested_at,

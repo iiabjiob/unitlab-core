@@ -348,7 +348,7 @@ function sourceColumnKey(index: number): string {
 function createGridRow(row: SignalAllocationRow, headers: readonly string[]): GridRow {
   const payload: GridRow = {
     signal_id: row.signal_id,
-    rowId: `signal-${row.signal_id}`,
+    rowId: row.row_id || `signal-${row.signal_id}`,
     signal_direction: row.signal_direction,
     unit_channel: formatUnitChannel(row),
     allocation_status: Number.isFinite(row.channel_id as number) ? "allocated" : "unallocated",

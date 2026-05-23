@@ -3,15 +3,18 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from app.api.v1.signal_sheet.repository import (
+    _build_allocation_health,
     _channel_auto_allocate_sort_key,
     _is_channel_compatible,
     _parse_tested_at,
     _pick_candidate_channel,
+    _resolve_allocation_status,
     _required_channel_type,
 )
 from app.models.channel import Channel
 from app.models.device import Device
-from app.models.signal import SignalIODirection
+from app.models.signal import Signal, SignalIODirection
+from app.models.signal_sheet import SignalAllocation
 
 
 def test_required_channel_type_maps_inverse_direction() -> None:
@@ -30,6 +33,86 @@ def test_channel_compatibility_uses_inverse_mapping() -> None:
 
     assert _is_channel_compatible(SignalIODirection.DI, "di") is False
     assert _is_channel_compatible(SignalIODirection.DO, "do") is False
+
+
+def test_allocation_health_marks_unassigned_as_clean() -> None:
+    signal = Signal(id=1, workspace_id=1, key="S1", name="Signal 1", io_direction=SignalIODirection.DI)
+
+    health = _build_allocation_health(
+        signal=signal,
+        allocation=None,
+        channel=None,
+        unit_online=None,
+    )
+
+    assert health == {
+        "conflict": False,
+        "invalid_type": False,
+        "missing_device": False,
+        "missing_channel": False,
+        "offline_device": False,
+        "stale_device": False,
+    }
+    assert _resolve_allocation_status(None, health) == "unassigned"
+
+
+def test_allocation_health_marks_invalid_type() -> None:
+    signal = Signal(id=1, workspace_id=1, key="S1", name="Signal 1", io_direction=SignalIODirection.DI)
+    allocation = SignalAllocation(id=10, workspace_id=1, signal_id=1, channel_id=20)
+    channel = Channel(
+        id=20,
+        device_id=2,
+        channel_index=0,
+        channel_type="di",
+        device=Device(id=2, unit_id="unit-a"),
+    )
+
+    health = _build_allocation_health(
+        signal=signal,
+        allocation=allocation,
+        channel=channel,
+        unit_online=True,
+    )
+
+    assert health["invalid_type"] is True
+    assert _resolve_allocation_status(allocation, health) == "invalid"
+
+
+def test_allocation_health_marks_missing_channel_before_assigned() -> None:
+    signal = Signal(id=1, workspace_id=1, key="S1", name="Signal 1", io_direction=SignalIODirection.DI)
+    allocation = SignalAllocation(id=10, workspace_id=1, signal_id=1, channel_id=20)
+
+    health = _build_allocation_health(
+        signal=signal,
+        allocation=allocation,
+        channel=None,
+        unit_online=None,
+    )
+
+    assert health["missing_channel"] is True
+    assert _resolve_allocation_status(allocation, health) == "missing"
+
+
+def test_allocation_health_tracks_offline_assigned_channel() -> None:
+    signal = Signal(id=1, workspace_id=1, key="S1", name="Signal 1", io_direction=SignalIODirection.DI)
+    allocation = SignalAllocation(id=10, workspace_id=1, signal_id=1, channel_id=20)
+    channel = Channel(
+        id=20,
+        device_id=2,
+        channel_index=0,
+        channel_type="do",
+        device=Device(id=2, unit_id="unit-a"),
+    )
+
+    health = _build_allocation_health(
+        signal=signal,
+        allocation=allocation,
+        channel=channel,
+        unit_online=False,
+    )
+
+    assert health["offline_device"] is True
+    assert _resolve_allocation_status(allocation, health) == "assigned"
 
 
 def test_parse_tested_at_parses_iso_utc_suffix() -> None:

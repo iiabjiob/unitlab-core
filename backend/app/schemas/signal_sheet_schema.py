@@ -61,12 +61,16 @@ class SignalSheetImportPreviewResponseSchema(BaseModel):
 
 
 class SignalAllocationRowSchema(BaseModel):
+    row_id: str
     signal_id: int
     signal_key: str
     signal_name: str
     signal_direction: str
     signal_category: str | None = None
     signal_metadata: dict[str, Any] = Field(default_factory=dict)
+    allocation_id: int | None = None
+    allocation_status: str = "unassigned"
+    allocation_health: dict[str, bool] = Field(default_factory=dict)
     channel_id: int | None = None
     channel_type: str | None = None
     channel_index: int | None = None

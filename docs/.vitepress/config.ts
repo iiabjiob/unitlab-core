@@ -34,6 +34,12 @@ export default defineConfig({
           { text: "FAQ", link: "/guide/faq" },
         ],
       },
+      {
+        text: "Engineering Notes",
+        items: [
+          { text: "Signal List Migration Plan", link: "/architecture/signal-list-allocation-migration-plan" },
+        ],
+      },
     ],
     search: {
       provider: "local",

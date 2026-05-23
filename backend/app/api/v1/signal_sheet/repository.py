@@ -26,6 +26,11 @@ from app.api.v1.signal_sheet.allocation_policy import (
     resolve_preferred_units_for_auto_allocate as _resolve_preferred_units_for_auto_allocate,
 )
 
+def _parse_tested_at(payload: Any) -> datetime | None:
+    if isinstance(payload, dict):
+        return _parse_tested_at_value(payload.get("tested_at"))
+    return _parse_tested_at_value(payload)
+
 
 @dataclass(frozen=True)
 class SignalSheetAutoAllocateResult:
@@ -34,6 +39,47 @@ class SignalSheetAutoAllocateResult:
     missing: int
     unassigned_signal_ids: list[int]
     changed_signal_ids: list[int]
+
+
+def _build_allocation_health(
+    *,
+    signal: Signal,
+    allocation: SignalAllocation | None,
+    channel: Channel | None,
+    unit_online: bool | None,
+) -> dict[str, bool]:
+    missing_channel = allocation is not None and channel is None
+    missing_device = allocation is not None and channel is not None and channel.device is None
+    invalid_type = (
+        allocation is not None
+        and channel is not None
+        and not _is_channel_compatible(signal.io_direction, channel.channel_type)
+    )
+    offline_device = allocation is not None and unit_online is False
+
+    return {
+        "conflict": False,
+        "invalid_type": invalid_type,
+        "missing_device": missing_device,
+        "missing_channel": missing_channel,
+        "offline_device": offline_device,
+        "stale_device": False,
+    }
+
+
+def _resolve_allocation_status(
+    allocation: SignalAllocation | None,
+    allocation_health: dict[str, bool],
+) -> str:
+    if allocation is None:
+        return "unassigned"
+    if allocation_health.get("conflict"):
+        return "conflict"
+    if allocation_health.get("invalid_type"):
+        return "invalid"
+    if allocation_health.get("missing_device") or allocation_health.get("missing_channel"):
+        return "missing"
+    return "assigned"
 
 
 class SignalSheetRepository:
@@ -233,15 +279,25 @@ class SignalSheetRepository:
             unit_last_seen_at = presence.last_seen_at if presence is not None else (
                 channel.device.last_seen_at if channel and channel.device else None
             )
+            allocation_health = _build_allocation_health(
+                signal=signal,
+                allocation=allocation,
+                channel=channel,
+                unit_online=unit_online,
+            )
 
             rows.append(
                 SignalAllocationRowSchema(
+                    row_id=f"signal-{signal.id}",
                     signal_id=signal.id,
                     signal_key=signal.key,
                     signal_name=signal.name,
                     signal_direction=_normalize_direction(signal.io_direction),
                     signal_category=signal.category,
                     signal_metadata=dict(signal.signal_metadata or {}),
+                    allocation_id=allocation.id if allocation else None,
+                    allocation_status=_resolve_allocation_status(allocation, allocation_health),
+                    allocation_health=allocation_health,
                     channel_id=allocation.channel_id if allocation else None,
                     channel_type=channel.channel_type if channel else None,
                     channel_index=channel.channel_index if channel else None,
