@@ -1229,6 +1229,9 @@ type AllocationChannelPickerCandidate = {
   channelIndex: number
   channelLabel: string
   online: boolean
+  occupied: boolean
+  ownerSignalId: number | null
+  ownerLabel: string | null
   searchText: string
 }
 
@@ -1266,10 +1269,6 @@ const allocationChannelPickerChannels = computed<AllocationChannelPickerCandidat
 
   return channels.value
     .filter(channel => String(channel.type).trim().toLowerCase() === requiredType)
-    .filter((channel) => {
-      const allocatedSignalId = allocatedSignalIdByChannelId.value.get(channel.id)
-      return allocatedSignalId === undefined || allocatedSignalId === row.signal_id
-    })
     .map((channel) => {
       const unitId = channelUnitById.value.get(channel.id) ?? channelStore.resolveUnitId(channel.device_id)
       const resolvedName = String(channel.resolved_name ?? channel.name ?? "").trim()
@@ -1278,6 +1277,12 @@ const allocationChannelPickerChannels = computed<AllocationChannelPickerCandidat
       const channelCode = `CH${channel.index + 1}`
       const channelLabel = resolvedName || channelCode
       const online = deviceStatusById.value.get(channel.device_id) === "online"
+      const ownerSignalId = allocatedSignalIdByChannelId.value.get(channel.id) ?? null
+      const ownerRow = ownerSignalId !== null ? allocationRowBySignalId.value.get(ownerSignalId) ?? null : null
+      const occupied = ownerSignalId !== null && ownerSignalId !== row.signal_id
+      const ownerLabel = occupied && ownerRow
+        ? `Owned by ${ownerRow.signal_name || ownerRow.signal_key}`
+        : null
 
       return {
         id: channel.id,
@@ -1286,7 +1291,10 @@ const allocationChannelPickerChannels = computed<AllocationChannelPickerCandidat
         channelIndex: channel.index,
         channelLabel,
         online,
-        searchText: [unitId, unitName, unitLabel, channelCode, String(channel.index + 1), resolvedName, channel.name, channel.resolved_name, String(channel.device_id)]
+        occupied,
+        ownerSignalId,
+        ownerLabel,
+        searchText: [unitId, unitName, unitLabel, channelCode, String(channel.index + 1), resolvedName, channel.name, channel.resolved_name, String(channel.device_id), ownerLabel]
           .filter((value): value is string => Boolean(value))
           .join(" ")
           .toLowerCase(),
@@ -1295,6 +1303,7 @@ const allocationChannelPickerChannels = computed<AllocationChannelPickerCandidat
     .sort((left, right) => {
       if (left.id === currentChannelId) return -1
       if (right.id === currentChannelId) return 1
+      if (left.occupied !== right.occupied) return left.occupied ? 1 : -1
       if (left.online !== right.online) return left.online ? -1 : 1
       return `${left.unitId}/${left.channelIndex}`.localeCompare(`${right.unitId}/${right.channelIndex}`, undefined, { numeric: true, sensitivity: "base" })
     })
@@ -1348,13 +1357,28 @@ async function handleAllocationChannelPicked(channelId: number | null) {
   let shouldClosePicker = false
 
   try {
-    await signalSheetStore.setAllocation(signalId, channelId)
+    const currentChannelId = allocationChannelPickerCurrentChannelId.value
+    const ownerSignalId = channelId !== null ? allocatedSignalIdByChannelId.value.get(channelId) ?? null : null
+    if (channelId === null) {
+      await signalSheetStore.unassignAllocation(signalId)
+    } else if (currentChannelId === null) {
+      if (ownerSignalId !== null && ownerSignalId !== signalId) {
+        throw new Error("Channel is occupied. Assign this signal to a free channel first before swapping.")
+      }
+      await signalSheetStore.assignAllocation(signalId, channelId)
+    } else if (ownerSignalId !== null && ownerSignalId !== signalId) {
+      await signalSheetStore.swapAllocations(signalId, channelId)
+    } else if (currentChannelId !== channelId) {
+      await signalSheetStore.reassignAllocation(signalId, channelId)
+    }
+
     if (channelId === null) {
       toastStore.success(`Cleared allocation for ${row.signal_name || row.signal_key}.`)
     } else {
       const nextChannel = allocationChannelPickerChannels.value.find(channel => channel.id === channelId)
       const nextLabel = nextChannel ? `${nextChannel.unitId}/${nextChannel.channelLabel}` : allocationDisplayLabel(row)
-      toastStore.success(`Assigned ${row.signal_name || row.signal_key} to ${nextLabel}.`)
+      const verb = ownerSignalId !== null && ownerSignalId !== signalId ? "Swapped" : "Assigned"
+      toastStore.success(`${verb} ${row.signal_name || row.signal_key} to ${nextLabel}.`)
     }
     shouldClosePicker = true
   } catch (pickerError) {

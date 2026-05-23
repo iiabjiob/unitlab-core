@@ -1,11 +1,16 @@
 import { http } from "./http"
 import { API_V1 } from "./utils"
 import type {
+  SignalAllocationActionResponse,
+  SignalAllocationAssignActionPayload,
   SignalAllocationRow,
   SignalAllocationEnsurePayload,
   SignalAllocationEnsureResponse,
   SignalAllocationJob,
   SignalAllocationMarkTestedPayload,
+  SignalAllocationReassignActionPayload,
+  SignalAllocationSwapActionPayload,
+  SignalAllocationUnassignActionPayload,
   SignalAllocationUpdateItem,
   SignalAutoAllocatePayload,
   SignalAutoAllocateResponse,
@@ -142,6 +147,34 @@ export const SignalSheetAPI = {
     return http.put<SignalAllocationRow[]>(`${API_V1}/workspaces/${workspaceId}/signal-allocations`, {
       entries,
     })
+  },
+
+  assignAllocation(workspaceId: number, payload: SignalAllocationAssignActionPayload) {
+    return http.post<SignalAllocationActionResponse>(
+      `${API_V1}/workspaces/${workspaceId}/signal-allocations/actions/assign`,
+      payload,
+    )
+  },
+
+  reassignAllocation(workspaceId: number, payload: SignalAllocationReassignActionPayload) {
+    return http.post<SignalAllocationActionResponse>(
+      `${API_V1}/workspaces/${workspaceId}/signal-allocations/actions/reassign`,
+      payload,
+    )
+  },
+
+  unassignAllocation(workspaceId: number, payload: SignalAllocationUnassignActionPayload) {
+    return http.post<SignalAllocationActionResponse>(
+      `${API_V1}/workspaces/${workspaceId}/signal-allocations/actions/unassign`,
+      payload,
+    )
+  },
+
+  swapAllocations(workspaceId: number, payload: SignalAllocationSwapActionPayload) {
+    return http.post<SignalAllocationActionResponse>(
+      `${API_V1}/workspaces/${workspaceId}/signal-allocations/actions/swap`,
+      payload,
+    )
   },
 
   autoAllocate(workspaceId: number, payload: SignalAutoAllocatePayload) {

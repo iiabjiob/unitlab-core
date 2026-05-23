@@ -71,7 +71,7 @@
         </div>
 
         <div v-else-if="visibleNodes.length === 0" class="rounded-2xl border border-dashed border-neutral-300 px-4 py-6 text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
-          No compatible free channels found.
+          No compatible channels found.
         </div>
 
         <div
@@ -117,10 +117,22 @@
               {{ nodeLabel(node.value) }}
             </span>
             <span
+              v-if="isChannelNode(node.value) && channelOwnerLabel(node.value)"
+              class="min-w-0 max-w-40 shrink truncate text-[10px] text-amber-700 dark:text-amber-300"
+            >
+              {{ channelOwnerLabel(node.value) }}
+            </span>
+            <span
               v-if="isChannelNode(node.value) && isCurrentChannel(node.value)"
               class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400"
             >
               Current
+            </span>
+            <span
+              v-else-if="isChannelNode(node.value) && isOccupiedChannel(node.value)"
+              class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-600 dark:text-amber-300"
+            >
+              Swap
             </span>
           </button>
         </div>
@@ -146,6 +158,9 @@ type AllocationChannelCandidate = {
   channelIndex: number
   channelLabel: string
   online: boolean
+  occupied: boolean
+  ownerSignalId: number | null
+  ownerLabel: string | null
   searchText: string
 }
 
@@ -456,11 +471,26 @@ function isCurrentChannel(value: NodeValue): boolean {
   return channelId !== null && channelId === props.currentChannelId
 }
 
+function isOccupiedChannel(value: NodeValue): boolean {
+  const channelId = parseChannelId(value)
+  if (channelId === null) return false
+  return Boolean(channelById.value.get(channelId)?.occupied)
+}
+
+function channelOwnerLabel(value: NodeValue): string {
+  const channelId = parseChannelId(value)
+  if (channelId === null) return ""
+  const channel = channelById.value.get(channelId)
+  if (!channel?.occupied || !channel.ownerLabel) return ""
+  return channel.ownerLabel
+}
+
 function channelIndicatorClass(value: NodeValue): string {
   const channelId = parseChannelId(value)
   if (channelId === null) return "bg-neutral-400 dark:bg-neutral-600"
   const channel = channelById.value.get(channelId)
   if (!channel) return "bg-neutral-400 dark:bg-neutral-600"
+  if (channel.occupied && !isCurrentChannel(value)) return "bg-amber-500"
   return channel.online ? "bg-emerald-500" : "bg-amber-500"
 }
 
@@ -473,6 +503,11 @@ function unitIndicatorClass(value: NodeValue): string {
 function nodeClass(value: NodeValue): string {
   if (isCurrentChannel(value)) {
     return "bg-sky-50 ring-1 ring-inset ring-sky-200 dark:bg-sky-900/30 dark:ring-sky-800"
+  }
+  if (isOccupiedChannel(value)) {
+    return isNodeActive(value)
+      ? "bg-amber-50 ring-1 ring-inset ring-amber-200 dark:bg-amber-950/40 dark:ring-amber-900"
+      : "hover:bg-amber-50 dark:hover:bg-amber-950/30"
   }
   if (isNodeActive(value)) {
     return "bg-neutral-100 dark:bg-neutral-800/70"

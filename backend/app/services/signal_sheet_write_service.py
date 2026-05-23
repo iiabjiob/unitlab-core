@@ -130,6 +130,145 @@ class SignalSheetWriteService:
             )
             raise
 
+    async def assign_allocation(
+        self,
+        *,
+        workspace_id: int,
+        signal_id: int,
+        channel_id: int,
+        allocation_meta: dict[str, Any] | None = None,
+    ) -> list[int]:
+        started_at = time.monotonic()
+        try:
+            existing = await self.repo.get_allocation_by_signal_id(workspace_id, signal_id)
+            if existing is not None:
+                if int(existing.channel_id) == int(channel_id):
+                    await self.db.commit()
+                    return [signal_id]
+                raise ValueError(f"Signal #{signal_id} is already allocated; use reassign")
+
+            await self.repo.update_allocations(
+                workspace_id,
+                [{
+                    "signal_id": int(signal_id),
+                    "channel_id": int(channel_id),
+                    "allocation_meta": allocation_meta,
+                }],
+                commit=False,
+            )
+            await self.db.commit()
+            duration_ms = (time.monotonic() - started_at) * 1000
+            logger.info(
+                "✅ Signal allocation assigned | workspace=%s signal=%s channel=%s duration=%.1f ms",
+                workspace_id,
+                signal_id,
+                channel_id,
+                duration_ms,
+            )
+            return [signal_id]
+        except Exception:
+            await self.db.rollback()
+            raise
+
+    async def reassign_allocation(
+        self,
+        *,
+        workspace_id: int,
+        signal_id: int,
+        channel_id: int,
+        allocation_meta: dict[str, Any] | None = None,
+    ) -> list[int]:
+        started_at = time.monotonic()
+        try:
+            existing = await self.repo.get_allocation_by_signal_id(workspace_id, signal_id)
+            if existing is None:
+                raise ValueError(f"Signal #{signal_id} is not allocated; use assign")
+            if int(existing.channel_id) == int(channel_id):
+                await self.db.commit()
+                return [signal_id]
+
+            await self.repo.update_allocations(
+                workspace_id,
+                [{
+                    "signal_id": int(signal_id),
+                    "channel_id": int(channel_id),
+                    "allocation_meta": allocation_meta,
+                }],
+                commit=False,
+            )
+            await self.db.commit()
+            duration_ms = (time.monotonic() - started_at) * 1000
+            logger.info(
+                "✅ Signal allocation reassigned | workspace=%s signal=%s channel=%s duration=%.1f ms",
+                workspace_id,
+                signal_id,
+                channel_id,
+                duration_ms,
+            )
+            return [signal_id]
+        except Exception:
+            await self.db.rollback()
+            raise
+
+    async def unassign_allocation(
+        self,
+        *,
+        workspace_id: int,
+        signal_id: int,
+    ) -> list[int]:
+        started_at = time.monotonic()
+        try:
+            await self.repo.update_allocations(
+                workspace_id,
+                [{
+                    "signal_id": int(signal_id),
+                    "channel_id": None,
+                }],
+                commit=False,
+            )
+            await self.db.commit()
+            duration_ms = (time.monotonic() - started_at) * 1000
+            logger.info(
+                "✅ Signal allocation unassigned | workspace=%s signal=%s duration=%.1f ms",
+                workspace_id,
+                signal_id,
+                duration_ms,
+            )
+            return [signal_id]
+        except Exception:
+            await self.db.rollback()
+            raise
+
+    async def swap_allocations(
+        self,
+        *,
+        workspace_id: int,
+        signal_id: int,
+        channel_id: int,
+    ) -> list[int]:
+        started_at = time.monotonic()
+        try:
+            changed_signal_ids = await self.repo.swap_allocations(
+                workspace_id=workspace_id,
+                signal_id=signal_id,
+                channel_id=channel_id,
+                commit=False,
+            )
+            await self.db.commit()
+            duration_ms = (time.monotonic() - started_at) * 1000
+            logger.info(
+                "✅ Signal allocations swapped | workspace=%s signal=%s channel=%s changed=%s duration=%.1f ms",
+                workspace_id,
+                signal_id,
+                channel_id,
+                len(changed_signal_ids),
+                duration_ms,
+            )
+            return changed_signal_ids
+        except Exception:
+            await self.db.rollback()
+            raise
+
     async def auto_allocate(
         self,
         *,

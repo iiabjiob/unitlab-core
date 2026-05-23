@@ -92,6 +92,49 @@ class SignalAllocationBulkUpdateSchema(BaseModel):
     entries: list[SignalAllocationUpdateItemSchema] = Field(default_factory=list)
 
 
+class SignalAllocationAssignActionSchema(BaseModel):
+    signal_id: int
+    channel_id: int
+    allocation_meta: dict[str, Any] | None = None
+
+
+class SignalAllocationUnassignActionSchema(BaseModel):
+    signal_id: int
+
+
+class SignalAllocationReassignActionSchema(BaseModel):
+    signal_id: int
+    channel_id: int
+    allocation_meta: dict[str, Any] | None = None
+
+
+class SignalAllocationSwapActionSchema(BaseModel):
+    signal_id: int
+    channel_id: int
+
+
+class SignalAllocationConflictSchema(BaseModel):
+    code: str
+    message: str
+    signal_id: int | None = None
+    channel_id: int | None = None
+    owner_signal_id: int | None = None
+
+
+class SignalAllocationRejectedItemSchema(BaseModel):
+    code: str
+    message: str
+    signal_id: int | None = None
+    channel_id: int | None = None
+
+
+class SignalAllocationActionResponseSchema(BaseModel):
+    workspace_id: int
+    changed_rows: list[SignalAllocationRowSchema] = Field(default_factory=list)
+    conflicts: list[SignalAllocationConflictSchema] = Field(default_factory=list)
+    rejected: list[SignalAllocationRejectedItemSchema] = Field(default_factory=list)
+
+
 class SignalAutoAllocateSchema(BaseModel):
     signal_ids: list[int] = Field(default_factory=list)
     prefer_online: bool = True

@@ -1,6 +1,6 @@
 # Signal List and Allocation Migration Plan
 
-Status: Slice 3 complete, Slice 4 next
+Status: Slice 5 complete, Slice 6 next
 Last reviewed: 2026-05-23
 
 ## Scope
@@ -500,6 +500,8 @@ Rollback:
 
 ### Slice 4 - Explicit Single-Row Allocation Actions
 
+Status: done.
+
 Goal:
 
 - replace generic single-row bulk update UX path with explicit backend actions.
@@ -516,15 +518,18 @@ Frontend:
 
 Tests:
 
-- assign/unassign/reassign API tests;
-- conflict and incompatible channel tests;
-- picker integration tests.
+- write-service tests for assign, unassign, and reassign action semantics;
+- frontend type check;
+- grid patch queue regression test.
+- browser-level picker conflict verification still needs manual validation.
 
 Rollback:
 
 - picker falls back to existing `setAllocation`.
 
 ### Slice 5 - Atomic Swap
+
+Status: done for active allocation swap path; allocation event records remain pending until the `allocation_events` slice.
 
 Goal:
 
@@ -533,7 +538,7 @@ Goal:
 Backend:
 
 - transactionally swap channel allocations.
-- write allocation event records.
+- defer durable allocation event records to the explicit `allocation_events` migration.
 
 Frontend:
 
@@ -545,6 +550,7 @@ Tests:
 - swap with missing signal/channel;
 - swap with incompatible type;
 - uniqueness preserved after failure.
+- current coverage verifies write-service delegation and existing allocation action behavior; repository-level DB constraint tests are still needed.
 
 Rollback:
 
@@ -705,6 +711,6 @@ Acceptance targets:
 
 ## Immediate Next Step
 
-Start with Slice 4, because async allocation jobs now return changed row projections and the frontend can consume them without a normal full reload.
+Start with Slice 6, because assign/reassign/unassign/swap now return changed rows and the UI can expose the resulting health states without full reloads.
 
-Slice 4 should add explicit assign, unassign, and reassign actions on the backend, returning the same changed row projection and structured conflict/rejection data.
+Slice 6 should make allocation health/status visible and filterable in the signal grid, while keeping quick filters cheap for 20,000 rows.

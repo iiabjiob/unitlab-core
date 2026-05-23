@@ -16,11 +16,18 @@ from app.core.logger import get_logger
 from app.infrastructure.db.database import get_db
 from app.schemas.signal_import_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import (
+    SignalAllocationActionResponseSchema,
+    SignalAllocationAssignActionSchema,
+    SignalAllocationConflictSchema,
     SignalAllocationEnsureResponseSchema,
     SignalAllocationEnsureSchema,
     SignalJobControlSchema,
     SignalJobStatusSchema,
     SignalAllocationMarkTestedSchema,
+    SignalAllocationReassignActionSchema,
+    SignalAllocationRejectedItemSchema,
+    SignalAllocationSwapActionSchema,
+    SignalAllocationUnassignActionSchema,
     SignalTestRunJobSchema,
     SignalAllocationBulkUpdateSchema,
     SignalAllocationRowSchema,
@@ -354,6 +361,107 @@ async def update_signal_allocations(
     return await repo.list_allocation_rows_by_signal_ids(workspace_id, touched_signal_ids)
 
 
+@router.post(
+    "/workspaces/{workspace_id}/signal-allocations/actions/assign",
+    response_model=SignalAllocationActionResponseSchema,
+)
+async def assign_signal_allocation(
+    workspace_id: int,
+    payload: SignalAllocationAssignActionSchema,
+    repo: SignalSheetRepository = Depends(get_repo),
+    write_service: SignalSheetWriteService = Depends(get_write_service),
+):
+    if not await repo.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    try:
+        changed_signal_ids = await write_service.assign_allocation(
+            workspace_id=workspace_id,
+            signal_id=payload.signal_id,
+            channel_id=payload.channel_id,
+            allocation_meta=payload.allocation_meta,
+        )
+    except ValueError as exc:
+        raise _allocation_action_http_exception(exc, signal_id=payload.signal_id, channel_id=payload.channel_id)
+
+    return await _build_allocation_action_response(repo, workspace_id, changed_signal_ids)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/signal-allocations/actions/reassign",
+    response_model=SignalAllocationActionResponseSchema,
+)
+async def reassign_signal_allocation(
+    workspace_id: int,
+    payload: SignalAllocationReassignActionSchema,
+    repo: SignalSheetRepository = Depends(get_repo),
+    write_service: SignalSheetWriteService = Depends(get_write_service),
+):
+    if not await repo.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    try:
+        changed_signal_ids = await write_service.reassign_allocation(
+            workspace_id=workspace_id,
+            signal_id=payload.signal_id,
+            channel_id=payload.channel_id,
+            allocation_meta=payload.allocation_meta,
+        )
+    except ValueError as exc:
+        raise _allocation_action_http_exception(exc, signal_id=payload.signal_id, channel_id=payload.channel_id)
+
+    return await _build_allocation_action_response(repo, workspace_id, changed_signal_ids)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/signal-allocations/actions/unassign",
+    response_model=SignalAllocationActionResponseSchema,
+)
+async def unassign_signal_allocation(
+    workspace_id: int,
+    payload: SignalAllocationUnassignActionSchema,
+    repo: SignalSheetRepository = Depends(get_repo),
+    write_service: SignalSheetWriteService = Depends(get_write_service),
+):
+    if not await repo.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    try:
+        changed_signal_ids = await write_service.unassign_allocation(
+            workspace_id=workspace_id,
+            signal_id=payload.signal_id,
+        )
+    except ValueError as exc:
+        raise _allocation_action_http_exception(exc, signal_id=payload.signal_id, channel_id=None)
+
+    return await _build_allocation_action_response(repo, workspace_id, changed_signal_ids)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/signal-allocations/actions/swap",
+    response_model=SignalAllocationActionResponseSchema,
+)
+async def swap_signal_allocations(
+    workspace_id: int,
+    payload: SignalAllocationSwapActionSchema,
+    repo: SignalSheetRepository = Depends(get_repo),
+    write_service: SignalSheetWriteService = Depends(get_write_service),
+):
+    if not await repo.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    try:
+        changed_signal_ids = await write_service.swap_allocations(
+            workspace_id=workspace_id,
+            signal_id=payload.signal_id,
+            channel_id=payload.channel_id,
+        )
+    except ValueError as exc:
+        raise _allocation_action_http_exception(exc, signal_id=payload.signal_id, channel_id=payload.channel_id)
+
+    return await _build_allocation_action_response(repo, workspace_id, changed_signal_ids)
+
+
 @router.post("/workspaces/{workspace_id}/signal-allocations/auto", response_model=SignalAutoAllocateResponseSchema)
 async def auto_allocate_signal_rows(
     workspace_id: int,
@@ -566,6 +674,59 @@ async def mark_signal_allocations_tested(
     if not signal_ids:
         return []
     return await repo.list_allocation_rows_by_signal_ids(workspace_id, signal_ids)
+
+
+async def _build_allocation_action_response(
+    repo: SignalSheetRepository,
+    workspace_id: int,
+    changed_signal_ids: list[int],
+) -> SignalAllocationActionResponseSchema:
+    rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, changed_signal_ids)
+    return SignalAllocationActionResponseSchema(
+        workspace_id=workspace_id,
+        changed_rows=rows,
+        conflicts=[],
+        rejected=[],
+    )
+
+
+def _allocation_action_http_exception(
+    exc: ValueError,
+    *,
+    signal_id: int | None,
+    channel_id: int | None,
+) -> HTTPException:
+    message = str(exc)
+    normalized = message.lower()
+    conflict_markers = (
+        "already allocated",
+        "already assigned",
+        "already allocated to another signal",
+        "use reassign",
+        "use assign",
+    )
+    status_code = 409 if any(marker in normalized for marker in conflict_markers) else 400
+    code = "allocation_conflict" if status_code == 409 else "allocation_rejected"
+    detail = {
+        "message": message,
+        "conflicts": [
+            SignalAllocationConflictSchema(
+                code=code,
+                message=message,
+                signal_id=signal_id,
+                channel_id=channel_id,
+            ).model_dump()
+        ] if status_code == 409 else [],
+        "rejected": [
+            SignalAllocationRejectedItemSchema(
+                code=code,
+                message=message,
+                signal_id=signal_id,
+                channel_id=channel_id,
+            ).model_dump()
+        ],
+    }
+    return HTTPException(status_code=status_code, detail=detail)
 
 
 def _parse_metadata(raw_metadata: str | None) -> SignalImportMetaSchema | None:

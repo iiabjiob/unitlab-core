@@ -3,6 +3,7 @@ import { computed, ref } from "vue"
 
 import { SignalSheetAPI } from "@/api/signal_sheet.api"
 import type {
+  SignalAllocationActionResponse,
   SignalAllocationEnsureResponse,
   SignalAllocationRow,
   SignalAllocationUpdateItem,
@@ -1002,7 +1003,108 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   }
 
   async function setAllocation(signalId: number, channelId: number | null) {
-    return bulkSetAllocations([{ signal_id: signalId, channel_id: channelId }])
+    const normalizedSignalId = Number(signalId)
+    if (!Number.isFinite(normalizedSignalId) || normalizedSignalId <= 0) {
+      throw new Error("Signal id is required")
+    }
+
+    const normalizedChannelId = normalizeChannelId(channelId)
+    if (normalizedChannelId === null) {
+      return unassignAllocation(normalizedSignalId)
+    }
+
+    const rowIndex = allocationIndexBySignalId.get(normalizedSignalId)
+    const currentRow = rowIndex === undefined ? null : allocationRows.value[rowIndex] ?? null
+    const currentChannelId = normalizeChannelId(currentRow?.channel_id)
+    if (currentChannelId === null) {
+      return assignAllocation(normalizedSignalId, normalizedChannelId)
+    }
+    if (currentChannelId === normalizedChannelId) {
+      return {
+        workspace_id: requireWorkspaceId(),
+        changed_rows: currentRow ? [cloneAllocationRow(currentRow)] : [],
+        conflicts: [],
+        rejected: [],
+      } satisfies SignalAllocationActionResponse
+    }
+    return reassignAllocation(normalizedSignalId, normalizedChannelId)
+  }
+
+  function applyAllocationActionResponse(data: SignalAllocationActionResponse) {
+    const changedRows = Array.isArray(data.changed_rows) ? data.changed_rows : []
+    if (changedRows.length > 0) {
+      applyServerAllocationPatch(
+        changedRows,
+        changedRows.map(row => row.signal_id),
+      )
+      recomputeSheetAllocatedCount()
+    }
+    return data
+  }
+
+  async function assignAllocation(
+    signalId: number,
+    channelId: number,
+    allocationMeta?: Record<string, unknown> | null,
+  ): Promise<SignalAllocationActionResponse> {
+    beginAllocationMutation()
+    try {
+      const workspaceId = requireWorkspaceId()
+      const { data } = await SignalSheetAPI.assignAllocation(workspaceId, {
+        signal_id: signalId,
+        channel_id: channelId,
+        allocation_meta: allocationMeta ?? null,
+      })
+      return applyAllocationActionResponse(data)
+    } finally {
+      endAllocationMutation()
+    }
+  }
+
+  async function reassignAllocation(
+    signalId: number,
+    channelId: number,
+    allocationMeta?: Record<string, unknown> | null,
+  ): Promise<SignalAllocationActionResponse> {
+    beginAllocationMutation()
+    try {
+      const workspaceId = requireWorkspaceId()
+      const { data } = await SignalSheetAPI.reassignAllocation(workspaceId, {
+        signal_id: signalId,
+        channel_id: channelId,
+        allocation_meta: allocationMeta ?? null,
+      })
+      return applyAllocationActionResponse(data)
+    } finally {
+      endAllocationMutation()
+    }
+  }
+
+  async function unassignAllocation(signalId: number): Promise<SignalAllocationActionResponse> {
+    beginAllocationMutation()
+    try {
+      const workspaceId = requireWorkspaceId()
+      const { data } = await SignalSheetAPI.unassignAllocation(workspaceId, {
+        signal_id: signalId,
+      })
+      return applyAllocationActionResponse(data)
+    } finally {
+      endAllocationMutation()
+    }
+  }
+
+  async function swapAllocations(signalId: number, channelId: number): Promise<SignalAllocationActionResponse> {
+    beginAllocationMutation()
+    try {
+      const workspaceId = requireWorkspaceId()
+      const { data } = await SignalSheetAPI.swapAllocations(workspaceId, {
+        signal_id: signalId,
+        channel_id: channelId,
+      })
+      return applyAllocationActionResponse(data)
+    } finally {
+      endAllocationMutation()
+    }
   }
 
   async function autoAllocate(payload: SignalAutoAllocatePayload) {
@@ -1319,6 +1421,10 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     deletePreset,
     bulkSetAllocations,
     setAllocation,
+    assignAllocation,
+    reassignAllocation,
+    unassignAllocation,
+    swapAllocations,
     autoAllocate,
     ensureAllocated,
     markSignalsTested,

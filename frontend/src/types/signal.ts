@@ -138,6 +138,49 @@ export interface SignalAllocationUpdateItem {
   allocation_meta?: Record<string, unknown> | null
 }
 
+export interface SignalAllocationAssignActionPayload {
+  signal_id: number
+  channel_id: number
+  allocation_meta?: Record<string, unknown> | null
+}
+
+export interface SignalAllocationUnassignActionPayload {
+  signal_id: number
+}
+
+export interface SignalAllocationReassignActionPayload {
+  signal_id: number
+  channel_id: number
+  allocation_meta?: Record<string, unknown> | null
+}
+
+export interface SignalAllocationSwapActionPayload {
+  signal_id: number
+  channel_id: number
+}
+
+export interface SignalAllocationConflict {
+  code: string
+  message: string
+  signal_id?: number | null
+  channel_id?: number | null
+  owner_signal_id?: number | null
+}
+
+export interface SignalAllocationRejectedItem {
+  code: string
+  message: string
+  signal_id?: number | null
+  channel_id?: number | null
+}
+
+export interface SignalAllocationActionResponse {
+  workspace_id: number
+  changed_rows: SignalAllocationRow[]
+  conflicts: SignalAllocationConflict[]
+  rejected: SignalAllocationRejectedItem[]
+}
+
 export interface SignalAutoAllocatePayload {
   signal_ids?: number[]
   prefer_online?: boolean

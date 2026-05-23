@@ -218,6 +218,98 @@ class SignalSheetRepository:
         await self.db.execute(stmt)
         await self.db.flush()
 
+    async def get_allocation_by_signal_id(self, workspace_id: int, signal_id: int) -> SignalAllocation | None:
+        stmt = select(SignalAllocation).where(
+            SignalAllocation.workspace_id == workspace_id,
+            SignalAllocation.signal_id == signal_id,
+        )
+        result = await self.db.execute(stmt.limit(1))
+        return result.scalar_one_or_none()
+
+    async def get_allocation_by_channel_id(self, workspace_id: int, channel_id: int) -> SignalAllocation | None:
+        stmt = select(SignalAllocation).where(
+            SignalAllocation.workspace_id == workspace_id,
+            SignalAllocation.channel_id == channel_id,
+        )
+        result = await self.db.execute(stmt.limit(1))
+        return result.scalar_one_or_none()
+
+    async def swap_allocations(
+        self,
+        *,
+        workspace_id: int,
+        signal_id: int,
+        channel_id: int,
+        commit: bool = True,
+    ) -> list[int]:
+        source_allocation = await self.get_allocation_by_signal_id(workspace_id, signal_id)
+        if source_allocation is None:
+            raise ValueError(f"Signal #{signal_id} is not allocated")
+
+        target_allocation = await self.get_allocation_by_channel_id(workspace_id, channel_id)
+        if target_allocation is None:
+            raise ValueError(f"Channel #{channel_id} is not allocated")
+        if int(target_allocation.signal_id) == int(signal_id):
+            return [int(signal_id)]
+
+        source_signal_id = int(source_allocation.signal_id)
+        target_signal_id = int(target_allocation.signal_id)
+        source_channel_id = int(source_allocation.channel_id)
+        target_channel_id = int(target_allocation.channel_id)
+
+        signals_by_id = await self._active_signals_by_ids(workspace_id, {source_signal_id, target_signal_id})
+        if source_signal_id not in signals_by_id:
+            raise ValueError(f"Signal #{source_signal_id} not found")
+        if target_signal_id not in signals_by_id:
+            raise ValueError(f"Signal #{target_signal_id} not found")
+
+        channels_by_id = await self._channels_by_ids({source_channel_id, target_channel_id})
+        if source_channel_id not in channels_by_id:
+            raise ValueError(f"Channel #{source_channel_id} not found")
+        if target_channel_id not in channels_by_id:
+            raise ValueError(f"Channel #{target_channel_id} not found")
+
+        source_signal = signals_by_id[source_signal_id]
+        target_signal = signals_by_id[target_signal_id]
+        source_channel = channels_by_id[source_channel_id]
+        target_channel = channels_by_id[target_channel_id]
+        if not _is_channel_compatible(source_signal.io_direction, target_channel.channel_type):
+            raise ValueError(
+                f"Channel #{target_channel_id} ({target_channel.channel_type}) is incompatible with signal #{source_signal_id} ({_normalize_direction(source_signal.io_direction)})"
+            )
+        if not _is_channel_compatible(target_signal.io_direction, source_channel.channel_type):
+            raise ValueError(
+                f"Channel #{source_channel_id} ({source_channel.channel_type}) is incompatible with signal #{target_signal_id} ({_normalize_direction(target_signal.io_direction)})"
+            )
+
+        source_meta = source_allocation.allocation_meta
+        target_meta = target_allocation.allocation_meta
+
+        await self.db.delete(source_allocation)
+        await self.db.delete(target_allocation)
+        await self.db.flush()
+        self.db.add(
+            SignalAllocation(
+                workspace_id=workspace_id,
+                signal_id=source_signal_id,
+                channel_id=target_channel_id,
+                allocation_meta=source_meta,
+            )
+        )
+        self.db.add(
+            SignalAllocation(
+                workspace_id=workspace_id,
+                signal_id=target_signal_id,
+                channel_id=source_channel_id,
+                allocation_meta=target_meta,
+            )
+        )
+        if commit:
+            await self.db.commit()
+        else:
+            await self.db.flush()
+        return [source_signal_id, target_signal_id]
+
     async def list_allocation_rows(self, workspace_id: int) -> list[SignalAllocationRowSchema]:
         signals = await self._list_active_signals(workspace_id)
         allocations_by_signal = await self._allocations_by_signal_id(workspace_id)
