@@ -186,6 +186,11 @@ import {
   type SignalAllocationQuickFilter,
   type SignalAllocationQuickFilterCounts,
 } from "@/pages/signals/utils/allocationHealth"
+import {
+  applyRuntimeTestedAt,
+  applyRuntimeTestedAtToRows,
+  resolveRuntimeTestedAt,
+} from "@/pages/signals/utils/runtimeProjection"
 import { useAffinoDataGridTheme } from "@/components/ui/affinoDataGridTheme"
 import "@/components/ui/affinoDataGridNative.css"
 import { useChannelStore } from "@/stores/channelStore"
@@ -399,20 +404,19 @@ const sourceHeaders = computed(() => {
   return resolveAllSourceColumnHeaders(null, allocationRows.value)
 })
 
-const displayAllocationRows = computed(() => {
-  void activeWorkspaceRevision.value
-  const workspaceId = workspaceStore.activeWorkspaceId
-  return allocationRows.value.map((row) => {
-    const patchedTestedAt = testedAtRealtimeStore.getTestedAt(row.signal_id, workspaceId)
-    if (!patchedTestedAt || patchedTestedAt === row.tested_at) {
-      return row
-    }
-    return {
-      ...row,
-      tested_at: patchedTestedAt,
-    }
-  })
-})
+function resolveRuntimeAllocationRow(row: SignalAllocationRow): SignalAllocationRow {
+  return applyRuntimeTestedAt(row, workspaceStore.activeWorkspaceId, testedAtRealtimeStore.getTestedAt)
+}
+
+function resolveRuntimeAllocationRows(rows: readonly SignalAllocationRow[] = allocationRows.value): SignalAllocationRow[] {
+  return applyRuntimeTestedAtToRows(rows, workspaceStore.activeWorkspaceId, testedAtRealtimeStore.getTestedAt)
+}
+
+function hasRuntimeOrStaticTestedAt(row: SignalAllocationRow): boolean {
+  return Boolean(String(
+    resolveRuntimeTestedAt(row, workspaceStore.activeWorkspaceId, testedAtRealtimeStore.getTestedAt) ?? "",
+  ).trim())
+}
 
 const filteredStaticAllocationRows = computed(() => {
   const filter = allocationQuickFilter.value
@@ -442,9 +446,11 @@ const summaryText = computed(() => {
   if (loading.value) {
     return "Loading static signals view"
   }
-  const total = displayAllocationRows.value.length
-  const allocated = displayAllocationRows.value.filter(row => Number.isFinite(row.channel_id as number)).length
-  const tested = displayAllocationRows.value.filter(row => Boolean(String(row.tested_at ?? "").trim())).length
+  void activeWorkspaceRevision.value
+  const rows = allocationRows.value
+  const total = rows.length
+  const allocated = rows.filter(row => Number.isFinite(row.channel_id as number)).length
+  const tested = rows.filter(row => hasRuntimeOrStaticTestedAt(row)).length
   const remaining = Math.max(0, total - tested)
   const allocatedPercent = total > 0 ? ((allocated / total) * 100) : 0
   const testedPercent = total > 0 ? ((tested / total) * 100) : 0
@@ -507,7 +513,7 @@ const selectedVisibleAllocatedPhysicalRows = computed(() => (
 ))
 
 const allocatedCableRows = computed(() => (
-  displayAllocationRows.value.filter((row) => (
+  allocationRows.value.filter((row) => (
     Number.isFinite(row.channel_id as number)
     && Number.isFinite(row.channel_index as number)
     && Boolean(String(row.unit_id ?? "").trim())
@@ -911,7 +917,7 @@ const optionalExportColumnOptions = computed<ExportColumnOption[]>(() => (
 
 const allocationRowBySignalId = computed(() => {
   const map = new Map<number, SignalAllocationRow>()
-  displayAllocationRows.value.forEach((row) => {
+  allocationRows.value.forEach((row) => {
     const signalId = Number(row.signal_id)
     if (Number.isFinite(signalId)) {
       map.set(signalId, row)
@@ -955,7 +961,7 @@ const channelUnitById = computed(() => {
 
 const allocatedSignalIdByChannelId = computed(() => {
   const map = new Map<number, number>()
-  displayAllocationRows.value.forEach((row) => {
+  allocationRows.value.forEach((row) => {
     const channelId = Number(row.channel_id)
     if (!Number.isFinite(channelId) || channelId <= 0) {
       return
@@ -1124,11 +1130,11 @@ function resolveSelectedCableExportColumns(optionalColumnKeys: readonly string[]
     : [...requiredStart, ...optional]
 }
 
-function buildSignalReportRows(): string[][] {
+function buildSignalReportRows(rows: readonly SignalAllocationRow[] = resolveRuntimeAllocationRows()): string[][] {
   const headers = sourceHeaders.value
   const fallbackHeaders = headers.length > 0 ? headers : ["signal_name", "signal_key"]
 
-  return displayAllocationRows.value.map((row) => {
+  return rows.map((row) => {
     const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
     const sourceCells = fallbackHeaders.map((header) => {
       if (header === "signal_name") return row.signal_name
@@ -1162,7 +1168,8 @@ async function handleImported() {
 }
 
 function exportCableJournal(optionalColumnKeys: string[] = []) {
-  if (!allocatedCableRows.value.length) {
+  const cableRows = allocatedCableRows.value
+  if (!cableRows.length) {
     toastStore.info("No allocated rows to export.")
     return
   }
@@ -1173,14 +1180,14 @@ function exportCableJournal(optionalColumnKeys: string[] = []) {
   const terminalHeader = resolveTerminalHeader()
   const selectedColumns = resolveSelectedCableExportColumns(optionalColumnKeys)
   const tableHeaders = selectedColumns.map(column => column.label)
-  const rows = allocatedCableRows.value.map(row => (
+  const rows = resolveRuntimeAllocationRows(cableRows).map(row => (
     selectedColumns.map(column => column.getValue(row, terminalHeader))
   ))
   const summaryRows = [
     ["report", "cable-schedule"],
     ["workspace_name", workspaceName],
     ["exported_at", generatedAt.toISOString()],
-    ["total", String(allocatedCableRows.value.length)],
+    ["total", String(cableRows.length)],
   ]
 
   const csvContent = [
@@ -1215,7 +1222,8 @@ function handleExportCableFromWizard(payload: { optionalColumnKeys: string[] }) 
 }
 
 function exportSignalReport() {
-  if (!displayAllocationRows.value.length) {
+  const reportRows = resolveRuntimeAllocationRows()
+  if (!reportRows.length) {
     toastStore.info("No signals to export.")
     return
   }
@@ -1223,13 +1231,13 @@ function exportSignalReport() {
   const headers = sourceHeaders.value
   const fallbackHeaders = headers.length > 0 ? headers : ["signal_name", "signal_key"]
   const csvHeaders = [...fallbackHeaders, "signal_direction", "unit_id", "channel_index", "last_tested_at"]
-  const rows = buildSignalReportRows()
+  const rows = buildSignalReportRows(reportRows)
   const workspaceName = String(workspaceStore.activeWorkspace?.name ?? "")
   const workspaceFilePart = toFilenamePart(workspaceName)
   const generatedAt = new Date()
-  const tested = displayAllocationRows.value.filter(row => Boolean(String(row.tested_at ?? "").trim())).length
-  const remaining = Math.max(0, displayAllocationRows.value.length - tested)
-  const total = displayAllocationRows.value.length
+  const tested = reportRows.filter(row => Boolean(String(row.tested_at ?? "").trim())).length
+  const remaining = Math.max(0, reportRows.length - tested)
+  const total = reportRows.length
 
   const metaRows = [
     ["report", "signal-test-report"],
@@ -1298,14 +1306,7 @@ function resolveAllocationOnlineState(row: SignalAllocationRow): boolean | null 
 }
 
 function resolveGridProjectionRow(row: SignalAllocationRow): SignalAllocationRow {
-  const patchedTestedAt = testedAtRealtimeStore.getTestedAt(row.signal_id, workspaceStore.activeWorkspaceId)
-  if (!patchedTestedAt || patchedTestedAt === row.tested_at) {
-    return row
-  }
-  return {
-    ...row,
-    tested_at: patchedTestedAt,
-  }
+  return resolveRuntimeAllocationRow(row)
 }
 
 function createGridRow(row: SignalAllocationRow, headers: readonly string[]): GridRow {
@@ -2537,7 +2538,7 @@ function enqueueSignalGridRowPatches(
       return
     }
 
-    const gridRow = createGridRow(row, sourceHeaders.value)
+    const gridRow = createGridRow(resolveRuntimeAllocationRow(row), sourceHeaders.value)
     patches.push({
       rowId: gridRow.rowId,
       changes: gridRow,

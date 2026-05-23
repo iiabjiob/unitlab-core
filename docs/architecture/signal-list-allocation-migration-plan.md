@@ -1,6 +1,6 @@
 # Signal List and Allocation Migration Plan
 
-Status: Slice 8 complete, Slice 9 next
+Status: Slice 9 complete, Slice 10 next
 Last reviewed: 2026-05-23
 
 ## Scope
@@ -668,6 +668,15 @@ Tests:
 - non-visible row update test;
 - sort/filter policy tests.
 
+Implemented:
+
+- `tested_at` runtime patches remain in `testedAtRealtimeStore` and are overlaid only when building grid patches, reports, and exports.
+- Signal selection, channel ownership maps, allocation quick filters, and allocation picker state now read the static allocation projection instead of a runtime-mapped row array.
+- Live `tested_at` patches still target the affected grid row/cell through the existing patch queue; non-visible rows update the runtime store without forcing allocation maps to rebuild.
+- Summary counts may still scan the static row array to show live tested totals; this should be measured in the 20,000-row benchmark slice before adding a separate aggregate counter.
+
+Status: done.
+
 Rollback:
 
 - fold runtime fields back into row patches.
@@ -733,6 +742,6 @@ Acceptance targets:
 
 ## Immediate Next Step
 
-Start with Slice 9.
+Start with Slice 10.
 
-Slice 9 should separate volatile runtime test state from static signal/allocation rows where fields do not need sort/filter participation.
+Slice 10 should make signal-list revisions explicit so tests, reports, and allocation reuse are tied to the revision that was actually used.
