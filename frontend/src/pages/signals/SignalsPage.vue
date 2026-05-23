@@ -58,7 +58,39 @@
       No signals found.
     </div>
 
-    <section v-else class="affino-native-data-grid min-h-0 min-w-0 flex-1">
+    <section v-else class="affino-native-data-grid relative min-h-0 min-w-0 flex-1">
+      <div
+        v-if="!allocationGridReadyForDisplay"
+        class="pointer-events-none absolute inset-0 z-10 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950"
+        aria-hidden="true"
+      >
+        <div class="flex h-12 shrink-0 items-center gap-3 border-b border-neutral-200 px-4 dark:border-neutral-800">
+          <div class="h-4 w-28 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+          <div class="h-4 w-20 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+          <div class="ml-auto h-7 w-24 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+        </div>
+        <div
+          class="grid h-10 shrink-0 items-center gap-3 border-b border-neutral-200 px-4 dark:border-neutral-800"
+          :style="{ gridTemplateColumns: '44px minmax(44px, 0.7fr) minmax(72px, 1fr) minmax(96px, 1.4fr) 136px 128px' }"
+        >
+          <div v-for="columnIndex in 6" :key="`signals-grid-skeleton-head-${columnIndex}`" class="h-3 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+        </div>
+        <div class="min-h-0 flex-1 overflow-hidden">
+          <div
+            v-for="rowIndex in 12"
+            :key="`signals-grid-skeleton-row-${rowIndex}`"
+            class="grid h-9 items-center gap-3 border-b border-neutral-100 px-4 dark:border-neutral-900"
+            :style="{ gridTemplateColumns: '44px minmax(44px, 0.7fr) minmax(72px, 1fr) minmax(96px, 1.4fr) 136px 128px' }"
+          >
+            <div class="h-3 w-3 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+            <div class="h-3 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+            <div class="h-3 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+            <div class="h-3 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+            <div class="h-5 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+            <div class="h-3 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+          </div>
+        </div>
+      </div>
       <div
         class="affino-native-data-grid__shell"
         :style="allocationGridReadyForDisplay ? undefined : { visibility: 'hidden', pointerEvents: 'none' }"
