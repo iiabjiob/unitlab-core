@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
+from app.api.v1.signal_sheet import repository as signal_sheet_repository
 from app.api.v1.signal_sheet.repository import (
     _build_allocation_health,
     _channel_auto_allocate_sort_key,
@@ -10,11 +13,16 @@ from app.api.v1.signal_sheet.repository import (
     _pick_candidate_channel,
     _resolve_allocation_status,
     _required_channel_type,
+    SignalSheetRepository,
 )
 from app.models.channel import Channel
 from app.models.device import Device
 from app.models.signal import Signal, SignalIODirection
 from app.models.signal_sheet import SignalAllocation
+
+
+def run_async(awaitable):
+    return asyncio.run(awaitable)
 
 
 def test_required_channel_type_maps_inverse_direction() -> None:
@@ -233,3 +241,92 @@ def test_channel_auto_allocate_sort_key_without_online_priority() -> None:
     )
 
     assert [channel.id for channel in ordered] == [101, 201, 202]
+
+
+def test_preview_auto_allocate_proposes_free_compatible_channel(monkeypatch) -> None:
+    repo = SignalSheetRepository(db=None)  # type: ignore[arg-type]
+    signal = Signal(id=1, workspace_id=1, key="S1", name="Signal 1", io_direction=SignalIODirection.DI)
+    channel = Channel(
+        id=20,
+        device_id=2,
+        channel_index=0,
+        channel_type="do",
+        device=Device(id=2, unit_id="unit-a"),
+    )
+
+    async def active_signals_by_ids(workspace_id: int, signal_ids: set[int]):
+        return {1: signal}
+
+    async def allocations_by_signal_id(workspace_id: int):
+        return {}
+
+    async def list_channels():
+        return [channel]
+
+    class FakePresenceService:
+        async def get_presence_map(self, unit_ids):
+            return {"unit-a": SimpleNamespace(online=True)}
+
+    monkeypatch.setattr(repo, "_active_signals_by_ids", active_signals_by_ids)
+    monkeypatch.setattr(repo, "_allocations_by_signal_id", allocations_by_signal_id)
+    monkeypatch.setattr(repo, "_list_channels", list_channels)
+    monkeypatch.setattr(signal_sheet_repository, "DevicePresenceService", lambda: FakePresenceService())
+
+    preview = run_async(
+        repo.preview_auto_allocate(
+            workspace_id=1,
+            signal_ids=[1],
+            prefer_online=True,
+            prefer_single_unit=False,
+            overwrite_existing=False,
+        )
+    )
+
+    assert preview.summary.requested == 1
+    assert preview.summary.assign == 1
+    assert preview.summary.will_change == 1
+    assert preview.changes[0].action == "assign"
+    assert preview.changes[0].proposed_channel_id == 20
+    assert preview.changes[0].proposed_channel_label == "unit-a/CH1"
+
+
+def test_preview_allocation_updates_reports_channel_conflict(monkeypatch) -> None:
+    repo = SignalSheetRepository(db=None)  # type: ignore[arg-type]
+    signal = Signal(id=1, workspace_id=1, key="S1", name="Signal 1", io_direction=SignalIODirection.DI)
+    owner_allocation = SignalAllocation(id=99, workspace_id=1, signal_id=2, channel_id=20)
+    channel = Channel(
+        id=20,
+        device_id=2,
+        channel_index=0,
+        channel_type="do",
+        device=Device(id=2, unit_id="unit-a"),
+    )
+
+    async def active_signals_by_ids(workspace_id: int, signal_ids: set[int]):
+        return {1: signal}
+
+    async def allocations_by_signal_ids(workspace_id: int, signal_ids: set[int]):
+        return {}
+
+    async def channels_by_ids(channel_ids: set[int]):
+        return {20: channel}
+
+    async def allocations_by_channel_ids(workspace_id: int, channel_ids: set[int]):
+        return [owner_allocation]
+
+    monkeypatch.setattr(repo, "_active_signals_by_ids", active_signals_by_ids)
+    monkeypatch.setattr(repo, "_allocations_by_signal_ids", allocations_by_signal_ids)
+    monkeypatch.setattr(repo, "_channels_by_ids", channels_by_ids)
+    monkeypatch.setattr(repo, "_allocations_by_channel_ids", allocations_by_channel_ids)
+
+    preview = run_async(
+        repo.preview_allocation_updates(
+            workspace_id=1,
+            entries=[{"signal_id": 1, "channel_id": 20}],
+        )
+    )
+
+    assert preview.summary.requested == 1
+    assert preview.summary.conflicts == 1
+    assert preview.summary.will_change == 0
+    assert preview.conflicts[0].owner_signal_id == 2

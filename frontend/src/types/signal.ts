@@ -181,6 +181,41 @@ export interface SignalAllocationActionResponse {
   rejected: SignalAllocationRejectedItem[]
 }
 
+export interface SignalAllocationPreviewChange {
+  signal_id: number
+  signal_key?: string | null
+  signal_name?: string | null
+  action: "assign" | "reassign" | "unassign" | "noop" | string
+  current_channel_id?: number | null
+  proposed_channel_id?: number | null
+  current_channel_label?: string | null
+  proposed_channel_label?: string | null
+  warning?: string | null
+}
+
+export interface SignalAllocationPreviewSummary {
+  requested: number
+  will_change: number
+  assign: number
+  reassign: number
+  unassign: number
+  noop: number
+  skipped: number
+  conflicts: number
+  rejected: number
+}
+
+export interface SignalAllocationPreviewResponse {
+  workspace_id: number
+  operation: "auto_allocate" | "bulk_update" | string
+  summary: SignalAllocationPreviewSummary
+  changes: SignalAllocationPreviewChange[]
+  skipped: SignalAllocationRejectedItem[]
+  conflicts: SignalAllocationConflict[]
+  rejected: SignalAllocationRejectedItem[]
+  warnings: string[]
+}
+
 export interface SignalAutoAllocatePayload {
   signal_ids?: number[]
   prefer_online?: boolean

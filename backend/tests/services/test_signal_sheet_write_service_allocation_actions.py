@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from app.services.signal_sheet_write_service import SignalSheetWriteService
+from app.schemas.signal_sheet_schema import SignalAllocationPreviewResponseSchema
 
 
 @dataclass
@@ -31,6 +32,8 @@ class FakeRepo:
         self.allocation = allocation
         self.updated_entries: list[dict[str, Any]] = []
         self.swapped: tuple[int, int, int] | None = None
+        self.previewed_entries: tuple[int, list[dict[str, Any]]] | None = None
+        self.previewed_auto: dict[str, Any] | None = None
 
     async def get_allocation_by_signal_id(self, workspace_id: int, signal_id: int) -> FakeAllocation | None:
         return self.allocation
@@ -54,6 +57,32 @@ class FakeRepo:
     ) -> list[int]:
         self.swapped = (workspace_id, signal_id, channel_id)
         return [signal_id, 99]
+
+    async def preview_allocation_updates(
+        self,
+        workspace_id: int,
+        entries: list[dict[str, Any]],
+    ) -> SignalAllocationPreviewResponseSchema:
+        self.previewed_entries = (workspace_id, entries)
+        return SignalAllocationPreviewResponseSchema(workspace_id=workspace_id, operation="bulk_update")
+
+    async def preview_auto_allocate(
+        self,
+        *,
+        workspace_id: int,
+        signal_ids: list[int] | None,
+        prefer_online: bool,
+        prefer_single_unit: bool,
+        overwrite_existing: bool,
+    ) -> SignalAllocationPreviewResponseSchema:
+        self.previewed_auto = {
+            "workspace_id": workspace_id,
+            "signal_ids": signal_ids,
+            "prefer_online": prefer_online,
+            "prefer_single_unit": prefer_single_unit,
+            "overwrite_existing": overwrite_existing,
+        }
+        return SignalAllocationPreviewResponseSchema(workspace_id=workspace_id, operation="auto_allocate")
 
 
 def run_async[T](awaitable: Any) -> T:
@@ -118,3 +147,43 @@ def test_swap_allocations_delegates_to_repo_transaction() -> None:
     assert changed == [2, 99]
     assert db.commits == 1
     assert repo.swapped == (1, 2, 11)
+
+
+def test_preview_allocation_updates_does_not_commit() -> None:
+    db = FakeDb()
+    repo = FakeRepo()
+    service = SignalSheetWriteService(db=db, repo=repo)  # type: ignore[arg-type]
+
+    preview = run_async(service.preview_allocation_updates(1, [{"signal_id": 2, "channel_id": None}]))
+
+    assert preview.operation == "bulk_update"
+    assert db.commits == 0
+    assert db.rollbacks == 0
+    assert repo.previewed_entries == (1, [{"signal_id": 2, "channel_id": None}])
+
+
+def test_preview_auto_allocate_does_not_commit() -> None:
+    db = FakeDb()
+    repo = FakeRepo()
+    service = SignalSheetWriteService(db=db, repo=repo)  # type: ignore[arg-type]
+
+    preview = run_async(
+        service.preview_auto_allocate(
+            workspace_id=1,
+            signal_ids=[2],
+            prefer_online=True,
+            prefer_single_unit=False,
+            overwrite_existing=False,
+        )
+    )
+
+    assert preview.operation == "auto_allocate"
+    assert db.commits == 0
+    assert db.rollbacks == 0
+    assert repo.previewed_auto == {
+        "workspace_id": 1,
+        "signal_ids": [2],
+        "prefer_online": True,
+        "prefer_single_unit": False,
+        "overwrite_existing": False,
+    }

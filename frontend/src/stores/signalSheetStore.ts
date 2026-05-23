@@ -5,6 +5,7 @@ import { SignalSheetAPI } from "@/api/signal_sheet.api"
 import type {
   SignalAllocationActionResponse,
   SignalAllocationEnsureResponse,
+  SignalAllocationPreviewResponse,
   SignalAllocationRow,
   SignalAllocationUpdateItem,
   SignalAutoAllocatePayload,
@@ -1030,6 +1031,12 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     return reassignAllocation(normalizedSignalId, normalizedChannelId)
   }
 
+  async function previewBulkSetAllocations(entries: SignalAllocationUpdateItem[]): Promise<SignalAllocationPreviewResponse> {
+    const workspaceId = requireWorkspaceId()
+    const { data } = await SignalSheetAPI.previewAllocationsUpdate(workspaceId, entries)
+    return data
+  }
+
   function applyAllocationActionResponse(data: SignalAllocationActionResponse) {
     const changedRows = Array.isArray(data.changed_rows) ? data.changed_rows : []
     if (changedRows.length > 0) {
@@ -1293,6 +1300,12 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
   }
 
+  async function previewAutoAllocate(payload: SignalAutoAllocatePayload): Promise<SignalAllocationPreviewResponse> {
+    const workspaceId = requireWorkspaceId()
+    const { data } = await SignalSheetAPI.previewAutoAllocate(workspaceId, payload)
+    return data
+  }
+
   async function ensureAllocated(
     signalIds: number[],
     options?: { preferOnline?: boolean },
@@ -1420,12 +1433,14 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     savePreset,
     deletePreset,
     bulkSetAllocations,
+    previewBulkSetAllocations,
     setAllocation,
     assignAllocation,
     reassignAllocation,
     unassignAllocation,
     swapAllocations,
     autoAllocate,
+    previewAutoAllocate,
     ensureAllocated,
     markSignalsTested,
     applyTestedAtBySignalPatch,

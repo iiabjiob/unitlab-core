@@ -24,6 +24,7 @@ from app.schemas.signal_sheet_schema import (
     SignalJobControlSchema,
     SignalJobStatusSchema,
     SignalAllocationMarkTestedSchema,
+    SignalAllocationPreviewResponseSchema,
     SignalAllocationReassignActionSchema,
     SignalAllocationRejectedItemSchema,
     SignalAllocationSwapActionSchema,
@@ -362,6 +363,25 @@ async def update_signal_allocations(
 
 
 @router.post(
+    "/workspaces/{workspace_id}/signal-allocations/preview",
+    response_model=SignalAllocationPreviewResponseSchema,
+)
+async def preview_signal_allocations_update(
+    workspace_id: int,
+    payload: SignalAllocationBulkUpdateSchema,
+    repo: SignalSheetRepository = Depends(get_repo),
+    write_service: SignalSheetWriteService = Depends(get_write_service),
+):
+    if not await repo.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    return await write_service.preview_allocation_updates(
+        workspace_id,
+        [item.model_dump() for item in payload.entries],
+    )
+
+
+@router.post(
     "/workspaces/{workspace_id}/signal-allocations/actions/assign",
     response_model=SignalAllocationActionResponseSchema,
 )
@@ -460,6 +480,31 @@ async def swap_signal_allocations(
         raise _allocation_action_http_exception(exc, signal_id=payload.signal_id, channel_id=payload.channel_id)
 
     return await _build_allocation_action_response(repo, workspace_id, changed_signal_ids)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/signal-allocations/auto/preview",
+    response_model=SignalAllocationPreviewResponseSchema,
+)
+async def preview_auto_allocate_signal_rows(
+    workspace_id: int,
+    payload: SignalAutoAllocateSchema,
+    repo: SignalSheetRepository = Depends(get_repo),
+    write_service: SignalSheetWriteService = Depends(get_write_service),
+):
+    if not await repo.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    try:
+        return await write_service.preview_auto_allocate(
+            workspace_id=workspace_id,
+            signal_ids=payload.signal_ids,
+            prefer_online=payload.prefer_online,
+            prefer_single_unit=payload.prefer_single_unit,
+            overwrite_existing=payload.overwrite_existing,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.post("/workspaces/{workspace_id}/signal-allocations/auto", response_model=SignalAutoAllocateResponseSchema)

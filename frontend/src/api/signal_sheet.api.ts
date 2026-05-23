@@ -8,6 +8,7 @@ import type {
   SignalAllocationEnsureResponse,
   SignalAllocationJob,
   SignalAllocationMarkTestedPayload,
+  SignalAllocationPreviewResponse,
   SignalAllocationReassignActionPayload,
   SignalAllocationSwapActionPayload,
   SignalAllocationUnassignActionPayload,
@@ -149,6 +150,12 @@ export const SignalSheetAPI = {
     })
   },
 
+  previewAllocationsUpdate(workspaceId: number, entries: SignalAllocationUpdateItem[]) {
+    return http.post<SignalAllocationPreviewResponse>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/preview`, {
+      entries,
+    })
+  },
+
   assignAllocation(workspaceId: number, payload: SignalAllocationAssignActionPayload) {
     return http.post<SignalAllocationActionResponse>(
       `${API_V1}/workspaces/${workspaceId}/signal-allocations/actions/assign`,
@@ -179,6 +186,10 @@ export const SignalSheetAPI = {
 
   autoAllocate(workspaceId: number, payload: SignalAutoAllocatePayload) {
     return http.post<SignalAutoAllocateResponse>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/auto`, payload)
+  },
+
+  previewAutoAllocate(workspaceId: number, payload: SignalAutoAllocatePayload) {
+    return http.post<SignalAllocationPreviewResponse>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/auto/preview`, payload)
   },
 
   enqueueAutoAllocateJob(workspaceId: number, payload: SignalAutoAllocatePayload) {

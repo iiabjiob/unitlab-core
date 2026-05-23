@@ -1,6 +1,6 @@
 # Signal List and Allocation Migration Plan
 
-Status: Slice 6 complete, Slice 7 next
+Status: Slice 7 complete, Slice 8 next
 Last reviewed: 2026-05-23
 
 ## Scope
@@ -39,15 +39,14 @@ Implemented:
 - Backend has uniqueness for one allocation per signal and one signal per channel within a workspace.
 - Backend validates unknown signals, unknown channels, occupied channels, and signal/channel type compatibility.
 - Frontend uses a signal-row side panel picker, not a heavy select in every row.
+- assign/reassign/unassign/swap are first-class backend actions returning changed row patches.
+- async allocation jobs return changed rows for targeted frontend patching.
+- auto allocation and bulk unassign have a preview step before apply.
 
 Gaps:
 
-- assign/reassign/unassign/swap are not first-class domain actions.
-- swap is not supported.
-- allocation job results do not consistently carry changed rows.
-- frontend refreshes all allocation rows after async allocation jobs.
 - conflict, invalid type, missing, stale, and offline health are visible in the grid and quick filters; dedicated resolution workflows are still pending.
-- bulk/auto allocation has no preview step.
+- durable allocation event history is still pending.
 
 ### Live Test Updates
 
@@ -117,7 +116,7 @@ Core rules:
 | Frontend row updates | full array recompute | row/cell patch queue |
 | Allocation actions | generic bulk update + auto jobs | explicit assign/reassign/unassign/swap/bulk actions |
 | Async job result | changed ids, then reload | changed row patches |
-| Auto allocation | apply directly | preview then apply |
+| Auto allocation | preview before apply | richer compatibility warnings and apply parity tests |
 | Runtime test state | mixed into row data | patch stream, optionally separate runtime store |
 | Allocation health | projection fields + grid badges/filters | resolution workflows and event history |
 | Conflict UX | mostly hidden | visible conflict state and resolution actions |
@@ -588,6 +587,8 @@ Rollback:
 
 ### Slice 7 - Auto/Bulk Allocation Preview
 
+Status: done.
+
 Goal:
 
 - prevent silent large changes.
@@ -595,16 +596,23 @@ Goal:
 Backend:
 
 - add dry-run preview endpoints returning proposed bindings, skipped rows, conflicts, and warnings.
+- implemented `POST /workspaces/{workspace_id}/signal-allocations/auto/preview`.
+- implemented `POST /workspaces/{workspace_id}/signal-allocations/preview`.
+- preview paths are read-only and backend validation still runs again on apply.
 
 Frontend:
 
 - add preview panel before apply.
+- selected auto-assign and bulk unassign now open an allocation preview modal before enqueueing jobs.
+- modal blocks apply when preview contains conflicts or rejected rows.
 
 Tests:
 
 - preview/apply parity;
 - no overwrite without explicit option;
 - large selection performance.
+- current backend coverage verifies read-only service delegation, auto preview assignment, and bulk conflict preview.
+- current frontend validation covers type contracts; browser visual verification remains manual.
 
 Rollback:
 
@@ -717,6 +725,6 @@ Acceptance targets:
 
 ## Immediate Next Step
 
-Start with Slice 7.
+Start with Slice 8.
 
-Slice 7 should add a dry-run preview path for auto/bulk allocation so large changes show proposed bindings, skipped rows, conflicts, and overwrite risk before apply.
+Slice 8 should introduce a runtime test patch stream so signal test status/value/timestamps arrive as row/cell patches instead of full allocation projection refreshes.
