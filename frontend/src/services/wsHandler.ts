@@ -46,6 +46,7 @@ import type {
   CoreProvisionStateWsEvent,
   SignalAllocationJobEvent,
   SignalTestRunJobEvent,
+  SignalTestRuntimePatchEvent,
 } from '@/types/ws/events'
 
 function isTestRunJobEvent(jobEvent: SignalAllocationJobEvent | SignalTestRunJobEvent): boolean {
@@ -107,13 +108,21 @@ function applySignalJobEvent(
   const testedAtPatch = ["tested_at_patch", "tested_at_by_signal"]
     .map(key => result[key])
     .find(value => value && typeof value === "object" && !Array.isArray(value))
+  const jobId = String(jobEvent.job_id)
+  const isTerminal = isTerminalJobStatus(jobEvent.status)
+
   if (!testedAtPatch || typeof testedAtPatch !== "object") {
+    if (isTerminal) {
+      const pendingForJob = pendingTestedAtPatchByJobId.get(jobId)
+      pendingTestedAtPatchByJobId.delete(jobId)
+      if (pendingForJob && Object.keys(pendingForJob).length > 0) {
+        signalSheetStore.applyTestedAtBySignalPatch(pendingForJob)
+      }
+    }
     return
   }
 
   const testedAtPatchRecord = testedAtPatch as Record<string, string>
-  const jobId = String(jobEvent.job_id)
-  const isTerminal = isTerminalJobStatus(jobEvent.status)
 
   testedAtRealtimeStore.applyPatch(jobEvent.workspace_id, testedAtPatchRecord, { flush: "microtask" })
 
@@ -132,6 +141,46 @@ function applySignalJobEvent(
   pendingTestedAtPatchByJobId.set(jobId, {
     ...(previousPatch ?? {}),
     ...testedAtPatchRecord,
+  })
+}
+
+function applySignalTestRuntimePatch(
+  event: SignalTestRuntimePatchEvent,
+  stores: JobEventStores,
+) {
+  if (event.patch_type !== "tested_at") {
+    return
+  }
+
+  const testedAtPatch = event.tested_at_by_signal
+  if (!testedAtPatch || typeof testedAtPatch !== "object" || Array.isArray(testedAtPatch)) {
+    return
+  }
+
+  const normalizedPatch: Record<string, string> = {}
+  Object.entries(testedAtPatch).forEach(([signalId, testedAt]) => {
+    const normalizedSignalId = String(signalId ?? "").trim()
+    const normalizedTestedAt = String(testedAt ?? "").trim()
+    if (!normalizedSignalId || !normalizedTestedAt) {
+      return
+    }
+    normalizedPatch[normalizedSignalId] = normalizedTestedAt
+  })
+
+  if (Object.keys(normalizedPatch).length === 0) {
+    return
+  }
+
+  stores.testedAtRealtimeStore.applyPatch(event.workspace_id, normalizedPatch, { flush: "microtask" })
+
+  const jobId = String(event.job_id ?? "").trim()
+  if (!jobId) {
+    return
+  }
+  const previousPatch = pendingTestedAtPatchByJobId.get(jobId)
+  pendingTestedAtPatchByJobId.set(jobId, {
+    ...(previousPatch ?? {}),
+    ...normalizedPatch,
   })
 }
 
@@ -312,6 +361,7 @@ export function handleWsEvent(event: WSEvent) {
         | CoreProvisionStateWsEvent
         | SignalAllocationJobEvent
         | SignalTestRunJobEvent
+        | SignalTestRuntimePatchEvent
       if (sysEvent.event === "system_health_changed") {
         logger.debug("📡 IN ← SYSTEM_HEALTH:", sysEvent)
         systemHealthStore.applySnapshot(sysEvent.snapshot)
@@ -338,6 +388,14 @@ export function handleWsEvent(event: WSEvent) {
       if (sysEvent.event === "core_provision_state") {
         logger.debug("📡 IN ← CORE_PROVISION_STATE:", sysEvent)
         coreProvisionStore.applySnapshot((sysEvent as CoreProvisionStateWsEvent).snapshot)
+        break
+      }
+      if (sysEvent.event === "signal_test_runtime_patch") {
+        applySignalTestRuntimePatch(sysEvent as SignalTestRuntimePatchEvent, {
+          signalJobStore,
+          signalSheetStore,
+          testedAtRealtimeStore,
+        })
         break
       }
       if (

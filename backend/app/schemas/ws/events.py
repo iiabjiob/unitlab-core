@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.infrastructure.protocol.modes import State
 from app.infrastructure.protocol.packet_structures import RespStatus, RespError
 from app.schemas.device_schema import DeviceSchema
@@ -209,6 +209,16 @@ class SignalTestRunJobEvent(BaseModel):
     updated_at: datetime
 
 
+class SignalTestRuntimePatchEvent(BaseModel):
+    channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
+    event: Literal["signal_test_runtime_patch"] = "signal_test_runtime_patch"
+    job_id: str
+    workspace_id: int
+    patch_type: Literal["tested_at"] = "tested_at"
+    tested_at_by_signal: Dict[int, str] = Field(default_factory=dict)
+    emitted_at: datetime
+
+
 def build_signal_job_event(job_state: Dict[str, Any]) -> SignalAllocationJobEvent | SignalTestRunJobEvent:
     operation = str(job_state.get("operation") or "").strip().lower()
     if operation == "test_run":
@@ -238,4 +248,5 @@ WSEvent = Union[
     CoreProvisionStateEvent,
     SignalAllocationJobEvent,
     SignalTestRunJobEvent,
+    SignalTestRuntimePatchEvent,
 ]

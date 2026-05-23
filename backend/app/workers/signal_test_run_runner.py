@@ -17,7 +17,7 @@ from app.infrastructure.db.database import AsyncSessionLocal
 from app.infrastructure.protocol.modes import Cmd, State
 from app.infrastructure.redis.manager import RedisManager
 from app.infrastructure.redis.stream_bus import parse_signal_allocation_job_entry
-from app.schemas.ws.events import build_signal_job_event
+from app.schemas.ws.events import SignalTestRuntimePatchEvent, build_signal_job_event
 from app.services.command_queue_service import enqueue_ao_command, enqueue_do_command, enqueue_request_state
 from app.services.signal_job_service import (
     acquire_signal_test_run_execution_lease,
@@ -124,6 +124,24 @@ async def _publish_running_progress(
     next_state["updated_at"] = datetime.now(timezone.utc).isoformat()
     job_state.update(next_state)
     await WsEventPublisher.publish(build_signal_job_event(next_state))
+
+
+async def _publish_test_runtime_patch(
+    *,
+    workspace_id: int,
+    job_id: str,
+    tested_at_by_signal: dict[int, str],
+) -> None:
+    if not tested_at_by_signal:
+        return
+    await WsEventPublisher.publish(
+        SignalTestRuntimePatchEvent(
+            job_id=job_id,
+            workspace_id=workspace_id,
+            tested_at_by_signal=dict(tested_at_by_signal),
+            emitted_at=datetime.now(timezone.utc),
+        )
+    )
 
 
 def _extract_job_attempt_meta(job_state: dict[str, Any] | None) -> tuple[str | None, int]:
@@ -279,6 +297,18 @@ async def _handle_test_run(
     pending_tested_at_by_signal: dict[int, str] = {}
     tested_at_patch_since_emit: dict[int, str] = {}
 
+    async def attach_and_publish_tested_at_patch(result_payload: dict[str, Any]) -> None:
+        if not tested_at_patch_since_emit:
+            return
+        patch = dict(tested_at_patch_since_emit)
+        result_payload["tested_at_patch"] = patch
+        await _publish_test_runtime_patch(
+            workspace_id=workspace_id,
+            job_id=job_id,
+            tested_at_by_signal=patch,
+        )
+        tested_at_patch_since_emit.clear()
+
     async def flush_tested_at_batch() -> None:
         if not pending_tested_at_by_signal:
             return
@@ -431,7 +461,7 @@ async def _handle_test_run(
                 index=min(progress_total_global, resume_offset + index - 1),
                 force=True,
             )
-            return {
+            result_payload = {
                 "processed": min(progress_total_global, resume_offset + index - 1),
                 "succeeded": resume_base_succeeded + len(succeeded_signal_ids),
                 "skipped": resume_base_skipped + skipped,
@@ -446,6 +476,8 @@ async def _handle_test_run(
                 "cursor_reason": cursor_reason,
                 "resume_job_id": resume_cursor_job_id or None,
             }
+            await attach_and_publish_tested_at_patch(result_payload)
+            return result_payload
 
         row = rows_by_signal_id.get(signal_id)
         success = False
@@ -545,9 +577,7 @@ async def _handle_test_run(
                 "attempt_id": execution_attempt_id,
                 "attempt_no": execution_attempt_no,
             }
-            if tested_at_patch_since_emit:
-                result_payload["tested_at_patch"] = dict(tested_at_patch_since_emit)
-                tested_at_patch_since_emit.clear()
+            await attach_and_publish_tested_at_patch(result_payload)
             await persist_progress_cursor(phase="running", index=progress_done_global, signal_id=signal_id)
             await _publish_running_progress(
                 job_state=job_state,
@@ -568,7 +598,7 @@ async def _handle_test_run(
                         signal_id=signal_id,
                         force=True,
                     )
-                    return {
+                    result_payload = {
                         "processed": progress_done_global,
                         "succeeded": resume_base_succeeded + len(succeeded_signal_ids),
                         "skipped": resume_base_skipped + skipped,
@@ -585,6 +615,8 @@ async def _handle_test_run(
                         "attempt_id": execution_attempt_id,
                         "attempt_no": execution_attempt_no,
                     }
+                    await attach_and_publish_tested_at_patch(result_payload)
+                    return result_payload
                 step = min(0.2, signal_interval_seconds - slept)
                 await asyncio.sleep(step)
                 slept += step
@@ -621,8 +653,7 @@ async def _handle_test_run(
         index=min(progress_total_global, resume_offset + total),
         force=True,
     )
-    if tested_at_patch_since_emit:
-        result_payload["tested_at_patch"] = dict(tested_at_patch_since_emit)
+    await attach_and_publish_tested_at_patch(result_payload)
     return result_payload
 
 

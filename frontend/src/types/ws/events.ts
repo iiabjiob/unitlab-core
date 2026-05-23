@@ -210,6 +210,16 @@ export interface SignalTestRunJobEvent {
   updated_at: string
 }
 
+export interface SignalTestRuntimePatchEvent {
+  channel: WSChannel.SYSTEM_INFO
+  event: "signal_test_runtime_patch"
+  job_id: string
+  workspace_id: number
+  patch_type: "tested_at"
+  tested_at_by_signal: Record<string, string>
+  emitted_at: string
+}
+
 export interface TimeStatusEvent extends TimeStatus {
   channel: WSChannel.TIME_STATUS
 }
@@ -288,6 +298,7 @@ export type ChannelWSEvent =
   | CoreDiagnosticsStateWsEvent
   | CoreProvisionStateWsEvent
   | SignalTestRunJobEvent
+  | SignalTestRuntimePatchEvent
   | DeviceStateEvent
   | DeviceRegisterEvent
   | DeviceRespEvent

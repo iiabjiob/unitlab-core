@@ -1,6 +1,6 @@
 # Signal List and Allocation Migration Plan
 
-Status: Slice 7 complete, Slice 8 next
+Status: Slice 8 complete, Slice 9 next
 Last reviewed: 2026-05-23
 
 ## Scope
@@ -55,12 +55,13 @@ Implemented:
 - auto-test jobs run in a backend worker.
 - job progress is published over WebSocket.
 - tested timestamps can be sent as per-signal patches inside job event result payloads.
+- test-run workers now also emit dedicated `signal_test_runtime_patch` WebSocket events for tested timestamp patches.
+- frontend applies test runtime patches through the realtime tested-at store and existing DataGrid row/cell patch queue.
 
 Gaps:
 
 - runtime test fields are mixed into signal-list row data.
 - frontend updates still cause broad computed-row churn.
-- there is no dedicated row/cell patch stream contract.
 - live fields can be sorted/filtered without a clear projection policy during active test runs.
 
 ### Frontend Grid
@@ -620,24 +621,31 @@ Rollback:
 
 ### Slice 8 - Runtime Test Patch Stream
 
+Status: done.
+
 Goal:
 
 - avoid full row churn during test runs.
 
 Backend:
 
-- emit `signal_test_runtime_patched` events with row ids and changed fields.
+- emit `signal_test_runtime_patch` events with job id, workspace id, patch type, and changed tested-at values by signal id.
+- keep `tested_at_patch` in job result payloads as a compatibility fallback.
 
 Frontend:
 
 - batch patches in rAF.
 - patch only status/value/timestamp cells.
+- route `signal_test_runtime_patch` events directly into `testedAtRealtimeStore`.
+- keep terminal job handling able to flush pending tested-at patches into the persisted allocation row store even when the terminal job event has no patch payload.
 
 Tests:
 
 - WebSocket patch ordering;
 - reconnect gap recovery;
 - 1,000 patch burst while scrolling.
+- current backend coverage verifies runtime patch event serialization.
+- current frontend validation covers WS type contracts and existing grid patch queue tests.
 
 Rollback:
 
@@ -725,6 +733,6 @@ Acceptance targets:
 
 ## Immediate Next Step
 
-Start with Slice 8.
+Start with Slice 9.
 
-Slice 8 should introduce a runtime test patch stream so signal test status/value/timestamps arrive as row/cell patches instead of full allocation projection refreshes.
+Slice 9 should separate volatile runtime test state from static signal/allocation rows where fields do not need sort/filter participation.
