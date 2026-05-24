@@ -100,12 +100,3 @@ export function createSignalGridRowPatch(
     columns,
   }
 }
-
-export function createSignalGridRowPatches(
-  rows: readonly SignalAllocationRow[],
-  headers: readonly string[],
-  columns?: readonly string[],
-  runtime?: SignalGridRuntimeOverlay,
-): SignalGridProjectionPatch[] {
-  return rows.map(row => createSignalGridRowPatch(row, headers, columns, runtime))
-}

@@ -597,6 +597,7 @@ Implemented so far:
 - Removed unused `signalSheetStore.bootstrap()` and `getAllocationOwnerSignalId()` APIs.
 - Updated older migration notes that still described grid-row and runtime-patch fallbacks as normal behavior.
 - Removed the inactive `Create switchgear` header stub that was always disabled from `SignalsPage.vue`.
+- Removed unused `createSignalGridRowPatches()` export from the projection mapper.
 
 Validated 2026-05-24:
 
