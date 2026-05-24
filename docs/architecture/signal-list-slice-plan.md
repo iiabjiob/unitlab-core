@@ -596,6 +596,7 @@ Implemented so far:
 - Removed unused legacy signal sidebar/live-panel components and a dead channel-id helper from the signal sheet store.
 - Removed unused `signalSheetStore.bootstrap()` and `getAllocationOwnerSignalId()` APIs.
 - Updated older migration notes that still described grid-row and runtime-patch fallbacks as normal behavior.
+- Removed the inactive `Create switchgear` header stub that was always disabled from `SignalsPage.vue`.
 
 Validated 2026-05-24:
 

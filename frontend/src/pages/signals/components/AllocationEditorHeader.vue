@@ -34,27 +34,6 @@
         </div>
 
         <div class="flex flex-wrap items-center justify-end gap-2">
-          <InlineInfoTooltip
-            v-if="canCreateSwitchgearFromSelection"
-            text="Create switchgear items from selected DI/DO signal pairs."
-            :disabled="isTestRunMenuOpen"
-            placement="bottom"
-            align="end"
-            :open-delay="1000"
-            v-slot="{ setTriggerRef, getTriggerProps }"
-          >
-            <span :ref="setTriggerRef" v-bind="getTriggerProps()" class="inline-flex">
-              <UiButton
-                variant="secondary"
-                size="sm"
-                :disabled="loading || switchgearCreateInProgress"
-                @click="emit('createSwitchgear')"
-              >
-                {{ switchgearCreateInProgress ? "Creating…" : createSwitchgearButtonLabel }}
-              </UiButton>
-            </span>
-          </InlineInfoTooltip>
-
           <UiButton
             v-if="canAllocateSelected"
             variant="secondary"
@@ -76,7 +55,7 @@
           </UiButton>
 
           <span v-if="canRunTest" class="inline-flex items-center gap-2">
-            <UiMenu ref="testRunMenuRef">
+            <UiMenu>
               <div class="inline-flex overflow-hidden rounded-lg border border-emerald-500/30 bg-emerald-500/10 divide-x divide-emerald-500/30 shadow-sm shadow-emerald-500/25 dark:border-emerald-400/40 dark:bg-emerald-400/10 dark:divide-emerald-300/30">
                 <UiButton
                   :variant="'success'"
@@ -138,7 +117,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue"
 import {
   UiMenu,
   UiMenuTrigger,
@@ -146,11 +124,9 @@ import {
   UiMenuItem,
   UiMenuLabel,
   UiMenuSeparator,
-  type MenuController,
 } from "@/components/ui/menu"
 
 import UiButton from "@/components/ui/UiButton.vue"
-import InlineInfoTooltip from "@/components/ui/InlineInfoTooltip.vue"
 
 const props = defineProps<{
   summaryText: string
@@ -169,9 +145,6 @@ const props = defineProps<{
   isTestRunBusy: boolean
   testRunToggleMode: "single" | "double"
   testRunIntervalMs: number
-  canCreateSwitchgearFromSelection: boolean
-  switchgearCreateInProgress: boolean
-  createSwitchgearButtonLabel: string
 }>()
 
 const emit = defineEmits<{
@@ -183,9 +156,5 @@ const emit = defineEmits<{
   (event: "runTest"): void
   (event: "setToggleMode", mode: "single" | "double"): void
   (event: "setIntervalMs", intervalMs: number): void
-  (event: "createSwitchgear"): void
 }>()
-
-const testRunMenuRef = ref<{ controller?: MenuController } | null>(null)
-const isTestRunMenuOpen = computed(() => Boolean(testRunMenuRef.value?.controller?.state.open))
 </script>
