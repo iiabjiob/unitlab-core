@@ -7,7 +7,7 @@ Last reviewed: 2026-05-24
 
 This note consolidates the signal-list, allocation, live-test, DataGrid, and allocation-UX audits into a staged migration plan.
 
-The goal is a high-performance FAT signal-list editor that stays responsive at about 20,000 rows while backend services remain the source of truth for allocation, validation, test execution, and evidence.
+The goal is a high-performance FAT signal-list editor that stays responsive at about 20,000 rows while backend services remain the source of truth for allocation state, technical execution checks, command dispatch, and local run telemetry.
 
 ## Current Architecture
 
@@ -658,7 +658,7 @@ Backend:
 Implemented:
 
 - queued test-run jobs no longer include or enforce a sheet-level revision token.
-- the worker loads current allocation projection rows at execution time.
+- the worker resolves each selected signal against its current allocation row at the moment that signal is executed.
 - missing rows, invalid bindings, incompatible channel modes, and offline units are counted as per-signal skips.
 
 Frontend:
@@ -713,6 +713,6 @@ Acceptance targets:
 
 ## Immediate Next Step
 
-Continue with binding-level execution evidence.
+Continue with binding-level execution telemetry.
 
-The next slice should persist the allocation/channel evidence used by each test-run step and keep queued execution tied to current resolvable bindings, not sheet-level revision metadata.
+The next slice should persist the allocation/channel used for each local UnitLab command and keep queued execution tied to current resolvable bindings, not sheet-level revision metadata.

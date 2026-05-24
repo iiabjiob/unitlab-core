@@ -43,6 +43,8 @@ Defaults:
 
 Progress in header shows current processed/total, success/skip counters and ETA.
 
+The worker resolves each selected signal to its current allocation when that signal is about to execute. It does not use signal-list revisions, allocation snapshots, or binding tokens. If a signal is unbound, unavailable, offline, or mapped to a channel type that cannot execute the action, that signal is skipped with a run result reason and the run continues.
+
 ## Timestamp semantics
 
 `Last tested` timestamp is written when a signal command is successfully executed in worker.

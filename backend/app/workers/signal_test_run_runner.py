@@ -246,9 +246,6 @@ async def _handle_test_run(
 
     resume_applied = resume_offset > 0
 
-    rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, requested_ids)
-    rows_by_signal_id = {row.signal_id: row for row in rows}
-
     total = len(requested_ids)
     progress_total_global = original_total if original_total > 0 else total
     update_every = max(1, total // 25) if total > 0 else 1
@@ -268,30 +265,6 @@ async def _handle_test_run(
         "incompatible_channel_mode": 0,
         "offline_unit": 0,
     }
-
-    runnable_ids: list[int] = []
-    for signal_id in requested_ids:
-        row = rows_by_signal_id.get(signal_id)
-        if row is None:
-            skipped += 1
-            skip_reasons["missing_row"] += 1
-            continue
-        if not row.unit_id or not isinstance(row.channel_index, int):
-            skipped += 1
-            skip_reasons["invalid_binding"] += 1
-            continue
-        channel_type = str(row.channel_type or "").strip().lower()
-        is_do = channel_type.startswith("do")
-        is_ao = channel_type.startswith("ao")
-        if not is_do and not is_ao:
-            skipped += 1
-            skip_reasons["incompatible_channel_mode"] += 1
-            continue
-        if row.unit_online is False:
-            skipped += 1
-            skip_reasons["offline_unit"] += 1
-            continue
-        runnable_ids.append(signal_id)
 
     job_id = str(payload.get("job_id") or "")
     pending_tested_at_by_signal: dict[int, str] = {}
@@ -394,19 +367,36 @@ async def _handle_test_run(
         except Exception:  # noqa: BLE001
             logger.exception("💥 Failed to persist signal test run progress cursor for job %s", job_id)
 
-    unit_ids: list[str] = sorted({str(row.unit_id) for row in rows if row.unit_id})
     unit_bitmasks: dict[str, int] = {}
-    if unit_ids:
-        keys = [f"device:{unit_id}:bitmask" for unit_id in unit_ids]
-        values = await redis.mget(*keys)
-        for unit_id, bitmask_raw in zip(unit_ids, values):
-            bitmask = 0
-            if bitmask_raw is not None:
-                try:
-                    bitmask = int(bitmask_raw)
-                except (TypeError, ValueError):
-                    bitmask = 0
-            unit_bitmasks[unit_id] = bitmask
+
+    async def get_unit_bitmask(unit_id: str) -> int:
+        if unit_id in unit_bitmasks:
+            return unit_bitmasks[unit_id]
+        bitmask = 0
+        bitmask_raw = await redis.get(f"device:{unit_id}:bitmask")
+        if bitmask_raw is not None:
+            try:
+                bitmask = int(bitmask_raw)
+            except (TypeError, ValueError):
+                bitmask = 0
+        unit_bitmasks[unit_id] = bitmask
+        return bitmask
+
+    async def resolve_current_signal_row(signal_id: int):
+        rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, [signal_id])
+        row = next((item for item in rows if int(item.signal_id) == int(signal_id)), None)
+        if row is None:
+            return None, "missing_row"
+        if not row.unit_id or not isinstance(row.channel_index, int):
+            return None, "invalid_binding"
+        channel_type = str(row.channel_type or "").strip().lower()
+        is_do = channel_type.startswith("do")
+        is_ao = channel_type.startswith("ao")
+        if not is_do and not is_ao:
+            return None, "incompatible_channel_mode"
+        if row.unit_online is False:
+            return None, "offline_unit"
+        return row, None
 
     async def apply_control_state() -> bool:
         if not job_id:
@@ -427,33 +417,7 @@ async def _handle_test_run(
                 continue
             return True
 
-    if skipped > 0:
-        precheck_done_global = min(progress_total_global, resume_offset + skipped)
-        await persist_progress_cursor(phase="precheck", index=precheck_done_global, force=True)
-        await _publish_running_progress(
-            job_state=job_state,
-            progress_done=precheck_done_global,
-            progress_total=progress_total_global,
-            message=f"Signals {precheck_done_global}/{progress_total_global} · ok {resume_base_succeeded} · skip {resume_base_skipped + skipped}",
-            result={
-                "processed": precheck_done_global,
-                "succeeded": resume_base_succeeded,
-                "skipped": resume_base_skipped + skipped,
-                "skip_reasons": dict(skip_reasons),
-                "toggle_mode": toggle_mode,
-                "signal_interval_ms": signal_interval_ms,
-                "resumed_from_cursor": bool(resume_offset > 0),
-                "resume_applied": resume_applied,
-                "resume_offset": resume_offset,
-                "cursor_reason": cursor_reason,
-                "resume_job_id": resume_cursor_job_id or None,
-                "attempt_id": execution_attempt_id,
-                "attempt_no": execution_attempt_no,
-            },
-        )
-
-    for runnable_index, signal_id in enumerate(runnable_ids, start=1):
-        index = skipped + runnable_index
+    for index, signal_id in enumerate(requested_ids, start=1):
         progress_done_global = min(progress_total_global, resume_offset + index)
         if not await apply_control_state():
             await persist_progress_cursor(
@@ -479,9 +443,12 @@ async def _handle_test_run(
             await attach_and_publish_tested_at_patch(result_payload)
             return result_payload
 
-        row = rows_by_signal_id.get(signal_id)
+        row, skip_reason = await resolve_current_signal_row(signal_id)
         success = False
-        if row is not None:
+        if skip_reason is not None:
+            skipped += 1
+            skip_reasons[skip_reason] += 1
+        elif row is not None:
             unit_id = str(row.unit_id)
             channel_index = int(row.channel_index)
             channel_type = str(row.channel_type or "").strip().lower()
@@ -500,7 +467,7 @@ async def _handle_test_run(
                     correlation_id=f"test-run:{signal_id}:state-float",
                 )
             else:
-                bitmask = unit_bitmasks.get(unit_id, 0)
+                bitmask = await get_unit_bitmask(unit_id)
                 current_value = 1 if (bitmask & (1 << channel_index)) else 0
                 toggled_value = 0 if current_value else 1
                 await enqueue_do_command(
@@ -557,6 +524,7 @@ async def _handle_test_run(
                 "processed": progress_done_global,
                 "succeeded": resume_base_succeeded + len(succeeded_signal_ids),
                 "skipped": resume_base_skipped + skipped,
+                "skip_reasons": dict(skip_reasons),
                 "toggle_mode": toggle_mode,
                 "signal_interval_ms": signal_interval_ms,
                 "resumed_from_cursor": bool(resume_offset > 0),
@@ -587,7 +555,7 @@ async def _handle_test_run(
                 result=result_payload,
             )
 
-        if runnable_index < len(runnable_ids):
+        if success and index < total:
             slept = 0.0
             while slept < signal_interval_seconds:
                 if not await apply_control_state():
