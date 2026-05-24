@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest"
 
 import {
-  createSignalGridRow,
   createSignalGridRowPatch,
   createSignalGridRows,
   resolveSignalAllocationDisplayLabel,
@@ -43,7 +42,7 @@ function buildRow(overrides: Partial<SignalAllocationRow> = {}): SignalAllocatio
 
 describe("signalGridProjection", () => {
   it("maps a projection row into the grid row shape", () => {
-    const row = createSignalGridRow(buildRow(), ["Cabinet", "Terminal", "Missing"])
+    const [row] = createSignalGridRows([buildRow()], ["Cabinet", "Terminal", "Missing"])
 
     expect(row).toMatchObject({
       rowId: "signal-1",
@@ -60,15 +59,14 @@ describe("signalGridProjection", () => {
   })
 
   it("uses stable fallback row ids and channel labels", () => {
-    const row = createSignalGridRow(
+    const [row] = createSignalGridRows([
       buildRow({
         row_id: undefined,
         channel_index: null,
         unit_id: null,
         channel_label: "unit-b/DO1",
       }),
-      [],
-    )
+    ], [])
 
     expect(row.rowId).toBe("signal-1")
     expect(row.channel_select).toBe("unit-b/DO1")
@@ -77,7 +75,7 @@ describe("signalGridProjection", () => {
   it("applies runtime tested-at overlay without mutating the source row", () => {
     const source = buildRow({ tested_at: "2026-01-01T00:00:00Z" })
 
-    const row = createSignalGridRow(source, [], {
+    const [row] = createSignalGridRows([source], [], {
       workspaceId: 7,
       getTestedAt: (signalId, workspaceId) => (
         signalId === 1 && workspaceId === 7 ? "2026-01-01T00:00:01Z" : null
@@ -130,23 +128,23 @@ describe("signalGridProjection", () => {
     })
 
     expect(resolveSignalAllocationDisplayLabel(row)).toBe("-")
-    expect(createSignalGridRow(row, [])).toMatchObject({
+    expect(createSignalGridRows([row], [])[0]).toMatchObject({
       allocation_status: "unassigned",
       allocation_health: "Unassigned",
     })
   })
 
   it("keeps invalid and offline health visible in the grid row", () => {
-    expect(createSignalGridRow(buildRow({
+    expect(createSignalGridRows([buildRow({
       allocation_status: "invalid",
       allocation_health: { invalid_type: true },
-    }), [])).toMatchObject({
+    })], [])[0]).toMatchObject({
       allocation_status: "invalid",
       allocation_health: "Invalid type",
     })
-    expect(createSignalGridRow(buildRow({
+    expect(createSignalGridRows([buildRow({
       allocation_health: { offline_device: true },
-    }), [])).toMatchObject({
+    })], [])[0]).toMatchObject({
       allocation_health: "Offline",
     })
   })

@@ -59,7 +59,7 @@ function applySignalGridRuntimeOverlay(
   return applyRuntimeTestedAt(row, runtime.workspaceId, runtime.getTestedAt)
 }
 
-export function createSignalGridRow(
+function createSignalGridRow(
   row: SignalAllocationRow,
   headers: readonly string[],
   runtime?: SignalGridRuntimeOverlay,

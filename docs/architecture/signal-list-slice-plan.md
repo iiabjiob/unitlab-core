@@ -619,6 +619,7 @@ Implemented so far:
 - Narrowed additional module-local signal-list exports: source header normalization, row key normalization, row-model options, patch queue diagnostics, performance harness types, and column patch policy resolver.
 - Removed the unused allocation issue helper and narrowed module-local grid projection helpers.
 - Narrowed row-selection shape types and runtime tested-at resolver type to module-local declarations.
+- Narrowed `createSignalGridRow()` to a module-local mapper; external callers use row-array or patch mapper boundaries.
 
 Validated 2026-05-24:
 
