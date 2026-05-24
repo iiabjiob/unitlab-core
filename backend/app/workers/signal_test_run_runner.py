@@ -265,6 +265,7 @@ async def _handle_test_run(
         "incompatible_channel_mode": 0,
         "offline_unit": 0,
     }
+    evidence_count = 0
 
     job_id = str(payload.get("job_id") or "")
     pending_tested_at_by_signal: dict[int, str] = {}
@@ -296,6 +297,41 @@ async def _handle_test_run(
             await repo.db.rollback()
             raise
         pending_tested_at_by_signal.clear()
+
+    async def record_step_evidence(
+        *,
+        order_index: int,
+        signal_id: int,
+        status: str,
+        row: SignalAllocationRowSchema | None = None,
+        reason: str | None = None,
+        result_state: str | None = None,
+        command_payload: dict[str, Any] | None = None,
+        tested_at: datetime | None = None,
+    ) -> None:
+        nonlocal evidence_count
+        if not job_id:
+            return
+        await repo.record_signal_test_run_step_evidence(
+            workspace_id=workspace_id,
+            job_id=job_id,
+            attempt_id=execution_attempt_id,
+            attempt_no=execution_attempt_no,
+            order_index=order_index,
+            signal_id=signal_id,
+            allocation_id=row.allocation_id if row is not None else None,
+            channel_id=row.channel_id if row is not None else None,
+            device_id=row.device_id if row is not None else None,
+            unit_id=row.unit_id if row is not None else None,
+            channel_index=row.channel_index if row is not None else None,
+            channel_type=row.channel_type if row is not None else None,
+            status=status,
+            reason=reason,
+            result_state=result_state,
+            command_payload=command_payload,
+            tested_at=tested_at,
+        )
+        evidence_count += 1
 
     async def maybe_refresh_ttl(force: bool = False) -> None:
         nonlocal last_ttl_refresh_at
@@ -388,14 +424,14 @@ async def _handle_test_run(
         if row is None:
             return None, "missing_row"
         if not row.unit_id or not isinstance(row.channel_index, int):
-            return None, "invalid_binding"
+            return row, "invalid_binding"
         channel_type = str(row.channel_type or "").strip().lower()
         is_do = channel_type.startswith("do")
         is_ao = channel_type.startswith("ao")
         if not is_do and not is_ao:
-            return None, "incompatible_channel_mode"
+            return row, "incompatible_channel_mode"
         if row.unit_online is False:
-            return None, "offline_unit"
+            return row, "offline_unit"
         return row, None
 
     async def apply_control_state() -> bool:
@@ -439,6 +475,7 @@ async def _handle_test_run(
                 "resume_offset": resume_offset,
                 "cursor_reason": cursor_reason,
                 "resume_job_id": resume_cursor_job_id or None,
+                "evidence_count": evidence_count,
             }
             await attach_and_publish_tested_at_patch(result_payload)
             return result_payload
@@ -448,34 +485,79 @@ async def _handle_test_run(
         if skip_reason is not None:
             skipped += 1
             skip_reasons[skip_reason] += 1
+            await record_step_evidence(
+                order_index=progress_done_global,
+                signal_id=signal_id,
+                status="skipped",
+                row=row,
+                reason=skip_reason,
+                result_state=skip_reason,
+                command_payload={
+                    "toggle_mode": toggle_mode,
+                    "signal_interval_ms": signal_interval_ms,
+                },
+            )
         elif row is not None:
             unit_id = str(row.unit_id)
             channel_index = int(row.channel_index)
             channel_type = str(row.channel_type or "").strip().lower()
+            command_payload: dict[str, Any]
             if channel_type.startswith("ao"):
                 random_value = round(random.uniform(0.0, 24.0), 2)
+                ao_correlation_id = f"test-run:{signal_id}:ao:{random_value}"
+                state_correlation_id = f"test-run:{signal_id}:state-float"
+                command_payload = {
+                    "toggle_mode": "ao_random",
+                    "signal_interval_ms": signal_interval_ms,
+                    "commands": [
+                        {
+                            "kind": "ao_set",
+                            "unit_id": unit_id,
+                            "channel_index": channel_index,
+                            "value": random_value,
+                            "correlation_id": ao_correlation_id,
+                        },
+                        {
+                            "kind": "request_state",
+                            "unit_id": unit_id,
+                            "channel_index": channel_index,
+                            "mode": "REQ_SINGLE_FLOAT",
+                            "correlation_id": state_correlation_id,
+                        },
+                    ],
+                }
                 await enqueue_ao_command(
                     unit_id=unit_id,
                     ch=channel_index,
                     value=random_value,
-                    correlation_id=f"test-run:{signal_id}:ao:{random_value}",
+                    correlation_id=ao_correlation_id,
                 )
                 await enqueue_request_state(
                     unit_id=unit_id,
                     mode=State.REQ_SINGLE_FLOAT,
                     ch=channel_index,
-                    correlation_id=f"test-run:{signal_id}:state-float",
+                    correlation_id=state_correlation_id,
                 )
             else:
                 bitmask = await get_unit_bitmask(unit_id)
                 current_value = 1 if (bitmask & (1 << channel_index)) else 0
                 toggled_value = 0 if current_value else 1
+                set_correlation_id = f"test-run:{signal_id}:set:{toggled_value}"
+                commands_payload: list[dict[str, Any]] = [
+                    {
+                        "kind": "do_set",
+                        "unit_id": unit_id,
+                        "channel_index": channel_index,
+                        "value": toggled_value,
+                        "correlation_id": set_correlation_id,
+                    }
+                ]
                 await enqueue_do_command(
                     unit_id=unit_id,
                     mode=Cmd.SET_SINGLE_BIT,
                     ch=channel_index,
                     value=toggled_value,
-                    correlation_id=f"test-run:{signal_id}:set:{toggled_value}",
+                    correlation_id=set_correlation_id,
                 )
 
                 if toggled_value:
@@ -485,12 +567,22 @@ async def _handle_test_run(
 
                 if toggle_mode == "double":
                     await asyncio.sleep(signal_interval_seconds)
+                    restore_correlation_id = f"test-run:{signal_id}:set:{current_value}"
+                    commands_payload.append(
+                        {
+                            "kind": "do_set",
+                            "unit_id": unit_id,
+                            "channel_index": channel_index,
+                            "value": current_value,
+                            "correlation_id": restore_correlation_id,
+                        }
+                    )
                     await enqueue_do_command(
                         unit_id=unit_id,
                         mode=Cmd.SET_SINGLE_BIT,
                         ch=channel_index,
                         value=current_value,
-                        correlation_id=f"test-run:{signal_id}:set:{current_value}",
+                        correlation_id=restore_correlation_id,
                     )
                     if current_value:
                         bitmask = bitmask | (1 << channel_index)
@@ -498,20 +590,47 @@ async def _handle_test_run(
                         bitmask = bitmask & ~(1 << channel_index)
 
                 unit_bitmasks[unit_id] = bitmask
+                state_correlation_id = f"test-run:{signal_id}:state"
+                commands_payload.append(
+                    {
+                        "kind": "request_state",
+                        "unit_id": unit_id,
+                        "channel_index": channel_index,
+                        "mode": "REQ_SINGLE_BIT",
+                        "correlation_id": state_correlation_id,
+                    }
+                )
+                command_payload = {
+                    "toggle_mode": toggle_mode,
+                    "signal_interval_ms": signal_interval_ms,
+                    "initial_value": current_value,
+                    "target_value": toggled_value,
+                    "commands": commands_payload,
+                }
                 await enqueue_request_state(
                     unit_id=unit_id,
                     mode=State.REQ_SINGLE_BIT,
                     ch=channel_index,
-                    correlation_id=f"test-run:{signal_id}:state",
+                    correlation_id=state_correlation_id,
                 )
             success = True
 
         if success:
             succeeded_signal_ids.append(signal_id)
-            tested_at = datetime.now(timezone.utc).isoformat()
+            tested_at_dt = datetime.now(timezone.utc)
+            tested_at = tested_at_dt.isoformat()
             tested_at_by_signal[signal_id] = tested_at
             pending_tested_at_by_signal[signal_id] = tested_at
             tested_at_patch_since_emit[signal_id] = tested_at
+            await record_step_evidence(
+                order_index=progress_done_global,
+                signal_id=signal_id,
+                status="succeeded",
+                row=row,
+                result_state="commands_enqueued",
+                command_payload=command_payload,
+                tested_at=tested_at_dt,
+            )
             if len(pending_tested_at_by_signal) >= tested_at_batch_size:
                 await flush_tested_at_batch()
 
@@ -534,6 +653,7 @@ async def _handle_test_run(
                 "resume_job_id": resume_cursor_job_id or None,
                 "attempt_id": execution_attempt_id,
                 "attempt_no": execution_attempt_no,
+                "evidence_count": evidence_count,
             }
             result_payload["progress_cursor"] = {
                 "phase": "running",
@@ -582,6 +702,7 @@ async def _handle_test_run(
                         "resume_job_id": resume_cursor_job_id or None,
                         "attempt_id": execution_attempt_id,
                         "attempt_no": execution_attempt_no,
+                        "evidence_count": evidence_count,
                     }
                     await attach_and_publish_tested_at_patch(result_payload)
                     return result_payload
@@ -605,6 +726,7 @@ async def _handle_test_run(
         "resume_job_id": resume_cursor_job_id or None,
         "attempt_id": execution_attempt_id,
         "attempt_no": execution_attempt_no,
+        "evidence_count": evidence_count,
     }
     result_payload["progress_cursor"] = {
         "phase": "completed",

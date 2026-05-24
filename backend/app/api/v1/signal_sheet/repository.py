@@ -10,7 +10,13 @@ from sqlalchemy.orm import selectinload
 
 from app.models.channel import Channel
 from app.models.signal import Signal
-from app.models.signal_sheet import SignalAllocation, SignalAllocationEvent, SignalSheet, SignalSheetPreset
+from app.models.signal_sheet import (
+    SignalAllocation,
+    SignalAllocationEvent,
+    SignalSheet,
+    SignalSheetPreset,
+    SignalTestRunStepEvidence,
+)
 from app.models.workspace import Workspace
 from app.schemas.signal_import_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import (
@@ -255,6 +261,50 @@ class SignalSheetRepository:
         self.db.add(event)
         await self.db.flush()
         return event
+
+    async def record_signal_test_run_step_evidence(
+        self,
+        *,
+        workspace_id: int,
+        job_id: str,
+        order_index: int,
+        signal_id: int,
+        status: str,
+        attempt_id: str | None = None,
+        attempt_no: int = 0,
+        allocation_id: int | None = None,
+        channel_id: int | None = None,
+        device_id: int | None = None,
+        unit_id: str | None = None,
+        channel_index: int | None = None,
+        channel_type: str | None = None,
+        reason: str | None = None,
+        result_state: str | None = None,
+        command_payload: dict[str, Any] | None = None,
+        tested_at: datetime | None = None,
+    ) -> SignalTestRunStepEvidence:
+        evidence = SignalTestRunStepEvidence(
+            workspace_id=int(workspace_id),
+            job_id=str(job_id).strip(),
+            attempt_id=str(attempt_id).strip() if attempt_id else None,
+            attempt_no=max(0, int(attempt_no)),
+            order_index=max(0, int(order_index)),
+            signal_id=int(signal_id),
+            allocation_id=int(allocation_id) if allocation_id is not None else None,
+            channel_id=int(channel_id) if channel_id is not None else None,
+            device_id=int(device_id) if device_id is not None else None,
+            unit_id=str(unit_id).strip() or None if unit_id is not None else None,
+            channel_index=int(channel_index) if channel_index is not None else None,
+            channel_type=str(channel_type).strip() or None if channel_type is not None else None,
+            status=str(status).strip(),
+            reason=str(reason).strip() or None if reason is not None else None,
+            result_state=str(result_state).strip() or None if result_state is not None else None,
+            command_payload=dict(command_payload or {}),
+            tested_at=tested_at,
+        )
+        self.db.add(evidence)
+        await self.db.flush()
+        return evidence
 
     async def get_allocation_by_signal_id(self, workspace_id: int, signal_id: int) -> SignalAllocation | None:
         stmt = select(SignalAllocation).where(

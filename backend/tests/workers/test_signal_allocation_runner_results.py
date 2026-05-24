@@ -14,8 +14,14 @@ def run_async(awaitable):
 
 
 class FakeNoRowsRepo:
+    def __init__(self) -> None:
+        self.evidence: list[dict] = []
+
     async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
         return []
+
+    async def record_signal_test_run_step_evidence(self, **kwargs):
+        self.evidence.append(dict(kwargs))
 
 
 class FakeRepoDb:
@@ -31,6 +37,7 @@ class FakeLiveRowsRepo:
         self.db = FakeRepoDb()
         self.calls: list[list[int]] = []
         self.tested_at_by_signal: dict[int, str] = {}
+        self.evidence: list[dict] = []
 
     async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
         normalized_ids = [int(signal_id) for signal_id in signal_ids]
@@ -49,6 +56,9 @@ class FakeLiveRowsRepo:
     ) -> list[int]:
         self.tested_at_by_signal.update(tested_at_by_signal)
         return sorted(tested_at_by_signal)
+
+    async def record_signal_test_run_step_evidence(self, **kwargs):
+        self.evidence.append(dict(kwargs))
 
 
 class FakeRedis:
@@ -165,6 +175,7 @@ def test_signal_test_run_ignores_stale_sheet_metadata_and_skips_missing_signal(m
         return None
 
     payload = {
+        "job_id": "job-1",
         "signal_ids": [1],
         "signal_interval_ms": 100,
         "toggle_mode": "single",
@@ -181,14 +192,18 @@ def test_signal_test_run_ignores_stale_sheet_metadata_and_skips_missing_signal(m
         "created_at": "2026-01-01T12:30:00+00:00",
     }
 
-    result = run_async(
-        signal_test_run_runner._handle_test_run(FakeNoRowsRepo(), 7, payload, job_state)  # type: ignore[arg-type]
-    )
+    repo = FakeNoRowsRepo()
+    result = run_async(signal_test_run_runner._handle_test_run(repo, 7, payload, job_state))  # type: ignore[arg-type]
 
     assert result["processed"] == 1
     assert result["succeeded"] == 0
     assert result["skipped"] == 1
     assert result["skip_reasons"]["missing_row"] == 1
+    assert result["evidence_count"] == 1
+    assert repo.evidence[0]["status"] == "skipped"
+    assert repo.evidence[0]["reason"] == "missing_row"
+    assert repo.evidence[0]["signal_id"] == 1
+    assert repo.evidence[0]["channel_id"] is None
     assert "signal_sheet_revision" not in result
 
 
@@ -222,6 +237,7 @@ def test_signal_test_run_resolves_current_binding_per_signal(monkeypatch) -> Non
         "created_at": "2026-01-01T12:30:00+00:00",
     }
     payload = {
+        "job_id": "job-1",
         "signal_ids": [1, 2],
         "signal_interval_ms": 100,
         "toggle_mode": "single",
@@ -238,7 +254,14 @@ def test_signal_test_run_resolves_current_binding_per_signal(monkeypatch) -> Non
     ]
     assert result["succeeded"] == 2
     assert result["skipped"] == 0
+    assert result["evidence_count"] == 2
     assert sorted(repo.tested_at_by_signal) == [1, 2]
+    assert [item["status"] for item in repo.evidence] == ["succeeded", "succeeded"]
+    assert repo.evidence[0]["signal_id"] == 1
+    assert repo.evidence[0]["channel_id"] == 101
+    assert repo.evidence[0]["unit_id"] == "unit-1"
+    assert repo.evidence[0]["result_state"] == "commands_enqueued"
+    assert repo.evidence[0]["command_payload"]["commands"][0]["kind"] == "do_set"
 
 
 def test_signal_test_run_skips_non_executable_current_bindings(monkeypatch) -> None:
@@ -250,9 +273,15 @@ def test_signal_test_run_skips_non_executable_current_bindings(monkeypatch) -> N
     commands: list[dict] = []
 
     class FakeRowsRepo:
+        def __init__(self) -> None:
+            self.evidence: list[dict] = []
+
         async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
             signal_id = int(signal_ids[0])
             return [rows_by_signal_id[signal_id]]
+
+        async def record_signal_test_run_step_evidence(self, **kwargs):
+            self.evidence.append(dict(kwargs))
 
     async def publish_noop(event) -> None:
         return None
@@ -272,18 +301,26 @@ def test_signal_test_run_skips_non_executable_current_bindings(monkeypatch) -> N
         "created_at": "2026-01-01T12:30:00+00:00",
     }
     payload = {
+        "job_id": "job-1",
         "signal_ids": [1, 2, 3],
         "signal_interval_ms": 100,
         "toggle_mode": "single",
     }
 
-    result = run_async(
-        signal_test_run_runner._handle_test_run(FakeRowsRepo(), 7, payload, job_state)  # type: ignore[arg-type]
-    )
+    repo = FakeRowsRepo()
+    result = run_async(signal_test_run_runner._handle_test_run(repo, 7, payload, job_state))  # type: ignore[arg-type]
 
     assert result["succeeded"] == 0
     assert result["skipped"] == 3
+    assert result["evidence_count"] == 3
     assert result["skip_reasons"]["invalid_binding"] == 1
     assert result["skip_reasons"]["incompatible_channel_mode"] == 1
     assert result["skip_reasons"]["offline_unit"] == 1
+    assert [item["reason"] for item in repo.evidence] == [
+        "invalid_binding",
+        "incompatible_channel_mode",
+        "offline_unit",
+    ]
+    assert repo.evidence[1]["channel_id"] == 102
+    assert repo.evidence[2]["unit_id"] == "unit-3"
     assert commands == []

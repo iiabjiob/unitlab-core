@@ -70,7 +70,7 @@ Execution semantics for the current product direction:
 - Allocation, test, and device patch ingress has a sequenced WebSocket contract, but backend producers still need to migrate from action-specific payloads.
 - Sort/filter recompute policy is explicit for current allocation/runtime columns; future device/test fields still need policy entries when introduced.
 - Performance proof for 20,000 rows under large allocation/test patch bursts is still missing.
-- Allocation summary event history exists; detailed per-step execution evidence is still incomplete.
+- Allocation summary event history and signal test-run step evidence exist; report/controller-log comparison wiring is still incomplete.
 - Old reload-oriented fallback paths still exist and need to be narrowed to recovery only.
 
 ## Slice Plan
@@ -418,7 +418,7 @@ Rollback:
 
 ### Slice 9 - Test Execution Evidence
 
-Status: `[ ]`
+Status: `[x]`
 
 Goal:
 
@@ -446,6 +446,25 @@ Tests:
 - Unbound signal is skipped per signal.
 - Offline/missing/incompatible channel is skipped per signal.
 - Successful command records binding/channel evidence.
+
+Implemented:
+
+- Added append-only `signal_test_run_step_evidence` persistence table and SQLAlchemy model.
+- Signal test-run worker records one evidence row per processed signal alias.
+- Evidence captures job id, attempt id/no, order index, signal id, allocation id, channel/device/unit fields, command payload, result state, skip reason, and tested timestamp.
+- Test execution still resolves aliases to current bindings at execution time; no signal-sheet revision guard was added.
+- Skipped rows record per-signal reasons for missing binding, invalid binding, incompatible channel mode, and offline unit.
+- Successful DO/AO command enqueue records the actual command payload and current binding/channel evidence.
+
+Validated 2026-05-24:
+
+- `uv run python -m py_compile app/models/signal_sheet.py app/models/__init__.py app/api/v1/signal_sheet/repository.py app/workers/signal_test_run_runner.py tests/workers/test_signal_allocation_runner_results.py alembic/versions/f2a3b4c5d6e8_add_signal_test_run_step_evidence.py`
+- `git diff --check`
+
+Notes:
+
+- `uv run pytest tests/workers/test_signal_allocation_runner_results.py` could not run because `pytest` is not installed in the current backend environment.
+- Report/UI surfacing of persisted evidence is not implemented in this slice.
 
 Rollback:
 
@@ -563,10 +582,10 @@ For each future slice:
 
 ## Next Slice
 
-Start with Slice 9: Test Execution Evidence.
+Start with Slice 10: Full Reload Recovery Path Cleanup.
 
 Reason:
 
-- Allocation history now records summary-level audit events without entering the grid hot path.
-- Test execution still needs persisted per-step evidence for the actual signal/allocation/channel used.
-- This keeps live alias semantics while improving report/debug traceability.
+- Patch contracts, allocation history, and test-run step evidence are now in place.
+- Normal allocation/test update paths should now be tightened so full reload remains an explicit recovery path.
+- This is the next frontend/backend integration risk before adding benchmarks.
