@@ -1,6 +1,6 @@
 import type { SignalAllocationRow } from "@/types/signal"
 
-export type SignalAllocationProjectionPatchResult = {
+type SignalAllocationProjectionPatchResult = {
   changed: number
   missingSignalIds: number[]
 }

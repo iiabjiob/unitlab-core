@@ -1,20 +1,20 @@
 import type { SignalGridPatchQueueFlushOptions } from "@/pages/signals/composables/useSignalGridPatchQueue"
 
-export type SignalGridPatchMode = "row" | "refresh"
+type SignalGridPatchMode = "row" | "refresh"
 
-export type SignalGridColumnPatchPolicy = {
+type SignalGridColumnPatchPolicy = {
   mode: SignalGridPatchMode
   recomputeSort: boolean
   recomputeFilter: boolean
   recomputeGroup: boolean
 }
 
-export type SignalGridPatchPolicyOptions = SignalGridPatchQueueFlushOptions & {
+type SignalGridPatchPolicyOptions = SignalGridPatchQueueFlushOptions & {
   columns?: readonly string[]
   flush?: boolean
 }
 
-export type ResolvedSignalGridPatchPolicy = SignalGridPatchQueueFlushOptions & {
+type ResolvedSignalGridPatchPolicy = SignalGridPatchQueueFlushOptions & {
   mode: SignalGridPatchMode
 }
 

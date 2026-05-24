@@ -1,4 +1,4 @@
-export type SignalRuntimeState = {
+type SignalRuntimeState = {
   testedAt?: string | null
   status?: string | null
   value?: unknown
@@ -6,12 +6,12 @@ export type SignalRuntimeState = {
   reason?: string | null
 }
 
-export type SignalRuntimeStatePatch = {
+type SignalRuntimeStatePatch = {
   signalId: number
   state: SignalRuntimeState
 }
 
-export type SignalRuntimeStatePatchResult = {
+type SignalRuntimeStatePatchResult = {
   changed: number
   signalIds: number[]
 }

@@ -615,6 +615,7 @@ Implemented so far:
 - Updated the older migration plan gap table to reflect current targeted patch paths instead of already-closed full-reload gaps.
 - Narrowed `SignalRowsPatchApplyResult` to a module-local store type.
 - Updated stale migration notes that still described runtime updates as broad computed-row churn.
+- Narrowed signal-list utility type exports for patch policy, static refresh triggers, runtime state cache, projection cache, and patch ingress internals.
 
 Validated 2026-05-24:
 

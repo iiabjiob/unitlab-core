@@ -6,7 +6,7 @@ export type SignalStaticRefreshReason =
   | "reconnect_gap"
   | "unknown_row_patch"
 
-export type SignalStaticRefreshTrigger =
+type SignalStaticRefreshTrigger =
   | { kind: "initial_load" }
   | { kind: "workspace_switch" }
   | { kind: "import" }

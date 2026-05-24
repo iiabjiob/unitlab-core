@@ -7,7 +7,7 @@ import {
 } from "@/pages/signals/utils/signalGridProjection"
 import { resolveSignalGridPatchPolicy } from "@/pages/signals/utils/signalGridPatchPolicy"
 
-export type SignalGridPatchIngressCache = {
+type SignalGridPatchIngressCache = {
   patchRows: (rows: readonly SignalAllocationRow[]) => {
     changed: number
     missingSignalIds: number[]
@@ -16,7 +16,7 @@ export type SignalGridPatchIngressCache = {
   hasSignalId: (signalId: number) => boolean
 }
 
-export type SignalGridPatchIngressRowModel = {
+type SignalGridPatchIngressRowModel = {
   enqueueRowPatches: (
     patches: readonly SignalGridProjectionPatch[],
     flushOptions?: SignalGridPatchQueueFlushOptions,
@@ -29,7 +29,7 @@ export type SignalGridPatchIngressRowModel = {
   flushPatches: (flushOptions?: SignalGridPatchQueueFlushOptions) => void
 }
 
-export type SignalGridPatchIngressOptions = {
+type SignalGridPatchIngressOptions = {
   cache: SignalGridPatchIngressCache
   rowModel: SignalGridPatchIngressRowModel
   getHeaders: () => readonly string[]
@@ -38,7 +38,7 @@ export type SignalGridPatchIngressOptions = {
   defaultColumns?: readonly string[]
 }
 
-export type SignalGridPatchIngressApplyOptions = SignalGridPatchQueueFlushOptions & {
+type SignalGridPatchIngressApplyOptions = SignalGridPatchQueueFlushOptions & {
   columns?: readonly string[]
   flush?: boolean
 }
