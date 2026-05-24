@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest"
 import type { SignalAllocationRow } from "@/types/signal"
 
 import {
-  hasSignalAllocationIssue,
   resolveSignalAllocationHealthLabel,
   resolveSignalAllocationStatus,
   resolveSignalAllocationStatusLabel,
@@ -61,13 +60,4 @@ describe("allocationHealth", () => {
     expect(resolveSignalAllocationHealthLabel(offline)).toBe("Offline")
   })
 
-  it("detects issue rows by status and health flags", () => {
-    const stale = createRow({ allocation_status: "assigned", allocation_health: { stale_device: true } })
-    const conflict = createRow({ allocation_status: "conflict", allocation_health: { conflict: true } })
-    const valid = createRow({ channel_id: 10, allocation_status: "assigned" })
-
-    expect(hasSignalAllocationIssue(stale)).toBe(true)
-    expect(hasSignalAllocationIssue(conflict)).toBe(true)
-    expect(hasSignalAllocationIssue(valid)).toBe(false)
-  })
 })

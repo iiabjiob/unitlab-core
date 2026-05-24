@@ -42,12 +42,12 @@ export function resolveSignalAllocationDisplayLabel(row: SignalAllocationRow): s
   return "-"
 }
 
-export function resolveSignalGridInternalSignalType(row: SignalAllocationRow): string {
+function resolveSignalGridInternalSignalType(row: SignalAllocationRow): string {
   const resolved = resolveRuntimeChannelTypeForSignal(String(row.signal_direction ?? "").trim())
   return resolved ?? "-"
 }
 
-export function applySignalGridRuntimeOverlay(
+function applySignalGridRuntimeOverlay(
   row: SignalAllocationRow,
   runtime?: SignalGridRuntimeOverlay,
 ): SignalAllocationRow {

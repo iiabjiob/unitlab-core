@@ -10,25 +10,12 @@ export function resolveSignalAllocationStatus(row: SignalAllocationRow): string 
   return Number.isFinite(row.channel_id as number) ? "assigned" : "unassigned"
 }
 
-export function getSignalAllocationHealthFlag(row: SignalAllocationRow, key: string): boolean {
+function getSignalAllocationHealthFlag(row: SignalAllocationRow, key: string): boolean {
   const health = row.allocation_health
   if (!health || typeof health !== "object") {
     return false
   }
   return health[key] === true
-}
-
-export function hasSignalAllocationIssue(row: SignalAllocationRow): boolean {
-  const status = resolveSignalAllocationStatus(row)
-  if (status === "conflict" || status === "invalid" || status === "missing") {
-    return true
-  }
-  return getSignalAllocationHealthFlag(row, "conflict")
-    || getSignalAllocationHealthFlag(row, "invalid_type")
-    || getSignalAllocationHealthFlag(row, "missing_device")
-    || getSignalAllocationHealthFlag(row, "missing_channel")
-    || getSignalAllocationHealthFlag(row, "offline_device")
-    || getSignalAllocationHealthFlag(row, "stale_device")
 }
 
 export function resolveSignalAllocationHealthLabel(row: SignalAllocationRow): string {
