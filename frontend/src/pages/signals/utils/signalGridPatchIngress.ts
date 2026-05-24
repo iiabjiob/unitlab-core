@@ -1,11 +1,10 @@
 import type { SignalAllocationRow } from "@/types/signal"
 import type { SignalGridPatchQueueFlushOptions, SignalGridRowId } from "@/pages/signals/composables/useSignalGridPatchQueue"
-import {
-  createSignalGridRowPatch,
-  type SignalGridProjectionPatch,
-  type SignalGridRuntimeOverlay,
-} from "@/pages/signals/utils/signalGridProjection"
+import { createSignalGridRowPatch } from "@/pages/signals/utils/signalGridProjection"
 import { resolveSignalGridPatchPolicy } from "@/pages/signals/utils/signalGridPatchPolicy"
+
+type SignalGridProjectionPatch = ReturnType<typeof createSignalGridRowPatch>
+type SignalGridRuntimeOverlay = Parameters<typeof createSignalGridRowPatch>[3]
 
 type SignalGridPatchIngressCache = {
   patchRows: (rows: readonly SignalAllocationRow[]) => {

@@ -620,6 +620,7 @@ Implemented so far:
 - Removed the unused allocation issue helper and narrowed module-local grid projection helpers.
 - Narrowed row-selection shape types and runtime tested-at resolver type to module-local declarations.
 - Narrowed `createSignalGridRow()` to a module-local mapper; external callers use row-array or patch mapper boundaries.
+- Narrowed projection patch/runtime overlay types to the mapper and ingress boundary.
 
 Validated 2026-05-24:
 

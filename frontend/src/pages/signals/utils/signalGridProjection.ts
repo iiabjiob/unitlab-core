@@ -17,12 +17,12 @@ export type SignalGridRow = Record<string, unknown> & {
   rowId: string
 }
 
-export type SignalGridRuntimeOverlay = {
+type SignalGridRuntimeOverlay = {
   workspaceId?: number | null
   getTestedAt?: TestedAtResolver
 }
 
-export type SignalGridProjectionPatch = {
+type SignalGridProjectionPatch = {
   rowId: string
   changes: Partial<SignalGridRow>
   columns?: readonly string[]
