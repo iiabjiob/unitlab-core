@@ -146,6 +146,27 @@ export function createSignalGridPatchIngress(options: SignalGridPatchIngressOpti
     }
   }
 
+  function patchAllocationRowsCache(
+    rows: readonly SignalAllocationRow[],
+  ): SignalGridPatchIngressResult {
+    const uniqueRows = uniqueRowsBySignalId(rows)
+    if (!uniqueRows.length) {
+      return { requested: 0, changed: 0, missingSignalIds: [], enqueuedPatches: 0 }
+    }
+
+    const patchResult = options.cache.patchRows(uniqueRows)
+    if (patchResult.changed > 0) {
+      options.onProjectionChanged?.()
+    }
+
+    return {
+      requested: uniqueRows.length,
+      changed: patchResult.changed,
+      missingSignalIds: patchResult.missingSignalIds,
+      enqueuedPatches: 0,
+    }
+  }
+
   function applySignalRowsById(
     signalIds: readonly unknown[],
     applyOptions?: SignalGridPatchIngressApplyOptions,
@@ -203,8 +224,7 @@ export function createSignalGridPatchIngress(options: SignalGridPatchIngressOpti
         missingSignalIds.push(signalId)
         return
       }
-      const patch = createPatchForCachedRow(row, columns)
-      rowIds.push(patch.rowId)
+      rowIds.push(row.row_id || `signal-${signalId}`)
     })
 
     if (rowIds.length > 0) {
@@ -221,6 +241,7 @@ export function createSignalGridPatchIngress(options: SignalGridPatchIngressOpti
 
   return {
     applyAllocationRows,
+    patchAllocationRowsCache,
     applySignalRowsById,
     applyRuntimeSignals,
     refreshSignalCells,

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { createPinia, setActivePinia } from "pinia"
+import { isReactive } from "vue"
 
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
@@ -100,5 +101,19 @@ describe("signalSheetStore allocation patching", () => {
     })
     expect(signalSheetApiMock.streamAllocations).toHaveBeenCalledTimes(1)
     expect(signalSheetApiMock.listAllocations).not.toHaveBeenCalled()
+  })
+
+  it("keeps the allocation row cache shallow so bulk patches do not deep-track every row", async () => {
+    signalSheetApiMock.streamAllocations.mockResolvedValue([
+      buildRow({ signal_id: 1, row_id: "signal-1" }),
+      buildRow({ signal_id: 2, row_id: "signal-2" }),
+    ])
+    useWorkspaceStore().setActiveWorkspace(7)
+    const store = useSignalSheetStore()
+
+    await store.refreshAllocations()
+
+    expect(isReactive(store.allocationRows)).toBe(false)
+    expect(isReactive(store.allocationRows[0])).toBe(false)
   })
 })

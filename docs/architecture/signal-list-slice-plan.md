@@ -601,6 +601,10 @@ Implemented so far:
 - Removed unused duplicate allocation helpers `setAllocation()` and direct store-level `autoAllocate()`.
 - Removed the unused frontend direct auto-allocation API wrapper and response type; normal UI auto-allocation stays job-based.
 - Rechecked mandatory allocation preview cleanup; no `previewId`/preview session state remains in the normal frontend/backend allocation flow.
+- Fixed the allocation job completion patch path to call DataGrid `rows.patchRows` and preserve explicit `null` fields in bulk unassign row patches.
+- Converted the Pinia allocation row cache to a shallow snapshot so bulk job completion sync does not deep-track thousands of row objects after the grid has already patched.
+- Narrowed grid row patch payloads to requested columns and suppressed grid state persistence events during bulk job patch replay.
+- Removed mass `rows.patchRows` replay on allocation job completion; completion now updates the allocation projection cache and refreshes only visible cells.
 
 Validated 2026-05-24:
 

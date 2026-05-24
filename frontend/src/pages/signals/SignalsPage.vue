@@ -140,7 +140,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, nextTick, onMounted, ref, watch, type PropType } from "vue"
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch, type PropType } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { storeToRefs } from "pinia"
 import { defineDataGridComponent, parseDataGridSavedView, useDataGridRef, type DataGridAppCellRendererContext, type DataGridAppColumnInput, type DataGridAppToolbarModule, type DataGridProps, type DataGridSavedViewSnapshot, writeDataGridSavedViewToStorage } from "@affino/datagrid-vue-app"
@@ -167,6 +167,11 @@ import {
 } from "@/pages/signals/utils/signalGridProjection"
 import { createSignalAllocationProjectionCache } from "@/pages/signals/utils/signalAllocationProjectionCache"
 import { createSignalGridPatchIngress } from "@/pages/signals/utils/signalGridPatchIngress"
+import {
+  getSignalAllocationJobResultArrayLength,
+  getSignalAllocationJobResultNumber,
+  normalizeSignalAllocationJobChangedRows,
+} from "@/pages/signals/utils/signalAllocationJobResult"
 import {
   resolveSignalStaticRefreshReason,
   type SignalStaticRefreshReason,
@@ -242,7 +247,6 @@ const SIGNAL_GRID_SKELETON_FIXED_HEIGHT = 88
 const SIGNAL_GRID_SKELETON_ROW_HEIGHT = 36
 const SIGNAL_GRID_SKELETON_FALLBACK_ROWS = 12
 const BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE = 250
-const BULK_ALLOCATION_STORE_SYNC_CHUNK_SIZE = 100
 const signalGridSkeletonRef = ref<HTMLElement | null>(null)
 const signalGridSkeletonHeight = ref(0)
 
@@ -258,6 +262,8 @@ const signalAllocationProjectionCache = createSignalAllocationProjectionCache()
 const signalAllocationProjectionVersion = ref(0)
 const signalRuntimeStateCache = createSignalRuntimeStateCache()
 const signalRuntimeStateVersion = ref(0)
+let suppressSignalsGridStateEventsDepth = 0
+let signalsGridStatePersistTimer: ReturnType<typeof setTimeout> | null = null
 const signalGridRowModel = useSignalGridRowModel<GridRow>(allocationGridRef, {
   defaultReason: "signals-grid-patch",
   resolveRowId: row => row.rowId,
@@ -602,64 +608,8 @@ const deallocateSelectedButtonLabel = computed(() => (
   deallocatingSelected.value ? "Unassigning..." : "Unassign Hardware"
 ))
 
-function getAllocationJobResult(job: SignalAllocationJob): Record<string, unknown> {
-  return job.result && typeof job.result === "object" ? job.result : {}
-}
-
-function getAllocationJobResultNumber(job: SignalAllocationJob, key: string): number {
-  const value = getAllocationJobResult(job)[key]
-  const numeric = Number(value)
-  return Number.isFinite(numeric) ? Math.max(0, numeric) : 0
-}
-
-function getAllocationJobResultArrayLength(job: SignalAllocationJob, key: string): number {
-  const value = getAllocationJobResult(job)[key]
-  return Array.isArray(value) ? value.length : 0
-}
-
 function getAllocationJobChangedRows(job: SignalAllocationJob): SignalAllocationRow[] {
-  const result = getAllocationJobResult(job)
-  const patchRows = result.changed_row_patches
-  const changedRows = Array.isArray(patchRows) && patchRows.length > 0
-    ? patchRows
-    : result.changed_rows
-  if (!Array.isArray(changedRows)) {
-    return []
-  }
-
-  const rows: SignalAllocationRow[] = []
-  changedRows.forEach((row) => {
-    if (!row || typeof row !== "object") {
-      return
-    }
-    const signalId = Number((row as { signal_id?: unknown }).signal_id)
-    if (!Number.isFinite(signalId) || signalId <= 0) {
-      return
-    }
-    const patch = row as Partial<SignalAllocationRow>
-    const baseRow = getSignalAllocationProjectionRowBySignalId(signalId)
-    rows.push({
-      ...(baseRow ?? {}),
-      ...patch,
-      signal_id: signalId,
-      row_id: String(patch.row_id ?? baseRow?.row_id ?? `signal-${signalId}`),
-      signal_key: String(baseRow?.signal_key ?? ""),
-      signal_name: String(baseRow?.signal_name ?? ""),
-      signal_direction: (baseRow?.signal_direction ?? "DI") as SignalAllocationRow["signal_direction"],
-      signal_category: baseRow?.signal_category ?? null,
-      signal_metadata: baseRow?.signal_metadata ?? {},
-      channel_id: patch.channel_id ?? baseRow?.channel_id ?? null,
-      channel_type: patch.channel_type ?? baseRow?.channel_type ?? null,
-      channel_index: patch.channel_index ?? baseRow?.channel_index ?? null,
-      channel_label: patch.channel_label ?? baseRow?.channel_label ?? null,
-      device_id: patch.device_id ?? baseRow?.device_id ?? null,
-      unit_id: patch.unit_id ?? baseRow?.unit_id ?? null,
-      unit_online: patch.unit_online ?? baseRow?.unit_online ?? null,
-      unit_last_seen_at: patch.unit_last_seen_at ?? baseRow?.unit_last_seen_at ?? null,
-      tested_at: patch.tested_at ?? baseRow?.tested_at ?? null,
-    })
-  })
-  return rows
+  return normalizeSignalAllocationJobChangedRows(job, getSignalAllocationProjectionRowBySignalId)
 }
 
 const SIGNAL_ROWS_PATCH_FIELD_GRID_COLUMNS: Record<string, readonly string[]> = {
@@ -871,48 +821,31 @@ async function applySignalRowsPatchedEvent(event: SignalRowsPatchedEvent) {
 
 function resolveAllocationJobSkippedCount(job: SignalAllocationJob, requested: number, changed: number): number {
   if (String(job.operation) === "auto_allocate") {
-    const skippedItems = getAllocationJobResultArrayLength(job, "skipped_items")
+    const skippedItems = getSignalAllocationJobResultArrayLength(job, "skipped_items")
     const skippedTotal = skippedItems > 0
       ? skippedItems
-      : getAllocationJobResultNumber(job, "skipped")
-    return skippedTotal + getAllocationJobResultArrayLength(job, "rejected")
+      : getSignalAllocationJobResultNumber(job, "skipped")
+    return skippedTotal + getSignalAllocationJobResultArrayLength(job, "rejected")
   }
 
   return Math.max(0, requested - changed)
 }
 
-async function patchCompletedAllocationGridRows(rows: readonly SignalAllocationRow[]) {
-  for (let index = 0; index < rows.length; index += BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE) {
-    const chunk = rows.slice(index, index + BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE)
-    signalGridPatchIngress.applyAllocationRows(chunk, {
-      reason: "signal-allocation-job-complete",
-      columns: SIGNAL_GRID_PATCH_COLUMNS,
-      recomputeSort: false,
-      recomputeFilter: false,
-      recomputeGroup: false,
-      immediate: true,
-      flush: true,
-    })
+async function patchCompletedAllocationProjectionRows(rows: readonly SignalAllocationRow[]) {
+  suppressSignalsGridStateEventsDepth += 1
+  try {
+    for (let index = 0; index < rows.length; index += BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE) {
+      const chunk = rows.slice(index, index + BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE)
+      signalGridPatchIngress.patchAllocationRowsCache(chunk)
+      signalGridPatchIngress.refreshSignalCells(chunk.map(row => row.signal_id), SIGNAL_GRID_PATCH_COLUMNS, {
+        reason: "signal-allocation-job-complete",
+      })
+      await awaitUiPaintFrame()
+    }
     await awaitUiPaintFrame()
+  } finally {
+    suppressSignalsGridStateEventsDepth = Math.max(0, suppressSignalsGridStateEventsDepth - 1)
   }
-}
-
-async function syncCompletedAllocationRowsToStore(rows: readonly SignalAllocationRow[]) {
-  for (let index = 0; index < rows.length; index += BULK_ALLOCATION_STORE_SYNC_CHUNK_SIZE) {
-    const chunk = rows.slice(index, index + BULK_ALLOCATION_STORE_SYNC_CHUNK_SIZE)
-    signalSheetStore.applyAllocationRowsPatch(chunk, {
-      skipRecentlyChanged: true,
-      skipRevision: true,
-    })
-    await awaitUiPaintFrame()
-  }
-}
-
-function scheduleCompletedAllocationRowsStoreSync(rows: readonly SignalAllocationRow[]) {
-  const snapshot = rows.slice()
-  void syncCompletedAllocationRowsToStore(snapshot).catch(() => {
-    return
-  })
 }
 
 async function applyCompletedAllocationJobPatch(job: SignalAllocationJob): Promise<SignalAllocationRow[]> {
@@ -921,8 +854,7 @@ async function applyCompletedAllocationJobPatch(job: SignalAllocationJob): Promi
     return changedRows
   }
 
-  await patchCompletedAllocationGridRows(changedRows)
-  scheduleCompletedAllocationRowsStoreSync(changedRows)
+  await patchCompletedAllocationProjectionRows(changedRows)
 
   return changedRows
 }
@@ -1004,6 +936,53 @@ function persistSignalsGridState() {
   }
 
   writeDataGridSavedViewToStorage(window.localStorage, storageKey, savedView)
+}
+
+function scheduleSignalsGridStatePersist() {
+  if (signalsGridStatePersistTimer !== null) {
+    clearTimeout(signalsGridStatePersistTimer)
+  }
+  signalsGridStatePersistTimer = setTimeout(() => {
+    signalsGridStatePersistTimer = null
+    persistSignalsGridState()
+  }, 120)
+}
+
+function normalizeSelectionKeyList(values: readonly unknown[] | undefined): string[] {
+  return (values ?? [])
+    .map(value => String(value ?? "").trim())
+    .filter(Boolean)
+}
+
+function sameSelectionKeyList(left: readonly unknown[] | undefined, right: readonly unknown[] | undefined): boolean {
+  const leftKeys = normalizeSelectionKeyList(left)
+  const rightKeys = normalizeSelectionKeyList(right)
+  if (leftKeys.length !== rightKeys.length) {
+    return false
+  }
+  return leftKeys.every((key, index) => key === rightKeys[index])
+}
+
+function areRowSelectionSnapshotsEqual(left: RowSelectionSnapshot | null, right: RowSelectionSnapshot | null): boolean {
+  if (left === right) {
+    return true
+  }
+  if (!left || !right) {
+    return !left && !right
+  }
+  return String(left.mode ?? "") === String(right.mode ?? "")
+    && String(left.focusedRow ?? "") === String(right.focusedRow ?? "")
+    && sameSelectionKeyList(left.selectedRows, right.selectedRows)
+    && sameSelectionKeyList(left.excludedRows, right.excludedRows)
+}
+
+function applyRowSelectionStateSnapshot(nextSelection: RowSelectionSnapshot | null): boolean {
+  if (areRowSelectionSnapshotsEqual(rowSelectionState.value, nextSelection)) {
+    return false
+  }
+  rowSelectionState.value = nextSelection
+  rowSelectionProjectionRevision.value += 1
+  return true
 }
 
 function markSignalsGridStateRestored() {
@@ -1252,20 +1231,24 @@ function handleAllocationGridStateUpdate(state: DataGridStateUpdate | null) {
   if (!signalsGridStatePersistenceReady.value || restoringSignalsGridState.value || loading.value) {
     return
   }
+  if (suppressSignalsGridStateEventsDepth > 0) {
+    return
+  }
 
-  rowSelectionState.value = state?.rowSelection ?? null
-  rowSelectionProjectionRevision.value += 1
-  persistSignalsGridState()
+  applyRowSelectionStateSnapshot(state?.rowSelection ?? null)
+  scheduleSignalsGridStatePersist()
 }
 
 function handleAllocationRowSelectionStateUpdate(state: RowSelectionSnapshot | null) {
   if (!signalsGridStatePersistenceReady.value || restoringSignalsGridState.value || loading.value) {
     return
   }
+  if (suppressSignalsGridStateEventsDepth > 0) {
+    return
+  }
 
-  rowSelectionState.value = state
-  rowSelectionProjectionRevision.value += 1
-  persistSignalsGridState()
+  applyRowSelectionStateSnapshot(state)
+  scheduleSignalsGridStatePersist()
 }
 
 function signalIdFromRowKey(rowKey: string): number | null {
@@ -2469,7 +2452,8 @@ function allocationBadgeClass(kind: string): string {
 }
 
 function renderAllocationStatusCell(context: DataGridAppCellRendererContext<GridRow>) {
-  const status = String(context.row?.allocation_status ?? context.displayValue ?? "").trim()
+  const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((context.row ?? {}) as GridRow))
+  const status = String(allocationRow.allocation_status ?? context.row?.allocation_status ?? context.displayValue ?? "").trim()
   if (!status) {
     return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, "-")
   }
@@ -2478,7 +2462,8 @@ function renderAllocationStatusCell(context: DataGridAppCellRendererContext<Grid
 }
 
 function renderAllocationHealthCell(context: DataGridAppCellRendererContext<GridRow>) {
-  const health = String(context.row?.allocation_health ?? context.displayValue ?? "").trim()
+  const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((context.row ?? {}) as GridRow))
+  const health = String(allocationRow.allocation_health ?? context.row?.allocation_health ?? context.displayValue ?? "").trim()
   if (!health) {
     return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, "-")
   }
@@ -2791,5 +2776,12 @@ onMounted(() => {
   restoreSignalsGridState()
   void refreshPromise
   syncImportModalFromRoute()
+})
+
+onBeforeUnmount(() => {
+  if (signalsGridStatePersistTimer !== null) {
+    clearTimeout(signalsGridStatePersistTimer)
+    signalsGridStatePersistTimer = null
+  }
 })
 </script>

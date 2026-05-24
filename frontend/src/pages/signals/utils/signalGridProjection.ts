@@ -87,6 +87,25 @@ export function createSignalGridRows(
   return rows.map(row => createSignalGridRow(row, headers, runtime))
 }
 
+function pickSignalGridPatchChanges(
+  gridRow: SignalGridRow,
+  columns: readonly string[] | undefined,
+): Partial<SignalGridRow> {
+  if (!columns?.length) {
+    return gridRow
+  }
+
+  const changes: Partial<SignalGridRow> = {}
+  columns.forEach((column) => {
+    const key = String(column ?? "").trim()
+    if (!key || !(key in gridRow)) {
+      return
+    }
+    changes[key] = gridRow[key]
+  })
+  return changes
+}
+
 export function createSignalGridRowPatch(
   row: SignalAllocationRow,
   headers: readonly string[],
@@ -96,7 +115,7 @@ export function createSignalGridRowPatch(
   const gridRow = createSignalGridRow(row, headers, runtime)
   return {
     rowId: gridRow.rowId,
-    changes: gridRow,
+    changes: pickSignalGridPatchChanges(gridRow, columns),
     columns,
   }
 }

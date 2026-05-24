@@ -152,7 +152,7 @@ function createGridHarness() {
         rows: {
           hasPatchSupport: () => true,
           batch: <TResult>(callback: () => TResult) => callback(),
-          patch: (patches: readonly unknown[], options?: Record<string, unknown>) => {
+          patchRows: (patches: readonly unknown[], options?: Record<string, unknown>) => {
             patchCalls.push({ patches, options })
           },
         },

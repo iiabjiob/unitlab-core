@@ -206,6 +206,31 @@ describe("createSignalGridPatchIngress", () => {
     })
   })
 
+  it("can patch the projection cache without enqueueing grid row patches", () => {
+    const harness = createHarness()
+    harness.cache.replaceRows([buildRow({ signal_id: 1, row_id: "signal-1" })])
+
+    const result = harness.ingress.patchAllocationRowsCache([
+      buildRow({
+        signal_id: 1,
+        row_id: "signal-1",
+        channel_id: 10,
+        channel_index: 0,
+        unit_id: "unit-a",
+      }),
+    ])
+
+    expect(result).toEqual({
+      requested: 1,
+      changed: 1,
+      missingSignalIds: [],
+      enqueuedPatches: 0,
+    })
+    expect(harness.projectionChanged).toBe(1)
+    expect(harness.cache.getOwnerSignalIdByChannelId(10)).toBe(1)
+    expect(harness.rowPatchCalls).toHaveLength(0)
+  })
+
   it("can route cell refreshes through the same signal-id ingress", () => {
     const harness = createHarness()
     harness.cache.replaceRows([buildRow({ signal_id: 1, row_id: "signal-1" })])

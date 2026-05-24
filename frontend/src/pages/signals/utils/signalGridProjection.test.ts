@@ -93,13 +93,22 @@ describe("signalGridProjection", () => {
 
     expect(patch).toEqual({
       rowId: "signal-1",
-      changes: expect.objectContaining({
-        rowId: "signal-1",
-        signal_id: 1,
+      changes: {
         channel_select: "unit-a/ch3",
-        [signalGridSourceColumnKey(0)]: "A1",
-      }),
+      },
       columns: ["channel_select"],
+    })
+  })
+
+  it("only includes requested source columns in row patches", () => {
+    const patch = createSignalGridRowPatch(buildRow(), ["Cabinet", "Terminal"], [signalGridSourceColumnKey(1)])
+
+    expect(patch).toEqual({
+      rowId: "signal-1",
+      changes: {
+        [signalGridSourceColumnKey(1)]: "X1:1",
+      },
+      columns: [signalGridSourceColumnKey(1)],
     })
   })
 

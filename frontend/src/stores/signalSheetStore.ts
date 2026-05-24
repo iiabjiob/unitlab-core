@@ -1,5 +1,5 @@
 import { defineStore } from "pinia"
-import { computed, ref } from "vue"
+import { computed, ref, shallowRef } from "vue"
 
 import { SignalSheetAPI } from "@/api/signal_sheet.api"
 import type {
@@ -28,7 +28,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
 
   const sheet = ref<SignalSheet | null>(null)
   const presets = ref<SignalSheetPreset[]>([])
-  const allocationRows = ref<SignalAllocationRow[]>([])
+  const allocationRows = shallowRef<SignalAllocationRow[]>([])
 
   const loadingSheet = ref(false)
   const loadingPresets = ref(false)
