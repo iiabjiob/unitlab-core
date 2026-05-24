@@ -1215,7 +1215,10 @@ const allocationChannelPickerChannels = computed<AllocationChannelPickerCandidat
   const currentChannelId = allocationChannelPickerCurrentChannelId.value
 
   return channels.value
-    .filter(channel => String(channel.type).trim().toLowerCase() === requiredType)
+    .filter((channel) => {
+      const channelType = String(channel.type).trim().toLowerCase()
+      return channelType === requiredType || channel.id === currentChannelId
+    })
     .map((channel) => {
       const unitId = channelUnitById.value.get(channel.id) ?? channelStore.resolveUnitId(channel.device_id)
       const resolvedName = String(channel.resolved_name ?? channel.name ?? "").trim()

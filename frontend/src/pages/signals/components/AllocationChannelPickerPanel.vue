@@ -188,6 +188,7 @@ const query = ref("")
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const itemElements = new Map<NodeValue, HTMLButtonElement>()
 const treeDomFocusActive = ref(false)
+const pendingCurrentChannelReveal = ref(false)
 const tree = useTreeviewController<NodeValue>({
   nodes: [],
   loop: true,
@@ -297,9 +298,24 @@ const nodeMeta = computed(() => {
   return map
 })
 
-const expandedSet = computed(() => new Set(tree.state.value.expanded))
+const treeNodeByValue = computed(() => {
+  const map = new Map<NodeValue, TreeviewNode<NodeValue>>()
+  treeNodes.value.forEach((node) => {
+    map.set(node.value, node)
+  })
+  return map
+})
 
-const visibleNodes = computed(() => treeNodes.value.filter((node) => isNodeVisible(node.value)))
+const visibleNodeValues = computed(() => {
+  void tree.state.value
+  return tree.getVisibleValues()
+})
+
+const visibleNodes = computed(() => (
+  visibleNodeValues.value
+    .map(value => treeNodeByValue.value.get(value))
+    .filter((node): node is TreeviewNode<NodeValue> => Boolean(node))
+))
 
 const resultsSummary = computed(() => {
   const units = groupedChannels.value.length
@@ -311,6 +327,15 @@ const resultsSummary = computed(() => {
 
 watch(treeNodes, (nodes) => {
   tree.registerNodes(nodes)
+  if (!props.open) {
+    return
+  }
+  syncTreeState()
+  if (pendingCurrentChannelReveal.value) {
+    void nextTick(() => {
+      revealPendingCurrentChannel()
+    })
+  }
 }, { immediate: true })
 
 watch(
@@ -318,20 +343,28 @@ watch(
   (open) => {
     if (!open) {
       query.value = ""
+      pendingCurrentChannelReveal.value = false
       return
     }
+    pendingCurrentChannelReveal.value = props.currentChannelId !== null
     syncTreeState()
     void nextTick(() => {
+      revealPendingCurrentChannel()
       searchInputRef.value?.focus({ preventScroll: true })
     })
   },
 )
 
 watch(
-  () => [normalizedQuery.value, props.currentChannelId, treeNodes.value] as const,
+  () => [normalizedQuery.value, props.currentChannelId] as const,
   () => {
     if (!props.open) return
     syncTreeState()
+    if (pendingCurrentChannelReveal.value) {
+      void nextTick(() => {
+        revealPendingCurrentChannel()
+      })
+    }
   },
 )
 
@@ -401,6 +434,51 @@ function focusNodeElement(value: NodeValue | null) {
   element.scrollIntoView({ block: "nearest" })
 }
 
+function revealNodeElement(value: NodeValue | null) {
+  if (!value) return false
+  const element = itemElements.get(value)
+  if (!element) return false
+  element.scrollIntoView({ block: "center", inline: "nearest" })
+  return true
+}
+
+function revealPendingCurrentChannel() {
+  if (!pendingCurrentChannelReveal.value || props.currentChannelId === null) {
+    return
+  }
+
+  const currentNode = syncCurrentChannelNode()
+  if (!currentNode || !visibleNodeValues.value.includes(currentNode)) {
+    return
+  }
+
+  if (revealNodeElement(currentNode)) {
+    pendingCurrentChannelReveal.value = false
+  }
+}
+
+function currentChannelNodeValue(): NodeValue | null {
+  if (props.currentChannelId === null) {
+    return null
+  }
+  return toChannelNodeValue(props.currentChannelId)
+}
+
+function hasTreeNode(value: NodeValue | null): value is NodeValue {
+  return value !== null && treeNodeByValue.value.has(value)
+}
+
+function syncCurrentChannelNode(): NodeValue | null {
+  const currentNode = currentChannelNodeValue()
+  if (!hasTreeNode(currentNode)) {
+    return null
+  }
+
+  tree.clearSelection()
+  const result = tree.core.requestSelect(currentNode)
+  return result.ok ? currentNode : null
+}
+
 function syncTreeState() {
   groupedChannels.value.forEach((group) => {
     tree.collapse(toUnitNodeValue(group.unitId))
@@ -412,32 +490,15 @@ function syncTreeState() {
     })
   }
 
-  const currentNode = props.currentChannelId !== null ? toChannelNodeValue(props.currentChannelId) : null
-  if (currentNode && treeNodes.value.some(node => node.value === currentNode)) {
-    const parent = parentByValue.value.get(currentNode)
-    if (parent) {
-      tree.expand(parent)
-    }
-    tree.clearSelection()
-    tree.select(currentNode)
-    tree.focus(currentNode)
+  if (syncCurrentChannelNode()) {
     return
   }
 
   tree.clearSelection()
-  const first = visibleNodes.value[0]?.value ?? null
+  const first = visibleNodeValues.value[0] ?? null
   if (first) {
     tree.focus(first)
   }
-}
-
-function isNodeVisible(value: NodeValue): boolean {
-  let cursor = parentByValue.value.get(value) ?? null
-  while (cursor) {
-    if (!expandedSet.value.has(cursor)) return false
-    cursor = parentByValue.value.get(cursor) ?? null
-  }
-  return true
 }
 
 function nodeLevel(value: NodeValue): number {
