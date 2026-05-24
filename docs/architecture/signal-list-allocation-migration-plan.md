@@ -663,7 +663,7 @@ Frontend:
 
 Tests:
 
-- queued run does not fail only because sheet metadata changed;
+- queued run payloads do not carry sheet-level revision metadata;
 - missing/unbound signal handling remains per-signal;
 - report/test evidence includes the binding/channel actually used.
 

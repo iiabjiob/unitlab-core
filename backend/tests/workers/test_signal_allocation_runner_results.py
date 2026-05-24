@@ -170,7 +170,7 @@ def test_signal_rows_patched_event_serializes_grid_patch_contract() -> None:
     assert payload["emitted_at"].startswith("2026-01-01T12:30:00")
 
 
-def test_signal_test_run_ignores_stale_sheet_metadata_and_skips_missing_signal(monkeypatch) -> None:
+def test_signal_test_run_skips_missing_signal_without_sheet_revision_metadata(monkeypatch) -> None:
     async def publish_noop(event) -> None:
         return None
 
@@ -179,7 +179,6 @@ def test_signal_test_run_ignores_stale_sheet_metadata_and_skips_missing_signal(m
         "signal_ids": [1],
         "signal_interval_ms": 100,
         "toggle_mode": "single",
-        "signal_sheet_revision": {"revision_token": "queued"},
     }
     monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: object())
     monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_noop)
@@ -204,7 +203,6 @@ def test_signal_test_run_ignores_stale_sheet_metadata_and_skips_missing_signal(m
     assert repo.evidence[0]["reason"] == "missing_row"
     assert repo.evidence[0]["signal_id"] == 1
     assert repo.evidence[0]["channel_id"] is None
-    assert "signal_sheet_revision" not in result
 
 
 def test_signal_test_run_resolves_current_binding_per_signal(monkeypatch) -> None:
