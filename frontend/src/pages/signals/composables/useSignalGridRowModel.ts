@@ -66,14 +66,6 @@ export function createSignalGridRowModel<TRow extends Record<string, unknown>>(
     patchQueue.enqueueRowPatches(patches, flushOptions)
   }
 
-  function enqueueRowPatch(
-    rowId: SignalGridRowId,
-    changes: Partial<TRow>,
-    flushOptions?: SignalGridPatchQueueFlushOptions & { columns?: readonly string[] },
-  ) {
-    enqueueRowPatches([{ rowId, changes, columns: flushOptions?.columns }], flushOptions)
-  }
-
   function enqueueCellRefresh(
     rowIds: readonly SignalGridRowId[],
     columns: readonly string[],
@@ -94,7 +86,6 @@ export function createSignalGridRowModel<TRow extends Record<string, unknown>>(
     rows,
     setRows,
     getRow,
-    enqueueRowPatch,
     enqueueRowPatches,
     enqueueCellRefresh,
     flushPatches,

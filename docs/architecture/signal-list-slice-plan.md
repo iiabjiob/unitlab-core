@@ -624,6 +624,7 @@ Implemented so far:
 - Moved allocation job skipped-count resolution into the job-result helper and hid low-level result number/array helpers.
 - Narrowed patch-ingress result typing to the ingress module; the performance harness derives its shape from the public factory.
 - Removed `applySignalRowsById()` from the public patch-ingress API; signal-id runtime patching remains exposed through `applyRuntimeSignals()`.
+- Removed single-row patch shortcuts from the public queue/row-model objects; callers use the batch-oriented `enqueueRowPatches()` contract.
 
 Validated 2026-05-24:
 

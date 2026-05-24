@@ -366,7 +366,6 @@ export function createSignalGridPatchQueue<TRow extends Record<string, unknown>>
   }
 
   return {
-    enqueueRowPatch,
     enqueueRowPatches,
     enqueueCellRefresh,
     flush,

@@ -91,12 +91,20 @@ describe("createSignalGridPatchQueue", () => {
       defaultReason: "test-grid-patch",
     })
 
-    queue.enqueueRowPatch("signal-1", { tested_at: "2026-01-01T00:00:00Z" }, {
-      columns: ["tested_at"],
-    })
-    queue.enqueueRowPatch("signal-1", { tested_at: "2026-01-01T00:00:01Z", channel_select: "unit-a/ch1" }, {
-      columns: ["channel_select"],
-    })
+    queue.enqueueRowPatches([
+      {
+        rowId: "signal-1",
+        changes: { tested_at: "2026-01-01T00:00:00Z" },
+        columns: ["tested_at"],
+      },
+    ])
+    queue.enqueueRowPatches([
+      {
+        rowId: "signal-1",
+        changes: { tested_at: "2026-01-01T00:00:01Z", channel_select: "unit-a/ch1" },
+        columns: ["channel_select"],
+      },
+    ])
 
     expect(scheduler.size).toBe(1)
     expect(grid.patchCalls).toHaveLength(0)
@@ -157,7 +165,12 @@ describe("createSignalGridPatchQueue", () => {
       scheduler: scheduler.scheduler,
     })
 
-    queue.enqueueRowPatch("signal-1", { tested_at: "2026-01-01T00:00:00Z" })
+    queue.enqueueRowPatches([
+      {
+        rowId: "signal-1",
+        changes: { tested_at: "2026-01-01T00:00:00Z" },
+      },
+    ])
     scheduler.runAll()
 
     expect(grid.patchCalls).toHaveLength(0)
