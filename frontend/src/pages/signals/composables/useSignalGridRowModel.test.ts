@@ -38,9 +38,15 @@ function createManualScheduler() {
 function createGridHarness() {
   const patchCalls: Array<{ patches: unknown[]; options: Record<string, unknown> | undefined }> = []
   const refreshCalls: Array<{ rowKeys: unknown[]; columnKeys: string[]; options: Record<string, unknown> | undefined }> = []
+  const setRowsCalls: unknown[][] = []
 
   const gridRef = {
     value: {
+      getRuntime: () => ({
+        setRows: (rows: readonly unknown[]) => {
+          setRowsCalls.push([...rows])
+        },
+      }),
       getApi: () => ({
         rows: {
           patchRows: (patches: readonly unknown[], patchOptions?: Record<string, unknown>) => {
@@ -68,11 +74,12 @@ function createGridHarness() {
     gridRef,
     patchCalls,
     refreshCalls,
+    setRowsCalls,
   }
 }
 
 describe("createSignalGridRowModel", () => {
-  it("sets the base rows as a shallow snapshot", () => {
+  it("sets base rows through the grid runtime without replacing the prop row array", () => {
     const scheduler = createManualScheduler()
     const grid = createGridHarness()
     const model = createSignalGridRowModel<TestGridRow>(grid.gridRef, {
@@ -85,13 +92,15 @@ describe("createSignalGridRowModel", () => {
     ]
     model.setRows(initialRows)
 
-    expect(model.rows.value).toHaveLength(2)
-    expect(model.rows.value).toEqual(initialRows)
-    expect(model.rows.value).not.toBe(initialRows)
+    expect(model.rows.value).toEqual([])
+    expect(grid.setRowsCalls).toHaveLength(1)
+    expect(grid.setRowsCalls[0]).toEqual(initialRows)
+    expect(grid.setRowsCalls[0]).not.toBe(initialRows)
 
     model.setRows([{ rowId: "signal-3", signal_id: 3 }])
 
-    expect(model.rows.value).toEqual([{ rowId: "signal-3", signal_id: 3 }])
+    expect(model.rows.value).toEqual([])
+    expect(grid.setRowsCalls[1]).toEqual([{ rowId: "signal-3", signal_id: 3 }])
   })
 
   it("patches the grid without replacing the row array", () => {

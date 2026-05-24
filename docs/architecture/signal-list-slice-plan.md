@@ -1,6 +1,6 @@
 # Signal List and Allocation Slice Plan
 
-Status: working migration checklist
+Status: cleanup implemented; browser validation pending
 Last reviewed: 2026-05-24
 
 ## Purpose
@@ -24,7 +24,7 @@ Backend durable state
         v
 Flat signal allocation projection
         |
-        | set once / reload only for recovery
+        | runtime setRows / reload only for recovery
         v
 Affino DataGrid client row model
         |
@@ -60,7 +60,7 @@ Execution semantics for the current product direction:
 - `[x]` Runtime tested-at updates can flow as patches.
 - `[x]` Allocation quick-filter buttons were removed from the DataGrid toolbar.
 - `[x]` Channel picker uses explicit apply/swap behavior and avoids click-to-swap for occupied channels.
-- `[x]` First grid hot-path cleanup is in place: SignalPage uses a grid row model wrapper and DataGrid `rows.patchRows` instead of replacing the row array for allocation job patches.
+- `[x]` Grid hot-path cleanup is in place: SignalPage uses a stable Vue rows prop, DataGrid runtime `setRows()` for initial/recovery hydration, and `rows.patchRows`/cell refresh for updates.
 
 ## Main Gaps
 
@@ -565,7 +565,7 @@ Rollback:
 
 ### Slice 12 - Legacy Cleanup
 
-Status: `[~]`
+Status: `[x]`
 
 Goal:
 
@@ -574,7 +574,7 @@ Goal:
 Cleanup:
 
 - Remove unused preview state and docs.
-- Remove old full-array grid computed paths.
+- Removed old full-array Vue `rows` prop replacement paths.
 - Remove duplicate allocation mutation helpers.
 - Remove stale revision/snapshot guard comments.
 - Remove temporary fallback code that benchmarks prove unnecessary.
@@ -632,6 +632,7 @@ Implemented so far:
 - Removed an unused per-row runtime overlay helper from `SignalsPage.vue`; runtime row overlays remain only where full export/report rows are explicitly built.
 - Consolidated duplicate allocation/control cell row resolvers into one live projection lookup helper.
 - Removed unused public reset/debug accessors from `signalRowsPatchStore`; the store now exposes only the active patch event, revision, and ingestion method.
+- Moved initial/recovery row replacement off the Vue `rows` prop and into the DataGrid runtime `setRows()` bridge; the bound prop now stays stable while normal updates continue through patches.
 
 Validated 2026-05-24:
 
@@ -646,7 +647,7 @@ Notes:
 
 Remaining:
 
-- Remove old full-array grid paths once browser/manual proof confirms they are no longer needed for initial load or recovery.
+- Browser-proof the final signal-list path with 20,000 rows, bulk allocation/deallocation, runtime patches, scrolling, and selection continuity.
 
 Rollback:
 

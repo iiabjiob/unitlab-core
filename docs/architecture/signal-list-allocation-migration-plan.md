@@ -1,6 +1,6 @@
 # Signal List and Allocation Migration Plan
 
-Status: signal-list patch architecture partially migrated, legacy cleanup in progress
+Status: signal-list patch architecture migrated; browser validation pending
 Last reviewed: 2026-05-24
 
 ## Scope
@@ -21,7 +21,7 @@ Import workbook
   -> REST/NDJSON returns flat SignalAllocationRow projection
   -> frontend keeps a shallow allocation snapshot for non-grid consumers
   -> SignalsPage owns a non-reactive projection cache
-  -> initial/recovery load sets Affino DataGrid client rows
+  -> initial/recovery load hydrates Affino DataGrid client rows through runtime setRows
   -> allocation/runtime updates patch the projection cache and grid cells
 ```
 
@@ -74,7 +74,7 @@ Implemented:
 - Affino core supports row patching, batch boundaries, and cell refresh APIs.
 - normal allocation/runtime patch paths use `api.rows.patchRows`, `api.rows.batch`, and `api.view.refreshCellsByRowKeys`.
 - Pinia `allocationRows` is a shallow snapshot, and `SignalsPage.vue` bridges it into a non-reactive projection cache.
-- initial load and explicit recovery still set the grid row model from a full projection.
+- initial load and explicit recovery hydrate the grid row model through runtime `setRows()` while the Vue `rows` prop stays stable.
 
 Remaining gaps:
 
@@ -117,7 +117,7 @@ Core rules:
 
 | Gap | Current state | Target state |
 | --- | --- | --- |
-| Frontend row updates | normal allocation/runtime paths use targeted row/cell patches; initial/recovery still set the full grid row model | keep full projection reload explicit and rare, then browser-prove 20,000-row scroll/update behavior |
+| Frontend row updates | normal allocation/runtime paths use targeted row/cell patches; initial/recovery use runtime `setRows()` with a stable Vue row prop | keep full projection reload explicit and rare, then browser-prove 20,000-row scroll/update behavior |
 | Allocation actions | explicit assign/reassign/unassign/swap plus job-backed auto/bulk apply | add parity tests and durable allocation event history |
 | Async job result | allocation jobs return changed row patches | migrate remaining patch producers to the same changed-row/cell contract |
 | Auto allocation | immediate apply with skipped/rejected summary | richer compatibility warnings and apply parity tests |
@@ -301,7 +301,7 @@ Frontend must reload projection when:
 allocationRows: shallowRef<SignalAllocationRow[]>
 SignalsPage projection cache
 SignalGrid row model
-DataGrid rows set on initial load / recovery
+DataGrid runtime setRows on initial load / recovery
 ```
 
 ### Target
@@ -324,7 +324,7 @@ signalGridPatchQueue
 
 Grid strategy:
 
-- initial load calls DataGrid `setRows` once;
+- initial load calls DataGrid runtime `setRows` once without replacing the Vue `rows` prop;
 - allocation mutations call `api.rows.patchRows`;
 - runtime test fields call `api.rows.patchRows` only when sort/filter participation is required;
 - volatile display-only fields can live in a runtime store and use `refreshCells`;

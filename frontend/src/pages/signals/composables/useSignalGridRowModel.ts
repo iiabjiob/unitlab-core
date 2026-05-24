@@ -1,4 +1,4 @@
-import { onBeforeUnmount, shallowRef } from "vue"
+import { onBeforeUnmount, shallowRef, watch } from "vue"
 
 import {
   createSignalGridPatchQueue,
@@ -19,13 +19,19 @@ export function createSignalGridRowModel<TRow extends Record<string, unknown>>(
   options: SignalGridRowModelOptions<TRow>,
 ) {
   const rows = shallowRef<TRow[]>([])
+  let pendingRows: readonly TRow[] = rows.value
   const patchQueue = createSignalGridPatchQueue(gridRef, {
     scheduler: options.scheduler,
     defaultReason: options.defaultReason,
   })
 
+  function syncRows() {
+    gridRef.value?.getRuntime?.()?.setRows?.(pendingRows)
+  }
+
   function setRows(nextRows: readonly TRow[]) {
-    rows.value = nextRows.slice()
+    pendingRows = nextRows.slice()
+    syncRows()
   }
 
   function enqueueRowPatches(
@@ -57,6 +63,7 @@ export function createSignalGridRowModel<TRow extends Record<string, unknown>>(
   return {
     rows,
     setRows,
+    syncRows,
     enqueueRowPatches,
     enqueueCellRefresh,
     flushPatches,
@@ -70,6 +77,13 @@ export function useSignalGridRowModel<TRow extends Record<string, unknown>>(
   options: SignalGridRowModelOptions<TRow>,
 ) {
   const model = createSignalGridRowModel(gridRef, options)
+  watch(
+    () => gridRef.value,
+    () => {
+      model.syncRows()
+    },
+    { flush: "post" },
+  )
   onBeforeUnmount(() => {
     model.cancel()
   })

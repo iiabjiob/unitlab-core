@@ -60,6 +60,9 @@ type SignalGridPatchQueueGridApi<TRow> = {
 
 type SignalGridPatchQueueGrid<TRow> = {
   getApi?: () => SignalGridPatchQueueGridApi<TRow> | null
+  getRuntime?: () => {
+    setRows?: (rows: readonly TRow[]) => void
+  } | null
 }
 
 export type SignalGridPatchQueueGridRef<TRow> = {

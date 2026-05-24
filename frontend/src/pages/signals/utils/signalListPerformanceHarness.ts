@@ -147,9 +147,15 @@ function createGridHarness() {
     columns: readonly string[]
     options: Record<string, unknown> | undefined
   }> = []
+  const setRowsCalls: unknown[][] = []
 
   const gridRef = {
     value: {
+      getRuntime: () => ({
+        setRows: (rows: readonly unknown[]) => {
+          setRowsCalls.push([...rows])
+        },
+      }),
       getApi: () => ({
         rows: {
           batch: <TResult>(callback: () => TResult) => callback(),
@@ -174,6 +180,7 @@ function createGridHarness() {
     gridRef,
     patchCalls,
     refreshCalls,
+    setRowsCalls,
   }
 }
 
@@ -249,7 +256,7 @@ export function runSignalListPerformanceHarness(
   scheduler.flush()
   const diagnosticsAfterFlush = rowModel.diagnostics()
 
-  const rowKeys = rowModel.rows.value.map(row => row.rowId)
+  const rowKeys = projectionCache.getRows().map(row => row.row_id || `signal-${row.signal_id}`)
   const visibleRowKeys = rowKeys.slice(0, visibleRowCount)
   const selectionAllCount = resolveSignalGridSelectedRowKeys(
     { mode: "all", excludedRows: [rowKeys[0]] },
@@ -270,7 +277,7 @@ export function runSignalListPerformanceHarness(
     patchCount,
     visibleRowCount,
     initialProjectionRows: projectionCache.rowCount,
-    initialGridRows: rowModel.rows.value.length,
+    initialGridRows: grid.setRowsCalls[0]?.length ?? 0,
     initialProjectionMs,
     initialGridRowsMs,
     visiblePatch,
