@@ -22,7 +22,6 @@ const logger = getLogger("SIGNAL_SHEET")
 type SignalAllocationPatchOptions = {
   skipRecentlyChanged?: boolean
   skipRevision?: boolean
-  skipMissing?: boolean
 }
 
 export const useSignalSheetStore = defineStore("signalSheetStore", () => {
@@ -309,16 +308,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       const patchableSignalIds = signalIds.filter((signalId) => (
         allocationIndexBySignalId.has(signalId) && serverBySignalId.has(signalId)
       ))
-      if (options?.skipMissing) {
-        if (patchableSignalIds.length > 0) {
-          applyServerAllocationPatch(serverRows, patchableSignalIds, {
-            skipRecentlyChanged: options.skipRecentlyChanged,
-            skipRevision: options.skipRevision,
-          })
-        }
-        endMeasure({ mode: "skipMissing", count: signalIds.length, patched: patchableSignalIds.length })
-        return
-      }
       if (patchableSignalIds.length > 0) {
         applyServerAllocationPatch(serverRows, patchableSignalIds, {
           skipRecentlyChanged: options?.skipRecentlyChanged,

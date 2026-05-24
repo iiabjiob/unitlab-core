@@ -906,7 +906,6 @@ async function syncCompletedAllocationRowsToStore(rows: readonly SignalAllocatio
     signalSheetStore.applyAllocationRowsPatch(chunk, {
       skipRecentlyChanged: true,
       skipRevision: true,
-      skipMissing: true,
     })
     await awaitUiPaintFrame()
   }
