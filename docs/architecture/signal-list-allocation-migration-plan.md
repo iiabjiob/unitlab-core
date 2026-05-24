@@ -41,7 +41,7 @@ Implemented:
 - Frontend uses a signal-row side panel picker, not a heavy select in every row.
 - assign/reassign/unassign/swap are first-class backend actions returning changed row patches.
 - async allocation jobs return changed rows for targeted frontend patching.
-- auto allocation and bulk unassign have a preview step before apply.
+- auto allocation and bulk unassign apply immediately and return changed row patches plus skipped/rejected summaries.
 
 Gaps:
 
@@ -117,7 +117,7 @@ Core rules:
 | Frontend row updates | full array recompute | row/cell patch queue |
 | Allocation actions | generic bulk update + auto jobs | explicit assign/reassign/unassign/swap/bulk actions |
 | Async job result | changed ids, then reload | changed row patches |
-| Auto allocation | preview before apply | richer compatibility warnings and apply parity tests |
+| Auto allocation | immediate apply with skipped/rejected summary | richer compatibility warnings and apply parity tests |
 | Runtime test state | mixed into row data | patch stream, optionally separate runtime store |
 | Allocation health | projection fields + grid badges/filters | resolution workflows and event history |
 | Conflict UX | mostly hidden | visible conflict state and resolution actions |
@@ -237,10 +237,8 @@ Add explicit actions:
 - `POST /signal-allocations/actions/unassign`
 - `POST /signal-allocations/actions/reassign`
 - `POST /signal-allocations/actions/swap`
-- `POST /signal-allocations/actions/bulk/preview`
-- `POST /signal-allocations/actions/bulk/apply`
-- `POST /signal-allocations/auto/preview`
-- `POST /signal-allocations/auto/apply`
+- `PUT /signal-allocations`
+- `POST /signal-allocations/auto`
 
 Response shape:
 
@@ -358,9 +356,9 @@ Add:
 - channel picker states: free, current, occupied, incompatible, offline, missing;
 - occupied channel owner display;
 - explicit swap/move actions;
-- auto-allocation preview;
-- bulk allocation preview and apply;
-- structured rejected/conflict result display after bulk operations.
+- auto-allocation immediate apply;
+- bulk allocation immediate apply;
+- structured skipped/rejected/conflict result display after bulk operations.
 
 ## Slice Plan
 
@@ -548,33 +546,32 @@ Rollback:
 
 - hide quick filters and badges; projection fields remain harmless.
 
-### Slice 7 - Auto/Bulk Allocation Preview
+### Slice 7 - Immediate Auto/Bulk Allocation Apply
 
 Status: done.
 
 Goal:
 
-- prevent silent large changes.
+- apply operator-requested allocation changes immediately while reporting changed, skipped, and rejected rows.
 
 Backend:
 
-- add dry-run preview endpoints returning proposed bindings, skipped rows, conflicts, and warnings.
-- implemented `POST /workspaces/{workspace_id}/signal-allocations/auto/preview`.
-- implemented `POST /workspaces/{workspace_id}/signal-allocations/preview`.
-- preview paths are read-only and backend validation still runs again on apply.
+- removed mandatory dry-run preview endpoints from the normal allocation flow.
+- implemented immediate `POST /workspaces/{workspace_id}/signal-allocations/auto` responses with changed rows, skipped items, and rejected items.
+- implemented immediate `PUT /workspaces/{workspace_id}/signal-allocations` responses with changed rows and rejected items.
 
 Frontend:
 
-- add preview panel before apply.
-- selected auto-assign and bulk unassign now open an allocation preview modal before enqueueing jobs.
-- modal blocks apply when preview contains conflicts or rejected rows.
+- selected auto-assign and bulk unassign apply immediately.
+- frontend patches the grid from `changed_rows`.
+- toast summaries show requested, changed, and skipped counts.
 
 Tests:
 
-- preview/apply parity;
+- immediate apply changed-row patching;
 - no overwrite without explicit option;
 - large selection performance.
-- current backend coverage verifies read-only service delegation, auto preview assignment, and bulk conflict preview.
+- current backend coverage verifies immediate auto assignment and skipped-item reporting.
 - current frontend validation covers type contracts; browser visual verification remains manual.
 
 Rollback:

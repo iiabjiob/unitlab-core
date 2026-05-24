@@ -10,7 +10,6 @@ from app.api.v1.signal_sheet import SignalSheetAutoAllocateResult, SignalSheetRe
 from app.api.v1.signals import SignalsRepository
 from app.core.logger import get_logger
 from app.schemas.signal_import_schema import SignalImportMetaSchema
-from app.schemas.signal_sheet_schema import SignalAllocationPreviewResponseSchema
 
 logger = get_logger("service.signal_sheet_write")
 
@@ -130,13 +129,6 @@ class SignalSheetWriteService:
                 duration_ms,
             )
             raise
-
-    async def preview_allocation_updates(
-        self,
-        workspace_id: int,
-        entries: Sequence[dict[str, Any]],
-    ) -> SignalAllocationPreviewResponseSchema:
-        return await self.repo.preview_allocation_updates(workspace_id, entries)
 
     async def assign_allocation(
         self,
@@ -320,23 +312,6 @@ class SignalSheetWriteService:
                 duration_ms,
             )
             raise
-
-    async def preview_auto_allocate(
-        self,
-        *,
-        workspace_id: int,
-        signal_ids: Sequence[int] | None,
-        prefer_online: bool,
-        prefer_single_unit: bool,
-        overwrite_existing: bool,
-    ) -> SignalAllocationPreviewResponseSchema:
-        return await self.repo.preview_auto_allocate(
-            workspace_id=workspace_id,
-            signal_ids=signal_ids,
-            prefer_online=prefer_online,
-            prefer_single_unit=prefer_single_unit,
-            overwrite_existing=overwrite_existing,
-        )
 
     async def mark_signals_tested(self, workspace_id: int, signal_ids: Sequence[int]) -> list[int]:
         try:

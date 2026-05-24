@@ -135,18 +135,6 @@
       @select="handleAllocationChannelPicked"
     />
 
-    <AllocationPreviewModal
-      :open="allocationPreviewOpen"
-      :title="allocationPreviewTitle"
-      :confirm-label="allocationPreviewConfirmLabel"
-      :preview="allocationPreview"
-      :loading="allocationPreviewLoading"
-      :applying="allocationPreviewApplying"
-      :error="allocationPreviewError"
-      @close="closeAllocationPreview"
-      @confirm="applyAllocationPreview"
-    />
-
     <SignalImportModal :open="importModalOpen" @close="closeImportModal" @imported="handleImported" />
     <SignalExportModal
       :open="exportModalOpen"
@@ -172,7 +160,6 @@ import { extractSourceRowFromSignalMetadata, resolveAllSourceColumnHeaders, reso
 import AllocationChannelCell from "@/pages/signals/components/AllocationChannelCell.vue"
 import AllocationChannelPickerPanel from "@/pages/signals/components/AllocationChannelPickerPanel.vue"
 import AllocationControlCell from "@/pages/signals/components/AllocationControlCell.vue"
-import AllocationPreviewModal from "@/pages/signals/components/AllocationPreviewModal.vue"
 import SignalExportModal, { type ExportColumnOption } from "@/pages/signals/components/SignalExportModal.vue"
 import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
 import { useSignalGridPatchQueue } from "@/pages/signals/composables/useSignalGridPatchQueue"
@@ -203,7 +190,7 @@ import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { formatDate } from "@/utils/datetime"
 import { formatAoValue, parseAoInput } from "@/utils/channel"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
-import type { SignalAllocationJob, SignalAllocationPreviewResponse, SignalAllocationRow, SignalAllocationUpdateItem } from "@/types/signal"
+import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
 
 const workspaceStore = useWorkspaceStore()
 const signalSheetStore = useSignalSheetStore()
@@ -232,13 +219,6 @@ const allocationChannelPickerInstanceKey = ref(0)
 const allocationChannelPickerLoading = ref(false)
 const allocationChannelPickerSaving = ref(false)
 const allocationChannelPickerError = ref<string | null>(null)
-const allocationPreviewOpen = ref(false)
-const allocationPreviewLoading = ref(false)
-const allocationPreviewError = ref<string | null>(null)
-const allocationPreview = ref<SignalAllocationPreviewResponse | null>(null)
-const allocationPreviewMode = ref<"auto_allocate" | "bulk_unassign">("auto_allocate")
-const allocationPreviewSignalIds = ref<number[]>([])
-const allocationPreviewEntries = ref<SignalAllocationUpdateItem[]>([])
 const rowSelectionState = ref<RowSelectionSnapshot | null>(null)
 const pendingSignalsGridSavedView = ref<string | DataGridSavedViewSnapshot<GridRow> | null>(null)
 const restoringSignalsGridState = ref(false)
@@ -524,121 +504,12 @@ const activeTestRunJob = computed(() => (
   activeJobs.value.find(job => String(job.operation) === "test_run") ?? null
 ))
 
-function pickLatestActiveJobByOperation(operation: "auto_allocate" | "bulk_update"): SignalAllocationJob | null {
-  let latest: SignalAllocationJob | null = null
-  let latestUpdatedAt = -1
-  activeJobs.value.forEach((job) => {
-    if (String(job.operation) !== operation) {
-      return
-    }
-    const updatedAt = Date.parse(String(job.updated_at ?? ""))
-    const normalizedUpdatedAt = Number.isFinite(updatedAt) ? updatedAt : 0
-    if (normalizedUpdatedAt >= latestUpdatedAt) {
-      latest = job
-      latestUpdatedAt = normalizedUpdatedAt
-    }
-  })
-  return latest
-}
-
-const activeAutoAllocateJob = computed(() => pickLatestActiveJobByOperation("auto_allocate"))
-const activeBulkUpdateJob = computed(() => pickLatestActiveJobByOperation("bulk_update"))
-const allocationPreviewApplying = computed(() => (
-  allocationPreviewMode.value === "auto_allocate"
-    ? allocatingSelected.value
-    : deallocatingSelected.value
-))
-const allocationPreviewTitle = computed(() => (
-  allocationPreviewMode.value === "auto_allocate"
-    ? "Preview Hardware Assignment"
-    : "Preview Hardware Unassignment"
-))
-const allocationPreviewConfirmLabel = computed(() => (
-  allocationPreviewMode.value === "auto_allocate"
-    ? "Apply assignment"
-    : "Apply unassignment"
-))
-
-function isSignalAllocationRowPayload(value: unknown): value is SignalAllocationRow {
-  if (!value || typeof value !== "object") {
-    return false
-  }
-  const row = value as Partial<SignalAllocationRow>
-  return Number.isFinite(Number(row.signal_id)) && typeof row.signal_key === "string"
-}
-
-function allocationJobResultHasChangedRows(job: SignalAllocationJob): boolean {
-  const result = (job.result ?? {}) as Record<string, unknown>
-  return Object.prototype.hasOwnProperty.call(result, "changed_rows")
-    || Object.prototype.hasOwnProperty.call(result, "changedRows")
-}
-
-function readChangedRowsFromAllocationJob(job: SignalAllocationJob): SignalAllocationRow[] {
-  const result = (job.result ?? {}) as Record<string, unknown>
-  const rawRows = result.changed_rows ?? result.changedRows
-  if (!Array.isArray(rawRows)) {
-    return []
-  }
-  return rawRows.filter(isSignalAllocationRowPayload)
-}
-
-async function applyCompletedAllocationJobRows(job: SignalAllocationJob): Promise<void> {
-  if (!allocationJobResultHasChangedRows(job)) {
-    await signalSheetStore.ensureAllocationsLoaded({ force: true })
-    return
-  }
-
-  const changedRows = readChangedRowsFromAllocationJob(job)
-  if (changedRows.length > 0) {
-    signalSheetStore.applyAllocationRowsPatch(changedRows)
-  }
-}
-
-function formatOperationProgressLabel(
-  fallbackBusyLabel: string,
-  idleLabel: string,
-  activeFlag: boolean,
-  job: SignalAllocationJob | null,
-): string {
-  if (!activeFlag) {
-    return idleLabel
-  }
-
-  if (!job) {
-    return fallbackBusyLabel
-  }
-
-  const status = String(job.status ?? "")
-  const total = Math.max(0, Number(job.progress_total ?? 0))
-  const done = Math.max(0, Number(job.progress_done ?? 0))
-  const safeDone = total > 0 ? Math.min(done, total) : done
-
-  if (status === "queued") {
-    return total > 0 ? `Queued ${safeDone}/${total}...` : "Queued..."
-  }
-  if (status === "cancelling") {
-    return total > 0 ? `Cancelling ${safeDone}/${total}...` : "Cancelling..."
-  }
-
-  return total > 0 ? `${fallbackBusyLabel.replace("...", "")} ${safeDone}/${total}...` : fallbackBusyLabel
-}
-
 const allocateSelectedButtonLabel = computed(() => (
-  formatOperationProgressLabel(
-    "🔗 Assigning...",
-    "🔗 Assign Hardware",
-    allocatingSelected.value,
-    activeAutoAllocateJob.value,
-  )
+  allocatingSelected.value ? "Assigning..." : "Assign Hardware"
 ))
 
 const deallocateSelectedButtonLabel = computed(() => (
-  formatOperationProgressLabel(
-    "⛓️‍💥 Unassigning...",
-    "⛓️‍💥 Unassign Hardware",
-    deallocatingSelected.value,
-    activeBulkUpdateJob.value,
-  )
+  deallocatingSelected.value ? "Unassigning..." : "Unassign Hardware"
 ))
 
 const deleteSelectedToolbarLabel = computed(() => (
@@ -1597,63 +1468,23 @@ async function allocateSelectedUnassigned() {
     return
   }
 
-  allocationPreviewMode.value = "auto_allocate"
-  allocationPreviewSignalIds.value = targetSignalIds
-  allocationPreviewEntries.value = []
-  allocationPreview.value = null
-  allocationPreviewError.value = null
-  allocationPreviewOpen.value = true
   allocatingSelected.value = true
   await awaitUiPaintFrame()
   try {
-    allocationPreviewLoading.value = true
-    allocationPreview.value = await signalSheetStore.previewAutoAllocate({
+    const result = await signalSheetStore.autoAllocate({
       signal_ids: targetSignalIds,
       prefer_online: true,
       prefer_single_unit: false,
       overwrite_existing: false,
     })
-  } catch (previewError) {
-    const message = previewError instanceof Error ? previewError.message : String(previewError)
-    allocationPreviewError.value = message
-    toastStore.error(message)
-  } finally {
-    allocationPreviewLoading.value = false
-    allocatingSelected.value = false
-  }
-}
 
-async function applyAutoAllocatePreview(targetSignalIds: readonly number[]) {
-  if (allocatingSelected.value) return
-  if (!targetSignalIds.length) return
-
-  allocatingSelected.value = true
-  await awaitUiPaintFrame()
-  try {
-    const workspaceId = workspaceStore.activeWorkspaceId
-    if (!workspaceId) return
-
-    const completedJob = await signalJobStore.enqueueAutoAllocateJob(workspaceId, {
-      signal_ids: [...targetSignalIds],
-      prefer_online: true,
-      prefer_single_unit: false,
-      overwrite_existing: false,
-    })
-
-    await applyCompletedAllocationJobRows(completedJob)
-
-    const result = (completedJob.result ?? {}) as Record<string, unknown>
-    const assigned = Number(result.assigned ?? 0)
-    const restRaw = result.unassigned_signal_ids
-    const rest = Array.isArray(restRaw) ? restRaw.length : 0
-    toastStore.success(
-      `Allocation complete: ${assigned} assigned`
-      + `${rest ? `, ${rest} left unassigned` : ""}`,
-    )
-    closeAllocationPreview({ force: true })
+    const requested = targetSignalIds.length
+    const changed = Array.isArray(result.changed_rows) ? result.changed_rows.length : 0
+    const skipped = (Array.isArray(result.skipped) ? result.skipped.length : 0)
+      + (Array.isArray(result.rejected) ? result.rejected.length : 0)
+    toastStore.success(`Allocation complete: ${requested} requested, ${changed} changed, ${skipped} skipped`)
   } catch (allocateError) {
     const message = allocateError instanceof Error ? allocateError.message : String(allocateError)
-    allocationPreviewError.value = message
     toastStore.error(message)
   } finally {
     allocatingSelected.value = false
@@ -1666,85 +1497,20 @@ async function deallocateSelected() {
   const targetSignalIds = [...selectedAllocatedSignalIds.value]
   const entries = targetSignalIds.map(signalId => ({ signal_id: signalId, channel_id: null }))
 
-  allocationPreviewMode.value = "bulk_unassign"
-  allocationPreviewSignalIds.value = targetSignalIds
-  allocationPreviewEntries.value = entries
-  allocationPreview.value = null
-  allocationPreviewError.value = null
-  allocationPreviewOpen.value = true
   deallocatingSelected.value = true
   await awaitUiPaintFrame()
   try {
-    allocationPreviewLoading.value = true
-    allocationPreview.value = await signalSheetStore.previewBulkSetAllocations(entries)
-  } catch (previewError) {
-    const message = previewError instanceof Error ? previewError.message : String(previewError)
-    allocationPreviewError.value = message
-    toastStore.error(message)
-  } finally {
-    allocationPreviewLoading.value = false
-    deallocatingSelected.value = false
-  }
-}
-
-async function applyBulkUnassignPreview(entries: readonly SignalAllocationUpdateItem[]) {
-  if (deallocatingSelected.value) return
-  if (!entries.length) return
-
-  deallocatingSelected.value = true
-  await awaitUiPaintFrame()
-  try {
-    const workspaceId = workspaceStore.activeWorkspaceId
-    if (!workspaceId) return
-
-    const completedJob = await signalJobStore.enqueueBulkUpdateJob(
-      workspaceId,
-      [...entries],
-    )
-
-    await applyCompletedAllocationJobRows(completedJob)
-
-    const result = (completedJob.result ?? {}) as Record<string, unknown>
-    const updated = Number(result.updated ?? entries.length)
-    toastStore.success(`Unassigned ${updated} selected signal(s)`)
-    closeAllocationPreview({ force: true })
+    const result = await signalSheetStore.bulkSetAllocations(entries)
+    const requested = targetSignalIds.length
+    const changed = Array.isArray(result.changed_rows) ? result.changed_rows.length : 0
+    const skipped = Math.max(0, requested - changed) + result.rejected.length
+    toastStore.success(`Unassignment complete: ${requested} requested, ${changed} changed, ${skipped} skipped`)
   } catch (deallocateError) {
     const message = deallocateError instanceof Error ? deallocateError.message : String(deallocateError)
-    allocationPreviewError.value = message
     toastStore.error(message)
   } finally {
     deallocatingSelected.value = false
   }
-}
-
-function closeAllocationPreview(options?: { force?: boolean }) {
-  if (!options?.force && (allocationPreviewApplying.value || allocationPreviewLoading.value)) {
-    return
-  }
-  allocationPreviewOpen.value = false
-  allocationPreview.value = null
-  allocationPreviewError.value = null
-  allocationPreviewSignalIds.value = []
-  allocationPreviewEntries.value = []
-}
-
-function applyAllocationPreview() {
-  if (!allocationPreview.value || allocationPreviewApplying.value) {
-    return
-  }
-  if (allocationPreview.value.summary.will_change <= 0) {
-    return
-  }
-  if (allocationPreview.value.conflicts.length > 0 || allocationPreview.value.rejected.length > 0) {
-    allocationPreviewError.value = "Resolve blocking items before applying."
-    return
-  }
-
-  if (allocationPreviewMode.value === "auto_allocate") {
-    void applyAutoAllocatePreview(allocationPreviewSignalIds.value)
-    return
-  }
-  void applyBulkUnassignPreview(allocationPreviewEntries.value)
 }
 
 function applyCompletedTestRunPatch(job: SignalAllocationJob) {

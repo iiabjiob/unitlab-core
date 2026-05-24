@@ -121,6 +121,8 @@ async def _handle_auto_allocate(
         "unassigned_signal_ids": result.unassigned_signal_ids,
         "changed_signal_ids": result.changed_signal_ids,
         "changed_rows": _serialize_allocation_job_rows(changed_rows),
+        "skipped_items": [item.model_dump(mode="json") for item in result.skipped_items],
+        "rejected": [item.model_dump(mode="json") for item in result.rejected],
     }
 
 

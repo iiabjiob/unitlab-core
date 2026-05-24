@@ -135,41 +135,6 @@ class SignalAllocationActionResponseSchema(BaseModel):
     rejected: list[SignalAllocationRejectedItemSchema] = Field(default_factory=list)
 
 
-class SignalAllocationPreviewChangeSchema(BaseModel):
-    signal_id: int
-    signal_key: str | None = None
-    signal_name: str | None = None
-    action: str
-    current_channel_id: int | None = None
-    proposed_channel_id: int | None = None
-    current_channel_label: str | None = None
-    proposed_channel_label: str | None = None
-    warning: str | None = None
-
-
-class SignalAllocationPreviewSummarySchema(BaseModel):
-    requested: int = 0
-    will_change: int = 0
-    assign: int = 0
-    reassign: int = 0
-    unassign: int = 0
-    noop: int = 0
-    skipped: int = 0
-    conflicts: int = 0
-    rejected: int = 0
-
-
-class SignalAllocationPreviewResponseSchema(BaseModel):
-    workspace_id: int
-    operation: str
-    summary: SignalAllocationPreviewSummarySchema = Field(default_factory=SignalAllocationPreviewSummarySchema)
-    changes: list[SignalAllocationPreviewChangeSchema] = Field(default_factory=list)
-    skipped: list[SignalAllocationRejectedItemSchema] = Field(default_factory=list)
-    conflicts: list[SignalAllocationConflictSchema] = Field(default_factory=list)
-    rejected: list[SignalAllocationRejectedItemSchema] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-
-
 class SignalAutoAllocateSchema(BaseModel):
     signal_ids: list[int] = Field(default_factory=list)
     prefer_online: bool = True
@@ -203,7 +168,9 @@ class SignalAutoAllocateResultSchema(BaseModel):
 
 class SignalAutoAllocateResponseSchema(BaseModel):
     result: SignalAutoAllocateResultSchema
-    rows: list[SignalAllocationRowSchema] = Field(default_factory=list)
+    changed_rows: list[SignalAllocationRowSchema] = Field(default_factory=list)
+    skipped: list[SignalAllocationRejectedItemSchema] = Field(default_factory=list)
+    rejected: list[SignalAllocationRejectedItemSchema] = Field(default_factory=list)
 
 
 class SignalAllocationEnsureResponseSchema(BaseModel):

@@ -11,17 +11,18 @@ Current Signals workflow is centered around one allocation editor page:
 
 ## Runtime model
 
-Long-running operations do not execute in the browser loop.
+Hardware-facing long-running operations do not execute in the browser loop.
 
-- Frontend enqueues a backend job.
-- Worker executes operation in background.
-- Progress and lifecycle updates are delivered via WebSocket `signal_allocation_job` events.
-- UI waits for terminal status (`succeeded`/`failed`) and then refreshes allocations once.
+- Test runs are enqueued as backend jobs.
+- Worker executes the test operation in background.
+- Progress and lifecycle updates are delivered via WebSocket events.
+- Allocation edits apply immediately through REST responses that include changed row patches.
+- UI patches changed rows and uses a full refresh only as a recovery fallback.
 
-## Job operations
+## Operations
 
-1. `auto_allocate` — background allocation for selected signals.
-2. `bulk_update` — background batch updates (including unassign).
+1. `auto_allocate` — immediate allocation for selected signals with changed/skipped/rejected summary.
+2. `bulk_update` — immediate batch updates, including unassign, with changed/rejected summary.
 3. `test_run` — background run test over selected DO-capable rows.
 
 ## Run test behavior

@@ -243,8 +243,20 @@ def test_channel_auto_allocate_sort_key_without_online_priority() -> None:
     assert [channel.id for channel in ordered] == [101, 201, 202]
 
 
-def test_preview_auto_allocate_proposes_free_compatible_channel(monkeypatch) -> None:
-    repo = SignalSheetRepository(db=None)  # type: ignore[arg-type]
+def test_auto_allocate_applies_free_compatible_channel(monkeypatch) -> None:
+    class FakeDb:
+        def __init__(self) -> None:
+            self.added: list[SignalAllocation] = []
+            self.flushed = 0
+
+        def add(self, item) -> None:
+            self.added.append(item)
+
+        async def flush(self) -> None:
+            self.flushed += 1
+
+    db = FakeDb()
+    repo = SignalSheetRepository(db=db)  # type: ignore[arg-type]
     signal = Signal(id=1, workspace_id=1, key="S1", name="Signal 1", io_direction=SignalIODirection.DI)
     channel = Channel(
         id=20,
@@ -270,63 +282,71 @@ def test_preview_auto_allocate_proposes_free_compatible_channel(monkeypatch) -> 
     monkeypatch.setattr(repo, "_active_signals_by_ids", active_signals_by_ids)
     monkeypatch.setattr(repo, "_allocations_by_signal_id", allocations_by_signal_id)
     monkeypatch.setattr(repo, "_list_channels", list_channels)
+    async def cleanup_orphan_allocations(workspace_id: int):
+        return None
+
+    monkeypatch.setattr(repo, "cleanup_orphan_allocations", cleanup_orphan_allocations)
     monkeypatch.setattr(signal_sheet_repository, "DevicePresenceService", lambda: FakePresenceService())
 
-    preview = run_async(
-        repo.preview_auto_allocate(
+    result = run_async(
+        repo.auto_allocate(
             workspace_id=1,
             signal_ids=[1],
             prefer_online=True,
             prefer_single_unit=False,
             overwrite_existing=False,
+            commit=False,
         )
     )
 
-    assert preview.summary.requested == 1
-    assert preview.summary.assign == 1
-    assert preview.summary.will_change == 1
-    assert preview.changes[0].action == "assign"
-    assert preview.changes[0].proposed_channel_id == 20
-    assert preview.changes[0].proposed_channel_label == "unit-a/CH1"
+    assert result.assigned == 1
+    assert result.skipped == 0
+    assert result.changed_signal_ids == [1]
+    assert result.skipped_items == []
+    assert result.rejected == []
+    assert db.added[0].signal_id == 1
+    assert db.added[0].channel_id == 20
+    assert db.flushed == 1
 
 
-def test_preview_allocation_updates_reports_channel_conflict(monkeypatch) -> None:
-    repo = SignalSheetRepository(db=None)  # type: ignore[arg-type]
+def test_auto_allocate_returns_skipped_reason_when_no_channel_available(monkeypatch) -> None:
+    class FakeDb:
+        async def flush(self) -> None:
+            return None
+
+    repo = SignalSheetRepository(db=FakeDb())  # type: ignore[arg-type]
     signal = Signal(id=1, workspace_id=1, key="S1", name="Signal 1", io_direction=SignalIODirection.DI)
-    owner_allocation = SignalAllocation(id=99, workspace_id=1, signal_id=2, channel_id=20)
-    channel = Channel(
-        id=20,
-        device_id=2,
-        channel_index=0,
-        channel_type="do",
-        device=Device(id=2, unit_id="unit-a"),
-    )
 
     async def active_signals_by_ids(workspace_id: int, signal_ids: set[int]):
         return {1: signal}
 
-    async def allocations_by_signal_ids(workspace_id: int, signal_ids: set[int]):
+    async def allocations_by_signal_id(workspace_id: int):
         return {}
 
-    async def channels_by_ids(channel_ids: set[int]):
-        return {20: channel}
-
-    async def allocations_by_channel_ids(workspace_id: int, channel_ids: set[int]):
-        return [owner_allocation]
+    async def list_channels():
+        return []
 
     monkeypatch.setattr(repo, "_active_signals_by_ids", active_signals_by_ids)
-    monkeypatch.setattr(repo, "_allocations_by_signal_ids", allocations_by_signal_ids)
-    monkeypatch.setattr(repo, "_channels_by_ids", channels_by_ids)
-    monkeypatch.setattr(repo, "_allocations_by_channel_ids", allocations_by_channel_ids)
+    monkeypatch.setattr(repo, "_allocations_by_signal_id", allocations_by_signal_id)
+    monkeypatch.setattr(repo, "_list_channels", list_channels)
+    async def cleanup_orphan_allocations(workspace_id: int):
+        return None
 
-    preview = run_async(
-        repo.preview_allocation_updates(
+    monkeypatch.setattr(repo, "cleanup_orphan_allocations", cleanup_orphan_allocations)
+
+    result = run_async(
+        repo.auto_allocate(
             workspace_id=1,
-            entries=[{"signal_id": 1, "channel_id": 20}],
+            signal_ids=[1],
+            prefer_online=True,
+            prefer_single_unit=False,
+            overwrite_existing=False,
+            commit=False,
         )
     )
 
-    assert preview.summary.requested == 1
-    assert preview.summary.conflicts == 1
-    assert preview.summary.will_change == 0
-    assert preview.conflicts[0].owner_signal_id == 2
+    assert result.assigned == 0
+    assert result.skipped == 0
+    assert result.unassigned_signal_ids == [1]
+    assert result.changed_signal_ids == []
+    assert result.skipped_items[0].code == "no_channel_available"

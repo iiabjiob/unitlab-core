@@ -5,7 +5,6 @@ import { SignalSheetAPI } from "@/api/signal_sheet.api"
 import type {
   SignalAllocationActionResponse,
   SignalAllocationEnsureResponse,
-  SignalAllocationPreviewResponse,
   SignalAllocationRow,
   SignalAllocationUpdateItem,
   SignalAutoAllocatePayload,
@@ -15,18 +14,13 @@ import type {
   SignalSheetPreset,
 } from "@/types/signal"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
-import { useChannelStore } from "@/stores/channelStore"
-import { useDeviceStore } from "@/stores/deviceStore"
 import { getLogger } from "@/utils/logger"
 import { devPerfIncrement, devPerfMeasureStart } from "@/utils/devPerf"
-import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
 
 const logger = getLogger("SIGNAL_SHEET")
 
 export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   const workspaceStore = useWorkspaceStore()
-  const channelStore = useChannelStore()
-  const deviceStore = useDeviceStore()
 
   const sheet = ref<SignalSheet | null>(null)
   const presets = ref<SignalSheetPreset[]>([])
@@ -50,9 +44,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   let allocationsInFlightWorkspaceId: number | null = null
   const allocationIndexBySignalId = new Map<number, number>()
   const allocationOwnerByChannelId = new Map<number, number>()
-  const allocationMutationVersionBySignalId = new Map<number, number>()
-  let allocationMutationVersionCounter = 0
-  const ALLOCATION_BATCH_SIZE = 200
   const ALLOCATION_REFRESH_PAGE_SIZE = 400
   const ALLOCATION_REFRESH_MIN_PAGE_SIZE = 50
   const TESTED_AT_PATCH_FLUSH_MS = 160
@@ -146,142 +137,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         currentLimit = Math.max(ALLOCATION_REFRESH_MIN_PAGE_SIZE, Math.floor(currentLimit / 2))
       }
     }
-  }
-
-  async function yieldToEventLoop() {
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0)
-    })
-  }
-
-  function normalizedChannelType(value: unknown): "di" | "do" | "ai" | "ao" | null {
-    const normalized = String(value ?? "").trim().toLowerCase()
-    if (normalized.startsWith("di")) return "di"
-    if (normalized.startsWith("do")) return "do"
-    if (normalized.startsWith("ai")) return "ai"
-    if (normalized.startsWith("ao")) return "ao"
-    return null
-  }
-
-  function resolveAutoAllocateAssignments(payload: SignalAutoAllocatePayload): Array<{ signalId: number; channelId: number }> {
-    const hasExplicitTargets = Array.isArray(payload.signal_ids)
-    const targetSignalIds = hasExplicitTargets
-      ? Array.from(new Set((payload.signal_ids ?? []).map(item => Number(item)).filter(id => Number.isFinite(id) && id > 0)))
-      : allocationRows.value.map(row => row.signal_id)
-    if (!targetSignalIds.length) {
-      return []
-    }
-
-    const preferOnline = payload.prefer_online ?? true
-    const overwriteExisting = payload.overwrite_existing ?? false
-
-    const targetRows: SignalAllocationRow[] = []
-    targetSignalIds.forEach((signalId) => {
-      const rowIndex = allocationIndexBySignalId.get(signalId)
-      if (rowIndex === undefined) return
-      const row = allocationRows.value[rowIndex]
-      if (!row) return
-      targetRows.push(row)
-    })
-    if (!targetRows.length) {
-      return []
-    }
-
-    const usedChannelIds = new Set<number>()
-    allocationRows.value.forEach((row) => {
-      const channelId = normalizeChannelId(row.channel_id)
-      if (channelId !== null) {
-        usedChannelIds.add(channelId)
-      }
-    })
-
-    if (overwriteExisting) {
-      targetRows.forEach((row) => {
-        const channelId = normalizeChannelId(row.channel_id)
-        if (channelId !== null) {
-          usedChannelIds.delete(channelId)
-        }
-      })
-    }
-
-    const deviceOnlineById = new Map<number, boolean>()
-    if (preferOnline) {
-      deviceStore.devices.forEach((device) => {
-        deviceOnlineById.set(device.id, device.status === "online")
-      })
-    }
-
-    const sortedChannels = [...channelStore.channels].sort((left, right) => {
-      const onlineLeft = preferOnline && deviceOnlineById.get(left.device_id) ? 0 : 1
-      const onlineRight = preferOnline && deviceOnlineById.get(right.device_id) ? 0 : 1
-      if (onlineLeft !== onlineRight) {
-        return onlineLeft - onlineRight
-      }
-      if (left.device_id !== right.device_id) {
-        return left.device_id - right.device_id
-      }
-      if (left.index !== right.index) {
-        return left.index - right.index
-      }
-      return left.id - right.id
-    })
-
-    const channelsByType: Record<"di" | "do" | "ai" | "ao", typeof sortedChannels> = {
-      di: [],
-      do: [],
-      ai: [],
-      ao: [],
-    }
-    sortedChannels.forEach((channel) => {
-      const type = normalizedChannelType(channel.type)
-      if (!type) return
-      channelsByType[type].push(channel)
-    })
-
-    const nextChannelIndexByType: Record<"di" | "do" | "ai" | "ao", number> = {
-      di: 0,
-      do: 0,
-      ai: 0,
-      ao: 0,
-    }
-    const assignments: Array<{ signalId: number; channelId: number }> = []
-    targetRows.forEach((row) => {
-      const existingChannelId = normalizeChannelId(row.channel_id)
-      if (existingChannelId !== null && !overwriteExisting) {
-        return
-      }
-
-      const requiredType = resolveRuntimeChannelTypeForSignal(String(row.signal_direction ?? ""))
-      if (!requiredType) {
-        return
-      }
-
-      const candidates = channelsByType[requiredType]
-      let cursor = nextChannelIndexByType[requiredType]
-      while (cursor < candidates.length && usedChannelIds.has(candidates[cursor].id)) {
-        cursor += 1
-      }
-      nextChannelIndexByType[requiredType] = cursor
-      const candidate = cursor < candidates.length ? candidates[cursor] : null
-      if (!candidate) {
-        return
-      }
-
-      if (existingChannelId === candidate.id) {
-        usedChannelIds.add(candidate.id)
-        nextChannelIndexByType[requiredType] = cursor + 1
-        return
-      }
-
-      assignments.push({
-        signalId: row.signal_id,
-        channelId: candidate.id,
-      })
-      usedChannelIds.add(candidate.id)
-      nextChannelIndexByType[requiredType] = cursor + 1
-    })
-
-    return assignments
   }
 
   function rebuildAllocationIndexes() {
@@ -433,89 +288,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
   }
 
-  function resolveChannelLabel(unitId: string | null, channelIndex: number | null): string | null {
-    if (!Number.isFinite(channelIndex as number)) {
-      return null
-    }
-    const suffix = `ch${Number(channelIndex) + 1}`
-    return unitId ? `${unitId}/${suffix}` : suffix
-  }
-
-  function applyLocalAllocationPatch(
-    signalId: number,
-    nextChannelIdRaw: number | null | undefined,
-    options?: { skipRevision?: boolean },
-  ) {
-    const rowIndex = allocationIndexBySignalId.get(signalId)
-    if (rowIndex === undefined) {
-      return
-    }
-    const currentRow = allocationRows.value[rowIndex]
-    if (!currentRow) {
-      return
-    }
-
-    const previousAllocated = isAllocatedChannelId(currentRow.channel_id)
-    const previousChannelId = normalizeChannelId(currentRow.channel_id)
-    const nextChannelId = normalizeChannelId(nextChannelIdRaw)
-
-    if (nextChannelId !== null) {
-      const existingOwnerSignalId = allocationOwnerByChannelId.get(nextChannelId)
-      if (existingOwnerSignalId !== undefined && existingOwnerSignalId !== signalId) {
-        return
-      }
-    }
-
-    const nextRow: SignalAllocationRow = { ...currentRow }
-
-    if (nextChannelId === null) {
-      nextRow.channel_id = null
-      nextRow.channel_type = null
-      nextRow.channel_index = null
-      nextRow.channel_label = null
-      nextRow.device_id = null
-      nextRow.unit_id = null
-      nextRow.unit_online = null
-      nextRow.unit_last_seen_at = null
-    } else {
-      const channel = channelStore.channels.find(item => item.id === nextChannelId)
-      nextRow.channel_id = nextChannelId
-      if (!channel) {
-        nextRow.channel_type = null
-        nextRow.channel_index = null
-        nextRow.channel_label = null
-        nextRow.device_id = null
-        nextRow.unit_id = null
-        nextRow.unit_online = null
-        nextRow.unit_last_seen_at = null
-      } else {
-        const device = deviceStore.devices.find(item => item.id === channel.device_id)
-        const unitId = device?.unit_id ?? channelStore.resolveUnitId(channel.device_id) ?? null
-        nextRow.channel_type = channel.type
-        nextRow.channel_index = channel.index
-        nextRow.device_id = channel.device_id
-        nextRow.unit_id = unitId
-        nextRow.channel_label = resolveChannelLabel(unitId, channel.index)
-        nextRow.unit_online = device ? device.status === "online" : null
-        nextRow.unit_last_seen_at = null
-      }
-    }
-
-    allocationRows.value[rowIndex] = nextRow
-    if (previousChannelId !== null && allocationOwnerByChannelId.get(previousChannelId) === signalId) {
-      allocationOwnerByChannelId.delete(previousChannelId)
-    }
-    if (nextChannelId !== null) {
-      allocationOwnerByChannelId.set(nextChannelId, signalId)
-    }
-
-    const nextAllocated = isAllocatedChannelId(nextRow.channel_id)
-    patchSheetAllocatedCount(previousAllocated, nextAllocated)
-    if (!options?.skipRevision) {
-      bumpAllocationRevision()
-    }
-  }
-
   function applyServerAllocationPatch(
     serverRows: SignalAllocationRow[],
     signalIds: readonly number[],
@@ -588,7 +360,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     lastAllocationsLoadedAt.value = null
     allocationIndexBySignalId.clear()
     allocationOwnerByChannelId.clear()
-    allocationMutationVersionBySignalId.clear()
     pendingTestedAtPatchBySignalId.clear()
     if (testedAtPatchFlushTimer !== null) {
       clearTimeout(testedAtPatchFlushTimer)
@@ -857,12 +628,19 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     presets.value = presets.value.filter(item => item.id !== presetId)
   }
 
-  async function bulkSetAllocations(entries: SignalAllocationUpdateItem[]) {
+  async function bulkSetAllocations(entries: SignalAllocationUpdateItem[]): Promise<SignalAllocationActionResponse> {
     devPerfIncrement("signalSheet.bulkSetAllocations.calls")
     const endMeasure = devPerfMeasureStart("signalSheet.bulkSetAllocations")
+    const emptyResponse = () => ({
+      workspace_id: requireWorkspaceId(),
+      changed_rows: [],
+      conflicts: [],
+      rejected: [],
+    }) satisfies SignalAllocationActionResponse
+
     if (!entries.length) {
       endMeasure({ skipped: true, reason: "empty-entries" })
-      return allocationRows.value
+      return emptyResponse()
     }
 
     const deduped = new Map<number, number | null>()
@@ -886,112 +664,25 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     if (!effectiveEntries.length) {
       devPerfIncrement("signalSheet.bulkSetAllocations.noop")
       endMeasure({ skipped: true, reason: "no-effective-entries", requested: entries.length })
-      return allocationRows.value
+      return emptyResponse()
     }
-
-    const affectedSignalVersions = new Map<number, number>()
-    const rollback = new Map<number, SignalAllocationRow>()
 
     beginAllocationMutation()
     try {
-      const affectedSignalIds = effectiveEntries.map(item => item.signal_id)
-      for (let index = 0; index < affectedSignalIds.length; index += 1) {
-        const signalId = affectedSignalIds[index]
-        allocationMutationVersionCounter += 1
-        const nextVersion = allocationMutationVersionCounter
-        allocationMutationVersionBySignalId.set(signalId, nextVersion)
-        affectedSignalVersions.set(signalId, nextVersion)
-        if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-          await yieldToEventLoop()
-        }
-      }
-
-      for (let index = 0; index < affectedSignalIds.length; index += 1) {
-        const signalId = affectedSignalIds[index]
-        const rowIndex = allocationIndexBySignalId.get(signalId)
-        if (rowIndex !== undefined) {
-          const row = allocationRows.value[rowIndex]
-          if (row) {
-            rollback.set(signalId, cloneAllocationRow(row))
-          }
-        }
-        if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-          await yieldToEventLoop()
-        }
-      }
-
-      for (let index = 0; index < effectiveEntries.length; index += 1) {
-        const entry = effectiveEntries[index]
-        applyLocalAllocationPatch(entry.signal_id, entry.channel_id, { skipRevision: true })
-        if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-          await yieldToEventLoop()
-        }
-      }
-      setRecentlyChangedSignalIds(affectedSignalIds)
-      bumpAllocationRevision()
-
       const workspaceId = requireWorkspaceId()
       const endApiMeasure = devPerfMeasureStart("signalSheet.bulkSetAllocations.api")
       const { data } = await SignalSheetAPI.updateAllocations(workspaceId, effectiveEntries)
       endApiMeasure({ workspaceId, count: effectiveEntries.length })
-      const stillCurrentSignalIds = affectedSignalIds.filter((signalId) => (
-        allocationMutationVersionBySignalId.get(signalId) === affectedSignalVersions.get(signalId)
-      ))
-      if (stillCurrentSignalIds.length > 0) {
-        applyServerAllocationPatch(data, stillCurrentSignalIds)
-      }
-      recomputeSheetAllocatedCount()
+      applyAllocationActionResponse(data)
       devPerfIncrement("signalSheet.bulkSetAllocations.completed")
       endMeasure({
         ok: true,
         requested: entries.length,
         effective: effectiveEntries.length,
-        affected: affectedSignalIds.length,
+        changed: data.changed_rows.length,
       })
-      return allocationRows.value
+      return data
     } catch (error) {
-      const rollbackEntries = Array.from(affectedSignalVersions.keys())
-      for (let index = 0; index < rollbackEntries.length; index += 1) {
-        const signalId = rollbackEntries[index]
-        if (allocationMutationVersionBySignalId.get(signalId) !== affectedSignalVersions.get(signalId)) {
-          if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-            await yieldToEventLoop()
-          }
-          continue
-        }
-        const rowIndex = allocationIndexBySignalId.get(signalId)
-        const rollbackRow = rollback.get(signalId)
-        if (rowIndex === undefined || !rollbackRow) {
-          if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-            await yieldToEventLoop()
-          }
-          continue
-        }
-        const row = allocationRows.value[rowIndex]
-        if (!row) {
-          if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-            await yieldToEventLoop()
-          }
-          continue
-        }
-        const previousAllocated = isAllocatedChannelId(row.channel_id)
-        const previousChannelId = normalizeChannelId(row.channel_id)
-        allocationRows.value[rowIndex] = cloneAllocationRow(rollbackRow)
-        if (previousChannelId !== null && allocationOwnerByChannelId.get(previousChannelId) === signalId) {
-          allocationOwnerByChannelId.delete(previousChannelId)
-        }
-        const nextChannelId = normalizeChannelId(rollbackRow.channel_id)
-        if (nextChannelId !== null) {
-          allocationOwnerByChannelId.set(nextChannelId, signalId)
-        }
-        const nextAllocated = isAllocatedChannelId(rollbackRow.channel_id)
-        patchSheetAllocatedCount(previousAllocated, nextAllocated)
-        if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-          await yieldToEventLoop()
-        }
-      }
-      recomputeSheetAllocatedCount()
-      bumpAllocationRevision()
       endMeasure({
         ok: false,
         requested: entries.length,
@@ -1029,12 +720,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       } satisfies SignalAllocationActionResponse
     }
     return reassignAllocation(normalizedSignalId, normalizedChannelId)
-  }
-
-  async function previewBulkSetAllocations(entries: SignalAllocationUpdateItem[]): Promise<SignalAllocationPreviewResponse> {
-    const workspaceId = requireWorkspaceId()
-    const { data } = await SignalSheetAPI.previewAllocationsUpdate(workspaceId, entries)
-    return data
   }
 
   function applyAllocationActionResponse(data: SignalAllocationActionResponse) {
@@ -1117,193 +802,39 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   async function autoAllocate(payload: SignalAutoAllocatePayload) {
     devPerfIncrement("signalSheet.autoAllocate.calls")
     const endMeasure = devPerfMeasureStart("signalSheet.autoAllocate")
-    const optimisticAssignments = resolveAutoAllocateAssignments(payload)
-    const optimisticSignalIds = optimisticAssignments.map(item => item.signalId)
-    const optimisticSignalVersions = new Map<number, number>()
-    const rollback = new Map<number, SignalAllocationRow>()
-
     beginAllocationMutation()
     try {
-      for (let index = 0; index < optimisticSignalIds.length; index += 1) {
-        const signalId = optimisticSignalIds[index]
-        allocationMutationVersionCounter += 1
-        const nextVersion = allocationMutationVersionCounter
-        allocationMutationVersionBySignalId.set(signalId, nextVersion)
-        optimisticSignalVersions.set(signalId, nextVersion)
-        const rowIndex = allocationIndexBySignalId.get(signalId)
-        if (rowIndex !== undefined) {
-          const row = allocationRows.value[rowIndex]
-          if (row) {
-            rollback.set(signalId, cloneAllocationRow(row))
-          }
-        }
-        if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-          await yieldToEventLoop()
-        }
-      }
-
-      if (optimisticAssignments.length > 0) {
-        for (let index = 0; index < optimisticAssignments.length; index += 1) {
-          const entry = optimisticAssignments[index]
-          applyLocalAllocationPatch(entry.signalId, entry.channelId, { skipRevision: true })
-          if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-            await yieldToEventLoop()
-          }
-        }
-        setRecentlyChangedSignalIds(optimisticSignalIds)
-        bumpAllocationRevision()
-      }
-
       const workspaceId = requireWorkspaceId()
       const endApiMeasure = devPerfMeasureStart("signalSheet.autoAllocate.api")
-      const { data } = await SignalSheetAPI.autoAllocate(workspaceId, {
-        ...payload,
-        prefer_single_unit: payload.prefer_single_unit ?? true,
-      })
+      const { data } = await SignalSheetAPI.autoAllocate(workspaceId, payload)
       endApiMeasure({
         workspaceId,
-        optimisticAssignments: optimisticAssignments.length,
+        requested: payload.signal_ids?.length ?? 0,
       })
 
-      if (Array.isArray(data.rows) && data.rows.length > 0) {
-        const serverSignalIds = data.rows.map(row => row.signal_id)
-        const stillCurrentServerSignalIds = serverSignalIds.filter((signalId) => {
-          const expectedVersion = optimisticSignalVersions.get(signalId)
-          if (!expectedVersion) return true
-          return allocationMutationVersionBySignalId.get(signalId) === expectedVersion
-        })
-        if (stillCurrentServerSignalIds.length > 0) {
-          applyServerAllocationPatch(data.rows, stillCurrentServerSignalIds)
-        }
+      if (Array.isArray(data.changed_rows) && data.changed_rows.length > 0) {
+        applyServerAllocationPatch(
+          data.changed_rows,
+          data.changed_rows.map(row => row.signal_id),
+        )
+        recomputeSheetAllocatedCount()
       }
-
-      if (optimisticSignalIds.length > 0) {
-        const serverChangedSet = new Set<number>(Array.isArray(data.rows) ? data.rows.map(row => row.signal_id) : [])
-        let rolledBack = false
-        for (let index = 0; index < optimisticSignalIds.length; index += 1) {
-          const signalId = optimisticSignalIds[index]
-          if (serverChangedSet.has(signalId)) {
-            if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-              await yieldToEventLoop()
-            }
-            continue
-          }
-          const expectedVersion = optimisticSignalVersions.get(signalId)
-          if (!expectedVersion || allocationMutationVersionBySignalId.get(signalId) !== expectedVersion) {
-            if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-              await yieldToEventLoop()
-            }
-            continue
-          }
-          const rollbackRow = rollback.get(signalId)
-          if (!rollbackRow) {
-            if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-              await yieldToEventLoop()
-            }
-            continue
-          }
-          const rowIndex = allocationIndexBySignalId.get(signalId)
-          if (rowIndex === undefined) {
-            if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-              await yieldToEventLoop()
-            }
-            continue
-          }
-          const row = allocationRows.value[rowIndex]
-          if (!row) {
-            if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-              await yieldToEventLoop()
-            }
-            continue
-          }
-          const previousAllocated = isAllocatedChannelId(row.channel_id)
-          const previousChannelId = normalizeChannelId(row.channel_id)
-          allocationRows.value[rowIndex] = cloneAllocationRow(rollbackRow)
-          if (previousChannelId !== null && allocationOwnerByChannelId.get(previousChannelId) === signalId) {
-            allocationOwnerByChannelId.delete(previousChannelId)
-          }
-          const nextChannelId = normalizeChannelId(rollbackRow.channel_id)
-          if (nextChannelId !== null) {
-            allocationOwnerByChannelId.set(nextChannelId, signalId)
-          }
-          const nextAllocated = isAllocatedChannelId(rollbackRow.channel_id)
-          patchSheetAllocatedCount(previousAllocated, nextAllocated)
-          rolledBack = true
-          if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-            await yieldToEventLoop()
-          }
-        }
-        if (rolledBack) {
-          bumpAllocationRevision()
-        }
-      }
-
-      recomputeSheetAllocatedCount()
       devPerfIncrement("signalSheet.autoAllocate.completed")
       endMeasure({
         ok: true,
-        optimisticAssignments: optimisticAssignments.length,
-        serverRows: Array.isArray(data.rows) ? data.rows.length : 0,
+        requested: payload.signal_ids?.length ?? 0,
+        serverRows: Array.isArray(data.changed_rows) ? data.changed_rows.length : 0,
       })
       return data
     } catch (error) {
-      if (optimisticSignalIds.length > 0) {
-        const rollbackEntries = Array.from(rollback.entries())
-        for (let index = 0; index < rollbackEntries.length; index += 1) {
-          const [signalId, rollbackRow] = rollbackEntries[index]
-          const expectedVersion = optimisticSignalVersions.get(signalId)
-          if (!expectedVersion || allocationMutationVersionBySignalId.get(signalId) !== expectedVersion) {
-            if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-              await yieldToEventLoop()
-            }
-            continue
-          }
-          const rowIndex = allocationIndexBySignalId.get(signalId)
-          if (rowIndex === undefined) {
-            if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-              await yieldToEventLoop()
-            }
-            continue
-          }
-          const row = allocationRows.value[rowIndex]
-          if (!row) {
-            if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-              await yieldToEventLoop()
-            }
-            continue
-          }
-          const previousAllocated = isAllocatedChannelId(row.channel_id)
-          const previousChannelId = normalizeChannelId(row.channel_id)
-          allocationRows.value[rowIndex] = cloneAllocationRow(rollbackRow)
-          if (previousChannelId !== null && allocationOwnerByChannelId.get(previousChannelId) === signalId) {
-            allocationOwnerByChannelId.delete(previousChannelId)
-          }
-          const nextChannelId = normalizeChannelId(rollbackRow.channel_id)
-          if (nextChannelId !== null) {
-            allocationOwnerByChannelId.set(nextChannelId, signalId)
-          }
-          const nextAllocated = isAllocatedChannelId(rollbackRow.channel_id)
-          patchSheetAllocatedCount(previousAllocated, nextAllocated)
-          if ((index + 1) % ALLOCATION_BATCH_SIZE === 0) {
-            await yieldToEventLoop()
-          }
-        }
-        bumpAllocationRevision()
-      }
       endMeasure({
         ok: false,
-        optimisticAssignments: optimisticAssignments.length,
+        requested: payload.signal_ids?.length ?? 0,
       })
       throw error
     } finally {
       endAllocationMutation()
     }
-  }
-
-  async function previewAutoAllocate(payload: SignalAutoAllocatePayload): Promise<SignalAllocationPreviewResponse> {
-    const workspaceId = requireWorkspaceId()
-    const { data } = await SignalSheetAPI.previewAutoAllocate(workspaceId, payload)
-    return data
   }
 
   async function ensureAllocated(
@@ -1433,14 +964,12 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     savePreset,
     deletePreset,
     bulkSetAllocations,
-    previewBulkSetAllocations,
     setAllocation,
     assignAllocation,
     reassignAllocation,
     unassignAllocation,
     swapAllocations,
     autoAllocate,
-    previewAutoAllocate,
     ensureAllocated,
     markSignalsTested,
     applyTestedAtBySignalPatch,

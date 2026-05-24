@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Iterable, Sequence
 
@@ -14,10 +14,6 @@ from app.models.signal_sheet import SignalAllocation, SignalSheet, SignalSheetPr
 from app.models.workspace import Workspace
 from app.schemas.signal_import_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import (
-    SignalAllocationConflictSchema,
-    SignalAllocationPreviewChangeSchema,
-    SignalAllocationPreviewResponseSchema,
-    SignalAllocationPreviewSummarySchema,
     SignalAllocationRejectedItemSchema,
     SignalAllocationRowSchema,
 )
@@ -46,6 +42,8 @@ class SignalSheetAutoAllocateResult:
     missing: int
     unassigned_signal_ids: list[int]
     changed_signal_ids: list[int]
+    skipped_items: list[SignalAllocationRejectedItemSchema] = field(default_factory=list)
+    rejected: list[SignalAllocationRejectedItemSchema] = field(default_factory=list)
 
 
 def _build_allocation_health(
@@ -87,45 +85,6 @@ def _resolve_allocation_status(
     if allocation_health.get("missing_device") or allocation_health.get("missing_channel"):
         return "missing"
     return "assigned"
-
-
-def _format_channel_label(channel: Channel | None) -> str | None:
-    if channel is None:
-        return None
-    channel_label = channel.resolved_name
-    unit_id = channel.device.unit_id if channel.device is not None else None
-    return f"{unit_id}/{channel_label}" if unit_id else channel_label
-
-
-def _preview_action(current_channel_id: int | None, proposed_channel_id: int | None) -> str:
-    if current_channel_id == proposed_channel_id:
-        return "noop"
-    if current_channel_id is None and proposed_channel_id is not None:
-        return "assign"
-    if current_channel_id is not None and proposed_channel_id is None:
-        return "unassign"
-    return "reassign"
-
-
-def _build_allocation_preview_summary(
-    *,
-    requested: int,
-    changes: Sequence[SignalAllocationPreviewChangeSchema],
-    skipped: Sequence[SignalAllocationRejectedItemSchema],
-    conflicts: Sequence[SignalAllocationConflictSchema],
-    rejected: Sequence[SignalAllocationRejectedItemSchema],
-) -> SignalAllocationPreviewSummarySchema:
-    return SignalAllocationPreviewSummarySchema(
-        requested=requested,
-        will_change=sum(1 for change in changes if change.action != "noop"),
-        assign=sum(1 for change in changes if change.action == "assign"),
-        reassign=sum(1 for change in changes if change.action == "reassign"),
-        unassign=sum(1 for change in changes if change.action == "unassign"),
-        noop=sum(1 for change in changes if change.action == "noop"),
-        skipped=len(skipped),
-        conflicts=len(conflicts),
-        rejected=len(rejected),
-    )
 
 
 class SignalSheetRepository:
@@ -449,353 +408,6 @@ class SignalSheetRepository:
             )
         return rows
 
-    async def preview_allocation_updates(
-        self,
-        workspace_id: int,
-        entries: Sequence[dict[str, Any]],
-    ) -> SignalAllocationPreviewResponseSchema:
-        entry_by_signal: dict[int, dict[str, Any]] = {}
-        rejected: list[SignalAllocationRejectedItemSchema] = []
-        for item in entries:
-            signal_id = int(item.get("signal_id") or 0)
-            if signal_id <= 0:
-                rejected.append(
-                    SignalAllocationRejectedItemSchema(
-                        code="invalid_signal_id",
-                        message=f"Invalid signal_id value: {item.get('signal_id')}",
-                        signal_id=signal_id if signal_id > 0 else None,
-                        channel_id=item.get("channel_id"),
-                    )
-                )
-                continue
-            entry_by_signal[signal_id] = dict(item)
-
-        signal_ids = set(entry_by_signal.keys())
-        active_signals = await self._active_signals_by_ids(workspace_id, signal_ids)
-        missing_signal_ids = sorted(signal_ids - set(active_signals.keys()))
-        for signal_id in missing_signal_ids:
-            rejected.append(
-                SignalAllocationRejectedItemSchema(
-                    code="unknown_signal",
-                    message=f"Signal #{signal_id} is unknown or inactive",
-                    signal_id=signal_id,
-                )
-            )
-
-        valid_signal_ids = set(active_signals.keys())
-        current_allocations = await self._allocations_by_signal_ids(workspace_id, valid_signal_ids)
-        desired_channel_by_signal = {
-            signal_id: allocation.channel_id
-            for signal_id, allocation in current_allocations.items()
-            if signal_id in valid_signal_ids
-        }
-
-        touched_valid_signal_ids: set[int] = set()
-        for signal_id, item in entry_by_signal.items():
-            if signal_id not in valid_signal_ids:
-                continue
-            touched_valid_signal_ids.add(signal_id)
-            channel_id_raw = item.get("channel_id")
-            if channel_id_raw is None:
-                desired_channel_by_signal.pop(signal_id, None)
-                continue
-            desired_channel_by_signal[signal_id] = int(channel_id_raw)
-
-        desired_channel_ids = {
-            int(channel_id)
-            for signal_id, channel_id in desired_channel_by_signal.items()
-            if signal_id in touched_valid_signal_ids and channel_id is not None
-        }
-        current_channel_ids = {
-            int(allocation.channel_id)
-            for allocation in current_allocations.values()
-            if allocation.channel_id is not None
-        }
-        channels_by_id = await self._channels_by_ids(desired_channel_ids | current_channel_ids)
-
-        missing_channel_ids = sorted(desired_channel_ids - set(channels_by_id.keys()))
-        rejected_channel_ids = set(missing_channel_ids)
-        for channel_id in missing_channel_ids:
-            rejected.append(
-                SignalAllocationRejectedItemSchema(
-                    code="unknown_channel",
-                    message=f"Channel #{channel_id} is unknown",
-                    channel_id=channel_id,
-                )
-            )
-
-        conflicts: list[SignalAllocationConflictSchema] = []
-        changes: list[SignalAllocationPreviewChangeSchema] = []
-        skipped: list[SignalAllocationRejectedItemSchema] = []
-        rejected_signal_ids = {item.signal_id for item in rejected if item.signal_id is not None}
-
-        seen_channel_owner = {
-            allocation.channel_id: allocation.signal_id
-            for allocation in await self._allocations_by_channel_ids(workspace_id, desired_channel_ids)
-        }
-        for signal_id in sorted(touched_valid_signal_ids):
-            if signal_id in rejected_signal_ids:
-                continue
-
-            signal = active_signals[signal_id]
-            existing = current_allocations.get(signal_id)
-            current_channel_id = int(existing.channel_id) if existing is not None else None
-            proposed_channel_id = desired_channel_by_signal.get(signal_id)
-
-            if proposed_channel_id is not None:
-                proposed_channel_id = int(proposed_channel_id)
-                if proposed_channel_id in rejected_channel_ids:
-                    rejected_signal_ids.add(signal_id)
-                    continue
-
-                owner_signal_id = seen_channel_owner.get(proposed_channel_id)
-                if owner_signal_id is not None and int(owner_signal_id) != signal_id:
-                    conflicts.append(
-                        SignalAllocationConflictSchema(
-                            code="channel_occupied",
-                            message=f"Channel #{proposed_channel_id} is already allocated to signal #{owner_signal_id}",
-                            signal_id=signal_id,
-                            channel_id=proposed_channel_id,
-                            owner_signal_id=int(owner_signal_id),
-                        )
-                    )
-                    continue
-                seen_channel_owner[proposed_channel_id] = signal_id
-
-                channel = channels_by_id.get(proposed_channel_id)
-                if channel is None:
-                    rejected_signal_ids.add(signal_id)
-                    continue
-                if not _is_channel_compatible(signal.io_direction, channel.channel_type):
-                    rejected.append(
-                        SignalAllocationRejectedItemSchema(
-                            code="incompatible_channel",
-                            message=f"Channel #{proposed_channel_id} ({channel.channel_type}) is incompatible with signal #{signal_id} ({_normalize_direction(signal.io_direction)})",
-                            signal_id=signal_id,
-                            channel_id=proposed_channel_id,
-                        )
-                    )
-                    rejected_signal_ids.add(signal_id)
-                    continue
-
-            action = _preview_action(current_channel_id, proposed_channel_id)
-            changes.append(
-                SignalAllocationPreviewChangeSchema(
-                    signal_id=signal_id,
-                    signal_key=signal.key,
-                    signal_name=signal.name,
-                    action=action,
-                    current_channel_id=current_channel_id,
-                    proposed_channel_id=proposed_channel_id,
-                    current_channel_label=_format_channel_label(channels_by_id.get(current_channel_id)),
-                    proposed_channel_label=_format_channel_label(channels_by_id.get(proposed_channel_id)),
-                )
-            )
-
-        warnings = []
-        if changes:
-            warnings.append("Preview is advisory; allocation state is validated again when applied.")
-
-        return SignalAllocationPreviewResponseSchema(
-            workspace_id=workspace_id,
-            operation="bulk_update",
-            summary=_build_allocation_preview_summary(
-                requested=len(entry_by_signal),
-                changes=changes,
-                skipped=skipped,
-                conflicts=conflicts,
-                rejected=rejected,
-            ),
-            changes=changes,
-            skipped=skipped,
-            conflicts=conflicts,
-            rejected=rejected,
-            warnings=warnings,
-        )
-
-    async def preview_auto_allocate(
-        self,
-        *,
-        workspace_id: int,
-        signal_ids: Sequence[int] | None,
-        prefer_online: bool,
-        prefer_single_unit: bool,
-        overwrite_existing: bool,
-    ) -> SignalAllocationPreviewResponseSchema:
-        requested_signal_ids = [int(item) for item in signal_ids or [] if int(item) > 0]
-        rejected: list[SignalAllocationRejectedItemSchema] = []
-
-        if requested_signal_ids:
-            signal_map = await self._active_signals_by_ids(workspace_id, set(requested_signal_ids))
-            target_signals: list[Signal] = []
-            seen: set[int] = set()
-            for signal_id in requested_signal_ids:
-                signal = signal_map.get(signal_id)
-                if signal is None:
-                    if signal_id not in seen:
-                        rejected.append(
-                            SignalAllocationRejectedItemSchema(
-                                code="unknown_signal",
-                                message=f"Signal #{signal_id} is unknown or inactive",
-                                signal_id=signal_id,
-                            )
-                        )
-                    seen.add(signal_id)
-                    continue
-                if signal.id in seen:
-                    continue
-                target_signals.append(signal)
-                seen.add(signal.id)
-        else:
-            target_signals = await self._list_active_signals(workspace_id)
-
-        current_allocations = await self._allocations_by_signal_id(workspace_id)
-
-        all_channels = await self._list_channels()
-        channel_groups: dict[str, list[Channel]] = {
-            "di": [],
-            "do": [],
-            "ai": [],
-            "ao": [],
-        }
-        for channel in all_channels:
-            key = _normalize_channel_type(channel.channel_type)
-            if key is None:
-                continue
-            channel_groups[key].append(channel)
-
-        unit_ids = {
-            channel.device.unit_id
-            for channel in all_channels
-            if channel.device is not None and channel.device.unit_id
-        }
-        presence_map = await DevicePresenceService().get_presence_map(unit_ids)
-        online_by_unit_id = {unit_id: presence.online for unit_id, presence in presence_map.items()}
-
-        for channels in channel_groups.values():
-            channels.sort(
-                key=lambda channel: _channel_auto_allocate_sort_key(
-                    channel,
-                    prefer_online=prefer_online,
-                    online_by_unit_id=online_by_unit_id,
-                )
-            )
-
-        used_channel_ids = {allocation.channel_id for allocation in current_allocations.values()}
-        preferred_unit_by_channel_type: dict[str, str] = {}
-        if prefer_single_unit:
-            preferred_unit_by_channel_type = _resolve_preferred_units_for_auto_allocate(
-                target_signals=target_signals,
-                current_allocations=current_allocations,
-                channel_groups=channel_groups,
-                used_channel_ids=used_channel_ids,
-                overwrite_existing=overwrite_existing,
-            )
-
-        changes: list[SignalAllocationPreviewChangeSchema] = []
-        skipped: list[SignalAllocationRejectedItemSchema] = []
-        channel_by_id = {channel.id: channel for channel in all_channels}
-
-        for signal in target_signals:
-            direction = _normalize_direction(signal.io_direction)
-            required_channel_type = _required_channel_type(direction)
-            if required_channel_type is None:
-                skipped.append(
-                    SignalAllocationRejectedItemSchema(
-                        code="unsupported_signal_type",
-                        message=f"Signal #{signal.id} has unsupported direction: {direction or '-'}",
-                        signal_id=signal.id,
-                    )
-                )
-                continue
-
-            existing = current_allocations.get(signal.id)
-            current_channel_id = int(existing.channel_id) if existing is not None else None
-            if existing is not None and not overwrite_existing:
-                skipped.append(
-                    SignalAllocationRejectedItemSchema(
-                        code="already_allocated",
-                        message=f"Signal #{signal.id} is already allocated",
-                        signal_id=signal.id,
-                        channel_id=current_channel_id,
-                    )
-                )
-                continue
-
-            if existing is not None and overwrite_existing:
-                used_channel_ids.discard(existing.channel_id)
-
-            preferred_unit_id = preferred_unit_by_channel_type.get(required_channel_type)
-            candidate = _pick_candidate_channel(
-                candidates=channel_groups.get(required_channel_type, []),
-                used_channel_ids=used_channel_ids,
-                preferred_unit_id=preferred_unit_id,
-                prefer_online=prefer_online,
-                allow_offline_fallback=not (prefer_online and preferred_unit_id is not None),
-                online_by_unit_id=online_by_unit_id,
-            )
-            if candidate is None and preferred_unit_id is not None:
-                candidate = _pick_candidate_channel(
-                    candidates=channel_groups.get(required_channel_type, []),
-                    used_channel_ids=used_channel_ids,
-                    preferred_unit_id=None,
-                    prefer_online=prefer_online,
-                    online_by_unit_id=online_by_unit_id,
-                )
-
-            if candidate is None:
-                if existing is not None and overwrite_existing:
-                    used_channel_ids.add(existing.channel_id)
-                skipped.append(
-                    SignalAllocationRejectedItemSchema(
-                        code="no_channel_available",
-                        message=f"No compatible channel available for signal #{signal.id}",
-                        signal_id=signal.id,
-                    )
-                )
-                continue
-
-            proposed_channel_id = int(candidate.id)
-            action = _preview_action(current_channel_id, proposed_channel_id)
-            changes.append(
-                SignalAllocationPreviewChangeSchema(
-                    signal_id=signal.id,
-                    signal_key=signal.key,
-                    signal_name=signal.name,
-                    action=action,
-                    current_channel_id=current_channel_id,
-                    proposed_channel_id=proposed_channel_id,
-                    current_channel_label=_format_channel_label(channel_by_id.get(current_channel_id)),
-                    proposed_channel_label=_format_channel_label(candidate),
-                    warning="Existing allocation will be overwritten" if existing is not None and action != "noop" else None,
-                )
-            )
-            used_channel_ids.add(proposed_channel_id)
-
-        warnings: list[str] = []
-        if overwrite_existing and any(change.warning for change in changes):
-            warnings.append("Overwrite existing is enabled.")
-        if changes:
-            warnings.append("Preview is advisory; allocation state is validated again when applied.")
-
-        requested_count = len(set(requested_signal_ids)) if requested_signal_ids else len(target_signals)
-        return SignalAllocationPreviewResponseSchema(
-            workspace_id=workspace_id,
-            operation="auto_allocate",
-            summary=_build_allocation_preview_summary(
-                requested=requested_count,
-                changes=changes,
-                skipped=skipped,
-                conflicts=[],
-                rejected=rejected,
-            ),
-            changes=changes,
-            skipped=skipped,
-            conflicts=[],
-            rejected=rejected,
-            warnings=warnings,
-        )
-
     async def update_allocations(
         self,
         workspace_id: int,
@@ -980,7 +592,31 @@ class SignalSheetRepository:
     ) -> SignalSheetAutoAllocateResult:
         await self.cleanup_orphan_allocations(workspace_id)
 
-        target_signals = await self._resolve_auto_allocate_targets(workspace_id, signal_ids)
+        requested_signal_ids = [int(item) for item in signal_ids or [] if int(item) > 0]
+        rejected: list[SignalAllocationRejectedItemSchema] = []
+        if requested_signal_ids:
+            signal_map = await self._active_signals_by_ids(workspace_id, set(requested_signal_ids))
+            target_signals: list[Signal] = []
+            seen: set[int] = set()
+            for signal_id in requested_signal_ids:
+                signal = signal_map.get(signal_id)
+                if signal is None:
+                    if signal_id not in seen:
+                        rejected.append(
+                            SignalAllocationRejectedItemSchema(
+                                code="unknown_signal",
+                                message=f"Signal #{signal_id} is unknown or inactive",
+                                signal_id=signal_id,
+                            )
+                        )
+                    seen.add(signal_id)
+                    continue
+                if signal.id in seen:
+                    continue
+                target_signals.append(signal)
+                seen.add(signal.id)
+        else:
+            target_signals = await self._list_active_signals(workspace_id)
         current_allocations = await self._allocations_by_signal_id(workspace_id)
 
         all_channels = await self._list_channels()
@@ -1020,6 +656,7 @@ class SignalSheetRepository:
         skipped = 0
         missing = 0
         unassigned: list[int] = []
+        skipped_items: list[SignalAllocationRejectedItemSchema] = []
 
         preferred_unit_by_channel_type: dict[str, str] = {}
         if prefer_single_unit:
@@ -1040,6 +677,13 @@ class SignalSheetRepository:
             if required_channel_type is None:
                 missing += 1
                 unassigned.append(signal.id)
+                skipped_items.append(
+                    SignalAllocationRejectedItemSchema(
+                        code="unsupported_signal_type",
+                        message=f"Signal #{signal.id} has unsupported direction: {direction or '-'}",
+                        signal_id=signal.id,
+                    )
+                )
                 if progress_callback is not None:
                     await progress_callback(step_index, total_steps)
                 continue
@@ -1047,6 +691,14 @@ class SignalSheetRepository:
             existing = current_allocations.get(signal.id)
             if existing is not None and not overwrite_existing:
                 skipped += 1
+                skipped_items.append(
+                    SignalAllocationRejectedItemSchema(
+                        code="already_allocated",
+                        message=f"Signal #{signal.id} is already allocated",
+                        signal_id=signal.id,
+                        channel_id=int(existing.channel_id),
+                    )
+                )
                 if progress_callback is not None:
                     await progress_callback(step_index, total_steps)
                 continue
@@ -1073,6 +725,13 @@ class SignalSheetRepository:
                 )
             if candidate is None:
                 unassigned.append(signal.id)
+                skipped_items.append(
+                    SignalAllocationRejectedItemSchema(
+                        code="no_channel_available",
+                        message=f"No compatible channel available for signal #{signal.id}",
+                        signal_id=signal.id,
+                    )
+                )
                 if existing is not None and overwrite_existing:
                     used_channel_ids.add(existing.channel_id)
                 if progress_callback is not None:
@@ -1113,6 +772,8 @@ class SignalSheetRepository:
             missing=missing,
             unassigned_signal_ids=sorted(set(unassigned)),
             changed_signal_ids=sorted(changed_signal_ids),
+            skipped_items=skipped_items,
+            rejected=rejected,
         )
 
     async def count_active_signals(self, workspace_id: int) -> int:
@@ -1258,23 +919,3 @@ class SignalSheetRepository:
         stmt = select(Channel).options(selectinload(Channel.device)).order_by(Channel.id.asc())
         rows = await self.db.execute(stmt)
         return list(rows.scalars().all())
-
-    async def _resolve_auto_allocate_targets(
-        self,
-        workspace_id: int,
-        signal_ids: Sequence[int] | None,
-    ) -> list[Signal]:
-        if signal_ids:
-            normalized = [int(item) for item in signal_ids]
-            signal_map = await self._active_signals_by_ids(workspace_id, set(normalized))
-            payload: list[Signal] = []
-            seen: set[int] = set()
-            for signal_id in normalized:
-                signal = signal_map.get(signal_id)
-                if signal is None or signal.id in seen:
-                    continue
-                payload.append(signal)
-                seen.add(signal.id)
-            return payload
-
-        return await self._list_active_signals(workspace_id)

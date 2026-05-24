@@ -24,7 +24,6 @@ from app.schemas.signal_sheet_schema import (
     SignalJobControlSchema,
     SignalJobStatusSchema,
     SignalAllocationMarkTestedSchema,
-    SignalAllocationPreviewResponseSchema,
     SignalAllocationReassignActionSchema,
     SignalAllocationRejectedItemSchema,
     SignalAllocationSwapActionSchema,
@@ -343,7 +342,7 @@ async def stream_signal_allocations_ndjson(
     )
 
 
-@router.put("/workspaces/{workspace_id}/signal-allocations", response_model=list[SignalAllocationRowSchema])
+@router.put("/workspaces/{workspace_id}/signal-allocations", response_model=SignalAllocationActionResponseSchema)
 async def update_signal_allocations(
     workspace_id: int,
     payload: SignalAllocationBulkUpdateSchema,
@@ -359,25 +358,12 @@ async def update_signal_allocations(
         raise HTTPException(status_code=400, detail=str(exc))
 
     touched_signal_ids = [item.signal_id for item in payload.entries]
-    return await repo.list_allocation_rows_by_signal_ids(workspace_id, touched_signal_ids)
-
-
-@router.post(
-    "/workspaces/{workspace_id}/signal-allocations/preview",
-    response_model=SignalAllocationPreviewResponseSchema,
-)
-async def preview_signal_allocations_update(
-    workspace_id: int,
-    payload: SignalAllocationBulkUpdateSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
-    write_service: SignalSheetWriteService = Depends(get_write_service),
-):
-    if not await repo.ensure_workspace(workspace_id):
-        raise HTTPException(status_code=404, detail="Workspace not found")
-
-    return await write_service.preview_allocation_updates(
-        workspace_id,
-        [item.model_dump() for item in payload.entries],
+    rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, touched_signal_ids)
+    return SignalAllocationActionResponseSchema(
+        workspace_id=workspace_id,
+        changed_rows=rows,
+        conflicts=[],
+        rejected=[],
     )
 
 
@@ -482,31 +468,6 @@ async def swap_signal_allocations(
     return await _build_allocation_action_response(repo, workspace_id, changed_signal_ids)
 
 
-@router.post(
-    "/workspaces/{workspace_id}/signal-allocations/auto/preview",
-    response_model=SignalAllocationPreviewResponseSchema,
-)
-async def preview_auto_allocate_signal_rows(
-    workspace_id: int,
-    payload: SignalAutoAllocateSchema,
-    repo: SignalSheetRepository = Depends(get_repo),
-    write_service: SignalSheetWriteService = Depends(get_write_service),
-):
-    if not await repo.ensure_workspace(workspace_id):
-        raise HTTPException(status_code=404, detail="Workspace not found")
-
-    try:
-        return await write_service.preview_auto_allocate(
-            workspace_id=workspace_id,
-            signal_ids=payload.signal_ids,
-            prefer_online=payload.prefer_online,
-            prefer_single_unit=payload.prefer_single_unit,
-            overwrite_existing=payload.overwrite_existing,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
 @router.post("/workspaces/{workspace_id}/signal-allocations/auto", response_model=SignalAutoAllocateResponseSchema)
 async def auto_allocate_signal_rows(
     workspace_id: int,
@@ -536,7 +497,9 @@ async def auto_allocate_signal_rows(
             missing=result.missing,
             unassigned_signal_ids=result.unassigned_signal_ids,
         ),
-        rows=rows,
+        changed_rows=rows,
+        skipped=result.skipped_items,
+        rejected=result.rejected,
     )
 
 
