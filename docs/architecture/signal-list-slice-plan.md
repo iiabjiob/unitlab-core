@@ -622,6 +622,7 @@ Implemented so far:
 - Narrowed `createSignalGridRow()` to a module-local mapper; external callers use row-array or patch mapper boundaries.
 - Narrowed projection patch/runtime overlay types to the mapper and ingress boundary.
 - Moved allocation job skipped-count resolution into the job-result helper and hid low-level result number/array helpers.
+- Narrowed patch-ingress result typing to the ingress module; the performance harness derives its shape from the public factory.
 
 Validated 2026-05-24:
 

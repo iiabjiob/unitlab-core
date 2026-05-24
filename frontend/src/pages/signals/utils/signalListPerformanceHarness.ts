@@ -6,7 +6,7 @@ import type {
 } from "@/pages/signals/composables/useSignalGridPatchQueue"
 import { resolveSignalGridSelectedRowKeys } from "@/pages/signals/utils/rowSelection"
 import { createSignalAllocationProjectionCache } from "@/pages/signals/utils/signalAllocationProjectionCache"
-import { createSignalGridPatchIngress, type SignalGridPatchIngressResult } from "@/pages/signals/utils/signalGridPatchIngress"
+import { createSignalGridPatchIngress } from "@/pages/signals/utils/signalGridPatchIngress"
 import {
   createSignalGridRows,
   type SignalGridRow,
@@ -14,6 +14,8 @@ import {
 import { createSignalRuntimeStateCache } from "@/pages/signals/utils/signalRuntimeStateCache"
 import { resolveSignalStaticRefreshReason } from "@/pages/signals/utils/signalStaticRefreshPolicy"
 import type { SignalAllocationRow } from "@/types/signal"
+
+type SignalGridPatchIngressResult = ReturnType<ReturnType<typeof createSignalGridPatchIngress>["applyAllocationRows"]>
 
 type SignalListPerformanceHarnessOptions = {
   rowCount?: number

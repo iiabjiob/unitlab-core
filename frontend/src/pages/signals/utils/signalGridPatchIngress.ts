@@ -42,7 +42,7 @@ type SignalGridPatchIngressApplyOptions = SignalGridPatchQueueFlushOptions & {
   flush?: boolean
 }
 
-export type SignalGridPatchIngressResult = {
+type SignalGridPatchIngressResult = {
   requested: number
   changed: number
   missingSignalIds: number[]
