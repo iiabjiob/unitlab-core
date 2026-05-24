@@ -38,13 +38,6 @@
     </div>
 
     <div
-      v-else-if="loading && allocationRows.length === 0"
-      class="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/80 p-8 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400"
-    >
-      Loading signals from store...
-    </div>
-
-    <div
       v-else-if="error"
       class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200"
     >
@@ -52,7 +45,7 @@
     </div>
 
     <div
-      v-else-if="allocationRows.length === 0"
+      v-else-if="!loading && allocationRows.length === 0"
       class="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/80 p-8 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400"
     >
       No signals found.
@@ -60,7 +53,7 @@
 
     <section v-else class="affino-native-data-grid relative min-h-0 min-w-0 flex-1">
       <div
-        v-if="!allocationGridReadyForDisplay"
+        v-if="showSignalGridSkeleton"
         class="pointer-events-none absolute inset-0 z-10 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950"
         aria-hidden="true"
       >
@@ -92,9 +85,10 @@
         </div>
       </div>
       <div
+        v-if="allocationRows.length > 0"
         class="affino-native-data-grid__shell"
-        :style="allocationGridReadyForDisplay ? undefined : { visibility: 'hidden', pointerEvents: 'none' }"
-        :aria-busy="allocationGridReadyForDisplay ? undefined : 'true'"
+        :style="showSignalGridSkeleton ? { visibility: 'hidden', pointerEvents: 'none' } : undefined"
+        :aria-busy="showSignalGridSkeleton ? 'true' : undefined"
       >
         <DataGrid
           ref="allocationGridRef"
@@ -313,6 +307,10 @@ const loading = computed(() => (
 ))
 const allocationGridReadyForDisplay = computed(() => (
   signalsGridStatePersistenceReady.value && !restoringSignalsGridState.value
+))
+const showSignalGridSkeleton = computed(() => (
+  (loading.value && allocationRows.value.length === 0)
+  || !allocationGridReadyForDisplay.value
 ))
 const activeSignalSheet = computed(() => {
   const workspaceId = workspaceStore.activeWorkspaceId
