@@ -1178,7 +1178,7 @@ type AllocationChannelPickerCandidate = {
   online: boolean
   occupied: boolean
   ownerSignalId: number | null
-  ownerLabel: string | null
+  ownerRowText: string | null
   searchText: string
 }
 
@@ -1205,6 +1205,41 @@ const allocationChannelPickerRequiredType = computed(() => {
   return direction ? resolveRuntimeChannelTypeForSignal(direction) : null
 })
 
+function formatSignalListOwnerValue(value: unknown): string {
+  if (value === undefined || value === null) {
+    return "-"
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
+    }
+  }
+  const text = String(value).trim()
+  return text || "-"
+}
+
+function buildSignalListOwnerRowText(ownerRow: SignalAllocationRow | null): string | null {
+  if (!ownerRow) {
+    return null
+  }
+
+  const sourceRow = extractSourceRowFromSignalMetadata(ownerRow.signal_metadata)
+  const headers = sourceHeaders.value
+  if (headers.length > 0) {
+    return headers
+      .map(header => `${header}: ${formatSignalListOwnerValue(sourceRow[header])}`)
+      .join("\n")
+  }
+
+  return [
+    `signal_name: ${formatSignalListOwnerValue(ownerRow.signal_name)}`,
+    `signal_key: ${formatSignalListOwnerValue(ownerRow.signal_key)}`,
+    `signal_direction: ${formatSignalListOwnerValue(ownerRow.signal_direction)}`,
+  ].join("\n")
+}
+
 const allocationChannelPickerChannels = computed<AllocationChannelPickerCandidate[]>(() => {
   const row = allocationChannelPickerRow.value
   const requiredType = allocationChannelPickerRequiredType.value
@@ -1230,9 +1265,7 @@ const allocationChannelPickerChannels = computed<AllocationChannelPickerCandidat
       const ownerSignalId = allocatedSignalIdByChannelId.value.get(channel.id) ?? null
       const ownerRow = ownerSignalId !== null ? allocationRowBySignalId.value.get(ownerSignalId) ?? null : null
       const occupied = ownerSignalId !== null && ownerSignalId !== row.signal_id
-      const ownerLabel = occupied && ownerRow
-        ? `Owned by ${ownerRow.signal_name || ownerRow.signal_key}`
-        : null
+      const ownerRowText = occupied ? buildSignalListOwnerRowText(ownerRow) : null
 
       return {
         id: channel.id,
@@ -1243,8 +1276,8 @@ const allocationChannelPickerChannels = computed<AllocationChannelPickerCandidat
         online,
         occupied,
         ownerSignalId,
-        ownerLabel,
-        searchText: [unitId, unitName, unitLabel, channelCode, String(channel.index + 1), resolvedName, channel.name, channel.resolved_name, String(channel.device_id), ownerLabel]
+        ownerRowText,
+        searchText: [unitId, unitName, unitLabel, channelCode, String(channel.index + 1), resolvedName, channel.name, channel.resolved_name, String(channel.device_id), ownerRowText]
           .filter((value): value is string => Boolean(value))
           .join(" ")
           .toLowerCase(),

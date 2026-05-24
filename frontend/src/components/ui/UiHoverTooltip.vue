@@ -26,6 +26,8 @@ const props = withDefaults(
     disabled?: boolean
     openDelay?: number
     closeDelay?: number
+    multiline?: boolean
+    zIndex?: number | string
   }>(),
   {
     ariaLabel: "Tooltip",
@@ -34,6 +36,8 @@ const props = withDefaults(
     disabled: false,
     openDelay: DEFAULT_TOOLTIP_OPEN_DELAY_MS,
     closeDelay: DEFAULT_TOOLTIP_CLOSE_DELAY_MS,
+    multiline: false,
+    zIndex: undefined,
   },
 )
 
@@ -51,6 +55,7 @@ const { triggerRef, tooltipRef, tooltipStyle, teleportTarget } = useFloatingTool
   align: props.align,
   gutter: 8,
   teleportTo: APP_OVERLAY_HOST_SELECTOR,
+  zIndex: props.zIndex,
 })
 
 function getTriggerProps() {
@@ -61,6 +66,10 @@ function getTriggerProps() {
 }
 
 const tooltipProps = computed(() => tooltipController.getTooltipProps())
+const tooltipClass = computed(() => [
+  "ui-hover-tooltip z-50 w-max rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-xs leading-5 text-neutral-700 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200",
+  props.multiline ? "max-w-sm whitespace-pre-line" : "max-w-xs whitespace-nowrap",
+])
 
 watch(
   () => tooltipController.state.value.open,
@@ -107,7 +116,7 @@ function setTriggerRef(target: Element | ComponentPublicInstance | null) {
     <div
       v-if="!disabled && tooltipController.state.value.open"
       ref="tooltipRef"
-      class="ui-hover-tooltip z-50 w-max max-w-xs whitespace-nowrap rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-xs leading-5 text-neutral-700 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+      :class="tooltipClass"
       v-bind="tooltipProps"
       :style="tooltipStyle"
     >

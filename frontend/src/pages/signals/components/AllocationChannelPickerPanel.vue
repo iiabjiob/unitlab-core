@@ -113,15 +113,33 @@
               :class="unitIndicatorClass(node.value)"
               aria-hidden="true"
             ></span>
-            <span class="min-w-0 flex-1 truncate" :class="isUnitNode(node.value) ? 'text-sm font-semibold text-neutral-900 dark:text-neutral-100' : 'text-sm text-neutral-800 dark:text-neutral-200'">
+            <span
+              class="min-w-0 truncate"
+              :class="[
+                isUnitNode(node.value) ? 'text-sm font-semibold text-neutral-900 dark:text-neutral-100' : 'text-sm text-neutral-800 dark:text-neutral-200',
+                channelOwnerRowText(node.value) ? 'max-w-28 shrink-0' : 'flex-1',
+              ]"
+            >
               {{ nodeLabel(node.value) }}
             </span>
-            <span
-              v-if="isChannelNode(node.value) && channelOwnerLabel(node.value)"
-              class="min-w-0 max-w-40 shrink truncate text-[10px] text-amber-700 dark:text-amber-300"
+            <UiHoverTooltip
+              v-if="isChannelNode(node.value) && channelOwnerRowText(node.value)"
+              :text="channelOwnerRowText(node.value)"
+              :open-delay="2000"
+              placement="left"
+              align="center"
+              multiline
+              :z-index="1100"
+              v-slot="{ setTriggerRef, getTriggerProps }"
             >
-              {{ channelOwnerLabel(node.value) }}
-            </span>
+              <span
+                :ref="setTriggerRef"
+                class="min-w-0 flex-1 truncate rounded-lg border border-amber-200 bg-amber-50/70 px-2 py-1 text-[10px] text-amber-900 dark:border-amber-900/80 dark:bg-amber-950/30 dark:text-amber-100"
+                v-bind="getTriggerProps()"
+              >
+                {{ channelOwnerRowText(node.value) }}
+              </span>
+            </UiHoverTooltip>
             <span
               v-if="isChannelNode(node.value) && isCurrentChannel(node.value)"
               class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400"
@@ -150,6 +168,7 @@ import { computed, nextTick, ref, watch, type ComponentPublicInstance } from "vu
 import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
 
 import SlideOver from "@/components/ui/SlideOver.vue"
+import UiHoverTooltip from "@/components/ui/UiHoverTooltip.vue"
 
 type AllocationChannelCandidate = {
   id: number
@@ -160,7 +179,7 @@ type AllocationChannelCandidate = {
   online: boolean
   occupied: boolean
   ownerSignalId: number | null
-  ownerLabel: string | null
+  ownerRowText: string | null
   searchText: string
 }
 
@@ -538,12 +557,12 @@ function isOccupiedChannel(value: NodeValue): boolean {
   return Boolean(channelById.value.get(channelId)?.occupied)
 }
 
-function channelOwnerLabel(value: NodeValue): string {
+function channelOwnerRowText(value: NodeValue): string {
   const channelId = parseChannelId(value)
   if (channelId === null) return ""
   const channel = channelById.value.get(channelId)
-  if (!channel?.occupied || !channel.ownerLabel) return ""
-  return channel.ownerLabel
+  if (!channel?.occupied || !channel.ownerRowText) return ""
+  return channel.ownerRowText
 }
 
 function channelIndicatorClass(value: NodeValue): string {
