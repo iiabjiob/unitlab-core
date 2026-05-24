@@ -277,7 +277,7 @@ Rollback:
 
 ### Slice 6 - Sort/Filter Recompute Policy
 
-Status: `[ ]`
+Status: `[x]`
 
 Goal:
 
@@ -297,6 +297,17 @@ Tests:
 - Patched non-filter field does not move rows.
 - Patched filter field updates membership only when policy says so.
 - Sorting behavior is predictable under live updates.
+
+Validated 2026-05-24:
+
+- `pnpm --dir frontend type-check`
+- `pnpm --dir frontend test src/pages/signals/utils/signalGridPatchPolicy.test.ts src/pages/signals/utils/signalRuntimeStateCache.test.ts src/pages/signals/utils/signalGridPatchIngress.test.ts src/pages/signals/utils/signalAllocationProjectionCache.test.ts src/pages/signals/utils/signalGridProjection.test.ts src/pages/signals/utils/runtimeProjection.test.ts src/pages/signals/composables/useSignalGridPatchQueue.test.ts src/pages/signals/composables/useSignalGridRowModel.test.ts src/pages/signals/utils/rowSelection.test.ts src/pages/signals/utils/allocationHealth.test.ts src/utils/signalRuntimeMapping.test.ts`
+
+Notes:
+
+- Runtime `tested_at` patches are row patches with sort/filter/group recompute disabled by default.
+- Single-row allocation status/health patches recompute sort/filter/group by policy.
+- Bulk allocation job patches explicitly override recompute to false to keep large jobs responsive.
 
 Rollback:
 

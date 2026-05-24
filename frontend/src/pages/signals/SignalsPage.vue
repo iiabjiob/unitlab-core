@@ -675,6 +675,9 @@ async function patchCompletedAllocationGridRows(rows: readonly SignalAllocationR
     signalGridPatchIngress.applyAllocationRows(chunk, {
       reason: "signal-allocation-job-complete",
       columns: SIGNAL_GRID_PATCH_COLUMNS,
+      recomputeSort: false,
+      recomputeFilter: false,
+      recomputeGroup: false,
       immediate: true,
       flush: true,
     })
@@ -2548,9 +2551,6 @@ watch(
     signalGridPatchIngress.applyRuntimeSignals(signalIds, {
       reason: "signal-tested-at-realtime-patch",
       columns: ["tested_at"],
-      recomputeSort: false,
-      recomputeFilter: false,
-      recomputeGroup: false,
     })
   },
   { flush: "post" },

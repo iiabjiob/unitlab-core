@@ -143,9 +143,48 @@ describe("createSignalGridPatchIngress", () => {
         expect.objectContaining({ rowId: "signal-2" }),
         expect.objectContaining({ rowId: "signal-1" }),
       ],
-      options: { reason: "runtime" },
+      options: {
+        reason: "runtime",
+        recomputeSort: false,
+        recomputeFilter: false,
+        recomputeGroup: false,
+      },
     })
     expect(harness.cache.version).toBe(projectionVersion)
+  })
+
+  it("applies column recompute policy and allows explicit overrides", () => {
+    const harness = createHarness()
+    harness.cache.replaceRows([buildRow({ signal_id: 1, row_id: "signal-1" })])
+
+    harness.ingress.applySignalRowsById([1], {
+      reason: "allocation-filter",
+      columns: ["allocation_status"],
+    })
+    harness.ingress.applySignalRowsById([1], {
+      reason: "bulk-allocation",
+      columns: ["allocation_status"],
+      recomputeSort: false,
+      recomputeFilter: false,
+      recomputeGroup: false,
+    })
+
+    expect(harness.rowPatchCalls[0]).toMatchObject({
+      options: {
+        reason: "allocation-filter",
+        recomputeSort: true,
+        recomputeFilter: true,
+        recomputeGroup: true,
+      },
+    })
+    expect(harness.rowPatchCalls[1]).toMatchObject({
+      options: {
+        reason: "bulk-allocation",
+        recomputeSort: false,
+        recomputeFilter: false,
+        recomputeGroup: false,
+      },
+    })
   })
 
   it("reports unknown rows without enqueueing patches for them", () => {

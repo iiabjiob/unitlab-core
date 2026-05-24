@@ -5,6 +5,7 @@ import {
   type SignalGridProjectionPatch,
   type SignalGridRuntimeOverlay,
 } from "@/pages/signals/utils/signalGridProjection"
+import { resolveSignalGridPatchPolicy } from "@/pages/signals/utils/signalGridPatchPolicy"
 
 export type SignalGridPatchIngressCache = {
   patchRows: (rows: readonly SignalAllocationRow[]) => {
@@ -100,8 +101,11 @@ export function createSignalGridPatchIngress(options: SignalGridPatchIngressOpti
     if (!patches.length) {
       return
     }
-    const { columns: _columns, flush, ...flushOptions } = applyOptions ?? {}
+    const columns = applyOptions?.columns ?? options.defaultColumns
+    const policy = resolveSignalGridPatchPolicy(columns, applyOptions)
+    const { mode: _mode, ...flushOptions } = policy
     options.rowModel.enqueueRowPatches(patches, flushOptions)
+    const flush = applyOptions?.flush === true
     if (flush) {
       options.rowModel.flushPatches(flushOptions)
     }
