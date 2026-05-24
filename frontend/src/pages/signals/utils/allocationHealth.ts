@@ -18,7 +18,19 @@ function getSignalAllocationHealthFlag(row: SignalAllocationRow, key: string): b
   return health[key] === true
 }
 
+function getProjectedSignalAllocationHealthLabel(row: SignalAllocationRow): string | null {
+  const value = (row as { allocation_health?: unknown }).allocation_health
+  if (typeof value !== "string") {
+    return null
+  }
+  const label = value.trim()
+  return label && label !== "[object Object]" ? label : null
+}
+
 export function resolveSignalAllocationHealthLabel(row: SignalAllocationRow): string {
+  const projectedLabel = getProjectedSignalAllocationHealthLabel(row)
+  if (projectedLabel) return projectedLabel
+
   const status = resolveSignalAllocationStatus(row)
   if (status === "unassigned") return "Unassigned"
   if (getSignalAllocationHealthFlag(row, "conflict") || status === "conflict") return "Conflict"

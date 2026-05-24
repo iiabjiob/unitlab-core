@@ -157,6 +157,7 @@ import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
 import { useSignalGridRowModel } from "@/pages/signals/composables/useSignalGridRowModel"
 import { resolveSignalGridRowKey, resolveSignalGridSelectedRowKeys } from "@/pages/signals/utils/rowSelection"
 import {
+  resolveSignalAllocationHealthLabel,
   resolveSignalAllocationStatusLabel,
 } from "@/pages/signals/utils/allocationHealth"
 import {
@@ -2433,7 +2434,7 @@ function renderAllocationStatusCell(context: DataGridAppCellRendererContext<Grid
 
 function renderAllocationHealthCell(context: DataGridAppCellRendererContext<GridRow>) {
   const allocationRow = resolveLiveAllocationCellRow(asAllocationRow((context.row ?? {}) as GridRow))
-  const health = String(allocationRow.allocation_health ?? context.row?.allocation_health ?? context.displayValue ?? "").trim()
+  const health = resolveSignalAllocationHealthLabel(allocationRow)
   if (!health) {
     return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, "-")
   }

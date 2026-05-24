@@ -60,4 +60,19 @@ describe("allocationHealth", () => {
     expect(resolveSignalAllocationHealthLabel(offline)).toBe("Offline")
   })
 
+  it("preserves projected health labels without stringifying raw objects", () => {
+    const projectedOffline = createRow({
+      allocation_status: "assigned",
+      allocation_health: "Offline" as unknown as SignalAllocationRow["allocation_health"],
+    })
+    const objectString = createRow({
+      allocation_status: "assigned",
+      channel_id: 12,
+      allocation_health: "[object Object]" as unknown as SignalAllocationRow["allocation_health"],
+    })
+
+    expect(resolveSignalAllocationHealthLabel(projectedOffline)).toBe("Offline")
+    expect(resolveSignalAllocationHealthLabel(objectString)).toBe("OK")
+  })
+
 })
