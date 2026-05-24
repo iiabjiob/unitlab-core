@@ -200,7 +200,7 @@ Rollback:
 
 ### Slice 4 - Unified Patch Ingress
 
-Status: `[ ]`
+Status: `[x]`
 
 Goal:
 
@@ -226,6 +226,11 @@ Tests:
 - Coalescing tests.
 - Ordering tests per row.
 - Unknown row handling test.
+
+Validated 2026-05-24:
+
+- `pnpm --dir frontend type-check`
+- `pnpm --dir frontend test src/pages/signals/utils/signalGridPatchIngress.test.ts src/pages/signals/utils/signalAllocationProjectionCache.test.ts src/pages/signals/utils/signalGridProjection.test.ts src/pages/signals/composables/useSignalGridPatchQueue.test.ts src/pages/signals/composables/useSignalGridRowModel.test.ts src/pages/signals/utils/rowSelection.test.ts src/pages/signals/utils/allocationHealth.test.ts src/utils/signalRuntimeMapping.test.ts`
 
 Rollback:
 

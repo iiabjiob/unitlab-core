@@ -163,14 +163,13 @@ import {
   resolveSignalAllocationStatusLabel,
 } from "@/pages/signals/utils/allocationHealth"
 import {
-  createSignalGridRowPatch,
-  createSignalGridRowPatches,
   createSignalGridRows,
   resolveSignalAllocationDisplayLabel,
   signalGridSourceColumnKey,
   type SignalGridRow as GridRow,
 } from "@/pages/signals/utils/signalGridProjection"
 import { createSignalAllocationProjectionCache } from "@/pages/signals/utils/signalAllocationProjectionCache"
+import { createSignalGridPatchIngress } from "@/pages/signals/utils/signalGridPatchIngress"
 import {
   applyRuntimeTestedAt,
   applyRuntimeTestedAtToRows,
@@ -361,14 +360,6 @@ function replaceSignalAllocationProjectionRows(rows: readonly SignalAllocationRo
   bumpSignalAllocationProjectionVersion()
 }
 
-function patchSignalAllocationProjectionRows(rows: readonly SignalAllocationRow[]) {
-  const result = signalAllocationProjectionCache.patchRows(rows)
-  if (result.changed > 0) {
-    bumpSignalAllocationProjectionVersion()
-  }
-  return result
-}
-
 function resolveStoreAllocationRowsBySignalIds(signalIds: readonly number[]): SignalAllocationRow[] {
   if (!signalIds.length) {
     return []
@@ -388,10 +379,13 @@ function resolveStoreAllocationRowsBySignalIds(signalIds: readonly number[]): Si
   return rows
 }
 
-function patchSignalAllocationProjectionRowsFromStore(signalIds: readonly number[]) {
+function applyStoreSignalGridAllocationPatches(signalIds: readonly number[]) {
   const rows = resolveStoreAllocationRowsBySignalIds(signalIds)
   if (rows.length > 0) {
-    patchSignalAllocationProjectionRows(rows)
+    signalGridPatchIngress.applyAllocationRows(rows, {
+      reason: "signal-allocation-row-patch",
+      columns: SIGNAL_GRID_PATCH_COLUMNS,
+    })
   }
 }
 
@@ -427,6 +421,14 @@ const sourceHeaders = computed(() => {
     return headersFromSheet
   }
   return resolveAllSourceColumnHeaders(null, signalAllocationProjectionRows())
+})
+const signalGridPatchIngress = createSignalGridPatchIngress({
+  cache: signalAllocationProjectionCache,
+  rowModel: signalGridRowModel,
+  getHeaders: () => sourceHeaders.value,
+  getRuntime: signalGridRuntimeOverlay,
+  onProjectionChanged: bumpSignalAllocationProjectionVersion,
+  defaultColumns: SIGNAL_GRID_PATCH_COLUMNS,
 })
 
 watch(
@@ -636,24 +638,15 @@ function resolveAllocationJobSkippedCount(job: SignalAllocationJob, requested: n
   return Math.max(0, requested - changed)
 }
 
-function enqueueSignalGridRowsDirectPatches(
-  rows: readonly SignalAllocationRow[],
-  reason: string,
-  columns: readonly string[] = SIGNAL_GRID_PATCH_COLUMNS,
-) {
-  if (!rows.length) {
-    return
-  }
-
-  const patches = createSignalGridRowPatches(rows, sourceHeaders.value, columns, signalGridRuntimeOverlay())
-  signalGridRowModel.enqueueRowPatches(patches, { reason, immediate: true })
-  signalGridRowModel.flushPatches({ reason, immediate: true })
-}
-
 async function patchCompletedAllocationGridRows(rows: readonly SignalAllocationRow[]) {
   for (let index = 0; index < rows.length; index += BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE) {
     const chunk = rows.slice(index, index + BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE)
-    enqueueSignalGridRowsDirectPatches(chunk, "signal-allocation-job-complete")
+    signalGridPatchIngress.applyAllocationRows(chunk, {
+      reason: "signal-allocation-job-complete",
+      columns: SIGNAL_GRID_PATCH_COLUMNS,
+      immediate: true,
+      flush: true,
+    })
     await awaitUiPaintFrame()
   }
 }
@@ -683,7 +676,6 @@ async function applyCompletedAllocationJobPatch(job: SignalAllocationJob): Promi
     return changedRows
   }
 
-  patchSignalAllocationProjectionRows(changedRows)
   await patchCompletedAllocationGridRows(changedRows)
   scheduleCompletedAllocationRowsStoreSync(changedRows)
 
@@ -2449,42 +2441,6 @@ function rebuildSignalGridRows() {
   signalGridRowModel.setRows(createSignalGridRows(signalAllocationProjectionRows(), sourceHeaders.value, signalGridRuntimeOverlay()))
 }
 
-function enqueueSignalGridRowPatches(
-  signalIds: readonly number[],
-  reason: string,
-  columns: readonly string[] = SIGNAL_GRID_PATCH_COLUMNS,
-) {
-  if (!signalIds.length) {
-    return
-  }
-
-  const patches: Array<{ rowId: string; changes: Partial<GridRow>; columns?: readonly string[] }> = []
-  const seen = new Set<number>()
-  signalIds.forEach((rawSignalId) => {
-    const signalId = Number(rawSignalId)
-    if (!Number.isFinite(signalId) || seen.has(signalId)) {
-      return
-    }
-    seen.add(signalId)
-    if (!hasSignalAllocationProjectionSignalId(signalId)) {
-      return
-    }
-
-    const row = getSignalAllocationProjectionRowBySignalId(signalId)
-    if (!row) {
-      return
-    }
-
-    patches.push(createSignalGridRowPatch(row, sourceHeaders.value, columns, signalGridRuntimeOverlay()))
-  })
-
-  if (patches.length === 0) {
-    return
-  }
-
-  signalGridRowModel.enqueueRowPatches(patches, { reason })
-}
-
 async function refreshSignalsStatic() {
   const workspaceId = workspaceStore.activeWorkspaceId
   if (!workspaceId) {
@@ -2546,8 +2502,7 @@ watch(
 watch(
   () => [allocationRevision.value, recentlyChangedSignalIds.value] as const,
   ([, signalIds]) => {
-    patchSignalAllocationProjectionRowsFromStore(signalIds)
-    enqueueSignalGridRowPatches(signalIds, "signal-allocation-row-patch")
+    applyStoreSignalGridAllocationPatches(signalIds)
   },
   { flush: "post" },
 )
@@ -2555,7 +2510,10 @@ watch(
 watch(
   () => [activeWorkspaceRevision.value, activeWorkspacePatchedSignalIds.value] as const,
   ([, signalIds]) => {
-    enqueueSignalGridRowPatches(signalIds, "signal-tested-at-realtime-patch", ["tested_at"])
+    signalGridPatchIngress.applyRuntimeSignals(signalIds, {
+      reason: "signal-tested-at-realtime-patch",
+      columns: ["tested_at"],
+    })
   },
   { flush: "post" },
 )
