@@ -625,6 +625,7 @@ Implemented so far:
 - Narrowed patch-ingress result typing to the ingress module; the performance harness derives its shape from the public factory.
 - Removed `applySignalRowsById()` from the public patch-ingress API; signal-id runtime patching remains exposed through `applyRuntimeSignals()`.
 - Removed single-row patch shortcuts from the public queue/row-model objects; callers use the batch-oriented `enqueueRowPatches()` contract.
+- Removed the unused row-model lookup cache and `getRow()` API; projection cache/DataGrid remain the row-state owners after targeted patches.
 
 Validated 2026-05-24:
 

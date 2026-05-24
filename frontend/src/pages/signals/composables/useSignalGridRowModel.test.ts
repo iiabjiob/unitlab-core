@@ -72,30 +72,26 @@ function createGridHarness() {
 }
 
 describe("createSignalGridRowModel", () => {
-  it("sets the base rows and resolves rows by stable id", () => {
+  it("sets the base rows as a shallow snapshot", () => {
     const scheduler = createManualScheduler()
     const grid = createGridHarness()
     const model = createSignalGridRowModel<TestGridRow>(grid.gridRef, {
       scheduler: scheduler.scheduler,
-      resolveRowId: row => row.rowId,
     })
 
-    model.setRows([
+    const initialRows: TestGridRow[] = [
       { rowId: "signal-1", signal_id: 1, channel_select: "unassigned" },
       { rowId: "signal-2", signal_id: 2, channel_select: "unit-a/ch1" },
-    ])
+    ]
+    model.setRows(initialRows)
 
     expect(model.rows.value).toHaveLength(2)
-    expect(model.getRow("signal-2")).toMatchObject({
-      rowId: "signal-2",
-      signal_id: 2,
-      channel_select: "unit-a/ch1",
-    })
+    expect(model.rows.value).toEqual(initialRows)
+    expect(model.rows.value).not.toBe(initialRows)
 
     model.setRows([{ rowId: "signal-3", signal_id: 3 }])
 
-    expect(model.getRow("signal-2")).toBeNull()
-    expect(model.getRow("signal-3")).toMatchObject({ signal_id: 3 })
+    expect(model.rows.value).toEqual([{ rowId: "signal-3", signal_id: 3 }])
   })
 
   it("patches the grid without replacing the row array", () => {
@@ -104,7 +100,6 @@ describe("createSignalGridRowModel", () => {
     const model = createSignalGridRowModel<TestGridRow>(grid.gridRef, {
       scheduler: scheduler.scheduler,
       defaultReason: "signals-grid-patch",
-      resolveRowId: row => row.rowId,
     })
 
     model.setRows([{ rowId: "signal-1", signal_id: 1, channel_select: "unassigned" }])
@@ -122,10 +117,6 @@ describe("createSignalGridRowModel", () => {
     ])
 
     expect(model.rows.value).toBe(rowArray)
-    expect(model.getRow("signal-1")).toMatchObject({
-      channel_select: "unit-a/ch1",
-      tested_at: "2026-01-01T00:00:00Z",
-    })
     expect(grid.patchCalls).toHaveLength(0)
 
     scheduler.runAll()

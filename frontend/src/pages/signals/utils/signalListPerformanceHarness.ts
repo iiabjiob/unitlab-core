@@ -192,7 +192,6 @@ export function runSignalListPerformanceHarness(
   const grid = createGridHarness()
   const scheduler = createManualScheduler()
   const rowModel = createSignalGridRowModel<SignalGridRow>(grid.gridRef, {
-    resolveRowId: row => row.rowId,
     scheduler: scheduler.scheduler,
     defaultReason: "signal-list-performance-harness",
   })

@@ -265,7 +265,6 @@ let suppressSignalsGridStateEventsDepth = 0
 let signalsGridStatePersistTimer: ReturnType<typeof setTimeout> | null = null
 const signalGridRowModel = useSignalGridRowModel<GridRow>(allocationGridRef, {
   defaultReason: "signals-grid-patch",
-  resolveRowId: row => row.rowId,
 })
 
 const SignalsSelectionToolbarModule = defineComponent({
