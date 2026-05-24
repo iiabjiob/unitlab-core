@@ -603,13 +603,11 @@ async def enqueue_signal_test_run_job(
             detail=f"Too many signals for test run (max {settings.signal_test_run_max_signals})",
         )
 
-    revision_snapshot = await repo.get_sheet_revision_snapshot(workspace_id)
-
     try:
         job_state = await create_signal_job(
             workspace_id=workspace_id,
             operation="test_run",
-            payload=_build_signal_test_run_job_payload(payload, revision_snapshot),
+            payload=payload.model_dump(),
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -789,15 +787,6 @@ def _parse_metadata(raw_metadata: str | None) -> SignalImportMetaSchema | None:
         return SignalImportMetaSchema.model_validate(payload)
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=exc.errors())
-
-
-def _build_signal_test_run_job_payload(
-    payload: SignalTestRunJobSchema,
-    revision_snapshot,
-) -> dict[str, Any]:
-    job_payload = payload.model_dump()
-    job_payload["signal_sheet_revision"] = revision_snapshot.to_payload()
-    return job_payload
 
 
 def _compact_sheet_payload(raw_data: Any) -> dict[str, Any]:

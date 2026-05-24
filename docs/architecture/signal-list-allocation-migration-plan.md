@@ -1,7 +1,7 @@
 # Signal List and Allocation Migration Plan
 
-Status: Slice 10A complete, Slice 10B next
-Last reviewed: 2026-05-23
+Status: Slice 10 simplification applied, binding-level execution checks next
+Last reviewed: 2026-05-24
 
 ## Scope
 
@@ -82,7 +82,7 @@ Gaps:
 
 ```text
 Backend domain state
-  signals / revisions / devices / channels / allocations / test runs
+  signals / devices / channels / allocations / test runs
         |
         | initial load
         v
@@ -121,7 +121,7 @@ Core rules:
 | Runtime test state | mixed into row data | patch stream, optionally separate runtime store |
 | Allocation health | projection fields + grid badges/filters | resolution workflows and event history |
 | Conflict UX | mostly hidden | visible conflict state and resolution actions |
-| Revision safety | workspace-level active signals | explicit signal-list revisions used by tests/reports |
+| Execution consistency | live aliases and current bindings | resolve current bindings at execution; capture binding/channel evidence per step |
 
 ## Proposed Data Model Changes
 
@@ -135,41 +135,7 @@ Core rules:
 
 ### Add Or Evolve
 
-#### `signal_list_revisions`
-
-Fields:
-
-- `id`
-- `workspace_id`
-- `source_hash`
-- `source_filename`
-- `import_meta`
-- `rows_count`
-- `created_at`
-- `activated_at`
-- `is_active`
-
-Purpose:
-
-- make imports and retests traceable;
-- bind test runs and reports to an immutable signal-list revision.
-
-#### `signal_items`
-
-Fields:
-
-- `id`
-- `revision_id`
-- `key`
-- `name`
-- `io_direction`
-- `category`
-- `metadata`
-- `row_order`
-
-Purpose:
-
-- make a signal item revision-scoped instead of only workspace/key scoped.
+Do not add durable signal-list revision tables for this migration path. The signal sheet is a live semantic alias layer. Test execution should validate and record the current binding/channel evidence it actually used, not block on a sheet-level token.
 
 #### `allocations`
 
@@ -179,8 +145,7 @@ Required fields:
 
 - `id`
 - `workspace_id`
-- `revision_id`
-- `signal_item_id`
+- `signal_id`
 - `channel_id`
 - `status`: active, superseded, removed
 - `allocation_meta`
@@ -190,8 +155,8 @@ Required fields:
 
 Constraints:
 
-- one active allocation per signal item;
-- one active allocation per channel per workspace/revision;
+- one active allocation per signal;
+- one active allocation per channel per workspace;
 - historical rows remain available for test-run/report evidence.
 
 #### `allocation_events`
@@ -210,9 +175,10 @@ Append-only history for:
 
 Each executable step should capture:
 
-- signal item id;
+- signal id;
 - allocation id;
 - channel id;
+- unit id;
 - expected output/input behavior;
 - command id;
 - command payload;
@@ -236,8 +202,7 @@ Returns:
 type SignalAllocationProjectionRow = {
   rowId: string
   workspaceId: number
-  revisionId: number | null
-  signalItemId: number
+  signalId: number
   signalKey: string
   signalName: string
   signalDirection: "DI" | "DO" | "AI" | "AO"
@@ -282,7 +247,6 @@ Response shape:
 ```ts
 type AllocationMutationResponse = {
   workspaceId: number
-  revisionId: number | null
   eventId: string
   changedRows: SignalAllocationProjectionRow[]
   conflicts: AllocationConflict[]
@@ -312,11 +276,10 @@ Patch shape:
 type RowPatchEvent = {
   type: string
   workspaceId: number
-  revisionId: number | null
   sequence: number
   patches: Array<{
     rowId: string
-    signalItemId: number
+    signalId: number
     changes: Record<string, unknown>
     columns?: string[]
   }>
@@ -326,7 +289,6 @@ type RowPatchEvent = {
 Frontend must reload projection when:
 
 - sequence gap is detected;
-- revision id changes;
 - patch references an unknown row;
 - backend sends `requiresFullReload: true`.
 
@@ -681,42 +643,39 @@ Rollback:
 
 - fold runtime fields back into row patches.
 
-### Slice 10 - Signal List Revisions
+### Slice 10 - Live Alias Execution Semantics
 
 Goal:
 
-- make tests and reports revision-safe.
+- keep the signal sheet as a live alias layer while making execution evidence explicit.
 
 Backend:
 
-- add revisions and revision-scoped signal items.
-- bind allocation and test run evidence to revision ids.
+- resolve signal aliases to current allocations when the worker executes.
+- validate missing bindings, offline devices, missing channels, and incompatible channel modes per signal.
+- capture the signal/allocation/channel evidence used for each executed or skipped step.
 
-Implemented in Slice 10A:
+Implemented:
 
-- backend computes a signal-sheet revision token from sheet identity/source hash/row count plus active signal count.
-- direct signal CRUD touches the sheet revision marker; runtime `tested_at` updates do not change the signal-list revision token.
-- test-run job enqueue stores the queued revision token inside the job payload.
-- test-run worker rejects a queued job if the signal sheet revision changed before execution starts.
-- test-run running/progress/final job results echo the queued revision payload for traceability.
-- this is a transitional guard, not the final durable revision model.
+- queued test-run jobs no longer include or enforce a sheet-level revision token.
+- the worker loads current allocation projection rows at execution time.
+- missing rows, invalid bindings, incompatible channel modes, and offline units are counted as per-signal skips.
 
 Frontend:
 
-- show active revision and stale allocation indicators.
+- show binding health and per-signal skip/failure reasons.
 
 Tests:
 
-- import creates revision;
-- report remains tied to original revision;
-- retest reuse compatibility.
-- current coverage verifies deterministic revision tokens and stale queued test-run rejection.
+- queued run does not fail only because sheet metadata changed;
+- missing/unbound signal handling remains per-signal;
+- report/test evidence includes the binding/channel actually used.
 
-Status: partial. Full revision tables, revision-scoped signal items, report evidence binding, and frontend stale indicators remain pending.
+Status: partial. Binding evidence persistence and report reconstruction remain pending.
 
 Rollback:
 
-- dual-read legacy workspace-scoped signals until migration is stable.
+- restore full projection reload as a recovery path if binding-level patching drifts.
 
 ### Slice 11 - Performance Gate
 
@@ -747,13 +706,13 @@ Acceptance targets:
 | --- | --- |
 | Patch stream drift | sequence numbers and full reload fallback |
 | Live sort/filter row movement | freeze projection during active test run or require explicit reapply |
-| Revision migration breaks retest reuse | dual-read migration and compatibility report |
+| Live alias rebinding changes queued-run behavior | capture allocation/channel evidence at step execution and surface skipped signals clearly |
 | More projection fields slow backend | index hot joins and benchmark projection generation |
 | Swap/move UX lands before audit trail | keep actions hidden until backend event logging exists |
 | DataGrid refresh behavior differs for custom renderers | row patch first, cell refresh after renderer contract tests |
 
 ## Immediate Next Step
 
-Continue with Slice 10B.
+Continue with binding-level execution evidence.
 
-Slice 10B should add durable revision records and bind signal imports/test evidence to explicit revision ids instead of transitional revision tokens.
+The next slice should persist the allocation/channel evidence used by each test-run step and keep queued execution tied to current resolvable bindings, not sheet-level revision metadata.

@@ -7,7 +7,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.signal import Signal, SignalIODirection
-from app.models.signal_sheet import SignalAllocation, SignalSheet
+from app.models.signal_sheet import SignalAllocation
 from app.models.workspace import Workspace
 from app.services.signal_sheet_import_service import ImportedSignalProjection
 
@@ -48,7 +48,6 @@ class SignalsRepository:
             is_active=bool(payload.get("is_active", True)),
         )
         self.db.add(signal)
-        await self._touch_signal_sheet_revision(workspace_id)
         await self.db.commit()
         await self.db.refresh(signal)
         return signal
@@ -70,8 +69,6 @@ class SignalsRepository:
         if "is_active" in payload and payload["is_active"] is not None:
             signal.is_active = bool(payload["is_active"])
 
-        if payload:
-            await self._touch_signal_sheet_revision(signal.workspace_id)
         await self.db.commit()
         await self.db.refresh(signal)
         return signal
@@ -90,7 +87,6 @@ class SignalsRepository:
 
         signal.deleted_at = datetime.now(timezone.utc)
         signal.is_active = False
-        await self._touch_signal_sheet_revision(signal.workspace_id)
         await self.db.commit()
         return True
 
@@ -125,8 +121,6 @@ class SignalsRepository:
         )
         result = await self.db.execute(stmt)
         deleted_count = int(result.rowcount or 0)
-        if deleted_count > 0:
-            await self._touch_signal_sheet_revision(workspace_id)
         await self.db.commit()
         return deleted_count
 
@@ -211,13 +205,6 @@ class SignalsRepository:
         if isinstance(value, SignalIODirection):
             return value
         return SignalIODirection(str(value).strip().upper())
-
-    async def _touch_signal_sheet_revision(self, workspace_id: int) -> None:
-        await self.db.execute(
-            update(SignalSheet)
-            .where(SignalSheet.workspace_id == workspace_id)
-            .values(updated_at=datetime.now(timezone.utc))
-        )
 
     @staticmethod
     def _extract_tested_at_from_metadata(metadata: dict | None) -> datetime | None:

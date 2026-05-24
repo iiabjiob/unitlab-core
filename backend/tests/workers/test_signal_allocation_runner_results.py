@@ -2,24 +2,20 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
-import pytest
-
-from app.api.v1.signal_sheet.router import _build_signal_test_run_job_payload
-from app.schemas.signal_sheet_schema import SignalAllocationRowSchema, SignalTestRunJobSchema
+from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
 from app.schemas.ws.events import SignalTestRuntimePatchEvent, WSChannel
+from app.workers import signal_test_run_runner
 from app.workers.signal_allocation_runner import _serialize_allocation_job_rows
-from app.workers.signal_test_run_runner import _handle_test_run
 
 
 def run_async(awaitable):
     return asyncio.run(awaitable)
 
 
-class FakeRevisionRepo:
-    async def get_sheet_revision_snapshot(self, workspace_id: int):
-        return SimpleNamespace(revision_token="current")
+class FakeNoRowsRepo:
+    async def list_allocation_rows_by_signal_ids(self, workspace_id: int, signal_ids: list[int]):
+        return []
 
 
 def test_serialize_allocation_job_rows_returns_json_safe_projection_rows() -> None:
@@ -64,27 +60,33 @@ def test_signal_test_runtime_patch_event_serializes_tested_at_by_signal() -> Non
     assert payload["emitted_at"].startswith("2026-01-01T12:30:00")
 
 
-def test_signal_test_run_rejects_stale_signal_sheet_revision() -> None:
+def test_signal_test_run_ignores_stale_sheet_metadata_and_skips_missing_signal(monkeypatch) -> None:
+    async def publish_noop(event) -> None:
+        return None
+
     payload = {
         "signal_ids": [1],
         "signal_interval_ms": 100,
         "toggle_mode": "single",
         "signal_sheet_revision": {"revision_token": "queued"},
     }
+    monkeypatch.setattr(signal_test_run_runner.RedisManager, "get_instance", lambda: object())
+    monkeypatch.setattr(signal_test_run_runner.WsEventPublisher, "publish", publish_noop)
 
-    with pytest.raises(ValueError, match="revision changed"):
-        run_async(_handle_test_run(FakeRevisionRepo(), 7, payload, {}))  # type: ignore[arg-type]
+    job_state = {
+        "job_id": "job-1",
+        "workspace_id": 7,
+        "operation": "test_run",
+        "status": "queued",
+        "created_at": "2026-01-01T12:30:00+00:00",
+    }
 
-
-def test_signal_test_run_job_payload_includes_queued_revision() -> None:
-    request = SignalTestRunJobSchema(
-        signal_ids=[1, 2],
-        signal_interval_ms=100,
-        toggle_mode="single",
+    result = run_async(
+        signal_test_run_runner._handle_test_run(FakeNoRowsRepo(), 7, payload, job_state)  # type: ignore[arg-type]
     )
-    revision = SimpleNamespace(to_payload=lambda: {"revision_token": "rev-1"})
 
-    payload = _build_signal_test_run_job_payload(request, revision)
-
-    assert payload["signal_ids"] == [1, 2]
-    assert payload["signal_sheet_revision"] == {"revision_token": "rev-1"}
+    assert result["processed"] == 1
+    assert result["succeeded"] == 0
+    assert result["skipped"] == 1
+    assert result["skip_reasons"]["missing_row"] == 1
+    assert "signal_sheet_revision" not in result
