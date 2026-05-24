@@ -241,7 +241,6 @@ export function createSignalGridPatchIngress(options: SignalGridPatchIngressOpti
   return {
     applyAllocationRows,
     patchAllocationRowsCache,
-    applySignalRowsById,
     applyRuntimeSignals,
     refreshSignalCells,
   }

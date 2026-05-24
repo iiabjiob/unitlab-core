@@ -623,6 +623,7 @@ Implemented so far:
 - Narrowed projection patch/runtime overlay types to the mapper and ingress boundary.
 - Moved allocation job skipped-count resolution into the job-result helper and hid low-level result number/array helpers.
 - Narrowed patch-ingress result typing to the ingress module; the performance harness derives its shape from the public factory.
+- Removed `applySignalRowsById()` from the public patch-ingress API; signal-id runtime patching remains exposed through `applyRuntimeSignals()`.
 
 Validated 2026-05-24:
 

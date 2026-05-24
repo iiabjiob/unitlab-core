@@ -157,11 +157,11 @@ describe("createSignalGridPatchIngress", () => {
     const harness = createHarness()
     harness.cache.replaceRows([buildRow({ signal_id: 1, row_id: "signal-1" })])
 
-    harness.ingress.applySignalRowsById([1], {
+    harness.ingress.applyRuntimeSignals([1], {
       reason: "allocation-filter",
       columns: ["allocation_status"],
     })
-    harness.ingress.applySignalRowsById([1], {
+    harness.ingress.applyRuntimeSignals([1], {
       reason: "bulk-allocation",
       columns: ["allocation_status"],
       recomputeSort: false,
@@ -191,7 +191,7 @@ describe("createSignalGridPatchIngress", () => {
     const harness = createHarness()
     harness.cache.replaceRows([buildRow({ signal_id: 1, row_id: "signal-1" })])
 
-    const result = harness.ingress.applySignalRowsById([1, 9], {
+    const result = harness.ingress.applyRuntimeSignals([1, 9], {
       reason: "runtime",
     })
 
