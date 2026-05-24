@@ -163,6 +163,7 @@ import AllocationControlCell from "@/pages/signals/components/AllocationControlC
 import SignalExportModal, { type ExportColumnOption } from "@/pages/signals/components/SignalExportModal.vue"
 import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
 import { useSignalGridPatchQueue } from "@/pages/signals/composables/useSignalGridPatchQueue"
+import { resolveSignalGridRowKey, resolveSignalGridSelectedRowKeys } from "@/pages/signals/utils/rowSelection"
 import {
   resolveSignalAllocationHealthLabel,
   resolveSignalAllocationStatus,
@@ -215,6 +216,7 @@ const allocationChannelPickerLoading = ref(false)
 const allocationChannelPickerSaving = ref(false)
 const allocationChannelPickerError = ref<string | null>(null)
 const rowSelectionState = ref<RowSelectionSnapshot | null>(null)
+const rowSelectionProjectionRevision = ref(0)
 const pendingSignalsGridSavedView = ref<string | DataGridSavedViewSnapshot<GridRow> | null>(null)
 const restoringSignalsGridState = ref(false)
 const signalsGridStatePersistenceReady = ref(false)
@@ -453,8 +455,24 @@ const deleteSelectedToolbarLabel = computed(() => (
 ))
 
 const selectedRowKeys = computed(() => (
-  (rowSelectionState.value?.selectedRows ?? []).map((rowKey) => String(rowKey))
+  resolveSignalGridSelectedRowKeys(rowSelectionState.value, resolveSelectionCandidateRowKeys())
 ))
+
+function resolveSelectionCandidateRowKeys(): string[] {
+  void allocationRevision.value
+  void rowSelectionProjectionRevision.value
+
+  const api = allocationGridRef.value?.getApi()
+  if (api) {
+    return api.rows.getProjectedRows()
+      .map((row: GridRow) => resolveSignalGridRowKey(row))
+      .filter((rowKey): rowKey is string => Boolean(rowKey))
+  }
+
+  return allocationRows.value
+    .map(row => resolveSignalGridRowKey(row))
+    .filter((rowKey): rowKey is string => Boolean(rowKey))
+}
 
 const selectedVisibleRowCount = computed(() => selectedAllocationRows.value.length)
 
@@ -784,6 +802,7 @@ function handleAllocationGridStateUpdate(state: DataGridStateUpdate | null) {
   }
 
   rowSelectionState.value = state?.rowSelection ?? null
+  rowSelectionProjectionRevision.value += 1
   persistSignalsGridState()
 }
 
@@ -793,6 +812,7 @@ function handleAllocationRowSelectionStateUpdate(state: RowSelectionSnapshot | n
   }
 
   rowSelectionState.value = state
+  rowSelectionProjectionRevision.value += 1
   persistSignalsGridState()
 }
 
