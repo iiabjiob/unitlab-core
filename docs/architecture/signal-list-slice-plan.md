@@ -631,6 +631,7 @@ Implemented so far:
 - Removed unused projection-cache row-id/order indexes and the redundant `hasSignalId()` accessor; signal-id lookup remains the cache boundary.
 - Removed an unused per-row runtime overlay helper from `SignalsPage.vue`; runtime row overlays remain only where full export/report rows are explicitly built.
 - Consolidated duplicate allocation/control cell row resolvers into one live projection lookup helper.
+- Removed unused public reset/debug accessors from `signalRowsPatchStore`; the store now exposes only the active patch event, revision, and ingestion method.
 
 Validated 2026-05-24:
 

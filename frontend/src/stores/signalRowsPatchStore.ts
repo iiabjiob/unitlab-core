@@ -74,38 +74,9 @@ export const useSignalRowsPatchStore = defineStore("signalRowsPatchStore", () =>
     }
   }
 
-  function clearWorkspace(workspaceId: number) {
-    const normalizedWorkspaceId = normalizePositiveInteger(workspaceId)
-    if (normalizedWorkspaceId === null) {
-      return
-    }
-    lastSequenceByWorkspaceId.delete(normalizedWorkspaceId)
-    if (activeWorkspacePatchEvent.value?.workspace_id === normalizedWorkspaceId) {
-      activeWorkspacePatchEvent.value = null
-      activeWorkspacePatchRevision.value += 1
-    }
-  }
-
-  function clearAll() {
-    lastSequenceByWorkspaceId.clear()
-    activeWorkspacePatchEvent.value = null
-    activeWorkspacePatchRevision.value += 1
-  }
-
-  function getLastSequence(workspaceId: number): number | null {
-    const normalizedWorkspaceId = normalizePositiveInteger(workspaceId)
-    if (normalizedWorkspaceId === null) {
-      return null
-    }
-    return lastSequenceByWorkspaceId.get(normalizedWorkspaceId) ?? null
-  }
-
   return {
     activeWorkspacePatchEvent,
     activeWorkspacePatchRevision,
     applyEvent,
-    clearWorkspace,
-    clearAll,
-    getLastSequence,
   }
 })

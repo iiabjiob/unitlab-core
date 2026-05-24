@@ -48,7 +48,6 @@ describe("signalRowsPatchStore", () => {
     })
     expect(store.activeWorkspacePatchRevision).toBe(1)
     expect(store.activeWorkspacePatchEvent?.sequence).toBe(1)
-    expect(store.getLastSequence(7)).toBe(1)
   })
 
   it("marks sequence gaps as full reload recovery events", () => {
@@ -64,7 +63,7 @@ describe("signalRowsPatchStore", () => {
       requiresFullReload: true,
     })
     expect(store.activeWorkspacePatchEvent?.requires_full_reload).toBe(true)
-    expect(store.getLastSequence(7)).toBe(3)
+    expect(store.activeWorkspacePatchEvent?.sequence).toBe(3)
   })
 
   it("ignores duplicate or older patch events", () => {
@@ -87,7 +86,7 @@ describe("signalRowsPatchStore", () => {
       duplicateOrOld: true,
     })
     expect(store.activeWorkspacePatchRevision).toBe(revision)
-    expect(store.getLastSequence(7)).toBe(4)
+    expect(store.activeWorkspacePatchEvent?.sequence).toBe(4)
   })
 
   it("ignores events for another workspace", () => {
@@ -101,6 +100,5 @@ describe("signalRowsPatchStore", () => {
       ignored: "workspace_mismatch",
     })
     expect(store.activeWorkspacePatchEvent).toBeNull()
-    expect(store.getLastSequence(8)).toBeNull()
   })
 })
