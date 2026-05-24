@@ -164,14 +164,9 @@ import SignalExportModal, { type ExportColumnOption } from "@/pages/signals/comp
 import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
 import { useSignalGridPatchQueue } from "@/pages/signals/composables/useSignalGridPatchQueue"
 import {
-  SIGNAL_ALLOCATION_QUICK_FILTERS,
-  countSignalAllocationQuickFilters,
-  matchesSignalAllocationQuickFilter,
   resolveSignalAllocationHealthLabel,
   resolveSignalAllocationStatus,
   resolveSignalAllocationStatusLabel,
-  type SignalAllocationQuickFilter,
-  type SignalAllocationQuickFilterCounts,
 } from "@/pages/signals/utils/allocationHealth"
 import {
   applyRuntimeTestedAt,
@@ -229,7 +224,6 @@ const deletingProgressDone = ref(0)
 const deletingProgressTotal = ref(0)
 const allocatingSelected = ref(false)
 const deallocatingSelected = ref(false)
-const allocationQuickFilter = ref<SignalAllocationQuickFilter>("all")
 const testRunInProgress = ref(false)
 const testRunIntervalMs = ref(1000)
 const testRunToggleMode = ref<"single" | "double">("single")
@@ -308,56 +302,6 @@ const SignalsSelectionToolbarModule = defineComponent({
   },
 })
 
-const allocationQuickFilterLabels: Record<SignalAllocationQuickFilter, string> = {
-  all: "All",
-  unassigned: "Unassigned",
-  assigned: "Assigned",
-  issues: "Issues",
-  conflicts: "Conflict",
-  invalid: "Invalid",
-  offline_missing: "Offline/Missing",
-}
-
-const SignalsAllocationFilterToolbarModule = defineComponent({
-  name: "SignalsAllocationFilterToolbarModule",
-  props: {
-    activeFilter: {
-      type: String as PropType<SignalAllocationQuickFilter>,
-      required: true,
-    },
-    counts: {
-      type: Object as PropType<SignalAllocationQuickFilterCounts>,
-      required: true,
-    },
-    onSetFilter: {
-      type: Function as PropType<(filter: SignalAllocationQuickFilter) => void>,
-      required: true,
-    },
-  },
-  setup(props) {
-    return () => h("div", { class: "affino-native-data-grid__toolbar-module" }, [
-      h("span", { class: "affino-native-data-grid__stat" }, "Allocation"),
-      ...SIGNAL_ALLOCATION_QUICK_FILTERS.map((filter) => {
-        const active = props.activeFilter === filter
-        const className = [
-          "datagrid-app-toolbar__button",
-          active ? "affino-native-data-grid__toolbar-button--active" : "",
-        ].filter(Boolean).join(" ")
-        return h(
-          "button",
-          {
-            type: "button",
-            class: className,
-            "aria-pressed": active ? "true" : "false",
-            onClick: () => props.onSetFilter(filter),
-          },
-          `${allocationQuickFilterLabels[filter]} ${props.counts[filter] ?? 0}`,
-        )
-      }),
-    ])
-  },
-})
-
 const workspaceMissing = computed(() => !workspaceStore.activeWorkspaceId)
 const loading = computed(() => (
   refreshingSignalsStatic.value
@@ -398,17 +342,9 @@ function hasRuntimeOrStaticTestedAt(row: SignalAllocationRow): boolean {
   ).trim())
 }
 
-const filteredStaticAllocationRows = computed(() => {
-  const filter = allocationQuickFilter.value
-  if (filter === "all") {
-    return allocationRows.value
-  }
-  return allocationRows.value.filter(row => matchesSignalAllocationQuickFilter(row, filter))
-})
-
 const visibleSignalIds = computed(() => {
   const ids = new Set<number>()
-  filteredStaticAllocationRows.value.forEach((row) => {
+  allocationRows.value.forEach((row) => {
     const signalId = Number(row.signal_id)
     if (Number.isFinite(signalId)) {
       ids.add(signalId)
@@ -416,8 +352,6 @@ const visibleSignalIds = computed(() => {
   })
   return ids
 })
-
-const allocationQuickFilterCounts = computed(() => countSignalAllocationQuickFilters(allocationRows.value))
 
 const summaryText = computed(() => {
   if (workspaceMissing.value) {
@@ -525,15 +459,6 @@ const selectedRowKeys = computed(() => (
 const selectedVisibleRowCount = computed(() => selectedAllocationRows.value.length)
 
 const toolbarModules = computed<DataGridAppToolbarModule[]>(() => ([
-  {
-    key: "signals-allocation-filters",
-    component: SignalsAllocationFilterToolbarModule,
-    props: {
-      activeFilter: allocationQuickFilter.value,
-      counts: allocationQuickFilterCounts.value,
-      onSetFilter: setAllocationQuickFilter,
-    },
-  },
   {
     key: "signals-selection-actions",
     component: SignalsSelectionToolbarModule,
@@ -885,14 +810,6 @@ function clearGridSelection() {
     focusedRow: null,
     selectedRows: [],
   }
-}
-
-function setAllocationQuickFilter(filter: SignalAllocationQuickFilter) {
-  if (allocationQuickFilter.value === filter) {
-    return
-  }
-  allocationQuickFilter.value = filter
-  clearGridSelection()
 }
 
 function isImportQueryRequested(raw: unknown): boolean {
@@ -2275,7 +2192,7 @@ const virtualizationOptions = computed(() => ({
 }))
 
 const gridRows = computed<GridRow[]>(() => (
-  filteredStaticAllocationRows.value.map((row) => createGridRow(resolveGridProjectionRow(row), sourceHeaders.value))
+  allocationRows.value.map((row) => createGridRow(resolveGridProjectionRow(row), sourceHeaders.value))
 ))
 
 function enqueueSignalGridRowPatches(

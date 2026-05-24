@@ -45,7 +45,7 @@ Implemented:
 
 Gaps:
 
-- conflict, invalid type, missing, stale, and offline health are visible in the grid and quick filters; dedicated resolution workflows are still pending.
+- conflict, invalid type, missing, stale, and offline health are visible in grid columns; dedicated resolution workflows are still pending.
 - durable allocation event history is still pending.
 
 ### Live Test Updates
@@ -352,7 +352,7 @@ Keep:
 
 Add:
 
-- quick filters: unassigned, assigned, conflicts, invalid type, offline/missing device, signal type, cabinet/source column, device/unit;
+- DataGrid column filters/search for unassigned, assigned, conflicts, invalid type, offline/missing device, signal type, cabinet/source column, and device/unit;
 - channel picker states: free, current, occupied, incompatible, offline, missing;
 - occupied channel owner display;
 - explicit swap/move actions;
@@ -522,7 +522,7 @@ Status: done.
 
 Goal:
 
-- make conflict/invalid/offline/missing states visible and filterable.
+- make conflict/invalid/offline/missing states visible in the grid and filterable through the grid's normal filtering.
 
 Backend:
 
@@ -530,21 +530,20 @@ Backend:
 
 Frontend:
 
-- add status badges and quick filters.
+- add status badges and keep allocation fields available to the grid's normal filter/search controls.
 - implemented signal-grid `Allocation` and `Health` columns backed by flat projection fields.
-- implemented quick filters for all, unassigned, assigned, issues, conflicts, invalid, and offline/missing rows.
-- quick filters are computed over the loaded client-side projection; channel occupancy lookup still uses the full projection so filtered-out owners are not treated as free.
+- removed the dedicated allocation quick-filter toolbar buttons; channel occupancy lookup still uses the full projection so filtered-out owners are not treated as free.
 
 Tests:
 
 - projection fixtures;
 - DataGrid filter tests;
 - visual/manual verification for badge states.
-- current frontend coverage includes pure allocation health/filter helper tests and existing patch queue tests.
+- current frontend coverage includes pure allocation health helper tests and existing patch queue tests.
 
 Rollback:
 
-- hide quick filters and badges; projection fields remain harmless.
+- hide badges; projection fields remain harmless.
 
 ### Slice 7 - Immediate Auto/Bulk Allocation Apply
 
@@ -630,7 +629,7 @@ Tests:
 Implemented:
 
 - `tested_at` runtime patches remain in `testedAtRealtimeStore` and are overlaid only when building grid patches, reports, and exports.
-- Signal selection, channel ownership maps, allocation quick filters, and allocation picker state now read the static allocation projection instead of a runtime-mapped row array.
+- Signal selection, channel ownership maps, and allocation picker state now read the static allocation projection instead of a runtime-mapped row array.
 - Live `tested_at` patches still target the affected grid row/cell through the existing patch queue; non-visible rows update the runtime store without forcing allocation maps to rebuild.
 - Summary counts may still scan the static row array to show live tested totals; this should be measured in the 20,000-row benchmark slice before adding a separate aggregate counter.
 

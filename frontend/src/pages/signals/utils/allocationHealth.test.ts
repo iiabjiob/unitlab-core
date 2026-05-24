@@ -3,9 +3,7 @@ import { describe, expect, it } from "vitest"
 import type { SignalAllocationRow } from "@/types/signal"
 
 import {
-  countSignalAllocationQuickFilters,
   hasSignalAllocationIssue,
-  matchesSignalAllocationQuickFilter,
   resolveSignalAllocationHealthLabel,
   resolveSignalAllocationStatus,
   resolveSignalAllocationStatusLabel,
@@ -63,37 +61,13 @@ describe("allocationHealth", () => {
     expect(resolveSignalAllocationHealthLabel(offline)).toBe("Offline")
   })
 
-  it("matches quick filters by status and health flags", () => {
-    const assigned = createRow({ channel_id: 10, allocation_status: "assigned" })
-    const unassigned = createRow({ allocation_status: "unassigned" })
-    const conflict = createRow({ allocation_status: "conflict", allocation_health: { conflict: true } })
+  it("detects issue rows by status and health flags", () => {
     const stale = createRow({ allocation_status: "assigned", allocation_health: { stale_device: true } })
+    const conflict = createRow({ allocation_status: "conflict", allocation_health: { conflict: true } })
+    const valid = createRow({ channel_id: 10, allocation_status: "assigned" })
 
-    expect(matchesSignalAllocationQuickFilter(assigned, "assigned")).toBe(true)
-    expect(matchesSignalAllocationQuickFilter(unassigned, "unassigned")).toBe(true)
-    expect(matchesSignalAllocationQuickFilter(conflict, "issues")).toBe(true)
-    expect(matchesSignalAllocationQuickFilter(conflict, "conflicts")).toBe(true)
-    expect(matchesSignalAllocationQuickFilter(stale, "offline_missing")).toBe(true)
     expect(hasSignalAllocationIssue(stale)).toBe(true)
-  })
-
-  it("counts quick filters from the full allocation projection", () => {
-    const counts = countSignalAllocationQuickFilters([
-      createRow({ signal_id: 1, allocation_status: "unassigned" }),
-      createRow({ signal_id: 2, channel_id: 10, allocation_status: "assigned" }),
-      createRow({ signal_id: 3, allocation_status: "conflict", allocation_health: { conflict: true } }),
-      createRow({ signal_id: 4, allocation_status: "invalid", allocation_health: { invalid_type: true } }),
-      createRow({ signal_id: 5, allocation_status: "assigned", allocation_health: { offline_device: true } }),
-    ])
-
-    expect(counts).toEqual({
-      all: 5,
-      unassigned: 1,
-      assigned: 2,
-      issues: 3,
-      conflicts: 1,
-      invalid: 1,
-      offline_missing: 1,
-    })
+    expect(hasSignalAllocationIssue(conflict)).toBe(true)
+    expect(hasSignalAllocationIssue(valid)).toBe(false)
   })
 })

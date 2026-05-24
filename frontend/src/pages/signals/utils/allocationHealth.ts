@@ -1,26 +1,5 @@
 import type { SignalAllocationRow } from "@/types/signal"
 
-export type SignalAllocationQuickFilter =
-  | "all"
-  | "unassigned"
-  | "assigned"
-  | "issues"
-  | "conflicts"
-  | "invalid"
-  | "offline_missing"
-
-export const SIGNAL_ALLOCATION_QUICK_FILTERS: readonly SignalAllocationQuickFilter[] = [
-  "all",
-  "unassigned",
-  "assigned",
-  "issues",
-  "conflicts",
-  "invalid",
-  "offline_missing",
-]
-
-export type SignalAllocationQuickFilterCounts = Record<SignalAllocationQuickFilter, number>
-
 export function resolveSignalAllocationStatus(row: SignalAllocationRow): string {
   const status = String(row.allocation_status ?? "").trim().toLowerCase()
   if (status) {
@@ -72,56 +51,4 @@ export function resolveSignalAllocationStatusLabel(row: SignalAllocationRow): st
   if (status === "invalid") return "Invalid"
   if (status === "missing") return "Missing"
   return status ? status.replace(/_/g, " ") : "-"
-}
-
-export function matchesSignalAllocationQuickFilter(
-  row: SignalAllocationRow,
-  filter: SignalAllocationQuickFilter,
-): boolean {
-  const status = resolveSignalAllocationStatus(row)
-  if (filter === "all") return true
-  if (filter === "unassigned") return status === "unassigned"
-  if (filter === "assigned") return status === "assigned"
-  if (filter === "issues") return hasSignalAllocationIssue(row)
-  if (filter === "conflicts") {
-    return status === "conflict" || getSignalAllocationHealthFlag(row, "conflict")
-  }
-  if (filter === "invalid") {
-    return status === "invalid" || getSignalAllocationHealthFlag(row, "invalid_type")
-  }
-  if (filter === "offline_missing") {
-    return status === "missing"
-      || getSignalAllocationHealthFlag(row, "missing_device")
-      || getSignalAllocationHealthFlag(row, "missing_channel")
-      || getSignalAllocationHealthFlag(row, "offline_device")
-      || getSignalAllocationHealthFlag(row, "stale_device")
-  }
-  return true
-}
-
-export function countSignalAllocationQuickFilters(
-  rows: readonly SignalAllocationRow[],
-): SignalAllocationQuickFilterCounts {
-  const counts: SignalAllocationQuickFilterCounts = {
-    all: rows.length,
-    unassigned: 0,
-    assigned: 0,
-    issues: 0,
-    conflicts: 0,
-    invalid: 0,
-    offline_missing: 0,
-  }
-
-  rows.forEach((row) => {
-    SIGNAL_ALLOCATION_QUICK_FILTERS.forEach((filter) => {
-      if (filter === "all") {
-        return
-      }
-      if (matchesSignalAllocationQuickFilter(row, filter)) {
-        counts[filter] += 1
-      }
-    })
-  })
-
-  return counts
 }
