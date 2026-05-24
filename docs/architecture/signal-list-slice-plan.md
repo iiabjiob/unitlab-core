@@ -628,6 +628,7 @@ Implemented so far:
 - Removed the unused row-model lookup cache and `getRow()` API; projection cache/DataGrid remain the row-state owners after targeted patches.
 - Inlined the remaining internal `applySignalRowsById()` helper into `applyRuntimeSignals()` so runtime patch ingress uses the current API language end to end.
 - Removed the internal single-row enqueue helper; row patches are merged in one batch pass before scheduling the DataGrid flush.
+- Removed unused projection-cache row-id/order indexes and the redundant `hasSignalId()` accessor; signal-id lookup remains the cache boundary.
 
 Validated 2026-05-24:
 

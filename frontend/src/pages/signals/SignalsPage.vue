@@ -434,9 +434,7 @@ function getSignalAllocationProjectionRowBySignalId(signalId: number | null | un
 }
 
 function hasSignalAllocationProjectionSignalId(signalId: number | null | undefined): boolean {
-  void signalAllocationProjectionVersion.value
-  const normalizedSignalId = Number(signalId)
-  return Number.isFinite(normalizedSignalId) && signalAllocationProjectionCache.hasSignalId(normalizedSignalId)
+  return getSignalAllocationProjectionRowBySignalId(signalId) !== null
 }
 
 function getSignalAllocationOwnerSignalIdByChannelId(channelId: number | null | undefined): number | null {

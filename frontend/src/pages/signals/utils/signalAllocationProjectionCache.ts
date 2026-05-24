@@ -46,10 +46,8 @@ function cloneProjectionRow(row: SignalAllocationRow): SignalAllocationRow {
 export function createSignalAllocationProjectionCache() {
   const rows: SignalAllocationRow[] = []
   const rowsBySignalId = new Map<number, SignalAllocationRow>()
-  const rowsByRowId = new Map<string, SignalAllocationRow>()
   const rowIndexBySignalId = new Map<number, number>()
   const ownerSignalIdByChannelId = new Map<number, number>()
-  const rowOrder: string[] = []
   const signalIds: number[] = []
 
   let version = 0
@@ -58,10 +56,8 @@ export function createSignalAllocationProjectionCache() {
   function clear() {
     rows.length = 0
     rowsBySignalId.clear()
-    rowsByRowId.clear()
     rowIndexBySignalId.clear()
     ownerSignalIdByChannelId.clear()
-    rowOrder.length = 0
     signalIds.length = 0
     allocatedCount = 0
   }
@@ -71,12 +67,9 @@ export function createSignalAllocationProjectionCache() {
     if (signalId === null) {
       return false
     }
-    const rowId = resolveProjectionRowId(row)
     rows[index] = row
     rowsBySignalId.set(signalId, row)
-    rowsByRowId.set(rowId, row)
     rowIndexBySignalId.set(signalId, index)
-    rowOrder[index] = rowId
     signalIds[index] = signalId
 
     const channelId = normalizeChannelId(row.channel_id)
@@ -93,7 +86,6 @@ export function createSignalAllocationProjectionCache() {
       return
     }
     rowsBySignalId.delete(signalId)
-    rowsByRowId.delete(resolveProjectionRowId(row))
     rowIndexBySignalId.delete(signalId)
     const channelId = normalizeChannelId(row.channel_id)
     if (channelId !== null && ownerSignalIdByChannelId.get(channelId) === signalId) {
@@ -165,10 +157,7 @@ export function createSignalAllocationProjectionCache() {
     patchRows,
     getRows: () => rows as readonly SignalAllocationRow[],
     getRowBySignalId: (signalId: number) => rowsBySignalId.get(signalId) ?? null,
-    getRowByRowId: (rowId: string) => rowsByRowId.get(rowId) ?? null,
-    hasSignalId: (signalId: number) => rowsBySignalId.has(signalId),
     getOwnerSignalIdByChannelId: (channelId: number) => ownerSignalIdByChannelId.get(channelId) ?? null,
-    getRowOrder: () => rowOrder as readonly string[],
     getSignalIds: () => signalIds as readonly number[],
   }
 }

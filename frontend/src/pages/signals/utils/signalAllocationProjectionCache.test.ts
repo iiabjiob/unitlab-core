@@ -29,7 +29,7 @@ function buildRow(overrides: Partial<SignalAllocationRow> = {}): SignalAllocatio
 }
 
 describe("createSignalAllocationProjectionCache", () => {
-  it("indexes rows by signal id, row id, and channel owner", () => {
+  it("indexes rows by signal id and channel owner", () => {
     const cache = createSignalAllocationProjectionCache()
 
     cache.replaceRows([
@@ -40,9 +40,7 @@ describe("createSignalAllocationProjectionCache", () => {
     expect(cache.rowCount).toBe(2)
     expect(cache.allocatedCount).toBe(1)
     expect(cache.getRowBySignalId(1)?.row_id).toBe("signal-1")
-    expect(cache.getRowByRowId("signal-2")?.signal_id).toBe(2)
     expect(cache.getOwnerSignalIdByChannelId(10)).toBe(1)
-    expect(cache.getRowOrder()).toEqual(["signal-1", "signal-2"])
     expect(cache.getSignalIds()).toEqual([1, 2])
   })
 
@@ -71,7 +69,6 @@ describe("createSignalAllocationProjectionCache", () => {
       channel_id: 30,
       unit_id: "unit-a",
     })
-    expect(cache.getRowOrder()).toEqual(["signal-1", "signal-2"])
   })
 
   it("updates channel ownership when rows are unassigned", () => {

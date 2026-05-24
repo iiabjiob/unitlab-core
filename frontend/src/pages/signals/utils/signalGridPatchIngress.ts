@@ -12,7 +12,6 @@ type SignalGridPatchIngressCache = {
     missingSignalIds: number[]
   }
   getRowBySignalId: (signalId: number) => SignalAllocationRow | null
-  hasSignalId: (signalId: number) => boolean
 }
 
 type SignalGridPatchIngressRowModel = {
@@ -180,10 +179,6 @@ export function createSignalGridPatchIngress(options: SignalGridPatchIngressOpti
     const patches: SignalGridProjectionPatch[] = []
 
     uniqueIds.forEach((signalId) => {
-      if (!options.cache.hasSignalId(signalId)) {
-        missingSignalIds.push(signalId)
-        return
-      }
       const cachedRow = options.cache.getRowBySignalId(signalId)
       if (!cachedRow) {
         missingSignalIds.push(signalId)
