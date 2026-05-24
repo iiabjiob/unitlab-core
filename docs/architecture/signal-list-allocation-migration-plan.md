@@ -61,9 +61,9 @@ Implemented:
 
 Gaps:
 
-- runtime test fields are mixed into signal-list row data.
-- frontend updates still cause broad computed-row churn.
-- live fields can be sorted/filtered without a clear projection policy during active test runs.
+- runtime test fields are partially separated through the runtime tested-at store and grid patch ingress.
+- browser-level proof is still needed for scroll, selection, and editing continuity during active runtime patches.
+- future live fields need explicit sort/filter recompute policy entries before they participate in grid projections.
 
 ### Frontend Grid
 
@@ -419,7 +419,7 @@ Goal:
 
 Frontend:
 
-- add `useSignalGridPatchQueue`.
+- add the grid patch queue and row-model wrapper.
 - wire it through the signal-list row model path.
 - keep full projection reload only for initial load, workspace/import changes, reconnect gaps, unknown rows, and operator refresh.
 

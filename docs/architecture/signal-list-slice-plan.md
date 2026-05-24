@@ -64,8 +64,8 @@ Execution semantics for the current product direction:
 
 ## Main Gaps
 
-- Pinia still exposes `allocationRows` as a Vue `ref<SignalAllocationRow[]>`; `SignalsPage.vue` now bridges it into a non-reactive projection cache, but other app areas can still drift back into deep reactive row ownership.
-- Store patching still updates array slots for allocation changes; `SignalsPage.vue` applies those updates to the non-reactive cache, but the store itself is still legacy-shaped.
+- Pinia exposes `allocationRows` as a shallow snapshot for non-grid consumers; other app areas can still drift back into row-array ownership if new grid flows read it directly.
+- Store patching still updates shallow snapshot array slots for allocation changes; `SignalsPage.vue` applies hot-path updates to the non-reactive projection cache.
 - Runtime state is only partially separated from static projection rows.
 - Allocation, test, and device patch ingress has a sequenced WebSocket contract, but backend producers still need to migrate from action-specific payloads.
 - Sort/filter recompute policy is explicit for current allocation/runtime columns; future device/test fields still need policy entries when introduced.
@@ -613,6 +613,8 @@ Implemented so far:
 - Updated the older migration plan note so it no longer describes the obsolete deep-reactive full-row grid flow as the active state.
 - Removed the unused `useSignalGridPatchQueue()` wrapper; row-model lifecycle cleanup remains the single app-level owner.
 - Updated the older migration plan gap table to reflect current targeted patch paths instead of already-closed full-reload gaps.
+- Narrowed `SignalRowsPatchApplyResult` to a module-local store type.
+- Updated stale migration notes that still described runtime updates as broad computed-row churn.
 
 Validated 2026-05-24:
 

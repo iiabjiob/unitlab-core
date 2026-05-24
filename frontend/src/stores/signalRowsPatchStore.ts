@@ -4,7 +4,7 @@ import { markRaw, ref } from "vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import type { SignalRowsPatchedEvent } from "@/types/ws/events"
 
-export type SignalRowsPatchApplyResult = {
+type SignalRowsPatchApplyResult = {
   applied: boolean
   ignored: "none" | "invalid" | "workspace_mismatch" | "stale"
   gap: boolean
