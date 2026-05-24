@@ -50,7 +50,7 @@ const actionLabel = computed(() => {
 const indicatorClass = computed(() => {
   if (!props.assigned) return "bg-neutral-300 dark:bg-neutral-600"
   if (props.online === true) return "bg-emerald-500"
-  if (props.online === false) return "bg-amber-500"
+  if (props.online === false) return "bg-neutral-400 dark:bg-neutral-600"
   return "bg-sky-500"
 })
 

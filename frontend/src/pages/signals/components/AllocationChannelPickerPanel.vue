@@ -294,10 +294,10 @@ const channelById = computed(() => {
   return map
 })
 
-const unitStatusById = computed(() => {
+const unitHasFreeChannelById = computed(() => {
   const map = new Map<string, boolean>()
   groupedChannels.value.forEach((group) => {
-    map.set(group.unitId, group.entries.some(entry => entry.online))
+    map.set(group.unitId, group.entries.some(entry => !entry.occupied))
   })
   return map
 })
@@ -570,14 +570,13 @@ function channelIndicatorClass(value: NodeValue): string {
   if (channelId === null) return "bg-neutral-400 dark:bg-neutral-600"
   const channel = channelById.value.get(channelId)
   if (!channel) return "bg-neutral-400 dark:bg-neutral-600"
-  if (channel.occupied && !isCurrentChannel(value)) return "bg-amber-500"
-  return channel.online ? "bg-emerald-500" : "bg-amber-500"
+  return channel.occupied ? "bg-amber-500" : "bg-emerald-500"
 }
 
 function unitIndicatorClass(value: NodeValue): string {
   const unitId = parseUnitId(value)
   if (!unitId) return "bg-neutral-400 dark:bg-neutral-600"
-  return unitStatusById.value.get(unitId) ? "bg-emerald-500" : "bg-amber-500"
+  return unitHasFreeChannelById.value.get(unitId) ? "bg-emerald-500" : "bg-amber-500"
 }
 
 function nodeClass(value: NodeValue): string {

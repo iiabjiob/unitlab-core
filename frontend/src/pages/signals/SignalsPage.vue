@@ -2026,7 +2026,10 @@ function allocationBadgeClass(kind: string): string {
   if (normalized.includes("invalid")) {
     return `${base} border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200`
   }
-  if (normalized.includes("missing") || normalized.includes("offline") || normalized.includes("stale")) {
+  if (normalized.includes("offline") || normalized.includes("stale")) {
+    return `${base} border-neutral-300 bg-neutral-50 text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200`
+  }
+  if (normalized.includes("missing")) {
     return `${base} border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-200`
   }
   if (normalized === "assigned" || normalized === "ok") {
