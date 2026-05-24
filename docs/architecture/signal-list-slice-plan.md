@@ -629,6 +629,8 @@ Implemented so far:
 - Inlined the remaining internal `applySignalRowsById()` helper into `applyRuntimeSignals()` so runtime patch ingress uses the current API language end to end.
 - Removed the internal single-row enqueue helper; row patches are merged in one batch pass before scheduling the DataGrid flush.
 - Removed unused projection-cache row-id/order indexes and the redundant `hasSignalId()` accessor; signal-id lookup remains the cache boundary.
+- Removed an unused per-row runtime overlay helper from `SignalsPage.vue`; runtime row overlays remain only where full export/report rows are explicitly built.
+- Consolidated duplicate allocation/control cell row resolvers into one live projection lookup helper.
 
 Validated 2026-05-24:
 

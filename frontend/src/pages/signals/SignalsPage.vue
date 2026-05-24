@@ -177,7 +177,6 @@ import {
 } from "@/pages/signals/utils/signalStaticRefreshPolicy"
 import { createSignalRuntimeStateCache } from "@/pages/signals/utils/signalRuntimeStateCache"
 import {
-  applyRuntimeTestedAt,
   applyRuntimeTestedAtToRows,
   resolveRuntimeTestedAt,
 } from "@/pages/signals/utils/runtimeProjection"
@@ -496,10 +495,6 @@ watch(
   },
   { flush: "post" },
 )
-
-function resolveRuntimeAllocationRow(row: SignalAllocationRow): SignalAllocationRow {
-  return applyRuntimeTestedAt(row, workspaceStore.activeWorkspaceId, getSignalRuntimeTestedAt)
-}
 
 function resolveRuntimeAllocationRows(rows: readonly SignalAllocationRow[] = signalAllocationProjectionRows()): SignalAllocationRow[] {
   return applyRuntimeTestedAtToRows(rows, workspaceStore.activeWorkspaceId, getSignalRuntimeTestedAt)
@@ -1547,12 +1542,7 @@ function resolveLiveAllocationRowBySignalId(signalId: number | null, fallback: S
   return getSignalAllocationProjectionRowBySignalId(Number(signalId)) ?? fallback
 }
 
-function resolveControlCellRow(row: SignalAllocationRow): SignalAllocationRow {
-  const signalId = resolveSignalIdFromGridRow(row)
-  return resolveLiveAllocationRowBySignalId(signalId, row)
-}
-
-function resolveAllocationChannelCellRow(row: SignalAllocationRow): SignalAllocationRow {
+function resolveLiveAllocationCellRow(row: SignalAllocationRow): SignalAllocationRow {
   const signalId = resolveSignalIdFromGridRow(row)
   return resolveLiveAllocationRowBySignalId(signalId, row)
 }
@@ -2432,7 +2422,7 @@ function allocationBadgeClass(kind: string): string {
 }
 
 function renderAllocationStatusCell(context: DataGridAppCellRendererContext<GridRow>) {
-  const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((context.row ?? {}) as GridRow))
+  const allocationRow = resolveLiveAllocationCellRow(asAllocationRow((context.row ?? {}) as GridRow))
   const status = String(allocationRow.allocation_status ?? context.row?.allocation_status ?? context.displayValue ?? "").trim()
   if (!status) {
     return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, "-")
@@ -2442,7 +2432,7 @@ function renderAllocationStatusCell(context: DataGridAppCellRendererContext<Grid
 }
 
 function renderAllocationHealthCell(context: DataGridAppCellRendererContext<GridRow>) {
-  const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((context.row ?? {}) as GridRow))
+  const allocationRow = resolveLiveAllocationCellRow(asAllocationRow((context.row ?? {}) as GridRow))
   const health = String(allocationRow.allocation_health ?? context.row?.allocation_health ?? context.displayValue ?? "").trim()
   if (!health) {
     return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, "-")
@@ -2503,22 +2493,22 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
         keyboard: ["enter", "space"],
         role: "button",
         label: ({ row }) => {
-          const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((row ?? {}) as GridRow))
+          const allocationRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
           return Number.isFinite(allocationRow.channel_id as number)
             ? `Change hardware allocation for ${allocationRow.signal_name || allocationRow.signal_key}`
             : `Assign hardware for ${allocationRow.signal_name || allocationRow.signal_key}`
         },
         disabled: ({ row }) => {
-          const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((row ?? {}) as GridRow))
+          const allocationRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
           return allocationChannelPickerSaving.value && allocationChannelPickerSignalId.value === allocationRow.signal_id
         },
         onInvoke: ({ row }) => {
-          const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((row ?? {}) as GridRow))
+          const allocationRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
           void openAllocationChannelPicker(allocationRow)
         },
       },
       cellRenderer: ({ row, interactive }) => {
-        const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((row ?? {}) as GridRow))
+        const allocationRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
         return h(AllocationChannelCell, {
           label: resolveSignalAllocationDisplayLabel(allocationRow),
           assigned: Number.isFinite(allocationRow.channel_id as number),
@@ -2557,7 +2547,7 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
         keyboard: ["enter", "space"],
         role: "button",
         label: ({ row }) => {
-          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
+          const controlRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
           const target = resolveControlTarget(controlRow)
           const signalLabel = controlRow.signal_name || controlRow.signal_key
 
@@ -2572,17 +2562,17 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
           return `Control is unavailable for ${signalLabel}`
         },
         disabled: ({ row }) => {
-          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
+          const controlRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
           return controlBusy(controlRow)
         },
         pressed: ({ row }) => {
-          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
+          const controlRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
           return resolveControlTarget(controlRow)?.kind === "do"
             ? controlStateIsOn(controlRow)
             : undefined
         },
         onInvoke: ({ row }) => {
-          const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
+          const controlRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
           const target = resolveControlTarget(controlRow)
 
           if (target?.kind === "do") {
@@ -2596,7 +2586,7 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
         },
       },
       cellRenderer: ({ row, interactive }: DataGridAppCellRendererContext<GridRow>) => {
-        const controlRow = resolveControlCellRow(asAllocationRow((row ?? {}) as GridRow))
+        const controlRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
         const target = resolveControlTarget(controlRow)
         const isOn = controlStateIsOn(controlRow)
 
