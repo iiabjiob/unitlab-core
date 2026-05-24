@@ -317,7 +317,7 @@ signalRuntimeStore
   pendingRuntimePatches
 
 signalGridPatchQueue
-  enqueueRowPatch(rowId, changes)
+  enqueueRowPatches([{ rowId, changes }])
   enqueueCellRefresh(rowIds, columns)
   flush in requestAnimationFrame
 ```

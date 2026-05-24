@@ -186,40 +186,6 @@ export function createSignalGridPatchQueue<TRow extends Record<string, unknown>>
     scheduleFlush()
   }
 
-  function enqueueRowPatch(
-    rowId: SignalGridRowId,
-    changes: Partial<TRow>,
-    flushOptions?: SignalGridPatchQueueFlushOptions & { columns?: readonly string[] },
-  ) {
-    const changeKeys = Object.keys(changes)
-    const refreshColumns = normalizeColumns(flushOptions?.columns, changes)
-    if (changeKeys.length === 0 && refreshColumns.length === 0) {
-      return
-    }
-
-    mergeFlushOptions(flushOptions)
-    if (changeKeys.length > 0) {
-      const existing = rowPatches.get(rowId)
-      rowPatches.set(rowId, {
-        rowId,
-        changes: {
-          ...(existing?.changes ?? {}),
-          ...changes,
-        },
-      })
-    }
-
-    if (refreshColumns.length > 0) {
-      let existingColumns = refreshColumnsByRowId.get(rowId)
-      if (!existingColumns) {
-        existingColumns = new Set<string>()
-        refreshColumnsByRowId.set(rowId, existingColumns)
-      }
-      refreshColumns.forEach(column => existingColumns.add(column))
-    }
-    scheduleFlush()
-  }
-
   function enqueueRowPatches(
     patches: readonly SignalGridRowPatch<TRow>[],
     flushOptions?: SignalGridPatchQueueFlushOptions,
@@ -227,13 +193,40 @@ export function createSignalGridPatchQueue<TRow extends Record<string, unknown>>
     if (!patches.length) {
       return
     }
-    mergeFlushOptions(flushOptions)
+    let hasWork = false
     patches.forEach((patch) => {
-      enqueueRowPatch(patch.rowId, patch.changes, {
-        ...flushOptions,
-        columns: patch.columns,
-      })
+      const changeKeys = Object.keys(patch.changes)
+      const refreshColumns = normalizeColumns(patch.columns, patch.changes)
+      if (changeKeys.length === 0 && refreshColumns.length === 0) {
+        return
+      }
+
+      hasWork = true
+      if (changeKeys.length > 0) {
+        const existing = rowPatches.get(patch.rowId)
+        rowPatches.set(patch.rowId, {
+          rowId: patch.rowId,
+          changes: {
+            ...(existing?.changes ?? {}),
+            ...patch.changes,
+          },
+        })
+      }
+
+      if (refreshColumns.length > 0) {
+        let existingColumns = refreshColumnsByRowId.get(patch.rowId)
+        if (!existingColumns) {
+          existingColumns = new Set<string>()
+          refreshColumnsByRowId.set(patch.rowId, existingColumns)
+        }
+        refreshColumns.forEach(column => existingColumns.add(column))
+      }
     })
+    if (!hasWork) {
+      return
+    }
+    mergeFlushOptions(flushOptions)
+    scheduleFlush()
   }
 
   function flushRowPatches(

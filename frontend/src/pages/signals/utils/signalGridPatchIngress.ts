@@ -166,7 +166,7 @@ export function createSignalGridPatchIngress(options: SignalGridPatchIngressOpti
     }
   }
 
-  function applySignalRowsById(
+  function applyRuntimeSignals(
     signalIds: readonly unknown[],
     applyOptions?: SignalGridPatchIngressApplyOptions,
   ): SignalGridPatchIngressResult {
@@ -200,13 +200,6 @@ export function createSignalGridPatchIngress(options: SignalGridPatchIngressOpti
       missingSignalIds,
       enqueuedPatches: patches.length,
     }
-  }
-
-  function applyRuntimeSignals(
-    signalIds: readonly unknown[],
-    applyOptions?: SignalGridPatchIngressApplyOptions,
-  ): SignalGridPatchIngressResult {
-    return applySignalRowsById(signalIds, applyOptions)
   }
 
   function refreshSignalCells(

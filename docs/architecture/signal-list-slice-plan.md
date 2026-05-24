@@ -626,6 +626,8 @@ Implemented so far:
 - Removed `applySignalRowsById()` from the public patch-ingress API; signal-id runtime patching remains exposed through `applyRuntimeSignals()`.
 - Removed single-row patch shortcuts from the public queue/row-model objects; callers use the batch-oriented `enqueueRowPatches()` contract.
 - Removed the unused row-model lookup cache and `getRow()` API; projection cache/DataGrid remain the row-state owners after targeted patches.
+- Inlined the remaining internal `applySignalRowsById()` helper into `applyRuntimeSignals()` so runtime patch ingress uses the current API language end to end.
+- Removed the internal single-row enqueue helper; row patches are merged in one batch pass before scheduling the DataGrid flush.
 
 Validated 2026-05-24:
 
