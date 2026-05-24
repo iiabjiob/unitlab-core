@@ -1,5 +1,3 @@
-import { onBeforeUnmount } from "vue"
-
 export type SignalGridRowId = string | number
 
 export type SignalGridRowPatch<TRow> = {
@@ -375,17 +373,4 @@ export function createSignalGridPatchQueue<TRow extends Record<string, unknown>>
     cancel,
     diagnostics: snapshotDiagnostics,
   }
-}
-
-export function useSignalGridPatchQueue<TRow extends Record<string, unknown>>(
-  gridRef: SignalGridPatchQueueGridRef<TRow>,
-  options?: {
-    defaultReason?: string
-  },
-) {
-  const queue = createSignalGridPatchQueue(gridRef, options)
-  onBeforeUnmount(() => {
-    queue.cancel()
-  })
-  return queue
 }

@@ -611,6 +611,8 @@ Implemented so far:
 - Removed the legacy local `hasPatchSupport` guard; the app patch queue now treats `rows.patchRows` presence as the DataGrid patch contract.
 - Removed a dead DO-only control helper and narrowed an allocation job result helper back to module-local scope.
 - Updated the older migration plan note so it no longer describes the obsolete deep-reactive full-row grid flow as the active state.
+- Removed the unused `useSignalGridPatchQueue()` wrapper; row-model lifecycle cleanup remains the single app-level owner.
+- Updated the older migration plan gap table to reflect current targeted patch paths instead of already-closed full-reload gaps.
 
 Validated 2026-05-24:
 

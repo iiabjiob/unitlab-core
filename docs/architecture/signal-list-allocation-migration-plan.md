@@ -72,12 +72,13 @@ Implemented:
 - Affino DataGrid uses stable row ids through `resolveRowId`.
 - the app uses a client row model and row/column virtualization.
 - Affino core supports row patching, batch boundaries, and cell refresh APIs.
-
-Gaps:
-
 - normal allocation/runtime patch paths use `api.rows.patchRows`, `api.rows.batch`, and `api.view.refreshCellsByRowKeys`.
 - Pinia `allocationRows` is a shallow snapshot, and `SignalsPage.vue` bridges it into a non-reactive projection cache.
 - initial load and explicit recovery still set the grid row model from a full projection.
+
+Remaining gaps:
+
+- browser scroll/viewport proof is still needed before treating the 20,000-row path as fully validated.
 - other app areas still read the shallow allocation snapshot directly.
 
 ## Target Architecture
@@ -116,9 +117,9 @@ Core rules:
 
 | Gap | Current state | Target state |
 | --- | --- | --- |
-| Frontend row updates | full array recompute | row/cell patch queue |
-| Allocation actions | generic bulk update + auto jobs | explicit assign/reassign/unassign/swap/bulk actions |
-| Async job result | changed ids, then reload | changed row patches |
+| Frontend row updates | normal allocation/runtime paths use targeted row/cell patches; initial/recovery still set the full grid row model | keep full projection reload explicit and rare, then browser-prove 20,000-row scroll/update behavior |
+| Allocation actions | explicit assign/reassign/unassign/swap plus job-backed auto/bulk apply | add parity tests and durable allocation event history |
+| Async job result | allocation jobs return changed row patches | migrate remaining patch producers to the same changed-row/cell contract |
 | Auto allocation | immediate apply with skipped/rejected summary | richer compatibility warnings and apply parity tests |
 | Runtime test state | mixed into row data | patch stream, optionally separate runtime store |
 | Allocation health | projection fields + grid badges/filters | resolution workflows and event history |
