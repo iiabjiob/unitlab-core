@@ -83,10 +83,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     recentlyChangedSignalIds.value = [...new Set(signalIds.map(item => Number(item)).filter(Number.isFinite))]
   }
 
-  function isFiniteChannelId(value: unknown): value is number {
-    return typeof value === "number" && Number.isFinite(value)
-  }
-
   function isAllocatedChannelId(value: unknown): value is number {
     return typeof value === "number" && Number.isInteger(value) && value > 0
   }

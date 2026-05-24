@@ -593,11 +593,12 @@ Implemented so far:
 - Removed the stale test-run fixture that still supplied `signal_sheet_revision` metadata to a queued run payload.
 - Updated migration docs to state that queued run payloads do not carry sheet-level revision metadata.
 - Removed the redundant `skipMissing` allocation patch option; unknown rows now always use the same explicit skip/recovery path.
+- Removed unused legacy signal sidebar/live-panel components and a dead channel-id helper from the signal sheet store.
 
 Validated 2026-05-24:
 
 - `pnpm --dir frontend type-check`
-- `pnpm --dir frontend test src/stores/signalSheetStore.test.ts src/pages/signals/utils/signalListPerformanceHarness.test.ts src/pages/signals/utils/signalGridPatchIngress.test.ts src/pages/signals/utils/signalStaticRefreshPolicy.test.ts`
+- `pnpm --dir frontend test src/stores/signalSheetStore.test.ts src/pages/signals/utils/signalListPerformanceHarness.test.ts src/pages/signals/utils/signalGridPatchIngress.test.ts src/pages/signals/utils/signalStaticRefreshPolicy.test.ts src/pages/signals/composables/useSignalGridPatchQueue.test.ts`
 - `uv run python -m py_compile app/workers/signal_test_run_runner.py tests/workers/test_signal_allocation_runner_results.py`
 - `git diff --check`
 
