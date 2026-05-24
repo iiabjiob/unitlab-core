@@ -1,0 +1,500 @@
+# Signal List and Allocation Slice Plan
+
+Status: working migration checklist
+Last reviewed: 2026-05-24
+
+## Purpose
+
+This document is the slice-by-slice plan for rebuilding the signal list and allocation architecture without carrying the old reactive grid design forward.
+
+Update this file as each slice starts and finishes:
+
+- `[ ]` not started
+- `[~]` in progress
+- `[x]` done
+- `[!]` blocked or needs a decision
+
+## Target Architecture
+
+```text
+Backend durable state
+  signals / devices / channels / allocations / test jobs
+        |
+        | initial load
+        v
+Flat signal allocation projection
+        |
+        | set once / reload only for recovery
+        v
+Affino DataGrid client row model
+        |
+        | allocation, device, runtime patches
+        v
+Patch queue -> rows.patch / refreshCells
+```
+
+Ownership rules:
+
+- Backend owns allocation truth, uniqueness, compatibility checks, job execution, and technical execution validation.
+- DataGrid owns row rendering, viewport, selection, editing, scroll position, and cell refresh.
+- Frontend feature layer owns operator workflows and maps backend patches to DataGrid patches.
+- Pinia is not the hot-path owner of 20,000 grid rows. It can hold workspace, job, session, dirty/save, and coarse cached state.
+- Full projection reload is a recovery path, not the normal allocation or runtime update path.
+
+Execution semantics for the current product direction:
+
+- Signal sheet aliases are live working names for physical bindings.
+- Test execution resolves the current binding at the moment of execution.
+- Sheet-level revision tokens must not block command/test execution.
+- Missing binding, offline device, missing channel, or incompatible channel mode is handled per signal as skipped/failed technical execution state.
+- If report/evidence requirements grow later, capture the actual signal/allocation/channel evidence used by each step instead of blocking on sheet-level metadata drift.
+
+## Completed Baseline
+
+- `[x]` Flat allocation projection includes row identity, allocation state, health fields, device/channel fields, and tested timestamp.
+- `[x]` Allocation is stored as explicit signal-to-channel records, not embedded only inside signal rows.
+- `[x]` Backend has assign, unassign, reassign, swap, bulk update, and auto-allocation paths.
+- `[x]` Mandatory auto-allocation preview flow was removed from the normal path.
+- `[x]` Allocation jobs return changed row patch payloads.
+- `[x]` Test-run execution no longer fails whole jobs because of signal-sheet revision drift.
+- `[x]` Runtime tested-at updates can flow as patches.
+- `[x]` Allocation quick-filter buttons were removed from the DataGrid toolbar.
+- `[x]` Channel picker uses explicit apply/swap behavior and avoids click-to-swap for occupied channels.
+- `[x]` First grid hot-path cleanup is in place: SignalPage uses a grid row model wrapper and DataGrid `rows.patch` instead of replacing the row array for allocation job patches.
+
+## Main Gaps
+
+- Pinia still exposes `allocationRows` as a Vue `ref<SignalAllocationRow[]>`, so parts of the app can still drift back into deep reactive row ownership.
+- Store patching still updates array slots for allocation changes; this is acceptable as a temporary background sync, but not as the grid hot path.
+- Runtime state is only partially separated from static projection rows.
+- Allocation, test, and device patch ingress is not yet one unified sequenced stream.
+- Sort/filter recompute policy for live-updated fields is still implicit.
+- Performance proof for 20,000 rows under large allocation/test patch bursts is still missing.
+- Durable allocation event history and per-step execution evidence are not complete.
+- Old reload-oriented fallback paths still exist and need to be narrowed to recovery only.
+
+## Slice Plan
+
+### Slice 0 - Working Plan Document
+
+Status: `[x]`
+
+Goal:
+
+- Create this checklist as the single working plan for the migration.
+
+Deliverables:
+
+- `docs/architecture/signal-list-slice-plan.md`
+
+Validation:
+
+- Documentation review.
+
+Rollback:
+
+- Revert this document only.
+
+### Slice 1 - Grid-Owned Row Patch Baseline
+
+Status: `[x]`
+
+Goal:
+
+- Stop using Vue full-array replacement as the normal allocation update path.
+- Route allocation job updates through DataGrid row patch APIs.
+
+Implemented:
+
+- `useSignalGridPatchQueue` targets `api.rows.patch`.
+- `useSignalGridRowModel` owns the shallow initial row list and row-id cache.
+- Allocation job completions patch DataGrid first, then sync Pinia in background chunks.
+- Backend allocation jobs return lightweight `changed_row_patches`.
+
+Validation:
+
+- Frontend type-check.
+- Focused Vitest coverage for patch queue and row model.
+- Backend syntax check for allocation runner.
+
+Remaining manual checks:
+
+- Large auto-allocation keeps scroll responsive.
+- Changed allocation cells appear before job completion.
+- Assign/unassign buttons do not remain stuck after completion.
+
+Rollback:
+
+- Re-enable full projection reload after allocation jobs.
+
+### Slice 2 - Projection Mapper Boundary
+
+Status: `[ ]`
+
+Goal:
+
+- Put all backend projection-to-grid-row mapping behind one tested boundary.
+- Prevent ad hoc `createGridRow(...)` calls from spreading through page code.
+
+Backend:
+
+- Keep returning a flat projection.
+- Keep changed row patches small and compatible with the projection row shape.
+
+Frontend:
+
+- Add a projection mapper module for:
+  - server projection row -> static grid row;
+  - server changed row patch -> grid row patch;
+  - runtime overlay -> grid cell patch.
+- Move source-column expansion out of `SignalsPage.vue` where practical.
+
+Tests:
+
+- Mapper tests for assigned, unassigned, offline, invalid, source metadata, and tested-at overlay.
+- Frontend type-check.
+
+Rollback:
+
+- Keep existing page-level mapping functions.
+
+### Slice 3 - Non-Reactive Projection Cache
+
+Status: `[ ]`
+
+Goal:
+
+- Replace hot-path `allocationRows` usage with a non-reactive projection cache plus coarse reactive version counters.
+
+Frontend:
+
+- Introduce a projection model with:
+  - `rowsBySignalId`;
+  - `rowsByRowId`;
+  - `rowOrder`;
+  - `ownerSignalIdByChannelId`;
+  - `projectionVersion`;
+  - `changedSignalIds`.
+- Pinia may expose only coarse state and commands, not a deeply reactive full row array for grid rendering.
+- `SignalsPage.vue` reads indexed projection data for selection, picker ownership, and summaries.
+
+Tests:
+
+- Projection cache patch tests.
+- Channel ownership index tests.
+- Selection helper tests against projection cache.
+
+Rollback:
+
+- Keep the current Pinia `allocationRows` path while the projection cache is behind the page layer.
+
+### Slice 4 - Unified Patch Ingress
+
+Status: `[ ]`
+
+Goal:
+
+- Make allocation, runtime test, and device/channel health updates enter the frontend through one patch queue contract.
+
+Frontend:
+
+- Add a patch ingress module that accepts:
+  - allocation row patches;
+  - runtime tested/status/value patches;
+  - device/channel health patches.
+- Coalesce by `rowId` and column list.
+- Apply DataGrid patches on animation frames.
+- Update non-reactive projection/runtime caches before DataGrid patching.
+
+Backend:
+
+- Keep REST job responses for explicit actions.
+- Prepare WebSocket/SSE event shape for future push patches.
+
+Tests:
+
+- Coalescing tests.
+- Ordering tests per row.
+- Unknown row handling test.
+
+Rollback:
+
+- Keep direct action-specific patch calls.
+
+### Slice 5 - Runtime State Split
+
+Status: `[ ]`
+
+Goal:
+
+- Separate volatile runtime test state from static signal/allocation projection wherever sort/filter does not require static row mutation.
+
+Frontend:
+
+- Runtime cache stores:
+  - tested timestamp;
+  - current test status;
+  - current value;
+  - last update timestamp;
+  - skip/fail reason.
+- Display-only runtime cells use `refreshCells`.
+- Sort/filter-participating runtime columns use row patches with explicit recompute policy.
+
+Tests:
+
+- Visible row refresh test.
+- Non-visible row runtime update test.
+- Runtime patch does not replace `rows.value`.
+
+Rollback:
+
+- Continue overlaying runtime fields into grid row patches.
+
+### Slice 6 - Sort/Filter Recompute Policy
+
+Status: `[ ]`
+
+Goal:
+
+- Make live-update projection behavior explicit.
+
+Frontend:
+
+- Define per-column patch policy:
+  - display-only refresh;
+  - row patch without sort/filter recompute;
+  - row patch with filter recompute;
+  - row patch with sort/filter recompute.
+- During high-volume test runs, avoid automatic full projection recompute unless the user explicitly depends on it.
+
+Tests:
+
+- Patched non-filter field does not move rows.
+- Patched filter field updates membership only when policy says so.
+- Sorting behavior is predictable under live updates.
+
+Rollback:
+
+- Default to no recompute and provide manual refresh/reload.
+
+### Slice 7 - Backend Patch Event Contract
+
+Status: `[ ]`
+
+Goal:
+
+- Move live allocation/runtime/device patch delivery toward sequenced WebSocket/SSE events.
+
+Backend:
+
+- Add event shape:
+
+```ts
+type SignalRowsPatchedEvent = {
+  event: "signal_rows_patched"
+  workspaceId: number
+  sequence: number
+  source: "allocation" | "test_runtime" | "device_health"
+  patches: Array<{
+    rowId: string
+    signalId: number
+    changes: Record<string, unknown>
+    columns?: string[]
+  }>
+  requiresFullReload?: boolean
+}
+```
+
+Frontend:
+
+- Detect sequence gaps.
+- Use full reload only on gap, unknown workspace, or explicit `requiresFullReload`.
+
+Tests:
+
+- Event serialization.
+- Sequence gap reload trigger.
+- Duplicate/old event ignored.
+
+Rollback:
+
+- Continue REST job-result patching only.
+
+### Slice 8 - Allocation Event History
+
+Status: `[ ]`
+
+Goal:
+
+- Make allocation changes auditable without making the UI slow.
+
+Backend:
+
+- Add append-only allocation events for assign, unassign, reassign, swap, auto allocation, and bulk update.
+- Keep event writes inside allocation transactions.
+- Do not require the frontend to load events for normal grid rendering.
+
+Tests:
+
+- Event written for each mutation type.
+- Failed mutation writes no success event.
+- Bulk events capture requested, changed, skipped, and rejected counts.
+
+Rollback:
+
+- Disable event writes while keeping current allocation table state.
+
+### Slice 9 - Test Execution Evidence
+
+Status: `[ ]`
+
+Goal:
+
+- Keep live alias semantics but persist what was actually executed.
+
+Backend:
+
+- For each step, capture:
+  - signal id;
+  - current allocation id if available;
+  - channel id;
+  - unit id;
+  - command payload;
+  - ack/result state;
+  - skipped/failure reason;
+  - timestamp.
+- Do not block a job because a sheet-level metadata token changed.
+
+Frontend:
+
+- Surface per-signal skipped/failure reasons in grid/report flows.
+
+Tests:
+
+- Unbound signal is skipped per signal.
+- Offline/missing/incompatible channel is skipped per signal.
+- Successful command records binding/channel evidence.
+
+Rollback:
+
+- Keep current per-signal skip counts without evidence detail.
+
+### Slice 10 - Full Reload Recovery Path Cleanup
+
+Status: `[ ]`
+
+Goal:
+
+- Make reload paths explicit recovery tools, not normal update behavior.
+
+Frontend:
+
+- Remove silent reloads after normal allocation/test updates.
+- Keep explicit reload for:
+  - initial load;
+  - workspace switch;
+  - import;
+  - reconnect gap;
+  - unknown row patch;
+  - operator manual refresh.
+
+Tests:
+
+- Allocation job completion does not call full allocation reload.
+- Runtime patch burst does not call full allocation reload.
+- Unknown row patch requests recovery reload.
+
+Rollback:
+
+- Restore reload fallback for affected mutation.
+
+### Slice 11 - 20,000 Row Benchmark Harness
+
+Status: `[ ]`
+
+Goal:
+
+- Prove the target workflow before adding more features.
+
+Benchmarks:
+
+- Initial 20,000-row projection load.
+- Patch one visible row.
+- Patch one non-visible row.
+- Apply 5,000 allocation row patches.
+- Apply 5,000 runtime patches.
+- Scroll during patch burst.
+- Select all visible/all filtered rows.
+- Open channel picker from an allocated row.
+
+Acceptance targets:
+
+- No full reload during normal patch paths.
+- Scroll remains responsive during large patch bursts.
+- Selection survives patching.
+- No blank viewport during scroll.
+- Patch queue does not grow unbounded.
+
+Rollback:
+
+- If client-side mode fails measured targets, evaluate server-backed row model with explicit viewport/cache contracts.
+
+### Slice 12 - Legacy Cleanup
+
+Status: `[ ]`
+
+Goal:
+
+- Delete old paths once the new architecture is proven.
+
+Cleanup:
+
+- Remove unused preview state and docs.
+- Remove old full-array grid computed paths.
+- Remove duplicate allocation mutation helpers.
+- Remove stale revision/snapshot guard comments.
+- Remove temporary fallback code that benchmarks prove unnecessary.
+
+Tests:
+
+- Full frontend type-check.
+- Focused backend allocation/test-run tests.
+- Focused frontend signal page tests.
+- 20,000-row benchmark repeat.
+
+Rollback:
+
+- Revert only the cleanup commit, not the new architecture slices.
+
+## Update Protocol
+
+For each future slice:
+
+1. Change its status to `[~]`.
+2. Implement the smallest coherent change.
+3. Add or update focused tests.
+4. Record validation commands in the slice.
+5. Change status to `[x]` only after validation passes or blocked work is clearly documented.
+6. Add new gaps to `Main Gaps` instead of hiding them.
+
+## Risks
+
+| Risk | Mitigation |
+| --- | --- |
+| Patch stream drift | sequence numbers, unknown-row recovery reload |
+| Live sort/filter surprises | explicit per-column recompute policy |
+| Vue deep reactivity returns to hot path | non-reactive projection cache and row-model tests |
+| Grid patch API misuse | keep app wrapper around `api.rows.patch` and `refreshCellsByRowKeys` |
+| Bulk updates still block UI | chunk patches and store sync; benchmark 5,000+ patches |
+| Runtime evidence remains too weak | persist per-step binding/channel evidence without sheet-level execution guards |
+| Reload fallback hides regressions | tests assert no reload in normal mutation paths |
+
+## Next Slice
+
+Start with Slice 2: Projection Mapper Boundary.
+
+Reason:
+
+- It is the lowest-risk next cleanup.
+- It reduces `SignalsPage.vue` ownership before replacing the Pinia row array.
+- It gives tests around row shape before deeper cache/store changes.
