@@ -19,6 +19,13 @@ import { devPerfIncrement, devPerfMeasureStart } from "@/utils/devPerf"
 
 const logger = getLogger("SIGNAL_SHEET")
 
+type SignalAllocationPatchOptions = {
+  skipRecentlyChanged?: boolean
+  skipRevision?: boolean
+  skipMissing?: boolean
+  allowReplaceOnMissing?: boolean
+}
+
 export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   const workspaceStore = useWorkspaceStore()
 
@@ -154,7 +161,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   function replaceAllocationRows(
     rows: SignalAllocationRow[],
     changedSignalIds: readonly number[] = [],
-    options?: { skipRecentlyChanged?: boolean; skipRevision?: boolean },
+    options?: SignalAllocationPatchOptions,
   ) {
     allocationRows.value = rows
     rebuildAllocationIndexes()
@@ -280,7 +287,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   function applyServerAllocationPatch(
     serverRows: SignalAllocationRow[],
     signalIds: readonly number[],
-    options?: { skipRecentlyChanged?: boolean; skipRevision?: boolean; skipMissing?: boolean },
+    options?: SignalAllocationPatchOptions,
   ) {
     devPerfIncrement("signalSheet.applyServerAllocationPatch.calls")
     const endMeasure = devPerfMeasureStart("signalSheet.applyServerAllocationPatch")
@@ -300,10 +307,10 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       allocationIndexBySignalId.has(signalId) && serverBySignalId.has(signalId)
     ))
     if (!canPatchInPlace) {
+      const patchableSignalIds = signalIds.filter((signalId) => (
+        allocationIndexBySignalId.has(signalId) && serverBySignalId.has(signalId)
+      ))
       if (options?.skipMissing) {
-        const patchableSignalIds = signalIds.filter((signalId) => (
-          allocationIndexBySignalId.has(signalId) && serverBySignalId.has(signalId)
-        ))
         if (patchableSignalIds.length > 0) {
           applyServerAllocationPatch(serverRows, patchableSignalIds, {
             skipRecentlyChanged: options.skipRecentlyChanged,
@@ -311,6 +318,21 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
           })
         }
         endMeasure({ mode: "skipMissing", count: signalIds.length, patched: patchableSignalIds.length })
+        return
+      }
+      if (patchableSignalIds.length > 0) {
+        applyServerAllocationPatch(serverRows, patchableSignalIds, {
+          skipRecentlyChanged: options?.skipRecentlyChanged,
+          skipRevision: options?.skipRevision,
+        })
+      }
+      if (options?.allowReplaceOnMissing !== true) {
+        devPerfIncrement("signalSheet.applyServerAllocationPatch.missingRowsSkipped")
+        endMeasure({
+          mode: "missingRowsSkipped",
+          count: signalIds.length,
+          patched: patchableSignalIds.length,
+        })
         return
       }
       devPerfIncrement("signalSheet.applyServerAllocationPatch.replaceRowsPath")
@@ -923,7 +945,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
 
   function applyAllocationRowsPatch(
     rows: SignalAllocationRow[],
-    options?: { skipRecentlyChanged?: boolean; skipRevision?: boolean; skipMissing?: boolean },
+    options?: SignalAllocationPatchOptions,
   ) {
     if (!Array.isArray(rows) || rows.length === 0) {
       return

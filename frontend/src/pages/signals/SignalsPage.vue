@@ -170,6 +170,10 @@ import {
 } from "@/pages/signals/utils/signalGridProjection"
 import { createSignalAllocationProjectionCache } from "@/pages/signals/utils/signalAllocationProjectionCache"
 import { createSignalGridPatchIngress } from "@/pages/signals/utils/signalGridPatchIngress"
+import {
+  resolveSignalStaticRefreshReason,
+  type SignalStaticRefreshReason,
+} from "@/pages/signals/utils/signalStaticRefreshPolicy"
 import { createSignalRuntimeStateCache } from "@/pages/signals/utils/signalRuntimeStateCache"
 import {
   applyRuntimeTestedAt,
@@ -751,11 +755,11 @@ function buildSignalRowsPatchedAllocationRow(patch: SignalRowsPatchedRowPatch): 
   }
 }
 
-function applySignalRowsPatchedRuntimeRows(patches: readonly SignalRowsPatchedRowPatch[]): boolean {
+function applySignalRowsPatchedRuntimeRows(patches: readonly SignalRowsPatchedRowPatch[]): number[] {
   const signalIds: number[] = []
   const testedAtBySignal: Record<number, string> = {}
   const columns = new Set<string>()
-  let missingRow = false
+  const missingSignalIds: number[] = []
 
   patches.forEach((patch) => {
     const signalId = Number(patch.signal_id)
@@ -763,7 +767,7 @@ function applySignalRowsPatchedRuntimeRows(patches: readonly SignalRowsPatchedRo
       return
     }
     if (!hasSignalAllocationProjectionSignalId(signalId)) {
-      missingRow = true
+      missingSignalIds.push(signalId)
       return
     }
 
@@ -789,15 +793,15 @@ function applySignalRowsPatchedRuntimeRows(patches: readonly SignalRowsPatchedRo
     })
   }
 
-  return missingRow
+  return missingSignalIds
 }
 
 function applySignalRowsPatchedAllocationRows(
   patches: readonly SignalRowsPatchedRowPatch[],
   source: SignalRowsPatchedEvent["source"],
-): boolean {
+): number[] {
   const groupedRows = new Map<string, { columns: readonly string[]; rows: SignalAllocationRow[] }>()
-  let missingRow = false
+  const missingSignalIds: number[] = []
 
   patches.forEach((patch) => {
     const signalId = Number(patch.signal_id)
@@ -805,7 +809,7 @@ function applySignalRowsPatchedAllocationRows(
       return
     }
     if (!hasSignalAllocationProjectionSignalId(signalId)) {
-      missingRow = true
+      missingSignalIds.push(signalId)
       return
     }
 
@@ -833,7 +837,7 @@ function applySignalRowsPatchedAllocationRows(
     })
   })
 
-  return missingRow
+  return missingSignalIds
 }
 
 async function applySignalRowsPatchedEvent(event: SignalRowsPatchedEvent) {
@@ -841,8 +845,12 @@ async function applySignalRowsPatchedEvent(event: SignalRowsPatchedEvent) {
     return
   }
 
-  if (event.requires_full_reload === true) {
-    await refreshSignalsStatic()
+  const explicitRefreshReason = resolveSignalStaticRefreshReason({
+    kind: "signal_rows_patched",
+    requiresFullReload: event.requires_full_reload === true,
+  })
+  if (explicitRefreshReason) {
+    await refreshSignalsStatic(explicitRefreshReason)
     return
   }
 
@@ -851,12 +859,16 @@ async function applySignalRowsPatchedEvent(event: SignalRowsPatchedEvent) {
     return
   }
 
-  const needsReload = event.source === "test_runtime"
+  const missingSignalIds = event.source === "test_runtime"
     ? applySignalRowsPatchedRuntimeRows(patches)
     : applySignalRowsPatchedAllocationRows(patches, event.source)
 
-  if (needsReload) {
-    await refreshSignalsStatic()
+  const recoveryRefreshReason = resolveSignalStaticRefreshReason({
+    kind: "signal_rows_patched",
+    missingSignalIds,
+  })
+  if (recoveryRefreshReason) {
+    await refreshSignalsStatic(recoveryRefreshReason)
   }
 }
 
@@ -1415,7 +1427,7 @@ function closeImportModal() {
 
 async function handleImported() {
   importModalOpen.value = false
-  await refreshSignalsStatic()
+  await refreshSignalsStatic("import")
   await signalSheetStore.ensurePresetsLoaded({ force: true })
 }
 
@@ -2678,7 +2690,7 @@ function rebuildSignalGridRows() {
   signalGridRowModel.setRows(createSignalGridRows(signalAllocationProjectionRows(), sourceHeaders.value, signalGridRuntimeOverlay()))
 }
 
-async function refreshSignalsStatic() {
+async function refreshSignalsStatic(_reason: SignalStaticRefreshReason) {
   const workspaceId = workspaceStore.activeWorkspaceId
   if (!workspaceId) {
     error.value = null
@@ -2705,7 +2717,7 @@ async function refreshSignalsStatic() {
 watch(
   () => workspaceStore.activeWorkspaceId,
   () => {
-    const refreshPromise = refreshSignalsStatic()
+    const refreshPromise = refreshSignalsStatic("workspace_switch")
     restoreSignalsGridState()
     void refreshPromise
   },
@@ -2779,7 +2791,7 @@ watch(
 )
 
 onMounted(() => {
-  const refreshPromise = refreshSignalsStatic()
+  const refreshPromise = refreshSignalsStatic("initial_load")
   restoreSignalsGridState()
   void refreshPromise
   syncImportModalFromRoute()

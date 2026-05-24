@@ -71,7 +71,7 @@ Execution semantics for the current product direction:
 - Sort/filter recompute policy is explicit for current allocation/runtime columns; future device/test fields still need policy entries when introduced.
 - Performance proof for 20,000 rows under large allocation/test patch bursts is still missing.
 - Allocation summary event history and signal test-run step evidence exist; report/controller-log comparison wiring is still incomplete.
-- Old reload-oriented fallback paths still exist and need to be narrowed to recovery only.
+- Full projection reload is now policy-gated for initial load, workspace/import changes, reconnect gaps, unknown rows, and operator refresh; structural signal-list edits still use explicit reload.
 
 ## Slice Plan
 
@@ -472,7 +472,7 @@ Rollback:
 
 ### Slice 10 - Full Reload Recovery Path Cleanup
 
-Status: `[ ]`
+Status: `[x]`
 
 Goal:
 
@@ -494,6 +494,19 @@ Tests:
 - Allocation job completion does not call full allocation reload.
 - Runtime patch burst does not call full allocation reload.
 - Unknown row patch requests recovery reload.
+
+Implemented:
+
+- Added an explicit static-refresh policy for initial load, workspace switch, import, operator manual refresh, reconnect gap, and unknown-row recovery.
+- `SignalsPage.vue` now routes patch-stream full reloads through named recovery reasons instead of silent `refreshSignalsStatic()` calls.
+- Runtime and allocation patch handlers return missing signal ids, so unknown-row recovery is explicit while normal patch bursts remain reload-free.
+- Pinia allocation patching no longer replaces the loaded allocation projection with partial server patch rows when a normal patch references unknown rows.
+
+Validated 2026-05-24:
+
+- `pnpm --dir frontend type-check`
+- `pnpm --dir frontend test src/pages/signals/utils/signalStaticRefreshPolicy.test.ts src/stores/signalSheetStore.test.ts src/stores/signalRowsPatchStore.test.ts src/pages/signals/utils/signalGridPatchIngress.test.ts`
+- `git diff --check`
 
 Rollback:
 
@@ -582,10 +595,9 @@ For each future slice:
 
 ## Next Slice
 
-Start with Slice 10: Full Reload Recovery Path Cleanup.
+Start with Slice 11: 20,000 Row Benchmark Harness.
 
 Reason:
 
-- Patch contracts, allocation history, and test-run step evidence are now in place.
-- Normal allocation/test update paths should now be tightened so full reload remains an explicit recovery path.
-- This is the next frontend/backend integration risk before adding benchmarks.
+- Normal allocation/test update paths are now reload-free except for explicit recovery.
+- The next risk is proof under 20,000-row load, large patch bursts, selection, and scrolling.
