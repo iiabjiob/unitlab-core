@@ -49,7 +49,7 @@ type DataGridPatchOptions = {
 type SignalGridPatchQueueGridApi<TRow> = {
   rows?: {
     hasPatchSupport?: () => boolean
-    patch?: (patches: readonly DataGridRowPatch<TRow>[], options?: DataGridPatchOptions) => void
+    patch?: (patches: readonly DataGridRowPatch<TRow>[], options?: DataGridPatchOptions) => void | Promise<void>
     batch?: <TResult>(callback: () => TResult) => TResult
   }
   view?: {
@@ -248,7 +248,9 @@ export function createSignalGridPatchQueue<TRow extends Record<string, unknown>>
       return
     }
 
-    if (!api?.rows?.patch || api.rows.hasPatchSupport?.() === false) {
+    const rowsApi = api?.rows
+    const patch = rowsApi?.patch
+    if (!rowsApi || !patch || rowsApi.hasPatchSupport?.() === false) {
       diagnostics.droppedRowPatches += patches.length
       return
     }
@@ -266,10 +268,10 @@ export function createSignalGridPatchQueue<TRow extends Record<string, unknown>>
 
     try {
       const applyPatches = () => {
-        api.rows!.patch!(rowPatchPayload, patchOptions)
+        void patch(rowPatchPayload, patchOptions)
       }
-      if (api.rows.batch) {
-        api.rows.batch(applyPatches)
+      if (rowsApi.batch) {
+        rowsApi.batch(applyPatches)
       } else {
         applyPatches()
       }

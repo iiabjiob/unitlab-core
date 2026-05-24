@@ -37,8 +37,26 @@ CONSUMER_NAME = build_worker_consumer_name()
 WORKER_NAME = "signal_allocation_runner"
 
 
-def _serialize_allocation_job_rows(rows: list[SignalAllocationRowSchema]) -> list[dict[str, Any]]:
-    return [row.model_dump(mode="json") for row in rows]
+def _serialize_allocation_job_row_patches(rows: list[SignalAllocationRowSchema]) -> list[dict[str, Any]]:
+    return [
+        {
+            "row_id": row.row_id,
+            "signal_id": row.signal_id,
+            "allocation_id": row.allocation_id,
+            "allocation_status": row.allocation_status,
+            "allocation_health": dict(row.allocation_health or {}),
+            "channel_id": row.channel_id,
+            "channel_type": row.channel_type,
+            "channel_index": row.channel_index,
+            "channel_label": row.channel_label,
+            "device_id": row.device_id,
+            "unit_id": row.unit_id,
+            "unit_online": row.unit_online,
+            "unit_last_seen_at": row.unit_last_seen_at.isoformat() if row.unit_last_seen_at else None,
+            "tested_at": row.tested_at.isoformat() if row.tested_at else None,
+        }
+        for row in rows
+    ]
 
 
 async def _ensure_group(redis) -> None:
@@ -120,7 +138,7 @@ async def _handle_auto_allocate(
         "missing": result.missing,
         "unassigned_signal_ids": result.unassigned_signal_ids,
         "changed_signal_ids": result.changed_signal_ids,
-        "changed_rows": _serialize_allocation_job_rows(changed_rows),
+        "changed_row_patches": _serialize_allocation_job_row_patches(changed_rows),
         "skipped_items": [item.model_dump(mode="json") for item in result.skipped_items],
         "rejected": [item.model_dump(mode="json") for item in result.rejected],
     }
@@ -162,7 +180,7 @@ async def _handle_bulk_update(
     return {
         "updated": len(signal_ids),
         "changed_signal_ids": signal_ids,
-        "changed_rows": _serialize_allocation_job_rows(changed_rows),
+        "changed_row_patches": _serialize_allocation_job_row_patches(changed_rows),
     }
 
 

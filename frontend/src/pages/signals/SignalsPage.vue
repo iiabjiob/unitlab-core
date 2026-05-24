@@ -157,7 +157,7 @@ import AllocationChannelPickerPanel from "@/pages/signals/components/AllocationC
 import AllocationControlCell from "@/pages/signals/components/AllocationControlCell.vue"
 import SignalExportModal, { type ExportColumnOption } from "@/pages/signals/components/SignalExportModal.vue"
 import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
-import { useSignalGridPatchQueue } from "@/pages/signals/composables/useSignalGridPatchQueue"
+import { useSignalGridRowModel } from "@/pages/signals/composables/useSignalGridRowModel"
 import { resolveSignalGridRowKey, resolveSignalGridSelectedRowKeys } from "@/pages/signals/utils/rowSelection"
 import {
   resolveSignalAllocationHealthLabel,
@@ -192,7 +192,7 @@ const testedAtRealtimeStore = useTestedAtRealtimeStore()
 const toastStore = useToastStore()
 const route = useRoute()
 const router = useRouter()
-const { allocationRows, loadingAllocations, loadingSheet, updatingAllocations, sheet, allocationRevision, recentlyChangedSignalIds } = storeToRefs(signalSheetStore)
+const { allocationRows, loadingAllocations, loadingSheet, sheet, allocationRevision, recentlyChangedSignalIds } = storeToRefs(signalSheetStore)
 const { channels } = storeToRefs(channelStore)
 const { activeJobs } = storeToRefs(signalJobStore)
 const { activeWorkspaceRevision, activeWorkspacePatchedSignalIds } = storeToRefs(testedAtRealtimeStore)
@@ -201,9 +201,6 @@ const error = ref<string | null>(null)
 const importModalOpen = ref(false)
 const exportModalOpen = ref(false)
 const allocationGridRef = useDataGridRef<GridRow>()
-const signalGridPatchQueue = useSignalGridPatchQueue<GridRow>(allocationGridRef, {
-  defaultReason: "signals-grid-patch",
-})
 const allocationChannelPickerSignalId = ref<number | null>(null)
 const allocationChannelPickerOpen = ref(false)
 const allocationChannelPickerInstanceKey = ref(0)
@@ -232,6 +229,8 @@ const { gridLines, theme } = useAffinoDataGridTheme()
 const SIGNAL_GRID_SKELETON_FIXED_HEIGHT = 88
 const SIGNAL_GRID_SKELETON_ROW_HEIGHT = 36
 const SIGNAL_GRID_SKELETON_FALLBACK_ROWS = 12
+const BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE = 250
+const BULK_ALLOCATION_STORE_SYNC_CHUNK_SIZE = 100
 const signalGridSkeletonRef = ref<HTMLElement | null>(null)
 const signalGridSkeletonHeight = ref(0)
 
@@ -248,6 +247,10 @@ const DataGrid = defineDataGridComponent<GridRow>()
 
 const SIGNALS_GRID_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
 const SIGNAL_GRID_PATCH_COLUMNS = ["internal_signal_type", "channel_select", "tested_at", "allocation_status", "allocation_health"] as const
+const signalGridRowModel = useSignalGridRowModel<GridRow>(allocationGridRef, {
+  defaultReason: "signals-grid-patch",
+  resolveRowId: row => row.rowId,
+})
 
 const SignalsSelectionToolbarModule = defineComponent({
   name: "SignalsSelectionToolbarModule",
@@ -310,7 +313,6 @@ const loading = computed(() => (
   refreshingSignalsStatic.value
   || loadingAllocations.value
   || loadingSheet.value
-  || updatingAllocations.value
 ))
 const allocationGridReadyForDisplay = computed(() => (
   signalsGridStatePersistenceReady.value && !restoringSignalsGridState.value
@@ -488,6 +490,138 @@ const allocateSelectedButtonLabel = computed(() => (
 const deallocateSelectedButtonLabel = computed(() => (
   deallocatingSelected.value ? "Unassigning..." : "Unassign Hardware"
 ))
+
+function getAllocationJobResult(job: SignalAllocationJob): Record<string, unknown> {
+  return job.result && typeof job.result === "object" ? job.result : {}
+}
+
+function getAllocationJobResultNumber(job: SignalAllocationJob, key: string): number {
+  const value = getAllocationJobResult(job)[key]
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? Math.max(0, numeric) : 0
+}
+
+function getAllocationJobResultArrayLength(job: SignalAllocationJob, key: string): number {
+  const value = getAllocationJobResult(job)[key]
+  return Array.isArray(value) ? value.length : 0
+}
+
+function getAllocationJobChangedRows(job: SignalAllocationJob): SignalAllocationRow[] {
+  const result = getAllocationJobResult(job)
+  const patchRows = result.changed_row_patches
+  const changedRows = Array.isArray(patchRows) && patchRows.length > 0
+    ? patchRows
+    : result.changed_rows
+  if (!Array.isArray(changedRows)) {
+    return []
+  }
+
+  const rows: SignalAllocationRow[] = []
+  changedRows.forEach((row) => {
+    if (!row || typeof row !== "object") {
+      return
+    }
+    const signalId = Number((row as { signal_id?: unknown }).signal_id)
+    if (!Number.isFinite(signalId) || signalId <= 0) {
+      return
+    }
+    const patch = row as Partial<SignalAllocationRow>
+    const baseRow = allocationRowBySignalId.value.get(signalId)
+    rows.push({
+      ...(baseRow ?? {}),
+      ...patch,
+      signal_id: signalId,
+      row_id: String(patch.row_id ?? baseRow?.row_id ?? `signal-${signalId}`),
+      signal_key: String(baseRow?.signal_key ?? ""),
+      signal_name: String(baseRow?.signal_name ?? ""),
+      signal_direction: (baseRow?.signal_direction ?? "DI") as SignalAllocationRow["signal_direction"],
+      signal_category: baseRow?.signal_category ?? null,
+      signal_metadata: baseRow?.signal_metadata ?? {},
+      channel_id: patch.channel_id ?? baseRow?.channel_id ?? null,
+      channel_type: patch.channel_type ?? baseRow?.channel_type ?? null,
+      channel_index: patch.channel_index ?? baseRow?.channel_index ?? null,
+      channel_label: patch.channel_label ?? baseRow?.channel_label ?? null,
+      device_id: patch.device_id ?? baseRow?.device_id ?? null,
+      unit_id: patch.unit_id ?? baseRow?.unit_id ?? null,
+      unit_online: patch.unit_online ?? baseRow?.unit_online ?? null,
+      unit_last_seen_at: patch.unit_last_seen_at ?? baseRow?.unit_last_seen_at ?? null,
+      tested_at: patch.tested_at ?? baseRow?.tested_at ?? null,
+    })
+  })
+  return rows
+}
+
+function resolveAllocationJobSkippedCount(job: SignalAllocationJob, requested: number, changed: number): number {
+  if (String(job.operation) === "auto_allocate") {
+    const skippedItems = getAllocationJobResultArrayLength(job, "skipped_items")
+    const skippedTotal = skippedItems > 0
+      ? skippedItems
+      : getAllocationJobResultNumber(job, "skipped")
+    return skippedTotal + getAllocationJobResultArrayLength(job, "rejected")
+  }
+
+  return Math.max(0, requested - changed)
+}
+
+function enqueueSignalGridRowsDirectPatches(
+  rows: readonly SignalAllocationRow[],
+  reason: string,
+  columns: readonly string[] = SIGNAL_GRID_PATCH_COLUMNS,
+) {
+  if (!rows.length) {
+    return
+  }
+
+  const patches = rows.map((row) => {
+    const gridRow = createGridRow(resolveRuntimeAllocationRow(row), sourceHeaders.value)
+    return {
+      rowId: gridRow.rowId,
+      changes: gridRow,
+      columns,
+    }
+  })
+  signalGridRowModel.enqueueRowPatches(patches, { reason, immediate: true })
+  signalGridRowModel.flushPatches({ reason, immediate: true })
+}
+
+async function patchCompletedAllocationGridRows(rows: readonly SignalAllocationRow[]) {
+  for (let index = 0; index < rows.length; index += BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE) {
+    const chunk = rows.slice(index, index + BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE)
+    enqueueSignalGridRowsDirectPatches(chunk, "signal-allocation-job-complete")
+    await awaitUiPaintFrame()
+  }
+}
+
+async function syncCompletedAllocationRowsToStore(rows: readonly SignalAllocationRow[]) {
+  for (let index = 0; index < rows.length; index += BULK_ALLOCATION_STORE_SYNC_CHUNK_SIZE) {
+    const chunk = rows.slice(index, index + BULK_ALLOCATION_STORE_SYNC_CHUNK_SIZE)
+    signalSheetStore.applyAllocationRowsPatch(chunk, {
+      skipRecentlyChanged: true,
+      skipRevision: true,
+      skipMissing: true,
+    })
+    await awaitUiPaintFrame()
+  }
+}
+
+function scheduleCompletedAllocationRowsStoreSync(rows: readonly SignalAllocationRow[]) {
+  const snapshot = rows.slice()
+  void syncCompletedAllocationRowsToStore(snapshot).catch(() => {
+    return
+  })
+}
+
+async function applyCompletedAllocationJobPatch(job: SignalAllocationJob): Promise<SignalAllocationRow[]> {
+  const changedRows = getAllocationJobChangedRows(job)
+  if (!changedRows.length) {
+    return changedRows
+  }
+
+  await patchCompletedAllocationGridRows(changedRows)
+  scheduleCompletedAllocationRowsStoreSync(changedRows)
+
+  return changedRows
+}
 
 const deleteSelectedToolbarLabel = computed(() => (
   deletingSelected.value
@@ -1481,21 +1615,25 @@ async function allocateSelectedUnassigned() {
     toastStore.info("No free compatible channels available for selected rows.")
     return
   }
+  const workspaceId = workspaceStore.activeWorkspaceId
+  if (!workspaceId) {
+    return
+  }
 
   allocatingSelected.value = true
   await awaitUiPaintFrame()
   try {
-    const result = await signalSheetStore.autoAllocate({
+    const completedJob = await signalJobStore.enqueueAutoAllocateJob(workspaceId, {
       signal_ids: targetSignalIds,
       prefer_online: true,
       prefer_single_unit: false,
       overwrite_existing: false,
     })
 
+    const changedRows = await applyCompletedAllocationJobPatch(completedJob)
     const requested = targetSignalIds.length
-    const changed = Array.isArray(result.changed_rows) ? result.changed_rows.length : 0
-    const skipped = (Array.isArray(result.skipped) ? result.skipped.length : 0)
-      + (Array.isArray(result.rejected) ? result.rejected.length : 0)
+    const changed = changedRows.length
+    const skipped = resolveAllocationJobSkippedCount(completedJob, requested, changed)
     toastStore.success(`Allocation complete: ${requested} requested, ${changed} changed, ${skipped} skipped`)
   } catch (allocateError) {
     const message = allocateError instanceof Error ? allocateError.message : String(allocateError)
@@ -1510,14 +1648,19 @@ async function deallocateSelected() {
   if (!selectedAllocatedSignalIds.value.length) return
   const targetSignalIds = [...selectedAllocatedSignalIds.value]
   const entries = targetSignalIds.map(signalId => ({ signal_id: signalId, channel_id: null }))
+  const workspaceId = workspaceStore.activeWorkspaceId
+  if (!workspaceId) {
+    return
+  }
 
   deallocatingSelected.value = true
   await awaitUiPaintFrame()
   try {
-    const result = await signalSheetStore.bulkSetAllocations(entries)
+    const completedJob = await signalJobStore.enqueueBulkUpdateJob(workspaceId, entries)
+    const changedRows = await applyCompletedAllocationJobPatch(completedJob)
     const requested = targetSignalIds.length
-    const changed = Array.isArray(result.changed_rows) ? result.changed_rows.length : 0
-    const skipped = Math.max(0, requested - changed) + result.rejected.length
+    const changed = changedRows.length
+    const skipped = resolveAllocationJobSkippedCount(completedJob, requested, changed)
     toastStore.success(`Unassignment complete: ${requested} requested, ${changed} changed, ${skipped} skipped`)
   } catch (deallocateError) {
     const message = deallocateError instanceof Error ? deallocateError.message : String(deallocateError)
@@ -2291,9 +2434,11 @@ const virtualizationOptions = computed(() => ({
   columnOverscan: 2,
 }))
 
-const gridRows = computed<GridRow[]>(() => (
-  allocationRows.value.map((row) => createGridRow(resolveGridProjectionRow(row), sourceHeaders.value))
-))
+const gridRows = signalGridRowModel.rows
+
+function rebuildSignalGridRows() {
+  signalGridRowModel.setRows(allocationRows.value.map((row) => createGridRow(resolveGridProjectionRow(row), sourceHeaders.value)))
+}
 
 function enqueueSignalGridRowPatches(
   signalIds: readonly number[],
@@ -2333,7 +2478,7 @@ function enqueueSignalGridRowPatches(
     return
   }
 
-  signalGridPatchQueue.enqueueRowPatches(patches, { reason })
+  signalGridRowModel.enqueueRowPatches(patches, { reason })
 }
 
 async function refreshSignalsStatic() {
@@ -2367,6 +2512,14 @@ watch(
     restoreSignalsGridState()
     void refreshPromise
   },
+)
+
+watch(
+  () => [allocationRows.value, sourceHeaders.value] as const,
+  () => {
+    rebuildSignalGridRows()
+  },
+  { flush: "post", immediate: true },
 )
 
 watch(

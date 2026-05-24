@@ -1,5 +1,5 @@
 import { defineStore } from "pinia"
-import { computed, ref } from "vue"
+import { computed, markRaw, ref } from "vue"
 
 import { SignalSheetAPI } from "@/api/signal_sheet.api"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
@@ -11,6 +11,7 @@ type Waiter = {
   resolve: (job: SignalAllocationJob) => void
   reject: (error: Error) => void
   timer: ReturnType<typeof setTimeout>
+  pollTimer: ReturnType<typeof setInterval>
   workspaceId: number
 }
 
@@ -154,7 +155,7 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
     jobsById.value[job.job_id] = {
       ...existing,
       ...job,
-      result: mergedResult,
+      result: markRaw(mergedResult),
     }
 
     compactFinishedJobs()
@@ -169,6 +170,7 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
     }
 
     clearTimeout(waiter.timer)
+    clearInterval(waiter.pollTimer)
     waiters.delete(job.job_id)
     if (job.status === "succeeded") {
       waiter.resolve(job)
@@ -222,7 +224,11 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
     return new Promise<SignalAllocationJob>((resolve, reject) => {
       const timer = setTimeout(() => {
         void (async () => {
-          waiters.delete(jobId)
+          const waiter = waiters.get(jobId)
+          if (waiter) {
+            clearInterval(waiter.pollTimer)
+            waiters.delete(jobId)
+          }
 
           const refreshed = await reconcileJobOnce(workspaceId, jobId)
           if (refreshed?.status === "succeeded") {
@@ -244,20 +250,25 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
         })()
       }, timeoutMs)
 
-      waiters.set(jobId, { resolve, reject, timer, workspaceId })
+      const pollTimer = setInterval(() => {
+        void reconcileJobOnce(workspaceId, jobId)
+      }, 2000)
+
+      waiters.set(jobId, { resolve, reject, timer, pollTimer, workspaceId })
+      void reconcileJobOnce(workspaceId, jobId)
     })
   }
 
   async function enqueueAutoAllocateJob(workspaceId: number, payload: SignalAutoAllocatePayload): Promise<SignalAllocationJob> {
     const { data: queuedJob } = await SignalSheetAPI.enqueueAutoAllocateJob(workspaceId, payload)
     upsertJob(queuedJob)
-    return await awaitJobCompletion(queuedJob.job_id, workspaceId)
+    return await awaitJobCompletion(queuedJob.job_id, workspaceId, 10 * 60_000)
   }
 
   async function enqueueBulkUpdateJob(workspaceId: number, entries: SignalAllocationUpdateItem[]): Promise<SignalAllocationJob> {
     const { data: queuedJob } = await SignalSheetAPI.enqueueBulkAllocationJob(workspaceId, entries)
     upsertJob(queuedJob)
-    return await awaitJobCompletion(queuedJob.job_id, workspaceId)
+    return await awaitJobCompletion(queuedJob.job_id, workspaceId, 10 * 60_000)
   }
 
   async function enqueueTestRunJob(
@@ -294,6 +305,7 @@ export const useSignalJobStore = defineStore("signalJobStore", () => {
         return
       }
       clearTimeout(waiter.timer)
+      clearInterval(waiter.pollTimer)
       waiter.reject(new Error("Workspace cleared"))
       waiters.delete(jobId)
     })

@@ -180,17 +180,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
   }
 
-  function patchSheetAllocatedCount(previousAllocated: boolean, nextAllocated: boolean) {
-    if (!sheet.value || previousAllocated === nextAllocated) {
-      return
-    }
-    const delta = (nextAllocated ? 1 : 0) - (previousAllocated ? 1 : 0)
-    sheet.value = {
-      ...sheet.value,
-      allocated_count: Math.max(0, sheet.value.allocated_count + delta),
-    }
-  }
-
   function applyLocalTestedAtPatch(signalIds: readonly number[], testedAtIso: string) {
     if (!signalIds.length) {
       return
@@ -291,7 +280,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   function applyServerAllocationPatch(
     serverRows: SignalAllocationRow[],
     signalIds: readonly number[],
-    options?: { skipRecentlyChanged?: boolean; skipRevision?: boolean },
+    options?: { skipRecentlyChanged?: boolean; skipRevision?: boolean; skipMissing?: boolean },
   ) {
     devPerfIncrement("signalSheet.applyServerAllocationPatch.calls")
     const endMeasure = devPerfMeasureStart("signalSheet.applyServerAllocationPatch")
@@ -311,6 +300,19 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       allocationIndexBySignalId.has(signalId) && serverBySignalId.has(signalId)
     ))
     if (!canPatchInPlace) {
+      if (options?.skipMissing) {
+        const patchableSignalIds = signalIds.filter((signalId) => (
+          allocationIndexBySignalId.has(signalId) && serverBySignalId.has(signalId)
+        ))
+        if (patchableSignalIds.length > 0) {
+          applyServerAllocationPatch(serverRows, patchableSignalIds, {
+            skipRecentlyChanged: options.skipRecentlyChanged,
+            skipRevision: options.skipRevision,
+          })
+        }
+        endMeasure({ mode: "skipMissing", count: signalIds.length, patched: patchableSignalIds.length })
+        return
+      }
       devPerfIncrement("signalSheet.applyServerAllocationPatch.replaceRowsPath")
       replaceAllocationRows(serverRows, signalIds, {
         skipRecentlyChanged: options?.skipRecentlyChanged,
@@ -321,6 +323,7 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       return
     }
 
+    let allocatedDelta = 0
     signalIds.forEach((signalId) => {
       const rowIndex = allocationIndexBySignalId.get(signalId)
       const serverRow = serverBySignalId.get(signalId)
@@ -339,8 +342,14 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         allocationOwnerByChannelId.set(nextChannelId, signalId)
       }
       const nextAllocated = isAllocatedChannelId(nextRow.channel_id)
-      patchSheetAllocatedCount(previousAllocated, nextAllocated)
+      allocatedDelta += (nextAllocated ? 1 : 0) - (previousAllocated ? 1 : 0)
     })
+    if (allocatedDelta !== 0 && sheet.value) {
+      sheet.value = {
+        ...sheet.value,
+        allocated_count: Math.max(0, sheet.value.allocated_count + allocatedDelta),
+      }
+    }
     if (!options?.skipRecentlyChanged) {
       setRecentlyChangedSignalIds(signalIds)
     }
@@ -912,13 +921,17 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     })
   }
 
-  function applyAllocationRowsPatch(rows: SignalAllocationRow[]) {
+  function applyAllocationRowsPatch(
+    rows: SignalAllocationRow[],
+    options?: { skipRecentlyChanged?: boolean; skipRevision?: boolean; skipMissing?: boolean },
+  ) {
     if (!Array.isArray(rows) || rows.length === 0) {
       return
     }
     applyServerAllocationPatch(
       rows,
       rows.map(row => row.signal_id),
+      options,
     )
   }
 

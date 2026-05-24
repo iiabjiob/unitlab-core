@@ -59,7 +59,7 @@
             v-if="canAllocateSelected"
             variant="secondary"
             size="sm"
-            :disabled="loading || allocatingSelected"
+            :disabled="loading || allocatingSelected || deallocatingSelected"
             @click="emit('allocateSelected')"
           >
             {{ allocateSelectedLabel }}
@@ -69,7 +69,7 @@
             v-if="canDeallocateSelected"
             variant="secondary"
             size="sm"
-            :disabled="loading || deallocatingSelected"
+            :disabled="loading || allocatingSelected || deallocatingSelected"
             @click="emit('deallocateSelected')"
           >
             {{ deallocateSelectedLabel }}

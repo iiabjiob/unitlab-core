@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
 from app.schemas.ws.events import SignalTestRuntimePatchEvent, WSChannel
 from app.workers import signal_test_run_runner
-from app.workers.signal_allocation_runner import _serialize_allocation_job_rows
+from app.workers.signal_allocation_runner import _serialize_allocation_job_row_patches
 
 
 def run_async(awaitable):
@@ -76,7 +76,7 @@ def build_allocation_row(signal_id: int, **overrides) -> SignalAllocationRowSche
     return SignalAllocationRowSchema(**data)
 
 
-def test_serialize_allocation_job_rows_returns_json_safe_projection_rows() -> None:
+def test_serialize_allocation_job_row_patches_returns_json_safe_grid_patch_rows() -> None:
     rows = [
         SignalAllocationRowSchema(
             row_id="signal-1",
@@ -91,12 +91,13 @@ def test_serialize_allocation_job_rows_returns_json_safe_projection_rows() -> No
         )
     ]
 
-    payload = _serialize_allocation_job_rows(rows)
+    payload = _serialize_allocation_job_row_patches(rows)
 
     assert payload[0]["row_id"] == "signal-1"
     assert payload[0]["signal_id"] == 1
     assert payload[0]["allocation_status"] == "assigned"
     assert payload[0]["allocation_health"] == {"offline_device": False}
+    assert "signal_name" not in payload[0]
     assert isinstance(payload[0]["tested_at"], str)
     assert payload[0]["tested_at"].startswith("2026-01-01T12:30:00")
 

@@ -206,18 +206,12 @@ const activeEstText = computed(() => {
 const activeAllocationLabel = computed(() => {
   const job = activeAllocationJob.value
   if (!job) return "Signals"
-  if (String(job.operation) === "bulk_update") {
-    return "Unassign"
-  }
-  return "Assign"
+  return String(job.operation) === "bulk_update" ? "Unassign" : "Assign"
 })
 
 const activeAllocationProgress = computed(() => {
   const job = activeAllocationJob.value
-  if (!job) {
-    return { done: 0, total: 0 }
-  }
-  return resolveActiveProgress(job)
+  return job ? resolveActiveProgress(job) : { done: 0, total: 0 }
 })
 
 const activeAllocationProgressPercent = computed(() => {
@@ -226,74 +220,25 @@ const activeAllocationProgressPercent = computed(() => {
   return Math.max(0, Math.min(100, Math.round((Math.min(done, total) / total) * 100)))
 })
 
-const activeAllocationEstText = computed(() => {
-  const job = activeAllocationJob.value
-  if (!job) return ""
-
-  const { done, total } = activeAllocationProgress.value
-  if (total <= 0 || done <= 0 || done >= total) {
-    return ""
-  }
-
-  const startedAtRaw = (job as unknown as Record<string, unknown>)?.started_at
-  const startedAtMs = toMillis(String(startedAtRaw ?? "")) || toMillis(String(job.created_at ?? ""))
-  if (!startedAtMs) {
-    return ""
-  }
-
-  const elapsedSeconds = Math.max(1, Math.round((Date.now() - startedAtMs) / 1000))
-  const rate = done / elapsedSeconds
-  if (!Number.isFinite(rate) || rate <= 0) {
-    return ""
-  }
-
-  const remaining = Math.max(0, total - done)
-  if (remaining <= 0) {
-    return ""
-  }
-
-  const estimatedSeconds = Math.max(1, Math.round(remaining / rate))
-  return `ETA ${formatDurationShort(estimatedSeconds)}`
-})
-
 const activeAllocationDetailText = computed(() => {
   const job = activeAllocationJob.value
   if (!job) return ""
-
   const { done, total } = activeAllocationProgress.value
   const message = String(job.message ?? "").trim()
-  const state = String(job.status)
-  const stateLabel = state === "queued"
-    ? "queued"
-    : state === "cancelling"
-      ? "cancelling"
-      : state === "paused"
-        ? "paused"
-        : "running"
   const ratio = total > 0 ? `${done}/${total}` : ""
-    const base = ratio ? `${stateLabel} · ${ratio}` : stateLabel
-
-  if (message) {
-      const withRatio = ratio && !message.includes(ratio) ? `${message} · ${ratio}` : message
-      return activeAllocationEstText.value ? `${withRatio} · ${activeAllocationEstText.value}` : withRatio
+  if (message && ratio && !message.includes(ratio)) {
+    return `${message} · ${ratio}`
   }
-
-    return activeAllocationEstText.value ? `${base} · ${activeAllocationEstText.value}` : base
+  return message || ratio || String(job.status)
 })
 
 const activeAllocationDotClass = computed(() => {
   const job = activeAllocationJob.value
   if (!job) return "bg-emerald-500"
-  if (String(job.status) === "cancelling") return "bg-amber-500"
   return String(job.operation) === "bulk_update" ? "bg-amber-500" : "bg-sky-500"
 })
 
-const activeAllocationBarClass = computed(() => {
-  const job = activeAllocationJob.value
-  if (!job) return "bg-emerald-500"
-  if (String(job.status) === "cancelling") return "bg-amber-500"
-  return String(job.operation) === "bulk_update" ? "bg-amber-500" : "bg-sky-500"
-})
+const activeAllocationBarClass = computed(() => activeAllocationDotClass.value)
 
 function resolveActiveProgress(job: SignalAllocationJob): { done: number; total: number } {
   let total = Math.max(0, Number(job.progress_total ?? 0))
