@@ -606,6 +606,8 @@ Implemented so far:
 - Narrowed grid row patch payloads to requested columns and suppressed grid state persistence events during bulk job patch replay.
 - Removed mass `rows.patchRows` replay on allocation job completion; completion now updates the allocation projection cache and refreshes only visible cells.
 - Removed the unused public `signalSheetStore.applyAllocationRowsPatch()` helper and the obsolete `rows.patch` DataGrid API fallback.
+- Removed the unused legacy `SignalPlaceholder.vue` component from the signals module.
+- Removed the unused `pages/signals/index.ts` barrel export; routes import `SignalsPage.vue` directly.
 
 Validated 2026-05-24:
 
