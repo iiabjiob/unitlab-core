@@ -7,7 +7,6 @@ import type {
   SignalAllocationEnsureResponse,
   SignalAllocationRow,
   SignalAllocationUpdateItem,
-  SignalAutoAllocatePayload,
   SignalImportMeta,
   SignalSheet,
   SignalSheetImportPreviewResponse,
@@ -684,34 +683,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     }
   }
 
-  async function setAllocation(signalId: number, channelId: number | null) {
-    const normalizedSignalId = Number(signalId)
-    if (!Number.isFinite(normalizedSignalId) || normalizedSignalId <= 0) {
-      throw new Error("Signal id is required")
-    }
-
-    const normalizedChannelId = normalizeChannelId(channelId)
-    if (normalizedChannelId === null) {
-      return unassignAllocation(normalizedSignalId)
-    }
-
-    const rowIndex = allocationIndexBySignalId.get(normalizedSignalId)
-    const currentRow = rowIndex === undefined ? null : allocationRows.value[rowIndex] ?? null
-    const currentChannelId = normalizeChannelId(currentRow?.channel_id)
-    if (currentChannelId === null) {
-      return assignAllocation(normalizedSignalId, normalizedChannelId)
-    }
-    if (currentChannelId === normalizedChannelId) {
-      return {
-        workspace_id: requireWorkspaceId(),
-        changed_rows: currentRow ? [cloneAllocationRow(currentRow)] : [],
-        conflicts: [],
-        rejected: [],
-      } satisfies SignalAllocationActionResponse
-    }
-    return reassignAllocation(normalizedSignalId, normalizedChannelId)
-  }
-
   function applyAllocationActionResponse(data: SignalAllocationActionResponse) {
     const changedRows = Array.isArray(data.changed_rows) ? data.changed_rows : []
     if (changedRows.length > 0) {
@@ -784,44 +755,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
         channel_id: channelId,
       })
       return applyAllocationActionResponse(data)
-    } finally {
-      endAllocationMutation()
-    }
-  }
-
-  async function autoAllocate(payload: SignalAutoAllocatePayload) {
-    devPerfIncrement("signalSheet.autoAllocate.calls")
-    const endMeasure = devPerfMeasureStart("signalSheet.autoAllocate")
-    beginAllocationMutation()
-    try {
-      const workspaceId = requireWorkspaceId()
-      const endApiMeasure = devPerfMeasureStart("signalSheet.autoAllocate.api")
-      const { data } = await SignalSheetAPI.autoAllocate(workspaceId, payload)
-      endApiMeasure({
-        workspaceId,
-        requested: payload.signal_ids?.length ?? 0,
-      })
-
-      if (Array.isArray(data.changed_rows) && data.changed_rows.length > 0) {
-        applyServerAllocationPatch(
-          data.changed_rows,
-          data.changed_rows.map(row => row.signal_id),
-        )
-        recomputeSheetAllocatedCount()
-      }
-      devPerfIncrement("signalSheet.autoAllocate.completed")
-      endMeasure({
-        ok: true,
-        requested: payload.signal_ids?.length ?? 0,
-        serverRows: Array.isArray(data.changed_rows) ? data.changed_rows.length : 0,
-      })
-      return data
-    } catch (error) {
-      endMeasure({
-        ok: false,
-        requested: payload.signal_ids?.length ?? 0,
-      })
-      throw error
     } finally {
       endAllocationMutation()
     }
@@ -953,12 +886,10 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     savePreset,
     deletePreset,
     bulkSetAllocations,
-    setAllocation,
     assignAllocation,
     reassignAllocation,
     unassignAllocation,
     swapAllocations,
-    autoAllocate,
     ensureAllocated,
     markSignalsTested,
     applyTestedAtBySignalPatch,
