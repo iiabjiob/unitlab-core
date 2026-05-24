@@ -5,7 +5,7 @@
       :workspace-missing="workspaceMissing"
       :loading="loading"
       :allocated-cable-rows-count="allocatedCableRows.length"
-      :allocation-rows-count="allocationRows.length"
+      :allocation-rows-count="allocationProjectionRowsCount"
       :allocating-selected="allocatingSelected"
       :deallocating-selected="deallocatingSelected"
       :allocate-selected-label="allocateSelectedButtonLabel"
@@ -45,7 +45,7 @@
     </div>
 
     <div
-      v-else-if="!loading && allocationRows.length === 0"
+      v-else-if="!loading && allocationProjectionRowsCount === 0"
       class="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/80 p-8 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400"
     >
       No signals found.
@@ -86,7 +86,7 @@
         </div>
       </div>
       <div
-        v-if="allocationRows.length > 0"
+        v-if="allocationProjectionRowsCount > 0"
         class="affino-native-data-grid__shell"
         :style="showSignalGridSkeleton ? { visibility: 'hidden', pointerEvents: 'none' } : undefined"
         :aria-busy="showSignalGridSkeleton ? 'true' : undefined"
@@ -170,6 +170,7 @@ import {
   signalGridSourceColumnKey,
   type SignalGridRow as GridRow,
 } from "@/pages/signals/utils/signalGridProjection"
+import { createSignalAllocationProjectionCache } from "@/pages/signals/utils/signalAllocationProjectionCache"
 import {
   applyRuntimeTestedAt,
   applyRuntimeTestedAtToRows,
@@ -248,6 +249,8 @@ const DataGrid = defineDataGridComponent<GridRow>()
 
 const SIGNALS_GRID_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
 const SIGNAL_GRID_PATCH_COLUMNS = ["internal_signal_type", "channel_select", "tested_at", "allocation_status", "allocation_health"] as const
+const signalAllocationProjectionCache = createSignalAllocationProjectionCache()
+const signalAllocationProjectionVersion = ref(0)
 const signalGridRowModel = useSignalGridRowModel<GridRow>(allocationGridRef, {
   defaultReason: "signals-grid-patch",
   resolveRowId: row => row.rowId,
@@ -319,7 +322,7 @@ const allocationGridReadyForDisplay = computed(() => (
   signalsGridStatePersistenceReady.value && !restoringSignalsGridState.value
 ))
 const showSignalGridSkeleton = computed(() => (
-  (loading.value && allocationRows.value.length === 0)
+  (loading.value && allocationProjectionRowsCount.value === 0)
   || !allocationGridReadyForDisplay.value
 ))
 const signalGridSkeletonRowCount = computed(() => {
@@ -338,12 +341,92 @@ const activeSignalSheet = computed(() => {
   }
   return currentSheet.workspace_id === workspaceId ? currentSheet : null
 })
+
+function bumpSignalAllocationProjectionVersion() {
+  signalAllocationProjectionVersion.value = signalAllocationProjectionCache.version
+}
+
+function signalAllocationProjectionRows(): readonly SignalAllocationRow[] {
+  void signalAllocationProjectionVersion.value
+  return signalAllocationProjectionCache.getRows()
+}
+
+function signalAllocationProjectionRowCount(): number {
+  void signalAllocationProjectionVersion.value
+  return signalAllocationProjectionCache.rowCount
+}
+
+function replaceSignalAllocationProjectionRows(rows: readonly SignalAllocationRow[]) {
+  signalAllocationProjectionCache.replaceRows(rows)
+  bumpSignalAllocationProjectionVersion()
+}
+
+function patchSignalAllocationProjectionRows(rows: readonly SignalAllocationRow[]) {
+  const result = signalAllocationProjectionCache.patchRows(rows)
+  if (result.changed > 0) {
+    bumpSignalAllocationProjectionVersion()
+  }
+  return result
+}
+
+function resolveStoreAllocationRowsBySignalIds(signalIds: readonly number[]): SignalAllocationRow[] {
+  if (!signalIds.length) {
+    return []
+  }
+  const pending = new Set(signalIds.map(item => Number(item)).filter(Number.isFinite))
+  if (pending.size === 0) {
+    return []
+  }
+  const rows: SignalAllocationRow[] = []
+  allocationRows.value.forEach((row) => {
+    if (!pending.has(row.signal_id)) {
+      return
+    }
+    rows.push(row)
+    pending.delete(row.signal_id)
+  })
+  return rows
+}
+
+function patchSignalAllocationProjectionRowsFromStore(signalIds: readonly number[]) {
+  const rows = resolveStoreAllocationRowsBySignalIds(signalIds)
+  if (rows.length > 0) {
+    patchSignalAllocationProjectionRows(rows)
+  }
+}
+
+function getSignalAllocationProjectionRowBySignalId(signalId: number | null | undefined): SignalAllocationRow | null {
+  void signalAllocationProjectionVersion.value
+  const normalizedSignalId = Number(signalId)
+  if (!Number.isFinite(normalizedSignalId)) {
+    return null
+  }
+  return signalAllocationProjectionCache.getRowBySignalId(normalizedSignalId)
+}
+
+function hasSignalAllocationProjectionSignalId(signalId: number | null | undefined): boolean {
+  void signalAllocationProjectionVersion.value
+  const normalizedSignalId = Number(signalId)
+  return Number.isFinite(normalizedSignalId) && signalAllocationProjectionCache.hasSignalId(normalizedSignalId)
+}
+
+function getSignalAllocationOwnerSignalIdByChannelId(channelId: number | null | undefined): number | null {
+  void signalAllocationProjectionVersion.value
+  const normalizedChannelId = Number(channelId)
+  if (!Number.isFinite(normalizedChannelId)) {
+    return null
+  }
+  return signalAllocationProjectionCache.getOwnerSignalIdByChannelId(normalizedChannelId)
+}
+
+const allocationProjectionRowsCount = computed(() => signalAllocationProjectionRowCount())
+
 const sourceHeaders = computed(() => {
   const headersFromSheet = resolveAllSourceColumnHeaders(activeSignalSheet.value, [])
   if (headersFromSheet.length > 0) {
     return headersFromSheet
   }
-  return resolveAllSourceColumnHeaders(null, allocationRows.value)
+  return resolveAllSourceColumnHeaders(null, signalAllocationProjectionRows())
 })
 
 watch(
@@ -378,7 +461,7 @@ function resolveRuntimeAllocationRow(row: SignalAllocationRow): SignalAllocation
   return applyRuntimeTestedAt(row, workspaceStore.activeWorkspaceId, testedAtRealtimeStore.getTestedAt)
 }
 
-function resolveRuntimeAllocationRows(rows: readonly SignalAllocationRow[] = allocationRows.value): SignalAllocationRow[] {
+function resolveRuntimeAllocationRows(rows: readonly SignalAllocationRow[] = signalAllocationProjectionRows()): SignalAllocationRow[] {
   return applyRuntimeTestedAtToRows(rows, workspaceStore.activeWorkspaceId, testedAtRealtimeStore.getTestedAt)
 }
 
@@ -388,17 +471,6 @@ function hasRuntimeOrStaticTestedAt(row: SignalAllocationRow): boolean {
   ).trim())
 }
 
-const visibleSignalIds = computed(() => {
-  const ids = new Set<number>()
-  allocationRows.value.forEach((row) => {
-    const signalId = Number(row.signal_id)
-    if (Number.isFinite(signalId)) {
-      ids.add(signalId)
-    }
-  })
-  return ids
-})
-
 const summaryText = computed(() => {
   if (workspaceMissing.value) {
     return "Workspace is not selected"
@@ -407,7 +479,7 @@ const summaryText = computed(() => {
     return "Loading static signals view"
   }
   void activeWorkspaceRevision.value
-  const rows = allocationRows.value
+  const rows = signalAllocationProjectionRows()
   const total = rows.length
   const allocated = rows.filter(row => Number.isFinite(row.channel_id as number)).length
   const tested = rows.filter(row => hasRuntimeOrStaticTestedAt(row)).length
@@ -431,8 +503,8 @@ const selectedAllocationRows = computed(() => (
     .map((rowKey) => {
       const signalId = signalIdFromRowKey(rowKey)
       if (signalId === null) return null
-      if (!visibleSignalIds.value.has(signalId)) return null
-      return allocationRowBySignalId.value.get(signalId) ?? null
+      if (!hasSignalAllocationProjectionSignalId(signalId)) return null
+      return getSignalAllocationProjectionRowBySignalId(signalId)
     })
     .filter((row): row is SignalAllocationRow => Boolean(row))
 ))
@@ -473,7 +545,7 @@ const selectedVisibleAllocatedPhysicalRows = computed(() => (
 ))
 
 const allocatedCableRows = computed(() => (
-  allocationRows.value.filter((row) => (
+  signalAllocationProjectionRows().filter((row) => (
     Number.isFinite(row.channel_id as number)
     && Number.isFinite(row.channel_index as number)
     && Boolean(String(row.unit_id ?? "").trim())
@@ -527,7 +599,7 @@ function getAllocationJobChangedRows(job: SignalAllocationJob): SignalAllocation
       return
     }
     const patch = row as Partial<SignalAllocationRow>
-    const baseRow = allocationRowBySignalId.value.get(signalId)
+    const baseRow = getSignalAllocationProjectionRowBySignalId(signalId)
     rows.push({
       ...(baseRow ?? {}),
       ...patch,
@@ -611,6 +683,7 @@ async function applyCompletedAllocationJobPatch(job: SignalAllocationJob): Promi
     return changedRows
   }
 
+  patchSignalAllocationProjectionRows(changedRows)
   await patchCompletedAllocationGridRows(changedRows)
   scheduleCompletedAllocationRowsStoreSync(changedRows)
 
@@ -638,7 +711,7 @@ function resolveSelectionCandidateRowKeys(): string[] {
       .filter((rowKey): rowKey is string => Boolean(rowKey))
   }
 
-  return allocationRows.value
+  return signalAllocationProjectionRows()
     .map(row => resolveSignalGridRowKey(row))
     .filter((rowKey): rowKey is string => Boolean(rowKey))
 }
@@ -898,17 +971,6 @@ const optionalExportColumnOptions = computed<ExportColumnOption[]>(() => (
     .map(column => ({ key: column.key, label: column.label }))
 ))
 
-const allocationRowBySignalId = computed(() => {
-  const map = new Map<number, SignalAllocationRow>()
-  allocationRows.value.forEach((row) => {
-    const signalId = Number(row.signal_id)
-    if (Number.isFinite(signalId)) {
-      map.set(signalId, row)
-    }
-  })
-  return map
-})
-
 const channelMap = computed(() => {
   const map = new Map<number, typeof channels.value[number]>()
   channels.value.forEach((channel) => {
@@ -938,18 +1000,6 @@ const channelUnitById = computed(() => {
   channels.value.forEach((channel) => {
     const unitId = channelStore.resolveUnitId(channel.device_id)
     map.set(channel.id, unitId || `Device ${channel.device_id}`)
-  })
-  return map
-})
-
-const allocatedSignalIdByChannelId = computed(() => {
-  const map = new Map<number, number>()
-  allocationRows.value.forEach((row) => {
-    const channelId = Number(row.channel_id)
-    if (!Number.isFinite(channelId) || channelId <= 0) {
-      return
-    }
-    map.set(channelId, row.signal_id)
   })
   return map
 })
@@ -1290,7 +1340,7 @@ function resolveLiveAllocationRowBySignalId(signalId: number | null, fallback: S
   if (!Number.isFinite(signalId as number)) {
     return fallback
   }
-  return allocationRowBySignalId.value.get(Number(signalId)) ?? fallback
+  return getSignalAllocationProjectionRowBySignalId(Number(signalId)) ?? fallback
 }
 
 function resolveControlCellRow(row: SignalAllocationRow): SignalAllocationRow {
@@ -1321,7 +1371,7 @@ const allocationChannelPickerRow = computed(() => {
   if (!Number.isFinite(signalId as number)) {
     return null
   }
-  return allocationRowBySignalId.value.get(Number(signalId)) ?? null
+  return getSignalAllocationProjectionRowBySignalId(Number(signalId))
 })
 
 const allocationChannelPickerCurrentChannelId = computed<number | null>(() => {
@@ -1396,8 +1446,8 @@ const allocationChannelPickerChannels = computed<AllocationChannelPickerCandidat
       const channelCode = `CH${channel.index + 1}`
       const channelLabel = resolvedName || channelCode
       const online = deviceStatusById.value.get(channel.device_id) === "online"
-      const ownerSignalId = allocatedSignalIdByChannelId.value.get(channel.id) ?? null
-      const ownerRow = ownerSignalId !== null ? allocationRowBySignalId.value.get(ownerSignalId) ?? null : null
+      const ownerSignalId = getSignalAllocationOwnerSignalIdByChannelId(channel.id)
+      const ownerRow = ownerSignalId !== null ? getSignalAllocationProjectionRowBySignalId(ownerSignalId) : null
       const occupied = ownerSignalId !== null && ownerSignalId !== row.signal_id
       const ownerRowText = occupied ? buildSignalListOwnerRowText(ownerRow) : null
 
@@ -1475,7 +1525,7 @@ async function handleAllocationChannelPicked(channelId: number | null) {
 
   try {
     const currentChannelId = allocationChannelPickerCurrentChannelId.value
-    const ownerSignalId = channelId !== null ? allocatedSignalIdByChannelId.value.get(channelId) ?? null : null
+    const ownerSignalId = channelId !== null ? getSignalAllocationOwnerSignalIdByChannelId(channelId) : null
     if (channelId === null) {
       await signalSheetStore.unassignAllocation(signalId)
     } else if (currentChannelId === null) {
@@ -2396,7 +2446,7 @@ const virtualizationOptions = computed(() => ({
 const gridRows = signalGridRowModel.rows
 
 function rebuildSignalGridRows() {
-  signalGridRowModel.setRows(createSignalGridRows(allocationRows.value, sourceHeaders.value, signalGridRuntimeOverlay()))
+  signalGridRowModel.setRows(createSignalGridRows(signalAllocationProjectionRows(), sourceHeaders.value, signalGridRuntimeOverlay()))
 }
 
 function enqueueSignalGridRowPatches(
@@ -2416,11 +2466,11 @@ function enqueueSignalGridRowPatches(
       return
     }
     seen.add(signalId)
-    if (!visibleSignalIds.value.has(signalId)) {
+    if (!hasSignalAllocationProjectionSignalId(signalId)) {
       return
     }
 
-    const row = allocationRowBySignalId.value.get(signalId)
+    const row = getSignalAllocationProjectionRowBySignalId(signalId)
     if (!row) {
       return
     }
@@ -2469,11 +2519,20 @@ watch(
 )
 
 watch(
-  () => [allocationRows.value, sourceHeaders.value] as const,
-  () => {
+  () => allocationRows.value,
+  (rows) => {
+    replaceSignalAllocationProjectionRows(rows)
     rebuildSignalGridRows()
   },
   { flush: "post", immediate: true },
+)
+
+watch(
+  sourceHeaders,
+  () => {
+    rebuildSignalGridRows()
+  },
+  { flush: "post" },
 )
 
 watch(
@@ -2487,6 +2546,7 @@ watch(
 watch(
   () => [allocationRevision.value, recentlyChangedSignalIds.value] as const,
   ([, signalIds]) => {
+    patchSignalAllocationProjectionRowsFromStore(signalIds)
     enqueueSignalGridRowPatches(signalIds, "signal-allocation-row-patch")
   },
   { flush: "post" },

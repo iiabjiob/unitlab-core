@@ -64,8 +64,8 @@ Execution semantics for the current product direction:
 
 ## Main Gaps
 
-- Pinia still exposes `allocationRows` as a Vue `ref<SignalAllocationRow[]>`, so parts of the app can still drift back into deep reactive row ownership.
-- Store patching still updates array slots for allocation changes; this is acceptable as a temporary background sync, but not as the grid hot path.
+- Pinia still exposes `allocationRows` as a Vue `ref<SignalAllocationRow[]>`; `SignalsPage.vue` now bridges it into a non-reactive projection cache, but other app areas can still drift back into deep reactive row ownership.
+- Store patching still updates array slots for allocation changes; `SignalsPage.vue` applies those updates to the non-reactive cache, but the store itself is still legacy-shaped.
 - Runtime state is only partially separated from static projection rows.
 - Allocation, test, and device patch ingress is not yet one unified sequenced stream.
 - Sort/filter recompute policy for live-updated fields is still implicit.
@@ -165,7 +165,7 @@ Rollback:
 
 ### Slice 3 - Non-Reactive Projection Cache
 
-Status: `[ ]`
+Status: `[x]`
 
 Goal:
 
@@ -188,6 +188,11 @@ Tests:
 - Projection cache patch tests.
 - Channel ownership index tests.
 - Selection helper tests against projection cache.
+
+Validated 2026-05-24:
+
+- `pnpm --dir frontend type-check`
+- `pnpm --dir frontend test src/pages/signals/utils/signalAllocationProjectionCache.test.ts src/pages/signals/utils/signalGridProjection.test.ts src/pages/signals/composables/useSignalGridPatchQueue.test.ts src/pages/signals/composables/useSignalGridRowModel.test.ts src/pages/signals/utils/rowSelection.test.ts src/pages/signals/utils/allocationHealth.test.ts src/utils/signalRuntimeMapping.test.ts`
 
 Rollback:
 
