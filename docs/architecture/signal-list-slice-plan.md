@@ -616,6 +616,7 @@ Implemented so far:
 - Narrowed `SignalRowsPatchApplyResult` to a module-local store type.
 - Updated stale migration notes that still described runtime updates as broad computed-row churn.
 - Narrowed signal-list utility type exports for patch policy, static refresh triggers, runtime state cache, projection cache, and patch ingress internals.
+- Narrowed additional module-local signal-list exports: source header normalization, row key normalization, row-model options, patch queue diagnostics, performance harness types, and column patch policy resolver.
 
 Validated 2026-05-24:
 

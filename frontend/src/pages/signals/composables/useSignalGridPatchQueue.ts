@@ -20,7 +20,7 @@ export type SignalGridPatchQueueScheduler = {
   cancel: (handle: number) => void
 }
 
-export type SignalGridPatchQueueDiagnostics = {
+type SignalGridPatchQueueDiagnostics = {
   scheduled: boolean
   pendingRowPatchCount: number
   pendingCellRefreshRowCount: number

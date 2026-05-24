@@ -11,7 +11,7 @@ export type SignalGridSelectableRowLike = {
   signal_id?: unknown
 }
 
-export function normalizeSignalGridRowKey(value: unknown): string | null {
+function normalizeSignalGridRowKey(value: unknown): string | null {
   if (typeof value !== "string" && typeof value !== "number") {
     return null
   }

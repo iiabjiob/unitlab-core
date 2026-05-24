@@ -11,7 +11,7 @@ type SheetData = {
   sheets?: Array<{ index?: number; headers?: unknown[] }>
 }
 
-export function normalizeHeaderList(raw: unknown): string[] {
+function normalizeHeaderList(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   const seen = new Set<string>()
   const headers: string[] = []

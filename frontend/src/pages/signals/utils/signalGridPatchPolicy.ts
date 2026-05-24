@@ -76,7 +76,7 @@ function normalizeColumnKey(column: unknown): string {
   return String(column ?? "").trim()
 }
 
-export function resolveSignalGridColumnPatchPolicy(column: unknown): SignalGridColumnPatchPolicy {
+function resolveSignalGridColumnPatchPolicy(column: unknown): SignalGridColumnPatchPolicy {
   const key = normalizeColumnKey(column)
   if (!key) {
     return DEFAULT_ROW_PATCH_POLICY

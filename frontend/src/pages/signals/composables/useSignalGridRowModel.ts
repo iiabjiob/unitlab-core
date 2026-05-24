@@ -9,7 +9,7 @@ import {
   type SignalGridRowPatch,
 } from "./useSignalGridPatchQueue"
 
-export type SignalGridRowModelOptions<TRow> = {
+type SignalGridRowModelOptions<TRow> = {
   resolveRowId: (row: TRow) => SignalGridRowId | null | undefined
   scheduler?: SignalGridPatchQueueScheduler
   defaultReason?: string

@@ -15,14 +15,14 @@ import { createSignalRuntimeStateCache } from "@/pages/signals/utils/signalRunti
 import { resolveSignalStaticRefreshReason } from "@/pages/signals/utils/signalStaticRefreshPolicy"
 import type { SignalAllocationRow } from "@/types/signal"
 
-export type SignalListPerformanceHarnessOptions = {
+type SignalListPerformanceHarnessOptions = {
   rowCount?: number
   patchCount?: number
   visibleRowCount?: number
   now?: () => number
 }
 
-export type SignalListPerformanceHarnessMetrics = {
+type SignalListPerformanceHarnessMetrics = {
   rowCount: number
   patchCount: number
   visibleRowCount: number

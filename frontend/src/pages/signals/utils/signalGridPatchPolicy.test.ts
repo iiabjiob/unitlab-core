@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import {
-  resolveSignalGridColumnPatchPolicy,
-  resolveSignalGridPatchPolicy,
-} from "./signalGridPatchPolicy"
+import { resolveSignalGridPatchPolicy } from "./signalGridPatchPolicy"
 
 describe("signalGridPatchPolicy", () => {
   it("keeps runtime tested_at patches stable by default", () => {
@@ -38,7 +35,7 @@ describe("signalGridPatchPolicy", () => {
   })
 
   it("marks future display-only runtime fields as refresh-only", () => {
-    expect(resolveSignalGridColumnPatchPolicy("runtime_value")).toEqual({
+    expect(resolveSignalGridPatchPolicy(["runtime_value"])).toMatchObject({
       mode: "refresh",
       recomputeSort: false,
       recomputeFilter: false,
@@ -47,13 +44,13 @@ describe("signalGridPatchPolicy", () => {
   })
 
   it("keeps source and unknown columns as stable row patches", () => {
-    expect(resolveSignalGridColumnPatchPolicy("source_col_1")).toEqual({
+    expect(resolveSignalGridPatchPolicy(["source_col_1"])).toMatchObject({
       mode: "row",
       recomputeSort: false,
       recomputeFilter: false,
       recomputeGroup: false,
     })
-    expect(resolveSignalGridColumnPatchPolicy("unknown")).toEqual({
+    expect(resolveSignalGridPatchPolicy(["unknown"])).toMatchObject({
       mode: "row",
       recomputeSort: false,
       recomputeFilter: false,
