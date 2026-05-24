@@ -42,7 +42,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   const allocationRevision = ref(0)
   const recentlyChangedSignalIds = ref<number[]>([])
 
-  const initializedWorkspaceId = ref<number | null>(null)
   let sheetInFlight: Promise<SignalSheet | null> | null = null
   let sheetInFlightWorkspaceId: number | null = null
   let allocationsInFlight: Promise<SignalAllocationRow[]> | null = null
@@ -375,24 +374,10 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
       testedAtPatchFlushFrame = null
     }
     setRecentlyChangedSignalIds([])
-    initializedWorkspaceId.value = null
     sheetInFlight = null
     sheetInFlightWorkspaceId = null
     allocationsInFlight = null
     allocationsInFlightWorkspaceId = null
-  }
-
-  async function bootstrap(force = false) {
-    const workspaceId = requireWorkspaceId()
-    if (!force && initializedWorkspaceId.value === workspaceId) {
-      return
-    }
-    await Promise.all([
-      refreshSheet(),
-      refreshPresets(),
-      refreshAllocations(),
-    ])
-    initializedWorkspaceId.value = workspaceId
   }
 
   async function refreshSheet() {
@@ -940,10 +925,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
   })
   const updatingAllocations = computed(() => allocationMutationsInFlight.value > 0)
 
-  function getAllocationOwnerSignalId(channelId: number): number | null {
-    return allocationOwnerByChannelId.get(channelId) ?? null
-  }
-
   return {
     sheet,
     presets,
@@ -961,7 +942,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     hasSheet,
     allocatedCount,
     resetState,
-    bootstrap,
     refreshSheet,
     ensureSheetLoaded,
     refreshPresets,
@@ -983,6 +963,5 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     markSignalsTested,
     applyTestedAtBySignalPatch,
     applyAllocationRowsPatch,
-    getAllocationOwnerSignalId,
   }
 })

@@ -412,13 +412,13 @@ Status: done.
 
 Goal:
 
-- introduce a patch queue that can patch DataGrid rows/cells while preserving current full reload behavior.
+- introduce a patch queue that can patch DataGrid rows/cells while preserving explicit recovery reload behavior.
 
 Frontend:
 
 - add `useSignalGridPatchQueue`.
-- wire it behind a feature flag or internal path.
-- keep `gridRows` prop path as fallback.
+- wire it through the signal-list row model path.
+- keep full projection reload only for initial load, workspace/import changes, reconnect gaps, unknown rows, and operator refresh.
 
 Tests:
 
@@ -575,7 +575,7 @@ Tests:
 
 Rollback:
 
-- keep old auto allocation button behind fallback.
+- restore the previous auto allocation action wiring if immediate apply regresses.
 
 ### Slice 8 - Runtime Test Patch Stream
 
@@ -588,7 +588,7 @@ Goal:
 Backend:
 
 - emit `signal_test_runtime_patch` events with job id, workspace id, patch type, and changed tested-at values by signal id.
-- keep `tested_at_patch` in job result payloads as a compatibility fallback.
+- keep terminal job payloads as coarse completion summaries; live tested-at changes should use runtime patches.
 
 Frontend:
 

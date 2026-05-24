@@ -594,6 +594,8 @@ Implemented so far:
 - Updated migration docs to state that queued run payloads do not carry sheet-level revision metadata.
 - Removed the redundant `skipMissing` allocation patch option; unknown rows now always use the same explicit skip/recovery path.
 - Removed unused legacy signal sidebar/live-panel components and a dead channel-id helper from the signal sheet store.
+- Removed unused `signalSheetStore.bootstrap()` and `getAllocationOwnerSignalId()` APIs.
+- Updated older migration notes that still described grid-row and runtime-patch fallbacks as normal behavior.
 
 Validated 2026-05-24:
 
