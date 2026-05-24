@@ -69,7 +69,7 @@ Execution semantics for the current product direction:
 - Runtime state is only partially separated from static projection rows.
 - Allocation, test, and device patch ingress has a sequenced WebSocket contract, but backend producers still need to migrate from action-specific payloads.
 - Sort/filter recompute policy is explicit for current allocation/runtime columns; future device/test fields still need policy entries when introduced.
-- Performance proof for 20,000 rows under large allocation/test patch bursts is still missing.
+- A pure frontend 20,000-row benchmark harness now covers projection, patch queue, selection, and channel-owner lookup; real browser scroll/viewport proof is still pending.
 - Allocation summary event history and signal test-run step evidence exist; report/controller-log comparison wiring is still incomplete.
 - Full projection reload is now policy-gated for initial load, workspace/import changes, reconnect gaps, unknown rows, and operator refresh; structural signal-list edits still use explicit reload.
 
@@ -514,7 +514,7 @@ Rollback:
 
 ### Slice 11 - 20,000 Row Benchmark Harness
 
-Status: `[ ]`
+Status: `[x]`
 
 Goal:
 
@@ -538,6 +538,26 @@ Acceptance targets:
 - Selection survives patching.
 - No blank viewport during scroll.
 - Patch queue does not grow unbounded.
+
+Implemented:
+
+- Added `runSignalListPerformanceHarness()` for the signal-list frontend path.
+- Harness builds a 20,000-row flat allocation projection and initial grid row model.
+- Harness applies one visible row patch, one non-visible row patch, 5,000 allocation patches, and 5,000 runtime tested-at patches.
+- Harness asserts normal allocation/runtime patch paths do not request static reload while unknown rows still request recovery reload.
+- Harness verifies queue coalescing stays bounded to the 5,000 affected row ids and defers grid patch calls until flush.
+- Harness covers select-all, visible selection, and channel-owner lookup used by the channel picker.
+
+Validated 2026-05-24:
+
+- `pnpm --dir frontend type-check`
+- `pnpm --dir frontend test src/pages/signals/utils/signalListPerformanceHarness.test.ts src/pages/signals/utils/signalStaticRefreshPolicy.test.ts src/pages/signals/utils/signalGridPatchIngress.test.ts src/pages/signals/composables/useSignalGridPatchQueue.test.ts`
+- `git diff --check`
+
+Notes:
+
+- This is a deterministic unit-level performance contract, not a browser rendering benchmark.
+- Real DataGrid scroll smoothness, blank viewport behavior, and overlay alignment still need browser/manual or Playwright coverage before claiming end-to-end UI performance.
 
 Rollback:
 
@@ -595,9 +615,9 @@ For each future slice:
 
 ## Next Slice
 
-Start with Slice 11: 20,000 Row Benchmark Harness.
+Start with Slice 12: Legacy Cleanup.
 
 Reason:
 
-- Normal allocation/test update paths are now reload-free except for explicit recovery.
-- The next risk is proof under 20,000-row load, large patch bursts, selection, and scrolling.
+- The pure 20,000-row projection and patch contract is now covered.
+- Browser-level performance proof remains a follow-up, but old unused/redundant paths can now be cleaned in small pieces.
