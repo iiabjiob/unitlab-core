@@ -67,8 +67,8 @@ Execution semantics for the current product direction:
 - Pinia still exposes `allocationRows` as a Vue `ref<SignalAllocationRow[]>`; `SignalsPage.vue` now bridges it into a non-reactive projection cache, but other app areas can still drift back into deep reactive row ownership.
 - Store patching still updates array slots for allocation changes; `SignalsPage.vue` applies those updates to the non-reactive cache, but the store itself is still legacy-shaped.
 - Runtime state is only partially separated from static projection rows.
-- Allocation, test, and device patch ingress is not yet one unified sequenced stream.
-- Sort/filter recompute policy for live-updated fields is still implicit.
+- Allocation, test, and device patch ingress has a sequenced WebSocket contract, but backend producers still need to migrate from action-specific payloads.
+- Sort/filter recompute policy is explicit for current allocation/runtime columns; future device/test fields still need policy entries when introduced.
 - Performance proof for 20,000 rows under large allocation/test patch bursts is still missing.
 - Durable allocation event history and per-step execution evidence are not complete.
 - Old reload-oriented fallback paths still exist and need to be narrowed to recovery only.
@@ -315,7 +315,7 @@ Rollback:
 
 ### Slice 7 - Backend Patch Event Contract
 
-Status: `[ ]`
+Status: `[x]`
 
 Goal:
 
@@ -351,6 +351,25 @@ Tests:
 - Event serialization.
 - Sequence gap reload trigger.
 - Duplicate/old event ignored.
+
+Implemented:
+
+- Backend schema for `signal_rows_patched` with `workspace_id`, `sequence`, `source`, row patches, and recovery reload flag.
+- Frontend WebSocket types and handler routing into `signalRowsPatchStore`.
+- Frontend store detects active-workspace events, sequence gaps, duplicate/old events, and explicit full-reload recovery.
+- `SignalsPage.vue` consumes the sequenced event through the existing grid patch ingress and reloads only for recovery conditions.
+
+Validated 2026-05-24:
+
+- `pnpm --dir frontend type-check`
+- `pnpm --dir frontend test src/stores/signalRowsPatchStore.test.ts src/pages/signals/utils/signalGridPatchIngress.test.ts`
+- `uv run python -m py_compile app/schemas/ws/events.py tests/workers/test_signal_allocation_runner_results.py`
+- `git diff --check`
+
+Notes:
+
+- Backend producers are not switched to emit `signal_rows_patched` yet; REST job-result patching remains active.
+- `uv run pytest tests/workers/test_signal_allocation_runner_results.py` could not run because `pytest` is not installed in the current backend environment.
 
 Rollback:
 
@@ -527,10 +546,10 @@ For each future slice:
 
 ## Next Slice
 
-Start with Slice 2: Projection Mapper Boundary.
+Start with Slice 8: Allocation Event History.
 
 Reason:
 
-- It is the lowest-risk next cleanup.
-- It reduces `SignalsPage.vue` ownership before replacing the Pinia row array.
-- It gives tests around row shape before deeper cache/store changes.
+- Slice 7 now provides the frontend/backend patch event contract.
+- Allocation event history is the next backend-owned traceability slice and does not need to sit in the grid hot path.
+- It keeps allocation auditability separate from DataGrid rendering performance.

@@ -219,6 +219,27 @@ class SignalTestRuntimePatchEvent(BaseModel):
     emitted_at: datetime
 
 
+SignalRowsPatchSource = Literal["allocation", "test_runtime", "device_health"]
+
+
+class SignalRowsPatchedRowPatch(BaseModel):
+    row_id: str | None = None
+    signal_id: int
+    changes: Dict[str, Any] = Field(default_factory=dict)
+    columns: List[str] | None = None
+
+
+class SignalRowsPatchedEvent(BaseModel):
+    channel: Literal[WSChannel.SYSTEM_INFO] = WSChannel.SYSTEM_INFO
+    event: Literal["signal_rows_patched"] = "signal_rows_patched"
+    workspace_id: int
+    sequence: int
+    source: SignalRowsPatchSource
+    patches: List[SignalRowsPatchedRowPatch] = Field(default_factory=list)
+    requires_full_reload: bool = False
+    emitted_at: datetime
+
+
 def build_signal_job_event(job_state: Dict[str, Any]) -> SignalAllocationJobEvent | SignalTestRunJobEvent:
     operation = str(job_state.get("operation") or "").strip().lower()
     if operation == "test_run":
@@ -249,4 +270,5 @@ WSEvent = Union[
     SignalAllocationJobEvent,
     SignalTestRunJobEvent,
     SignalTestRuntimePatchEvent,
+    SignalRowsPatchedEvent,
 ]

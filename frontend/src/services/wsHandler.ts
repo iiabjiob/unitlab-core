@@ -5,6 +5,7 @@ import { getLogger } from '@/utils/logger'
 import { useSequenceStore } from '@/stores/sequenceStore'
 import { useSystemHealthStore } from '@/stores/systemHealthStore'
 import { useSignalJobStore } from '@/stores/signalJobStore'
+import { useSignalRowsPatchStore } from '@/stores/signalRowsPatchStore'
 import { useSignalSheetStore } from '@/stores/signalSheetStore'
 import { useTestedAtRealtimeStore } from '@/stores/testedAtRealtimeStore'
 import { useCoreNetworkStore } from '@/stores/coreNetworkStore'
@@ -47,6 +48,7 @@ import type {
   SignalAllocationJobEvent,
   SignalTestRunJobEvent,
   SignalTestRuntimePatchEvent,
+  SignalRowsPatchedEvent,
 } from '@/types/ws/events'
 
 function isTestRunJobEvent(jobEvent: SignalAllocationJobEvent | SignalTestRunJobEvent): boolean {
@@ -334,6 +336,7 @@ export function handleWsEvent(event: WSEvent) {
   const sequenceStore = useSequenceStore()
   const systemHealthStore = useSystemHealthStore()
   const signalJobStore = useSignalJobStore()
+  const signalRowsPatchStore = useSignalRowsPatchStore()
   const signalSheetStore = useSignalSheetStore()
   const testedAtRealtimeStore = useTestedAtRealtimeStore()
   const coreNetworkStore = useCoreNetworkStore()
@@ -362,6 +365,7 @@ export function handleWsEvent(event: WSEvent) {
         | SignalAllocationJobEvent
         | SignalTestRunJobEvent
         | SignalTestRuntimePatchEvent
+        | SignalRowsPatchedEvent
       if (sysEvent.event === "system_health_changed") {
         logger.debug("📡 IN ← SYSTEM_HEALTH:", sysEvent)
         systemHealthStore.applySnapshot(sysEvent.snapshot)
@@ -396,6 +400,10 @@ export function handleWsEvent(event: WSEvent) {
           signalSheetStore,
           testedAtRealtimeStore,
         })
+        break
+      }
+      if (sysEvent.event === "signal_rows_patched") {
+        signalRowsPatchStore.applyEvent(sysEvent as SignalRowsPatchedEvent)
         break
       }
       if (

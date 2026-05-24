@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 
 from app.schemas.signal_sheet_schema import SignalAllocationRowSchema
-from app.schemas.ws.events import SignalTestRuntimePatchEvent, WSChannel
+from app.schemas.ws.events import SignalRowsPatchedEvent, SignalTestRuntimePatchEvent, WSChannel
 from app.workers import signal_test_run_runner
 from app.workers.signal_allocation_runner import _serialize_allocation_job_row_patches
 
@@ -116,6 +116,47 @@ def test_signal_test_runtime_patch_event_serializes_tested_at_by_signal() -> Non
     assert payload["event"] == "signal_test_runtime_patch"
     assert payload["patch_type"] == "tested_at"
     assert payload["tested_at_by_signal"] == {"1": "2026-01-01T12:30:00+00:00"}
+    assert payload["emitted_at"].startswith("2026-01-01T12:30:00")
+
+
+def test_signal_rows_patched_event_serializes_grid_patch_contract() -> None:
+    event = SignalRowsPatchedEvent(
+        workspace_id=7,
+        sequence=42,
+        source="allocation",
+        patches=[
+            {
+                "row_id": "signal-1",
+                "signal_id": 1,
+                "changes": {
+                    "allocation_status": "assigned",
+                    "channel_id": 10,
+                },
+                "columns": ["allocation_status", "channel_select"],
+            }
+        ],
+        emitted_at=datetime(2026, 1, 1, 12, 30, tzinfo=timezone.utc),
+    )
+
+    payload = event.model_dump(mode="json")
+
+    assert payload["channel"] == WSChannel.SYSTEM_INFO.value
+    assert payload["event"] == "signal_rows_patched"
+    assert payload["workspace_id"] == 7
+    assert payload["sequence"] == 42
+    assert payload["source"] == "allocation"
+    assert payload["requires_full_reload"] is False
+    assert payload["patches"] == [
+        {
+            "row_id": "signal-1",
+            "signal_id": 1,
+            "changes": {
+                "allocation_status": "assigned",
+                "channel_id": 10,
+            },
+            "columns": ["allocation_status", "channel_select"],
+        }
+    ]
     assert payload["emitted_at"].startswith("2026-01-01T12:30:00")
 
 

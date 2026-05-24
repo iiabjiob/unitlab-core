@@ -220,6 +220,26 @@ export interface SignalTestRuntimePatchEvent {
   emitted_at: string
 }
 
+export type SignalRowsPatchSource = "allocation" | "test_runtime" | "device_health"
+
+export interface SignalRowsPatchedRowPatch {
+  row_id?: string | null
+  signal_id: number
+  changes: Record<string, unknown>
+  columns?: string[] | null
+}
+
+export interface SignalRowsPatchedEvent {
+  channel: WSChannel.SYSTEM_INFO
+  event: "signal_rows_patched"
+  workspace_id: number
+  sequence: number
+  source: SignalRowsPatchSource
+  patches: SignalRowsPatchedRowPatch[]
+  requires_full_reload?: boolean
+  emitted_at?: string
+}
+
 export interface TimeStatusEvent extends TimeStatus {
   channel: WSChannel.TIME_STATUS
 }
@@ -299,6 +319,7 @@ export type ChannelWSEvent =
   | CoreProvisionStateWsEvent
   | SignalTestRunJobEvent
   | SignalTestRuntimePatchEvent
+  | SignalRowsPatchedEvent
   | DeviceStateEvent
   | DeviceRegisterEvent
   | DeviceRespEvent

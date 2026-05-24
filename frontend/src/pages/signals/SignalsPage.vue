@@ -181,6 +181,7 @@ import "@/components/ui/affinoDataGridNative.css"
 import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useSignalJobStore } from "@/stores/signalJobStore"
+import { useSignalRowsPatchStore } from "@/stores/signalRowsPatchStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useTestedAtRealtimeStore } from "@/stores/testedAtRealtimeStore"
 import { useToastStore } from "@/stores/toastStore"
@@ -189,10 +190,12 @@ import { formatDate } from "@/utils/datetime"
 import { formatAoValue, parseAoInput } from "@/utils/channel"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
 import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
+import type { SignalRowsPatchedEvent, SignalRowsPatchedRowPatch } from "@/types/ws/events"
 
 const workspaceStore = useWorkspaceStore()
 const signalSheetStore = useSignalSheetStore()
 const signalJobStore = useSignalJobStore()
+const signalRowsPatchStore = useSignalRowsPatchStore()
 const channelStore = useChannelStore()
 const deviceStore = useDeviceStore()
 const testedAtRealtimeStore = useTestedAtRealtimeStore()
@@ -203,6 +206,7 @@ const { allocationRows, loadingAllocations, loadingSheet, sheet, allocationRevis
 const { channels } = storeToRefs(channelStore)
 const { activeJobs } = storeToRefs(signalJobStore)
 const { activeWorkspaceRevision, activeWorkspacePatchedSignalIds } = storeToRefs(testedAtRealtimeStore)
+const { activeWorkspacePatchEvent, activeWorkspacePatchRevision } = storeToRefs(signalRowsPatchStore)
 
 const error = ref<string | null>(null)
 const importModalOpen = ref(false)
@@ -655,6 +659,205 @@ function getAllocationJobChangedRows(job: SignalAllocationJob): SignalAllocation
     })
   })
   return rows
+}
+
+const SIGNAL_ROWS_PATCH_FIELD_GRID_COLUMNS: Record<string, readonly string[]> = {
+  allocation_status: ["allocation_status"],
+  allocation_health: ["allocation_health"],
+  channel_id: ["channel_select", "allocation_status", "allocation_health", "control"],
+  channel_type: ["internal_signal_type", "allocation_health", "control"],
+  channel_index: ["channel_select", "control"],
+  channel_label: ["channel_select"],
+  device_id: ["channel_select", "allocation_health", "control"],
+  unit_id: ["channel_select", "control"],
+  unit_online: ["channel_select", "allocation_health", "control"],
+  unit_last_seen_at: ["allocation_health"],
+  tested_at: ["tested_at"],
+}
+
+function resolveSignalRowsPatchedChanges(patch: SignalRowsPatchedRowPatch): Record<string, unknown> {
+  const changes = patch.changes
+  if (!changes || typeof changes !== "object" || Array.isArray(changes)) {
+    return {}
+  }
+  return changes
+}
+
+function uniqueGridPatchColumns(columns: readonly unknown[]): string[] {
+  const seen = new Set<string>()
+  const normalized: string[] = []
+  columns.forEach((column) => {
+    const key = String(column ?? "").trim()
+    if (!key || seen.has(key)) {
+      return
+    }
+    seen.add(key)
+    normalized.push(key)
+  })
+  return normalized
+}
+
+function resolveSignalRowsPatchedColumns(patch: SignalRowsPatchedRowPatch): readonly string[] {
+  const explicitColumns = uniqueGridPatchColumns(Array.isArray(patch.columns) ? patch.columns : [])
+  if (explicitColumns.length > 0) {
+    return explicitColumns
+  }
+
+  const inferredColumns = uniqueGridPatchColumns(
+    Object.keys(resolveSignalRowsPatchedChanges(patch))
+      .flatMap(key => SIGNAL_ROWS_PATCH_FIELD_GRID_COLUMNS[key] ?? []),
+  )
+  return inferredColumns.length > 0 ? inferredColumns : SIGNAL_GRID_PATCH_COLUMNS
+}
+
+function buildSignalRowsPatchedAllocationRow(patch: SignalRowsPatchedRowPatch): SignalAllocationRow | null {
+  const signalId = Number(patch.signal_id)
+  if (!Number.isFinite(signalId) || signalId <= 0) {
+    return null
+  }
+
+  const baseRow = getSignalAllocationProjectionRowBySignalId(signalId)
+  if (!baseRow) {
+    return null
+  }
+
+  const changes = resolveSignalRowsPatchedChanges(patch) as Partial<SignalAllocationRow>
+  const merged = {
+    ...baseRow,
+    ...changes,
+  } as SignalAllocationRow
+
+  return {
+    ...merged,
+    signal_id: signalId,
+    row_id: String(patch.row_id ?? merged.row_id ?? `signal-${signalId}`),
+    signal_key: String(merged.signal_key ?? ""),
+    signal_name: String(merged.signal_name ?? ""),
+    signal_direction: (merged.signal_direction ?? "DI") as SignalAllocationRow["signal_direction"],
+    signal_category: merged.signal_category ?? null,
+    signal_metadata: merged.signal_metadata && typeof merged.signal_metadata === "object" && !Array.isArray(merged.signal_metadata)
+      ? merged.signal_metadata
+      : {},
+    allocation_health: merged.allocation_health ?? null,
+    channel_id: merged.channel_id ?? null,
+    channel_type: merged.channel_type ?? null,
+    channel_index: merged.channel_index ?? null,
+    channel_label: merged.channel_label ?? null,
+    device_id: merged.device_id ?? null,
+    unit_id: merged.unit_id ?? null,
+    unit_online: merged.unit_online ?? null,
+    unit_last_seen_at: merged.unit_last_seen_at ?? null,
+    tested_at: merged.tested_at ?? null,
+  }
+}
+
+function applySignalRowsPatchedRuntimeRows(patches: readonly SignalRowsPatchedRowPatch[]): boolean {
+  const signalIds: number[] = []
+  const testedAtBySignal: Record<number, string> = {}
+  const columns = new Set<string>()
+  let missingRow = false
+
+  patches.forEach((patch) => {
+    const signalId = Number(patch.signal_id)
+    if (!Number.isFinite(signalId) || signalId <= 0) {
+      return
+    }
+    if (!hasSignalAllocationProjectionSignalId(signalId)) {
+      missingRow = true
+      return
+    }
+
+    signalIds.push(signalId)
+    resolveSignalRowsPatchedColumns(patch).forEach(column => columns.add(column))
+
+    const testedAt = resolveSignalRowsPatchedChanges(patch).tested_at
+    if (testedAt !== undefined && testedAt !== null) {
+      testedAtBySignal[signalId] = String(testedAt)
+      columns.add("tested_at")
+    }
+  })
+
+  const runtimePatchResult = signalRuntimeStateCache.patchTestedAtBySignal(testedAtBySignal)
+  if (runtimePatchResult.changed > 0) {
+    bumpSignalRuntimeStateVersion()
+  }
+
+  if (signalIds.length > 0) {
+    signalGridPatchIngress.applyRuntimeSignals(signalIds, {
+      reason: "signal-rows-patched:test-runtime",
+      columns: columns.size > 0 ? [...columns] : ["tested_at"],
+    })
+  }
+
+  return missingRow
+}
+
+function applySignalRowsPatchedAllocationRows(
+  patches: readonly SignalRowsPatchedRowPatch[],
+  source: SignalRowsPatchedEvent["source"],
+): boolean {
+  const groupedRows = new Map<string, { columns: readonly string[]; rows: SignalAllocationRow[] }>()
+  let missingRow = false
+
+  patches.forEach((patch) => {
+    const signalId = Number(patch.signal_id)
+    if (!Number.isFinite(signalId) || signalId <= 0) {
+      return
+    }
+    if (!hasSignalAllocationProjectionSignalId(signalId)) {
+      missingRow = true
+      return
+    }
+
+    const row = buildSignalRowsPatchedAllocationRow(patch)
+    if (!row) {
+      return
+    }
+
+    const columns = resolveSignalRowsPatchedColumns(patch)
+    const groupKey = columns.join("\u0000")
+    const group = groupedRows.get(groupKey)
+    if (group) {
+      group.rows.push(row)
+      return
+    }
+    groupedRows.set(groupKey, { columns, rows: [row] })
+  })
+
+  groupedRows.forEach((group) => {
+    signalGridPatchIngress.applyAllocationRows(group.rows, {
+      reason: source === "device_health"
+        ? "signal-rows-patched:device-health"
+        : "signal-rows-patched:allocation",
+      columns: group.columns,
+    })
+  })
+
+  return missingRow
+}
+
+async function applySignalRowsPatchedEvent(event: SignalRowsPatchedEvent) {
+  if (Number(event.workspace_id) !== workspaceStore.activeWorkspaceId) {
+    return
+  }
+
+  if (event.requires_full_reload === true) {
+    await refreshSignalsStatic()
+    return
+  }
+
+  const patches = Array.isArray(event.patches) ? event.patches : []
+  if (patches.length === 0) {
+    return
+  }
+
+  const needsReload = event.source === "test_runtime"
+    ? applySignalRowsPatchedRuntimeRows(patches)
+    : applySignalRowsPatchedAllocationRows(patches, event.source)
+
+  if (needsReload) {
+    await refreshSignalsStatic()
+  }
 }
 
 function resolveAllocationJobSkippedCount(job: SignalAllocationJob, requested: number, changed: number): number {
@@ -2552,6 +2755,17 @@ watch(
       reason: "signal-tested-at-realtime-patch",
       columns: ["tested_at"],
     })
+  },
+  { flush: "post" },
+)
+
+watch(
+  () => [activeWorkspacePatchRevision.value, activeWorkspacePatchEvent.value] as const,
+  ([, event]) => {
+    if (!event) {
+      return
+    }
+    void applySignalRowsPatchedEvent(event)
   },
   { flush: "post" },
 )
