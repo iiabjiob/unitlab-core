@@ -565,7 +565,7 @@ Rollback:
 
 ### Slice 12 - Legacy Cleanup
 
-Status: `[ ]`
+Status: `[~]`
 
 Goal:
 
@@ -585,6 +585,23 @@ Tests:
 - Focused backend allocation/test-run tests.
 - Focused frontend signal page tests.
 - 20,000-row benchmark repeat.
+
+Implemented so far:
+
+- Removed the legacy partial-projection replacement fallback from Pinia allocation patching.
+- Updated migration docs that still described full reload fallback as the normal patch safety path.
+
+Validated 2026-05-24:
+
+- `pnpm --dir frontend type-check`
+- `pnpm --dir frontend test src/stores/signalSheetStore.test.ts src/pages/signals/utils/signalListPerformanceHarness.test.ts src/pages/signals/utils/signalGridPatchIngress.test.ts`
+- `git diff --check`
+
+Remaining:
+
+- Remove unused preview state/docs if any still remain.
+- Remove old full-array grid paths once browser/manual proof confirms the row model path.
+- Remove duplicate allocation mutation helpers if follow-up search finds safe candidates.
 
 Rollback:
 
@@ -615,9 +632,9 @@ For each future slice:
 
 ## Next Slice
 
-Start with Slice 12: Legacy Cleanup.
+Continue Slice 12: Legacy Cleanup.
 
 Reason:
 
 - The pure 20,000-row projection and patch contract is now covered.
-- Browser-level performance proof remains a follow-up, but old unused/redundant paths can now be cleaned in small pieces.
+- The first cleanup removed the partial projection replacement fallback; remaining cleanup should stay small and separately validated.

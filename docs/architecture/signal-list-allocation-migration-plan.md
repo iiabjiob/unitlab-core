@@ -446,17 +446,17 @@ Backend:
 Frontend:
 
 - apply `changed_rows` to store and grid patch queue.
-- fallback to full reload when changed rows are missing.
+- unknown/missing changed rows are treated as explicit recovery cases, not as partial projection replacement.
 
 Tests:
 
 - allocation worker serialization test for terminal `changed_rows` payload;
 - frontend type check;
-- existing full reload fallback remains when a job result has no changed row payload.
+- normal allocation/test patch paths do not trigger full reload.
 
 Rollback:
 
-- frontend fallback reload remains.
+- restore explicit recovery reload for the affected mutation if patch delivery cannot be trusted.
 
 ### Slice 4 - Explicit Single-Row Allocation Actions
 
@@ -607,7 +607,7 @@ Tests:
 
 Rollback:
 
-- continue using existing job event result patches and full reload fallback.
+- continue using existing job event result patches and explicit recovery reload.
 
 ### Slice 9 - Separate Runtime State
 
@@ -700,7 +700,7 @@ Acceptance targets:
 
 | Risk | Mitigation |
 | --- | --- |
-| Patch stream drift | sequence numbers and full reload fallback |
+| Patch stream drift | sequence numbers and explicit recovery reload |
 | Live sort/filter row movement | freeze projection during active test run or require explicit reapply |
 | Live alias rebinding changes queued-run behavior | capture allocation/channel evidence at step execution and surface skipped signals clearly |
 | More projection fields slow backend | index hot joins and benchmark projection generation |

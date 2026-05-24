@@ -23,7 +23,6 @@ type SignalAllocationPatchOptions = {
   skipRecentlyChanged?: boolean
   skipRevision?: boolean
   skipMissing?: boolean
-  allowReplaceOnMissing?: boolean
 }
 
 export const useSignalSheetStore = defineStore("signalSheetStore", () => {
@@ -326,22 +325,12 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
           skipRevision: options?.skipRevision,
         })
       }
-      if (options?.allowReplaceOnMissing !== true) {
-        devPerfIncrement("signalSheet.applyServerAllocationPatch.missingRowsSkipped")
-        endMeasure({
-          mode: "missingRowsSkipped",
-          count: signalIds.length,
-          patched: patchableSignalIds.length,
-        })
-        return
-      }
-      devPerfIncrement("signalSheet.applyServerAllocationPatch.replaceRowsPath")
-      replaceAllocationRows(serverRows, signalIds, {
-        skipRecentlyChanged: options?.skipRecentlyChanged,
-        skipRevision: options?.skipRevision,
+      devPerfIncrement("signalSheet.applyServerAllocationPatch.missingRowsSkipped")
+      endMeasure({
+        mode: "missingRowsSkipped",
+        count: signalIds.length,
+        patched: patchableSignalIds.length,
       })
-      recomputeSheetAllocatedCount()
-      endMeasure({ mode: "replaceRows", count: signalIds.length })
       return
     }
 
