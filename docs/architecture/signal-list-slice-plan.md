@@ -609,6 +609,8 @@ Implemented so far:
 - Removed the unused legacy `SignalPlaceholder.vue` component from the signals module.
 - Removed the unused `pages/signals/index.ts` barrel export; routes import `SignalsPage.vue` directly.
 - Removed the legacy local `hasPatchSupport` guard; the app patch queue now treats `rows.patchRows` presence as the DataGrid patch contract.
+- Removed a dead DO-only control helper and narrowed an allocation job result helper back to module-local scope.
+- Updated the older migration plan note so it no longer describes the obsolete deep-reactive full-row grid flow as the active state.
 
 Validated 2026-05-24:
 

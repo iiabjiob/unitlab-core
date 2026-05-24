@@ -2079,10 +2079,6 @@ function canControl(row: SignalAllocationRow) {
   return resolveControlTarget(row) !== null
 }
 
-function canDoControl(row: SignalAllocationRow) {
-  return resolveControlTarget(row)?.kind === "do"
-}
-
 function controlBusy(row: SignalAllocationRow): boolean {
   const target = resolveControlTarget(row)
   if (!target) return false

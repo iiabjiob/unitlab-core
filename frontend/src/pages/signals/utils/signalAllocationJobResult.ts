@@ -1,6 +1,6 @@
 import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
 
-export function getSignalAllocationJobResult(job: SignalAllocationJob): Record<string, unknown> {
+function getSignalAllocationJobResult(job: SignalAllocationJob): Record<string, unknown> {
   return job.result && typeof job.result === "object" ? job.result : {}
 }
 

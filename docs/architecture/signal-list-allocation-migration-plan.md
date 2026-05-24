@@ -1,6 +1,6 @@
 # Signal List and Allocation Migration Plan
 
-Status: Slice 10 simplification applied, binding-level execution checks next
+Status: signal-list patch architecture partially migrated, legacy cleanup in progress
 Last reviewed: 2026-05-24
 
 ## Scope
@@ -19,9 +19,10 @@ Import workbook
   -> signals table + signal_sheets singleton metadata
   -> signal_allocations table stores active signal/channel links
   -> REST/NDJSON returns flat SignalAllocationRow projection
-  -> frontend stores allocationRows[]
-  -> SignalsPage maps allocationRows[] to gridRows[]
-  -> Affino DataGrid receives full rows prop
+  -> frontend keeps a shallow allocation snapshot for non-grid consumers
+  -> SignalsPage owns a non-reactive projection cache
+  -> initial/recovery load sets Affino DataGrid client rows
+  -> allocation/runtime updates patch the projection cache and grid cells
 ```
 
 Current projection rows combine:
@@ -74,9 +75,10 @@ Implemented:
 
 Gaps:
 
-- app code passes a newly computed full `gridRows` array.
-- app does not use `api.rows.patch`, `api.rows.batch`, or `api.view.refreshCellsByRowKeys` as the normal live update path.
-- Vue reactivity owns the full allocation row array, which is risky for hot paths.
+- normal allocation/runtime patch paths use `api.rows.patchRows`, `api.rows.batch`, and `api.view.refreshCellsByRowKeys`.
+- Pinia `allocationRows` is a shallow snapshot, and `SignalsPage.vue` bridges it into a non-reactive projection cache.
+- initial load and explicit recovery still set the grid row model from a full projection.
+- other app areas still read the shallow allocation snapshot directly.
 
 ## Target Architecture
 
@@ -295,10 +297,10 @@ Frontend must reload projection when:
 ### Current
 
 ```text
-allocationRows: ref<SignalAllocationRow[]>
-displayAllocationRows: computed(map all rows)
-gridRows: computed(map all rows)
-DataGrid rows prop gets full gridRows array
+allocationRows: shallowRef<SignalAllocationRow[]>
+SignalsPage projection cache
+SignalGrid row model
+DataGrid rows set on initial load / recovery
 ```
 
 ### Target
@@ -322,8 +324,8 @@ signalGridPatchQueue
 Grid strategy:
 
 - initial load calls DataGrid `setRows` once;
-- allocation mutations call `api.rows.patch`;
-- runtime test fields call `api.rows.patch` only when sort/filter participation is required;
+- allocation mutations call `api.rows.patchRows`;
+- runtime test fields call `api.rows.patchRows` only when sort/filter participation is required;
 - volatile display-only fields can live in a runtime store and use `refreshCells`;
 - full reload is explicit and rare.
 
@@ -331,7 +333,7 @@ Grid strategy:
 
 Existing Affino APIs are sufficient for the first implementation:
 
-- `api.rows.patch(...)`
+- `api.rows.patchRows(...)`
 - `api.rows.batch(...)`
 - `api.view.refreshCellsByRowKeys(...)`
 
