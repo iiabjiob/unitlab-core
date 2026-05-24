@@ -195,13 +195,6 @@ export interface SignalAutoAllocateResult {
   unassigned_signal_ids: number[]
 }
 
-export interface SignalAutoAllocateResponse {
-  result: SignalAutoAllocateResult
-  changed_rows: SignalAllocationRow[]
-  skipped: SignalAllocationRejectedItem[]
-  rejected: SignalAllocationRejectedItem[]
-}
-
 export interface SignalAllocationEnsurePayload {
   signal_ids: number[]
   prefer_online?: boolean

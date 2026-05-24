@@ -13,7 +13,6 @@ import type {
   SignalAllocationUnassignActionPayload,
   SignalAllocationUpdateItem,
   SignalAutoAllocatePayload,
-  SignalAutoAllocateResponse,
   SignalImportMeta,
   SignalSheet,
   SignalSheetImportResponse,
@@ -175,10 +174,6 @@ export const SignalSheetAPI = {
       `${API_V1}/workspaces/${workspaceId}/signal-allocations/actions/swap`,
       payload,
     )
-  },
-
-  autoAllocate(workspaceId: number, payload: SignalAutoAllocatePayload) {
-    return http.post<SignalAutoAllocateResponse>(`${API_V1}/workspaces/${workspaceId}/signal-allocations/auto`, payload)
   },
 
   enqueueAutoAllocateJob(workspaceId: number, payload: SignalAutoAllocatePayload) {

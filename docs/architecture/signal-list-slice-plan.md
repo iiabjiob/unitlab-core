@@ -599,6 +599,8 @@ Implemented so far:
 - Removed the inactive `Create switchgear` header stub that was always disabled from `SignalsPage.vue`.
 - Removed unused `createSignalGridRowPatches()` export from the projection mapper.
 - Removed unused duplicate allocation helpers `setAllocation()` and direct store-level `autoAllocate()`.
+- Removed the unused frontend direct auto-allocation API wrapper and response type; normal UI auto-allocation stays job-based.
+- Rechecked mandatory allocation preview cleanup; no `previewId`/preview session state remains in the normal frontend/backend allocation flow.
 
 Validated 2026-05-24:
 
@@ -613,9 +615,8 @@ Notes:
 
 Remaining:
 
-- Remove unused preview state/docs if any still remain.
 - Remove old full-array grid paths once browser/manual proof confirms the row model path.
-- Remove duplicate allocation mutation helpers if follow-up search finds safe candidates.
+- Remove any remaining duplicate allocation mutation helpers if follow-up search finds safe candidates.
 
 Rollback:
 
