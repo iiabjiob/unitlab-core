@@ -129,7 +129,7 @@ Rollback:
 
 ### Slice 2 - Projection Mapper Boundary
 
-Status: `[ ]`
+Status: `[x]`
 
 Goal:
 
@@ -153,6 +153,11 @@ Tests:
 
 - Mapper tests for assigned, unassigned, offline, invalid, source metadata, and tested-at overlay.
 - Frontend type-check.
+
+Validated 2026-05-24:
+
+- `pnpm --dir frontend type-check`
+- `pnpm --dir frontend test src/pages/signals/utils/signalGridProjection.test.ts src/pages/signals/composables/useSignalGridPatchQueue.test.ts src/pages/signals/composables/useSignalGridRowModel.test.ts src/pages/signals/utils/rowSelection.test.ts src/pages/signals/utils/allocationHealth.test.ts src/utils/signalRuntimeMapping.test.ts`
 
 Rollback:
 

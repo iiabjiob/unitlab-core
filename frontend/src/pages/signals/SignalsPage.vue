@@ -160,10 +160,16 @@ import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
 import { useSignalGridRowModel } from "@/pages/signals/composables/useSignalGridRowModel"
 import { resolveSignalGridRowKey, resolveSignalGridSelectedRowKeys } from "@/pages/signals/utils/rowSelection"
 import {
-  resolveSignalAllocationHealthLabel,
-  resolveSignalAllocationStatus,
   resolveSignalAllocationStatusLabel,
 } from "@/pages/signals/utils/allocationHealth"
+import {
+  createSignalGridRowPatch,
+  createSignalGridRowPatches,
+  createSignalGridRows,
+  resolveSignalAllocationDisplayLabel,
+  signalGridSourceColumnKey,
+  type SignalGridRow as GridRow,
+} from "@/pages/signals/utils/signalGridProjection"
 import {
   applyRuntimeTestedAt,
   applyRuntimeTestedAtToRows,
@@ -233,11 +239,6 @@ const BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE = 250
 const BULK_ALLOCATION_STORE_SYNC_CHUNK_SIZE = 100
 const signalGridSkeletonRef = ref<HTMLElement | null>(null)
 const signalGridSkeletonHeight = ref(0)
-
-type GridRow = Record<string, unknown> & {
-  signal_id: number
-  rowId: string
-}
 
 type RowSelectionSnapshot = NonNullable<DataGridProps<GridRow>["rowSelectionState"]>
 type DataGridStateUpdate = NonNullable<DataGridProps<Record<string, unknown>>["state"]>
@@ -572,14 +573,7 @@ function enqueueSignalGridRowsDirectPatches(
     return
   }
 
-  const patches = rows.map((row) => {
-    const gridRow = createGridRow(resolveRuntimeAllocationRow(row), sourceHeaders.value)
-    return {
-      rowId: gridRow.rowId,
-      changes: gridRow,
-      columns,
-    }
-  })
+  const patches = createSignalGridRowPatches(rows, sourceHeaders.value, columns, signalGridRuntimeOverlay())
   signalGridRowModel.enqueueRowPatches(patches, { reason, immediate: true })
   signalGridRowModel.flushPatches({ reason, immediate: true })
 }
@@ -960,10 +954,6 @@ const allocatedSignalIdByChannelId = computed(() => {
   return map
 })
 
-function sourceColumnKey(index: number): string {
-  return `source_col_${index}`
-}
-
 function invokeRenderedCellAction(interactive: GridCellInteractiveContext) {
   if (!interactive?.enabled) {
     return
@@ -1252,23 +1242,6 @@ function normalizedChannelType(raw: string | null | undefined): "di" | "do" | "a
   return null
 }
 
-function allocationDisplayLabel(row: SignalAllocationRow): string {
-  if (Number.isFinite(row.channel_index as number)) {
-    const channelSuffix = `ch${Number(row.channel_index) + 1}`
-    const unitId = String(row.unit_id ?? "").trim()
-    return unitId ? `${unitId}/${channelSuffix}` : channelSuffix
-  }
-  if (row.channel_label && row.channel_label.trim().length > 0) {
-    return row.channel_label
-  }
-  return "-"
-}
-
-function resolveInternalSignalType(row: SignalAllocationRow): string {
-  const resolved = resolveRuntimeChannelTypeForSignal(String(row.signal_direction ?? "").trim())
-  return resolved ?? "-"
-}
-
 function resolveAllocationOnlineState(row: SignalAllocationRow): boolean | null {
   const channelId = Number(row.channel_id)
   const linkedChannel = Number.isFinite(channelId) && channelId > 0
@@ -1288,25 +1261,11 @@ function resolveAllocationOnlineState(row: SignalAllocationRow): boolean | null 
   return typeof row.unit_online === "boolean" ? row.unit_online : null
 }
 
-function resolveGridProjectionRow(row: SignalAllocationRow): SignalAllocationRow {
-  return resolveRuntimeAllocationRow(row)
-}
-
-function createGridRow(row: SignalAllocationRow, headers: readonly string[]): GridRow {
-  const payload: GridRow = {
-    signal_id: row.signal_id,
-    rowId: row.row_id || `signal-${row.signal_id}`,
-    internal_signal_type: resolveInternalSignalType(row),
-    channel_select: allocationDisplayLabel(row),
-    tested_at: row.tested_at,
-    allocation_status: resolveSignalAllocationStatus(row),
-    allocation_health: resolveSignalAllocationHealthLabel(row),
+function signalGridRuntimeOverlay() {
+  return {
+    workspaceId: workspaceStore.activeWorkspaceId,
+    getTestedAt: testedAtRealtimeStore.getTestedAt,
   }
-  const sourceRow = extractSourceRowFromSignalMetadata(row.signal_metadata)
-  headers.forEach((header, index) => {
-    payload[sourceColumnKey(index)] = sourceRow[header] ?? ""
-  })
-  return payload
 }
 
 function asAllocationRow(row: GridRow): SignalAllocationRow {
@@ -1372,7 +1331,7 @@ const allocationChannelPickerCurrentChannelId = computed<number | null>(() => {
 
 const allocationChannelPickerCurrentLabel = computed(() => {
   const row = allocationChannelPickerRow.value
-  return row ? allocationDisplayLabel(row) : "-"
+  return row ? resolveSignalAllocationDisplayLabel(row) : "-"
 })
 
 const allocationChannelPickerRequiredType = computed(() => {
@@ -1534,7 +1493,7 @@ async function handleAllocationChannelPicked(channelId: number | null) {
       toastStore.success(`Cleared allocation for ${row.signal_name || row.signal_key}.`)
     } else {
       const nextChannel = allocationChannelPickerChannels.value.find(channel => channel.id === channelId)
-      const nextLabel = nextChannel ? `${nextChannel.unitId}/${nextChannel.channelLabel}` : allocationDisplayLabel(row)
+      const nextLabel = nextChannel ? `${nextChannel.unitId}/${nextChannel.channelLabel}` : resolveSignalAllocationDisplayLabel(row)
       const verb = ownerSignalId !== null && ownerSignalId !== signalId ? "Swapped" : "Assigned"
       toastStore.success(`${verb} ${row.signal_name || row.signal_key} to ${nextLabel}.`)
     }
@@ -2242,7 +2201,7 @@ function renderAllocationHealthCell(context: DataGridAppCellRendererContext<Grid
 const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
   const controlCellRenderVersion = `${activeAoControlSignalId.value ?? "idle"}:${activeAoSubmittingSignalId.value ?? "idle"}`
   const sourceColumns: DataGridAppColumnInput<GridRow>[] = sourceHeaders.value.map((header, index) => ({
-    key: sourceColumnKey(index),
+    key: signalGridSourceColumnKey(index),
     label: header,
     minWidth: resolveSourceColumnMinWidth(header),
     initialState: { width: resolveSourceColumnInitialWidth(header) },
@@ -2309,7 +2268,7 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       cellRenderer: ({ row, interactive }) => {
         const allocationRow = resolveAllocationChannelCellRow(asAllocationRow((row ?? {}) as GridRow))
         return h(AllocationChannelCell, {
-          label: allocationDisplayLabel(allocationRow),
+          label: resolveSignalAllocationDisplayLabel(allocationRow),
           assigned: Number.isFinite(allocationRow.channel_id as number),
           online: resolveAllocationOnlineState(allocationRow),
           active: allocationChannelPickerSignalId.value === allocationRow.signal_id,
@@ -2437,7 +2396,7 @@ const virtualizationOptions = computed(() => ({
 const gridRows = signalGridRowModel.rows
 
 function rebuildSignalGridRows() {
-  signalGridRowModel.setRows(allocationRows.value.map((row) => createGridRow(resolveGridProjectionRow(row), sourceHeaders.value)))
+  signalGridRowModel.setRows(createSignalGridRows(allocationRows.value, sourceHeaders.value, signalGridRuntimeOverlay()))
 }
 
 function enqueueSignalGridRowPatches(
@@ -2449,7 +2408,7 @@ function enqueueSignalGridRowPatches(
     return
   }
 
-  const patches: Array<{ rowId: string; changes: Partial<GridRow>; columns: readonly string[] }> = []
+  const patches: Array<{ rowId: string; changes: Partial<GridRow>; columns?: readonly string[] }> = []
   const seen = new Set<number>()
   signalIds.forEach((rawSignalId) => {
     const signalId = Number(rawSignalId)
@@ -2466,12 +2425,7 @@ function enqueueSignalGridRowPatches(
       return
     }
 
-    const gridRow = createGridRow(resolveRuntimeAllocationRow(row), sourceHeaders.value)
-    patches.push({
-      rowId: gridRow.rowId,
-      changes: gridRow,
-      columns,
-    })
+    patches.push(createSignalGridRowPatch(row, sourceHeaders.value, columns, signalGridRuntimeOverlay()))
   })
 
   if (patches.length === 0) {
