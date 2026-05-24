@@ -2471,36 +2471,21 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       initialState: { width: 190, pin: "right" },
       presentation: { align: "left", headerAlign: "left" },
       capabilities: { editable: false, sortable: false },
-      cellInteraction: {
-        click: true,
-        keyboard: ["enter", "space"],
-        role: "button",
-        label: ({ row }) => {
-          const allocationRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
-          return Number.isFinite(allocationRow.channel_id as number)
-            ? `Change hardware allocation for ${allocationRow.signal_name || allocationRow.signal_key}`
-            : `Assign hardware for ${allocationRow.signal_name || allocationRow.signal_key}`
-        },
-        disabled: ({ row }) => {
-          const allocationRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
-          return allocationChannelPickerSaving.value && allocationChannelPickerSignalId.value === allocationRow.signal_id
-        },
-        onInvoke: ({ row }) => {
-          const allocationRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
-          void openAllocationChannelPicker(allocationRow)
-        },
-      },
-      cellRenderer: ({ row, interactive }) => {
+      cellRenderer: ({ row }) => {
         const allocationRow = resolveLiveAllocationCellRow(asAllocationRow((row ?? {}) as GridRow))
+        const assigned = Number.isFinite(allocationRow.channel_id as number)
+        const signalLabel = allocationRow.signal_name || allocationRow.signal_key
         return h(AllocationChannelCell, {
           label: resolveSignalAllocationDisplayLabel(allocationRow),
-          assigned: Number.isFinite(allocationRow.channel_id as number),
+          assigned,
           online: resolveAllocationOnlineState(allocationRow),
           active: allocationChannelPickerSignalId.value === allocationRow.signal_id,
-          disabled: interactive?.enabled !== true,
-          ariaLabel: interactive?.ariaLabel,
+          disabled: allocationChannelPickerSaving.value && allocationChannelPickerSignalId.value === allocationRow.signal_id,
+          ariaLabel: assigned
+            ? `Change hardware allocation for ${signalLabel}`
+            : `Assign hardware for ${signalLabel}`,
           activate: () => {
-            invokeRenderedCellAction(interactive)
+            void openAllocationChannelPicker(allocationRow)
           },
         })
       },

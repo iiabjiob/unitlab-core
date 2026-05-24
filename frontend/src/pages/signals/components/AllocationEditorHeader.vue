@@ -8,15 +8,16 @@
         </p>
       </div>
 
-      <div class="flex w-full flex-wrap items-center justify-between gap-2">
-        <div class="flex flex-wrap items-center gap-2">
-          <UiButton variant="primary" size="sm" :disabled="workspaceMissing || loading" @click="emit('import')">
+      <div class="flex w-full min-h-8 flex-wrap items-center justify-between gap-2">
+        <div class="flex min-h-8 flex-wrap items-center gap-2">
+          <UiButton variant="primary" size="sm" class="h-8 whitespace-nowrap" :disabled="workspaceMissing || loading" @click="emit('import')">
             📥 Import Signal List
           </UiButton>
 
           <UiButton
             variant="secondary"
             size="sm"
+            class="h-8 whitespace-nowrap"
             :disabled="workspaceMissing || loading || allocatedCableRowsCount === 0"
             @click="emit('exportCable')"
           >
@@ -26,6 +27,7 @@
           <UiButton
             variant="secondary"
             size="sm"
+            class="h-8 whitespace-nowrap"
             :disabled="workspaceMissing || loading || allocationRowsCount === 0"
             @click="emit('exportReport')"
           >
@@ -33,11 +35,12 @@
           </UiButton>
         </div>
 
-        <div class="flex flex-wrap items-center justify-end gap-2">
+        <div class="flex min-h-8 flex-wrap items-center justify-end gap-2">
           <UiButton
             v-if="canAllocateSelected"
             variant="secondary"
             size="sm"
+            class="h-8 whitespace-nowrap"
             :disabled="loading || allocatingSelected || deallocatingSelected"
             @click="emit('allocateSelected')"
           >
@@ -48,19 +51,20 @@
             v-if="canDeallocateSelected"
             variant="secondary"
             size="sm"
+            class="h-8 whitespace-nowrap"
             :disabled="loading || allocatingSelected || deallocatingSelected"
             @click="emit('deallocateSelected')"
           >
             {{ deallocateSelectedLabel }}
           </UiButton>
 
-          <span v-if="canRunTest" class="inline-flex items-center gap-2">
+          <span v-if="canRunTest" class="inline-flex h-8 items-center gap-2">
             <UiMenu>
-              <div class="inline-flex overflow-hidden rounded-lg border border-emerald-500/30 bg-emerald-500/10 divide-x divide-emerald-500/30 shadow-sm shadow-emerald-500/25 dark:border-emerald-400/40 dark:bg-emerald-400/10 dark:divide-emerald-300/30">
+              <div class="inline-flex h-8 overflow-hidden rounded-lg border border-emerald-500/30 bg-emerald-500/10 divide-x divide-emerald-500/30 shadow-sm shadow-emerald-500/25 dark:border-emerald-400/40 dark:bg-emerald-400/10 dark:divide-emerald-300/30">
                 <UiButton
                   :variant="'success'"
                   size="sm"
-                  class="flex items-center gap-2 rounded-none px-3 text-sm font-semibold tracking-tight"
+                  class="flex h-8 items-center gap-2 rounded-none px-3 text-sm font-semibold leading-none tracking-tight whitespace-nowrap"
                   :disabled="loading || isTestRunBusy"
                   @click="emit('runTest')"
                 >
@@ -70,7 +74,7 @@
                   <UiButton
                     :variant="'success'"
                     size="sm"
-                    class="rounded-none px-2.5 text-base font-semibold"
+                    class="h-8 rounded-none px-2.5 text-sm font-semibold leading-none"
                     :disabled="loading || isTestRunBusy"
                     aria-label="Test run options"
                   >
