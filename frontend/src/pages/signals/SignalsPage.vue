@@ -54,6 +54,7 @@
     <section v-else class="affino-native-data-grid relative min-h-0 min-w-0 flex-1">
       <div
         v-if="showSignalGridSkeleton"
+        ref="signalGridSkeletonRef"
         class="pointer-events-none absolute inset-0 z-10 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950"
         aria-hidden="true"
       >
@@ -70,7 +71,7 @@
         </div>
         <div class="min-h-0 flex-1 overflow-hidden">
           <div
-            v-for="rowIndex in 12"
+            v-for="rowIndex in signalGridSkeletonRowCount"
             :key="`signals-grid-skeleton-row-${rowIndex}`"
             class="grid h-9 items-center gap-3 border-b border-neutral-100 px-4 dark:border-neutral-900"
             :style="{ gridTemplateColumns: '44px minmax(44px, 0.7fr) minmax(72px, 1fr) minmax(96px, 1.4fr) 136px 128px' }"
@@ -228,6 +229,12 @@ const activeAoControlDraftValue = ref("")
 const activeAoSubmittingSignalId = ref<number | null>(null)
 const { gridLines, theme } = useAffinoDataGridTheme()
 
+const SIGNAL_GRID_SKELETON_FIXED_HEIGHT = 88
+const SIGNAL_GRID_SKELETON_ROW_HEIGHT = 36
+const SIGNAL_GRID_SKELETON_FALLBACK_ROWS = 12
+const signalGridSkeletonRef = ref<HTMLElement | null>(null)
+const signalGridSkeletonHeight = ref(0)
+
 type GridRow = Record<string, unknown> & {
   signal_id: number
   rowId: string
@@ -312,6 +319,14 @@ const showSignalGridSkeleton = computed(() => (
   (loading.value && allocationRows.value.length === 0)
   || !allocationGridReadyForDisplay.value
 ))
+const signalGridSkeletonRowCount = computed(() => {
+  const measuredHeight = signalGridSkeletonHeight.value
+  if (measuredHeight <= 0) {
+    return SIGNAL_GRID_SKELETON_FALLBACK_ROWS
+  }
+  const bodyHeight = Math.max(0, measuredHeight - SIGNAL_GRID_SKELETON_FIXED_HEIGHT)
+  return Math.max(1, Math.ceil(bodyHeight / SIGNAL_GRID_SKELETON_ROW_HEIGHT))
+})
 const activeSignalSheet = computed(() => {
   const workspaceId = workspaceStore.activeWorkspaceId
   const currentSheet = sheet.value
@@ -327,6 +342,34 @@ const sourceHeaders = computed(() => {
   }
   return resolveAllSourceColumnHeaders(null, allocationRows.value)
 })
+
+watch(
+  signalGridSkeletonRef,
+  (element, _previousElement, onCleanup) => {
+    signalGridSkeletonHeight.value = element?.getBoundingClientRect().height ?? 0
+    if (!element || typeof ResizeObserver === "undefined") {
+      return
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      signalGridSkeletonHeight.value = entries[0]?.contentRect.height ?? element.getBoundingClientRect().height
+    })
+    observer.observe(element)
+
+    let frame: number | null = window.requestAnimationFrame(() => {
+      signalGridSkeletonHeight.value = element.getBoundingClientRect().height
+      frame = null
+    })
+
+    onCleanup(() => {
+      observer.disconnect()
+      if (frame !== null) {
+        window.cancelAnimationFrame(frame)
+      }
+    })
+  },
+  { flush: "post" },
+)
 
 function resolveRuntimeAllocationRow(row: SignalAllocationRow): SignalAllocationRow {
   return applyRuntimeTestedAt(row, workspaceStore.activeWorkspaceId, testedAtRealtimeStore.getTestedAt)
