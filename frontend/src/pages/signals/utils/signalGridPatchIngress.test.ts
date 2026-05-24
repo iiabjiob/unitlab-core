@@ -125,6 +125,7 @@ describe("createSignalGridPatchIngress", () => {
       buildRow({ signal_id: 1, row_id: "signal-1" }),
       buildRow({ signal_id: 2, row_id: "signal-2" }),
     ])
+    const projectionVersion = harness.cache.version
 
     const result = harness.ingress.applyRuntimeSignals([2, 1, 2, "bad"], {
       reason: "runtime",
@@ -144,6 +145,7 @@ describe("createSignalGridPatchIngress", () => {
       ],
       options: { reason: "runtime" },
     })
+    expect(harness.cache.version).toBe(projectionVersion)
   })
 
   it("reports unknown rows without enqueueing patches for them", () => {

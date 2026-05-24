@@ -170,6 +170,7 @@ import {
 } from "@/pages/signals/utils/signalGridProjection"
 import { createSignalAllocationProjectionCache } from "@/pages/signals/utils/signalAllocationProjectionCache"
 import { createSignalGridPatchIngress } from "@/pages/signals/utils/signalGridPatchIngress"
+import { createSignalRuntimeStateCache } from "@/pages/signals/utils/signalRuntimeStateCache"
 import {
   applyRuntimeTestedAt,
   applyRuntimeTestedAtToRows,
@@ -250,6 +251,8 @@ const SIGNALS_GRID_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
 const SIGNAL_GRID_PATCH_COLUMNS = ["internal_signal_type", "channel_select", "tested_at", "allocation_status", "allocation_health"] as const
 const signalAllocationProjectionCache = createSignalAllocationProjectionCache()
 const signalAllocationProjectionVersion = ref(0)
+const signalRuntimeStateCache = createSignalRuntimeStateCache()
+const signalRuntimeStateVersion = ref(0)
 const signalGridRowModel = useSignalGridRowModel<GridRow>(allocationGridRef, {
   defaultReason: "signals-grid-patch",
   resolveRowId: row => row.rowId,
@@ -360,6 +363,29 @@ function replaceSignalAllocationProjectionRows(rows: readonly SignalAllocationRo
   bumpSignalAllocationProjectionVersion()
 }
 
+function bumpSignalRuntimeStateVersion() {
+  signalRuntimeStateVersion.value = signalRuntimeStateCache.version
+}
+
+function patchSignalRuntimeStateFromStore(signalIds: readonly number[]) {
+  const testedAtBySignal: Record<number, string> = {}
+  signalIds.forEach((rawSignalId) => {
+    const signalId = Number(rawSignalId)
+    if (!Number.isFinite(signalId) || signalId <= 0) {
+      return
+    }
+    const testedAt = String(testedAtRealtimeStore.getTestedAt(signalId, workspaceStore.activeWorkspaceId) ?? "").trim()
+    if (testedAt) {
+      testedAtBySignal[signalId] = testedAt
+    }
+  })
+  const result = signalRuntimeStateCache.patchTestedAtBySignal(testedAtBySignal)
+  if (result.changed > 0) {
+    bumpSignalRuntimeStateVersion()
+  }
+  return result
+}
+
 function resolveStoreAllocationRowsBySignalIds(signalIds: readonly number[]): SignalAllocationRow[] {
   if (!signalIds.length) {
     return []
@@ -415,6 +441,11 @@ function getSignalAllocationOwnerSignalIdByChannelId(channelId: number | null | 
 
 const allocationProjectionRowsCount = computed(() => signalAllocationProjectionRowCount())
 
+function getSignalRuntimeTestedAt(signalId: number | null | undefined): string | null {
+  void signalRuntimeStateVersion.value
+  return signalRuntimeStateCache.getTestedAt(signalId)
+}
+
 const sourceHeaders = computed(() => {
   const headersFromSheet = resolveAllSourceColumnHeaders(activeSignalSheet.value, [])
   if (headersFromSheet.length > 0) {
@@ -460,16 +491,16 @@ watch(
 )
 
 function resolveRuntimeAllocationRow(row: SignalAllocationRow): SignalAllocationRow {
-  return applyRuntimeTestedAt(row, workspaceStore.activeWorkspaceId, testedAtRealtimeStore.getTestedAt)
+  return applyRuntimeTestedAt(row, workspaceStore.activeWorkspaceId, getSignalRuntimeTestedAt)
 }
 
 function resolveRuntimeAllocationRows(rows: readonly SignalAllocationRow[] = signalAllocationProjectionRows()): SignalAllocationRow[] {
-  return applyRuntimeTestedAtToRows(rows, workspaceStore.activeWorkspaceId, testedAtRealtimeStore.getTestedAt)
+  return applyRuntimeTestedAtToRows(rows, workspaceStore.activeWorkspaceId, getSignalRuntimeTestedAt)
 }
 
 function hasRuntimeOrStaticTestedAt(row: SignalAllocationRow): boolean {
   return Boolean(String(
-    resolveRuntimeTestedAt(row, workspaceStore.activeWorkspaceId, testedAtRealtimeStore.getTestedAt) ?? "",
+    resolveRuntimeTestedAt(row, workspaceStore.activeWorkspaceId, getSignalRuntimeTestedAt) ?? "",
   ).trim())
 }
 
@@ -480,7 +511,7 @@ const summaryText = computed(() => {
   if (loading.value) {
     return "Loading static signals view"
   }
-  void activeWorkspaceRevision.value
+  void signalRuntimeStateVersion.value
   const rows = signalAllocationProjectionRows()
   const total = rows.length
   const allocated = rows.filter(row => Number.isFinite(row.channel_id as number)).length
@@ -1306,7 +1337,7 @@ function resolveAllocationOnlineState(row: SignalAllocationRow): boolean | null 
 function signalGridRuntimeOverlay() {
   return {
     workspaceId: workspaceStore.activeWorkspaceId,
-    getTestedAt: testedAtRealtimeStore.getTestedAt,
+    getTestedAt: getSignalRuntimeTestedAt,
   }
 }
 
@@ -2478,6 +2509,9 @@ watch(
   () => allocationRows.value,
   (rows) => {
     replaceSignalAllocationProjectionRows(rows)
+    signalRuntimeStateCache.clear()
+    patchSignalRuntimeStateFromStore(signalAllocationProjectionCache.getSignalIds())
+    bumpSignalRuntimeStateVersion()
     rebuildSignalGridRows()
   },
   { flush: "post", immediate: true },
@@ -2510,9 +2544,13 @@ watch(
 watch(
   () => [activeWorkspaceRevision.value, activeWorkspacePatchedSignalIds.value] as const,
   ([, signalIds]) => {
+    patchSignalRuntimeStateFromStore(signalIds)
     signalGridPatchIngress.applyRuntimeSignals(signalIds, {
       reason: "signal-tested-at-realtime-patch",
       columns: ["tested_at"],
+      recomputeSort: false,
+      recomputeFilter: false,
+      recomputeGroup: false,
     })
   },
   { flush: "post" },

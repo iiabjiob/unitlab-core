@@ -238,7 +238,7 @@ Rollback:
 
 ### Slice 5 - Runtime State Split
 
-Status: `[ ]`
+Status: `[x]`
 
 Goal:
 
@@ -260,6 +260,16 @@ Tests:
 - Visible row refresh test.
 - Non-visible row runtime update test.
 - Runtime patch does not replace `rows.value`.
+
+Validated 2026-05-24:
+
+- `pnpm --dir frontend type-check`
+- `pnpm --dir frontend test src/pages/signals/utils/signalRuntimeStateCache.test.ts src/pages/signals/utils/signalGridPatchIngress.test.ts src/pages/signals/utils/signalAllocationProjectionCache.test.ts src/pages/signals/utils/signalGridProjection.test.ts src/pages/signals/utils/runtimeProjection.test.ts src/pages/signals/composables/useSignalGridPatchQueue.test.ts src/pages/signals/composables/useSignalGridRowModel.test.ts src/pages/signals/utils/rowSelection.test.ts src/pages/signals/utils/allocationHealth.test.ts src/utils/signalRuntimeMapping.test.ts`
+
+Notes:
+
+- `tested_at` remains a row patch because it is a sortable/filterable grid column.
+- Display-only runtime fields can use the existing `refreshSignalCells` ingress when added.
 
 Rollback:
 
