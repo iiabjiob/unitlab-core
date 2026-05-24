@@ -118,3 +118,35 @@ class SignalAllocation(Base):
     workspace: Mapped["Workspace"] = relationship("Workspace", lazy="selectin")
     signal: Mapped["Signal"] = relationship("Signal", back_populates="allocation", lazy="selectin")
     channel: Mapped["Channel"] = relationship("Channel", lazy="selectin")
+
+
+class SignalAllocationEvent(Base):
+    __tablename__ = "signal_allocation_events"
+
+    __table_args__ = (
+        Index("ix_signal_allocation_events_workspace_created", "workspace_id", "created_at", "id"),
+        Index("ix_signal_allocation_events_workspace_operation", "workspace_id", "operation", "created_at"),
+        Index("ix_signal_allocation_events_workspace_signal", "workspace_id", "signal_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BIGINT_PK, primary_key=True, autoincrement=True)
+    workspace_id: Mapped[int] = mapped_column(
+        BIGINT_PK,
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    operation: Mapped[str] = mapped_column(String(32), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, server_default="api")
+    signal_id: Mapped[int | None] = mapped_column(BIGINT_PK, nullable=True)
+    previous_channel_id: Mapped[int | None] = mapped_column(BIGINT_PK, nullable=True)
+    channel_id: Mapped[int | None] = mapped_column(BIGINT_PK, nullable=True)
+    requested_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    changed_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    skipped_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    rejected_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    workspace: Mapped["Workspace"] = relationship("Workspace", lazy="selectin")

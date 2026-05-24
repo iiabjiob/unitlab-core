@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.channel import Channel
 from app.models.signal import Signal
-from app.models.signal_sheet import SignalAllocation, SignalSheet, SignalSheetPreset
+from app.models.signal_sheet import SignalAllocation, SignalAllocationEvent, SignalSheet, SignalSheetPreset
 from app.models.workspace import Workspace
 from app.schemas.signal_import_schema import SignalImportMetaSchema
 from app.schemas.signal_sheet_schema import (
@@ -37,6 +37,7 @@ def _parse_tested_at(payload: Any) -> datetime | None:
 
 @dataclass(frozen=True)
 class SignalSheetAutoAllocateResult:
+    requested: int
     assigned: int
     skipped: int
     missing: int
@@ -222,6 +223,38 @@ class SignalSheetRepository:
         stmt = delete(SignalAllocation).where(SignalAllocation.workspace_id == workspace_id)
         await self.db.execute(stmt)
         await self.db.flush()
+
+    async def record_allocation_event(
+        self,
+        *,
+        workspace_id: int,
+        operation: str,
+        source: str = "api",
+        signal_id: int | None = None,
+        previous_channel_id: int | None = None,
+        channel_id: int | None = None,
+        requested_count: int = 0,
+        changed_count: int = 0,
+        skipped_count: int = 0,
+        rejected_count: int = 0,
+        payload: dict[str, Any] | None = None,
+    ) -> SignalAllocationEvent:
+        event = SignalAllocationEvent(
+            workspace_id=int(workspace_id),
+            operation=str(operation).strip(),
+            source=str(source).strip() or "api",
+            signal_id=int(signal_id) if signal_id is not None else None,
+            previous_channel_id=int(previous_channel_id) if previous_channel_id is not None else None,
+            channel_id=int(channel_id) if channel_id is not None else None,
+            requested_count=max(0, int(requested_count)),
+            changed_count=max(0, int(changed_count)),
+            skipped_count=max(0, int(skipped_count)),
+            rejected_count=max(0, int(rejected_count)),
+            payload=dict(payload or {}),
+        )
+        self.db.add(event)
+        await self.db.flush()
+        return event
 
     async def get_allocation_by_signal_id(self, workspace_id: int, signal_id: int) -> SignalAllocation | None:
         stmt = select(SignalAllocation).where(
@@ -414,11 +447,11 @@ class SignalSheetRepository:
         entries: Sequence[dict[str, Any]],
         progress_callback: Callable[[int, int], Awaitable[None]] | None = None,
         commit: bool = True,
-    ) -> None:
+    ) -> list[int]:
         if not entries:
             if commit:
                 await self.db.commit()
-            return
+            return []
 
         signal_ids = {int(item["signal_id"]) for item in entries}
         active_signals = await self._active_signals_by_ids(workspace_id, signal_ids)
@@ -471,6 +504,7 @@ class SignalSheetRepository:
                 )
 
         touched_signal_ids = {int(item["signal_id"]) for item in entries}
+        changed_signal_ids: set[int] = set()
         total_steps = len(touched_signal_ids)
         step_index = 0
         for signal_id in touched_signal_ids:
@@ -480,6 +514,7 @@ class SignalSheetRepository:
             if desired_channel is None:
                 if existing is not None:
                     await self.db.delete(existing)
+                    changed_signal_ids.add(signal_id)
                 if progress_callback is not None:
                     await progress_callback(step_index, total_steps)
                 continue
@@ -494,13 +529,18 @@ class SignalSheetRepository:
                         allocation_meta=allocation_meta,
                     )
                 )
+                changed_signal_ids.add(signal_id)
                 if progress_callback is not None:
                     await progress_callback(step_index, total_steps)
                 continue
 
+            previous_channel_id = int(existing.channel_id)
+            previous_meta = existing.allocation_meta
             existing.channel_id = desired_channel
             if signal_id in touched_meta:
                 existing.allocation_meta = allocation_meta
+            if previous_channel_id != desired_channel or previous_meta != existing.allocation_meta:
+                changed_signal_ids.add(signal_id)
             if progress_callback is not None:
                 await progress_callback(step_index, total_steps)
 
@@ -508,6 +548,7 @@ class SignalSheetRepository:
             await self.db.commit()
         else:
             await self.db.flush()
+        return sorted(changed_signal_ids)
 
     async def mark_signals_tested(
         self,
@@ -617,6 +658,7 @@ class SignalSheetRepository:
                 seen.add(signal.id)
         else:
             target_signals = await self._list_active_signals(workspace_id)
+        requested_count = len(requested_signal_ids) if requested_signal_ids else len(target_signals)
         current_allocations = await self._allocations_by_signal_id(workspace_id)
 
         all_channels = await self._list_channels()
@@ -767,6 +809,7 @@ class SignalSheetRepository:
         else:
             await self.db.flush()
         return SignalSheetAutoAllocateResult(
+            requested=requested_count,
             assigned=assigned,
             skipped=skipped,
             missing=missing,

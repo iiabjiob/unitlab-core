@@ -131,8 +131,26 @@ async def _handle_auto_allocate(
         progress_callback=progress_callback,
         commit=False,
     )
+    await repo.record_allocation_event(
+        workspace_id=workspace_id,
+        operation="auto_allocate",
+        source="worker",
+        requested_count=result.requested,
+        changed_count=len(result.changed_signal_ids),
+        skipped_count=result.skipped + result.missing,
+        rejected_count=len(result.rejected),
+        payload={
+            "job_id": str(payload.get("job_id") or ""),
+            "assigned": result.assigned,
+            "unassigned_signal_ids": result.unassigned_signal_ids,
+            "changed_signal_ids": result.changed_signal_ids,
+            "skipped_items": [item.model_dump(mode="json") for item in result.skipped_items],
+            "rejected": [item.model_dump(mode="json") for item in result.rejected],
+        },
+    )
     changed_rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, result.changed_signal_ids)
     return {
+        "requested": result.requested,
         "assigned": result.assigned,
         "skipped": result.skipped,
         "missing": result.missing,
@@ -174,12 +192,27 @@ async def _handle_bulk_update(
             message=f"Signals {done}/{max(progress_total, total)}",
         )
 
-    await repo.update_allocations(workspace_id, entries, progress_callback=progress_callback, commit=False)
+    changed_signal_ids = await repo.update_allocations(workspace_id, entries, progress_callback=progress_callback, commit=False)
     signal_ids = sorted({int(item["signal_id"]) for item in entries})
-    changed_rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, signal_ids)
+    await repo.record_allocation_event(
+        workspace_id=workspace_id,
+        operation="bulk_update",
+        source="worker",
+        requested_count=len(signal_ids),
+        changed_count=len(changed_signal_ids),
+        skipped_count=max(0, len(signal_ids) - len(changed_signal_ids)),
+        rejected_count=0,
+        payload={
+            "job_id": str(payload.get("job_id") or ""),
+            "entry_count": total,
+            "changed_signal_ids": changed_signal_ids,
+        },
+    )
+    changed_rows = await repo.list_allocation_rows_by_signal_ids(workspace_id, changed_signal_ids)
     return {
-        "updated": len(signal_ids),
-        "changed_signal_ids": signal_ids,
+        "requested": len(signal_ids),
+        "updated": len(changed_signal_ids),
+        "changed_signal_ids": changed_signal_ids,
         "changed_row_patches": _serialize_allocation_job_row_patches(changed_rows),
     }
 

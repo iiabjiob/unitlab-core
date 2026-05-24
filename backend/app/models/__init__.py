@@ -4,7 +4,7 @@ from .switchgear import Switchgear, SwitchgearChannelBinding  # noqa: F401
 from .sequence import Sequence, SequenceStep  # noqa: F401
 from .sequence_run import SequenceRun, SequenceRunStep  # noqa: F401
 from .signal import Signal  # noqa: F401
-from .signal_sheet import SignalAllocation, SignalSheet, SignalSheetPreset  # noqa: F401
+from .signal_sheet import SignalAllocation, SignalAllocationEvent, SignalSheet, SignalSheetPreset  # noqa: F401
 from .processed_job import ProcessedJob  # noqa: F401
 from .workspace import Workspace, WorkspaceSequence, WorkspaceSwitchgear  # noqa: F401
 
@@ -21,6 +21,7 @@ __all__ = [
     "SignalSheet",
     "SignalSheetPreset",
     "SignalAllocation",
+    "SignalAllocationEvent",
     "ProcessedJob",
     "Workspace",
     "WorkspaceSwitchgear",

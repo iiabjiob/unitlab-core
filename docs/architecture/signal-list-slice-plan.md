@@ -70,7 +70,7 @@ Execution semantics for the current product direction:
 - Allocation, test, and device patch ingress has a sequenced WebSocket contract, but backend producers still need to migrate from action-specific payloads.
 - Sort/filter recompute policy is explicit for current allocation/runtime columns; future device/test fields still need policy entries when introduced.
 - Performance proof for 20,000 rows under large allocation/test patch bursts is still missing.
-- Durable allocation event history and per-step execution evidence are not complete.
+- Allocation summary event history exists; detailed per-step execution evidence is still incomplete.
 - Old reload-oriented fallback paths still exist and need to be narrowed to recovery only.
 
 ## Slice Plan
@@ -377,7 +377,7 @@ Rollback:
 
 ### Slice 8 - Allocation Event History
 
-Status: `[ ]`
+Status: `[x]`
 
 Goal:
 
@@ -394,6 +394,23 @@ Tests:
 - Event written for each mutation type.
 - Failed mutation writes no success event.
 - Bulk events capture requested, changed, skipped, and rejected counts.
+
+Implemented:
+
+- Added append-only `signal_allocation_events` persistence table and SQLAlchemy model.
+- Synchronous assign, unassign, reassign, swap, bulk update, and auto-allocation write history rows before transaction commit.
+- Async allocation worker records `auto_allocate` and `bulk_update` summary events in the same database transaction as allocation changes.
+- Bulk and auto events store requested/changed/skipped/rejected counters and compact changed-signal payloads; normal grid projection loading does not read event history.
+- `update_allocations` now reports actual changed signal ids so no-op bulk entries do not force changed row patches.
+
+Validated 2026-05-24:
+
+- `uv run python -m py_compile app/models/signal_sheet.py app/models/__init__.py app/api/v1/signal_sheet/repository.py app/services/signal_sheet_write_service.py app/workers/signal_allocation_runner.py tests/services/test_signal_sheet_write_service_allocation_actions.py alembic/versions/f1a2b3c4d5e7_add_signal_allocation_events.py`
+- `git diff --check`
+
+Notes:
+
+- `uv run pytest tests/services/test_signal_sheet_write_service_allocation_actions.py` could not run because `pytest` is not installed in the current backend environment.
 
 Rollback:
 
@@ -546,10 +563,10 @@ For each future slice:
 
 ## Next Slice
 
-Start with Slice 8: Allocation Event History.
+Start with Slice 9: Test Execution Evidence.
 
 Reason:
 
-- Slice 7 now provides the frontend/backend patch event contract.
-- Allocation event history is the next backend-owned traceability slice and does not need to sit in the grid hot path.
-- It keeps allocation auditability separate from DataGrid rendering performance.
+- Allocation history now records summary-level audit events without entering the grid hot path.
+- Test execution still needs persisted per-step evidence for the actual signal/allocation/channel used.
+- This keeps live alias semantics while improving report/debug traceability.

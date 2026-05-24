@@ -110,7 +110,21 @@ class SignalSheetWriteService:
         started_at = time.monotonic()
         entry_count = len(entries)
         try:
-            await self.repo.update_allocations(workspace_id, entries, commit=False)
+            changed_signal_ids = await self.repo.update_allocations(workspace_id, entries, commit=False)
+            requested_signal_ids = sorted({int(item["signal_id"]) for item in entries})
+            await self.repo.record_allocation_event(
+                workspace_id=workspace_id,
+                operation="bulk_update",
+                source="api",
+                requested_count=len(requested_signal_ids),
+                changed_count=len(changed_signal_ids),
+                skipped_count=max(0, len(requested_signal_ids) - len(changed_signal_ids)),
+                rejected_count=0,
+                payload={
+                    "entry_count": entry_count,
+                    "changed_signal_ids": changed_signal_ids,
+                },
+            )
             await self.db.commit()
             duration_ms = (time.monotonic() - started_at) * 1000
             logger.info(
@@ -147,7 +161,7 @@ class SignalSheetWriteService:
                     return [signal_id]
                 raise ValueError(f"Signal #{signal_id} is already allocated; use reassign")
 
-            await self.repo.update_allocations(
+            changed_signal_ids = await self.repo.update_allocations(
                 workspace_id,
                 [{
                     "signal_id": int(signal_id),
@@ -156,6 +170,18 @@ class SignalSheetWriteService:
                 }],
                 commit=False,
             )
+            if changed_signal_ids:
+                await self.repo.record_allocation_event(
+                    workspace_id=workspace_id,
+                    operation="assign",
+                    source="api",
+                    signal_id=int(signal_id),
+                    previous_channel_id=None,
+                    channel_id=int(channel_id),
+                    requested_count=1,
+                    changed_count=len(changed_signal_ids),
+                    payload={"changed_signal_ids": changed_signal_ids},
+                )
             await self.db.commit()
             duration_ms = (time.monotonic() - started_at) * 1000
             logger.info(
@@ -165,7 +191,7 @@ class SignalSheetWriteService:
                 channel_id,
                 duration_ms,
             )
-            return [signal_id]
+            return changed_signal_ids
         except Exception:
             await self.db.rollback()
             raise
@@ -187,7 +213,8 @@ class SignalSheetWriteService:
                 await self.db.commit()
                 return [signal_id]
 
-            await self.repo.update_allocations(
+            previous_channel_id = int(existing.channel_id)
+            changed_signal_ids = await self.repo.update_allocations(
                 workspace_id,
                 [{
                     "signal_id": int(signal_id),
@@ -196,6 +223,18 @@ class SignalSheetWriteService:
                 }],
                 commit=False,
             )
+            if changed_signal_ids:
+                await self.repo.record_allocation_event(
+                    workspace_id=workspace_id,
+                    operation="reassign",
+                    source="api",
+                    signal_id=int(signal_id),
+                    previous_channel_id=previous_channel_id,
+                    channel_id=int(channel_id),
+                    requested_count=1,
+                    changed_count=len(changed_signal_ids),
+                    payload={"changed_signal_ids": changed_signal_ids},
+                )
             await self.db.commit()
             duration_ms = (time.monotonic() - started_at) * 1000
             logger.info(
@@ -205,7 +244,7 @@ class SignalSheetWriteService:
                 channel_id,
                 duration_ms,
             )
-            return [signal_id]
+            return changed_signal_ids
         except Exception:
             await self.db.rollback()
             raise
@@ -218,7 +257,9 @@ class SignalSheetWriteService:
     ) -> list[int]:
         started_at = time.monotonic()
         try:
-            await self.repo.update_allocations(
+            existing = await self.repo.get_allocation_by_signal_id(workspace_id, signal_id)
+            previous_channel_id = int(existing.channel_id) if existing is not None else None
+            changed_signal_ids = await self.repo.update_allocations(
                 workspace_id,
                 [{
                     "signal_id": int(signal_id),
@@ -226,6 +267,18 @@ class SignalSheetWriteService:
                 }],
                 commit=False,
             )
+            if changed_signal_ids:
+                await self.repo.record_allocation_event(
+                    workspace_id=workspace_id,
+                    operation="unassign",
+                    source="api",
+                    signal_id=int(signal_id),
+                    previous_channel_id=previous_channel_id,
+                    channel_id=None,
+                    requested_count=1,
+                    changed_count=len(changed_signal_ids),
+                    payload={"changed_signal_ids": changed_signal_ids},
+                )
             await self.db.commit()
             duration_ms = (time.monotonic() - started_at) * 1000
             logger.info(
@@ -234,7 +287,7 @@ class SignalSheetWriteService:
                 signal_id,
                 duration_ms,
             )
-            return [signal_id]
+            return changed_signal_ids
         except Exception:
             await self.db.rollback()
             raise
@@ -248,12 +301,30 @@ class SignalSheetWriteService:
     ) -> list[int]:
         started_at = time.monotonic()
         try:
+            source_allocation = await self.repo.get_allocation_by_signal_id(workspace_id, signal_id)
+            target_allocation = await self.repo.get_allocation_by_channel_id(workspace_id, channel_id)
             changed_signal_ids = await self.repo.swap_allocations(
                 workspace_id=workspace_id,
                 signal_id=signal_id,
                 channel_id=channel_id,
                 commit=False,
             )
+            if changed_signal_ids:
+                await self.repo.record_allocation_event(
+                    workspace_id=workspace_id,
+                    operation="swap",
+                    source="api",
+                    signal_id=int(signal_id),
+                    previous_channel_id=int(source_allocation.channel_id) if source_allocation is not None else None,
+                    channel_id=int(channel_id),
+                    requested_count=2,
+                    changed_count=len(changed_signal_ids),
+                    payload={
+                        "changed_signal_ids": changed_signal_ids,
+                        "target_signal_id": int(target_allocation.signal_id) if target_allocation is not None else None,
+                        "target_previous_channel_id": int(target_allocation.channel_id) if target_allocation is not None else None,
+                    },
+                )
             await self.db.commit()
             duration_ms = (time.monotonic() - started_at) * 1000
             logger.info(
@@ -288,6 +359,22 @@ class SignalSheetWriteService:
                 prefer_single_unit=prefer_single_unit,
                 overwrite_existing=overwrite_existing,
                 commit=False,
+            )
+            await self.repo.record_allocation_event(
+                workspace_id=workspace_id,
+                operation="auto_allocate",
+                source="api",
+                requested_count=result.requested,
+                changed_count=len(result.changed_signal_ids),
+                skipped_count=result.skipped + result.missing,
+                rejected_count=len(result.rejected),
+                payload={
+                    "assigned": result.assigned,
+                    "unassigned_signal_ids": result.unassigned_signal_ids,
+                    "changed_signal_ids": result.changed_signal_ids,
+                    "skipped_items": [item.model_dump(mode="json") for item in result.skipped_items],
+                    "rejected": [item.model_dump(mode="json") for item in result.rejected],
+                },
             )
             await self.db.commit()
             duration_ms = (time.monotonic() - started_at) * 1000
