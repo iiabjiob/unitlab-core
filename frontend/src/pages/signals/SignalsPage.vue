@@ -246,7 +246,7 @@ const { gridLines, theme } = useAffinoDataGridTheme()
 const SIGNAL_GRID_SKELETON_FIXED_HEIGHT = 88
 const SIGNAL_GRID_SKELETON_ROW_HEIGHT = 36
 const SIGNAL_GRID_SKELETON_FALLBACK_ROWS = 12
-const BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE = 250
+const BULK_ALLOCATION_COMPLETION_CHUNK_SIZE = 250
 const signalGridSkeletonRef = ref<HTMLElement | null>(null)
 const signalGridSkeletonHeight = ref(0)
 
@@ -831,11 +831,11 @@ function resolveAllocationJobSkippedCount(job: SignalAllocationJob, requested: n
   return Math.max(0, requested - changed)
 }
 
-async function patchCompletedAllocationProjectionRows(rows: readonly SignalAllocationRow[]) {
+async function syncCompletedAllocationProjectionRows(rows: readonly SignalAllocationRow[]) {
   suppressSignalsGridStateEventsDepth += 1
   try {
-    for (let index = 0; index < rows.length; index += BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE) {
-      const chunk = rows.slice(index, index + BULK_ALLOCATION_GRID_PATCH_CHUNK_SIZE)
+    for (let index = 0; index < rows.length; index += BULK_ALLOCATION_COMPLETION_CHUNK_SIZE) {
+      const chunk = rows.slice(index, index + BULK_ALLOCATION_COMPLETION_CHUNK_SIZE)
       signalGridPatchIngress.patchAllocationRowsCache(chunk)
       signalGridPatchIngress.refreshSignalCells(chunk.map(row => row.signal_id), SIGNAL_GRID_PATCH_COLUMNS, {
         reason: "signal-allocation-job-complete",
@@ -854,7 +854,7 @@ async function applyCompletedAllocationJobPatch(job: SignalAllocationJob): Promi
     return changedRows
   }
 
-  await patchCompletedAllocationProjectionRows(changedRows)
+  await syncCompletedAllocationProjectionRows(changedRows)
 
   return changedRows
 }

@@ -835,20 +835,6 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     })
   }
 
-  function applyAllocationRowsPatch(
-    rows: SignalAllocationRow[],
-    options?: SignalAllocationPatchOptions,
-  ) {
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return
-    }
-    applyServerAllocationPatch(
-      rows,
-      rows.map(row => row.signal_id),
-      options,
-    )
-  }
-
   const hasSheet = computed(() => Boolean(sheet.value && sheet.value.signals_count > 0))
   const allocatedCount = computed(() => {
     if (sheet.value) {
@@ -893,6 +879,5 @@ export const useSignalSheetStore = defineStore("signalSheetStore", () => {
     ensureAllocated,
     markSignalsTested,
     applyTestedAtBySignalPatch,
-    applyAllocationRowsPatch,
   }
 })

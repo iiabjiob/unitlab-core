@@ -605,11 +605,12 @@ Implemented so far:
 - Converted the Pinia allocation row cache to a shallow snapshot so bulk job completion sync does not deep-track thousands of row objects after the grid has already patched.
 - Narrowed grid row patch payloads to requested columns and suppressed grid state persistence events during bulk job patch replay.
 - Removed mass `rows.patchRows` replay on allocation job completion; completion now updates the allocation projection cache and refreshes only visible cells.
+- Removed the unused public `signalSheetStore.applyAllocationRowsPatch()` helper and the obsolete `rows.patch` DataGrid API fallback.
 
 Validated 2026-05-24:
 
 - `pnpm --dir frontend type-check`
-- `pnpm --dir frontend test src/stores/signalSheetStore.test.ts src/pages/signals/utils/signalListPerformanceHarness.test.ts src/pages/signals/utils/signalGridPatchIngress.test.ts src/pages/signals/utils/signalStaticRefreshPolicy.test.ts src/pages/signals/composables/useSignalGridPatchQueue.test.ts`
+- `pnpm --dir frontend test src/stores/signalSheetStore.test.ts src/pages/signals/composables/useSignalGridPatchQueue.test.ts src/pages/signals/composables/useSignalGridRowModel.test.ts src/pages/signals/utils/signalGridPatchIngress.test.ts src/pages/signals/utils/signalGridProjection.test.ts src/pages/signals/utils/signalAllocationJobResult.test.ts src/pages/signals/utils/signalListPerformanceHarness.test.ts`
 - `uv run python -m py_compile app/workers/signal_test_run_runner.py tests/workers/test_signal_allocation_runner_results.py`
 - `git diff --check`
 
@@ -619,8 +620,7 @@ Notes:
 
 Remaining:
 
-- Remove old full-array grid paths once browser/manual proof confirms the row model path.
-- Remove any remaining duplicate allocation mutation helpers if follow-up search finds safe candidates.
+- Remove old full-array grid paths once browser/manual proof confirms they are no longer needed for initial load or recovery.
 
 Rollback:
 

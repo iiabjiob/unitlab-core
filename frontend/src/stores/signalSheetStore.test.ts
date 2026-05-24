@@ -9,6 +9,7 @@ import type { SignalAllocationRow } from "@/types/signal"
 const signalSheetApiMock = vi.hoisted(() => ({
   streamAllocations: vi.fn(),
   listAllocations: vi.fn(),
+  updateAllocations: vi.fn(),
 }))
 
 vi.mock("@/api/signal_sheet.api", () => ({
@@ -45,6 +46,7 @@ describe("signalSheetStore allocation patching", () => {
     setActivePinia(createPinia())
     signalSheetApiMock.streamAllocations.mockReset()
     signalSheetApiMock.listAllocations.mockReset()
+    signalSheetApiMock.updateAllocations.mockReset()
     if (typeof window !== "undefined") {
       window.localStorage.clear()
     }
@@ -59,19 +61,28 @@ describe("signalSheetStore allocation patching", () => {
     const store = useSignalSheetStore()
 
     await store.refreshAllocations()
-    store.applyAllocationRowsPatch([
-      buildRow({
-        signal_id: 99,
-        row_id: "signal-99",
-        channel_id: 990,
-        channel_index: 0,
-        unit_id: "unit-z",
-      }),
-    ])
+    signalSheetApiMock.updateAllocations.mockResolvedValue({
+      data: {
+        workspace_id: 7,
+        changed_rows: [
+          buildRow({
+            signal_id: 99,
+            row_id: "signal-99",
+            channel_id: 990,
+            channel_index: 0,
+            unit_id: "unit-z",
+          }),
+        ],
+        conflicts: [],
+        rejected: [],
+      },
+    })
+    await store.bulkSetAllocations([{ signal_id: 99, channel_id: 990 }])
 
     expect(store.allocationRows.map(row => row.signal_id)).toEqual([1, 2])
     expect(store.allocationRows[0].channel_id).toBeNull()
     expect(store.allocationRows[1].channel_id).toBeNull()
+    expect(signalSheetApiMock.updateAllocations).toHaveBeenCalledTimes(1)
   })
 
   it("patches known rows without forcing a projection reload", async () => {
@@ -83,15 +94,23 @@ describe("signalSheetStore allocation patching", () => {
     const store = useSignalSheetStore()
 
     await store.refreshAllocations()
-    store.applyAllocationRowsPatch([
-      buildRow({
-        signal_id: 2,
-        row_id: "signal-2",
-        channel_id: 22,
-        channel_index: 1,
-        unit_id: "unit-b",
-      }),
-    ])
+    signalSheetApiMock.updateAllocations.mockResolvedValue({
+      data: {
+        workspace_id: 7,
+        changed_rows: [
+          buildRow({
+            signal_id: 2,
+            row_id: "signal-2",
+            channel_id: 22,
+            channel_index: 1,
+            unit_id: "unit-b",
+          }),
+        ],
+        conflicts: [],
+        rejected: [],
+      },
+    })
+    await store.bulkSetAllocations([{ signal_id: 2, channel_id: 22 }])
 
     expect(store.allocationRows.map(row => row.signal_id)).toEqual([1, 2])
     expect(store.allocationRows[1]).toMatchObject({
