@@ -36,7 +36,7 @@ function createManualScheduler() {
   }
 }
 
-function createGridHarness(options?: { patchSupport?: boolean }) {
+function createGridHarness(options?: { patchRows?: boolean }) {
   const patchCalls: Array<{ patches: unknown[]; options: Record<string, unknown> | undefined }> = []
   const refreshCalls: Array<{ rowKeys: unknown[]; columnKeys: string[]; options: Record<string, unknown> | undefined }> = []
   let batchCalls = 0
@@ -45,14 +45,15 @@ function createGridHarness(options?: { patchSupport?: boolean }) {
     value: {
       getApi: () => ({
         rows: {
-          hasPatchSupport: () => options?.patchSupport ?? true,
           batch: <TResult>(callback: () => TResult) => {
             batchCalls += 1
             return callback()
           },
-          patchRows: (patches: readonly unknown[], patchOptions?: Record<string, unknown>) => {
-            patchCalls.push({ patches: [...patches], options: patchOptions })
-          },
+          patchRows: options?.patchRows === false
+            ? undefined
+            : (patches: readonly unknown[], patchOptions?: Record<string, unknown>) => {
+                patchCalls.push({ patches: [...patches], options: patchOptions })
+              },
         },
         view: {
           refreshCellsByRowKeys: (
@@ -149,9 +150,9 @@ describe("createSignalGridPatchQueue", () => {
     ])
   })
 
-  it("drops row patches without throwing when the grid has no patch support", () => {
+  it("drops row patches without throwing when the grid exposes no patchRows API", () => {
     const scheduler = createManualScheduler()
-    const grid = createGridHarness({ patchSupport: false })
+    const grid = createGridHarness({ patchRows: false })
     const queue = createSignalGridPatchQueue<TestGridRow>(grid.gridRef, {
       scheduler: scheduler.scheduler,
     })

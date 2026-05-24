@@ -30,7 +30,7 @@ Affino DataGrid client row model
         |
         | allocation, device, runtime patches
         v
-Patch queue -> rows.patch / refreshCells
+Patch queue -> rows.patchRows / refreshCells
 ```
 
 Ownership rules:
@@ -60,7 +60,7 @@ Execution semantics for the current product direction:
 - `[x]` Runtime tested-at updates can flow as patches.
 - `[x]` Allocation quick-filter buttons were removed from the DataGrid toolbar.
 - `[x]` Channel picker uses explicit apply/swap behavior and avoids click-to-swap for occupied channels.
-- `[x]` First grid hot-path cleanup is in place: SignalPage uses a grid row model wrapper and DataGrid `rows.patch` instead of replacing the row array for allocation job patches.
+- `[x]` First grid hot-path cleanup is in place: SignalPage uses a grid row model wrapper and DataGrid `rows.patchRows` instead of replacing the row array for allocation job patches.
 
 ## Main Gaps
 
@@ -106,7 +106,7 @@ Goal:
 
 Implemented:
 
-- `useSignalGridPatchQueue` targets `api.rows.patch`.
+- `useSignalGridPatchQueue` targets `api.rows.patchRows`.
 - `useSignalGridRowModel` owns the shallow initial row list and row-id cache.
 - Allocation job completions patch DataGrid first, then sync Pinia in background chunks.
 - Backend allocation jobs return lightweight `changed_row_patches`.
@@ -608,6 +608,7 @@ Implemented so far:
 - Removed the unused public `signalSheetStore.applyAllocationRowsPatch()` helper and the obsolete `rows.patch` DataGrid API fallback.
 - Removed the unused legacy `SignalPlaceholder.vue` component from the signals module.
 - Removed the unused `pages/signals/index.ts` barrel export; routes import `SignalsPage.vue` directly.
+- Removed the legacy local `hasPatchSupport` guard; the app patch queue now treats `rows.patchRows` presence as the DataGrid patch contract.
 
 Validated 2026-05-24:
 
@@ -646,7 +647,7 @@ For each future slice:
 | Patch stream drift | sequence numbers, unknown-row recovery reload |
 | Live sort/filter surprises | explicit per-column recompute policy |
 | Vue deep reactivity returns to hot path | non-reactive projection cache and row-model tests |
-| Grid patch API misuse | keep app wrapper around `api.rows.patch` and `refreshCellsByRowKeys` |
+| Grid patch API misuse | keep app wrapper around `api.rows.patchRows` and `refreshCellsByRowKeys` |
 | Bulk updates still block UI | chunk patches and store sync; benchmark 5,000+ patches |
 | Runtime evidence remains too weak | persist per-step binding/channel evidence without sheet-level execution guards |
 | Reload fallback hides regressions | tests assert no reload in normal mutation paths |

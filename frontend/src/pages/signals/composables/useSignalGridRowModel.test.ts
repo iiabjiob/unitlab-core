@@ -43,7 +43,6 @@ function createGridHarness() {
     value: {
       getApi: () => ({
         rows: {
-          hasPatchSupport: () => true,
           patchRows: (patches: readonly unknown[], patchOptions?: Record<string, unknown>) => {
             patchCalls.push({ patches: [...patches], options: patchOptions })
           },
