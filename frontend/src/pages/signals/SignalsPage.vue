@@ -157,10 +157,6 @@ import SignalImportModal from "@/pages/signals/components/SignalImportModal.vue"
 import { useSignalGridRowModel } from "@/pages/signals/composables/useSignalGridRowModel"
 import { resolveSignalGridRowKey, resolveSignalGridSelectedRowKeys } from "@/pages/signals/utils/rowSelection"
 import {
-  resolveSignalAllocationHealthLabel,
-  resolveSignalAllocationStatusLabel,
-} from "@/pages/signals/utils/allocationHealth"
-import {
   createSignalGridRows,
   resolveSignalAllocationDisplayLabel,
   signalGridSourceColumnKey,
@@ -256,7 +252,8 @@ type GridCellInteractiveContext = DataGridAppCellRendererContext<GridRow>["inter
 const DataGrid = defineDataGridComponent<GridRow>()
 
 const SIGNALS_GRID_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
-const SIGNAL_GRID_PATCH_COLUMNS = ["internal_signal_type", "channel_select", "tested_at", "allocation_status", "allocation_health"] as const
+const REMOVED_SIGNAL_GRID_COLUMN_KEYS = new Set(["allocation_status", "allocation_health"])
+const SIGNAL_GRID_PATCH_COLUMNS = ["internal_signal_type", "channel_select", "tested_at"] as const
 const signalAllocationProjectionCache = createSignalAllocationProjectionCache()
 const signalAllocationProjectionVersion = ref(0)
 const signalRuntimeStateCache = createSignalRuntimeStateCache()
@@ -605,16 +602,13 @@ function getAllocationJobChangedRows(job: SignalAllocationJob): SignalAllocation
 }
 
 const SIGNAL_ROWS_PATCH_FIELD_GRID_COLUMNS: Record<string, readonly string[]> = {
-  allocation_status: ["allocation_status"],
-  allocation_health: ["allocation_health"],
-  channel_id: ["channel_select", "allocation_status", "allocation_health", "control"],
-  channel_type: ["internal_signal_type", "allocation_health", "control"],
+  channel_id: ["channel_select", "control"],
+  channel_type: ["internal_signal_type", "control"],
   channel_index: ["channel_select", "control"],
   channel_label: ["channel_select"],
-  device_id: ["channel_select", "allocation_health", "control"],
+  device_id: ["channel_select", "control"],
   unit_id: ["channel_select", "control"],
-  unit_online: ["channel_select", "allocation_health", "control"],
-  unit_last_seen_at: ["allocation_health"],
+  unit_online: ["channel_select", "control"],
   tested_at: ["tested_at"],
 }
 
@@ -970,6 +964,50 @@ function markSignalsGridStateRestored() {
   signalsGridStatePersistenceReady.value = true
 }
 
+function isRemovedSignalsGridColumnKey(key: unknown): boolean {
+  return REMOVED_SIGNAL_GRID_COLUMN_KEYS.has(String(key ?? "").trim())
+}
+
+function filterRemovedSignalsGridColumnKeys(keys: readonly string[] | undefined): string[] {
+  if (!Array.isArray(keys)) return []
+  return keys.filter(key => !isRemovedSignalsGridColumnKey(key))
+}
+
+function filterRemovedSignalsGridColumnRecord<T>(record: Readonly<Record<string, T>>): Record<string, T> {
+  return Object.fromEntries(
+    Object.entries(record).filter(([key]) => !isRemovedSignalsGridColumnKey(key)),
+  ) as Record<string, T>
+}
+
+function filterRemovedSignalsGridColumnsFromSavedView(
+  savedView: DataGridSavedViewSnapshot<GridRow>,
+): DataGridSavedViewSnapshot<GridRow> {
+  const columns = savedView.state.columns
+  const zoneOrder = columns.zoneOrder
+    ? Object.fromEntries(
+      Object.entries(columns.zoneOrder).map(([zone, keys]) => [
+        zone,
+        filterRemovedSignalsGridColumnKeys(keys),
+      ]),
+    ) as typeof columns.zoneOrder
+    : columns.zoneOrder
+
+  return {
+    ...savedView,
+    state: {
+      ...savedView.state,
+      columns: {
+        ...columns,
+        order: filterRemovedSignalsGridColumnKeys(columns.order),
+        zoneOrder,
+        visibility: filterRemovedSignalsGridColumnRecord(columns.visibility),
+        widths: filterRemovedSignalsGridColumnRecord(columns.widths),
+        pins: filterRemovedSignalsGridColumnRecord(columns.pins),
+      },
+    },
+  }
+}
+
 function areSavedViewColumnsReady(savedView: DataGridSavedViewSnapshot<GridRow>): boolean {
   const currentColumnKeys = new Set(
     resolvedColumns.value
@@ -1017,10 +1055,12 @@ function tryApplyPendingSignalsGridSavedView() {
     return
   }
 
-  rowSelectionState.value = migratedSavedView.state.rowSelection ?? null
+  const compatibleSavedView = filterRemovedSignalsGridColumnsFromSavedView(migratedSavedView)
 
-  if (!areSavedViewColumnsReady(migratedSavedView)) {
-    pendingSignalsGridSavedView.value = migratedSavedView
+  rowSelectionState.value = compatibleSavedView.state.rowSelection ?? null
+
+  if (!areSavedViewColumnsReady(compatibleSavedView)) {
+    pendingSignalsGridSavedView.value = compatibleSavedView
     if (!loading.value && resolvedColumns.value.length > 0) {
       pendingSignalsGridSavedView.value = null
       markSignalsGridStateRestored()
@@ -1028,7 +1068,7 @@ function tryApplyPendingSignalsGridSavedView() {
     return
   }
 
-  const applied = grid.applySavedView(migratedSavedView)
+  const applied = grid.applySavedView(compatibleSavedView)
   if (applied) {
     pendingSignalsGridSavedView.value = null
     markSignalsGridStateRestored()
@@ -2401,46 +2441,6 @@ function renderTestedAtCell(context: DataGridAppCellRendererContext<GridRow>) {
   return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, formatDate(raw))
 }
 
-function allocationBadgeClass(kind: string): string {
-  const normalized = String(kind ?? "").trim().toLowerCase()
-  const base = "inline-flex max-w-full items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold leading-none"
-  if (normalized.includes("conflict")) {
-    return `${base} border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200`
-  }
-  if (normalized.includes("invalid")) {
-    return `${base} border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200`
-  }
-  if (normalized.includes("offline") || normalized.includes("stale")) {
-    return `${base} border-neutral-300 bg-neutral-50 text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200`
-  }
-  if (normalized.includes("missing")) {
-    return `${base} border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-200`
-  }
-  if (normalized === "assigned" || normalized === "ok") {
-    return `${base} border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200`
-  }
-  return `${base} border-neutral-300 bg-neutral-50 text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200`
-}
-
-function renderAllocationStatusCell(context: DataGridAppCellRendererContext<GridRow>) {
-  const allocationRow = resolveLiveAllocationCellRow(asAllocationRow((context.row ?? {}) as GridRow))
-  const status = String(allocationRow.allocation_status ?? context.row?.allocation_status ?? context.displayValue ?? "").trim()
-  if (!status) {
-    return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, "-")
-  }
-  const label = resolveSignalAllocationStatusLabel({ allocation_status: status } as SignalAllocationRow)
-  return h("span", { class: allocationBadgeClass(status) }, label)
-}
-
-function renderAllocationHealthCell(context: DataGridAppCellRendererContext<GridRow>) {
-  const allocationRow = resolveLiveAllocationCellRow(asAllocationRow((context.row ?? {}) as GridRow))
-  const health = resolveSignalAllocationHealthLabel(allocationRow)
-  if (!health) {
-    return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, "-")
-  }
-  return h("span", { class: allocationBadgeClass(health) }, health)
-}
-
 const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
   const controlCellRenderVersion = `${activeAoControlSignalId.value ?? "idle"}:${activeAoSubmittingSignalId.value ?? "idle"}`
   const sourceColumns: DataGridAppColumnInput<GridRow>[] = sourceHeaders.value.map((header, index) => ({
@@ -2463,24 +2463,6 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
       presentation: { align: "left", headerAlign: "left" },
       capabilities: { editable: false },
       cellRenderer: renderDefaultCell,
-    },
-    {
-      key: "allocation_status",
-      label: "Allocation",
-      minWidth: 104,
-      initialState: { width: 128 },
-      presentation: { align: "left", headerAlign: "left" },
-      capabilities: { editable: false },
-      cellRenderer: renderAllocationStatusCell,
-    },
-    {
-      key: "allocation_health",
-      label: "Health",
-      minWidth: 112,
-      initialState: { width: 136 },
-      presentation: { align: "left", headerAlign: "left" },
-      capabilities: { editable: false },
-      cellRenderer: renderAllocationHealthCell,
     },
     {
       key: "channel_select",
