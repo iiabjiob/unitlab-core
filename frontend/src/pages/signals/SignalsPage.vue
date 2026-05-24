@@ -168,9 +168,8 @@ import {
 import { createSignalAllocationProjectionCache } from "@/pages/signals/utils/signalAllocationProjectionCache"
 import { createSignalGridPatchIngress } from "@/pages/signals/utils/signalGridPatchIngress"
 import {
-  getSignalAllocationJobResultArrayLength,
-  getSignalAllocationJobResultNumber,
   normalizeSignalAllocationJobChangedRows,
+  resolveSignalAllocationJobSkippedCount,
 } from "@/pages/signals/utils/signalAllocationJobResult"
 import {
   resolveSignalStaticRefreshReason,
@@ -817,18 +816,6 @@ async function applySignalRowsPatchedEvent(event: SignalRowsPatchedEvent) {
   if (recoveryRefreshReason) {
     await refreshSignalsStatic(recoveryRefreshReason)
   }
-}
-
-function resolveAllocationJobSkippedCount(job: SignalAllocationJob, requested: number, changed: number): number {
-  if (String(job.operation) === "auto_allocate") {
-    const skippedItems = getSignalAllocationJobResultArrayLength(job, "skipped_items")
-    const skippedTotal = skippedItems > 0
-      ? skippedItems
-      : getSignalAllocationJobResultNumber(job, "skipped")
-    return skippedTotal + getSignalAllocationJobResultArrayLength(job, "rejected")
-  }
-
-  return Math.max(0, requested - changed)
 }
 
 async function syncCompletedAllocationProjectionRows(rows: readonly SignalAllocationRow[]) {
@@ -1862,7 +1849,7 @@ async function allocateSelectedUnassigned() {
     const changedRows = await applyCompletedAllocationJobPatch(completedJob)
     const requested = targetSignalIds.length
     const changed = changedRows.length
-    const skipped = resolveAllocationJobSkippedCount(completedJob, requested, changed)
+    const skipped = resolveSignalAllocationJobSkippedCount(completedJob, requested, changed)
     toastStore.success(`Allocation complete: ${requested} requested, ${changed} changed, ${skipped} skipped`)
   } catch (allocateError) {
     const message = allocateError instanceof Error ? allocateError.message : String(allocateError)
@@ -1889,7 +1876,7 @@ async function deallocateSelected() {
     const changedRows = await applyCompletedAllocationJobPatch(completedJob)
     const requested = targetSignalIds.length
     const changed = changedRows.length
-    const skipped = resolveAllocationJobSkippedCount(completedJob, requested, changed)
+    const skipped = resolveSignalAllocationJobSkippedCount(completedJob, requested, changed)
     toastStore.success(`Unassignment complete: ${requested} requested, ${changed} changed, ${skipped} skipped`)
   } catch (deallocateError) {
     const message = deallocateError instanceof Error ? deallocateError.message : String(deallocateError)

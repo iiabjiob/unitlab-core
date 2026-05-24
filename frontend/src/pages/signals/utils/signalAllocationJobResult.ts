@@ -4,15 +4,27 @@ function getSignalAllocationJobResult(job: SignalAllocationJob): Record<string, 
   return job.result && typeof job.result === "object" ? job.result : {}
 }
 
-export function getSignalAllocationJobResultNumber(job: SignalAllocationJob, key: string): number {
+function getSignalAllocationJobResultNumber(job: SignalAllocationJob, key: string): number {
   const value = getSignalAllocationJobResult(job)[key]
   const numeric = Number(value)
   return Number.isFinite(numeric) ? Math.max(0, numeric) : 0
 }
 
-export function getSignalAllocationJobResultArrayLength(job: SignalAllocationJob, key: string): number {
+function getSignalAllocationJobResultArrayLength(job: SignalAllocationJob, key: string): number {
   const value = getSignalAllocationJobResult(job)[key]
   return Array.isArray(value) ? value.length : 0
+}
+
+export function resolveSignalAllocationJobSkippedCount(job: SignalAllocationJob, requested: number, changed: number): number {
+  if (String(job.operation) === "auto_allocate") {
+    const skippedItems = getSignalAllocationJobResultArrayLength(job, "skipped_items")
+    const skippedTotal = skippedItems > 0
+      ? skippedItems
+      : getSignalAllocationJobResultNumber(job, "skipped")
+    return skippedTotal + getSignalAllocationJobResultArrayLength(job, "rejected")
+  }
+
+  return Math.max(0, requested - changed)
 }
 
 function hasOwnField(value: Record<string, unknown>, key: string): boolean {

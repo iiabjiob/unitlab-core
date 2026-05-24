@@ -621,6 +621,7 @@ Implemented so far:
 - Narrowed row-selection shape types and runtime tested-at resolver type to module-local declarations.
 - Narrowed `createSignalGridRow()` to a module-local mapper; external callers use row-array or patch mapper boundaries.
 - Narrowed projection patch/runtime overlay types to the mapper and ingress boundary.
+- Moved allocation job skipped-count resolution into the job-result helper and hid low-level result number/array helpers.
 
 Validated 2026-05-24:
 

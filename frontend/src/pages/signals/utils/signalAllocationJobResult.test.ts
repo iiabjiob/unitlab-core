@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest"
 
 import type { SignalAllocationJob, SignalAllocationRow } from "@/types/signal"
-import { normalizeSignalAllocationJobChangedRows } from "./signalAllocationJobResult"
+import {
+  normalizeSignalAllocationJobChangedRows,
+  resolveSignalAllocationJobSkippedCount,
+} from "./signalAllocationJobResult"
 
 function buildBaseRow(): SignalAllocationRow {
   return {
@@ -86,5 +89,21 @@ describe("normalizeSignalAllocationJobChangedRows", () => {
       unit_online: null,
       unit_last_seen_at: null,
     })
+  })
+})
+
+describe("resolveSignalAllocationJobSkippedCount", () => {
+  it("uses auto-allocation skipped and rejected result counts", () => {
+    const job = buildJob({
+      skipped_items: [{ signal_id: 1 }, { signal_id: 2 }],
+      rejected: [{ signal_id: 3 }],
+    })
+    job.operation = "auto_allocate"
+
+    expect(resolveSignalAllocationJobSkippedCount(job, 10, 7)).toBe(3)
+  })
+
+  it("falls back to requested minus changed for non-auto jobs", () => {
+    expect(resolveSignalAllocationJobSkippedCount(buildJob({}), 10, 7)).toBe(3)
   })
 })
