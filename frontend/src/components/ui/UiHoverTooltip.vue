@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, onBeforeUnmount, watch } from "vue"
+import { computed, getCurrentInstance, onBeforeUnmount, ref, watch } from "vue"
 import type { ComponentPublicInstance } from "vue"
 import { useFloatingTooltip, useTooltipController, type TooltipController } from "@affino/tooltip-vue"
 import {
@@ -28,6 +28,9 @@ const props = withDefaults(
     closeDelay?: number
     multiline?: boolean
     zIndex?: number | string
+    openOnFocus?: boolean
+    suppressOpenOnClick?: boolean
+    strictTriggerHover?: boolean
   }>(),
   {
     ariaLabel: "Tooltip",
@@ -38,10 +41,15 @@ const props = withDefaults(
     closeDelay: DEFAULT_TOOLTIP_CLOSE_DELAY_MS,
     multiline: false,
     zIndex: undefined,
+    openOnFocus: true,
+    suppressOpenOnClick: false,
+    strictTriggerHover: false,
   },
 )
 
 const instanceUid = getCurrentInstance()?.uid ?? Math.floor(Math.random() * 1_000_000)
+const suppressOpenUntil = ref(0)
+const triggerPointerInside = ref(false)
 const tooltipController = useTooltipController({
   id: `ui-hover-tooltip-${instanceUid}`,
   openDelay: props.openDelay,
@@ -62,7 +70,43 @@ function getTriggerProps() {
   if (props.disabled) {
     return {}
   }
-  return tooltipController.getTriggerProps()
+  const triggerProps = tooltipController.getTriggerProps()
+  const onPointerenter = (event: Parameters<NonNullable<typeof triggerProps.onPointerenter>>[0]) => {
+    triggerPointerInside.value = true
+    if (props.suppressOpenOnClick && Date.now() < suppressOpenUntil.value) {
+      return
+    }
+    triggerProps.onPointerenter?.(event)
+  }
+  const onPointerleave = (event: Parameters<NonNullable<typeof triggerProps.onPointerleave>>[0]) => {
+    triggerPointerInside.value = false
+    triggerProps.onPointerleave?.(event)
+    if (props.strictTriggerHover && tooltipController.state.value.open) {
+      tooltipController.close("pointer")
+    }
+  }
+  const resolvedTriggerProps = props.openOnFocus
+    ? {
+        ...triggerProps,
+        onPointerenter,
+        onPointerleave,
+      }
+    : {
+        id: triggerProps.id,
+        "aria-describedby": triggerProps["aria-describedby"],
+        onPointerenter,
+        onPointerleave,
+      }
+
+  if (!props.suppressOpenOnClick) {
+    return resolvedTriggerProps
+  }
+
+  return {
+    ...resolvedTriggerProps,
+    onPointerdown: suppressClickOpen,
+    onClick: suppressClickOpen,
+  }
 }
 
 const tooltipProps = computed(() => tooltipController.getTooltipProps())
@@ -71,6 +115,20 @@ const tooltipClass = computed(() => [
   props.multiline ? "max-w-sm whitespace-pre-line" : "max-w-xs whitespace-nowrap",
 ])
 
+function suppressClickOpen() {
+  suppressOpenUntil.value = Date.now() + Math.max(0, props.openDelay) + 80
+  if (tooltipController.state.value.open) {
+    tooltipController.close("programmatic")
+  }
+}
+
+function shouldForceCloseOpenTooltip(): boolean {
+  return (
+    (props.suppressOpenOnClick && Date.now() < suppressOpenUntil.value)
+    || (props.strictTriggerHover && !triggerPointerInside.value)
+  )
+}
+
 watch(
   () => tooltipController.state.value.open,
   (isOpen) => {
@@ -78,9 +136,20 @@ watch(
       deactivateTooltipController(tooltipController.id)
       return
     }
+    if (shouldForceCloseOpenTooltip()) {
+      tooltipController.close("programmatic")
+      return
+    }
     activateTooltipController(tooltipController.id)
   },
 )
+
+watch(triggerPointerInside, (inside) => {
+  if (inside || !props.strictTriggerHover || !tooltipController.state.value.open) {
+    return
+  }
+  tooltipController.close("pointer")
+})
 
 watch(
   () => props.disabled,

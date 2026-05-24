@@ -81,13 +81,12 @@
           aria-label="Channel tree"
           @keydown="onTreeRootKeydown"
         >
-          <button
+          <div
             v-for="node in visibleNodes"
             :key="node.value"
             :ref="bindItemElement(node.value)"
-            type="button"
-            class="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left transition"
-            :class="nodeClass(node.value)"
+            class="flex w-full select-none items-center gap-2 rounded-xl px-2.5 py-2 text-left transition"
+            :class="[nodeClass(node.value), nodeCursorClass(node.value)]"
             :aria-level="nodeLevel(node.value)"
             :aria-expanded="isUnitNode(node.value) ? isExpanded(node.value) : undefined"
             :aria-selected="isChannelNode(node.value) ? isNodeSelected(node.value) : undefined"
@@ -106,6 +105,11 @@
             >
               ▶
             </span>
+            <span
+              v-else-if="isChannelSaving(node.value)"
+              class="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-sky-500 border-t-transparent"
+              aria-hidden="true"
+            ></span>
             <span v-else class="h-1.5 w-1.5 shrink-0 rounded-full" :class="channelIndicatorClass(node.value)" aria-hidden="true"></span>
             <span
               v-if="isUnitNode(node.value)"
@@ -114,7 +118,7 @@
               aria-hidden="true"
             ></span>
             <span
-              class="min-w-0 truncate"
+              class="min-w-0 truncate [cursor:inherit]"
               :class="[
                 isUnitNode(node.value) ? 'text-sm font-semibold text-neutral-900 dark:text-neutral-100' : 'text-sm text-neutral-800 dark:text-neutral-200',
                 channelOwnerRowText(node.value) ? 'max-w-28 shrink-0' : 'flex-1',
@@ -130,12 +134,17 @@
               align="center"
               multiline
               :z-index="1100"
+              :open-on-focus="false"
+              suppress-open-on-click
+              strict-trigger-hover
               v-slot="{ setTriggerRef, getTriggerProps }"
             >
               <span
                 :ref="setTriggerRef"
-                class="min-w-0 flex-1 truncate rounded-lg border border-amber-200 bg-amber-50/70 px-2 py-1 text-[10px] text-amber-900 dark:border-amber-900/80 dark:bg-amber-950/30 dark:text-amber-100"
+                class="min-w-0 flex-1 truncate rounded-lg border border-amber-200 bg-amber-50/70 px-2 py-1 text-[10px] text-amber-900 [cursor:inherit] dark:border-amber-900/80 dark:bg-amber-950/30 dark:text-amber-100"
                 v-bind="getTriggerProps()"
+                @click.stop
+                @mousedown.stop
               >
                 {{ channelOwnerRowText(node.value) }}
               </span>
@@ -146,13 +155,19 @@
             >
               Current
             </span>
-            <span
+            <button
               v-else-if="isChannelNode(node.value) && isOccupiedChannel(node.value)"
+              type="button"
               class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-600 dark:text-amber-300"
+              :disabled="saving"
+              tabindex="-1"
+              @click.stop="onSwapClick(node.value)"
+              @keydown.enter.stop.prevent="onSwapClick(node.value)"
+              @keydown.space.stop.prevent="onSwapClick(node.value)"
             >
               Swap
-            </span>
-          </button>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -205,7 +220,7 @@ const emit = defineEmits<{
 
 const query = ref("")
 const searchInputRef = ref<HTMLInputElement | null>(null)
-const itemElements = new Map<NodeValue, HTMLButtonElement>()
+const itemElements = new Map<NodeValue, HTMLElement>()
 const treeDomFocusActive = ref(false)
 const pendingCurrentChannelReveal = ref(false)
 const tree = useTreeviewController<NodeValue>({
@@ -432,7 +447,7 @@ function bindItemElement(value: NodeValue) {
     const resolved = element instanceof Element
       ? element
       : (element?.$el instanceof Element ? element.$el : null)
-    if (resolved instanceof HTMLButtonElement) {
+    if (resolved instanceof HTMLElement) {
       itemElements.set(value, resolved)
       return
     }
@@ -557,6 +572,14 @@ function isOccupiedChannel(value: NodeValue): boolean {
   return Boolean(channelById.value.get(channelId)?.occupied)
 }
 
+function requiresSwapAction(value: NodeValue): boolean {
+  return isChannelNode(value) && isOccupiedChannel(value) && !isCurrentChannel(value)
+}
+
+function isChannelSaving(value: NodeValue): boolean {
+  return props.saving && isChannelNode(value) && isNodeSelected(value)
+}
+
 function channelOwnerRowText(value: NodeValue): string {
   const channelId = parseChannelId(value)
   if (channelId === null) return ""
@@ -594,6 +617,13 @@ function nodeClass(value: NodeValue): string {
   return "hover:bg-neutral-50 dark:hover:bg-neutral-800/60"
 }
 
+function nodeCursorClass(value: NodeValue): string {
+  if (props.saving) return "cursor-wait"
+  if (isUnitNode(value)) return "cursor-pointer"
+  if (requiresSwapAction(value) || isCurrentChannel(value)) return "cursor-default"
+  return "cursor-pointer"
+}
+
 function onNodeClick(value: NodeValue) {
   tree.focus(value)
   if (isUnitNode(value)) {
@@ -602,6 +632,17 @@ function onNodeClick(value: NodeValue) {
   }
   const channelId = parseChannelId(value)
   if (channelId === null || props.saving) return
+  if (requiresSwapAction(value)) return
+  tree.clearSelection()
+  tree.select(value)
+  emit("select", channelId)
+}
+
+function onSwapClick(value: NodeValue) {
+  if (!requiresSwapAction(value) || props.saving) return
+  const channelId = parseChannelId(value)
+  if (channelId === null) return
+  tree.focus(value)
   tree.clearSelection()
   tree.select(value)
   emit("select", channelId)
