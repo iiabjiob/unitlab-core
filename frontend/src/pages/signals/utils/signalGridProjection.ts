@@ -1,14 +1,16 @@
 import type { SignalAllocationRow } from "@/types/signal"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
-import {
-  applyRuntimeTestedAt,
-  type TestedAtResolver,
-} from "@/pages/signals/utils/runtimeProjection"
+import { applyRuntimeTestedAt } from "@/pages/signals/utils/runtimeProjection"
 import { extractSourceRowFromSignalMetadata } from "@/pages/signals/utils/sourceColumns"
 import {
   resolveSignalAllocationHealthLabel,
   resolveSignalAllocationStatus,
 } from "@/pages/signals/utils/allocationHealth"
+
+type TestedAtResolver = (
+  signalId: number | null | undefined,
+  workspaceId?: number | null,
+) => string | null
 
 export type SignalGridRow = Record<string, unknown> & {
   signal_id: number

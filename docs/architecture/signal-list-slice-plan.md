@@ -618,6 +618,7 @@ Implemented so far:
 - Narrowed signal-list utility type exports for patch policy, static refresh triggers, runtime state cache, projection cache, and patch ingress internals.
 - Narrowed additional module-local signal-list exports: source header normalization, row key normalization, row-model options, patch queue diagnostics, performance harness types, and column patch policy resolver.
 - Removed the unused allocation issue helper and narrowed module-local grid projection helpers.
+- Narrowed row-selection shape types and runtime tested-at resolver type to module-local declarations.
 
 Validated 2026-05-24:
 

@@ -1,6 +1,6 @@
 import type { SignalAllocationRow } from "@/types/signal"
 
-export type TestedAtResolver = (
+type TestedAtResolver = (
   signalId: number | null | undefined,
   workspaceId?: number | null,
 ) => string | null

@@ -1,11 +1,11 @@
-export type SignalGridRowSelectionSnapshotLike = {
+type SignalGridRowSelectionSnapshotLike = {
   focusedRow?: unknown
   selectedRows?: readonly unknown[]
   mode?: string
   excludedRows?: readonly unknown[]
 } | null | undefined
 
-export type SignalGridSelectableRowLike = {
+type SignalGridSelectableRowLike = {
   row_id?: unknown
   rowId?: unknown
   signal_id?: unknown
