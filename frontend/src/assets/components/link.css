@@ -1,19 +1,40 @@
 /* Shared styling for standard links */
-@layer components {
 .link {
-    @apply text-neutral-700 hover:underline font-medium 
-           dark:text-neutral-300 dark:hover:text-neutral-100;
-  }
-  
-  /* Navigation links */
-  .nav-link {
-    @apply text-neutral-700 rounded font-medium px-2 py-0.5
-           dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800;
-  }
-  
-  /* Active navigation link */
-  .nav-link-active {
-    @apply bg-neutral-200 text-neutral-900
-           dark:bg-neutral-800 dark:text-white;
-  } 
+  color: var(--color-neutral-700);
+  font-weight: 500;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.nav-link {
+  border-radius: var(--radius-md);
+  color: var(--color-neutral-700);
+  font-weight: 500;
+  padding: 0.125rem 0.5rem;
+}
+
+.nav-link:hover,
+.nav-link-active {
+  background: var(--color-neutral-200);
+}
+
+.nav-link-active {
+  color: var(--color-neutral-900);
+}
+
+.dark .link,
+.dark .nav-link {
+  color: var(--color-neutral-300);
+}
+
+.dark .link:hover,
+.dark .nav-link-active {
+  color: var(--color-neutral-100);
+}
+
+.dark .nav-link:hover,
+.dark .nav-link-active {
+  background: var(--color-neutral-800);
 }

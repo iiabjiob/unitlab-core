@@ -1,5 +1,7 @@
-@layer components {
 .card {
-    @apply bg-white border border-neutral-200 rounded-md shadow-sm p-4;
-}
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: 1rem;
 }

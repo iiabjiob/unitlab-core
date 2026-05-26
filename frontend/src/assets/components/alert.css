@@ -1,21 +1,38 @@
-@layer components {
 .alert {
-@apply flex items-center gap-2 leading-snug;
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  line-height: 1.375;
 }
 
 .alert-error {
-@apply text-red-500 dark:text-red-400;
+  color: var(--color-red-500);
 }
 
 .alert-warning {
-@apply text-yellow-600 dark:text-yellow-400;
+  color: var(--color-yellow-600);
 }
 
 .alert-info {
-@apply text-blue-600 dark:text-blue-300;
+  color: var(--color-blue-600);
 }
 
 .alert-success {
-@apply text-green-600 dark:text-green-400;
+  color: var(--color-green-600);
 }
+
+.dark .alert-error {
+  color: var(--color-red-400);
+}
+
+.dark .alert-warning {
+  color: var(--color-yellow-400);
+}
+
+.dark .alert-info {
+  color: var(--color-blue-300);
+}
+
+.dark .alert-success {
+  color: var(--color-green-400);
 }
