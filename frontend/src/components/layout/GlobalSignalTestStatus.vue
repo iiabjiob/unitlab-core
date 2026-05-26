@@ -1,5 +1,5 @@
 <template>
-  <div v-if="isVisible" class="flex items-center gap-1.5">
+  <div v-if="isVisible" class="global-signal-test-status">
     <template v-if="activeTestRunJob">
       <GlobalProgressStatusCard
         :compact="compact"
@@ -59,19 +59,19 @@
 
     <template v-if="!activeTestRunJob && !activeAllocationJob && latestCompletedTestRunJob && latestCompletedTestRunJob.job_id !== dismissedJobId">
       <div
-        class="inline-flex items-center rounded-md border border-neutral-200 bg-neutral-50/80 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-200"
-        :class="compact ? 'gap-1 px-1.5 py-1 text-[10px]' : 'gap-2 px-2 py-1 text-[11px]'"
+        class="global-signal-test-status__completed"
+        :class="compact ? 'global-signal-test-status__completed--compact' : 'global-signal-test-status__completed--regular'"
       >
         <template v-if="compact">
-          <span class="font-medium text-neutral-700 dark:text-neutral-100" :title="completedSummaryText">Last ✓</span>
+          <span class="global-signal-test-status__completed-title" :title="completedSummaryText">Last ✓</span>
         </template>
         <template v-else>
-          <span class="font-medium text-neutral-700 dark:text-neutral-100">Last test</span>
-          <span class="truncate max-w-[360px]">{{ completedSummaryText }}</span>
+          <span class="global-signal-test-status__completed-title">Last test</span>
+          <span class="global-signal-test-status__completed-summary">{{ completedSummaryText }}</span>
         </template>
         <button
           type="button"
-          class="inline-flex h-4 w-4 items-center justify-center rounded text-neutral-500 hover:bg-neutral-200 hover:text-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
+          class="global-signal-test-status__dismiss"
           aria-label="Dismiss last test summary"
           @click="dismissCompleted"
         >
@@ -234,8 +234,10 @@ const activeAllocationDetailText = computed(() => {
 
 const activeAllocationDotClass = computed(() => {
   const job = activeAllocationJob.value
-  if (!job) return "bg-emerald-500"
-  return String(job.operation) === "bulk_update" ? "bg-amber-500" : "bg-sky-500"
+  if (!job) return "global-progress-card__tone--success"
+  return String(job.operation) === "bulk_update"
+    ? "global-progress-card__tone--warning"
+    : "global-progress-card__tone--info"
 })
 
 const activeAllocationBarClass = computed(() => activeAllocationDotClass.value)
@@ -387,3 +389,85 @@ function dismissCompleted() {
   dismissedJobId.value = latestCompletedTestRunJob.value?.job_id ?? null
 }
 </script>
+
+<style scoped>
+.global-signal-test-status {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.global-signal-test-status__completed {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-neutral-50) 80%, transparent);
+  color: var(--color-neutral-600);
+}
+
+.global-signal-test-status__completed--compact {
+  gap: 0.25rem;
+  padding: 0.25rem 0.375rem;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.global-signal-test-status__completed--regular {
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.global-signal-test-status__completed-title {
+  color: var(--color-neutral-700);
+  font-weight: 500;
+}
+
+.global-signal-test-status__completed-summary {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-signal-test-status__dismiss {
+  display: inline-flex;
+  width: 1rem;
+  height: 1rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-neutral-500);
+  font: inherit;
+  line-height: 1;
+}
+
+.global-signal-test-status__dismiss:hover {
+  background: var(--color-neutral-200);
+  color: var(--color-neutral-800);
+}
+
+:global(.dark) .global-signal-test-status__completed {
+  border-color: var(--color-neutral-700);
+  background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark) .global-signal-test-status__completed-title {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark) .global-signal-test-status__dismiss {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark) .global-signal-test-status__dismiss:hover {
+  background: var(--color-neutral-700);
+  color: var(--color-neutral-100);
+}
+</style>

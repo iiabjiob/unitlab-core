@@ -1,12 +1,14 @@
 <template>
-  <div
-    class="flex flex-wrap items-center text-xs gap-x-2 py-0.5 text-neutral-600 dark:text-neutral-400">
-    <span class="tabular-nums font-mono">{{ formattedTime }}</span>
+  <div class="time-component">
+    <span class="time-component__clock">{{ formattedTime }}</span>
     <component
       :is="ntpBadgeInteractive ? 'button' : 'span'"
       :type="ntpBadgeInteractive ? 'button' : undefined"
-      class="inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-      :class="[ntpBadgeClass, 'cursor-default', ntpBadgeInteractive ? 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500' : '']"
+      class="time-component__ntp-badge"
+      :class="[
+        coreNtpStore.isSynced ? 'time-component__ntp-badge--synced' : 'time-component__ntp-badge--unsynced',
+        ntpBadgeInteractive ? 'time-component__ntp-badge--interactive' : '',
+      ]"
       :title="ntpTitle"
       :aria-label="ntpTitle"
       @click="handleNtpBadgeClick"
@@ -77,11 +79,72 @@ function handleNtpBadgeClick() {
   }
   void router.push({ name: "settings.ntp" }).catch(() => undefined)
 }
-
-const ntpBadgeClass = computed(() => {
-  if (coreNtpStore.isSynced) {
-    return "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700/70 dark:bg-emerald-900/40 dark:text-emerald-300"
-  }
-  return "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-700/70 dark:bg-amber-900/40 dark:text-amber-300"
-})
 </script>
+
+<style scoped>
+.time-component {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.5rem;
+  padding-block: 0.125rem;
+  color: var(--color-neutral-600);
+  font-size: var(--text-xs);
+}
+
+.time-component__clock {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.time-component__ntp-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.375rem;
+  border: 1px solid;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+button.time-component__ntp-badge {
+  appearance: none;
+  font-family: inherit;
+}
+
+.time-component__ntp-badge--interactive:focus-visible {
+  outline: 2px solid var(--color-amber-500);
+  outline-offset: 2px;
+}
+
+.time-component__ntp-badge--synced {
+  border-color: var(--color-emerald-300);
+  background: var(--color-emerald-50);
+  color: var(--color-emerald-700);
+}
+
+.time-component__ntp-badge--unsynced {
+  border-color: var(--color-amber-300);
+  background: var(--color-amber-50);
+  color: var(--color-amber-700);
+}
+
+:global(.dark) .time-component {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark) .time-component__ntp-badge--synced {
+  border-color: color-mix(in srgb, var(--color-emerald-700) 70%, transparent);
+  background: color-mix(in srgb, var(--color-emerald-900) 40%, transparent);
+  color: var(--color-emerald-300);
+}
+
+:global(.dark) .time-component__ntp-badge--unsynced {
+  border-color: color-mix(in srgb, var(--color-amber-700) 70%, transparent);
+  background: color-mix(in srgb, var(--color-amber-900) 40%, transparent);
+  color: var(--color-amber-300);
+}
+</style>

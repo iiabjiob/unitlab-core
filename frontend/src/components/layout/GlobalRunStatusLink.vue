@@ -1,5 +1,5 @@
 <template>
-  <div v-if="isVisible" class="flex items-center gap-1.5">
+  <div v-if="isVisible" class="global-run-status-link">
     <GlobalProgressStatusCard
       v-if="sequenceChipVisible"
       :compact="compact"
@@ -251,30 +251,30 @@ const signalDetailText = computed(() => {
 
 const sequenceIndicatorClass = computed(() => {
   if (activeSequenceState.value?.status === SequenceStatusEnum.CANCELLING) {
-    return "bg-amber-500"
+    return "global-progress-card__tone--warning"
   }
-  return "bg-emerald-500"
+  return "global-progress-card__tone--success"
 })
 
 const sequenceBarClass = computed(() => {
   if (activeSequenceState.value?.status === SequenceStatusEnum.CANCELLING) {
-    return "bg-amber-500"
+    return "global-progress-card__tone--warning"
   }
-  return "bg-emerald-500"
+  return "global-progress-card__tone--success"
 })
 
 const signalIndicatorClass = computed(() => {
   if (activeSignalTestRun.value?.status === "paused") {
-    return "bg-amber-500"
+    return "global-progress-card__tone--warning"
   }
-  return "bg-emerald-500"
+  return "global-progress-card__tone--success"
 })
 
 const signalBarClass = computed(() => {
   if (activeSignalTestRun.value?.status === "paused") {
-    return "bg-amber-500"
+    return "global-progress-card__tone--warning"
   }
-  return "bg-emerald-500"
+  return "global-progress-card__tone--success"
 })
 
 function formatDurationShort(seconds: number): string {
@@ -331,3 +331,11 @@ async function controlSequence(action: "pause" | "stop") {
   }
 }
 </script>
+
+<style scoped>
+.global-run-status-link {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+</style>
