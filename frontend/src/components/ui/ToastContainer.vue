@@ -2,34 +2,34 @@
   <div
     v-for="position in positions"
     :key="position"
-    class="pointer-events-none fixed z-50 flex flex-col gap-2 p-4"
+    class="toast-stack"
     :class="positionClass(position)"
   >
-    <transition-group name="toast" tag="div" class="flex flex-col gap-2 w-full max-w-sm">
+    <transition-group name="toast" tag="div" class="toast-stack__group">
       <div
         v-for="toast in toastStore.getByPosition(position)"
         :key="toast.id"
-        class="pointer-events-auto rounded-md border bg-neutral-50/95 p-2.5 text-neutral-900 shadow-md shadow-neutral-900/10 backdrop-blur-sm dark:bg-neutral-900/95 dark:text-neutral-100 dark:shadow-black/40"
+        class="toast-card"
         :class="variantFrameClass(toast.variant)"
         role="status"
         aria-live="polite"
       >
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0 flex items-start gap-2.5">
+        <div class="toast-card__row">
+          <div class="toast-card__body">
             <span
-              class="mt-0.5 inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.06em]"
+              class="toast-card__badge"
               :class="variantBadgeClass(toast.variant)"
             >
               {{ variantLabel(toast.variant) }}
             </span>
-            <p class="text-xs leading-4 text-neutral-800 dark:text-neutral-100">
+            <p class="toast-card__message">
               {{ toast.message }}
             </p>
           </div>
           <button
             v-if="toast.actionLabel && toast.onAction"
             type="button"
-            class="text-[10px] font-medium uppercase tracking-[0.06em] text-primary-600 transition hover:text-primary-700 dark:text-primary-300 dark:hover:text-primary-200"
+            class="toast-card__button toast-card__button--action"
             :aria-label="toast.actionLabel"
             @click="runAction(toast.id, toast.onAction)"
           >
@@ -37,7 +37,7 @@
           </button>
           <button
             type="button"
-            class="text-[10px] font-medium uppercase tracking-[0.06em] text-neutral-500 transition hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+            class="toast-card__button toast-card__button--dismiss"
             aria-label="Dismiss notification"
             @click="remove(toast.id)"
           >
@@ -86,45 +86,236 @@ function variantLabel(variant: ToastVariant) {
 function variantFrameClass(variant: ToastVariant) {
   switch (variant) {
     case "success":
-      return "border-neutral-300/80 dark:border-neutral-700"
+      return "toast-card--success"
     case "error":
-      return "border-neutral-300/80 dark:border-neutral-700"
+      return "toast-card--error"
     default:
-      return "border-neutral-300/80 dark:border-neutral-700"
+      return "toast-card--info"
   }
 }
 
 function variantBadgeClass(variant: ToastVariant) {
   switch (variant) {
     case "success":
-      return "border-emerald-700/25 bg-emerald-600/10 text-emerald-700 dark:border-emerald-300/25 dark:bg-emerald-300/10 dark:text-emerald-200"
+      return "toast-card__badge--success"
     case "error":
-      return "border-rose-700/25 bg-rose-600/10 text-rose-700 dark:border-rose-300/25 dark:bg-rose-300/10 dark:text-rose-200"
+      return "toast-card__badge--error"
     default:
-      return "border-neutral-500/25 bg-neutral-500/10 text-neutral-700 dark:border-neutral-300/25 dark:bg-neutral-300/10 dark:text-neutral-200"
+      return "toast-card__badge--info"
   }
 }
 
 function positionClass(pos: ToastPosition) {
   switch (pos) {
     case "top-left":
-      return "top-4 left-4 items-start"
+      return "toast-stack--top-left"
     case "top-right":
-      return "top-4 right-4 items-end"
+      return "toast-stack--top-right"
     case "bottom-left":
-      return "bottom-4 left-4 items-start"
+      return "toast-stack--bottom-left"
     case "bottom-right":
-      return "bottom-4 right-4 items-end"
+      return "toast-stack--bottom-right"
     case "top-center":
-      return "top-4 left-1/2 -translate-x-1/2 items-center"
+      return "toast-stack--top-center"
     case "bottom-center":
-      return "bottom-4 left-1/2 -translate-x-1/2 items-center"
+      return "toast-stack--bottom-center"
   }
   return ""
 }
 </script>
 
 <style scoped>
+.toast-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  pointer-events: none;
+  position: fixed;
+  z-index: 50;
+}
+
+.toast-stack__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 24rem;
+  width: 100%;
+}
+
+.toast-stack--top-left {
+  align-items: flex-start;
+  left: 1rem;
+  top: 1rem;
+}
+
+.toast-stack--top-right {
+  align-items: flex-end;
+  right: 1rem;
+  top: 1rem;
+}
+
+.toast-stack--bottom-left {
+  align-items: flex-start;
+  bottom: 1rem;
+  left: 1rem;
+}
+
+.toast-stack--bottom-right {
+  align-items: flex-end;
+  bottom: 1rem;
+  right: 1rem;
+}
+
+.toast-stack--top-center {
+  align-items: center;
+  left: 50%;
+  top: 1rem;
+  transform: translateX(-50%);
+}
+
+.toast-stack--bottom-center {
+  align-items: center;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.toast-card {
+  backdrop-filter: blur(4px);
+  background: color-mix(in srgb, var(--color-neutral-50) 95%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 80%, transparent);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 6px -1px rgb(23 23 23 / 0.1), 0 2px 4px -2px rgb(23 23 23 / 0.1);
+  color: var(--color-neutral-900);
+  padding: 0.625rem;
+  pointer-events: auto;
+}
+
+.toast-card__row {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.toast-card__body {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.toast-card__badge {
+  align-items: center;
+  border: 1px solid;
+  border-radius: 0.25rem;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  line-height: 1rem;
+  margin-top: 0.125rem;
+  padding: 0.125rem 0.375rem;
+  text-transform: uppercase;
+}
+
+.toast-card__badge--success {
+  background: color-mix(in srgb, var(--color-emerald-600) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-emerald-700) 25%, transparent);
+  color: var(--color-emerald-700);
+}
+
+.toast-card__badge--error {
+  background: color-mix(in srgb, var(--color-rose-600) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-rose-700) 25%, transparent);
+  color: var(--color-rose-700);
+}
+
+.toast-card__badge--info {
+  background: color-mix(in srgb, var(--color-neutral-500) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-neutral-500) 25%, transparent);
+  color: var(--color-neutral-700);
+}
+
+.toast-card__message {
+  color: var(--color-neutral-800);
+  font-size: var(--text-xs);
+  line-height: 1rem;
+  margin: 0;
+}
+
+.toast-card__button {
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  line-height: 1rem;
+  text-transform: uppercase;
+  transition: color 150ms ease;
+}
+
+.toast-card__button--action {
+  color: var(--color-blue-600);
+}
+
+.toast-card__button--action:hover {
+  color: var(--color-blue-800);
+}
+
+.toast-card__button--dismiss {
+  color: var(--color-neutral-500);
+}
+
+.toast-card__button--dismiss:hover {
+  color: var(--color-neutral-700);
+}
+
+.dark .toast-card {
+  background: color-mix(in srgb, var(--color-neutral-900) 95%, transparent);
+  border-color: var(--color-neutral-700);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+  color: var(--color-neutral-100);
+}
+
+.dark .toast-card__badge--success {
+  background: color-mix(in srgb, var(--color-emerald-300) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-emerald-300) 25%, transparent);
+  color: var(--color-emerald-300);
+}
+
+.dark .toast-card__badge--error {
+  background: color-mix(in srgb, var(--color-rose-300) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-rose-300) 25%, transparent);
+  color: var(--color-rose-300);
+}
+
+.dark .toast-card__badge--info {
+  background: color-mix(in srgb, var(--color-neutral-300) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-neutral-300) 25%, transparent);
+  color: var(--color-neutral-200);
+}
+
+.dark .toast-card__message {
+  color: var(--color-neutral-100);
+}
+
+.dark .toast-card__button--action {
+  color: var(--color-blue-300);
+}
+
+.dark .toast-card__button--action:hover {
+  color: var(--color-blue-100);
+}
+
+.dark .toast-card__button--dismiss {
+  color: var(--color-neutral-400);
+}
+
+.dark .toast-card__button--dismiss:hover {
+  color: var(--color-neutral-200);
+}
+
 .toast-enter-active,
 .toast-leave-active {
   transition: all 0.3s ease;

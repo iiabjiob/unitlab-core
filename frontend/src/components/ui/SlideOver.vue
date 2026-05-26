@@ -1,20 +1,17 @@
 <template>
   <teleport :to="APP_OVERLAY_HOST_SELECTOR">
-    <div v-if="isOpen" class="fixed inset-0 z-1000">
-      <!-- Backdrop -->
+    <div v-if="isOpen" class="slide-over">
       <div
-        class="absolute inset-0 bg-black/50 dark:bg-black/70"
+        class="slide-over__backdrop"
         @click="requestClose('backdrop')"
       />
 
-      <!-- Slide-over LEFT/RIGHT -->
       <transition :name="transitionName">
         <div
           v-if="isSide"
           ref="dialogRef"
-             class="absolute top-0 h-full border-neutral-200 dark:border-neutral-800 shadow-xl
-               bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
-          :class="[sideClasses, defaultWidthClasses]"
+          class="slide-over__panel slide-over__panel--side"
+          :class="[sideClasses, defaultWidthClass]"
           :style="sideStyles"
           role="dialog"
           aria-modal="true"
@@ -22,35 +19,31 @@
           @keydown="onDialogKeydown"
         >
           <span class="sr-only" tabindex="0" @focus="loopFocus('end')" />
-          <!-- Header -->
-          <div class="flex items-center justify-between px-3 py-2 border-b border-neutral-200 dark:border-neutral-800">
-            <span class="text-sm font-semibold">{{ title }}</span>
+          <div class="slide-over__header slide-over__header--side">
+            <span class="slide-over__title">{{ title }}</span>
             <button
-              class="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              class="slide-over__close"
               aria-label="Close panel"
               @click="requestClose('pointer')"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="slide-over__close-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M6 18L18 6"/>
               </svg>
             </button>
           </div>
 
-          <!-- Content -->
-          <div class="h-[calc(100%-2.5rem)] overflow-y-auto" @click="onContentClick">
+          <div class="slide-over__content slide-over__content--side" @click="onContentClick">
             <slot />
           </div>
           <span class="sr-only" tabindex="0" @focus="loopFocus('start')" />
         </div>
       </transition>
 
-      <!-- Bottom sheet -->
       <transition name="slide-bottom">
         <div
           v-if="isBottom"
           ref="dialogRef"
-             class="absolute left-0 right-0 rounded-t-2xl shadow-2xl border-t border-neutral-200 dark:border-neutral-800
-               bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+          class="slide-over__panel slide-over__panel--bottom"
           :style="bottomStyles"
           role="dialog"
           aria-modal="true"
@@ -61,27 +54,24 @@
           @touchend="onTouchEnd"
         >
           <span class="sr-only" tabindex="0" @focus="loopFocus('end')" />
-          <!-- Drag handle -->
-          <div class="pt-2 pb-1 flex justify-center">
-            <div class="h-1.5 w-10 rounded-full bg-neutral-300 dark:bg-neutral-700" />
+          <div class="slide-over__drag-region">
+            <div class="slide-over__drag-handle" />
           </div>
 
-          <!-- Header -->
-          <div class="flex items-center justify-between px-4 py-2">
-            <span class="text-sm font-semibold">{{ title }}</span>
+          <div class="slide-over__header slide-over__header--bottom">
+            <span class="slide-over__title">{{ title }}</span>
             <button
-              class="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              class="slide-over__close"
               aria-label="Close sheet"
               @click="requestClose('pointer')"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <svg xmlns="http://www.w3.org/2000/svg" class="slide-over__close-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M6 18L18 6"/>
               </svg>
             </button>
           </div>
 
-          <!-- Content -->
-          <div class="px-4 pb-4 overflow-y-auto" :style="{ maxHeight: `${maxHeightVh}dvh` }" @click="onContentClick">
+          <div class="slide-over__content slide-over__content--bottom" :style="{ maxHeight: `${maxHeightVh}dvh` }" @click="onContentClick">
             <slot />
           </div>
           <span class="sr-only" tabindex="0" @focus="loopFocus('start')" />
@@ -147,9 +137,7 @@ const transitionName = computed(() => {
 
 // Side panel classes and inline styles
 const sideClasses = computed(() => [
-  "border-r", // always show a divider; for right we visually keep consistency
-  props.placement === "left" ? "left-0" : "right-0",
-  "top-0",
+  props.placement === "left" ? "slide-over__panel--left" : "slide-over__panel--right",
 ])
 const sideStyles = computed(() => ({
   width: props.widthPx ? `${props.widthPx}px` : undefined,
@@ -158,7 +146,7 @@ const sideStyles = computed(() => ({
 }))
 // Add default Tailwind width classes when widthPx is not provided
 // (We can't bind classes conditionally by presence cleanly in computed above; do it inline)
-const defaultWidthClasses = computed(() => (!props.widthPx ? "w-80 md:w-96" : ""))
+const defaultWidthClass = computed(() => (!props.widthPx ? "slide-over__panel--default-width" : ""))
 
 // Bottom sheet drag-to-close logic
 const startY = ref(0)
@@ -297,6 +285,148 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.slide-over {
+  inset: 0;
+  position: fixed;
+  z-index: 1000;
+}
+
+.slide-over__backdrop {
+  background: rgb(0 0 0 / 0.5);
+  inset: 0;
+  position: absolute;
+}
+
+.slide-over__panel {
+  background: var(--color-white);
+  color: var(--color-neutral-900);
+  position: absolute;
+}
+
+.slide-over__panel--side {
+  border-color: var(--color-neutral-200);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  height: 100%;
+  top: 0;
+}
+
+.slide-over__panel--left {
+  border-right: 1px solid var(--color-neutral-200);
+  left: 0;
+}
+
+.slide-over__panel--right {
+  border-left: 1px solid var(--color-neutral-200);
+  right: 0;
+}
+
+.slide-over__panel--default-width {
+  width: 20rem;
+}
+
+.slide-over__panel--bottom {
+  border-radius: 1rem 1rem 0 0;
+  border-top: 1px solid var(--color-neutral-200);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  left: 0;
+  right: 0;
+}
+
+.slide-over__header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.slide-over__header--side {
+  border-bottom: 1px solid var(--color-neutral-200);
+  padding: 0.5rem 0.75rem;
+}
+
+.slide-over__header--bottom {
+  padding: 0.5rem 1rem;
+}
+
+.slide-over__title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1.25rem;
+}
+
+.slide-over__close {
+  align-items: center;
+  border-radius: 0.5rem;
+  display: inline-flex;
+  height: 2rem;
+  justify-content: center;
+  width: 2rem;
+}
+
+.slide-over__close:hover {
+  background: var(--color-neutral-100);
+}
+
+.slide-over__close-icon {
+  height: 1rem;
+  width: 1rem;
+}
+
+.slide-over__content {
+  overflow-y: auto;
+}
+
+.slide-over__content--side {
+  height: calc(100% - 2.5rem);
+}
+
+.slide-over__content--bottom {
+  padding: 0 1rem 1rem;
+}
+
+.slide-over__drag-region {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0 0.25rem;
+}
+
+.slide-over__drag-handle {
+  background: var(--color-neutral-300);
+  border-radius: 999px;
+  height: 0.375rem;
+  width: 2.5rem;
+}
+
+.dark .slide-over__backdrop {
+  background: rgb(0 0 0 / 0.7);
+}
+
+.dark .slide-over__panel {
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-100);
+}
+
+.dark .slide-over__panel--side,
+.dark .slide-over__panel--left,
+.dark .slide-over__panel--right,
+.dark .slide-over__panel--bottom,
+.dark .slide-over__header--side {
+  border-color: var(--color-neutral-800);
+}
+
+.dark .slide-over__close:hover {
+  background: var(--color-neutral-800);
+}
+
+.dark .slide-over__drag-handle {
+  background: var(--color-neutral-700);
+}
+
+@media (min-width: 768px) {
+  .slide-over__panel--default-width {
+    width: 24rem;
+  }
+}
+
 /* Slide from LEFT */
 .slide-left-enter-from,
 .slide-left-leave-to {

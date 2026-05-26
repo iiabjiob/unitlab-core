@@ -23,18 +23,18 @@
             @touchend="onTouchEnd"
           >
             <span class="sr-only" tabindex="0" @focus="loopFocus('end')" />
-            <div v-if="isMobile" class="pt-2 pb-1 flex justify-center">
-              <div class="h-1.5 w-10 rounded-full bg-neutral-300 dark:bg-neutral-700" />
+            <div v-if="isMobile" class="ui-modal__drag-region">
+              <div class="ui-modal__drag-handle" />
             </div>
             <div :class="headerClasses">
               <slot name="header">
-                <span class="text-base font-semibold">{{ title }}</span>
+                <span class="ui-modal__title">{{ title }}</span>
               </slot>
             </div>
-            <div ref="contentRef" class="flex-1 overflow-y-auto px-6 py-4">
+            <div ref="contentRef" class="ui-modal__content">
               <slot />
             </div>
-            <div class="flex justify-end gap-2 border-t border-neutral-200 px-6 py-4 dark:border-neutral-800">
+            <div class="ui-modal__footer">
               <slot name="footer" />
             </div>
             <span class="sr-only" tabindex="0" @focus="loopFocus('start')" />
@@ -84,8 +84,8 @@ let viewportCleanup: (() => void) | null = null
 
 const overlayClasses = computed(() => (
   isMobile.value
-    ? "fixed inset-0 z-1000 flex items-end justify-center bg-black/50 dark:bg-black/70"
-    : "fixed inset-0 z-1000 flex items-center justify-center bg-black/50 dark:bg-black/70"
+    ? "ui-modal__overlay ui-modal__overlay--mobile"
+    : "ui-modal__overlay ui-modal__overlay--desktop"
 ))
 
 const overlayStyles = computed(() => {
@@ -98,16 +98,15 @@ const overlayStyles = computed(() => {
 const dialogTransitionName = computed(() => (isMobile.value ? "sheet-modal" : "scale-modal"))
 
 const dialogClasses = computed(() => {
-  const base = "relative flex w-full flex-col border border-neutral-200 bg-white text-neutral-900 shadow-2xl dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 overflow-hidden"
   if (isMobile.value) {
-    return `${base} rounded-t-2xl rounded-b-none border-b-0 max-w-none`
+    return "ui-modal__dialog ui-modal__dialog--mobile"
   }
-  return `${base} rounded-md max-h-[80vh] ${props.maxWidthClass ?? "max-w-2xl"}`
+  return "ui-modal__dialog ui-modal__dialog--desktop"
 })
 
 const dialogStyles = computed(() => {
   if (!isMobile.value) {
-    return undefined
+    return resolveDesktopDialogStyles(props.maxWidthClass)
   }
   const inset = Math.max(0, keyboardInset.value)
   const viewportHeight = visualViewportHeight.value
@@ -122,9 +121,24 @@ const dialogStyles = computed(() => {
 
 const headerClasses = computed(() => (
   isMobile.value
-    ? "border-b border-neutral-200 px-6 pb-3 pt-2 dark:border-neutral-800"
-    : "border-b border-neutral-200 px-6 pb-4 pt-6 dark:border-neutral-800"
+    ? "ui-modal__header ui-modal__header--mobile"
+    : "ui-modal__header ui-modal__header--desktop"
 ))
+
+function resolveDesktopDialogStyles(maxWidthClass?: string): Record<string, string> {
+  const styles: Record<string, string> = {
+    maxWidth: "42rem",
+  }
+  const tokens = new Set((maxWidthClass ?? "").split(/\s+/).filter(Boolean))
+  if (tokens.has("max-w-xl")) styles.maxWidth = "36rem"
+  if (tokens.has("max-w-2xl")) styles.maxWidth = "42rem"
+  if (tokens.has("max-w-3xl")) styles.maxWidth = "48rem"
+  if (tokens.has("max-w-4xl")) styles.maxWidth = "56rem"
+  if (tokens.has("max-w-5xl")) styles.maxWidth = "64rem"
+  if (tokens.has("max-w-6xl")) styles.maxWidth = "72rem"
+  if (tokens.has("h-[80vh]")) styles.height = "80vh"
+  return styles
+}
 
 function requestClose(reason: DialogCloseReason) {
   void dialog.close(reason).then((closed) => {
@@ -262,6 +276,115 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.ui-modal__overlay {
+  background: rgb(0 0 0 / 0.5);
+  display: flex;
+  inset: 0;
+  position: fixed;
+  z-index: 1000;
+}
+
+.ui-modal__overlay--desktop {
+  align-items: center;
+  justify-content: center;
+}
+
+.ui-modal__overlay--mobile {
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.ui-modal__dialog {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+  color: var(--color-neutral-900);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.ui-modal__dialog--desktop {
+  border-radius: var(--radius-md);
+  max-height: 80vh;
+}
+
+.ui-modal__dialog--mobile {
+  border-bottom: 0;
+  border-radius: 1rem 1rem 0 0;
+  max-width: none;
+}
+
+.ui-modal__drag-region {
+  display: flex;
+  justify-content: center;
+  padding: 0.5rem 0 0.25rem;
+}
+
+.ui-modal__drag-handle {
+  background: var(--color-neutral-300);
+  border-radius: 999px;
+  height: 0.375rem;
+  width: 2.5rem;
+}
+
+.ui-modal__header {
+  border-bottom: 1px solid var(--color-neutral-200);
+  padding-left: 1.5rem;
+  padding-right: 1.5rem;
+}
+
+.ui-modal__header--desktop {
+  padding-bottom: 1rem;
+  padding-top: 1.5rem;
+}
+
+.ui-modal__header--mobile {
+  padding-bottom: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.ui-modal__title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.5rem;
+}
+
+.ui-modal__content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 1rem 1.5rem;
+}
+
+.ui-modal__footer {
+  border-top: 1px solid var(--color-neutral-200);
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  padding: 1rem 1.5rem;
+}
+
+.dark .ui-modal__overlay {
+  background: rgb(0 0 0 / 0.7);
+}
+
+.dark .ui-modal__dialog {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-100);
+}
+
+.dark .ui-modal__drag-handle {
+  background: var(--color-neutral-700);
+}
+
+.dark .ui-modal__header,
+.dark .ui-modal__footer {
+  border-color: var(--color-neutral-800);
+}
+
 .fade-modal-enter-active,
 .fade-modal-leave-active {
   transition: opacity 0.15s;

@@ -58,7 +58,7 @@ watch(
   <UiModal :open="open" :title="title" @close="emit('cancel')">
     <label
       :for="fieldId"
-      class="block text-xs uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
+      class="rename-modal__label"
     >
       {{ label }}
     </label>
@@ -71,11 +71,11 @@ watch(
       type="text"
       autocomplete="off"
       data-dialog-initial
-      class="mt-2 w-full rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+      class="rename-modal__input"
       @input="onInput"
       @keydown.enter.prevent="handleSubmit"
     />
-    <p v-if="error" class="mt-2 text-xs text-red-500">
+    <p v-if="error" class="rename-modal__error">
       {{ error }}
     </p>
 
@@ -99,3 +99,56 @@ watch(
     </template>
   </UiModal>
 </template>
+
+<style scoped>
+.rename-modal__label {
+  color: var(--color-neutral-500);
+  display: block;
+  font-size: var(--text-xs);
+  letter-spacing: 0.3em;
+  line-height: 1rem;
+  text-transform: uppercase;
+}
+
+.rename-modal__input {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: 0.25rem;
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  line-height: 1.25rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  width: 100%;
+}
+
+.rename-modal__input::placeholder {
+  color: var(--color-neutral-500);
+}
+
+.rename-modal__input:focus {
+  box-shadow: 0 0 0 1px var(--color-blue-500);
+  outline: none;
+}
+
+.rename-modal__input:disabled {
+  opacity: 0.6;
+}
+
+.rename-modal__error {
+  color: var(--color-red-500);
+  font-size: var(--text-xs);
+  line-height: 1rem;
+  margin: 0.5rem 0 0;
+}
+
+.dark .rename-modal__label {
+  color: var(--color-neutral-400);
+}
+
+.dark .rename-modal__input {
+  background: var(--color-neutral-950);
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-100);
+}
+</style>
