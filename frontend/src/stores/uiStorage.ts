@@ -1,6 +1,8 @@
 import { defineStore } from "pinia"
 import { ref } from "vue"
 
+import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
+
 // Panel identifiers whose sizes we persist between sessions.
 export type PanelSizeMap = {
   leftAside: number
@@ -8,6 +10,11 @@ export type PanelSizeMap = {
   deviceChannels: number
   switchgearList: number
   sequenceSteps: number
+}
+
+type UiPreferences = {
+  panelSizes?: Partial<PanelSizeMap>
+  collapsed?: Partial<Record<"leftAside" | "pageSidebar", boolean>>
 }
 
 export const useUiStore = defineStore("uiStore", () => {
@@ -42,42 +49,38 @@ export const useUiStore = defineStore("uiStore", () => {
 
   // --- PERSISTENCE ---------------------------------------------------
 
-  const STORAGE_KEY = "unitlab.ui"
+  const LEGACY_STORAGE_KEY = "unitlab.ui"
 
-  // Serialize current UI preferences into localStorage.
+  // Serialize current UI preferences through the local settings adapter.
   function persist() {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        panelSizes: panelSizes.value,
-        collapsed: collapsed.value,
-      })
-    )
+    writeLocalSetting(localSettingsKeys.uiChrome, {
+      panelSizes: panelSizes.value,
+      collapsed: collapsed.value,
+    }, {
+      legacyKeys: [LEGACY_STORAGE_KEY],
+    })
   }
 
   // Restore previously saved values, falling back to defaults if parsing fails.
   function restore() {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return
+    const parsed = readLocalSetting<UiPreferences | null>(localSettingsKeys.uiChrome, null, {
+      legacyKeys: [LEGACY_STORAGE_KEY],
+      validate: normalizeUiPreferences,
+    })
+    if (!parsed) return
 
-    try {
-      const parsed = JSON.parse(raw)
-
-      if (parsed.panelSizes) {
-        panelSizes.value = {
-          ...panelSizes.value,
-          ...parsed.panelSizes,
-        }
+    if (parsed.panelSizes) {
+      panelSizes.value = {
+        ...panelSizes.value,
+        ...parsed.panelSizes,
       }
+    }
 
-      if (parsed.collapsed) {
-        collapsed.value = {
-          ...collapsed.value,
-          ...parsed.collapsed,
-        }
+    if (parsed.collapsed) {
+      collapsed.value = {
+        ...collapsed.value,
+        ...parsed.collapsed,
       }
-    } catch (err) {
-      console.warn("Failed to restore uiStore:", err)
     }
   }
 
@@ -93,3 +96,55 @@ export const useUiStore = defineStore("uiStore", () => {
     restore,
   }
 })
+
+function normalizeUiPreferences(value: unknown): UiPreferences | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const panelSizes = isRecord(value.panelSizes)
+    ? normalizePanelSizes(value.panelSizes)
+    : undefined
+  const collapsed = isRecord(value.collapsed)
+    ? normalizeCollapsedState(value.collapsed)
+    : undefined
+
+  return { panelSizes, collapsed }
+}
+
+function normalizePanelSizes(value: Record<string, unknown>): Partial<PanelSizeMap> {
+  const next: Partial<PanelSizeMap> = {}
+  const keys: Array<keyof PanelSizeMap> = [
+    "leftAside",
+    "pageSidebar",
+    "deviceChannels",
+    "switchgearList",
+    "sequenceSteps",
+  ]
+
+  keys.forEach((key) => {
+    const size = Number(value[key])
+    if (Number.isFinite(size) && size > 0) {
+      next[key] = size
+    }
+  })
+
+  return next
+}
+
+function normalizeCollapsedState(
+  value: Record<string, unknown>,
+): Partial<Record<"leftAside" | "pageSidebar", boolean>> {
+  const next: Partial<Record<"leftAside" | "pageSidebar", boolean>> = {}
+  if (typeof value.leftAside === "boolean") {
+    next.leftAside = value.leftAside
+  }
+  if (typeof value.pageSidebar === "boolean") {
+    next.pageSidebar = value.pageSidebar
+  }
+  return next
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}

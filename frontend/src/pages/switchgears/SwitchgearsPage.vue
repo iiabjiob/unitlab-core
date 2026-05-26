@@ -89,6 +89,7 @@ import UiButton from "@/components/ui/UiButton.vue"
 import SwitchgearSingleLineDiagram from "./components/SwitchgearSingleLineDiagram.vue"
 import { useViewport } from "@/composables/useViewport"
 import { useRealtimeScopeStore } from "@/stores/realtimeScopeStore"
+import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
 
 const { isDesktop } = useViewport()
 const sidebarOpen = ref(false)
@@ -96,16 +97,19 @@ const activeView = ref<"manage" | "sld">("manage")
 const route = useRoute()
 const realtimeScopeStore = useRealtimeScopeStore()
 const scopeId = "switchgears:page"
-const ACTIVE_VIEW_STORAGE_KEY = "unitlab.switchgears.active-view"
+const LEGACY_ACTIVE_VIEW_STORAGE_KEY = "unitlab.switchgears.active-view"
 
 onMounted(() => {
   realtimeScopeStore.setGlobalRealtimeScope(scopeId, true)
-  if (typeof window !== "undefined") {
-    const raw = window.localStorage.getItem(ACTIVE_VIEW_STORAGE_KEY)
-    if (raw === "manage" || raw === "sld") {
-      activeView.value = raw
-    }
-  }
+  activeView.value = readLocalSetting<"manage" | "sld">(
+    localSettingsKeys.switchgearsActiveView,
+    "manage",
+    {
+      legacyKeys: [LEGACY_ACTIVE_VIEW_STORAGE_KEY],
+      parseLegacy: raw => raw,
+      validate: normalizeSwitchgearsActiveView,
+    },
+  )
 })
 
 onBeforeUnmount(() => {
@@ -125,8 +129,12 @@ watch(
 
 function setActiveView(view: "manage" | "sld") {
   activeView.value = view
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(ACTIVE_VIEW_STORAGE_KEY, view)
-  }
+  writeLocalSetting(localSettingsKeys.switchgearsActiveView, view, {
+    legacyKeys: [LEGACY_ACTIVE_VIEW_STORAGE_KEY],
+  })
+}
+
+function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null {
+  return value === "manage" || value === "sld" ? value : null
 }
 </script>

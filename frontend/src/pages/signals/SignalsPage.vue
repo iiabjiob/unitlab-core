@@ -187,6 +187,7 @@ import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useTestedAtRealtimeStore } from "@/stores/testedAtRealtimeStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
+import { createLocalSettingsStringStorage, localSettingsKeys } from "@/services/localSettingsStorage"
 import { formatDate } from "@/utils/datetime"
 import { formatAoValue, parseAoInput } from "@/utils/channel"
 import { resolveRuntimeChannelTypeForSignal } from "@/utils/signalRuntimeMapping"
@@ -251,13 +252,16 @@ type GridCellInteractiveContext = DataGridAppCellRendererContext<GridRow>["inter
 
 const DataGrid = defineDataGridComponent<GridRow>()
 
-const SIGNALS_GRID_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
+const SIGNALS_GRID_LEGACY_STORAGE_KEY_PREFIX = "unitlab.signals-grid"
 const REMOVED_SIGNAL_GRID_COLUMN_KEYS = new Set(["allocation_status", "allocation_health"])
 const SIGNAL_GRID_PATCH_COLUMNS = ["internal_signal_type", "channel_select", "tested_at"] as const
 const signalAllocationProjectionCache = createSignalAllocationProjectionCache()
 const signalAllocationProjectionVersion = ref(0)
 const signalRuntimeStateCache = createSignalRuntimeStateCache()
 const signalRuntimeStateVersion = ref(0)
+const signalsGridSavedViewStorage = createLocalSettingsStringStorage({
+  resolveLegacyKeys: resolveSignalsGridSavedViewLegacyKeys,
+})
 let suppressSignalsGridStateEventsDepth = 0
 let signalsGridStatePersistTimer: ReturnType<typeof setTimeout> | null = null
 const signalGridRowModel = useSignalGridRowModel<GridRow>(allocationGridRef, {
@@ -882,14 +886,15 @@ function getSignalsGridStorageKey(workspaceId: number | null): string | null {
   if (!Number.isFinite(workspaceId as number) || Number(workspaceId) <= 0) {
     return null
   }
-  return `${SIGNALS_GRID_STORAGE_KEY_PREFIX}:workspace:${Number(workspaceId)}`
+  return localSettingsKeys.signalsGridSavedView(Number(workspaceId))
+}
+
+function resolveSignalsGridSavedViewLegacyKeys(key: string): readonly string[] {
+  const match = /^signals\.grid\.savedView\.workspace\.([1-9]\d*)$/.exec(key)
+  return match ? [`${SIGNALS_GRID_LEGACY_STORAGE_KEY_PREFIX}:workspace:${match[1]}`] : []
 }
 
 function persistSignalsGridState() {
-  if (typeof window === "undefined") {
-    return
-  }
-
   if (
     !signalsGridStatePersistenceReady.value
     || restoringSignalsGridState.value
@@ -909,7 +914,7 @@ function persistSignalsGridState() {
     return
   }
 
-  writeDataGridSavedViewToStorage(window.localStorage, storageKey, savedView)
+  writeDataGridSavedViewToStorage(signalsGridSavedViewStorage, storageKey, savedView)
 }
 
 function scheduleSignalsGridStatePersist() {
@@ -1079,13 +1084,6 @@ function restoreSignalsGridState() {
   restoringSignalsGridState.value = true
   signalsGridStatePersistenceReady.value = false
 
-  if (typeof window === "undefined") {
-    rowSelectionState.value = null
-    pendingSignalsGridSavedView.value = null
-    markSignalsGridStateRestored()
-    return
-  }
-
   const storageKey = getSignalsGridStorageKey(workspaceStore.activeWorkspaceId)
   if (!storageKey) {
     rowSelectionState.value = null
@@ -1094,7 +1092,7 @@ function restoreSignalsGridState() {
     return
   }
 
-  const raw = window.localStorage.getItem(storageKey)
+  const raw = signalsGridSavedViewStorage.getItem(storageKey)
   if (!raw) {
     rowSelectionState.value = null
     pendingSignalsGridSavedView.value = null

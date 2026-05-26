@@ -2,14 +2,21 @@
 import { defineStore } from "pinia"
 import { ref, computed } from "vue"
 
+import {
+  LOCAL_SETTINGS_STORAGE_KEY,
+  localSettingsKeys,
+  readLocalSetting,
+  writeLocalSetting,
+} from "@/services/localSettingsStorage"
+
 export type ThemeMode = "light" | "dark" | "auto"
+
+const LEGACY_THEME_MODE_KEY = "themeMode"
 
 export const useThemeStore = defineStore("themeStore", () => {
   const supported = typeof window !== "undefined" && typeof document !== "undefined"
 
-  const mode = ref<ThemeMode>(
-    (supported ? (localStorage.getItem("themeMode") as ThemeMode) : null) || "auto"
-  )
+  const mode = ref<ThemeMode>(supported ? readThemeMode() : "auto")
 
   const systemDark = ref(
     supported ? window.matchMedia("(prefers-color-scheme: dark)").matches : false
@@ -31,9 +38,9 @@ export const useThemeStore = defineStore("themeStore", () => {
 
   function setMode(newMode: ThemeMode) {
     mode.value = newMode
-    if (supported) {
-      localStorage.setItem("themeMode", newMode)
-    }
+    writeLocalSetting(localSettingsKeys.themeMode, newMode, {
+      legacyKeys: [LEGACY_THEME_MODE_KEY],
+    })
     applyTheme()
   }
 
@@ -56,8 +63,8 @@ export const useThemeStore = defineStore("themeStore", () => {
 
     // Sync between tabs
     window.addEventListener("storage", (e) => {
-      if (e.key === "themeMode" && e.newValue) {
-        mode.value = e.newValue as ThemeMode
+      if (e.key === LOCAL_SETTINGS_STORAGE_KEY || e.key === LEGACY_THEME_MODE_KEY) {
+        mode.value = readThemeMode()
         applyTheme()
       }
     })
@@ -71,3 +78,15 @@ export const useThemeStore = defineStore("themeStore", () => {
     init,
   }
 })
+
+function readThemeMode(): ThemeMode {
+  return readLocalSetting<ThemeMode>(localSettingsKeys.themeMode, "auto", {
+    legacyKeys: [LEGACY_THEME_MODE_KEY],
+    parseLegacy: raw => raw,
+    validate: value => isThemeMode(value) ? value : null,
+  })
+}
+
+function isThemeMode(value: unknown): value is ThemeMode {
+  return value === "light" || value === "dark" || value === "auto"
+}

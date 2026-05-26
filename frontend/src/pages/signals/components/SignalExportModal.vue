@@ -108,6 +108,7 @@ import UiAffinoListbox from "@/components/ui/UiAffinoListbox.vue"
 import UiAlert from "@/components/ui/UiAlert.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiModal from "@/components/ui/UiModal.vue"
+import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
 
 export type ExportColumnOption = {
   key: string
@@ -139,7 +140,8 @@ const savePresetName = ref("")
 const selectedOptionalColumnKeys = ref<string[]>([])
 const deletePresetOpen = ref(false)
 
-const presetStorageKey = computed(() => `signals:export-presets:${props.workspaceId ?? "none"}`)
+const presetStorageKey = computed(() => localSettingsKeys.signalExportPresets(props.workspaceId))
+const legacyPresetStorageKey = computed(() => `signals:export-presets:${props.workspaceId ?? "none"}`)
 const presets = ref<ExportPreset[]>([])
 
 const presetListboxOptions = computed(() => [
@@ -159,39 +161,36 @@ function emitClose() {
 }
 
 function hydratePresets() {
-  if (typeof window === "undefined") return
-  try {
-    const raw = window.localStorage.getItem(presetStorageKey.value)
-    if (!raw) {
-      presets.value = []
-      return
-    }
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) {
-      presets.value = []
-      return
-    }
-    presets.value = parsed
-      .filter(item => item && typeof item === "object")
-      .map((item) => ({
-        id: String((item as { id?: unknown }).id ?? ""),
-        name: String((item as { name?: unknown }).name ?? "").trim(),
-        optionalColumnKeys: Array.isArray((item as { optionalColumnKeys?: unknown }).optionalColumnKeys)
-          ? ((item as { optionalColumnKeys: unknown[] }).optionalColumnKeys.map(value => String(value)))
-          : [],
-        createdAt: String((item as { createdAt?: unknown }).createdAt ?? ""),
-        updatedAt: String((item as { updatedAt?: unknown }).updatedAt ?? ""),
-      }))
-      .filter(item => item.id && item.name)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-  } catch {
-    presets.value = []
-  }
+  presets.value = readLocalSetting<ExportPreset[]>(presetStorageKey.value, [], {
+    legacyKeys: [legacyPresetStorageKey.value],
+    validate: normalizeExportPresets,
+  })
 }
 
 function persistPresets() {
-  if (typeof window === "undefined") return
-  window.localStorage.setItem(presetStorageKey.value, JSON.stringify(presets.value))
+  writeLocalSetting(presetStorageKey.value, presets.value, {
+    legacyKeys: [legacyPresetStorageKey.value],
+  })
+}
+
+function normalizeExportPresets(value: unknown): ExportPreset[] | null {
+  if (!Array.isArray(value)) {
+    return null
+  }
+
+  return value
+    .filter(item => item && typeof item === "object")
+    .map((item) => ({
+      id: String((item as { id?: unknown }).id ?? ""),
+      name: String((item as { name?: unknown }).name ?? "").trim(),
+      optionalColumnKeys: Array.isArray((item as { optionalColumnKeys?: unknown }).optionalColumnKeys)
+        ? ((item as { optionalColumnKeys: unknown[] }).optionalColumnKeys.map(columnKey => String(columnKey)))
+        : [],
+      createdAt: String((item as { createdAt?: unknown }).createdAt ?? ""),
+      updatedAt: String((item as { updatedAt?: unknown }).updatedAt ?? ""),
+    }))
+    .filter(item => item.id && item.name)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
 function normalizeOptionalSelection(keys: readonly string[]) {

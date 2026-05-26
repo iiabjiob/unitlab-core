@@ -11,6 +11,7 @@ import { useSelectionStore } from "@/stores/selectionStore"
 import { useToastStore } from "@/stores/toastStore"
 import { useThemeStore } from "@/stores/themeStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
+import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
 import SwitchgearSingleLineDiagramNode from "./SwitchgearSingleLineDiagramNode.vue"
 import SwitchgearSingleLineDiagramStaticElement from "./SwitchgearSingleLineDiagramStaticElement.vue"
 import SwitchgearControlToolbar from "./SwitchgearControlToolbar.vue"
@@ -67,6 +68,16 @@ type DiagramClipboardEdge = {
   x2: number
   y2: number
   kind: "line" | "arrow"
+}
+
+type StoredDiagramState = {
+  layoutById?: Record<string, DiagramNodeLayout>
+  labelOffsetById?: Record<string, DiagramLabelOffset>
+  edges?: DiagramEdge[]
+  lines?: DiagramEdge[]
+  staticElements?: DiagramStaticElement[]
+  snapEnabled?: boolean
+  viewState?: DiagramViewState
 }
 
 type DiagramClipboardPayload = {
@@ -201,6 +212,9 @@ const selectedNodeId = computed<number | null>(() => {
   return Number.isFinite(parsed) ? parsed : null
 })
 const storageKey = computed(() => (
+  workspaceId.value ? localSettingsKeys.switchgearDiagram(workspaceId.value) : null
+))
+const legacyStorageKey = computed(() => (
   workspaceId.value ? `unitlab.switchgears.sld.${workspaceId.value}` : null
 ))
 const switchgearIdsSignature = computed(() => switchgears.value.map(item => item.id).join(","))
@@ -823,68 +837,58 @@ function restoreDiagramState() {
 
   let hadSavedState = false
 
-  if (typeof window !== "undefined" && storageKey.value) {
-    const raw = window.localStorage.getItem(storageKey.value)
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as {
-          layoutById?: Record<string, DiagramNodeLayout>
-          labelOffsetById?: Record<string, DiagramLabelOffset>
-          edges?: DiagramEdge[]
-          lines?: DiagramEdge[]
-          staticElements?: DiagramStaticElement[]
-          snapEnabled?: boolean
-          viewState?: DiagramViewState
-        }
-        if (parsed.layoutById && typeof parsed.layoutById === "object") {
-          layoutById.value = parsed.layoutById
-        }
-        if (parsed.labelOffsetById && typeof parsed.labelOffsetById === "object") {
-          labelOffsetById.value = parsed.labelOffsetById
-        }
-        const savedLines = Array.isArray(parsed.lines) ? parsed.lines : parsed.edges
-        if (Array.isArray(savedLines)) {
-          edges.value = savedLines.filter(edge =>
-            Number.isFinite(edge?.x1) &&
-            Number.isFinite(edge?.y1) &&
-            Number.isFinite(edge?.x2) &&
-            Number.isFinite(edge?.y2) &&
-            typeof edge?.id === "string",
-          ).map(edge => ({
-            id: edge.id,
-            x1: edge.x1,
-            y1: edge.y1,
-            x2: edge.x2,
-            y2: edge.y2,
-            kind: normalizeEdgeKind(edge.kind),
-          }))
-        }
-        if (Array.isArray(parsed.staticElements)) {
-          staticElements.value = parsed.staticElements.filter(element =>
-            Number.isFinite(element?.x)
-            && Number.isFinite(element?.y)
-            && typeof element?.id === "string",
-          ).map(element => ({
-            id: element.id,
-            kind: normalizeStaticKind(element.kind),
-            x: element.x,
-            y: element.y,
-            rotation: normalizeRotation(element.rotation),
-          }))
-        }
-        snapEnabled.value = parsed.snapEnabled !== false
-        if (parsed.viewState) {
-          const parsedZoom = Number(parsed.viewState.zoom)
-          viewState.value = {
-            x: Number.isFinite(parsed.viewState.x) ? parsed.viewState.x : DEFAULT_VIEW.x,
-            y: Number.isFinite(parsed.viewState.y) ? parsed.viewState.y : DEFAULT_VIEW.y,
-            zoom: Number.isFinite(parsedZoom) ? clampZoom(parsedZoom) : DEFAULT_VIEW.zoom,
-          }
-        }
-        hadSavedState = true
-      } catch (error) {
-        console.warn("Failed to restore switchgear SLD state", error)
+  if (storageKey.value) {
+    const parsed = readLocalSetting<StoredDiagramState | null>(storageKey.value, null, {
+      legacyKeys: legacyStorageKey.value ? [legacyStorageKey.value] : [],
+      validate: normalizeStoredDiagramState,
+    })
+    if (parsed) {
+      if (parsed.layoutById && typeof parsed.layoutById === "object") {
+        layoutById.value = parsed.layoutById
       }
+      if (parsed.labelOffsetById && typeof parsed.labelOffsetById === "object") {
+        labelOffsetById.value = parsed.labelOffsetById
+      }
+      const savedLines = Array.isArray(parsed.lines) ? parsed.lines : parsed.edges
+      if (Array.isArray(savedLines)) {
+        edges.value = savedLines.filter(edge =>
+          Number.isFinite(edge?.x1) &&
+          Number.isFinite(edge?.y1) &&
+          Number.isFinite(edge?.x2) &&
+          Number.isFinite(edge?.y2) &&
+          typeof edge?.id === "string",
+        ).map(edge => ({
+          id: edge.id,
+          x1: edge.x1,
+          y1: edge.y1,
+          x2: edge.x2,
+          y2: edge.y2,
+          kind: normalizeEdgeKind(edge.kind),
+        }))
+      }
+      if (Array.isArray(parsed.staticElements)) {
+        staticElements.value = parsed.staticElements.filter(element =>
+          Number.isFinite(element?.x)
+          && Number.isFinite(element?.y)
+          && typeof element?.id === "string",
+        ).map(element => ({
+          id: element.id,
+          kind: normalizeStaticKind(element.kind),
+          x: element.x,
+          y: element.y,
+          rotation: normalizeRotation(element.rotation),
+        }))
+      }
+      snapEnabled.value = parsed.snapEnabled !== false
+      if (parsed.viewState) {
+        const parsedZoom = Number(parsed.viewState.zoom)
+        viewState.value = {
+          x: Number.isFinite(parsed.viewState.x) ? parsed.viewState.x : DEFAULT_VIEW.x,
+          y: Number.isFinite(parsed.viewState.y) ? parsed.viewState.y : DEFAULT_VIEW.y,
+          zoom: Number.isFinite(parsedZoom) ? clampZoom(parsedZoom) : DEFAULT_VIEW.zoom,
+        }
+      }
+      hadSavedState = true
     }
   }
 
@@ -899,10 +903,10 @@ function restoreDiagramState() {
 }
 
 function persistDiagramState() {
-  if (hydrating.value || !storageKey.value || typeof window === "undefined") {
+  if (hydrating.value || !storageKey.value) {
     return
   }
-  window.localStorage.setItem(storageKey.value, JSON.stringify({
+  writeLocalSetting(storageKey.value, {
     layoutById: layoutById.value,
     labelOffsetById: labelOffsetById.value,
     edges: edges.value,
@@ -910,7 +914,15 @@ function persistDiagramState() {
     staticElements: staticElements.value,
     snapEnabled: snapEnabled.value,
     viewState: viewState.value,
-  }))
+  }, {
+    legacyKeys: legacyStorageKey.value ? [legacyStorageKey.value] : [],
+  })
+}
+
+function normalizeStoredDiagramState(value: unknown): StoredDiagramState | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as StoredDiagramState
+    : null
 }
 
 function toggleSnapEnabled() {

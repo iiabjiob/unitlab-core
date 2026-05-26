@@ -4,6 +4,7 @@ import { useDeviceStore } from "@/stores/deviceStore"
 import { useRouter, useRoute } from "vue-router"
 import DeviceListItem from "./DeviceListItem.vue"
 import UiSidebarListbox from "@/components/ui/UiSidebarListbox.vue"
+import { localSettingsKeys, readBooleanLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
 
 const store = useDeviceStore()
 const router = useRouter()
@@ -24,18 +25,19 @@ function openDevice(id: number) {
 // SEARCH
 const query = ref("")
 const onlineOnly = ref(false)
-const ONLINE_ONLY_STORAGE_KEY = "unitlab.devices.sidebar.online-only"
+const LEGACY_ONLINE_ONLY_STORAGE_KEY = "unitlab.devices.sidebar.online-only"
 
 function restoreOnlineOnlyFilter() {
-  if (typeof window === "undefined") return
-  const raw = window.localStorage.getItem(ONLINE_ONLY_STORAGE_KEY)
-  if (raw === null) return
-  onlineOnly.value = raw === "1" || raw === "true"
+  onlineOnly.value = readBooleanLocalSetting(localSettingsKeys.devicesSidebarOnlineOnly, false, {
+    legacyKeys: [LEGACY_ONLINE_ONLY_STORAGE_KEY],
+    parseLegacy: parseLegacyBooleanFlag,
+  })
 }
 
 function persistOnlineOnlyFilter(value: boolean) {
-  if (typeof window === "undefined") return
-  window.localStorage.setItem(ONLINE_ONLY_STORAGE_KEY, value ? "1" : "0")
+  writeLocalSetting(localSettingsKeys.devicesSidebarOnlineOnly, value, {
+    legacyKeys: [LEGACY_ONLINE_ONLY_STORAGE_KEY],
+  })
 }
 
 restoreOnlineOnlyFilter()
@@ -69,6 +71,10 @@ function handleSelect(id: string | number) {
   const parsed = Number(id)
   if (!Number.isFinite(parsed)) return
   openDevice(parsed)
+}
+
+function parseLegacyBooleanFlag(raw: string): boolean {
+  return raw === "1" || raw === "true"
 }
 </script>
 

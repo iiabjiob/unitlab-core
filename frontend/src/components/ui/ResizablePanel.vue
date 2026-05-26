@@ -21,6 +21,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, type PropType } from "vue"
 
+import { localSettingsKeys, readNumberLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
+
 const emit = defineEmits<{
   (e: "size-change", size: number): void
 }>()
@@ -96,7 +98,11 @@ function startResize(e: MouseEvent) {
 
   function onMouseUp() {
     if (props.storageKey) {
-      localStorage.setItem(props.storageKey, String(size.value))
+      writeLocalSetting(
+        localSettingsKeys.resizablePanelSize(props.storageKey),
+        Math.trunc(size.value),
+        { legacyKeys: [props.storageKey] },
+      )
     }
     window.removeEventListener("mousemove", onMouseMove)
     window.removeEventListener("mouseup", onMouseUp)
@@ -111,12 +117,13 @@ function startResize(e: MouseEvent) {
 
 onMounted(() => {
   if (props.storageKey) {
-    const saved = localStorage.getItem(props.storageKey)
-    if (saved) {
-      const parsed = Number.parseInt(saved, 10)
-      if (Number.isFinite(parsed)) {
-        size.value = Math.max(props.minSize ?? 160, Math.min(props.maxSize ?? 400, parsed))
-      }
+    const saved = readNumberLocalSetting(
+      localSettingsKeys.resizablePanelSize(props.storageKey),
+      null,
+      { legacyKeys: [props.storageKey] },
+    )
+    if (saved !== null) {
+      size.value = Math.max(props.minSize ?? 160, Math.min(props.maxSize ?? 400, Math.trunc(saved)))
     }
   }
   emit("size-change", size.value)

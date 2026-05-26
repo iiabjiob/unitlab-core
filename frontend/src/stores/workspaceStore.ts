@@ -3,9 +3,10 @@ import { computed, ref } from "vue"
 
 import type { Workspace } from "@/types/workspace"
 import { WorkspacesAPI } from "@/api/workspaces.api"
+import { localSettingsKeys, readLocalSetting, removeLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
 import { getLogger } from "@/utils/logger"
 
-const STORAGE_KEY = "active-workspace-id"
+const LEGACY_STORAGE_KEY = "active-workspace-id"
 const DEFAULT_WORKSPACE_NAME = "Default"
 const logger = getLogger("WORKSPACES")
 
@@ -30,21 +31,28 @@ export const useWorkspaceStore = defineStore("workspaceStore", () => {
   hydrateFromStorage()
 
   function hydrateFromStorage() {
-    if (typeof window === "undefined") return
-    const raw = window.localStorage.getItem(STORAGE_KEY)
-    if (!raw) return
-    const parsed = Number(raw)
-    if (!Number.isNaN(parsed)) {
-      activeWorkspaceId.value = parsed
+    const storedWorkspaceId = readLocalSetting<number | null>(
+      localSettingsKeys.activeWorkspaceId,
+      null,
+      {
+        legacyKeys: [LEGACY_STORAGE_KEY],
+        validate: normalizeWorkspaceId,
+      },
+    )
+    if (storedWorkspaceId) {
+      activeWorkspaceId.value = storedWorkspaceId
     }
   }
 
   function persistSelection(id: number | null) {
-    if (typeof window === "undefined") return
     if (id) {
-      window.localStorage.setItem(STORAGE_KEY, String(id))
+      writeLocalSetting(localSettingsKeys.activeWorkspaceId, id, {
+        legacyKeys: [LEGACY_STORAGE_KEY],
+      })
     } else {
-      window.localStorage.removeItem(STORAGE_KEY)
+      removeLocalSetting(localSettingsKeys.activeWorkspaceId, {
+        legacyKeys: [LEGACY_STORAGE_KEY],
+      })
     }
   }
 
@@ -214,3 +222,8 @@ export const useWorkspaceStore = defineStore("workspaceStore", () => {
     deleteWorkspace,
   }
 })
+
+function normalizeWorkspaceId(value: unknown): number | null {
+  const id = Number(value)
+  return Number.isFinite(id) && id > 0 ? id : null
+}

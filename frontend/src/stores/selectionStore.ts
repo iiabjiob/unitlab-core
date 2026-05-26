@@ -2,6 +2,8 @@ import { defineStore } from "pinia"
 import { ref } from "vue"
 import { useRouter } from "vue-router"
 
+import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
+
 type SelectionState = {
   lastDeviceId: number | null
   lastSwitchgearId: number | null
@@ -9,7 +11,7 @@ type SelectionState = {
   lastSettingsRouteName: string | null
 }
 
-const STORAGE_KEY = "unitlab.selection"
+const LEGACY_STORAGE_KEY = "unitlab.selection"
 
 export const useSelectionStore = defineStore("selection", () => {
 
@@ -33,37 +35,30 @@ export const useSelectionStore = defineStore("selection", () => {
 
   // --- PERSISTENCE ---------------------------------------------------
   function persist() {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        lastDeviceId: lastDeviceId.value,
-        lastSwitchgearId: lastSwitchgearId.value,
-        lastSequenceId: lastSequenceId.value,
-        lastSettingsRouteName: lastSettingsRouteName.value,
-      })
-    )
+    writeLocalSetting(localSettingsKeys.selection, {
+      lastDeviceId: lastDeviceId.value,
+      lastSwitchgearId: lastSwitchgearId.value,
+      lastSequenceId: lastSequenceId.value,
+      lastSettingsRouteName: lastSettingsRouteName.value,
+    }, {
+      legacyKeys: [LEGACY_STORAGE_KEY],
+    })
   }
 
   function restore() {
     if (restored) return
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) {
-      restored = true
-      return
-    }
+    const data = readLocalSetting<SelectionState | null>(localSettingsKeys.selection, null, {
+      legacyKeys: [LEGACY_STORAGE_KEY],
+      validate: normalizeSelectionState,
+    })
 
-    try {
-      const data: SelectionState = JSON.parse(raw)
-
+    if (data) {
       lastDeviceId.value = data.lastDeviceId ?? null
       lastSwitchgearId.value = data.lastSwitchgearId ?? null
       lastSequenceId.value = data.lastSequenceId ?? null
       lastSettingsRouteName.value = data.lastSettingsRouteName ?? null
-    } catch (err) {
-      console.warn("Failed to restore selection:", err)
-    } finally {
-      restored = true
     }
+    restored = true
   }
 
   // --- ACTIONS -------------------------------------------------------
@@ -128,3 +123,32 @@ export const useSelectionStore = defineStore("selection", () => {
     openLast,
   }
 })
+
+function normalizeSelectionState(value: unknown): SelectionState | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const routeName = value.lastSettingsRouteName
+
+  return {
+    lastDeviceId: normalizeStoredId(value.lastDeviceId),
+    lastSwitchgearId: normalizeStoredId(value.lastSwitchgearId),
+    lastSequenceId: normalizeStoredId(value.lastSequenceId),
+    lastSettingsRouteName: typeof routeName === "string" && routeName.trim()
+      ? routeName
+      : null,
+  }
+}
+
+function normalizeStoredId(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") {
+    return null
+  }
+  const id = Number(value)
+  return Number.isFinite(id) ? id : null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
