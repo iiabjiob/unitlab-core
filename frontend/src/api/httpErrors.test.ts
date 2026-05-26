@@ -13,7 +13,7 @@ describe("httpErrors", () => {
     expect(normalizeHttpDetail({ message: "Object message" })).toBe("Object message")
   })
 
-  it("extracts context from axios-shaped errors without importing axios at call sites", () => {
+  it("extracts context from transport-shaped errors without importing the transport client at call sites", () => {
     const context = getHttpErrorContext({
       code: "ERR_NETWORK",
       message: "Network Error",

@@ -1,10 +1,11 @@
-import axios, { type AxiosRequestConfig, type AxiosResponse } from "axios"
 import { toUserFacingErrorMessage } from "@/api/errorMessages"
 import {
-  getHttpErrorContext,
   HttpRequestError,
   type HttpMethod,
+  normalizeHttpDetail,
 } from "@/api/httpErrors"
+
+type HttpResponseType = "json" | "text" | "blob" | "arraybuffer"
 
 export type HttpRequestOptions = {
   headers?: Record<string, string>
@@ -12,7 +13,7 @@ export type HttpRequestOptions = {
   data?: unknown
   timeout?: number
   signal?: AbortSignal
-  responseType?: AxiosRequestConfig["responseType"]
+  responseType?: HttpResponseType
 }
 
 export type HttpRequestConfig = HttpRequestOptions & {
@@ -33,28 +34,174 @@ export type HttpResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: HttpRequestError; message: string; status: number | null }
 
-type RetryableConfig = AxiosRequestConfig & {
-  __retryCount?: number
-  __retryDelayMs?: number
+const DEFAULT_TIMEOUT_MS = 30000
+const JSON_CONTENT_TYPE = "application/json"
+const RETRY_DELAY_MS = 160
+const MAX_READ_RETRIES = 3
+
+type FetchAttemptConfig = HttpRequestConfig & {
+  retryCount: number
 }
 
-const axiosClient = axios.create({
-  timeout: 30000,
-  headers: {
-    "Content-Type": "application/json",
-  },
-})
+function isFormData(value: unknown): value is FormData {
+  return typeof FormData !== "undefined" && value instanceof FormData
+}
 
-function isRetryableTransportError(error: unknown): boolean {
-  if (!axios.isAxiosError(error)) return false
-  const config = (error.config ?? {}) as RetryableConfig
-  const method = String(config.method ?? "get").toLowerCase()
+function isBlobBody(value: unknown): value is Blob {
+  return typeof Blob !== "undefined" && value instanceof Blob
+}
+
+function isUrlSearchParamsBody(value: unknown): value is URLSearchParams {
+  return typeof URLSearchParams !== "undefined" && value instanceof URLSearchParams
+}
+
+function isBodyInit(value: unknown): value is BodyInit {
+  return (
+    typeof value === "string"
+    || value instanceof ArrayBuffer
+    || ArrayBuffer.isView(value)
+    || isBlobBody(value)
+    || isFormData(value)
+    || isUrlSearchParamsBody(value)
+  )
+}
+
+function appendQueryParams(url: string, params?: Record<string, unknown>): string {
+  if (!params) return url
+
+  const query = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null) return
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== undefined && item !== null) {
+          query.append(key, String(item))
+        }
+      })
+      return
+    }
+    query.set(key, String(value))
+  })
+
+  const queryString = query.toString()
+  if (!queryString) return url
+  return `${url}${url.includes("?") ? "&" : "?"}${queryString}`
+}
+
+function normalizeRequestHeaders(headers?: Record<string, string>, body?: unknown): Headers {
+  const normalized = new Headers(headers ?? {})
+  if (isFormData(body)) {
+    normalized.delete("Content-Type")
+    return normalized
+  }
+  if (body !== undefined && !isBodyInit(body) && !normalized.has("Content-Type")) {
+    normalized.set("Content-Type", JSON_CONTENT_TYPE)
+  }
+  return normalized
+}
+
+function createRequestBody(data: unknown): BodyInit | undefined {
+  if (data === undefined || data === null) return undefined
+  if (isBodyInit(data)) return data
+  return JSON.stringify(data)
+}
+
+function mergeSignals(
+  timeoutMs: number,
+  externalSignal?: AbortSignal,
+): { signal: AbortSignal; cleanup: () => void; timedOut: () => boolean } {
+  const controller = new AbortController()
+  let didTimeout = false
+  const timeoutId = globalThis.setTimeout(() => {
+    didTimeout = true
+    controller.abort()
+  }, timeoutMs)
+
+  const abortFromExternal = () => controller.abort()
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort()
+    } else {
+      externalSignal.addEventListener("abort", abortFromExternal, { once: true })
+    }
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      globalThis.clearTimeout(timeoutId)
+      externalSignal?.removeEventListener("abort", abortFromExternal)
+    },
+    timedOut: () => didTimeout,
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+
+function responseHeadersToRecord(headers: Headers): Record<string, unknown> {
+  const record: Record<string, unknown> = {}
+  headers.forEach((value, key) => {
+    record[key] = value
+  })
+  return record
+}
+
+async function readResponseData(response: Response, responseType?: HttpResponseType): Promise<unknown> {
+  if (response.status === 204 || response.status === 205) {
+    return null
+  }
+  if (responseType === "text") {
+    return response.text()
+  }
+  if (responseType === "blob") {
+    return response.blob()
+  }
+  if (responseType === "arraybuffer") {
+    return response.arrayBuffer()
+  }
+
+  const contentType = response.headers.get("content-type") ?? ""
+  if (responseType === "json" || contentType.includes("application/json")) {
+    const text = await response.text()
+    return text ? JSON.parse(text) : null
+  }
+  return response.text()
+}
+
+function createHttpRequestError(
+  message: string,
+  context: {
+    status?: number | null
+    detail?: string
+    url: string
+    method: string
+    code?: string
+    responseData?: unknown
+  },
+  cause?: unknown,
+): HttpRequestError {
+  return new HttpRequestError(message, {
+    status: context.status ?? null,
+    detail: context.detail ?? "",
+    url: context.url,
+    method: context.method.toUpperCase(),
+    code: context.code ?? "",
+    message,
+    responseData: context.responseData ?? null,
+    isHttpError: true,
+  }, { cause })
+}
+
+function isRetryableTransportError(error: unknown, config: HttpRequestConfig): boolean {
+  const method = String(config.method ?? "GET").toLowerCase()
   if (method !== "get") return false
 
   const url = String(config.url ?? "")
   const isApiReadEndpoint = /\/api\/v\d+\//.test(url) || /^\/api\//.test(url)
-  const code = String(error.code ?? "")
-  const message = String(error.message ?? "")
+  const code = error instanceof HttpRequestError ? error.code : ""
+  const message = error instanceof Error ? String(error.message ?? "") : ""
   const contentLengthMismatch = /content_length_mismatch|content-length|length\s*mismatch/i.test(message)
   const networkLike = code === "ERR_NETWORK" || code === "ECONNRESET" || code === "ETIMEDOUT"
 
@@ -65,62 +212,89 @@ function toHttpRequestError(error: unknown, fallback = "Request failed"): HttpRe
   if (error instanceof HttpRequestError) {
     return error
   }
-  return new HttpRequestError(
+  return createHttpRequestError(
     toUserFacingErrorMessage(error, fallback),
-    getHttpErrorContext(error),
-    { cause: error },
+    { url: "", method: "" },
+    error,
   )
 }
 
-function toHttpResponse<T>(response: AxiosResponse<T>): HttpResponse<T> {
-  return {
-    data: response.data,
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers as Record<string, unknown>,
-    url: String(response.config.url ?? ""),
-    method: String(response.config.method ?? "").toUpperCase(),
+async function fetchAttempt<T>(config: FetchAttemptConfig): Promise<HttpResponse<T>> {
+  const params = config.retryCount > 0
+    ? { ...(config.params ?? {}), __retryTs: Date.now() }
+    : config.params
+  const url = appendQueryParams(config.url, params)
+  const body = createRequestBody(config.data)
+  const timeoutMs = Math.max(1, Number(config.timeout ?? DEFAULT_TIMEOUT_MS))
+  const timeoutState = mergeSignals(timeoutMs, config.signal)
+
+  try {
+    const response = await fetch(url, {
+      method: config.method,
+      headers: normalizeRequestHeaders(config.headers, config.data),
+      body,
+      signal: timeoutState.signal,
+      cache: config.method === "GET" ? "no-store" : undefined,
+    })
+    const responseData = await readResponseData(response, config.responseType)
+    const responseUrl = response.url || url
+    if (!response.ok) {
+      const detail = normalizeHttpDetail(isRecord(responseData) ? responseData.detail : "")
+      const rawError = createHttpRequestError(response.statusText || "Request failed", {
+        status: response.status,
+        detail,
+        url: responseUrl,
+        method: config.method,
+        responseData,
+      })
+      throw createHttpRequestError(toUserFacingErrorMessage(rawError), {
+        status: response.status,
+        detail,
+        url: responseUrl,
+        method: config.method,
+        responseData,
+      }, rawError)
+    }
+    return {
+      data: responseData as T,
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeadersToRecord(response.headers),
+      url: responseUrl,
+      method: config.method,
+    }
+  } catch (error) {
+    if (error instanceof HttpRequestError) {
+      throw error
+    }
+    const code = timeoutState.timedOut() ? "ECONNABORTED" : "ERR_NETWORK"
+    const message = timeoutState.timedOut()
+      ? `Request timed out after ${timeoutMs} ms`
+      : (error instanceof Error && error.message ? error.message : "Network request failed")
+    throw createHttpRequestError(message, {
+      url,
+      method: config.method,
+      code,
+    }, error)
+  } finally {
+    timeoutState.cleanup()
   }
 }
 
-axiosClient.interceptors.response.use(
-  response => response,
-  async (error) => {
-    if (!axios.isAxiosError(error) || !error.config) {
-      return Promise.reject(toHttpRequestError(error))
-    }
-
-    const config = error.config as RetryableConfig
-    const retries = Number(config.__retryCount ?? 0)
-    const maxRetries = 3
-    if (!isRetryableTransportError(error) || retries >= maxRetries) {
-      return Promise.reject(toHttpRequestError(error))
-    }
-
-    config.__retryCount = retries + 1
-    const baseDelayMs = Math.max(80, Number(config.__retryDelayMs ?? 160))
-    const delayMs = baseDelayMs * (retries + 1)
-    const params = { ...(config.params as Record<string, unknown> | undefined) }
-    params.__retryTs = Date.now()
-    config.params = params
-
-    await new Promise(resolve => setTimeout(resolve, delayMs))
-    return axiosClient.request(config)
-  },
-)
-
 async function request<T>(config: HttpRequestConfig): Promise<HttpResponse<T>> {
-  const response = await axiosClient.request<T>({
-    method: config.method,
-    url: config.url,
-    data: config.data,
-    params: config.params,
-    headers: config.headers,
-    timeout: config.timeout,
-    signal: config.signal,
-    responseType: config.responseType,
-  })
-  return toHttpResponse(response)
+  let retryCount = 0
+  while (true) {
+    try {
+      return await fetchAttempt<T>({ ...config, retryCount })
+    } catch (error) {
+      if (retryCount >= MAX_READ_RETRIES || !isRetryableTransportError(error, config)) {
+        throw error
+      }
+      const delayMs = RETRY_DELAY_MS * (retryCount + 1)
+      retryCount += 1
+      await new Promise(resolve => globalThis.setTimeout(resolve, delayMs))
+    }
+  }
 }
 
 async function requestData<T>(config: HttpRequestConfig): Promise<T> {
