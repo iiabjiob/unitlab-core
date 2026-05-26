@@ -2,7 +2,7 @@
 <template>
   <div
     ref="panelRef"
-    class="relative flex"
+    class="resizable-panel"
     :class="panelClasses"
     :style="panelStyle"
   >
@@ -43,13 +43,13 @@ const panelRef = ref<HTMLElement | null>(null)
 const panelClasses = computed(() => {
   switch (props.placement) {
     case "left":
-      return "h-full flex-col border-r border-neutral-200 dark:border-neutral-700"
+      return "resizable-panel--left"
     case "right":
-      return "h-full flex-col border-l border-neutral-200 dark:border-neutral-700"
+      return "resizable-panel--right"
     case "top":
-      return "w-full flex-col border-b border-neutral-200 dark:border-neutral-700"
+      return "resizable-panel--top"
     case "bottom":
-      return "w-full flex-col border-t border-neutral-200 dark:border-neutral-700"
+      return "resizable-panel--bottom"
   }
 })
 
@@ -65,11 +65,17 @@ const panelStyle = computed(() => {
 // handle classes
 const handleClasses = computed(() => {
   if (props.placement === "left" || props.placement === "right") {
-    return "absolute top-0 h-full w-1 cursor-col-resize hover:bg-neutral-300 dark:hover:bg-neutral-600 " +
-      (props.placement === "left" ? "right-0" : "left-0")
+    return [
+      "resizable-panel__handle",
+      "resizable-panel__handle--vertical",
+      props.placement === "left" ? "resizable-panel__handle--right" : "resizable-panel__handle--left",
+    ]
   } else {
-    return "absolute left-0 w-full h-1 cursor-row-resize hover:bg-neutral-300 dark:hover:bg-neutral-600 " +
-      (props.placement === "top" ? "bottom-0" : "top-0")
+    return [
+      "resizable-panel__handle",
+      "resizable-panel__handle--horizontal",
+      props.placement === "top" ? "resizable-panel__handle--bottom" : "resizable-panel__handle--top",
+    ]
   }
 })
 
@@ -129,3 +135,96 @@ onMounted(() => {
   emit("size-change", size.value)
 })
 </script>
+
+<style scoped>
+.resizable-panel {
+  display: flex;
+  position: relative;
+}
+
+.resizable-panel--left,
+.resizable-panel--right {
+  flex-direction: column;
+  height: 100%;
+}
+
+.resizable-panel--top,
+.resizable-panel--bottom {
+  flex-direction: column;
+  width: 100%;
+}
+
+.resizable-panel--left {
+  border-right: 1px solid var(--color-neutral-200);
+}
+
+.resizable-panel--right {
+  border-left: 1px solid var(--color-neutral-200);
+}
+
+.resizable-panel--top {
+  border-bottom: 1px solid var(--color-neutral-200);
+}
+
+.resizable-panel--bottom {
+  border-top: 1px solid var(--color-neutral-200);
+}
+
+.resizable-panel__handle {
+  position: absolute;
+}
+
+.resizable-panel__handle:hover {
+  background: var(--color-neutral-300);
+}
+
+.resizable-panel__handle--vertical {
+  cursor: col-resize;
+  height: 100%;
+  top: 0;
+  width: 0.25rem;
+}
+
+.resizable-panel__handle--horizontal {
+  cursor: row-resize;
+  height: 0.25rem;
+  left: 0;
+  width: 100%;
+}
+
+.resizable-panel__handle--left {
+  left: 0;
+}
+
+.resizable-panel__handle--right {
+  right: 0;
+}
+
+.resizable-panel__handle--top {
+  top: 0;
+}
+
+.resizable-panel__handle--bottom {
+  bottom: 0;
+}
+
+.dark .resizable-panel--left {
+  border-right-color: var(--color-neutral-700);
+}
+
+.dark .resizable-panel--right {
+  border-left-color: var(--color-neutral-700);
+}
+
+.dark .resizable-panel--top {
+  border-bottom-color: var(--color-neutral-700);
+}
+
+.dark .resizable-panel--bottom {
+  border-top-color: var(--color-neutral-700);
+}
+
+.dark .resizable-panel__handle:hover {
+  background: var(--color-neutral-600);
+}
+</style>

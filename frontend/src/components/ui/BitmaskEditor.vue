@@ -1,7 +1,6 @@
 <template>
-  <div class="space-y-2">
-    <!-- Controls -->
-    <div v-if="channelCount>0" class="flex justify-start gap-2 text-xs">
+  <div class="bitmask-editor">
+    <div v-if="channelCount > 0" class="bitmask-editor__controls">
       <UiButton type="toolbar" size="xs" :disabled="isDisabled" @click="selectAll">
         all
       </UiButton>
@@ -14,20 +13,21 @@
         invert
       </UiButton>
     </div>
-    <span v-else class="text-xs text-neutral-500">
+    <span v-else class="bitmask-editor__empty">
       unit not found
     </span>
 
-    <!-- Dynamic grid -->
-    <div :class="['grid gap-1 text-xs', gridColsClass, isDisabled ? 'opacity-60' : '']">
+    <div
+      class="bitmask-editor__grid"
+      :class="{ 'is-disabled': isDisabled }"
+      :style="gridStyle"
+    >
       <button
         v-for="i in channelCount"
         :key="i"
         type="button"
-        class="flex items-center justify-center border rounded-sm h-6 w-6"
-        :class="isBitSet(i - 1)
-          ? ['bg-neutral-600', 'text-white', 'dark:bg-neutral-300', 'dark:text-black']
-          : ['bg-neutral-100', 'dark:bg-neutral-800']"
+        class="bitmask-editor__bit"
+        :class="{ 'is-set': isBitSet(i - 1) }"
         :disabled="isDisabled"
         @click="toggleBit(i - 1)"
       >
@@ -61,13 +61,10 @@ function maskForCount(count: number): number {
   return (1 << count) - 1
 }
 
-// сетка — до 8 колонок, остальное переносится
-const gridColsClass = computed(() => {
-  if (props.channelCount <= 4) return "grid-cols-4"
-  if (props.channelCount <= 8) return "grid-cols-8"
-  if (props.channelCount <= 16) return "grid-cols-8"
-  return "grid-cols-8" // всегда по 8 колонок
-})
+const gridColumnCount = computed(() => props.channelCount <= 4 ? 4 : 8)
+const gridStyle = computed(() => ({
+  gridTemplateColumns: `repeat(${gridColumnCount.value}, minmax(0, 1.5rem))`,
+}))
 
 function isBitSet(bit: number): boolean {
   return (value.value & (1 << bit)) !== 0
@@ -95,3 +92,61 @@ function invertAll() {
   emit("update:modelValue", ((~value.value) & mask) >>> 0)
 }
 </script>
+
+<style scoped>
+.bitmask-editor {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.bitmask-editor__controls {
+  display: flex;
+  font-size: var(--text-xs);
+  gap: 0.5rem;
+  justify-content: flex-start;
+  line-height: 1rem;
+}
+
+.bitmask-editor__empty {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  line-height: 1rem;
+}
+
+.bitmask-editor__grid {
+  display: grid;
+  font-size: var(--text-xs);
+  gap: 0.25rem;
+  line-height: 1rem;
+}
+
+.bitmask-editor__grid.is-disabled {
+  opacity: 0.6;
+}
+
+.bitmask-editor__bit {
+  align-items: center;
+  background: var(--color-neutral-100);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-sm);
+  display: flex;
+  height: 1.5rem;
+  justify-content: center;
+  width: 1.5rem;
+}
+
+.bitmask-editor__bit.is-set {
+  background: var(--color-neutral-600);
+  color: var(--color-white);
+}
+
+.dark .bitmask-editor__bit {
+  background: var(--color-neutral-800);
+  border-color: var(--color-neutral-700);
+}
+
+.dark .bitmask-editor__bit.is-set {
+  background: var(--color-neutral-300);
+  color: var(--color-neutral-950);
+}
+</style>

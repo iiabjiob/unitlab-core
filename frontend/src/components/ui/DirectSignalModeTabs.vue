@@ -1,6 +1,6 @@
 <template>
   <div
-    class="inline-flex items-center rounded-md overflow-hidden bg-neutral-100 dark:bg-neutral-800 p-0.5"
+    class="direct-signal-mode-tabs"
     role="tablist"
     :aria-label="ariaLabel"
   >
@@ -8,7 +8,7 @@
       type="button"
       role="tab"
       :aria-selected="selectedMode === 'direct'"
-      class="px-3 py-1 text-xs rounded-md transition-all select-none"
+      class="direct-signal-mode-tabs__button"
       :class="buttonClass('direct')"
       :disabled="disabled"
       @click="selectMode('direct')"
@@ -20,7 +20,7 @@
       type="button"
       role="tab"
       :aria-selected="selectedMode === 'signal'"
-      class="px-3 py-1 text-xs rounded-md transition-all select-none"
+      class="direct-signal-mode-tabs__button"
       :class="buttonClass('signal')"
       :disabled="disabled"
       @click="selectMode('signal')"
@@ -99,8 +99,62 @@ function selectMode(mode: BindingMode) {
 
 function buttonClass(mode: BindingMode) {
   const active = selectedMode.value === mode
-  return active
-    ? "bg-neutral-200 dark:bg-neutral-700 text-neutral-900 dark:text-neutral-50 ring-1 ring-neutral-300 dark:ring-neutral-600"
-    : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200/50 dark:hover:bg-neutral-700/50"
+  return active ? "is-active" : "is-idle"
 }
 </script>
+
+<style scoped>
+.direct-signal-mode-tabs {
+  align-items: center;
+  background: var(--color-neutral-100);
+  border-radius: var(--radius-md);
+  display: inline-flex;
+  overflow: hidden;
+  padding: 0.125rem;
+}
+
+.direct-signal-mode-tabs__button {
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  line-height: 1rem;
+  padding: 0.25rem 0.75rem;
+  transition: background-color 150ms ease, box-shadow 150ms ease, color 150ms ease;
+  user-select: none;
+}
+
+.direct-signal-mode-tabs__button.is-active {
+  background: var(--color-neutral-200);
+  box-shadow: 0 0 0 1px var(--color-neutral-300);
+  color: var(--color-neutral-900);
+}
+
+.direct-signal-mode-tabs__button.is-idle {
+  color: var(--color-neutral-600);
+}
+
+.direct-signal-mode-tabs__button.is-idle:hover {
+  background: color-mix(in srgb, var(--color-neutral-200) 50%, transparent);
+}
+
+.direct-signal-mode-tabs__button:disabled {
+  opacity: 0.65;
+}
+
+.dark .direct-signal-mode-tabs {
+  background: var(--color-neutral-800);
+}
+
+.dark .direct-signal-mode-tabs__button.is-active {
+  background: var(--color-neutral-700);
+  box-shadow: 0 0 0 1px var(--color-neutral-600);
+  color: var(--color-neutral-50);
+}
+
+.dark .direct-signal-mode-tabs__button.is-idle {
+  color: var(--color-neutral-300);
+}
+
+.dark .direct-signal-mode-tabs__button.is-idle:hover {
+  background: color-mix(in srgb, var(--color-neutral-700) 50%, transparent);
+}
+</style>

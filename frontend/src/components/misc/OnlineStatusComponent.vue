@@ -8,29 +8,16 @@ const props = defineProps<{
   neutralOffline?: boolean
 }>()
 
-const indicatorClass = computed(() => {
+const statusClass = computed(() => {
   switch (props.status) {
     case "online":
-      return "bg-green-400"
+      return "is-online"
     case "degraded":
-      return "bg-amber-400"
+      return "is-degraded"
     case "offline":
-      return "bg-neutral-400"
+      return "is-offline"
     default:
-      return "bg-neutral-400"
-  }
-})
-
-const labelClass = computed(() => {
-  switch (props.status) {
-    case "online":
-      return "text-green-500"
-    case "degraded":
-      return "text-amber-500"
-    case "offline":
-      return "text-neutral-500"
-    default:
-      return "text-neutral-500"
+      return "is-unknown"
   }
 })
 
@@ -45,14 +32,14 @@ const tooltip = computed(() => props.description || null)
 </script>
 
 <template>
-  <span class="inline-flex items-center gap-2" :aria-label="`System status: ${label}`">
-    <span class="h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm" :class="indicatorClass" />
-    <span class="text-sm font-medium" :class="labelClass">
+  <span class="online-status" :class="statusClass" :aria-label="`System status: ${label}`">
+    <span class="online-status__indicator" />
+    <span class="online-status__label">
       {{ label }}
     </span>
     <InlineInfoTooltip
       v-if="tooltip"
-      class="hidden sm:inline-flex"
+      class="online-status__tooltip"
       :text="tooltip"
       aria-label="System status details"
       placement="bottom"
@@ -60,3 +47,61 @@ const tooltip = computed(() => props.description || null)
     />
   </span>
 </template>
+
+<style scoped>
+.online-status {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.5rem;
+}
+
+.online-status__indicator {
+  border: 1px solid color-mix(in srgb, var(--color-white) 70%, transparent);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+  height: 0.625rem;
+  width: 0.625rem;
+}
+
+.online-status__label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1.25rem;
+}
+
+.online-status.is-online .online-status__indicator {
+  background: var(--color-green-400);
+}
+
+.online-status.is-online .online-status__label {
+  color: var(--color-green-600);
+}
+
+.online-status.is-degraded .online-status__indicator {
+  background: var(--color-amber-400);
+}
+
+.online-status.is-degraded .online-status__label {
+  color: var(--color-amber-500);
+}
+
+.online-status.is-offline .online-status__indicator,
+.online-status.is-unknown .online-status__indicator {
+  background: var(--color-neutral-400);
+}
+
+.online-status.is-offline .online-status__label,
+.online-status.is-unknown .online-status__label {
+  color: var(--color-neutral-500);
+}
+
+.online-status__tooltip {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .online-status__tooltip {
+    display: inline-flex;
+  }
+}
+</style>

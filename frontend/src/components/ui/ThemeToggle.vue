@@ -3,7 +3,7 @@
     <UiMenuTrigger asChild>
       <button
         type="button"
-        class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-300 bg-white text-base text-neutral-700 transition hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+        class="theme-toggle__trigger"
         :aria-label="`Theme: ${activeLabel}`"
         :title="`Theme: ${activeLabel}`"
       >
@@ -16,13 +16,13 @@
       <UiMenuItem
         v-for="opt in options"
         :key="opt.value"
-        class="text-neutral-900 dark:text-neutral-100"
+        class="theme-toggle__item"
         @select="selectTheme(opt.value)"
       >
-        <span class="inline-flex min-w-0 items-center gap-2">
+        <span class="theme-toggle__option">
           <span aria-hidden="true">{{ iconFor(opt.value) }}</span>
           <span>{{ opt.label }}</span>
-          <span v-if="themeStore.mode === opt.value" class="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          <span v-if="themeStore.mode === opt.value" class="theme-toggle__current">
             current
           </span>
         </span>
@@ -75,3 +75,61 @@ function selectTheme(value: ThemeMode) {
   themeStore.setMode(value)
 }
 </script>
+
+<style scoped>
+.theme-toggle__trigger {
+  align-items: center;
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: 0.5rem;
+  color: var(--color-neutral-700);
+  display: inline-flex;
+  font-size: var(--text-base);
+  height: 2.25rem;
+  justify-content: center;
+  line-height: 1.5rem;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  width: 2.25rem;
+}
+
+.theme-toggle__trigger:hover {
+  background: var(--color-neutral-100);
+}
+
+.theme-toggle__item {
+  color: var(--color-neutral-900);
+}
+
+.theme-toggle__option {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.theme-toggle__current {
+  color: var(--color-neutral-500);
+  font-size: 0.625rem;
+  letter-spacing: 0.025em;
+  line-height: 1rem;
+  text-transform: uppercase;
+}
+
+.dark .theme-toggle__trigger {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-200);
+}
+
+.dark .theme-toggle__trigger:hover {
+  background: var(--color-neutral-800);
+}
+
+.dark .theme-toggle__item {
+  color: var(--color-neutral-100);
+}
+
+.dark .theme-toggle__current {
+  color: var(--color-neutral-400);
+}
+</style>
