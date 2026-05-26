@@ -10,10 +10,10 @@ type LogEntry = {
 }
 
 const defaultColors: Record<string, { dot: string; text?: string }> = {
-  error: { dot: "bg-red-500", text: "text-red-400" },
-  step: { dot: "bg-blue-400", text: "text-blue-300" },
-  command: { dot: "bg-blue-400", text: "text-blue-300" },
-  info: { dot: "bg-neutral-400", text: "text-neutral-700 dark:text-neutral-300" },
+  error: { dot: "execution-log__dot--error", text: "execution-log__message--error" },
+  step: { dot: "execution-log__dot--step", text: "execution-log__message--step" },
+  command: { dot: "execution-log__dot--step", text: "execution-log__message--step" },
+  info: { dot: "execution-log__dot--info", text: "execution-log__message--info" },
 }
 
 const emit = defineEmits<{
@@ -53,7 +53,7 @@ function setCopyButtonFeedback(text: string, durationMs = 1500) {
 }
 
 function dotClass(type: string) {
-  return props.typeColors?.[type]?.dot ?? defaultColors[type]?.dot ?? "bg-neutral-400"
+  return props.typeColors?.[type]?.dot ?? defaultColors[type]?.dot ?? "execution-log__dot--info"
 }
 
 function textClass(type: string) {
@@ -124,53 +124,240 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex flex-col select-none lg:h-full lg:min-h-0">
-    <div class="p-4 text-xs uppercase tracking-wider text-neutral-500 dark:text-neutral-400 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
+  <div class="execution-log">
+    <div class="execution-log__header">
       <span>{{ props.title }}</span>
       <button
         type="button"
-        class="relative text-[10px] px-2 py-1 rounded border border-neutral-300 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800/60 transition-colors"
+        class="execution-log__copy"
         @click="copyLogs"
       >
-        <span class="invisible">Copy log</span>
-        <span class="absolute inset-0 flex items-center justify-center">
+        <span class="execution-log__copy-spacer">Copy log</span>
+        <span class="execution-log__copy-label">
           {{ copyButtonText }}
         </span>
       </button>
     </div>
     <div
       ref="logContainer"
-      class="px-4 py-2 space-y-0.5 font-mono text-[11px] leading-tight text-neutral-700 dark:text-neutral-300 lg:flex-1 lg:min-h-0 lg:overflow-y-auto"
+      class="execution-log__list"
     >
       <div
         v-for="(log, index) in entries"
         :key="index"
-        class="flex items-center gap-2 py-1 px-1 rounded-sm transition-colors"
-        :class="[
-          props.selectable ? 'cursor-default hover:bg-neutral-100 dark:hover:bg-neutral-800/50 focus:outline-none focus:ring-1 focus:ring-neutral-300 dark:focus:ring-neutral-600' : 'hover:bg-neutral-100 dark:hover:bg-neutral-800/50',
-          props.selectedIndex === index ? 'bg-neutral-100 dark:bg-neutral-800/60' : '',
-        ]"
+        class="execution-log__row"
+        :class="{
+          'is-selectable': props.selectable,
+          'is-selected': props.selectedIndex === index,
+        }"
         :tabindex="props.selectable ? 0 : undefined"
         @click="handleSelect(index)"
         @keydown="onKeydown($event, index)"
       >
-        <div class="text-[10px] opacity-50 w-20 shrink-0 text-left">
+        <div class="execution-log__time">
           {{ log.ts }}
         </div>
-        <div class="w-2 h-2 rounded-full" :class="dotClass(log.type)" />
-        <div class="whitespace-pre-wrap break-words flex-1" :class="textClass(log.type)">
+        <div class="execution-log__dot" :class="dotClass(log.type)" />
+        <div class="execution-log__message" :class="textClass(log.type)">
           <span>{{ log.message }}</span>
           <span
             v-if="detailText(log)"
-            class="ml-1 text-[10px] text-neutral-500 dark:text-neutral-400"
+            class="execution-log__detail"
           >
             · {{ detailText(log) }}
           </span>
         </div>
       </div>
-      <div v-if="entries.length === 0" class="opacity-40 italic py-2">
+      <div v-if="entries.length === 0" class="execution-log__empty">
         {{ props.emptyMessage }}
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.execution-log {
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.execution-log__header {
+  align-items: center;
+  border-bottom: 1px solid var(--color-neutral-200);
+  color: var(--color-neutral-500);
+  display: flex;
+  font-size: var(--text-xs);
+  gap: 0.75rem;
+  justify-content: space-between;
+  letter-spacing: 0.05em;
+  line-height: 1rem;
+  padding: 1rem;
+  text-transform: uppercase;
+}
+
+.execution-log__copy {
+  border: 1px solid var(--color-neutral-300);
+  border-radius: 0.25rem;
+  color: var(--color-neutral-600);
+  font-size: 0.625rem;
+  line-height: 1rem;
+  padding: 0.25rem 0.5rem;
+  position: relative;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.execution-log__copy:hover {
+  background: var(--color-neutral-100);
+}
+
+.execution-log__copy-spacer {
+  visibility: hidden;
+}
+
+.execution-log__copy-label {
+  align-items: center;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+}
+
+.execution-log__list {
+  color: var(--color-neutral-700);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.25;
+  padding: 0.5rem 1rem;
+}
+
+.execution-log__row {
+  align-items: center;
+  border-radius: var(--radius-sm);
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.execution-log__row:hover,
+.execution-log__row.is-selected {
+  background: var(--color-neutral-100);
+}
+
+.execution-log__row.is-selectable {
+  cursor: default;
+}
+
+.execution-log__row.is-selectable:focus {
+  outline: none;
+}
+
+.execution-log__row.is-selectable:focus-visible {
+  box-shadow: 0 0 0 1px var(--color-neutral-300);
+}
+
+.execution-log__time {
+  flex: 0 0 auto;
+  font-size: 0.625rem;
+  opacity: 0.5;
+  text-align: left;
+  width: 5rem;
+}
+
+.execution-log__dot {
+  border-radius: 999px;
+  height: 0.5rem;
+  width: 0.5rem;
+}
+
+.execution-log__dot--error {
+  background: var(--color-red-500);
+}
+
+.execution-log__dot--step {
+  background: var(--color-blue-400);
+}
+
+.execution-log__dot--info {
+  background: var(--color-neutral-400);
+}
+
+.execution-log__message {
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.execution-log__message--error {
+  color: var(--color-red-400);
+}
+
+.execution-log__message--step {
+  color: var(--color-blue-300);
+}
+
+.execution-log__message--info {
+  color: var(--color-neutral-700);
+}
+
+.execution-log__detail {
+  color: var(--color-neutral-500);
+  font-size: 0.625rem;
+  margin-left: 0.25rem;
+}
+
+.execution-log__empty {
+  font-style: italic;
+  opacity: 0.4;
+  padding: 0.5rem 0;
+}
+
+.dark .execution-log__header {
+  border-color: var(--color-neutral-800);
+  color: var(--color-neutral-400);
+}
+
+.dark .execution-log__copy {
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-300);
+}
+
+.dark .execution-log__copy:hover {
+  background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
+}
+
+.dark .execution-log__list,
+.dark .execution-log__message--info {
+  color: var(--color-neutral-300);
+}
+
+.dark .execution-log__row:hover {
+  background: color-mix(in srgb, var(--color-neutral-800) 50%, transparent);
+}
+
+.dark .execution-log__row.is-selected {
+  background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
+}
+
+.dark .execution-log__row.is-selectable:focus-visible {
+  box-shadow: 0 0 0 1px var(--color-neutral-600);
+}
+
+.dark .execution-log__detail {
+  color: var(--color-neutral-400);
+}
+
+@media (min-width: 1024px) {
+  .execution-log {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .execution-log__list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+</style>

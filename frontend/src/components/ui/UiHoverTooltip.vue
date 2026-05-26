@@ -111,8 +111,8 @@ function getTriggerProps() {
 
 const tooltipProps = computed(() => tooltipController.getTooltipProps())
 const tooltipClass = computed(() => [
-  "ui-hover-tooltip z-50 w-max rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-xs leading-5 text-neutral-700 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200",
-  props.multiline ? "max-w-sm whitespace-pre-line" : "max-w-xs whitespace-nowrap",
+  "ui-hover-tooltip",
+  props.multiline ? "ui-hover-tooltip--multiline" : "ui-hover-tooltip--single-line",
 ])
 
 function suppressClickOpen() {
@@ -193,3 +193,34 @@ function setTriggerRef(target: Element | ComponentPublicInstance | null) {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.ui-hover-tooltip {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+  line-height: 1.25rem;
+  padding: 0.375rem 0.625rem;
+  width: max-content;
+  z-index: 50;
+}
+
+.ui-hover-tooltip--single-line {
+  max-width: 20rem;
+  white-space: nowrap;
+}
+
+.ui-hover-tooltip--multiline {
+  max-width: 24rem;
+  white-space: pre-line;
+}
+
+.dark .ui-hover-tooltip {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-200);
+}
+</style>

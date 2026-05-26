@@ -1,7 +1,7 @@
 <template>
   <component
     :is="wrapperTag"
-    class="draggable-list select-none"
+    class="draggable-list"
     :data-axis="axis"
     :role="wrapperRole"
     :aria-activedescendant="activeDescendantId"
@@ -471,6 +471,7 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  user-select: none;
 }
 
 .draggable-list[data-axis="horizontal"] {

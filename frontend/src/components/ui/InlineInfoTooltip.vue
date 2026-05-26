@@ -114,7 +114,7 @@ function setTriggerRef(target: Element | ComponentPublicInstance | null) {
   <span
     v-else
     ref="triggerRef"
-    class="inline-flex h-4 w-4 select-none items-center justify-center rounded-full text-[10px] font-medium leading-none text-neutral-400/80 transition-colors hover:text-neutral-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500/40 dark:text-neutral-500 dark:hover:text-neutral-300"
+    class="inline-info-tooltip__trigger"
     v-bind="triggerAttrs"
     role="button"
     tabindex="0"
@@ -127,7 +127,7 @@ function setTriggerRef(target: Element | ComponentPublicInstance | null) {
     <div
       v-if="!disabled && tooltipController.state.value.open"
       ref="tooltipRef"
-      class="z-50 w-max max-w-xs whitespace-pre-line rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-xs leading-5 text-neutral-700 shadow-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+      class="inline-info-tooltip__content"
       v-bind="tooltipController.getTooltipProps()"
       :style="tooltipStyle"
     >
@@ -135,3 +135,58 @@ function setTriggerRef(target: Element | ComponentPublicInstance | null) {
     </div>
   </Teleport>
 </template>
+
+<style scoped>
+.inline-info-tooltip__trigger {
+  align-items: center;
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--color-neutral-400) 80%, transparent);
+  display: inline-flex;
+  font-size: 0.625rem;
+  font-weight: 500;
+  height: 1rem;
+  justify-content: center;
+  line-height: 1;
+  transition: color 150ms ease, box-shadow 150ms ease;
+  user-select: none;
+  width: 1rem;
+}
+
+.inline-info-tooltip__trigger:hover {
+  color: var(--color-neutral-500);
+}
+
+.inline-info-tooltip__trigger:focus-visible {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-blue-500) 40%, transparent);
+  outline: none;
+}
+
+.inline-info-tooltip__content {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+  line-height: 1.25rem;
+  max-width: 20rem;
+  padding: 0.375rem 0.625rem;
+  white-space: pre-line;
+  width: max-content;
+  z-index: 50;
+}
+
+.dark .inline-info-tooltip__trigger {
+  color: var(--color-neutral-500);
+}
+
+.dark .inline-info-tooltip__trigger:hover {
+  color: var(--color-neutral-300);
+}
+
+.dark .inline-info-tooltip__content {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-200);
+}
+</style>

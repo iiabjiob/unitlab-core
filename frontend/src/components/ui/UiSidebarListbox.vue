@@ -171,7 +171,7 @@ function handleItemClick(index: number) {
 <template>
   <div
     ref="listboxRef"
-    class="overflow-y-auto space-y-1 rounded-lg focus:outline-none"
+    class="ui-sidebar-listbox"
     :tabindex="disabled ? -1 : 0"
     role="listbox"
     :aria-label="ariaLabel"
@@ -186,7 +186,7 @@ function handleItemClick(index: number) {
       :ref="(el) => setOptionRef(index, el)"
       role="option"
       :aria-selected="isActive(item)"
-      class="rounded-lg"
+      class="ui-sidebar-listbox__option"
       @pointerdown="handleItemPointerDown(index)"
       @click="handleItemClick(index)"
     >
@@ -202,3 +202,22 @@ function handleItemClick(index: number) {
     <slot v-if="!normalizedItems.length" name="empty" />
   </div>
 </template>
+
+<style scoped>
+.ui-sidebar-listbox {
+  border-radius: 0.5rem;
+  overflow-y: auto;
+}
+
+.ui-sidebar-listbox:focus {
+  outline: none;
+}
+
+.ui-sidebar-listbox__option {
+  border-radius: 0.5rem;
+}
+
+.ui-sidebar-listbox__option + .ui-sidebar-listbox__option {
+  margin-top: 0.25rem;
+}
+</style>

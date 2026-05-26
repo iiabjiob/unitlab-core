@@ -10,8 +10,8 @@ const props = withDefaults(defineProps<{
   contentClass?: string
 }>(), {
   defaultOpen: true,
-  containerClass: "rounded-lg border border-neutral-200 dark:border-neutral-700 p-3",
-  headerClass: "mb-2 text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400",
+  containerClass: "ui-affino-disclosure",
+  headerClass: "ui-affino-disclosure__header",
   contentClass: "",
 })
 
@@ -23,7 +23,7 @@ const isOpen = computed(() => disclosure.state.value.open)
   <div :class="containerClass">
     <button
       type="button"
-      class="w-full flex items-center justify-between"
+      class="ui-affino-disclosure__button"
       :class="headerClass"
       :aria-expanded="isOpen"
       @click="disclosure.toggle()"
@@ -37,3 +37,35 @@ const isOpen = computed(() => disclosure.state.value.open)
     </div>
   </div>
 </template>
+
+<style scoped>
+.ui-affino-disclosure {
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.ui-affino-disclosure__button {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.ui-affino-disclosure__header {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  letter-spacing: 0.025em;
+  line-height: 1rem;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+}
+
+.dark .ui-affino-disclosure {
+  border-color: var(--color-neutral-700);
+}
+
+.dark .ui-affino-disclosure__header {
+  color: var(--color-neutral-400);
+}
+</style>
