@@ -1,24 +1,24 @@
 import { http } from "./http"
 import { API_V1, buildQuery } from "./utils"
-import type { SequenceStep, SequenceStepCreate } from "@/types/sequences"
+import type { SequenceDef, SequenceState, SequenceStep, SequenceStepCreate } from "@/types/sequences"
 
 const basePath = (workspaceId: number | string) => `${API_V1}/workspaces/${workspaceId}/sequences`
 
 export const SequencesAPI = {
   list(workspaceId: number | string, params?: Record<string, any>) {
-    return http.get(buildQuery(basePath(workspaceId), params))
+    return http.get<SequenceDef[]>(buildQuery(basePath(workspaceId), params))
   },
 
   get(workspaceId: number | string, id: number | string) {
-    return http.get(`${basePath(workspaceId)}/${id}`)
+    return http.get<SequenceDef>(`${basePath(workspaceId)}/${id}`)
   },
 
   create(workspaceId: number | string, payload: any) {
-    return http.post(basePath(workspaceId), payload)
+    return http.post<SequenceDef>(basePath(workspaceId), payload)
   },
 
   update(workspaceId: number | string, id: number | string, payload: any) {
-    return http.patch(`${basePath(workspaceId)}/${id}`, payload)
+    return http.patch<SequenceDef>(`${basePath(workspaceId)}/${id}`, payload)
   },
 
   delete(workspaceId: number | string, id: number | string) {
@@ -57,23 +57,23 @@ export const SequencesAPI = {
 
   // Execution
   start(workspaceId: number | string, seqId: number | string) {
-    return http.post(`${basePath(workspaceId)}/${seqId}/start`)
+    return http.post<SequenceState>(`${basePath(workspaceId)}/${seqId}/start`)
   },
 
   stop(workspaceId: number | string, seqId: number | string) {
-    return http.post(`${basePath(workspaceId)}/${seqId}/stop`)
+    return http.post<SequenceState>(`${basePath(workspaceId)}/${seqId}/stop`)
   },
 
   getState(workspaceId: number | string, seqId: number | string) {
-    return http.get(`${basePath(workspaceId)}/${seqId}/state`)
+    return http.get<SequenceState>(`${basePath(workspaceId)}/${seqId}/state`)
   },
 
   export(workspaceId: number | string, seqId: number | string) {
-    return http.get(`${basePath(workspaceId)}/${seqId}/export-file`)
+    return http.get<unknown>(`${basePath(workspaceId)}/${seqId}/export-file`)
   },
 
   import(workspaceId: number | string, formData: FormData) {
-    return http.post(`${basePath(workspaceId)}/import-file`, formData, {
+    return http.post<SequenceDef[]>(`${basePath(workspaceId)}/import-file`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     })
   },

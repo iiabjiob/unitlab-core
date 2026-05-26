@@ -328,9 +328,9 @@
 </template>
 
 <script setup lang="ts">
-import axios from "axios"
 import { computed, nextTick, ref, watch } from "vue"
 
+import { getHttpErrorContext } from "@/api/httpErrors"
 import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import UiAlert from "@/components/ui/UiAlert.vue"
 import UiAffinoListbox from "@/components/ui/UiAffinoListbox.vue"
@@ -540,16 +540,17 @@ async function handleSubmit() {
 }
 
 function toReadableImportError(err: unknown): string {
-  if (axios.isAxiosError(err)) {
-    const code = String(err.code ?? "").toUpperCase()
-    const status = Number(err.response?.status)
-    const detail = typeof err.response?.data?.detail === "string" ? err.response.data.detail : ""
+  const context = getHttpErrorContext(err)
+  if (context.isHttpError) {
+    const code = context.code.toUpperCase()
+    const status = Number(context.status)
+    const detail = context.detail
     const normalized = detail.replace(/^Unable to parse workbook:\s*/i, "").trim()
 
     if (code === "ECONNABORTED") {
       return "Import timed out on the first attempt. Please retry; if it repeats, reduce file size or check device load."
     }
-    if (!err.response && (code === "ERR_NETWORK" || code === "ECONNRESET" || code === "ETIMEDOUT")) {
+    if (context.status === null && (code === "ERR_NETWORK" || code === "ECONNRESET" || code === "ETIMEDOUT")) {
       return "Network connection was interrupted during import. Please retry."
     }
 

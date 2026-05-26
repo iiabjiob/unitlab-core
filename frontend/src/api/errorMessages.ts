@@ -1,55 +1,4 @@
-import axios from "axios"
-
-type ErrorContext = {
-  status: number | null
-  detail: string
-  url: string
-}
-
-function normalizeDetail(detail: unknown): string {
-  if (typeof detail === "string") {
-    return detail.trim()
-  }
-  if (Array.isArray(detail)) {
-    const joined = detail
-      .map((entry) => {
-        if (typeof entry === "string") {
-          return entry
-        }
-        if (entry && typeof entry === "object") {
-          const message = (entry as { msg?: unknown }).msg
-          if (typeof message === "string") {
-            return message
-          }
-        }
-        return ""
-      })
-      .filter(Boolean)
-      .join("; ")
-    return joined.trim()
-  }
-  if (detail && typeof detail === "object") {
-    const message = (detail as { msg?: unknown; message?: unknown }).msg ?? (detail as { message?: unknown }).message
-    if (typeof message === "string") {
-      return message.trim()
-    }
-  }
-  return ""
-}
-
-function extractErrorContext(error: unknown): ErrorContext {
-  if (!axios.isAxiosError(error)) {
-    return { status: null, detail: "", url: "" }
-  }
-  const status = Number(error.response?.status)
-  const detail = normalizeDetail(error.response?.data?.detail)
-  const url = String(error.config?.url ?? "")
-  return {
-    status: Number.isFinite(status) ? status : null,
-    detail,
-    url,
-  }
-}
+import { getHttpErrorContext, type HttpErrorContext } from "@/api/httpErrors"
 
 function mapKnownDetail(detail: string): string | null {
   const tooManySignalsMatch = detail.match(/Too many signals for test run \(max\s*(\d+)\)/i)
@@ -61,7 +10,7 @@ function mapKnownDetail(detail: string): string | null {
   return null
 }
 
-function mapByStatus(context: ErrorContext): string | null {
+function mapByStatus(context: HttpErrorContext): string | null {
   const { status, url } = context
   if (status === 409 && /\/signal-allocations\/test-run\/jobs(?:\?|$)/.test(url)) {
     return "A test run is already active in this workspace. Stop it or wait until it finishes."
@@ -85,14 +34,14 @@ function mapByStatus(context: ErrorContext): string | null {
 }
 
 export function toUserFacingErrorMessage(error: unknown, fallback = "Request failed"): string {
-  if (!axios.isAxiosError(error)) {
+  const context = getHttpErrorContext(error)
+
+  if (!context.isHttpError) {
     if (error instanceof Error && String(error.message || "").trim()) {
       return error.message
     }
     return fallback
   }
-
-  const context = extractErrorContext(error)
 
   const mappedDetail = context.detail ? mapKnownDetail(context.detail) : null
   if (mappedDetail) {
@@ -108,7 +57,7 @@ export function toUserFacingErrorMessage(error: unknown, fallback = "Request fai
     return context.detail
   }
 
-  const message = String(error.message ?? "").trim()
+  const message = String(context.message ?? "").trim()
   if (message && !/request failed with status code/i.test(message)) {
     return message
   }

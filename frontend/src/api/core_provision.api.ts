@@ -1,34 +1,27 @@
-import { http } from "./http"
+import { httpData } from "./http"
 import { API_V1 } from "./utils"
 import type { CoreProvisionCommandAccepted, CoreProvisionStateResponse } from "@/types/coreProvision"
 
 export async function fetchCoreProvisionState() {
-  const { data } = await http.get<CoreProvisionStateResponse>(`${API_V1}/core-provision/state`)
-  return data
+  return httpData.get<CoreProvisionStateResponse>(`${API_V1}/core-provision/state`)
 }
 
 export async function enqueueCoreProvisionStatus() {
-  const { data } = await http.post<CoreProvisionCommandAccepted>(`${API_V1}/core-provision/status`)
-  return data
+  return httpData.post<CoreProvisionCommandAccepted>(`${API_V1}/core-provision/status`)
 }
 
 export async function enqueueCoreProvisionSmokeCheck() {
-  const { data } = await http.post<CoreProvisionCommandAccepted>(`${API_V1}/core-provision/smoke-check`)
-  return data
+  return httpData.post<CoreProvisionCommandAccepted>(`${API_V1}/core-provision/smoke-check`)
 }
 
 export async function enqueueCoreProvisionInstallNetAgent() {
-  const { data } = await http.post<CoreProvisionCommandAccepted>(`${API_V1}/core-provision/install/net-agent`)
-  return data
+  return httpData.post<CoreProvisionCommandAccepted>(`${API_V1}/core-provision/install/net-agent`)
 }
 
 export async function enqueueCoreProvisionInstallNtpAgent() {
-  const { data } = await http.post<CoreProvisionCommandAccepted>(`${API_V1}/core-provision/install/ntp-agent`)
-  return data
+  return httpData.post<CoreProvisionCommandAccepted>(`${API_V1}/core-provision/install/ntp-agent`)
 }
 
 export async function enqueueCoreProvisionInstallDiagAgent() {
-  const { data } = await http.post<CoreProvisionCommandAccepted>(`${API_V1}/core-provision/install/diag-agent`)
-  return data
+  return httpData.post<CoreProvisionCommandAccepted>(`${API_V1}/core-provision/install/diag-agent`)
 }
-
