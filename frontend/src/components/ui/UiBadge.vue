@@ -2,8 +2,8 @@
 <template>
   <span
     :class="[
-      'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
-      colorClass
+      'ui-badge',
+      variantClass,
     ]"
   >
     <slot />
@@ -17,18 +17,80 @@ const props = defineProps<{
   variant?: 'success' | 'danger' | 'neutral' | 'info' | 'warning'
 }>()
 
-const colorClass = computed(() => {
+const variantClass = computed(() => {
   switch (props.variant) {
     case 'success':
-      return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+      return 'ui-badge--success'
     case 'danger':
-      return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
+      return 'ui-badge--danger'
     case 'info':
-      return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300'
+      return 'ui-badge--info'
     case 'warning':
-      return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'
+      return 'ui-badge--warning'
     default:
-      return 'bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200'
+      return 'ui-badge--neutral'
   }
 })
 </script>
+
+<style scoped>
+.ui-badge {
+  align-items: center;
+  border-radius: 0.25rem;
+  display: inline-flex;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1rem;
+  padding: 0.125rem 0.5rem;
+}
+
+.ui-badge--success {
+  background: var(--color-green-100);
+  color: var(--color-green-800);
+}
+
+.ui-badge--danger {
+  background: var(--color-red-100);
+  color: var(--color-red-800);
+}
+
+.ui-badge--info {
+  background: var(--color-blue-100);
+  color: var(--color-blue-800);
+}
+
+.ui-badge--warning {
+  background: var(--color-yellow-100);
+  color: var(--color-yellow-800);
+}
+
+.ui-badge--neutral {
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-800);
+}
+
+.dark .ui-badge--success {
+  background: var(--color-green-900);
+  color: var(--color-green-300);
+}
+
+.dark .ui-badge--danger {
+  background: var(--color-red-900);
+  color: var(--color-red-300);
+}
+
+.dark .ui-badge--info {
+  background: var(--color-blue-900);
+  color: var(--color-blue-300);
+}
+
+.dark .ui-badge--warning {
+  background: var(--color-yellow-900);
+  color: var(--color-yellow-300);
+}
+
+.dark .ui-badge--neutral {
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-200);
+}
+</style>

@@ -1,8 +1,7 @@
 <template>
   <select
     :id="fieldId"
-    class="w-full px-2 py-0.5 text-xs
-           bg-white dark:bg-neutral-800 focus:outline-none"
+    class="ui-select"
     :value="modelValue ?? ''"
     :name="fieldName"
     :disabled="disabled"
@@ -52,3 +51,27 @@ function onChange(e: Event) {
   emit("update:modelValue", target.value === "" ? null : target.value)
 }
 </script>
+
+<style scoped>
+.ui-select {
+  background: var(--color-white);
+  border: none;
+  font-size: var(--text-xs);
+  line-height: 1rem;
+  padding: 0.125rem 0.5rem;
+  width: 100%;
+}
+
+.ui-select:focus {
+  outline: none;
+}
+
+.ui-select:disabled {
+  opacity: 0.6;
+}
+
+.dark .ui-select {
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-100);
+}
+</style>

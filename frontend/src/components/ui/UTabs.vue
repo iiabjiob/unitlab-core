@@ -1,20 +1,18 @@
 <template>
-  <div class="flex h-full flex-col">
-    <div class="flex items-center gap-2 border-b border-neutral-200 bg-neutral-50 px-2 py-1 text-sm font-medium dark:border-neutral-800 dark:bg-neutral-900/40">
+  <div class="u-tabs">
+    <div class="u-tabs__list">
       <button
         v-for="(tab, index) in tabs"
         :key="index"
-        class="rounded-md px-3 py-1 transition"
-        :class="index === activeIndex
-          ? 'bg-neutral-900 text-white dark:bg-white/90 dark:text-neutral-900'
-          : 'text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100'"
+        class="u-tabs__button"
+        :class="{ 'u-tabs__button--active': index === activeIndex }"
         type="button"
         @click="select(index)"
       >
         {{ tab.label }}
       </button>
     </div>
-    <div class="flex-1 overflow-hidden">
+    <div class="u-tabs__panel">
       <slot :name="`tab-${activeIndex}`" />
     </div>
   </div>
@@ -53,3 +51,62 @@ function select(index: number) {
   }
 }
 </script>
+
+<style scoped>
+.u-tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.u-tabs__list {
+  align-items: center;
+  background: var(--color-neutral-50);
+  border-bottom: 1px solid var(--color-neutral-200);
+  display: flex;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  gap: 0.5rem;
+  line-height: 1.25rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.u-tabs__button {
+  border-radius: var(--radius-md);
+  color: var(--color-neutral-500);
+  padding: 0.25rem 0.75rem;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.u-tabs__button:hover {
+  color: var(--color-neutral-900);
+}
+
+.u-tabs__button--active {
+  background: var(--color-neutral-900);
+  color: var(--color-white);
+}
+
+.u-tabs__panel {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.dark .u-tabs__list {
+  background: color-mix(in srgb, var(--color-neutral-900) 40%, transparent);
+  border-color: var(--color-neutral-800);
+}
+
+.dark .u-tabs__button {
+  color: var(--color-neutral-400);
+}
+
+.dark .u-tabs__button:hover {
+  color: var(--color-neutral-100);
+}
+
+.dark .u-tabs__button--active {
+  background: color-mix(in srgb, var(--color-white) 90%, transparent);
+  color: var(--color-neutral-900);
+}
+</style>

@@ -1,6 +1,6 @@
 <template>
   <UiModal :open="open" :title="title" @close="$emit('cancel')">
-    <p v-if="message" class="mb-4 text-sm text-neutral-600 dark:text-neutral-400">
+    <p v-if="message" class="confirm-modal__message">
       {{ message }}
     </p>
 
@@ -50,3 +50,16 @@ watch(
   },
 )
 </script>
+
+<style scoped>
+.confirm-modal__message {
+  color: var(--color-neutral-600);
+  font-size: var(--text-sm);
+  line-height: 1.25rem;
+  margin: 0 0 1rem;
+}
+
+.dark .confirm-modal__message {
+  color: var(--color-neutral-400);
+}
+</style>

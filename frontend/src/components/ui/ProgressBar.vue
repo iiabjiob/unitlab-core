@@ -1,10 +1,10 @@
 <template>
   <div
-    class="h-2 rounded bg-neutral-200 dark:bg-neutral-700 overflow-hidden"
+    class="progress-bar"
     :class="wrapperClass"
   >
     <div
-      class="h-full transition-all duration-300"
+      class="progress-bar__bar"
       :class="barClass"
       :style="{ width: clampedValue + '%' }"
     ></div>
@@ -20,8 +20,30 @@ const props = withDefaults(defineProps<{
   barClass?: string      // extra styles for inner bar
 }>(), {
   wrapperClass: "",
-  barClass: "bg-blue-500",
+  barClass: "progress-bar__bar--default",
 })
 
 const clampedValue = computed(() => Math.min(100, Math.max(0, props.value)))
 </script>
+
+<style scoped>
+.progress-bar {
+  background: var(--color-neutral-200);
+  border-radius: 0.25rem;
+  height: 0.5rem;
+  overflow: hidden;
+}
+
+.progress-bar__bar {
+  height: 100%;
+  transition: width 300ms ease;
+}
+
+.progress-bar__bar--default {
+  background: var(--color-blue-500);
+}
+
+.dark .progress-bar {
+  background: var(--color-neutral-700);
+}
+</style>

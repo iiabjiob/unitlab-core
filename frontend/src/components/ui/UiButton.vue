@@ -59,8 +59,7 @@ const computedClass = computed(() => {
     lg: "btn-lg",
   }
 
-  // Full-width support
-  const fullClass = props.full ? "w-full flex justify-center" : ""
+  const fullClass = props.full ? "btn-full" : ""
 
   return `${base} ${variants[props.variant]} ${sizes[props.size]} ${fullClass}`
 })
