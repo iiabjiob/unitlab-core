@@ -427,31 +427,31 @@ watch(
 </script>
 
 <template>
-  <div>
-    <div class="space-y-4 rounded-md border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900">
-      <div class="flex items-start justify-between gap-3">
+  <div class="switchgear-bindings-editor">
+    <div class="switchgear-bindings-editor__panel">
+      <div class="switchgear-bindings-editor__header">
         <div>
-          <div class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          <div class="switchgear-bindings-editor__eyebrow">
             Editing bindings
           </div>
-          <div class="text-sm font-semibold text-neutral-900 dark:text-white">
+          <div class="switchgear-bindings-editor__title">
             Pair mapping (2 actions)
           </div>
-          <div class="mt-2">
+          <div class="switchgear-bindings-editor__reset">
             <UiButton size="xs" variant="ghost" @click="resetAll">
               Reset
             </UiButton>
           </div>
         </div>
 
-        <div class="flex items-center">
+        <div class="switchgear-bindings-editor__close">
           <UiButton size="xs" variant="ghost" @click="emit('close')">
             ×
           </UiButton>
         </div>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="switchgear-bindings-editor__mode-row">
         <DirectSignalModeTabs
           :model-value="bindingMode"
           :show-signal="signalModeAvailable"
@@ -462,16 +462,16 @@ watch(
       </div>
 
       <template v-if="bindingMode === 'signal'">
-        <div class="rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-800">
-          <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+        <div class="switchgear-bindings-editor__signal-selection">
+          <div class="switchgear-bindings-editor__section-title">
             Signals selection
           </div>
 
-          <div class="mb-3 text-sm text-neutral-700 dark:text-neutral-200">
+          <div class="switchgear-bindings-editor__summary">
             {{ signalSelectionSummary }}
           </div>
 
-          <div class="flex items-center gap-2">
+          <div class="switchgear-bindings-editor__actions">
             <UiButton size="sm" variant="secondary" @click="openSignalPicker">
               Pick signals
             </UiButton>
@@ -483,15 +483,15 @@ watch(
       </template>
 
       <template v-else>
-        <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <section class="rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-800">
-            <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+        <div class="switchgear-bindings-editor__grid">
+          <section class="switchgear-bindings-editor__section">
+            <div class="switchgear-bindings-editor__section-title switchgear-bindings-editor__section-title--spaced">
               indication
             </div>
 
-            <div class="space-y-3">
-              <div v-for="role in DO_ROLES" :key="role" class="space-y-1">
-                <div class="text-xs text-neutral-500 dark:text-neutral-400">{{ ROLE_META[role].label }}</div>
+            <div class="switchgear-bindings-editor__role-list">
+              <div v-for="role in DO_ROLES" :key="role" class="switchgear-bindings-editor__role-field">
+                <div class="switchgear-bindings-editor__role-label">{{ ROLE_META[role].label }}</div>
                 <SignalBackedChannelField
                   :channel-id="channelValue(role)"
                   :channel-type="ROLE_META[role].channelType"
@@ -517,14 +517,14 @@ watch(
             </div>
           </section>
 
-          <section class="rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-800">
-            <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          <section class="switchgear-bindings-editor__section">
+            <div class="switchgear-bindings-editor__section-title switchgear-bindings-editor__section-title--spaced">
               control from BCU
             </div>
 
-            <div class="space-y-3">
-              <div v-for="role in DI_ROLES" :key="role" class="space-y-1">
-                <div class="text-xs text-neutral-500 dark:text-neutral-400">{{ ROLE_META[role].label }}</div>
+            <div class="switchgear-bindings-editor__role-list">
+              <div v-for="role in DI_ROLES" :key="role" class="switchgear-bindings-editor__role-field">
+                <div class="switchgear-bindings-editor__role-label">{{ ROLE_META[role].label }}</div>
                 <SignalBackedChannelField
                   :channel-id="channelValue(role)"
                   :channel-type="ROLE_META[role].channelType"
@@ -568,3 +568,136 @@ watch(
     />
   </div>
 </template>
+
+<style scoped>
+.switchgear-bindings-editor__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-50);
+}
+
+.switchgear-bindings-editor__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.switchgear-bindings-editor__eyebrow {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.switchgear-bindings-editor__title {
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.switchgear-bindings-editor__reset {
+  margin-top: 0.5rem;
+}
+
+.switchgear-bindings-editor__close {
+  display: flex;
+  align-items: center;
+}
+
+.switchgear-bindings-editor__mode-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.switchgear-bindings-editor__signal-selection,
+.switchgear-bindings-editor__section {
+  padding: 0.75rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+}
+
+.switchgear-bindings-editor__section-title {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.switchgear-bindings-editor__section-title--spaced {
+  margin-bottom: 0.75rem;
+}
+
+.switchgear-bindings-editor__summary {
+  margin: 0.5rem 0 0.75rem;
+  color: var(--color-neutral-700);
+  font-size: var(--text-sm);
+}
+
+.switchgear-bindings-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.switchgear-bindings-editor__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.switchgear-bindings-editor__role-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.switchgear-bindings-editor__role-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.switchgear-bindings-editor__role-label {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+@media (min-width: 1024px) {
+  .switchgear-bindings-editor__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+:global(.dark .switchgear-bindings-editor__panel) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-900);
+}
+
+:global(.dark .switchgear-bindings-editor__eyebrow),
+:global(.dark .switchgear-bindings-editor__section-title),
+:global(.dark .switchgear-bindings-editor__role-label) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .switchgear-bindings-editor__title) {
+  color: var(--color-white);
+}
+
+:global(.dark .switchgear-bindings-editor__signal-selection),
+:global(.dark .switchgear-bindings-editor__section) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-800);
+}
+
+:global(.dark .switchgear-bindings-editor__summary) {
+  color: var(--color-neutral-200);
+}
+</style>
