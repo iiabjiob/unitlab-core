@@ -79,36 +79,36 @@ function parseLegacyBooleanFlag(raw: string): boolean {
 </script>
 
 <template>
-  <div class="h-full flex flex-col">
+  <div class="device-list-sidebar">
 
-    <div class="mb-2">
-      <label class="inline-flex items-center gap-2 text-xs text-neutral-700 dark:text-neutral-300 cursor-default select-none">
+    <div class="device-list-sidebar__filter">
+      <label class="device-list-sidebar__checkbox-label">
         <input
           v-model="onlineOnly"
           type="checkbox"
           autocomplete="off"
           name="device-online-only"
-          class="h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+          class="device-list-sidebar__checkbox"
         />
         <span>Online only</span>
       </label>
     </div>
 
     <!-- SEARCH FIELD -->
-    <div class="mb-3">
+    <div class="device-list-sidebar__search">
       <input
         v-model="query"
         type="text"
         autocomplete="off"
         name="device-search"
         placeholder="Search devices…"
-        class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+        class="device-list-sidebar__input"
       />
     </div>
 
     <!-- LIST -->
     <UiSidebarListbox
-      class="flex-1"
+      class="device-list-sidebar__list"
       :items="filteredDevices"
       :active-id="selectedId"
       aria-label="Devices"
@@ -121,7 +121,7 @@ function parseLegacyBooleanFlag(raw: string): boolean {
         />
       </template>
       <template #empty>
-        <div class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+        <div class="device-list-sidebar__empty">
           No devices found
         </div>
       </template>
@@ -129,3 +129,82 @@ function parseLegacyBooleanFlag(raw: string): boolean {
 
   </div>
 </template>
+
+<style scoped>
+.device-list-sidebar {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+
+.device-list-sidebar__filter {
+  margin-bottom: 0.5rem;
+}
+
+.device-list-sidebar__checkbox-label {
+  display: inline-flex;
+  user-select: none;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+}
+
+.device-list-sidebar__checkbox {
+  width: 1rem;
+  height: 1rem;
+  border-radius: var(--radius-sm);
+  accent-color: var(--color-blue-600);
+}
+
+.device-list-sidebar__search {
+  margin-bottom: 0.75rem;
+}
+
+.device-list-sidebar__input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.device-list-sidebar__input::placeholder {
+  color: var(--color-neutral-500);
+}
+
+.device-list-sidebar__input:focus {
+  border-color: var(--color-neutral-500);
+}
+
+.device-list-sidebar__list {
+  flex: 1 1 0%;
+}
+
+.device-list-sidebar__empty {
+  padding: 1.5rem 1rem;
+  border: 1px dashed color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
+  border-radius: 1rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+:global(.dark .device-list-sidebar__checkbox-label) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .device-list-sidebar__input) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-950);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .device-list-sidebar__empty) {
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-400);
+}
+</style>

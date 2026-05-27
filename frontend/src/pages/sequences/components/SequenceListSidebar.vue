@@ -63,10 +63,10 @@ function handleSelect(id: string | number) {
 </script>
 
 <template>
-  <div class="h-full flex flex-col">
+  <div class="sequence-list-sidebar">
 
     <!-- HEADER -->
-    <div class="mb-3">
+    <div class="sequence-list-sidebar__header">
       <UiButton
         variant="primary"
         size="sm"
@@ -77,7 +77,7 @@ function handleSelect(id: string | number) {
         + New Instruction
       </UiButton>
       <UiButton
-        class="mt-2"
+        class="sequence-list-sidebar__import-button"
         variant="secondary"
         size="sm"
         full
@@ -88,7 +88,7 @@ function handleSelect(id: string | number) {
       </UiButton>
       <input
         ref="fileInput"
-        class="hidden"
+        class="sequence-list-sidebar__file-input"
         type="file"
         autocomplete="off"
         id="sequence-import-file"
@@ -98,14 +98,14 @@ function handleSelect(id: string | number) {
       />
       <p
         v-if="workspaceMissing"
-        class="mt-2 text-[11px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
+        class="sequence-list-sidebar__workspace-note"
       >
         Use the workspace switcher to enable edits
       </p>
     </div>
 
     <!-- SEARCH FIELD -->
-    <div class="mb-3">
+    <div class="sequence-list-sidebar__search">
       <input
         v-model="query"
         type="text"
@@ -113,40 +113,128 @@ function handleSelect(id: string | number) {
         name="instruction-search"
         :disabled="workspaceMissing"
         :placeholder="workspaceMissing ? 'Select a workspace to get started' : 'Search instructions…'"
-        class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+        class="sequence-list-sidebar__input"
       />
     </div>
 
     <!-- LIST -->
-    <div class="flex-1 overflow-y-auto space-y-1">
+    <div class="sequence-list-sidebar__list">
       <div
         v-if="workspaceMissing"
-        class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400"
+        class="sequence-list-sidebar__empty"
       >
         Select or create a workspace to see its instructions.
       </div>
 
       <template v-else>
-      <UiSidebarListbox
-        :items="filteredSequences"
-        :active-id="selectedId"
-        aria-label="Instructions"
-        @select="handleSelect"
-      >
-        <template #item="{ item: seq, isCursor }">
-          <SequenceListItem
-            :sequence="seq"
-            :active="isActive(seq.id) || isCursor"
-          />
-        </template>
-        <template #empty>
-          <div class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
-            No instructions found
-          </div>
-        </template>
-      </UiSidebarListbox>
+        <UiSidebarListbox
+          :items="filteredSequences"
+          :active-id="selectedId"
+          aria-label="Instructions"
+          @select="handleSelect"
+        >
+          <template #item="{ item: seq, isCursor }">
+            <SequenceListItem
+              :sequence="seq"
+              :active="isActive(seq.id) || isCursor"
+            />
+          </template>
+          <template #empty>
+            <div class="sequence-list-sidebar__empty">
+              No instructions found
+            </div>
+          </template>
+        </UiSidebarListbox>
       </template>
     </div>
 
   </div>
 </template>
+
+<style scoped>
+.sequence-list-sidebar {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+
+.sequence-list-sidebar__header {
+  margin-bottom: 0.75rem;
+}
+
+.sequence-list-sidebar__import-button {
+  margin-top: 0.5rem;
+}
+
+.sequence-list-sidebar__file-input {
+  display: none;
+}
+
+.sequence-list-sidebar__workspace-note {
+  margin-top: 0.5rem;
+  color: var(--color-neutral-500);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.sequence-list-sidebar__search {
+  margin-bottom: 0.75rem;
+}
+
+.sequence-list-sidebar__input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.sequence-list-sidebar__input::placeholder {
+  color: var(--color-neutral-500);
+}
+
+.sequence-list-sidebar__input:focus {
+  border-color: var(--color-neutral-500);
+}
+
+.sequence-list-sidebar__input:disabled {
+  opacity: 0.6;
+}
+
+.sequence-list-sidebar__list {
+  flex: 1 1 0%;
+  overflow-y: auto;
+}
+
+.sequence-list-sidebar__list > :not(:last-child) {
+  margin-bottom: 0.25rem;
+}
+
+.sequence-list-sidebar__empty {
+  padding: 1.5rem 1rem;
+  border: 1px dashed color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
+  border-radius: 1rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+:global(.dark .sequence-list-sidebar__workspace-note) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .sequence-list-sidebar__input) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-950);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .sequence-list-sidebar__empty) {
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-400);
+}
+</style>
