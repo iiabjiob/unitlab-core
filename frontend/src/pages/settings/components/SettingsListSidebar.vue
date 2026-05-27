@@ -80,16 +80,16 @@ function handleSelect(id: string | number) {
 </script>
 
 <template>
-  <div class="h-full flex flex-col">
-    <div class="mb-3">
-      <p class="text-[11px] uppercase tracking-[0.26em] text-neutral-500 dark:text-neutral-400">Settings</p>
-      <h2 class="mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-100">Core Services</h2>
-      <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+  <div class="settings-list-sidebar">
+    <div class="settings-list-sidebar__header">
+      <p class="settings-list-sidebar__eyebrow">Settings</p>
+      <h2 class="settings-list-sidebar__title">Core Services</h2>
+      <p class="settings-list-sidebar__description">
         Host-level services for the central module (diagnostics, time sync, and future infrastructure tools).
       </p>
     </div>
 
-    <div class="flex-1 overflow-y-auto">
+    <div class="settings-list-sidebar__list">
       <UiSidebarListbox
         :items="items"
         :active-id="selectedId"
@@ -106,6 +106,59 @@ function handleSelect(id: string | number) {
       </UiSidebarListbox>
     </div>
 
-    <p class="mt-3 text-[11px] text-neutral-500 dark:text-neutral-400">Build {{ releaseVersion }}</p>
+    <p class="settings-list-sidebar__build">Build {{ releaseVersion }}</p>
   </div>
 </template>
+
+<style scoped>
+.settings-list-sidebar {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+
+.settings-list-sidebar__header {
+  margin-bottom: 0.75rem;
+}
+
+.settings-list-sidebar__eyebrow {
+  color: var(--color-neutral-500);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.settings-list-sidebar__title {
+  margin-top: 0.25rem;
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.settings-list-sidebar__description {
+  margin-top: 0.25rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.settings-list-sidebar__list {
+  flex: 1 1 0%;
+  overflow-y: auto;
+}
+
+.settings-list-sidebar__build {
+  margin-top: 0.75rem;
+  color: var(--color-neutral-500);
+  font-size: 11px;
+}
+
+:global(.dark) .settings-list-sidebar__eyebrow,
+:global(.dark) .settings-list-sidebar__description,
+:global(.dark) .settings-list-sidebar__build {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark) .settings-list-sidebar__title {
+  color: var(--color-neutral-100);
+}
+</style>
