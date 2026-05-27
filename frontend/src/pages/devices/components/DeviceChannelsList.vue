@@ -26,8 +26,8 @@ const digitalColumnCount = computed(() => Math.max(1, Math.ceil(orderedChannels.
 
 const channelListClass = computed(() => (
   deviceChannelType.value === "ao"
-    ? "mt-5 flex min-h-0 flex-col gap-1.5 overflow-y-auto pr-1"
-    : "mt-5 grid min-h-0 grid-flow-col grid-rows-8 content-start gap-x-1 gap-y-2 overflow-y-auto pr-1"
+    ? "device-channels-list__items device-channels-list__items--analog"
+    : "device-channels-list__items device-channels-list__items--digital"
 ))
 
 const channelListStyle = computed(() => {
@@ -71,22 +71,20 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
 </script>
 
 <template>
-  <div class="flex flex-col h-full overflow-hidden p-4">
+  <div class="device-channels-list">
 
-    <!-- HEADER -->
-    <div class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+    <div class="device-channels-list__header">
       Channels ({{ channelCount }})
     </div>
 
     <div
       v-if="isOffline"
-      class="mt-2 rounded border border-amber-300/70 bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:border-amber-700/60 dark:bg-amber-900/20 dark:text-amber-300"
+      class="device-channels-list__offline"
     >
       Device is offline: controls are disabled until it is back online.
     </div>
 
-    <!-- CONTROL TOOLBAR -->
-    <div v-if="hasDoChannels" class="py-2">
+    <div v-if="hasDoChannels" class="device-channels-list__toolbar">
       <DeviceChannelControlToolbar
         :device-id="device.id"
         :unit-id="device.unit_id"
@@ -94,7 +92,6 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
       />
     </div>
 
-    <!-- LIST -->
     <div :class="channelListClass" :style="channelListStyle">
       <DeviceChannelItem
         v-for="channel in orderedChannels"
@@ -109,3 +106,66 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
 
   </div>
 </template>
+
+<style scoped>
+.device-channels-list {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1rem;
+}
+
+.device-channels-list__header {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.device-channels-list__offline {
+  margin-top: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--color-amber-300) 70%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--color-amber-50);
+  color: var(--color-amber-700);
+  font-size: var(--text-xs);
+}
+
+.device-channels-list__toolbar {
+  padding: 0.5rem 0;
+}
+
+.device-channels-list__items {
+  min-height: 0;
+  margin-top: 1.25rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.device-channels-list__items--analog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.device-channels-list__items--digital {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(8, minmax(0, 1fr));
+  align-content: start;
+  column-gap: 0.25rem;
+  row-gap: 0.5rem;
+}
+
+:global(.dark .device-channels-list__header) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .device-channels-list__offline) {
+  border-color: color-mix(in srgb, var(--color-amber-700) 60%, transparent);
+  background: color-mix(in srgb, var(--color-amber-900) 20%, transparent);
+  color: var(--color-amber-300);
+}
+</style>

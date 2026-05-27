@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from "vue"
 import { useChannelLogStore } from "@/stores/channelLogStore"
-import type { Device } from "@/types/device";
+import type { Device } from "@/types/device"
 import { useAutoScroll } from "@/composables/useAutoScroll"
 
 const props = defineProps<{ device: Device }>()
@@ -70,19 +70,17 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex flex-col select-none lg:h-full lg:min-h-0">
+  <div class="device-execution-log">
 
-    <div class="p-3 text-xs uppercase tracking-wider text-neutral-500 border-b
-                dark:text-neutral-400 border-neutral-200 dark:border-neutral-800
-                flex items-center justify-between gap-3">
+    <div class="device-execution-log__header">
       <span>Device Log</span>
       <button
         type="button"
-        class="relative text-[10px] px-2 py-1 rounded border border-neutral-300 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800/60 transition-colors"
+        class="device-execution-log__copy-button"
         @click="copyLogs"
       >
-        <span class="invisible">Copy log</span>
-        <span class="absolute inset-0 flex items-center justify-center">
+        <span class="device-execution-log__copy-label">Copy log</span>
+        <span class="device-execution-log__copy-feedback">
           {{ copyButtonText }}
         </span>
       </button>
@@ -90,49 +88,49 @@ onBeforeUnmount(() => {
 
     <div
       ref="logContainer"
-      class="px-4 py-2 space-y-0.5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto
-             font-mono text-[11px] leading-tight
-             text-neutral-700 dark:text-neutral-300"
+      class="device-execution-log__body"
     >
 
       <template v-for="(log, i) in logs" :key="i">
         <div
           v-if="log.actionId && (i === 0 || log.actionId !== logs[i - 1]?.actionId)"
-          class="text-[10px] uppercase tracking-wide text-blue-400/80 mt-1"
+          class="device-execution-log__action-heading"
         >
           Action {{ log.actionId }}
         </div>
 
         <div
-          class="flex items-center gap-2 py-px px-1 rounded-sm
-                 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-colors"
+          class="device-execution-log__row"
         >
-          <div class="text-[10px] opacity-50 w-20 shrink-0 text-left">
+          <div class="device-execution-log__time">
             {{ log.ts }}
           </div>
 
-          <div class="w-2 h-2 rounded-full"
-               :class="{
-                'bg-neutral-400': log.type === 'cmd',
-                'bg-blue-500': log.type === 'state',
-                'bg-green-500': log.type === 'resp',
-                'bg-red-500': log.type === 'error',
-               }"
+          <div
+            class="device-execution-log__dot"
+            :class="{
+              'device-execution-log__dot--cmd': log.type === 'cmd',
+              'device-execution-log__dot--state': log.type === 'state',
+              'device-execution-log__dot--resp': log.type === 'resp',
+              'device-execution-log__dot--error': log.type === 'error',
+            }"
           ></div>
 
-          <div class="flex items-center gap-2 flex-1">
-            <div v-if="log.actionId" class="text-[10px] text-blue-400 font-semibold">
+          <div class="device-execution-log__content">
+            <div v-if="log.actionId" class="device-execution-log__action-id">
               #{{ log.actionId }}
             </div>
-            <div class="flex-1 whitespace-pre-wrap wrap-break-word"
-                 :class="{
-                   'text-neutral-500 dark:text-neutral-300': log.type === 'cmd',
-                   'text-blue-400': log.type === 'state',
-                   'text-green-400': log.type === 'resp',
-                   'text-red-400': log.type === 'error',
-                 }">
+            <div
+              class="device-execution-log__message"
+              :class="{
+                'device-execution-log__message--cmd': log.type === 'cmd',
+                'device-execution-log__message--state': log.type === 'state',
+                'device-execution-log__message--resp': log.type === 'resp',
+                'device-execution-log__message--error': log.type === 'error',
+              }"
+            >
               <span>{{ log.message }}</span>
-              <span v-if="log.reason" class="ml-1 text-xs text-neutral-500 dark:text-neutral-400">
+              <span v-if="log.reason" class="device-execution-log__reason">
                 (reason: {{ log.reason }})
               </span>
             </div>
@@ -140,10 +138,212 @@ onBeforeUnmount(() => {
         </div>
       </template>
 
-      <div v-if="logs.length === 0"
-           class="opacity-40 italic py-2">
+      <div v-if="logs.length === 0" class="device-execution-log__empty">
         No logs yet…
       </div>
     </div>
   </div>
 </template>
+
+<style scoped>
+.device-execution-log {
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.device-execution-log__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-neutral-200);
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.device-execution-log__copy-button {
+  position: relative;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-neutral-600);
+  font-size: 0.625rem;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.device-execution-log__copy-button:hover {
+  background: var(--color-neutral-100);
+}
+
+.device-execution-log__copy-label {
+  visibility: hidden;
+}
+
+.device-execution-log__copy-feedback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.device-execution-log__body {
+  padding: 0.5rem 1rem;
+  color: var(--color-neutral-700);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.25;
+}
+
+.device-execution-log__body > * + * {
+  margin-top: 0.125rem;
+}
+
+.device-execution-log__action-heading {
+  margin-top: 0.25rem;
+  color: color-mix(in srgb, var(--color-blue-400) 80%, transparent);
+  font-size: 0.625rem;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.device-execution-log__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1px 0.25rem;
+  border-radius: var(--radius-sm);
+  transition: background 150ms ease;
+}
+
+.device-execution-log__row:hover {
+  background: var(--color-neutral-100);
+}
+
+.device-execution-log__time {
+  width: 5rem;
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  opacity: 0.5;
+  text-align: left;
+}
+
+.device-execution-log__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+}
+
+.device-execution-log__dot--cmd {
+  background: var(--color-neutral-400);
+}
+
+.device-execution-log__dot--state {
+  background: var(--color-blue-500);
+}
+
+.device-execution-log__dot--resp {
+  background: var(--color-green-400);
+}
+
+.device-execution-log__dot--error {
+  background: var(--color-red-500);
+}
+
+.device-execution-log__content {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.device-execution-log__action-id {
+  color: var(--color-blue-400);
+  font-size: 0.625rem;
+  font-weight: 600;
+}
+
+.device-execution-log__message {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.device-execution-log__message--cmd {
+  color: var(--color-neutral-500);
+}
+
+.device-execution-log__message--state {
+  color: var(--color-blue-400);
+}
+
+.device-execution-log__message--resp {
+  color: var(--color-green-400);
+}
+
+.device-execution-log__message--error {
+  color: var(--color-red-400);
+}
+
+.device-execution-log__reason {
+  margin-left: 0.25rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.device-execution-log__empty {
+  padding: 0.5rem 0;
+  font-style: italic;
+  opacity: 0.4;
+}
+
+:global(.dark .device-execution-log__header) {
+  border-bottom-color: var(--color-neutral-800);
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .device-execution-log__copy-button) {
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .device-execution-log__copy-button:hover) {
+  background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
+}
+
+:global(.dark .device-execution-log__body) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .device-execution-log__row:hover) {
+  background: color-mix(in srgb, var(--color-neutral-800) 50%, transparent);
+}
+
+:global(.dark .device-execution-log__message--cmd) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .device-execution-log__reason) {
+  color: var(--color-neutral-400);
+}
+
+@media (min-width: 1024px) {
+  .device-execution-log {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .device-execution-log__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+</style>
