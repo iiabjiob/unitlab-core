@@ -2260,34 +2260,28 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="flex h-full min-h-0 flex-col rounded-2xl border border-neutral-200 bg-white/80 p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
-    <div class="mb-4 flex flex-wrap items-center gap-2">
-      <div class="inline-flex overflow-hidden rounded-lg border border-neutral-300 dark:border-neutral-700">
-        <!-- Hand tool -->
+  <section class="switchgear-sld">
+    <div class="switchgear-sld__toolbar">
+      <div class="switchgear-sld__tool-group">
         <button
           type="button"
-          class="flex h-7 w-8 items-center justify-center border-r border-neutral-300 transition focus-visible:outline-none dark:border-neutral-700"
-          :class="interactionTool === 'hand'
-            ? 'bg-sky-600 text-white'
-            : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'"
+          class="switchgear-sld__tool-button switchgear-sld__tool-button--split"
+          :class="{ 'switchgear-sld__tool-button--active': interactionTool === 'hand' }"
           title="Pan / Move (Hand)"
           @click="setInteractionTool('hand')"
         >
-          <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
             <path d="M6 2v6M4.5 4.5V4a1 1 0 0 0-2 0v4.5l-.5.5V11a3 3 0 0 0 3 3h2a3 3 0 0 0 3-3V7a1 1 0 0 0-2 0v-.5a1 1 0 0 0-2 0V2a1 1 0 0 0-2 0Z"/>
           </svg>
         </button>
-        <!-- Arrow / Select tool -->
         <button
           type="button"
-          class="flex h-7 w-8 items-center justify-center transition focus-visible:outline-none"
-          :class="interactionTool === 'arrow'
-            ? 'bg-sky-600 text-white'
-            : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'"
+          class="switchgear-sld__tool-button"
+          :class="{ 'switchgear-sld__tool-button--active': interactionTool === 'arrow' }"
           title="Select / Marquee (Arrow)"
           @click="setInteractionTool('arrow')"
         >
-          <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="currentColor">
+          <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="currentColor">
             <path d="M3 2l10 6-5.5 1.5L6 15z"/>
           </svg>
         </button>
@@ -2295,15 +2289,13 @@ onBeforeUnmount(() => {
 
       <button
         type="button"
-        class="flex h-7 w-8 items-center justify-center rounded-lg border border-neutral-300 transition focus-visible:outline-none dark:border-neutral-700"
-        :class="snapEnabled
-          ? 'bg-sky-600 text-white'
-          : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'"
+        class="switchgear-sld__tool-button switchgear-sld__tool-button--standalone"
+        :class="{ 'switchgear-sld__tool-button--active': snapEnabled }"
         :title="snapEnabled ? 'Disable magnetic snap' : 'Enable magnetic snap'"
         :aria-label="snapEnabled ? 'Disable magnetic snap' : 'Enable magnetic snap'"
         @click="toggleSnapEnabled()"
       >
-        <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M5 2v3" />
           <path d="M11 2v3" />
           <path d="M5 5H3.5A1.5 1.5 0 0 0 2 6.5V9a3 3 0 0 0 3 3h6a3 3 0 0 0 3-3V6.5A1.5 1.5 0 0 0 12.5 5H11" />
@@ -2311,14 +2303,14 @@ onBeforeUnmount(() => {
         </svg>
       </button>
 
-      <UiButton size="sm" variant="secondary" class="w-8 px-0" title="Undo" aria-label="Undo" :disabled="!canUndo" @click="undo()">
-        <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <UiButton size="sm" variant="secondary" class="switchgear-sld__icon-action" title="Undo" aria-label="Undo" :disabled="!canUndo" @click="undo()">
+        <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
           <path d="M6 4 2.5 7.5 6 11"/>
           <path d="M3 7.5h5.25a4.25 4.25 0 1 1 0 8.5H7"/>
         </svg>
       </UiButton>
-      <UiButton size="sm" variant="secondary" class="w-8 px-0" title="Redo" aria-label="Redo" :disabled="!canRedo" @click="redo()">
-        <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <UiButton size="sm" variant="secondary" class="switchgear-sld__icon-action" title="Redo" aria-label="Redo" :disabled="!canRedo" @click="redo()">
+        <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
           <path d="m10 4 3.5 3.5L10 11"/>
           <path d="M13 7.5H7.75a4.25 4.25 0 1 0 0 8.5H9"/>
         </svg>
@@ -2326,12 +2318,12 @@ onBeforeUnmount(() => {
       <UiButton
         size="sm"
         variant="secondary"
-        class="w-8 px-0"
+        class="switchgear-sld__icon-action"
         title="Add line"
         aria-label="Add line"
         @click="addLineInViewport"
       >
-        <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 11 11 3"/>
           <path d="M10.5 11.5h2.5V9"/>
           <path d="M3 5.5V3h2.5"/>
@@ -2340,12 +2332,12 @@ onBeforeUnmount(() => {
       <UiButton
         size="sm"
         variant="secondary"
-        class="w-8 px-0"
+        class="switchgear-sld__icon-action"
         title="Add transformer"
         aria-label="Add transformer"
         @click="addStaticElementInViewport('transformer')"
       >
-        <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="8" cy="5.5" r="3.5" />
           <circle cx="8" cy="10.5" r="3.5" />
         </svg>
@@ -2353,12 +2345,12 @@ onBeforeUnmount(() => {
       <UiButton
         size="sm"
         variant="secondary"
-        class="w-8 px-0"
+        class="switchgear-sld__icon-action"
         title="Add ground"
         aria-label="Add ground"
         @click="addStaticElementInViewport('ground')"
       >
-        <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="round">
+        <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="round">
           <path d="M2 8h8" />
           <path d="M10 3v10" />
           <path d="M13 4.5v7" />
@@ -2367,39 +2359,35 @@ onBeforeUnmount(() => {
       </UiButton>
       <div
         v-if="selectedLineCount > 0"
-        class="inline-flex overflow-hidden rounded-lg border border-neutral-300 dark:border-neutral-700"
+        class="switchgear-sld__tool-group"
       >
         <button
           type="button"
-          class="flex h-7 items-center justify-center border-r border-neutral-300 px-3 text-xs font-medium transition focus-visible:outline-none dark:border-neutral-700"
-          :class="selectedLineKind === 'line'
-            ? 'bg-sky-600 text-white'
-            : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'"
+          class="switchgear-sld__kind-button switchgear-sld__kind-button--split"
+          :class="{ 'switchgear-sld__kind-button--active': selectedLineKind === 'line' }"
           @click="setSelectedEdgesKind('line')"
         >
           Line
         </button>
         <button
           type="button"
-          class="flex h-7 items-center justify-center px-3 text-xs font-medium transition focus-visible:outline-none"
-          :class="selectedLineKind === 'arrow'
-            ? 'bg-sky-600 text-white'
-            : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-700'"
+          class="switchgear-sld__kind-button"
+          :class="{ 'switchgear-sld__kind-button--active': selectedLineKind === 'arrow' }"
           @click="setSelectedEdgesKind('arrow')"
         >
           Arrow
         </button>
       </div>
-      <div v-if="selectedNodeCount > 1" class="relative">
+      <div v-if="selectedNodeCount > 1" class="switchgear-sld__toolbar-menu-anchor">
         <UiButton
           size="sm"
           variant="secondary"
-          class="w-8 px-0"
+          class="switchgear-sld__icon-action"
           title="Align nodes"
           aria-label="Align nodes"
           @click="alignMenuOpen = !alignMenuOpen"
         >
-          <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 2v12" />
             <path d="M2 3h12" />
             <path d="M6 6h6" />
@@ -2408,16 +2396,16 @@ onBeforeUnmount(() => {
         </UiButton>
         <div
           v-if="alignMenuOpen"
-          class="absolute left-0 top-full z-20 mt-2 min-w-[168px] overflow-hidden rounded-lg border border-neutral-300 bg-white py-1 shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
+          class="switchgear-sld__dropdown"
           @pointerdown.stop
         >
           <button
             type="button"
-            class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-neutral-700 transition hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            class="switchgear-sld__dropdown-item"
             @click="alignSelectedNodesLeft()"
           >
             <span>Align left</span>
-            <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 2v12" />
               <path d="M6 4h6" />
               <path d="M6 8h4" />
@@ -2426,11 +2414,11 @@ onBeforeUnmount(() => {
           </button>
           <button
             type="button"
-            class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-neutral-700 transition hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            class="switchgear-sld__dropdown-item"
             @click="alignSelectedNodesTop()"
           >
             <span>Align top</span>
-            <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
               <path d="M2 3h12" />
               <path d="M4 6v6" />
               <path d="M8 6v4" />
@@ -2439,11 +2427,11 @@ onBeforeUnmount(() => {
           </button>
           <button
             type="button"
-            class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-neutral-700 transition hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            class="switchgear-sld__dropdown-item"
             @click="alignSelectedNodesRight()"
           >
             <span>Align right</span>
-            <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
               <path d="M13 2v12" />
               <path d="M4 4h6" />
               <path d="M6 8h4" />
@@ -2452,11 +2440,11 @@ onBeforeUnmount(() => {
           </button>
           <button
             type="button"
-            class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-neutral-700 transition hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            class="switchgear-sld__dropdown-item"
             @click="alignSelectedNodesBottom()"
           >
             <span>Align bottom</span>
-            <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
               <path d="M2 13h12" />
               <path d="M4 4v6" />
               <path d="M8 6v4" />
@@ -2466,7 +2454,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="ml-auto flex items-center gap-3">
+      <div class="switchgear-sld__toolbar-spacer">
         <SwitchgearControlToolbar
           v-if="singleSelectedSwitchgear"
           :switchgear="singleSelectedSwitchgear"
@@ -2492,17 +2480,17 @@ onBeforeUnmount(() => {
     <div
       v-else
       ref="viewportRef"
-      class="switchgear-sld__viewport relative min-h-[460px] flex-1 overflow-hidden rounded-2xl border border-neutral-200 bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-950"
+      class="switchgear-sld__viewport"
       :style="viewportSurfaceStyle"
       @pointerdown="beginViewportPan"
       @wheel.prevent="handleWheel"
     >
-      <div class="pointer-events-none absolute inset-0" :style="viewportOverlayStyle"></div>
+      <div class="switchgear-sld__viewport-overlay" :style="viewportOverlayStyle"></div>
 
-      <div class="absolute left-0 top-0" :style="stageTransformStyle">
-        <div class="switchgear-sld__grid relative" :style="stageGridStyle">
+      <div class="switchgear-sld__stage" :style="stageTransformStyle">
+        <div class="switchgear-sld__grid" :style="stageGridStyle">
           <svg
-            class="absolute inset-0 h-full w-full overflow-visible"
+            class="switchgear-sld__edge-layer"
             :viewBox="`0 0 ${stageSize.width} ${stageSize.height}`"
             preserveAspectRatio="none"
           >
@@ -2537,7 +2525,7 @@ onBeforeUnmount(() => {
                 stroke-width="18"
                 stroke-linecap="round"
                 stroke-linejoin="round"
-                class="cursor-move"
+                class="switchgear-sld__edge-hitbox"
                 @pointerdown.stop="beginEdgeDrag(edge.id, 'move', $event)"
                 @click.stop="selectEdge(edge.id, $event)"
                 @contextmenu.stop.prevent="openLineContextMenu(edge.id, $event)"
@@ -2551,7 +2539,7 @@ onBeforeUnmount(() => {
                   stroke="#0ea5e9"
                   stroke-width="2"
                   data-edge-handle
-                  class="cursor-pointer"
+                  class="switchgear-sld__edge-handle"
                   @pointerdown.stop="beginEdgeDrag(edge.id, 'start', $event)"
                   @contextmenu.stop.prevent="openLineContextMenu(edge.id, $event)"
                 />
@@ -2563,7 +2551,7 @@ onBeforeUnmount(() => {
                   stroke="#0ea5e9"
                   stroke-width="2"
                   data-edge-handle
-                  class="cursor-pointer"
+                  class="switchgear-sld__edge-handle"
                   @pointerdown.stop="beginEdgeDrag(edge.id, 'end', $event)"
                   @contextmenu.stop.prevent="openLineContextMenu(edge.id, $event)"
                 />
@@ -2614,17 +2602,17 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div class="absolute bottom-3 left-3 z-10 flex items-center gap-2 rounded-xl border border-neutral-300/80 bg-white/90 p-2 shadow-xl backdrop-blur dark:border-neutral-700/80 dark:bg-neutral-900/85">
-        <UiButton size="sm" variant="secondary" class="w-8 px-0" title="Zoom out" aria-label="Zoom out" @click="zoomBy(-0.1)">
-          <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <div class="switchgear-sld__zoom-panel">
+        <UiButton size="sm" variant="secondary" class="switchgear-sld__icon-action" title="Zoom out" aria-label="Zoom out" @click="zoomBy(-0.1)">
+          <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="7" cy="7" r="4.5"/>
             <path d="M10.5 10.5 14 14"/>
             <path d="M5 7h4"/>
           </svg>
         </UiButton>
-        <span class="min-w-[3rem] text-center text-xs font-medium text-neutral-600 dark:text-neutral-300">{{ zoomLabel }}</span>
-        <UiButton size="sm" variant="secondary" class="w-8 px-0" title="Zoom in" aria-label="Zoom in" @click="zoomBy(0.1)">
-          <svg viewBox="0 0 16 16" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <span class="switchgear-sld__zoom-label">{{ zoomLabel }}</span>
+        <UiButton size="sm" variant="secondary" class="switchgear-sld__icon-action" title="Zoom in" aria-label="Zoom in" @click="zoomBy(0.1)">
+          <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="7" cy="7" r="4.5"/>
             <path d="M10.5 10.5 14 14"/>
             <path d="M7 5v4"/>
@@ -2641,60 +2629,60 @@ onBeforeUnmount(() => {
 
       <div
         v-if="lineContextMenu"
-        class="absolute z-20 min-w-[156px] overflow-hidden rounded-lg border border-neutral-300 bg-white py-1 shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
+        class="switchgear-sld__context-menu"
         :style="{ left: `${lineContextMenu.x}px`, top: `${lineContextMenu.y}px` }"
         @pointerdown.stop
       >
         <button
           type="button"
-          class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-neutral-700 transition hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
+          class="switchgear-sld__context-item"
           @click="rotateSelectedEdges90()"
         >
           <span>{{ lineContextMenu.edgeIds.length > 1 ? 'Rotate selected lines 90°' : 'Rotate line 90°' }}</span>
-          <span class="text-[11px] uppercase tracking-[0.14em] text-neutral-400 dark:text-neutral-500">R</span>
+          <span class="switchgear-sld__context-shortcut">R</span>
         </button>
         <button
           type="button"
-          class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-red-600 transition hover:bg-neutral-100 dark:text-red-400 dark:hover:bg-neutral-800"
+          class="switchgear-sld__context-item switchgear-sld__context-item--danger"
           @click="removeSelectedEdge()"
         >
           <span>{{ lineContextMenu.edgeIds.length > 1 ? 'Remove selected lines' : 'Remove line' }}</span>
-          <span class="text-[11px] uppercase tracking-[0.14em] text-neutral-400 dark:text-neutral-500">Del</span>
+          <span class="switchgear-sld__context-shortcut">Del</span>
         </button>
       </div>
 
       <div
         v-if="staticContextMenu"
-        class="absolute z-20 min-w-[176px] overflow-hidden rounded-lg border border-neutral-300 bg-white py-1 shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
+        class="switchgear-sld__context-menu switchgear-sld__context-menu--wide"
         :style="{ left: `${staticContextMenu.x}px`, top: `${staticContextMenu.y}px` }"
         @pointerdown.stop
       >
         <button
           type="button"
-          class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-neutral-700 transition hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
+          class="switchgear-sld__context-item"
           @click="rotateSelectedStaticElements90()"
         >
           <span>{{ staticContextMenu.staticIds.length > 1 ? 'Rotate selected symbols 90°' : 'Rotate symbol 90°' }}</span>
-          <span class="text-[11px] uppercase tracking-[0.14em] text-neutral-400 dark:text-neutral-500">R</span>
+          <span class="switchgear-sld__context-shortcut">R</span>
         </button>
         <button
           type="button"
-          class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-red-600 transition hover:bg-neutral-100 dark:text-red-400 dark:hover:bg-neutral-800"
+          class="switchgear-sld__context-item switchgear-sld__context-item--danger"
           @click="removeSelectedStaticElements()"
         >
           <span>{{ staticContextMenu.staticIds.length > 1 ? 'Remove selected symbols' : 'Remove symbol' }}</span>
-          <span class="text-[11px] uppercase tracking-[0.14em] text-neutral-400 dark:text-neutral-500">Del</span>
+          <span class="switchgear-sld__context-shortcut">Del</span>
         </button>
       </div>
 
       <div
         v-if="minimapModel"
-        class="absolute bottom-3 right-3 overflow-hidden rounded-xl border border-neutral-300/80 bg-white/90 p-2 shadow-xl backdrop-blur dark:border-neutral-700/80 dark:bg-neutral-900/85"
+        class="switchgear-sld__minimap"
       >
         <svg
           :width="MINIMAP_WIDTH"
           :height="MINIMAP_HEIGHT"
-          class="block cursor-crosshair"
+          class="switchgear-sld__minimap-svg"
           @pointerdown.stop.prevent="handleMinimapPointerDown"
         >
           <rect
@@ -2735,11 +2723,321 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.switchgear-sld {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  padding: 1rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--color-white) 80%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+
+.switchgear-sld__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.switchgear-sld__tool-group {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: 0.5rem;
+}
+
+.switchgear-sld__tool-button,
+.switchgear-sld__kind-button {
+  display: flex;
+  height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-500);
+  font: inherit;
+  outline: none;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.switchgear-sld__tool-button {
+  width: 2rem;
+}
+
+.switchgear-sld__tool-button--standalone {
+  border: 1px solid var(--color-neutral-300);
+  border-radius: 0.5rem;
+}
+
+.switchgear-sld__kind-button {
+  padding: 0 0.75rem;
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.switchgear-sld__tool-button--split,
+.switchgear-sld__kind-button--split {
+  border-right: 1px solid var(--color-neutral-300);
+}
+
+.switchgear-sld__tool-button:hover,
+.switchgear-sld__kind-button:hover {
+  background: var(--color-neutral-200);
+}
+
+.switchgear-sld__tool-button:focus-visible,
+.switchgear-sld__kind-button:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-blue-500) 40%, transparent);
+}
+
+.switchgear-sld__tool-button--active,
+.switchgear-sld__kind-button--active,
+.switchgear-sld__tool-button--active:hover,
+.switchgear-sld__kind-button--active:hover {
+  background: var(--color-blue-600);
+  color: var(--color-white);
+}
+
+.switchgear-sld__icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.switchgear-sld__icon-action {
+  width: 2rem;
+  justify-content: center;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.switchgear-sld__toolbar-menu-anchor {
+  position: relative;
+}
+
+.switchgear-sld__dropdown,
+.switchgear-sld__context-menu {
+  position: absolute;
+  z-index: 20;
+  min-width: 168px;
+  overflow: hidden;
+  padding: 0.25rem 0;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: 0.5rem;
+  background: var(--color-white);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 10%), 0 8px 10px -6px rgb(0 0 0 / 10%);
+}
+
+.switchgear-sld__dropdown {
+  top: 100%;
+  left: 0;
+  margin-top: 0.5rem;
+}
+
+.switchgear-sld__dropdown-item,
+.switchgear-sld__context-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-neutral-700);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  transition: background-color 0.15s ease;
+}
+
+.switchgear-sld__dropdown-item:hover,
+.switchgear-sld__context-item:hover {
+  background: var(--color-neutral-100);
+}
+
+.switchgear-sld__toolbar-spacer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
 .switchgear-sld__viewport {
+  position: relative;
+  min-height: 460px;
+  flex: 1 1 auto;
+  overflow: hidden;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 1rem;
+  background: var(--color-neutral-100);
   cursor: grab;
 }
 
 .switchgear-sld__viewport:active {
   cursor: grabbing;
+}
+
+.switchgear-sld__viewport-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.switchgear-sld__stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.switchgear-sld__grid {
+  position: relative;
+}
+
+.switchgear-sld__edge-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.switchgear-sld__edge-hitbox {
+  cursor: move;
+}
+
+.switchgear-sld__edge-handle {
+  cursor: pointer;
+}
+
+.switchgear-sld__zoom-panel,
+.switchgear-sld__minimap {
+  position: absolute;
+  z-index: 10;
+  padding: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 80%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-white) 90%, transparent);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 10%), 0 8px 10px -6px rgb(0 0 0 / 10%);
+  backdrop-filter: blur(8px);
+}
+
+.switchgear-sld__zoom-panel {
+  bottom: 0.75rem;
+  left: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.switchgear-sld__zoom-label {
+  min-width: 3rem;
+  color: var(--color-neutral-600);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-align: center;
+}
+
+.switchgear-sld__context-menu {
+  min-width: 156px;
+}
+
+.switchgear-sld__context-menu--wide {
+  min-width: 176px;
+}
+
+.switchgear-sld__context-item--danger {
+  color: var(--color-rose-600);
+}
+
+.switchgear-sld__context-shortcut {
+  color: var(--color-neutral-400);
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.switchgear-sld__minimap {
+  right: 0.75rem;
+  bottom: 0.75rem;
+  overflow: hidden;
+}
+
+.switchgear-sld__minimap-svg {
+  display: block;
+  cursor: crosshair;
+}
+
+:global(.dark .switchgear-sld) {
+  border-color: var(--color-neutral-800);
+  background: color-mix(in srgb, var(--color-neutral-900) 80%, transparent);
+}
+
+:global(.dark .switchgear-sld__tool-group),
+:global(.dark .switchgear-sld__tool-button--standalone),
+:global(.dark .switchgear-sld__tool-button--split),
+:global(.dark .switchgear-sld__kind-button--split),
+:global(.dark .switchgear-sld__dropdown),
+:global(.dark .switchgear-sld__context-menu) {
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .switchgear-sld__tool-button),
+:global(.dark .switchgear-sld__kind-button) {
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .switchgear-sld__tool-button:hover),
+:global(.dark .switchgear-sld__kind-button:hover) {
+  background: var(--color-neutral-700);
+}
+
+:global(.dark .switchgear-sld__tool-button--active),
+:global(.dark .switchgear-sld__kind-button--active),
+:global(.dark .switchgear-sld__tool-button--active:hover),
+:global(.dark .switchgear-sld__kind-button--active:hover) {
+  background: var(--color-blue-600);
+  color: var(--color-white);
+}
+
+:global(.dark .switchgear-sld__dropdown),
+:global(.dark .switchgear-sld__context-menu) {
+  background: var(--color-neutral-900);
+}
+
+:global(.dark .switchgear-sld__dropdown-item),
+:global(.dark .switchgear-sld__context-item) {
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .switchgear-sld__dropdown-item:hover),
+:global(.dark .switchgear-sld__context-item:hover) {
+  background: var(--color-neutral-800);
+}
+
+:global(.dark .switchgear-sld__viewport) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-950);
+}
+
+:global(.dark .switchgear-sld__zoom-panel),
+:global(.dark .switchgear-sld__minimap) {
+  border-color: color-mix(in srgb, var(--color-neutral-700) 80%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-900) 85%, transparent);
+}
+
+:global(.dark .switchgear-sld__zoom-label) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-sld__context-item--danger) {
+  color: var(--color-rose-400);
+}
+
+:global(.dark .switchgear-sld__context-shortcut) {
+  color: var(--color-neutral-500);
 }
 </style>
