@@ -28,11 +28,11 @@ const renameError = ref("")
 const statusClass = computed(() => {
   switch (props.device.status) {
     case "online":
-      return "bg-green-500"
+      return "device-list-item__status--online"
     case "offline":
-      return "bg-gray-600"
+      return "device-list-item__status--offline"
     default:
-      return "bg-gray-600"
+      return "device-list-item__status--offline"
   }
 })
 
@@ -96,28 +96,28 @@ function openInNewTab() {
 <template>
   <UiMenu>
     <UiMenuTrigger as-child trigger="contextmenu">
-    <SidebarListItem :active="active" class="relative" @select="handleSelect">
-      <template #prefix>
-        <span class="w-2 h-2 rounded-full transition-colors" :class="statusClass" />
-      </template>
-      <span class="truncate text-sm">
-        <p class="font-semibold text-sm text-neutral-900 dark:text-neutral-100 flex items-center gap-2">
-          <span>{{ device.display_name }}</span>
-          <span v-if="device.name" class="text-xs text-neutral-500 dark:text-neutral-400">· {{ device.unit_id }}</span>
-        </p>
-      </span>
-      <template #suffix>
-        <span class="text-xs truncate text-neutral-500 dark:text-neutral-400">
-          {{ device.device_type }}
+      <SidebarListItem :active="active" class="device-list-item" @select="handleSelect">
+        <template #prefix>
+          <span class="device-list-item__status" :class="statusClass" />
+        </template>
+        <span class="device-list-item__body">
+          <span class="device-list-item__title-row">
+            <span>{{ device.display_name }}</span>
+            <span v-if="device.name" class="device-list-item__unit-id">· {{ device.unit_id }}</span>
+          </span>
         </span>
-      </template>
-    </SidebarListItem>
+        <template #suffix>
+          <span class="device-list-item__type">
+            {{ device.device_type }}
+          </span>
+        </template>
+      </SidebarListItem>
     </UiMenuTrigger>
     <UiMenuContent>
-      <UiMenuItem class="text-neutral-900 dark:text-neutral-100" @select="openInNewTab">
+      <UiMenuItem class="device-list-item__menu-item" @select="openInNewTab">
         Open in new tab
       </UiMenuItem>
-      <UiMenuItem class="text-neutral-900 dark:text-neutral-100" @select="openRename">
+      <UiMenuItem class="device-list-item__menu-item" @select="openRename">
         Rename
       </UiMenuItem>
     </UiMenuContent>
@@ -134,3 +134,68 @@ function openInNewTab() {
     @confirm="confirmRename"
   />
 </template>
+
+<style scoped>
+.device-list-item {
+  position: relative;
+}
+
+.device-list-item__status {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  transition: background-color 120ms ease;
+}
+
+.device-list-item__status--online {
+  background: var(--color-green-600);
+}
+
+.device-list-item__status--offline {
+  background: var(--color-neutral-600);
+}
+
+.device-list-item__body {
+  overflow: hidden;
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-list-item__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.device-list-item__unit-id {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+.device-list-item__type {
+  overflow: hidden;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-list-item__menu-item {
+  color: var(--color-neutral-900);
+}
+
+:global(.dark .device-list-item__body),
+:global(.dark .device-list-item__menu-item) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .device-list-item__unit-id),
+:global(.dark .device-list-item__type) {
+  color: var(--color-neutral-400);
+}
+</style>

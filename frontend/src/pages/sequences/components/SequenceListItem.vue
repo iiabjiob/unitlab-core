@@ -174,26 +174,26 @@ function openInNewTab() {
 <template>
   <UiMenu>
     <UiMenuTrigger as-child trigger="contextmenu">
-    <SidebarListItem :active="active" class="relative" @select="handleSelect">
-      <span class="truncate text-sm">
-        {{ sequence.name }}
-      </span>
-    </SidebarListItem>
+      <SidebarListItem :active="active" class="sequence-list-item" @select="handleSelect">
+        <span class="sequence-list-item__name">
+          {{ sequence.name }}
+        </span>
+      </SidebarListItem>
     </UiMenuTrigger>
     <UiMenuContent>
-      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openInNewTab">
+      <UiMenuItem class="sequence-list-item__menu-item" @select="openInNewTab">
         Open in new tab
       </UiMenuItem>
-      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="exportSequence">
+      <UiMenuItem class="sequence-list-item__menu-item" @select="exportSequence">
         Export
       </UiMenuItem>
-      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openRename">
+      <UiMenuItem class="sequence-list-item__menu-item" @select="openRename">
         Rename
       </UiMenuItem>
-      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openDescriptionEditor">
+      <UiMenuItem class="sequence-list-item__menu-item" @select="openDescriptionEditor">
         Edit description
       </UiMenuItem>
-      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="duplicateSequence">
+      <UiMenuItem class="sequence-list-item__menu-item" @select="duplicateSequence">
         Duplicate
       </UiMenuItem>
       <UiMenuItem danger @select="deleteOpen = true">
@@ -212,7 +212,7 @@ function openInNewTab() {
   />
 
   <UiModal :open="descriptionOpen" title="Edit instruction description" @close="cancelDescriptionEditor">
-    <label class="block text-xs uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400" for="sequence-description">
+    <label class="sequence-list-item__description-label" for="sequence-description">
       Description
     </label>
     <textarea
@@ -221,7 +221,7 @@ function openInNewTab() {
       v-model="descriptionValue"
       data-dialog-initial
       rows="6"
-      class="mt-2 w-full rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+      class="sequence-list-item__description-input"
       :disabled="savingDescription"
       placeholder="Add instruction description"
     />
@@ -256,3 +256,66 @@ function openInNewTab() {
     @confirm="confirmDelete"
   />
 </template>
+
+<style scoped>
+.sequence-list-item {
+  position: relative;
+}
+
+.sequence-list-item__name {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sequence-list-item__menu-item {
+  color: var(--color-neutral-900);
+}
+
+.sequence-list-item__description-label {
+  display: block;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.sequence-list-item__description-input {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-sm);
+  background: var(--color-white);
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.sequence-list-item__description-input::placeholder {
+  color: var(--color-neutral-500);
+}
+
+.sequence-list-item__description-input:focus {
+  box-shadow: 0 0 0 1px var(--color-blue-500);
+}
+
+.sequence-list-item__description-input:disabled {
+  opacity: 0.6;
+}
+
+:global(.dark .sequence-list-item__menu-item) {
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .sequence-list-item__description-label) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .sequence-list-item__description-input) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-950);
+  color: var(--color-neutral-100);
+}
+</style>
