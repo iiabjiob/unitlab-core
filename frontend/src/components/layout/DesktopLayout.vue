@@ -3,20 +3,20 @@
     <header class="desktop-layout__header">
       <div class="desktop-layout__brand">
         <AppLogo />
+        <TimeComponent class="desktop-layout__brand-clock" />
+      </div>
+
+      <div class="desktop-layout__runtime">
         <OnlineStatusComponent
           :status="status"
           :description="statusDescription"
           neutral-offline
         />
-      </div>
-
-      <div class="desktop-layout__runtime">
         <GlobalSignalTestStatus />
         <GlobalRunStatusLink :show-signal-chip="false" />
       </div>
 
       <div class="desktop-layout__utilities">
-        <TimeComponent class="desktop-layout__clock" />
         <div class="desktop-layout__workspace">
           <WorkspaceSwitcher variant="toolbar" />
         </div>
@@ -130,7 +130,8 @@ function resolveInitialLeftAsideWidth() {
   display: flex;
   height: 100dvh;
   flex-direction: column;
-  background: var(--color-neutral-50);
+  background:
+    linear-gradient(180deg, var(--color-neutral-50) 0%, color-mix(in srgb, var(--color-neutral-100) 70%, var(--color-white)) 100%);
   color: var(--color-neutral-800);
   font-family: var(--font-mono);
 }
@@ -139,12 +140,16 @@ function resolveInitialLeftAsideWidth() {
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-white) 86%, var(--color-neutral-100)) 0%, var(--color-neutral-100) 100%);
   overflow: hidden;
 }
 
 .desktop-layout__aside-panel {
   flex: 0 0 auto;
+  border-right: 1px solid color-mix(in srgb, var(--color-neutral-200) 80%, transparent);
   background: var(--color-white);
+  box-shadow: 10px 0 24px rgb(15 23 42 / 0.06);
 }
 
 .desktop-layout__aside {
@@ -171,15 +176,24 @@ function resolveInitialLeftAsideWidth() {
   overflow: hidden;
   padding: 0 1.25rem;
   border-bottom: 1px solid var(--color-neutral-200);
-  background: var(--color-white);
+  background: color-mix(in srgb, var(--color-white) 94%, var(--color-neutral-50));
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 82%) inset,
+    0 12px 24px rgb(15 23 42 / 0.06);
 }
 
 .desktop-layout__brand {
   display: flex;
   flex: 0 0 auto;
-  align-items: center;
-  gap: 0.75rem;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.375rem;
   min-width: 0;
+}
+
+.desktop-layout__brand-clock {
+  padding-left: 2.875rem;
 }
 
 .desktop-layout__runtime {
@@ -201,10 +215,6 @@ function resolveInitialLeftAsideWidth() {
   min-width: 0;
 }
 
-.desktop-layout__clock {
-  flex: 0 0 auto;
-}
-
 .desktop-layout__workspace {
   width: clamp(10rem, 17vw, 15rem);
   min-width: 0;
@@ -224,16 +234,26 @@ function resolveInitialLeftAsideWidth() {
 }
 
 :global(.dark .desktop-layout) {
-  background: var(--color-neutral-900);
+  background: var(--color-neutral-950);
   color: var(--color-neutral-200);
 }
 
+:global(.dark .desktop-layout__body) {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-neutral-900) 86%, var(--color-neutral-950)) 0%, var(--color-neutral-950) 100%);
+}
+
 :global(.dark .desktop-layout__aside-panel) {
-  background: var(--color-neutral-800);
+  border-right-color: var(--color-neutral-800);
+  background: color-mix(in srgb, var(--color-neutral-900) 92%, var(--color-neutral-800));
+  box-shadow: 10px 0 28px rgb(0 0 0 / 0.24);
 }
 
 :global(.dark .desktop-layout__header) {
   border-bottom-color: var(--color-neutral-800);
-  background: var(--color-neutral-900);
+  background: color-mix(in srgb, var(--color-neutral-900) 92%, var(--color-neutral-950));
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 4%) inset,
+    0 14px 26px rgb(0 0 0 / 0.26);
 }
 </style>
