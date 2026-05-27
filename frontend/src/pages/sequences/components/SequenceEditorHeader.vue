@@ -11,7 +11,7 @@ import {
   UiMenu,
   UiMenuTrigger,
   UiMenuContent,
-  UiMenuItem
+  UiMenuItem,
 } from "@/components/ui/menu"
 import EllipsisHorizontalIcon from "@/components/icons/EllipsisHorizontalIcon.vue"
 
@@ -125,13 +125,10 @@ const createdAt = computed(() => {
 </script>
 
 <template>
-  <div class="px-4 py-3 flex items-start justify-between border-b border-neutral-300 dark:border-neutral-800">
-
-    <!-- LEFT SIDE -->
-    <div class="flex flex-col gap-1">
-
-      <div class="flex items-center gap-3">
-        <div class="text-lg font-medium tracking-tight text-neutral-900 dark:text-white">
+  <div class="sequence-editor-header">
+    <div class="sequence-editor-header__main">
+      <div class="sequence-editor-header__title-row">
+        <div class="sequence-editor-header__title">
           {{ sequence.name }}
         </div>
         <UiBadge
@@ -143,38 +140,37 @@ const createdAt = computed(() => {
         </UiBadge>
       </div>
 
-      <div class="flex flex-wrap items-center gap-3 text-sm text-neutral-500 dark:text-neutral-400">
-        <span class="text-xs uppercase tracking-[0.3em] text-neutral-400 dark:text-neutral-500">
+      <div class="sequence-editor-header__meta">
+        <span class="sequence-editor-header__eyebrow">
           Instruction
         </span>
         <span>·</span>
         <span>Created {{ createdAt }}</span>
       </div>
 
-      <div v-if="sequence.description" class="text-xs text-neutral-500 dark:text-neutral-400">
+      <div v-if="sequence.description" class="sequence-editor-header__description">
         {{ sequence.description }}
       </div>
     </div>
 
-    <!-- RIGHT ACTIONS -->
     <UiMenu>
       <UiMenuTrigger asChild>
         <UiButton variant="icon">
-          <EllipsisHorizontalIcon size="24"/>
+          <EllipsisHorizontalIcon size="24" />
         </UiButton>
       </UiMenuTrigger>
 
       <UiMenuContent>
-        <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="emit('export')">
+        <UiMenuItem class="sequence-editor-header__menu-item" @select="emit('export')">
           Export
         </UiMenuItem>
-        <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="promptRename">
+        <UiMenuItem class="sequence-editor-header__menu-item" @select="promptRename">
           Rename
         </UiMenuItem>
-        <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openDescriptionEditor">
+        <UiMenuItem class="sequence-editor-header__menu-item" @select="openDescriptionEditor">
           Edit description
         </UiMenuItem>
-        <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="emit('duplicate')">
+        <UiMenuItem class="sequence-editor-header__menu-item" @select="emit('duplicate')">
           Duplicate
         </UiMenuItem>
 
@@ -195,7 +191,7 @@ const createdAt = computed(() => {
   />
 
   <UiModal :open="descriptionOpen" title="Edit instruction description" @close="closeDescriptionEditor">
-    <label class="block text-xs uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400" for="sequence-header-description">
+    <label class="sequence-editor-header__description-label" for="sequence-header-description">
       Description
     </label>
     <textarea
@@ -204,7 +200,7 @@ const createdAt = computed(() => {
       v-model="descriptionValue"
       data-dialog-initial
       rows="6"
-      class="mt-2 w-full rounded border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+      class="sequence-editor-header__description-input"
       :disabled="savingDescription"
       placeholder="Add instruction description"
     />
@@ -229,3 +225,117 @@ const createdAt = computed(() => {
     </template>
   </UiModal>
 </template>
+
+<style scoped>
+.sequence-editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-neutral-300);
+}
+
+.sequence-editor-header__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sequence-editor-header__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.sequence-editor-header__title {
+  color: var(--color-neutral-900);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.sequence-editor-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+}
+
+.sequence-editor-header__eyebrow {
+  color: var(--color-neutral-400);
+  font-size: var(--text-xs);
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.sequence-editor-header__description {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.sequence-editor-header__menu-item {
+  color: var(--color-neutral-900);
+}
+
+.sequence-editor-header__description-label {
+  display: block;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.sequence-editor-header__description-input {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-sm);
+  background: var(--color-white);
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.sequence-editor-header__description-input::placeholder {
+  color: var(--color-neutral-500);
+}
+
+.sequence-editor-header__description-input:focus {
+  box-shadow: 0 0 0 1px var(--color-blue-500);
+}
+
+.sequence-editor-header__description-input:disabled {
+  opacity: 0.6;
+}
+
+:global(.dark .sequence-editor-header) {
+  border-bottom-color: var(--color-neutral-800);
+}
+
+:global(.dark .sequence-editor-header__title) {
+  color: var(--color-white);
+}
+
+:global(.dark .sequence-editor-header__meta),
+:global(.dark .sequence-editor-header__description),
+:global(.dark .sequence-editor-header__description-label) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .sequence-editor-header__eyebrow) {
+  color: var(--color-neutral-500);
+}
+
+:global(.dark .sequence-editor-header__menu-item) {
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .sequence-editor-header__description-input) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-950);
+  color: var(--color-neutral-100);
+}
+</style>

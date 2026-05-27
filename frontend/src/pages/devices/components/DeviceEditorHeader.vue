@@ -86,23 +86,21 @@ async function confirmRename() {
 </script>
 
 <template>
-  <div class="px-4 py-3 flex items-start justify-between border-b border-neutral-300 dark:border-neutral-800">
-    <!-- LEFT SIDE -->
-    <div class="flex flex-col gap-1">
-
-      <div class="text-lg font-medium tracking-tight text-neutral-900 dark:text-white flex flex-wrap items-center gap-2">
+  <div class="device-editor-header">
+    <div class="device-editor-header__main">
+      <div class="device-editor-header__title">
         <template v-if="device.name">
           <span>{{ device.name }}</span>
-          <span class="text-neutral-400">·</span>
-          <span class="text-neutral-500 dark:text-neutral-400">{{ device.unit_id }}</span>
+          <span class="device-editor-header__separator">·</span>
+          <span class="device-editor-header__unit-id">{{ device.unit_id }}</span>
         </template>
         <template v-else>
           {{ device.unit_id }}
         </template>
       </div>
 
-      <div class="flex flex-wrap items-center gap-3 text-sm text-neutral-500 dark:text-neutral-400">
-        <span class="text-xs uppercase tracking-[0.3em]">Device</span>
+      <div class="device-editor-header__meta">
+        <span class="device-editor-header__eyebrow">Device</span>
         <span>·</span>
         <span>Type {{ deviceTypeLabel }}</span>
         <template v-if="device.name">
@@ -127,7 +125,7 @@ async function confirmRename() {
         </UiButton>
       </UiMenuTrigger>
       <UiMenuContent>
-        <UiMenuItem class="text-neutral-900 dark:text-neutral-100" @select="openRename">
+        <UiMenuItem class="device-editor-header__menu-item" @select="openRename">
           Rename
         </UiMenuItem>
       </UiMenuContent>
@@ -145,3 +143,74 @@ async function confirmRename() {
     @confirm="confirmRename"
   />
 </template>
+
+<style scoped>
+.device-editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-neutral-300);
+}
+
+.device-editor-header__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.device-editor-header__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-neutral-900);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.device-editor-header__separator {
+  color: var(--color-neutral-400);
+}
+
+.device-editor-header__unit-id {
+  color: var(--color-neutral-500);
+}
+
+.device-editor-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+}
+
+.device-editor-header__eyebrow {
+  font-size: var(--text-xs);
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.device-editor-header__menu-item {
+  color: var(--color-neutral-900);
+}
+
+:global(.dark .device-editor-header) {
+  border-bottom-color: var(--color-neutral-800);
+}
+
+:global(.dark .device-editor-header__title) {
+  color: var(--color-white);
+}
+
+:global(.dark .device-editor-header__unit-id),
+:global(.dark .device-editor-header__meta) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .device-editor-header__menu-item) {
+  color: var(--color-neutral-100);
+}
+</style>
