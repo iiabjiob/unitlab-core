@@ -25,25 +25,22 @@ const label = computed(() => {
 const sizeClass = computed(() => {
   switch (props.size) {
     case "lg":
-      return "w-12 h-12"
+      return "switchgear-position-icon__graphic--lg"
     case "md":
-      return "w-7 h-7"
+      return "switchgear-position-icon__graphic--md"
     default:
-      return "w-6 h-6"
+      return "switchgear-position-icon__graphic--sm"
   }
-})
-
-const colorClass = computed(() => {
-  return "text-blue-600 dark:text-blue-400"
 })
 </script>
 
 <template>
-  <span class="inline-flex items-center" role="img" :aria-label="`Position: ${label}`" :title="label">
+  <span class="switchgear-position-icon" role="img" :aria-label="`Position: ${label}`" :title="label">
     <svg
       viewBox="0 0 16 16"
       fill="none"
-      :class="['block drop-shadow-sm', sizeClass, colorClass]"
+      class="switchgear-position-icon__graphic"
+      :class="sizeClass"
     >
       <rect
         v-if="state === 'CLOSED'"
@@ -91,3 +88,35 @@ const colorClass = computed(() => {
     </svg>
   </span>
 </template>
+
+<style scoped>
+.switchgear-position-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.switchgear-position-icon__graphic {
+  display: block;
+  color: var(--color-blue-600);
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 15%));
+}
+
+.switchgear-position-icon__graphic--sm {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.switchgear-position-icon__graphic--md {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.switchgear-position-icon__graphic--lg {
+  width: 3rem;
+  height: 3rem;
+}
+
+:global(.dark .switchgear-position-icon__graphic) {
+  color: var(--color-blue-400);
+}
+</style>

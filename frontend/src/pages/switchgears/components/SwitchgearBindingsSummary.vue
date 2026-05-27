@@ -225,53 +225,53 @@ watch(
 </script>
 
 <template>
-  <div class="h-full flex flex-col pe-4">
-    <div class="mb-4 flex items-center justify-between">
+  <div class="switchgear-bindings-summary">
+    <div class="switchgear-bindings-summary__header">
       <div>
-        <div class="text-xs uppercase tracking-wider text-neutral-500">Bindings summary</div>
-        <div class="text-sm text-neutral-600 dark:text-neutral-300">Current channel usage</div>
+        <div class="switchgear-bindings-summary__eyebrow">Bindings summary</div>
+        <div class="switchgear-bindings-summary__subtitle">Current channel usage</div>
       </div>
       <UiButton size="xs" variant="secondary" @click="emit('edit')">
         Edit bindings
       </UiButton>
     </div>
 
-    <div v-if="!hasAnyBinding" class="rounded-md border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+    <div v-if="!hasAnyBinding" class="switchgear-bindings-summary__empty">
       No bindings configured yet.
     </div>
 
-    <div class="space-y-3 pr-1 lg:overflow-y-auto">
+    <div class="switchgear-bindings-summary__groups">
       <div
         v-for="group in GROUPS"
         :key="group.id"
-        class="rounded-md border border-neutral-200 p-3 dark:border-neutral-700"
+        class="switchgear-bindings-summary__group"
       >
-        <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+        <div class="switchgear-bindings-summary__group-title">
           {{ group.title }}
         </div>
 
-        <div class="space-y-2">
+        <div class="switchgear-bindings-summary__role-list">
           <div
             v-for="role in group.roles"
             :key="role"
-            class="rounded border border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
+            class="switchgear-bindings-summary__role-card"
           >
-            <div class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+            <div class="switchgear-bindings-summary__role-label">
               {{ ROLE_META[role].label }}
             </div>
-            <div class="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+            <div class="switchgear-bindings-summary__binding">
               {{ bindingLine(role) }}
             </div>
             <div
               v-if="signalLine(role)"
-              class="mt-1 overflow-x-auto whitespace-nowrap text-xs text-neutral-600 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden dark:text-neutral-300"
+              class="switchgear-bindings-summary__signal"
               :title="signalLine(role)"
             >
               {{ signalLine(role) }}
             </div>
             <div
               v-if="showFeedbackDelay(role)"
-              class="mt-1 flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300"
+              class="switchgear-bindings-summary__delay"
             >
               <span>Feedback delay</span>
               <input
@@ -279,7 +279,7 @@ watch(
                 autocomplete="off"
                 min="0"
                 step="50"
-                class="w-24 rounded border border-neutral-300 bg-white px-2 py-1 text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+                class="switchgear-bindings-summary__delay-input"
                 :name="`summary-feedback-delay-${role}`"
                 :value="delayDraft[role]"
                 :disabled="savingDelay[role]"
@@ -294,3 +294,160 @@ watch(
     </div>
   </div>
 </template>
+
+<style scoped>
+.switchgear-bindings-summary {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  padding-inline-end: 1rem;
+}
+
+.switchgear-bindings-summary__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.switchgear-bindings-summary__eyebrow {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.switchgear-bindings-summary__subtitle {
+  color: var(--color-neutral-600);
+  font-size: var(--text-sm);
+}
+
+.switchgear-bindings-summary__empty {
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--color-neutral-300);
+  border-radius: var(--radius-md);
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+}
+
+.switchgear-bindings-summary__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-right: 0.25rem;
+}
+
+.switchgear-bindings-summary__group {
+  padding: 0.75rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+}
+
+.switchgear-bindings-summary__group-title {
+  margin-bottom: 0.5rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.switchgear-bindings-summary__role-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.switchgear-bindings-summary__role-card {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-sm);
+  background: var(--color-neutral-50);
+}
+
+.switchgear-bindings-summary__role-label {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.switchgear-bindings-summary__binding {
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.switchgear-bindings-summary__signal {
+  margin-top: 0.25rem;
+  overflow-x: auto;
+  color: var(--color-neutral-600);
+  font-size: var(--text-xs);
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+
+.switchgear-bindings-summary__signal::-webkit-scrollbar {
+  display: none;
+}
+
+.switchgear-bindings-summary__delay {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  color: var(--color-neutral-600);
+  font-size: var(--text-xs);
+}
+
+.switchgear-bindings-summary__delay-input {
+  width: 6rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-sm);
+  background: var(--color-white);
+  color: var(--color-neutral-900);
+}
+
+.switchgear-bindings-summary__delay-input:disabled {
+  opacity: 0.65;
+}
+
+@media (min-width: 1024px) {
+  .switchgear-bindings-summary__groups {
+    overflow-y: auto;
+  }
+}
+
+:global(.dark .switchgear-bindings-summary__subtitle),
+:global(.dark .switchgear-bindings-summary__signal),
+:global(.dark .switchgear-bindings-summary__delay) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-bindings-summary__empty),
+:global(.dark .switchgear-bindings-summary__group-title),
+:global(.dark .switchgear-bindings-summary__role-label) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .switchgear-bindings-summary__empty),
+:global(.dark .switchgear-bindings-summary__group),
+:global(.dark .switchgear-bindings-summary__role-card) {
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .switchgear-bindings-summary__role-card) {
+  background: var(--color-neutral-900);
+}
+
+:global(.dark .switchgear-bindings-summary__binding) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .switchgear-bindings-summary__delay-input) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-900);
+  color: var(--color-neutral-200);
+}
+</style>

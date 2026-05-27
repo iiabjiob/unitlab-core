@@ -108,12 +108,12 @@ function openInNewTab() {
 <template>
   <UiMenu>
     <UiMenuTrigger as-child trigger="contextmenu">
-    <SidebarListItem :active="active" class="relative" @select="handleSelect">
-      <span class="truncate text-sm font-medium">
+    <SidebarListItem :active="active" class="switchgear-list-item" @select="handleSelect">
+      <span class="switchgear-list-item__title">
         {{ switchgear.name }}
       </span>
       <template #suffix>
-        <span class="absolute right-3 top-1/2 -translate-y-1/2">
+        <span class="switchgear-list-item__position">
           <SwitchgearPositionIcon :state="positionState" />
         </span>
       </template>
@@ -123,13 +123,13 @@ function openInNewTab() {
     </SidebarListItem>
     </UiMenuTrigger>
     <UiMenuContent>
-      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openInNewTab">
+      <UiMenuItem class="switchgear-list-item__menu-item" @select="openInNewTab">
         Open in new tab
       </UiMenuItem>
-      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="openRename">
+      <UiMenuItem class="switchgear-list-item__menu-item" @select="openRename">
         Rename
       </UiMenuItem>
-      <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="duplicateSwitchgear">
+      <UiMenuItem class="switchgear-list-item__menu-item" @select="duplicateSwitchgear">
         Duplicate
       </UiMenuItem>
       <UiMenuItem danger @select="deleteOpen = true">
@@ -157,3 +157,32 @@ function openInNewTab() {
     @confirm="confirmDelete"
   />
 </template>
+
+<style scoped>
+.switchgear-list-item {
+  position: relative;
+}
+
+.switchgear-list-item__title {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.switchgear-list-item__position {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  transform: translateY(-50%);
+}
+
+.switchgear-list-item__menu-item {
+  color: var(--color-neutral-900);
+}
+
+:global(.dark .switchgear-list-item__menu-item) {
+  color: var(--color-neutral-200);
+}
+</style>
