@@ -302,7 +302,7 @@ const stackGridColumns = computed<DataGridAppColumnInput<StackRow>[]>(() => [
     minWidth: 180,
     initialState: { width: 220 },
     capabilities: { editable: false },
-    cellRenderer: ({ row }) => h("span", { class: "font-mono text-[11px]" }, String(row?.task ?? "—")),
+    cellRenderer: ({ row }) => h("span", { class: "device-diagnostics-panel__stack-cell" }, String(row?.task ?? "—")),
   },
   {
     key: "minWords",
@@ -311,7 +311,7 @@ const stackGridColumns = computed<DataGridAppColumnInput<StackRow>[]>(() => [
     initialState: { width: 140 },
     capabilities: { editable: false },
     presentation: { align: "right", headerAlign: "right" },
-    cellRenderer: ({ row }) => h("span", { class: "font-mono text-[11px]" }, String(row?.minWords ?? "—")),
+    cellRenderer: ({ row }) => h("span", { class: "device-diagnostics-panel__stack-cell" }, String(row?.minWords ?? "—")),
   },
   {
     key: "lastSeenMs",
@@ -320,7 +320,7 @@ const stackGridColumns = computed<DataGridAppColumnInput<StackRow>[]>(() => [
     initialState: { width: 160 },
     capabilities: { editable: false },
     presentation: { align: "right", headerAlign: "right" },
-    cellRenderer: ({ row }) => h("span", { class: "font-mono text-[11px]" }, String(row?.lastSeenMs ?? "—")),
+    cellRenderer: ({ row }) => h("span", { class: "device-diagnostics-panel__stack-cell" }, String(row?.lastSeenMs ?? "—")),
   },
 ])
 
@@ -738,44 +738,44 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex flex-col select-none lg:h-full lg:min-h-0">
-    <div class="p-3 text-xs uppercase tracking-wider text-neutral-500 border-b dark:text-neutral-400 border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
+  <div class="device-diagnostics-panel">
+    <div class="device-diagnostics-panel__header">
       <span>Device Diagnostics</span>
-      <div class="flex items-center gap-2">
-        <span class="text-[10px] normal-case tracking-normal text-neutral-400 dark:text-neutral-500">
+      <div class="device-diagnostics-panel__header-actions">
+        <span class="device-diagnostics-panel__source">
           Source: heartbeat /hd
         </span>
         <button
           type="button"
-          class="relative text-[10px] px-2 py-1 rounded border border-neutral-300 text-neutral-600 hover:bg-neutral-100 disabled:opacity-60 disabled:cursor-not-allowed dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800/60 transition-colors"
+          class="device-diagnostics-panel__save-button"
           :disabled="!hasDiagnostics"
           @click="saveDiagnosticsJson"
         >
-          <span class="invisible">Save JSON</span>
-          <span class="absolute inset-0 flex items-center justify-center">
+          <span class="device-diagnostics-panel__save-label">Save JSON</span>
+          <span class="device-diagnostics-panel__save-feedback">
             {{ saveButtonText }}
           </span>
         </button>
       </div>
     </div>
 
-    <div class="p-4 space-y-4 text-sm text-neutral-700 dark:text-neutral-200 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
-      <div v-if="!fast && !diag" class="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-700 px-4 py-3 text-sm italic text-neutral-500 dark:text-neutral-400">
+    <div class="device-diagnostics-panel__body">
+      <div v-if="!fast && !diag" class="device-diagnostics-panel__empty">
         Waiting for heartbeat diagnostics. Firmware should publish fast <code>/h</code> and diagnostic <code>/hd</code> heartbeats.
       </div>
 
       <template v-else>
         <UiAffinoDisclosure title="Key alerts">
-          <div class="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(180px,1fr))]">
+          <div class="device-diagnostics-panel__auto-grid">
             <div
               v-for="item in keyAlerts"
               :key="item.key"
-              class="rounded-md border px-3 py-2"
+              class="device-diagnostics-panel__card"
               :class="item.isAlert
-                ? 'border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200'
-                : 'border-neutral-200 bg-neutral-50 text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-200'"
+                ? 'device-diagnostics-panel__card--alert'
+                : 'device-diagnostics-panel__card--neutral'"
             >
-              <div class="text-[10px] uppercase tracking-wide opacity-80 flex items-center gap-1">
+              <div class="device-diagnostics-panel__metric-label device-diagnostics-panel__metric-label--muted">
                 <span>{{ item.label }}</span>
                 <InlineInfoTooltip
                   v-if="tooltipFromMap(keyAlertTooltipByKey, item.key)"
@@ -784,23 +784,23 @@ onBeforeUnmount(() => {
                   align="start"
                 />
               </div>
-              <div class="mt-1 text-sm font-semibold break-all">{{ item.value }}</div>
-              <div v-if="item.hint" class="text-[10px] mt-0.5 uppercase tracking-wide opacity-80">{{ item.hint }}</div>
+              <div class="device-diagnostics-panel__metric-value device-diagnostics-panel__metric-value--strong">{{ item.value }}</div>
+              <div v-if="item.hint" class="device-diagnostics-panel__metric-hint">{{ item.hint }}</div>
             </div>
           </div>
         </UiAffinoDisclosure>
 
         <UiAffinoDisclosure title="Freshness">
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div class="device-diagnostics-panel__two-grid">
             <div
               v-for="row in freshnessRows"
               :key="row.key"
-              class="rounded-md border px-3 py-2"
+              class="device-diagnostics-panel__card"
               :class="row.stale
-                ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200'
-                : 'border-neutral-200 bg-neutral-50 text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900/60 dark:text-neutral-200'"
+                ? 'device-diagnostics-panel__card--stale'
+                : 'device-diagnostics-panel__card--neutral'"
             >
-              <div class="text-[10px] uppercase tracking-wide opacity-80 flex items-center gap-1">
+              <div class="device-diagnostics-panel__metric-label device-diagnostics-panel__metric-label--muted">
                 <span>{{ row.label }}</span>
                 <InlineInfoTooltip
                   v-if="tooltipFromMap(freshnessTooltipByKey, row.key)"
@@ -809,67 +809,67 @@ onBeforeUnmount(() => {
                   align="start"
                 />
               </div>
-              <div class="mt-1 text-sm font-semibold">{{ row.value }}</div>
+              <div class="device-diagnostics-panel__metric-value device-diagnostics-panel__metric-value--strong">{{ row.value }}</div>
             </div>
           </div>
         </UiAffinoDisclosure>
 
         <UiAffinoDisclosure title="Summary">
-          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div
-            v-for="row in summaryRows"
-            :key="row.key"
-            class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900/60"
-          >
-            <div class="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
-              <span>{{ row.key }}</span>
-              <InlineInfoTooltip
-                v-if="tooltipFromMap(summaryTooltipByKey, String(row.key))"
-                :text="tooltipFromMap(summaryTooltipByKey, String(row.key))"
-                placement="top"
-                align="start"
-              />
+          <div class="device-diagnostics-panel__two-grid">
+            <div
+              v-for="row in summaryRows"
+              :key="row.key"
+              class="device-diagnostics-panel__card device-diagnostics-panel__card--neutral"
+            >
+              <div class="device-diagnostics-panel__metric-label">
+                <span>{{ row.key }}</span>
+                <InlineInfoTooltip
+                  v-if="tooltipFromMap(summaryTooltipByKey, String(row.key))"
+                  :text="tooltipFromMap(summaryTooltipByKey, String(row.key))"
+                  placement="top"
+                  align="start"
+                />
+              </div>
+              <div class="device-diagnostics-panel__metric-value">{{ row.value }}</div>
             </div>
-            <div class="mt-1 text-sm font-medium break-all">{{ row.value }}</div>
-          </div>
           </div>
         </UiAffinoDisclosure>
 
         <UiAffinoDisclosure
           title="Telemetry tree"
-          containerClass="rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden"
-          headerClass="w-full px-3 py-2 text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/70 border-b border-neutral-200 dark:border-neutral-700"
+          containerClass="device-diagnostics-panel__tree-disclosure"
+          headerClass="device-diagnostics-panel__tree-header"
         >
-          <div class="max-h-72 overflow-auto p-1.5 text-[11px]" tabindex="0" @keydown="onTelemetryTreeRootKeydown">
+          <div class="device-diagnostics-panel__tree" tabindex="0" @keydown="onTelemetryTreeRootKeydown">
             <button
               v-for="row in visibleTelemetryRows"
               :key="row.value"
               :ref="bindTelemetryItemElement(row.value)"
               type="button"
-              class="w-full cursor-default flex items-center gap-2 rounded px-2 py-1 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
+              class="device-diagnostics-panel__tree-row"
               :aria-expanded="row.isLeaf ? undefined : isTelemetryExpanded(row.value)"
               :style="{ paddingLeft: `${Math.max(6, telemetryNodeLevel(row.value) * 12)}px` }"
               @click="onTelemetryRowClick(row.value)"
               @keydown="onTelemetryRowKeydown($event, row.value)"
             >
-              <span class="w-3 text-[10px] text-neutral-500 dark:text-neutral-400">
+              <span class="device-diagnostics-panel__tree-toggle">
                 {{ row.isLeaf ? '•' : (isTelemetryExpanded(row.value) ? '▾' : '▸') }}
               </span>
-              <span class="font-mono text-neutral-600 dark:text-neutral-300">{{ row.label }}</span>
-              <span v-if="row.valueLabel !== null" class="ml-auto font-mono text-neutral-800 dark:text-neutral-100 break-all">{{ row.valueLabel }}</span>
+              <span class="device-diagnostics-panel__tree-label">{{ row.label }}</span>
+              <span v-if="row.valueLabel !== null" class="device-diagnostics-panel__tree-value">{{ row.valueLabel }}</span>
             </button>
           </div>
         </UiAffinoDisclosure>
 
-        <div class="grid grid-cols-1 gap-4 xl:grid-cols-1">
+        <div class="device-diagnostics-panel__section-stack">
           <UiAffinoDisclosure title="Memory Stability">
-            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <div class="device-diagnostics-panel__four-grid">
               <div
                 v-for="row in memStabilityRows"
                 :key="row.key"
-                class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900/60"
+                class="device-diagnostics-panel__card device-diagnostics-panel__card--neutral"
               >
-                <div class="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+                <div class="device-diagnostics-panel__metric-label">
                   <span>{{ row.label }}</span>
                   <InlineInfoTooltip
                     v-if="tooltipFromMap(memStabilityTooltipByKey, row.key)"
@@ -878,22 +878,22 @@ onBeforeUnmount(() => {
                     align="start"
                   />
                 </div>
-                <div class="mt-1 text-sm font-medium break-all">{{ row.value }}</div>
+                <div class="device-diagnostics-panel__metric-value">{{ row.value }}</div>
               </div>
             </div>
-            <div class="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <div class="device-diagnostics-panel__note">
               Proxy telemetry for heap plateau after warmup (`mem_stab` from diagnostic heartbeat).
             </div>
           </UiAffinoDisclosure>
 
           <UiAffinoDisclosure title="Allocation Counters">
-            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <div class="device-diagnostics-panel__four-grid">
               <div
                 v-for="row in allocRows"
                 :key="row.key"
-                class="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900/60"
+                class="device-diagnostics-panel__card device-diagnostics-panel__card--neutral"
               >
-                <div class="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+                <div class="device-diagnostics-panel__metric-label">
                   <span>{{ row.label }}</span>
                   <InlineInfoTooltip
                     v-if="tooltipFromMap(allocTooltipByKey, row.key)"
@@ -902,40 +902,40 @@ onBeforeUnmount(() => {
                     align="start"
                   />
                 </div>
-                <div class="mt-1 text-sm font-medium break-all">{{ row.value }}</div>
+                <div class="device-diagnostics-panel__metric-value">{{ row.value }}</div>
               </div>
             </div>
-            <div class="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <div class="device-diagnostics-panel__note">
               Best-effort C++ new/delete counters from firmware (`diag.alloc`); use with `mem_stab` because third-party malloc/free may be outside coverage.
             </div>
           </UiAffinoDisclosure>
 
           <UiAffinoDisclosure title="Tasks / Stack">
-            <div class="mb-2 rounded-md border border-neutral-200 bg-white/80 px-2 py-1.5 text-[11px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-950/40 dark:text-neutral-200">
-              <span class="uppercase tracking-wide text-neutral-500 dark:text-neutral-400">stale</span>
-              <span class="ml-2 font-semibold">{{ staleTasks ?? '—' }}</span>
+            <div class="device-diagnostics-panel__stale-summary">
+              <span class="device-diagnostics-panel__stale-label">stale</span>
+              <span class="device-diagnostics-panel__stale-value">{{ staleTasks ?? '—' }}</span>
             </div>
 
             <div
               v-if="stackRows.length"
-              class="overflow-hidden rounded-md border border-neutral-200 bg-white shadow-sm dark:border-neutral-700 dark:bg-neutral-950/60"
+              class="device-diagnostics-panel__stack"
             >
-              <div class="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-neutral-200 bg-neutral-50/90 px-2 py-1.5 text-[10px] uppercase tracking-wide text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/80 dark:text-neutral-400">
-                <span class="inline-flex items-center gap-1">
+              <div class="device-diagnostics-panel__stack-header">
+                <span class="device-diagnostics-panel__stack-heading-item">
                   <span>task</span>
                   <InlineInfoTooltip text="RTOS/firmware task name from stack diagnostics." placement="top" align="start" />
                 </span>
-                <span class="inline-flex items-center gap-1">
+                <span class="device-diagnostics-panel__stack-heading-item">
                   <span>min_words</span>
                   <InlineInfoTooltip text="Minimum observed stack free words for the task." placement="top" align="start" />
                 </span>
-                <span class="inline-flex items-center gap-1">
+                <span class="device-diagnostics-panel__stack-heading-item">
                   <span>last_seen_ms</span>
                   <InlineInfoTooltip text="Timestamp (ms) of last scheduler/task heartbeat observation." placement="top" align="start" />
                 </span>
               </div>
-              <div class="affino-native-data-grid h-[220px] min-h-[120px] bg-white dark:bg-neutral-950/60">
-                <div class="affino-native-data-grid__shell bg-white dark:bg-neutral-950/60">
+              <div class="affino-native-data-grid device-diagnostics-panel__stack-grid">
+                <div class="affino-native-data-grid__shell device-diagnostics-panel__stack-grid-shell">
                   <DataGrid
                     :rows="stackRows"
                     :columns="stackGridColumns"
@@ -951,18 +951,18 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </div>
-            <div v-else class="text-[11px] italic text-neutral-500 dark:text-neutral-400">
+            <div v-else class="device-diagnostics-panel__stack-empty">
               No stack data
             </div>
 
-            <div class="mt-2">
-              <h5 class="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-1">Reset</h5>
-              <div class="text-[11px] text-neutral-700 dark:text-neutral-200">
-                <span class="font-mono">code:</span> {{ asNumber(diagReset?.code) ?? '—' }}
-                <span class="mx-2 text-neutral-400">|</span>
-                <span class="font-mono">label:</span> {{ asString(diagReset?.label) ?? '—' }}
-                <span class="mx-2 text-neutral-400">|</span>
-                <span class="font-mono">boot:</span> {{ asNumber(diagReset?.boot) ?? '—' }}
+            <div class="device-diagnostics-panel__reset">
+              <h5 class="device-diagnostics-panel__reset-title">Reset</h5>
+              <div class="device-diagnostics-panel__reset-values">
+                <span class="device-diagnostics-panel__mono">code:</span> {{ asNumber(diagReset?.code) ?? '—' }}
+                <span class="device-diagnostics-panel__separator">|</span>
+                <span class="device-diagnostics-panel__mono">label:</span> {{ asString(diagReset?.label) ?? '—' }}
+                <span class="device-diagnostics-panel__separator">|</span>
+                <span class="device-diagnostics-panel__mono">boot:</span> {{ asNumber(diagReset?.boot) ?? '—' }}
               </div>
             </div>
           </UiAffinoDisclosure>
@@ -971,3 +971,439 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.device-diagnostics-panel {
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+}
+
+.device-diagnostics-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-neutral-200);
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.device-diagnostics-panel__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.device-diagnostics-panel__source {
+  color: var(--color-neutral-400);
+  font-size: 0.625rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.device-diagnostics-panel__save-button {
+  position: relative;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-neutral-600);
+  font-size: 0.625rem;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, opacity 150ms ease;
+}
+
+.device-diagnostics-panel__save-button:hover {
+  background: var(--color-neutral-100);
+}
+
+.device-diagnostics-panel__save-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.device-diagnostics-panel__save-label {
+  visibility: hidden;
+}
+
+.device-diagnostics-panel__save-feedback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.device-diagnostics-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  color: var(--color-neutral-700);
+  font-size: var(--text-sm);
+}
+
+.device-diagnostics-panel__empty {
+  padding: 0.75rem 1rem;
+  border: 1px dashed var(--color-neutral-300);
+  border-radius: 0.5rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+
+.device-diagnostics-panel__auto-grid,
+.device-diagnostics-panel__two-grid,
+.device-diagnostics-panel__four-grid,
+.device-diagnostics-panel__section-stack {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.device-diagnostics-panel__auto-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.device-diagnostics-panel__section-stack {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.device-diagnostics-panel__card {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+}
+
+.device-diagnostics-panel__card--neutral {
+  border-color: var(--color-neutral-200);
+  background: var(--color-neutral-50);
+  color: var(--color-neutral-700);
+}
+
+.device-diagnostics-panel__card--alert {
+  border-color: var(--color-red-300);
+  background: var(--color-red-100);
+  color: var(--color-red-800);
+}
+
+.device-diagnostics-panel__card--stale {
+  border-color: var(--color-amber-300);
+  background: var(--color-amber-50);
+  color: var(--color-amber-900);
+}
+
+.device-diagnostics-panel__metric-label,
+.device-diagnostics-panel__stack-header,
+.device-diagnostics-panel__reset-title,
+.device-diagnostics-panel__stale-label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-neutral-500);
+  font-size: 0.625rem;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.device-diagnostics-panel__metric-label--muted,
+.device-diagnostics-panel__metric-hint {
+  opacity: 0.8;
+}
+
+.device-diagnostics-panel__metric-value {
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.device-diagnostics-panel__metric-value--strong {
+  font-weight: 600;
+}
+
+.device-diagnostics-panel__metric-hint {
+  margin-top: 0.125rem;
+  font-size: 0.625rem;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+:global(.device-diagnostics-panel__tree-disclosure) {
+  overflow: hidden;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.5rem;
+}
+
+:global(.device-diagnostics-panel__tree-header) {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-neutral-200);
+  background: var(--color-neutral-50);
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.device-diagnostics-panel__tree {
+  max-height: 18rem;
+  overflow: auto;
+  padding: 0.375rem;
+  font-size: 0.6875rem;
+}
+
+.device-diagnostics-panel__tree-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: default;
+  text-align: left;
+}
+
+.device-diagnostics-panel__tree-row:hover {
+  background: var(--color-neutral-100);
+}
+
+.device-diagnostics-panel__tree-toggle {
+  width: 0.75rem;
+  color: var(--color-neutral-500);
+  font-size: 0.625rem;
+}
+
+.device-diagnostics-panel__tree-label,
+.device-diagnostics-panel__tree-value,
+.device-diagnostics-panel__mono,
+:global(.device-diagnostics-panel__stack-cell) {
+  font-family: var(--font-mono);
+}
+
+.device-diagnostics-panel__tree-label {
+  color: var(--color-neutral-600);
+}
+
+.device-diagnostics-panel__tree-value {
+  margin-left: auto;
+  overflow-wrap: anywhere;
+  color: var(--color-neutral-800);
+}
+
+.device-diagnostics-panel__note,
+.device-diagnostics-panel__stack-empty {
+  margin-top: 0.5rem;
+  color: var(--color-neutral-500);
+  font-size: 0.6875rem;
+}
+
+.device-diagnostics-panel__stack-empty {
+  font-style: italic;
+}
+
+.device-diagnostics-panel__stale-summary {
+  margin-bottom: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-white) 80%, transparent);
+  color: var(--color-neutral-700);
+  font-size: 0.6875rem;
+}
+
+.device-diagnostics-panel__stale-value {
+  margin-left: 0.5rem;
+  font-weight: 600;
+}
+
+.device-diagnostics-panel__stack {
+  overflow: hidden;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  box-shadow: var(--shadow-sm);
+}
+
+.device-diagnostics-panel__stack-header {
+  flex-wrap: wrap;
+  column-gap: 1rem;
+  row-gap: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid var(--color-neutral-200);
+  background: color-mix(in srgb, var(--color-neutral-50) 90%, transparent);
+}
+
+.device-diagnostics-panel__stack-heading-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.device-diagnostics-panel__stack-grid {
+  min-height: 120px;
+  height: 220px;
+  background: var(--color-white);
+}
+
+.device-diagnostics-panel__stack-grid-shell {
+  background: var(--color-white);
+}
+
+:global(.device-diagnostics-panel__stack-cell) {
+  font-size: 0.6875rem;
+}
+
+.device-diagnostics-panel__reset {
+  margin-top: 0.5rem;
+}
+
+.device-diagnostics-panel__reset-title {
+  margin: 0 0 0.25rem;
+}
+
+.device-diagnostics-panel__reset-values {
+  color: var(--color-neutral-700);
+  font-size: 0.6875rem;
+}
+
+.device-diagnostics-panel__separator {
+  margin: 0 0.5rem;
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .device-diagnostics-panel__header) {
+  border-bottom-color: var(--color-neutral-800);
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .device-diagnostics-panel__source) {
+  color: var(--color-neutral-500);
+}
+
+:global(.dark .device-diagnostics-panel__save-button) {
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .device-diagnostics-panel__save-button:hover) {
+  background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
+}
+
+:global(.dark .device-diagnostics-panel__body) {
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .device-diagnostics-panel__empty) {
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .device-diagnostics-panel__card--neutral) {
+  border-color: var(--color-neutral-700);
+  background: color-mix(in srgb, var(--color-neutral-900) 60%, transparent);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .device-diagnostics-panel__card--alert) {
+  border-color: var(--color-red-800);
+  background: color-mix(in srgb, var(--color-red-900) 30%, transparent);
+  color: var(--color-red-100);
+}
+
+:global(.dark .device-diagnostics-panel__card--stale) {
+  border-color: color-mix(in srgb, var(--color-amber-900) 80%, var(--color-amber-300));
+  background: color-mix(in srgb, var(--color-amber-900) 30%, transparent);
+  color: color-mix(in srgb, var(--color-amber-300) 80%, var(--color-white));
+}
+
+:global(.dark .device-diagnostics-panel__metric-label),
+:global(.dark .device-diagnostics-panel__stack-header),
+:global(.dark .device-diagnostics-panel__reset-title),
+:global(.dark .device-diagnostics-panel__stale-label),
+:global(.dark .device-diagnostics-panel__note),
+:global(.dark .device-diagnostics-panel__stack-empty) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .device-diagnostics-panel__tree-disclosure) {
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .device-diagnostics-panel__tree-header) {
+  border-bottom-color: var(--color-neutral-700);
+  background: color-mix(in srgb, var(--color-neutral-900) 70%, transparent);
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .device-diagnostics-panel__tree-row:hover) {
+  background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
+}
+
+:global(.dark .device-diagnostics-panel__tree-toggle) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .device-diagnostics-panel__tree-label) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .device-diagnostics-panel__tree-value) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .device-diagnostics-panel__stale-summary) {
+  border-color: var(--color-neutral-700);
+  background: color-mix(in srgb, var(--color-neutral-950) 40%, transparent);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .device-diagnostics-panel__stack) {
+  border-color: var(--color-neutral-700);
+  background: color-mix(in srgb, var(--color-neutral-950) 60%, transparent);
+}
+
+:global(.dark .device-diagnostics-panel__stack-header) {
+  border-bottom-color: var(--color-neutral-700);
+  background: color-mix(in srgb, var(--color-neutral-900) 80%, transparent);
+}
+
+:global(.dark .device-diagnostics-panel__stack-grid),
+:global(.dark .device-diagnostics-panel__stack-grid-shell) {
+  background: color-mix(in srgb, var(--color-neutral-950) 60%, transparent);
+}
+
+:global(.dark .device-diagnostics-panel__reset-values) {
+  color: var(--color-neutral-200);
+}
+
+@media (min-width: 640px) {
+  .device-diagnostics-panel__two-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .device-diagnostics-panel {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .device-diagnostics-panel__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
+@media (min-width: 1280px) {
+  .device-diagnostics-panel__four-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+</style>

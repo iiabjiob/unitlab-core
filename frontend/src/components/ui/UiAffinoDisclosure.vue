@@ -61,11 +61,11 @@ const isOpen = computed(() => disclosure.state.value.open)
   text-transform: uppercase;
 }
 
-.dark .ui-affino-disclosure {
+:global(.dark .ui-affino-disclosure) {
   border-color: var(--color-neutral-700);
 }
 
-.dark .ui-affino-disclosure__header {
+:global(.dark .ui-affino-disclosure__header) {
   color: var(--color-neutral-400);
 }
 </style>
