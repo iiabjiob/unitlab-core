@@ -1165,7 +1165,7 @@ onBeforeUnmount(() => {
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  cursor: default;
+  cursor: pointer;
   text-align: left;
 }
 

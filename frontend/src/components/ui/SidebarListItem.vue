@@ -56,7 +56,7 @@ function handleClick(event: MouseEvent) {
 .sidebar-list-item {
   align-items: center;
   color: var(--color-neutral-400);
-  cursor: default;
+  cursor: pointer;
   display: flex;
   padding: 0.5rem 0.75rem;
   transition: background-color 150ms ease, color 150ms ease, opacity 150ms ease;
@@ -68,6 +68,7 @@ function handleClick(event: MouseEvent) {
 }
 
 .sidebar-list-item.is-disabled {
+  cursor: not-allowed;
   opacity: 0.6;
 }
 

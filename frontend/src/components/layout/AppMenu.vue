@@ -370,7 +370,7 @@ function handleKeydown(event: KeyboardEvent) {
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
   border-radius: 0.75rem;
-  cursor: default;
+  cursor: pointer;
   color: var(--color-neutral-700);
   font-size: var(--text-sm);
   font-weight: 500;

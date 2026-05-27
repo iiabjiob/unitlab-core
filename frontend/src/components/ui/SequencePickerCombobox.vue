@@ -653,7 +653,7 @@ const hiddenInputValue = computed(() => (
   color: var(--picker-muted);
   padding: 0.1rem;
   border-radius: 999px;
-  cursor: default;
+  cursor: pointer;
   transition: color 120ms ease, background 120ms ease;
 }
 

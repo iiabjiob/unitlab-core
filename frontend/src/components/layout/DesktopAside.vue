@@ -207,7 +207,7 @@ const compactStatusClass = computed(() => {
   border-radius: var(--radius-md);
   background: var(--color-white);
   color: var(--color-neutral-700);
-  cursor: default;
+  cursor: pointer;
   text-decoration: none;
   transition: background-color 0.15s ease;
 }

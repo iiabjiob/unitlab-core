@@ -726,7 +726,7 @@ async function ensureCatalogLoadedForPicker() {
 
 .channel-tree-picker__trigger:disabled {
   opacity: 0.55;
-  cursor: default;
+  cursor: not-allowed;
 }
 
 .channel-tree-picker__value {

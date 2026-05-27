@@ -589,7 +589,7 @@ function submitAoValue() {
   margin-top: 0.125rem;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  cursor: default;
+  cursor: pointer;
   transition: background 150ms ease, border-color 150ms ease, color 150ms ease, opacity 150ms ease;
 }
 

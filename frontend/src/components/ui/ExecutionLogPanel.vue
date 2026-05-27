@@ -246,7 +246,7 @@ onBeforeUnmount(() => {
 }
 
 .execution-log__row.is-selectable {
-  cursor: default;
+  cursor: pointer;
 }
 
 .execution-log__row.is-selectable:focus {

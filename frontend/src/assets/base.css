@@ -170,8 +170,42 @@ video {
   color: var(--color-neutral-100);
 }
 
-:where(button, [role="button"], a, label, summary, .cursor-pointer):not(:where(.affino-datagrid-app-root *)) {
-  cursor: default !important;
+:where(
+  button,
+  [type="button"],
+  [type="reset"],
+  [type="submit"],
+  [role="button"],
+  [role="menuitem"],
+  [role="option"],
+  [role="tab"],
+  a[href],
+  label,
+  summary,
+  select,
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"],
+  .cursor-pointer
+):not(:disabled):not([aria-disabled="true"]) {
+  cursor: pointer !important;
+}
+
+:where(
+  button,
+  [type="button"],
+  [type="reset"],
+  [type="submit"],
+  [role="button"],
+  [role="menuitem"],
+  [role="option"],
+  [role="tab"],
+  select,
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"]
+):where(:disabled, [aria-disabled="true"]) {
+  cursor: not-allowed !important;
 }
 
 @media (hover: none) and (pointer: coarse) {
