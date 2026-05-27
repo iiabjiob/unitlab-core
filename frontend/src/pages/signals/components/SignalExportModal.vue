@@ -1,20 +1,20 @@
 <template>
   <UiModal :open="open" title="Export Cable Schedule" max-width="3xl" @close="emitClose">
-    <form id="signal-export-form" class="space-y-4" @submit.prevent="handleSubmit">
+    <form id="signal-export-form" class="signal-export-modal__form" @submit.prevent="handleSubmit">
       <UiAlert
         type="info"
         message="Engineer note: select columns that help quickly identify connection location (panel, cabinet, bay, line, etc.)."
       />
 
-      <div class="space-y-2">
-        <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Preset (optional)</p>
+      <div class="signal-export-modal__field-stack">
+        <p class="signal-export-modal__eyebrow">Preset (optional)</p>
         <UiAffinoListbox
           v-model="selectedPresetId"
           :options="presetListboxOptions"
           placeholder="Manual selection"
           aria-label="Export preset"
         />
-        <div class="flex justify-end">
+        <div class="signal-export-modal__inline-actions">
           <UiButton
             v-if="selectedPreset"
             type="button"
@@ -27,62 +27,62 @@
         </div>
       </div>
 
-      <div class="rounded-xl border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-700 dark:bg-neutral-900/40">
-        <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">Required columns (read-only)</p>
-        <div class="mt-2 flex flex-wrap gap-2">
+      <div class="signal-export-modal__card">
+        <p class="signal-export-modal__section-title">Required columns (read-only)</p>
+        <div class="signal-export-modal__chip-list">
           <span
             v-for="column in requiredColumns"
             :key="column.key"
-            class="rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs font-medium text-neutral-700 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-200"
+            class="signal-export-modal__chip"
           >
             {{ column.label }}
           </span>
         </div>
       </div>
 
-      <div class="space-y-2">
-        <div class="flex items-center justify-between">
-          <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">Optional columns from grid</p>
-          <div class="flex gap-2">
+      <div class="signal-export-modal__field-stack">
+        <div class="signal-export-modal__section-heading">
+          <p class="signal-export-modal__section-title">Optional columns from grid</p>
+          <div class="signal-export-modal__button-pair">
             <UiButton type="button" variant="ghost" size="xs" @click="selectAllOptional">Select all</UiButton>
             <UiButton type="button" variant="ghost" size="xs" @click="clearOptional">Clear</UiButton>
           </div>
         </div>
 
-        <div v-if="optionalColumns.length" class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <div v-if="optionalColumns.length" class="signal-export-modal__option-list">
           <label
             v-for="column in optionalColumns"
             :key="column.key"
-            class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+            class="signal-export-modal__option"
           >
             <input
               type="checkbox"
               autocomplete="off"
-              class="h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+              class="signal-export-modal__checkbox"
               :checked="isOptionalSelected(column.key)"
               @change="toggleOptional(column.key)"
             />
-            <span class="text-neutral-800 dark:text-neutral-100">{{ column.label }}</span>
+            <span class="signal-export-modal__option-label">{{ column.label }}</span>
           </label>
         </div>
-        <p v-else class="text-sm text-neutral-500 dark:text-neutral-400">No optional columns available.</p>
+        <p v-else class="signal-export-modal__muted">No optional columns available.</p>
       </div>
 
-      <div>
-        <label class="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-200">Save as preset (optional)</label>
+      <div class="signal-export-modal__field">
+        <label class="signal-export-modal__label">Save as preset (optional)</label>
         <input
           v-model="savePresetName"
           type="text"
           autocomplete="off"
           maxlength="120"
-          class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+          class="signal-export-modal__input"
           placeholder="e.g. Cabinet wiring schedule"
         />
       </div>
     </form>
 
     <template #footer>
-      <div class="flex w-full flex-wrap items-center justify-end gap-2">
+      <div class="signal-export-modal__footer">
         <UiButton type="button" variant="secondary" @click="emitClose">Cancel</UiButton>
         <UiButton type="submit" form="signal-export-form" variant="primary">📤 Export CSV</UiButton>
       </div>
@@ -297,3 +297,193 @@ watch(() => props.workspaceId, () => {
   selectedOptionalColumnKeys.value = []
 })
 </script>
+
+<style scoped>
+.signal-export-modal__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.signal-export-modal__field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.signal-export-modal__eyebrow {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.signal-export-modal__inline-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.signal-export-modal__card {
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+}
+
+.signal-export-modal__section-title {
+  color: var(--color-neutral-800);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.signal-export-modal__chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.signal-export-modal__chip {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-md);
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+}
+
+.signal-export-modal__section-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.signal-export-modal__button-pair {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.signal-export-modal__option-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.signal-export-modal__option {
+  align-items: center;
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.signal-export-modal__checkbox {
+  accent-color: var(--color-blue-600);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-sm);
+  height: 1rem;
+  width: 1rem;
+}
+
+.signal-export-modal__checkbox:focus {
+  outline: 2px solid var(--color-blue-500);
+  outline-offset: 2px;
+}
+
+.signal-export-modal__option-label {
+  color: var(--color-neutral-800);
+  font-size: var(--text-sm);
+}
+
+.signal-export-modal__muted {
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+}
+
+.signal-export-modal__field {
+  display: block;
+}
+
+.signal-export-modal__label {
+  color: var(--color-neutral-700);
+  display: block;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.signal-export-modal__input {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-lg);
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  padding: 0.5rem 0.75rem;
+  width: 100%;
+}
+
+.signal-export-modal__input:focus {
+  outline: 2px solid var(--color-blue-500);
+  outline-offset: 1px;
+}
+
+.signal-export-modal__footer {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+:global(.dark .signal-export-modal__eyebrow),
+:global(.dark .signal-export-modal__muted) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .signal-export-modal__card) {
+  background: color-mix(in srgb, var(--color-neutral-900) 40%, transparent);
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .signal-export-modal__section-title),
+:global(.dark .signal-export-modal__option-label),
+:global(.dark .signal-export-modal__input) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .signal-export-modal__chip) {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-600);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .signal-export-modal__option) {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .signal-export-modal__label) {
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .signal-export-modal__input) {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-700);
+}
+
+@media (min-width: 640px) {
+  .signal-export-modal__option-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .signal-export-modal__option-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+</style>

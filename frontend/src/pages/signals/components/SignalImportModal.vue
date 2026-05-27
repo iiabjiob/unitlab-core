@@ -1,19 +1,19 @@
 <template>
   <UiModal :open="open" title="Import Signal List" max-width="3xl" desktop-height="80vh" @close="emitClose">
-    <form id="signal-import-form" class="space-y-4" @submit.prevent="handleSubmit">
+    <form id="signal-import-form" class="signal-import-modal__form" @submit.prevent="handleSubmit">
       <!-- <UiAlert
         type="info"
         message="Upload an Excel signal list (.xls, .xlsx, .xlsm). Include headers and any metadata columns required by your workspace schema."
       /> -->
 
       <div
-        class="rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-300"
+        class="signal-import-modal__steps-card"
       >
-        <div class="flex flex-wrap items-center gap-2">
+        <div class="signal-import-modal__steps-row">
           <template v-for="(item, index) in stepItems" :key="item.id">
-            <div class="flex items-center gap-2">
+            <div class="signal-import-modal__step">
               <span :class="stepIndicatorClass(item.id)">{{ index + 1 }}. {{ item.label }}</span>
-              <span v-if="index < stepItems.length - 1" class="text-neutral-400">→</span>
+              <span v-if="index < stepItems.length - 1" class="signal-import-modal__step-separator">→</span>
             </div>
           </template>
         </div>
@@ -23,14 +23,14 @@
         <UiAlert type="error" :message="error" />
       </div>
 
-      <div v-if="step === 'upload'">
-        <label for="signal-import-file" class="mb-1 block text-sm font-semibold text-neutral-700 dark:text-neutral-200">Signal list file</label>
+      <div v-if="step === 'upload'" class="signal-import-modal__upload-field">
+        <label for="signal-import-file" class="signal-import-modal__strong-label">Signal list file</label>
         <div
-          class="group flex cursor-default flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center text-sm transition"
+          class="signal-import-modal__dropzone"
           :class="{
-            'border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-400 dark:bg-emerald-500/20 dark:text-emerald-200': dropActive,
-            'border-neutral-300 bg-white text-neutral-600 hover:border-primary-500 hover:bg-primary-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200': !dropActive,
-            'pointer-events-none opacity-60': parsing || loading,
+            'signal-import-modal__dropzone--active': dropActive,
+            'signal-import-modal__dropzone--idle': !dropActive,
+            'signal-import-modal__dropzone--disabled': parsing || loading,
           }"
           tabindex="0"
           role="button"
@@ -44,17 +44,17 @@
           @dragleave.prevent="onDragLeave"
           @drop.prevent="onDrop"
         >
-          <div class="flex flex-col items-center gap-2">
-            <p class="text-base font-semibold text-neutral-800 dark:text-neutral-50">Drag & drop your spreadsheet</p>
-            <p class="text-xs text-neutral-500 dark:text-neutral-400">
-              or <span class="text-primary-600 dark:text-primary-300 underline-offset-2 group-hover:underline">browse files</span>
+          <div class="signal-import-modal__dropzone-content">
+            <p class="signal-import-modal__dropzone-title">Drag & drop your spreadsheet</p>
+            <p class="signal-import-modal__muted signal-import-modal__muted--xs">
+              or <span class="signal-import-modal__browse-link">browse files</span>
             </p>
           </div>
-          <p class="mt-4 text-xs text-neutral-500 dark:text-neutral-400">Supported: .xls, .xlsx, .xlsm</p>
-          <p class="mt-1 text-xs text-neutral-500" v-if="fileName">
-            Selected: <span class="font-medium">{{ fileName }}</span>
+          <p class="signal-import-modal__file-help">Supported: .xls, .xlsx, .xlsm</p>
+          <p class="signal-import-modal__file-meta" v-if="fileName">
+            Selected: <span class="signal-import-modal__file-name">{{ fileName }}</span>
           </p>
-          <p v-if="parsing" class="mt-2 text-xs text-neutral-500">Analyzing workbook…</p>
+          <p v-if="parsing" class="signal-import-modal__parsing-text">Analyzing workbook…</p>
         </div>
         <input
           ref="fileInput"
@@ -63,13 +63,13 @@
           id="signal-import-file"
           name="signal-import-file"
           accept=".xls,.xlsx,.xlsm"
-          class="sr-only"
+          class="signal-import-modal__file-input"
           :disabled="parsing || loading"
           @change="onFileChange"
         />
 
-        <div class="mt-4 space-y-2">
-          <p class="block text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+        <div class="signal-import-modal__preset-block">
+          <p class="signal-import-modal__eyebrow">
             Preset (optional)
           </p>
           <UiAffinoListbox
@@ -79,10 +79,10 @@
             aria-label="Preset"
             :disabled="loading || parsing"
           />
-          <p class="text-xs text-neutral-500 dark:text-neutral-400">
+          <p class="signal-import-modal__muted signal-import-modal__muted--xs">
             Choose a saved preset to prefill sheet/column/type mapping in the wizard.
           </p>
-          <div class="flex justify-end">
+          <div class="signal-import-modal__inline-actions">
             <UiButton
               v-if="selectedPreset"
               type="button"
@@ -98,17 +98,17 @@
       </div>
 
       <template v-else>
-        <div class="rounded-lg border border-neutral-200 bg-white p-3 text-sm dark:border-neutral-700 dark:bg-neutral-900">
-          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div class="signal-import-modal__ready-card">
+          <div class="signal-import-modal__ready-row">
             <div>
-              <p class="font-semibold text-neutral-800 dark:text-neutral-100">File ready</p>
-              <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ fileName }}</p>
+              <p class="signal-import-modal__ready-title">File ready</p>
+              <p class="signal-import-modal__muted signal-import-modal__muted--xs">{{ fileName }}</p>
             </div>
             <UiButton
               type="button"
               variant="secondary"
               size="sm"
-              class="whitespace-nowrap"
+              class="signal-import-modal__nowrap"
               @click="replaceFile"
               :disabled="loading || parsing"
             >
@@ -118,14 +118,14 @@
           <UiAlert
             v-if="signalSheetStore.hasSheet"
             type="warning"
-            class="mt-3"
+            class="signal-import-modal__card-alert"
             message="Re-import overwrites existing signal rows in this workspace. If you need to preserve existing test results, create a new workspace before importing."
           />
         </div>
 
-        <div v-if="step === 'columns'" class="space-y-4">
-          <div>
-            <p class="mb-1 block text-sm font-semibold text-neutral-700 dark:text-neutral-200">Worksheet</p>
+        <div v-if="step === 'columns'" class="signal-import-modal__section-stack">
+          <div class="signal-import-modal__field">
+            <p class="signal-import-modal__strong-label">Worksheet</p>
             <UiAffinoListbox
               v-model="selectedSheetName"
               :options="worksheetListboxOptions"
@@ -133,20 +133,20 @@
               aria-label="Worksheet"
               :disabled="loading || parsing || worksheetListboxOptions.length === 0"
             />
-            <p v-if="!selectedSheetName" class="mt-2 text-xs text-amber-600 dark:text-amber-300">
+            <p v-if="!selectedSheetName" class="signal-import-modal__warning-text">
               Choose a worksheet from the uploaded file to continue. The Next button stays disabled until selected.
             </p>
           </div>
 
           <div v-if="availableColumns.length">
-            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div class="signal-import-modal__section-heading">
               <div>
-                <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">Columns</p>
-                <p class="text-xs text-neutral-500 dark:text-neutral-400">
+                <p class="signal-import-modal__section-title">Columns</p>
+                <p class="signal-import-modal__muted signal-import-modal__muted--xs">
                   {{ selectedColumnCount }} of {{ availableColumns.length }} selected
                 </p>
               </div>
-              <div class="flex gap-2">
+              <div class="signal-import-modal__button-pair">
                 <UiButton type="button" variant="ghost" size="xs" @click="selectAllColumns" :disabled="loading">
                   Select all
                 </UiButton>
@@ -155,43 +155,43 @@
                 </UiButton>
               </div>
             </div>
-            <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="signal-import-modal__option-list">
               <label
                 v-for="column in availableColumns"
                 :key="column.index"
-                class="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                class="signal-import-modal__option"
               >
                 <input
                   type="checkbox"
                   autocomplete="off"
                   :id="`signal-import-column-${column.index}`"
                   :name="`signal-import-columns-${column.index}`"
-                  class="h-4 w-4 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+                  class="signal-import-modal__checkbox"
                   :checked="isColumnSelected(column.index)"
                   @change="toggleColumn(column.index)"
                 />
-                <span class="text-neutral-800 dark:text-neutral-100">{{ column.header }}</span>
+                <span class="signal-import-modal__option-label">{{ column.header }}</span>
               </label>
             </div>
           </div>
-          <p v-else class="text-sm text-neutral-500 dark:text-neutral-400">
+          <p v-else class="signal-import-modal__muted">
             Selected worksheet has no detectable header row. Choose another sheet or upload a different file.
           </p>
         </div>
 
-        <div v-else-if="step === 'terminal'" class="space-y-4">
+        <div v-else-if="step === 'terminal'" class="signal-import-modal__section-stack">
           <div>
-            <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">Terminal column</p>
-            <p class="text-xs text-neutral-500 dark:text-neutral-400">
+            <p class="signal-import-modal__section-title">Terminal column</p>
+            <p class="signal-import-modal__muted signal-import-modal__muted--xs">
               Select column that contains terminal block values.
             </p>
-            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+            <p class="signal-import-modal__muted signal-import-modal__muted--xs signal-import-modal__spaced-xs">
               Terminal block of cabinet will be used for physical device connection to cabinet.
             </p>
           </div>
 
-          <div>
-            <p class="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-200">Terminal column</p>
+          <div class="signal-import-modal__field">
+            <p class="signal-import-modal__label">Terminal column</p>
             <UiAffinoListbox
               v-model="terminalColumnIndex"
               id="signal-import-terminal-column"
@@ -201,24 +201,24 @@
               aria-label="Terminal column"
               :disabled="loading || parsing || terminalColumnListboxOptions.length === 0"
             />
-            <p v-if="terminalColumnIndex === null" class="mt-2 text-xs text-amber-600 dark:text-amber-300">
+            <p v-if="terminalColumnIndex === null" class="signal-import-modal__warning-text">
               Select terminal column to continue.
             </p>
           </div>
         </div>
 
-        <div v-else-if="step === 'types'" class="space-y-4">
+        <div v-else-if="step === 'types'" class="signal-import-modal__section-stack">
           <div>
-            <p class="text-sm font-semibold text-neutral-800 dark:text-neutral-100">Type mapping</p>
-            <p class="text-xs text-neutral-500 dark:text-neutral-400">
+            <p class="signal-import-modal__section-title">Type mapping</p>
+            <p class="signal-import-modal__muted signal-import-modal__muted--xs">
               Select the column that contains vendor type codes, then map each code to an internal signal type.
             </p>
-            <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-              Example: <span class="font-semibold text-neutral-700 dark:text-neutral-200">SPS → DI</span>, <span class="font-semibold text-neutral-700 dark:text-neutral-200">SPC → DO</span>. Unmapped codes are skipped.
+            <p class="signal-import-modal__muted signal-import-modal__muted--xs signal-import-modal__spaced-xs">
+              Example: <span class="signal-import-modal__strong">SPS → DI</span>, <span class="signal-import-modal__strong">SPC → DO</span>. Unmapped codes are skipped.
             </p>
           </div>
-          <div>
-            <p class="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-200">Type column</p>
+          <div class="signal-import-modal__field">
+            <p class="signal-import-modal__label">Type column</p>
             <UiAffinoListbox
               v-model="typeColumnIndex"
               :options="typeColumnListboxOptions"
@@ -226,21 +226,21 @@
               aria-label="Type column"
               :disabled="loading || parsing || typeColumnListboxOptions.length === 0"
             />
-            <p v-if="typeColumnIndex === null" class="mt-2 text-xs text-amber-600 dark:text-amber-300">
+            <p v-if="typeColumnIndex === null" class="signal-import-modal__warning-text">
               Select the column that contains vendor type codes to continue import.
             </p>
           </div>
-          <div v-if="typeValueOptions.length" class="space-y-2">
+          <div v-if="typeValueOptions.length" class="signal-import-modal__mapping-list">
             <div
               v-for="option in typeValueOptions"
               :key="option.key"
-              class="flex flex-col gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 sm:flex-row sm:items-center sm:justify-between"
+              class="signal-import-modal__mapping-row"
             >
               <div>
-                <p class="font-medium text-neutral-800 dark:text-neutral-100">{{ option.label }}</p>
-                <p class="text-xs text-neutral-500 dark:text-neutral-400">{{ option.count }} rows</p>
+                <p class="signal-import-modal__mapping-title">{{ option.label }}</p>
+                <p class="signal-import-modal__muted signal-import-modal__muted--xs">{{ option.count }} rows</p>
               </div>
-              <div class="sm:w-52">
+              <div class="signal-import-modal__mapping-control">
                 <UiAffinoListbox
                   :model-value="typeMapping[option.key] ?? ''"
                   :options="typeMappingListboxOptions"
@@ -251,15 +251,15 @@
               </div>
             </div>
           </div>
-          <p v-else class="text-sm text-neutral-500 dark:text-neutral-400">
+          <p v-else class="signal-import-modal__muted">
             Selected column has no recognizable values. Choose a different column.
           </p>
           <UiAlert
             type="warning"
             message="Rows with types left as 'Skip' will not be imported."
           />
-          <div>
-            <label class="mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-200">Save as preset (optional)</label>
+          <div class="signal-import-modal__field">
+            <label class="signal-import-modal__label">Save as preset (optional)</label>
             <input
               v-model="savePresetName"
               type="text"
@@ -267,7 +267,7 @@
               id="signal-import-save-preset-name"
               name="signal-import-save-preset-name"
               maxlength="120"
-              class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+              class="signal-import-modal__input"
               placeholder="e.g. Project SCADA import"
             />
           </div>
@@ -277,7 +277,7 @@
     </form>
 
     <template #footer>
-      <div class="flex w-full flex-wrap items-center justify-end gap-2">
+      <div class="signal-import-modal__footer">
         <UiButton type="button" variant="secondary" @click="emitClose" :disabled="loading || parsing">
           Cancel
         </UiButton>
@@ -456,9 +456,9 @@ const deletePresetMessage = computed(() => {
 function stepIndicatorClass(target: WizardStep) {
   const targetIndex = stepOrder.indexOf(target)
   const currentIndex = activeStepIndex.value
-  if (targetIndex === currentIndex) return "text-primary-600 dark:text-primary-400"
-  if (targetIndex < currentIndex) return "text-neutral-500 dark:text-neutral-300"
-  return "text-neutral-400 dark:text-neutral-500"
+  if (targetIndex === currentIndex) return "signal-import-modal__step-label signal-import-modal__step-label--active"
+  if (targetIndex < currentIndex) return "signal-import-modal__step-label signal-import-modal__step-label--complete"
+  return "signal-import-modal__step-label signal-import-modal__step-label--upcoming"
 }
 
 function goToNextStep() {
@@ -1134,3 +1134,428 @@ watch(
   { immediate: true },
 )
 </script>
+
+<style scoped>
+.signal-import-modal__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.signal-import-modal__steps-card {
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  color: var(--color-neutral-600);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  padding: 0.75rem;
+  text-transform: uppercase;
+}
+
+.signal-import-modal__steps-row,
+.signal-import-modal__step,
+.signal-import-modal__dropzone-content,
+.signal-import-modal__preset-block,
+.signal-import-modal__section-stack,
+.signal-import-modal__mapping-list {
+  display: flex;
+}
+
+.signal-import-modal__steps-row {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.signal-import-modal__step {
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.signal-import-modal__step-label--active {
+  color: var(--color-blue-600);
+}
+
+.signal-import-modal__step-label--complete {
+  color: var(--color-neutral-500);
+}
+
+.signal-import-modal__step-label--upcoming,
+.signal-import-modal__step-separator {
+  color: var(--color-neutral-400);
+}
+
+.signal-import-modal__upload-field,
+.signal-import-modal__field {
+  display: block;
+}
+
+.signal-import-modal__strong-label,
+.signal-import-modal__label {
+  color: var(--color-neutral-700);
+  display: block;
+  font-size: var(--text-sm);
+  margin-bottom: 0.25rem;
+}
+
+.signal-import-modal__strong-label {
+  font-weight: 600;
+}
+
+.signal-import-modal__label {
+  font-weight: 500;
+}
+
+.signal-import-modal__dropzone {
+  align-items: center;
+  border: 2px dashed;
+  border-radius: 1rem;
+  display: flex;
+  flex-direction: column;
+  font-size: var(--text-sm);
+  justify-content: center;
+  padding: 2.5rem 1.5rem;
+  text-align: center;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+}
+
+.signal-import-modal__dropzone--active {
+  background: var(--color-emerald-50);
+  border-color: var(--color-emerald-500);
+  color: var(--color-emerald-700);
+}
+
+.signal-import-modal__dropzone--idle {
+  background: var(--color-white);
+  border-color: var(--color-neutral-300);
+  color: var(--color-neutral-600);
+}
+
+.signal-import-modal__dropzone--idle:hover {
+  background: var(--color-blue-100);
+  border-color: var(--color-blue-500);
+}
+
+.signal-import-modal__dropzone--disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.signal-import-modal__dropzone-content {
+  align-items: center;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.signal-import-modal__dropzone-title {
+  color: var(--color-neutral-800);
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.signal-import-modal__muted {
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+}
+
+.signal-import-modal__muted--xs {
+  font-size: var(--text-xs);
+}
+
+.signal-import-modal__browse-link {
+  color: var(--color-blue-600);
+  text-underline-offset: 2px;
+}
+
+.signal-import-modal__dropzone--idle:hover .signal-import-modal__browse-link {
+  text-decoration: underline;
+}
+
+.signal-import-modal__file-help {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  margin-top: 1rem;
+}
+
+.signal-import-modal__file-meta {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  margin-top: 0.25rem;
+}
+
+.signal-import-modal__file-name {
+  font-weight: 500;
+}
+
+.signal-import-modal__parsing-text {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  margin-top: 0.5rem;
+}
+
+.signal-import-modal__file-input {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.signal-import-modal__preset-block {
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.signal-import-modal__eyebrow {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.signal-import-modal__inline-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.signal-import-modal__ready-card {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  padding: 0.75rem;
+}
+
+.signal-import-modal__ready-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.signal-import-modal__ready-title,
+.signal-import-modal__section-title,
+.signal-import-modal__mapping-title {
+  color: var(--color-neutral-800);
+}
+
+.signal-import-modal__ready-title,
+.signal-import-modal__section-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.signal-import-modal__mapping-title {
+  font-weight: 500;
+}
+
+.signal-import-modal__nowrap {
+  white-space: nowrap;
+}
+
+.signal-import-modal__card-alert {
+  margin-top: 0.75rem;
+}
+
+.signal-import-modal__section-stack {
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.signal-import-modal__warning-text {
+  color: var(--color-amber-700);
+  font-size: var(--text-xs);
+  margin-top: 0.5rem;
+}
+
+.signal-import-modal__section-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.signal-import-modal__button-pair {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.signal-import-modal__option-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.signal-import-modal__option {
+  align-items: center;
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.signal-import-modal__checkbox {
+  accent-color: var(--color-blue-600);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-sm);
+  height: 1rem;
+  width: 1rem;
+}
+
+.signal-import-modal__checkbox:focus {
+  outline: 2px solid var(--color-blue-500);
+  outline-offset: 2px;
+}
+
+.signal-import-modal__option-label {
+  color: var(--color-neutral-800);
+  font-size: var(--text-sm);
+}
+
+.signal-import-modal__spaced-xs {
+  margin-top: 0.25rem;
+}
+
+.signal-import-modal__strong {
+  color: var(--color-neutral-700);
+  font-weight: 600;
+}
+
+.signal-import-modal__mapping-list {
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.signal-import-modal__mapping-row {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.signal-import-modal__input {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-lg);
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  padding: 0.5rem 0.75rem;
+  width: 100%;
+}
+
+.signal-import-modal__input:focus {
+  outline: 2px solid var(--color-blue-500);
+  outline-offset: 1px;
+}
+
+.signal-import-modal__footer {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+:global(.dark .signal-import-modal__steps-card) {
+  background: color-mix(in srgb, var(--color-neutral-900) 40%, transparent);
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .signal-import-modal__step-label--active) {
+  color: var(--color-blue-400);
+}
+
+:global(.dark .signal-import-modal__step-label--complete) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .signal-import-modal__step-label--upcoming),
+:global(.dark .signal-import-modal__step-separator),
+:global(.dark .signal-import-modal__muted),
+:global(.dark .signal-import-modal__file-help),
+:global(.dark .signal-import-modal__file-meta),
+:global(.dark .signal-import-modal__parsing-text),
+:global(.dark .signal-import-modal__eyebrow) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .signal-import-modal__strong-label),
+:global(.dark .signal-import-modal__label),
+:global(.dark .signal-import-modal__strong) {
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .signal-import-modal__dropzone-title),
+:global(.dark .signal-import-modal__ready-title),
+:global(.dark .signal-import-modal__section-title),
+:global(.dark .signal-import-modal__mapping-title),
+:global(.dark .signal-import-modal__option-label),
+:global(.dark .signal-import-modal__input) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .signal-import-modal__dropzone--active) {
+  background: color-mix(in srgb, var(--color-emerald-500) 20%, transparent);
+  border-color: var(--color-emerald-400);
+  color: var(--color-emerald-300);
+}
+
+:global(.dark .signal-import-modal__dropzone--idle),
+:global(.dark .signal-import-modal__ready-card),
+:global(.dark .signal-import-modal__option),
+:global(.dark .signal-import-modal__mapping-row),
+:global(.dark .signal-import-modal__input) {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .signal-import-modal__dropzone--idle:hover) {
+  background: var(--color-neutral-800);
+  border-color: var(--color-blue-500);
+}
+
+:global(.dark .signal-import-modal__browse-link) {
+  color: var(--color-blue-300);
+}
+
+:global(.dark .signal-import-modal__warning-text) {
+  color: var(--color-amber-300);
+}
+
+@media (min-width: 640px) {
+  .signal-import-modal__ready-row,
+  .signal-import-modal__section-heading,
+  .signal-import-modal__mapping-row {
+    align-items: center;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .signal-import-modal__mapping-control {
+    width: 13rem;
+  }
+
+  .signal-import-modal__option-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .signal-import-modal__option-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+</style>
