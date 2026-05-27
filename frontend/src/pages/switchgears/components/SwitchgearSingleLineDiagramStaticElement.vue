@@ -43,10 +43,9 @@ function handlePointerDown(event: PointerEvent) {
 <template>
   <button
     type="button"
-    class="absolute flex items-center justify-center rounded-md transition focus-visible:outline-none"
-    :class="selected ? 'ring-2 ring-sky-400/60 ring-offset-2 ring-offset-white dark:ring-offset-neutral-950' : ''"
+    class="switchgear-sld-static-element"
+    :class="{ 'switchgear-sld-static-element--selected': selected }"
     :style="rootStyle"
-    style="color: #2563eb"
     data-static-root
     @pointerdown.stop="handlePointerDown"
     @click.stop="emit('select', $event)"
@@ -57,7 +56,7 @@ function handlePointerDown(event: PointerEvent) {
       :width="dimensions.width"
       :height="dimensions.height"
       :viewBox="`0 0 ${dimensions.width} ${dimensions.height}`"
-      class="overflow-visible"
+      class="switchgear-sld-static-element__graphic"
       fill="none"
       stroke="currentColor"
       stroke-width="4"
@@ -73,7 +72,7 @@ function handlePointerDown(event: PointerEvent) {
       :width="dimensions.width"
       :height="dimensions.height"
       :viewBox="`0 0 ${dimensions.width} ${dimensions.height}`"
-      class="overflow-visible"
+      class="switchgear-sld-static-element__graphic"
       fill="none"
       stroke="currentColor"
       stroke-width="4"
@@ -87,3 +86,38 @@ function handlePointerDown(event: PointerEvent) {
     </svg>
   </button>
 </template>
+
+<style scoped>
+.switchgear-sld-static-element {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-blue-600);
+  transition: box-shadow 0.15s ease;
+  outline: none;
+}
+
+.switchgear-sld-static-element:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-blue-500) 50%, transparent);
+}
+
+.switchgear-sld-static-element--selected {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--color-blue-400) 60%, transparent),
+    0 0 0 4px var(--color-white);
+}
+
+.switchgear-sld-static-element__graphic {
+  overflow: visible;
+}
+
+:global(.dark .switchgear-sld-static-element--selected) {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--color-blue-400) 60%, transparent),
+    0 0 0 4px var(--color-neutral-950);
+}
+</style>

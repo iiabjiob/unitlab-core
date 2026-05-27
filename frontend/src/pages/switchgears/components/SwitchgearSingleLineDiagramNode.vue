@@ -51,7 +51,7 @@ function handleLabelPointerDown(event: PointerEvent) {
 
 <template>
   <article
-    class="switchgear-sld-node absolute h-10 w-10 cursor-grab active:cursor-grabbing"
+    class="switchgear-sld-node"
     :style="nodeStyle"
     data-node-root
     @pointerdown.stop="handleNodePointerDown"
@@ -59,10 +59,10 @@ function handleLabelPointerDown(event: PointerEvent) {
   >
     <button
       type="button"
-      class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-grab rounded-md p-1 transition focus-visible:outline-none active:cursor-grabbing"
+      class="switchgear-sld-node__button"
       :class="{
-        'ring-2 ring-amber-400/70 ring-offset-2 ring-offset-white dark:ring-offset-neutral-950': connectionSource,
-        'ring-2 ring-sky-400/50 ring-offset-2 ring-offset-white dark:ring-offset-neutral-950': connectionMode && !connectionSource,
+        'switchgear-sld-node__button--connection-source': connectionSource,
+        'switchgear-sld-node__button--connection-target': connectionMode && !connectionSource,
       }"
       :title="positionStateLabel"
       @click.stop="emit('select', $event)"
@@ -72,10 +72,8 @@ function handleLabelPointerDown(event: PointerEvent) {
     </button>
 
     <span
-      class="absolute left-1/2 top-1/2 cursor-grab whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] shadow-sm active:cursor-grabbing"
-      :class="selected
-        ? 'bg-sky-100/95 text-sky-800 dark:bg-sky-900/65 dark:text-sky-100'
-        : 'bg-white/85 text-neutral-700 dark:bg-neutral-900/85 dark:text-neutral-200'"
+      class="switchgear-sld-node__label"
+      :class="{ 'switchgear-sld-node__label--selected': selected }"
       :style="labelStyle"
       data-label-drag-handle
       :title="switchgear.name"
@@ -87,3 +85,92 @@ function handleLabelPointerDown(event: PointerEvent) {
     </span>
   </article>
 </template>
+
+<style scoped>
+.switchgear-sld-node {
+  position: absolute;
+  width: 2.5rem;
+  height: 2.5rem;
+  cursor: grab;
+}
+
+.switchgear-sld-node:active,
+.switchgear-sld-node__button:active,
+.switchgear-sld-node__label:active {
+  cursor: grabbing;
+}
+
+.switchgear-sld-node__button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  padding: 0.25rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: grab;
+  outline: none;
+  transform: translate(-50%, -50%);
+  transition: box-shadow 0.15s ease;
+}
+
+.switchgear-sld-node__button:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-blue-500) 50%, transparent);
+}
+
+.switchgear-sld-node__button--connection-source {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--color-amber-400) 70%, transparent),
+    0 0 0 4px var(--color-white);
+}
+
+.switchgear-sld-node__button--connection-target {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--color-blue-500) 50%, transparent),
+    0 0 0 4px var(--color-white);
+}
+
+.switchgear-sld-node__label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-white) 85%, transparent);
+  color: var(--color-neutral-700);
+  cursor: grab;
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+}
+
+.switchgear-sld-node__label--selected {
+  background: color-mix(in srgb, var(--color-blue-100) 95%, transparent);
+  color: var(--color-blue-800);
+}
+
+:global(.dark .switchgear-sld-node__button--connection-source) {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--color-amber-400) 70%, transparent),
+    0 0 0 4px var(--color-neutral-950);
+}
+
+:global(.dark .switchgear-sld-node__button--connection-target) {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--color-blue-400) 50%, transparent),
+    0 0 0 4px var(--color-neutral-950);
+}
+
+:global(.dark .switchgear-sld-node__label) {
+  background: color-mix(in srgb, var(--color-neutral-900) 85%, transparent);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .switchgear-sld-node__label--selected) {
+  background: color-mix(in srgb, var(--color-blue-900) 65%, transparent);
+  color: var(--color-blue-100);
+}
+</style>
