@@ -14,7 +14,7 @@
       <p v-if="!compact" class="app-menu__section-title">
         {{ section.title }}
       </p>
-      <div v-for="item in section.items" :key="item.to">
+      <div v-for="item in section.items" :key="item.to" class="app-menu__item">
         <UiHoverTooltip :text="item.label" :disabled="!compact" placement="right" align="center">
           <template #default="{ setTriggerRef, getTriggerProps }">
             <RouterLink :to="item.to" custom v-slot="{ href, navigate }">
@@ -339,6 +339,10 @@ function handleKeydown(event: KeyboardEvent) {
   font-weight: 600;
   letter-spacing: 0;
   text-transform: uppercase;
+}
+
+.app-menu__item + .app-menu__item {
+  margin-top: 0.25rem;
 }
 
 .app-menu__entry {
