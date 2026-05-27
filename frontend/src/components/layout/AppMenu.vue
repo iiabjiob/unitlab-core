@@ -44,7 +44,6 @@
                   class="app-menu__entry-content"
                   :class="compact ? 'app-menu__entry-content--compact' : 'app-menu__entry-content--full'"
                 >
-                  <span class="app-menu__entry-icon" aria-hidden="true">{{ resolveRouteEmoji(item.to) }}</span>
                   <span v-if="!compact">{{ item.label }}</span>
                 </span>
               </a>
@@ -86,7 +85,6 @@
                   class="app-menu__entry-content"
                   :class="compact ? 'app-menu__entry-content--compact' : 'app-menu__entry-content--full'"
                 >
-                  <span class="app-menu__entry-icon" aria-hidden="true">{{ resolveRouteEmoji(child.to) }}</span>
                   <span v-if="!compact">{{ child.label }}</span>
                 </span>
               </a>
@@ -157,7 +155,6 @@ const sections = computed<MenuSection[]>(() => {
 
 const route = useRoute()
 const router = useRouter()
-const navRef = ref<HTMLElement | null>(null)
 const focusedRoute = ref<string | null>(null)
 const pendingRoute = ref<string | null>(null)
 
@@ -225,26 +222,6 @@ function isRouteHighlighted(to: string): boolean {
 
 function isEntryFocused(to: string): boolean {
   return focusedRoute.value === to
-}
-
-function resolveRouteEmoji(to: string): string {
-  const normalized = normalizePath(to)
-  if (normalized.startsWith("/devices")) {
-    return "🎛️"
-  }
-  if (normalized.startsWith("/signals")) {
-    return "📄"
-  }
-  if (normalized.startsWith("/switchgears")) {
-    return "🔀"
-  }
-  if (normalized.startsWith("/sequences")) {
-    return "📋"
-  }
-  if (normalized.startsWith("/settings")) {
-    return "⚙️"
-  }
-  return "•"
 }
 
 function setFocusByRoute(to: string) {

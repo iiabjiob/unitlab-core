@@ -21,7 +21,7 @@
           </div>
         </div>
 
-        <button
+        <!-- <button
           v-if="recommendedAction"
           type="button"
           class="home-page__recommended"
@@ -32,7 +32,7 @@
             <p class="home-page__recommended-action">{{ recommendedAction.label }}</p>
           </div>
           <span class="home-page__recommended-arrow" aria-hidden="true">→</span>
-        </button>
+        </button> -->
 
         <section class="home-page__quick">
           <div class="home-page__quick-header">
@@ -142,28 +142,28 @@ const scenarioCards: QuickAction[] = [
     title: "Live Hardware",
     description: "Direct control of physical I/O channels.",
     cta: "Open",
-    emoji: "🎛️",
+    emoji: "",
     route: { name: "devices.list" },
   },
   {
     title: "Signals",
     description: "Project signal names with fast channel mapping.",
     cta: "Open",
-    emoji: "📄",
+    emoji: "",
     route: { name: "signals.home" },
   },
   {
     title: "Switchgears",
     description: "Operate and validate disconnector feedback.",
     cta: "Open",
-    emoji: "🔀",
+    emoji: "",
     route: { name: "switchgears.list" },
   },
   {
     title: "Sequencer",
     description: "Build and run repeatable test instructions.",
     cta: "Open",
-    emoji: "📋",
+    emoji: "",
     route: { name: "instructions.list" },
   },
 ]

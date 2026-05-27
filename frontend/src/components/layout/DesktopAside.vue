@@ -30,10 +30,6 @@
           neutral-offline
         />
       </div>
-      <TimeComponent
-        v-if="!compact"
-        class="desktop-aside__time"
-      />
     </div>
 
     <AppMenu
@@ -41,23 +37,6 @@
       :include-settings="false"
       class="desktop-aside__menu"
     />
-
-    <div class="desktop-aside__footer" :class="{ 'desktop-aside__footer--compact': compact }">
-      <div class="desktop-aside__footer-inner" :class="{ 'desktop-aside__footer-inner--compact': compact }">
-        <RouterLink
-          to="/settings"
-          class="desktop-aside__settings-link"
-          :class="compact ? 'desktop-aside__settings-link--compact' : 'desktop-aside__settings-link--full'"
-          title="Settings"
-          aria-label="Settings"
-        >
-          <span class="desktop-aside__settings-icon" aria-hidden="true">⚙️</span>
-          <span v-if="!compact" class="desktop-aside__settings-label">Settings</span>
-        </RouterLink>
-        <ThemeToggle v-if="!compact" />
-      </div>
-    </div>
-
   </aside>
 </template>
 
@@ -68,8 +47,6 @@ import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import AppMenu from "./AppMenu.vue"
 import AppLogo from "./AppLogo.vue"
 import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
-import TimeComponent from "../misc/TimeComponent.vue"
-import ThemeToggle from "../ui/ThemeToggle.vue"
 
 withDefaults(defineProps<{
   compact?: boolean
@@ -166,11 +143,6 @@ const compactStatusClass = computed(() => {
   background: var(--color-neutral-400);
 }
 
-.desktop-aside__time {
-  color: var(--color-neutral-500);
-  font-size: var(--text-xs);
-}
-
 .desktop-aside__menu {
   flex: 1 1 auto;
   min-height: 0;
@@ -179,67 +151,7 @@ const compactStatusClass = computed(() => {
   font-size: var(--text-base);
 }
 
-.desktop-aside__footer {
-  padding: 1rem;
-  border-top: 1px solid var(--color-neutral-200);
-}
-
-.desktop-aside__footer--compact {
-  padding: 0.5rem;
-}
-
-.desktop-aside__footer-inner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-}
-
-.desktop-aside__footer-inner--compact {
-  flex-direction: column;
-}
-
-.desktop-aside__settings-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-neutral-300);
-  border-radius: var(--radius-md);
-  background: var(--color-white);
-  color: var(--color-neutral-700);
-  cursor: pointer;
-  text-decoration: none;
-  transition: background-color 0.15s ease;
-}
-
-.desktop-aside__settings-link:hover {
-  background: var(--color-neutral-100);
-}
-
-.desktop-aside__settings-link--compact {
-  width: 2.5rem;
-  height: 2.5rem;
-}
-
-.desktop-aside__settings-link--full {
-  height: 2.25rem;
-  gap: 0.5rem;
-  padding: 0 0.75rem;
-}
-
-.desktop-aside__settings-icon {
-  flex-shrink: 0;
-  font-size: 1.5rem;
-  line-height: 1;
-}
-
-.desktop-aside__settings-label {
-  font-size: var(--text-xs);
-  font-weight: 500;
-}
-
-:global(.dark .desktop-aside__header),
-:global(.dark .desktop-aside__footer) {
+:global(.dark .desktop-aside__header) {
   border-color: var(--color-neutral-700);
 }
 
@@ -252,17 +164,4 @@ const compactStatusClass = computed(() => {
   background: var(--color-neutral-800);
 }
 
-:global(.dark .desktop-aside__time) {
-  color: var(--color-neutral-400);
-}
-
-:global(.dark .desktop-aside__settings-link) {
-  border-color: var(--color-neutral-700);
-  background: var(--color-neutral-900);
-  color: var(--color-neutral-200);
-}
-
-:global(.dark .desktop-aside__settings-link:hover) {
-  background: var(--color-neutral-800);
-}
 </style>

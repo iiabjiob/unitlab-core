@@ -10,14 +10,36 @@
         />
       </div>
 
-      <div class="desktop-layout__workspace">
-        <WorkspaceSwitcher variant="mini" />
-      </div>
-
-      <div class="desktop-layout__status">
+      <div class="desktop-layout__runtime">
         <GlobalSignalTestStatus />
         <GlobalRunStatusLink :show-signal-chip="false" />
+      </div>
+
+      <div class="desktop-layout__utilities">
         <TimeComponent class="desktop-layout__clock" />
+        <div class="desktop-layout__workspace">
+          <WorkspaceSwitcher variant="toolbar" />
+        </div>
+        <ThemeToggle />
+        <RouterLink
+          to="/settings"
+          class="btn btn-icon desktop-layout__settings-link"
+          title="Settings"
+          aria-label="Settings"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.36a1.7 1.7 0 0 0-1 .52V20a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1-.52 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.64 15a1.7 1.7 0 0 0-.52-1H4a2 2 0 0 1 0-4h.09a1.7 1.7 0 0 0 .52-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.64a1.7 1.7 0 0 0 1-.52V4a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1 .52 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.36 9a1.7 1.7 0 0 0 .52 1H20a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-.51 1Z" />
+          </svg>
+        </RouterLink>
       </div>
     </header>
 
@@ -50,13 +72,14 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue"
-import { useRoute } from "vue-router"
+import { RouterLink, useRoute } from "vue-router"
 
 import AppAside from "./DesktopAside.vue"
 import AppLogo from "./AppLogo.vue"
 import ResizablePanel from "../ui/ResizablePanel.vue"
 import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
 import TimeComponent from "../misc/TimeComponent.vue"
+import ThemeToggle from "../ui/ThemeToggle.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
 import GlobalRunStatusLink from "./GlobalRunStatusLink.vue"
 import GlobalSignalTestStatus from "./GlobalSignalTestStatus.vue"
@@ -144,7 +167,7 @@ function resolveInitialLeftAsideWidth() {
   min-height: var(--desktop-layout-header-height);
   max-height: var(--desktop-layout-header-height);
   align-items: center;
-  gap: 1.25rem;
+  gap: 1rem;
   overflow: hidden;
   padding: 0 1.25rem;
   border-bottom: 1px solid var(--color-neutral-200);
@@ -159,24 +182,38 @@ function resolveInitialLeftAsideWidth() {
   min-width: 0;
 }
 
-.desktop-layout__workspace {
-  min-width: 110px;
-  max-width: 20rem;
-  flex: 1 1 18rem;
+.desktop-layout__runtime {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
 }
 
-.desktop-layout__status {
+.desktop-layout__utilities {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   min-width: 0;
-  white-space: nowrap;
 }
 
 .desktop-layout__clock {
   flex: 0 0 auto;
+}
+
+.desktop-layout__workspace {
+  width: clamp(10rem, 17vw, 15rem);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.desktop-layout__settings-link {
+  flex: 0 0 auto;
+  text-decoration: none;
 }
 
 .desktop-layout__content {

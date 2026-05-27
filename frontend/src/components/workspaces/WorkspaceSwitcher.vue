@@ -8,8 +8,17 @@
           :disabled="loading"
           class="workspace-switcher__trigger"
           :class="triggerClass"
+          :title="`Workspace: ${currentLabel}`"
+          :aria-label="`Workspace: ${currentLabel}`"
         >
-          <div class="workspace-switcher__label-stack">
+          <span
+            v-if="isToolbarVariant"
+            class="workspace-switcher__toolbar-name"
+            :class="{ 'workspace-switcher__toolbar-name--empty': !hasWorkspace }"
+          >
+            {{ currentLabel }}
+          </span>
+          <div v-else class="workspace-switcher__label-stack">
             <span class="workspace-switcher__label">Workspace</span>
             <span
               class="workspace-switcher__name"
@@ -18,8 +27,11 @@
               {{ currentLabel }}
             </span>
           </div>
-          <div class="workspace-switcher__summary">
-            <span>{{ workspaceStore.workspaces.length }} saved</span>
+          <div
+            class="workspace-switcher__summary"
+            :class="{ 'workspace-switcher__summary--toolbar': isToolbarVariant }"
+          >
+            <span v-if="!isToolbarVariant">{{ workspaceStore.workspaces.length }} saved</span>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
@@ -134,7 +146,7 @@ import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import { formatDateShort } from "@/utils/datetime"
 
-type WorkspaceSwitcherVariant = "default" | "compact" | "mini"
+type WorkspaceSwitcherVariant = "default" | "compact" | "mini" | "toolbar"
 
 const props = withDefaults(defineProps<{ variant?: WorkspaceSwitcherVariant }>(), {
   variant: "default",
@@ -153,6 +165,7 @@ const isDeleting = ref(false)
 const variantClass = computed(() => `workspace-switcher--${props.variant}`)
 const triggerClass = computed(() => `workspace-switcher__trigger--${props.variant}`)
 const nameClass = computed(() => `workspace-switcher__name--${props.variant}`)
+const isToolbarVariant = computed(() => props.variant === "toolbar")
 
 const loading = computed(() => workspaceStore.loading)
 const hasWorkspace = computed(() => Boolean(workspaceStore.activeWorkspace))
@@ -254,6 +267,11 @@ onMounted(() => {
   max-width: 42rem;
 }
 
+.workspace-switcher--toolbar {
+  min-width: 0;
+  width: auto;
+}
+
 .workspace-switcher__trigger {
   display: flex;
   width: 100%;
@@ -261,8 +279,10 @@ onMounted(() => {
   justify-content: space-between;
   border: 1px solid var(--color-neutral-300);
   border-radius: 0.5rem;
+  cursor: pointer;
   font: inherit;
   color: var(--color-neutral-900);
+  min-width: 0;
   text-align: left;
 }
 
@@ -291,8 +311,21 @@ onMounted(() => {
   font-size: var(--text-sm);
 }
 
+.workspace-switcher__trigger--toolbar {
+  height: 2rem;
+  gap: 0.5rem;
+  padding: 0 0.625rem 0 0.75rem;
+  background: transparent;
+  font-size: var(--text-xs);
+}
+
+.workspace-switcher__trigger--toolbar:hover:not(:disabled) {
+  border-color: var(--color-neutral-500);
+}
+
 .workspace-switcher__label-stack {
   display: flex;
+  min-width: 0;
   flex-direction: column;
 }
 
@@ -306,6 +339,9 @@ onMounted(() => {
 .workspace-switcher__name {
   color: var(--color-neutral-900);
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workspace-switcher__name--default {
@@ -327,14 +363,32 @@ onMounted(() => {
 .workspace-switcher__summary {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 0.75rem;
   color: var(--color-neutral-500);
   font-size: 0.6875rem;
 }
 
+.workspace-switcher__summary--toolbar {
+  gap: 0;
+}
+
 .workspace-switcher__chevron {
   width: 1rem;
   height: 1rem;
+}
+
+.workspace-switcher__toolbar-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-neutral-700);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-switcher__toolbar-name--empty {
+  color: var(--color-neutral-500);
 }
 
 .workspace-switcher__menu {
@@ -414,6 +468,10 @@ onMounted(() => {
   background: var(--color-neutral-900);
 }
 
+:global(.dark .workspace-switcher__trigger--toolbar) {
+  background: transparent;
+}
+
 :global(.dark .workspace-switcher__trigger--mini) {
   background: var(--color-neutral-800);
 }
@@ -426,11 +484,13 @@ onMounted(() => {
 }
 
 :global(.dark .workspace-switcher__name),
+:global(.dark .workspace-switcher__toolbar-name),
 :global(.dark .workspace-switcher__item-name) {
   color: var(--color-neutral-100);
 }
 
-:global(.dark .workspace-switcher__name--empty) {
+:global(.dark .workspace-switcher__name--empty),
+:global(.dark .workspace-switcher__toolbar-name--empty) {
   color: var(--color-neutral-500);
 }
 
