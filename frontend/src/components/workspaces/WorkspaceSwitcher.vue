@@ -1,23 +1,24 @@
 <template>
-  <div :class="[variantStyles.wrapper, 'workspace-switcher']">
+  <div class="workspace-switcher" :class="variantClass">
     <UiMenu v-model:open="menuOpen">
       <UiMenuTrigger asChild>
         <button
           ref="triggerRef"
           type="button"
           :disabled="loading"
-          :class="[triggerBaseClass, variantStyles.trigger]"
+          class="workspace-switcher__trigger"
+          :class="triggerClass"
         >
-          <div class="flex flex-col">
-            <span :class="labelClass">Workspace</span>
+          <div class="workspace-switcher__label-stack">
+            <span class="workspace-switcher__label">Workspace</span>
             <span
-              class="font-semibold"
-              :class="[variantStyles.name, hasWorkspace ? 'text-neutral-900 dark:text-neutral-100' : 'text-neutral-500 dark:text-neutral-500']"
+              class="workspace-switcher__name"
+              :class="[{ 'workspace-switcher__name--empty': !hasWorkspace }, nameClass]"
             >
               {{ currentLabel }}
             </span>
           </div>
-          <div class="flex items-center gap-3 text-[11px] text-neutral-500 dark:text-neutral-400">
+          <div class="workspace-switcher__summary">
             <span>{{ workspaceStore.workspaces.length }} saved</span>
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -25,7 +26,7 @@
               fill="none"
               stroke="currentColor"
               stroke-width="1.5"
-              class="h-4 w-4"
+              class="workspace-switcher__chevron"
             >
               <path stroke-linecap="round" stroke-linejoin="round" d="m6 9 6 6 6-6" />
             </svg>
@@ -33,45 +34,45 @@
         </button>
       </UiMenuTrigger>
 
-      <UiMenuContent class="border border-neutral-200 p-0 dark:border-neutral-800">
-        <div class="border-b border-neutral-200 px-3 py-2 text-[10px] uppercase tracking-[0.3em] text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
+      <UiMenuContent class="workspace-switcher__menu">
+        <div class="workspace-switcher__menu-label">
           Workspaces
         </div>
 
-        <div class="max-h-64 overflow-y-auto py-1">
+        <div class="workspace-switcher__list">
           <template v-if="menuWorkspaces.length">
             <UiMenuItem
               v-for="workspace in menuWorkspaces"
               :key="workspace.id"
-              class="flex items-center justify-between gap-4 px-3 py-2 text-sm"
+              class="workspace-switcher__item"
               @select="select(workspace.id)"
             >
-              <div class="flex flex-col">
-                <span class="font-medium text-neutral-900 dark:text-neutral-100">{{ workspace.name }}</span>
-                <span class="text-[11px] text-neutral-500 dark:text-neutral-400">
+              <div class="workspace-switcher__item-text">
+                <span class="workspace-switcher__item-name">{{ workspace.name }}</span>
+                <span class="workspace-switcher__item-meta">
                   Updated {{ workspace.updated_at ? formatDateShort(workspace.updated_at) : "--" }}
                 </span>
               </div>
               <span
                 v-if="workspace.id === workspaceStore.activeWorkspaceId"
-                class="text-[10px] uppercase tracking-[0.3em] text-emerald-500"
+                class="workspace-switcher__active-label"
               >
                 Active
               </span>
             </UiMenuItem>
           </template>
-          <div v-else class="px-3 py-4 text-sm text-neutral-500 dark:text-neutral-400">
+          <div v-else class="workspace-switcher__empty">
             No workspaces available.
           </div>
         </div>
 
         <UiMenuSeparator />
 
-        <div class="px-3 py-3">
-          <div class="flex flex-col gap-2">
+        <div class="workspace-switcher__actions">
+          <div class="workspace-switcher__action-stack">
             <button
               type="button"
-              class="w-full rounded-md border border-dashed border-neutral-400 px-3 py-2 text-sm font-semibold text-neutral-900 transition hover:border-neutral-900 dark:border-neutral-600 dark:text-neutral-50 dark:hover:border-neutral-200"
+              class="workspace-switcher__new-button"
               @click.stop="openCreateModal"
             >
               + New workspace
@@ -131,7 +132,9 @@ import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import { formatDateShort } from "@/utils/datetime"
 
-const props = withDefaults(defineProps<{ variant?: "default" | "compact" | "mini" }>(), {
+type WorkspaceSwitcherVariant = "default" | "compact" | "mini"
+
+const props = withDefaults(defineProps<{ variant?: WorkspaceSwitcherVariant }>(), {
   variant: "default",
 })
 
@@ -145,29 +148,9 @@ const createError = ref("")
 const deleteModalOpen = ref(false)
 const isDeleting = ref(false)
 
-type WorkspaceSwitcherVariant = "default" | "compact" | "mini"
-
-const VARIANT_STYLES: Record<WorkspaceSwitcherVariant, { wrapper: string; trigger: string; name: string }> = {
-  default: {
-    wrapper: "w-full max-w-2xl",
-    trigger: "h-14 px-4 text-sm bg-white dark:bg-neutral-900",
-    name: "text-base",
-  },
-  compact: {
-    wrapper: "w-full",
-    trigger: "h-12 px-4 text-xs bg-white dark:bg-neutral-900",
-    name: "text-sm",
-  },
-  mini: {
-    wrapper: "w-full",
-    trigger: "h-12 px-3 text-sm bg-neutral-100 dark:bg-neutral-800",
-    name: "text-lg",
-  },
-}
-
-const triggerBaseClass = "flex w-full items-center justify-between rounded-lg border border-neutral-300 text-left text-neutral-900 dark:border-neutral-700 dark:text-neutral-100"
-const variantStyles = computed(() => VARIANT_STYLES[props.variant])
-const labelClass = "text-[10px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
+const variantClass = computed(() => `workspace-switcher--${props.variant}`)
+const triggerClass = computed(() => `workspace-switcher__trigger--${props.variant}`)
+const nameClass = computed(() => `workspace-switcher__name--${props.variant}`)
 
 const loading = computed(() => workspaceStore.loading)
 const hasWorkspace = computed(() => Boolean(workspaceStore.activeWorkspace))
@@ -259,3 +242,228 @@ onMounted(() => {
 })
 
 </script>
+
+<style scoped>
+.workspace-switcher {
+  width: 100%;
+}
+
+.workspace-switcher--default {
+  max-width: 42rem;
+}
+
+.workspace-switcher__trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: 0.5rem;
+  font: inherit;
+  color: var(--color-neutral-900);
+  text-align: left;
+}
+
+.workspace-switcher__trigger:disabled {
+  opacity: 0.65;
+}
+
+.workspace-switcher__trigger--default {
+  height: 3.5rem;
+  padding: 0 1rem;
+  background: var(--color-white);
+  font-size: var(--text-sm);
+}
+
+.workspace-switcher__trigger--compact {
+  height: 3rem;
+  padding: 0 1rem;
+  background: var(--color-white);
+  font-size: var(--text-xs);
+}
+
+.workspace-switcher__trigger--mini {
+  height: 3rem;
+  padding: 0 0.75rem;
+  background: var(--color-neutral-100);
+  font-size: var(--text-sm);
+}
+
+.workspace-switcher__label-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-switcher__label {
+  color: var(--color-neutral-500);
+  font-size: 0.625rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.workspace-switcher__name {
+  color: var(--color-neutral-900);
+  font-weight: 600;
+}
+
+.workspace-switcher__name--default {
+  font-size: var(--text-base);
+}
+
+.workspace-switcher__name--compact {
+  font-size: var(--text-sm);
+}
+
+.workspace-switcher__name--mini {
+  font-size: var(--text-lg);
+}
+
+.workspace-switcher__name--empty {
+  color: var(--color-neutral-500);
+}
+
+.workspace-switcher__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--color-neutral-500);
+  font-size: 0.6875rem;
+}
+
+.workspace-switcher__chevron {
+  width: 1rem;
+  height: 1rem;
+}
+
+.workspace-switcher__menu {
+  padding: 0;
+  border: 1px solid var(--color-neutral-200);
+}
+
+.workspace-switcher__menu-label {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--color-neutral-200);
+  color: var(--color-neutral-500);
+  font-size: 0.625rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.workspace-switcher__list {
+  max-height: 16rem;
+  overflow-y: auto;
+  padding: 0.25rem 0;
+}
+
+.workspace-switcher__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+  font-size: var(--text-sm);
+}
+
+.workspace-switcher__item-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-switcher__item-name {
+  color: var(--color-neutral-900);
+  font-weight: 500;
+}
+
+.workspace-switcher__item-meta {
+  color: var(--color-neutral-500);
+  font-size: 0.6875rem;
+}
+
+.workspace-switcher__active-label {
+  color: var(--color-emerald-500);
+  font-size: 0.625rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.workspace-switcher__empty {
+  padding: 1rem 0.75rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+}
+
+.workspace-switcher__actions {
+  padding: 0.75rem;
+}
+
+.workspace-switcher__action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.workspace-switcher__new-button {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--color-neutral-400);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-neutral-900);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  transition: border-color 0.15s ease;
+}
+
+.workspace-switcher__new-button:hover {
+  border-color: var(--color-neutral-900);
+}
+
+:global(.dark .workspace-switcher__trigger) {
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .workspace-switcher__trigger--default),
+:global(.dark .workspace-switcher__trigger--compact) {
+  background: var(--color-neutral-900);
+}
+
+:global(.dark .workspace-switcher__trigger--mini) {
+  background: var(--color-neutral-800);
+}
+
+:global(.dark .workspace-switcher__label),
+:global(.dark .workspace-switcher__summary),
+:global(.dark .workspace-switcher__item-meta),
+:global(.dark .workspace-switcher__empty) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .workspace-switcher__name),
+:global(.dark .workspace-switcher__item-name) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .workspace-switcher__name--empty) {
+  color: var(--color-neutral-500);
+}
+
+:global(.dark .workspace-switcher__menu) {
+  border-color: var(--color-neutral-800);
+}
+
+:global(.dark .workspace-switcher__menu-label) {
+  border-bottom-color: var(--color-neutral-800);
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .workspace-switcher__new-button) {
+  border-color: var(--color-neutral-600);
+  color: var(--color-neutral-50);
+}
+
+:global(.dark .workspace-switcher__new-button:hover) {
+  border-color: var(--color-neutral-200);
+}
+</style>
