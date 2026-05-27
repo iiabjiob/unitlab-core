@@ -1,23 +1,23 @@
 <template>
-  <header class="rounded-2xl border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
-    <div class="flex flex-col gap-3">
-      <div class="min-w-0">
-        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500 dark:text-neutral-400">Live Signal Sheet</p>
-        <p class="mt-1 text-sm text-neutral-700 dark:text-neutral-200">
+  <header class="allocation-editor-header">
+    <div class="allocation-editor-header__stack">
+      <div class="allocation-editor-header__copy">
+        <p class="allocation-editor-header__eyebrow">Live Signal Sheet</p>
+        <p class="allocation-editor-header__summary">
           {{ summaryText }}
         </p>
       </div>
 
-      <div class="flex w-full min-h-8 flex-wrap items-center justify-between gap-2">
-        <div class="flex min-h-8 flex-wrap items-center gap-2">
-          <UiButton variant="primary" size="sm" class="h-8 whitespace-nowrap" :disabled="workspaceMissing || loading" @click="emit('import')">
+      <div class="allocation-editor-header__actions-row">
+        <div class="allocation-editor-header__actions-group">
+          <UiButton variant="primary" size="sm" class="allocation-editor-header__button" :disabled="workspaceMissing || loading" @click="emit('import')">
             📥 Import Signal List
           </UiButton>
 
           <UiButton
             variant="secondary"
             size="sm"
-            class="h-8 whitespace-nowrap"
+            class="allocation-editor-header__button"
             :disabled="workspaceMissing || loading || allocatedCableRowsCount === 0"
             @click="emit('exportCable')"
           >
@@ -27,7 +27,7 @@
           <UiButton
             variant="secondary"
             size="sm"
-            class="h-8 whitespace-nowrap"
+            class="allocation-editor-header__button"
             :disabled="workspaceMissing || loading || allocationRowsCount === 0"
             @click="emit('exportReport')"
           >
@@ -35,12 +35,12 @@
           </UiButton>
         </div>
 
-        <div class="flex min-h-8 flex-wrap items-center justify-end gap-2">
+        <div class="allocation-editor-header__actions-group allocation-editor-header__actions-group--end">
           <UiButton
             v-if="canAllocateSelected"
             variant="secondary"
             size="sm"
-            class="h-8 whitespace-nowrap"
+            class="allocation-editor-header__button"
             :disabled="loading || allocatingSelected || deallocatingSelected"
             @click="emit('allocateSelected')"
           >
@@ -51,20 +51,20 @@
             v-if="canDeallocateSelected"
             variant="secondary"
             size="sm"
-            class="h-8 whitespace-nowrap"
+            class="allocation-editor-header__button"
             :disabled="loading || allocatingSelected || deallocatingSelected"
             @click="emit('deallocateSelected')"
           >
             {{ deallocateSelectedLabel }}
           </UiButton>
 
-          <span v-if="canRunTest" class="inline-flex h-8 items-center gap-2">
+          <span v-if="canRunTest" class="allocation-editor-header__run-wrap">
             <UiMenu>
-              <div class="inline-flex h-8 overflow-hidden rounded-lg border border-emerald-500/30 bg-emerald-500/10 divide-x divide-emerald-500/30 shadow-sm shadow-emerald-500/25 dark:border-emerald-400/40 dark:bg-emerald-400/10 dark:divide-emerald-300/30">
+              <div class="allocation-editor-header__run-segment">
                 <UiButton
                   :variant="'success'"
                   size="sm"
-                  class="flex h-8 items-center gap-2 rounded-none px-3 text-sm font-semibold leading-none tracking-tight whitespace-nowrap"
+                  class="allocation-editor-header__run-button allocation-editor-header__run-button--main"
                   :disabled="loading || isTestRunBusy"
                   @click="emit('runTest')"
                 >
@@ -74,7 +74,7 @@
                   <UiButton
                     :variant="'success'"
                     size="sm"
-                    class="h-8 rounded-none px-2.5 text-sm font-semibold leading-none"
+                    class="allocation-editor-header__run-button allocation-editor-header__run-button--trigger"
                     :disabled="loading || isTestRunBusy"
                     aria-label="Test run options"
                   >
@@ -88,11 +88,11 @@
                 </UiMenuLabel>
                 <UiMenuItem @select="emit('setToggleMode', 'single')">
                   Single toggle (Invert state)
-                  <span v-if="testRunToggleMode === 'single'" class="ml-2 text-xs">✓</span>
+                  <span v-if="testRunToggleMode === 'single'" class="allocation-editor-header__menu-check">✓</span>
                 </UiMenuItem>
                 <UiMenuItem @select="emit('setToggleMode', 'double')">
                   Double toggle (Invert → Return)
-                  <span v-if="testRunToggleMode === 'double'" class="ml-2 text-xs">✓</span>
+                  <span v-if="testRunToggleMode === 'double'" class="allocation-editor-header__menu-check">✓</span>
                 </UiMenuItem>
                 <UiMenuSeparator />
                 <UiMenuLabel>
@@ -100,15 +100,15 @@
                 </UiMenuLabel>
                 <UiMenuItem @select="emit('setIntervalMs', 500)">
                   0.5 s
-                  <span v-if="testRunIntervalMs === 500" class="ml-2 text-xs">✓</span>
+                  <span v-if="testRunIntervalMs === 500" class="allocation-editor-header__menu-check">✓</span>
                 </UiMenuItem>
                 <UiMenuItem @select="emit('setIntervalMs', 1000)">
                   1.0 s
-                  <span v-if="testRunIntervalMs === 1000" class="ml-2 text-xs">✓</span>
+                  <span v-if="testRunIntervalMs === 1000" class="allocation-editor-header__menu-check">✓</span>
                 </UiMenuItem>
                 <UiMenuItem @select="emit('setIntervalMs', 2000)">
                   2.0 s
-                  <span v-if="testRunIntervalMs === 2000" class="ml-2 text-xs">✓</span>
+                  <span v-if="testRunIntervalMs === 2000" class="allocation-editor-header__menu-check">✓</span>
                 </UiMenuItem>
               </UiMenuContent>
             </UiMenu>
@@ -162,3 +162,130 @@ const emit = defineEmits<{
   (event: "setIntervalMs", intervalMs: number): void
 }>()
 </script>
+
+<style scoped>
+.allocation-editor-header {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 1rem;
+  padding: 0.75rem 1rem;
+}
+
+.allocation-editor-header__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.allocation-editor-header__copy {
+  min-width: 0;
+}
+
+.allocation-editor-header__eyebrow {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.allocation-editor-header__summary {
+  color: var(--color-neutral-700);
+  font-size: var(--text-sm);
+  margin-top: 0.25rem;
+}
+
+.allocation-editor-header__actions-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
+  min-height: 2rem;
+  width: 100%;
+}
+
+.allocation-editor-header__actions-group {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-height: 2rem;
+}
+
+.allocation-editor-header__actions-group--end {
+  justify-content: flex-end;
+}
+
+.allocation-editor-header__button {
+  height: 2rem;
+  white-space: nowrap;
+}
+
+.allocation-editor-header__run-wrap {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.5rem;
+  height: 2rem;
+}
+
+.allocation-editor-header__run-segment {
+  background: color-mix(in srgb, var(--color-emerald-500) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-emerald-500) 30%, transparent);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm), 0 1px 2px color-mix(in srgb, var(--color-emerald-500) 25%, transparent);
+  display: inline-flex;
+  height: 2rem;
+  overflow: hidden;
+}
+
+.allocation-editor-header__run-button {
+  align-items: center;
+  border-radius: 0;
+  display: flex;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  height: 2rem;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.allocation-editor-header__run-button--main {
+  gap: 0.5rem;
+  padding-inline: 0.75rem;
+  white-space: nowrap;
+}
+
+.allocation-editor-header__run-button--trigger {
+  border-left: 1px solid color-mix(in srgb, var(--color-emerald-500) 30%, transparent);
+  justify-content: center;
+  padding-inline: 0.625rem;
+}
+
+.allocation-editor-header__menu-check {
+  font-size: var(--text-xs);
+  margin-left: 0.5rem;
+}
+
+:global(.dark .allocation-editor-header) {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-800);
+}
+
+:global(.dark .allocation-editor-header__eyebrow) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .allocation-editor-header__summary) {
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .allocation-editor-header__run-segment) {
+  background: color-mix(in srgb, var(--color-emerald-400) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-emerald-400) 40%, transparent);
+}
+
+:global(.dark .allocation-editor-header__run-button--trigger) {
+  border-left-color: color-mix(in srgb, var(--color-emerald-300) 30%, transparent);
+}
+</style>

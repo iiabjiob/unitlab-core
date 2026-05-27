@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-full min-h-0 min-w-0 flex-col gap-4 p-3 md:p-4">
+  <div class="signals-page">
     <AllocationEditorHeader
       :summary-text="summaryText"
       :workspace-missing="workspaceMissing"
@@ -29,56 +29,56 @@
 
     <div
       v-if="workspaceMissing"
-      class="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/80 p-8 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400"
+      class="signals-page__empty"
     >
       Select a workspace first.
     </div>
 
     <div
       v-else-if="error"
-      class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-200"
+      class="signals-page__error"
     >
       {{ error }}
     </div>
 
     <div
       v-else-if="!loading && allocationProjectionRowsCount === 0"
-      class="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-neutral-300 bg-white/80 p-8 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400"
+      class="signals-page__empty"
     >
       No signals found.
     </div>
 
-    <section v-else class="affino-native-data-grid relative min-h-0 min-w-0 flex-1">
+    <section v-else class="affino-native-data-grid signals-page__grid-section">
       <div
         v-if="showSignalGridSkeleton"
         ref="signalGridSkeletonRef"
-        class="pointer-events-none absolute inset-0 z-10 flex min-h-0 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950"
+        class="signals-page__skeleton"
         aria-hidden="true"
       >
-        <div class="flex h-12 shrink-0 items-center gap-3 border-b border-neutral-200 px-4 dark:border-neutral-800">
-          <div class="h-4 w-28 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
-          <div class="h-4 w-20 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
-          <div class="ml-auto h-7 w-24 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+        <div class="signals-page__skeleton-toolbar">
+          <div class="signals-page__skeleton-block signals-page__skeleton-block--toolbar-wide" />
+          <div class="signals-page__skeleton-block signals-page__skeleton-block--toolbar-medium" />
+          <div class="signals-page__skeleton-block signals-page__skeleton-block--toolbar-action" />
         </div>
         <div
-          class="grid h-10 shrink-0 items-center gap-3 border-b border-neutral-200 px-4 dark:border-neutral-800"
+          class="signals-page__skeleton-head-row"
           :style="{ gridTemplateColumns: '44px minmax(44px, 0.7fr) minmax(72px, 1fr) minmax(96px, 1.4fr) 136px 128px' }"
         >
-          <div v-for="columnIndex in 6" :key="`signals-grid-skeleton-head-${columnIndex}`" class="h-3 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+          <div v-for="columnIndex in 6" :key="`signals-grid-skeleton-head-${columnIndex}`" class="signals-page__skeleton-block signals-page__skeleton-block--head" />
         </div>
-        <div class="min-h-0 flex-1 overflow-hidden">
+        <div class="signals-page__skeleton-body">
           <div
             v-for="rowIndex in signalGridSkeletonRowCount"
             :key="`signals-grid-skeleton-row-${rowIndex}`"
-            class="grid h-9 items-center gap-3 border-b border-neutral-100 px-4 dark:border-neutral-900"
+            class="signals-page__skeleton-row"
             :style="{ gridTemplateColumns: '44px minmax(44px, 0.7fr) minmax(72px, 1fr) minmax(96px, 1.4fr) 136px 128px' }"
           >
-            <div class="h-3 w-3 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
-            <div class="h-3 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
-            <div class="h-3 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
-            <div class="h-3 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
-            <div class="h-5 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
-            <div class="h-3 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+            <div class="signals-page__skeleton-block signals-page__skeleton-block--checkbox" />
+            <div class="signals-page__skeleton-block signals-page__skeleton-block--line" />
+            <div class="signals-page__skeleton-block signals-page__skeleton-block--line" />
+            <div class="signals-page__skeleton-block signals-page__skeleton-block--line" />
+            <div class="signals-page__skeleton-block signals-page__skeleton-block--status" />
+            <div class="signals-page__skeleton-block signals-page__skeleton-block--line" />
           </div>
         </div>
       </div>
@@ -2721,3 +2721,171 @@ onBeforeUnmount(() => {
   }
 })
 </script>
+
+<style scoped>
+.signals-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  padding: 0.75rem;
+}
+
+.signals-page__empty {
+  align-items: center;
+  background: color-mix(in srgb, var(--color-white) 80%, transparent);
+  border: 1px dashed var(--color-neutral-300);
+  border-radius: 1rem;
+  color: var(--color-neutral-500);
+  display: flex;
+  flex: 1 1 auto;
+  font-size: var(--text-sm);
+  justify-content: center;
+  padding: 2rem;
+}
+
+.signals-page__error {
+  background: color-mix(in srgb, var(--color-rose-300) 14%, var(--color-white));
+  border: 1px solid color-mix(in srgb, var(--color-rose-300) 70%, var(--color-white));
+  border-radius: 1rem;
+  color: var(--color-rose-700);
+  font-size: var(--text-sm);
+  padding: 0.75rem 1rem;
+}
+
+.signals-page__grid-section {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.signals-page__skeleton {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 1rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  inset: 0;
+  min-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  z-index: 10;
+}
+
+.signals-page__skeleton-toolbar,
+.signals-page__skeleton-head-row,
+.signals-page__skeleton-row {
+  align-items: center;
+  border-bottom: 1px solid var(--color-neutral-200);
+  gap: 0.75rem;
+  padding-inline: 1rem;
+}
+
+.signals-page__skeleton-toolbar {
+  display: flex;
+  flex: 0 0 3rem;
+  height: 3rem;
+}
+
+.signals-page__skeleton-head-row {
+  display: grid;
+  flex: 0 0 2.5rem;
+  height: 2.5rem;
+}
+
+.signals-page__skeleton-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.signals-page__skeleton-row {
+  border-bottom-color: var(--color-neutral-100);
+  display: grid;
+  height: 2.25rem;
+}
+
+.signals-page__skeleton-block {
+  animation: signals-page-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  background: var(--color-neutral-200);
+  border-radius: var(--radius-sm);
+  height: 0.75rem;
+}
+
+.signals-page__skeleton-block--toolbar-wide {
+  height: 1rem;
+  width: 7rem;
+}
+
+.signals-page__skeleton-block--toolbar-medium {
+  height: 1rem;
+  width: 5rem;
+}
+
+.signals-page__skeleton-block--toolbar-action {
+  height: 1.75rem;
+  margin-left: auto;
+  width: 6rem;
+}
+
+.signals-page__skeleton-block--head,
+.signals-page__skeleton-block--line {
+  width: 100%;
+}
+
+.signals-page__skeleton-block--checkbox {
+  width: 0.75rem;
+}
+
+.signals-page__skeleton-block--status {
+  height: 1.25rem;
+  width: 100%;
+}
+
+:global(.dark .signals-page__empty) {
+  background: color-mix(in srgb, var(--color-neutral-900) 40%, transparent);
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .signals-page__error) {
+  background: color-mix(in srgb, var(--color-rose-700) 30%, var(--color-neutral-950));
+  border-color: color-mix(in srgb, var(--color-rose-700) 60%, var(--color-neutral-950));
+  color: var(--color-rose-300);
+}
+
+:global(.dark .signals-page__skeleton) {
+  background: var(--color-neutral-950);
+  border-color: var(--color-neutral-800);
+}
+
+:global(.dark .signals-page__skeleton-toolbar),
+:global(.dark .signals-page__skeleton-head-row) {
+  border-bottom-color: var(--color-neutral-800);
+}
+
+:global(.dark .signals-page__skeleton-row) {
+  border-bottom-color: var(--color-neutral-900);
+}
+
+:global(.dark .signals-page__skeleton-block) {
+  background: var(--color-neutral-800);
+}
+
+@keyframes signals-page-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (min-width: 768px) {
+  .signals-page {
+    padding: 1rem;
+  }
+}
+</style>
