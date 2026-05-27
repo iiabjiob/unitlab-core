@@ -52,20 +52,20 @@ defineProps<{
   line-height: 1.375;
 }
 
-:global(.dark) .settings-list-item--active {
+:global(.dark .settings-list-item--active){
   background: var(--color-neutral-800);
   color: var(--color-neutral-100);
 }
 
-:global(.dark) .settings-list-item--idle {
+:global(.dark .settings-list-item--idle){
   color: var(--color-neutral-300);
 }
 
-:global(.dark) .settings-list-item--idle:hover {
+:global(.dark .settings-list-item--idle:hover){
   background: var(--color-neutral-900);
 }
 
-:global(.dark) .settings-list-item__description {
+:global(.dark .settings-list-item__description){
   color: var(--color-neutral-400);
 }
 </style>

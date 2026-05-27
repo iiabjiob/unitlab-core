@@ -1,21 +1,21 @@
 <template>
-  <section class="rounded-2xl border border-neutral-200/70 bg-white/90 p-4 dark:border-neutral-800 dark:bg-neutral-950/40">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div class="min-w-0">
-        <p class="text-[11px] uppercase tracking-[0.26em] text-neutral-500 dark:text-neutral-400">Provisioning</p>
-        <p class="mt-1 text-sm text-neutral-700 dark:text-neutral-200">
-          Mode: <span class="font-semibold uppercase">{{ modeText }}</span>
+  <section class="core-provision-panel">
+    <div class="core-provision-panel__header">
+      <div class="core-provision-panel__heading">
+        <p class="core-provision-panel__eyebrow">Provisioning</p>
+        <p class="core-provision-panel__meta">
+          Mode: <span class="core-provision-panel__meta-strong">{{ modeText }}</span>
           <template v-if="snapshot?.last_event"> · {{ snapshot.last_event }}</template>
         </p>
-        <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-          Project root: <code class="rounded bg-neutral-100 px-1 py-0.5 dark:bg-neutral-800">{{ snapshot?.project_root || "—" }}</code>
+        <p class="core-provision-panel__subtle">
+          Project root: <code class="core-provision-panel__code">{{ snapshot?.project_root || "—" }}</code>
         </p>
-        <p v-if="errorText" class="mt-1 text-xs text-rose-500">{{ errorText }}</p>
+        <p v-if="errorText" class="core-provision-panel__error">{{ errorText }}</p>
       </div>
-      <div class="flex flex-wrap items-center gap-2">
+      <div class="core-provision-panel__actions">
         <button
           type="button"
-          class="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:border-neutral-500 dark:border-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-500"
+          class="core-provision-panel__button core-provision-panel__button--secondary"
           :disabled="busy"
           @click="runSmokeCheck"
         >
@@ -24,32 +24,32 @@
       </div>
     </div>
 
-    <div class="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-      <div class="space-y-3">
-        <section class="rounded-xl border border-neutral-200/80 bg-neutral-50/80 p-3 dark:border-neutral-800 dark:bg-neutral-900/60">
-          <div class="mb-2 flex items-center justify-between gap-2">
-            <p class="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Provision checks</p>
-            <span class="text-[11px] text-neutral-500 dark:text-neutral-400">{{ checks.length }} checks</span>
+    <div class="core-provision-panel__grid">
+      <div class="core-provision-panel__column">
+        <section class="core-provision-panel__card">
+          <div class="core-provision-panel__card-header">
+            <p class="core-provision-panel__card-title">Provision checks</p>
+            <span class="core-provision-panel__card-meta">{{ checks.length }} checks</span>
           </div>
           <ChecksList :items="checks" empty-text="No checks reported yet." />
         </section>
 
-        <section class="rounded-xl border border-neutral-200/80 bg-neutral-50/80 p-3 dark:border-neutral-800 dark:bg-neutral-900/60">
-          <div class="mb-2 flex items-center justify-between gap-2">
-            <p class="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Smoke checks</p>
-            <span class="text-[11px] text-neutral-500 dark:text-neutral-400">{{ smokeChecks.length }} checks</span>
+        <section class="core-provision-panel__card">
+          <div class="core-provision-panel__card-header">
+            <p class="core-provision-panel__card-title">Smoke checks</p>
+            <span class="core-provision-panel__card-meta">{{ smokeChecks.length }} checks</span>
           </div>
           <ChecksList :items="smokeChecks" empty-text="No smoke-check results yet. Run smoke check." />
         </section>
       </div>
 
-      <div class="space-y-3">
-        <section class="rounded-xl border border-neutral-200/80 bg-neutral-50/80 p-3 dark:border-neutral-800 dark:bg-neutral-900/60">
-          <p class="mb-2 text-xs font-semibold text-neutral-700 dark:text-neutral-200">Host Agent Install / Repair</p>
-          <div class="grid gap-2">
+      <div class="core-provision-panel__column">
+        <section class="core-provision-panel__card">
+          <p class="core-provision-panel__card-title core-provision-panel__card-title--spaced">Host Agent Install / Repair</p>
+          <div class="core-provision-panel__button-grid">
             <button
               type="button"
-              class="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
+              class="core-provision-panel__button core-provision-panel__button--primary"
               :disabled="busy"
               @click="installNetAgent"
             >
@@ -57,7 +57,7 @@
             </button>
             <button
               type="button"
-              class="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
+              class="core-provision-panel__button core-provision-panel__button--primary"
               :disabled="busy"
               @click="installNtpAgent"
             >
@@ -65,7 +65,7 @@
             </button>
             <button
               type="button"
-              class="rounded-lg bg-neutral-900 px-3 py-2 text-xs font-semibold text-white hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-300"
+              class="core-provision-panel__button core-provision-panel__button--primary"
               :disabled="busy"
               @click="installDiagAgent"
             >
@@ -73,26 +73,26 @@
             </button>
           </div>
 
-          <div v-if="snapshot?.request_in_flight" class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-200">
+          <div v-if="snapshot?.request_in_flight" class="core-provision-panel__in-flight">
             In progress: {{ snapshot.request_in_flight.action }} ({{ snapshot.request_in_flight.request_id }})
           </div>
         </section>
 
-        <section class="rounded-xl border border-neutral-200/80 bg-neutral-50/80 p-3 dark:border-neutral-800 dark:bg-neutral-900/60">
-          <p class="mb-2 text-xs font-semibold text-neutral-700 dark:text-neutral-200">Last action result</p>
-          <div v-if="lastAction" class="space-y-1 text-xs">
-            <p class="text-neutral-700 dark:text-neutral-200">
-              <span class="font-semibold">{{ lastAction.action }}</span>
+        <section class="core-provision-panel__card">
+          <p class="core-provision-panel__card-title core-provision-panel__card-title--spaced">Last action result</p>
+          <div v-if="lastAction" class="core-provision-panel__last-action">
+            <p class="core-provision-panel__last-action-line">
+              <span class="core-provision-panel__last-action-name">{{ lastAction.action }}</span>
               ·
-              <span :class="lastAction.success ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'">
+              <span :class="lastAction.success ? 'core-provision-panel__result--success' : 'core-provision-panel__result--danger'">
                 {{ lastAction.success ? "SUCCESS" : "FAILED" }}
               </span>
               <template v-if="lastAction.duration_ms != null"> · {{ lastAction.duration_ms }} ms</template>
               <template v-if="lastAction.exit_code != null"> · exit {{ lastAction.exit_code }}</template>
             </p>
-            <p class="whitespace-pre-wrap break-words text-neutral-500 dark:text-neutral-400">{{ lastAction.message }}</p>
+            <p class="core-provision-panel__last-action-message">{{ lastAction.message }}</p>
           </div>
-          <p v-else class="text-xs text-neutral-500 dark:text-neutral-400">
+          <p v-else class="core-provision-panel__empty">
             No provisioning action has been executed yet.
           </p>
         </section>
@@ -142,9 +142,9 @@ function statusText(ok: boolean | null): string {
   return "UNKNOWN"
 }
 function statusPillClass(ok: boolean | null): string {
-  if (ok === true) return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
-  if (ok === false) return "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200"
-  return "bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
+  if (ok === true) return "core-provision-checks-list__pill--success"
+  if (ok === false) return "core-provision-checks-list__pill--danger"
+  return "core-provision-checks-list__pill--neutral"
 }
 
 const ChecksList = defineComponent({
@@ -154,20 +154,366 @@ const ChecksList = defineComponent({
     emptyText: { type: String, required: true },
   },
   setup(props) {
-    return () => h("div", { class: "max-h-56 overflow-y-auto rounded-lg border border-neutral-200 bg-white/80 p-1 dark:border-neutral-800 dark:bg-neutral-950/50" }, [
+    return () => h("div", { class: "core-provision-checks-list" }, [
       ...(props.items.length
         ? props.items.map((item) =>
-            h("div", { class: "flex items-start justify-between gap-2 px-2 py-1 text-xs", key: item.key }, [
-              h("div", { class: "min-w-0" }, [
-                h("div", { class: "truncate text-neutral-800 dark:text-neutral-100" }, item.label),
-                item.detail ? h("div", { class: "truncate text-[11px] text-neutral-500 dark:text-neutral-400" }, item.detail) : null,
+            h("div", { class: "core-provision-checks-list__row", key: item.key }, [
+              h("div", { class: "core-provision-checks-list__body" }, [
+                h("div", { class: "core-provision-checks-list__label" }, item.label),
+                item.detail ? h("div", { class: "core-provision-checks-list__detail" }, item.detail) : null,
               ]),
-              h("span", { class: `shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${statusPillClass(item.ok)}` }, statusText(item.ok)),
+              h("span", { class: `core-provision-checks-list__pill ${statusPillClass(item.ok)}` }, statusText(item.ok)),
             ]),
           )
-        : [h("p", { class: "px-2 py-2 text-xs text-neutral-500 dark:text-neutral-400" }, props.emptyText)]),
+        : [h("p", { class: "core-provision-checks-list__empty" }, props.emptyText)]),
     ])
   },
 })
 </script>
 
+<style scoped>
+.core-provision-panel {
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 70%, transparent);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--color-white) 90%, transparent);
+}
+
+.core-provision-panel__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.core-provision-panel__heading {
+  min-width: 0;
+}
+
+.core-provision-panel__eyebrow {
+  color: var(--color-neutral-500);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.core-provision-panel__meta {
+  margin-top: 0.25rem;
+  color: var(--color-neutral-700);
+  font-size: var(--text-sm);
+}
+
+.core-provision-panel__meta-strong {
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.core-provision-panel__subtle {
+  margin-top: 0.25rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.core-provision-panel__code {
+  padding: 0.125rem 0.25rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-neutral-100);
+}
+
+.core-provision-panel__error {
+  margin-top: 0.25rem;
+  color: var(--color-rose-500);
+  font-size: var(--text-xs);
+}
+
+.core-provision-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.core-provision-panel__grid {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.core-provision-panel__column {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.core-provision-panel__card {
+  padding: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 80%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-neutral-50) 80%, transparent);
+}
+
+.core-provision-panel__card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.core-provision-panel__card-title {
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.core-provision-panel__card-title--spaced {
+  margin-bottom: 0.5rem;
+}
+
+.core-provision-panel__card-meta {
+  color: var(--color-neutral-500);
+  font-size: 11px;
+}
+
+.core-provision-panel__button-grid {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.core-provision-panel__button {
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.core-provision-panel__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.core-provision-panel__button--secondary {
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--color-neutral-300);
+  background: transparent;
+  color: var(--color-neutral-700);
+}
+
+.core-provision-panel__button--secondary:hover:not(:disabled) {
+  border-color: var(--color-neutral-500);
+}
+
+.core-provision-panel__button--primary {
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  background: var(--color-neutral-900);
+  color: var(--color-white);
+}
+
+.core-provision-panel__button--primary:hover:not(:disabled) {
+  background: var(--color-neutral-700);
+}
+
+.core-provision-panel__in-flight {
+  margin-top: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--color-amber-300) 70%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--color-amber-50);
+  color: var(--color-yellow-800);
+  font-size: 11px;
+}
+
+.core-provision-panel__last-action {
+  display: grid;
+  gap: 0.25rem;
+  font-size: var(--text-xs);
+}
+
+.core-provision-panel__last-action-line {
+  color: var(--color-neutral-700);
+}
+
+.core-provision-panel__last-action-name {
+  font-weight: 600;
+}
+
+.core-provision-panel__last-action-message {
+  overflow-wrap: anywhere;
+  color: var(--color-neutral-500);
+  white-space: pre-wrap;
+}
+
+.core-provision-panel__result--success {
+  color: var(--color-emerald-600);
+}
+
+.core-provision-panel__result--danger {
+  color: var(--color-rose-600);
+}
+
+.core-provision-panel__empty {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+:global(.core-provision-checks-list) {
+  max-height: 14rem;
+  padding: 0.25rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-white) 80%, transparent);
+}
+
+:global(.core-provision-checks-list__row) {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  font-size: var(--text-xs);
+}
+
+:global(.core-provision-checks-list__body) {
+  min-width: 0;
+}
+
+:global(.core-provision-checks-list__label) {
+  overflow: hidden;
+  color: var(--color-neutral-800);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global(.core-provision-checks-list__detail) {
+  overflow: hidden;
+  color: var(--color-neutral-500);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global(.core-provision-checks-list__pill) {
+  flex-shrink: 0;
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+:global(.core-provision-checks-list__pill--success) {
+  background: var(--color-green-100);
+  color: var(--color-green-800);
+}
+
+:global(.core-provision-checks-list__pill--danger) {
+  background: var(--color-red-100);
+  color: var(--color-red-800);
+}
+
+:global(.core-provision-checks-list__pill--neutral) {
+  background: var(--color-neutral-200);
+  color: var(--color-neutral-700);
+}
+
+:global(.core-provision-checks-list__empty) {
+  padding: 0.5rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+@media (min-width: 1280px) {
+  .core-provision-panel__grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  }
+}
+
+:global(.dark .core-provision-panel){
+  border-color: var(--color-neutral-800);
+  background: color-mix(in srgb, var(--color-neutral-950) 40%, transparent);
+}
+
+:global(.dark .core-provision-panel__meta),
+:global(.dark .core-provision-panel__card-title),
+:global(.dark .core-provision-panel__last-action-line){
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .core-provision-panel__eyebrow),
+:global(.dark .core-provision-panel__subtle),
+:global(.dark .core-provision-panel__card-meta),
+:global(.dark .core-provision-panel__last-action-message),
+:global(.dark .core-provision-panel__empty){
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .core-provision-panel__code){
+  background: var(--color-neutral-800);
+}
+
+:global(.dark .core-provision-panel__card){
+  border-color: var(--color-neutral-800);
+  background: color-mix(in srgb, var(--color-neutral-900) 60%, transparent);
+}
+
+:global(.dark .core-provision-panel__button--secondary){
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .core-provision-panel__button--secondary:hover:not(:disabled)){
+  border-color: var(--color-neutral-500);
+}
+
+:global(.dark .core-provision-panel__button--primary){
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-900);
+}
+
+:global(.dark .core-provision-panel__button--primary:hover:not(:disabled)){
+  background: var(--color-neutral-300);
+}
+
+:global(.dark .core-provision-panel__in-flight){
+  border-color: color-mix(in srgb, var(--color-amber-700) 50%, transparent);
+  background: color-mix(in srgb, var(--color-amber-900) 40%, transparent);
+  color: var(--color-amber-300);
+}
+
+:global(.dark .core-provision-panel__result--success){
+  color: var(--color-emerald-300);
+}
+
+:global(.dark .core-provision-panel__result--danger){
+  color: var(--color-rose-300);
+}
+
+:global(.dark .core-provision-checks-list) {
+  border-color: var(--color-neutral-800);
+  background: color-mix(in srgb, var(--color-neutral-950) 50%, transparent);
+}
+
+:global(.dark .core-provision-checks-list__label) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .core-provision-checks-list__detail),
+:global(.dark .core-provision-checks-list__empty) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .core-provision-checks-list__pill--success) {
+  background: color-mix(in srgb, var(--color-emerald-900) 40%, transparent);
+  color: var(--color-emerald-300);
+}
+
+:global(.dark .core-provision-checks-list__pill--danger) {
+  background: color-mix(in srgb, var(--color-red-900) 40%, transparent);
+  color: var(--color-red-300);
+}
+
+:global(.dark .core-provision-checks-list__pill--neutral) {
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-200);
+}
+</style>

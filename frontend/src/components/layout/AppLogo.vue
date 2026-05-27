@@ -28,7 +28,7 @@ import { RouterLink } from "vue-router"
   text-decoration: none;
 }
 
-:global(.dark) .app-logo__link {
+:global(.dark .app-logo__link){
   color: var(--color-neutral-200);
 }
 </style>

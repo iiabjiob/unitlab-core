@@ -153,21 +153,21 @@ button.global-progress-card {
   background: var(--color-sky-500);
 }
 
-:global(.dark) .global-progress-card {
+:global(.dark .global-progress-card){
   border-color: var(--color-neutral-700);
   background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
   color: var(--color-neutral-200);
 }
 
-:global(.dark) .global-progress-card__value {
+:global(.dark .global-progress-card__value){
   color: var(--color-neutral-100);
 }
 
-:global(.dark) .global-progress-card__detail {
+:global(.dark .global-progress-card__detail){
   color: var(--color-neutral-300);
 }
 
-:global(.dark) .global-progress-card__track {
+:global(.dark .global-progress-card__track){
   background: var(--color-neutral-700);
 }
 </style>

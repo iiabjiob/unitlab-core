@@ -558,8 +558,8 @@ const hiddenInputValue = computed(() => (
 
 .sequence-picker-combobox.is-dark,
 .sequence-picker-combobox__popover.is-dark,
-:global(.dark) .sequence-picker-combobox,
-:global(.dark) .sequence-picker-combobox__popover {
+:global(.dark .sequence-picker-combobox),
+:global(.dark .sequence-picker-combobox__popover){
   --picker-surface: rgba(9, 12, 20, 0.98);
   --picker-surface-muted: rgba(20, 26, 38, 0.92);
   --picker-border: rgba(148, 163, 184, 0.38);

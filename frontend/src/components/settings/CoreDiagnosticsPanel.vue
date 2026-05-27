@@ -1,58 +1,58 @@
 <template>
-  <section class="rounded-2xl border border-neutral-200/70 bg-white/90 p-4 dark:border-neutral-800 dark:bg-neutral-950/40">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div class="min-w-0">
-        <p class="text-[11px] uppercase tracking-[0.26em] text-neutral-500 dark:text-neutral-400">Core Diagnostics</p>
-        <p class="mt-1 text-sm text-neutral-700 dark:text-neutral-200">
-          Mode: <span class="font-semibold uppercase">{{ modeText }}</span>
+  <section class="core-diagnostics-panel">
+    <div class="core-diagnostics-panel__header">
+      <div class="core-diagnostics-panel__heading">
+        <p class="core-diagnostics-panel__eyebrow">Core Diagnostics</p>
+        <p class="core-diagnostics-panel__meta">
+          Mode: <span class="core-diagnostics-panel__meta-strong">{{ modeText }}</span>
           <template v-if="snapshot?.last_event"> · {{ snapshot.last_event }}</template>
         </p>
-        <p class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+        <p class="core-diagnostics-panel__subtle">
           {{ snapshot?.hostname || "—" }}
           <template v-if="snapshot?.model"> · {{ snapshot.model }}</template>
           <template v-if="snapshot?.kernel"> · kernel {{ snapshot.kernel }}</template>
         </p>
-        <p v-if="snapshot?.os_pretty_name" class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+        <p v-if="snapshot?.os_pretty_name" class="core-diagnostics-panel__subtle">
           {{ snapshot.os_pretty_name }}
         </p>
-        <p v-if="errorText" class="mt-1 text-xs text-rose-500">{{ errorText }}</p>
+        <p v-if="errorText" class="core-diagnostics-panel__error">{{ errorText }}</p>
       </div>
     </div>
 
-    <div class="mt-3 grid gap-3 xl:grid-cols-2">
-      <div class="rounded-xl border border-neutral-200/80 bg-neutral-50/80 p-3 dark:border-neutral-800 dark:bg-neutral-900/60 xl:col-span-2">
-        <div class="mb-2 flex items-center justify-between gap-2">
-          <p class="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Backend Health</p>
-          <span class="text-[11px] text-neutral-500 dark:text-neutral-400">{{ healthCheckedAtText }}</span>
+    <div class="core-diagnostics-panel__grid">
+      <div class="core-diagnostics-panel__card core-diagnostics-panel__card--wide">
+        <div class="core-diagnostics-panel__card-header">
+          <p class="core-diagnostics-panel__card-title">Backend Health</p>
+          <span class="core-diagnostics-panel__card-meta">{{ healthCheckedAtText }}</span>
         </div>
-        <div class="grid gap-2 text-xs">
-          <div class="flex items-center justify-between gap-2">
-            <span class="text-neutral-500 dark:text-neutral-400">Overall status</span>
+        <div class="core-diagnostics-panel__facts">
+          <div class="core-diagnostics-panel__fact-row">
+            <span class="core-diagnostics-panel__fact-label">Overall status</span>
             <span
-              class="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+              class="core-diagnostics-panel__pill"
               :class="systemStatusPillClass"
             >
               {{ systemStatusText }}
             </span>
           </div>
-          <div class="flex items-center justify-between gap-2">
-            <span class="text-neutral-500 dark:text-neutral-400">Workers</span>
-            <span class="font-medium text-neutral-800 dark:text-neutral-100">{{ healthyWorkersCount }} / {{ healthWorkers.length }} online</span>
+          <div class="core-diagnostics-panel__fact-row">
+            <span class="core-diagnostics-panel__fact-label">Workers</span>
+            <span class="core-diagnostics-panel__fact-value">{{ healthyWorkersCount }} / {{ healthWorkers.length }} online</span>
           </div>
         </div>
-        <div v-if="healthIssues.length > 0" class="mt-3 max-h-32 overflow-y-auto rounded-lg border border-neutral-200 bg-white/80 p-2 dark:border-neutral-800 dark:bg-neutral-950/50">
-          <p class="mb-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-500 dark:text-neutral-400">Issues</p>
-          <ul class="space-y-1">
-            <li v-for="issue in healthIssues" :key="issue" class="text-xs text-rose-600 dark:text-rose-300">
+        <div v-if="healthIssues.length > 0" class="core-diagnostics-panel__issues">
+          <p class="core-diagnostics-panel__issues-title">Issues</p>
+          <ul class="core-diagnostics-panel__issues-list">
+            <li v-for="issue in healthIssues" :key="issue" class="core-diagnostics-panel__issue">
               {{ issue }}
             </li>
           </ul>
         </div>
       </div>
 
-      <div class="rounded-xl border border-neutral-200/80 bg-neutral-50/80 p-3 dark:border-neutral-800 dark:bg-neutral-900/60">
-        <p class="mb-2 text-xs font-semibold text-neutral-700 dark:text-neutral-200">System</p>
-        <div class="grid gap-2 text-xs">
+      <div class="core-diagnostics-panel__card">
+        <p class="core-diagnostics-panel__card-title core-diagnostics-panel__card-title--spaced">System</p>
+        <div class="core-diagnostics-panel__facts">
           <Row label="Time (UTC)" :value="snapshot?.time_utc || '—'" />
           <Row label="Uptime" :value="uptimeText" />
           <Row label="CPU temp" :value="cpuTempText" />
@@ -70,23 +70,23 @@
         </div>
       </div>
 
-      <div class="rounded-xl border border-neutral-200/80 bg-neutral-50/80 p-3 dark:border-neutral-800 dark:bg-neutral-900/60">
-        <p class="mb-2 text-xs font-semibold text-neutral-700 dark:text-neutral-200">Host Services</p>
-        <div class="max-h-56 overflow-y-auto rounded-lg border border-neutral-200 bg-white/80 p-1 dark:border-neutral-800 dark:bg-neutral-950/50">
+      <div class="core-diagnostics-panel__card">
+        <p class="core-diagnostics-panel__card-title core-diagnostics-panel__card-title--spaced">Host Services</p>
+        <div class="core-diagnostics-panel__service-list">
           <div
             v-for="svc in services"
             :key="svc.name"
-            class="flex items-center justify-between gap-2 px-2 py-1 text-xs"
+            class="core-diagnostics-panel__service-row"
           >
-            <span class="truncate text-neutral-800 dark:text-neutral-100">{{ svc.name }}</span>
+            <span class="core-diagnostics-panel__service-name">{{ svc.name }}</span>
             <span
-              class="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+              class="core-diagnostics-panel__pill"
               :class="statusPillClass(svc.active)"
             >
               {{ statusText(svc.active) }}
             </span>
           </div>
-          <p v-if="services.length === 0" class="px-2 py-2 text-xs text-neutral-500 dark:text-neutral-400">
+          <p v-if="services.length === 0" class="core-diagnostics-panel__empty">
             No service diagnostics reported yet.
           </p>
         </div>
@@ -121,12 +121,12 @@ const healthCheckedAtText = computed(() => {
 const systemStatusPillClass = computed(() => {
   const status = String(systemHealthStore.status).toLowerCase()
   if (status === "online") {
-    return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+    return "core-diagnostics-panel__pill--success"
   }
   if (status === "offline") {
-    return "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200"
+    return "core-diagnostics-panel__pill--danger"
   }
-  return "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
+  return "core-diagnostics-panel__pill--warning"
 })
 
 const cpuTempText = computed(() => {
@@ -193,12 +193,12 @@ function statusText(active: boolean | null): string {
 
 function statusPillClass(active: boolean | null): string {
   if (active === true) {
-    return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+    return "core-diagnostics-panel__pill--success"
   }
   if (active === false) {
-    return "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200"
+    return "core-diagnostics-panel__pill--danger"
   }
-  return "bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
+  return "core-diagnostics-panel__pill--neutral"
 }
 
 onMounted(() => {
@@ -219,21 +219,298 @@ const Row = defineComponent({
     value: { type: String, required: true },
   },
   setup(props) {
-    return () => h("div", { class: "flex items-center justify-between gap-2" }, [
-      h("span", { class: "inline-flex items-center gap-1 text-neutral-500 dark:text-neutral-400" }, [
+    return () => h("div", { class: "core-diagnostics-row" }, [
+      h("span", { class: "core-diagnostics-row__label" }, [
         h("span", props.label),
         props.tooltip
           ? h(InlineInfoTooltip, {
             text: props.tooltip,
             placement: "top",
             align: "start",
-            iconClass: "h-3.5 w-3.5",
           })
           : null,
       ]),
-      h("span", { class: "text-right font-medium text-neutral-800 dark:text-neutral-100" }, props.value),
+      h("span", { class: "core-diagnostics-row__value" }, props.value),
     ])
   },
 })
 </script>
 
+<style scoped>
+.core-diagnostics-panel {
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 70%, transparent);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--color-white) 90%, transparent);
+}
+
+.core-diagnostics-panel__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.core-diagnostics-panel__heading {
+  min-width: 0;
+}
+
+.core-diagnostics-panel__eyebrow {
+  color: var(--color-neutral-500);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.core-diagnostics-panel__meta {
+  margin-top: 0.25rem;
+  color: var(--color-neutral-700);
+  font-size: var(--text-sm);
+}
+
+.core-diagnostics-panel__meta-strong {
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.core-diagnostics-panel__subtle {
+  margin-top: 0.25rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.core-diagnostics-panel__error {
+  margin-top: 0.25rem;
+  color: var(--color-rose-500);
+  font-size: var(--text-xs);
+}
+
+.core-diagnostics-panel__grid {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.core-diagnostics-panel__card {
+  padding: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 80%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-neutral-50) 80%, transparent);
+}
+
+.core-diagnostics-panel__card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.core-diagnostics-panel__card-title {
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.core-diagnostics-panel__card-title--spaced {
+  margin-bottom: 0.5rem;
+}
+
+.core-diagnostics-panel__card-meta {
+  color: var(--color-neutral-500);
+  font-size: 11px;
+}
+
+.core-diagnostics-panel__facts {
+  display: grid;
+  gap: 0.5rem;
+  font-size: var(--text-xs);
+}
+
+.core-diagnostics-panel__fact-row,
+.core-diagnostics-panel__service-row,
+:global(.core-diagnostics-row) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.core-diagnostics-panel__fact-label,
+:global(.core-diagnostics-row__label) {
+  color: var(--color-neutral-500);
+}
+
+:global(.core-diagnostics-row__label) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.core-diagnostics-panel__fact-value,
+:global(.core-diagnostics-row__value) {
+  color: var(--color-neutral-800);
+  font-weight: 500;
+}
+
+:global(.core-diagnostics-row__value) {
+  text-align: right;
+}
+
+.core-diagnostics-panel__pill {
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.core-diagnostics-panel__pill--success {
+  background: var(--color-green-100);
+  color: var(--color-green-800);
+}
+
+.core-diagnostics-panel__pill--danger {
+  background: var(--color-red-100);
+  color: var(--color-red-800);
+}
+
+.core-diagnostics-panel__pill--warning {
+  background: var(--color-yellow-100);
+  color: var(--color-yellow-800);
+}
+
+.core-diagnostics-panel__pill--neutral {
+  background: var(--color-neutral-200);
+  color: var(--color-neutral-700);
+}
+
+.core-diagnostics-panel__issues {
+  max-height: 8rem;
+  margin-top: 0.75rem;
+  padding: 0.5rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-white) 80%, transparent);
+}
+
+.core-diagnostics-panel__issues-title {
+  margin-bottom: 0.25rem;
+  color: var(--color-neutral-500);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.core-diagnostics-panel__issues-list {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0;
+  margin: 0;
+  list-style-position: inside;
+}
+
+.core-diagnostics-panel__issue {
+  color: var(--color-rose-600);
+  font-size: var(--text-xs);
+}
+
+.core-diagnostics-panel__service-list {
+  max-height: 14rem;
+  padding: 0.25rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-white) 80%, transparent);
+}
+
+.core-diagnostics-panel__service-row {
+  padding: 0.25rem 0.5rem;
+  font-size: var(--text-xs);
+}
+
+.core-diagnostics-panel__service-name {
+  overflow: hidden;
+  color: var(--color-neutral-800);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.core-diagnostics-panel__empty {
+  padding: 0.5rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+@media (min-width: 1280px) {
+  .core-diagnostics-panel__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .core-diagnostics-panel__card--wide {
+    grid-column: span 2;
+  }
+}
+
+:global(.dark .core-diagnostics-panel){
+  border-color: var(--color-neutral-800);
+  background: color-mix(in srgb, var(--color-neutral-950) 40%, transparent);
+}
+
+:global(.dark .core-diagnostics-panel__meta),
+:global(.dark .core-diagnostics-panel__card-title){
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .core-diagnostics-panel__eyebrow),
+:global(.dark .core-diagnostics-panel__subtle),
+:global(.dark .core-diagnostics-panel__card-meta),
+:global(.dark .core-diagnostics-panel__fact-label),
+:global(.dark .core-diagnostics-panel__empty),
+:global(.dark .core-diagnostics-row__label) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .core-diagnostics-panel__card){
+  border-color: var(--color-neutral-800);
+  background: color-mix(in srgb, var(--color-neutral-900) 60%, transparent);
+}
+
+:global(.dark .core-diagnostics-panel__fact-value),
+:global(.dark .core-diagnostics-panel__service-name),
+:global(.dark .core-diagnostics-row__value) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .core-diagnostics-panel__pill--success){
+  background: color-mix(in srgb, var(--color-emerald-900) 40%, transparent);
+  color: var(--color-emerald-300);
+}
+
+:global(.dark .core-diagnostics-panel__pill--danger){
+  background: color-mix(in srgb, var(--color-red-900) 40%, transparent);
+  color: var(--color-red-300);
+}
+
+:global(.dark .core-diagnostics-panel__pill--warning){
+  background: color-mix(in srgb, var(--color-yellow-900) 40%, transparent);
+  color: var(--color-yellow-300);
+}
+
+:global(.dark .core-diagnostics-panel__pill--neutral){
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .core-diagnostics-panel__issues),
+:global(.dark .core-diagnostics-panel__service-list){
+  border-color: var(--color-neutral-800);
+  background: color-mix(in srgb, var(--color-neutral-950) 50%, transparent);
+}
+
+:global(.dark .core-diagnostics-panel__issue){
+  color: var(--color-rose-300);
+}
+</style>

@@ -452,21 +452,21 @@ function dismissCompleted() {
   color: var(--color-neutral-800);
 }
 
-:global(.dark) .global-signal-test-status__completed {
+:global(.dark .global-signal-test-status__completed){
   border-color: var(--color-neutral-700);
   background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
   color: var(--color-neutral-200);
 }
 
-:global(.dark) .global-signal-test-status__completed-title {
+:global(.dark .global-signal-test-status__completed-title){
   color: var(--color-neutral-100);
 }
 
-:global(.dark) .global-signal-test-status__dismiss {
+:global(.dark .global-signal-test-status__dismiss){
   color: var(--color-neutral-400);
 }
 
-:global(.dark) .global-signal-test-status__dismiss:hover {
+:global(.dark .global-signal-test-status__dismiss:hover){
   background: var(--color-neutral-700);
   color: var(--color-neutral-100);
 }

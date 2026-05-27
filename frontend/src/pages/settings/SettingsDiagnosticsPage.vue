@@ -40,15 +40,15 @@ import CoreDiagnosticsPanel from "@/components/settings/CoreDiagnosticsPanel.vue
   font-size: var(--text-xs);
 }
 
-:global(.dark) .settings-page-shell__header {
+:global(.dark .settings-page-shell__header){
   border-bottom-color: var(--color-neutral-800);
 }
 
-:global(.dark) .settings-page-shell__title {
+:global(.dark .settings-page-shell__title){
   color: var(--color-neutral-100);
 }
 
-:global(.dark) .settings-page-shell__description {
+:global(.dark .settings-page-shell__description){
   color: var(--color-neutral-400);
 }
 </style>

@@ -129,12 +129,12 @@ watch(
   }
 }
 
-:global(.dark) .settings-page__mobile-header {
+:global(.dark .settings-page__mobile-header){
   border-bottom-color: var(--color-neutral-800);
   background: var(--color-neutral-900);
 }
 
-:global(.dark) .settings-page__sidebar-panel {
+:global(.dark .settings-page__sidebar-panel){
   background: var(--color-neutral-900);
 }
 </style>

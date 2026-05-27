@@ -56,20 +56,20 @@ import { SETTINGS_SERVICE_MODE_ENABLED as serviceModeEnabled } from "@/config/se
   font-size: var(--text-xs);
 }
 
-:global(.dark) .settings-page-shell__header,
-:global(.dark) .settings-page-shell__notice {
+:global(.dark .settings-page-shell__header),
+:global(.dark .settings-page-shell__notice){
   border-color: var(--color-neutral-800);
 }
 
-:global(.dark) .settings-page-shell__title {
+:global(.dark .settings-page-shell__title){
   color: var(--color-neutral-100);
 }
 
-:global(.dark) .settings-page-shell__description {
+:global(.dark .settings-page-shell__description){
   color: var(--color-neutral-400);
 }
 
-:global(.dark) .settings-page-shell__notice {
+:global(.dark .settings-page-shell__notice){
   background: color-mix(in srgb, var(--color-neutral-950) 40%, transparent);
   color: var(--color-neutral-300);
 }

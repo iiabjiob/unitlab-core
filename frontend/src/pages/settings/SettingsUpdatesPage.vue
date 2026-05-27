@@ -43,20 +43,20 @@ import { SETTINGS_SERVICE_MODE_ENABLED as serviceModeEnabled } from "@/config/se
   font-size: var(--text-xs);
 }
 
-:global(.dark) .settings-updates-card {
+:global(.dark .settings-updates-card){
   border-color: var(--color-neutral-800);
   background: color-mix(in srgb, var(--color-neutral-950) 40%, transparent);
 }
 
-:global(.dark) .settings-updates-card__eyebrow {
+:global(.dark .settings-updates-card__eyebrow){
   color: var(--color-neutral-400);
 }
 
-:global(.dark) .settings-updates-card__title {
+:global(.dark .settings-updates-card__title){
   color: var(--color-neutral-100);
 }
 
-:global(.dark) .settings-updates-card__body {
+:global(.dark .settings-updates-card__body){
   color: var(--color-neutral-300);
 }
 </style>

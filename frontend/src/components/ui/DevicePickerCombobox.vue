@@ -601,8 +601,8 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
 
 .device-picker-combobox.is-dark,
 .device-picker-combobox__popover.is-dark,
-:global(.dark) .device-picker-combobox,
-:global(.dark) .device-picker-combobox__popover {
+:global(.dark .device-picker-combobox),
+:global(.dark .device-picker-combobox__popover){
   --picker-surface: rgba(9, 12, 20, 0.98);
   --picker-surface-muted: rgba(20, 26, 38, 0.92);
   --picker-border: rgba(148, 163, 184, 0.38);

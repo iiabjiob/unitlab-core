@@ -132,17 +132,17 @@ button.time-component__ntp-badge {
   color: var(--color-amber-700);
 }
 
-:global(.dark) .time-component {
+:global(.dark .time-component){
   color: var(--color-neutral-400);
 }
 
-:global(.dark) .time-component__ntp-badge--synced {
+:global(.dark .time-component__ntp-badge--synced){
   border-color: color-mix(in srgb, var(--color-emerald-700) 70%, transparent);
   background: color-mix(in srgb, var(--color-emerald-900) 40%, transparent);
   color: var(--color-emerald-300);
 }
 
-:global(.dark) .time-component__ntp-badge--unsynced {
+:global(.dark .time-component__ntp-badge--unsynced){
   border-color: color-mix(in srgb, var(--color-amber-700) 70%, transparent);
   background: color-mix(in srgb, var(--color-amber-900) 40%, transparent);
   color: var(--color-amber-300);

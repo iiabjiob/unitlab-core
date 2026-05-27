@@ -152,13 +152,13 @@ function handleSelect(id: string | number) {
   font-size: 11px;
 }
 
-:global(.dark) .settings-list-sidebar__eyebrow,
-:global(.dark) .settings-list-sidebar__description,
-:global(.dark) .settings-list-sidebar__build {
+:global(.dark .settings-list-sidebar__eyebrow),
+:global(.dark .settings-list-sidebar__description),
+:global(.dark .settings-list-sidebar__build){
   color: var(--color-neutral-400);
 }
 
-:global(.dark) .settings-list-sidebar__title {
+:global(.dark .settings-list-sidebar__title){
   color: var(--color-neutral-100);
 }
 </style>

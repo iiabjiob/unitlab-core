@@ -89,12 +89,12 @@ onMounted(async () => {
   animation: app-bootstrap-spin 0.9s linear infinite;
 }
 
-:global(.dark) .app-bootstrap-placeholder {
+:global(.dark .app-bootstrap-placeholder){
   background: color-mix(in srgb, var(--color-neutral-950) 90%, transparent);
   color: var(--color-neutral-200);
 }
 
-:global(.dark) .app-bootstrap-placeholder__card {
+:global(.dark .app-bootstrap-placeholder__card){
   border-color: var(--color-neutral-800);
   background: color-mix(in srgb, var(--color-neutral-950) 95%, transparent);
 }
