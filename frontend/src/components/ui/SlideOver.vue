@@ -296,6 +296,7 @@ onBeforeUnmount(() => {
 .slide-over__panel {
   background: var(--color-white);
   color: var(--color-neutral-900);
+  outline: none;
   position: absolute;
 }
 
