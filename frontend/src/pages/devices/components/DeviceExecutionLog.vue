@@ -76,7 +76,7 @@ onBeforeUnmount(() => {
       <span>Device Log</span>
       <button
         type="button"
-        class="device-execution-log__copy-button"
+        class="btn btn-xs btn-secondary device-execution-log__copy-button"
         @click="copyLogs"
       >
         <span class="device-execution-log__copy-label">Copy log</span>
@@ -167,17 +167,6 @@ onBeforeUnmount(() => {
 
 .device-execution-log__copy-button {
   position: relative;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--color-neutral-300);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-neutral-600);
-  font-size: 0.625rem;
-  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
-}
-
-.device-execution-log__copy-button:hover {
-  background: var(--color-neutral-100);
 }
 
 .device-execution-log__copy-label {
@@ -307,15 +296,6 @@ onBeforeUnmount(() => {
 :global(.dark .device-execution-log__header) {
   border-bottom-color: var(--color-neutral-800);
   color: var(--color-neutral-400);
-}
-
-:global(.dark .device-execution-log__copy-button) {
-  border-color: var(--color-neutral-700);
-  color: var(--color-neutral-300);
-}
-
-:global(.dark .device-execution-log__copy-button:hover) {
-  background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
 }
 
 :global(.dark .device-execution-log__body) {

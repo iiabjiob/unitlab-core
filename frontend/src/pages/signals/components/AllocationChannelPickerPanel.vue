@@ -49,11 +49,11 @@
 
         <div class="allocation-channel-picker__summary-row">
           <span>{{ resultsSummary }}</span>
-          <button
-            v-if="currentChannelId !== null"
-            type="button"
-            class="allocation-channel-picker__clear-button"
-            :disabled="saving"
+            <button
+              v-if="currentChannelId !== null"
+              type="button"
+              class="btn btn-xs btn-secondary allocation-channel-picker__clear-button"
+              :disabled="saving"
             @click="emit('select', null)"
           >
             Clear allocation
@@ -158,7 +158,7 @@
             <button
               v-else-if="isChannelNode(node.value) && isOccupiedChannel(node.value)"
               type="button"
-              class="allocation-channel-picker__swap-button"
+              class="btn btn-xs btn-secondary allocation-channel-picker__swap-button"
               :disabled="saving"
               tabindex="-1"
               @click.stop="onSwapClick(node.value)"
@@ -896,22 +896,7 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 }
 
 .allocation-channel-picker__clear-button {
-  border: 1px solid var(--color-neutral-300);
-  border-radius: var(--radius-lg);
-  color: var(--color-neutral-700);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  padding: 0.25rem 0.5rem;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
-}
-
-.allocation-channel-picker__clear-button:hover:not(:disabled) {
-  background: var(--color-neutral-100);
-}
-
-.allocation-channel-picker__clear-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
+  flex-shrink: 0;
 }
 
 .allocation-channel-picker__body {
@@ -1092,8 +1077,7 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
   white-space: nowrap;
 }
 
-.allocation-channel-picker__tag,
-.allocation-channel-picker__swap-button {
+.allocation-channel-picker__tag {
   flex-shrink: 0;
   font-size: 10px;
   font-weight: 600;
@@ -1106,11 +1090,7 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 }
 
 .allocation-channel-picker__swap-button {
-  color: var(--color-amber-700);
-}
-
-.allocation-channel-picker__swap-button:disabled {
-  opacity: 0.6;
+  flex-shrink: 0;
 }
 
 :global(.dark .allocation-channel-picker__header) {
@@ -1150,15 +1130,6 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 
 :global(.dark .allocation-channel-picker__search-input:focus) {
   border-color: var(--color-neutral-500);
-}
-
-:global(.dark .allocation-channel-picker__clear-button) {
-  border-color: var(--color-neutral-600);
-  color: var(--color-neutral-200);
-}
-
-:global(.dark .allocation-channel-picker__clear-button:hover:not(:disabled)) {
-  background: var(--color-neutral-800);
 }
 
 :global(.dark .allocation-channel-picker__empty) {
@@ -1206,10 +1177,6 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
   background: color-mix(in srgb, var(--color-amber-900) 30%, transparent);
   border-color: color-mix(in srgb, var(--color-amber-900) 80%, transparent);
   color: var(--color-amber-50);
-}
-
-:global(.dark .allocation-channel-picker__swap-button) {
-  color: var(--color-amber-300);
 }
 
 @keyframes allocation-channel-picker-spin {

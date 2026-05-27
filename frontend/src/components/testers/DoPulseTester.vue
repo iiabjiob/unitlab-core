@@ -5,7 +5,9 @@
     </div>
 
     <div class="do-pulse-tester__actions">
-      <UiButton type="secondary"
+      <UiButton
+        type="button"
+        variant="secondary"
         :disabled="!ws.isConnected || isBusyA"
         @click="pulseA"
         :title="`Pulse ${pulseMs}ms on CH${chA}`"
@@ -13,7 +15,9 @@
         {{ labelA }}
       </UiButton>
 
-      <UiButton type="secondary"
+      <UiButton
+        type="button"
+        variant="secondary"
         :disabled="!ws.isConnected || isBusyB"
         @click="pulseB"
         :title="`Pulse ${pulseMs}ms on CH${chB}`"

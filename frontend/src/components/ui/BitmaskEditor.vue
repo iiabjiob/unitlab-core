@@ -1,15 +1,15 @@
 <template>
   <div class="bitmask-editor">
     <div v-if="channelCount > 0" class="bitmask-editor__controls">
-      <UiButton type="toolbar" size="xs" :disabled="isDisabled" @click="selectAll">
+      <UiButton type="button" variant="toolbar" size="xs" :disabled="isDisabled" @click="selectAll">
         all
       </UiButton>
 
-      <UiButton type="toolbar" size="xs" :disabled="isDisabled" @click="clearAll">
+      <UiButton type="button" variant="toolbar" size="xs" :disabled="isDisabled" @click="clearAll">
         clear
       </UiButton>
 
-      <UiButton type="toolbar" size="xs" :disabled="isDisabled" @click="invertAll">
+      <UiButton type="button" variant="toolbar" size="xs" :disabled="isDisabled" @click="invertAll">
         invert
       </UiButton>
     </div>

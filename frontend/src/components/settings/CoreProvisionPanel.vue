@@ -15,7 +15,7 @@
       <div class="core-provision-panel__actions">
         <button
           type="button"
-          class="core-provision-panel__button core-provision-panel__button--secondary"
+          class="btn btn-base btn-secondary"
           :disabled="busy"
           @click="runSmokeCheck"
         >
@@ -49,7 +49,7 @@
           <div class="core-provision-panel__button-grid">
             <button
               type="button"
-              class="core-provision-panel__button core-provision-panel__button--primary"
+              class="btn btn-base btn-primary"
               :disabled="busy"
               @click="installNetAgent"
             >
@@ -57,7 +57,7 @@
             </button>
             <button
               type="button"
-              class="core-provision-panel__button core-provision-panel__button--primary"
+              class="btn btn-base btn-primary"
               :disabled="busy"
               @click="installNtpAgent"
             >
@@ -65,7 +65,7 @@
             </button>
             <button
               type="button"
-              class="core-provision-panel__button core-provision-panel__button--primary"
+              class="btn btn-base btn-primary"
               :disabled="busy"
               @click="installDiagAgent"
             >
@@ -280,39 +280,6 @@ const ChecksList = defineComponent({
   gap: 0.5rem;
 }
 
-.core-provision-panel__button {
-  border-radius: var(--radius-md);
-  font-size: var(--text-xs);
-  font-weight: 600;
-}
-
-.core-provision-panel__button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.core-provision-panel__button--secondary {
-  padding: 0.375rem 0.75rem;
-  border: 1px solid var(--color-neutral-300);
-  background: transparent;
-  color: var(--color-neutral-700);
-}
-
-.core-provision-panel__button--secondary:hover:not(:disabled) {
-  border-color: var(--color-neutral-500);
-}
-
-.core-provision-panel__button--primary {
-  padding: 0.5rem 0.75rem;
-  border: 0;
-  background: var(--color-neutral-900);
-  color: var(--color-white);
-}
-
-.core-provision-panel__button--primary:hover:not(:disabled) {
-  background: var(--color-neutral-700);
-}
-
 .core-provision-panel__in-flight {
   margin-top: 0.75rem;
   padding: 0.25rem 0.5rem;
@@ -451,30 +418,12 @@ const ChecksList = defineComponent({
   background: var(--color-neutral-800);
 }
 
-:global(.dark .core-provision-panel__card){
+:global(.dark .core-provision-panel__card) {
   border-color: var(--color-neutral-800);
   background: color-mix(in srgb, var(--color-neutral-900) 60%, transparent);
 }
 
-:global(.dark .core-provision-panel__button--secondary){
-  border-color: var(--color-neutral-700);
-  color: var(--color-neutral-200);
-}
-
-:global(.dark .core-provision-panel__button--secondary:hover:not(:disabled)){
-  border-color: var(--color-neutral-500);
-}
-
-:global(.dark .core-provision-panel__button--primary){
-  background: var(--color-neutral-100);
-  color: var(--color-neutral-900);
-}
-
-:global(.dark .core-provision-panel__button--primary:hover:not(:disabled)){
-  background: var(--color-neutral-300);
-}
-
-:global(.dark .core-provision-panel__in-flight){
+:global(.dark .core-provision-panel__in-flight) {
   border-color: color-mix(in srgb, var(--color-amber-700) 50%, transparent);
   background: color-mix(in srgb, var(--color-amber-900) 40%, transparent);
   color: var(--color-amber-300);

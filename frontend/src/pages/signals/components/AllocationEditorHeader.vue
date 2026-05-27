@@ -230,24 +230,15 @@ const emit = defineEmits<{
 }
 
 .allocation-editor-header__run-segment {
-  background: color-mix(in srgb, var(--color-emerald-500) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-emerald-500) 30%, transparent);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm), 0 1px 2px color-mix(in srgb, var(--color-emerald-500) 25%, transparent);
   display: inline-flex;
   height: 2rem;
   overflow: hidden;
 }
 
 .allocation-editor-header__run-button {
-  align-items: center;
   border-radius: 0;
-  display: flex;
-  font-size: var(--text-sm);
-  font-weight: 600;
   height: 2rem;
-  letter-spacing: 0;
-  line-height: 1;
 }
 
 .allocation-editor-header__run-button--main {
@@ -278,11 +269,6 @@ const emit = defineEmits<{
 
 :global(.dark .allocation-editor-header__summary) {
   color: var(--color-neutral-200);
-}
-
-:global(.dark .allocation-editor-header__run-segment) {
-  background: color-mix(in srgb, var(--color-emerald-400) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-emerald-400) 40%, transparent);
 }
 
 :global(.dark .allocation-editor-header__run-button--trigger) {

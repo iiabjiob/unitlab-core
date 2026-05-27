@@ -2,6 +2,7 @@
   <button
     :class="computedClass"
     :disabled="disabled"
+    :type="type"
     v-bind="$attrs"
   >
     <slot />
@@ -22,17 +23,20 @@ type ButtonVariant =
   | "ghost"
 
 type ButtonSize = "xs" | "sm" | "base" | "lg"
+type ButtonType = "button" | "submit" | "reset"
 
 const props = withDefaults(
   defineProps<{
     variant?: ButtonVariant
     size?: ButtonSize
+    type?: ButtonType
     disabled?: boolean
     full?: boolean
   }>(),
   {
     variant: "primary",
     size: "base",
+    type: "button",
     disabled: false,
     full: false,
   }

@@ -29,7 +29,7 @@
           <button
             v-if="toast.actionLabel && toast.onAction"
             type="button"
-            class="toast-card__button toast-card__button--action"
+            class="btn btn-xs btn-primary toast-card__button"
             :aria-label="toast.actionLabel"
             @click="runAction(toast.id, toast.onAction)"
           >
@@ -37,11 +37,11 @@
           </button>
           <button
             type="button"
-            class="toast-card__button toast-card__button--dismiss"
+            class="btn btn-xs btn-secondary toast-card__button"
             aria-label="Dismiss notification"
             @click="remove(toast.id)"
           >
-            dismiss
+            Dismiss
           </button>
         </div>
       </div>
@@ -247,28 +247,7 @@ function positionClass(pos: ToastPosition) {
 }
 
 .toast-card__button {
-  font-size: 0.625rem;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  line-height: 1rem;
-  text-transform: uppercase;
-  transition: color 150ms ease;
-}
-
-.toast-card__button--action {
-  color: var(--color-blue-600);
-}
-
-.toast-card__button--action:hover {
-  color: var(--color-blue-800);
-}
-
-.toast-card__button--dismiss {
-  color: var(--color-neutral-500);
-}
-
-.toast-card__button--dismiss:hover {
-  color: var(--color-neutral-700);
+  flex-shrink: 0;
 }
 
 .dark .toast-card {
@@ -298,22 +277,6 @@ function positionClass(pos: ToastPosition) {
 
 .dark .toast-card__message {
   color: var(--color-neutral-100);
-}
-
-.dark .toast-card__button--action {
-  color: var(--color-blue-300);
-}
-
-.dark .toast-card__button--action:hover {
-  color: var(--color-blue-100);
-}
-
-.dark .toast-card__button--dismiss {
-  color: var(--color-neutral-400);
-}
-
-.dark .toast-card__button--dismiss:hover {
-  color: var(--color-neutral-200);
 }
 
 .toast-enter-active,

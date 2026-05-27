@@ -70,13 +70,15 @@
 
         <div class="workspace-switcher__actions">
           <div class="workspace-switcher__action-stack">
-            <button
+            <UiButton
               type="button"
-              class="workspace-switcher__new-button"
+              variant="secondary"
+              size="sm"
+              full
               @click.stop="openCreateModal"
             >
               + New workspace
-            </button>
+            </UiButton>
             <UiButton
               type="button"
               variant="danger"
@@ -402,23 +404,6 @@ onMounted(() => {
   gap: 0.5rem;
 }
 
-.workspace-switcher__new-button {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 1px dashed var(--color-neutral-400);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--color-neutral-900);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  transition: border-color 0.15s ease;
-}
-
-.workspace-switcher__new-button:hover {
-  border-color: var(--color-neutral-900);
-}
-
 :global(.dark .workspace-switcher__trigger) {
   border-color: var(--color-neutral-700);
   color: var(--color-neutral-100);
@@ -458,12 +443,4 @@ onMounted(() => {
   color: var(--color-neutral-400);
 }
 
-:global(.dark .workspace-switcher__new-button) {
-  border-color: var(--color-neutral-600);
-  color: var(--color-neutral-50);
-}
-
-:global(.dark .workspace-switcher__new-button:hover) {
-  border-color: var(--color-neutral-200);
-}
 </style>

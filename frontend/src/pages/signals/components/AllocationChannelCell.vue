@@ -11,7 +11,7 @@
 
     <button
       type="button"
-      class="allocation-channel-cell__button"
+      class="btn btn-xs allocation-channel-cell__button"
       :class="buttonClass"
       tabindex="-1"
       :disabled="disabled"
@@ -55,13 +55,7 @@ const indicatorClass = computed(() => {
 })
 
 const buttonClass = computed(() => {
-  if (props.disabled) {
-    return "allocation-channel-cell__button--disabled"
-  }
-  if (props.active) {
-    return "allocation-channel-cell__button--active"
-  }
-  return "allocation-channel-cell__button--idle"
+  return props.active ? "btn-primary" : "btn-secondary"
 })
 
 const labelClass = computed(() => {
@@ -134,38 +128,8 @@ const labelClass = computed(() => {
 }
 
 .allocation-channel-cell__button {
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
   flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  line-height: 1rem;
-  padding: 0.25rem 0.5rem;
-  text-transform: uppercase;
-  transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
-}
-
-.allocation-channel-cell__button--idle {
-  color: var(--color-neutral-500);
-}
-
-.allocation-channel-cell__button--idle:hover {
-  background: var(--color-neutral-100);
-  color: var(--color-neutral-700);
-}
-
-.allocation-channel-cell__button--active {
-  background: var(--color-sky-50);
-  border-color: var(--color-sky-200);
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  color: var(--color-sky-800);
-}
-
-.allocation-channel-cell__button--disabled {
-  color: var(--color-neutral-400);
-  cursor: not-allowed;
-  opacity: 0.6;
+  min-width: 4rem;
 }
 
 :global(.dark .allocation-channel-cell__indicator--unassigned),
@@ -185,22 +149,4 @@ const labelClass = computed(() => {
   color: var(--color-neutral-300);
 }
 
-:global(.dark .allocation-channel-cell__button--idle) {
-  color: var(--color-neutral-400);
-}
-
-:global(.dark .allocation-channel-cell__button--idle:hover) {
-  background: var(--color-neutral-800);
-  color: var(--color-neutral-200);
-}
-
-:global(.dark .allocation-channel-cell__button--active) {
-  background: color-mix(in srgb, var(--color-sky-900) 40%, transparent);
-  border-color: var(--color-sky-800);
-  color: var(--color-sky-100);
-}
-
-:global(.dark .allocation-channel-cell__button--disabled) {
-  color: var(--color-neutral-500);
-}
 </style>

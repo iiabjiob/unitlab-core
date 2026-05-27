@@ -46,7 +46,7 @@
             />
             <button
               type="button"
-              class="core-ntp-panel__button core-ntp-panel__button--danger"
+              class="btn btn-base btn-danger"
               :disabled="ntpBusy"
               @click="removeServer(idx)"
             >
@@ -58,7 +58,7 @@
         <div class="core-ntp-panel__actions">
           <button
             type="button"
-            class="core-ntp-panel__button core-ntp-panel__button--secondary"
+            class="btn btn-base btn-secondary"
             :disabled="ntpBusy"
             @click="addServer"
           >
@@ -66,7 +66,7 @@
           </button>
           <button
             type="button"
-            class="core-ntp-panel__button core-ntp-panel__button--success"
+            class="btn btn-base btn-success"
             :disabled="ntpBusy || !canApplyServers"
             @click="applyNtpServers"
           >
@@ -122,7 +122,7 @@
             />
             <button
               type="button"
-              class="core-ntp-panel__button core-ntp-panel__button--secondary"
+              class="btn btn-base btn-secondary"
               :disabled="ntpBusy"
               @click="setManualTimeFromBrowser"
             >
@@ -130,7 +130,7 @@
             </button>
             <button
               type="button"
-              class="core-ntp-panel__button core-ntp-panel__button--secondary"
+              class="btn btn-base btn-secondary"
               :disabled="ntpBusy"
               @click="resetManualTimeDraft"
             >
@@ -141,7 +141,7 @@
           <div class="core-ntp-panel__actions core-ntp-panel__actions--manual">
             <button
               type="button"
-              class="core-ntp-panel__button core-ntp-panel__button--info"
+              class="btn btn-base btn-primary"
               :disabled="!canApplyManualTime"
               @click="applyManualTime"
             >
@@ -149,7 +149,7 @@
             </button>
             <button
               type="button"
-              class="core-ntp-panel__button core-ntp-panel__button--secondary"
+              class="btn btn-base btn-secondary"
               :disabled="ntpBusy"
               @click="resumeUpstreamSync"
             >
@@ -540,62 +540,6 @@ onUnmounted(() => {
   margin-top: 0.5rem;
 }
 
-.core-ntp-panel__button {
-  border-radius: var(--radius-md);
-  font-weight: 600;
-}
-
-.core-ntp-panel__button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.core-ntp-panel__button--secondary,
-.core-ntp-panel__button--danger {
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--color-neutral-300);
-  background: transparent;
-  color: var(--color-neutral-700);
-  font-size: 11px;
-}
-
-.core-ntp-panel__button--secondary:hover:not(:disabled) {
-  border-color: var(--color-neutral-500);
-}
-
-.core-ntp-panel__button--danger {
-  border-color: var(--color-rose-300);
-  color: var(--color-rose-700);
-}
-
-.core-ntp-panel__button--danger:hover:not(:disabled) {
-  border-color: var(--color-rose-500);
-}
-
-.core-ntp-panel__button--success,
-.core-ntp-panel__button--info {
-  padding: 0.375rem 0.75rem;
-  border: 0;
-  color: var(--color-white);
-  font-size: var(--text-xs);
-}
-
-.core-ntp-panel__button--success {
-  background: var(--color-emerald-600);
-}
-
-.core-ntp-panel__button--success:hover:not(:disabled) {
-  background: var(--color-emerald-500);
-}
-
-.core-ntp-panel__button--info {
-  background: var(--color-blue-600);
-}
-
-.core-ntp-panel__button--info:hover:not(:disabled) {
-  background: var(--color-blue-500);
-}
-
 .core-ntp-panel__in-flight {
   margin-top: 0.5rem;
   padding: 0.25rem 0.5rem;
@@ -751,24 +695,6 @@ onUnmounted(() => {
   border-color: var(--color-neutral-700);
   background: var(--color-neutral-950);
   color: var(--color-neutral-100);
-}
-
-:global(.dark .core-ntp-panel__button--secondary) {
-  border-color: var(--color-neutral-700);
-  color: var(--color-neutral-200);
-}
-
-:global(.dark .core-ntp-panel__button--secondary:hover:not(:disabled)) {
-  border-color: var(--color-neutral-500);
-}
-
-:global(.dark .core-ntp-panel__button--danger) {
-  border-color: var(--color-rose-700);
-  color: var(--color-rose-300);
-}
-
-:global(.dark .core-ntp-panel__button--danger:hover:not(:disabled)) {
-  border-color: var(--color-rose-500);
 }
 
 :global(.dark .core-ntp-panel__in-flight) {

@@ -747,7 +747,7 @@ onBeforeUnmount(() => {
         </span>
         <button
           type="button"
-          class="device-diagnostics-panel__save-button"
+          class="btn btn-xs btn-secondary device-diagnostics-panel__save-button"
           :disabled="!hasDiagnostics"
           @click="saveDiagnosticsJson"
         >
@@ -1007,22 +1007,6 @@ onBeforeUnmount(() => {
 
 .device-diagnostics-panel__save-button {
   position: relative;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid var(--color-neutral-300);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-neutral-600);
-  font-size: 0.625rem;
-  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, opacity 150ms ease;
-}
-
-.device-diagnostics-panel__save-button:hover {
-  background: var(--color-neutral-100);
-}
-
-.device-diagnostics-panel__save-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
 }
 
 .device-diagnostics-panel__save-label {
@@ -1284,15 +1268,6 @@ onBeforeUnmount(() => {
 
 :global(.dark .device-diagnostics-panel__source) {
   color: var(--color-neutral-500);
-}
-
-:global(.dark .device-diagnostics-panel__save-button) {
-  border-color: var(--color-neutral-700);
-  color: var(--color-neutral-300);
-}
-
-:global(.dark .device-diagnostics-panel__save-button:hover) {
-  background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
 }
 
 :global(.dark .device-diagnostics-panel__body) {

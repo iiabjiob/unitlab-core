@@ -63,7 +63,7 @@
         <span class="allocation-control-cell__unit">mA</span>
         <button
           type="button"
-          class="allocation-control-cell__mini-button allocation-control-cell__mini-button--commit"
+          class="btn btn-xs btn-success allocation-control-cell__mini-button"
           :disabled="disabled || aoPending"
           @mousedown.stop
           @pointerdown.stop
@@ -73,7 +73,7 @@
         </button>
         <button
           type="button"
-          class="allocation-control-cell__mini-button allocation-control-cell__mini-button--cancel"
+          class="btn btn-xs btn-secondary allocation-control-cell__mini-button"
           :disabled="aoPending"
           @mousedown.stop
           @pointerdown.stop
@@ -85,7 +85,7 @@
       <button
         v-else
         type="button"
-        class="allocation-control-cell__ao-open"
+        class="btn btn-xs btn-secondary allocation-control-cell__ao-open"
         tabindex="-1"
         :disabled="disabled || aoPending"
         :aria-label="ariaLabel ?? `Set analog output to ${aoValueLabel}`"
@@ -172,9 +172,7 @@ withDefaults(defineProps<{
   justify-content: flex-start;
 }
 
-.allocation-control-cell__do-button:disabled,
-.allocation-control-cell__ao-open:disabled,
-.allocation-control-cell__mini-button:disabled {
+.allocation-control-cell__do-button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -357,58 +355,11 @@ withDefaults(defineProps<{
 }
 
 .allocation-control-cell__mini-button {
-  align-items: center;
-  border: 1px solid;
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  display: inline-flex;
-  font-size: 9px;
-  font-weight: 600;
-  height: 1.25rem;
-  letter-spacing: 0.06em;
-  padding-inline: 0.375rem;
-  text-transform: uppercase;
-  transition: background-color 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
-}
-
-.allocation-control-cell__mini-button--commit {
-  background: color-mix(in srgb, var(--color-emerald-50) 90%, transparent);
-  border-color: var(--color-emerald-300);
-  color: var(--color-emerald-700);
-}
-
-.allocation-control-cell__mini-button--commit:hover:not(:disabled) {
-  background: var(--color-emerald-50);
-  border-color: var(--color-emerald-400);
-}
-
-.allocation-control-cell__mini-button--cancel {
-  background: color-mix(in srgb, var(--color-white) 90%, transparent);
-  border-color: var(--color-neutral-300);
-  color: var(--color-neutral-600);
-}
-
-.allocation-control-cell__mini-button--cancel:hover:not(:disabled) {
-  background: var(--color-neutral-100);
-  border-color: var(--color-neutral-400);
+  min-width: 2.5rem;
 }
 
 .allocation-control-cell__ao-open {
-  align-items: center;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  color: var(--color-neutral-700);
-  display: inline-flex;
-  font-size: var(--text-xs);
-  font-weight: 500;
-  gap: 0.375rem;
-  padding: 0.25rem 0.375rem;
-  transition: background-color 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
-}
-
-.allocation-control-cell__ao-open:hover:not(:disabled) {
-  background: var(--color-neutral-50);
-  border-color: var(--color-neutral-200);
+  min-width: 4rem;
 }
 
 .allocation-control-cell__ao-value {
@@ -420,8 +371,7 @@ withDefaults(defineProps<{
   font-size: var(--text-xs);
 }
 
-:global(.dark .allocation-control-cell__do-button),
-:global(.dark .allocation-control-cell__ao-open) {
+:global(.dark .allocation-control-cell__do-button) {
   color: var(--color-neutral-200);
 }
 
@@ -480,31 +430,6 @@ withDefaults(defineProps<{
 
 :global(.dark .allocation-control-cell__unit) {
   color: var(--color-neutral-400);
-}
-
-:global(.dark .allocation-control-cell__mini-button--commit) {
-  background: transparent;
-  border-color: color-mix(in srgb, var(--color-emerald-500) 60%, transparent);
-  color: var(--color-emerald-300);
-}
-
-:global(.dark .allocation-control-cell__mini-button--commit:hover:not(:disabled)) {
-  background: color-mix(in srgb, var(--color-emerald-900) 40%, transparent);
-}
-
-:global(.dark .allocation-control-cell__mini-button--cancel) {
-  background: transparent;
-  border-color: var(--color-neutral-700);
-  color: var(--color-neutral-300);
-}
-
-:global(.dark .allocation-control-cell__mini-button--cancel:hover:not(:disabled)) {
-  background: var(--color-neutral-800);
-}
-
-:global(.dark .allocation-control-cell__ao-open:hover:not(:disabled)) {
-  background: var(--color-neutral-900);
-  border-color: var(--color-neutral-700);
 }
 
 @keyframes allocation-control-cell-pulse {
