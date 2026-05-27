@@ -183,14 +183,14 @@ async function toggleRun() {
 </script>
 
 <template>
-  <section class="mt-4 rounded-2xl border border-neutral-200 bg-white/80 p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/80">
-    <div class="flex flex-wrap items-center gap-3">
+  <section class="sequence-run-controls">
+    <div class="sequence-run-controls__main">
       <template v-if="!isReadOnly">
         <UiButton
           size="sm"
           :variant="runButtonVariant"
           :disabled="runButtonDisabled"
-          class="w-full justify-center gap-2 sm:w-auto sm:min-w-[150px]"
+          class="sequence-run-controls__run-button"
           @click="toggleRun"
         >
           <template v-if="isRunning">
@@ -207,33 +207,90 @@ async function toggleRun() {
       </template>
       <div
         v-else
-        class="flex items-center rounded border border-dashed border-neutral-300 px-3 py-2 text-sm text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
+        class="sequence-run-controls__read-only"
       >
         {{ runDescription }}
       </div>
-      <UiBadge :variant="statusVariant" class="inline-flex justify-center sm:min-w-[110px]">
+      <UiBadge :variant="statusVariant" class="sequence-run-controls__status">
         {{ status }}
       </UiBadge>
-      <span class="text-xs text-neutral-500 dark:text-neutral-400">
+      <span class="sequence-run-controls__progress">
         {{ progressText }}
       </span>
     </div>
     <div
       v-if="runtimeStepText || runtimePathText || runtimeIterationText || runtimeElapsedText"
-      class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500 dark:text-neutral-400"
+      class="sequence-run-controls__runtime"
     >
       <span v-if="runtimeStepText">{{ runtimeStepText }}</span>
       <span v-if="runtimePathText">Path: {{ runtimePathText }}</span>
       <span v-if="runtimeIterationText">{{ runtimeIterationText }}</span>
       <span v-if="runtimeElapsedText">{{ runtimeElapsedText }}</span>
     </div>
-    <p v-if="state.last_error" class="mt-3 text-xs text-red-600 dark:text-red-300">
+    <p v-if="state.last_error" class="sequence-run-controls__error">
       Error: {{ state.last_error }}
     </p>
   </section>
 </template>
 
 <style scoped>
+.sequence-run-controls {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--color-white) 80%, transparent);
+  box-shadow: var(--shadow-sm);
+}
+
+.sequence-run-controls__main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.sequence-run-controls__run-button {
+  width: 100%;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.sequence-run-controls__read-only {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed var(--color-neutral-300);
+  border-radius: var(--radius-sm);
+  color: var(--color-neutral-600);
+  font-size: var(--text-sm);
+}
+
+.sequence-run-controls__status {
+  display: inline-flex;
+  justify-content: center;
+}
+
+.sequence-run-controls__progress,
+.sequence-run-controls__runtime {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.sequence-run-controls__runtime {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 1rem;
+  row-gap: 0.25rem;
+  margin-top: 0.75rem;
+}
+
+.sequence-run-controls__error {
+  margin-top: 0.75rem;
+  color: var(--color-red-500);
+  font-size: var(--text-xs);
+}
+
 .run-icon {
   display: inline-block;
   width: 0;
@@ -252,5 +309,35 @@ async function toggleRun() {
   height: 10px;
   background-color: currentColor;
   border-radius: 1px;
+}
+
+@media (min-width: 640px) {
+  .sequence-run-controls__run-button {
+    width: auto;
+    min-width: 150px;
+  }
+
+  .sequence-run-controls__status {
+    min-width: 110px;
+  }
+}
+
+:global(.dark .sequence-run-controls) {
+  border-color: var(--color-neutral-800);
+  background: color-mix(in srgb, var(--color-neutral-900) 80%, transparent);
+}
+
+:global(.dark .sequence-run-controls__read-only) {
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .sequence-run-controls__progress),
+:global(.dark .sequence-run-controls__runtime) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .sequence-run-controls__error) {
+  color: var(--color-red-300);
 }
 </style>

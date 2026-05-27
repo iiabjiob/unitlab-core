@@ -32,7 +32,7 @@ function toggleAll() {
 </script>
 
 <template>
-  <div class="flex flex-wrap gap-2 text-xs">
+  <div class="device-channel-control-toolbar">
     <UiButton
       size="xs"
       variant="secondary"
@@ -59,3 +59,12 @@ function toggleAll() {
     </UiButton>
   </div>
 </template>
+
+<style scoped>
+.device-channel-control-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: var(--text-xs);
+}
+</style>

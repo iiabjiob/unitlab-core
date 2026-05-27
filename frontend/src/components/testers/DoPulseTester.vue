@@ -1,10 +1,10 @@
 <template>
-  <div class="flex flex-col gap-2 p-3 rounded-xl bg-white dark:bg-neutral-800 shadow-sm border border-neutral-200 dark:border-neutral-700 w-[300px]">
-    <div class="flex items-center justify-between">
-      <div class="text-sm font-medium text-neutral-800 dark:text-neutral-100">{{ title }}</div>
+  <div class="do-pulse-tester">
+    <div class="do-pulse-tester__header">
+      <div class="do-pulse-tester__title">{{ title }}</div>
     </div>
 
-    <div class="grid grid-cols-2 gap-2">
+    <div class="do-pulse-tester__actions">
       <UiButton type="secondary"
         :disabled="!ws.isConnected || isBusyA"
         @click="pulseA"
@@ -22,9 +22,9 @@
       </UiButton>
     </div>
 
-    <div class="text-xs text-neutral-500 dark:text-neutral-400">
+    <div class="do-pulse-tester__meta">
       <div>DO: {{ doUnitId }} [{{ chA }}|{{ chB }}]</div>
-      <div v-if="lastInfo" class="mt-1 opacity-80">{{ lastInfo }}</div>
+      <div v-if="lastInfo" class="do-pulse-tester__last-info">{{ lastInfo }}</div>
     </div>
 
   </div>
@@ -37,7 +37,7 @@ import { computed, ref } from "vue"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useChannelStore } from "@/stores/channelStore"
 import { useWebSocketStore } from "@/stores/websocketStore"
-import UiButton from "../ui/UiButton.vue";
+import UiButton from "../ui/UiButton.vue"
 
 const props = withDefaults(defineProps<{
   title?: string
@@ -100,3 +100,58 @@ function pulseChannel(ch: number, busyRef: typeof isBusyA) {
 function pulseA() { pulseChannel(props.chA, isBusyA) }
 function pulseB() { pulseChannel(props.chB, isBusyB) }
 </script>
+
+<style scoped>
+.do-pulse-tester {
+  display: flex;
+  width: 300px;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.75rem;
+  background: var(--color-white);
+  box-shadow: var(--shadow-sm);
+}
+
+.do-pulse-tester__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.do-pulse-tester__title {
+  color: var(--color-neutral-800);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.do-pulse-tester__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.do-pulse-tester__meta {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.do-pulse-tester__last-info {
+  margin-top: 0.25rem;
+  opacity: 0.8;
+}
+
+:global(.dark .do-pulse-tester) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-800);
+}
+
+:global(.dark .do-pulse-tester__title) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .do-pulse-tester__meta) {
+  color: var(--color-neutral-400);
+}
+</style>
