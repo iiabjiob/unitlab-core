@@ -1,10 +1,10 @@
 <template>
-  <div class="h-dvh flex flex-col items-center justify-center bg-neutral-50 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 font-mono">
-    <div class="text-center p-6">
-      <p v-if="status === 'initial'" class="text-lg font-semibold">🔌 Connecting to server...</p>
+  <div class="disconnected-mobile-layout">
+    <div class="disconnected-mobile-layout__message">
+      <p v-if="status === 'initial'" class="disconnected-mobile-layout__title">🔌 Connecting to server...</p>
       <div v-else>
-        <p class="text-lg font-semibold">⚠️ Lost connection</p>
-        <p class="text-sm text-neutral-500 mt-2">Trying to reconnect…</p>
+        <p class="disconnected-mobile-layout__title">⚠️ Lost connection</p>
+        <p class="disconnected-mobile-layout__detail">Trying to reconnect…</p>
       </div>
     </div>
   </div>
@@ -33,3 +33,38 @@ const status = computed(() => {
   return "lost"
 })
 </script>
+
+<style scoped>
+.disconnected-mobile-layout {
+  display: flex;
+  height: 100dvh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-neutral-50);
+  color: var(--color-neutral-800);
+  font-family: var(--font-mono);
+}
+
+.disconnected-mobile-layout__message {
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.disconnected-mobile-layout__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.disconnected-mobile-layout__detail {
+  margin: 0.5rem 0 0;
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+}
+
+:global(.dark .disconnected-mobile-layout) {
+  background: var(--color-neutral-900);
+  color: var(--color-neutral-200);
+}
+</style>

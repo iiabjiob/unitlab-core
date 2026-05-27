@@ -65,24 +65,20 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="h-full flex flex-col pe-4">
-
-    <!-- HEADER -->
+  <div class="device-editor">
     <DeviceEditorHeader
       v-if="device"
       :device="device"
     />
 
-    <div class="mt-5 flex flex-col gap-4 rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5 lg:flex-1 lg:min-h-0 lg:flex-row lg:gap-5 lg:overflow-hidden">
-
-      <!-- CHANNELS LIST -->
+    <div class="device-editor__workspace">
       <div
         v-if="device"
-        class="flex flex-col lg:min-h-0 lg:flex-none"
+        class="device-editor__channels-column"
       >
         <ResizablePanel
           v-if="isDesktop"
-          class="flex flex-col min-h-0 h-full"
+          class="device-editor__channels-panel"
           :device="device"
           placement="left"
           storageKey="device-channels-list-width"
@@ -95,7 +91,7 @@ onBeforeUnmount(() => {
 
         <div
           v-else
-          class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
+          class="device-editor__channels-card"
         >
           <div>
             <DeviceChannelsList :device="device" />
@@ -103,31 +99,26 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <!-- LOG / DIAGNOSTICS PANEL -->
-      <div v-if="device" class="flex flex-col rounded-lg border border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900/60 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
-        <div class="flex items-center gap-1 p-2 border-b border-neutral-200 dark:border-neutral-700 bg-white/80 dark:bg-neutral-900/70">
+      <div v-if="device" class="device-editor__detail-panel">
+        <div class="device-editor__tabs">
           <button
             type="button"
-            class="px-3 py-1.5 text-xs rounded-md transition-colors"
-            :class="activeDetailTab === 'log'
-              ? 'bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-50'
-              : 'text-neutral-600 hover:bg-neutral-200/60 dark:text-neutral-300 dark:hover:bg-neutral-800'"
+            class="device-editor__tab"
+            :class="{ 'is-active': activeDetailTab === 'log' }"
             @click="detailTabs.select('log')"
           >
             Log
           </button>
           <button
             type="button"
-            class="px-3 py-1.5 text-xs rounded-md transition-colors"
-            :class="activeDetailTab === 'diag'
-              ? 'bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-50'
-              : 'text-neutral-600 hover:bg-neutral-200/60 dark:text-neutral-300 dark:hover:bg-neutral-800'"
+            class="device-editor__tab"
+            :class="{ 'is-active': activeDetailTab === 'diag' }"
             @click="detailTabs.select('diag')"
           >
             Diagnostics
           </button>
         </div>
-        <div class="lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+        <div class="device-editor__detail-content">
           <DeviceExecutionLog v-if="activeDetailTab === 'log'" :device="device" />
           <DeviceDiagnosticsPanel v-else :device="device" />
         </div>
@@ -137,3 +128,135 @@ onBeforeUnmount(() => {
 
   </div>
 </template>
+
+<style scoped>
+.device-editor {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  padding-inline-end: 1rem;
+}
+
+.device-editor__workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  box-shadow: var(--shadow-sm);
+}
+
+.device-editor__channels-column,
+.device-editor__channels-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.device-editor__channels-card,
+.device-editor__detail-panel {
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.5rem;
+  background: var(--color-neutral-50);
+}
+
+.device-editor__channels-card {
+  padding: 1rem;
+}
+
+.device-editor__detail-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.device-editor__tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-neutral-200);
+  background: color-mix(in srgb, var(--color-white) 80%, transparent);
+}
+
+.device-editor__tab {
+  padding: 0.375rem 0.75rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-neutral-600);
+  font: inherit;
+  font-size: var(--text-xs);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.device-editor__tab:hover {
+  background: color-mix(in srgb, var(--color-neutral-200) 60%, transparent);
+}
+
+.device-editor__tab.is-active {
+  background: var(--color-neutral-200);
+  color: var(--color-neutral-900);
+}
+
+@media (min-width: 640px) {
+  .device-editor__workspace {
+    padding: 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .device-editor__workspace {
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: row;
+    gap: 1.25rem;
+    overflow: hidden;
+  }
+
+  .device-editor__channels-column {
+    min-height: 0;
+    flex: 0 0 auto;
+  }
+
+  .device-editor__channels-panel {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .device-editor__detail-panel,
+  .device-editor__detail-content {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+}
+
+:global(.dark .device-editor__workspace) {
+  background: var(--color-neutral-800);
+}
+
+:global(.dark .device-editor__channels-card),
+:global(.dark .device-editor__detail-panel) {
+  border-color: var(--color-neutral-700);
+  background: color-mix(in srgb, var(--color-neutral-900) 60%, transparent);
+}
+
+:global(.dark .device-editor__tabs) {
+  border-bottom-color: var(--color-neutral-700);
+  background: color-mix(in srgb, var(--color-neutral-900) 70%, transparent);
+}
+
+:global(.dark .device-editor__tab) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .device-editor__tab:hover) {
+  background: var(--color-neutral-800);
+}
+
+:global(.dark .device-editor__tab.is-active) {
+  background: var(--color-neutral-700);
+  color: var(--color-neutral-50);
+}
+</style>

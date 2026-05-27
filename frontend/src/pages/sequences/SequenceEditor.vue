@@ -119,9 +119,7 @@ const { isDesktop } = useViewport()
 </script>
 
 <template>
-  <div class="h-full flex flex-col pe-4">
-
-    <!-- HEADER -->
+  <div class="sequence-editor">
     <SequenceEditorHeader
       v-if="sequence"
       :sequence="sequence"
@@ -136,15 +134,14 @@ const { isDesktop } = useViewport()
       :state="state"
     />
 
-    <div class="mt-5 flex flex-col gap-4 rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5 lg:flex-1 lg:min-h-0 lg:flex-row lg:gap-5 lg:overflow-hidden">
-
+    <div class="sequence-editor__workspace">
       <div
         v-if="sequence"
-        class="flex flex-col lg:min-h-0 lg:flex-none"
+        class="sequence-editor__steps-column"
       >
         <ResizablePanel
           v-if="isDesktop"
-          class="flex flex-col min-h-0 h-full"
+          class="sequence-editor__steps-panel"
           :sequence="sequence"
           placement="left"
           storageKey="sequence-steps-list-width"
@@ -157,7 +154,7 @@ const { isDesktop } = useViewport()
 
         <div
           v-else
-          class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
+          class="sequence-editor__steps-card"
         >
           <div>
             <SequenceStepsList :sequence="sequence" />
@@ -165,18 +162,14 @@ const { isDesktop } = useViewport()
         </div>
       </div>
 
-      <!-- PANEL -->
-      <div v-if="sequence && state" class="flex flex-col lg:flex-1 lg:min-h-0 lg:overflow-hidden">
-
-        <!-- EDITOR -->
+      <div v-if="sequence && state" class="sequence-editor__main-column">
         <SequenceStepEditor
           :sequence="sequence"
           :step="selectedStep"
           @close="exitStepEdit"
         />
 
-        <!-- LOG -->
-        <div class="mt-4 lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+        <div class="sequence-editor__log">
           <SequenceExecutionLog :sequence="sequence" :state="state" />
         </div>
 
@@ -196,3 +189,83 @@ const { isDesktop } = useViewport()
     />
   </div>
 </template>
+
+<style scoped>
+.sequence-editor {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  padding-inline-end: 1rem;
+}
+
+.sequence-editor__workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  box-shadow: var(--shadow-sm);
+}
+
+.sequence-editor__steps-column,
+.sequence-editor__steps-panel,
+.sequence-editor__main-column {
+  display: flex;
+  flex-direction: column;
+}
+
+.sequence-editor__steps-card {
+  padding: 1rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.5rem;
+  background: var(--color-neutral-50);
+}
+
+.sequence-editor__log {
+  margin-top: 1rem;
+}
+
+@media (min-width: 640px) {
+  .sequence-editor__workspace {
+    padding: 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .sequence-editor__workspace {
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: row;
+    gap: 1.25rem;
+    overflow: hidden;
+  }
+
+  .sequence-editor__steps-column {
+    min-height: 0;
+    flex: 0 0 auto;
+  }
+
+  .sequence-editor__steps-panel {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .sequence-editor__main-column,
+  .sequence-editor__log {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+}
+
+:global(.dark .sequence-editor__workspace) {
+  background: var(--color-neutral-800);
+}
+
+:global(.dark .sequence-editor__steps-card) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-900);
+}
+</style>
