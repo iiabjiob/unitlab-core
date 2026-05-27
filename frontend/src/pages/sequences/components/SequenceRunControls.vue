@@ -199,9 +199,8 @@ async function toggleRun() {
             <span v-else>Stop</span>
           </template>
           <template v-else>
-            <span class="run-icon run-icon--play" aria-hidden="true"></span>
             <span v-if="actionLoading === 'start'">Starting…</span>
-            <span v-else>Run</span>
+            <span v-else>Run Instruction</span>
           </template>
         </UiButton>
       </template>

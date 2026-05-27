@@ -1,18 +1,51 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from "vue"
+import { computed, onBeforeUnmount, ref, watch } from "vue"
 import { useChannelLogStore } from "@/stores/channelLogStore"
 import type { Device } from "@/types/device"
 import { useAutoScroll } from "@/composables/useAutoScroll"
+import { useVirtualList } from "@/composables/useVirtualList"
 
 const props = defineProps<{ device: Device }>()
 
 const logStore = useChannelLogStore()
 const logs = computed(() => logStore.logs[props.device.id] ?? [])
+type DeviceLogEntry = (typeof logs.value)[number]
+type DeviceLogRenderRow =
+  | { kind: "heading"; actionId: string | number; key: string }
+  | { kind: "log"; log: DeviceLogEntry; logIndex: number; key: string }
+
+const renderRows = computed<DeviceLogRenderRow[]>(() => {
+  const rows: DeviceLogRenderRow[] = []
+  logs.value.forEach((log, index) => {
+    if (log.actionId && (index === 0 || log.actionId !== logs.value[index - 1]?.actionId)) {
+      rows.push({
+        kind: "heading",
+        actionId: log.actionId,
+        key: `heading:${log.actionId}:${index}`,
+      })
+    }
+    rows.push({
+      kind: "log",
+      log,
+      logIndex: index,
+      key: `log:${index}:${log.ts}:${log.type}`,
+    })
+  })
+  return rows
+})
 
 const logContainer = ref<HTMLElement | null>(null)
-useAutoScroll(logs, logContainer)
+const virtualLog = useVirtualList(renderRows, logContainer, {
+  estimateSize: 24,
+  overscan: 12,
+})
+const autoScroll = useAutoScroll(logs, logContainer)
 const copyButtonText = ref("Copy log")
 let copyFeedbackTimeout: number | null = null
+
+watch(virtualLog.totalSize, () => {
+  autoScroll.scheduleScroll()
+})
 
 function setCopyButtonFeedback(text: string, durationMs = 1500) {
   copyButtonText.value = text
@@ -29,6 +62,10 @@ function toLine(log: (typeof logs.value)[number]): string {
   const action = log.actionId ? ` #${log.actionId}` : ""
   const reason = log.reason ? ` (reason: ${log.reason})` : ""
   return `[${log.ts}] ${String(log.type).toUpperCase()}${action}: ${log.message}${reason}`
+}
+
+function setVirtualRowElement(index: number, element: unknown) {
+  virtualLog.setItemElement(index, element instanceof HTMLElement ? element : null)
 }
 
 const logText = computed(() => logs.value.map(toLine).join("\n"))
@@ -90,53 +127,61 @@ onBeforeUnmount(() => {
       ref="logContainer"
       class="device-execution-log__body"
     >
-
-      <template v-for="(log, i) in logs" :key="i">
+      <div
+        v-if="renderRows.length > 0"
+        class="device-execution-log__virtual-window"
+        :style="{
+          paddingTop: `${virtualLog.topSpacer.value}px`,
+          paddingBottom: `${virtualLog.bottomSpacer.value}px`,
+        }"
+      >
         <div
-          v-if="log.actionId && (i === 0 || log.actionId !== logs[i - 1]?.actionId)"
-          class="device-execution-log__action-heading"
+          v-for="row in virtualLog.virtualItems.value"
+          :key="row.item.key"
+          :ref="element => setVirtualRowElement(row.index, element)"
+          :class="row.item.kind === 'heading' ? 'device-execution-log__action-heading' : 'device-execution-log__row'"
         >
-          Action {{ log.actionId }}
-        </div>
+          <template v-if="row.item.kind === 'heading'">
+            Action {{ row.item.actionId }}
+          </template>
 
-        <div
-          class="device-execution-log__row"
-        >
-          <div class="device-execution-log__time">
-            {{ log.ts }}
-          </div>
-
-          <div
-            class="device-execution-log__dot"
-            :class="{
-              'device-execution-log__dot--cmd': log.type === 'cmd',
-              'device-execution-log__dot--state': log.type === 'state',
-              'device-execution-log__dot--resp': log.type === 'resp',
-              'device-execution-log__dot--error': log.type === 'error',
-            }"
-          ></div>
-
-          <div class="device-execution-log__content">
-            <div v-if="log.actionId" class="device-execution-log__action-id">
-              #{{ log.actionId }}
+          <template v-else>
+            <div class="device-execution-log__time">
+              {{ row.item.log.ts }}
             </div>
+
             <div
-              class="device-execution-log__message"
+              class="device-execution-log__dot"
               :class="{
-                'device-execution-log__message--cmd': log.type === 'cmd',
-                'device-execution-log__message--state': log.type === 'state',
-                'device-execution-log__message--resp': log.type === 'resp',
-                'device-execution-log__message--error': log.type === 'error',
+                'device-execution-log__dot--cmd': row.item.log.type === 'cmd',
+                'device-execution-log__dot--state': row.item.log.type === 'state',
+                'device-execution-log__dot--resp': row.item.log.type === 'resp',
+                'device-execution-log__dot--error': row.item.log.type === 'error',
               }"
-            >
-              <span>{{ log.message }}</span>
-              <span v-if="log.reason" class="device-execution-log__reason">
-                (reason: {{ log.reason }})
-              </span>
+            ></div>
+
+            <div class="device-execution-log__content">
+              <div v-if="row.item.log.actionId" class="device-execution-log__action-id">
+                #{{ row.item.log.actionId }}
+              </div>
+              <div
+                class="device-execution-log__message"
+                :class="{
+                  'device-execution-log__message--cmd': row.item.log.type === 'cmd',
+                  'device-execution-log__message--state': row.item.log.type === 'state',
+                  'device-execution-log__message--resp': row.item.log.type === 'resp',
+                  'device-execution-log__message--error': row.item.log.type === 'error',
+                }"
+              >
+                <span>{{ row.item.log.message }}</span>
+                <span v-if="row.item.log.reason" class="device-execution-log__reason">
+                  (reason: {{ row.item.log.reason }})
+                </span>
+              </div>
             </div>
-          </div>
+          </template>
         </div>
-      </template>
+      </div>
 
       <div v-if="logs.length === 0" class="device-execution-log__empty">
         No logs yet…
@@ -189,7 +234,12 @@ onBeforeUnmount(() => {
   line-height: 1.25;
 }
 
-.device-execution-log__body > * + * {
+.device-execution-log__virtual-window {
+  box-sizing: border-box;
+  min-height: 100%;
+}
+
+.device-execution-log__virtual-window > * + * {
   margin-top: 0.125rem;
 }
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from "vue"
+import { computed, onBeforeUnmount, ref, watch } from "vue"
 import { useAutoScroll } from "@/composables/useAutoScroll"
+import { useVirtualList } from "@/composables/useVirtualList"
 
 type LogEntry = {
   ts: string
@@ -37,9 +38,17 @@ const props = withDefaults(defineProps<{
 
 const entries = computed(() => props.logs ?? [])
 const logContainer = ref<HTMLElement | null>(null)
-useAutoScroll(entries, logContainer)
+const virtualLog = useVirtualList(entries, logContainer, {
+  estimateSize: 28,
+  overscan: 10,
+})
+const autoScroll = useAutoScroll(entries, logContainer)
 const copyButtonText = ref("Copy log")
 let copyFeedbackTimeout: number | null = null
+
+watch(virtualLog.totalSize, () => {
+  autoScroll.scheduleScroll()
+})
 
 function setCopyButtonFeedback(text: string, durationMs = 1500) {
   copyButtonText.value = text
@@ -77,6 +86,10 @@ function onKeydown(event: KeyboardEvent, index: number) {
     event.preventDefault()
     handleSelect(index)
   }
+}
+
+function setVirtualRowElement(index: number, element: unknown) {
+  virtualLog.setItemElement(index, element instanceof HTMLElement ? element : null)
 }
 
 function toLine(log: LogEntry): string {
@@ -143,29 +156,39 @@ onBeforeUnmount(() => {
       class="execution-log__list"
     >
       <div
-        v-for="(log, index) in entries"
-        :key="index"
-        class="execution-log__row"
-        :class="{
-          'is-selectable': props.selectable,
-          'is-selected': props.selectedIndex === index,
+        v-if="entries.length > 0"
+        class="execution-log__virtual-window"
+        :style="{
+          paddingTop: `${virtualLog.topSpacer.value}px`,
+          paddingBottom: `${virtualLog.bottomSpacer.value}px`,
         }"
-        :tabindex="props.selectable ? 0 : undefined"
-        @click="handleSelect(index)"
-        @keydown="onKeydown($event, index)"
       >
-        <div class="execution-log__time">
-          {{ log.ts }}
-        </div>
-        <div class="execution-log__dot" :class="dotClass(log.type)" />
-        <div class="execution-log__message" :class="textClass(log.type)">
-          <span>{{ log.message }}</span>
-          <span
-            v-if="detailText(log)"
-            class="execution-log__detail"
-          >
-            · {{ detailText(log) }}
-          </span>
+        <div
+          v-for="row in virtualLog.virtualItems.value"
+          :key="row.index"
+          :ref="element => setVirtualRowElement(row.index, element)"
+          class="execution-log__row"
+          :class="{
+            'is-selectable': props.selectable,
+            'is-selected': props.selectedIndex === row.index,
+          }"
+          :tabindex="props.selectable ? 0 : undefined"
+          @click="handleSelect(row.index)"
+          @keydown="onKeydown($event, row.index)"
+        >
+          <div class="execution-log__time">
+            {{ row.item.ts }}
+          </div>
+          <div class="execution-log__dot" :class="dotClass(row.item.type)" />
+          <div class="execution-log__message" :class="textClass(row.item.type)">
+            <span>{{ row.item.message }}</span>
+            <span
+              v-if="detailText(row.item)"
+              class="execution-log__detail"
+            >
+              · {{ detailText(row.item) }}
+            </span>
+          </div>
         </div>
       </div>
       <div v-if="entries.length === 0" class="execution-log__empty">
@@ -227,6 +250,11 @@ onBeforeUnmount(() => {
   font-size: 0.6875rem;
   line-height: 1.25;
   padding: 0.5rem 1rem;
+}
+
+.execution-log__virtual-window {
+  box-sizing: border-box;
+  min-height: 100%;
 }
 
 .execution-log__row {

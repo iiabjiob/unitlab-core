@@ -68,4 +68,9 @@ export function useAutoScroll<T>(
   watch(container, bindScrollListener, { immediate: false })
   watch(() => source.value.length, scheduleScroll, { immediate: false })
   watch(source, scheduleScroll, { immediate: false })
+
+  return {
+    scheduleScroll,
+    scrollToBottom,
+  }
 }
