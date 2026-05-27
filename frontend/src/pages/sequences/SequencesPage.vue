@@ -110,11 +110,18 @@ watch(
 }
 
 .sequences-page__content {
+  display: flex;
   flex: 1 1 0%;
+  flex-direction: column;
   min-height: 0;
   min-width: 0;
   padding: 0.75rem;
   overflow-y: auto;
+}
+
+.sequences-page__content > :deep(*) {
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .sequences-page__drawer-body {
@@ -128,6 +135,7 @@ watch(
 
   .sequences-page__content {
     padding: 1rem;
+    overflow: hidden;
   }
 
   .sequences-page__mobile-header {

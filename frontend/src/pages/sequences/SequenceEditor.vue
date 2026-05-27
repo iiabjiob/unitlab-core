@@ -234,6 +234,11 @@ const { isDesktop } = useViewport()
 }
 
 @media (min-width: 1024px) {
+  .sequence-editor {
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .sequence-editor__workspace {
     min-height: 0;
     flex: 1 1 auto;
@@ -243,11 +248,14 @@ const { isDesktop } = useViewport()
   }
 
   .sequence-editor__steps-column {
+    align-self: stretch;
+    height: 100%;
     min-height: 0;
     flex: 0 0 auto;
   }
 
   .sequence-editor__steps-panel {
+    flex: 1 1 auto;
     min-height: 0;
     height: 100%;
   }

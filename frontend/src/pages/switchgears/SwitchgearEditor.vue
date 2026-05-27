@@ -176,15 +176,20 @@ async function confirmDelete() {
   flex-direction: column;
 }
 
+.switchgear-editor__summary-panel,
 .switchgear-editor__summary-card {
-  padding: 1rem;
   border: 1px solid var(--color-neutral-200);
   border-radius: 0.5rem;
   background: var(--color-neutral-50);
+  overflow: hidden;
+}
+
+.switchgear-editor__summary-card {
+  padding: 0;
 }
 
 .switchgear-editor__bindings-editor {
-  margin-bottom: 1rem;
+  flex: 0 0 auto;
 }
 
 .switchgear-editor__not-found {
@@ -202,6 +207,11 @@ async function confirmDelete() {
 }
 
 @media (min-width: 1024px) {
+  .switchgear-editor {
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .switchgear-editor__workspace {
     min-height: 0;
     flex: 1 1 auto;
@@ -211,20 +221,29 @@ async function confirmDelete() {
   }
 
   .switchgear-editor__summary-column {
+    align-self: stretch;
+    height: 100%;
     min-height: 0;
     flex: 0 0 auto;
   }
 
   .switchgear-editor__summary-panel {
+    flex: 1 1 auto;
     min-height: 0;
     height: 100%;
   }
 
   .switchgear-editor__main-column,
   .switchgear-editor__log {
+    display: flex;
+    flex-direction: column;
     min-height: 0;
     flex: 1 1 auto;
     overflow: hidden;
+  }
+
+  .switchgear-editor__main-column {
+    gap: 1rem;
   }
 }
 
@@ -232,6 +251,7 @@ async function confirmDelete() {
   background: var(--color-neutral-800);
 }
 
+:global(.dark .switchgear-editor__summary-panel),
 :global(.dark .switchgear-editor__summary-card) {
   border-color: var(--color-neutral-700);
   background: var(--color-neutral-900);

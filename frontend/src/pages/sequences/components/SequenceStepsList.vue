@@ -533,6 +533,8 @@ function handleListKeydown(event: KeyboardEvent) {
 <style scoped>
 .sequence-steps-list {
   display: flex;
+  height: 100%;
+  min-height: 0;
   flex-direction: column;
   padding: 1rem;
 }
@@ -578,7 +580,6 @@ function handleListKeydown(event: KeyboardEvent) {
 
 @media (min-width: 1024px) {
   .sequence-steps-list {
-    height: 100%;
     overflow: hidden;
   }
 

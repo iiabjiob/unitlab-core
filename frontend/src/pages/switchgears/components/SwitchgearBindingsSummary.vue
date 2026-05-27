@@ -299,8 +299,9 @@ watch(
 .switchgear-bindings-summary {
   display: flex;
   height: 100%;
+  min-height: 0;
   flex-direction: column;
-  padding-inline-end: 1rem;
+  padding: 1rem;
 }
 
 .switchgear-bindings-summary__header {
@@ -415,6 +416,8 @@ watch(
 
 @media (min-width: 1024px) {
   .switchgear-bindings-summary__groups {
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
   }
 }

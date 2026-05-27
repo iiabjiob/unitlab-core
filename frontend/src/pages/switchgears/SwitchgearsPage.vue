@@ -225,7 +225,15 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
 }
 
 .switchgears-page__manage-view {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
   overflow-y: auto;
+}
+
+.switchgears-page__manage-view > :deep(*) {
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .switchgears-page__sld-view {
@@ -243,6 +251,10 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
 
   .switchgears-page__content {
     padding: 1rem;
+  }
+
+  .switchgears-page__manage-view {
+    overflow: hidden;
   }
 
   .switchgears-page__mobile-bar {

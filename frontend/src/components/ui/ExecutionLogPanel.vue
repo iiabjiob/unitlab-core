@@ -129,7 +129,7 @@ onBeforeUnmount(() => {
       <span>{{ props.title }}</span>
       <button
         type="button"
-        class="execution-log__copy"
+        class="btn btn-xs btn-secondary execution-log__copy"
         @click="copyLogs"
       >
         <span class="execution-log__copy-spacer">Copy log</span>
@@ -178,7 +178,13 @@ onBeforeUnmount(() => {
 <style scoped>
 .execution-log {
   display: flex;
+  height: 100%;
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-50);
   user-select: none;
 }
 
@@ -197,18 +203,7 @@ onBeforeUnmount(() => {
 }
 
 .execution-log__copy {
-  border: 1px solid var(--color-neutral-300);
-  border-radius: 0.25rem;
-  color: var(--color-neutral-600);
-  font-size: 0.625rem;
-  line-height: 1rem;
-  padding: 0.25rem 0.5rem;
   position: relative;
-  transition: background-color 150ms ease, color 150ms ease;
-}
-
-.execution-log__copy:hover {
-  background: var(--color-neutral-100);
 }
 
 .execution-log__copy-spacer {
@@ -224,6 +219,9 @@ onBeforeUnmount(() => {
 }
 
 .execution-log__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   color: var(--color-neutral-700);
   font-family: var(--font-mono);
   font-size: 0.6875rem;
@@ -313,51 +311,34 @@ onBeforeUnmount(() => {
   padding: 0.5rem 0;
 }
 
-.dark .execution-log__header {
+:global(.dark .execution-log) {
+  border-color: var(--color-neutral-700);
+  background: color-mix(in srgb, var(--color-neutral-900) 60%, transparent);
+}
+
+:global(.dark .execution-log__header) {
   border-color: var(--color-neutral-800);
   color: var(--color-neutral-400);
 }
 
-.dark .execution-log__copy {
-  border-color: var(--color-neutral-700);
+:global(.dark .execution-log__list),
+:global(.dark .execution-log__message--info) {
   color: var(--color-neutral-300);
 }
 
-.dark .execution-log__copy:hover {
-  background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
-}
-
-.dark .execution-log__list,
-.dark .execution-log__message--info {
-  color: var(--color-neutral-300);
-}
-
-.dark .execution-log__row:hover {
+:global(.dark .execution-log__row:hover) {
   background: color-mix(in srgb, var(--color-neutral-800) 50%, transparent);
 }
 
-.dark .execution-log__row.is-selected {
+:global(.dark .execution-log__row.is-selected) {
   background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
 }
 
-.dark .execution-log__row.is-selectable:focus-visible {
+:global(.dark .execution-log__row.is-selectable:focus-visible) {
   box-shadow: 0 0 0 1px var(--color-neutral-600);
 }
 
-.dark .execution-log__detail {
+:global(.dark .execution-log__detail) {
   color: var(--color-neutral-400);
-}
-
-@media (min-width: 1024px) {
-  .execution-log {
-    height: 100%;
-    min-height: 0;
-  }
-
-  .execution-log__list {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-  }
 }
 </style>
