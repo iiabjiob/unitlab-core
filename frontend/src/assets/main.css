@@ -1,8 +1,4 @@
-@import "tailwindcss";
-
 @import '@affino/menu-vue/styles.css';
-
-@custom-variant dark (&:where(.dark, .dark *));
 
 @import './base.css';
 

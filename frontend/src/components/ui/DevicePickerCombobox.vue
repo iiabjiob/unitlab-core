@@ -439,7 +439,7 @@ function setFloatingContentRef(el: Element | ComponentPublicInstance | null) {
   >
     <button
       :ref="floating.triggerRef"
-      class="device-picker-combobox__trigger !dark:bg-neutral-900 !dark:text-neutral-100"
+      class="device-picker-combobox__trigger"
       :class="{ 'has-value': selectedDevice }"
       :disabled="props.disabled"
       v-bind="triggerProps"
