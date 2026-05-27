@@ -120,15 +120,15 @@ function updateDuration(event: Event) {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="sequence-step-form">
     <div>
-      <label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400" for="sequence-step-repeat-sequence">
+      <label class="sequence-step-form__label" for="sequence-step-repeat-sequence">
         Target instruction
       </label>
       <SequencePickerCombobox
         id="sequence-step-repeat-sequence"
         name="sequence-step-repeat-sequence"
-        class="mt-1"
+        class="sequence-step-form__control"
         :model-value="targetSequenceId"
         :excluded-ids="[props.step.sequence_id]"
         :disabled="disabled"
@@ -137,13 +137,13 @@ function updateDuration(event: Event) {
     </div>
 
     <div>
-      <label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400" for="sequence-step-repeat-mode">
+      <label class="sequence-step-form__label" for="sequence-step-repeat-mode">
         Repeat mode
       </label>
       <UiAffinoListbox
         id="sequence-step-repeat-mode"
         name="sequence-step-repeat-mode"
-        class="mt-1"
+        class="sequence-step-form__control"
         :model-value="repeatMode"
         :options="repeatModeOptions"
         :disabled="disabled"
@@ -153,7 +153,7 @@ function updateDuration(event: Event) {
     </div>
 
     <div v-if="repeatMode === 'times'">
-      <label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400" for="sequence-step-repeat-iterations">
+      <label class="sequence-step-form__label" for="sequence-step-repeat-iterations">
         Iterations
       </label>
       <input
@@ -161,7 +161,7 @@ function updateDuration(event: Event) {
         name="sequence-step-repeat-iterations"
         type="number"
         min="1"
-        class="mt-1 w-32 rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-800"
+        class="sequence-step-form__input sequence-step-form__control--sm"
         :value="iterations"
         :disabled="disabled"
         @change="updateIterations"
@@ -169,7 +169,7 @@ function updateDuration(event: Event) {
     </div>
 
     <div v-else-if="repeatMode === 'duration'">
-      <label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400" for="sequence-step-repeat-duration">
+      <label class="sequence-step-form__label" for="sequence-step-repeat-duration">
         Duration, ms
       </label>
       <input
@@ -177,14 +177,14 @@ function updateDuration(event: Event) {
         name="sequence-step-repeat-duration"
         type="number"
         min="1"
-        class="mt-1 w-40 rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-800"
+        class="sequence-step-form__input sequence-step-form__control--md"
         :value="durationMs"
         :disabled="disabled"
         @change="updateDuration"
       />
     </div>
 
-    <p class="text-xs text-neutral-500 dark:text-neutral-400">
+    <p class="sequence-step-form__hint">
       Runs the target instruction in a loop for a fixed count, a time window, or until the operator stops the run.
     </p>
   </div>

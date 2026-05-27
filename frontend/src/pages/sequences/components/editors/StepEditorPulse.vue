@@ -55,13 +55,13 @@ function handlePulseChange(event: Event) {
 </script>
 
 <template>
-	<div class="space-y-4">
+	<div class="sequence-step-form">
 		<div>
-			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="sequence-step-form__label">
 				Target DO channel
 			</div>
 			<SignalBackedChannelField
-				class="mt-1"
+				class="sequence-step-form__control"
 				:channel-id="step.channel_id ?? null"
 				:channel-type="CHANNEL_TYPES.DO"
 				:signal-id="signalId"
@@ -74,10 +74,10 @@ function handlePulseChange(event: Event) {
 		</div>
 
 		<div>
-			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="sequence-step-form__label">
 				Pulse state
 			</div>
-			<div class="mt-2 flex gap-2">
+			<div class="sequence-step-form__button-row">
 				<UiButton
 					v-for="option in [0, 1]"
 					:key="option"
@@ -92,7 +92,7 @@ function handlePulseChange(event: Event) {
 		</div>
 
 		<div>
-			<label for="sequence-step-pulse-ms" class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<label for="sequence-step-pulse-ms" class="sequence-step-form__label">
 				Pulse duration, ms
 			</label>
 			<input
@@ -101,8 +101,7 @@ function handlePulseChange(event: Event) {
 				id="sequence-step-pulse-ms"
 				name="sequence-step-pulse-ms"
 				min="0"
-				class="mt-1 w-32 rounded border border-neutral-300 px-2 py-1 text-sm
-							 dark:border-neutral-700 dark:bg-neutral-800"
+				class="sequence-step-form__input sequence-step-form__control--sm"
 				:value="pulseMs"
 				:disabled="disabled"
 				@change="handlePulseChange"

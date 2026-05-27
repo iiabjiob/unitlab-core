@@ -48,13 +48,13 @@ function handleValueChange(event: Event) {
 </script>
 
 <template>
-	<div class="space-y-4">
+	<div class="sequence-step-form">
 		<div>
-			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="sequence-step-form__label">
 				AO channel
 			</div>
 			<SignalBackedChannelField
-				class="mt-1"
+				class="sequence-step-form__control"
 				:channel-id="step.channel_id ?? null"
 				:channel-type="CHANNEL_TYPES.AO"
 				:signal-id="signalId"
@@ -67,7 +67,7 @@ function handleValueChange(event: Event) {
 		</div>
 
 		<div>
-			<label for="sequence-step-ao-value" class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<label for="sequence-step-ao-value" class="sequence-step-form__label">
 				Output value (mA)
 			</label>
 			<input
@@ -76,14 +76,13 @@ function handleValueChange(event: Event) {
 				id="sequence-step-ao-value"
 				name="sequence-step-ao-value"
 				step="0.01"
-				class="mt-1 w-32 rounded border border-neutral-300 px-2 py-1 text-sm
-							 dark:border-neutral-700 dark:bg-neutral-800"
+				class="sequence-step-form__input sequence-step-form__control--sm"
 				:value="value"
 				:disabled="disabled"
 				@change="handleValueChange"
 			/>
 		</div>
-		<p class="text-xs text-neutral-500 dark:text-neutral-400">
+		<p class="sequence-step-form__hint">
 			Specify the analog output setpoint in milliamps.
 		</p>
 	</div>

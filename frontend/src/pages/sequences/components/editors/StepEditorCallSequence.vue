@@ -34,15 +34,15 @@ function updateTargetSequence(value: string | number | null) {
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="sequence-step-form">
     <div>
-      <label class="text-xs font-semibold text-neutral-500 dark:text-neutral-400" for="sequence-step-call-sequence">
+      <label class="sequence-step-form__label" for="sequence-step-call-sequence">
         Target instruction
       </label>
       <SequencePickerCombobox
         id="sequence-step-call-sequence"
         name="sequence-step-call-sequence"
-        class="mt-1"
+        class="sequence-step-form__control"
         :model-value="targetSequenceId"
         :excluded-ids="[props.step.sequence_id]"
         :disabled="disabled"
@@ -50,7 +50,7 @@ function updateTargetSequence(value: string | number | null) {
       />
     </div>
 
-    <p class="text-xs text-neutral-500 dark:text-neutral-400">
+    <p class="sequence-step-form__hint">
       Reuses another instruction as a child block and executes it once in place.
     </p>
   </div>

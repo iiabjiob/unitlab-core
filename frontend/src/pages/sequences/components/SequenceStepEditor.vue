@@ -17,6 +17,7 @@ import StepEditorAO from "./editors/StepEditorAO.vue"
 import StepEditorCallSequence from "./editors/StepEditorCallSequence.vue"
 import StepEditorRepeatSequence from "./editors/StepEditorRepeatSequence.vue"
 import type { StepEditorChange } from "./editors/editorTypes"
+import "./editors/sequenceStepEditorFields.css"
 
 const props = defineProps<{
   sequence: SequenceDef | null

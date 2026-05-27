@@ -1,0 +1,88 @@
+.sequence-step-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sequence-step-form--compact {
+  gap: 0.75rem;
+}
+
+.sequence-step-form__grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.sequence-step-form__field {
+  display: block;
+}
+
+.sequence-step-form__label {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.sequence-step-form__control {
+  margin-top: 0.25rem;
+}
+
+.sequence-step-form__control--sm {
+  width: 8rem;
+}
+
+.sequence-step-form__control--md {
+  width: 10rem;
+}
+
+.sequence-step-form__control--lg {
+  width: 16rem;
+}
+
+.sequence-step-form__input {
+  margin-top: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-sm);
+  background: var(--color-white);
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+}
+
+.sequence-step-form__input:focus {
+  outline: 2px solid color-mix(in srgb, var(--color-blue-500) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.sequence-step-form__button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.sequence-step-form__hint {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.sequence-step-form__hint--spaced {
+  margin-top: 0.5rem;
+}
+
+:where(.dark) .sequence-step-form__label,
+:where(.dark) .sequence-step-form__hint {
+  color: var(--color-neutral-400);
+}
+
+:where(.dark) .sequence-step-form__input {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-100);
+}
+
+@media (min-width: 768px) {
+  .sequence-step-form__grid--two {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

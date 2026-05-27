@@ -87,14 +87,14 @@ const stateOptions = [
 </script>
 
 <template>
-	<div class="space-y-4">
-		<div class="grid gap-4 md:grid-cols-2">
+	<div class="sequence-step-form">
+		<div class="sequence-step-form__grid sequence-step-form__grid--two">
 			<div>
-				<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+				<div class="sequence-step-form__label">
 					Open output
 				</div>
 				<SignalBackedChannelField
-					class="mt-1"
+					class="sequence-step-form__control"
 					:channel-id="pairChannels[0]"
 					:channel-type="CHANNEL_TYPES.DO"
 					:signal-id="pairSignalIds[0]"
@@ -107,11 +107,11 @@ const stateOptions = [
 				/>
 			</div>
 			<div>
-				<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+				<div class="sequence-step-form__label">
 					Close output
 				</div>
 				<SignalBackedChannelField
-					class="mt-1"
+					class="sequence-step-form__control"
 					:channel-id="pairChannels[1]"
 					:channel-type="CHANNEL_TYPES.DO"
 					:signal-id="pairSignalIds[1]"
@@ -126,10 +126,10 @@ const stateOptions = [
 		</div>
 
 		<div>
-			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="sequence-step-form__label">
 				Switch position
 			</div>
-			<div class="mt-2 flex flex-wrap gap-2">
+			<div class="sequence-step-form__button-row">
 				<UiButton
 					v-for="option in stateOptions"
 					:key="option.value"
@@ -141,7 +141,7 @@ const stateOptions = [
 					{{ option.label }}
 				</UiButton>
 			</div>
-			<p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+			<p class="sequence-step-form__hint sequence-step-form__hint--spaced">
 				Both outputs must be allocated on the same DO unit.
 			</p>
 		</div>

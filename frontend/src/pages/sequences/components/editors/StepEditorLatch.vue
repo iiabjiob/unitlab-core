@@ -47,13 +47,13 @@ function setValue(next: number) {
 </script>
 
 <template>
-	<div class="space-y-4">
+	<div class="sequence-step-form">
 		<div>
-			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="sequence-step-form__label">
 				Target DO channel
 			</div>
 			<SignalBackedChannelField
-				class="mt-1"
+				class="sequence-step-form__control"
 				:channel-id="step.channel_id ?? null"
 				:channel-type="CHANNEL_TYPES.DO"
 				:signal-id="signalId"
@@ -66,10 +66,10 @@ function setValue(next: number) {
 		</div>
 
 		<div>
-			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="sequence-step-form__label">
 				Latch state
 			</div>
-			<div class="mt-2 flex gap-2">
+			<div class="sequence-step-form__button-row">
 				<UiButton
 					v-for="option in [0, 1]"
 					:key="option"

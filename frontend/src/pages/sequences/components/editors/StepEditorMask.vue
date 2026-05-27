@@ -69,13 +69,13 @@ function handleMaskChange(value: number) {
 </script>
 
 <template>
-	<div class="space-y-4">
+	<div class="sequence-step-form">
 		<div>
-			<label for="sequence-step-mask-device" class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<label for="sequence-step-mask-device" class="sequence-step-form__label">
 				Target DO device
 			</label>
 			<DevicePickerCombobox
-				class="mt-1 w-64"
+				class="sequence-step-form__control sequence-step-form__control--lg"
 				id="sequence-step-mask-device"
 				:model-value="deviceId"
 				:devices="doDevices"
@@ -86,17 +86,17 @@ function handleMaskChange(value: number) {
 		</div>
 
 		<div>
-			<div class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+			<div class="sequence-step-form__label">
 				Output bitmask
 			</div>
 			<BitmaskEditor
-				class="mt-2"
+				class="sequence-step-form__control"
 				:model-value="bitmask"
 				:channel-count="channelCount"
 				:disabled="disabled"
 				@update:modelValue="handleMaskChange"
 			/>
-			<p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
+			<p class="sequence-step-form__hint sequence-step-form__hint--spaced">
 				Each bit represents a DO channel state. Bits beyond the device capacity are ignored.
 			</p>
 		</div>

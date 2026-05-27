@@ -26,9 +26,9 @@ function handleDelayInput(event: Event) {
 </script>
 
 <template>
-  <div class="space-y-3">
+  <div class="sequence-step-form sequence-step-form--compact">
     <div>
-      <label for="sequence-step-wait-ms" class="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+      <label for="sequence-step-wait-ms" class="sequence-step-form__label">
         Delay, ms
       </label>
       <input
@@ -37,14 +37,13 @@ function handleDelayInput(event: Event) {
         id="sequence-step-wait-ms"
         name="sequence-step-wait-ms"
         min="0"
-        class="mt-1 w-32 rounded border border-neutral-300 px-2 py-1 text-sm
-               dark:border-neutral-700 dark:bg-neutral-800"
+        class="sequence-step-form__input sequence-step-form__control--sm"
         :value="delayMs"
         :disabled="disabled"
         @change="handleDelayInput"
       />
     </div>
-    <p class="text-xs text-neutral-500 dark:text-neutral-400">
+    <p class="sequence-step-form__hint">
       Instruction pauses for the specified duration before moving to the next step.
     </p>
   </div>
