@@ -3,11 +3,7 @@
     <main class="home-page__shell">
       <header class="home-page__header">
         <div class="home-page__brand">
-          <AppLogo class="home-page__logo" />
-          <div class="home-page__brand-meta">
-            <TimeComponent />
-            <OnlineStatusComponent :status="systemStatus" :description="systemStatusDescription" neutral-offline />
-          </div>
+          <AppBrandStatus />
         </div>
 
         <div class="home-page__header-actions">
@@ -129,30 +125,22 @@
 <script setup lang="ts">
 import { computed, watch } from "vue"
 import { useRouter, type RouteLocationRaw } from "vue-router"
-import AppLogo from "@/components/layout/AppLogo.vue"
-import OnlineStatusComponent from "@/components/misc/OnlineStatusComponent.vue"
-import TimeComponent from "@/components/misc/TimeComponent.vue"
+import AppBrandStatus from "@/components/layout/AppBrandStatus.vue"
 import ThemeToggle from "@/components/ui/ThemeToggle.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
-import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useChannelStore } from "@/stores/channelStore"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 
 const workspaceStore = useWorkspaceStore()
-const systemHealthStore = useSystemHealthStore()
 const deviceStore = useDeviceStore()
 const channelStore = useChannelStore()
 const signalSheetStore = useSignalSheetStore()
 const router = useRouter()
 const integerFormatter = new Intl.NumberFormat()
 
-const systemStatus = computed(() => systemHealthStore.status)
-const systemStatusDescription = computed(() => (
-  systemStatus.value === "degraded" ? systemHealthStore.tooltip : null
-))
 const onlineDevicesCount = computed(() => deviceStore.devices.filter((device) => device.status === "online").length)
 const totalDevicesCount = computed(() => deviceStore.devices.length)
 const totalChannelsCount = computed(() => channelStore.channels.length)
@@ -392,26 +380,9 @@ function goTo(route: HomeRoute) {
 .home-page__brand {
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
   gap: 1rem;
   min-width: 0;
-}
-
-.home-page__brand-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.625rem;
-  min-width: 0;
-}
-
-.home-page__logo :deep(.app-logo__mark) {
-  width: 2.5rem;
-  height: 2.5rem;
-  line-height: 2.5rem;
-}
-
-.home-page__logo :deep(.app-logo__wordmark) {
-  font-size: var(--text-2xl);
 }
 
 .home-page__header-actions {

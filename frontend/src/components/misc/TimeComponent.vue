@@ -1,5 +1,6 @@
 <template>
-  <div class="time-component">
+  <div class="time-component" :class="`time-component--${variant}`">
+    <span v-if="timeLabel" class="time-component__label">{{ timeLabel }}</span>
     <span class="time-component__clock">{{ formattedTime }}</span>
     <component
       :is="ntpBadgeInteractive ? 'button' : 'span'"
@@ -13,7 +14,7 @@
       :aria-label="ntpTitle"
       @click="handleNtpBadgeClick"
     >
-      {{ ntpLabel }}
+      {{ variant === "inline" ? `[${ntpLabel}]` : ntpLabel }}
     </component>
   </div>
 </template>
@@ -27,6 +28,15 @@ const now = ref<Date | null>(null)
 let intervalId: number | null = null
 const coreNtpStore = useCoreNtpStore()
 const router = useRouter()
+const props = withDefaults(defineProps<{
+  variant?: "default" | "inline"
+  timeLabel?: string
+}>(), {
+  variant: "default",
+  timeLabel: "",
+})
+const variant = computed(() => props.variant)
+const timeLabel = computed(() => props.timeLabel)
 
 const formatter = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
@@ -92,6 +102,17 @@ function handleNtpBadgeClick() {
   font-size: var(--text-xs);
 }
 
+.time-component--inline {
+  flex-wrap: nowrap;
+  gap: 0;
+  padding-block: 0;
+  line-height: 1;
+}
+
+.time-component__label {
+  color: inherit;
+}
+
 .time-component__clock {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -130,6 +151,15 @@ button.time-component__ntp-badge {
   border-color: var(--color-amber-300);
   background: var(--color-amber-50);
   color: var(--color-amber-700);
+}
+
+.time-component--inline .time-component__ntp-badge {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: inherit;
+  line-height: 1;
+  margin-left: 0.25rem;
 }
 
 :global(.dark .time-component){

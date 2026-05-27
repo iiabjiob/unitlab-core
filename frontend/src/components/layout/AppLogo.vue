@@ -103,6 +103,6 @@ import { RouterLink } from "vue-router"
 }
 
 :global(.dark .app-logo__lab) {
-  color: var(--color-sky-200);
+  color: var(--color-blue-400);
 }
 </style>

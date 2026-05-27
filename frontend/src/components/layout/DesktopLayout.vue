@@ -2,16 +2,10 @@
   <div class="desktop-layout">
     <header class="desktop-layout__header">
       <div class="desktop-layout__brand">
-        <AppLogo />
-        <TimeComponent class="desktop-layout__brand-clock" />
+        <AppBrandStatus />
       </div>
 
       <div class="desktop-layout__runtime">
-        <OnlineStatusComponent
-          :status="status"
-          :description="statusDescription"
-          neutral-offline
-        />
         <GlobalSignalTestStatus />
         <GlobalRunStatusLink :show-signal-chip="false" />
       </div>
@@ -75,19 +69,15 @@ import { computed, ref } from "vue"
 import { RouterLink, useRoute } from "vue-router"
 
 import AppAside from "./DesktopAside.vue"
-import AppLogo from "./AppLogo.vue"
+import AppBrandStatus from "./AppBrandStatus.vue"
 import ResizablePanel from "../ui/ResizablePanel.vue"
-import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
-import TimeComponent from "../misc/TimeComponent.vue"
 import ThemeToggle from "../ui/ThemeToggle.vue"
 import WorkspaceSwitcher from "@/components/workspaces/WorkspaceSwitcher.vue"
 import GlobalRunStatusLink from "./GlobalRunStatusLink.vue"
 import GlobalSignalTestStatus from "./GlobalSignalTestStatus.vue"
-import { useSystemHealthStore } from "@/stores/systemHealthStore"
 import { localSettingsKeys, readNumberLocalSetting } from "@/services/localSettingsStorage"
 
 const route = useRoute()
-const systemHealthStore = useSystemHealthStore()
 const meta = computed(() => ({
   leftAside: route.meta.leftAside ?? true,
 }))
@@ -98,10 +88,6 @@ const LEFT_ASIDE_MAX_WIDTH_PX = 400
 const ASIDE_COMPACT_THRESHOLD_PX = 130
 const LEFT_ASIDE_STORAGE_KEY = "left-aside-width"
 
-const status = computed(() => systemHealthStore.status)
-const statusDescription = computed(() => (
-  status.value === "degraded" ? systemHealthStore.tooltip : null
-))
 const leftAsideWidth = ref(resolveInitialLeftAsideWidth())
 const isAsideCompact = computed(() => leftAsideWidth.value <= ASIDE_COMPACT_THRESHOLD_PX)
 
@@ -184,16 +170,9 @@ function resolveInitialLeftAsideWidth() {
 
 .desktop-layout__brand {
   display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 0.375rem;
+  flex: 0 1 auto;
+  align-items: center;
   min-width: 0;
-}
-
-.desktop-layout__brand-clock {
-  padding-left: 2.875rem;
 }
 
 .desktop-layout__runtime {
