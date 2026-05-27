@@ -77,60 +77,60 @@ const flowItems = computed(() => items.filter((item) => item.section === "flow")
 </script>
 
 <template>
-  <div class="flex items-center px-1 py-2">
+  <div class="sequence-step-add-toolbar">
     <UiMenu>
       <UiMenuTrigger asChild>
         <UiButton variant="secondary">
           Add step
         </UiButton>
       </UiMenuTrigger>
-      <UiMenuContent align="start" class="min-w-[220px]">
-        <UiMenuLabel class="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
+      <UiMenuContent align="start" class="sequence-step-add-toolbar__menu">
+        <UiMenuLabel class="sequence-step-add-toolbar__label">
           Timing
         </UiMenuLabel>
         <UiMenuItem
           v-for="item in timingItems"
           :key="item.type"
-          class="text-neutral-900 dark:text-neutral-200"
+          class="sequence-step-add-toolbar__item"
           @select="add(item.type)"
         >
           {{ item.label }}
         </UiMenuItem>
 
         <UiMenuSeparator />
-        <UiMenuLabel class="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
+        <UiMenuLabel class="sequence-step-add-toolbar__label">
           Digital Outputs
         </UiMenuLabel>
         <UiMenuItem
           v-for="item in digitalItems"
           :key="item.type"
-          class="text-neutral-900 dark:text-neutral-200"
+          class="sequence-step-add-toolbar__item"
           @select="add(item.type)"
         >
           {{ item.label }}
         </UiMenuItem>
 
         <UiMenuSeparator />
-        <UiMenuLabel class="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
+        <UiMenuLabel class="sequence-step-add-toolbar__label">
           Analog
         </UiMenuLabel>
         <UiMenuItem
           v-for="item in analogItems"
           :key="item.type"
-          class="text-neutral-900 dark:text-neutral-200"
+          class="sequence-step-add-toolbar__item"
           @select="add(item.type)"
         >
           {{ item.label }}
         </UiMenuItem>
 
         <UiMenuSeparator />
-        <UiMenuLabel class="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
+        <UiMenuLabel class="sequence-step-add-toolbar__label">
           Control Flow
         </UiMenuLabel>
         <UiMenuItem
           v-for="item in flowItems"
           :key="item.type"
-          class="text-neutral-900 dark:text-neutral-200"
+          class="sequence-step-add-toolbar__item"
           @select="add(item.type)"
         >
           {{ item.label }}
@@ -139,3 +139,30 @@ const flowItems = computed(() => items.filter((item) => item.section === "flow")
     </UiMenu>
   </div>
 </template>
+
+<style scoped>
+.sequence-step-add-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.25rem;
+}
+
+:global(.sequence-step-add-toolbar__menu) {
+  min-width: 220px;
+}
+
+:global(.sequence-step-add-toolbar__label) {
+  color: var(--color-neutral-500);
+  font-size: 0.6875rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+:global(.sequence-step-add-toolbar__item) {
+  color: var(--color-neutral-900);
+}
+
+:global(.dark .sequence-step-add-toolbar__item) {
+  color: var(--color-neutral-200);
+}
+</style>

@@ -478,29 +478,26 @@ function handleListKeydown(event: KeyboardEvent) {
 </script>
 
 <template>
-  <div class="flex flex-col p-4 lg:h-full lg:overflow-hidden">
+  <div class="sequence-steps-list">
 
-    <!-- HEADER -->
-    <div class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+    <div class="sequence-steps-list__header">
       Steps ({{ steps.length }})
     </div>
 
-    <!-- TOOLBAR -->
-    <div class="py-2">
+    <div class="sequence-steps-list__toolbar">
       <SequenceStepAddToolbar
         :sequence-id="props.sequence.id"
         @add="handleAdd"
       />
     </div>
 
-    <!-- LIST -->
-    <div class="mt-5 lg:flex-1 lg:overflow-y-auto">
+    <div class="sequence-steps-list__scroll">
       <div
         tabindex="0"
         role="listbox"
         aria-label="Sequence steps"
         aria-multiselectable="true"
-        class="rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 lg:h-full"
+        class="sequence-steps-list__listbox"
         @keydown.capture="handleListKeydown"
       >
         <DraggableList
@@ -509,7 +506,7 @@ function handleListKeydown(event: KeyboardEvent) {
           wrapper-tag="ul"
           item-tag="li"
           handle-only
-          class="divide-y divide-neutral-300 dark:divide-neutral-700"
+          class="sequence-steps-list__items"
           :style="{ gap: '0' }"
           @update:items="handleReorder"
         >
@@ -532,3 +529,67 @@ function handleListKeydown(event: KeyboardEvent) {
 
   </div>
 </template>
+
+<style scoped>
+.sequence-steps-list {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+}
+
+.sequence-steps-list__header {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.sequence-steps-list__toolbar {
+  padding: 0.5rem 0;
+}
+
+.sequence-steps-list__scroll {
+  margin-top: 1.25rem;
+}
+
+.sequence-steps-list__listbox {
+  border-radius: var(--radius-md);
+}
+
+.sequence-steps-list__listbox:focus {
+  outline: none;
+}
+
+.sequence-steps-list__listbox:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-blue-500) 60%, transparent);
+}
+
+.sequence-steps-list__items > * + * {
+  border-top: 1px solid var(--color-neutral-300);
+}
+
+:global(.dark .sequence-steps-list__header) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .sequence-steps-list__items > * + *) {
+  border-top-color: var(--color-neutral-700);
+}
+
+@media (min-width: 1024px) {
+  .sequence-steps-list {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .sequence-steps-list__scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .sequence-steps-list__listbox {
+    height: 100%;
+  }
+}
+</style>

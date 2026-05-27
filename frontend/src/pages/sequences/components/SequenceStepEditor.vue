@@ -119,21 +119,20 @@ function exitEditMode() {
 </script>
 
 <template>
-  
-    <div v-if="step && editorComponent" class="space-y-4 p-5 border rounded-md bg-neutral-50 dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 overflow-y-auto">
-      <div class="flex items-start justify-between gap-4">
+    <div v-if="step && editorComponent" class="sequence-step-editor">
+      <div class="sequence-step-editor__header">
         <div>
-          <div class="text-xs uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          <div class="sequence-step-editor__eyebrow">
             Editing step
           </div>
-          <div class="text-lg font-semibold text-neutral-900 dark:text-white">
+          <div class="sequence-step-editor__title">
             {{ headerLabel }}
           </div>
-          <div class="text-xs text-neutral-500 dark:text-neutral-400">
+          <div class="sequence-step-editor__description">
             {{ description }}
           </div>
         </div>
-        <div class="flex gap-2">
+        <div class="sequence-step-editor__actions">
           <UiButton
             size="xs"
             variant="ghost"
@@ -152,9 +151,62 @@ function exitEditMode() {
       />
 
       <UiAlert v-if="error" type="error" :message="error" />
-      <!-- <div v-else-if="saving" class="text-xs text-neutral-500">
-        Saving…
-      </div> -->
     </div>
-  
 </template>
+
+<style scoped>
+.sequence-step-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+  padding: 1.25rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-md);
+  background: var(--color-neutral-50);
+}
+
+.sequence-step-editor__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.sequence-step-editor__eyebrow {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.sequence-step-editor__title {
+  color: var(--color-neutral-900);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+.sequence-step-editor__description {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.sequence-step-editor__actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+:global(.dark .sequence-step-editor) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-900);
+}
+
+:global(.dark .sequence-step-editor__eyebrow),
+:global(.dark .sequence-step-editor__description) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .sequence-step-editor__title) {
+  color: var(--color-white);
+}
+</style>
