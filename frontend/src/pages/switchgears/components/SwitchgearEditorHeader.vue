@@ -96,7 +96,7 @@ const positionState = computed(() => store.resolveSwitchgearState(props.switchge
 
     <UiMenu>
       <UiMenuTrigger asChild>
-        <UiButton variant="icon">
+        <UiButton variant="icon" aria-label="Switchgear actions">
           <EllipsisHorizontalIcon size="24" />
         </UiButton>
       </UiMenuTrigger>

@@ -174,22 +174,32 @@
 }
 
 .btn-icon {
-  background: var(--color-white);
+  background: transparent;
   border-color: var(--color-neutral-300);
-  box-shadow: var(--shadow-sm);
   color: var(--color-neutral-700);
+  gap: 0;
+  height: 2rem;
+  min-height: 2rem;
+  min-width: 2rem;
+  padding: 0;
+  width: 2rem;
+}
+
+.btn-icon > svg {
+  height: 1.25rem;
+  width: 1.25rem;
 }
 
 .btn-icon:focus {
-  box-shadow: var(--shadow-sm), 0 0 0 2px var(--color-neutral-300);
+  box-shadow: 0 0 0 2px var(--color-neutral-300);
 }
 
 .btn-icon:hover:not(:disabled) {
-  background: var(--color-neutral-100);
+  border-color: var(--color-neutral-500);
 }
 
 .btn-icon:active:not(:disabled) {
-  background: var(--color-neutral-200);
+  background: var(--color-neutral-100);
 }
 
 .dark .btn-secondary,

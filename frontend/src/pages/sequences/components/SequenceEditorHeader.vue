@@ -155,7 +155,7 @@ const createdAt = computed(() => {
 
     <UiMenu>
       <UiMenuTrigger asChild>
-        <UiButton variant="icon">
+        <UiButton variant="icon" aria-label="Instruction actions">
           <EllipsisHorizontalIcon size="24" />
         </UiButton>
       </UiMenuTrigger>
