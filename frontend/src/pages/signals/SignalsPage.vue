@@ -2124,27 +2124,27 @@ function controlStateLabel(row: SignalAllocationRow): string {
   return stableLabel
 }
 
-function controlLampClass(row: SignalAllocationRow): string {
+function controlLampTone(row: SignalAllocationRow): string {
   const target = resolveControlTarget(row)
-  if (!target) return "bg-neutral-400 dark:bg-neutral-600"
+  if (!target) return "allocation-control-cell__lamp--unknown"
   if (target.kind === "ao") {
-    if (!target.online) return "bg-neutral-500 dark:bg-neutral-700"
-    if (activeAoSubmittingSignalId.value === row.signal_id) return "bg-amber-400 animate-pulse"
-    if (!target.channel) return "bg-neutral-400 dark:bg-neutral-600"
-    if (target.channel.diagnostics?.hasError) return "bg-red-500"
+    if (!target.online) return "allocation-control-cell__lamp--offline"
+    if (activeAoSubmittingSignalId.value === row.signal_id) return "allocation-control-cell__lamp--pending"
+    if (!target.channel) return "allocation-control-cell__lamp--unknown"
+    if (target.channel.diagnostics?.hasError) return "allocation-control-cell__lamp--fault"
     const quality = target.channel.diagnostics?.quality
-    if (quality === "fault") return "bg-red-500"
-    if (quality === "pending") return "bg-amber-400 animate-pulse"
-    return "bg-sky-500"
+    if (quality === "fault") return "allocation-control-cell__lamp--fault"
+    if (quality === "pending") return "allocation-control-cell__lamp--pending"
+    return "allocation-control-cell__lamp--ao"
   }
   if (!target.channel) {
-    return target.online ? "bg-neutral-400 dark:bg-neutral-600" : "bg-neutral-500 dark:bg-neutral-700"
+    return target.online ? "allocation-control-cell__lamp--unknown" : "allocation-control-cell__lamp--offline"
   }
   const stage = target.channel.ui?.stage ?? "idle"
-  if (!target.online) return "bg-neutral-500 dark:bg-neutral-700"
-  if (stage === "pending" || stage === "debounce") return "bg-amber-400 animate-pulse"
-  if (stage === "error") return "bg-red-500 animate-pulse"
-  return target.channel.state ? "bg-emerald-500" : "bg-neutral-400 dark:bg-neutral-600"
+  if (!target.online) return "allocation-control-cell__lamp--offline"
+  if (stage === "pending" || stage === "debounce") return "allocation-control-cell__lamp--pending"
+  if (stage === "error") return "allocation-control-cell__lamp--error"
+  return target.channel.state ? "allocation-control-cell__lamp--on" : "allocation-control-cell__lamp--off"
 }
 
 function controlStatusTag(row: SignalAllocationRow): string {
@@ -2169,27 +2169,27 @@ function controlStatusTag(row: SignalAllocationRow): string {
   return target.channel.state ? "ON" : "OFF"
 }
 
-function controlStatusClass(row: SignalAllocationRow): string {
+function controlStatusTone(row: SignalAllocationRow): string {
   const target = resolveControlTarget(row)
-  if (!target || !target.online) return "text-neutral-500 dark:text-neutral-400"
+  if (!target || !target.online) return "allocation-control-cell__status--muted"
   if (target.kind === "ao") {
-    if (!target.channel) return "border-neutral-300 text-neutral-500 dark:border-neutral-700 dark:text-neutral-300"
-    if (activeAoSubmittingSignalId.value === row.signal_id) return "border-amber-500 text-amber-700 dark:text-amber-300"
+    if (!target.channel) return "allocation-control-cell__status--unknown"
+    if (activeAoSubmittingSignalId.value === row.signal_id) return "allocation-control-cell__status--pending"
     if (target.channel.diagnostics?.hasError || target.channel.diagnostics?.quality === "fault") {
-      return "border-red-500 text-red-700 dark:text-red-300"
+      return "allocation-control-cell__status--error"
     }
     if (target.channel.diagnostics?.quality === "pending") {
-      return "border-amber-500 text-amber-700 dark:text-amber-300"
+      return "allocation-control-cell__status--pending"
     }
-    return "border-sky-500 text-sky-700 dark:text-sky-300"
+    return "allocation-control-cell__status--ao"
   }
-  if (!target.channel) return "text-neutral-500 dark:text-neutral-300"
+  if (!target.channel) return "allocation-control-cell__status--unknown"
   const stage = target.channel.ui?.stage ?? "idle"
-  if (stage === "pending" || stage === "debounce") return "text-amber-600 dark:text-amber-300"
-  if (stage === "error") return "text-red-600 dark:text-red-300"
+  if (stage === "pending" || stage === "debounce") return "allocation-control-cell__status--pending"
+  if (stage === "error") return "allocation-control-cell__status--error"
   return target.channel.state
-    ? "text-emerald-600 dark:text-emerald-300"
-    : "text-neutral-500 dark:text-neutral-300"
+    ? "allocation-control-cell__status--on"
+    : "allocation-control-cell__status--off"
 }
 
 function controlStateIsOn(row: SignalAllocationRow): boolean {
@@ -2427,16 +2427,16 @@ async function ensureRuntimeCatalogLoaded() {
 
 function renderDefaultCell(context: DataGridAppCellRendererContext<GridRow>) {
   const displayValue = context.displayValue || "-"
-  return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, displayValue)
+  return h("span", { class: "signals-page__grid-cell" }, displayValue)
 }
 
 function renderTestedAtCell(context: DataGridAppCellRendererContext<GridRow>) {
   const raw = String(context.row?.tested_at ?? "").trim()
   if (!raw) {
-    return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, "-")
+    return h("span", { class: "signals-page__grid-cell" }, "-")
   }
 
-  return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, formatDate(raw))
+  return h("span", { class: "signals-page__grid-cell" }, formatDate(raw))
 }
 
 const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
@@ -2559,8 +2559,8 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
         return h(AllocationControlCell, {
           key: `${controlRow.signal_id}:${controlCellRenderVersion}`,
           mode: target?.kind ?? "none",
-          lampClass: controlLampClass(controlRow),
-          statusClass: controlStatusClass(controlRow),
+          lampTone: controlLampTone(controlRow),
+          statusTone: controlStatusTone(controlRow),
           statusTag: controlStatusTag(controlRow),
           statusTitle: aoStatusTitle(controlRow),
           stateLabel: controlStateLabel(controlRow),
@@ -2847,6 +2847,11 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
+.signals-page__grid-cell {
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+}
+
 :global(.dark .signals-page__empty) {
   background: color-mix(in srgb, var(--color-neutral-900) 40%, transparent);
   border-color: var(--color-neutral-700);
@@ -2875,6 +2880,10 @@ onBeforeUnmount(() => {
 
 :global(.dark .signals-page__skeleton-block) {
   background: var(--color-neutral-800);
+}
+
+:global(.dark .signals-page__grid-cell) {
+  color: var(--color-neutral-100);
 }
 
 @keyframes signals-page-pulse {
