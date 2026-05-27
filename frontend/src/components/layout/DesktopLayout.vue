@@ -1,10 +1,9 @@
 <template>
-  <div class="h-dvh flex flex-col bg-neutral-50 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 font-mono">
-    <div class="flex flex-1 overflow-hidden">
-      <!-- Left aside -->
+  <div class="desktop-layout">
+    <div class="desktop-layout__body">
       <ResizablePanel
         v-if="meta.leftAside"
-        class="bg-white dark:bg-neutral-800"
+        class="desktop-layout__aside-panel"
         placement="left"
         storageKey="left-aside-width"
         :defaultSize="240"
@@ -14,27 +13,24 @@
       >
         <AppAside
           :compact="isAsideCompact"
-          class="border-r border-neutral-200 dark:border-neutral-700"
+          class="desktop-layout__aside"
         />
       </ResizablePanel>
 
-      <!-- Center workspace (main + bottom log) -->
-      <main class="flex-1 flex flex-col overflow-hidden">
-
-        <header class="sticky top-0 z-20 border-b border-neutral-200 bg-white px-5 dark:border-neutral-800 dark:bg-neutral-900 h-20 flex items-center">
-          <div class="flex flex-1 flex-wrap items-center justify-between gap-6">
-            <div class="min-w-[110px] max-w-[20rem] flex-1">
+      <main class="desktop-layout__main">
+        <header class="desktop-layout__header">
+          <div class="desktop-layout__header-inner">
+            <div class="desktop-layout__workspace">
               <WorkspaceSwitcher variant="mini" />
             </div>
-            <div class="flex items-center gap-3">
+            <div class="desktop-layout__status">
               <GlobalSignalTestStatus />
               <GlobalRunStatusLink :show-signal-chip="false" />
             </div>
           </div>
         </header>
 
-        <!-- Main content -->
-        <div class="flex-1 overflow-auto">
+        <div class="desktop-layout__content">
           <RouterView />
         </div>
       </main>
@@ -69,3 +65,91 @@ function handleLeftAsideSizeChange(size: number) {
 }
 
 </script>
+
+<style scoped>
+.desktop-layout {
+  display: flex;
+  height: 100dvh;
+  flex-direction: column;
+  background: var(--color-neutral-50);
+  color: var(--color-neutral-800);
+  font-family: var(--font-mono);
+}
+
+.desktop-layout__body {
+  display: flex;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.desktop-layout__aside-panel {
+  background: var(--color-white);
+}
+
+.desktop-layout__aside {
+  border-right: 1px solid var(--color-neutral-200);
+}
+
+.desktop-layout__main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.desktop-layout__header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  height: 5rem;
+  align-items: center;
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--color-neutral-200);
+  background: var(--color-white);
+}
+
+.desktop-layout__header-inner {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.desktop-layout__workspace {
+  min-width: 110px;
+  max-width: 20rem;
+  flex: 1 1 auto;
+}
+
+.desktop-layout__status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.desktop-layout__content {
+  flex: 1 1 auto;
+  overflow: auto;
+}
+
+:global(.dark .desktop-layout) {
+  background: var(--color-neutral-900);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .desktop-layout__aside-panel) {
+  background: var(--color-neutral-800);
+}
+
+:global(.dark .desktop-layout__aside) {
+  border-right-color: var(--color-neutral-700);
+}
+
+:global(.dark .desktop-layout__header) {
+  border-bottom-color: var(--color-neutral-800);
+  background: var(--color-neutral-900);
+}
+</style>

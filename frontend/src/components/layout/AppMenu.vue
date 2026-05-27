@@ -1,8 +1,8 @@
 <template>
   <nav
     ref="navRef"
-    class="flex-1 space-y-4 focus:outline-none"
-    :class="compact ? 'px-1 py-3' : 'px-2 py-4'"
+    class="app-menu"
+    :class="{ 'app-menu--compact': compact }"
     tabindex="0"
     role="listbox"
     aria-label="Primary navigation"
@@ -10,8 +10,8 @@
     @keydown="handleKeydown"
     @focus="handleNavFocus"
   >
-    <div v-for="section in sections" :key="section.title" class="space-y-1">
-      <p v-if="!compact" class="px-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+    <div v-for="section in sections" :key="section.title" class="app-menu__section">
+      <p v-if="!compact" class="app-menu__section-title">
         {{ section.title }}
       </p>
       <div v-for="item in section.items" :key="item.to">
@@ -28,9 +28,9 @@
                 :href="href"
                 :title="item.label"
                 :aria-label="item.label"
-                class="app-menu__entry block w-full rounded-xl py-2 text-sm font-medium transition-all focus:outline-none"
+                class="app-menu__entry"
                 :class="[
-                  compact ? 'px-0 text-center' : 'pl-6 pr-3 text-left',
+                  compact ? 'app-menu__entry--compact' : 'app-menu__entry--full',
                   {
                     'is-active': isRouteHighlighted(item.to),
                     'is-focused': !isRouteHighlighted(item.to) && isEntryFocused(item.to),
@@ -40,8 +40,11 @@
                 @focus="setFocusByRoute(item.to)"
                 @click="event => handleEntryClick(event, item.to, navigate)"
               >
-                <span class="inline-flex items-center" :class="compact ? 'justify-center w-full' : 'gap-2'">
-                  <span class="text-2xl leading-none shrink-0" aria-hidden="true">{{ resolveRouteEmoji(item.to) }}</span>
+                <span
+                  class="app-menu__entry-content"
+                  :class="compact ? 'app-menu__entry-content--compact' : 'app-menu__entry-content--full'"
+                >
+                  <span class="app-menu__entry-icon" aria-hidden="true">{{ resolveRouteEmoji(item.to) }}</span>
                   <span v-if="!compact">{{ item.label }}</span>
                 </span>
               </a>
@@ -67,9 +70,9 @@
                 :href="href"
                 :title="child.label"
                 :aria-label="child.label"
-                class="app-menu__entry is-child mt-1 block w-full rounded-xl py-2 text-sm font-medium transition-all focus:outline-none"
+                class="app-menu__entry is-child"
                 :class="[
-                  compact ? 'px-0 text-center' : 'pl-10 pr-3 text-left',
+                  compact ? 'app-menu__entry--compact' : 'app-menu__entry--child-full',
                   {
                     'is-active': isRouteHighlighted(child.to),
                     'is-focused': !isRouteHighlighted(child.to) && isEntryFocused(child.to),
@@ -79,8 +82,11 @@
                 @focus="setFocusByRoute(child.to)"
                 @click="event => handleEntryClick(event, child.to, navigate)"
               >
-                <span class="inline-flex items-center" :class="compact ? 'justify-center w-full' : 'gap-2'">
-                  <span class="text-2xl leading-none shrink-0" aria-hidden="true">{{ resolveRouteEmoji(child.to) }}</span>
+                <span
+                  class="app-menu__entry-content"
+                  :class="compact ? 'app-menu__entry-content--compact' : 'app-menu__entry-content--full'"
+                >
+                  <span class="app-menu__entry-icon" aria-hidden="true">{{ resolveRouteEmoji(child.to) }}</span>
                   <span v-if="!compact">{{ child.label }}</span>
                 </span>
               </a>
@@ -334,10 +340,82 @@ function handleKeydown(event: KeyboardEvent) {
 </script>
 
 <style scoped>
+.app-menu {
+  flex: 1;
+  padding: 1rem 0.5rem;
+  outline: none;
+}
+
+.app-menu--compact {
+  padding: 0.75rem 0.25rem;
+}
+
+.app-menu__section + .app-menu__section {
+  margin-top: 1rem;
+}
+
+.app-menu__section-title {
+  margin: 0 0 0.25rem;
+  padding: 0 0.5rem;
+  color: var(--color-neutral-400);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .app-menu__entry {
-  color: rgb(64 64 64);
-  user-select: none;
+  display: block;
+  width: 100%;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-radius: 0.75rem;
   cursor: default;
+  color: var(--color-neutral-700);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  outline: none;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
+}
+
+.app-menu__entry--compact {
+  padding-right: 0;
+  padding-left: 0;
+  text-align: center;
+}
+
+.app-menu__entry--full {
+  padding-right: 0.75rem;
+  padding-left: 1.5rem;
+  text-align: left;
+}
+
+.app-menu__entry--child-full {
+  padding-right: 0.75rem;
+  padding-left: 2.5rem;
+  text-align: left;
+}
+
+.app-menu__entry-content {
+  display: inline-flex;
+  align-items: center;
+}
+
+.app-menu__entry-content--compact {
+  width: 100%;
+  justify-content: center;
+}
+
+.app-menu__entry-content--full {
+  gap: 0.5rem;
+}
+
+.app-menu__entry-icon {
+  flex-shrink: 0;
+  font-size: 1.5rem;
+  line-height: 1;
 }
 
 .app-menu__entry.is-compact {
@@ -345,21 +423,22 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 .app-menu__entry:hover {
-  background: rgb(245 245 245);
-  color: rgb(23 23 23);
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-900);
 }
 
 .app-menu__entry.is-child {
-  color: rgb(82 82 82);
+  margin-top: 0.25rem;
+  color: var(--color-neutral-600);
 }
 
 .app-menu__entry.is-focused {
-  background: rgb(229 229 229);
-  color: rgb(23 23 23);
+  background: var(--color-neutral-200);
+  color: var(--color-neutral-900);
 }
 
 .app-menu__entry.is-active {
-  background: rgb(229 231 235);
+  background: #e5e7eb;
   color: rgb(15 23 42);
 }
 
@@ -367,30 +446,30 @@ function handleKeydown(event: KeyboardEvent) {
   box-shadow: 0 0 0 2px rgb(59 130 246 / 40%);
 }
 
-.dark .app-menu__entry {
-  color: rgb(212 212 212);
+:global(.dark .app-menu__entry) {
+  color: var(--color-neutral-300);
 }
 
-.dark .app-menu__entry.is-child {
-  color: rgb(163 163 163);
+:global(.dark .app-menu__entry.is-child) {
+  color: var(--color-neutral-400);
 }
 
-.dark .app-menu__entry:hover {
-  background: rgb(38 38 38 / 0.8);
-  color: rgb(255 255 255);
+:global(.dark .app-menu__entry:hover) {
+  background: color-mix(in srgb, var(--color-neutral-800) 80%, transparent);
+  color: var(--color-white);
 }
 
-.dark .app-menu__entry.is-focused {
-  background: rgb(64 64 64 / 0.7);
-  color: rgb(245 245 245);
+:global(.dark .app-menu__entry.is-focused) {
+  background: color-mix(in srgb, var(--color-neutral-700) 70%, transparent);
+  color: var(--color-neutral-100);
 }
 
-.dark .app-menu__entry.is-active {
+:global(.dark .app-menu__entry.is-active) {
   background: rgb(59 130 246 / 0.2);
   color: rgb(219 234 254);
 }
 
-.dark .app-menu__entry:focus-visible {
+:global(.dark .app-menu__entry:focus-visible) {
   box-shadow: 0 0 0 2px rgb(96 165 250 / 40%);
 }
 </style>

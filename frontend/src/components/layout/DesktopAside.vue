@@ -1,15 +1,14 @@
 <template>
-  <aside class="flex flex-col h-full relative">
-    <!-- Header -->
+  <aside class="desktop-aside">
     <div
-      class="border-b border-neutral-200 dark:border-neutral-700 h-20 flex flex-col justify-center gap-2"
-      :class="compact ? 'px-2 items-center' : 'px-5'"
+      class="desktop-aside__header"
+      :class="{ 'desktop-aside__header--compact': compact }"
     >
-      <div class="flex justify-between items-center gap-3" :class="compact ? 'w-full justify-center' : ''">
+      <div class="desktop-aside__top" :class="{ 'desktop-aside__top--compact': compact }">
         <RouterLink
           v-if="compact"
           to="/"
-          class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-300 text-xs font-semibold text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+          class="desktop-aside__home-link"
           title="Home"
           aria-label="Home"
         >
@@ -17,7 +16,7 @@
         </RouterLink>
         <span
           v-if="compact"
-          class="h-2.5 w-2.5 rounded-full border border-white/70 shadow-sm"
+          class="desktop-aside__status-dot"
           :class="compactStatusClass"
           :title="`System status: ${status}`"
           aria-hidden="true"
@@ -32,24 +31,27 @@
       </div>
       <TimeComponent
         v-if="!compact"
-        class="text-xs text-neutral-500 dark:text-neutral-400"
+        class="desktop-aside__time"
       />
     </div>
 
-    <!-- Menu stretches to fill available space while leaving room for the footer -->
-    <AppMenu :compact="compact" :include-settings="false" class="text-base overflow-y-auto overflow-x-visible"/>
+    <AppMenu
+      :compact="compact"
+      :include-settings="false"
+      class="desktop-aside__menu"
+    />
 
-    <div class="border-t border-neutral-200 dark:border-neutral-700" :class="compact ? 'p-2' : 'p-4'">
-      <div class="flex items-center justify-center gap-2" :class="compact ? 'flex-col' : ''">
+    <div class="desktop-aside__footer" :class="{ 'desktop-aside__footer--compact': compact }">
+      <div class="desktop-aside__footer-inner" :class="{ 'desktop-aside__footer-inner--compact': compact }">
         <RouterLink
           to="/settings"
-          class="inline-flex cursor-default items-center justify-center rounded-lg border border-neutral-300 bg-white text-neutral-700 transition hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
-          :class="compact ? 'h-10 w-10' : 'h-9 px-3 gap-2'"
+          class="desktop-aside__settings-link"
+          :class="compact ? 'desktop-aside__settings-link--compact' : 'desktop-aside__settings-link--full'"
           title="Settings"
           aria-label="Settings"
         >
-          <span class="text-2xl leading-none shrink-0" aria-hidden="true">⚙️</span>
-          <span v-if="!compact" class="text-xs font-medium">Settings</span>
+          <span class="desktop-aside__settings-icon" aria-hidden="true">⚙️</span>
+          <span v-if="!compact" class="desktop-aside__settings-label">Settings</span>
         </RouterLink>
         <ThemeToggle v-if="!compact" />
       </div>
@@ -79,10 +81,181 @@ const statusDescription = computed(() => (
   status.value === "degraded" ? systemHealthStore.tooltip : null
 ))
 const compactStatusClass = computed(() => {
-  if (status.value === "online") return "bg-green-400"
-  if (status.value === "degraded") return "bg-amber-400"
-  if (status.value === "offline") return "bg-neutral-400"
-  return "bg-neutral-400"
+  if (status.value === "online") return "is-online"
+  if (status.value === "degraded") return "is-degraded"
+  return "is-offline"
 })
 
 </script>
+
+<style scoped>
+.desktop-aside {
+  position: relative;
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+
+.desktop-aside__header {
+  display: flex;
+  height: 5rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--color-neutral-200);
+}
+
+.desktop-aside__header--compact {
+  align-items: center;
+  padding: 0 0.5rem;
+}
+
+.desktop-aside__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.desktop-aside__top--compact {
+  width: 100%;
+  justify-content: center;
+}
+
+.desktop-aside__home-link {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-md);
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.desktop-aside__home-link:hover {
+  background: var(--color-neutral-100);
+}
+
+.desktop-aside__status-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+}
+
+.desktop-aside__status-dot.is-online {
+  background: #4ade80;
+}
+
+.desktop-aside__status-dot.is-degraded {
+  background: #fbbf24;
+}
+
+.desktop-aside__status-dot.is-offline {
+  background: var(--color-neutral-400);
+}
+
+.desktop-aside__time {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.desktop-aside__menu {
+  overflow-x: visible;
+  overflow-y: auto;
+  font-size: var(--text-base);
+}
+
+.desktop-aside__footer {
+  padding: 1rem;
+  border-top: 1px solid var(--color-neutral-200);
+}
+
+.desktop-aside__footer--compact {
+  padding: 0.5rem;
+}
+
+.desktop-aside__footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.desktop-aside__footer-inner--compact {
+  flex-direction: column;
+}
+
+.desktop-aside__settings-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  color: var(--color-neutral-700);
+  cursor: default;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.desktop-aside__settings-link:hover {
+  background: var(--color-neutral-100);
+}
+
+.desktop-aside__settings-link--compact {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.desktop-aside__settings-link--full {
+  height: 2.25rem;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+}
+
+.desktop-aside__settings-icon {
+  flex-shrink: 0;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.desktop-aside__settings-label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+:global(.dark .desktop-aside__header),
+:global(.dark .desktop-aside__footer) {
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .desktop-aside__home-link) {
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .desktop-aside__home-link:hover) {
+  background: var(--color-neutral-800);
+}
+
+:global(.dark .desktop-aside__time) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .desktop-aside__settings-link) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-900);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .desktop-aside__settings-link:hover) {
+  background: var(--color-neutral-800);
+}
+</style>
