@@ -203,7 +203,7 @@ onBeforeUnmount(() => {
 
 .device-execution-log__row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   padding: 1px 0.25rem;
   border-radius: var(--radius-sm);
@@ -223,9 +223,13 @@ onBeforeUnmount(() => {
 }
 
 .device-execution-log__dot {
-  width: 0.5rem;
-  height: 0.5rem;
   border-radius: 999px;
+  flex: 0 0 0.5rem;
+  height: 0.5rem;
+  margin-top: 0.1875rem;
+  min-height: 0.5rem;
+  min-width: 0.5rem;
+  width: 0.5rem;
 }
 
 .device-execution-log__dot--cmd {
@@ -247,7 +251,7 @@ onBeforeUnmount(() => {
 .device-execution-log__content {
   display: flex;
   flex: 1 1 auto;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   min-width: 0;
 }

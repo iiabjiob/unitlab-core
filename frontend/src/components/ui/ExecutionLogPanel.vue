@@ -230,7 +230,7 @@ onBeforeUnmount(() => {
 }
 
 .execution-log__row {
-  align-items: center;
+  align-items: flex-start;
   border-radius: var(--radius-sm);
   display: flex;
   gap: 0.5rem;
@@ -264,8 +264,13 @@ onBeforeUnmount(() => {
 }
 
 .execution-log__dot {
+  align-self: flex-start;
   border-radius: 999px;
+  flex: 0 0 0.5rem;
   height: 0.5rem;
+  margin-top: 0.1875rem;
+  min-height: 0.5rem;
+  min-width: 0.5rem;
   width: 0.5rem;
 }
 
