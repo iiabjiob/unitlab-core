@@ -61,10 +61,8 @@ function handleSelect(id: string | number) {
 </script>
 
 <template>
-  <div class="h-full flex flex-col">
-
-    <!-- HEADER -->
-    <div class="mb-3">
+  <div class="switchgear-list-sidebar">
+    <div class="switchgear-list-sidebar__header">
       <UiButton
         variant="primary"
         size="sm"
@@ -76,14 +74,13 @@ function handleSelect(id: string | number) {
       </UiButton>
       <p
         v-if="workspaceMissing"
-        class="mt-2 text-[11px] uppercase tracking-[0.3em] text-neutral-500 dark:text-neutral-400"
+        class="switchgear-list-sidebar__workspace-hint"
       >
         Choose a workspace to start configuring
       </p>
     </div>
 
-    <!-- SEARCH FIELD -->
-    <div class="mb-3">
+    <div class="switchgear-list-sidebar__search">
       <input
         v-model="query"
         type="text"
@@ -91,40 +88,112 @@ function handleSelect(id: string | number) {
         name="switchgear-search"
         :disabled="workspaceMissing"
         :placeholder="workspaceMissing ? 'Select a workspace to get started' : 'Search switchgears…'"
-        class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder-neutral-500 focus:outline-none disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+        class="switchgear-list-sidebar__search-input"
       />
     </div>
 
-    <!-- LIST -->
-    <div class="flex-1 overflow-y-auto space-y-1">
+    <div class="switchgear-list-sidebar__list">
       <div
         v-if="workspaceMissing"
-        class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400"
+        class="switchgear-list-sidebar__empty"
       >
         Switchgears belong to a workspace. Pick one to view its presets.
       </div>
 
       <template v-else>
-      <UiSidebarListbox
-        :items="filteredSwitchgears"
-        :active-id="selectedId"
-        aria-label="Switchgears"
-        @select="handleSelect"
-      >
-        <template #item="{ item: switchgear, isCursor }">
-          <SwitchgearListItem
-            :switchgear="switchgear"
-            :active="isActive(switchgear.id) || isCursor"
-          />
-        </template>
-        <template #empty>
-          <div class="rounded-2xl border border-dashed border-neutral-300/70 px-4 py-6 text-center text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
-            No switchgears found
-          </div>
-        </template>
-      </UiSidebarListbox>
+        <UiSidebarListbox
+          :items="filteredSwitchgears"
+          :active-id="selectedId"
+          aria-label="Switchgears"
+          @select="handleSelect"
+        >
+          <template #item="{ item: switchgear, isCursor }">
+            <SwitchgearListItem
+              :switchgear="switchgear"
+              :active="isActive(switchgear.id) || isCursor"
+            />
+          </template>
+          <template #empty>
+            <div class="switchgear-list-sidebar__empty">
+              No switchgears found
+            </div>
+          </template>
+        </UiSidebarListbox>
       </template>
     </div>
 
   </div>
 </template>
+
+<style scoped>
+.switchgear-list-sidebar {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+}
+
+.switchgear-list-sidebar__header,
+.switchgear-list-sidebar__search {
+  margin-bottom: 0.75rem;
+}
+
+.switchgear-list-sidebar__workspace-hint {
+  margin: 0.5rem 0 0;
+  color: var(--color-neutral-500);
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.switchgear-list-sidebar__search-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: 0.5rem;
+  background: var(--color-white);
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.switchgear-list-sidebar__search-input::placeholder {
+  color: var(--color-neutral-500);
+}
+
+.switchgear-list-sidebar__search-input:disabled {
+  opacity: 0.6;
+}
+
+.switchgear-list-sidebar__list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.switchgear-list-sidebar__list > :deep(* + *) {
+  margin-top: 0.25rem;
+}
+
+.switchgear-list-sidebar__empty {
+  padding: 1.5rem 1rem;
+  border: 1px dashed color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
+  border-radius: 1rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+:global(.dark .switchgear-list-sidebar__workspace-hint),
+:global(.dark .switchgear-list-sidebar__empty) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .switchgear-list-sidebar__search-input) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-950);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .switchgear-list-sidebar__empty) {
+  border-color: var(--color-neutral-700);
+}
+</style>
