@@ -1,5 +1,5 @@
 <template>
-  <UiModal :open="open" title="Export Cable Schedule" maxWidthClass="max-w-3xl" @close="emitClose">
+  <UiModal :open="open" title="Export Cable Schedule" max-width="3xl" @close="emitClose">
     <form id="signal-export-form" class="space-y-4" @submit.prevent="handleSubmit">
       <UiAlert
         type="info"

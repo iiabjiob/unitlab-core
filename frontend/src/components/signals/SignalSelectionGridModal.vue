@@ -1,39 +1,39 @@
 <template>
-  <UiModal :open="props.open" :title="props.title" max-width-class="max-w-6xl" @close="emit('close')">
+  <UiModal :open="props.open" :title="props.title" max-width="6xl" @close="emit('close')">
     <template #header>
-      <div class="flex items-center justify-between gap-4">
+      <div class="signal-selection-grid-modal__header">
         <div>
-          <div class="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{{ props.title }}</div>
-          <div class="text-xs text-neutral-500 dark:text-neutral-400">
+          <div class="signal-selection-grid-modal__title">{{ props.title }}</div>
+          <div class="signal-selection-grid-modal__summary">
             {{ summaryText }}
           </div>
         </div>
       </div>
     </template>
 
-    <div class="h-[62vh] min-h-[420px]">
+    <div class="signal-selection-grid-modal__viewport">
       <div
         v-if="workspaceMissing"
-        class="flex h-full items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400"
+        class="signal-selection-grid-modal__empty"
       >
         Select a workspace first.
       </div>
 
       <div
         v-else-if="loading"
-        class="flex h-full items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400"
+        class="signal-selection-grid-modal__empty"
       >
         Loading signal rows…
       </div>
 
       <div
         v-else-if="gridRows.length === 0"
-        class="flex h-full items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50 text-sm text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400"
+        class="signal-selection-grid-modal__empty"
       >
         No matching signals found.
       </div>
 
-      <div v-else class="affino-native-data-grid h-full">
+      <div v-else class="affino-native-data-grid signal-selection-grid-modal__grid-wrapper">
         <div class="affino-native-data-grid__toolbar">
           <div class="affino-native-data-grid__toolbar-meta">
             <span class="affino-native-data-grid__stat">Selected: {{ selectedCount }}</span>
@@ -170,7 +170,7 @@ const sourceColumnHeaders = computed(() => (
 ))
 
 function renderDefaultCell(context: DataGridAppCellRendererContext<GridRow>) {
-  return h("span", { class: "text-xs text-neutral-700 dark:text-neutral-100" }, formatCell(context.value))
+  return h("span", { class: "signal-selection-grid-modal__cell" }, formatCell(context.value))
 }
 
 const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
@@ -211,8 +211,8 @@ const resolvedColumns = computed<DataGridAppColumnInput<GridRow>[]>(() => {
         "span",
         {
           class: [
-            "text-xs font-semibold uppercase tracking-[0.08em]",
-            String(context.value) === "allocated" ? "text-emerald-600 dark:text-emerald-300" : "text-amber-600 dark:text-amber-300",
+            "signal-selection-grid-modal__status",
+            String(context.value) === "allocated" ? "signal-selection-grid-modal__status--allocated" : "signal-selection-grid-modal__status--unallocated",
           ],
         },
         String(context.value) === "allocated" ? "Allocated" : "Unallocated",
@@ -417,3 +417,87 @@ function confirmSelection() {
   emit("confirm", selectedRows.value)
 }
 </script>
+
+<style>
+.signal-selection-grid-modal__header {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.signal-selection-grid-modal__title {
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.signal-selection-grid-modal__summary {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.signal-selection-grid-modal__viewport {
+  height: 62vh;
+  min-height: 420px;
+}
+
+.signal-selection-grid-modal__empty {
+  align-items: center;
+  background: var(--color-neutral-50);
+  border: 1px dashed var(--color-neutral-300);
+  border-radius: var(--radius-lg);
+  color: var(--color-neutral-500);
+  display: flex;
+  font-size: var(--text-sm);
+  height: 100%;
+  justify-content: center;
+}
+
+.signal-selection-grid-modal__grid-wrapper {
+  height: 100%;
+}
+
+.signal-selection-grid-modal__cell {
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+}
+
+.signal-selection-grid-modal__status {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.signal-selection-grid-modal__status--allocated {
+  color: var(--color-emerald-600);
+}
+
+.signal-selection-grid-modal__status--unallocated {
+  color: var(--color-amber-600);
+}
+
+:where(.dark) .signal-selection-grid-modal__title,
+:where(.dark) .signal-selection-grid-modal__cell {
+  color: var(--color-neutral-100);
+}
+
+:where(.dark) .signal-selection-grid-modal__summary,
+:where(.dark) .signal-selection-grid-modal__empty {
+  color: var(--color-neutral-400);
+}
+
+:where(.dark) .signal-selection-grid-modal__empty {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-700);
+}
+
+:where(.dark) .signal-selection-grid-modal__status--allocated {
+  color: var(--color-emerald-300);
+}
+
+:where(.dark) .signal-selection-grid-modal__status--unallocated {
+  color: var(--color-amber-300);
+}
+</style>

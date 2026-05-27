@@ -1,5 +1,5 @@
 <template>
-  <UiModal :open="open" title="Import Signal List" maxWidthClass="max-w-3xl h-[80vh]" @close="emitClose">
+  <UiModal :open="open" title="Import Signal List" max-width="3xl" desktop-height="80vh" @close="emitClose">
     <form id="signal-import-form" class="space-y-4" @submit.prevent="handleSubmit">
       <!-- <UiAlert
         type="info"

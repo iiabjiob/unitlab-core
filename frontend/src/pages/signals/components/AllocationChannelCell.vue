@@ -1,17 +1,17 @@
 <template>
-  <div class="flex w-full items-center justify-between gap-2 px-1">
-    <span class="min-w-0 flex items-center gap-1.5" :title="label">
+  <div class="allocation-channel-cell">
+    <span class="allocation-channel-cell__label-wrap" :title="label">
       <span
-        class="h-1.5 w-1.5 shrink-0 rounded-full"
+        class="allocation-channel-cell__indicator"
         :class="indicatorClass"
         aria-hidden="true"
       ></span>
-      <span class="truncate text-xs font-medium" :class="labelClass">{{ label }}</span>
+      <span class="allocation-channel-cell__label" :class="labelClass">{{ label }}</span>
     </span>
 
     <button
       type="button"
-      class="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] transition-colors"
+      class="allocation-channel-cell__button"
       :class="buttonClass"
       tabindex="-1"
       :disabled="disabled"
@@ -48,26 +48,159 @@ const actionLabel = computed(() => {
 })
 
 const indicatorClass = computed(() => {
-  if (!props.assigned) return "bg-neutral-300 dark:bg-neutral-600"
-  if (props.online === true) return "bg-emerald-500"
-  if (props.online === false) return "bg-neutral-400 dark:bg-neutral-600"
-  return "bg-sky-500"
+  if (!props.assigned) return "allocation-channel-cell__indicator--unassigned"
+  if (props.online === true) return "allocation-channel-cell__indicator--online"
+  if (props.online === false) return "allocation-channel-cell__indicator--offline"
+  return "allocation-channel-cell__indicator--unknown"
 })
 
 const buttonClass = computed(() => {
   if (props.disabled) {
-    return "cursor-not-allowed text-neutral-400 opacity-60 dark:text-neutral-500"
+    return "allocation-channel-cell__button--disabled"
   }
   if (props.active) {
-    return "border border-sky-200 bg-sky-50 text-sky-800 shadow-sm dark:border-sky-800 dark:bg-sky-900/40 dark:text-sky-100"
+    return "allocation-channel-cell__button--active"
   }
-  return "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+  return "allocation-channel-cell__button--idle"
 })
 
 const labelClass = computed(() => {
-  if (!props.assigned) return "text-neutral-500 dark:text-neutral-400"
-  if (props.online === true) return "text-neutral-900 dark:text-neutral-100"
-  return "text-neutral-700 dark:text-neutral-300"
+  if (!props.assigned) return "allocation-channel-cell__label--unassigned"
+  if (props.online === true) return "allocation-channel-cell__label--online"
+  return "allocation-channel-cell__label--offline"
 })
 
 </script>
+
+<style scoped>
+.allocation-channel-cell {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  padding-inline: 0.25rem;
+  width: 100%;
+}
+
+.allocation-channel-cell__label-wrap {
+  align-items: center;
+  display: flex;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.allocation-channel-cell__indicator {
+  border-radius: 999px;
+  flex-shrink: 0;
+  height: 0.375rem;
+  width: 0.375rem;
+}
+
+.allocation-channel-cell__indicator--unassigned {
+  background: var(--color-neutral-300);
+}
+
+.allocation-channel-cell__indicator--online {
+  background: var(--color-emerald-500);
+}
+
+.allocation-channel-cell__indicator--offline {
+  background: var(--color-neutral-400);
+}
+
+.allocation-channel-cell__indicator--unknown {
+  background: var(--color-sky-500);
+}
+
+.allocation-channel-cell__label {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allocation-channel-cell__label--unassigned {
+  color: var(--color-neutral-500);
+}
+
+.allocation-channel-cell__label--online {
+  color: var(--color-neutral-900);
+}
+
+.allocation-channel-cell__label--offline {
+  color: var(--color-neutral-700);
+}
+
+.allocation-channel-cell__button {
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1rem;
+  padding: 0.25rem 0.5rem;
+  text-transform: uppercase;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.allocation-channel-cell__button--idle {
+  color: var(--color-neutral-500);
+}
+
+.allocation-channel-cell__button--idle:hover {
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-700);
+}
+
+.allocation-channel-cell__button--active {
+  background: var(--color-sky-50);
+  border-color: var(--color-sky-200);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  color: var(--color-sky-800);
+}
+
+.allocation-channel-cell__button--disabled {
+  color: var(--color-neutral-400);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+:global(.dark .allocation-channel-cell__indicator--unassigned),
+:global(.dark .allocation-channel-cell__indicator--offline) {
+  background: var(--color-neutral-600);
+}
+
+:global(.dark .allocation-channel-cell__label--unassigned) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .allocation-channel-cell__label--online) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .allocation-channel-cell__label--offline) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .allocation-channel-cell__button--idle) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .allocation-channel-cell__button--idle:hover) {
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .allocation-channel-cell__button--active) {
+  background: color-mix(in srgb, var(--color-sky-900) 40%, transparent);
+  border-color: var(--color-sky-800);
+  color: var(--color-sky-100);
+}
+
+:global(.dark .allocation-channel-cell__button--disabled) {
+  color: var(--color-neutral-500);
+}
+</style>

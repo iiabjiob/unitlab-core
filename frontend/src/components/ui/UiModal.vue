@@ -22,7 +22,7 @@
             @touchmove="onTouchMove"
             @touchend="onTouchEnd"
           >
-            <span class="sr-only" tabindex="0" @focus="loopFocus('end')" />
+            <span class="ui-modal__focus-sentinel" tabindex="0" @focus="loopFocus('end')" />
             <div v-if="isMobile" class="ui-modal__drag-region">
               <div class="ui-modal__drag-handle" />
             </div>
@@ -37,7 +37,7 @@
             <div class="ui-modal__footer">
               <slot name="footer" />
             </div>
-            <span class="sr-only" tabindex="0" @focus="loopFocus('start')" />
+            <span class="ui-modal__focus-sentinel" tabindex="0" @focus="loopFocus('start')" />
           </div>
         </transition>
       </div>
@@ -51,10 +51,13 @@ import { createDialogFocusOrchestrator, type DialogCloseReason, useDialogControl
 import { useViewport } from "@/composables/useViewport"
 import { APP_OVERLAY_HOST_SELECTOR } from "@/utils/overlayHost"
 
+type ModalMaxWidth = "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "6xl"
+
 const props = defineProps<{
   open: boolean
   title?: string
-  maxWidthClass?: string
+  maxWidth?: ModalMaxWidth
+  desktopHeight?: string
 }>()
 
 const emit = defineEmits<{
@@ -106,7 +109,7 @@ const dialogClasses = computed(() => {
 
 const dialogStyles = computed(() => {
   if (!isMobile.value) {
-    return resolveDesktopDialogStyles(props.maxWidthClass)
+    return resolveDesktopDialogStyles(props.maxWidth, props.desktopHeight)
   }
   const inset = Math.max(0, keyboardInset.value)
   const viewportHeight = visualViewportHeight.value
@@ -125,18 +128,24 @@ const headerClasses = computed(() => (
     : "ui-modal__header ui-modal__header--desktop"
 ))
 
-function resolveDesktopDialogStyles(maxWidthClass?: string): Record<string, string> {
+function resolveDesktopDialogStyles(maxWidth?: ModalMaxWidth, desktopHeight?: string): Record<string, string> {
   const styles: Record<string, string> = {
     maxWidth: "42rem",
   }
-  const tokens = new Set((maxWidthClass ?? "").split(/\s+/).filter(Boolean))
-  if (tokens.has("max-w-xl")) styles.maxWidth = "36rem"
-  if (tokens.has("max-w-2xl")) styles.maxWidth = "42rem"
-  if (tokens.has("max-w-3xl")) styles.maxWidth = "48rem"
-  if (tokens.has("max-w-4xl")) styles.maxWidth = "56rem"
-  if (tokens.has("max-w-5xl")) styles.maxWidth = "64rem"
-  if (tokens.has("max-w-6xl")) styles.maxWidth = "72rem"
-  if (tokens.has("h-[80vh]")) styles.height = "80vh"
+  const widths: Record<ModalMaxWidth, string> = {
+    xl: "36rem",
+    "2xl": "42rem",
+    "3xl": "48rem",
+    "4xl": "56rem",
+    "5xl": "64rem",
+    "6xl": "72rem",
+  }
+  if (maxWidth) {
+    styles.maxWidth = widths[maxWidth]
+  }
+  if (desktopHeight) {
+    styles.height = desktopHeight
+  }
   return styles
 }
 
@@ -238,7 +247,7 @@ function loopFocus(edge: "start" | "end") {
   if (!container) return
 
   const nodes = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((node) => {
-    if (node.classList.contains("sr-only")) return false
+    if (node.classList.contains("ui-modal__focus-sentinel")) return false
     if (node.getAttribute("aria-hidden") === "true") return false
     return true
   })
@@ -366,22 +375,22 @@ onBeforeUnmount(() => {
   padding: 1rem 1.5rem;
 }
 
-.dark .ui-modal__overlay {
+:global(.dark .ui-modal__overlay) {
   background: rgb(0 0 0 / 0.7);
 }
 
-.dark .ui-modal__dialog {
+:global(.dark .ui-modal__dialog) {
   background: var(--color-neutral-900);
   border-color: var(--color-neutral-700);
   color: var(--color-neutral-100);
 }
 
-.dark .ui-modal__drag-handle {
+:global(.dark .ui-modal__drag-handle) {
   background: var(--color-neutral-700);
 }
 
-.dark .ui-modal__header,
-.dark .ui-modal__footer {
+:global(.dark .ui-modal__header),
+:global(.dark .ui-modal__footer) {
   border-color: var(--color-neutral-800);
 }
 
@@ -430,7 +439,7 @@ onBeforeUnmount(() => {
   transform: translateY(0);
 }
 
-.sr-only {
+.ui-modal__focus-sentinel {
   position: absolute;
   width: 1px;
   height: 1px;

@@ -18,7 +18,7 @@
           tabindex="-1"
           @keydown="onDialogKeydown"
         >
-          <span class="sr-only" tabindex="0" @focus="loopFocus('end')" />
+          <span class="slide-over__focus-sentinel" tabindex="0" @focus="loopFocus('end')" />
           <div class="slide-over__header slide-over__header--side">
             <span class="slide-over__title">{{ title }}</span>
             <button
@@ -35,7 +35,7 @@
           <div class="slide-over__content slide-over__content--side" @click="onContentClick">
             <slot />
           </div>
-          <span class="sr-only" tabindex="0" @focus="loopFocus('start')" />
+          <span class="slide-over__focus-sentinel" tabindex="0" @focus="loopFocus('start')" />
         </div>
       </transition>
 
@@ -53,7 +53,7 @@
           @touchmove="onTouchMove"
           @touchend="onTouchEnd"
         >
-          <span class="sr-only" tabindex="0" @focus="loopFocus('end')" />
+          <span class="slide-over__focus-sentinel" tabindex="0" @focus="loopFocus('end')" />
           <div class="slide-over__drag-region">
             <div class="slide-over__drag-handle" />
           </div>
@@ -74,7 +74,7 @@
           <div class="slide-over__content slide-over__content--bottom" :style="{ maxHeight: `${maxHeightVh}dvh` }" @click="onContentClick">
             <slot />
           </div>
-          <span class="sr-only" tabindex="0" @focus="loopFocus('start')" />
+          <span class="slide-over__focus-sentinel" tabindex="0" @focus="loopFocus('start')" />
         </div>
       </transition>
     </div>
@@ -92,7 +92,7 @@ const props = withDefaults(defineProps<{
   open: boolean
   placement?: Placement
   title?: string
-  /** Side panel width in px (fallback to Tailwind widths if not provided) */
+  /** Side panel width in px (fallback to CSS default widths if not provided) */
   widthPx?: number
   /** For bottom sheet: max height as percentage of viewport height */
   maxHeightVh?: number
@@ -141,11 +141,7 @@ const sideClasses = computed(() => [
 ])
 const sideStyles = computed(() => ({
   width: props.widthPx ? `${props.widthPx}px` : undefined,
-  // Provide sensible default widths via CSS classes if widthPx not set
-  // (Fallback handled via class on container below)
 }))
-// Add default Tailwind width classes when widthPx is not provided
-// (We can't bind classes conditionally by presence cleanly in computed above; do it inline)
 const defaultWidthClass = computed(() => (!props.widthPx ? "slide-over__panel--default-width" : ""))
 
 // Bottom sheet drag-to-close logic
@@ -226,7 +222,7 @@ function loopFocus(edge: "start" | "end") {
   if (!container) return
 
   const nodes = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter((node) => {
-    if (node.classList.contains("sr-only")) return false
+    if (node.classList.contains("slide-over__focus-sentinel")) return false
     if (node.getAttribute("aria-hidden") === "true") return false
     return true
   })
@@ -396,28 +392,28 @@ onBeforeUnmount(() => {
   width: 2.5rem;
 }
 
-.dark .slide-over__backdrop {
+:global(.dark .slide-over__backdrop) {
   background: rgb(0 0 0 / 0.7);
 }
 
-.dark .slide-over__panel {
+:global(.dark .slide-over__panel) {
   background: var(--color-neutral-800);
   color: var(--color-neutral-100);
 }
 
-.dark .slide-over__panel--side,
-.dark .slide-over__panel--left,
-.dark .slide-over__panel--right,
-.dark .slide-over__panel--bottom,
-.dark .slide-over__header--side {
+:global(.dark .slide-over__panel--side),
+:global(.dark .slide-over__panel--left),
+:global(.dark .slide-over__panel--right),
+:global(.dark .slide-over__panel--bottom),
+:global(.dark .slide-over__header--side) {
   border-color: var(--color-neutral-800);
 }
 
-.dark .slide-over__close:hover {
+:global(.dark .slide-over__close:hover) {
   background: var(--color-neutral-800);
 }
 
-.dark .slide-over__drag-handle {
+:global(.dark .slide-over__drag-handle) {
   background: var(--color-neutral-700);
 }
 
@@ -469,7 +465,7 @@ onBeforeUnmount(() => {
   transform: translateY(0);
 }
 
-.sr-only {
+.slide-over__focus-sentinel {
   position: absolute;
   width: 1px;
   height: 1px;
