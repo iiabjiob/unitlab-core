@@ -148,6 +148,7 @@ function setTriggerRef(target: Element | ComponentPublicInstance | null) {
   justify-content: center;
   line-height: 1;
   transition: color 150ms ease, box-shadow 150ms ease;
+  cursor: default !important;
   user-select: none;
   width: 1rem;
 }
@@ -176,15 +177,15 @@ function setTriggerRef(target: Element | ComponentPublicInstance | null) {
   z-index: 50;
 }
 
-.dark .inline-info-tooltip__trigger {
+:global(.dark .inline-info-tooltip__trigger) {
   color: var(--color-neutral-500);
 }
 
-.dark .inline-info-tooltip__trigger:hover {
+:global(.dark .inline-info-tooltip__trigger:hover) {
   color: var(--color-neutral-300);
 }
 
-.dark .inline-info-tooltip__content {
+:global(.dark .inline-info-tooltip__content) {
   background: var(--color-neutral-900);
   border-color: var(--color-neutral-700);
   color: var(--color-neutral-200);
