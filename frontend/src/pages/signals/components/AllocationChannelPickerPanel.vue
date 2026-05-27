@@ -7,29 +7,29 @@
     :close-on-backdrop="!saving"
     @close="emit('close')"
   >
-    <div class="flex h-full min-h-0 flex-col" @keydown.capture="onPanelKeydownCapture">
-      <div class="border-b border-neutral-200 px-4 py-4 dark:border-neutral-700">
-        <div class="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+    <div class="allocation-channel-picker" @keydown.capture="onPanelKeydownCapture">
+      <div class="allocation-channel-picker__header">
+        <div class="allocation-channel-picker__eyebrow">
           {{ signalDirection }} signal
         </div>
-        <div class="mt-1 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+        <div class="allocation-channel-picker__title">
           {{ signalTitle }}
         </div>
-        <div v-if="signalKeyText" class="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+        <div v-if="signalKeyText" class="allocation-channel-picker__signal-key">
           {{ signalKeyText }}
         </div>
 
-        <div class="mt-4 rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-3 dark:border-neutral-700 dark:bg-neutral-900/70">
-          <div class="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+        <div class="allocation-channel-picker__current">
+          <div class="allocation-channel-picker__eyebrow">
             Current allocation
           </div>
-          <div class="mt-1 text-sm font-medium text-neutral-900 dark:text-neutral-100">
+          <div class="allocation-channel-picker__current-label">
             {{ currentLabel }}
           </div>
         </div>
 
-        <label class="mt-4 block">
-          <span class="mb-1 block text-xs font-medium text-neutral-600 dark:text-neutral-300">Search channels</span>
+        <label class="allocation-channel-picker__search">
+          <span class="allocation-channel-picker__search-label">Search channels</span>
           <input
             ref="searchInputRef"
             v-model="query"
@@ -37,7 +37,7 @@
             type="text"
             autocomplete="off"
             spellcheck="false"
-            class="w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition focus:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:focus:border-neutral-500"
+            class="allocation-channel-picker__search-input"
             placeholder="Filter by unit, channel, or name"
             :disabled="loading || saving"
             @focus="treeDomFocusActive = false"
@@ -47,12 +47,12 @@
           />
         </label>
 
-        <div class="mt-3 flex items-center justify-between gap-3 text-xs text-neutral-500 dark:text-neutral-400">
+        <div class="allocation-channel-picker__summary-row">
           <span>{{ resultsSummary }}</span>
           <button
             v-if="currentChannelId !== null"
             type="button"
-            class="rounded-lg border border-neutral-300 px-2 py-1 font-medium text-neutral-700 transition hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-600 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            class="allocation-channel-picker__clear-button"
             :disabled="saving"
             @click="emit('select', null)"
           >
@@ -61,22 +61,22 @@
         </div>
       </div>
 
-      <div class="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        <div v-if="loading" class="rounded-2xl border border-dashed border-neutral-300 px-4 py-6 text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+      <div class="allocation-channel-picker__body">
+        <div v-if="loading" class="allocation-channel-picker__empty">
           Loading channel catalog…
         </div>
 
-        <div v-else-if="error" class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/70 dark:bg-rose-950/30 dark:text-rose-200">
+        <div v-else-if="error" class="allocation-channel-picker__error">
           {{ error }}
         </div>
 
-        <div v-else-if="visibleNodes.length === 0" class="rounded-2xl border border-dashed border-neutral-300 px-4 py-6 text-sm text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+        <div v-else-if="visibleNodes.length === 0" class="allocation-channel-picker__empty">
           No compatible channels found.
         </div>
 
         <div
           v-else
-          class="rounded-2xl border border-neutral-200 bg-white p-2 dark:border-neutral-700 dark:bg-neutral-900/70"
+          class="allocation-channel-picker__tree"
           role="tree"
           aria-label="Channel tree"
           @keydown="onTreeRootKeydown"
@@ -85,7 +85,7 @@
             v-for="node in visibleNodes"
             :key="node.value"
             :ref="bindItemElement(node.value)"
-            class="flex w-full select-none items-center gap-2 rounded-xl px-2.5 py-2 text-left transition"
+            class="allocation-channel-picker__tree-node"
             :class="[nodeClass(node.value), nodeCursorClass(node.value)]"
             :aria-level="nodeLevel(node.value)"
             :aria-expanded="isUnitNode(node.value) ? isExpanded(node.value) : undefined"
@@ -96,32 +96,32 @@
             @keydown="onNodeKeydown($event, node.value)"
             @click="onNodeClick(node.value)"
           >
-            <span class="channel-picker-tree__indent" :style="{ width: `${(nodeLevel(node.value) - 1) * 14}px` }"></span>
+            <span class="allocation-channel-picker__indent" :style="{ width: `${(nodeLevel(node.value) - 1) * 14}px` }"></span>
             <span
               v-if="isUnitNode(node.value)"
-              class="shrink-0 text-[10px] text-neutral-500 transition-transform dark:text-neutral-400"
-              :class="isExpanded(node.value) ? 'rotate-90' : ''"
+              class="allocation-channel-picker__chevron"
+              :class="isExpanded(node.value) ? 'allocation-channel-picker__chevron--expanded' : ''"
               aria-hidden="true"
             >
               ▶
             </span>
             <span
               v-else-if="isChannelSaving(node.value)"
-              class="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-sky-500 border-t-transparent"
+              class="allocation-channel-picker__spinner"
               aria-hidden="true"
             ></span>
-            <span v-else class="h-1.5 w-1.5 shrink-0 rounded-full" :class="channelIndicatorClass(node.value)" aria-hidden="true"></span>
+            <span v-else class="allocation-channel-picker__channel-dot" :class="channelIndicatorClass(node.value)" aria-hidden="true"></span>
             <span
               v-if="isUnitNode(node.value)"
-              class="h-2 w-2 shrink-0 rounded-full"
+              class="allocation-channel-picker__unit-dot"
               :class="unitIndicatorClass(node.value)"
               aria-hidden="true"
             ></span>
             <span
-              class="min-w-0 truncate [cursor:inherit]"
+              class="allocation-channel-picker__node-label"
               :class="[
-                isUnitNode(node.value) ? 'text-sm font-semibold text-neutral-900 dark:text-neutral-100' : 'text-sm text-neutral-800 dark:text-neutral-200',
-                channelOwnerRowText(node.value) ? 'max-w-28 shrink-0' : 'flex-1',
+                isUnitNode(node.value) ? 'allocation-channel-picker__node-label--unit' : 'allocation-channel-picker__node-label--channel',
+                channelOwnerRowText(node.value) ? 'allocation-channel-picker__node-label--with-owner' : 'allocation-channel-picker__node-label--grow',
               ]"
             >
               {{ nodeLabel(node.value) }}
@@ -141,7 +141,7 @@
             >
               <span
                 :ref="setTriggerRef"
-                class="min-w-0 flex-1 truncate rounded-lg border border-amber-200 bg-amber-50/70 px-2 py-1 text-[10px] text-amber-900 [cursor:inherit] dark:border-amber-900/80 dark:bg-amber-950/30 dark:text-amber-100"
+                class="allocation-channel-picker__owner"
                 v-bind="getTriggerProps()"
                 @click.stop
                 @mousedown.stop
@@ -151,14 +151,14 @@
             </UiHoverTooltip>
             <span
               v-if="isChannelNode(node.value) && isCurrentChannel(node.value)"
-              class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400"
+              class="allocation-channel-picker__tag allocation-channel-picker__tag--current"
             >
               Current
             </span>
             <button
               v-else-if="isChannelNode(node.value) && isOccupiedChannel(node.value)"
               type="button"
-              class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-600 dark:text-amber-300"
+              class="allocation-channel-picker__swap-button"
               :disabled="saving"
               tabindex="-1"
               @click.stop="onSwapClick(node.value)"
@@ -170,10 +170,6 @@
           </div>
         </div>
       </div>
-
-      <!-- <div class="border-t border-neutral-200 px-4 py-3 text-xs text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
-        Search narrows units and channels. Enter selects a channel, arrows navigate the tree.
-      </div> -->
     </div>
   </SlideOver>
 </template>
@@ -590,38 +586,42 @@ function channelOwnerRowText(value: NodeValue): string {
 
 function channelIndicatorClass(value: NodeValue): string {
   const channelId = parseChannelId(value)
-  if (channelId === null) return "bg-neutral-400 dark:bg-neutral-600"
+  if (channelId === null) return "allocation-channel-picker__channel-dot--unknown"
   const channel = channelById.value.get(channelId)
-  if (!channel) return "bg-neutral-400 dark:bg-neutral-600"
-  return channel.occupied ? "bg-amber-500" : "bg-emerald-500"
+  if (!channel) return "allocation-channel-picker__channel-dot--unknown"
+  return channel.occupied
+    ? "allocation-channel-picker__channel-dot--occupied"
+    : "allocation-channel-picker__channel-dot--free"
 }
 
 function unitIndicatorClass(value: NodeValue): string {
   const unitId = parseUnitId(value)
-  if (!unitId) return "bg-neutral-400 dark:bg-neutral-600"
-  return unitHasFreeChannelById.value.get(unitId) ? "bg-emerald-500" : "bg-amber-500"
+  if (!unitId) return "allocation-channel-picker__unit-dot--unknown"
+  return unitHasFreeChannelById.value.get(unitId)
+    ? "allocation-channel-picker__unit-dot--free"
+    : "allocation-channel-picker__unit-dot--occupied"
 }
 
 function nodeClass(value: NodeValue): string {
   if (isCurrentChannel(value)) {
-    return "bg-sky-50 ring-1 ring-inset ring-sky-200 dark:bg-sky-900/30 dark:ring-sky-800"
+    return "allocation-channel-picker__tree-node--current"
   }
   if (isOccupiedChannel(value)) {
     return isNodeActive(value)
-      ? "bg-amber-50 ring-1 ring-inset ring-amber-200 dark:bg-amber-950/40 dark:ring-amber-900"
-      : "hover:bg-amber-50 dark:hover:bg-amber-950/30"
+      ? "allocation-channel-picker__tree-node--occupied-active"
+      : "allocation-channel-picker__tree-node--occupied"
   }
   if (isNodeActive(value)) {
-    return "bg-neutral-100 dark:bg-neutral-800/70"
+    return "allocation-channel-picker__tree-node--active"
   }
-  return "hover:bg-neutral-50 dark:hover:bg-neutral-800/60"
+  return "allocation-channel-picker__tree-node--idle"
 }
 
 function nodeCursorClass(value: NodeValue): string {
-  if (props.saving) return "cursor-wait"
-  if (isUnitNode(value)) return "cursor-pointer"
-  if (requiresSwapAction(value) || isCurrentChannel(value)) return "cursor-default"
-  return "cursor-pointer"
+  if (props.saving) return "allocation-channel-picker__tree-node--cursor-wait"
+  if (isUnitNode(value)) return "allocation-channel-picker__tree-node--cursor-pointer"
+  if (requiresSwapAction(value) || isCurrentChannel(value)) return "allocation-channel-picker__tree-node--cursor-default"
+  return "allocation-channel-picker__tree-node--cursor-pointer"
 }
 
 function onNodeClick(value: NodeValue) {
@@ -806,3 +806,415 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
   emit("close")
 }
 </script>
+
+<style scoped>
+.allocation-channel-picker {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.allocation-channel-picker__header {
+  border-bottom: 1px solid var(--color-neutral-200);
+  padding: 1rem;
+}
+
+.allocation-channel-picker__eyebrow {
+  color: var(--color-neutral-500);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.allocation-channel-picker__title {
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+
+.allocation-channel-picker__signal-key {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  margin-top: 0.25rem;
+}
+
+.allocation-channel-picker__current {
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 1rem;
+  margin-top: 1rem;
+  padding: 0.75rem;
+}
+
+.allocation-channel-picker__current-label {
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  margin-top: 0.25rem;
+}
+
+.allocation-channel-picker__search {
+  display: block;
+  margin-top: 1rem;
+}
+
+.allocation-channel-picker__search-label {
+  color: var(--color-neutral-600);
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.allocation-channel-picker__search-input {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-300);
+  border-radius: 0.75rem;
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  outline: none;
+  padding: 0.5rem 0.75rem;
+  transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+  width: 100%;
+}
+
+.allocation-channel-picker__search-input:focus {
+  border-color: var(--color-neutral-400);
+}
+
+.allocation-channel-picker__summary-row {
+  align-items: center;
+  color: var(--color-neutral-500);
+  display: flex;
+  font-size: var(--text-xs);
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-top: 0.75rem;
+}
+
+.allocation-channel-picker__clear-button {
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-lg);
+  color: var(--color-neutral-700);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.allocation-channel-picker__clear-button:hover:not(:disabled) {
+  background: var(--color-neutral-100);
+}
+
+.allocation-channel-picker__clear-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.allocation-channel-picker__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.allocation-channel-picker__empty {
+  border: 1px dashed var(--color-neutral-300);
+  border-radius: 1rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+  padding: 1.5rem 1rem;
+}
+
+.allocation-channel-picker__error {
+  background: color-mix(in srgb, var(--color-rose-300) 14%, var(--color-white));
+  border: 1px solid color-mix(in srgb, var(--color-rose-300) 70%, var(--color-white));
+  border-radius: 1rem;
+  color: var(--color-rose-700);
+  font-size: var(--text-sm);
+  padding: 0.75rem 1rem;
+}
+
+.allocation-channel-picker__tree {
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 1rem;
+  padding: 0.5rem;
+}
+
+.allocation-channel-picker__tree-node {
+  align-items: center;
+  border-radius: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  text-align: left;
+  transition: background-color 0.15s, box-shadow 0.15s;
+  user-select: none;
+  width: 100%;
+}
+
+.allocation-channel-picker__tree-node:focus {
+  outline: 2px solid color-mix(in srgb, var(--color-blue-500) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.allocation-channel-picker__tree-node--current {
+  background: color-mix(in srgb, var(--color-sky-500) 10%, var(--color-white));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-sky-500) 30%, transparent);
+}
+
+.allocation-channel-picker__tree-node--occupied-active {
+  background: var(--color-amber-50);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-amber-300) 70%, transparent);
+}
+
+.allocation-channel-picker__tree-node--occupied:hover {
+  background: var(--color-amber-50);
+}
+
+.allocation-channel-picker__tree-node--active {
+  background: var(--color-neutral-100);
+}
+
+.allocation-channel-picker__tree-node--idle:hover {
+  background: var(--color-neutral-50);
+}
+
+.allocation-channel-picker__tree-node--cursor-wait {
+  cursor: wait;
+}
+
+.allocation-channel-picker__tree-node--cursor-pointer {
+  cursor: pointer;
+}
+
+.allocation-channel-picker__tree-node--cursor-default {
+  cursor: default;
+}
+
+.allocation-channel-picker__indent {
+  flex-shrink: 0;
+}
+
+.allocation-channel-picker__chevron {
+  color: var(--color-neutral-500);
+  flex-shrink: 0;
+  font-size: 10px;
+  transition: transform 0.15s;
+}
+
+.allocation-channel-picker__chevron--expanded {
+  transform: rotate(90deg);
+}
+
+.allocation-channel-picker__spinner {
+  animation: allocation-channel-picker-spin 1s linear infinite;
+  border: 2px solid var(--color-sky-500);
+  border-radius: 999px;
+  border-top-color: transparent;
+  flex-shrink: 0;
+  height: 0.75rem;
+  width: 0.75rem;
+}
+
+.allocation-channel-picker__channel-dot {
+  border-radius: 999px;
+  flex-shrink: 0;
+  height: 0.375rem;
+  width: 0.375rem;
+}
+
+.allocation-channel-picker__unit-dot {
+  border-radius: 999px;
+  flex-shrink: 0;
+  height: 0.5rem;
+  width: 0.5rem;
+}
+
+.allocation-channel-picker__channel-dot--unknown,
+.allocation-channel-picker__unit-dot--unknown {
+  background: var(--color-neutral-400);
+}
+
+.allocation-channel-picker__channel-dot--occupied,
+.allocation-channel-picker__unit-dot--occupied {
+  background: var(--color-amber-500);
+}
+
+.allocation-channel-picker__channel-dot--free,
+.allocation-channel-picker__unit-dot--free {
+  background: var(--color-emerald-500);
+}
+
+.allocation-channel-picker__node-label {
+  cursor: inherit;
+  font-size: var(--text-sm);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allocation-channel-picker__node-label--unit {
+  color: var(--color-neutral-900);
+  font-weight: 600;
+}
+
+.allocation-channel-picker__node-label--channel {
+  color: var(--color-neutral-800);
+}
+
+.allocation-channel-picker__node-label--grow {
+  flex: 1 1 auto;
+}
+
+.allocation-channel-picker__node-label--with-owner {
+  flex-shrink: 0;
+  max-width: 7rem;
+}
+
+.allocation-channel-picker__owner {
+  background: color-mix(in srgb, var(--color-amber-50) 70%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-amber-300) 60%, transparent);
+  border-radius: var(--radius-lg);
+  color: var(--color-amber-900);
+  cursor: inherit;
+  flex: 1 1 auto;
+  font-size: 10px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.25rem 0.5rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allocation-channel-picker__tag,
+.allocation-channel-picker__swap-button {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.allocation-channel-picker__tag--current {
+  color: var(--color-neutral-500);
+}
+
+.allocation-channel-picker__swap-button {
+  color: var(--color-amber-700);
+}
+
+.allocation-channel-picker__swap-button:disabled {
+  opacity: 0.6;
+}
+
+:global(.dark .allocation-channel-picker__header) {
+  border-bottom-color: var(--color-neutral-700);
+}
+
+:global(.dark .allocation-channel-picker__eyebrow),
+:global(.dark .allocation-channel-picker__signal-key),
+:global(.dark .allocation-channel-picker__summary-row),
+:global(.dark .allocation-channel-picker__empty),
+:global(.dark .allocation-channel-picker__chevron),
+:global(.dark .allocation-channel-picker__tag--current) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .allocation-channel-picker__title),
+:global(.dark .allocation-channel-picker__current-label),
+:global(.dark .allocation-channel-picker__node-label--unit),
+:global(.dark .allocation-channel-picker__search-input) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .allocation-channel-picker__current),
+:global(.dark .allocation-channel-picker__tree) {
+  background: color-mix(in srgb, var(--color-neutral-900) 70%, transparent);
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .allocation-channel-picker__search-label) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .allocation-channel-picker__search-input) {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .allocation-channel-picker__search-input:focus) {
+  border-color: var(--color-neutral-500);
+}
+
+:global(.dark .allocation-channel-picker__clear-button) {
+  border-color: var(--color-neutral-600);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .allocation-channel-picker__clear-button:hover:not(:disabled)) {
+  background: var(--color-neutral-800);
+}
+
+:global(.dark .allocation-channel-picker__empty) {
+  border-color: var(--color-neutral-700);
+}
+
+:global(.dark .allocation-channel-picker__error) {
+  background: color-mix(in srgb, var(--color-rose-700) 30%, var(--color-neutral-950));
+  border-color: color-mix(in srgb, var(--color-rose-700) 60%, var(--color-neutral-950));
+  color: var(--color-rose-300);
+}
+
+:global(.dark .allocation-channel-picker__tree-node--current) {
+  background: color-mix(in srgb, var(--color-sky-500) 20%, var(--color-neutral-950));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-sky-500) 60%, transparent);
+}
+
+:global(.dark .allocation-channel-picker__tree-node--occupied-active) {
+  background: color-mix(in srgb, var(--color-amber-900) 40%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-amber-700) 70%, transparent);
+}
+
+:global(.dark .allocation-channel-picker__tree-node--occupied:hover) {
+  background: color-mix(in srgb, var(--color-amber-900) 30%, transparent);
+}
+
+:global(.dark .allocation-channel-picker__tree-node--active) {
+  background: color-mix(in srgb, var(--color-neutral-800) 70%, transparent);
+}
+
+:global(.dark .allocation-channel-picker__tree-node--idle:hover) {
+  background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
+}
+
+:global(.dark .allocation-channel-picker__channel-dot--unknown),
+:global(.dark .allocation-channel-picker__unit-dot--unknown) {
+  background: var(--color-neutral-600);
+}
+
+:global(.dark .allocation-channel-picker__node-label--channel) {
+  color: var(--color-neutral-200);
+}
+
+:global(.dark .allocation-channel-picker__owner) {
+  background: color-mix(in srgb, var(--color-amber-900) 30%, transparent);
+  border-color: color-mix(in srgb, var(--color-amber-900) 80%, transparent);
+  color: var(--color-amber-50);
+}
+
+:global(.dark .allocation-channel-picker__swap-button) {
+  color: var(--color-amber-300);
+}
+
+@keyframes allocation-channel-picker-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>
