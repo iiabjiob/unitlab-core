@@ -402,14 +402,14 @@ function updatePanelPosition() {
 <template>
   <div
     ref="rootRef"
-    class="relative w-full"
+    class="ui-affino-listbox"
     @focusout="onFocusOut"
   >
     <button
       ref="triggerRef"
       :id="triggerId"
       type="button"
-      class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-left text-sm text-neutral-900 transition focus:outline-none focus:ring-2 focus:ring-primary-500/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+      class="ui-affino-listbox__trigger"
       :aria-label="ariaLabel"
       aria-haspopup="listbox"
       :aria-expanded="isOpen ? 'true' : 'false'"
@@ -418,10 +418,13 @@ function updatePanelPosition() {
       @click="toggleList"
       @keydown="onTriggerKeydown"
     >
-      <span :class="selectedOption ? 'text-neutral-900 dark:text-neutral-100' : 'text-neutral-500 dark:text-neutral-400'">
+      <span
+        class="ui-affino-listbox__label"
+        :class="{ 'ui-affino-listbox__label--selected': selectedOption }"
+      >
         {{ selectedOption?.label ?? placeholder }}
       </span>
-      <span class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 dark:text-neutral-400" aria-hidden="true">
+      <span class="ui-affino-listbox__chevron" aria-hidden="true">
         ▾
       </span>
     </button>
@@ -436,7 +439,7 @@ function updatePanelPosition() {
         role="listbox"
         :aria-labelledby="triggerId"
         tabindex="-1"
-        class="overflow-auto rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+        class="ui-affino-listbox__panel"
         :style="panelStyle"
       >
         <button
@@ -448,20 +451,154 @@ function updatePanelPosition() {
           role="option"
           :aria-selected="selectedIndex === index ? 'true' : 'false'"
           :disabled="option.disabled"
-          class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-neutral-800 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-45 dark:text-neutral-100 dark:hover:bg-neutral-800/60"
+          class="ui-affino-listbox__option"
           :class="{
-            'bg-primary-50 text-primary-700 dark:bg-primary-500/20 dark:text-primary-200': selectedIndex === index,
-            'bg-neutral-50 dark:bg-neutral-800/60': activeIndex === index && selectedIndex !== index,
+            'ui-affino-listbox__option--selected': selectedIndex === index,
+            'ui-affino-listbox__option--active': activeIndex === index && selectedIndex !== index,
           }"
           @pointerdown="onOptionPointerDown(index, $event)"
           @mousemove="onOptionMouseMove(index)"
         >
           {{ option.label }}
         </button>
-        <div v-if="!normalizedOptions.length" class="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">
+        <div v-if="!normalizedOptions.length" class="ui-affino-listbox__empty">
           No options
         </div>
       </div>
     </teleport>
   </div>
 </template>
+
+<style scoped>
+.ui-affino-listbox {
+  position: relative;
+  width: 100%;
+}
+
+.ui-affino-listbox__trigger {
+  position: relative;
+  width: 100%;
+  padding: 0.5rem 2.25rem 0.5rem 0.75rem;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: 0.5rem;
+  background: var(--color-white);
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  text-align: left;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.ui-affino-listbox__trigger:focus {
+  outline: none;
+}
+
+.ui-affino-listbox__trigger:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-sky-500) 30%, transparent);
+}
+
+.ui-affino-listbox__trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.ui-affino-listbox__label {
+  color: var(--color-neutral-500);
+}
+
+.ui-affino-listbox__label--selected {
+  color: var(--color-neutral-900);
+}
+
+.ui-affino-listbox__chevron {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  color: var(--color-neutral-500);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.ui-affino-listbox__panel {
+  overflow: auto;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.5rem;
+  background: var(--color-white);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.ui-affino-listbox__option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-neutral-800);
+  font-size: var(--text-sm);
+  text-align: left;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.ui-affino-listbox__option:hover,
+.ui-affino-listbox__option--active {
+  background: var(--color-neutral-50);
+}
+
+.ui-affino-listbox__option--selected {
+  background: color-mix(in srgb, var(--color-blue-100) 70%, var(--color-white));
+  color: var(--color-blue-800);
+}
+
+.ui-affino-listbox__option:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.ui-affino-listbox__empty {
+  padding: 0.5rem 0.75rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+}
+
+:global(.dark .ui-affino-listbox__trigger) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-900);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .ui-affino-listbox__label) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .ui-affino-listbox__label--selected) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .ui-affino-listbox__chevron) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .ui-affino-listbox__panel) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-900);
+}
+
+:global(.dark .ui-affino-listbox__option) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .ui-affino-listbox__option:hover),
+:global(.dark .ui-affino-listbox__option--active) {
+  background: color-mix(in srgb, var(--color-neutral-800) 60%, transparent);
+}
+
+:global(.dark .ui-affino-listbox__option--selected) {
+  background: color-mix(in srgb, var(--color-blue-500) 20%, transparent);
+  color: color-mix(in srgb, var(--color-blue-100) 80%, var(--color-white));
+}
+
+:global(.dark .ui-affino-listbox__empty) {
+  color: var(--color-neutral-400);
+}
+</style>
