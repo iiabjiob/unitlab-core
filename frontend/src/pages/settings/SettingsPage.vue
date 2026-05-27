@@ -19,10 +19,10 @@
       v-if="isDesktop"
       class="settings-page__sidebar-panel"
       placement="left"
-      storageKey="settings-sidebar-width"
-      :defaultSize="260"
-      :minSize="220"
-      :maxSize="420"
+      storageKey="page-sidebar-width"
+      :defaultSize="240"
+      :minSize="200"
+      :maxSize="400"
     >
       <aside class="settings-page__sidebar">
         <SettingsListSidebar />
@@ -78,7 +78,10 @@ watch(
 .settings-page {
   display: flex;
   height: 100%;
+  min-height: 0;
+  min-width: 0;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .settings-page__mobile-header {
@@ -93,18 +96,22 @@ watch(
 }
 
 .settings-page__sidebar-panel {
+  flex: 0 0 auto;
   background: var(--color-white);
 }
 
 .settings-page__sidebar {
   display: flex;
   height: 100%;
+  min-height: 0;
   flex-direction: column;
   padding: 1rem;
 }
 
 .settings-page__content {
   flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
   padding: 0.75rem;
   overflow-y: auto;
 }
@@ -113,7 +120,7 @@ watch(
   padding: 1rem;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   .settings-page {
     flex-direction: row;
   }
@@ -121,9 +128,7 @@ watch(
   .settings-page__content {
     padding: 1rem;
   }
-}
 
-@media (min-width: 1024px) {
   .settings-page__mobile-header {
     display: none;
   }

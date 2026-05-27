@@ -146,7 +146,10 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
 .switchgears-page {
   display: flex;
   height: 100%;
+  min-height: 0;
+  min-width: 0;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .switchgears-page__mobile-bar {
@@ -161,12 +164,14 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
 }
 
 .switchgears-page__sidebar-panel {
+  flex: 0 0 auto;
   background: var(--color-white);
 }
 
 .switchgears-page__sidebar {
   display: flex;
   height: 100%;
+  min-height: 0;
   flex-direction: column;
   padding: 1rem;
 }
@@ -174,6 +179,7 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
 .switchgears-page__content {
   display: flex;
   min-height: 0;
+  min-width: 0;
   flex: 1 1 auto;
   flex-direction: column;
   padding: 0.75rem;
@@ -230,7 +236,7 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
   padding: 1rem;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   .switchgears-page {
     flex-direction: row;
   }
@@ -238,9 +244,7 @@ function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null
   .switchgears-page__content {
     padding: 1rem;
   }
-}
 
-@media (min-width: 1024px) {
   .switchgears-page__mobile-bar {
     display: none;
   }

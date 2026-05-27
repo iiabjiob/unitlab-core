@@ -19,9 +19,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, type PropType } from "vue"
+import { ref, computed, onBeforeUnmount, onMounted, type PropType } from "vue"
 
 import { localSettingsKeys, readNumberLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
+
+const PANEL_SIZE_EVENT = "unitlab:resizable-panel-size-change"
+const panelSizeCache = new Map<string, number>()
+const panelInstanceId = Math.random().toString(36).slice(2)
 
 const emit = defineEmits<{
   (e: "size-change", size: number): void
@@ -36,7 +40,7 @@ const props = defineProps({
   resizable: { type: Boolean, default: true },
 })
 
-const size = ref(props.defaultSize ?? 240)
+const size = ref(readInitialSize())
 const panelRef = ref<HTMLElement | null>(null)
 
 // panel flex direction / border
@@ -56,9 +60,15 @@ const panelClasses = computed(() => {
 // panel size
 const panelStyle = computed(() => {
   if (props.placement === "left" || props.placement === "right") {
-    return { width: size.value + "px" }
+    return {
+      width: size.value + "px",
+      flexBasis: size.value + "px",
+    }
   } else {
-    return { height: size.value + "px" }
+    return {
+      height: size.value + "px",
+      flexBasis: size.value + "px",
+    }
   }
 })
 
@@ -80,6 +90,7 @@ const handleClasses = computed(() => {
 })
 
 function startResize(e: MouseEvent) {
+  e.preventDefault()
   const isHorizontal = props.placement === "left" || props.placement === "right"
   const start = isHorizontal ? e.clientX : e.clientY
   const startSize = size.value
@@ -97,15 +108,16 @@ function startResize(e: MouseEvent) {
     }
 
     let newSize = startSize + delta
-    newSize = Math.max(props.minSize ?? 160, Math.min(props.maxSize ?? 400, newSize))
-    size.value = newSize
-    emit("size-change", newSize)
+    newSize = clampSize(newSize)
+    setSize(newSize, { emitChange: true, broadcast: true })
   }
 
   function onMouseUp() {
-    if (props.storageKey) {
+    const settingKey = resolveSettingKey()
+    if (props.storageKey && settingKey) {
+      panelSizeCache.set(settingKey, Math.trunc(size.value))
       writeLocalSetting(
-        localSettingsKeys.resizablePanelSize(props.storageKey),
+        settingKey,
         Math.trunc(size.value),
         { legacyKeys: [props.storageKey] },
       )
@@ -120,19 +132,89 @@ function startResize(e: MouseEvent) {
   window.addEventListener("mouseup", onMouseUp)
 }
 
+function clampSize(value: number) {
+  return Math.max(props.minSize ?? 160, Math.min(props.maxSize ?? 400, Math.trunc(value)))
+}
+
+function resolveSettingKey() {
+  return props.storageKey
+    ? localSettingsKeys.resizablePanelSize(props.storageKey)
+    : null
+}
+
+function readInitialSize() {
+  const fallback = clampSize(props.defaultSize ?? 240)
+  const settingKey = resolveSettingKey()
+  if (!props.storageKey || !settingKey) {
+    return fallback
+  }
+
+  const cached = panelSizeCache.get(settingKey)
+  if (typeof cached === "number") {
+    return clampSize(cached)
+  }
+
+  const saved = readNumberLocalSetting(
+    settingKey,
+    null,
+    { legacyKeys: [props.storageKey] },
+  )
+  if (saved === null) {
+    return fallback
+  }
+
+  const nextSize = clampSize(saved)
+  panelSizeCache.set(settingKey, nextSize)
+  return nextSize
+}
+
+function setSize(nextSize: number, options: { emitChange?: boolean; broadcast?: boolean } = {}) {
+  const clamped = clampSize(nextSize)
+  if (size.value !== clamped) {
+    size.value = clamped
+  }
+
+  const settingKey = resolveSettingKey()
+  if (settingKey) {
+    panelSizeCache.set(settingKey, clamped)
+  }
+
+  if (options.emitChange) {
+    emit("size-change", clamped)
+  }
+  if (options.broadcast && settingKey && typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(PANEL_SIZE_EVENT, {
+      detail: { key: settingKey, size: clamped, source: panelInstanceId },
+    }))
+  }
+}
+
+function handlePanelSizeEvent(event: Event) {
+  const detail = event instanceof CustomEvent ? event.detail : null
+  const settingKey = resolveSettingKey()
+  if (!settingKey || !detail || detail.key !== settingKey) {
+    return
+  }
+  if (detail.source === panelInstanceId) {
+    return
+  }
+  const nextSize = Number(detail.size)
+  if (!Number.isFinite(nextSize)) {
+    return
+  }
+  setSize(nextSize, { emitChange: true })
+}
 
 onMounted(() => {
-  if (props.storageKey) {
-    const saved = readNumberLocalSetting(
-      localSettingsKeys.resizablePanelSize(props.storageKey),
-      null,
-      { legacyKeys: [props.storageKey] },
-    )
-    if (saved !== null) {
-      size.value = Math.max(props.minSize ?? 160, Math.min(props.maxSize ?? 400, Math.trunc(saved)))
-    }
-  }
+  setSize(readInitialSize())
   emit("size-change", size.value)
+  window.addEventListener(PANEL_SIZE_EVENT, handlePanelSizeEvent)
+})
+
+onBeforeUnmount(() => {
+  if (typeof window !== "undefined") {
+    window.removeEventListener(PANEL_SIZE_EVENT, handlePanelSizeEvent)
+  }
 })
 </script>
 
@@ -140,16 +222,20 @@ onMounted(() => {
 .resizable-panel {
   display: flex;
   position: relative;
+  min-width: 0;
+  min-height: 0;
 }
 
 .resizable-panel--left,
 .resizable-panel--right {
+  flex: 0 0 auto;
   flex-direction: column;
   height: 100%;
 }
 
 .resizable-panel--top,
 .resizable-panel--bottom {
+  flex: 0 0 auto;
   flex-direction: column;
   width: 100%;
 }
@@ -208,23 +294,23 @@ onMounted(() => {
   bottom: 0;
 }
 
-.dark .resizable-panel--left {
+:global(.dark .resizable-panel--left) {
   border-right-color: var(--color-neutral-700);
 }
 
-.dark .resizable-panel--right {
+:global(.dark .resizable-panel--right) {
   border-left-color: var(--color-neutral-700);
 }
 
-.dark .resizable-panel--top {
+:global(.dark .resizable-panel--top) {
   border-bottom-color: var(--color-neutral-700);
 }
 
-.dark .resizable-panel--bottom {
+:global(.dark .resizable-panel--bottom) {
   border-top-color: var(--color-neutral-700);
 }
 
-.dark .resizable-panel__handle:hover {
+:global(.dark .resizable-panel__handle:hover) {
   background: var(--color-neutral-600);
 }
 </style>

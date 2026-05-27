@@ -1,6 +1,7 @@
 <template>
   <aside class="desktop-aside">
     <div
+      v-if="showHeader"
       class="desktop-aside__header"
       :class="{ 'desktop-aside__header--compact': compact }"
     >
@@ -70,9 +71,13 @@ import OnlineStatusComponent from "../misc/OnlineStatusComponent.vue"
 import TimeComponent from "../misc/TimeComponent.vue"
 import ThemeToggle from "../ui/ThemeToggle.vue"
 
-defineProps<{
+withDefaults(defineProps<{
   compact?: boolean
-}>()
+  showHeader?: boolean
+}>(), {
+  compact: false,
+  showHeader: true,
+})
 
 const systemHealthStore = useSystemHealthStore()
 
@@ -167,6 +172,8 @@ const compactStatusClass = computed(() => {
 }
 
 .desktop-aside__menu {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-x: visible;
   overflow-y: auto;
   font-size: var(--text-base);
