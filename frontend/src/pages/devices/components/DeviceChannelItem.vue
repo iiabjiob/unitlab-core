@@ -2,108 +2,103 @@
   <UiMenu>
     <UiMenuTrigger as-child trigger="contextmenu">
       <div
-        class="group rounded-md px-2 py-1.5 text-sm select-none"
-        :class="{ 'opacity-60': disabled }"
+        class="device-channel-item"
+        :class="{ 'device-channel-item--disabled': disabled }"
       >
-    <div v-if="effectiveType === 'ao'" class="flex justify-center">
-      <div class="grid w-full max-w-[40rem] min-w-0 grid-cols-[9rem_minmax(0,1fr)] items-start gap-3">
+        <div v-if="effectiveType === 'ao'" class="device-channel-item__ao">
+          <div class="device-channel-item__ao-grid">
 
-        <!-- Label -->
-        <div class="min-w-0 space-y-0.5 text-center">
-          <span class="block min-w-0 truncate text-xs font-semibold text-neutral-800 dark:text-neutral-100">{{ primaryChannelLabel }}</span>
-          <span v-if="secondaryChannelLabel" class="block min-w-0 truncate text-[10px] text-neutral-500 dark:text-neutral-400">{{ secondaryChannelLabel }}</span>
-        </div>
-
-        <!-- AO input -->
-        <div class="flex min-w-0 flex-1 items-center gap-2">
-          <div class="flex min-w-0 items-center gap-2">
-            <label
-              class="flex min-w-0 flex-1 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400"
-              :for="`device-channel-ao-${channel.id}`"
-            >
-              <input
-                ref="aoInputRef"
-                :id="`device-channel-ao-${channel.id}`"
-                :name="`device-channel-ao-${channel.id}`"
-                v-model="aoDraftValue"
-                type="number"
-                inputmode="decimal"
-                min="4"
-                max="20"
-                step="0.1"
-                autocomplete="off"
-                class="w-24 min-w-0 flex-1 rounded border border-neutral-300 bg-white px-2 py-1 text-right text-xs font-semibold text-neutral-900 outline-none transition focus:border-sky-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-100"
-                :disabled="disabled"
-                @keydown.enter.prevent="submitAoValue"
-              />
-              <span class="shrink-0 text-neutral-400 dark:text-neutral-500">mA</span>
-            </label>
-            <UiButton
-              type="button"
-              size="xs"
-              variant="secondary"
-              class="h-5 shrink-0 px-1.5 text-[10px] uppercase tracking-[0.08em]"
-              :disabled="!aoCanSubmit"
-              :title="aoSetButtonTitle"
-              @click.stop="submitAoValue"
-            >
-              {{ aoSetButtonLabel }}
-            </UiButton>
-
-            <div class="inline-flex items-center gap-1 px-0.5 py-0.5">
-              <span class="text-[9px] uppercase tracking-[0.08em] text-neutral-400 dark:text-neutral-500">Value</span>
-              <span class="font-mono text-[10px] text-neutral-600 dark:text-neutral-300">{{ aoActualValueLabel }}</span>
-              <span class="text-[9px] text-neutral-400 dark:text-neutral-500">mA</span>
+            <div class="device-channel-item__label device-channel-item__label--ao">
+              <span class="device-channel-item__primary-label">{{ primaryChannelLabel }}</span>
+              <span v-if="secondaryChannelLabel" class="device-channel-item__secondary-label">{{ secondaryChannelLabel }}</span>
             </div>
 
-            <span
-              v-if="aoStatusClass"
-              class="inline-flex items-center rounded px-1.5 py-1 text-[10px] font-medium border"
-              :class="aoStatusClass"
-              :title="aoStatusTitle"
-            >
-              {{ aoStatusLabel }}
-            </span>
+            <div class="device-channel-item__ao-controls">
+              <div class="device-channel-item__ao-inline">
+                <label
+                  class="device-channel-item__ao-field"
+                  :for="`device-channel-ao-${channel.id}`"
+                >
+                  <input
+                    ref="aoInputRef"
+                    :id="`device-channel-ao-${channel.id}`"
+                    :name="`device-channel-ao-${channel.id}`"
+                    v-model="aoDraftValue"
+                    type="number"
+                    inputmode="decimal"
+                    min="4"
+                    max="20"
+                    step="0.1"
+                    autocomplete="off"
+                    class="device-channel-item__ao-input"
+                    :disabled="disabled"
+                    @keydown.enter.prevent="submitAoValue"
+                  />
+                  <span class="device-channel-item__ao-unit">mA</span>
+                </label>
+                <UiButton
+                  type="button"
+                  size="xs"
+                  variant="secondary"
+                  class="device-channel-item__ao-button"
+                  :disabled="!aoCanSubmit"
+                  :title="aoSetButtonTitle"
+                  @click.stop="submitAoValue"
+                >
+                  {{ aoSetButtonLabel }}
+                </UiButton>
+
+                <div class="device-channel-item__ao-actual">
+                  <span class="device-channel-item__ao-actual-label">Value</span>
+                  <span class="device-channel-item__ao-actual-value">{{ aoActualValueLabel }}</span>
+                  <span class="device-channel-item__ao-actual-unit">mA</span>
+                </div>
+
+                <span
+                  v-if="aoStatusClass"
+                  class="device-channel-item__ao-status"
+                  :class="aoStatusClass"
+                  :title="aoStatusTitle"
+                >
+                  {{ aoStatusLabel }}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <div v-else class="grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-x-3 gap-y-0.5">
+        <div v-else class="device-channel-item__digital">
 
-      <!-- DO control -->
-      <div
-        v-if="effectiveType === 'do'"
-        class="col-start-1 row-start-1 mt-0.5 flex h-5 w-5 cursor-default items-center justify-center rounded-sm border transition-colors"
-        :class="[doControlClass, { 'cursor-not-allowed opacity-70': isWaiting || disabled }]"
-        @click.stop="onToggleClick"
-      >
-        <span
-          v-if="isWaiting"
-          class="h-4 w-4 rounded-full border-2 border-white/85 border-t-transparent animate-spin"
-        />
-        <span v-else-if="isError" class="text-[11px] font-semibold leading-none text-white">!</span>
-        <span v-else-if="channel.state" class="text-[11px] font-semibold leading-none text-white">✓</span>
-      </div>
+          <div
+            v-if="effectiveType === 'do'"
+            class="device-channel-item__do-control"
+            :class="[doControlClass, { 'device-channel-item__do-control--disabled': isWaiting || disabled }]"
+            @click.stop="onToggleClick"
+          >
+            <span
+              v-if="isWaiting"
+              class="device-channel-item__spinner"
+            />
+            <span v-else-if="isError" class="device-channel-item__state-mark">!</span>
+            <span v-else-if="channel.state" class="device-channel-item__state-mark">✓</span>
+          </div>
 
-      <!-- DI indicator -->
-      <div
-        v-else-if="effectiveType === 'di'"
-        class="col-start-1 row-start-1 mt-0.5 h-4 w-4 rounded-full border transition-all duration-200"
-        :class="diIndicatorClass"
-      />
+          <div
+            v-else-if="effectiveType === 'di'"
+            class="device-channel-item__di-indicator"
+            :class="diIndicatorClass"
+          />
 
-      <!-- Label -->
-      <div class="col-start-2 row-start-1 min-w-0 leading-tight">
-        <span class="block min-w-0 truncate text-xs font-semibold text-neutral-800 dark:text-neutral-100">{{ primaryChannelLabel }}</span>
-        <span v-if="secondaryChannelLabel" class="mt-0.5 block min-w-0 truncate text-[10px] text-neutral-500 dark:text-neutral-400">{{ secondaryChannelLabel }}</span>
-      </div>
-    </div>
+          <div class="device-channel-item__label device-channel-item__label--digital">
+            <span class="device-channel-item__primary-label">{{ primaryChannelLabel }}</span>
+            <span v-if="secondaryChannelLabel" class="device-channel-item__secondary-label">{{ secondaryChannelLabel }}</span>
+          </div>
+        </div>
       </div>
     </UiMenuTrigger>
 
     <UiMenuContent>
-      <UiMenuItem class="text-neutral-900 dark:text-neutral-100" @select="openRename">
+      <UiMenuItem class="device-channel-item__menu-item" @select="openRename">
         Rename
       </UiMenuItem>
     </UiMenuContent>
@@ -238,11 +233,11 @@ const diIndicatorClass = computed(() => {
     return ""
   }
   if (diAlertActive.value) {
-    return "bg-red-500 border-red-500 animate-pulse"
+    return "device-channel-item__di-indicator--alert"
   }
   return props.channel.state
-    ? "bg-green-500 border-green-600"
-    : "bg-neutral-600 border-neutral-500"
+    ? "device-channel-item__di-indicator--on"
+    : "device-channel-item__di-indicator--off"
 })
 
 const doControlClass = computed(() => {
@@ -250,15 +245,15 @@ const doControlClass = computed(() => {
     return ""
   }
   if (isError.value) {
-    return "bg-red-500 border-red-500 text-white animate-pulse"
+    return "device-channel-item__do-control--error"
   }
   if (isWaiting.value) {
-    return "bg-yellow-400/80 border-yellow-500 text-yellow-900"
+    return "device-channel-item__do-control--waiting"
   }
   if (doChannel.value?.state) {
-    return "bg-green-500 border-green-600 text-white"
+    return "device-channel-item__do-control--on"
   }
-  return "bg-neutral-300 dark:bg-neutral-700 border-neutral-600 hover:bg-neutral-600"
+  return "device-channel-item__do-control--off"
 })
 
 const aoStatus = computed(() => aoChannel.value?.diagnostics?.quality)
@@ -312,13 +307,13 @@ const aoStatusClass = computed(() => {
   }
   if (aoStatus.value === "valid") {
     return aoHasError.value
-      ? "border-amber-500 text-amber-200 bg-amber-900/40"
-      : "border-emerald-500 text-emerald-200 bg-emerald-900/40"
+      ? "device-channel-item__ao-status--valid-error"
+      : "device-channel-item__ao-status--valid"
   }
   if (aoStatus.value === "pending") {
-    return "border-yellow-500 text-yellow-100 bg-yellow-900/50 animate-pulse"
+    return "device-channel-item__ao-status--pending"
   }
-  return "border-red-500 text-red-100 bg-red-900/50 animate-pulse"
+  return "device-channel-item__ao-status--fault"
 })
 
 const aoStatusTitle = computed(() => {
@@ -389,3 +384,337 @@ function submitAoValue() {
   emit("set-ao", { channel: props.channel, value: exactValue })
 }
 </script>
+
+<style scoped>
+.device-channel-item {
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  user-select: none;
+}
+
+.device-channel-item--disabled {
+  opacity: 0.6;
+}
+
+.device-channel-item__ao {
+  display: flex;
+  justify-content: center;
+}
+
+.device-channel-item__ao-grid {
+  display: grid;
+  width: 100%;
+  max-width: 40rem;
+  min-width: 0;
+  grid-template-columns: 9rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0.75rem;
+}
+
+.device-channel-item__label {
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.device-channel-item__label--ao {
+  display: grid;
+  gap: 0.125rem;
+  text-align: center;
+}
+
+.device-channel-item__label--digital {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.device-channel-item__primary-label,
+.device-channel-item__secondary-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-channel-item__primary-label {
+  color: var(--color-neutral-800);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.device-channel-item__secondary-label {
+  color: var(--color-neutral-500);
+  font-size: 0.625rem;
+}
+
+.device-channel-item__ao-controls {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.device-channel-item__ao-inline {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.device-channel-item__ao-field {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--color-neutral-500);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.device-channel-item__ao-input {
+  width: 6rem;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-neutral-300);
+  border-radius: var(--radius-sm);
+  background: var(--color-white);
+  color: var(--color-neutral-900);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: right;
+  outline: none;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.device-channel-item__ao-input:focus {
+  border-color: var(--color-sky-500);
+}
+
+.device-channel-item__ao-unit,
+.device-channel-item__ao-actual-label,
+.device-channel-item__ao-actual-unit {
+  flex-shrink: 0;
+  color: var(--color-neutral-400);
+}
+
+.device-channel-item .device-channel-item__ao-button {
+  height: 1.25rem;
+  flex-shrink: 0;
+  padding-right: 0.375rem;
+  padding-left: 0.375rem;
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.device-channel-item__ao-actual {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem;
+}
+
+.device-channel-item__ao-actual-label,
+.device-channel-item__ao-actual-unit {
+  font-size: 0.5625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.device-channel-item__ao-actual-value {
+  color: var(--color-neutral-600);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+}
+
+.device-channel-item__ao-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.375rem;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font-size: 0.625rem;
+  font-weight: 500;
+}
+
+.device-channel-item__ao-status--valid-error {
+  border-color: var(--color-amber-500);
+  background: color-mix(in srgb, var(--color-amber-900) 40%, transparent);
+  color: color-mix(in srgb, var(--color-amber-300) 70%, var(--color-white));
+}
+
+.device-channel-item__ao-status--valid {
+  border-color: var(--color-emerald-500);
+  background: color-mix(in srgb, var(--color-emerald-900) 40%, transparent);
+  color: color-mix(in srgb, var(--color-emerald-300) 70%, var(--color-white));
+}
+
+.device-channel-item__ao-status--pending {
+  border-color: var(--color-yellow-400);
+  background: color-mix(in srgb, var(--color-yellow-900) 50%, transparent);
+  color: var(--color-yellow-100);
+  animation: device-channel-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.device-channel-item__ao-status--fault {
+  border-color: var(--color-red-500);
+  background: color-mix(in srgb, var(--color-red-900) 50%, transparent);
+  color: var(--color-red-100);
+  animation: device-channel-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.device-channel-item__digital {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  align-items: start;
+  column-gap: 0.75rem;
+  row-gap: 0.125rem;
+}
+
+.device-channel-item__do-control {
+  display: flex;
+  width: 1.25rem;
+  height: 1.25rem;
+  grid-column: 1;
+  grid-row: 1;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.125rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: default;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, opacity 150ms ease;
+}
+
+.device-channel-item__do-control--disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.device-channel-item__do-control--error {
+  border-color: var(--color-red-500);
+  background: var(--color-red-500);
+  color: var(--color-white);
+  animation: device-channel-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.device-channel-item__do-control--waiting {
+  border-color: var(--color-yellow-400);
+  background: color-mix(in srgb, var(--color-yellow-400) 80%, transparent);
+  color: var(--color-yellow-900);
+}
+
+.device-channel-item__do-control--on {
+  border-color: var(--color-green-600);
+  background: var(--color-green-400);
+  color: var(--color-white);
+}
+
+.device-channel-item__do-control--off {
+  border-color: var(--color-neutral-600);
+  background: var(--color-neutral-300);
+}
+
+.device-channel-item__do-control--off:hover {
+  background: var(--color-neutral-600);
+}
+
+.device-channel-item__spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid color-mix(in srgb, var(--color-white) 85%, transparent);
+  border-top-color: transparent;
+  border-radius: 999px;
+  animation: device-channel-spin 1s linear infinite;
+}
+
+.device-channel-item__state-mark {
+  color: var(--color-white);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.device-channel-item__di-indicator {
+  width: 1rem;
+  height: 1rem;
+  grid-column: 1;
+  grid-row: 1;
+  margin-top: 0.125rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  transition: background 200ms ease, border-color 200ms ease, opacity 200ms ease;
+}
+
+.device-channel-item__di-indicator--alert {
+  border-color: var(--color-red-500);
+  background: var(--color-red-500);
+  animation: device-channel-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.device-channel-item__di-indicator--on {
+  border-color: var(--color-green-600);
+  background: var(--color-green-400);
+}
+
+.device-channel-item__di-indicator--off {
+  border-color: var(--color-neutral-500);
+  background: var(--color-neutral-600);
+}
+
+:global(.device-channel-item__menu-item) {
+  color: var(--color-neutral-900);
+}
+
+:global(.dark .device-channel-item__primary-label) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .device-channel-item__secondary-label),
+:global(.dark .device-channel-item__ao-field) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .device-channel-item__ao-input) {
+  border-color: var(--color-neutral-600);
+  background: var(--color-neutral-900);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .device-channel-item__ao-unit),
+:global(.dark .device-channel-item__ao-actual-label),
+:global(.dark .device-channel-item__ao-actual-unit) {
+  color: var(--color-neutral-500);
+}
+
+:global(.dark .device-channel-item__ao-actual-value) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .device-channel-item__do-control--off) {
+  background: var(--color-neutral-700);
+}
+
+:global(.dark .device-channel-item__menu-item) {
+  color: var(--color-neutral-100);
+}
+
+@keyframes device-channel-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes device-channel-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+</style>
