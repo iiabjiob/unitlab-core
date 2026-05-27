@@ -83,7 +83,7 @@ async function confirmDelete() {
 </script>
 
 <template>
-  <div class="h-full flex flex-col pe-4">
+  <div class="switchgear-editor">
     <template v-if="switchgear">
       <SwitchgearEditorHeader
         :switchgear="switchgear"
@@ -93,11 +93,11 @@ async function confirmDelete() {
 
       <SwitchgearControlToolbar :switchgear="switchgear" />
 
-      <div class="mt-5 flex flex-col gap-4 rounded bg-white p-4 shadow dark:bg-neutral-800 sm:p-5 lg:flex-1 lg:min-h-0 lg:flex-row lg:gap-5 lg:overflow-hidden">
-        <div class="flex flex-col lg:min-h-0 lg:flex-none">
+      <div class="switchgear-editor__workspace">
+        <div class="switchgear-editor__summary-column">
           <ResizablePanel
             v-if="isDesktop"
-            class="flex flex-col min-h-0 h-full"
+            class="switchgear-editor__summary-panel"
             :switchgear="switchgear"
             placement="left"
             storageKey="switchgear-summary-width"
@@ -110,7 +110,7 @@ async function confirmDelete() {
 
           <div
             v-else
-            class="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900"
+            class="switchgear-editor__summary-card"
           >
             <div>
               <SwitchgearBindingsSummary :switchgear="switchgear" @edit="bindingsEditorOpen = true" />
@@ -118,22 +118,22 @@ async function confirmDelete() {
           </div>
         </div>
 
-        <div class="flex flex-col lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+        <div class="switchgear-editor__main-column">
           <SwitchgearBindingsEditor
             v-if="bindingsEditorOpen"
-            class="mb-4"
+            class="switchgear-editor__bindings-editor"
             :switchgear="switchgear"
             @close="bindingsEditorOpen = false"
           />
 
-          <div class="lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+          <div class="switchgear-editor__log">
             <SwitchgearExecutionLog :switchgear="switchgear" />
           </div>
         </div>
       </div>
     </template>
 
-    <div v-else class="flex-1 flex items-center justify-center text-neutral-500">
+    <div v-else class="switchgear-editor__not-found">
       Switchgear not found.
     </div>
 
@@ -149,3 +149,91 @@ async function confirmDelete() {
     />
   </div>
 </template>
+
+<style scoped>
+.switchgear-editor {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  padding-inline-end: 1rem;
+}
+
+.switchgear-editor__workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  box-shadow: var(--shadow-sm);
+}
+
+.switchgear-editor__summary-column,
+.switchgear-editor__main-column,
+.switchgear-editor__summary-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.switchgear-editor__summary-card {
+  padding: 1rem;
+  border: 1px solid var(--color-neutral-200);
+  border-radius: 0.5rem;
+  background: var(--color-neutral-50);
+}
+
+.switchgear-editor__bindings-editor {
+  margin-bottom: 1rem;
+}
+
+.switchgear-editor__not-found {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-neutral-500);
+}
+
+@media (min-width: 640px) {
+  .switchgear-editor__workspace {
+    padding: 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .switchgear-editor__workspace {
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: row;
+    gap: 1.25rem;
+    overflow: hidden;
+  }
+
+  .switchgear-editor__summary-column {
+    min-height: 0;
+    flex: 0 0 auto;
+  }
+
+  .switchgear-editor__summary-panel {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .switchgear-editor__main-column,
+  .switchgear-editor__log {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+}
+
+:global(.dark .switchgear-editor__workspace) {
+  background: var(--color-neutral-800);
+}
+
+:global(.dark .switchgear-editor__summary-card) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-900);
+}
+</style>

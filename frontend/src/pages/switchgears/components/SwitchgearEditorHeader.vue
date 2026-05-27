@@ -70,22 +70,20 @@ const positionState = computed(() => store.resolveSwitchgearState(props.switchge
 </script>
 
 <template>
-  <div class="px-4 py-3 flex items-start justify-between border-b border-neutral-300 dark:border-neutral-800">
-    <!-- LEFT SIDE -->
-    <div class="flex items-start gap-3">
+  <div class="switchgear-editor-header">
+    <div class="switchgear-editor-header__left">
       <SwitchgearPositionIcon :state="positionState" size="lg" />
-      <div class="flex flex-col gap-1">
-
-        <div class="text-lg font-medium tracking-tight text-neutral-900 dark:text-white">
+      <div class="switchgear-editor-header__main">
+        <div class="switchgear-editor-header__title">
           {{ switchgear.name }}
         </div>
 
-        <div class="flex flex-wrap items-center gap-3 text-sm text-neutral-500 dark:text-neutral-400">
-          <span class="text-xs uppercase tracking-[0.3em] text-neutral-400 dark:text-neutral-500">
+        <div class="switchgear-editor-header__meta">
+          <span class="switchgear-editor-header__eyebrow">
             Switchgear
           </span>
           <span>·</span>
-          <span class="uppercase tracking-wide text-[11px]">{{ switchgear.switchgear_type }}</span>
+          <span class="switchgear-editor-header__type">{{ switchgear.switchgear_type }}</span>
           <span>·</span>
           <OnlineStatusComponent
             :status="unitOnline"
@@ -96,7 +94,6 @@ const positionState = computed(() => store.resolveSwitchgearState(props.switchge
       </div>
     </div>
 
-    <!-- ACTIONS -->
     <UiMenu>
       <UiMenuTrigger asChild>
         <UiButton variant="icon">
@@ -105,10 +102,10 @@ const positionState = computed(() => store.resolveSwitchgearState(props.switchge
       </UiMenuTrigger>
 
       <UiMenuContent>
-        <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="promptRename">
+        <UiMenuItem class="switchgear-editor-header__menu-item" @select="promptRename">
           Rename
         </UiMenuItem>
-        <UiMenuItem class="text-neutral-900 dark:text-neutral-200" @select="emit('duplicate')">
+        <UiMenuItem class="switchgear-editor-header__menu-item" @select="emit('duplicate')">
           Duplicate
         </UiMenuItem>
         <UiMenuItem danger @select="emit('delete')">
@@ -127,3 +124,78 @@ const positionState = computed(() => store.resolveSwitchgearState(props.switchge
     @confirm="confirmRename"
   />
 </template>
+
+<style scoped>
+.switchgear-editor-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-neutral-300);
+}
+
+.switchgear-editor-header__left {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.switchgear-editor-header__main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.switchgear-editor-header__title {
+  color: var(--color-neutral-900);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.switchgear-editor-header__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+}
+
+.switchgear-editor-header__eyebrow {
+  color: var(--color-neutral-400);
+  font-size: var(--text-xs);
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.switchgear-editor-header__type {
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.switchgear-editor-header__menu-item {
+  color: var(--color-neutral-900);
+}
+
+:global(.dark .switchgear-editor-header) {
+  border-bottom-color: var(--color-neutral-800);
+}
+
+:global(.dark .switchgear-editor-header__title) {
+  color: var(--color-white);
+}
+
+:global(.dark .switchgear-editor-header__meta) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .switchgear-editor-header__eyebrow) {
+  color: var(--color-neutral-500);
+}
+
+:global(.dark .switchgear-editor-header__menu-item) {
+  color: var(--color-neutral-200);
+}
+</style>
