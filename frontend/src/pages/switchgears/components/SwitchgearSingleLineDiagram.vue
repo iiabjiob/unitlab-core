@@ -14,6 +14,7 @@ import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
 import SwitchgearSingleLineDiagramNode from "./SwitchgearSingleLineDiagramNode.vue"
 import SwitchgearSingleLineDiagramStaticElement from "./SwitchgearSingleLineDiagramStaticElement.vue"
+import SwitchgearSingleLineDiagramTextElement from "./SwitchgearSingleLineDiagramTextElement.vue"
 import SwitchgearControlToolbar from "./SwitchgearControlToolbar.vue"
 
 type DiagramNodeLayout = {
@@ -43,6 +44,7 @@ type DiagramEdge = {
 
 type DiagramStaticKind = "transformer" | "ground"
 type DiagramStaticSize = "sm" | "md" | "lg"
+type DiagramTextSize = "md"
 
 type DiagramStaticElement = {
   id: string
@@ -51,6 +53,14 @@ type DiagramStaticElement = {
   x: number
   y: number
   rotation: 0 | 90 | 180 | 270
+}
+
+type DiagramTextElement = {
+  id: string
+  text: string
+  size: DiagramTextSize
+  x: number
+  y: number
 }
 
 type DiagramViewState = {
@@ -76,9 +86,11 @@ type DiagramHistorySnapshot = {
   labelOffsetById: Record<string, DiagramLabelOffset>
   edges: DiagramEdge[]
   staticElements: DiagramStaticElement[]
+  textElements: DiagramTextElement[]
   selectedNodeIds: number[]
   selectedEdgeIds: string[]
   selectedStaticIds: string[]
+  selectedTextIds: string[]
   selectedEdgeId: string | null
 }
 
@@ -98,9 +110,17 @@ type DiagramClipboardStaticElement = {
   rotation: 0 | 90 | 180 | 270
 }
 
+type DiagramClipboardTextElement = {
+  text: string
+  size: DiagramTextSize
+  x: number
+  y: number
+}
+
 type DiagramClipboardSelection = {
   edges: DiagramClipboardEdge[]
   staticElements: DiagramClipboardStaticElement[]
+  textElements: DiagramClipboardTextElement[]
 }
 
 type StoredDiagramState = {
@@ -109,6 +129,7 @@ type StoredDiagramState = {
   edges?: DiagramEdge[]
   lines?: DiagramEdge[]
   staticElements?: DiagramStaticElement[]
+  textElements?: DiagramTextElement[]
   snapEnabled?: boolean
   viewState?: DiagramViewState
 }
@@ -118,6 +139,7 @@ type DiagramClipboardPayload = {
   version: 1 | 2
   edges?: DiagramClipboardEdge[]
   staticElements?: DiagramClipboardStaticElement[]
+  textElements?: DiagramClipboardTextElement[]
 }
 
 type DiagramPort = {
@@ -161,6 +183,14 @@ type DragState =
       originY: number
     }
   | {
+      type: "text"
+      id: string
+      startX: number
+      startY: number
+      originX: number
+      originY: number
+    }
+  | {
       type: "line"
       edgeId: string
       mode: "move" | "start" | "end"
@@ -190,6 +220,7 @@ type DragState =
       originNodes: Array<{ id: number; x: number; y: number }>
       originEdges: Array<DiagramEdge>
       originStatics: Array<DiagramStaticElement>
+      originTexts: Array<DiagramTextElement>
     }
 
 type InteractionTool = "hand" | "arrow" | "line"
@@ -217,6 +248,14 @@ const COPY_PASTE_OFFSET = GRID_STEP * 2
 const STATIC_ROTATIONS = [0, 90, 180, 270] as const
 const STATIC_SIZES = ["sm", "md", "lg"] as const
 const DEFAULT_STATIC_SIZE: DiagramStaticSize = "md"
+const DEFAULT_TEXT_SIZE: DiagramTextSize = "md"
+const DEFAULT_TEXT_LABEL = "TEXT"
+const TEXT_WIDTH_BY_SIZE: Record<DiagramTextSize, number> = {
+  md: 96,
+}
+const TEXT_HEIGHT_BY_SIZE: Record<DiagramTextSize, number> = {
+  md: 28,
+}
 const STATIC_SIZE_DIMENSIONS: Record<DiagramStaticKind, Record<DiagramStaticSize, { width: number; height: number }>> = {
   transformer: {
     sm: { width: GRID_STEP * 3, height: GRID_STEP * 3 },
@@ -245,6 +284,7 @@ const layoutById = ref<Record<string, DiagramNodeLayout>>({})
 const labelOffsetById = ref<Record<string, DiagramLabelOffset>>({})
 const edges = ref<DiagramEdge[]>([])
 const staticElements = ref<DiagramStaticElement[]>([])
+const textElements = ref<DiagramTextElement[]>([])
 const viewState = ref<DiagramViewState>({ ...DEFAULT_VIEW })
 const interactionTool = ref<InteractionTool>("hand")
 const snapEnabled = ref(true)
@@ -252,9 +292,12 @@ const selectedEdgeId = ref<string | null>(null)
 const selectedNodeIds = ref<number[]>([])
 const selectedEdgeIds = ref<string[]>([])
 const selectedStaticIds = ref<string[]>([])
+const selectedTextIds = ref<string[]>([])
 const lineContextMenu = ref<{ x: number; y: number; edgeIds: string[] } | null>(null)
 const staticContextMenu = ref<{ x: number; y: number; staticIds: string[] } | null>(null)
+const textContextMenu = ref<{ x: number; y: number; textIds: string[] } | null>(null)
 const alignMenuOpen = ref(false)
+const editingTextId = ref<string | null>(null)
 const hydrating = ref(false)
 const dragState = ref<DragState | null>(null)
 const viewportSize = ref({ width: 0, height: 0 })
@@ -314,6 +357,7 @@ const zoomLabel = computed(() => `${Math.round(viewState.value.zoom * 100)}%`)
 const selectedNodeIdSet = computed(() => new Set(effectiveSelectedNodeIds()))
 const selectedEdgeIdSet = computed(() => new Set(selectedEdgeIds.value))
 const selectedStaticIdSet = computed(() => new Set(selectedStaticIds.value))
+const selectedTextIdSet = computed(() => new Set(selectedTextIds.value))
 const selectedLineCount = computed(() => {
   const ids = new Set<string>()
   if (selectedEdgeId.value) {
@@ -323,9 +367,10 @@ const selectedLineCount = computed(() => {
   return ids.size
 })
 const selectedStaticCount = computed(() => selectedStaticIds.value.length)
+const selectedTextCount = computed(() => selectedTextIds.value.length)
 const selectedNodeCount = computed(() => effectiveSelectedNodeIds().length)
 const selectedObjectCount = computed(() => (
-  selectedNodeCount.value + selectedLineCount.value + selectedStaticCount.value
+  selectedNodeCount.value + selectedLineCount.value + selectedStaticCount.value + selectedTextCount.value
 ))
 const activeToolLabel = computed(() => {
   if (interactionTool.value === "line") {
@@ -343,6 +388,7 @@ const selectionSummary = computed(() => {
     selectedNodeCount.value > 0 ? `${selectedNodeCount.value} switchgear${selectedNodeCount.value > 1 ? "s" : ""}` : null,
     selectedLineCount.value > 0 ? `${selectedLineCount.value} line${selectedLineCount.value > 1 ? "s" : ""}` : null,
     selectedStaticCount.value > 0 ? `${selectedStaticCount.value} symbol${selectedStaticCount.value > 1 ? "s" : ""}` : null,
+    selectedTextCount.value > 0 ? `${selectedTextCount.value} text${selectedTextCount.value > 1 ? "s" : ""}` : null,
   ].filter((part): part is string => part !== null)
 
   return parts.join(" · ")
@@ -351,6 +397,7 @@ const diagramMetricItems = computed(() => [
   { label: "Switchgears", value: switchgears.value.length },
   { label: "Lines", value: edges.value.length },
   { label: "Symbols", value: staticElements.value.length },
+  { label: "Texts", value: textElements.value.length },
 ])
 const draftLinePreview = computed(() => {
   if (!dragState.value || dragState.value.type !== "new-line") {
@@ -419,7 +466,14 @@ const staticElementCount = computed(() => staticElements.value.length)
 const singleSelectedSwitchgear = computed(() => {
   const selectedId = selectedNodeIds.value.length === 1
     ? selectedNodeIds.value[0]
-    : (selectedNodeIds.value.length === 0 && selectedEdgeIds.value.length === 0 && selectedStaticIds.value.length === 0 ? selectedNodeId.value : null)
+    : (
+        selectedNodeIds.value.length === 0
+        && selectedEdgeIds.value.length === 0
+        && selectedStaticIds.value.length === 0
+        && selectedTextIds.value.length === 0
+          ? selectedNodeId.value
+          : null
+      )
 
   if (selectedId === null) {
     return null
@@ -512,6 +566,17 @@ const minimapModel = computed(() => {
         active: selectedStaticIdSet.value.has(element.id),
       }
     }),
+    texts: textElements.value.map((element) => {
+      const elementBounds = getTextElementBounds(element)
+      return {
+        id: element.id,
+        x: offsetX + (elementBounds.x1 - contentMinX) * scale,
+        y: offsetY + (elementBounds.y1 - contentMinY) * scale,
+        width: Math.max(5, elementBounds.width * scale),
+        height: Math.max(3, elementBounds.height * scale),
+        active: selectedTextIdSet.value.has(element.id),
+      }
+    }),
     viewport: {
       x: offsetX + (worldViewportX - contentMinX) * scale,
       y: offsetY + (worldViewportY - contentMinY) * scale,
@@ -569,6 +634,16 @@ function buildDiagramWorldBounds(): DiagramWorldBounds | null {
     })
   })
 
+  textElements.value.forEach((element) => {
+    const elementBounds = getTextElementBounds(element)
+    bounds = mergeWorldBounds(bounds, {
+      minX: elementBounds.x1,
+      minY: elementBounds.y1,
+      maxX: elementBounds.x2,
+      maxY: elementBounds.y2,
+    })
+  })
+
   return bounds
 }
 
@@ -600,6 +675,10 @@ function cloneStaticElements(source: DiagramStaticElement[]) {
   return source.map(element => ({ ...element }))
 }
 
+function cloneTextElements(source: DiagramTextElement[]) {
+  return source.map(element => ({ ...element }))
+}
+
 function normalizeEdgeKind(value: unknown): "line" | "arrow" {
   return value === "arrow" ? "arrow" : "line"
 }
@@ -612,6 +691,10 @@ function normalizeStaticSize(value: unknown): DiagramStaticSize {
   return STATIC_SIZES.includes(value as DiagramStaticSize)
     ? value as DiagramStaticSize
     : DEFAULT_STATIC_SIZE
+}
+
+function normalizeTextSize(_value: unknown): DiagramTextSize {
+  return DEFAULT_TEXT_SIZE
 }
 
 function normalizePortBinding(value: unknown): DiagramPortBinding | null {
@@ -653,6 +736,10 @@ function getStaticElementById(id: string): DiagramStaticElement | null {
   return staticElements.value.find(element => element.id === id) ?? null
 }
 
+function getTextElementById(id: string): DiagramTextElement | null {
+  return textElements.value.find(element => element.id === id) ?? null
+}
+
 function getStaticElementBaseSize(kind: DiagramStaticKind, size: DiagramStaticSize = DEFAULT_STATIC_SIZE) {
   return STATIC_SIZE_DIMENSIONS[kind][size]
 }
@@ -677,6 +764,23 @@ function getStaticElementBounds(element: DiagramStaticElement) {
   }
 }
 
+function getTextElementBounds(element: DiagramTextElement) {
+  const width = Math.max(
+    TEXT_WIDTH_BY_SIZE[element.size],
+    Math.min(288, Math.max(64, element.text.length * 8 + 24)),
+  )
+  const height = TEXT_HEIGHT_BY_SIZE[element.size]
+
+  return {
+    width,
+    height,
+    x1: element.x - width / 2,
+    y1: element.y - height / 2,
+    x2: element.x + width / 2,
+    y2: element.y + height / 2,
+  }
+}
+
 function nextQuarterRotation(rotation: 0 | 90 | 180 | 270): 0 | 90 | 180 | 270 {
   return (((rotation + 90) % 360) || 0) as 0 | 90 | 180 | 270
 }
@@ -687,6 +791,7 @@ function buildDiagramClipboardPayload(selection: DiagramClipboardSelection) {
     version: 2,
     edges: selection.edges,
     staticElements: selection.staticElements,
+    textElements: selection.textElements,
   } as DiagramClipboardPayload, null, 2)
 }
 
@@ -697,6 +802,7 @@ function parseDiagramClipboardPayload(rawText: string): DiagramClipboardSelectio
       version?: unknown
       edges?: unknown
       staticElements?: unknown
+      textElements?: unknown
     }
     if (parsed.kind !== DIAGRAM_CLIPBOARD_KIND || (parsed.version !== 1 && parsed.version !== 2)) {
       return null
@@ -747,8 +853,29 @@ function parseDiagramClipboardPayload(rawText: string): DiagramClipboardSelectio
       }]
     })
 
-    return nextEdges.length > 0 || nextStaticElements.length > 0
-      ? { edges: nextEdges, staticElements: nextStaticElements }
+    const nextTextElements = (Array.isArray(parsed.textElements) ? parsed.textElements : []).flatMap((value): DiagramClipboardTextElement[] => {
+      if (!value || typeof value !== "object") {
+        return []
+      }
+      const element = value as Partial<DiagramClipboardTextElement>
+      const x = Number(element.x)
+      const y = Number(element.y)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return []
+      }
+      const text = typeof element.text === "string" && element.text.trim()
+        ? element.text.trim().slice(0, 80)
+        : DEFAULT_TEXT_LABEL
+      return [{
+        text,
+        size: normalizeTextSize(element.size),
+        x,
+        y,
+      }]
+    })
+
+    return nextEdges.length > 0 || nextStaticElements.length > 0 || nextTextElements.length > 0
+      ? { edges: nextEdges, staticElements: nextStaticElements, textElements: nextTextElements }
       : null
   } catch {
     return null
@@ -761,9 +888,11 @@ function snapshotDiagramState(): DiagramHistorySnapshot {
     labelOffsetById: cloneLabelOffsetById(labelOffsetById.value),
     edges: cloneEdges(edges.value),
     staticElements: cloneStaticElements(staticElements.value),
+    textElements: cloneTextElements(textElements.value),
     selectedNodeIds: [...selectedNodeIds.value],
     selectedEdgeIds: [...selectedEdgeIds.value],
     selectedStaticIds: [...selectedStaticIds.value],
+    selectedTextIds: [...selectedTextIds.value],
     selectedEdgeId: selectedEdgeId.value,
   }
 }
@@ -773,10 +902,13 @@ function applyDiagramSnapshot(snapshot: DiagramHistorySnapshot) {
   labelOffsetById.value = cloneLabelOffsetById(snapshot.labelOffsetById)
   edges.value = cloneEdges(snapshot.edges)
   staticElements.value = cloneStaticElements(snapshot.staticElements)
+  textElements.value = cloneTextElements(snapshot.textElements)
   selectedNodeIds.value = [...snapshot.selectedNodeIds]
   selectedEdgeIds.value = [...snapshot.selectedEdgeIds]
   selectedStaticIds.value = [...snapshot.selectedStaticIds]
+  selectedTextIds.value = [...snapshot.selectedTextIds]
   selectedEdgeId.value = snapshot.selectedEdgeId
+  editingTextId.value = null
   closeLineContextMenu()
 }
 
@@ -1295,10 +1427,13 @@ function restoreDiagramState() {
   selectedNodeIds.value = []
   selectedEdgeIds.value = []
   selectedStaticIds.value = []
+  selectedTextIds.value = []
+  editingTextId.value = null
   layoutById.value = {}
   labelOffsetById.value = {}
   edges.value = []
   staticElements.value = []
+  textElements.value = []
   viewState.value = { ...DEFAULT_VIEW }
 
   let hadSavedState = false
@@ -1348,6 +1483,24 @@ function restoreDiagramState() {
           rotation: normalizeRotation(element.rotation),
         }))
       }
+      if (Array.isArray(parsed.textElements)) {
+        textElements.value = parsed.textElements.filter(element =>
+          Number.isFinite(element?.x)
+          && Number.isFinite(element?.y)
+          && typeof element?.id === "string",
+        ).map((element) => {
+          const text = typeof element.text === "string" && element.text.trim()
+            ? element.text.trim().slice(0, 80)
+            : DEFAULT_TEXT_LABEL
+          return {
+            id: element.id,
+            text,
+            size: normalizeTextSize(element.size),
+            x: element.x,
+            y: element.y,
+          }
+        })
+      }
       snapEnabled.value = parsed.snapEnabled !== false
       if (parsed.viewState) {
         const parsedZoom = Number(parsed.viewState.zoom)
@@ -1381,6 +1534,7 @@ function persistDiagramState() {
     edges: edges.value,
     lines: edges.value,
     staticElements: staticElements.value,
+    textElements: textElements.value,
     snapEnabled: snapEnabled.value,
     viewState: viewState.value,
   }, {
@@ -1406,6 +1560,10 @@ function buildStaticElementId(): string {
   return `static-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function buildTextElementId(): string {
+  return `text-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
 function addEdge(start: { x: number; y: number }, end: { x: number; y: number }) {
   const startEndpoint = snapLineEndpoint(start)
   const endEndpoint = snapLineEndpoint(end)
@@ -1428,6 +1586,9 @@ function addEdge(start: { x: number; y: number }, end: { x: number; y: number })
     selectedEdgeId.value = nextEdge.id
     selectedNodeIds.value = []
     selectedEdgeIds.value = [nextEdge.id]
+    selectedStaticIds.value = []
+    selectedTextIds.value = []
+    editingTextId.value = null
     closeLineContextMenu()
   })
 }
@@ -1455,6 +1616,36 @@ function addStaticElementInViewport(kind: DiagramStaticKind) {
     selectedEdgeIds.value = []
     selectedEdgeId.value = null
     selectedStaticIds.value = [nextElement.id]
+    selectedTextIds.value = []
+    editingTextId.value = null
+    closeLineContextMenu()
+  })
+}
+
+function addTextElementInViewport() {
+  if (viewportSize.value.width <= 0 || viewportSize.value.height <= 0) {
+    return
+  }
+
+  const worldCenterX = (-viewState.value.x + viewportSize.value.width / 2) / viewState.value.zoom
+  const worldCenterY = (-viewState.value.y + viewportSize.value.height / 2) / viewState.value.zoom
+  const point = snapWorldPoint({ x: worldCenterX, y: worldCenterY })
+  const nextElement: DiagramTextElement = {
+    id: buildTextElementId(),
+    text: DEFAULT_TEXT_LABEL,
+    size: DEFAULT_TEXT_SIZE,
+    x: point.x,
+    y: point.y,
+  }
+
+  commitHistoryMutation(() => {
+    textElements.value = [...textElements.value, nextElement]
+    selectedNodeIds.value = []
+    selectedEdgeIds.value = []
+    selectedEdgeId.value = null
+    selectedStaticIds.value = []
+    selectedTextIds.value = [nextElement.id]
+    editingTextId.value = nextElement.id
     closeLineContextMenu()
   })
 }
@@ -1466,6 +1657,9 @@ function formatClipboardSelectionLabel(selection: DiagramClipboardSelection) {
       : null,
     selection.staticElements.length > 0
       ? `${selection.staticElements.length} symbol${selection.staticElements.length > 1 ? "s" : ""}`
+      : null,
+    selection.textElements.length > 0
+      ? `${selection.textElements.length} text${selection.textElements.length > 1 ? "s" : ""}`
       : null,
   ].filter((part): part is string => part !== null)
 
@@ -1491,17 +1685,27 @@ async function handleCopySelection() {
       y: element.y,
       rotation: element.rotation,
     }))
+  const sourceTextElements = effectiveSelectedTextIds()
+    .map(textId => getTextElementById(textId))
+    .filter((element): element is DiagramTextElement => element !== null)
+    .map(element => ({
+      text: element.text,
+      size: element.size,
+      x: element.x,
+      y: element.y,
+    }))
   const selection: DiagramClipboardSelection = {
     edges: sourceEdges,
     staticElements: sourceStaticElements,
+    textElements: sourceTextElements,
   }
 
-  if (selection.edges.length === 0 && selection.staticElements.length === 0) {
+  if (selection.edges.length === 0 && selection.staticElements.length === 0 && selection.textElements.length === 0) {
     if (effectiveSelectedNodeIds().length > 0) {
-      toastStore.info("Switchgear copy is not supported yet. Select lines or symbols to copy.")
+      toastStore.info("Switchgear copy is not supported yet. Select lines, symbols, or text to copy.")
       return
     }
-    toastStore.info("Select at least one line or symbol to copy")
+    toastStore.info("Select at least one line, symbol, or text to copy")
     return
   }
 
@@ -1540,7 +1744,7 @@ async function resolveClipboardSelection() {
 
 async function handlePasteSelection() {
   const sourceSelection = await resolveClipboardSelection()
-  if (!sourceSelection || (sourceSelection.edges.length === 0 && sourceSelection.staticElements.length === 0)) {
+  if (!sourceSelection || (sourceSelection.edges.length === 0 && sourceSelection.staticElements.length === 0 && sourceSelection.textElements.length === 0)) {
     toastStore.info("Nothing to paste")
     return
   }
@@ -1548,6 +1752,7 @@ async function handlePasteSelection() {
   const offset = COPY_PASTE_OFFSET * (clipboardPasteCount.value + 1)
   const insertedEdges: DiagramEdge[] = []
   const insertedStaticElements: DiagramStaticElement[] = []
+  const insertedTextElements: DiagramTextElement[] = []
 
   commitHistoryMutation(() => {
     insertedEdges.push(...sourceSelection.edges.map((edge) => {
@@ -1575,13 +1780,26 @@ async function handlePasteSelection() {
         rotation: element.rotation,
       }
     }))
+    insertedTextElements.push(...sourceSelection.textElements.map((element) => {
+      const point = snapWorldPoint({ x: element.x + offset, y: element.y + offset })
+      return {
+        id: buildTextElementId(),
+        text: element.text,
+        size: element.size,
+        x: point.x,
+        y: point.y,
+      }
+    }))
 
     edges.value = [...edges.value, ...insertedEdges]
     staticElements.value = [...staticElements.value, ...insertedStaticElements]
+    textElements.value = [...textElements.value, ...insertedTextElements]
     selectedNodeIds.value = []
     selectedEdgeIds.value = insertedEdges.map(edge => edge.id)
     selectedEdgeId.value = insertedEdges[0]?.id ?? null
     selectedStaticIds.value = insertedStaticElements.map(element => element.id)
+    selectedTextIds.value = insertedTextElements.map(element => element.id)
+    editingTextId.value = null
     closeLineContextMenu()
   })
 
@@ -1589,6 +1807,7 @@ async function handlePasteSelection() {
   toastStore.success(`Pasted ${formatClipboardSelectionLabel({
     edges: insertedEdges,
     staticElements: insertedStaticElements,
+    textElements: insertedTextElements,
   })}`)
 }
 
@@ -1655,11 +1874,27 @@ function removeSelectedStaticElements() {
   })
 }
 
+function removeSelectedTextElements() {
+  const textIds = new Set(selectedTextIds.value)
+  if (textIds.size === 0) {
+    return
+  }
+
+  commitHistoryMutation(() => {
+    textElements.value = textElements.value.filter(element => !textIds.has(element.id))
+    selectedTextIds.value = []
+    editingTextId.value = null
+    closeLineContextMenu()
+  })
+}
+
 function clearSelection() {
   selectedEdgeId.value = null
   selectedEdgeIds.value = []
   selectedNodeIds.value = []
   selectedStaticIds.value = []
+  selectedTextIds.value = []
+  editingTextId.value = null
   if (selectedNodeId.value !== null) {
     selectionStore.selectSwitchgear(null)
     void router.push({ name: "switchgears.list" })
@@ -1676,7 +1911,7 @@ function effectiveSelectedNodeIds(): number[] {
   if (selectedNodeIds.value.length > 0) {
     return [...selectedNodeIds.value]
   }
-  if (selectedEdgeId.value || selectedEdgeIds.value.length > 0 || selectedStaticIds.value.length > 0) {
+  if (selectedEdgeId.value || selectedEdgeIds.value.length > 0 || selectedStaticIds.value.length > 0 || selectedTextIds.value.length > 0) {
     return []
   }
   return selectedNodeId.value !== null ? [selectedNodeId.value] : []
@@ -1693,9 +1928,14 @@ function effectiveSelectedStaticIds(): string[] {
   return [...selectedStaticIds.value]
 }
 
+function effectiveSelectedTextIds(): string[] {
+  return [...selectedTextIds.value]
+}
+
 function closeLineContextMenu() {
   lineContextMenu.value = null
   staticContextMenu.value = null
+  textContextMenu.value = null
   alignMenuOpen.value = false
 }
 
@@ -1928,8 +2168,9 @@ function nudgeSelection(dx: number, dy: number): boolean {
     .filter(id => switchgears.value.some(item => item.id === id))
   const edgeIds = new Set(effectiveSelectedEdgeIds())
   const staticIds = new Set(effectiveSelectedStaticIds())
+  const textIds = new Set(effectiveSelectedTextIds())
 
-  if (nodeIds.length === 0 && edgeIds.size === 0 && staticIds.size === 0) {
+  if (nodeIds.length === 0 && edgeIds.size === 0 && staticIds.size === 0 && textIds.size === 0) {
     return false
   }
 
@@ -1977,6 +2218,19 @@ function nudgeSelection(dx: number, dy: number): boolean {
       ))
     }
 
+    if (textIds.size > 0) {
+      textElements.value = textElements.value.map(element => (
+        textIds.has(element.id)
+          ? {
+              ...element,
+              x: Math.round(element.x + dx),
+              y: Math.round(element.y + dy),
+            }
+          : element
+      ))
+      editingTextId.value = null
+    }
+
     closeLineContextMenu()
   })
 }
@@ -1986,6 +2240,7 @@ function openLineContextMenu(edgeId: string, event: MouseEvent) {
   if (!viewport) {
     return
   }
+  closeLineContextMenu()
 
   const effectiveEdges = effectiveSelectedEdgeIds()
   const selection = selectedEdgeIdSet.value.has(edgeId) && effectiveEdges.length > 0
@@ -1996,6 +2251,8 @@ function openLineContextMenu(edgeId: string, event: MouseEvent) {
   selectedEdgeIds.value = selection
   selectedNodeIds.value = []
   selectedStaticIds.value = []
+  selectedTextIds.value = []
+  editingTextId.value = null
 
   const rect = viewport.getBoundingClientRect()
   lineContextMenu.value = {
@@ -2010,6 +2267,7 @@ function openStaticContextMenu(staticId: string, event: MouseEvent) {
   if (!viewport) {
     return
   }
+  closeLineContextMenu()
 
   const effectiveStatics = effectiveSelectedStaticIds()
   const selection = selectedStaticIdSet.value.has(staticId) && effectiveStatics.length > 0
@@ -2020,6 +2278,8 @@ function openStaticContextMenu(staticId: string, event: MouseEvent) {
   selectedEdgeIds.value = []
   selectedNodeIds.value = []
   selectedStaticIds.value = selection
+  selectedTextIds.value = []
+  editingTextId.value = null
   if (selectedNodeId.value !== null) {
     selectionStore.selectSwitchgear(null)
     void router.push({ name: "switchgears.list" })
@@ -2030,6 +2290,37 @@ function openStaticContextMenu(staticId: string, event: MouseEvent) {
     x: event.clientX - rect.left,
     y: event.clientY - rect.top,
     staticIds: selection,
+  }
+}
+
+function openTextContextMenu(textId: string, event: MouseEvent) {
+  const viewport = viewportRef.value
+  if (!viewport) {
+    return
+  }
+  closeLineContextMenu()
+
+  const effectiveTexts = effectiveSelectedTextIds()
+  const selection = selectedTextIdSet.value.has(textId) && effectiveTexts.length > 0
+    ? [...effectiveTexts]
+    : [textId]
+
+  selectedEdgeId.value = null
+  selectedEdgeIds.value = []
+  selectedNodeIds.value = []
+  selectedStaticIds.value = []
+  selectedTextIds.value = selection
+  editingTextId.value = null
+  if (selectedNodeId.value !== null) {
+    selectionStore.selectSwitchgear(null)
+    void router.push({ name: "switchgears.list" })
+  }
+
+  const rect = viewport.getBoundingClientRect()
+  textContextMenu.value = {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+    textIds: selection,
   }
 }
 
@@ -2092,13 +2383,22 @@ function handleWindowKeyDown(event: KeyboardEvent) {
     return
   }
 
-  if ((event.key === "Delete" || event.key === "Backspace") && (selectedLineCount.value > 0 || selectedStaticCount.value > 0)) {
+  if (event.key === "Enter" && selectedTextIds.value.length === 1) {
+    event.preventDefault()
+    startEditingTextElement(selectedTextIds.value[0]!)
+    return
+  }
+
+  if ((event.key === "Delete" || event.key === "Backspace") && (selectedLineCount.value > 0 || selectedStaticCount.value > 0 || selectedTextCount.value > 0)) {
     event.preventDefault()
     if (selectedLineCount.value > 0) {
       removeSelectedEdge()
     }
     if (selectedStaticCount.value > 0) {
       removeSelectedStaticElements()
+    }
+    if (selectedTextCount.value > 0) {
+      removeSelectedTextElements()
     }
     return
   }
@@ -2129,6 +2429,8 @@ function selectNode(id: number, event?: MouseEvent) {
   selectedEdgeId.value = null
   selectedEdgeIds.value = []
   selectedStaticIds.value = []
+  selectedTextIds.value = []
+  editingTextId.value = null
   selectedNodeIds.value = [id]
   void router.push({ name: "switchgears.detail", params: { id } })
 }
@@ -2144,15 +2446,69 @@ function selectStaticElement(id: string, event?: MouseEvent) {
   selectedEdgeIds.value = []
   selectedNodeIds.value = []
   selectedStaticIds.value = [id]
+  selectedTextIds.value = []
+  editingTextId.value = null
   if (selectedNodeId.value !== null) {
     selectionStore.selectSwitchgear(null)
     void router.push({ name: "switchgears.list" })
   }
 }
 
+function selectTextElement(id: string, event?: MouseEvent) {
+  closeLineContextMenu()
+  if (event?.shiftKey) {
+    selectedTextIds.value = toggleSelectionItem(effectiveSelectedTextIds(), id)
+    return
+  }
+
+  selectedEdgeId.value = null
+  selectedEdgeIds.value = []
+  selectedNodeIds.value = []
+  selectedStaticIds.value = []
+  selectedTextIds.value = [id]
+  editingTextId.value = null
+  if (selectedNodeId.value !== null) {
+    selectionStore.selectSwitchgear(null)
+    void router.push({ name: "switchgears.list" })
+  }
+}
+
+function startEditingTextElement(id: string) {
+  selectedEdgeId.value = null
+  selectedEdgeIds.value = []
+  selectedNodeIds.value = []
+  selectedStaticIds.value = []
+  selectedTextIds.value = [id]
+  editingTextId.value = id
+  closeLineContextMenu()
+}
+
+function commitTextElement(id: string, value: string) {
+  const nextText = value.trim().slice(0, 80) || DEFAULT_TEXT_LABEL
+  const element = getTextElementById(id)
+  editingTextId.value = null
+  if (!element || element.text === nextText) {
+    return
+  }
+
+  commitHistoryMutation(() => {
+    textElements.value = textElements.value.map(item => (
+      item.id === id
+        ? { ...item, text: nextText }
+        : item
+    ))
+  })
+}
+
+function cancelTextEdit() {
+  editingTextId.value = null
+}
+
 function openDetail(id: number) {
   closeLineContextMenu()
   selectedEdgeId.value = null
+  selectedTextIds.value = []
+  editingTextId.value = null
   void router.push({ name: "switchgears.detail", params: { id } })
 }
 
@@ -2328,8 +2684,8 @@ function onWindowPointerMove(event: PointerEvent) {
           y: dragState.value.originEdges[0]?.y1 ?? 0,
         }
         : {
-            x: dragState.value.originStatics[0]?.x ?? 0,
-            y: dragState.value.originStatics[0]?.y ?? 0,
+            x: dragState.value.originStatics[0]?.x ?? dragState.value.originTexts[0]?.x ?? 0,
+            y: dragState.value.originStatics[0]?.y ?? dragState.value.originTexts[0]?.y ?? 0,
           }
     const movingPorts = [
       ...dragState.value.originNodes.flatMap(item => buildNodePortsForLayout(item.id, { x: item.x, y: item.y })),
@@ -2364,6 +2720,19 @@ function onWindowPointerMove(event: PointerEvent) {
     staticElements.value = staticElements.value.map((element) => {
       const original = dragState.value?.type === "group"
         ? dragState.value.originStatics.find(item => item.id === element.id)
+        : null
+      if (!original) {
+        return element
+      }
+      return {
+        ...element,
+        x: Math.round(original.x + snappedTranslation.dx),
+        y: Math.round(original.y + snappedTranslation.dy),
+      }
+    })
+    textElements.value = textElements.value.map((element) => {
+      const original = dragState.value?.type === "group"
+        ? dragState.value.originTexts.find(item => item.id === element.id)
         : null
       if (!original) {
         return element
@@ -2455,6 +2824,20 @@ function onWindowPointerMove(event: PointerEvent) {
     return
   }
 
+  if (dragState.value.type === "text") {
+    const textDragState = dragState.value
+    const point = snapWorldPoint({
+      x: textDragState.originX + deltaX,
+      y: textDragState.originY + deltaY,
+    })
+    textElements.value = textElements.value.map(element => (
+      element.id === textDragState.id
+        ? { ...element, x: point.x, y: point.y }
+        : element
+    ))
+    return
+  }
+
   setLabelOffset(dragState.value.id, {
     x: dragState.value.originX + deltaX,
     y: dragState.value.originY + deltaY,
@@ -2512,6 +2895,13 @@ function onWindowPointerUp() {
       })
       .map(element => element.id)
 
+    const texts = textElements.value
+      .filter((element) => {
+        const bounds = getTextElementBounds(element)
+        return bounds.x1 <= x2 && bounds.x2 >= x1 && bounds.y1 <= y2 && bounds.y2 >= y1
+      })
+      .map(element => element.id)
+
     const isClickOnly = Math.abs(dragState.value.currentX - dragState.value.startX) < 1
       && Math.abs(dragState.value.currentY - dragState.value.startY) < 1
 
@@ -2525,12 +2915,15 @@ function onWindowPointerUp() {
       selectedNodeIds.value = [...new Set([...effectiveSelectedNodeIds(), ...nodes])]
       selectedEdgeIds.value = [...new Set([...effectiveSelectedEdgeIds(), ...lines])]
       selectedStaticIds.value = [...new Set([...effectiveSelectedStaticIds(), ...statics])]
+      selectedTextIds.value = [...new Set([...effectiveSelectedTextIds(), ...texts])]
     } else {
       selectedNodeIds.value = nodes
       selectedEdgeIds.value = lines
       selectedStaticIds.value = statics
+      selectedTextIds.value = texts
     }
     selectedEdgeId.value = selectedEdgeIds.value[0] ?? null
+    editingTextId.value = null
   }
   stopDragSession()
 }
@@ -2541,7 +2934,13 @@ function beginViewportPan(event: PointerEvent) {
     return
   }
   const target = event.target as HTMLElement | null
-  if (target?.closest("[data-node-root]") || target?.closest("[data-edge-hitbox]") || target?.closest("[data-edge-handle]") || target?.closest("[data-static-root]")) {
+  if (
+    target?.closest("[data-node-root]")
+    || target?.closest("[data-edge-hitbox]")
+    || target?.closest("[data-edge-handle]")
+    || target?.closest("[data-static-root]")
+    || target?.closest("[data-text-root]")
+  ) {
     return
   }
 
@@ -2623,8 +3022,9 @@ function beginNodeDrag(id: number, event: PointerEvent) {
   const selectedNodeGroup = effectiveSelectedNodeIds()
   const selectedEdgeGroup = effectiveSelectedEdgeIds()
   const selectedStaticGroup = effectiveSelectedStaticIds()
+  const selectedTextGroup = effectiveSelectedTextIds()
   const nodeIsSelected = selectedNodeGroup.includes(id)
-  const hasGroupSelection = selectedNodeGroup.length + selectedEdgeGroup.length + selectedStaticGroup.length > 1
+  const hasGroupSelection = selectedNodeGroup.length + selectedEdgeGroup.length + selectedStaticGroup.length + selectedTextGroup.length > 1
 
   if (interactionTool.value === "arrow") {
     const dragNodeIds = nodeIsSelected ? selectedNodeGroup : [id]
@@ -2639,11 +3039,16 @@ function beginNodeDrag(id: number, event: PointerEvent) {
     const originStatics = staticElements.value
       .filter(element => nodeIsSelected && selectedStaticGroup.includes(element.id))
       .map(element => ({ ...element }))
+    const originTexts = textElements.value
+      .filter(element => nodeIsSelected && selectedTextGroup.includes(element.id))
+      .map(element => ({ ...element }))
 
     selectedEdgeId.value = null
     selectedEdgeIds.value = nodeIsSelected ? [...selectedEdgeGroup] : []
     selectedStaticIds.value = nodeIsSelected ? [...selectedStaticGroup] : []
+    selectedTextIds.value = nodeIsSelected ? [...selectedTextGroup] : []
     selectedNodeIds.value = [...dragNodeIds]
+    editingTextId.value = null
 
     dragState.value = {
       type: "group",
@@ -2652,6 +3057,7 @@ function beginNodeDrag(id: number, event: PointerEvent) {
       originNodes,
       originEdges,
       originStatics,
+      originTexts,
     }
     beginDragHistorySession()
     event.preventDefault()
@@ -2673,6 +3079,9 @@ function beginNodeDrag(id: number, event: PointerEvent) {
     const originStatics = staticElements.value
       .filter(element => selectedStaticGroup.includes(element.id))
       .map(element => ({ ...element }))
+    const originTexts = textElements.value
+      .filter(element => selectedTextGroup.includes(element.id))
+      .map(element => ({ ...element }))
     dragState.value = {
       type: "group",
       startX: event.clientX,
@@ -2680,6 +3089,7 @@ function beginNodeDrag(id: number, event: PointerEvent) {
       originNodes,
       originEdges,
       originStatics,
+      originTexts,
     }
     beginDragHistorySession()
     event.preventDefault()
@@ -2695,6 +3105,8 @@ function beginNodeDrag(id: number, event: PointerEvent) {
   selectedNodeIds.value = []
   selectedEdgeIds.value = []
   selectedStaticIds.value = []
+  selectedTextIds.value = []
+  editingTextId.value = null
   dragState.value = {
     type: "node",
     id,
@@ -2732,12 +3144,16 @@ function beginLabelDrag(id: number, event: PointerEvent) {
       selectedEdgeId.value = null
       selectedEdgeIds.value = []
       selectedStaticIds.value = []
+      selectedTextIds.value = []
+      editingTextId.value = null
       selectedNodeIds.value = [id]
     }
   }
 
   const current = resolvedLabelOffset(id)
   selectedEdgeId.value = null
+  selectedTextIds.value = []
+  editingTextId.value = null
   dragState.value = {
     type: "label",
     id,
@@ -2774,8 +3190,9 @@ function beginStaticDrag(id: string, event: PointerEvent) {
   const selectedNodeGroup = effectiveSelectedNodeIds()
   const selectedEdgeGroup = effectiveSelectedEdgeIds()
   const selectedStaticGroup = effectiveSelectedStaticIds()
+  const selectedTextGroup = effectiveSelectedTextIds()
   const staticIsSelected = selectedStaticGroup.includes(id)
-  const hasGroupSelection = selectedNodeGroup.length + selectedEdgeGroup.length + selectedStaticGroup.length > 1
+  const hasGroupSelection = selectedNodeGroup.length + selectedEdgeGroup.length + selectedStaticGroup.length + selectedTextGroup.length > 1
 
   if (staticIsSelected && (interactionTool.value === "arrow" || hasGroupSelection)) {
     const originNodes = selectedNodeGroup.map((nodeId) => {
@@ -2789,6 +3206,9 @@ function beginStaticDrag(id: string, event: PointerEvent) {
     const originStatics = staticElements.value
       .filter(element => selectedStaticGroup.includes(element.id))
       .map(element => ({ ...element }))
+    const originTexts = textElements.value
+      .filter(element => selectedTextGroup.includes(element.id))
+      .map(element => ({ ...element }))
 
     dragState.value = {
       type: "group",
@@ -2797,6 +3217,7 @@ function beginStaticDrag(id: string, event: PointerEvent) {
       originNodes,
       originEdges,
       originStatics,
+      originTexts,
     }
     beginDragHistorySession()
     event.preventDefault()
@@ -2819,12 +3240,95 @@ function beginStaticDrag(id: string, event: PointerEvent) {
   selectedNodeIds.value = []
   selectedEdgeIds.value = []
   selectedStaticIds.value = [id]
+  selectedTextIds.value = []
+  editingTextId.value = null
   if (selectedNodeId.value !== null) {
     selectionStore.selectSwitchgear(null)
     void router.push({ name: "switchgears.list" })
   }
   dragState.value = {
     type: "static",
+    id,
+    startX: event.clientX,
+    startY: event.clientY,
+    originX: element.x,
+    originY: element.y,
+  }
+  beginDragHistorySession()
+  event.preventDefault()
+  window.addEventListener("pointermove", onWindowPointerMove)
+  window.addEventListener("pointerup", onWindowPointerUp)
+  window.addEventListener("pointercancel", onWindowPointerUp)
+}
+
+function beginTextDrag(id: string, event: PointerEvent) {
+  closeLineContextMenu()
+  if (event.button !== 0 || interactionTool.value === "line") {
+    return
+  }
+
+  const selectedNodeGroup = effectiveSelectedNodeIds()
+  const selectedEdgeGroup = effectiveSelectedEdgeIds()
+  const selectedStaticGroup = effectiveSelectedStaticIds()
+  const selectedTextGroup = effectiveSelectedTextIds()
+  const textIsSelected = selectedTextGroup.includes(id)
+  const hasGroupSelection = selectedNodeGroup.length + selectedEdgeGroup.length + selectedStaticGroup.length + selectedTextGroup.length > 1
+
+  if (textIsSelected && (interactionTool.value === "arrow" || hasGroupSelection)) {
+    const originNodes = selectedNodeGroup.map((nodeId) => {
+      const index = switchgears.value.findIndex(item => item.id === nodeId)
+      const layout = resolvedLayout(nodeId, index)
+      return { id: nodeId, x: layout.x, y: layout.y }
+    })
+    const originEdges = edges.value
+      .filter(edge => selectedEdgeGroup.includes(edge.id))
+      .map(edge => materializeEdge(edge))
+    const originStatics = staticElements.value
+      .filter(element => selectedStaticGroup.includes(element.id))
+      .map(element => ({ ...element }))
+    const originTexts = textElements.value
+      .filter(element => selectedTextGroup.includes(element.id))
+      .map(element => ({ ...element }))
+
+    dragState.value = {
+      type: "group",
+      startX: event.clientX,
+      startY: event.clientY,
+      originNodes,
+      originEdges,
+      originStatics,
+      originTexts,
+    }
+    editingTextId.value = null
+    beginDragHistorySession()
+    event.preventDefault()
+    window.addEventListener("pointermove", onWindowPointerMove)
+    window.addEventListener("pointerup", onWindowPointerUp)
+    window.addEventListener("pointercancel", onWindowPointerUp)
+    return
+  }
+
+  if (interactionTool.value === "arrow") {
+    return
+  }
+
+  const element = getTextElementById(id)
+  if (!element) {
+    return
+  }
+
+  selectedEdgeId.value = null
+  selectedNodeIds.value = []
+  selectedEdgeIds.value = []
+  selectedStaticIds.value = []
+  selectedTextIds.value = [id]
+  editingTextId.value = null
+  if (selectedNodeId.value !== null) {
+    selectionStore.selectSwitchgear(null)
+    void router.push({ name: "switchgears.list" })
+  }
+  dragState.value = {
+    type: "text",
     id,
     startX: event.clientX,
     startY: event.clientY,
@@ -2866,8 +3370,9 @@ function beginEdgeDrag(edgeId: string, mode: "move" | "start" | "end", event: Po
   const selectedNodeGroup = effectiveSelectedNodeIds()
   const selectedEdgeGroup = effectiveSelectedEdgeIds()
   const selectedStaticGroup = effectiveSelectedStaticIds()
+  const selectedTextGroup = effectiveSelectedTextIds()
   const edgeIsSelected = selectedEdgeGroup.includes(edgeId)
-  const hasGroupSelection = selectedNodeGroup.length + selectedEdgeGroup.length + selectedStaticGroup.length > 1
+  const hasGroupSelection = selectedNodeGroup.length + selectedEdgeGroup.length + selectedStaticGroup.length + selectedTextGroup.length > 1
 
   if (mode === "move" && edgeIsSelected && (interactionTool.value === "arrow" || hasGroupSelection)) {
     const originNodes = selectedNodeGroup.map((id) => {
@@ -2881,6 +3386,9 @@ function beginEdgeDrag(edgeId: string, mode: "move" | "start" | "end", event: Po
     const originStatics = staticElements.value
       .filter(element => selectedStaticGroup.includes(element.id))
       .map(element => ({ ...element }))
+    const originTexts = textElements.value
+      .filter(element => selectedTextGroup.includes(element.id))
+      .map(element => ({ ...element }))
 
     dragState.value = {
       type: "group",
@@ -2889,6 +3397,7 @@ function beginEdgeDrag(edgeId: string, mode: "move" | "start" | "end", event: Po
       originNodes,
       originEdges,
       originStatics,
+      originTexts,
     }
     beginDragHistorySession()
     event.preventDefault()
@@ -2910,6 +3419,8 @@ function beginEdgeDrag(edgeId: string, mode: "move" | "start" | "end", event: Po
   selectedEdgeIds.value = [edgeId]
   selectedNodeIds.value = []
   selectedStaticIds.value = []
+  selectedTextIds.value = []
+  editingTextId.value = null
   dragState.value = {
     type: "line",
     edgeId,
@@ -2971,6 +3482,8 @@ function selectEdge(edgeId: string, event?: MouseEvent) {
   selectedEdgeIds.value = [edgeId]
   selectedNodeIds.value = []
   selectedStaticIds.value = []
+  selectedTextIds.value = []
+  editingTextId.value = null
 }
 
 watch(
@@ -3000,7 +3513,7 @@ watch(switchgearIdsSignature, () => {
 })
 
 watch(
-  [layoutById, labelOffsetById, edges, staticElements, viewState, snapEnabled],
+  [layoutById, labelOffsetById, edges, staticElements, textElements, viewState, snapEnabled],
   () => {
     persistDiagramState()
   },
@@ -3130,6 +3643,20 @@ onBeforeUnmount(() => {
           <path d="M10 3v10" />
           <path d="M13 4.5v7" />
           <path d="M15 6v4" />
+        </svg>
+      </UiButton>
+      <UiButton
+        size="sm"
+        variant="secondary"
+        class="switchgear-sld__icon-action"
+        title="Add text"
+        aria-label="Add text"
+        @click="addTextElementInViewport()"
+      >
+        <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 4h10" />
+          <path d="M8 4v8" />
+          <path d="M5.5 12h5" />
         </svg>
       </UiButton>
 
@@ -3466,6 +3993,23 @@ onBeforeUnmount(() => {
             @context-menu="openStaticContextMenu(element.id, $event)"
           />
 
+          <SwitchgearSingleLineDiagramTextElement
+            v-for="element in textElements"
+            :key="element.id"
+            :id="element.id"
+            :text="element.text"
+            :x="element.x"
+            :y="element.y"
+            :selected="selectedTextIdSet.has(element.id)"
+            :editing="editingTextId === element.id"
+            @drag-start="beginTextDrag(element.id, $event)"
+            @select="selectTextElement(element.id, $event)"
+            @edit="startEditingTextElement(element.id)"
+            @commit="commitTextElement(element.id, $event)"
+            @cancel="cancelTextEdit()"
+            @context-menu="openTextContextMenu(element.id, $event)"
+          />
+
           <SwitchgearSingleLineDiagramNode
             v-for="(switchgear, index) in switchgears"
             :key="switchgear.id"
@@ -3575,6 +4119,30 @@ onBeforeUnmount(() => {
       </div>
 
       <div
+        v-if="textContextMenu"
+        class="switchgear-sld__context-menu"
+        :style="{ left: `${textContextMenu.x}px`, top: `${textContextMenu.y}px` }"
+        @pointerdown.stop
+      >
+        <button
+          type="button"
+          class="switchgear-sld__context-item"
+          @click="textContextMenu.textIds[0] && startEditingTextElement(textContextMenu.textIds[0])"
+        >
+          <span>Edit text</span>
+          <span class="switchgear-sld__context-shortcut">Enter</span>
+        </button>
+        <button
+          type="button"
+          class="switchgear-sld__context-item switchgear-sld__context-item--danger"
+          @click="removeSelectedTextElements()"
+        >
+          <span>{{ textContextMenu.textIds.length > 1 ? 'Remove selected text' : 'Remove text' }}</span>
+          <span class="switchgear-sld__context-shortcut">Del</span>
+        </button>
+      </div>
+
+      <div
         v-if="minimapModel"
         class="switchgear-sld__minimap"
       >
@@ -3615,6 +4183,17 @@ onBeforeUnmount(() => {
               rx="1.5"
               :fill="item.active ? '#38bdf8' : (isDarkTheme ? '#cbd5e1' : '#64748b')"
               :opacity="item.active ? 1 : 0.58"
+            />
+            <rect
+              v-for="item in minimapModel.texts"
+              :key="item.id"
+              :x="item.x"
+              :y="item.y"
+              :width="item.width"
+              :height="item.height"
+              rx="1.5"
+              :fill="item.active ? '#38bdf8' : (isDarkTheme ? '#94a3b8' : '#64748b')"
+              :opacity="item.active ? 1 : 0.5"
             />
             <rect
               v-for="item in minimapModel.nodes"
@@ -3873,6 +4452,7 @@ onBeforeUnmount(() => {
 .switchgear-sld__viewport--draw-line :deep(.switchgear-sld-node__button),
 .switchgear-sld__viewport--draw-line :deep(.switchgear-sld-node__label),
 .switchgear-sld__viewport--draw-line :deep(.switchgear-sld-static-element),
+.switchgear-sld__viewport--draw-line :deep(.switchgear-sld-text__button),
 .switchgear-sld__viewport--draw-line .switchgear-sld__edge-hitbox,
 .switchgear-sld__viewport--draw-line .switchgear-sld__edge-handle {
   cursor: crosshair;
