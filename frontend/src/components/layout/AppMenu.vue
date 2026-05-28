@@ -141,6 +141,12 @@ const baseSections: MenuSection[] = [
       { to: "/sequences", label: "Sequences", icon: "sequences" },
     ],
   },
+  {
+    title: "DEBUG",
+    items: [
+      { to: "/61850-debug", label: "61850 Debug", icon: "iec61850" },
+    ],
+  },
 ]
 
 const sections = computed<MenuSection[]>(() => {

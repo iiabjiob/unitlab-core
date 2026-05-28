@@ -5,6 +5,7 @@ import { devicesRoutes } from "./devices.routes"
 import { switchgearsRoutes } from "./switchgears.routes"
 import { signalsRoutes } from "./signals.routes"
 import { settingsRoutes } from "./settings.routes"
+import { debug61850Routes } from "./debug61850.routes"
 import { bootRuntime } from "@/boot/runtime"
 
 // Default layout meta (used by most screens)
@@ -28,6 +29,7 @@ const router = createRouter({
     ...devicesRoutes,
     ...switchgearsRoutes,
     ...signalsRoutes,
+    ...debug61850Routes,
     ...settingsRoutes,
     ...sequencesRoutes,
     // Catch-all → redirect home

@@ -80,6 +80,7 @@ export type {
   SldConnection,
   SldConnectionRoute,
   SldConnectionRouteSegment,
+  SldCoordinate,
   SldDocument,
   SldElement,
   SldElementDimensions,

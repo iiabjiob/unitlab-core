@@ -1,5 +1,5 @@
 <script lang="ts">
-export type AppMenuIconName = "devices" | "signals" | "switchgears" | "sequences" | "settings"
+export type AppMenuIconName = "devices" | "signals" | "switchgears" | "sequences" | "settings" | "iec61850"
 </script>
 
 <script setup lang="ts">
@@ -59,6 +59,17 @@ defineProps<{
       <rect x="8.5" y="16" width="12" height="4.5" rx="1.5" />
       <path d="M8.5 8.5V10" />
       <path d="M11 14.5V16" />
+    </template>
+
+    <template v-else-if="name === 'iec61850'">
+      <path d="M4 18H20" />
+      <path d="M7 18V7" />
+      <path d="M12 18V4" />
+      <path d="M17 18V9" />
+      <path d="M7 7L12 4L17 9" />
+      <circle cx="7" cy="7" r="1.2" />
+      <circle cx="12" cy="4" r="1.2" />
+      <circle cx="17" cy="9" r="1.2" />
     </template>
 
     <template v-else>
