@@ -294,6 +294,51 @@ describe("scd-sld-core", () => {
     }))
   })
 
+  it("disambiguates duplicate normalized ids within the same parent scope", () => {
+    const result = generateSldFromScd({
+      fileName: "duplicate-ids.scd",
+      contentHash: "duplicate-ids",
+      xmlText: `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <Substation name="SS1">
+    <VoltageLevel name="VL1">
+      <Bay name="B1">
+        <ConductingEquipment name="Q01" type="CBR"/>
+        <ConductingEquipment name="Q01" type="DIS"/>
+      </Bay>
+      <Bay name="B1"/>
+    </VoltageLevel>
+  </Substation>
+</SCL>`,
+    })
+
+    const voltageLevel = result.model.substations[0]?.voltageLevels[0]
+    expect(voltageLevel?.bays.map(bay => bay.id)).toEqual([
+      "substation/SS1/voltageLevel/VL1/bay/B1",
+      "substation/SS1/voltageLevel/VL1/bay/B1__2",
+    ])
+    expect(voltageLevel?.bays[0]?.equipments.map(item => item.id)).toEqual([
+      "substation/SS1/voltageLevel/VL1/bay/B1/equipment/Q01",
+      "substation/SS1/voltageLevel/VL1/bay/B1/equipment/Q01__2",
+    ])
+    expect(result.graph.nodes.map(node => node.id)).toEqual([
+      "substation/SS1/voltageLevel/VL1/bay/B1/equipment/Q01",
+      "substation/SS1/voltageLevel/VL1/bay/B1/equipment/Q01__2",
+    ])
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      severity: "warning",
+      stage: "normalizer",
+      code: "normalizer.duplicate-normalized-id",
+      sourceId: "substation/SS1/voltageLevel/VL1/bay/B1/equipment/Q01__2",
+    }))
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      severity: "warning",
+      stage: "normalizer",
+      code: "normalizer.duplicate-normalized-id",
+      sourceId: "substation/SS1/voltageLevel/VL1/bay/B1__2",
+    }))
+  })
+
   it("keeps the first standard Voltage element and reports duplicates", () => {
     const result = generateSldFromScd({
       fileName: "duplicate-voltage.scd",

@@ -367,7 +367,7 @@ Implemented 2026-05-28:
 
 ### Slice 4 - Normalized SCL Model
 
-Status: `[~]`
+Status: `[x]`
 
 Goal:
 
@@ -401,7 +401,7 @@ Implemented 2026-05-28:
 - Connectivity nodes now expose a canonical normalized path.
 - Terminal references now resolve to declared connectivity node IDs when possible, including the standard `cNodeName` + hierarchy attribute form.
 - Undeclared terminal connectivity references are preserved with `normalizer.unresolved-connectivity-node` diagnostics.
-- Full duplicate-name handling remains open for the normalization slice.
+- Duplicate normalized IDs within the same parent scope now get deterministic `__N` suffixes with `normalizer.duplicate-normalized-id` diagnostics.
 
 ### Slice 5 - Electrical Graph Builder
 

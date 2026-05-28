@@ -158,8 +158,15 @@ function handleCloseEvent(
 
 function openSubstation(model: NormalizedSclModel, substationStack: SclSubstation[], event: XmlElementEvent) {
   const name = readRequiredName(event)
+  const id = makeUniqueScopedId({
+    baseId: buildStableId(["substation", name]),
+    existingIds: model.substations.map(substation => substation.id),
+    diagnostics: model.diagnostics,
+    event,
+    entityKind: "Substation",
+  })
   const substation: SclSubstation = {
-    id: buildStableId(["substation", name]),
+    id,
     name,
     desc: readXmlAttribute(event.attributes, "desc"),
     coordinates: readCoordinates(event),
@@ -186,8 +193,15 @@ function openVoltageLevel(
   }
 
   const name = readRequiredName(event)
+  const id = makeUniqueScopedId({
+    baseId: buildChildId(substation.id, "voltageLevel", name),
+    existingIds: substation.voltageLevels.map(voltageLevel => voltageLevel.id),
+    diagnostics,
+    event,
+    entityKind: "VoltageLevel",
+  })
   const voltageLevel: SclVoltageLevel = {
-    id: buildStableId(["substation", substation.name, "voltageLevel", name]),
+    id,
     name,
     voltage: null,
     lNodes: [],
@@ -241,8 +255,15 @@ function openBay(
   }
 
   const name = readRequiredName(event)
+  const id = makeUniqueScopedId({
+    baseId: buildChildId(voltageLevel.id, "bay", name),
+    existingIds: voltageLevel.bays.map(bay => bay.id),
+    diagnostics,
+    event,
+    entityKind: "Bay",
+  })
   const bay: SclBay = {
-    id: buildStableId(["substation", substation.name, "voltageLevel", voltageLevel.name, "bay", name]),
+    id,
     name,
     desc: readXmlAttribute(event.attributes, "desc"),
     coordinates: readCoordinates(event),
@@ -274,8 +295,12 @@ function openConductingEquipment(
   }
 
   const equipment = createEquipment({
+    diagnostics,
     event,
     tagName: "ConductingEquipment",
+    parentId: bay.id,
+    idSegment: "equipment",
+    existingIds: bay.equipments.map(item => item.id),
     typeFallback: "unknown",
     substationName: substation.name,
     voltageLevelName: voltageLevel.name,
@@ -298,8 +323,12 @@ function openPowerTransformer(
   }
 
   const equipment = createEquipment({
+    diagnostics,
     event,
     tagName: "PowerTransformer",
+    parentId: substation.id,
+    idSegment: "powerTransformer",
+    existingIds: substation.powerTransformers.map(item => item.id),
     typeFallback: "PTR",
     substationName: substation.name,
     voltageLevelName: null,
@@ -355,17 +384,19 @@ function appendConnectivityNode(
   const bay = last(bayStack)
   const name = readXmlAttribute(event.attributes, "name")
   const pathName = readXmlAttribute(event.attributes, "pathName")
+  const targetCollection = bay?.connectivityNodes ?? voltageLevel?.connectivityNodes ?? substation.connectivityNodes
+  const ordinal = targetCollection.length + 1
+  const idName = name ?? String(ordinal)
+  const parentId = bay?.id ?? voltageLevel?.id ?? substation.id
+  const id = makeUniqueScopedId({
+    baseId: buildChildId(parentId, "connectivityNode", idName),
+    existingIds: targetCollection.map(node => node.id),
+    diagnostics,
+    event,
+    entityKind: "ConnectivityNode",
+  })
   const node: SclConnectivityNode = {
-    id: buildStableId([
-      "substation",
-      substation.name,
-      "voltageLevel",
-      voltageLevel?.name ?? "none",
-      "bay",
-      bay?.name ?? "none",
-      "connectivityNode",
-      name ?? String((bay?.connectivityNodes.length ?? voltageLevel?.connectivityNodes.length ?? substation.connectivityNodes.length) + 1),
-    ]),
+    id,
     name,
     pathName,
     normalizedPath: normalizeConnectivityNodePath({
@@ -436,8 +467,15 @@ function appendLogicalNode(
 
 function appendIed(model: NormalizedSclModel, event: XmlElementEvent) {
   const name = readRequiredName(event)
+  const id = makeUniqueScopedId({
+    baseId: buildStableId(["ied", name]),
+    existingIds: model.ieds.map(ied => ied.id),
+    diagnostics: model.diagnostics,
+    event,
+    entityKind: "IED",
+  })
   const ied: SclIed = {
-    id: buildStableId(["ied", name]),
+    id,
     name,
     desc: readXmlAttribute(event.attributes, "desc"),
     manufacturer: readXmlAttribute(event.attributes, "manufacturer"),
@@ -449,8 +487,12 @@ function appendIed(model: NormalizedSclModel, event: XmlElementEvent) {
 }
 
 function createEquipment(input: {
+  diagnostics: ScdDiagnostic[]
   event: XmlElementEvent
   tagName: "ConductingEquipment" | "PowerTransformer"
+  parentId: string
+  idSegment: "equipment" | "powerTransformer"
+  existingIds: string[]
   typeFallback: string
   substationName: string | null
   voltageLevelName: string | null
@@ -458,17 +500,16 @@ function createEquipment(input: {
 }): SclEquipment {
   const name = readRequiredName(input.event)
   const type = readXmlAttribute(input.event.attributes, "type") ?? input.typeFallback
-  const idParts = [
-    "substation",
-    input.substationName ?? "none",
-    ...(input.voltageLevelName ? ["voltageLevel", input.voltageLevelName] : []),
-    ...(input.bayName ? ["bay", input.bayName] : []),
-    input.tagName === "PowerTransformer" ? "powerTransformer" : "equipment",
-    name,
-  ]
+  const id = makeUniqueScopedId({
+    baseId: buildChildId(input.parentId, input.idSegment, name),
+    existingIds: input.existingIds,
+    diagnostics: input.diagnostics,
+    event: input.event,
+    entityKind: input.tagName,
+  })
 
   return {
-    id: buildStableId(idParts),
+    id,
     name,
     desc: readXmlAttribute(input.event.attributes, "desc"),
     type,
@@ -635,6 +676,41 @@ function normalizePath(value: string): string {
 function normalizePathParts(parts: Array<string | null>): string | null {
   const path = parts.map(part => part?.trim() ?? "").filter(Boolean).join("/")
   return path || null
+}
+
+function makeUniqueScopedId(input: {
+  baseId: string
+  existingIds: string[]
+  diagnostics: ScdDiagnostic[]
+  event: XmlElementEvent
+  entityKind: string
+}): string {
+  const existingIds = new Set(input.existingIds)
+  if (!existingIds.has(input.baseId)) {
+    return input.baseId
+  }
+
+  let suffix = 2
+  let id = `${input.baseId}__${suffix}`
+  while (existingIds.has(id)) {
+    suffix += 1
+    id = `${input.baseId}__${suffix}`
+  }
+
+  input.diagnostics.push({
+    severity: "warning",
+    stage: "normalizer",
+    code: "normalizer.duplicate-normalized-id",
+    message: `${input.entityKind} normalized id "${input.baseId}" is duplicated in the same parent scope; it was disambiguated as "${id}".`,
+    sourcePath: input.event.sourcePath,
+    sourceId: id,
+  })
+
+  return id
+}
+
+function buildChildId(parentId: string, childKind: string, childName: string): string {
+  return `${parentId}/${buildStableId([childKind, childName])}`
 }
 
 function parseNullableNumber(value: string | null): number | null {
