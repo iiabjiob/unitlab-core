@@ -1,6 +1,6 @@
 # SCD to SLD Generation Plan
 
-Status: planned
+Status: core foundation started
 Last reviewed: 2026-05-28
 
 ## Purpose
@@ -252,7 +252,7 @@ Validation:
 
 ### Slice 1 - Core Skeleton and Contracts
 
-Status: `[ ]`
+Status: `[x]`
 
 Goal:
 
@@ -271,9 +271,15 @@ Validation:
 - Frontend type-check.
 - Unit tests for empty/invalid input diagnostics.
 
+Implemented 2026-05-28:
+
+- Added framework-neutral `frontend/src/modules/scd-sld-core/` entrypoint and DTO contracts.
+- Added `generateSldFromScd(...)` pipeline returning normalized SCL model, renderer-neutral SLD document, and diagnostics.
+- Added JSON-serializable contract coverage.
+
 ### Slice 2 - XML Adapter Boundary
 
-Status: `[ ]`
+Status: `[x]`
 
 Goal:
 
@@ -298,9 +304,15 @@ Validation:
 - Fixtures with namespace-prefixed and non-prefixed SCL tags.
 - Invalid XML produces diagnostics, not uncaught exceptions.
 
+Implemented 2026-05-28:
+
+- Added a small framework-neutral XML scanner boundary for SCL topology extraction.
+- Scanner supports namespace-qualified element and attribute names used by SCD files.
+- Parser stops after substation topology for the first SLD slice so large IED/DataTypeTemplates payloads do not block the import path.
+
 ### Slice 3 - Minimal SCD Parser
 
-Status: `[ ]`
+Status: `[~]`
 
 Goal:
 
@@ -329,6 +341,12 @@ Validation:
 
 - Golden parser snapshots.
 - Missing optional sections are handled explicitly.
+
+Implemented 2026-05-28:
+
+- Initial parser extracts `SCL`, `Substation`, `VoltageLevel`, `Bay`, `PowerTransformer`, `ConductingEquipment`, `Terminal`, `ConnectivityNode`, and `LNode`.
+- Top-level `IED` metadata is intentionally deferred; current parser keeps reachable IED references through `LNode`.
+- Local smoke validation passed against uploaded `/workspace/.refs/sld-rev2.scd`.
 
 ### Slice 4 - Normalized SCL Model
 
