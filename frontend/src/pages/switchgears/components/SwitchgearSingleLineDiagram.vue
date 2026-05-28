@@ -21,6 +21,15 @@ type DiagramNodeLayout = {
   y: number
 }
 
+type DiagramBindablePortOwnerType = "node" | "static"
+type DiagramPortOwnerType = DiagramBindablePortOwnerType | "line"
+
+type DiagramPortBinding = {
+  ownerType: DiagramBindablePortOwnerType
+  ownerId: number | string
+  portId: string
+}
+
 type DiagramEdge = {
   id: string
   x1: number
@@ -28,6 +37,8 @@ type DiagramEdge = {
   x2: number
   y2: number
   kind: "line" | "arrow"
+  startBinding?: DiagramPortBinding | null
+  endBinding?: DiagramPortBinding | null
 }
 
 type DiagramStaticKind = "transformer" | "ground"
@@ -110,8 +121,9 @@ type DiagramClipboardPayload = {
 }
 
 type DiagramPort = {
-  ownerType: "node" | "line" | "static"
+  ownerType: DiagramPortOwnerType
   ownerId: number | string
+  portId: string
   x: number
   y: number
 }
@@ -478,14 +490,17 @@ const minimapModel = computed(() => {
       height: Math.max(3, item.height * scale),
       active: selectedNodeIdSet.value.has(item.id),
     })),
-    lines: edges.value.map(edge => ({
-      id: edge.id,
-      x1: offsetX + (edge.x1 - contentMinX) * scale,
-      y1: offsetY + (edge.y1 - contentMinY) * scale,
-      x2: offsetX + (edge.x2 - contentMinX) * scale,
-      y2: offsetY + (edge.y2 - contentMinY) * scale,
-      active: selectedEdgeIdSet.value.has(edge.id),
-    })),
+    lines: edges.value.map((edge) => {
+      const points = resolvedEdgePoints(edge)
+      return {
+        id: edge.id,
+        x1: offsetX + (points.x1 - contentMinX) * scale,
+        y1: offsetY + (points.y1 - contentMinY) * scale,
+        x2: offsetX + (points.x2 - contentMinX) * scale,
+        y2: offsetY + (points.y2 - contentMinY) * scale,
+        active: selectedEdgeIdSet.value.has(edge.id),
+      }
+    }),
     statics: staticElements.value.map((element) => {
       const elementBounds = getStaticElementBounds(element)
       return {
@@ -535,11 +550,12 @@ function buildDiagramWorldBounds(): DiagramWorldBounds | null {
   })
 
   edges.value.forEach((edge) => {
+    const points = resolvedEdgePoints(edge)
     bounds = mergeWorldBounds(bounds, {
-      minX: Math.min(edge.x1, edge.x2),
-      minY: Math.min(edge.y1, edge.y2),
-      maxX: Math.max(edge.x1, edge.x2),
-      maxY: Math.max(edge.y1, edge.y2),
+      minX: Math.min(points.x1, points.x2),
+      minY: Math.min(points.y1, points.y2),
+      maxX: Math.max(points.x1, points.x2),
+      maxY: Math.max(points.y1, points.y2),
     })
   })
 
@@ -573,7 +589,11 @@ function cloneLabelOffsetById(source: Record<string, DiagramLabelOffset>) {
 }
 
 function cloneEdges(source: DiagramEdge[]) {
-  return source.map(edge => ({ ...edge }))
+  return source.map(edge => ({
+    ...edge,
+    startBinding: edge.startBinding ? { ...edge.startBinding } : null,
+    endBinding: edge.endBinding ? { ...edge.endBinding } : null,
+  }))
 }
 
 function cloneStaticElements(source: DiagramStaticElement[]) {
@@ -592,6 +612,33 @@ function normalizeStaticSize(value: unknown): DiagramStaticSize {
   return STATIC_SIZES.includes(value as DiagramStaticSize)
     ? value as DiagramStaticSize
     : DEFAULT_STATIC_SIZE
+}
+
+function normalizePortBinding(value: unknown): DiagramPortBinding | null {
+  if (!value || typeof value !== "object") {
+    return null
+  }
+
+  const binding = value as Partial<DiagramPortBinding>
+  const portId = typeof binding.portId === "string" && binding.portId.trim()
+    ? binding.portId
+    : null
+  if (!portId) {
+    return null
+  }
+
+  if (binding.ownerType === "node") {
+    const ownerId = Number(binding.ownerId)
+    return Number.isFinite(ownerId)
+      ? { ownerType: "node", ownerId, portId }
+      : null
+  }
+
+  if (binding.ownerType === "static" && typeof binding.ownerId === "string" && binding.ownerId) {
+    return { ownerType: "static", ownerId: binding.ownerId, portId }
+  }
+
+  return null
 }
 
 function normalizeRotation(value: unknown): 0 | 90 | 180 | 270 {
@@ -874,17 +921,18 @@ function buildNodePortsForLayout(nodeId: number, layout: DiagramNodeLayout): Dia
   const halfHeight = NODE_HEIGHT / 2
 
   return [
-    { ownerType: "node", ownerId: nodeId, x: worldX + halfWidth, y: worldY },
-    { ownerType: "node", ownerId: nodeId, x: worldX + NODE_WIDTH, y: worldY + halfHeight },
-    { ownerType: "node", ownerId: nodeId, x: worldX + halfWidth, y: worldY + NODE_HEIGHT },
-    { ownerType: "node", ownerId: nodeId, x: worldX, y: worldY + halfHeight },
+    { ownerType: "node", ownerId: nodeId, portId: "top", x: worldX + halfWidth, y: worldY },
+    { ownerType: "node", ownerId: nodeId, portId: "right", x: worldX + NODE_WIDTH, y: worldY + halfHeight },
+    { ownerType: "node", ownerId: nodeId, portId: "bottom", x: worldX + halfWidth, y: worldY + NODE_HEIGHT },
+    { ownerType: "node", ownerId: nodeId, portId: "left", x: worldX, y: worldY + halfHeight },
   ]
 }
 
 function buildLinePorts(edge: DiagramEdge): DiagramPort[] {
+  const points = resolvedEdgePoints(edge)
   return [
-    { ownerType: "line", ownerId: edge.id, x: edge.x1, y: edge.y1 },
-    { ownerType: "line", ownerId: edge.id, x: edge.x2, y: edge.y2 },
+    { ownerType: "line", ownerId: edge.id, portId: "start", x: points.x1, y: points.y1 },
+    { ownerType: "line", ownerId: edge.id, portId: "end", x: points.x2, y: points.y2 },
   ]
 }
 
@@ -903,11 +951,11 @@ function buildStaticPorts(element: DiagramStaticElement): DiagramPort[] {
   const base = getStaticElementDimensions(element)
   const localPorts = element.kind === "transformer"
     ? [
-        { x: 0, y: -base.height / 2 },
-        { x: 0, y: base.height / 2 },
+        { portId: "primary", x: 0, y: -base.height / 2 },
+        { portId: "secondary", x: 0, y: base.height / 2 },
       ]
     : [
-        { x: -base.width / 2, y: 0 },
+        { portId: "terminal", x: -base.width / 2, y: 0 },
       ]
 
   return localPorts.map((local) => {
@@ -915,6 +963,7 @@ function buildStaticPorts(element: DiagramStaticElement): DiagramPort[] {
     return {
       ownerType: "static" as const,
       ownerId: element.id,
+      portId: local.portId,
       x: element.x + rotated.x,
       y: element.y + rotated.y,
     }
@@ -934,9 +983,36 @@ function findNearestPort(point: { x: number; y: number }, ports: DiagramPort[]):
   return nearest?.port ?? null
 }
 
-function collectStationaryPorts(
+function findNearestPortWithinDistance(
+  point: { x: number; y: number },
+  ports: DiagramPort[],
+  maxDistance = PORT_SNAP_DISTANCE,
+): DiagramPort | null {
+  const nearest = findNearestPort(point, ports)
+  if (!nearest || Math.hypot(nearest.x - point.x, nearest.y - point.y) > maxDistance) {
+    return null
+  }
+  return nearest
+}
+
+function isBindablePort(port: DiagramPort): port is DiagramPort & { ownerType: DiagramBindablePortOwnerType } {
+  return port.ownerType === "node" || port.ownerType === "static"
+}
+
+function buildPortBinding(port: DiagramPort): DiagramPortBinding | null {
+  if (!isBindablePort(port)) {
+    return null
+  }
+
+  return {
+    ownerType: port.ownerType,
+    ownerId: port.ownerId,
+    portId: port.portId,
+  }
+}
+
+function collectBindablePorts(
   excludedNodeIds: Set<number> = new Set<number>(),
-  excludedEdgeIds: Set<string> = new Set<string>(),
   excludedStaticIds: Set<string> = new Set<string>(),
 ): DiagramPort[] {
   const ports: DiagramPort[] = []
@@ -948,18 +1024,114 @@ function collectStationaryPorts(
     ports.push(...buildNodePortsForLayout(item.id, resolvedLayout(item.id, index)))
   })
 
-  edges.value.forEach((edge) => {
-    if (excludedEdgeIds.has(edge.id)) {
-      return
-    }
-    ports.push(...buildLinePorts(edge))
-  })
-
   staticElements.value.forEach((element) => {
     if (excludedStaticIds.has(element.id)) {
       return
     }
     ports.push(...buildStaticPorts(element))
+  })
+
+  return ports
+}
+
+function portMatchesBinding(port: DiagramPort, binding: DiagramPortBinding): boolean {
+  return port.ownerType === binding.ownerType
+    && String(port.ownerId) === String(binding.ownerId)
+    && port.portId === binding.portId
+}
+
+function resolvePortBinding(binding: DiagramPortBinding | null | undefined): DiagramPort | null {
+  if (!binding) {
+    return null
+  }
+
+  return collectBindablePorts().find(port => portMatchesBinding(port, binding)) ?? null
+}
+
+function resolvedEdgeEndpoint(edge: DiagramEdge, endpoint: "start" | "end") {
+  const binding = endpoint === "start" ? edge.startBinding : edge.endBinding
+  const resolvedPort = resolvePortBinding(binding)
+  if (resolvedPort) {
+    return { x: resolvedPort.x, y: resolvedPort.y }
+  }
+
+  return endpoint === "start"
+    ? { x: edge.x1, y: edge.y1 }
+    : { x: edge.x2, y: edge.y2 }
+}
+
+function resolvedEdgePoints(edge: DiagramEdge) {
+  const start = resolvedEdgeEndpoint(edge, "start")
+  const end = resolvedEdgeEndpoint(edge, "end")
+  return {
+    x1: start.x,
+    y1: start.y,
+    x2: end.x,
+    y2: end.y,
+  }
+}
+
+function materializeEdge(edge: DiagramEdge): DiagramEdge {
+  return {
+    ...edge,
+    ...resolvedEdgePoints(edge),
+  }
+}
+
+function movingSelectionOwnsBinding(
+  binding: DiagramPortBinding | null | undefined,
+  nodeIds: Set<number>,
+  staticIds: Set<string>,
+): boolean {
+  if (!binding) {
+    return false
+  }
+
+  return binding.ownerType === "node"
+    ? nodeIds.has(Number(binding.ownerId))
+    : staticIds.has(String(binding.ownerId))
+}
+
+function findBindablePortNearPoint(point: { x: number; y: number }): DiagramPort | null {
+  if (!snapEnabled.value) {
+    return null
+  }
+  return findNearestPortWithinDistance(point, collectBindablePorts())
+}
+
+function snapLineEndpoint(
+  point: { x: number; y: number },
+  excludedEdgeIds: Set<string> = new Set<string>(),
+) {
+  const snappedPoint = snapWorldPoint(point)
+  const bindablePort = findBindablePortNearPoint(snappedPoint)
+  const binding = bindablePort ? buildPortBinding(bindablePort) : null
+
+  if (bindablePort && binding) {
+    return {
+      point: { x: bindablePort.x, y: bindablePort.y },
+      binding,
+    }
+  }
+
+  return {
+    point: applyPortSnapToLinePoint(snappedPoint, excludedEdgeIds),
+    binding: null,
+  }
+}
+
+function collectStationaryPorts(
+  excludedNodeIds: Set<number> = new Set<number>(),
+  excludedEdgeIds: Set<string> = new Set<string>(),
+  excludedStaticIds: Set<string> = new Set<string>(),
+): DiagramPort[] {
+  const ports: DiagramPort[] = collectBindablePorts(excludedNodeIds, excludedStaticIds)
+
+  edges.value.forEach((edge) => {
+    if (excludedEdgeIds.has(edge.id)) {
+      return
+    }
+    ports.push(...buildLinePorts(edge))
   })
 
   return ports
@@ -1020,7 +1192,7 @@ function applyPortSnapToLinePoint(point: { x: number; y: number }, excludedEdgeI
   }
 
   const correction = findBestPortCorrection(
-    [{ ownerType: "line", ownerId: "moving", x: point.x, y: point.y }],
+    [{ ownerType: "line", ownerId: "moving", portId: "endpoint", x: point.x, y: point.y }],
     collectStationaryPorts(new Set<number>(), excludedEdgeIds),
   )
 
@@ -1158,6 +1330,8 @@ function restoreDiagramState() {
           x2: edge.x2,
           y2: edge.y2,
           kind: normalizeEdgeKind(edge.kind),
+          startBinding: normalizePortBinding(edge.startBinding),
+          endBinding: normalizePortBinding(edge.endBinding),
         }))
       }
       if (Array.isArray(parsed.staticElements)) {
@@ -1233,19 +1407,21 @@ function buildStaticElementId(): string {
 }
 
 function addEdge(start: { x: number; y: number }, end: { x: number; y: number }) {
-  const snappedStart = applyPortSnapToLinePoint(snapWorldPoint(start))
-  const snappedEnd = applyPortSnapToLinePoint(snapWorldPoint(end))
-  if (Math.hypot(snappedEnd.x - snappedStart.x, snappedEnd.y - snappedStart.y) < 8) {
+  const startEndpoint = snapLineEndpoint(start)
+  const endEndpoint = snapLineEndpoint(end)
+  if (Math.hypot(endEndpoint.point.x - startEndpoint.point.x, endEndpoint.point.y - startEndpoint.point.y) < 8) {
     toastStore.warning("Line is too short")
     return
   }
   const nextEdge: DiagramEdge = {
     id: buildEdgeId(),
-    x1: snappedStart.x,
-    y1: snappedStart.y,
-    x2: snappedEnd.x,
-    y2: snappedEnd.y,
+    x1: startEndpoint.point.x,
+    y1: startEndpoint.point.y,
+    x2: endEndpoint.point.x,
+    y2: endEndpoint.point.y,
     kind: "line",
+    startBinding: startEndpoint.binding,
+    endBinding: endEndpoint.binding,
   }
   commitHistoryMutation(() => {
     edges.value = [...edges.value, nextEdge]
@@ -1301,7 +1477,10 @@ async function handleCopySelection() {
   const sourceEdges = edgeIds
     .map(edgeId => getEdgeById(edgeId))
     .filter((edge): edge is DiagramEdge => edge !== null)
-    .map(edge => ({ x1: edge.x1, y1: edge.y1, x2: edge.x2, y2: edge.y2, kind: edge.kind }))
+    .map((edge) => {
+      const points = resolvedEdgePoints(edge)
+      return { x1: points.x1, y1: points.y1, x2: points.x2, y2: points.y2, kind: edge.kind }
+    })
   const sourceStaticElements = effectiveSelectedStaticIds()
     .map(staticId => getStaticElementById(staticId))
     .filter((element): element is DiagramStaticElement => element !== null)
@@ -1381,6 +1560,8 @@ async function handlePasteSelection() {
         x2: end.x,
         y2: end.y,
         kind: edge.kind,
+        startBinding: null,
+        endBinding: null,
       }
     }))
     insertedStaticElements.push(...sourceSelection.staticElements.map((element) => {
@@ -1546,10 +1727,11 @@ function rotateSelectedEdges90() {
         return edge
       }
 
-      const centerX = (edge.x1 + edge.x2) / 2
-      const centerY = (edge.y1 + edge.y2) / 2
-      const deltaX = (edge.x2 - edge.x1) / 2
-      const deltaY = (edge.y2 - edge.y1) / 2
+      const points = resolvedEdgePoints(edge)
+      const centerX = (points.x1 + points.x2) / 2
+      const centerY = (points.y1 + points.y2) / 2
+      const deltaX = (points.x2 - points.x1) / 2
+      const deltaY = (points.y2 - points.y1) / 2
 
       const start = snapWorldPoint({
         x: centerX + deltaY,
@@ -1566,6 +1748,8 @@ function rotateSelectedEdges90() {
         y1: start.y,
         x2: end.x,
         y2: end.y,
+        startBinding: null,
+        endBinding: null,
       }
     })
     closeLineContextMenu()
@@ -1764,17 +1948,21 @@ function nudgeSelection(dx: number, dy: number): boolean {
     }
 
     if (edgeIds.size > 0) {
-      edges.value = edges.value.map(edge => (
-        edgeIds.has(edge.id)
-          ? {
-              ...edge,
-              x1: Math.round(edge.x1 + dx),
-              y1: Math.round(edge.y1 + dy),
-              x2: Math.round(edge.x2 + dx),
-              y2: Math.round(edge.y2 + dy),
-            }
-          : edge
-      ))
+      edges.value = edges.value.map((edge) => {
+        if (!edgeIds.has(edge.id)) {
+          return edge
+        }
+        const points = resolvedEdgePoints(edge)
+        return {
+          ...edge,
+          x1: Math.round(points.x1 + dx),
+          y1: Math.round(points.y1 + dy),
+          x2: Math.round(points.x2 + dx),
+          y2: Math.round(points.y2 + dy),
+          startBinding: null,
+          endBinding: null,
+        }
+      })
     }
 
     if (staticIds.size > 0) {
@@ -2113,7 +2301,7 @@ function onWindowPointerMove(event: PointerEvent) {
     const snapped = event.shiftKey
       ? snapToEightDirections(dragState.value.startX, dragState.value.startY, world.x, world.y)
       : world
-    const current = applyPortSnapToLinePoint(snapWorldPoint(snapped))
+    const current = snapLineEndpoint(snapped).point
     dragState.value = {
       ...dragState.value,
       currentX: current.x,
@@ -2126,6 +2314,9 @@ function onWindowPointerMove(event: PointerEvent) {
   const deltaY = (event.clientY - dragState.value.startY) / viewState.value.zoom
 
   if (dragState.value.type === "group") {
+    const movingNodeIds = new Set<number>(dragState.value.originNodes.map(item => item.id))
+    const movingEdgeIds = new Set<string>(dragState.value.originEdges.map(edge => edge.id))
+    const movingStaticIds = new Set<string>(dragState.value.originStatics.map(element => element.id))
     const anchor = dragState.value.originNodes.length > 0
       ? {
           x: dragState.value.originNodes[0].x + STAGE_PADDING + NODE_WIDTH / 2,
@@ -2150,9 +2341,9 @@ function onWindowPointerMove(event: PointerEvent) {
       deltaX,
       deltaY,
       movingPorts,
-      new Set<number>(dragState.value.originNodes.map(item => item.id)),
-      new Set<string>(dragState.value.originEdges.map(edge => edge.id)),
-      new Set<string>(dragState.value.originStatics.map(element => element.id)),
+      movingNodeIds,
+      movingEdgeIds,
+      movingStaticIds,
     )
     for (const orig of dragState.value.originNodes) {
       setNodeLayout(orig.id, {
@@ -2166,6 +2357,8 @@ function onWindowPointerMove(event: PointerEvent) {
         y1: Math.round(orig.y1 + snappedTranslation.dy),
         x2: Math.round(orig.x2 + snappedTranslation.dx),
         y2: Math.round(orig.y2 + snappedTranslation.dy),
+        startBinding: movingSelectionOwnsBinding(orig.startBinding, movingNodeIds, movingStaticIds) ? orig.startBinding : null,
+        endBinding: movingSelectionOwnsBinding(orig.endBinding, movingNodeIds, movingStaticIds) ? orig.endBinding : null,
       })
     }
     staticElements.value = staticElements.value.map((element) => {
@@ -2201,6 +2394,8 @@ function onWindowPointerMove(event: PointerEvent) {
         y1: Math.round(dragState.value.origin.y1 + snappedTranslation.dy),
         x2: Math.round(dragState.value.origin.x2 + snappedTranslation.dx),
         y2: Math.round(dragState.value.origin.y2 + snappedTranslation.dy),
+        startBinding: null,
+        endBinding: null,
       })
       return
     }
@@ -2211,11 +2406,11 @@ function onWindowPointerMove(event: PointerEvent) {
       let snapped = event.shiftKey
         ? snapToEightDirections(dragState.value.origin.x2, dragState.value.origin.y2, rawX, rawY)
         : { x: rawX, y: rawY }
-      snapped = snapWorldPoint(snapped)
-      snapped = applyPortSnapToLinePoint(snapped, new Set<string>([dragState.value.edgeId]))
+      const endpoint = snapLineEndpoint(snapped, new Set<string>([dragState.value.edgeId]))
       updateEdge(dragState.value.edgeId, {
-        x1: snapped.x,
-        y1: snapped.y,
+        x1: endpoint.point.x,
+        y1: endpoint.point.y,
+        startBinding: endpoint.binding,
       })
       return
     }
@@ -2225,11 +2420,11 @@ function onWindowPointerMove(event: PointerEvent) {
     let snapped = event.shiftKey
       ? snapToEightDirections(dragState.value.origin.x1, dragState.value.origin.y1, rawX, rawY)
       : { x: rawX, y: rawY }
-    snapped = snapWorldPoint(snapped)
-    snapped = applyPortSnapToLinePoint(snapped, new Set<string>([dragState.value.edgeId]))
+    const endpoint = snapLineEndpoint(snapped, new Set<string>([dragState.value.edgeId]))
     updateEdge(dragState.value.edgeId, {
-      x2: snapped.x,
-      y2: snapped.y,
+      x2: endpoint.point.x,
+      y2: endpoint.point.y,
+      endBinding: endpoint.binding,
     })
     return
   }
@@ -2300,11 +2495,12 @@ function onWindowPointerUp() {
       .map(item => item.id)
 
     const lines = edges.value
-      .filter(edge => {
-        const ex1 = Math.min(edge.x1, edge.x2)
-        const ey1 = Math.min(edge.y1, edge.y2)
-        const ex2 = Math.max(edge.x1, edge.x2)
-        const ey2 = Math.max(edge.y1, edge.y2)
+      .filter((edge) => {
+        const points = resolvedEdgePoints(edge)
+        const ex1 = Math.min(points.x1, points.x2)
+        const ey1 = Math.min(points.y1, points.y2)
+        const ex2 = Math.max(points.x1, points.x2)
+        const ey2 = Math.max(points.y1, points.y2)
         return ex1 <= x2 && ex2 >= x1 && ey1 <= y2 && ey2 >= y1
       })
       .map(edge => edge.id)
@@ -2393,7 +2589,7 @@ function beginViewportPan(event: PointerEvent) {
 }
 
 function beginLineDraftFromPoint(point: { x: number; y: number }, event: PointerEvent) {
-  const snapped = applyPortSnapToLinePoint(snapWorldPoint(point))
+  const snapped = snapLineEndpoint(point).point
   clearSelection()
   dragState.value = {
     type: "new-line",
@@ -2439,7 +2635,7 @@ function beginNodeDrag(id: number, event: PointerEvent) {
     })
     const originEdges = edges.value
       .filter(edge => nodeIsSelected && selectedEdgeGroup.includes(edge.id))
-      .map(edge => ({ ...edge }))
+      .map(edge => materializeEdge(edge))
     const originStatics = staticElements.value
       .filter(element => nodeIsSelected && selectedStaticGroup.includes(element.id))
       .map(element => ({ ...element }))
@@ -2473,7 +2669,7 @@ function beginNodeDrag(id: number, event: PointerEvent) {
     })
     const originEdges = edges.value
       .filter(edge => selectedEdgeGroup.includes(edge.id))
-      .map(edge => ({ ...edge }))
+      .map(edge => materializeEdge(edge))
     const originStatics = staticElements.value
       .filter(element => selectedStaticGroup.includes(element.id))
       .map(element => ({ ...element }))
@@ -2589,7 +2785,7 @@ function beginStaticDrag(id: string, event: PointerEvent) {
     })
     const originEdges = edges.value
       .filter(edge => selectedEdgeGroup.includes(edge.id))
-      .map(edge => ({ ...edge }))
+      .map(edge => materializeEdge(edge))
     const originStatics = staticElements.value
       .filter(element => selectedStaticGroup.includes(element.id))
       .map(element => ({ ...element }))
@@ -2653,10 +2849,11 @@ function beginEdgeDrag(edgeId: string, mode: "move" | "start" | "end", event: Po
     if (!edge || !pointer) {
       return
     }
+    const points = resolvedEdgePoints(edge)
     const start = mode === "start"
-      ? { x: edge.x1, y: edge.y1 }
+      ? { x: points.x1, y: points.y1 }
       : mode === "end"
-        ? { x: edge.x2, y: edge.y2 }
+        ? { x: points.x2, y: points.y2 }
         : findNearestPort(pointer, buildLinePorts(edge)) ?? pointer
     beginLineDraftFromPoint(start, event)
     return
@@ -2680,7 +2877,7 @@ function beginEdgeDrag(edgeId: string, mode: "move" | "start" | "end", event: Po
     })
     const originEdges = edges.value
       .filter(edge => selectedEdgeGroup.includes(edge.id))
-      .map(edge => ({ ...edge }))
+      .map(edge => materializeEdge(edge))
     const originStatics = staticElements.value
       .filter(element => selectedStaticGroup.includes(element.id))
       .map(element => ({ ...element }))
@@ -2719,7 +2916,7 @@ function beginEdgeDrag(edgeId: string, mode: "move" | "start" | "end", event: Po
     mode,
     startX: event.clientX,
     startY: event.clientY,
-    origin: { ...edge },
+    origin: materializeEdge(edge),
   }
   beginDragHistorySession()
   event.preventDefault()
@@ -2755,7 +2952,8 @@ function handleMinimapPointerDown(event: PointerEvent) {
 }
 
 function edgePath(edge: DiagramEdge): string {
-  return `M ${edge.x1} ${edge.y1} L ${edge.x2} ${edge.y2}`
+  const points = resolvedEdgePoints(edge)
+  return `M ${points.x1} ${points.y1} L ${points.x2} ${points.y2}`
 }
 
 function selectEdge(edgeId: string, event?: MouseEvent) {
@@ -3176,26 +3374,28 @@ onBeforeUnmount(() => {
               />
               <g v-if="selectedEdgeIdSet.has(edge.id)">
                 <circle
-                  :cx="edge.x1"
-                  :cy="edge.y1"
+                  :cx="resolvedEdgeEndpoint(edge, 'start').x"
+                  :cy="resolvedEdgeEndpoint(edge, 'start').y"
                   r="6"
-                  fill="#ffffff"
+                  :fill="edge.startBinding ? '#dbeafe' : '#ffffff'"
                   stroke="#0ea5e9"
                   stroke-width="2"
                   data-edge-handle
                   class="switchgear-sld__edge-handle"
+                  :class="{ 'switchgear-sld__edge-handle--bound': edge.startBinding }"
                   @pointerdown.stop="beginEdgeDrag(edge.id, 'start', $event)"
                   @contextmenu.stop.prevent="openLineContextMenu(edge.id, $event)"
                 />
                 <circle
-                  :cx="edge.x2"
-                  :cy="edge.y2"
+                  :cx="resolvedEdgeEndpoint(edge, 'end').x"
+                  :cy="resolvedEdgeEndpoint(edge, 'end').y"
                   r="6"
-                  fill="#ffffff"
+                  :fill="edge.endBinding ? '#dbeafe' : '#ffffff'"
                   stroke="#0ea5e9"
                   stroke-width="2"
                   data-edge-handle
                   class="switchgear-sld__edge-handle"
+                  :class="{ 'switchgear-sld__edge-handle--bound': edge.endBinding }"
                   @pointerdown.stop="beginEdgeDrag(edge.id, 'end', $event)"
                   @contextmenu.stop.prevent="openLineContextMenu(edge.id, $event)"
                 />
@@ -3205,7 +3405,7 @@ onBeforeUnmount(() => {
             <g v-if="connectionPortHints.length > 0" class="switchgear-sld__port-hints">
               <circle
                 v-for="port in connectionPortHints"
-                :key="`${port.ownerType}:${port.ownerId}:${port.x}:${port.y}`"
+                :key="`${port.ownerType}:${port.ownerId}:${port.portId}`"
                 :cx="port.x"
                 :cy="port.y"
                 r="4.5"
@@ -3800,6 +4000,10 @@ onBeforeUnmount(() => {
 
 .switchgear-sld__edge-handle {
   cursor: pointer;
+}
+
+.switchgear-sld__edge-handle--bound {
+  filter: drop-shadow(0 0 4px rgb(14 165 233 / 0.42));
 }
 
 .switchgear-sld__port-hints {
