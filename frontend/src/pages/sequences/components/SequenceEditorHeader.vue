@@ -148,7 +148,7 @@ const createdAt = computed(() => {
         <span>Created {{ createdAt }}</span>
       </div>
 
-      <div v-if="sequence.description" class="sequence-editor-header__description">
+      <div class="sequence-editor-header__description">
         {{ sequence.description }}
       </div>
     </div>
@@ -239,6 +239,7 @@ const createdAt = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .sequence-editor-header__title-row {
@@ -273,6 +274,11 @@ const createdAt = computed(() => {
 .sequence-editor-header__description {
   color: var(--color-neutral-500);
   font-size: var(--text-xs);
+  line-height: 1rem;
+  min-height: 1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sequence-editor-header__menu-item {
