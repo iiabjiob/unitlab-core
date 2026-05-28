@@ -44,6 +44,40 @@ function createEmptyState(seqId: number, totalSteps: number): SequenceState {
   }
 }
 
+type SequenceDeleteSnapshot = {
+  id: number
+  sequence: SequenceDef
+  state?: SequenceState
+  steps: SequenceStep[]
+}
+
+function cloneSequenceState(state?: SequenceState): SequenceState | undefined {
+  if (!state) {
+    return undefined
+  }
+
+  return {
+    ...state,
+    completed_step_ids: [...(state.completed_step_ids ?? [])],
+    runtime: normalizeRuntime(state.runtime),
+  }
+}
+
+function restoreFailedSequences(
+  previous: SequenceDef[],
+  current: SequenceDef[],
+  failedSnapshots: SequenceDeleteSnapshot[],
+): SequenceDef[] {
+  const currentById = new Map(current.map(item => [item.id, item]))
+  const previousIds = new Set(previous.map(item => item.id))
+  const failedById = new Map(failedSnapshots.map(snapshot => [snapshot.id, snapshot.sequence]))
+  const restoredInOriginalOrder = previous
+    .filter(item => failedById.has(item.id) || currentById.has(item.id))
+    .map(item => currentById.get(item.id) ?? failedById.get(item.id) ?? item)
+  const currentExtras = current.filter(item => !previousIds.has(item.id))
+  return [...restoredInOriginalOrder, ...currentExtras]
+}
+
 const mapStatus = (raw: string): SequenceStatusEnum => {
   switch (raw.toLowerCase()) {
     case "idle": return SequenceStatusEnum.IDLE
@@ -378,28 +412,56 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   }
 
   async function deleteSequence(id: number) {
-    const existing = sequences.value.find((sequence) => sequence.id === id)
-    const existingState = states.value[id]
-    const existingSteps = [...stepStore.stepsBySequence(id).value]
+    await deleteSequences([id])
+  }
 
-    sequences.value = sequences.value.filter((sequence) => sequence.id !== id)
-    delete states.value[id]
-    stepStore.dropSequence(id)
+  async function deleteSequences(ids: number[]) {
+    const workspaceId = workspaceStore.requireWorkspaceId()
+    const requestedIds = Array.from(new Set(ids.filter(id => Number.isFinite(id))))
+    const requestedIdSet = new Set(requestedIds)
+    const previous = [...sequences.value]
+    const snapshots = previous
+      .filter(sequence => requestedIdSet.has(sequence.id))
+      .map(sequence => ({
+        id: sequence.id,
+        sequence,
+        state: cloneSequenceState(states.value[sequence.id]),
+        steps: [...stepStore.stepsBySequence(sequence.id).value],
+      }))
 
-    try {
-      await SequencesAPI.delete(workspaceStore.requireWorkspaceId(), id)
-    } catch (error) {
-      if (existing) {
-        upsertSequence(existing)
-      }
-      if (existingState) {
-        states.value[id] = existingState
-      }
-      if (existingSteps.length) {
-        stepStore.hydrateSequence(id, existingSteps)
-      }
-      throw error
+    if (!snapshots.length) {
+      return { deleted: 0 }
     }
+
+    const deleteIds = new Set(snapshots.map(snapshot => snapshot.id))
+    sequences.value = sequences.value.filter(sequence => !deleteIds.has(sequence.id))
+    snapshots.forEach((snapshot) => {
+      delete states.value[snapshot.id]
+      clearRuntimeNestedProgress(snapshot.id)
+      stepStore.dropSequence(snapshot.id)
+    })
+
+    const results = await Promise.allSettled(
+      snapshots.map(snapshot => SequencesAPI.delete(workspaceId, snapshot.id)),
+    )
+    const failedSnapshots = snapshots.filter((_, index) => results[index]?.status === "rejected")
+    if (failedSnapshots.length) {
+      sequences.value = restoreFailedSequences(previous, sequences.value, failedSnapshots)
+      failedSnapshots.forEach((snapshot) => {
+        if (snapshot.state) {
+          states.value[snapshot.id] = cloneSequenceState(snapshot.state) ?? snapshot.state
+        }
+        if (snapshot.steps.length) {
+          stepStore.hydrateSequence(snapshot.id, snapshot.steps)
+        }
+      })
+      const firstFailure = results.find((result): result is PromiseRejectedResult => result.status === "rejected")
+      logger.error(`💥 Failed to delete ${failedSnapshots.length}/${snapshots.length} sequences:`, firstFailure?.reason)
+      throw firstFailure?.reason ?? new Error("Failed to delete instructions")
+    }
+
+    logger.info(`🗑️ Deleted ${snapshots.length} instruction${snapshots.length === 1 ? "" : "s"}`)
+    return { deleted: snapshots.length }
   }
 
   async function duplicateSequence(id: number) {
@@ -716,6 +778,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     createSequence,
     createSequenceAuto,
     deleteSequence,
+    deleteSequences,
     duplicateSequence,
     resetState,
 

@@ -3,10 +3,13 @@ import { ref, computed } from "vue"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useRouter, useRoute } from "vue-router"
 import SwitchgearListItem from "./SwitchgearListItem.vue"
+import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiSidebarListbox from "@/components/ui/UiSidebarListbox.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useToastStore } from "@/stores/toastStore"
+import { useSidebarBulkSelection } from "@/composables/useSidebarBulkSelection"
+import type { Switchgear } from "@/types/switchgear"
 
 const store = useSwitchgearStore()
 const router = useRouter()
@@ -53,10 +56,97 @@ const selectedId = computed<number | null>(() => {
   return Number.isFinite(parsed) ? parsed : null
 })
 
-function handleSelect(id: string | number) {
+const {
+  selectedIds,
+  selectedCount,
+  isSelected,
+  handleSelection,
+  prepareContextSelection,
+  removeIds,
+} = useSidebarBulkSelection(filteredSwitchgears)
+
+const deleteSelectedOpen = ref(false)
+const deletingSelected = ref(false)
+const pendingDeleteIds = ref<number[]>([])
+
+const selectedDeleteMessage = computed(() => {
+  const count = pendingDeleteIds.value.length
+  const suffix = count === 1 ? "switchgear" : "switchgears"
+  return `${count} selected ${suffix} will be deleted.`
+})
+
+function handleSelect(id: string | number, event?: MouseEvent | KeyboardEvent) {
   const parsed = Number(id)
   if (!Number.isFinite(parsed)) return
-  openSwitchgear(parsed)
+  const action = handleSelection(parsed, event)
+  if (action === "navigate") {
+    openSwitchgear(parsed)
+  }
+}
+
+function prepareItemContext(id: number) {
+  prepareContextSelection(id)
+}
+
+function requestSelectedDelete() {
+  if (deletingSelected.value) return
+  const ids = selectedIds.value.length
+    ? [...selectedIds.value]
+    : selectedId.value !== null
+      ? [selectedId.value]
+      : []
+  if (!ids.length) return
+  pendingDeleteIds.value = ids
+  deleteSelectedOpen.value = true
+}
+
+function cancelSelectedDelete() {
+  deleteSelectedOpen.value = false
+  pendingDeleteIds.value = []
+}
+
+async function confirmSelectedDelete() {
+  const ids = [...pendingDeleteIds.value]
+  if (!ids.length || deletingSelected.value) return
+
+  const before = [...filteredSwitchgears.value]
+  const deletedActive = selectedId.value === null || ids.includes(selectedId.value)
+  const fallback = deletedActive ? resolveFallbackSwitchgear(before, ids) : null
+  deletingSelected.value = true
+  deleteSelectedOpen.value = false
+  removeIds(ids)
+
+  try {
+    const deletion = store.removeMany(ids)
+    if (deletedActive) {
+      if (fallback) {
+        await router.push({ name: "switchgears.detail", params: { id: fallback.id } })
+      } else {
+        await router.push({ name: "switchgears.list" })
+      }
+    }
+    await deletion
+    toastStore.success(ids.length === 1 ? "Switchgear deleted" : `${ids.length} switchgears deleted`)
+  } catch (error) {
+    toastStore.error(error instanceof Error ? error.message : "Failed to delete switchgears")
+  } finally {
+    deletingSelected.value = false
+    pendingDeleteIds.value = []
+  }
+}
+
+function resolveFallbackSwitchgear(before: Switchgear[], deletedIds: number[]): Switchgear | null {
+  const deletedIdSet = new Set(deletedIds)
+  const firstDeletedIndex = before.findIndex(item => deletedIdSet.has(item.id))
+  const after = before.filter(item => !deletedIdSet.has(item.id))
+  if (!after.length) {
+    return null
+  }
+
+  const fallbackIndex = firstDeletedIndex < 0
+    ? 0
+    : Math.min(firstDeletedIndex, after.length - 1)
+  return after[fallbackIndex] ?? null
 }
 </script>
 
@@ -104,13 +194,19 @@ function handleSelect(id: string | number) {
         <UiSidebarListbox
           :items="filteredSwitchgears"
           :active-id="selectedId"
+          :selected-ids="selectedIds"
           aria-label="Switchgears"
           @select="handleSelect"
+          @delete="requestSelectedDelete"
         >
           <template #item="{ item: switchgear, isCursor }">
             <SwitchgearListItem
               :switchgear="switchgear"
-              :active="isActive(switchgear.id) || isCursor"
+              :active="isActive(switchgear.id) || isCursor || isSelected(switchgear.id)"
+              :selected="isSelected(switchgear.id)"
+              :selected-count="selectedCount"
+              @context-select="prepareItemContext"
+              @delete-selected="requestSelectedDelete"
             />
           </template>
           <template #empty>
@@ -123,6 +219,16 @@ function handleSelect(id: string | number) {
     </div>
 
   </div>
+
+  <ConfirmModal
+    :open="deleteSelectedOpen"
+    title="Delete selected switchgears"
+    :message="selectedDeleteMessage"
+    confirm-label="Delete"
+    cancel-label="Cancel"
+    @cancel="cancelSelectedDelete"
+    @confirm="confirmSelectedDelete"
+  />
 </template>
 
 <style scoped>

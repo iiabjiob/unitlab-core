@@ -3,11 +3,14 @@ import { ref, computed } from "vue"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useRouter, useRoute } from "vue-router"
 import SequenceListItem from "./SequenceListItem.vue"
+import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import UiButton from "@/components/ui/UiButton.vue"
 import UiSidebarListbox from "@/components/ui/UiSidebarListbox.vue"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useSequenceImport } from "@/composables/useSequenceImport"
 import { useToastStore } from "@/stores/toastStore"
+import { useSidebarBulkSelection } from "@/composables/useSidebarBulkSelection"
+import type { SequenceDef } from "@/types/sequences"
 
 const store = useSequenceStore()
 const router = useRouter()
@@ -55,10 +58,97 @@ const selectedId = computed<number | null>(() => {
   return Number.isFinite(parsed) ? parsed : null
 })
 
-function handleSelect(id: string | number) {
+const {
+  selectedIds,
+  selectedCount,
+  isSelected,
+  handleSelection,
+  prepareContextSelection,
+  removeIds,
+} = useSidebarBulkSelection(filteredSequences)
+
+const deleteSelectedOpen = ref(false)
+const deletingSelected = ref(false)
+const pendingDeleteIds = ref<number[]>([])
+
+const selectedDeleteMessage = computed(() => {
+  const count = pendingDeleteIds.value.length
+  const suffix = count === 1 ? "instruction" : "instructions"
+  return `${count} selected ${suffix} will be deleted with all steps.`
+})
+
+function handleSelect(id: string | number, event?: MouseEvent | KeyboardEvent) {
   const parsed = Number(id)
   if (!Number.isFinite(parsed)) return
-  openSequence(parsed)
+  const action = handleSelection(parsed, event)
+  if (action === "navigate") {
+    openSequence(parsed)
+  }
+}
+
+function prepareItemContext(id: number) {
+  prepareContextSelection(id)
+}
+
+function requestSelectedDelete() {
+  if (deletingSelected.value) return
+  const ids = selectedIds.value.length
+    ? [...selectedIds.value]
+    : selectedId.value !== null
+      ? [selectedId.value]
+      : []
+  if (!ids.length) return
+  pendingDeleteIds.value = ids
+  deleteSelectedOpen.value = true
+}
+
+function cancelSelectedDelete() {
+  deleteSelectedOpen.value = false
+  pendingDeleteIds.value = []
+}
+
+async function confirmSelectedDelete() {
+  const ids = [...pendingDeleteIds.value]
+  if (!ids.length || deletingSelected.value) return
+
+  const before = [...filteredSequences.value]
+  const deletedActive = selectedId.value === null || ids.includes(selectedId.value)
+  const fallback = deletedActive ? resolveFallbackSequence(before, ids) : null
+  deletingSelected.value = true
+  deleteSelectedOpen.value = false
+  removeIds(ids)
+
+  try {
+    const deletion = store.deleteSequences(ids)
+    if (deletedActive) {
+      if (fallback) {
+        await router.push({ name: "instructions.detail", params: { id: fallback.id } })
+      } else {
+        await router.push({ name: "instructions.list" })
+      }
+    }
+    await deletion
+    toastStore.success(ids.length === 1 ? "Instruction deleted" : `${ids.length} instructions deleted`)
+  } catch (error) {
+    toastStore.error(error instanceof Error ? error.message : "Failed to delete instructions")
+  } finally {
+    deletingSelected.value = false
+    pendingDeleteIds.value = []
+  }
+}
+
+function resolveFallbackSequence(before: SequenceDef[], deletedIds: number[]): SequenceDef | null {
+  const deletedIdSet = new Set(deletedIds)
+  const firstDeletedIndex = before.findIndex(item => deletedIdSet.has(item.id))
+  const after = before.filter(item => !deletedIdSet.has(item.id))
+  if (!after.length) {
+    return null
+  }
+
+  const fallbackIndex = firstDeletedIndex < 0
+    ? 0
+    : Math.min(firstDeletedIndex, after.length - 1)
+  return after[fallbackIndex] ?? null
 }
 </script>
 
@@ -130,13 +220,19 @@ function handleSelect(id: string | number) {
         <UiSidebarListbox
           :items="filteredSequences"
           :active-id="selectedId"
+          :selected-ids="selectedIds"
           aria-label="Instructions"
           @select="handleSelect"
+          @delete="requestSelectedDelete"
         >
           <template #item="{ item: seq, isCursor }">
             <SequenceListItem
               :sequence="seq"
-              :active="isActive(seq.id) || isCursor"
+              :active="isActive(seq.id) || isCursor || isSelected(seq.id)"
+              :selected="isSelected(seq.id)"
+              :selected-count="selectedCount"
+              @context-select="prepareItemContext"
+              @delete-selected="requestSelectedDelete"
             />
           </template>
           <template #empty>
@@ -149,6 +245,16 @@ function handleSelect(id: string | number) {
     </div>
 
   </div>
+
+  <ConfirmModal
+    :open="deleteSelectedOpen"
+    title="Delete selected instructions"
+    :message="selectedDeleteMessage"
+    confirm-label="Delete"
+    cancel-label="Cancel"
+    @cancel="cancelSelectedDelete"
+    @confirm="confirmSelectedDelete"
+  />
 </template>
 
 <style scoped>

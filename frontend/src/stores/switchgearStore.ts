@@ -115,6 +115,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     create,
     updateField,
     remove,
+    removeMany,
   } = catalogCrud
 
   async function createAuto() {
@@ -183,6 +184,7 @@ export const useSwitchgearStore = defineStore("switchgearStore", () => {
     createAuto,
     updateField,
     remove,
+    removeMany,
     getById,
     isUnitOnline,
     resolveSwitchgearState,

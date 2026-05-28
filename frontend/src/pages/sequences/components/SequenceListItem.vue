@@ -18,9 +18,15 @@ import {
 const props = defineProps<{
   sequence: SequenceDef
   active: boolean
+  selected?: boolean
+  selectedCount?: number
 }>()
 
-const emit = defineEmits<{ (e: "select", id: number): void }>()
+const emit = defineEmits<{
+  (e: "select", id: number): void
+  (e: "contextSelect", id: number): void
+  (e: "deleteSelected"): void
+}>()
 
 const store = useSequenceStore()
 const toastStore = useToastStore()
@@ -54,9 +60,27 @@ watch(
 )
 
 const deleteMessage = computed(() => `Instruction "${props.sequence.name}" will be deleted with all steps.`)
+const selectedCount = computed(() => Math.max(0, props.selectedCount ?? 0))
+const usesSelectedDelete = computed(() => Boolean(props.selected) && selectedCount.value > 0)
+const hasBulkSelection = computed(() => usesSelectedDelete.value && selectedCount.value > 1)
+const deleteMenuLabel = computed(() => (
+  hasBulkSelection.value ? `Delete selected (${selectedCount.value})` : "Delete"
+))
 
 function handleSelect() {
   emit("select", props.sequence.id)
+}
+
+function handleContextMenu() {
+  emit("contextSelect", props.sequence.id)
+}
+
+function requestDelete() {
+  if (usesSelectedDelete.value) {
+    emit("deleteSelected")
+    return
+  }
+  deleteOpen.value = true
 }
 
 function openRename() {
@@ -174,7 +198,13 @@ function openInNewTab() {
 <template>
   <UiMenu>
     <UiMenuTrigger as-child trigger="contextmenu">
-      <SidebarListItem :active="active" class="sequence-list-item" @select="handleSelect">
+      <SidebarListItem
+        :active="active"
+        class="sequence-list-item"
+        :class="{ 'is-selected': selected }"
+        @select="handleSelect"
+        @contextmenu="handleContextMenu"
+      >
         <span class="sequence-list-item__name">
           {{ sequence.name }}
         </span>
@@ -196,8 +226,8 @@ function openInNewTab() {
       <UiMenuItem class="sequence-list-item__menu-item" @select="duplicateSequence">
         Duplicate
       </UiMenuItem>
-      <UiMenuItem danger @select="deleteOpen = true">
-        Delete
+      <UiMenuItem danger @select="requestDelete">
+        {{ deleteMenuLabel }}
       </UiMenuItem>
     </UiMenuContent>
   </UiMenu>

@@ -7,18 +7,21 @@ type SidebarItem = any
 const props = withDefaults(defineProps<{
   items: SidebarItem[]
   activeId?: string | number | null
+  selectedIds?: Array<string | number>
   idKey?: string
   ariaLabel?: string
   disabled?: boolean
 }>(), {
   activeId: null,
+  selectedIds: () => [],
   idKey: "id",
   ariaLabel: "Sidebar list",
   disabled: false,
 })
 
 const emit = defineEmits<{
-  (e: "select", id: string | number): void
+  (e: "select", id: string | number, event?: MouseEvent | KeyboardEvent): void
+  (e: "delete"): void
 }>()
 
 const listboxRef = ref<HTMLDivElement | null>(null)
@@ -26,6 +29,7 @@ const optionRefs = new Map<number, HTMLElement>()
 const cursorIndex = ref<number>(-1)
 
 const normalizedItems = computed(() => props.items ?? [])
+const selectedIdSet = computed(() => new Set(props.selectedIds))
 
 const activeDescendantId = computed(() => {
   if (cursorIndex.value < 0) return null
@@ -93,6 +97,11 @@ function isActive(item: SidebarItem): boolean {
   return resolveItemId(item) === props.activeId
 }
 
+function isSelected(item: SidebarItem): boolean {
+  const id = resolveItemId(item)
+  return id !== null && selectedIdSet.value.has(id)
+}
+
 function moveCursor(delta: number) {
   const total = normalizedItems.value.length
   if (!total) {
@@ -103,13 +112,13 @@ function moveCursor(delta: number) {
   cursorIndex.value = Math.max(0, Math.min(total - 1, base + delta))
 }
 
-function activateCursor() {
+function activateCursor(event?: KeyboardEvent) {
   if (props.disabled) return
   const target = normalizedItems.value[cursorIndex.value]
   if (!target) return
   const id = resolveItemId(target)
   if (id === null) return
-  emit("select", id)
+  emit("select", id, event)
 }
 
 function focusListbox() {
@@ -144,7 +153,12 @@ function handleKeydown(event: KeyboardEvent) {
     case "Enter":
     case " ":
       event.preventDefault()
-      activateCursor()
+      activateCursor(event)
+      return
+    case "Delete":
+    case "Backspace":
+      event.preventDefault()
+      emit("delete")
       return
     default:
       return
@@ -157,14 +171,14 @@ function handleItemPointerDown(index: number) {
   focusListbox()
 }
 
-function handleItemClick(index: number) {
+function handleItemClick(index: number, event: MouseEvent) {
   if (props.disabled) return
   const target = normalizedItems.value[index]
   if (!target) return
   const id = resolveItemId(target)
   if (id === null) return
   cursorIndex.value = index
-  emit("select", id)
+  emit("select", id, event)
 }
 </script>
 
@@ -176,6 +190,7 @@ function handleItemClick(index: number) {
     role="listbox"
     :aria-label="ariaLabel"
     :aria-activedescendant="activeDescendantId ?? undefined"
+    :aria-multiselectable="selectedIds.length > 0 ? 'true' : undefined"
     @focus="handleFocus"
     @keydown="handleKeydown"
   >
@@ -185,16 +200,17 @@ function handleItemClick(index: number) {
       :key="resolveItemId(item) ?? index"
       :ref="(el) => setOptionRef(index, el)"
       role="option"
-      :aria-selected="isActive(item)"
+      :aria-selected="isActive(item) || isSelected(item)"
       class="ui-sidebar-listbox__option"
       @pointerdown="handleItemPointerDown(index)"
-      @click="handleItemClick(index)"
+      @click="handleItemClick(index, $event)"
     >
       <slot
         name="item"
         :item="item"
         :index="index"
         :is-active="isActive(item)"
+        :is-selected="isSelected(item)"
         :is-cursor="isCursor(index)"
       />
     </div>

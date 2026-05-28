@@ -93,13 +93,42 @@ export function createSwitchgearCatalogCrud(params: Params) {
 
   async function remove(id: number) {
     try {
-      await SwitchgearsAPI.delete(params.requireWorkspaceId(), id)
-      params.switchgears.value = params.switchgears.value.filter(s => s.id !== id)
-
-      params.logger.info(`🗑️ Switchgear ${id} deleted`)
+      await removeMany([id])
     } catch (err) {
       params.logger.error(`💥 Failed to delete switchgear ${id}:`, err)
     }
+  }
+
+  async function removeMany(ids: number[]) {
+    const workspaceId = params.requireWorkspaceId()
+    const requestedIds = Array.from(new Set(ids.filter(id => Number.isFinite(id))))
+    const requestedIdSet = new Set(requestedIds)
+    const previous = [...params.switchgears.value]
+    const removed = previous.filter(s => requestedIdSet.has(s.id))
+    if (!removed.length) {
+      return { deleted: 0 }
+    }
+
+    const removeIds = new Set(removed.map(s => s.id))
+    params.switchgears.value = params.switchgears.value.filter(s => !removeIds.has(s.id))
+
+    const results = await Promise.allSettled(
+      removed.map(s => SwitchgearsAPI.delete(workspaceId, s.id)),
+    )
+    const failedIds = removed
+      .filter((_, index) => results[index]?.status === "rejected")
+      .map(s => s.id)
+
+    if (failedIds.length) {
+      const failedIdSet = new Set(failedIds)
+      params.switchgears.value = restoreFailedSwitchgears(previous, params.switchgears.value, failedIdSet)
+      const firstFailure = results.find((result): result is PromiseRejectedResult => result.status === "rejected")
+      params.logger.error(`💥 Failed to delete ${failedIds.length}/${removed.length} switchgears:`, firstFailure?.reason)
+      throw firstFailure?.reason ?? new Error("Failed to delete switchgears")
+    }
+
+    params.logger.info(`🗑️ Deleted ${removed.length} switchgear${removed.length === 1 ? "" : "s"}`)
+    return { deleted: removed.length }
   }
 
   return {
@@ -108,5 +137,20 @@ export function createSwitchgearCatalogCrud(params: Params) {
     create,
     updateField,
     remove,
+    removeMany,
   }
+}
+
+function restoreFailedSwitchgears(
+  previous: Switchgear[],
+  current: Switchgear[],
+  failedIds: Set<number>,
+): Switchgear[] {
+  const currentById = new Map(current.map(item => [item.id, item]))
+  const previousIds = new Set(previous.map(item => item.id))
+  const restoredInOriginalOrder = previous
+    .filter(item => failedIds.has(item.id) || currentById.has(item.id))
+    .map(item => currentById.get(item.id) ?? item)
+  const currentExtras = current.filter(item => !previousIds.has(item.id))
+  return [...restoredInOriginalOrder, ...currentExtras]
 }

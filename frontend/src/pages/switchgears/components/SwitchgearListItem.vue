@@ -17,6 +17,8 @@ import {
 const props = defineProps<{
   switchgear: Switchgear
   active: boolean
+  selected?: boolean
+  selectedCount?: number
 }>()
 
 const switchgearStore = useSwitchgearStore()
@@ -24,7 +26,11 @@ const positionState = computed(() => switchgearStore.resolveSwitchgearState(prop
 const router = useRouter()
 const route = useRoute()
 
-const emit = defineEmits<{ (e: "select", id: number): void }>()
+const emit = defineEmits<{
+  (e: "select", id: number): void
+  (e: "contextSelect", id: number): void
+  (e: "deleteSelected"): void
+}>()
 
 const renameOpen = ref(false)
 const renameValue = ref(props.switchgear.name)
@@ -41,9 +47,27 @@ watch(
 )
 
 const deleteMessage = computed(() => `Switchgear "${props.switchgear.name}" will be deleted.`)
+const selectedCount = computed(() => Math.max(0, props.selectedCount ?? 0))
+const usesSelectedDelete = computed(() => Boolean(props.selected) && selectedCount.value > 0)
+const hasBulkSelection = computed(() => usesSelectedDelete.value && selectedCount.value > 1)
+const deleteMenuLabel = computed(() => (
+  hasBulkSelection.value ? `Delete selected (${selectedCount.value})` : "Delete"
+))
 
 function handleSelect() {
   emit("select", props.switchgear.id)
+}
+
+function handleContextMenu() {
+  emit("contextSelect", props.switchgear.id)
+}
+
+function requestDelete() {
+  if (usesSelectedDelete.value) {
+    emit("deleteSelected")
+    return
+  }
+  deleteOpen.value = true
 }
 
 function openRename() {
@@ -108,7 +132,13 @@ function openInNewTab() {
 <template>
   <UiMenu>
     <UiMenuTrigger as-child trigger="contextmenu">
-    <SidebarListItem :active="active" class="switchgear-list-item" @select="handleSelect">
+    <SidebarListItem
+      :active="active"
+      class="switchgear-list-item"
+      :class="{ 'is-selected': selected }"
+      @select="handleSelect"
+      @contextmenu="handleContextMenu"
+    >
       <span class="switchgear-list-item__title">
         {{ switchgear.name }}
       </span>
@@ -132,8 +162,8 @@ function openInNewTab() {
       <UiMenuItem class="switchgear-list-item__menu-item" @select="duplicateSwitchgear">
         Duplicate
       </UiMenuItem>
-      <UiMenuItem danger @select="deleteOpen = true">
-        Delete
+      <UiMenuItem danger @select="requestDelete">
+        {{ deleteMenuLabel }}
       </UiMenuItem>
     </UiMenuContent>
   </UiMenu>
