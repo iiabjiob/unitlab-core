@@ -77,6 +77,18 @@ type DiagramClipboardEdge = {
   kind: "line" | "arrow"
 }
 
+type DiagramClipboardStaticElement = {
+  kind: DiagramStaticKind
+  x: number
+  y: number
+  rotation: 0 | 90 | 180 | 270
+}
+
+type DiagramClipboardSelection = {
+  edges: DiagramClipboardEdge[]
+  staticElements: DiagramClipboardStaticElement[]
+}
+
 type StoredDiagramState = {
   layoutById?: Record<string, DiagramNodeLayout>
   labelOffsetById?: Record<string, DiagramLabelOffset>
@@ -89,8 +101,9 @@ type StoredDiagramState = {
 
 type DiagramClipboardPayload = {
   kind: "unitlab.switchgear-sld-selection"
-  version: 1
-  edges: DiagramClipboardEdge[]
+  version: 1 | 2
+  edges?: DiagramClipboardEdge[]
+  staticElements?: DiagramClipboardStaticElement[]
 }
 
 type DiagramPort = {
@@ -217,7 +230,7 @@ const viewportSize = ref({ width: 0, height: 0 })
 const undoStack = ref<DiagramHistorySnapshot[]>([])
 const redoStack = ref<DiagramHistorySnapshot[]>([])
 const historyDragSnapshot = ref<DiagramHistorySnapshot | null>(null)
-const localClipboardEdges = ref<DiagramClipboardEdge[]>([])
+const localClipboardSelection = ref<DiagramClipboardSelection | null>(null)
 const clipboardPasteCount = ref(0)
 let viewportResizeObserver: ResizeObserver | null = null
 
@@ -569,35 +582,74 @@ function nextQuarterRotation(rotation: 0 | 90 | 180 | 270): 0 | 90 | 180 | 270 {
   return (((rotation + 90) % 360) || 0) as 0 | 90 | 180 | 270
 }
 
-function buildDiagramClipboardPayload(sourceEdges: DiagramClipboardEdge[]) {
+function buildDiagramClipboardPayload(selection: DiagramClipboardSelection) {
   return JSON.stringify({
     kind: DIAGRAM_CLIPBOARD_KIND,
-    version: 1,
-    edges: sourceEdges,
+    version: 2,
+    edges: selection.edges,
+    staticElements: selection.staticElements,
   } as DiagramClipboardPayload, null, 2)
 }
 
-function parseDiagramClipboardPayload(rawText: string): DiagramClipboardEdge[] | null {
+function parseDiagramClipboardPayload(rawText: string): DiagramClipboardSelection | null {
   try {
-    const parsed = JSON.parse(rawText) as Partial<DiagramClipboardPayload>
-    if (parsed.kind !== DIAGRAM_CLIPBOARD_KIND || parsed.version !== 1 || !Array.isArray(parsed.edges)) {
+    const parsed = JSON.parse(rawText) as {
+      kind?: unknown
+      version?: unknown
+      edges?: unknown
+      staticElements?: unknown
+    }
+    if (parsed.kind !== DIAGRAM_CLIPBOARD_KIND || (parsed.version !== 1 && parsed.version !== 2)) {
       return null
     }
 
-    const nextEdges = parsed.edges.filter(edge => (
-      Number.isFinite(edge?.x1)
-      && Number.isFinite(edge?.y1)
-      && Number.isFinite(edge?.x2)
-      && Number.isFinite(edge?.y2)
-    )).map(edge => ({
-      x1: edge.x1,
-      y1: edge.y1,
-      x2: edge.x2,
-      y2: edge.y2,
-      kind: normalizeEdgeKind(edge.kind),
-    }))
+    const nextEdges = (Array.isArray(parsed.edges) ? parsed.edges : []).flatMap((value): DiagramClipboardEdge[] => {
+      if (!value || typeof value !== "object") {
+        return []
+      }
+      const edge = value as Partial<DiagramClipboardEdge>
+      const x1 = Number(edge.x1)
+      const y1 = Number(edge.y1)
+      const x2 = Number(edge.x2)
+      const y2 = Number(edge.y2)
+      if (
+        !Number.isFinite(x1)
+        || !Number.isFinite(y1)
+        || !Number.isFinite(x2)
+        || !Number.isFinite(y2)
+      ) {
+        return []
+      }
+      return [{
+        x1,
+        y1,
+        x2,
+        y2,
+        kind: normalizeEdgeKind(edge.kind),
+      }]
+    })
 
-    return nextEdges.length > 0 ? nextEdges : null
+    const nextStaticElements = (Array.isArray(parsed.staticElements) ? parsed.staticElements : []).flatMap((value): DiagramClipboardStaticElement[] => {
+      if (!value || typeof value !== "object") {
+        return []
+      }
+      const element = value as Partial<DiagramClipboardStaticElement>
+      const x = Number(element.x)
+      const y = Number(element.y)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return []
+      }
+      return [{
+        kind: normalizeStaticKind(element.kind),
+        x,
+        y,
+        rotation: normalizeRotation(element.rotation),
+      }]
+    })
+
+    return nextEdges.length > 0 || nextStaticElements.length > 0
+      ? { edges: nextEdges, staticElements: nextStaticElements }
+      : null
   } catch {
     return null
   }
@@ -1169,67 +1221,94 @@ function addStaticElementInViewport(kind: DiagramStaticKind) {
   })
 }
 
+function formatClipboardSelectionLabel(selection: DiagramClipboardSelection) {
+  const parts = [
+    selection.edges.length > 0
+      ? `${selection.edges.length} line${selection.edges.length > 1 ? "s" : ""}`
+      : null,
+    selection.staticElements.length > 0
+      ? `${selection.staticElements.length} symbol${selection.staticElements.length > 1 ? "s" : ""}`
+      : null,
+  ].filter((part): part is string => part !== null)
+
+  return parts.join(", ")
+}
+
 async function handleCopySelection() {
   const edgeIds = effectiveSelectedEdgeIds()
   const sourceEdges = edgeIds
     .map(edgeId => getEdgeById(edgeId))
     .filter((edge): edge is DiagramEdge => edge !== null)
     .map(edge => ({ x1: edge.x1, y1: edge.y1, x2: edge.x2, y2: edge.y2, kind: edge.kind }))
+  const sourceStaticElements = effectiveSelectedStaticIds()
+    .map(staticId => getStaticElementById(staticId))
+    .filter((element): element is DiagramStaticElement => element !== null)
+    .map(element => ({
+      kind: element.kind,
+      x: element.x,
+      y: element.y,
+      rotation: element.rotation,
+    }))
+  const selection: DiagramClipboardSelection = {
+    edges: sourceEdges,
+    staticElements: sourceStaticElements,
+  }
 
-  if (!sourceEdges.length) {
+  if (selection.edges.length === 0 && selection.staticElements.length === 0) {
     if (effectiveSelectedNodeIds().length > 0) {
-      toastStore.info("Switchgear copy is not supported yet. Select at least one line to copy.")
+      toastStore.info("Switchgear copy is not supported yet. Select lines or symbols to copy.")
       return
     }
-    toastStore.info("Select at least one line to copy")
+    toastStore.info("Select at least one line or symbol to copy")
     return
   }
 
-  localClipboardEdges.value = sourceEdges
+  localClipboardSelection.value = selection
   clipboardPasteCount.value = 0
 
   try {
     if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(buildDiagramClipboardPayload(sourceEdges))
+      await navigator.clipboard.writeText(buildDiagramClipboardPayload(selection))
     }
-    toastStore.success(`Copied ${sourceEdges.length} line${sourceEdges.length > 1 ? "s" : ""}`)
+    toastStore.success(`Copied ${formatClipboardSelectionLabel(selection)}`)
   } catch {
-    toastStore.success(`Copied ${sourceEdges.length} line${sourceEdges.length > 1 ? "s" : ""}`)
+    toastStore.success(`Copied ${formatClipboardSelectionLabel(selection)}`)
   }
 }
 
-async function resolveClipboardEdges() {
+async function resolveClipboardSelection() {
   try {
     if (typeof navigator !== "undefined" && navigator.clipboard?.readText) {
       const rawText = await navigator.clipboard.readText()
       const parsed = parseDiagramClipboardPayload(rawText)
-      if (parsed?.length) {
-        localClipboardEdges.value = parsed
+      if (parsed) {
+        localClipboardSelection.value = parsed
         return parsed
       }
     }
   } catch {
   }
 
-  if (localClipboardEdges.value.length) {
-    return localClipboardEdges.value
+  if (localClipboardSelection.value) {
+    return localClipboardSelection.value
   }
 
   return null
 }
 
 async function handlePasteSelection() {
-  const sourceEdges = await resolveClipboardEdges()
-  if (!sourceEdges?.length) {
+  const sourceSelection = await resolveClipboardSelection()
+  if (!sourceSelection || (sourceSelection.edges.length === 0 && sourceSelection.staticElements.length === 0)) {
     toastStore.info("Nothing to paste")
     return
   }
 
   const offset = COPY_PASTE_OFFSET * (clipboardPasteCount.value + 1)
   const insertedEdges: DiagramEdge[] = []
+  const insertedStaticElements: DiagramStaticElement[] = []
 
   commitHistoryMutation(() => {
-    insertedEdges.push(...sourceEdges.map((edge) => {
+    insertedEdges.push(...sourceSelection.edges.map((edge) => {
       const start = snapWorldPoint({ x: edge.x1 + offset, y: edge.y1 + offset })
       const end = snapWorldPoint({ x: edge.x2 + offset, y: edge.y2 + offset })
       return {
@@ -1241,16 +1320,31 @@ async function handlePasteSelection() {
         kind: edge.kind,
       }
     }))
+    insertedStaticElements.push(...sourceSelection.staticElements.map((element) => {
+      const point = snapWorldPoint({ x: element.x + offset, y: element.y + offset })
+      return {
+        id: buildStaticElementId(),
+        kind: element.kind,
+        x: point.x,
+        y: point.y,
+        rotation: element.rotation,
+      }
+    }))
 
     edges.value = [...edges.value, ...insertedEdges]
+    staticElements.value = [...staticElements.value, ...insertedStaticElements]
     selectedNodeIds.value = []
     selectedEdgeIds.value = insertedEdges.map(edge => edge.id)
     selectedEdgeId.value = insertedEdges[0]?.id ?? null
+    selectedStaticIds.value = insertedStaticElements.map(element => element.id)
     closeLineContextMenu()
   })
 
   clipboardPasteCount.value += 1
-  toastStore.success(`Pasted ${insertedEdges.length} line${insertedEdges.length > 1 ? "s" : ""}`)
+  toastStore.success(`Pasted ${formatClipboardSelectionLabel({
+    edges: insertedEdges,
+    staticElements: insertedStaticElements,
+  })}`)
 }
 
 function getEdgeById(edgeId: string): DiagramEdge | null {
