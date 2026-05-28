@@ -134,6 +134,13 @@ type DragState =
       origin: DiagramEdge
     }
   | {
+      type: "new-line"
+      startX: number
+      startY: number
+      currentX: number
+      currentY: number
+    }
+  | {
       type: "marquee"
       startX: number
       startY: number
@@ -150,7 +157,7 @@ type DragState =
       originStatics: Array<DiagramStaticElement>
     }
 
-type InteractionTool = "hand" | "arrow"
+type InteractionTool = "hand" | "arrow" | "line"
 
 const NODE_WIDTH = 40
 const NODE_HEIGHT = 40
@@ -267,7 +274,12 @@ const selectedNodeCount = computed(() => effectiveSelectedNodeIds().length)
 const selectedObjectCount = computed(() => (
   selectedNodeCount.value + selectedLineCount.value + selectedStaticCount.value
 ))
-const activeToolLabel = computed(() => interactionTool.value === "hand" ? "Move" : "Select")
+const activeToolLabel = computed(() => {
+  if (interactionTool.value === "line") {
+    return "Draw line"
+  }
+  return interactionTool.value === "hand" ? "Move" : "Select"
+})
 const snapStateLabel = computed(() => snapEnabled.value ? "Snap on" : "Snap off")
 const selectionSummary = computed(() => {
   if (selectedObjectCount.value === 0) {
@@ -287,6 +299,18 @@ const diagramMetricItems = computed(() => [
   { label: "Lines", value: edges.value.length },
   { label: "Symbols", value: staticElements.value.length },
 ])
+const draftLinePreview = computed(() => {
+  if (!dragState.value || dragState.value.type !== "new-line") {
+    return null
+  }
+
+  return {
+    x1: dragState.value.startX,
+    y1: dragState.value.startY,
+    x2: dragState.value.currentX,
+    y2: dragState.value.currentY,
+  }
+})
 const canUndo = computed(() => undoStack.value.length > 0)
 const canRedo = computed(() => redoStack.value.length > 0)
 const selectedLineKind = computed<"line" | "arrow" | "mixed" | null>(() => {
@@ -984,22 +1008,6 @@ function addEdge(start: { x: number; y: number }, end: { x: number; y: number })
   })
 }
 
-function addLineInViewport() {
-  if (viewportSize.value.width <= 0 || viewportSize.value.height <= 0) {
-    return
-  }
-
-  const worldCenterX = (-viewState.value.x + viewportSize.value.width / 2) / viewState.value.zoom
-  const worldCenterY = (-viewState.value.y + viewportSize.value.height / 2) / viewState.value.zoom
-  const halfLength = 48 / viewState.value.zoom
-
-  interactionTool.value = "hand"
-  addEdge(
-    { x: worldCenterX - halfLength, y: worldCenterY },
-    { x: worldCenterX + halfLength, y: worldCenterY },
-  )
-}
-
 function addStaticElementInViewport(kind: DiagramStaticKind) {
   if (viewportSize.value.width <= 0 || viewportSize.value.height <= 0) {
     return
@@ -1478,6 +1486,12 @@ function handleWindowKeyDown(event: KeyboardEvent) {
   }
 
   if (event.key === "Escape") {
+    if (dragState.value) {
+      stopDragSession()
+    }
+    if (interactionTool.value === "line") {
+      interactionTool.value = "hand"
+    }
     closeLineContextMenu()
   }
 }
@@ -1659,6 +1673,23 @@ function onWindowPointerMove(event: PointerEvent) {
     return
   }
 
+  if (dragState.value.type === "new-line") {
+    const world = worldPointFromViewportEvent(event)
+    if (!world) {
+      return
+    }
+    const snapped = event.shiftKey
+      ? snapToEightDirections(dragState.value.startX, dragState.value.startY, world.x, world.y)
+      : world
+    const current = applyPortSnapToLinePoint(snapWorldPoint(snapped))
+    dragState.value = {
+      ...dragState.value,
+      currentX: current.x,
+      currentY: current.y,
+    }
+    return
+  }
+
   const deltaX = (event.clientX - dragState.value.startX) / viewState.value.zoom
   const deltaY = (event.clientY - dragState.value.startY) / viewState.value.zoom
 
@@ -1802,6 +1833,21 @@ function onWindowPointerMove(event: PointerEvent) {
 }
 
 function onWindowPointerUp() {
+  if (dragState.value?.type === "new-line") {
+    const distance = Math.hypot(
+      dragState.value.currentX - dragState.value.startX,
+      dragState.value.currentY - dragState.value.startY,
+    )
+    if (distance >= 8) {
+      addEdge(
+        { x: dragState.value.startX, y: dragState.value.startY },
+        { x: dragState.value.currentX, y: dragState.value.currentY },
+      )
+    }
+    stopDragSession()
+    return
+  }
+
   if (dragState.value?.type === "marquee") {
     const x1 = Math.min(dragState.value.startX, dragState.value.currentX)
     const y1 = Math.min(dragState.value.startY, dragState.value.currentY)
@@ -1869,6 +1915,27 @@ function beginViewportPan(event: PointerEvent) {
     return
   }
 
+  if (interactionTool.value === "line") {
+    const point = worldPointFromViewportEvent(event)
+    if (!point) {
+      return
+    }
+    const snapped = applyPortSnapToLinePoint(snapWorldPoint(point))
+    clearSelection()
+    dragState.value = {
+      type: "new-line",
+      startX: snapped.x,
+      startY: snapped.y,
+      currentX: snapped.x,
+      currentY: snapped.y,
+    }
+    event.preventDefault()
+    window.addEventListener("pointermove", onWindowPointerMove)
+    window.addEventListener("pointerup", onWindowPointerUp)
+    window.addEventListener("pointercancel", onWindowPointerUp)
+    return
+  }
+
   if (interactionTool.value === "arrow") {
     const point = worldPointFromViewportEvent(event)
     if (!point) {
@@ -1906,6 +1973,9 @@ function beginViewportPan(event: PointerEvent) {
 function beginNodeDrag(id: number, event: PointerEvent) {
   closeLineContextMenu()
   if (event.button !== 0) {
+    return
+  }
+  if (interactionTool.value === "line") {
     return
   }
 
@@ -2004,6 +2074,9 @@ function beginLabelDrag(id: number, event: PointerEvent) {
   if (event.button !== 0) {
     return
   }
+  if (interactionTool.value === "line") {
+    return
+  }
 
   if (interactionTool.value === "arrow") {
     const isSelected = selectedNodeIdSet.value.has(id) || selectedNodeId.value === id
@@ -2035,6 +2108,9 @@ function beginLabelDrag(id: number, event: PointerEvent) {
 function beginStaticDrag(id: string, event: PointerEvent) {
   closeLineContextMenu()
   if (event.button !== 0) {
+    return
+  }
+  if (interactionTool.value === "line") {
     return
   }
 
@@ -2108,6 +2184,9 @@ function beginStaticDrag(id: string, event: PointerEvent) {
 function beginEdgeDrag(edgeId: string, mode: "move" | "start" | "end", event: PointerEvent) {
   closeLineContextMenu()
   if (event.button !== 0) {
+    return
+  }
+  if (interactionTool.value === "line") {
     return
   }
 
@@ -2308,6 +2387,20 @@ onBeforeUnmount(() => {
             <path d="M3 2l10 6-5.5 1.5L6 15z"/>
           </svg>
         </button>
+        <button
+          type="button"
+          class="switchgear-sld__tool-button"
+          :class="{ 'switchgear-sld__tool-button--active': interactionTool === 'line' }"
+          title="Draw line"
+          aria-label="Draw line"
+          @click="setInteractionTool('line')"
+        >
+          <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 11 11 3"/>
+            <path d="M10.5 11.5h2.5V9"/>
+            <path d="M3 5.5V3h2.5"/>
+          </svg>
+        </button>
       </div>
 
       <button
@@ -2336,20 +2429,6 @@ onBeforeUnmount(() => {
         <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
           <path d="m10 4 3.5 3.5L10 11"/>
           <path d="M13 7.5H7.75a4.25 4.25 0 1 0 0 8.5H9"/>
-        </svg>
-      </UiButton>
-      <UiButton
-        size="sm"
-        variant="secondary"
-        class="switchgear-sld__icon-action"
-        title="Add line"
-        aria-label="Add line"
-        @click="addLineInViewport"
-      >
-        <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 11 11 3"/>
-          <path d="M10.5 11.5h2.5V9"/>
-          <path d="M3 5.5V3h2.5"/>
         </svg>
       </UiButton>
       <UiButton
@@ -2516,6 +2595,10 @@ onBeforeUnmount(() => {
       v-else
       ref="viewportRef"
       class="switchgear-sld__viewport"
+      :class="{
+        'switchgear-sld__viewport--select': interactionTool === 'arrow',
+        'switchgear-sld__viewport--draw-line': interactionTool === 'line',
+      }"
       :style="viewportSurfaceStyle"
       @pointerdown="beginViewportPan"
       @wheel.prevent="handleWheel"
@@ -2606,6 +2689,30 @@ onBeforeUnmount(() => {
                   @contextmenu.stop.prevent="openLineContextMenu(edge.id, $event)"
                 />
               </g>
+            </g>
+
+            <g v-if="draftLinePreview">
+              <path
+                :d="`M ${draftLinePreview.x1} ${draftLinePreview.y1} L ${draftLinePreview.x2} ${draftLinePreview.y2}`"
+                fill="none"
+                stroke="#0ea5e9"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-dasharray="10 7"
+                class="switchgear-sld__edge-draft"
+              />
+              <circle
+                :cx="draftLinePreview.x1"
+                :cy="draftLinePreview.y1"
+                r="5"
+                class="switchgear-sld__edge-draft-handle"
+              />
+              <circle
+                :cx="draftLinePreview.x2"
+                :cy="draftLinePreview.y2"
+                r="5"
+                class="switchgear-sld__edge-draft-handle"
+              />
             </g>
 
             <rect
@@ -2984,6 +3091,14 @@ onBeforeUnmount(() => {
   cursor: grabbing;
 }
 
+.switchgear-sld__viewport--select {
+  cursor: crosshair;
+}
+
+.switchgear-sld__viewport--draw-line {
+  cursor: crosshair;
+}
+
 .switchgear-sld__viewport-overlay {
   position: absolute;
   inset: 0;
@@ -3067,6 +3182,18 @@ onBeforeUnmount(() => {
 
 .switchgear-sld__edge-handle {
   cursor: pointer;
+}
+
+.switchgear-sld__edge-draft {
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.switchgear-sld__edge-draft-handle {
+  fill: color-mix(in srgb, var(--color-white) 90%, transparent);
+  stroke: var(--color-blue-500);
+  stroke-width: 2;
+  pointer-events: none;
 }
 
 .switchgear-sld__zoom-panel,
