@@ -200,9 +200,12 @@ const { isDesktop } = useViewport()
 
 .sequence-editor__workspace {
   display: flex;
+  min-height: 0;
   flex-direction: column;
+  flex: 1 1 0;
   gap: 1rem;
   margin-top: 1.25rem;
+  overflow: hidden;
   padding: 1rem;
   border-radius: var(--radius-md);
   background: var(--color-white);
@@ -240,11 +243,9 @@ const { isDesktop } = useViewport()
   }
 
   .sequence-editor__workspace {
-    min-height: 0;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     flex-direction: row;
     gap: 1.25rem;
-    overflow: hidden;
   }
 
   .sequence-editor__steps-column {

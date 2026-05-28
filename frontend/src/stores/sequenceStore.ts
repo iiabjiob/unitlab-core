@@ -17,6 +17,18 @@ import { useWorkspaceStore } from "./workspaceStore"
 
 const logger = getLogger("SEQ")
 
+type RuntimeNestedProgress = {
+  done: number
+  total: number
+}
+
+export type SequenceExecutionProgress = {
+  done: number
+  total: number
+  percent: number
+  completedTopSteps: number
+}
+
 function createEmptyState(seqId: number, totalSteps: number): SequenceState {
   return {
     sequence_id: seqId,
@@ -92,6 +104,89 @@ function describeRuntime(runtime?: SequenceRuntimeState | null): string {
   return parts.join(" · ")
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value))
+}
+
+function resolveCompletedTopStepCount(state: SequenceState): number {
+  const total = Math.max(0, Number(state.total_steps ?? 0))
+  const uniqueCompleted = new Set(
+    (state.completed_step_ids ?? [])
+      .map(stepId => Number(stepId))
+      .filter(stepId => Number.isFinite(stepId)),
+  )
+  return clamp(uniqueCompleted.size, 0, total)
+}
+
+function isSequenceInFlight(status: SequenceStatusEnum): boolean {
+  return status === SequenceStatusEnum.PENDING
+    || status === SequenceStatusEnum.RUNNING
+    || status === SequenceStatusEnum.CANCELLING
+}
+
+function resolveRuntimeNestedProgress(runtime?: SequenceRuntimeState | null): RuntimeNestedProgress | null {
+  if (!runtime) {
+    return null
+  }
+
+  const activeStepIndex = Math.max(0, Number(runtime.active_step_index ?? 0))
+  const activeTotalSteps = Math.max(0, Number(runtime.active_total_steps ?? 0))
+  if (activeTotalSteps <= 0) {
+    return null
+  }
+
+  if (runtime.repeat_mode === "times") {
+    const iterationCurrent = Math.max(0, Number(runtime.iteration_current ?? 0))
+    const iterationTotal = Math.max(0, Number(runtime.iteration_total ?? 0))
+    if (iterationCurrent <= 0 || iterationTotal <= 0) {
+      return null
+    }
+
+    const total = iterationTotal * activeTotalSteps
+    const done = ((iterationCurrent - 1) * activeTotalSteps) + clamp(activeStepIndex + 1, 0, activeTotalSteps)
+    return { done: clamp(done, 0, total), total }
+  }
+
+  if ((runtime.execution_path?.length ?? 0) > 1) {
+    return {
+      done: clamp(activeStepIndex + 1, 0, activeTotalSteps),
+      total: activeTotalSteps,
+    }
+  }
+
+  return null
+}
+
+function resolveRuntimeStartFraction(runtime?: SequenceRuntimeState | null): number {
+  if (!runtime) {
+    return 0
+  }
+
+  const activeStepIndex = Math.max(0, Number(runtime.active_step_index ?? 0))
+  const activeTotalSteps = Math.max(0, Number(runtime.active_total_steps ?? 0))
+  if (activeTotalSteps <= 0) {
+    return 0
+  }
+
+  if (runtime.repeat_mode === "times") {
+    const iterationCurrent = Math.max(0, Number(runtime.iteration_current ?? 0))
+    const iterationTotal = Math.max(0, Number(runtime.iteration_total ?? 0))
+    if (iterationCurrent <= 0 || iterationTotal <= 0) {
+      return 0
+    }
+
+    const total = iterationTotal * activeTotalSteps
+    const doneAtStepStart = ((iterationCurrent - 1) * activeTotalSteps) + clamp(activeStepIndex, 0, activeTotalSteps)
+    return clamp(doneAtStepStart / total, 0, 0.999)
+  }
+
+  if ((runtime.execution_path?.length ?? 0) > 1) {
+    return clamp(activeStepIndex / activeTotalSteps, 0, 0.999)
+  }
+
+  return 0
+}
+
 
 export const useSequenceStore = defineStore("sequenceStore", () => {
 
@@ -99,6 +194,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   const states = ref<Record<number, SequenceState>>({})
   const loading = ref(false)
   const loadedOnce = ref(false)
+  const runtimeNestedProgressBySequence = ref<Record<number, RuntimeNestedProgress | null>>({})
   let tempSequenceId = -1
   const stepStore = useSequenceStepStore()
   const logStore = useSequenceLogStore()
@@ -151,6 +247,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
   function resetState(seqId: number) {
     states.value[seqId] = createEmptyState(seqId, stepsCount(seqId))
+    clearRuntimeNestedProgress(seqId)
   }
 
   function applySnapshot(seqId: number, snapshot: SequenceState) {
@@ -163,6 +260,10 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
       total_steps: total,
       completed_step_ids: [...(snapshot.completed_step_ids ?? [])],
       runtime: normalizeRuntime(snapshot.runtime),
+    }
+
+    if (!isSequenceInFlight(states.value[seqId].status)) {
+      clearRuntimeNestedProgress(seqId)
     }
 
     return states.value[seqId]
@@ -333,6 +434,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
   async function startSequence(id: number) {
     const { data } = await SequencesAPI.start(workspaceStore.requireWorkspaceId(), id)
+    clearRuntimeNestedProgress(id)
     return applySnapshot(id, data)
   }
 
@@ -349,6 +451,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
     switch (event.event) {
       case "started":
+        clearRuntimeNestedProgress(event.sequence_id)
         states.value[event.sequence_id] = {
           ...prev,
           status: SequenceStatusEnum.RUNNING,
@@ -366,6 +469,12 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
         break
 
       case "progress":
+        if (event.progress_scope === "nested_step") {
+          setRuntimeNestedProgress(event.sequence_id, resolveRuntimeNestedProgress(event.runtime))
+        } else {
+          clearRuntimeNestedProgress(event.sequence_id)
+        }
+
         states.value[event.sequence_id] = {
           ...prev,
           status: SequenceStatusEnum.RUNNING,
@@ -410,6 +519,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
         break
 
       case "step_error":
+        clearRuntimeNestedProgress(event.sequence_id)
         states.value[event.sequence_id] = {
           ...prev,
           status: SequenceStatusEnum.ERROR,
@@ -430,6 +540,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
         break
 
       case "error":
+        clearRuntimeNestedProgress(event.sequence_id)
         states.value[event.sequence_id] = {
           ...prev,
           status: SequenceStatusEnum.ERROR,
@@ -445,6 +556,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
         break
 
       case "stopped":
+        clearRuntimeNestedProgress(event.sequence_id)
         states.value[event.sequence_id] = {
           ...prev,
           status: SequenceStatusEnum.STOPPED,
@@ -459,6 +571,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
         break
 
       case "completed":
+        clearRuntimeNestedProgress(event.sequence_id)
         states.value[event.sequence_id] = {
           ...prev,
           status: SequenceStatusEnum.COMPLETED,
@@ -479,9 +592,27 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
   function resetForWorkspaceChange() {
     sequences.value = []
     states.value = {}
+    runtimeNestedProgressBySequence.value = {}
     loadedOnce.value = false
     stepStore.resetAll()
     logStore.resetAll()
+  }
+
+  function setRuntimeNestedProgress(seqId: number, progress: RuntimeNestedProgress | null) {
+    runtimeNestedProgressBySequence.value = {
+      ...runtimeNestedProgressBySequence.value,
+      [seqId]: progress,
+    }
+  }
+
+  function clearRuntimeNestedProgress(seqId: number) {
+    if (!(seqId in runtimeNestedProgressBySequence.value)) {
+      return
+    }
+
+    const next = { ...runtimeNestedProgressBySequence.value }
+    delete next[seqId]
+    runtimeNestedProgressBySequence.value = next
   }
 
   function findStepById(seqId: number, stepId?: number | null): SequenceStep | undefined {
@@ -530,10 +661,49 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
 
 
 
-  function getProgress(seq: SequenceDef | number) {
+  function getExecutionProgress(seq: SequenceDef | number): SequenceExecutionProgress {
     const st = ensureState(seq)
-    if (st.total_steps === 0) return 0
-    return Math.round((st.completed_step_ids.length / st.total_steps) * 100)
+    const total = Math.max(0, Number(st.total_steps ?? 0))
+    if (total === 0) {
+      return {
+        done: 0,
+        total: 0,
+        percent: 0,
+        completedTopSteps: 0,
+      }
+    }
+
+    const completedTopSteps = resolveCompletedTopStepCount(st)
+    if (st.status === SequenceStatusEnum.COMPLETED) {
+      return {
+        done: total,
+        total,
+        percent: 100,
+        completedTopSteps: total,
+      }
+    }
+
+    let activeFraction = 0
+    const nestedProgress = runtimeNestedProgressBySequence.value[st.sequence_id] ?? null
+    if (isSequenceInFlight(st.status) && completedTopSteps < total) {
+      if (nestedProgress && nestedProgress.total > 0) {
+        activeFraction = clamp(nestedProgress.done / nestedProgress.total, 0, 0.999)
+      } else {
+        activeFraction = resolveRuntimeStartFraction(st.runtime)
+      }
+    }
+
+    const done = clamp(completedTopSteps + activeFraction, 0, total)
+    return {
+      done,
+      total,
+      percent: Math.max(0, Math.min(100, Math.round((done / total) * 100))),
+      completedTopSteps,
+    }
+  }
+
+  function getProgress(seq: SequenceDef | number) {
+    return getExecutionProgress(seq).percent
   }
 
   return {
@@ -556,6 +726,7 @@ export const useSequenceStore = defineStore("sequenceStore", () => {
     importSequencesFile,
     handleSequenceEvent,
 
+    getExecutionProgress,
     getProgress,
     isRunning: (s: SequenceDef | number) => ensureState(s).status === SequenceStatusEnum.RUNNING,
 

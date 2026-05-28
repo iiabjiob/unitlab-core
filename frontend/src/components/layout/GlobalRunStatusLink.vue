@@ -137,18 +137,13 @@ const sequenceControlsVisible = computed(() => !compact.value && (canPauseSequen
 const sequenceProgress = computed(() => {
   const sequenceState = activeSequenceState.value
   if (!sequenceState) {
-    return { done: 0, total: 0 }
+    return { done: 0, total: 0, percent: 0, completedTopSteps: 0 }
   }
-  const total = Math.max(0, Number(sequenceState.total_steps ?? 0))
-  const current = Math.max(0, Number(sequenceState.current_step_index ?? 0))
-  const done = total > 0 ? Math.min(total, current + 1) : 0
-  return { done, total }
+  return sequenceStore.getExecutionProgress(sequenceState.sequence_id)
 })
 
 const sequenceProgressPercent = computed(() => {
-  const { done, total } = sequenceProgress.value
-  if (!total) return 0
-  return Math.max(0, Math.min(100, Math.round((done / total) * 100)))
+  return sequenceProgress.value.percent
 })
 
 const sequenceDetailText = computed(() => {
@@ -164,11 +159,18 @@ const sequenceDetailText = computed(() => {
       ? "cancelling"
       : "running"
 
-  const base = `${name} · ${stateLabel}${total > 0 ? ` · ${done}/${total}` : ""}`
-  if (!sequenceEstText.value) {
-    return base
-  }
-  return `${base} · ${sequenceEstText.value}`
+  const currentStep = total > 0
+    ? Math.min(total, Math.max(1, Math.floor(done) + 1))
+    : 0
+  const chunks = [
+    name,
+    stateLabel,
+    total > 0 ? `step ${currentStep}/${total}` : "",
+    sequenceRuntimeText.value,
+    sequenceEstText.value,
+  ].filter(Boolean)
+
+  return chunks.join(" · ")
 })
 
 const sequenceEstText = computed(() => {
@@ -199,6 +201,39 @@ const sequenceEstText = computed(() => {
 
   const estimatedSeconds = Math.max(1, Math.round(remaining / rate))
   return `EST ${formatDurationShort(estimatedSeconds)}`
+})
+
+const sequenceRuntimeText = computed(() => {
+  const runtime = activeSequenceState.value?.runtime
+  if (!runtime) {
+    return ""
+  }
+
+  const chunks: string[] = []
+  const path = runtime.execution_path?.filter(Boolean) ?? []
+  if (path.length > 1 && runtime.active_sequence_name) {
+    chunks.push(runtime.active_sequence_name)
+  }
+
+  if (
+    typeof runtime.active_step_index === "number"
+    && typeof runtime.active_total_steps === "number"
+    && path.length > 1
+  ) {
+    chunks.push(`nested ${runtime.active_step_index + 1}/${runtime.active_total_steps}`)
+  }
+
+  if (runtime.repeat_mode === "times" && typeof runtime.iteration_current === "number") {
+    chunks.push(typeof runtime.iteration_total === "number"
+      ? `iter ${runtime.iteration_current}/${runtime.iteration_total}`
+      : `iter ${runtime.iteration_current}`)
+  } else if (runtime.repeat_mode === "duration" && typeof runtime.iteration_current === "number") {
+    chunks.push(`iter ${runtime.iteration_current}`)
+  } else if (runtime.repeat_mode === "until_stopped" && typeof runtime.iteration_current === "number") {
+    chunks.push(`iter ${runtime.iteration_current}`)
+  }
+
+  return chunks.join(" · ")
 })
 
 const signalProgress = computed(() => {

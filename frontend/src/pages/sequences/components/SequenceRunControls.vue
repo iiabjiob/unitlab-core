@@ -36,13 +36,15 @@ const statusVariant = computed(() => {
 })
 
 const progress = computed(() => sequenceStore.getProgress(props.sequence))
+const executionProgress = computed(() => sequenceStore.getExecutionProgress(props.sequence))
+const totalStepCount = computed(() => state.value.total_steps || 0)
 const stepLabel = computed(() => {
   const total = state.value.total_steps ?? 0
   if (total === 0) return 0
   if (status.value === SequenceStatusEnum.COMPLETED) {
     return total
   }
-  return Math.min(state.value.current_step_index + 1, total)
+  return Math.min(total, Math.max(1, Math.floor(executionProgress.value.done) + 1))
 })
 
 const canStart = computed(() => (
@@ -64,11 +66,6 @@ const runDescription = computed(() => (
     ? "Direct run controls are disabled for read-only instructions. Duplicate it to run or edit."
     : "Quick execution that drives channels directly."
 ))
-
-const progressText = computed(() => {
-  const total = state.value.total_steps || 0
-  return `Progress: ${progress.value}% · step ${stepLabel.value} of ${total}`
-})
 
 function formatElapsed(ms?: number | null) {
   if (!Number.isFinite(ms ?? NaN) || !ms || ms < 0) {
@@ -134,6 +131,101 @@ const runtimeElapsedText = computed(() => {
   return formatted ? `Elapsed ${formatted}` : null
 })
 
+const runtimeItems = computed(() => [
+  runtimeStepText.value,
+  runtimePathText.value ? `Path: ${runtimePathText.value}` : null,
+  runtimeIterationText.value,
+  runtimeElapsedText.value,
+].filter((item): item is string => Boolean(item)))
+
+const isInFlight = computed(() => (
+  status.value === SequenceStatusEnum.PENDING ||
+  status.value === SequenceStatusEnum.RUNNING ||
+  status.value === SequenceStatusEnum.CANCELLING
+))
+
+const showStatusBadge = computed(() => (
+  isInFlight.value ||
+  status.value === SequenceStatusEnum.ERROR ||
+  status.value === SequenceStatusEnum.STOPPED
+))
+
+const showProgressPercent = computed(() => (
+  isInFlight.value ||
+  status.value === SequenceStatusEnum.ERROR ||
+  status.value === SequenceStatusEnum.STOPPED
+))
+
+const runHeadline = computed(() => {
+  if (isReadOnly.value) return "Read-only instruction"
+  switch (status.value) {
+    case SequenceStatusEnum.PENDING:
+      return "Preparing run"
+    case SequenceStatusEnum.RUNNING:
+      return "Running instruction"
+    case SequenceStatusEnum.CANCELLING:
+      return "Stopping safely"
+    case SequenceStatusEnum.ERROR:
+      return "Run needs attention"
+    case SequenceStatusEnum.STOPPED:
+      return "Run stopped"
+    default:
+      return "Ready"
+  }
+})
+
+const runSummaryText = computed(() => {
+  if (isReadOnly.value) {
+    return runDescription.value
+  }
+
+  const total = totalStepCount.value
+  if (status.value === SequenceStatusEnum.RUNNING) {
+    return total > 0
+      ? `Step ${stepLabel.value}/${total} · ${progress.value}%`
+      : "Running without configured steps"
+  }
+
+  if (status.value === SequenceStatusEnum.PENDING) {
+    return "Queued for execution"
+  }
+
+  if (status.value === SequenceStatusEnum.CANCELLING) {
+    return total > 0
+      ? `Stop requested · step ${stepLabel.value}/${total}`
+      : "Stop requested"
+  }
+
+  if (status.value === SequenceStatusEnum.ERROR) {
+    return state.value.last_error ? "Check execution log for failure details" : "Last run failed"
+  }
+
+  if (status.value === SequenceStatusEnum.STOPPED) {
+    return total > 0
+      ? `Stopped at step ${stepLabel.value}/${total}`
+      : "Stopped by operator"
+  }
+
+  if (status.value === SequenceStatusEnum.COMPLETED) {
+    return "Last run finished. Ready for next run."
+  }
+
+  return "No active run"
+})
+
+const runtimeFallbackText = computed(() => {
+  if (isInFlight.value) {
+    return "Waiting for live runtime status"
+  }
+  if (status.value === SequenceStatusEnum.ERROR) {
+    return "Failure details are kept in the execution log"
+  }
+  if (status.value === SequenceStatusEnum.STOPPED) {
+    return "Run state is preserved for review"
+  }
+  return ""
+})
+
 async function startInstruction() {
   actionLoading.value = "start"
   try {
@@ -184,9 +276,10 @@ async function toggleRun() {
 
 <template>
   <section class="sequence-run-controls">
-    <div class="sequence-run-controls__main">
-      <template v-if="!isReadOnly">
+    <div class="sequence-run-controls__top">
+      <div class="sequence-run-controls__action">
         <UiButton
+          v-if="!isReadOnly"
           size="sm"
           :variant="runButtonVariant"
           :disabled="runButtonDisabled"
@@ -199,33 +292,61 @@ async function toggleRun() {
             <span v-else>Stop</span>
           </template>
           <template v-else>
+            <span class="run-icon run-icon--play" aria-hidden="true"></span>
             <span v-if="actionLoading === 'start'">Starting…</span>
             <span v-else>Run Instruction</span>
           </template>
         </UiButton>
-      </template>
-      <div
-        v-else
-        class="sequence-run-controls__read-only"
-      >
-        {{ runDescription }}
+        <div
+          v-else
+          class="sequence-run-controls__read-only"
+        >
+          Locked
+        </div>
       </div>
-      <UiBadge :variant="statusVariant" class="sequence-run-controls__status">
-        {{ status }}
-      </UiBadge>
-      <span class="sequence-run-controls__progress">
-        {{ progressText }}
+
+      <div class="sequence-run-controls__summary">
+        <div class="sequence-run-controls__summary-head">
+          <span class="sequence-run-controls__headline">{{ runHeadline }}</span>
+          <UiBadge
+            v-if="showStatusBadge"
+            :variant="statusVariant"
+            class="sequence-run-controls__status"
+          >
+            {{ status }}
+          </UiBadge>
+        </div>
+        <div class="sequence-run-controls__summary-text">
+          {{ runSummaryText }}
+        </div>
+      </div>
+
+      <div
+        class="sequence-run-controls__percent"
+        :class="{ 'sequence-run-controls__percent--hidden': !showProgressPercent }"
+      >
+        {{ progress }}%
+      </div>
+    </div>
+
+    <div
+      class="sequence-run-controls__runtime"
+      :class="{ 'sequence-run-controls__runtime--muted': runtimeItems.length === 0 }"
+    >
+      <template v-if="runtimeItems.length > 0">
+        <span
+          v-for="item in runtimeItems"
+          :key="item"
+          class="sequence-run-controls__runtime-chip"
+        >
+          {{ item }}
+        </span>
+      </template>
+      <span v-else-if="runtimeFallbackText" class="sequence-run-controls__runtime-placeholder">
+        {{ runtimeFallbackText }}
       </span>
     </div>
-    <div
-      v-if="runtimeStepText || runtimePathText || runtimeIterationText || runtimeElapsedText"
-      class="sequence-run-controls__runtime"
-    >
-      <span v-if="runtimeStepText">{{ runtimeStepText }}</span>
-      <span v-if="runtimePathText">Path: {{ runtimePathText }}</span>
-      <span v-if="runtimeIterationText">{{ runtimeIterationText }}</span>
-      <span v-if="runtimeElapsedText">{{ runtimeElapsedText }}</span>
-    </div>
+
     <p v-if="state.last_error" class="sequence-run-controls__error">
       Error: {{ state.last_error }}
     </p>
@@ -235,18 +356,27 @@ async function toggleRun() {
 <style scoped>
 .sequence-run-controls {
   margin-top: 1rem;
-  padding: 1.25rem;
   border: 1px solid var(--color-neutral-200);
   border-radius: 1rem;
   background: color-mix(in srgb, var(--color-white) 80%, transparent);
   box-shadow: var(--shadow-sm);
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 6.75rem;
+  padding: 1rem;
 }
 
-.sequence-run-controls__main {
-  display: flex;
-  flex-wrap: wrap;
+.sequence-run-controls__top {
+  display: grid;
+  grid-template-columns: 1fr;
   align-items: center;
   gap: 0.75rem;
+}
+
+.sequence-run-controls__action {
+  min-width: 0;
 }
 
 .sequence-run-controls__run-button {
@@ -258,11 +388,37 @@ async function toggleRun() {
 .sequence-run-controls__read-only {
   display: flex;
   align-items: center;
+  justify-content: center;
+  min-height: 2rem;
   padding: 0.5rem 0.75rem;
   border: 1px dashed var(--color-neutral-300);
   border-radius: var(--radius-sm);
   color: var(--color-neutral-600);
   font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.sequence-run-controls__summary {
+  min-width: 0;
+}
+
+.sequence-run-controls__summary-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.sequence-run-controls__headline {
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.sequence-run-controls__summary-text {
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+  margin-top: 0.125rem;
 }
 
 .sequence-run-controls__status {
@@ -270,22 +426,48 @@ async function toggleRun() {
   justify-content: center;
 }
 
-.sequence-run-controls__progress,
-.sequence-run-controls__runtime {
-  color: var(--color-neutral-500);
-  font-size: var(--text-xs);
+.sequence-run-controls__percent {
+  color: var(--color-neutral-900);
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  justify-self: start;
+  line-height: 1;
+}
+
+.sequence-run-controls__percent--hidden {
+  opacity: 0;
 }
 
 .sequence-run-controls__runtime {
+  align-items: center;
+  color: var(--color-neutral-500);
   display: flex;
   flex-wrap: wrap;
-  column-gap: 1rem;
-  row-gap: 0.25rem;
-  margin-top: 0.75rem;
+  font-size: var(--text-xs);
+  gap: 0.375rem;
+  min-height: 1.5rem;
+}
+
+.sequence-run-controls__runtime--muted {
+  color: color-mix(in srgb, var(--color-neutral-500) 68%, transparent);
+}
+
+.sequence-run-controls__runtime-chip {
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-white) 72%, transparent);
+  color: var(--color-neutral-600);
+  font-size: 11px;
+  line-height: 1;
+  padding: 0.25rem 0.5rem;
+}
+
+.sequence-run-controls__runtime-placeholder {
+  line-height: 1.25rem;
 }
 
 .sequence-run-controls__error {
-  margin-top: 0.75rem;
   color: var(--color-red-500);
   font-size: var(--text-xs);
 }
@@ -311,6 +493,10 @@ async function toggleRun() {
 }
 
 @media (min-width: 640px) {
+  .sequence-run-controls__top {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
   .sequence-run-controls__run-button {
     width: auto;
     min-width: 150px;
@@ -318,6 +504,10 @@ async function toggleRun() {
 
   .sequence-run-controls__status {
     min-width: 110px;
+  }
+
+  .sequence-run-controls__percent {
+    justify-self: end;
   }
 }
 
@@ -331,9 +521,20 @@ async function toggleRun() {
   color: var(--color-neutral-300);
 }
 
-:global(.dark .sequence-run-controls__progress),
+:global(.dark .sequence-run-controls__headline),
+:global(.dark .sequence-run-controls__percent) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .sequence-run-controls__summary-text),
 :global(.dark .sequence-run-controls__runtime) {
   color: var(--color-neutral-400);
+}
+
+:global(.dark .sequence-run-controls__runtime-chip) {
+  border-color: color-mix(in srgb, var(--color-neutral-700) 72%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-900) 76%, transparent);
+  color: var(--color-neutral-300);
 }
 
 :global(.dark .sequence-run-controls__error) {
