@@ -183,11 +183,13 @@ function positionClass(pos: ToastPosition) {
 
 .toast-card {
   backdrop-filter: blur(4px);
-  background: color-mix(in srgb, var(--color-neutral-50) 95%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 80%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-950) 95%, var(--runtime-accent));
+  border: 1px solid color-mix(in srgb, var(--color-neutral-700) 78%, var(--runtime-accent));
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 6px -1px rgb(23 23 23 / 0.1), 0 2px 4px -2px rgb(23 23 23 / 0.1);
-  color: var(--color-neutral-900);
+  box-shadow:
+    0 16px 32px rgb(15 23 42 / 0.22),
+    inset 0 1px 0 rgb(255 255 255 / 0.07);
+  color: var(--color-neutral-50);
   padding: 0.625rem;
   pointer-events: auto;
 }
@@ -222,25 +224,25 @@ function positionClass(pos: ToastPosition) {
 }
 
 .toast-card__badge--success {
-  background: color-mix(in srgb, var(--color-emerald-600) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-emerald-700) 25%, transparent);
-  color: var(--color-emerald-700);
+  background: color-mix(in srgb, var(--color-emerald-400) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-emerald-300) 42%, transparent);
+  color: var(--color-emerald-300);
 }
 
 .toast-card__badge--error {
-  background: color-mix(in srgb, var(--color-rose-600) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-rose-700) 25%, transparent);
-  color: var(--color-rose-700);
+  background: color-mix(in srgb, var(--color-rose-400) 18%, transparent);
+  border-color: color-mix(in srgb, var(--color-rose-300) 42%, transparent);
+  color: var(--color-rose-300);
 }
 
 .toast-card__badge--info {
-  background: color-mix(in srgb, var(--color-neutral-500) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-neutral-500) 25%, transparent);
-  color: var(--color-neutral-700);
+  background: color-mix(in srgb, var(--color-blue-400) 16%, transparent);
+  border-color: color-mix(in srgb, var(--color-blue-300) 40%, transparent);
+  color: var(--color-blue-300);
 }
 
 .toast-card__message {
-  color: var(--color-neutral-800);
+  color: var(--color-neutral-100);
   font-size: var(--text-xs);
   line-height: 1rem;
   margin: 0;
@@ -250,33 +252,57 @@ function positionClass(pos: ToastPosition) {
   flex-shrink: 0;
 }
 
-.dark .toast-card {
-  background: color-mix(in srgb, var(--color-neutral-900) 95%, transparent);
-  border-color: var(--color-neutral-700);
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
+.toast-card .toast-card__button.btn-secondary {
+  border-color: color-mix(in srgb, var(--color-neutral-500) 72%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-800) 80%, transparent);
   color: var(--color-neutral-100);
+}
+
+.toast-card .toast-card__button.btn-secondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-neutral-700) 86%, transparent);
+  color: var(--color-white);
+}
+
+.dark .toast-card {
+  background: color-mix(in srgb, var(--color-white) 96%, var(--color-blue-100));
+  border-color: color-mix(in srgb, var(--color-blue-300) 38%, var(--color-neutral-200));
+  box-shadow:
+    0 16px 34px rgb(0 0 0 / 0.36),
+    inset 0 1px 0 rgb(255 255 255 / 0.9);
+  color: var(--color-neutral-950);
 }
 
 .dark .toast-card__badge--success {
-  background: color-mix(in srgb, var(--color-emerald-300) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-emerald-300) 25%, transparent);
-  color: var(--color-emerald-300);
+  background: color-mix(in srgb, var(--color-emerald-600) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-emerald-700) 34%, transparent);
+  color: var(--color-emerald-700);
 }
 
 .dark .toast-card__badge--error {
-  background: color-mix(in srgb, var(--color-rose-300) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-rose-300) 25%, transparent);
-  color: var(--color-rose-300);
+  background: color-mix(in srgb, var(--color-rose-600) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-rose-700) 34%, transparent);
+  color: var(--color-rose-700);
 }
 
 .dark .toast-card__badge--info {
-  background: color-mix(in srgb, var(--color-neutral-300) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-neutral-300) 25%, transparent);
-  color: var(--color-neutral-200);
+  background: color-mix(in srgb, var(--color-blue-600) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-blue-800) 34%, transparent);
+  color: var(--color-blue-800);
 }
 
 .dark .toast-card__message {
-  color: var(--color-neutral-100);
+  color: var(--color-neutral-900);
+}
+
+.dark .toast-card .toast-card__button.btn-secondary {
+  border-color: color-mix(in srgb, var(--color-neutral-400) 70%, transparent);
+  background: color-mix(in srgb, var(--color-white) 88%, var(--color-neutral-100));
+  color: var(--color-neutral-900);
+}
+
+.dark .toast-card .toast-card__button.btn-secondary:hover:not(:disabled) {
+  background: var(--color-white);
+  color: var(--color-neutral-950);
 }
 
 .toast-enter-active,

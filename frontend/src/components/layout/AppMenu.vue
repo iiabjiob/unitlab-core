@@ -26,7 +26,6 @@
                 :aria-selected="isRouteActive(item.to)"
                 :tabindex="isEntryFocused(item.to) ? 0 : -1"
                 :href="href"
-                :title="item.label"
                 :aria-label="item.label"
                 class="app-menu__entry"
                 :class="[
@@ -68,7 +67,6 @@
                 :aria-selected="isRouteActive(child.to)"
                 :tabindex="isEntryFocused(child.to) ? 0 : -1"
                 :href="href"
-                :title="child.label"
                 :aria-label="child.label"
                 class="app-menu__entry is-child"
                 :class="[
@@ -102,6 +100,7 @@
 import { computed, nextTick, ref, watch } from "vue"
 import { RouterLink, useRoute, useRouter } from "vue-router"
 import UiHoverTooltip from "@/components/ui/UiHoverTooltip.vue"
+import { closeAllTooltipControllers } from "@/components/ui/tooltipSingletonRegistry"
 import AppMenuIcon, { type AppMenuIconName } from "./AppMenuIcon.vue"
 
 const props = withDefaults(defineProps<{
@@ -246,6 +245,7 @@ function moveFocus(delta: number) {
 
 function activateRoute(to: string) {
   if (normalizePath(route.path) === normalizePath(to)) return
+  closeAllTooltipControllers("keyboard")
   pendingRoute.value = to
   void router.push(to).catch(() => {
     pendingRoute.value = null
@@ -270,6 +270,7 @@ function handleEntryClick(event: MouseEvent, to: string, navigate: (event?: Mous
   if (!shouldHandleInPlaceNavigation(event)) {
     return
   }
+  closeAllTooltipControllers("pointer")
   pendingRoute.value = to
   navigate(event)
 }
