@@ -3,8 +3,12 @@ import type {
   ElectricalGraph,
   GenerateSldOptions,
   SldCellModel,
+  SldConnection,
+  SldConnectionRoute,
   SldCoordinate,
   SldDocument,
+  SldElement,
+  SldRoutePoint,
 } from "./types"
 
 const DEFAULT_GRID_SIZE = 24
@@ -36,10 +40,15 @@ export function layoutSldDocument(
       position,
     }
   })
+  const elementPositionsBySourceId = buildElementPositionsBySourceId(elements)
 
   return {
     ...baseDocument,
     elements,
+    connections: baseDocument.connections.map(connection => ({
+      ...connection,
+      route: buildConnectionRoute(connection, elementPositionsBySourceId, gridSize),
+    })),
     labels: elements.map(element => ({
       id: `${element.id}/label`,
       sourceId: element.sourceId,
@@ -96,11 +105,77 @@ function buildPositionsBySourceId(cellModel: SldCellModel, gridSize: number): Ma
   return positions
 }
 
+function buildElementPositionsBySourceId(elements: SldElement[]): Map<string, SldRoutePoint> {
+  const positions = new Map<string, SldRoutePoint>()
+
+  for (const element of elements) {
+    if (element.position.x === null || element.position.y === null) {
+      continue
+    }
+    positions.set(element.sourceId, {
+      x: element.position.x,
+      y: element.position.y,
+    })
+  }
+
+  return positions
+}
+
+function buildConnectionRoute(
+  connection: SldConnection,
+  positionsBySourceId: Map<string, SldRoutePoint>,
+  gridSize: number,
+): SldConnectionRoute | null {
+  const endpointPositions = connection.terminalOwnerIds
+    .map(terminalOwnerId => ({
+      terminalOwnerId,
+      point: positionsBySourceId.get(terminalOwnerId) ?? null,
+    }))
+    .filter((item): item is { terminalOwnerId: string; point: SldRoutePoint } => item.point !== null)
+
+  if (endpointPositions.length < 2) {
+    return null
+  }
+
+  const anchor = {
+    x: snapNumber(average(endpointPositions.map(item => item.point.x)), gridSize),
+    y: snapNumber(average(endpointPositions.map(item => item.point.y)), gridSize),
+  }
+
+  return {
+    kind: "orthogonal-star",
+    anchor,
+    segments: endpointPositions.map(({ terminalOwnerId, point }) => ({
+      terminalOwnerId,
+      points: uniqueConsecutivePoints([
+        point,
+        { x: anchor.x, y: point.y },
+        anchor,
+      ]),
+    })),
+  }
+}
+
 function snapCoordinate(position: SldCoordinate, gridSize: number): SldCoordinate {
   return {
-    x: position.x === null ? null : Math.round(position.x / gridSize) * gridSize,
-    y: position.y === null ? null : Math.round(position.y / gridSize) * gridSize,
+    x: position.x === null ? null : snapNumber(position.x, gridSize),
+    y: position.y === null ? null : snapNumber(position.y, gridSize),
   }
+}
+
+function snapNumber(value: number, gridSize: number): number {
+  return Math.round(value / gridSize) * gridSize
+}
+
+function average(values: number[]): number {
+  return values.reduce((sum, value) => sum + value, 0) / values.length
+}
+
+function uniqueConsecutivePoints(points: SldRoutePoint[]): SldRoutePoint[] {
+  return points.filter((point, index) => {
+    const previous = points[index - 1]
+    return !previous || previous.x !== point.x || previous.y !== point.y
+  })
 }
 
 function toGridCoordinate(gridUnits: number, gridSize: number): number {

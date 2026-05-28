@@ -302,6 +302,22 @@ export type SldElement = {
   position: SldCoordinate
 }
 
+export type SldRoutePoint = {
+  x: number
+  y: number
+}
+
+export type SldConnectionRouteSegment = {
+  terminalOwnerId: string
+  points: SldRoutePoint[]
+}
+
+export type SldConnectionRoute = {
+  kind: "orthogonal-star"
+  anchor: SldRoutePoint
+  segments: SldConnectionRouteSegment[]
+}
+
 export type SldConnection = {
   id: string
   kind: SldConnectionKind
@@ -309,6 +325,7 @@ export type SldConnection = {
   sourceConnectivityNode: string
   portIds: string[]
   terminalOwnerIds: string[]
+  route: SldConnectionRoute | null
 }
 
 export type SldLabel = {

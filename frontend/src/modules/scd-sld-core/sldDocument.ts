@@ -63,6 +63,7 @@ function buildConnectivityNodeConnections(edges: ElectricalGraphEdge[]): SldConn
       sourceConnectivityNode: edge.sourceConnectivityNode,
       portIds: edge.portIds,
       terminalOwnerIds: edge.nodeIds,
+      route: null,
     }))
 }
 

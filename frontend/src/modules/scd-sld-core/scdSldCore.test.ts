@@ -224,7 +224,10 @@ describe("scd-sld-core", () => {
       expect((element.position.x ?? 0) % 24).toBe(0)
       expect((element.position.y ?? 0) % 24).toBe(0)
     }
-    expect(result.document.connections).toContainEqual(expect.objectContaining({
+    const breakerTopConnection = result.document.connections.find(connection => (
+      connection.sourceConnectivityNode === "SS1/VL1/BAY1/CN_Q01_TOP"
+    ))
+    expect(breakerTopConnection).toEqual(expect.objectContaining({
       sourceConnectivityNode: "SS1/VL1/BAY1/CN_Q01_TOP",
       portIds: expect.arrayContaining([
         "port/substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01/terminal/T1_1",
@@ -235,6 +238,34 @@ describe("scd-sld-core", () => {
         "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/QB1",
       ],
     }))
+    expect(breakerTopConnection?.route).toEqual({
+      kind: "orthogonal-star",
+      anchor: { x: 168, y: 144 },
+      segments: [
+        {
+          terminalOwnerId: "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01",
+          points: [
+            { x: 168, y: 120 },
+            { x: 168, y: 144 },
+          ],
+        },
+        {
+          terminalOwnerId: "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/QB1",
+          points: [
+            { x: 168, y: 168 },
+            { x: 168, y: 144 },
+          ],
+        },
+      ],
+    })
+    for (const connection of result.document.connections) {
+      for (const segment of connection.route?.segments ?? []) {
+        for (const point of segment.points) {
+          expect(point.x % 24).toBe(0)
+          expect(point.y % 24).toBe(0)
+        }
+      }
+    }
     expect(JSON.parse(JSON.stringify(result.document))).toEqual(result.document)
   })
 

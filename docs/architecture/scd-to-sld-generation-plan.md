@@ -481,7 +481,8 @@ Implemented 2026-05-28:
 - Cell model emits voltage-level lanes, bay cells, ordered node roles, and orphan nodes for equipment outside a bay.
 - `generateSldFromScd(...)` now returns the cell model alongside the normalized model, graph, and renderer-neutral SLD document.
 - Added deterministic grid-aligned placement for voltage-level lanes, bay cell stacks, lane-ungrouped nodes, and orphan nodes.
-- Orthogonal edge routing metadata remains open in this slice.
+- Added renderer-neutral `orthogonal-star` connection route metadata with grid-aligned anchors and per-node segments.
+- Busbar visual specialization remains open for the SLD editor adapter.
 
 ### Slice 7 - UnitLab SLD Adapter
 

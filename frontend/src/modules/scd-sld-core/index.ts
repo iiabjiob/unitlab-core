@@ -78,9 +78,12 @@ export type {
   SldCellNode,
   SldCellNodeRole,
   SldConnection,
+  SldConnectionRoute,
+  SldConnectionRouteSegment,
   SldDocument,
   SldElement,
   SldElementKind,
   SldLabel,
+  SldRoutePoint,
   SldVoltageLevelLane,
 } from "./types"
