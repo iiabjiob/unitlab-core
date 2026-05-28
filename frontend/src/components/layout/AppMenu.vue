@@ -319,7 +319,7 @@ function handleKeydown(event: KeyboardEvent) {
 <style scoped>
 .app-menu {
   flex: 1;
-  padding: 1rem 0.5rem;
+  padding: 1.125rem 0.5rem;
   outline: none;
 }
 
@@ -328,15 +328,15 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 .app-menu__section + .app-menu__section {
-  margin-top: 1rem;
+  margin-top: 1.25rem;
 }
 
 .app-menu__section-title {
-  margin: 0 0 0.25rem;
-  padding: 0 0.5rem;
-  color: var(--color-neutral-400);
-  font-size: 0.6875rem;
-  font-weight: 600;
+  margin: 0 0 0.375rem;
+  padding: 0 0.625rem;
+  color: color-mix(in srgb, var(--color-neutral-500) 78%, transparent);
+  font-size: 0.625rem;
+  font-weight: 700;
   letter-spacing: 0;
   text-transform: uppercase;
 }
@@ -346,10 +346,13 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 .app-menu__entry {
+  position: relative;
   display: block;
   width: 100%;
   padding-top: 0.5rem;
   padding-bottom: 0.5rem;
+  overflow: hidden;
+  border: 1px solid transparent;
   border-radius: 0.75rem;
   cursor: pointer;
   color: var(--color-neutral-700);
@@ -357,8 +360,17 @@ function handleKeydown(event: KeyboardEvent) {
   font-weight: 500;
   outline: none;
   text-decoration: none;
-  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   user-select: none;
+}
+
+.app-menu__entry::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0.1875rem;
+  border-radius: inherit;
+  background: transparent;
+  content: "";
 }
 
 .app-menu__entry--compact {
@@ -404,7 +416,8 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 .app-menu__entry:hover {
-  background: var(--color-neutral-100);
+  border-color: color-mix(in srgb, var(--color-neutral-200) 72%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-100) 72%, transparent);
   color: var(--color-neutral-900);
 }
 
@@ -414,13 +427,25 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 .app-menu__entry.is-focused {
-  background: var(--color-neutral-200);
+  border-color: color-mix(in srgb, var(--runtime-accent) 28%, var(--color-neutral-300));
+  background: color-mix(in srgb, var(--runtime-accent) 10%, var(--color-neutral-100));
   color: var(--color-neutral-900);
 }
 
 .app-menu__entry.is-active {
-  background: #e5e7eb;
+  border-color: color-mix(in srgb, var(--runtime-accent) 32%, var(--color-neutral-200));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--runtime-accent) 12%, transparent), color-mix(in srgb, var(--color-white) 92%, transparent));
+  box-shadow:
+    0 10px 22px color-mix(in srgb, var(--runtime-accent) 10%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 0.64);
   color: rgb(15 23 42);
+  font-weight: 700;
+}
+
+.app-menu__entry.is-active::before {
+  background: var(--runtime-accent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--runtime-accent) 42%, transparent);
 }
 
 .app-menu__entry:focus-visible {
@@ -431,22 +456,33 @@ function handleKeydown(event: KeyboardEvent) {
   color: var(--color-neutral-300);
 }
 
+:global(.dark .app-menu__section-title) {
+  color: color-mix(in srgb, var(--color-neutral-500) 80%, transparent);
+}
+
 :global(.dark .app-menu__entry.is-child) {
   color: var(--color-neutral-400);
 }
 
 :global(.dark .app-menu__entry:hover) {
-  background: color-mix(in srgb, var(--color-neutral-800) 80%, transparent);
+  border-color: color-mix(in srgb, var(--runtime-accent) 14%, var(--color-neutral-700));
+  background: color-mix(in srgb, var(--color-neutral-800) 70%, transparent);
   color: var(--color-white);
 }
 
 :global(.dark .app-menu__entry.is-focused) {
-  background: color-mix(in srgb, var(--color-neutral-700) 70%, transparent);
+  border-color: color-mix(in srgb, var(--runtime-accent) 24%, var(--color-neutral-700));
+  background: color-mix(in srgb, var(--runtime-accent) 12%, var(--color-neutral-900));
   color: var(--color-neutral-100);
 }
 
 :global(.dark .app-menu__entry.is-active) {
-  background: rgb(59 130 246 / 0.2);
+  border-color: color-mix(in srgb, var(--runtime-accent) 30%, var(--color-neutral-700));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--runtime-accent) 20%, transparent), color-mix(in srgb, var(--color-neutral-900) 78%, transparent));
+  box-shadow:
+    0 10px 26px color-mix(in srgb, var(--runtime-accent) 10%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
   color: rgb(219 234 254);
 }
 

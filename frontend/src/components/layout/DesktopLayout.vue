@@ -117,7 +117,9 @@ function resolveInitialLeftAsideWidth() {
   height: 100dvh;
   flex-direction: column;
   background:
+    linear-gradient(90deg, color-mix(in srgb, var(--runtime-accent) 5%, transparent) 1px, transparent 1px),
     linear-gradient(180deg, var(--color-neutral-50) 0%, color-mix(in srgb, var(--color-neutral-100) 70%, var(--color-white)) 100%);
+  background-size: 4rem 4rem, auto;
   color: var(--color-neutral-800);
   font-family: var(--font-mono);
 }
@@ -127,15 +129,19 @@ function resolveInitialLeftAsideWidth() {
   flex: 1 1 auto;
   min-height: 0;
   background:
+    linear-gradient(90deg, color-mix(in srgb, var(--runtime-accent) 4%, transparent) 1px, transparent 1px),
     linear-gradient(180deg, color-mix(in srgb, var(--color-white) 86%, var(--color-neutral-100)) 0%, var(--color-neutral-100) 100%);
+  background-size: 4rem 4rem, auto;
   overflow: hidden;
 }
 
 .desktop-layout__aside-panel {
   flex: 0 0 auto;
   border-right: 1px solid color-mix(in srgb, var(--color-neutral-200) 80%, transparent);
-  background: var(--color-white);
-  box-shadow: 10px 0 24px rgb(15 23 42 / 0.06);
+  background: color-mix(in srgb, var(--runtime-panel-bg) 96%, var(--color-white));
+  box-shadow:
+    10px 0 24px rgb(15 23 42 / 0.06),
+    inset -1px 0 0 rgb(255 255 255 / 0.66);
 }
 
 .desktop-layout__aside {
@@ -162,7 +168,8 @@ function resolveInitialLeftAsideWidth() {
   overflow: hidden;
   padding: 0 1.25rem;
   border-bottom: 1px solid var(--color-neutral-200);
-  background: color-mix(in srgb, var(--color-white) 94%, var(--color-neutral-50));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-white) 96%, var(--runtime-accent-soft)), color-mix(in srgb, var(--color-white) 90%, var(--color-neutral-50)));
   box-shadow:
     0 1px 0 rgb(255 255 255 / 82%) inset,
     0 12px 24px rgb(15 23 42 / 0.06);
@@ -213,24 +220,33 @@ function resolveInitialLeftAsideWidth() {
 }
 
 :global(.dark .desktop-layout) {
-  background: var(--color-neutral-950);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--runtime-accent) 5%, transparent) 1px, transparent 1px),
+    var(--color-neutral-950);
+  background-size: 4rem 4rem, auto;
   color: var(--color-neutral-200);
 }
 
 :global(.dark .desktop-layout__body) {
   background:
+    linear-gradient(90deg, color-mix(in srgb, var(--runtime-accent) 5%, transparent) 1px, transparent 1px),
     linear-gradient(180deg, color-mix(in srgb, var(--color-neutral-900) 86%, var(--color-neutral-950)) 0%, var(--color-neutral-950) 100%);
+  background-size: 4rem 4rem, auto;
 }
 
 :global(.dark .desktop-layout__aside-panel) {
-  border-right-color: var(--color-neutral-800);
-  background: color-mix(in srgb, var(--color-neutral-900) 92%, var(--color-neutral-800));
-  box-shadow: 10px 0 28px rgb(0 0 0 / 0.24);
+  border-right-color: color-mix(in srgb, var(--runtime-accent) 12%, var(--color-neutral-800));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-neutral-900) 92%, var(--runtime-accent-soft)), color-mix(in srgb, var(--color-neutral-950) 88%, var(--color-neutral-900)));
+  box-shadow:
+    10px 0 28px rgb(0 0 0 / 0.24),
+    inset -1px 0 0 rgb(255 255 255 / 0.03);
 }
 
 :global(.dark .desktop-layout__header) {
-  border-bottom-color: var(--color-neutral-800);
-  background: color-mix(in srgb, var(--color-neutral-900) 92%, var(--color-neutral-950));
+  border-bottom-color: color-mix(in srgb, var(--runtime-accent) 12%, var(--color-neutral-800));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-neutral-900) 92%, var(--runtime-accent-soft)), color-mix(in srgb, var(--color-neutral-950) 88%, var(--color-neutral-900)));
   box-shadow:
     0 1px 0 rgb(255 255 255 / 4%) inset,
     0 14px 26px rgb(0 0 0 / 0.26);

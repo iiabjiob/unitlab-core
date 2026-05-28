@@ -72,7 +72,10 @@
             class="home-page__metric"
             :class="`home-page__metric--${metric.tone}`"
           >
-            <span class="home-page__metric-label">{{ metric.label }}</span>
+            <span class="home-page__metric-topline">
+              <span class="home-page__metric-label">{{ metric.label }}</span>
+              <span class="home-page__metric-state" :class="`is-${metric.state}`">{{ metric.stateLabel }}</span>
+            </span>
             <strong class="home-page__metric-value">{{ metric.value }}</strong>
             <span class="home-page__metric-detail">{{ metric.detail }}</span>
           </article>
@@ -177,11 +180,14 @@ const workspaceError = computed(() => workspaceStore.error)
 type HomeRoute = RouteLocationRaw
 type HomeAction = { label: string; route: HomeRoute }
 type MetricTone = "blue" | "green" | "amber" | "neutral"
+type MetricState = "live" | "ready" | "idle" | "attention"
 type HomeMetric = {
   label: string
   value: string
   detail: string
   tone: MetricTone
+  state: MetricState
+  stateLabel: string
 }
 type QuickAction = {
   step: string
@@ -235,18 +241,24 @@ const metrics = computed<HomeMetric[]>(() => [
     value: `${formatInteger(onlineDevicesCount.value)} / ${formatInteger(totalDevicesCount.value)}`,
     detail: totalDevicesCount.value ? "registered runtime units" : "no devices registered",
     tone: onlineDevicesCount.value > 0 ? "green" : "neutral",
+    state: onlineDevicesCount.value > 0 ? "live" : "idle",
+    stateLabel: onlineDevicesCount.value > 0 ? "live" : "idle",
   },
   {
     label: "Channels loaded",
     value: formatInteger(totalChannelsCount.value),
     detail: "available I/O endpoints",
     tone: totalChannelsCount.value > 0 ? "blue" : "neutral",
+    state: totalChannelsCount.value > 0 ? "ready" : "idle",
+    stateLabel: totalChannelsCount.value > 0 ? "ready" : "idle",
   },
   {
     label: "Signal rows",
     value: formatInteger(signalCount.value),
     detail: signalSheetStore.hasSheet ? "active signal list" : "awaiting import",
     tone: signalSheetStore.hasSheet ? "blue" : "amber",
+    state: signalSheetStore.hasSheet ? "ready" : "attention",
+    stateLabel: signalSheetStore.hasSheet ? "ready" : "setup",
   },
 ])
 
@@ -323,7 +335,9 @@ function goTo(route: HomeRoute) {
   min-height: 100vh;
   min-height: 100svh;
   background:
+    linear-gradient(90deg, color-mix(in srgb, var(--runtime-accent) 5%, transparent) 1px, transparent 1px),
     linear-gradient(180deg, var(--color-white) 0%, var(--color-neutral-50) 38%, var(--color-neutral-100) 100%);
+  background-size: 4.5rem 4.5rem, auto;
   color: var(--color-neutral-900);
   overflow: hidden;
 }
@@ -369,12 +383,11 @@ function goTo(route: HomeRoute) {
   justify-content: space-between;
   gap: 1rem;
   padding: 1rem;
-  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 84%, transparent);
+  border: 1px solid var(--runtime-panel-border);
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--color-white) 94%, var(--color-neutral-50));
-  box-shadow:
-    0 16px 34px rgb(15 23 42 / 0.08),
-    inset 0 1px 0 rgb(255 255 255 / 84%);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--runtime-panel-bg) 96%, var(--runtime-accent-soft)), var(--runtime-panel-bg));
+  box-shadow: var(--runtime-panel-shadow);
 }
 
 .home-page__brand {
@@ -406,19 +419,32 @@ function goTo(route: HomeRoute) {
 .home-page__workspace-panel,
 .home-page__metric,
 .home-page__scenario {
-  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 86%, transparent);
+  border: 1px solid var(--runtime-panel-border);
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--color-white) 94%, var(--color-neutral-50));
-  box-shadow:
-    0 14px 28px rgb(15 23 42 / 0.07),
-    inset 0 1px 0 rgb(255 255 255 / 80%);
+  background: var(--runtime-panel-bg);
+  box-shadow: var(--runtime-panel-shadow);
 }
 
 .home-page__workspace-panel {
+  position: relative;
   display: grid;
   align-content: start;
-  gap: 0.875rem;
-  padding: 1.25rem;
+  gap: 1rem;
+  overflow: hidden;
+  padding: 1.5rem;
+  border-color: color-mix(in srgb, var(--runtime-accent) 24%, var(--runtime-panel-border));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--runtime-accent) 10%, transparent), transparent 42%),
+    var(--runtime-panel-bg);
+  box-shadow: var(--runtime-panel-shadow-strong);
+}
+
+.home-page__workspace-panel::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0.25rem;
+  background: linear-gradient(180deg, var(--runtime-accent), color-mix(in srgb, var(--runtime-live) 72%, var(--runtime-accent)));
+  content: "";
 }
 
 .home-page__eyebrow {
@@ -454,7 +480,8 @@ function goTo(route: HomeRoute) {
   border: 1px solid color-mix(in srgb, var(--color-blue-300) 42%, var(--color-neutral-200));
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-blue-100) 38%, var(--color-white)), var(--color-white));
+    linear-gradient(135deg, color-mix(in srgb, var(--runtime-accent) 14%, var(--color-white)), var(--color-white));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.82);
 }
 
 .home-page__signal-progress-header {
@@ -517,7 +544,14 @@ function goTo(route: HomeRoute) {
   gap: 0.35rem;
   min-height: 7.25rem;
   overflow: hidden;
-  padding: 1rem;
+  padding: 1rem 1rem 1rem 1.125rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.home-page__metric:hover {
+  border-color: color-mix(in srgb, var(--home-page-accent) 30%, var(--runtime-panel-border));
+  box-shadow: var(--runtime-panel-shadow-strong);
+  transform: translateY(-1px);
 }
 
 .home-page__metric::before,
@@ -536,9 +570,61 @@ function goTo(route: HomeRoute) {
   font-size: var(--text-xs);
 }
 
+.home-page__metric-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.home-page__metric-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-neutral-500);
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.home-page__metric-state::before {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 999px;
+  background: var(--color-neutral-400);
+  content: "";
+}
+
+.home-page__metric-state.is-live {
+  color: var(--color-emerald-600);
+}
+
+.home-page__metric-state.is-live::before {
+  background: var(--runtime-live);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--runtime-live) 48%, transparent);
+}
+
+.home-page__metric-state.is-ready {
+  color: var(--color-blue-600);
+}
+
+.home-page__metric-state.is-ready::before {
+  background: var(--runtime-accent);
+}
+
+.home-page__metric-state.is-attention {
+  color: var(--color-amber-600);
+}
+
+.home-page__metric-state.is-attention::before {
+  background: var(--runtime-warning);
+}
+
 .home-page__metric-value {
   color: var(--color-neutral-950);
-  font-size: var(--text-2xl);
+  font-size: var(--text-3xl);
   font-weight: 800;
   line-height: 1.1;
 }
@@ -655,7 +741,9 @@ function goTo(route: HomeRoute) {
 
 :global(.dark .home-page) {
   background:
+    linear-gradient(90deg, color-mix(in srgb, var(--runtime-accent) 5%, transparent) 1px, transparent 1px),
     linear-gradient(180deg, var(--color-neutral-950) 0%, var(--color-neutral-900) 48%, var(--color-neutral-950) 100%);
+  background-size: 4.5rem 4.5rem, auto;
   color: var(--color-neutral-100);
 }
 
@@ -672,11 +760,22 @@ function goTo(route: HomeRoute) {
 :global(.dark .home-page__workspace-panel),
 :global(.dark .home-page__metric),
 :global(.dark .home-page__scenario) {
-  border-color: var(--color-neutral-800);
-  background: color-mix(in srgb, var(--color-neutral-900) 88%, var(--color-neutral-950));
-  box-shadow:
-    0 16px 32px rgb(0 0 0 / 0.28),
-    inset 0 1px 0 rgb(255 255 255 / 4%);
+  border-color: var(--runtime-panel-border);
+  background: var(--runtime-panel-bg);
+  box-shadow: var(--runtime-panel-shadow);
+}
+
+:global(.dark .home-page__header) {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--runtime-panel-bg) 92%, var(--runtime-accent-soft)), var(--runtime-panel-bg));
+}
+
+:global(.dark .home-page__workspace-panel) {
+  border-color: color-mix(in srgb, var(--runtime-accent) 28%, var(--runtime-panel-border));
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--runtime-accent) 12%, transparent), transparent 44%),
+    var(--runtime-panel-bg);
+  box-shadow: var(--runtime-panel-shadow-strong);
 }
 
 :global(.dark .home-page__workspace-title),
@@ -701,7 +800,8 @@ function goTo(route: HomeRoute) {
 :global(.dark .home-page__signal-progress) {
   border-color: color-mix(in srgb, var(--color-blue-400) 28%, var(--color-neutral-800));
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-blue-900) 22%, var(--color-neutral-900)), var(--color-neutral-900));
+    linear-gradient(135deg, color-mix(in srgb, var(--runtime-accent) 14%, var(--color-neutral-900)), var(--color-neutral-900));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
 }
 
 :global(.dark .home-page__signal-progress-header) {
@@ -734,6 +834,22 @@ function goTo(route: HomeRoute) {
 :global(.dark .home-page__scenario-index) {
   border-color: color-mix(in srgb, var(--home-page-accent) 38%, var(--color-neutral-900));
   background: color-mix(in srgb, var(--home-page-accent) 18%, var(--color-neutral-900));
+}
+
+:global(.dark .home-page__metric:hover) {
+  border-color: color-mix(in srgb, var(--home-page-accent) 34%, var(--runtime-panel-border));
+}
+
+:global(.dark .home-page__metric-state.is-live) {
+  color: var(--color-emerald-300);
+}
+
+:global(.dark .home-page__metric-state.is-ready) {
+  color: var(--color-blue-300);
+}
+
+:global(.dark .home-page__metric-state.is-attention) {
+  color: var(--color-amber-300);
 }
 
 @media (min-width: 760px) {
