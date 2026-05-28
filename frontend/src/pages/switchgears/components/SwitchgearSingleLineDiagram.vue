@@ -87,7 +87,7 @@ type DiagramClipboardPayload = {
 }
 
 type DiagramPort = {
-  ownerType: "node" | "line"
+  ownerType: "node" | "line" | "static"
   ownerId: number | string
   x: number
   y: number
@@ -313,6 +313,11 @@ const draftLinePreview = computed(() => {
     y2: dragState.value.currentY,
   }
 })
+const connectionPortHints = computed(() => (
+  interactionTool.value === "line"
+    ? collectStationaryPorts()
+    : []
+))
 const canUndo = computed(() => undoStack.value.length > 0)
 const canRedo = computed(() => redoStack.value.length > 0)
 const selectedLineKind = computed<"line" | "arrow" | "mixed" | null>(() => {
@@ -698,6 +703,39 @@ function buildLinePorts(edge: DiagramEdge): DiagramPort[] {
   ]
 }
 
+function rotateLocalPoint(point: { x: number; y: number }, rotation: 0 | 90 | 180 | 270) {
+  const radians = rotation * Math.PI / 180
+  const cos = Math.cos(radians)
+  const sin = Math.sin(radians)
+
+  return {
+    x: Math.round(point.x * cos - point.y * sin),
+    y: Math.round(point.x * sin + point.y * cos),
+  }
+}
+
+function buildStaticPorts(element: DiagramStaticElement): DiagramPort[] {
+  const base = getStaticElementBaseSize(element.kind)
+  const localPorts = element.kind === "transformer"
+    ? [
+        { x: 0, y: -base.height / 2 },
+        { x: 0, y: base.height / 2 },
+      ]
+    : [
+        { x: -base.width / 2, y: 0 },
+      ]
+
+  return localPorts.map((local) => {
+    const rotated = rotateLocalPoint(local, element.rotation)
+    return {
+      ownerType: "static" as const,
+      ownerId: element.id,
+      x: element.x + rotated.x,
+      y: element.y + rotated.y,
+    }
+  })
+}
+
 function findNearestPort(point: { x: number; y: number }, ports: DiagramPort[]): DiagramPort | null {
   let nearest: { port: DiagramPort; distance: number } | null = null
 
@@ -714,6 +752,7 @@ function findNearestPort(point: { x: number; y: number }, ports: DiagramPort[]):
 function collectStationaryPorts(
   excludedNodeIds: Set<number> = new Set<number>(),
   excludedEdgeIds: Set<string> = new Set<string>(),
+  excludedStaticIds: Set<string> = new Set<string>(),
 ): DiagramPort[] {
   const ports: DiagramPort[] = []
 
@@ -729,6 +768,13 @@ function collectStationaryPorts(
       return
     }
     ports.push(...buildLinePorts(edge))
+  })
+
+  staticElements.value.forEach((element) => {
+    if (excludedStaticIds.has(element.id)) {
+      return
+    }
+    ports.push(...buildStaticPorts(element))
   })
 
   return ports
@@ -810,6 +856,7 @@ function computeSnappedTranslation(
   movingPorts: DiagramPort[],
   excludedNodeIds: Set<number> = new Set<number>(),
   excludedEdgeIds: Set<string> = new Set<string>(),
+  excludedStaticIds: Set<string> = new Set<string>(),
 ) {
   if (!snapEnabled.value) {
     return { dx: deltaX, dy: deltaY }
@@ -826,7 +873,7 @@ function computeSnappedTranslation(
 
   const correction = findBestPortCorrection(
     correctedPorts,
-    collectStationaryPorts(excludedNodeIds, excludedEdgeIds),
+    collectStationaryPorts(excludedNodeIds, excludedEdgeIds, excludedStaticIds),
   )
 
   if (correction) {
@@ -1000,8 +1047,8 @@ function buildStaticElementId(): string {
 }
 
 function addEdge(start: { x: number; y: number }, end: { x: number; y: number }) {
-  const snappedStart = snapWorldPoint(start)
-  const snappedEnd = snapWorldPoint(end)
+  const snappedStart = applyPortSnapToLinePoint(snapWorldPoint(start))
+  const snappedEnd = applyPortSnapToLinePoint(snapWorldPoint(end))
   if (Math.hypot(snappedEnd.x - snappedStart.x, snappedEnd.y - snappedStart.y) < 8) {
     toastStore.warning("Line is too short")
     return
@@ -1819,6 +1866,7 @@ function onWindowPointerMove(event: PointerEvent) {
     const movingPorts = [
       ...dragState.value.originNodes.flatMap(item => buildNodePortsForLayout(item.id, { x: item.x, y: item.y })),
       ...dragState.value.originEdges.flatMap(edge => buildLinePorts(edge)),
+      ...dragState.value.originStatics.flatMap(element => buildStaticPorts(element)),
     ]
     const snappedTranslation = computeSnappedTranslation(
       anchor,
@@ -1827,6 +1875,7 @@ function onWindowPointerMove(event: PointerEvent) {
       movingPorts,
       new Set<number>(dragState.value.originNodes.map(item => item.id)),
       new Set<string>(dragState.value.originEdges.map(edge => edge.id)),
+      new Set<string>(dragState.value.originStatics.map(element => element.id)),
     )
     for (const orig of dragState.value.originNodes) {
       setNodeLayout(orig.id, {
@@ -2242,7 +2291,10 @@ function beginStaticDrag(id: string, event: PointerEvent) {
     if (!element && !pointer) {
       return
     }
-    beginLineDraftFromPoint(element ? { x: element.x, y: element.y } : pointer!, event)
+    const port = element && pointer
+      ? findNearestPort(pointer, buildStaticPorts(element))
+      : null
+    beginLineDraftFromPoint(port ?? (element ? { x: element.x, y: element.y } : pointer!), event)
     return
   }
 
@@ -2834,6 +2886,17 @@ onBeforeUnmount(() => {
               </g>
             </g>
 
+            <g v-if="connectionPortHints.length > 0" class="switchgear-sld__port-hints">
+              <circle
+                v-for="port in connectionPortHints"
+                :key="`${port.ownerType}:${port.ownerId}:${port.x}:${port.y}`"
+                :cx="port.x"
+                :cy="port.y"
+                r="4.5"
+                class="switchgear-sld__port-hint"
+              />
+            </g>
+
             <g v-if="draftLinePreview">
               <path
                 :d="`M ${draftLinePreview.x1} ${draftLinePreview.y1} L ${draftLinePreview.x2} ${draftLinePreview.y2}`"
@@ -3336,6 +3399,18 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+.switchgear-sld__port-hints {
+  pointer-events: none;
+}
+
+.switchgear-sld__port-hint {
+  fill: color-mix(in srgb, var(--color-white) 92%, transparent);
+  stroke: var(--color-blue-500);
+  stroke-width: 1.75;
+  opacity: 0.92;
+  filter: drop-shadow(0 2px 3px rgb(15 23 42 / 0.18));
+}
+
 .switchgear-sld__edge-draft {
   opacity: 0.9;
   pointer-events: none;
@@ -3518,6 +3593,12 @@ onBeforeUnmount(() => {
 
 :global(.dark .switchgear-sld__status-selection) {
   color: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-sld__port-hint) {
+  fill: color-mix(in srgb, var(--color-neutral-950) 88%, transparent);
+  stroke: var(--color-blue-300);
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.36));
 }
 
 :global(.dark .switchgear-sld__zoom-panel),
