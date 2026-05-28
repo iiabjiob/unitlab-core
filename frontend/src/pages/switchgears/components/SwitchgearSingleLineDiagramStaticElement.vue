@@ -20,10 +20,10 @@ const emit = defineEmits<{
 
 const dimensions = computed(() => {
   if (props.kind === "transformer") {
-    return { width: 80, height: 80 }
+    return { width: 96, height: 96 }
   }
 
-  return { width: 40, height: 40 }
+  return { width: 48, height: 48 }
 })
 
 const rootStyle = computed(() => ({
@@ -63,8 +63,10 @@ function handlePointerDown(event: PointerEvent) {
       stroke-linecap="round"
       stroke-linejoin="round"
     >
-      <circle cx="40" cy="28" r="20" />
-      <circle cx="40" cy="52" r="20" />
+      <path d="M48 0v16" />
+      <circle cx="48" cy="36" r="20" />
+      <circle cx="48" cy="60" r="20" />
+      <path d="M48 80v16" />
     </svg>
 
     <svg
@@ -79,10 +81,10 @@ function handlePointerDown(event: PointerEvent) {
       stroke-linecap="square"
       stroke-linejoin="round"
     >
-      <path d="M4 20h20" />
-      <path d="M24 6v28" />
-      <path d="M32 10v20" />
-      <path d="M38 14v12" />
+      <path d="M0 24h24" />
+      <path d="M24 8v32" />
+      <path d="M36 12v24" />
+      <path d="M46 16v16" />
     </svg>
   </button>
 </template>

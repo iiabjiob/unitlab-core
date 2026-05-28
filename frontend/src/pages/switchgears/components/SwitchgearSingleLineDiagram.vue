@@ -191,6 +191,8 @@ const MAX_ZOOM = 2.2
 const MINIMAP_WIDTH = 220
 const MINIMAP_HEIGHT = 150
 const GRID_STEP = 24
+const TRANSFORMER_SYMBOL_SIZE = GRID_STEP * 4
+const GROUND_SYMBOL_SIZE = GRID_STEP * 2
 const NUDGE_FINE_STEP = 1
 const NUDGE_LARGE_STEP = GRID_STEP * 4
 const PORT_SNAP_DISTANCE = 18
@@ -556,10 +558,10 @@ function getStaticElementById(id: string): DiagramStaticElement | null {
 
 function getStaticElementBaseSize(kind: DiagramStaticKind) {
   if (kind === "transformer") {
-    return { width: 80, height: 80 }
+    return { width: TRANSFORMER_SYMBOL_SIZE, height: TRANSFORMER_SYMBOL_SIZE }
   }
 
-  return { width: 40, height: 40 }
+  return { width: GROUND_SYMBOL_SIZE, height: GROUND_SYMBOL_SIZE }
 }
 
 function getStaticElementBounds(element: DiagramStaticElement) {
@@ -763,12 +765,26 @@ function updateViewportMetrics() {
   }
 }
 
+function gridSnapWorldValue(value: number): number {
+  return Math.round(value / GRID_STEP) * GRID_STEP
+}
+
+function snapNodeCenterToGrid(layout: DiagramNodeLayout): DiagramNodeLayout {
+  const centerX = gridSnapWorldValue(layout.x + STAGE_PADDING + NODE_WIDTH / 2)
+  const centerY = gridSnapWorldValue(layout.y + STAGE_PADDING + NODE_HEIGHT / 2)
+
+  return {
+    x: centerX - STAGE_PADDING - NODE_WIDTH / 2,
+    y: centerY - STAGE_PADDING - NODE_HEIGHT / 2,
+  }
+}
+
 function defaultLayout(index: number): DiagramNodeLayout {
   const columns = 4
-  return {
+  return snapNodeCenterToGrid({
     x: 120 + (index % columns) * 320,
     y: 120 + Math.floor(index / columns) * 220,
-  }
+  })
 }
 
 function resolvedLayout(id: number, index: number): DiagramNodeLayout {
@@ -786,7 +802,7 @@ function snapWorldValue(value: number): number {
   if (!snapEnabled.value) {
     return value
   }
-  return Math.round(value / GRID_STEP) * GRID_STEP
+  return gridSnapWorldValue(value)
 }
 
 function snapWorldPoint(point: { x: number; y: number }) {
@@ -797,14 +813,7 @@ function snapWorldPoint(point: { x: number; y: number }) {
 }
 
 function snapNodeLayoutToGrid(layout: DiagramNodeLayout): DiagramNodeLayout {
-  const snappedWorld = snapWorldPoint({
-    x: layout.x + STAGE_PADDING,
-    y: layout.y + STAGE_PADDING,
-  })
-  return {
-    x: snappedWorld.x - STAGE_PADDING,
-    y: snappedWorld.y - STAGE_PADDING,
-  }
+  return snapEnabled.value ? snapNodeCenterToGrid(layout) : layout
 }
 
 function buildNodePortsForLayout(nodeId: number, layout: DiagramNodeLayout): DiagramPort[] {
@@ -2022,8 +2031,8 @@ function onWindowPointerMove(event: PointerEvent) {
   if (dragState.value.type === "group") {
     const anchor = dragState.value.originNodes.length > 0
       ? {
-          x: dragState.value.originNodes[0].x + STAGE_PADDING,
-          y: dragState.value.originNodes[0].y + STAGE_PADDING,
+          x: dragState.value.originNodes[0].x + STAGE_PADDING + NODE_WIDTH / 2,
+          y: dragState.value.originNodes[0].y + STAGE_PADDING + NODE_HEIGHT / 2,
         }
       : dragState.value.originEdges.length > 0
         ? {
