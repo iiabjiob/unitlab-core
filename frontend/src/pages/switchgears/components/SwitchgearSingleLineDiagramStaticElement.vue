@@ -9,6 +9,8 @@ const props = defineProps<{
   x: number
   y: number
   rotation: number
+  width: number
+  height: number
   selected?: boolean
 }>()
 
@@ -19,11 +21,10 @@ const emit = defineEmits<{
 }>()
 
 const dimensions = computed(() => {
-  if (props.kind === "transformer") {
-    return { width: 96, height: 96 }
+  return {
+    width: props.width,
+    height: props.height,
   }
-
-  return { width: 48, height: 48 }
 })
 
 const rootStyle = computed(() => ({
@@ -55,7 +56,7 @@ function handlePointerDown(event: PointerEvent) {
       v-if="kind === 'transformer'"
       :width="dimensions.width"
       :height="dimensions.height"
-      :viewBox="`0 0 ${dimensions.width} ${dimensions.height}`"
+      viewBox="0 0 96 96"
       class="switchgear-sld-static-element__graphic"
       fill="none"
       stroke="currentColor"
@@ -73,7 +74,7 @@ function handlePointerDown(event: PointerEvent) {
       v-else
       :width="dimensions.width"
       :height="dimensions.height"
-      :viewBox="`0 0 ${dimensions.width} ${dimensions.height}`"
+      viewBox="0 0 48 48"
       class="switchgear-sld-static-element__graphic"
       fill="none"
       stroke="currentColor"

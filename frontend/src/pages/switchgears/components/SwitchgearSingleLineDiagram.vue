@@ -31,10 +31,12 @@ type DiagramEdge = {
 }
 
 type DiagramStaticKind = "transformer" | "ground"
+type DiagramStaticSize = "sm" | "md" | "lg"
 
 type DiagramStaticElement = {
   id: string
   kind: DiagramStaticKind
+  size: DiagramStaticSize
   x: number
   y: number
   rotation: 0 | 90 | 180 | 270
@@ -79,6 +81,7 @@ type DiagramClipboardEdge = {
 
 type DiagramClipboardStaticElement = {
   kind: DiagramStaticKind
+  size: DiagramStaticSize
   x: number
   y: number
   rotation: 0 | 90 | 180 | 270
@@ -200,6 +203,20 @@ const HISTORY_LIMIT = 80
 const DIAGRAM_CLIPBOARD_KIND = "unitlab.switchgear-sld-selection"
 const COPY_PASTE_OFFSET = GRID_STEP * 2
 const STATIC_ROTATIONS = [0, 90, 180, 270] as const
+const STATIC_SIZES = ["sm", "md", "lg"] as const
+const DEFAULT_STATIC_SIZE: DiagramStaticSize = "md"
+const STATIC_SIZE_DIMENSIONS: Record<DiagramStaticKind, Record<DiagramStaticSize, { width: number; height: number }>> = {
+  transformer: {
+    sm: { width: GRID_STEP * 3, height: GRID_STEP * 3 },
+    md: { width: TRANSFORMER_SYMBOL_SIZE, height: TRANSFORMER_SYMBOL_SIZE },
+    lg: { width: GRID_STEP * 6, height: GRID_STEP * 6 },
+  },
+  ground: {
+    sm: { width: GRID_STEP, height: GRID_STEP },
+    md: { width: GROUND_SYMBOL_SIZE, height: GROUND_SYMBOL_SIZE },
+    lg: { width: GRID_STEP * 3, height: GRID_STEP * 3 },
+  },
+}
 
 const router = useRouter()
 const route = useRoute()
@@ -358,6 +375,33 @@ const selectedLineKind = computed<"line" | "arrow" | "mixed" | null>(() => {
   }
 
   return "mixed"
+})
+const selectedStaticSize = computed<DiagramStaticSize | "mixed" | null>(() => {
+  const staticIds = new Set(effectiveSelectedStaticIds())
+  if (staticIds.size === 0) {
+    return null
+  }
+
+  const sizes = new Set(
+    staticElements.value
+      .filter(element => staticIds.has(element.id))
+      .map(element => element.size),
+  )
+
+  if (sizes.size === 0) {
+    return null
+  }
+
+  const [onlySize] = [...sizes]
+  return sizes.size === 1 && onlySize ? onlySize : "mixed"
+})
+const canShrinkSelectedStaticElements = computed(() => {
+  const staticIds = new Set(effectiveSelectedStaticIds())
+  return staticElements.value.some(element => staticIds.has(element.id) && element.size !== "sm")
+})
+const canGrowSelectedStaticElements = computed(() => {
+  const staticIds = new Set(effectiveSelectedStaticIds())
+  return staticElements.value.some(element => staticIds.has(element.id) && element.size !== "lg")
 })
 const staticElementCount = computed(() => staticElements.value.length)
 const singleSelectedSwitchgear = computed(() => {
@@ -544,6 +588,12 @@ function normalizeStaticKind(value: unknown): DiagramStaticKind {
   return value === "ground" ? "ground" : "transformer"
 }
 
+function normalizeStaticSize(value: unknown): DiagramStaticSize {
+  return STATIC_SIZES.includes(value as DiagramStaticSize)
+    ? value as DiagramStaticSize
+    : DEFAULT_STATIC_SIZE
+}
+
 function normalizeRotation(value: unknown): 0 | 90 | 180 | 270 {
   const numeric = Number(value)
   if (STATIC_ROTATIONS.includes(numeric as 0 | 90 | 180 | 270)) {
@@ -556,16 +606,16 @@ function getStaticElementById(id: string): DiagramStaticElement | null {
   return staticElements.value.find(element => element.id === id) ?? null
 }
 
-function getStaticElementBaseSize(kind: DiagramStaticKind) {
-  if (kind === "transformer") {
-    return { width: TRANSFORMER_SYMBOL_SIZE, height: TRANSFORMER_SYMBOL_SIZE }
-  }
+function getStaticElementBaseSize(kind: DiagramStaticKind, size: DiagramStaticSize = DEFAULT_STATIC_SIZE) {
+  return STATIC_SIZE_DIMENSIONS[kind][size]
+}
 
-  return { width: GROUND_SYMBOL_SIZE, height: GROUND_SYMBOL_SIZE }
+function getStaticElementDimensions(element: Pick<DiagramStaticElement, "kind" | "size">) {
+  return getStaticElementBaseSize(element.kind, element.size)
 }
 
 function getStaticElementBounds(element: DiagramStaticElement) {
-  const base = getStaticElementBaseSize(element.kind)
+  const base = getStaticElementDimensions(element)
   const swap = element.rotation === 90 || element.rotation === 270
   const width = swap ? base.height : base.width
   const height = swap ? base.width : base.height
@@ -643,6 +693,7 @@ function parseDiagramClipboardPayload(rawText: string): DiagramClipboardSelectio
       }
       return [{
         kind: normalizeStaticKind(element.kind),
+        size: normalizeStaticSize(element.size),
         x,
         y,
         rotation: normalizeRotation(element.rotation),
@@ -849,7 +900,7 @@ function rotateLocalPoint(point: { x: number; y: number }, rotation: 0 | 90 | 18
 }
 
 function buildStaticPorts(element: DiagramStaticElement): DiagramPort[] {
-  const base = getStaticElementBaseSize(element.kind)
+  const base = getStaticElementDimensions(element)
   const localPorts = element.kind === "transformer"
     ? [
         { x: 0, y: -base.height / 2 },
@@ -1117,6 +1168,7 @@ function restoreDiagramState() {
         ).map(element => ({
           id: element.id,
           kind: normalizeStaticKind(element.kind),
+          size: normalizeStaticSize(element.size),
           x: element.x,
           y: element.y,
           rotation: normalizeRotation(element.rotation),
@@ -1215,6 +1267,7 @@ function addStaticElementInViewport(kind: DiagramStaticKind) {
   const nextElement: DiagramStaticElement = {
     id: buildStaticElementId(),
     kind,
+    size: DEFAULT_STATIC_SIZE,
     x: point.x,
     y: point.y,
     rotation: 0,
@@ -1254,6 +1307,7 @@ async function handleCopySelection() {
     .filter((element): element is DiagramStaticElement => element !== null)
     .map(element => ({
       kind: element.kind,
+      size: element.size,
       x: element.x,
       y: element.y,
       rotation: element.rotation,
@@ -1334,6 +1388,7 @@ async function handlePasteSelection() {
       return {
         id: buildStaticElementId(),
         kind: element.kind,
+        size: element.size,
         x: point.x,
         y: point.y,
         rotation: element.rotation,
@@ -1529,6 +1584,48 @@ function rotateSelectedStaticElements90() {
         ? { ...element, rotation: nextQuarterRotation(element.rotation) }
         : element
     ))
+    closeLineContextMenu()
+  })
+}
+
+function setSelectedStaticElementsSize(size: DiagramStaticSize) {
+  const staticIds = new Set(effectiveSelectedStaticIds())
+  if (staticIds.size === 0) {
+    return
+  }
+
+  commitHistoryMutation(() => {
+    staticElements.value = staticElements.value.map(element => (
+      staticIds.has(element.id)
+        ? { ...element, size }
+        : element
+    ))
+    closeLineContextMenu()
+  })
+}
+
+function resizeSelectedStaticElements(direction: "smaller" | "larger") {
+  const staticIds = new Set(effectiveSelectedStaticIds())
+  if (staticIds.size === 0) {
+    return
+  }
+
+  commitHistoryMutation(() => {
+    staticElements.value = staticElements.value.map((element) => {
+      if (!staticIds.has(element.id)) {
+        return element
+      }
+
+      const currentIndex = STATIC_SIZES.indexOf(element.size)
+      const nextIndex = direction === "smaller"
+        ? Math.max(0, currentIndex - 1)
+        : Math.min(STATIC_SIZES.length - 1, currentIndex + 1)
+      const nextSize = STATIC_SIZES[nextIndex] ?? element.size
+
+      return nextSize === element.size
+        ? element
+        : { ...element, size: nextSize }
+    })
     closeLineContextMenu()
   })
 }
@@ -2870,6 +2967,39 @@ onBeforeUnmount(() => {
           Arrow
         </button>
       </div>
+      <div
+        v-if="selectedStaticCount > 0"
+        class="switchgear-sld__tool-group"
+        aria-label="Symbol size"
+      >
+        <button
+          type="button"
+          class="switchgear-sld__kind-button switchgear-sld__kind-button--split"
+          :class="{ 'switchgear-sld__kind-button--active': selectedStaticSize === 'sm' }"
+          title="Small symbol"
+          @click="setSelectedStaticElementsSize('sm')"
+        >
+          S
+        </button>
+        <button
+          type="button"
+          class="switchgear-sld__kind-button switchgear-sld__kind-button--split"
+          :class="{ 'switchgear-sld__kind-button--active': selectedStaticSize === 'md' }"
+          title="Medium symbol"
+          @click="setSelectedStaticElementsSize('md')"
+        >
+          M
+        </button>
+        <button
+          type="button"
+          class="switchgear-sld__kind-button"
+          :class="{ 'switchgear-sld__kind-button--active': selectedStaticSize === 'lg' }"
+          title="Large symbol"
+          @click="setSelectedStaticElementsSize('lg')"
+        >
+          L
+        </button>
+      </div>
       <div v-if="selectedNodeCount > 1" class="switchgear-sld__toolbar-menu-anchor">
         <UiButton
           size="sm"
@@ -3128,6 +3258,8 @@ onBeforeUnmount(() => {
             :x="element.x"
             :y="element.y"
             :rotation="element.rotation"
+            :width="getStaticElementDimensions(element).width"
+            :height="getStaticElementDimensions(element).height"
             :selected="selectedStaticIdSet.has(element.id)"
             @drag-start="beginStaticDrag(element.id, $event)"
             @select="selectStaticElement(element.id, $event)"
@@ -3206,6 +3338,24 @@ onBeforeUnmount(() => {
         :style="{ left: `${staticContextMenu.x}px`, top: `${staticContextMenu.y}px` }"
         @pointerdown.stop
       >
+        <button
+          type="button"
+          class="switchgear-sld__context-item"
+          :disabled="!canShrinkSelectedStaticElements"
+          @click="resizeSelectedStaticElements('smaller')"
+        >
+          <span>{{ staticContextMenu.staticIds.length > 1 ? 'Shrink selected symbols' : 'Shrink symbol' }}</span>
+          <span class="switchgear-sld__context-shortcut">S</span>
+        </button>
+        <button
+          type="button"
+          class="switchgear-sld__context-item"
+          :disabled="!canGrowSelectedStaticElements"
+          @click="resizeSelectedStaticElements('larger')"
+        >
+          <span>{{ staticContextMenu.staticIds.length > 1 ? 'Grow selected symbols' : 'Grow symbol' }}</span>
+          <span class="switchgear-sld__context-shortcut">L</span>
+        </button>
         <button
           type="button"
           class="switchgear-sld__context-item"
@@ -3376,6 +3526,19 @@ onBeforeUnmount(() => {
 .switchgear-sld__kind-button:hover {
   background: color-mix(in srgb, var(--color-neutral-200) 76%, transparent);
   color: var(--color-neutral-900);
+}
+
+.switchgear-sld__tool-button:disabled,
+.switchgear-sld__kind-button:disabled,
+.switchgear-sld__context-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.switchgear-sld__tool-button:disabled:hover,
+.switchgear-sld__kind-button:disabled:hover,
+.switchgear-sld__context-item:disabled:hover {
+  background: transparent;
 }
 
 .switchgear-sld__tool-button:focus-visible,
