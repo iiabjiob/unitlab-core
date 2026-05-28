@@ -40,9 +40,11 @@ import type {
 } from "../utils/switchgearSldDiagramTypes"
 import {
   adaptSldDocumentToSwitchgearDiagram,
+  buildSwitchgearCandidateDecisions,
   mergeGeneratedSldDiagramOverlay,
 } from "../utils/switchgearSldImportAdapter"
 import type {
+  SwitchgearSldCandidateDecision,
   SwitchgearSldImportAdapterDiagnostic,
   SwitchgearSldImportAdapterResult,
 } from "../utils/switchgearSldImportAdapter"
@@ -283,6 +285,7 @@ const textContextMenu = ref<{ x: number; y: number; textIds: string[] } | null>(
 const alignMenuOpen = ref(false)
 const editingTextId = ref<string | null>(null)
 const hydrating = ref(false)
+const restoredDiagramStorageKey = ref<string | null>(null)
 const dragState = ref<DragState | null>(null)
 const viewportSize = ref({ width: 0, height: 0 })
 const undoStack = ref<DiagramHistorySnapshot[]>([])
@@ -293,6 +296,8 @@ const clipboardPasteCount = ref(0)
 const scdImportBusy = ref(false)
 const scdImportError = ref<string | null>(null)
 const scdImportPreview = ref<ScdImportPreview | null>(null)
+const scdImportCreateCandidates = ref(false)
+const scdImportApplyBusy = ref(false)
 let viewportResizeObserver: ResizeObserver | null = null
 
 const workspaceId = computed(() => workspaceStore.activeWorkspaceId)
@@ -365,7 +370,12 @@ const hasDiagramContent = computed(() => (
   || staticElements.value.length > 0
   || textElements.value.length > 0
 ))
-const scdImportModalOpen = computed(() => scdImportBusy.value || scdImportPreview.value !== null || scdImportError.value !== null)
+const scdImportModalOpen = computed(() => (
+  scdImportBusy.value
+  || scdImportApplyBusy.value
+  || scdImportPreview.value !== null
+  || scdImportError.value !== null
+))
 const scdImportSummary = computed(() => {
   const preview = scdImportPreview.value
   if (!preview) {
@@ -383,8 +393,27 @@ const scdImportSummary = computed(() => {
 })
 const canApplyScdImport = computed(() => {
   const summary = scdImportSummary.value
-  return Boolean(summary && summary.blockingErrors === 0 && (summary.lines > 0 || summary.symbols > 0 || summary.texts > 0))
+  return Boolean(summary && summary.blockingErrors === 0 && (
+    summary.lines > 0
+    || summary.symbols > 0
+    || summary.texts > 0
+    || (scdImportCreateCandidates.value && scdImportCreatableCandidateCount.value > 0)
+  ))
 })
+const scdImportCandidateDecisions = computed<SwitchgearSldCandidateDecision[]>(() => {
+  const preview = scdImportPreview.value
+  return preview
+    ? buildSwitchgearCandidateDecisions(preview.adapterResult.switchgearCandidates, switchgears.value)
+    : []
+})
+const scdImportCreatableCandidateCount = computed(() => (
+  scdImportCandidateDecisions.value.filter(decision => decision.action === "create").length
+))
+const scdImportApplyLabel = computed(() => (
+  scdImportCreateCandidates.value && scdImportCreatableCandidateCount.value > 0
+    ? "Apply overlay and create records"
+    : "Apply overlay"
+))
 const activeToolLabel = computed(() => {
   if (interactionTool.value === "line") {
     return "Draw line"
@@ -1447,8 +1476,12 @@ function ensureLayoutDefaults(): boolean {
   return layoutChanged
 }
 
-function restoreDiagramState() {
+function restoreDiagramState(options: { applyLayoutDefaults?: boolean } = {}) {
+  const key = storageKey.value
+  const currentWorkspaceId = workspaceId.value
+
   hydrating.value = true
+  restoredDiagramStorageKey.value = null
   clearHistory()
   snapEnabled.value = true
   selectedEdgeId.value = null
@@ -1466,12 +1499,13 @@ function restoreDiagramState() {
 
   let hadSavedState = false
 
-  if (storageKey.value) {
-    const parsed = readLocalSetting<StoredDiagramState | null>(storageKey.value, null, {
+  if (key) {
+    const parsed = readLocalSetting<StoredDiagramState | null>(key, null, {
       legacyKeys: legacyStorageKey.value ? [legacyStorageKey.value] : [],
       validate: normalizeStoredDiagramState,
     })
-    if (parsed) {
+    const savedWorkspaceId = typeof parsed?.workspaceId === "number" ? parsed.workspaceId : null
+    if (parsed && (savedWorkspaceId === null || savedWorkspaceId === currentWorkspaceId)) {
       if (parsed.layoutById && typeof parsed.layoutById === "object") {
         layoutById.value = parsed.layoutById
       }
@@ -1543,7 +1577,10 @@ function restoreDiagramState() {
     }
   }
 
-  ensureLayoutDefaults()
+  if (options.applyLayoutDefaults !== false) {
+    ensureLayoutDefaults()
+  }
+  restoredDiagramStorageKey.value = key
   hydrating.value = false
 
   if (!hadSavedState && switchgears.value.length > 0) {
@@ -1554,10 +1591,12 @@ function restoreDiagramState() {
 }
 
 function persistDiagramState() {
-  if (hydrating.value || !storageKey.value) {
+  const key = storageKey.value
+  if (hydrating.value || !key || restoredDiagramStorageKey.value !== key) {
     return
   }
-  writeLocalSetting(storageKey.value, {
+  writeLocalSetting(key, {
+    workspaceId: workspaceId.value ?? undefined,
     layoutById: layoutById.value,
     labelOffsetById: labelOffsetById.value,
     edges: edges.value,
@@ -1597,6 +1636,7 @@ async function handleScdFileSelected(event: Event) {
   scdImportBusy.value = true
   scdImportError.value = null
   scdImportPreview.value = null
+  scdImportCreateCandidates.value = false
 
   try {
     const xmlText = await file.text()
@@ -1627,52 +1667,100 @@ async function handleScdFileSelected(event: Event) {
 }
 
 function closeScdImportPreview() {
-  if (scdImportBusy.value) {
+  if (scdImportBusy.value || scdImportApplyBusy.value) {
     return
   }
-  scdImportPreview.value = null
-  scdImportError.value = null
+  resetScdImportPreview()
 }
 
-function applyScdImportPreview() {
+function resetScdImportPreview() {
+  scdImportPreview.value = null
+  scdImportError.value = null
+  scdImportCreateCandidates.value = false
+}
+
+async function applyScdImportPreview() {
   const preview = scdImportPreview.value
   if (!preview || !canApplyScdImport.value) {
     return
   }
 
-  const changed = commitHistoryMutation(() => {
-    const merged = mergeGeneratedSldDiagramOverlay({
-      edges: edges.value,
-      staticElements: staticElements.value,
-      textElements: textElements.value,
-      snapEnabled: snapEnabled.value,
-    }, preview.adapterResult.diagram)
+  scdImportApplyBusy.value = true
+  try {
+    const changed = commitHistoryMutation(() => {
+      const merged = mergeGeneratedSldDiagramOverlay({
+        edges: edges.value,
+        staticElements: staticElements.value,
+        textElements: textElements.value,
+        snapEnabled: snapEnabled.value,
+      }, preview.adapterResult.diagram)
 
-    edges.value = merged.edges ?? []
-    staticElements.value = merged.staticElements ?? []
-    textElements.value = merged.textElements ?? []
-    snapEnabled.value = merged.snapEnabled !== false
+      edges.value = merged.edges ?? []
+      staticElements.value = merged.staticElements ?? []
+      textElements.value = merged.textElements ?? []
+      snapEnabled.value = merged.snapEnabled !== false
+      selectedEdgeId.value = null
+      selectedEdgeIds.value = []
+      selectedNodeIds.value = []
+      selectedStaticIds.value = []
+      selectedTextIds.value = []
+      editingTextId.value = null
+      closeLineContextMenu()
+    })
+
+    const created = scdImportCreateCandidates.value
+      ? await createSwitchgearsFromScdCandidates(scdImportCandidateDecisions.value)
+      : []
+    resetScdImportPreview()
+    if (changed || created.length > 0) {
+      toastStore.success(created.length > 0
+        ? `Imported SLD overlay and created ${created.length} switchgear record${created.length > 1 ? "s" : ""}`
+        : "Imported SLD overlay")
+      void nextTick(() => {
+        fitToContent()
+      })
+      return
+    }
+    toastStore.info("SCD import did not change the diagram overlay")
+  } catch (error) {
+    scdImportError.value = error instanceof Error ? error.message : "Unable to apply SCD import"
+  } finally {
+    scdImportApplyBusy.value = false
+  }
+}
+
+async function createSwitchgearsFromScdCandidates(decisions: SwitchgearSldCandidateDecision[]) {
+  const toCreate = decisions.filter(decision => decision.action === "create")
+  const createdIds: number[] = []
+  const nextLayout = { ...layoutById.value }
+
+  for (const decision of toCreate) {
+    const created = await switchgearStore.create({
+      name: decision.createName,
+      switchgear_type: decision.candidate.switchgearType,
+    })
+    createdIds.push(created.id)
+    nextLayout[String(created.id)] = layoutFromCandidatePosition(decision.candidate.position)
+  }
+
+  if (createdIds.length > 0) {
+    layoutById.value = nextLayout
+    selectedNodeIds.value = createdIds
     selectedEdgeId.value = null
     selectedEdgeIds.value = []
-    selectedNodeIds.value = []
     selectedStaticIds.value = []
     selectedTextIds.value = []
     editingTextId.value = null
-    closeLineContextMenu()
-  })
-
-  const candidateCount = preview.adapterResult.switchgearCandidates.length
-  closeScdImportPreview()
-  if (changed) {
-    toastStore.success(candidateCount > 0
-      ? `Imported SLD overlay. ${candidateCount} switchgear candidates require review.`
-      : "Imported SLD overlay")
-    void nextTick(() => {
-      fitToContent()
-    })
-    return
   }
-  toastStore.info("SCD import did not change the diagram overlay")
+
+  return createdIds
+}
+
+function layoutFromCandidatePosition(position: { x: number; y: number }): DiagramNodeLayout {
+  return {
+    x: Math.round(position.x - STAGE_PADDING - NODE_WIDTH / 2),
+    y: Math.round(position.y - STAGE_PADDING - NODE_HEIGHT / 2),
+  }
 }
 
 async function hashText(value: string): Promise<string> {
@@ -3670,25 +3758,43 @@ function selectEdge(edgeId: string, event?: MouseEvent) {
 }
 
 watch(
+  () => storageKey.value,
+  () => {
+    restoreDiagramState({ applyLayoutDefaults: false })
+  },
+  { immediate: true, flush: "sync" },
+)
+
+watch(
   () => workspaceId.value,
-  async () => {
-    if (workspaceId.value) {
-      await runStoreBootstrap(
-        ["switchgear-sld", workspaceId.value],
-        [
-          () => switchgearStore.ensureLoaded(),
-          () => deviceStore.ensureLoaded(),
-          () => channelStore.ensureLoaded(),
-        ],
-        { mode: "settled" },
-      )
+  async (nextWorkspaceId) => {
+    if (!nextWorkspaceId) {
+      return
     }
-    restoreDiagramState()
+    await runStoreBootstrap(
+      ["switchgear-sld", nextWorkspaceId],
+      [
+        () => switchgearStore.ensureLoaded(),
+        () => deviceStore.ensureLoaded(),
+        () => channelStore.ensureLoaded(),
+      ],
+      { mode: "settled" },
+    )
+    if (workspaceId.value !== nextWorkspaceId || switchgearStore.loading) {
+      return
+    }
+    const changed = ensureLayoutDefaults()
+    if (changed) {
+      persistDiagramState()
+    }
   },
   { immediate: true },
 )
 
 watch(switchgearIdsSignature, () => {
+  if (switchgearStore.loading) {
+    return
+  }
   const changed = ensureLayoutDefaults()
   if (changed) {
     persistDiagramState()
@@ -4499,7 +4605,45 @@ onBeforeUnmount(() => {
             v-if="scdImportSummary.candidates > 0"
             class="switchgear-sld__import-note"
           >
-            Breakers and disconnectors are staged as candidates only. Operational switchgear records are not created by this action.
+            Breakers and disconnectors are staged as review candidates. Creating operational switchgear records is explicit and does not create bindings.
+          </div>
+
+          <div
+            v-if="scdImportCandidateDecisions.length > 0"
+            class="switchgear-sld__import-candidates"
+          >
+            <label class="switchgear-sld__import-candidate-toggle">
+              <input
+                v-model="scdImportCreateCandidates"
+                type="checkbox"
+                :disabled="scdImportCreatableCandidateCount === 0"
+              >
+              <span>Create missing switchgear records ({{ scdImportCreatableCandidateCount }})</span>
+            </label>
+            <ul class="switchgear-sld__import-candidate-list">
+              <li
+                v-for="decision in scdImportCandidateDecisions.slice(0, 10)"
+                :key="decision.candidate.id"
+                class="switchgear-sld__import-candidate"
+              >
+                <div>
+                  <strong>{{ decision.createName }}</strong>
+                  <p>{{ decision.candidate.equipmentType }} · {{ decision.candidate.switchgearType }}</p>
+                </div>
+                <span
+                  class="switchgear-sld__import-candidate-status"
+                  :class="`switchgear-sld__import-candidate-status--${decision.action}`"
+                >
+                  {{ decision.action === 'create' ? 'new' : `existing #${decision.existingSwitchgearId}` }}
+                </span>
+              </li>
+            </ul>
+            <p
+              v-if="scdImportCandidateDecisions.length > 10"
+              class="switchgear-sld__import-muted"
+            >
+              {{ scdImportCandidateDecisions.length - 10 }} more candidates hidden in this preview.
+            </p>
           </div>
 
           <div
@@ -4536,17 +4680,17 @@ onBeforeUnmount(() => {
       <template #footer>
         <UiButton
           variant="secondary"
-          :disabled="scdImportBusy"
+          :disabled="scdImportBusy || scdImportApplyBusy"
           @click="closeScdImportPreview"
         >
           Cancel
         </UiButton>
         <UiButton
           variant="primary"
-          :disabled="!canApplyScdImport || scdImportBusy"
+          :disabled="!canApplyScdImport || scdImportBusy || scdImportApplyBusy"
           @click="applyScdImportPreview"
         >
-          Apply overlay
+          {{ scdImportApplyBusy ? 'Applying...' : scdImportApplyLabel }}
         </UiButton>
       </template>
     </UiModal>
@@ -4852,6 +4996,87 @@ onBeforeUnmount(() => {
 .switchgear-sld__import-diagnostics {
   display: grid;
   gap: 0.5rem;
+}
+
+.switchgear-sld__import-candidates {
+  display: grid;
+  gap: 0.625rem;
+}
+
+.switchgear-sld__import-candidate-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-neutral-800);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.switchgear-sld__import-candidate-toggle input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--color-blue-600);
+}
+
+.switchgear-sld__import-candidate-toggle input:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.switchgear-sld__import-candidate-list {
+  display: grid;
+  max-height: 14rem;
+  gap: 0.5rem;
+  overflow: auto;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.switchgear-sld__import-candidate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 80%, transparent);
+  border-radius: 0.75rem;
+  background: var(--color-white);
+}
+
+.switchgear-sld__import-candidate strong,
+.switchgear-sld__import-candidate p {
+  margin: 0;
+}
+
+.switchgear-sld__import-candidate strong {
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+}
+
+.switchgear-sld__import-candidate p {
+  margin-top: 0.125rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.switchgear-sld__import-candidate-status {
+  flex: 0 0 auto;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.switchgear-sld__import-candidate-status--create {
+  background: color-mix(in srgb, var(--color-blue-100) 82%, transparent);
+  color: var(--color-blue-700);
+}
+
+.switchgear-sld__import-candidate-status--reuse-existing {
+  background: color-mix(in srgb, var(--color-neutral-100) 86%, transparent);
+  color: var(--color-neutral-600);
 }
 
 .switchgear-sld__import-diagnostic-list {
@@ -5333,20 +5558,34 @@ onBeforeUnmount(() => {
 :global(.dark .switchgear-sld__import-title),
 :global(.dark .switchgear-sld__import-section-title),
 :global(.dark .switchgear-sld__import-metric strong),
+:global(.dark .switchgear-sld__import-candidate-toggle),
+:global(.dark .switchgear-sld__import-candidate strong),
 :global(.dark .switchgear-sld__import-diagnostic strong) {
   color: var(--color-neutral-100);
 }
 
 :global(.dark .switchgear-sld__import-hash),
 :global(.dark .switchgear-sld__import-metric),
+:global(.dark .switchgear-sld__import-candidate),
 :global(.dark .switchgear-sld__import-diagnostic) {
   border-color: color-mix(in srgb, var(--color-neutral-700) 78%, transparent);
   background: color-mix(in srgb, var(--color-neutral-900) 82%, transparent);
 }
 
 :global(.dark .switchgear-sld__import-hash),
+:global(.dark .switchgear-sld__import-candidate p),
 :global(.dark .switchgear-sld__import-diagnostic p) {
   color: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-sld__import-candidate-status--create) {
+  background: color-mix(in srgb, var(--color-blue-500) 22%, transparent);
+  color: var(--color-blue-100);
+}
+
+:global(.dark .switchgear-sld__import-candidate-status--reuse-existing) {
+  background: color-mix(in srgb, var(--color-neutral-700) 74%, transparent);
+  color: var(--color-neutral-200);
 }
 
 :global(.dark .switchgear-sld__import-diagnostic--error) {

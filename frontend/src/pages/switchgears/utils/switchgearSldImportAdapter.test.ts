@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import { generateSldFromScd } from "@/modules/scd-sld-core"
 import {
   adaptSldDocumentToSwitchgearDiagram,
+  buildSwitchgearCandidateDecisions,
   mergeGeneratedSldDiagramOverlay,
 } from "./switchgearSldImportAdapter"
 
@@ -135,5 +136,59 @@ describe("switchgear SLD import adapter", () => {
     expect(merged.edges?.map(edge => edge.id)).toEqual(["manual-line", "sld-import-connection:new"])
     expect(merged.staticElements?.map(element => element.id)).toEqual(["manual-static", "sld-import-static:new"])
     expect(merged.textElements?.map(element => element.id)).toEqual(["manual-text", "sld-import-label:new"])
+  })
+
+  it("marks existing switchgear candidates for reuse and creates unique names for missing records", () => {
+    const decisions = buildSwitchgearCandidateDecisions([
+      {
+        id: "candidate:existing",
+        sourceId: "source/existing",
+        sourcePath: "SCL/Substation/SS1/VoltageLevel/VL1/Bay/BAY1/ConductingEquipment/Q01",
+        label: "Q01",
+        equipmentType: "CBR",
+        kind: "breaker",
+        switchgearType: "switchgear",
+        position: { x: 10, y: 20 },
+      },
+      {
+        id: "candidate:new",
+        sourceId: "source/new",
+        sourcePath: "SCL/Substation/SS1/VoltageLevel/VL1/Bay/BAY1/ConductingEquipment/Q02",
+        label: "Q01",
+        equipmentType: "CBR",
+        kind: "breaker",
+        switchgearType: "switchgear",
+        position: { x: 30, y: 40 },
+      },
+      {
+        id: "candidate:disconnector",
+        sourceId: "source/disconnector",
+        sourcePath: "SCL/Substation/SS1/VoltageLevel/VL1/Bay/BAY1/ConductingEquipment/QB1",
+        label: "QB1",
+        equipmentType: "DIS",
+        kind: "disconnector",
+        switchgearType: "disconnector",
+        position: { x: 50, y: 60 },
+      },
+    ], [
+      {
+        id: 101,
+        workspace_ids: [1],
+        switchgear_type: "switchgear",
+        name: "Q01",
+        bindings: [],
+      },
+    ])
+
+    expect(decisions.map(decision => ({
+      label: decision.candidate.label,
+      action: decision.action,
+      existingSwitchgearId: decision.existingSwitchgearId,
+      createName: decision.createName,
+    }))).toEqual([
+      { label: "Q01", action: "reuse-existing", existingSwitchgearId: 101, createName: "Q01" },
+      { label: "Q01", action: "create", existingSwitchgearId: null, createName: "Q01 2" },
+      { label: "QB1", action: "create", existingSwitchgearId: null, createName: "QB1" },
+    ])
   })
 })

@@ -5,6 +5,7 @@ import type {
   SldElement,
   SldRoutePoint,
 } from "@/modules/scd-sld-core"
+import type { Switchgear } from "@/types/switchgear"
 import type {
   DiagramEdge,
   DiagramStaticElement,
@@ -36,6 +37,13 @@ export type SwitchgearSldImportAdapterResult = {
   diagram: StoredDiagramState
   switchgearCandidates: SwitchgearSldImportCandidate[]
   diagnostics: SwitchgearSldImportAdapterDiagnostic[]
+}
+
+export type SwitchgearSldCandidateDecision = {
+  candidate: SwitchgearSldImportCandidate
+  action: "create" | "reuse-existing"
+  existingSwitchgearId: number | null
+  createName: string
 }
 
 export type SwitchgearSldImportAdapterOptions = {
@@ -175,6 +183,37 @@ export function isGeneratedSldImportId(id: string): boolean {
   return id.startsWith("sld-import-")
 }
 
+export function buildSwitchgearCandidateDecisions(
+  candidates: SwitchgearSldImportCandidate[],
+  existingSwitchgears: Switchgear[],
+): SwitchgearSldCandidateDecision[] {
+  const existingByNameAndType = new Map<string, Switchgear[]>()
+  const usedNames = new Set<string>()
+
+  for (const switchgear of existingSwitchgears) {
+    const key = candidateMatchKey(switchgear.name, switchgear.switchgear_type)
+    existingByNameAndType.set(key, [...(existingByNameAndType.get(key) ?? []), switchgear])
+    usedNames.add(normalizeCandidateName(switchgear.name))
+  }
+
+  return candidates.map((candidate) => {
+    const key = candidateMatchKey(candidate.label, candidate.switchgearType)
+    const existingCandidates = existingByNameAndType.get(key) ?? []
+    const existing = existingCandidates.shift() ?? null
+    const createName = existing
+      ? existing.name
+      : reserveUniqueCandidateName(candidate.label, usedNames)
+    existingByNameAndType.set(key, existingCandidates)
+
+    return {
+      candidate,
+      action: existing ? "reuse-existing" : "create",
+      existingSwitchgearId: existing?.id ?? null,
+      createName,
+    }
+  })
+}
+
 function buildBusbarEdge(element: SldElement, position: SldRoutePoint): DiagramEdge {
   const dimensions = element.visual.dimensions ?? {
     width: DEFAULT_BUSBAR_WIDTH,
@@ -290,4 +329,32 @@ function sanitizeId(value: string): string {
 
 function normalizeStagePadding(value: number | undefined): number {
   return Number.isFinite(value) && value !== undefined ? value : DEFAULT_STAGE_PADDING
+}
+
+function candidateMatchKey(name: string, switchgearType: string): string {
+  return `${normalizeCandidateName(name)}\u0000${switchgearType.trim().toLowerCase()}`
+}
+
+function normalizeCandidateName(name: string): string {
+  return name.trim().toLowerCase()
+}
+
+function reserveUniqueCandidateName(name: string, usedNames: Set<string>): string {
+  const baseName = name.trim() || "Imported switchgear"
+  const normalizedBase = normalizeCandidateName(baseName)
+  if (!usedNames.has(normalizedBase)) {
+    usedNames.add(normalizedBase)
+    return baseName
+  }
+
+  for (let index = 2; index < 10000; index += 1) {
+    const nextName = `${baseName} ${index}`
+    const normalized = normalizeCandidateName(nextName)
+    if (!usedNames.has(normalized)) {
+      usedNames.add(normalized)
+      return nextName
+    }
+  }
+
+  return `${baseName} ${Date.now()}`
 }

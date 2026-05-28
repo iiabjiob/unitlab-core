@@ -551,11 +551,13 @@ Implemented 2026-05-28:
 - Added SLD editor file selection for SCD input.
 - Added import preview summary with generated diagram counts, switchgear candidate count, source hash, and diagnostics.
 - Apply currently merges only generated diagram overlay objects and replaces previous generated overlay by `sld-import-*` IDs; manual editor objects are preserved.
-- Breaker/disconnector candidates remain review-only and do not create operational switchgear records.
+- Breaker/disconnector candidates are shown as explicit review items.
+- Missing candidates can now be created as UnitLab switchgear records only when the operator enables that action; records are created without bindings and placed at generated coordinates.
+- Existing switchgear records with matching name and type are reused in the review list rather than duplicated.
 
 ### Slice 9 - Persistence and Regeneration
 
-Status: `[ ]`
+Status: `[~]`
 
 Goal:
 
@@ -587,6 +589,12 @@ Validation:
 - Reimport same SCD is stable.
 - Reimport changed SCD preserves manual moved elements with matching source IDs.
 - Removed SCD equipment is flagged before deletion.
+
+Implemented 2026-05-28:
+
+- Local SLD editor state is restored from the active workspace/project storage key.
+- SLD persistence is guarded during workspace/project switches so the previous project diagram cannot be written into the newly selected project before async stores finish loading.
+- New persisted SLD state includes the workspace id as scope metadata; older metadata-less local states remain readable for migration.
 
 ### Slice 10 - Fixture Corpus and Real-World Compatibility
 
