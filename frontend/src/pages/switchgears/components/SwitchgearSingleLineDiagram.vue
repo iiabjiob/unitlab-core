@@ -51,6 +51,13 @@ type DiagramLabelOffset = {
   y: number
 }
 
+type DiagramWorldBounds = {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+}
+
 type DiagramHistorySnapshot = {
   layoutById: Record<string, DiagramNodeLayout>
   labelOffsetById: Record<string, DiagramLabelOffset>
@@ -369,25 +376,22 @@ const nodeWorldRects = computed(() => switchgears.value.map((item, index) => {
     height: NODE_HEIGHT,
   }
 }))
+const diagramWorldBounds = computed(() => buildDiagramWorldBounds())
 const minimapModel = computed(() => {
-  if (nodeWorldRects.value.length === 0 || viewportSize.value.width <= 0 || viewportSize.value.height <= 0) {
+  const bounds = diagramWorldBounds.value
+  if (!bounds || viewportSize.value.width <= 0 || viewportSize.value.height <= 0) {
     return null
   }
-
-  const nodeMinX = Math.min(...nodeWorldRects.value.map(item => item.x))
-  const nodeMinY = Math.min(...nodeWorldRects.value.map(item => item.y))
-  const nodeMaxX = Math.max(...nodeWorldRects.value.map(item => item.x + item.width))
-  const nodeMaxY = Math.max(...nodeWorldRects.value.map(item => item.y + item.height))
 
   const worldViewportX = -viewState.value.x / viewState.value.zoom
   const worldViewportY = -viewState.value.y / viewState.value.zoom
   const worldViewportWidth = viewportSize.value.width / viewState.value.zoom
   const worldViewportHeight = viewportSize.value.height / viewState.value.zoom
 
-  const contentMinX = Math.min(nodeMinX, worldViewportX) - 160
-  const contentMinY = Math.min(nodeMinY, worldViewportY) - 160
-  const contentMaxX = Math.max(nodeMaxX, worldViewportX + worldViewportWidth) + 160
-  const contentMaxY = Math.max(nodeMaxY, worldViewportY + worldViewportHeight) + 160
+  const contentMinX = Math.min(bounds.minX, worldViewportX) - 160
+  const contentMinY = Math.min(bounds.minY, worldViewportY) - 160
+  const contentMaxX = Math.max(bounds.maxX, worldViewportX + worldViewportWidth) + 160
+  const contentMaxY = Math.max(bounds.maxY, worldViewportY + worldViewportHeight) + 160
 
   const contentWidth = Math.max(1, contentMaxX - contentMinX)
   const contentHeight = Math.max(1, contentMaxY - contentMinY)
@@ -415,6 +419,25 @@ const minimapModel = computed(() => {
       height: Math.max(3, item.height * scale),
       active: selectedNodeIdSet.value.has(item.id),
     })),
+    lines: edges.value.map(edge => ({
+      id: edge.id,
+      x1: offsetX + (edge.x1 - contentMinX) * scale,
+      y1: offsetY + (edge.y1 - contentMinY) * scale,
+      x2: offsetX + (edge.x2 - contentMinX) * scale,
+      y2: offsetY + (edge.y2 - contentMinY) * scale,
+      active: selectedEdgeIdSet.value.has(edge.id),
+    })),
+    statics: staticElements.value.map((element) => {
+      const elementBounds = getStaticElementBounds(element)
+      return {
+        id: element.id,
+        x: offsetX + (elementBounds.x1 - contentMinX) * scale,
+        y: offsetY + (elementBounds.y1 - contentMinY) * scale,
+        width: Math.max(3, elementBounds.width * scale),
+        height: Math.max(3, elementBounds.height * scale),
+        active: selectedStaticIdSet.value.has(element.id),
+      }
+    }),
     viewport: {
       x: offsetX + (worldViewportX - contentMinX) * scale,
       y: offsetY + (worldViewportY - contentMinY) * scale,
@@ -423,6 +446,56 @@ const minimapModel = computed(() => {
     },
   }
 })
+
+function mergeWorldBounds(
+  current: DiagramWorldBounds | null,
+  next: DiagramWorldBounds,
+): DiagramWorldBounds {
+  if (!current) {
+    return next
+  }
+
+  return {
+    minX: Math.min(current.minX, next.minX),
+    minY: Math.min(current.minY, next.minY),
+    maxX: Math.max(current.maxX, next.maxX),
+    maxY: Math.max(current.maxY, next.maxY),
+  }
+}
+
+function buildDiagramWorldBounds(): DiagramWorldBounds | null {
+  let bounds: DiagramWorldBounds | null = null
+
+  nodeWorldRects.value.forEach((node) => {
+    bounds = mergeWorldBounds(bounds, {
+      minX: node.x,
+      minY: node.y,
+      maxX: node.x + node.width,
+      maxY: node.y + node.height,
+    })
+  })
+
+  edges.value.forEach((edge) => {
+    bounds = mergeWorldBounds(bounds, {
+      minX: Math.min(edge.x1, edge.x2),
+      minY: Math.min(edge.y1, edge.y2),
+      maxX: Math.max(edge.x1, edge.x2),
+      maxY: Math.max(edge.y1, edge.y2),
+    })
+  })
+
+  staticElements.value.forEach((element) => {
+    const elementBounds = getStaticElementBounds(element)
+    bounds = mergeWorldBounds(bounds, {
+      minX: elementBounds.x1,
+      minY: elementBounds.y1,
+      maxX: elementBounds.x2,
+      maxY: elementBounds.y2,
+    })
+  })
+
+  return bounds
+}
 
 function clampZoom(value: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))
@@ -1736,17 +1809,14 @@ function zoomBy(delta: number) {
 
 function fitToContent() {
   const viewport = viewportRef.value
-  if (!viewport || switchgears.value.length === 0) {
+  const bounds = diagramWorldBounds.value
+  if (!viewport || !bounds) {
     return
   }
   const rect = viewport.getBoundingClientRect()
-  const positions = switchgears.value.map((item, index) => resolvedLayout(item.id, index))
-  const minX = Math.min(...positions.map(item => item.x + STAGE_PADDING))
-  const minY = Math.min(...positions.map(item => item.y + STAGE_PADDING))
-  const maxX = Math.max(...positions.map(item => item.x + STAGE_PADDING + NODE_WIDTH))
-  const maxY = Math.max(...positions.map(item => item.y + STAGE_PADDING + NODE_HEIGHT))
-  const contentWidth = maxX - minX + 160
-  const contentHeight = maxY - minY + 160
+  const contentPadding = 80
+  const contentWidth = bounds.maxX - bounds.minX + contentPadding * 2
+  const contentHeight = bounds.maxY - bounds.minY + contentPadding * 2
   const zoom = clampZoom(Math.min(
     (rect.width - 80) / contentWidth,
     (rect.height - 80) / contentHeight,
@@ -1755,8 +1825,8 @@ function fitToContent() {
 
   viewState.value = {
     zoom,
-    x: (rect.width - contentWidth * zoom) / 2 - (minX - 80) * zoom,
-    y: (rect.height - contentHeight * zoom) / 2 - (minY - 80) * zoom,
+    x: (rect.width - contentWidth * zoom) / 2 - (bounds.minX - contentPadding) * zoom,
+    y: (rect.height - contentHeight * zoom) / 2 - (bounds.minY - contentPadding) * zoom,
   }
 }
 
@@ -3057,6 +3127,29 @@ onBeforeUnmount(() => {
             :fill="isDarkTheme ? 'rgba(15, 23, 42, 0.86)' : 'rgba(148,163,184,0.18)'"
           />
           <g>
+            <line
+              v-for="line in minimapModel.lines"
+              :key="line.id"
+              :x1="line.x1"
+              :y1="line.y1"
+              :x2="line.x2"
+              :y2="line.y2"
+              :stroke="line.active ? '#38bdf8' : (isDarkTheme ? '#94a3b8' : '#475569')"
+              :stroke-width="line.active ? 1.8 : 1.2"
+              stroke-linecap="round"
+              :opacity="line.active ? 1 : 0.62"
+            />
+            <rect
+              v-for="item in minimapModel.statics"
+              :key="item.id"
+              :x="item.x"
+              :y="item.y"
+              :width="item.width"
+              :height="item.height"
+              rx="1.5"
+              :fill="item.active ? '#38bdf8' : (isDarkTheme ? '#cbd5e1' : '#64748b')"
+              :opacity="item.active ? 1 : 0.58"
+            />
             <rect
               v-for="item in minimapModel.nodes"
               :key="item.id"
