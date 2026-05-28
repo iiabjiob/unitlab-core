@@ -63,6 +63,7 @@ function toggleAll() {
 <style scoped>
 .device-channel-control-toolbar {
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   gap: 0.5rem;
   font-size: var(--text-xs);

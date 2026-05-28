@@ -193,7 +193,10 @@ onBeforeUnmount(() => {
 <style scoped>
 .device-execution-log {
   display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   user-select: none;
 }
 
@@ -371,7 +374,6 @@ onBeforeUnmount(() => {
 @media (min-width: 1024px) {
   .device-execution-log {
     height: 100%;
-    min-height: 0;
   }
 
   .device-execution-log__body {

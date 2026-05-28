@@ -111,12 +111,14 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
 .device-channels-list {
   display: flex;
   height: 100%;
+  min-height: 0;
   flex-direction: column;
   overflow: hidden;
   padding: 1rem;
 }
 
 .device-channels-list__header {
+  flex: 0 0 auto;
   color: var(--color-neutral-500);
   font-size: var(--text-xs);
   letter-spacing: 0.025em;
@@ -124,6 +126,7 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
 }
 
 .device-channels-list__offline {
+  flex: 0 0 auto;
   margin-top: 0.5rem;
   padding: 0.25rem 0.5rem;
   border: 1px solid color-mix(in srgb, var(--color-amber-300) 70%, transparent);
@@ -134,10 +137,12 @@ function onSetAo({ channel, value }: { channel: Channel; value: number }) {
 }
 
 .device-channels-list__toolbar {
+  flex: 0 0 auto;
   padding: 0.5rem 0;
 }
 
 .device-channels-list__items {
+  flex: 1 1 auto;
   min-height: 0;
   margin-top: 1.25rem;
   overflow-y: auto;

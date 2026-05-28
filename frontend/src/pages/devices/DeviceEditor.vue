@@ -206,9 +206,14 @@ onBeforeUnmount(() => {
 }
 
 @media (min-width: 1024px) {
+  .device-editor {
+    min-height: 0;
+    overflow: hidden;
+  }
+
   .device-editor__workspace {
     min-height: 0;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     flex-direction: row;
     gap: 1.25rem;
     overflow: hidden;
@@ -227,8 +232,13 @@ onBeforeUnmount(() => {
   .device-editor__detail-panel,
   .device-editor__detail-content {
     min-height: 0;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     overflow: hidden;
+  }
+
+  .device-editor__detail-content {
+    display: flex;
+    flex-direction: column;
   }
 }
 

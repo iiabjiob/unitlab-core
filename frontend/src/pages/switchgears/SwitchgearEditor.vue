@@ -214,7 +214,7 @@ async function confirmDelete() {
 
   .switchgear-editor__workspace {
     min-height: 0;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     flex-direction: row;
     gap: 1.25rem;
     overflow: hidden;
@@ -238,7 +238,7 @@ async function confirmDelete() {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     overflow: hidden;
   }
 

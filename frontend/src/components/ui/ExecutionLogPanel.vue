@@ -201,6 +201,7 @@ onBeforeUnmount(() => {
 <style scoped>
 .execution-log {
   display: flex;
+  flex: 1 1 auto;
   height: 100%;
   min-height: 0;
   flex-direction: column;

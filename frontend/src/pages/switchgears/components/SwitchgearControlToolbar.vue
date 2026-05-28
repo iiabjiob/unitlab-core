@@ -119,6 +119,7 @@ onMounted(() => {
 
 <style scoped>
 .switchgear-control-toolbar {
+  flex: 0 0 auto;
   margin-top: 1rem;
   padding: 1.25rem;
   border: 1px solid var(--color-neutral-200);
