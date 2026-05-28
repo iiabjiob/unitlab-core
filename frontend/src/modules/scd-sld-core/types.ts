@@ -15,6 +15,10 @@ export type SldElementKind = SclEquipmentKind | "placeholder"
 
 export type SldConnectionKind = "connectivity-node"
 
+export type ElectricalGraphGroupKind = "substation" | "voltage-level" | "bay"
+
+export type ElectricalGraphEdgeKind = SldConnectionKind
+
 export type SldCoordinate = {
   x: number | null
   y: number | null
@@ -145,6 +149,73 @@ export type NormalizedSclModel = {
   diagnostics: ScdDiagnostic[]
 }
 
+export type ElectricalGraphGroup = {
+  id: string
+  kind: ElectricalGraphGroupKind
+  name: string
+  label: string
+  parentId: string | null
+  sourcePath: string
+}
+
+export type ElectricalGraphNode = {
+  id: string
+  sourceId: string
+  sourcePath: string
+  kind: SclEquipmentKind
+  label: string
+  equipmentType: string
+  groupId: string | null
+  substationName: string | null
+  voltageLevelName: string | null
+  bayName: string | null
+  position: SldCoordinate
+}
+
+export type ElectricalGraphPort = {
+  id: string
+  nodeId: string
+  sourceTerminalId: string
+  name: string | null
+  connectivityNode: string | null
+  junctionId: string | null
+  sourcePath: string
+}
+
+export type ElectricalGraphJunction = {
+  id: string
+  sourceId: string
+  sourcePath: string | null
+  name: string | null
+  pathName: string
+  substationName: string | null
+  voltageLevelName: string | null
+  bayName: string | null
+  position: SldCoordinate
+  portIds: string[]
+}
+
+export type ElectricalGraphEdge = {
+  id: string
+  kind: ElectricalGraphEdgeKind
+  junctionId: string
+  sourceConnectivityNode: string
+  portIds: string[]
+  nodeIds: string[]
+}
+
+export type ElectricalGraph = {
+  schema: "unitlab.scd-sld.electrical-graph"
+  version: 1
+  sourceHash: string
+  nodes: ElectricalGraphNode[]
+  ports: ElectricalGraphPort[]
+  junctions: ElectricalGraphJunction[]
+  edges: ElectricalGraphEdge[]
+  groups: ElectricalGraphGroup[]
+  diagnostics: ScdDiagnostic[]
+}
+
 export type SldElement = {
   id: string
   sourceId: string
@@ -161,7 +232,9 @@ export type SldElement = {
 export type SldConnection = {
   id: string
   kind: SldConnectionKind
+  junctionId: string
   sourceConnectivityNode: string
+  portIds: string[]
   terminalOwnerIds: string[]
 }
 
@@ -194,6 +267,7 @@ export type GenerateSldOptions = {
 
 export type GenerateSldResult = {
   model: NormalizedSclModel
+  graph: ElectricalGraph
   document: SldDocument
   diagnostics: ScdDiagnostic[]
 }

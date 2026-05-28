@@ -1,6 +1,6 @@
 # SCD to SLD Generation Plan
 
-Status: core foundation started
+Status: electrical graph foundation started
 Last reviewed: 2026-05-28
 
 ## Purpose
@@ -350,7 +350,7 @@ Implemented 2026-05-28:
 
 ### Slice 4 - Normalized SCL Model
 
-Status: `[ ]`
+Status: `[~]`
 
 Goal:
 
@@ -376,9 +376,15 @@ Validation:
 - Golden normalized model snapshots.
 - Duplicate and missing-reference fixtures.
 
+Implemented 2026-05-28:
+
+- Initial normalized model now uses stable hierarchy-derived IDs for substations, voltage levels, bays, equipment, terminals, and connectivity nodes.
+- Equipment types are normalized into first-pass SLD categories.
+- Full duplicate handling and terminal-to-declared-connectivity-node validation remain open for the normalization slice.
+
 ### Slice 5 - Electrical Graph Builder
 
-Status: `[ ]`
+Status: `[x]`
 
 Goal:
 
@@ -406,6 +412,14 @@ Validation:
   - every edge references existing ports/nodes
   - every diagnostic references a source path where possible
   - unknown equipment is preserved
+
+Implemented 2026-05-28:
+
+- Added `buildElectricalGraph(model): ElectricalGraph` as a framework-neutral topology layer between the SCD parser and the SLD DTO.
+- Equipment is emitted as graph nodes, terminals as graph ports, and SCD connectivity nodes as explicit junction-backed hyperedges.
+- Undeclared connectivity references are preserved as implicit junctions with diagnostics instead of being dropped.
+- Graph diagnostics now preserve unsupported equipment and missing terminal connectivity as visible import findings.
+- Added graph invariant coverage for edge-to-node and edge-to-port references.
 
 ### Slice 6 - Cell Model and Layout MVP
 

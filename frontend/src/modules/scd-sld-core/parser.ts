@@ -289,8 +289,10 @@ function appendTerminal(
   }
 
   const terminalName = readXmlAttribute(event.attributes, "name")
+  const terminalOrdinal = equipment.terminals.length + 1
+  const terminalIdPart = buildStableId([terminalName ? `${terminalName}_${terminalOrdinal}` : String(terminalOrdinal)])
   const terminal: SclTerminal = {
-    id: buildStableId([equipment.id, "terminal", terminalName ?? String(equipment.terminals.length + 1)]),
+    id: `${equipment.id}/terminal/${terminalIdPart}`,
     name: terminalName,
     connectivityNode: readXmlAttribute(event.attributes, "connectivityNode"),
     cNodeName: readXmlAttribute(event.attributes, "cNodeName"),

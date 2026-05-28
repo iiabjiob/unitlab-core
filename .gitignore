@@ -57,3 +57,4 @@ host-services/**/.mypy_cache/
 .refs
 .vitepress
 dist-release/
+.IEC61850

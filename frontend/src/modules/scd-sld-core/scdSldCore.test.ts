@@ -41,6 +41,7 @@ describe("scd-sld-core", () => {
       severity: "error",
       code: "xml.empty-source",
     }))
+    expect(result.graph.nodes).toEqual([])
     expect(result.document.elements).toEqual([])
   })
 
@@ -85,7 +86,45 @@ describe("scd-sld-core", () => {
     expect(model.ieds).toEqual([])
   })
 
-  it("creates a renderer-neutral SLD document from parsed equipment", () => {
+  it("builds an electrical graph from parsed topology", () => {
+    const result = generateSldFromScd({
+      fileName: "fixture.scd",
+      contentHash: "fixture",
+      xmlText: fixtureScd,
+    }, {
+      generatedAt: "2026-05-28T00:00:00.000Z",
+      gridSize: 24,
+    })
+
+    expect(result.graph).toMatchObject({
+      schema: "unitlab.scd-sld.electrical-graph",
+      sourceHash: "fixture",
+    })
+    expect(result.graph.nodes.map(item => [item.label, item.kind])).toEqual([
+      ["SGT3", "transformer"],
+      ["1504", "disconnector"],
+      ["1505", "breaker"],
+    ])
+
+    const breakerTopEdge = result.graph.edges.find(edge => edge.sourceConnectivityNode === "KINT/E/XCW/CN_BREAKER_TOP")
+    expect(breakerTopEdge).toMatchObject({
+      kind: "connectivity-node",
+      nodeIds: [
+        "substation/KINT/voltageLevel/E/bay/XCW/equipment/1504",
+        "substation/KINT/voltageLevel/E/bay/XCW/equipment/1505",
+      ],
+    })
+    expect(breakerTopEdge?.portIds).toHaveLength(2)
+
+    const graphNodeIds = new Set(result.graph.nodes.map(node => node.id))
+    const graphPortIds = new Set(result.graph.ports.map(port => port.id))
+    for (const edge of result.graph.edges) {
+      expect(edge.nodeIds.every(nodeId => graphNodeIds.has(nodeId))).toBe(true)
+      expect(edge.portIds.every(portId => graphPortIds.has(portId))).toBe(true)
+    }
+  })
+
+  it("creates a renderer-neutral SLD document from the electrical graph", () => {
     const result = generateSldFromScd({
       fileName: "fixture.scd",
       contentHash: "fixture",
@@ -106,11 +145,15 @@ describe("scd-sld-core", () => {
     })
     expect(result.document.elements.map(item => [item.label, item.kind])).toEqual([
       ["SGT3", "transformer"],
-      ["1505", "breaker"],
       ["1504", "disconnector"],
+      ["1505", "breaker"],
     ])
     expect(result.document.connections).toContainEqual(expect.objectContaining({
       sourceConnectivityNode: "KINT/E/XCW/CN_BREAKER_TOP",
+      portIds: expect.arrayContaining([
+        "port/substation/KINT/voltageLevel/E/bay/XCW/equipment/1504/terminal/T2_2",
+        "port/substation/KINT/voltageLevel/E/bay/XCW/equipment/1505/terminal/T1_1",
+      ]),
       terminalOwnerIds: [
         "substation/KINT/voltageLevel/E/bay/XCW/equipment/1504",
         "substation/KINT/voltageLevel/E/bay/XCW/equipment/1505",
@@ -128,5 +171,37 @@ describe("scd-sld-core", () => {
 
     expect(model.substations).toHaveLength(1)
     expect(model.ieds).toHaveLength(0)
+  })
+
+  it("keeps unresolved terminal topology visible as graph diagnostics", () => {
+    const result = generateSldFromScd({
+      fileName: "diagnostics.scd",
+      contentHash: "diagnostics",
+      xmlText: `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <Substation name="SS1">
+    <VoltageLevel name="VL1">
+      <Bay name="B1">
+        <ConductingEquipment name="X1" type="VENDOR_SPECIAL">
+          <Terminal name="T1"/>
+        </ConductingEquipment>
+      </Bay>
+    </VoltageLevel>
+  </Substation>
+</SCL>`,
+    })
+
+    expect(result.graph.nodes).toContainEqual(expect.objectContaining({
+      label: "X1",
+      kind: "unknown",
+    }))
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      stage: "graph",
+      code: "graph.unsupported-equipment-kind",
+    }))
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      stage: "graph",
+      code: "graph.terminal-missing-connectivity-node",
+    }))
   })
 })

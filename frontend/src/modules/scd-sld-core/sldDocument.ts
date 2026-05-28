@@ -1,30 +1,36 @@
 import type {
+  ElectricalGraph,
+  ElectricalGraphEdge,
+  ElectricalGraphNode,
   GenerateSldOptions,
   NormalizedSclModel,
-  SclEquipment,
   SldConnection,
   SldDocument,
   SldElement,
 } from "./types"
+import { buildElectricalGraph } from "./graph"
 
 export function createSldDocument(model: NormalizedSclModel, options: GenerateSldOptions = {}): SldDocument {
-  const equipment = collectEquipment(model)
-  const elements = equipment.map(mapEquipmentToElement)
+  return createSldDocumentFromGraph(buildElectricalGraph(model), options)
+}
+
+export function createSldDocumentFromGraph(graph: ElectricalGraph, options: GenerateSldOptions = {}): SldDocument {
+  const elements = graph.nodes.map(mapGraphNodeToElement)
 
   return {
     schema: "unitlab.scd-sld.document",
     version: 1,
-    sourceHash: model.source.contentHash,
+    sourceHash: graph.sourceHash,
     generatedAt: options.generatedAt ?? null,
     elements,
-    connections: buildConnectivityNodeConnections(equipment),
+    connections: buildConnectivityNodeConnections(graph.edges),
     labels: elements.map(element => ({
       id: `${element.id}/label`,
       sourceId: element.sourceId,
       text: element.label,
       position: element.position,
     })),
-    diagnostics: [...model.diagnostics],
+    diagnostics: [...graph.diagnostics],
     layoutHints: {
       generatedFrom: "scd",
       gridSize: options.gridSize ?? 24,
@@ -32,52 +38,31 @@ export function createSldDocument(model: NormalizedSclModel, options: GenerateSl
   }
 }
 
-function collectEquipment(model: NormalizedSclModel): SclEquipment[] {
-  return model.substations.flatMap(substation => [
-    ...substation.powerTransformers,
-    ...substation.voltageLevels.flatMap(voltageLevel => (
-      voltageLevel.bays.flatMap(bay => bay.equipments)
-    )),
-  ])
-}
-
-function mapEquipmentToElement(equipment: SclEquipment): SldElement {
+function mapGraphNodeToElement(node: ElectricalGraphNode): SldElement {
   return {
-    id: `sld-element:${equipment.id}`,
-    sourceId: equipment.id,
-    sourcePath: equipment.sourcePath,
-    kind: equipment.kind,
-    label: equipment.name,
-    equipmentType: equipment.type,
-    substationName: equipment.substationName,
-    voltageLevelName: equipment.voltageLevelName,
-    bayName: equipment.bayName,
-    position: equipment.coordinates,
+    id: `sld-element:${node.sourceId}`,
+    sourceId: node.sourceId,
+    sourcePath: node.sourcePath,
+    kind: node.kind,
+    label: node.label,
+    equipmentType: node.equipmentType,
+    substationName: node.substationName,
+    voltageLevelName: node.voltageLevelName,
+    bayName: node.bayName,
+    position: node.position,
   }
 }
 
-function buildConnectivityNodeConnections(equipment: SclEquipment[]): SldConnection[] {
-  const ownersByConnectivityNode = new Map<string, Set<string>>()
-
-  for (const item of equipment) {
-    for (const terminal of item.terminals) {
-      if (!terminal.connectivityNode) {
-        continue
-      }
-      const owners = ownersByConnectivityNode.get(terminal.connectivityNode) ?? new Set<string>()
-      owners.add(item.id)
-      ownersByConnectivityNode.set(terminal.connectivityNode, owners)
-    }
-  }
-
-  return Array.from(ownersByConnectivityNode.entries())
-    .filter(([, owners]) => owners.size > 1)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([connectivityNode, owners]) => ({
-      id: `connection:${sanitizeId(connectivityNode)}`,
+function buildConnectivityNodeConnections(edges: ElectricalGraphEdge[]): SldConnection[] {
+  return edges
+    .filter(edge => edge.nodeIds.length > 1)
+    .map(edge => ({
+      id: `connection:${sanitizeId(edge.sourceConnectivityNode)}`,
       kind: "connectivity-node",
-      sourceConnectivityNode: connectivityNode,
-      terminalOwnerIds: Array.from(owners).sort((left, right) => left.localeCompare(right)),
+      junctionId: edge.junctionId,
+      sourceConnectivityNode: edge.sourceConnectivityNode,
+      portIds: edge.portIds,
+      terminalOwnerIds: edge.nodeIds,
     }))
 }
 
