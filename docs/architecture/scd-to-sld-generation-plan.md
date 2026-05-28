@@ -16,6 +16,20 @@ Update this file as each slice starts and finishes:
 - `[x]` done
 - `[!]` blocked or needs a decision
 
+## Reference Policy
+
+SCD behavior should be derived from the IEC 61850-6 SCL standard, not from a single vendor/project export.
+
+Current local normative reference:
+
+- `docs/.IEC61850/IEC 61850-6-2024.pdf`
+
+Real SCD files are compatibility inputs only:
+
+- `/workspace/.refs/sld-rev2.scd` is used to smoke-check and tune parser/layout behavior against a realistic file.
+- Core fixtures and committed tests should use generic SCL names such as `SS1`, `VL1`, `BAY1`, `Q01`, and `IED1`.
+- Do not encode project names, vendor names, site names, or operator-specific bay labels as parser or layout rules.
+
 ## Product Goal
 
 The operator selects an SCD file. The system parses and normalizes it, builds an electrical topology graph, creates the required diagram cells/elements, lays them out deterministically, and renders an editable SLD.
@@ -347,6 +361,7 @@ Implemented 2026-05-28:
 - Initial parser extracts `SCL`, `Substation`, `VoltageLevel`, `Bay`, `PowerTransformer`, `ConductingEquipment`, `Terminal`, `ConnectivityNode`, and `LNode`.
 - Top-level `IED` metadata is intentionally deferred; current parser keeps reachable IED references through `LNode`.
 - Local smoke validation passed against uploaded `/workspace/.refs/sld-rev2.scd`.
+- Committed parser/graph fixtures use generic standard-shaped names; the uploaded reference SCD remains a compatibility smoke input only.
 
 ### Slice 4 - Normalized SCL Model
 

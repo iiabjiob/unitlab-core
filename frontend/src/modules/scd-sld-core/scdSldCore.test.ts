@@ -2,31 +2,31 @@ import { describe, expect, it } from "vitest"
 
 import { generateSldFromScd, parseScdSource } from "./index"
 
-const fixtureScd = `<?xml version="1.0" encoding="UTF-8"?>
+const genericFeederBayScd = `<?xml version="1.0" encoding="UTF-8"?>
 <SCL xmlns="http://www.iec.ch/61850/2003/SCL" xmlns:sxy="http://www.iec.ch/61850/2003/SCLcoordinates" revision="B" version="2007">
-  <Substation sxy:x="3" sxy:y="-3" desc="Kintore" name="KINT">
-    <PowerTransformer sxy:x="157" sxy:y="29" name="SGT3" type="PTR">
+  <Substation sxy:x="3" sxy:y="-3" desc="Generic substation" name="SS1">
+    <PowerTransformer sxy:x="157" sxy:y="29" name="TR1" type="PTR">
       <TransformerWinding name="W1" type="PTW">
-        <Terminal bayName="SGT3" cNodeName="CN_PTR_1" connectivityNode="KINT/E/SGT3/CN_PTR_1" substationName="KINT" voltageLevelName="E"/>
+        <Terminal bayName="TR1" cNodeName="CN_TR_1" connectivityNode="SS1/VL1/TR1/CN_TR_1" substationName="SS1" voltageLevelName="VL1"/>
       </TransformerWinding>
     </PowerTransformer>
-    <VoltageLevel name="E">
-      <Bay sxy:x="164" sxy:y="16" desc="Craigiebuckler West" name="XCW">
-        <LNode iedName="KINTE15BCU01" ldInst="CTRL1" lnClass="CSWI" lnInst="1" lnType="BCU_CSWI1" prefix="BCU_"/>
-        <ConductingEquipment sxy:x="3" sxy:y="4" name="1505" type="CBR">
-          <LNode iedName="KINTE15BCU01" ldInst="CTRL1" lnClass="CSWI" lnInst="1" lnType="CBCSWI1" prefix="CB"/>
-          <Terminal bayName="XCW" cNodeName="CN_BREAKER_TOP" connectivityNode="KINT/E/XCW/CN_BREAKER_TOP" name="T1" substationName="KINT" voltageLevelName="E"/>
-          <Terminal bayName="XCW" cNodeName="CN_BREAKER_BOTTOM" connectivityNode="KINT/E/XCW/CN_BREAKER_BOTTOM" name="T2" substationName="KINT" voltageLevelName="E"/>
+    <VoltageLevel name="VL1">
+      <Bay sxy:x="164" sxy:y="16" desc="Generic feeder bay" name="BAY1">
+        <LNode iedName="IED1" ldInst="CTRL1" lnClass="CSWI" lnInst="1" lnType="GENERIC_CSWI1" prefix="BCU_"/>
+        <ConductingEquipment sxy:x="3" sxy:y="4" name="Q01" type="CBR">
+          <LNode iedName="IED1" ldInst="CTRL1" lnClass="CSWI" lnInst="1" lnType="GENERIC_CBR_CSWI1" prefix="CB"/>
+          <Terminal bayName="BAY1" cNodeName="CN_Q01_TOP" connectivityNode="SS1/VL1/BAY1/CN_Q01_TOP" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BAY1" cNodeName="CN_Q01_BOTTOM" connectivityNode="SS1/VL1/BAY1/CN_Q01_BOTTOM" name="T2" substationName="SS1" voltageLevelName="VL1"/>
         </ConductingEquipment>
-        <ConductingEquipment sxy:y="1" name="1504" type="DIS">
-          <Terminal bayName="132MainBusbar1" cNodeName="L1" connectivityNode="KINT/E/132MainBusbar1/L1" name="T1" substationName="KINT" voltageLevelName="E"/>
-          <Terminal bayName="XCW" cNodeName="CN_BREAKER_TOP" connectivityNode="KINT/E/XCW/CN_BREAKER_TOP" name="T2" substationName="KINT" voltageLevelName="E"/>
+        <ConductingEquipment sxy:y="1" name="QB1" type="DIS">
+          <Terminal bayName="BUS1" cNodeName="L1" connectivityNode="SS1/VL1/BUS1/L1" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BAY1" cNodeName="CN_Q01_TOP" connectivityNode="SS1/VL1/BAY1/CN_Q01_TOP" name="T2" substationName="SS1" voltageLevelName="VL1"/>
         </ConductingEquipment>
-        <ConnectivityNode name="CN_BREAKER_TOP" pathName="KINT/E/XCW/CN_BREAKER_TOP"/>
+        <ConnectivityNode name="CN_Q01_TOP" pathName="SS1/VL1/BAY1/CN_Q01_TOP"/>
       </Bay>
     </VoltageLevel>
   </Substation>
-  <IED desc="Modular Substation / Bay Controller" manufacturer="GE Grid Solutions" type="DS Agile C264" name="KINTE15BCU01"/>
+  <IED desc="Generic bay controller" manufacturer="Generic Vendor" type="Generic IED" name="IED1"/>
 </SCL>`
 
 describe("scd-sld-core", () => {
@@ -49,37 +49,37 @@ describe("scd-sld-core", () => {
     const model = parseScdSource({
       fileName: "fixture.scd",
       contentHash: "fixture",
-      xmlText: fixtureScd,
+      xmlText: genericFeederBayScd,
     })
 
     expect(model.scl).toEqual({ version: "2007", revision: "B" })
     expect(model.substations).toHaveLength(1)
     expect(model.substations[0]).toMatchObject({
-      id: "substation/KINT",
-      name: "KINT",
+      id: "substation/SS1",
+      name: "SS1",
       coordinates: { x: 3, y: -3 },
     })
 
     const voltageLevel = model.substations[0]?.voltageLevels[0]
     expect(voltageLevel).toMatchObject({
-      id: "substation/KINT/voltageLevel/E",
-      name: "E",
+      id: "substation/SS1/voltageLevel/VL1",
+      name: "VL1",
     })
 
     const bay = voltageLevel?.bays[0]
     expect(bay).toMatchObject({
-      id: "substation/KINT/voltageLevel/E/bay/XCW",
-      name: "XCW",
-      desc: "Craigiebuckler West",
+      id: "substation/SS1/voltageLevel/VL1/bay/BAY1",
+      name: "BAY1",
+      desc: "Generic feeder bay",
     })
 
     expect(bay?.equipments.map(item => [item.name, item.type, item.kind])).toEqual([
-      ["1505", "CBR", "breaker"],
-      ["1504", "DIS", "disconnector"],
+      ["Q01", "CBR", "breaker"],
+      ["QB1", "DIS", "disconnector"],
     ])
     expect(bay?.equipments[0]?.terminals).toHaveLength(2)
     expect(model.substations[0]?.powerTransformers[0]).toMatchObject({
-      name: "SGT3",
+      name: "TR1",
       type: "PTR",
       kind: "transformer",
     })
@@ -90,7 +90,7 @@ describe("scd-sld-core", () => {
     const result = generateSldFromScd({
       fileName: "fixture.scd",
       contentHash: "fixture",
-      xmlText: fixtureScd,
+      xmlText: genericFeederBayScd,
     }, {
       generatedAt: "2026-05-28T00:00:00.000Z",
       gridSize: 24,
@@ -101,17 +101,17 @@ describe("scd-sld-core", () => {
       sourceHash: "fixture",
     })
     expect(result.graph.nodes.map(item => [item.label, item.kind])).toEqual([
-      ["SGT3", "transformer"],
-      ["1504", "disconnector"],
-      ["1505", "breaker"],
+      ["TR1", "transformer"],
+      ["Q01", "breaker"],
+      ["QB1", "disconnector"],
     ])
 
-    const breakerTopEdge = result.graph.edges.find(edge => edge.sourceConnectivityNode === "KINT/E/XCW/CN_BREAKER_TOP")
+    const breakerTopEdge = result.graph.edges.find(edge => edge.sourceConnectivityNode === "SS1/VL1/BAY1/CN_Q01_TOP")
     expect(breakerTopEdge).toMatchObject({
       kind: "connectivity-node",
       nodeIds: [
-        "substation/KINT/voltageLevel/E/bay/XCW/equipment/1504",
-        "substation/KINT/voltageLevel/E/bay/XCW/equipment/1505",
+        "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01",
+        "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/QB1",
       ],
     })
     expect(breakerTopEdge?.portIds).toHaveLength(2)
@@ -128,7 +128,7 @@ describe("scd-sld-core", () => {
     const result = generateSldFromScd({
       fileName: "fixture.scd",
       contentHash: "fixture",
-      xmlText: fixtureScd,
+      xmlText: genericFeederBayScd,
     }, {
       generatedAt: "2026-05-28T00:00:00.000Z",
       gridSize: 24,
@@ -144,19 +144,19 @@ describe("scd-sld-core", () => {
       },
     })
     expect(result.document.elements.map(item => [item.label, item.kind])).toEqual([
-      ["SGT3", "transformer"],
-      ["1504", "disconnector"],
-      ["1505", "breaker"],
+      ["TR1", "transformer"],
+      ["Q01", "breaker"],
+      ["QB1", "disconnector"],
     ])
     expect(result.document.connections).toContainEqual(expect.objectContaining({
-      sourceConnectivityNode: "KINT/E/XCW/CN_BREAKER_TOP",
+      sourceConnectivityNode: "SS1/VL1/BAY1/CN_Q01_TOP",
       portIds: expect.arrayContaining([
-        "port/substation/KINT/voltageLevel/E/bay/XCW/equipment/1504/terminal/T2_2",
-        "port/substation/KINT/voltageLevel/E/bay/XCW/equipment/1505/terminal/T1_1",
+        "port/substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01/terminal/T1_1",
+        "port/substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/QB1/terminal/T2_2",
       ]),
       terminalOwnerIds: [
-        "substation/KINT/voltageLevel/E/bay/XCW/equipment/1504",
-        "substation/KINT/voltageLevel/E/bay/XCW/equipment/1505",
+        "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01",
+        "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/QB1",
       ],
     }))
     expect(JSON.parse(JSON.stringify(result.document))).toEqual(result.document)
@@ -166,7 +166,7 @@ describe("scd-sld-core", () => {
     const model = parseScdSource({
       fileName: "fixture.scd",
       contentHash: "fixture",
-      xmlText: fixtureScd,
+      xmlText: genericFeederBayScd,
     })
 
     expect(model.substations).toHaveLength(1)
