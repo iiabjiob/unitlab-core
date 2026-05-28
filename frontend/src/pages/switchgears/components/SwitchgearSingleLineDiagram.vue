@@ -698,6 +698,19 @@ function buildLinePorts(edge: DiagramEdge): DiagramPort[] {
   ]
 }
 
+function findNearestPort(point: { x: number; y: number }, ports: DiagramPort[]): DiagramPort | null {
+  let nearest: { port: DiagramPort; distance: number } | null = null
+
+  for (const port of ports) {
+    const distance = Math.hypot(port.x - point.x, port.y - point.y)
+    if (!nearest || distance < nearest.distance) {
+      nearest = { port, distance }
+    }
+  }
+
+  return nearest?.port ?? null
+}
+
 function collectStationaryPorts(
   excludedNodeIds: Set<number> = new Set<number>(),
   excludedEdgeIds: Set<string> = new Set<string>(),
@@ -2015,19 +2028,7 @@ function beginViewportPan(event: PointerEvent) {
     if (!point) {
       return
     }
-    const snapped = applyPortSnapToLinePoint(snapWorldPoint(point))
-    clearSelection()
-    dragState.value = {
-      type: "new-line",
-      startX: snapped.x,
-      startY: snapped.y,
-      currentX: snapped.x,
-      currentY: snapped.y,
-    }
-    event.preventDefault()
-    window.addEventListener("pointermove", onWindowPointerMove)
-    window.addEventListener("pointerup", onWindowPointerUp)
-    window.addEventListener("pointercancel", onWindowPointerUp)
+    beginLineDraftFromPoint(point, event)
     return
   }
 
@@ -2065,12 +2066,35 @@ function beginViewportPan(event: PointerEvent) {
   window.addEventListener("pointercancel", onWindowPointerUp)
 }
 
+function beginLineDraftFromPoint(point: { x: number; y: number }, event: PointerEvent) {
+  const snapped = applyPortSnapToLinePoint(snapWorldPoint(point))
+  clearSelection()
+  dragState.value = {
+    type: "new-line",
+    startX: snapped.x,
+    startY: snapped.y,
+    currentX: snapped.x,
+    currentY: snapped.y,
+  }
+  event.preventDefault()
+  window.addEventListener("pointermove", onWindowPointerMove)
+  window.addEventListener("pointerup", onWindowPointerUp)
+  window.addEventListener("pointercancel", onWindowPointerUp)
+}
+
 function beginNodeDrag(id: number, event: PointerEvent) {
   closeLineContextMenu()
   if (event.button !== 0) {
     return
   }
   if (interactionTool.value === "line") {
+    const pointer = worldPointFromViewportEvent(event)
+    if (!pointer) {
+      return
+    }
+    const index = switchgears.value.findIndex(item => item.id === id)
+    const port = findNearestPort(pointer, buildNodePortsForLayout(id, resolvedLayout(id, index)))
+    beginLineDraftFromPoint(port ?? pointer, event)
     return
   }
 
@@ -2170,6 +2194,13 @@ function beginLabelDrag(id: number, event: PointerEvent) {
     return
   }
   if (interactionTool.value === "line") {
+    const pointer = worldPointFromViewportEvent(event)
+    if (!pointer) {
+      return
+    }
+    const index = switchgears.value.findIndex(item => item.id === id)
+    const port = findNearestPort(pointer, buildNodePortsForLayout(id, resolvedLayout(id, index)))
+    beginLineDraftFromPoint(port ?? pointer, event)
     return
   }
 
@@ -2206,6 +2237,12 @@ function beginStaticDrag(id: string, event: PointerEvent) {
     return
   }
   if (interactionTool.value === "line") {
+    const pointer = worldPointFromViewportEvent(event)
+    const element = getStaticElementById(id)
+    if (!element && !pointer) {
+      return
+    }
+    beginLineDraftFromPoint(element ? { x: element.x, y: element.y } : pointer!, event)
     return
   }
 
@@ -2282,6 +2319,17 @@ function beginEdgeDrag(edgeId: string, mode: "move" | "start" | "end", event: Po
     return
   }
   if (interactionTool.value === "line") {
+    const edge = getEdgeById(edgeId)
+    const pointer = worldPointFromViewportEvent(event)
+    if (!edge || !pointer) {
+      return
+    }
+    const start = mode === "start"
+      ? { x: edge.x1, y: edge.y1 }
+      : mode === "end"
+        ? { x: edge.x2, y: edge.y2 }
+        : findNearestPort(pointer, buildLinePorts(edge)) ?? pointer
+    beginLineDraftFromPoint(start, event)
     return
   }
 
@@ -3191,6 +3239,15 @@ onBeforeUnmount(() => {
 }
 
 .switchgear-sld__viewport--draw-line {
+  cursor: crosshair;
+}
+
+.switchgear-sld__viewport--draw-line :deep(.switchgear-sld-node),
+.switchgear-sld__viewport--draw-line :deep(.switchgear-sld-node__button),
+.switchgear-sld__viewport--draw-line :deep(.switchgear-sld-node__label),
+.switchgear-sld__viewport--draw-line :deep(.switchgear-sld-static-element),
+.switchgear-sld__viewport--draw-line .switchgear-sld__edge-hitbox,
+.switchgear-sld__viewport--draw-line .switchgear-sld__edge-handle {
   cursor: crosshair;
 }
 
