@@ -10,6 +10,7 @@ import type {
   SclLogicalNodeRef,
   SclSubstation,
   SclTerminal,
+  SclVoltage,
   SclVoltageLevel,
   SldCoordinate,
 } from "./types"
@@ -73,6 +74,9 @@ export function parseScdSource(source: ScdSource): NormalizedSclModel {
         break
       case "VoltageLevel":
         openVoltageLevel(diagnostics, substationStack, voltageLevelStack, event)
+        break
+      case "Voltage":
+        appendVoltage(diagnostics, voltageLevelStack, event)
         break
       case "Bay":
         openBay(diagnostics, substationStack, voltageLevelStack, bayStack, event)
@@ -192,6 +196,32 @@ function openVoltageLevel(
   }
   substation.voltageLevels.push(voltageLevel)
   voltageLevelStack.push(voltageLevel)
+}
+
+function appendVoltage(
+  diagnostics: ScdDiagnostic[],
+  voltageLevelStack: SclVoltageLevel[],
+  event: XmlElementEvent,
+) {
+  const voltageLevel = last(voltageLevelStack)
+  if (!voltageLevel) {
+    pushParentDiagnostic(diagnostics, event, "Voltage", "VoltageLevel")
+    return
+  }
+
+  if (voltageLevel.voltage) {
+    diagnostics.push({
+      severity: "warning",
+      stage: "parser",
+      code: "parser.duplicate-voltage",
+      message: `VoltageLevel "${voltageLevel.name}" has multiple Voltage elements; the first value was kept.`,
+      sourcePath: event.sourcePath,
+      sourceId: voltageLevel.id,
+    })
+    return
+  }
+
+  voltageLevel.voltage = readVoltage(event)
 }
 
 function openBay(
@@ -471,6 +501,15 @@ function readCoordinates(event: XmlElementEvent): SldCoordinate {
   return {
     x: parseNullableNumber(readXmlAttribute(event.attributes, "sxy:x") ?? readXmlAttributeByLocalName(event.attributes, "x")),
     y: parseNullableNumber(readXmlAttribute(event.attributes, "sxy:y") ?? readXmlAttributeByLocalName(event.attributes, "y")),
+  }
+}
+
+function readVoltage(event: XmlElementEvent): SclVoltage {
+  return {
+    value: event.textContent,
+    multiplier: readXmlAttribute(event.attributes, "multiplier"),
+    unit: readXmlAttribute(event.attributes, "unit"),
+    sourcePath: event.sourcePath,
   }
 }
 

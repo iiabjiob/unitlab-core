@@ -117,7 +117,7 @@ function collectVoltageLevelGroups(
     id: groupId(["substation", substation.name, "voltageLevel", voltageLevel.name]),
     kind: "voltage-level",
     name: voltageLevel.name,
-    label: voltageLevel.voltage ?? voltageLevel.name,
+    label: formatVoltageLevelLabel(voltageLevel),
     parentId: groupId(["substation", substation.name]),
     sourcePath: voltageLevel.sourcePath,
   })
@@ -339,6 +339,16 @@ function resolveConnectivityNodePath(node: SclConnectivityNode): string {
     node.bayName,
     node.name,
   ].filter(isPresent).join("/") || node.id
+}
+
+function formatVoltageLevelLabel(voltageLevel: SclVoltageLevel): string {
+  const voltage = voltageLevel.voltage
+  if (!voltage?.value) {
+    return voltageLevel.name
+  }
+
+  const unit = `${voltage.multiplier ?? ""}${voltage.unit ?? ""}`
+  return unit ? `${voltage.value} ${unit}` : voltage.value
 }
 
 function groupId(parts: string[]): string {

@@ -337,6 +337,7 @@ Parse:
 - `SCL`
 - `Substation`
 - `VoltageLevel`
+- `Voltage`
 - `Bay`
 - `ConductingEquipment`
 - `Terminal`
@@ -359,6 +360,7 @@ Validation:
 Implemented 2026-05-28:
 
 - Initial parser extracts `SCL`, `Substation`, `VoltageLevel`, `Bay`, `PowerTransformer`, `ConductingEquipment`, `Terminal`, `ConnectivityNode`, and `LNode`.
+- `VoltageLevel` now captures its standard `Voltage` child value and `multiplier`/`unit` attributes for later lane and label decisions.
 - Top-level `IED` metadata is intentionally deferred; current parser keeps reachable IED references through `LNode`.
 - Local smoke validation passed against uploaded `/workspace/.refs/sld-rev2.scd`.
 - Committed parser/graph fixtures use generic standard-shaped names; the uploaded reference SCD remains a compatibility smoke input only.
@@ -395,6 +397,7 @@ Implemented 2026-05-28:
 
 - Initial normalized model now uses stable hierarchy-derived IDs for substations, voltage levels, bays, equipment, terminals, and connectivity nodes.
 - Equipment types are normalized into first-pass SLD categories.
+- Voltage-level labels in the graph derive from standard `Voltage` value, `multiplier`, and `unit` when present.
 - Full duplicate handling and terminal-to-declared-connectivity-node validation remain open for the normalization slice.
 
 ### Slice 5 - Electrical Graph Builder

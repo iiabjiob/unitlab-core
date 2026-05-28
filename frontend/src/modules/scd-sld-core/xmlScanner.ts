@@ -8,6 +8,7 @@ export type XmlElementEvent = {
   localName: string
   attributes: XmlAttributes
   selfClosing: boolean
+  textContent: string | null
   sourcePath: string
   depth: number
 }
@@ -58,6 +59,7 @@ export function* scanXmlElements(
           localName: parsed.localName,
           attributes: {},
           selfClosing: false,
+          textContent: null,
           sourcePath: sourcePath || parsed.localName,
           depth: stack.length,
         }
@@ -75,6 +77,7 @@ export function* scanXmlElements(
         localName: parsed.localName,
         attributes: parsed.attributes,
         selfClosing: parsed.selfClosing,
+        textContent: parsed.selfClosing ? null : readImmediateTextContent(xmlText, XML_TAG_PATTERN.lastIndex),
         sourcePath,
         depth: stack.length,
       }
@@ -197,4 +200,11 @@ function decodeXmlEntities(value: string): string {
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&amp;/g, "&")
+}
+
+function readImmediateTextContent(xmlText: string, offset: number): string | null {
+  const nextTagIndex = xmlText.indexOf("<", offset)
+  const rawText = xmlText.slice(offset, nextTagIndex === -1 ? xmlText.length : nextTagIndex)
+  const text = decodeXmlEntities(rawText).trim()
+  return text || null
 }

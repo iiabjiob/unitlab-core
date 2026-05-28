@@ -71,6 +71,13 @@ export type SclConnectivityNode = {
   sourcePath: string
 }
 
+export type SclVoltage = {
+  value: string | null
+  multiplier: string | null
+  unit: string | null
+  sourcePath: string
+}
+
 export type SclEquipment = {
   id: string
   name: string
@@ -103,7 +110,7 @@ export type SclBay = {
 export type SclVoltageLevel = {
   id: string
   name: string
-  voltage: string | null
+  voltage: SclVoltage | null
   lNodes: SclLogicalNodeRef[]
   connectivityNodes: SclConnectivityNode[]
   bays: SclBay[]

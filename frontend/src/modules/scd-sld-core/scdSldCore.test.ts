@@ -11,6 +11,7 @@ const genericFeederBayScd = `<?xml version="1.0" encoding="UTF-8"?>
       </TransformerWinding>
     </PowerTransformer>
     <VoltageLevel name="VL1">
+      <Voltage multiplier="k" unit="V">110</Voltage>
       <Bay sxy:x="164" sxy:y="16" desc="Generic feeder bay" name="BAY1">
         <LNode iedName="IED1" ldInst="CTRL1" lnClass="CSWI" lnInst="1" lnType="GENERIC_CSWI1" prefix="BCU_"/>
         <ConductingEquipment sxy:x="3" sxy:y="4" name="Q01" type="CBR">
@@ -64,6 +65,11 @@ describe("scd-sld-core", () => {
     expect(voltageLevel).toMatchObject({
       id: "substation/SS1/voltageLevel/VL1",
       name: "VL1",
+      voltage: {
+        value: "110",
+        multiplier: "k",
+        unit: "V",
+      },
     })
 
     const bay = voltageLevel?.bays[0]
@@ -105,6 +111,11 @@ describe("scd-sld-core", () => {
       ["Q01", "breaker"],
       ["QB1", "disconnector"],
     ])
+    expect(result.graph.groups).toContainEqual(expect.objectContaining({
+      id: "group/substation/SS1/voltageLevel/VL1",
+      kind: "voltage-level",
+      label: "110 kV",
+    }))
 
     const breakerTopEdge = result.graph.edges.find(edge => edge.sourceConnectivityNode === "SS1/VL1/BAY1/CN_Q01_TOP")
     expect(breakerTopEdge).toMatchObject({
@@ -202,6 +213,34 @@ describe("scd-sld-core", () => {
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       stage: "graph",
       code: "graph.terminal-missing-connectivity-node",
+    }))
+  })
+
+  it("keeps the first standard Voltage element and reports duplicates", () => {
+    const result = generateSldFromScd({
+      fileName: "duplicate-voltage.scd",
+      contentHash: "duplicate-voltage",
+      xmlText: `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <Substation name="SS1">
+    <VoltageLevel name="VL1">
+      <Voltage multiplier="k" unit="V">110</Voltage>
+      <Voltage multiplier="k" unit="V">220</Voltage>
+      <Bay name="B1"/>
+    </VoltageLevel>
+  </Substation>
+</SCL>`,
+    })
+
+    expect(result.model.substations[0]?.voltageLevels[0]?.voltage).toMatchObject({
+      value: "110",
+      multiplier: "k",
+      unit: "V",
+    })
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      severity: "warning",
+      stage: "parser",
+      code: "parser.duplicate-voltage",
     }))
   })
 })
