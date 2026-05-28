@@ -161,6 +161,29 @@ function openInNewTab() {
 <style scoped>
 .switchgear-list-item {
   position: relative;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-white) 82%, var(--color-neutral-100));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-neutral-200) 72%, transparent);
+  color: var(--color-neutral-700);
+}
+
+.switchgear-list-item.sidebar-list-item:not(.is-active):hover {
+  background: color-mix(in srgb, var(--color-white) 72%, var(--color-neutral-100));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-neutral-300) 82%, transparent);
+  color: var(--color-neutral-900);
+}
+
+.switchgear-list-item.sidebar-list-item.is-active {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-blue-100) 52%, var(--color-white)),
+      color-mix(in srgb, var(--color-white) 84%, var(--color-blue-100))
+    );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-blue-500) 34%, var(--color-neutral-200)),
+    0 8px 18px color-mix(in srgb, var(--color-blue-500) 8%, transparent);
+  color: var(--color-neutral-900);
 }
 
 .switchgear-list-item__title {
@@ -178,11 +201,54 @@ function openInNewTab() {
   transform: translateY(-50%);
 }
 
+.switchgear-list-item.sidebar-list-item:not(.is-active) :deep(.sidebar-list-item__indicator) {
+  background: color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
+}
+
 .switchgear-list-item__menu-item {
   color: var(--color-neutral-900);
 }
 
 :global(.dark .switchgear-list-item__menu-item) {
   color: var(--color-neutral-200);
+}
+
+:global(.dark) .switchgear-list-item.sidebar-list-item {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-neutral-900) 86%, var(--color-neutral-800)),
+      color-mix(in srgb, var(--color-neutral-950) 82%, var(--color-neutral-800))
+    );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-neutral-700) 58%, transparent);
+  color: var(--color-neutral-200);
+}
+
+:global(.dark) .switchgear-list-item.sidebar-list-item:not(.is-active):hover {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-neutral-800) 54%, var(--color-neutral-900)),
+      color-mix(in srgb, var(--color-neutral-900) 90%, var(--color-neutral-800))
+    );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-blue-400) 20%, var(--color-neutral-700));
+  color: var(--color-neutral-50);
+}
+
+:global(.dark) .switchgear-list-item.sidebar-list-item.is-active {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-blue-500) 20%, var(--color-neutral-900)),
+      color-mix(in srgb, var(--color-blue-900) 18%, var(--color-neutral-950))
+    );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-blue-400) 40%, var(--color-neutral-700)),
+    0 10px 22px color-mix(in srgb, var(--color-blue-900) 20%, transparent);
+  color: var(--color-white);
+}
+
+:global(.dark) .switchgear-list-item.sidebar-list-item:not(.is-active) :deep(.sidebar-list-item__indicator) {
+  background: color-mix(in srgb, var(--color-neutral-700) 78%, transparent);
 }
 </style>
