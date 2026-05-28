@@ -148,6 +148,31 @@ describe("switchgear SLD import adapter", () => {
       x2: 1216,
       y2: 1072,
     }))
+    expect(adapted.diagram.textElements).toContainEqual(expect.objectContaining({
+      id: expect.stringContaining("sld-import-feeder-label"),
+      text: "BAY1",
+      x: 1260,
+      y: 1054,
+    }))
+    expect(adapted.diagram.textElements).not.toContainEqual(expect.objectContaining({
+      text: "FEEDER",
+    }))
+    expect(adapted.diagram.staticElements).toContainEqual(expect.objectContaining({
+      id: expect.stringContaining("sld-import-static-ground"),
+      kind: "ground",
+      size: "sm",
+      x: 1096,
+      y: 1360,
+      rotation: 180,
+    }))
+    expect(adapted.diagram.edges).toContainEqual(expect.objectContaining({
+      id: expect.stringContaining("sld-import-ground-connection"),
+      x1: 1144,
+      y1: 1360,
+      x2: 1108,
+      y2: 1360,
+      kind: "line",
+    }))
     expect(adapted.switchgearCandidates).toContainEqual(expect.objectContaining({
       label: "QE1",
       switchgearType: "earthing",

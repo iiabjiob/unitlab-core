@@ -56,8 +56,18 @@ const DEFAULT_STAGE_PADDING = 50000
 const DEFAULT_BUSBAR_WIDTH = 144
 const DEFAULT_BUSBAR_HEIGHT = 24
 const LABEL_OFFSET_Y = 32
+const FEEDER_EXIT_LABEL_OFFSET_X = 44
+const FEEDER_EXIT_LABEL_OFFSET_Y = -18
+const GROUND_TERMINATOR_OFFSET = 48
+const GROUND_TERMINATOR_CONNECTOR_OFFSET = 12
 const DEFAULT_TEXT_SIZE = "md" as const
 const DEFAULT_STATIC_SIZE = "md" as const
+const GROUND_TERMINATOR_STATIC_SIZE = "sm" as const
+
+type PositionedSldElement = {
+  element: SldElement
+  position: SldRoutePoint
+}
 
 export function adaptSldDocumentToSwitchgearDiagram(
   document: SldDocument,
@@ -69,6 +79,7 @@ export function adaptSldDocumentToSwitchgearDiagram(
   const edges: DiagramEdge[] = []
   const staticElements: DiagramStaticElement[] = []
   const textElements: DiagramTextElement[] = []
+  const positionedElements: PositionedSldElement[] = []
   const textElementSourceIds = new Set<string>()
   const elementsBySourceId = new Map(document.elements.map(element => [element.sourceId, element]))
 
@@ -78,6 +89,7 @@ export function adaptSldDocumentToSwitchgearDiagram(
       diagnostics.push(missingPositionDiagnostic(element))
       continue
     }
+    positionedElements.push({ element, position })
 
     if (element.visual.representation === "busbar") {
       edges.push(buildBusbarEdge(element, position))
@@ -113,14 +125,10 @@ export function adaptSldDocumentToSwitchgearDiagram(
     }
 
     textElementSourceIds.add(element.sourceId)
-    textElements.push({
-      id: buildElementId("text", element),
-      text: fallbackElementText(element),
-      size: DEFAULT_TEXT_SIZE,
-      x: position.x,
-      y: position.y,
-    })
+    textElements.push(buildElementTextElement(element, position))
   }
+
+  appendGroundedDisconnectorTerminators(positionedElements, edges, staticElements)
 
   for (const connection of document.connections) {
     edges.push(...buildConnectionEdges(connection, stagePadding, elementsBySourceId))
@@ -302,6 +310,94 @@ function switchgearTypeForElement(element: SldElement): SwitchgearSldImportCandi
     return "switchgear"
   }
   return element.grounded ? "earthing" : "disconnector"
+}
+
+function appendGroundedDisconnectorTerminators(
+  positionedElements: PositionedSldElement[],
+  edges: DiagramEdge[],
+  staticElements: DiagramStaticElement[],
+) {
+  const positionedByBay = groupPositionedElementsByBay(positionedElements)
+
+  for (const item of positionedElements) {
+    if (item.element.kind !== "disconnector" || !item.element.grounded) {
+      continue
+    }
+
+    const direction = resolveGroundTerminatorDirection(item, positionedByBay)
+    const groundX = item.position.x + direction * GROUND_TERMINATOR_OFFSET
+    const groundY = item.position.y
+    edges.push({
+      id: `sld-import-ground-connection:${sanitizeId(item.element.sourceId)}`,
+      x1: item.position.x,
+      y1: item.position.y,
+      x2: groundX - direction * GROUND_TERMINATOR_CONNECTOR_OFFSET,
+      y2: groundY,
+      kind: "line",
+      weight: "normal",
+      startBinding: null,
+      endBinding: null,
+    })
+    staticElements.push({
+      id: `sld-import-static-ground:${sanitizeId(item.element.sourceId)}`,
+      kind: "ground",
+      size: GROUND_TERMINATOR_STATIC_SIZE,
+      x: groundX,
+      y: groundY,
+      rotation: direction > 0 ? 0 : 180,
+    })
+  }
+}
+
+function groupPositionedElementsByBay(positionedElements: PositionedSldElement[]): Map<string, PositionedSldElement[]> {
+  const groups = new Map<string, PositionedSldElement[]>()
+  for (const item of positionedElements) {
+    const key = item.element.bayName?.trim()
+    if (!key) {
+      continue
+    }
+    groups.set(key, [...(groups.get(key) ?? []), item])
+  }
+  return groups
+}
+
+function resolveGroundTerminatorDirection(
+  item: PositionedSldElement,
+  positionedByBay: Map<string, PositionedSldElement[]>,
+): 1 | -1 {
+  const bayItems = item.element.bayName
+    ? positionedByBay.get(item.element.bayName.trim()) ?? []
+    : []
+  const peerPositions = bayItems
+    .filter(candidate => candidate.element.sourceId !== item.element.sourceId)
+    .map(candidate => candidate.position.x)
+
+  if (peerPositions.length === 0) {
+    return 1
+  }
+
+  const averageX = peerPositions.reduce((sum, value) => sum + value, 0) / peerPositions.length
+  return item.position.x < averageX ? -1 : 1
+}
+
+function buildElementTextElement(element: SldElement, position: SldRoutePoint): DiagramTextElement {
+  if (element.kind === "feeder") {
+    return {
+      id: buildElementId("feeder-label", element),
+      text: element.bayName?.trim() || element.label,
+      size: DEFAULT_TEXT_SIZE,
+      x: position.x + FEEDER_EXIT_LABEL_OFFSET_X,
+      y: position.y + FEEDER_EXIT_LABEL_OFFSET_Y,
+    }
+  }
+
+  return {
+    id: buildElementId("text", element),
+    text: fallbackElementText(element),
+    size: DEFAULT_TEXT_SIZE,
+    x: position.x,
+    y: position.y,
+  }
 }
 
 function fallbackElementText(element: SldElement): string {
