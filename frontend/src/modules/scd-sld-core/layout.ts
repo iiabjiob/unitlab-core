@@ -70,6 +70,7 @@ export function layoutSldDocument(
     connections: [
       ...routedConnections,
       ...buildFeederTemplateBridgeConnections(cellModel, routedConnections, elementPositionsBySourceId, gridSize),
+      ...buildFeederTemplateGroundConnections(cellModel, routedConnections, elementPositionsBySourceId),
     ],
     labels: elements.map(element => ({
       id: `${element.id}/label`,
@@ -471,6 +472,117 @@ function buildFeederTemplateBridgeConnections(
   return connections
 }
 
+function buildFeederTemplateGroundConnections(
+  cellModel: SldCellModel,
+  existingConnections: SldConnection[],
+  positionsBySourceId: Map<string, SldRoutePoint>,
+): SldConnection[] {
+  const connections: SldConnection[] = []
+
+  for (const lane of cellModel.voltageLevels) {
+    for (const bayCell of lane.bayCells) {
+      if (!shouldUseFeederTemplate(bayCell)) {
+        continue
+      }
+
+      const busSelectorNodes = bayCell.nodes
+        .filter(node => node.role === "switchgear" && node.kind === "disconnector" && !node.grounded && node.busbarConnected)
+        .sort(compareCellNodesByPosition(positionsBySourceId, "x-then-y"))
+      const centralNodes = bayCell.nodes
+        .filter(node => node.role === "switchgear" && !node.grounded && !node.busbarConnected)
+        .sort(compareCellNodesByPosition(positionsBySourceId, "y-then-x"))
+      const centerX = resolveCellCenterX(bayCell, positionsBySourceId)
+
+      for (const groundNode of bayCell.nodes.filter(node => node.kind === "disconnector" && node.grounded)) {
+        if (hasRoutedSegment(existingConnections, groundNode.sourceId)) {
+          continue
+        }
+
+        const groundPoint = positionsBySourceId.get(groundNode.sourceId)
+        if (!groundPoint) {
+          continue
+        }
+
+        const targetPoint = groundNode.busbarConnected
+          ? resolveNearestPointOnSameSide(groundPoint, busSelectorNodes, positionsBySourceId)
+          : resolveSideGroundConnectionPoint(groundPoint, centerX, centralNodes, positionsBySourceId)
+        if (!targetPoint) {
+          continue
+        }
+
+        const points = uniqueConsecutivePoints([targetPoint, groundPoint])
+        if (points.length < 2) {
+          continue
+        }
+
+        connections.push({
+          id: `connection:feeder-template-ground:${sanitizeId(groundNode.sourceId)}`,
+          kind: "connectivity-node",
+          junctionId: `junction:feeder-template-ground:${sanitizeId(groundNode.sourceId)}`,
+          sourceConnectivityNode: `feeder-template-ground:${groundNode.label}`,
+          portIds: [],
+          terminalOwnerIds: [groundNode.sourceId],
+          route: {
+            kind: "orthogonal-star",
+            anchor: targetPoint,
+            segments: [{
+              terminalOwnerId: groundNode.sourceId,
+              points,
+            }],
+          },
+        })
+      }
+    }
+  }
+
+  return connections
+}
+
+function resolveCellCenterX(
+  bayCell: SldBayCell,
+  positionsBySourceId: Map<string, SldRoutePoint>,
+): number | null {
+  const centerNode = bayCell.nodes
+    .filter(node => !node.grounded && !node.busbarConnected && (node.role === "switchgear" || node.role === "feeder"))
+    .map(node => positionsBySourceId.get(node.sourceId))
+    .find((point): point is SldRoutePoint => point !== undefined)
+  if (centerNode) {
+    return centerNode.x
+  }
+
+  const anyNode = bayCell.nodes
+    .map(node => positionsBySourceId.get(node.sourceId))
+    .find((point): point is SldRoutePoint => point !== undefined)
+  return anyNode?.x ?? null
+}
+
+function resolveNearestPointOnSameSide(
+  point: SldRoutePoint,
+  nodes: SldCellNode[],
+  positionsBySourceId: Map<string, SldRoutePoint>,
+): SldRoutePoint | null {
+  const nearest = nodes
+    .map(node => positionsBySourceId.get(node.sourceId))
+    .filter((candidate): candidate is SldRoutePoint => candidate !== undefined)
+    .sort((left, right) => Math.abs(left.x - point.x) - Math.abs(right.x - point.x))[0]
+  return nearest ? { x: nearest.x, y: point.y } : null
+}
+
+function resolveSideGroundConnectionPoint(
+  groundPoint: SldRoutePoint,
+  centerX: number | null,
+  centralNodes: SldCellNode[],
+  positionsBySourceId: Map<string, SldRoutePoint>,
+): SldRoutePoint | null {
+  if (centerX !== null) {
+    return { x: centerX, y: groundPoint.y }
+  }
+
+  return centralNodes
+    .map(node => positionsBySourceId.get(node.sourceId))
+    .find((point): point is SldRoutePoint => point !== undefined) ?? null
+}
+
 function hasExistingConnectionBetween(
   connections: SldConnection[],
   sourceId: string,
@@ -481,6 +593,12 @@ function hasExistingConnectionBetween(
     connection.terminalOwnerIds.includes(sourceId)
     && connection.terminalOwnerIds.some(targetId => targets.has(targetId))
   ))
+}
+
+function hasRoutedSegment(connections: SldConnection[], sourceId: string): boolean {
+  return connections.some(connection => connection.route?.segments.some(segment => (
+    segment.terminalOwnerId === sourceId && segment.points.length > 1
+  )))
 }
 
 function compareCellNodesByPosition(
@@ -521,7 +639,10 @@ function buildConnectionRoute(
 
   const busbarEndpoint = endpointPositions.find(item => item.element?.visual.representation === "busbar")
   if (busbarEndpoint) {
-    const nonBusbarEndpoints = endpointPositions.filter(item => item.terminalOwnerId !== busbarEndpoint.terminalOwnerId)
+    const nonBusbarEndpoints = endpointPositions.filter(item => (
+      item.terminalOwnerId !== busbarEndpoint.terminalOwnerId
+      && !isGroundedDisconnectorElement(item.element)
+    ))
     if (nonBusbarEndpoints.length > 0) {
       return {
         kind: "orthogonal-star",
@@ -554,6 +675,10 @@ function buildConnectionRoute(
       ]),
     })),
   }
+}
+
+function isGroundedDisconnectorElement(element: SldElement | null): boolean {
+  return element?.kind === "disconnector" && element.grounded
 }
 
 function buildEndpointRoutePoints(

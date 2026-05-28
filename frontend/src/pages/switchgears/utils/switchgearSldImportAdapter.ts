@@ -370,14 +370,19 @@ function resolveGroundTerminatorDirection(
     : []
   const peerPositions = bayItems
     .filter(candidate => candidate.element.sourceId !== item.element.sourceId)
-    .map(candidate => candidate.position.x)
+    .map(candidate => candidate.position)
+    .sort((left, right) => distanceSquared(left, item.position) - distanceSquared(right, item.position))
 
   if (peerPositions.length === 0) {
     return 1
   }
 
-  const averageX = peerPositions.reduce((sum, value) => sum + value, 0) / peerPositions.length
-  return item.position.x < averageX ? -1 : 1
+  const nearest = peerPositions[0]!
+  return nearest.x <= item.position.x ? 1 : -1
+}
+
+function distanceSquared(left: SldRoutePoint, right: SldRoutePoint): number {
+  return (left.x - right.x) ** 2 + (left.y - right.y) ** 2
 }
 
 function buildElementTextElement(element: SldElement, position: SldRoutePoint): DiagramTextElement {

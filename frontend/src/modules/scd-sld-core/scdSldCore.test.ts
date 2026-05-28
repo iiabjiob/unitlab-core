@@ -532,7 +532,19 @@ describe("scd-sld-core", () => {
       { x: 216, y: 120 },
       { x: 216, y: 72 },
     ])
-    expect(result.document.connections.some(connection => connection.sourceConnectivityNode.includes("ground"))).toBe(false)
+    expect(result.document.connections).toContainEqual(expect.objectContaining({
+      sourceConnectivityNode: "feeder-template-ground:QBE1",
+      route: expect.objectContaining({
+        segments: [
+          expect.objectContaining({
+            points: [
+              { x: 96, y: 312 },
+              { x: 168, y: 312 },
+            ],
+          }),
+        ],
+      }),
+    }))
   })
 
   it("keeps bus selector disconnectors on the lower branch and bridges incomplete feeder topology", () => {
