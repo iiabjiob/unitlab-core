@@ -187,6 +187,8 @@ function openInNewTab() {
 }
 
 .switchgear-list-item__title {
+  display: block;
+  min-width: 0;
   overflow: hidden;
   font-size: var(--text-sm);
   font-weight: 500;
@@ -195,10 +197,11 @@ function openInNewTab() {
 }
 
 .switchgear-list-item__position {
-  position: absolute;
-  top: 50%;
-  right: 0.75rem;
-  transform: translateY(-50%);
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 1.5rem;
+  align-items: center;
+  justify-content: center;
 }
 
 .switchgear-list-item.sidebar-list-item:not(.is-active) :deep(.sidebar-list-item__indicator) {

@@ -44,7 +44,8 @@
                   class="app-menu__entry-content"
                   :class="compact ? 'app-menu__entry-content--compact' : 'app-menu__entry-content--full'"
                 >
-                  <span v-if="!compact">{{ item.label }}</span>
+                  <AppMenuIcon v-if="compact" :name="item.icon" class="app-menu__entry-icon" />
+                  <span v-else>{{ item.label }}</span>
                 </span>
               </a>
             </RouterLink>
@@ -85,7 +86,8 @@
                   class="app-menu__entry-content"
                   :class="compact ? 'app-menu__entry-content--compact' : 'app-menu__entry-content--full'"
                 >
-                  <span v-if="!compact">{{ child.label }}</span>
+                  <AppMenuIcon v-if="compact" :name="child.icon" class="app-menu__entry-icon" />
+                  <span v-else>{{ child.label }}</span>
                 </span>
               </a>
             </template>
@@ -100,6 +102,7 @@
 import { computed, nextTick, ref, watch } from "vue"
 import { RouterLink, useRoute, useRouter } from "vue-router"
 import UiHoverTooltip from "@/components/ui/UiHoverTooltip.vue"
+import AppMenuIcon, { type AppMenuIconName } from "./AppMenuIcon.vue"
 
 const props = withDefaults(defineProps<{
   compact?: boolean
@@ -112,6 +115,7 @@ const props = withDefaults(defineProps<{
 type MenuItem = {
   to: string
   label: string
+  icon: AppMenuIconName
   children?: MenuItem[]
 }
 
@@ -123,19 +127,19 @@ type MenuSection = {
 const baseSections: MenuSection[] = [
   {
     title: "HARDWARE",
-    items: [{ to: "/devices", label: "Devices" }],
+    items: [{ to: "/devices", label: "Devices", icon: "devices" }],
   },
   {
     title: "DESIGN",
     items: [
-      { to: "/signals", label: "Signals" },
-      { to: "/switchgears", label: "Switchgears" },
+      { to: "/signals", label: "Signals", icon: "signals" },
+      { to: "/switchgears", label: "Switchgears", icon: "switchgears" },
     ],
   },
   {
     title: "RUN",
     items: [
-      { to: "/sequences", label: "Sequences" },
+      { to: "/sequences", label: "Sequences", icon: "sequences" },
     ],
   },
 ]
@@ -146,7 +150,7 @@ const sections = computed<MenuSection[]>(() => {
       ...baseSections,
       {
         title: "SETTINGS",
-        items: [{ to: "/settings", label: "Settings" }],
+        items: [{ to: "/settings", label: "Settings", icon: "settings" }],
       },
     ]
   }
@@ -406,9 +410,10 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 .app-menu__entry-icon {
+  width: 1.25rem;
+  height: 1.25rem;
   flex-shrink: 0;
-  font-size: 1.5rem;
-  line-height: 1;
+  opacity: 0.88;
 }
 
 .app-menu__entry.is-compact {
