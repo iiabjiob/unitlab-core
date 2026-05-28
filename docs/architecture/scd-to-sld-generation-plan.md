@@ -400,8 +400,10 @@ Implemented 2026-05-28:
 - Voltage-level labels in the graph derive from standard `Voltage` value, `multiplier`, and `unit` when present.
 - Connectivity nodes now expose a canonical normalized path.
 - Terminal references now resolve to declared connectivity node IDs when possible, including the standard `cNodeName` + hierarchy attribute form.
+- Terminal references now fall back to scoped `cNodeName` and unambiguous copied-bay alias lookup when vendor files provide a terminal path that differs from the declared `ConnectivityNode.pathName`.
 - Undeclared terminal connectivity references are preserved with `normalizer.unresolved-connectivity-node` diagnostics.
 - Duplicate normalized IDs within the same parent scope now get deterministic `__N` suffixes with `normalizer.duplicate-normalized-id` diagnostics.
+- Duplicate connectivity-node path collapse is classified as informational normalization metadata rather than an operator warning.
 
 ### Slice 5 - Electrical Graph Builder
 
@@ -554,6 +556,7 @@ Implemented 2026-05-28:
 - Breaker/disconnector candidates are shown as explicit review items.
 - Missing candidates can now be created as UnitLab switchgear records only when the operator enables that action; records are created without bindings and placed at generated coordinates.
 - Existing switchgear records with matching name and type are reused in the review list rather than duplicated.
+- The import modal now shows actionable diagnostics only and keeps scrolling inside candidate/diagnostic lists rather than the full modal body.
 
 ### Slice 9 - Persistence and Regeneration
 

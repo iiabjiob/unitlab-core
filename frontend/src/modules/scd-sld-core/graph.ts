@@ -161,7 +161,7 @@ function dedupeJunctions(
     }
 
     diagnostics.push({
-      severity: "warning",
+      severity: "info",
       stage: "graph",
       code: "graph.duplicate-connectivity-node",
       message: `Duplicate connectivity node "${junction.pathName}" was collapsed into one graph junction.`,

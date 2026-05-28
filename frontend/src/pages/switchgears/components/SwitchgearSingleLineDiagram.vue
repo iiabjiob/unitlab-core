@@ -52,12 +52,13 @@ import type {
 type DiagramPortOwnerType = DiagramBindablePortOwnerType | "line"
 
 type ScdImportPreviewDiagnostic = Pick<ScdDiagnostic, "severity" | "code" | "message" | "sourceId" | "sourcePath">
+type ScdImportDiagnostic = ScdImportPreviewDiagnostic | SwitchgearSldImportAdapterDiagnostic
 
 type ScdImportPreview = {
   fileName: string
   sourceHash: string
   adapterResult: SwitchgearSldImportAdapterResult
-  diagnostics: Array<ScdImportPreviewDiagnostic | SwitchgearSldImportAdapterDiagnostic>
+  diagnostics: ScdImportDiagnostic[]
 }
 
 type DiagramLabelOffset = {
@@ -382,12 +383,13 @@ const scdImportSummary = computed(() => {
     return null
   }
   const diagram = preview.adapterResult.diagram
+  const visibleDiagnostics = scdImportVisibleDiagnostics.value
   return {
     lines: diagram.edges?.length ?? diagram.lines?.length ?? 0,
     symbols: diagram.staticElements?.length ?? 0,
     texts: diagram.textElements?.length ?? 0,
     candidates: preview.adapterResult.switchgearCandidates.length,
-    diagnostics: preview.diagnostics.length,
+    diagnostics: visibleDiagnostics.length,
     blockingErrors: preview.diagnostics.filter(item => item.severity === "error").length,
   }
 })
@@ -414,6 +416,12 @@ const scdImportApplyLabel = computed(() => (
     ? "Apply overlay and create records"
     : "Apply overlay"
 ))
+const scdImportVisibleDiagnostics = computed(() => {
+  const preview = scdImportPreview.value
+  return preview
+    ? preview.diagnostics.filter(isActionableScdImportDiagnostic)
+    : []
+})
 const activeToolLabel = computed(() => {
   if (interactionTool.value === "line") {
     return "Draw line"
@@ -1614,6 +1622,25 @@ function normalizeStoredDiagramState(value: unknown): StoredDiagramState | null 
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as StoredDiagramState
     : null
+}
+
+function isActionableScdImportDiagnostic(diagnostic: ScdImportDiagnostic): boolean {
+  if (diagnostic.severity === "info") {
+    return false
+  }
+  if (
+    diagnostic.code === "normalizer.duplicate-connectivity-node"
+    || diagnostic.code === "graph.duplicate-connectivity-node"
+  ) {
+    return false
+  }
+  if (
+    diagnostic.code === "normalizer.duplicate-normalized-id"
+    && (diagnostic.sourceId?.includes("/bay/") || diagnostic.message.includes("/bay/"))
+  ) {
+    return false
+  }
+  return true
 }
 
 function openScdFileDialog() {
@@ -4562,6 +4589,8 @@ onBeforeUnmount(() => {
       :open="scdImportModalOpen"
       title="Import SCD"
       max-width="3xl"
+      desktop-height="min(44rem, 80vh)"
+      :content-scroll="false"
       @close="closeScdImportPreview"
     >
       <div class="switchgear-sld__import-review">
@@ -4647,7 +4676,7 @@ onBeforeUnmount(() => {
           </div>
 
           <div
-            v-if="scdImportPreview.diagnostics.length > 0"
+            v-if="scdImportVisibleDiagnostics.length > 0"
             class="switchgear-sld__import-diagnostics"
           >
             <p class="switchgear-sld__import-section-title">
@@ -4655,7 +4684,7 @@ onBeforeUnmount(() => {
             </p>
             <ul class="switchgear-sld__import-diagnostic-list">
               <li
-                v-for="diagnostic in scdImportPreview.diagnostics.slice(0, 8)"
+                v-for="diagnostic in scdImportVisibleDiagnostics.slice(0, 8)"
                 :key="`${diagnostic.severity}:${diagnostic.code}:${diagnostic.sourceId ?? diagnostic.sourcePath ?? diagnostic.message}`"
                 class="switchgear-sld__import-diagnostic"
                 :class="`switchgear-sld__import-diagnostic--${diagnostic.severity}`"
@@ -4668,10 +4697,10 @@ onBeforeUnmount(() => {
               </li>
             </ul>
             <p
-              v-if="scdImportPreview.diagnostics.length > 8"
+              v-if="scdImportVisibleDiagnostics.length > 8"
               class="switchgear-sld__import-muted"
             >
-              {{ scdImportPreview.diagnostics.length - 8 }} more diagnostics hidden in this preview.
+              {{ scdImportVisibleDiagnostics.length - 8 }} more diagnostics hidden in this preview.
             </p>
           </div>
         </template>
@@ -4891,7 +4920,10 @@ onBeforeUnmount(() => {
 
 .switchgear-sld__import-review {
   display: grid;
+  height: 100%;
   gap: 1rem;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .switchgear-sld__import-state,
@@ -5025,7 +5057,7 @@ onBeforeUnmount(() => {
 
 .switchgear-sld__import-candidate-list {
   display: grid;
-  max-height: 14rem;
+  max-height: 10rem;
   gap: 0.5rem;
   overflow: auto;
   padding: 0;
@@ -5081,7 +5113,7 @@ onBeforeUnmount(() => {
 
 .switchgear-sld__import-diagnostic-list {
   display: grid;
-  max-height: 16rem;
+  max-height: 12rem;
   gap: 0.5rem;
   overflow: auto;
   padding: 0;

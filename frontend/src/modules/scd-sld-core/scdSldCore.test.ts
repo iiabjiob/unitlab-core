@@ -405,6 +405,67 @@ describe("scd-sld-core", () => {
     }))
   })
 
+  it("falls back to scoped cNodeName when a terminal path differs from the declared node pathName", () => {
+    const result = generateSldFromScd({
+      fileName: "scoped-cnode-fallback.scd",
+      contentHash: "scoped-cnode-fallback",
+      xmlText: `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <Substation name="SS1">
+    <VoltageLevel name="VL1">
+      <Bay name="TR1">
+        <ConductingEquipment name="Q01" type="CBR">
+          <Terminal bayName="TR1" cNodeName="CN_REMOTE" connectivityNode="SS1/VL1/TR1/CN_REMOTE" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConnectivityNode name="CN_REMOTE" pathName="SS1/REMOTE/CN_REMOTE"/>
+      </Bay>
+    </VoltageLevel>
+  </Substation>
+</SCL>`,
+    })
+
+    const terminal = result.model.substations[0]?.voltageLevels[0]?.bays[0]?.equipments[0]?.terminals[0]
+    expect(terminal).toMatchObject({
+      resolvedConnectivityNodeId: "substation/SS1/voltageLevel/VL1/bay/TR1/connectivityNode/CN_REMOTE",
+      resolvedConnectivityNodePath: "SS1/REMOTE/CN_REMOTE",
+    })
+    expect(result.graph.edges).toContainEqual(expect.objectContaining({
+      sourceConnectivityNode: "SS1/REMOTE/CN_REMOTE",
+    }))
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      code: "normalizer.unresolved-connectivity-node",
+    }))
+  })
+
+  it("resolves copied bay terminal aliases when the target connectivity node is unambiguous", () => {
+    const result = generateSldFromScd({
+      fileName: "copied-bay-alias.scd",
+      contentHash: "copied-bay-alias",
+      xmlText: `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <Substation name="SS1">
+    <PowerTransformer name="TR1" type="PTR">
+      <Terminal connectivityNode="SS1/Copy_1_TR1/CN_REMOTE" name="TW"/>
+    </PowerTransformer>
+    <VoltageLevel name="VL1">
+      <Bay name="TR1">
+        <ConnectivityNode name="CN_REMOTE" pathName="SS1/ALT/CN_REMOTE"/>
+      </Bay>
+    </VoltageLevel>
+  </Substation>
+</SCL>`,
+    })
+
+    const terminal = result.model.substations[0]?.powerTransformers[0]?.terminals[0]
+    expect(terminal).toMatchObject({
+      resolvedConnectivityNodeId: "substation/SS1/voltageLevel/VL1/bay/TR1/connectivityNode/CN_REMOTE",
+      resolvedConnectivityNodePath: "SS1/ALT/CN_REMOTE",
+    })
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      code: "normalizer.unresolved-connectivity-node",
+    }))
+  })
+
   it("reports terminal references to undeclared connectivity nodes", () => {
     const result = generateSldFromScd({
       fileName: "undeclared-cnode.scd",

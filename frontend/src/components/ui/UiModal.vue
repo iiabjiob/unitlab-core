@@ -31,7 +31,7 @@
                 <span class="ui-modal__title">{{ title }}</span>
               </slot>
             </div>
-            <div ref="contentRef" class="ui-modal__content">
+            <div ref="contentRef" :class="contentClasses">
               <slot />
             </div>
             <div class="ui-modal__footer">
@@ -58,6 +58,7 @@ const props = defineProps<{
   title?: string
   maxWidth?: ModalMaxWidth
   desktopHeight?: string
+  contentScroll?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -127,6 +128,10 @@ const headerClasses = computed(() => (
     ? "ui-modal__header ui-modal__header--mobile"
     : "ui-modal__header ui-modal__header--desktop"
 ))
+const contentClasses = computed(() => [
+  "ui-modal__content",
+  props.contentScroll === false ? "ui-modal__content--no-scroll" : null,
+])
 
 function resolveDesktopDialogStyles(maxWidth?: ModalMaxWidth, desktopHeight?: string): Record<string, string> {
   const styles: Record<string, string> = {
@@ -364,8 +369,13 @@ onBeforeUnmount(() => {
 
 .ui-modal__content {
   flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 1rem 1.5rem;
+}
+
+.ui-modal__content--no-scroll {
+  overflow: hidden;
 }
 
 .ui-modal__footer {
