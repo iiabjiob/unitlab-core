@@ -376,11 +376,13 @@ async function toggleRun() {
 }
 
 .sequence-run-controls__action {
+  width: 100%;
   min-width: 0;
 }
 
 .sequence-run-controls__run-button {
   width: 100%;
+  min-width: 11rem;
   justify-content: center;
   gap: 0.5rem;
 }
@@ -498,8 +500,7 @@ async function toggleRun() {
   }
 
   .sequence-run-controls__run-button {
-    width: auto;
-    min-width: 150px;
+    width: 11rem;
   }
 
   .sequence-run-controls__status {

@@ -162,8 +162,8 @@ function openInNewTab() {
 .switchgear-list-item {
   position: relative;
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-white) 82%, var(--color-neutral-100));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-neutral-200) 72%, transparent);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px transparent;
   color: var(--color-neutral-700);
 }
 
@@ -217,13 +217,8 @@ function openInNewTab() {
 }
 
 :global(.dark) .switchgear-list-item.sidebar-list-item {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--color-neutral-900) 86%, var(--color-neutral-800)),
-      color-mix(in srgb, var(--color-neutral-950) 82%, var(--color-neutral-800))
-    );
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-neutral-700) 58%, transparent);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px transparent;
   color: var(--color-neutral-200);
 }
 

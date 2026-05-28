@@ -135,10 +135,11 @@ function parseLegacyBooleanFlag(raw: string): boolean {
   display: flex;
   height: 100%;
   flex-direction: column;
+  gap: 0.75rem;
 }
 
 .device-list-sidebar__filter {
-  margin-bottom: 0.5rem;
+  display: flex;
 }
 
 .device-list-sidebar__checkbox-label {
@@ -146,8 +147,13 @@ function parseLegacyBooleanFlag(raw: string): boolean {
   user-select: none;
   align-items: center;
   gap: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 64%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-white) 76%, var(--color-neutral-100));
   color: var(--color-neutral-700);
   font-size: var(--text-xs);
+  font-weight: 600;
 }
 
 .device-list-sidebar__checkbox {
@@ -158,15 +164,17 @@ function parseLegacyBooleanFlag(raw: string): boolean {
 }
 
 .device-list-sidebar__search {
-  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-neutral-200) 76%, transparent);
 }
 
 .device-list-sidebar__input {
   width: 100%;
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--color-neutral-300);
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 72%, transparent);
   border-radius: var(--radius-md);
-  background: var(--color-white);
+  background: color-mix(in srgb, var(--color-white) 84%, var(--color-neutral-100));
+  box-shadow: inset 0 1px 2px rgb(15 23 42 / 0.04);
   color: var(--color-neutral-900);
   font-size: var(--text-sm);
   outline: none;
@@ -177,7 +185,8 @@ function parseLegacyBooleanFlag(raw: string): boolean {
 }
 
 .device-list-sidebar__input:focus {
-  border-color: var(--color-neutral-500);
+  border-color: color-mix(in srgb, var(--runtime-accent) 46%, var(--color-neutral-400));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--runtime-accent) 16%, transparent);
 }
 
 .device-list-sidebar__list {
@@ -194,13 +203,24 @@ function parseLegacyBooleanFlag(raw: string): boolean {
 }
 
 :global(.dark .device-list-sidebar__checkbox-label) {
+  border-color: color-mix(in srgb, var(--color-neutral-700) 72%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-950) 72%, var(--color-neutral-900));
   color: var(--color-neutral-300);
 }
 
+:global(.dark .device-list-sidebar__search) {
+  border-bottom-color: color-mix(in srgb, var(--color-neutral-800) 82%, transparent);
+}
+
 :global(.dark .device-list-sidebar__input) {
-  border-color: var(--color-neutral-700);
-  background: var(--color-neutral-950);
+  border-color: color-mix(in srgb, var(--color-neutral-700) 78%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-950) 72%, var(--color-neutral-900));
   color: var(--color-neutral-100);
+}
+
+:global(.dark .device-list-sidebar__input:focus) {
+  border-color: color-mix(in srgb, var(--runtime-accent) 40%, var(--color-neutral-600));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--runtime-accent) 18%, transparent);
 }
 
 :global(.dark .device-list-sidebar__empty) {

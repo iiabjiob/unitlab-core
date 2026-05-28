@@ -130,11 +130,21 @@ function handleSelect(id: string | number) {
   display: flex;
   height: 100%;
   flex-direction: column;
+  gap: 0.75rem;
 }
 
-.switchgear-list-sidebar__header,
+.switchgear-list-sidebar__header {
+  padding: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--runtime-accent) 16%, var(--color-neutral-200));
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--runtime-accent) 8%, var(--color-white)), color-mix(in srgb, var(--color-white) 88%, var(--color-neutral-100)));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.78);
+}
+
 .switchgear-list-sidebar__search {
-  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-neutral-200) 76%, transparent);
 }
 
 .switchgear-list-sidebar__workspace-hint {
@@ -148,12 +158,18 @@ function handleSelect(id: string | number) {
 .switchgear-list-sidebar__search-input {
   width: 100%;
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--color-neutral-300);
-  border-radius: 0.5rem;
-  background: var(--color-white);
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 72%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-white) 84%, var(--color-neutral-100));
+  box-shadow: inset 0 1px 2px rgb(15 23 42 / 0.04);
   color: var(--color-neutral-900);
   font-size: var(--text-sm);
   outline: none;
+}
+
+.switchgear-list-sidebar__search-input:focus {
+  border-color: color-mix(in srgb, var(--runtime-accent) 46%, var(--color-neutral-400));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--runtime-accent) 16%, transparent);
 }
 
 .switchgear-list-sidebar__search-input::placeholder {
@@ -187,10 +203,26 @@ function handleSelect(id: string | number) {
   color: var(--color-neutral-400);
 }
 
+:global(.dark .switchgear-list-sidebar__header) {
+  border-color: color-mix(in srgb, var(--runtime-accent) 20%, var(--color-neutral-800));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--runtime-accent) 10%, var(--color-neutral-900)), color-mix(in srgb, var(--color-neutral-950) 88%, var(--color-neutral-900)));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+}
+
+:global(.dark .switchgear-list-sidebar__search) {
+  border-bottom-color: color-mix(in srgb, var(--color-neutral-800) 82%, transparent);
+}
+
 :global(.dark .switchgear-list-sidebar__search-input) {
-  border-color: var(--color-neutral-700);
-  background: var(--color-neutral-950);
+  border-color: color-mix(in srgb, var(--color-neutral-700) 78%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-950) 72%, var(--color-neutral-900));
   color: var(--color-neutral-100);
+}
+
+:global(.dark .switchgear-list-sidebar__search-input:focus) {
+  border-color: color-mix(in srgb, var(--runtime-accent) 40%, var(--color-neutral-600));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--runtime-accent) 18%, transparent);
 }
 
 :global(.dark .switchgear-list-sidebar__empty) {
