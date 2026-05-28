@@ -1421,8 +1421,10 @@ function clearSelection() {
   }
 }
 
-function appendUnique<T>(items: T[], value: T): T[] {
-  return items.includes(value) ? items : [...items, value]
+function toggleSelectionItem<T>(items: T[], value: T): T[] {
+  return items.includes(value)
+    ? items.filter(item => item !== value)
+    : [...items, value]
 }
 
 function effectiveSelectedNodeIds(): number[] {
@@ -1821,7 +1823,12 @@ function handleWindowKeyDown(event: KeyboardEvent) {
 function selectNode(id: number, event?: MouseEvent) {
   closeLineContextMenu()
   if (event?.shiftKey) {
-    selectedNodeIds.value = appendUnique(effectiveSelectedNodeIds(), id)
+    const nextNodeIds = toggleSelectionItem(effectiveSelectedNodeIds(), id)
+    selectedNodeIds.value = nextNodeIds
+    if (selectedNodeId.value === id && !nextNodeIds.includes(id)) {
+      selectionStore.selectSwitchgear(null)
+      void router.push({ name: "switchgears.list" })
+    }
     return
   }
 
@@ -1835,7 +1842,7 @@ function selectNode(id: number, event?: MouseEvent) {
 function selectStaticElement(id: string, event?: MouseEvent) {
   closeLineContextMenu()
   if (event?.shiftKey) {
-    selectedStaticIds.value = appendUnique(effectiveSelectedStaticIds(), id)
+    selectedStaticIds.value = toggleSelectionItem(effectiveSelectedStaticIds(), id)
     return
   }
 
@@ -2649,7 +2656,10 @@ function selectEdge(edgeId: string, event?: MouseEvent) {
   closeLineContextMenu()
   if (event?.shiftKey) {
     selectedEdgeId.value = edgeId
-    selectedEdgeIds.value = appendUnique(effectiveSelectedEdgeIds(), edgeId)
+    selectedEdgeIds.value = toggleSelectionItem(effectiveSelectedEdgeIds(), edgeId)
+    if (!selectedEdgeIds.value.includes(edgeId)) {
+      selectedEdgeId.value = selectedEdgeIds.value[0] ?? null
+    }
     return
   }
 
@@ -2926,14 +2936,6 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </div>
-
-      <div class="switchgear-sld__toolbar-spacer">
-        <SwitchgearControlToolbar
-          v-if="singleSelectedSwitchgear"
-          :switchgear="singleSelectedSwitchgear"
-          compact
-        />
-      </div>
     </div>
 
     <WorkspacePlaceholder
@@ -2977,6 +2979,17 @@ onBeforeUnmount(() => {
         <span class="switchgear-sld__status-selection">
           {{ selectionSummary }}
         </span>
+      </div>
+
+      <div
+        v-if="singleSelectedSwitchgear"
+        class="switchgear-sld__selected-controls"
+        @pointerdown.stop
+      >
+        <SwitchgearControlToolbar
+          :switchgear="singleSelectedSwitchgear"
+          compact
+        />
       </div>
 
       <div class="switchgear-sld__stage" :style="stageTransformStyle">
@@ -3428,14 +3441,6 @@ onBeforeUnmount(() => {
   background: var(--color-neutral-100);
 }
 
-.switchgear-sld__toolbar-spacer {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-left: auto;
-  min-width: 0;
-}
-
 .switchgear-sld__metrics {
   display: inline-flex;
   align-items: center;
@@ -3558,6 +3563,45 @@ onBeforeUnmount(() => {
   padding: 0 0.25rem;
   color: var(--color-neutral-600);
   text-overflow: ellipsis;
+}
+
+.switchgear-sld__selected-controls {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 12;
+  max-width: min(45rem, calc(100% - 1.5rem));
+  overflow-x: auto;
+  padding: 0.375rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-white) 90%, transparent);
+  box-shadow: 0 14px 30px rgb(15 23 42 / 0.14);
+  backdrop-filter: blur(10px);
+}
+
+.switchgear-sld__selected-controls :deep(.switchgear-control-toolbar__row),
+.switchgear-sld__selected-controls :deep(.switchgear-control-toolbar__commands) {
+  flex-wrap: nowrap;
+}
+
+.switchgear-sld__selected-controls :deep(.switchgear-control-toolbar__compact-title),
+.switchgear-sld__selected-controls :deep(.switchgear-control-toolbar__warning),
+.switchgear-sld__selected-controls :deep(.switchgear-control-toolbar__state) {
+  white-space: nowrap;
+}
+
+.switchgear-sld__selected-controls :deep(.switchgear-control-toolbar__command-button--compact) {
+  min-width: 78px;
+}
+
+@media (max-width: 960px) {
+  .switchgear-sld__selected-controls {
+    top: 3.625rem;
+    right: 0.75rem;
+    left: 0.75rem;
+    max-width: none;
+  }
 }
 
 .switchgear-sld__stage {
@@ -3780,6 +3824,12 @@ onBeforeUnmount(() => {
 
 :global(.dark .switchgear-sld__status-selection) {
   color: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-sld__selected-controls) {
+  border-color: color-mix(in srgb, var(--color-neutral-700) 74%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-950) 84%, transparent);
+  box-shadow: 0 16px 32px rgb(0 0 0 / 0.3);
 }
 
 :global(.dark .switchgear-sld__port-hint) {
