@@ -136,6 +136,15 @@
       @close="closeExportModal"
       @export="handleExportCableFromWizard"
     />
+    <ConfirmModal
+      :open="deleteSelectedConfirmOpen"
+      title="Delete selected signals"
+      :message="deleteSelectedConfirmMessage"
+      confirm-label="Delete signals"
+      cancel-label="Cancel"
+      @cancel="closeDeleteSelectedConfirm"
+      @confirm="confirmDeleteSelected"
+    />
   </div>
 </template>
 
@@ -179,6 +188,7 @@ import {
 } from "@/pages/signals/utils/runtimeProjection"
 import { useAffinoDataGridTheme } from "@/components/ui/affinoDataGridTheme"
 import "@/components/ui/affinoDataGridNative.css"
+import ConfirmModal from "@/components/ui/ConfirmModal.vue"
 import { useChannelStore } from "@/stores/channelStore"
 import { useDeviceStore } from "@/stores/deviceStore"
 import { useSignalJobStore } from "@/stores/signalJobStore"
@@ -229,6 +239,8 @@ const refreshingSignalsStatic = ref(false)
 const deletingSelected = ref(false)
 const deletingProgressDone = ref(0)
 const deletingProgressTotal = ref(0)
+const deleteSelectedConfirmOpen = ref(false)
+const deleteSelectedSignalIds = ref<number[]>([])
 const allocatingSelected = ref(false)
 const deallocatingSelected = ref(false)
 const testRunInProgress = ref(false)
@@ -843,6 +855,12 @@ const deleteSelectedToolbarLabel = computed(() => (
     : "Delete selected"
 ))
 
+const deleteSelectedConfirmMessage = computed(() => {
+  const count = deleteSelectedSignalIds.value.length
+  const noun = count === 1 ? "signal row" : "signal rows"
+  return `Delete ${count} selected ${noun}? This removes the rows from the active signal list and cannot be undone from this grid.`
+})
+
 const selectedRowKeys = computed(() => (
   resolveSignalGridSelectedRowKeys(rowSelectionState.value, resolveSelectionCandidateRowKeys())
 ))
@@ -872,11 +890,11 @@ const toolbarModules = computed<DataGridAppToolbarModule[]>(() => ([
     props: {
       selectedCount: selectedVisibleRowCount.value,
       showClearSelection: selectedRowKeys.value.length > 0,
-      deleteDisabled: deletingSelected.value || selectedVisibleRowCount.value === 0,
+      deleteDisabled: deletingSelected.value || deleteSelectedConfirmOpen.value || selectedVisibleRowCount.value === 0,
       deleteLabel: deleteSelectedToolbarLabel.value,
       onClearSelection: clearGridSelection,
       onDeleteSelected: () => {
-        void handleDeleteSelected()
+        openDeleteSelectedConfirm()
       },
     },
   },
@@ -915,6 +933,56 @@ function persistSignalsGridState() {
   }
 
   writeDataGridSavedViewToStorage(signalsGridSavedViewStorage, storageKey, savedView)
+}
+
+function persistSignalsGridSavedView(savedView: DataGridSavedViewSnapshot<GridRow>) {
+  const storageKey = getSignalsGridStorageKey(workspaceStore.activeWorkspaceId)
+  if (!storageKey) {
+    return
+  }
+  writeDataGridSavedViewToStorage(signalsGridSavedViewStorage, storageKey, savedView)
+}
+
+function withClearedSignalsGridSelection(
+  savedView: DataGridSavedViewSnapshot<GridRow>,
+): DataGridSavedViewSnapshot<GridRow> {
+  return {
+    ...savedView,
+    state: {
+      ...savedView.state,
+      rowSelection: {
+        focusedRow: null,
+        selectedRows: [],
+      },
+    },
+  }
+}
+
+function captureSignalsGridSavedViewForStaticMutation(): DataGridSavedViewSnapshot<GridRow> | null {
+  const savedView = allocationGridRef.value?.getSavedView?.()
+  if (!savedView) {
+    return null
+  }
+  return withClearedSignalsGridSelection(filterRemovedSignalsGridColumnsFromSavedView(savedView))
+}
+
+async function restoreSignalsGridSavedViewAfterStaticMutation(savedView: DataGridSavedViewSnapshot<GridRow> | null) {
+  if (!savedView) {
+    return
+  }
+
+  await nextTick()
+  if (allocationProjectionRowsCount.value <= 0) {
+    return
+  }
+
+  pendingSignalsGridSavedView.value = savedView
+  tryApplyPendingSignalsGridSavedView()
+
+  if (pendingSignalsGridSavedView.value) {
+    await awaitUiPaintFrame()
+    tryApplyPendingSignalsGridSavedView()
+  }
 }
 
 function scheduleSignalsGridStatePersist() {
@@ -1741,6 +1809,48 @@ function closeAllocationChannelPicker() {
   allocationChannelPickerInstanceKey.value += 1
 }
 
+function resolveSelectedSignalIdsForDelete(): number[] {
+  const signalIds = selectedAllocationRows.value
+    .map(row => Number(row.signal_id))
+    .filter((signalId): signalId is number => Number.isFinite(signalId) && signalId > 0)
+
+  return Array.from(new Set(signalIds))
+}
+
+function openDeleteSelectedConfirm() {
+  if (deletingSelected.value || deleteSelectedConfirmOpen.value) {
+    return
+  }
+
+  const signalIds = resolveSelectedSignalIdsForDelete()
+  if (!signalIds.length) {
+    return
+  }
+
+  deleteSelectedSignalIds.value = signalIds
+  deleteSelectedConfirmOpen.value = true
+}
+
+function closeDeleteSelectedConfirm() {
+  if (deletingSelected.value) {
+    return
+  }
+
+  deleteSelectedConfirmOpen.value = false
+  deleteSelectedSignalIds.value = []
+}
+
+function confirmDeleteSelected() {
+  const signalIds = [...deleteSelectedSignalIds.value]
+  if (!signalIds.length || deletingSelected.value) {
+    return
+  }
+
+  deleteSelectedConfirmOpen.value = false
+  deleteSelectedSignalIds.value = []
+  void handleDeleteSelected(signalIds)
+}
+
 async function handleAllocationChannelPicked(channelId: number | null) {
   const row = allocationChannelPickerRow.value
   if (!row) {
@@ -1793,11 +1903,7 @@ async function handleAllocationChannelPicked(channelId: number | null) {
   }
 }
 
-async function handleDeleteSelected() {
-  const signalIds = selectedAllocationRows.value
-    .map(row => Number(row.signal_id))
-    .filter((signalId): signalId is number => Number.isFinite(signalId) && signalId > 0)
-
+async function handleDeleteSelected(signalIds: readonly number[]) {
   if (!signalIds.length) {
     return
   }
@@ -1805,6 +1911,11 @@ async function handleDeleteSelected() {
   const workspaceId = workspaceStore.activeWorkspaceId
   if (!workspaceId) {
     return
+  }
+
+  const savedViewBeforeDelete = captureSignalsGridSavedViewForStaticMutation()
+  if (savedViewBeforeDelete) {
+    persistSignalsGridSavedView(savedViewBeforeDelete)
   }
 
   deletingSelected.value = true
@@ -1834,6 +1945,7 @@ async function handleDeleteSelected() {
       signalSheetStore.ensureSheetLoaded({ force: true }),
       signalSheetStore.ensureAllocationsLoaded({ force: true }),
     ])
+    await restoreSignalsGridSavedViewAfterStaticMutation(savedViewBeforeDelete)
 
     if (failedTotal > 0) {
       toastStore.warning(`Deleted ${deletedTotal} signal(s), failed to delete ${failedTotal}.`)
