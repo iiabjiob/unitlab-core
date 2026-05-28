@@ -8,6 +8,7 @@ import type {
   SldCoordinate,
   SldDocument,
   SldElement,
+  SldElementVisual,
   SldRoutePoint,
 } from "./types"
 
@@ -20,6 +21,8 @@ const NODE_Y_OFFSET_UNITS = 2
 const NODE_Y_STEP_UNITS = 2
 const LANE_HEIGHT_UNITS = 14
 const UNGROUPED_OFFSET_UNITS = 3
+const BUSBAR_WIDTH_UNITS = 6
+const BUSBAR_HEIGHT_UNITS = 1
 
 export function layoutSldDocument(
   cellModel: SldCellModel,
@@ -38,6 +41,7 @@ export function layoutSldDocument(
     return {
       ...element,
       position,
+      visual: withLayoutVisualDimensions(element.visual, gridSize),
     }
   })
   const elementPositionsBySourceId = buildElementPositionsBySourceId(elements)
@@ -119,6 +123,20 @@ function buildElementPositionsBySourceId(elements: SldElement[]): Map<string, Sl
   }
 
   return positions
+}
+
+function withLayoutVisualDimensions(visual: SldElementVisual, gridSize: number): SldElementVisual {
+  if (visual.representation !== "busbar") {
+    return visual
+  }
+
+  return {
+    ...visual,
+    dimensions: {
+      width: toGridCoordinate(BUSBAR_WIDTH_UNITS, gridSize),
+      height: toGridCoordinate(BUSBAR_HEIGHT_UNITS, gridSize),
+    },
+  }
 }
 
 function buildConnectionRoute(

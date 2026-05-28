@@ -25,10 +25,16 @@ export type SldElementStrokeWeight = "normal" | "bold"
 
 export type SldElementOrientation = "horizontal" | "vertical" | null
 
+export type SldElementDimensions = {
+  width: number
+  height: number
+}
+
 export type SldElementVisual = {
   representation: SldElementRepresentation
   orientation: SldElementOrientation
   strokeWeight: SldElementStrokeWeight
+  dimensions: SldElementDimensions | null
 }
 
 export type SldCellNodeRole =

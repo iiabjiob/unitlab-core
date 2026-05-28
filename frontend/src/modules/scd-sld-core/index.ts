@@ -82,6 +82,7 @@ export type {
   SldConnectionRouteSegment,
   SldDocument,
   SldElement,
+  SldElementDimensions,
   SldElementKind,
   SldElementOrientation,
   SldElementRepresentation,

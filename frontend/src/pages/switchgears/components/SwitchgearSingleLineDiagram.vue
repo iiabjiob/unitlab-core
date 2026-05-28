@@ -22,59 +22,21 @@ import SwitchgearSingleLineDiagramNode from "./SwitchgearSingleLineDiagramNode.v
 import SwitchgearSingleLineDiagramStaticElement from "./SwitchgearSingleLineDiagramStaticElement.vue"
 import SwitchgearSingleLineDiagramTextElement from "./SwitchgearSingleLineDiagramTextElement.vue"
 import SwitchgearControlToolbar from "./SwitchgearControlToolbar.vue"
+import type {
+  DiagramBindablePortOwnerType,
+  DiagramEdge,
+  DiagramNodeLayout,
+  DiagramPortBinding,
+  DiagramStaticElement,
+  DiagramStaticKind,
+  DiagramStaticSize,
+  DiagramTextElement,
+  DiagramTextSize,
+  DiagramViewState,
+  StoredDiagramState,
+} from "../utils/switchgearSldDiagramTypes"
 
-type DiagramNodeLayout = {
-  x: number
-  y: number
-}
-
-type DiagramBindablePortOwnerType = "node" | "static"
 type DiagramPortOwnerType = DiagramBindablePortOwnerType | "line"
-
-type DiagramPortBinding = {
-  ownerType: DiagramBindablePortOwnerType
-  ownerId: number | string
-  portId: string
-}
-
-type DiagramEdge = {
-  id: string
-  x1: number
-  y1: number
-  x2: number
-  y2: number
-  kind: "line" | "arrow"
-  weight?: "normal" | "bold"
-  startBinding?: DiagramPortBinding | null
-  endBinding?: DiagramPortBinding | null
-}
-
-type DiagramStaticKind = "transformer" | "ground"
-type DiagramStaticSize = "sm" | "md" | "lg"
-type DiagramTextSize = "md"
-
-type DiagramStaticElement = {
-  id: string
-  kind: DiagramStaticKind
-  size: DiagramStaticSize
-  x: number
-  y: number
-  rotation: 0 | 90 | 180 | 270
-}
-
-type DiagramTextElement = {
-  id: string
-  text: string
-  size: DiagramTextSize
-  x: number
-  y: number
-}
-
-type DiagramViewState = {
-  x: number
-  y: number
-  zoom: number
-}
 
 type DiagramLabelOffset = {
   x: number
@@ -129,17 +91,6 @@ type DiagramClipboardSelection = {
   edges: DiagramClipboardEdge[]
   staticElements: DiagramClipboardStaticElement[]
   textElements: DiagramClipboardTextElement[]
-}
-
-type StoredDiagramState = {
-  layoutById?: Record<string, DiagramNodeLayout>
-  labelOffsetById?: Record<string, DiagramLabelOffset>
-  edges?: DiagramEdge[]
-  lines?: DiagramEdge[]
-  staticElements?: DiagramStaticElement[]
-  textElements?: DiagramTextElement[]
-  snapEnabled?: boolean
-  viewState?: DiagramViewState
 }
 
 type DiagramClipboardPayload = {

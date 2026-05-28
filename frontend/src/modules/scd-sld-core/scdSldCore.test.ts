@@ -306,12 +306,17 @@ describe("scd-sld-core", () => {
         representation: "busbar",
         orientation: "horizontal",
         strokeWeight: "bold",
+        dimensions: {
+          width: 144,
+          height: 24,
+        },
       },
     })
     expect(breaker?.visual).toEqual({
       representation: "symbol",
       orientation: null,
       strokeWeight: "normal",
+      dimensions: null,
     })
     expect(result.cellModel.voltageLevels[0]?.bayCells[0]?.busbarNodeIds).toEqual([
       "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/BUS1",

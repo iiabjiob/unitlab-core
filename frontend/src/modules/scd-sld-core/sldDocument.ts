@@ -61,6 +61,7 @@ function visualForNode(node: ElectricalGraphNode): SldElementVisual {
       representation: "busbar",
       orientation: "horizontal",
       strokeWeight: "bold",
+      dimensions: null,
     }
   }
 
@@ -68,6 +69,7 @@ function visualForNode(node: ElectricalGraphNode): SldElementVisual {
     representation: "symbol",
     orientation: null,
     strokeWeight: "normal",
+    dimensions: null,
   }
 }
 

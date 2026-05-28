@@ -486,7 +486,7 @@ Implemented 2026-05-28:
 
 ### Slice 7 - UnitLab SLD Adapter
 
-Status: `[ ]`
+Status: `[~]`
 
 Goal:
 
@@ -508,6 +508,13 @@ Validation:
 
 - Existing manual SLD interactions still work after import.
 - Generated lines do not break drag, selection, context menu, or grid snap.
+
+Implemented 2026-05-28:
+
+- Added a pure adapter contract from generated `SldDocument` into the current switchgear SLD editor diagram state.
+- Generated busbar representations map to bold editor lines using renderer-neutral visual metadata.
+- Generated breaker/disconnector elements are emitted as explicit switchgear import candidates, not created as operational switchgear records.
+- Generated transformer and ground elements map to existing static SLD symbols.
 
 ### Slice 8 - Import Review UX
 
