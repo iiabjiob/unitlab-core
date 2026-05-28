@@ -101,8 +101,8 @@ describe("switchgear SLD import adapter", () => {
     expect(adapted.diagram.textElements).toEqual(expect.arrayContaining([
       expect.objectContaining({ text: "BUS1" }),
       expect.objectContaining({ text: "TR1" }),
-      expect.objectContaining({ text: "Q01" }),
     ]))
+    expect(adapted.diagram.textElements).not.toContainEqual(expect.objectContaining({ text: "Q01" }))
     expect(adapted.diagnostics).toEqual([])
   })
 

@@ -329,22 +329,58 @@ const stageContentStyle = computed(() => ({
   height: `${stageSize.value.height}px`,
 }))
 const isDarkTheme = computed(() => themeStore.currentTheme === "dark")
+const isViewportPanning = computed(() => dragState.value?.type === "pan")
 const viewportSurfaceStyle = computed(() => ({
   backgroundColor: isDarkTheme.value ? "rgb(3 7 18)" : "rgb(245 245 245)",
 }))
-const viewportOverlayStyle = computed(() => ({
-  backgroundImage: isDarkTheme.value
-    ? "radial-gradient(circle_at_top, rgba(56,189,248,0.12), transparent 40%), linear-gradient(to_bottom, rgba(255,255,255,0.04), transparent 35%)"
-    : "radial-gradient(circle_at_top, rgba(56,189,248,0.16), transparent 45%), linear-gradient(to_bottom, rgba(255,255,255,0.5), transparent 38%)",
-}))
+const viewportOverlayStyle = computed(() => {
+  const zoom = viewState.value.zoom
+  const minorGrid = Math.max(6, GRID_STEP * zoom)
+  const majorGrid = Math.max(24, GRID_STEP * 5 * zoom)
+  const minorX = modulo(viewState.value.x, minorGrid)
+  const minorY = modulo(viewState.value.y, minorGrid)
+  const majorX = modulo(viewState.value.x, majorGrid)
+  const majorY = modulo(viewState.value.y, majorGrid)
+
+  return {
+    backgroundImage: isDarkTheme.value
+      ? [
+          "radial-gradient(circle at top, rgba(56,189,248,0.12), transparent 40%)",
+          "linear-gradient(to_bottom, rgba(255,255,255,0.04), transparent 35%)",
+          "linear-gradient(rgba(56, 189, 248, 0.08) 1px, transparent 1px)",
+          "linear-gradient(90deg, rgba(56, 189, 248, 0.08) 1px, transparent 1px)",
+          "linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px)",
+          "linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px)",
+        ].join(", ")
+      : [
+          "radial-gradient(circle at top, rgba(56,189,248,0.16), transparent 45%)",
+          "linear-gradient(to_bottom, rgba(255,255,255,0.5), transparent 38%)",
+          "linear-gradient(rgba(56, 189, 248, 0.1) 1px, transparent 1px)",
+          "linear-gradient(90deg, rgba(56, 189, 248, 0.1) 1px, transparent 1px)",
+          "linear-gradient(rgba(71, 85, 105, 0.08) 1px, transparent 1px)",
+          "linear-gradient(90deg, rgba(71, 85, 105, 0.08) 1px, transparent 1px)",
+        ].join(", "),
+    backgroundPosition: [
+      "0 0",
+      "0 0",
+      `${majorX}px ${majorY}px`,
+      `${majorX}px ${majorY}px`,
+      `${minorX}px ${minorY}px`,
+      `${minorX}px ${minorY}px`,
+    ].join(", "),
+    backgroundSize: [
+      "100% 100%",
+      "100% 100%",
+      `${majorGrid}px ${majorGrid}px`,
+      `${majorGrid}px ${majorGrid}px`,
+      `${minorGrid}px ${minorGrid}px`,
+      `${minorGrid}px ${minorGrid}px`,
+    ].join(", "),
+    backgroundRepeat: "no-repeat, no-repeat, repeat, repeat, repeat, repeat",
+  }
+})
 const stageGridStyle = computed(() => ({
   ...stageContentStyle.value,
-  backgroundColor: isDarkTheme.value ? "rgba(2, 6, 23, 0.94)" : "rgb(249 250 251)",
-  backgroundImage: isDarkTheme.value
-    ? "linear-gradient(rgba(56, 189, 248, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(56, 189, 248, 0.08) 1px, transparent 1px), linear-gradient(rgba(148, 163, 184, 0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 163, 184, 0.06) 1px, transparent 1px)"
-    : "linear-gradient(rgba(56, 189, 248, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(56, 189, 248, 0.1) 1px, transparent 1px), linear-gradient(rgba(71, 85, 105, 0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(71, 85, 105, 0.08) 1px, transparent 1px)",
-  backgroundPosition: "0 0, 0 0, 0 0, 0 0",
-  backgroundSize: "120px 120px, 120px 120px, 24px 24px, 24px 24px",
 }))
 const zoomLabel = computed(() => `${Math.round(viewState.value.zoom * 100)}%`)
 const selectedNodeIdSet = computed(() => new Set(effectiveSelectedNodeIds()))
@@ -560,8 +596,75 @@ const nodeWorldRects = computed(() => switchgears.value.map((item, index) => {
     height: NODE_HEIGHT,
   }
 }))
+const viewportWorldBounds = computed<DiagramWorldBounds | null>(() => {
+  if (viewportSize.value.width <= 0 || viewportSize.value.height <= 0) {
+    return null
+  }
+
+  const buffer = 720
+  const minX = -viewState.value.x / viewState.value.zoom
+  const minY = -viewState.value.y / viewState.value.zoom
+  const width = viewportSize.value.width / viewState.value.zoom
+  const height = viewportSize.value.height / viewState.value.zoom
+
+  return {
+    minX: minX - buffer,
+    minY: minY - buffer,
+    maxX: minX + width + buffer,
+    maxY: minY + height + buffer,
+  }
+})
+const renderedSwitchgearNodes = computed(() => {
+  const bounds = viewportWorldBounds.value
+  return switchgears.value
+    .map((switchgear, index) => {
+      const layout = resolvedLayout(switchgear.id, index)
+      return {
+        switchgear,
+        x: layout.x + STAGE_PADDING,
+        y: layout.y + STAGE_PADDING,
+      }
+    })
+    .filter(item => (
+      !bounds
+      || selectedNodeIdSet.value.has(item.switchgear.id)
+      || rectIntersectsBounds({
+        minX: item.x,
+        minY: item.y,
+        maxX: item.x + NODE_WIDTH,
+        maxY: item.y + NODE_HEIGHT,
+      }, bounds)
+    ))
+})
+const renderedEdges = computed(() => {
+  const bounds = viewportWorldBounds.value
+  return edges.value.filter(edge => (
+    !bounds
+    || selectedEdgeIdSet.value.has(edge.id)
+    || rectIntersectsBounds(getEdgeWorldBounds(edge), bounds)
+  ))
+})
+const renderedStaticElements = computed(() => {
+  const bounds = viewportWorldBounds.value
+  return staticElements.value.filter(element => (
+    !bounds
+    || selectedStaticIdSet.value.has(element.id)
+    || rectIntersectsBounds(getStaticElementBounds(element), bounds)
+  ))
+})
+const renderedTextElements = computed(() => {
+  const bounds = viewportWorldBounds.value
+  return textElements.value.filter(element => (
+    !bounds
+    || selectedTextIdSet.value.has(element.id)
+    || rectIntersectsBounds(getTextElementBounds(element), bounds)
+  ))
+})
 const diagramWorldBounds = computed(() => buildDiagramWorldBounds())
 const minimapModel = computed(() => {
+  if (isViewportPanning.value) {
+    return null
+  }
   const bounds = diagramWorldBounds.value
   if (!bounds || viewportSize.value.width <= 0 || viewportSize.value.height <= 0) {
     return null
@@ -662,6 +765,27 @@ function mergeWorldBounds(
   }
 }
 
+function rectIntersectsBounds(
+  rect: DiagramWorldBounds | { x1: number; y1: number; x2: number; y2: number },
+  bounds: DiagramWorldBounds,
+): boolean {
+  const minX = "minX" in rect ? rect.minX : rect.x1
+  const minY = "minY" in rect ? rect.minY : rect.y1
+  const maxX = "maxX" in rect ? rect.maxX : rect.x2
+  const maxY = "maxY" in rect ? rect.maxY : rect.y2
+  return minX <= bounds.maxX && maxX >= bounds.minX && minY <= bounds.maxY && maxY >= bounds.minY
+}
+
+function getEdgeWorldBounds(edge: DiagramEdge): DiagramWorldBounds {
+  const points = resolvedEdgePoints(edge)
+  return {
+    minX: Math.min(points.x1, points.x2),
+    minY: Math.min(points.y1, points.y2),
+    maxX: Math.max(points.x1, points.x2),
+    maxY: Math.max(points.y1, points.y2),
+  }
+}
+
 function buildDiagramWorldBounds(): DiagramWorldBounds | null {
   let bounds: DiagramWorldBounds | null = null
 
@@ -709,6 +833,10 @@ function buildDiagramWorldBounds(): DiagramWorldBounds | null {
 
 function clampZoom(value: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))
+}
+
+function modulo(value: number, divisor: number): number {
+  return ((value % divisor) + divisor) % divisor
 }
 
 function cloneLayoutById(source: Record<string, DiagramNodeLayout>) {
@@ -4226,7 +4354,7 @@ onBeforeUnmount(() => {
                 <path d="M0 0 8 3.5 0 7z" fill="#2563eb" />
               </marker>
             </defs>
-            <g v-for="edge in edges" :key="edge.id">
+            <g v-for="edge in renderedEdges" :key="edge.id">
               <path
                 :d="edgePath(edge)"
                 fill="none"
@@ -4328,7 +4456,7 @@ onBeforeUnmount(() => {
           </svg>
 
           <SwitchgearSingleLineDiagramStaticElement
-            v-for="element in staticElements"
+            v-for="element in renderedStaticElements"
             :key="element.id"
             :id="element.id"
             :kind="element.kind"
@@ -4344,7 +4472,7 @@ onBeforeUnmount(() => {
           />
 
           <SwitchgearSingleLineDiagramTextElement
-            v-for="element in textElements"
+            v-for="element in renderedTextElements"
             :key="element.id"
             :id="element.id"
             :text="element.text"
@@ -4361,28 +4489,28 @@ onBeforeUnmount(() => {
           />
 
           <UiMenu
-            v-for="(switchgear, index) in switchgears"
-            :key="switchgear.id"
+            v-for="node in renderedSwitchgearNodes"
+            :key="node.switchgear.id"
           >
             <UiMenuTrigger as-child trigger="contextmenu">
               <SwitchgearSingleLineDiagramNode
-                :switchgear="switchgear"
-                :x="resolvedLayout(switchgear.id, index).x + STAGE_PADDING"
-                :y="resolvedLayout(switchgear.id, index).y + STAGE_PADDING"
-                :label-offset-x="resolvedLabelOffset(switchgear.id).x"
-                :label-offset-y="resolvedLabelOffset(switchgear.id).y"
-                :selected="selectedNodeIdSet.has(switchgear.id)"
-                @drag-start="beginNodeDrag(switchgear.id, $event)"
-                @label-drag-start="beginLabelDrag(switchgear.id, $event)"
-                @select="selectNode(switchgear.id, $event)"
-                @open-detail="openDetail(switchgear.id)"
+                :switchgear="node.switchgear"
+                :x="node.x"
+                :y="node.y"
+                :label-offset-x="resolvedLabelOffset(node.switchgear.id).x"
+                :label-offset-y="resolvedLabelOffset(node.switchgear.id).y"
+                :selected="selectedNodeIdSet.has(node.switchgear.id)"
+                @drag-start="beginNodeDrag(node.switchgear.id, $event)"
+                @label-drag-start="beginLabelDrag(node.switchgear.id, $event)"
+                @select="selectNode(node.switchgear.id, $event)"
+                @open-detail="openDetail(node.switchgear.id)"
               />
             </UiMenuTrigger>
 
             <UiMenuContent>
               <UiMenuItem
                 class="switchgear-sld__node-menu-item"
-                @select="requestSwitchgearBindingsEdit(switchgear.id)"
+                @select="requestSwitchgearBindingsEdit(node.switchgear.id)"
               >
                 Edit
               </UiMenuItem>
@@ -5292,10 +5420,12 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 0;
   left: 0;
+  will-change: transform;
 }
 
 .switchgear-sld__grid {
   position: relative;
+  contain: layout paint style;
   isolation: isolate;
 }
 

@@ -95,6 +95,7 @@ export function adaptSldDocumentToSwitchgearDiagram(
     }
 
     if (isSwitchgearCandidateKind(element.kind)) {
+      textElementSourceIds.add(element.sourceId)
       switchgearCandidates.push({
         id: buildElementId("candidate", element),
         sourceId: element.sourceId,

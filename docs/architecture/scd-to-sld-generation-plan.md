@@ -557,6 +557,7 @@ Implemented 2026-05-28:
 - Missing candidates can now be created as UnitLab switchgear records only when the operator enables that action; records are created without bindings and placed at generated coordinates.
 - Existing switchgear records with matching name and type are reused in the review list rather than duplicated.
 - The import modal now shows actionable diagnostics only and keeps scrolling inside candidate/diagnostic lists rather than the full modal body.
+- Switchgear candidate labels are no longer imported as duplicate free-text overlay objects; created records own their visible labels.
 
 ### Slice 9 - Persistence and Regeneration
 
@@ -626,7 +627,7 @@ Validation:
 
 ### Slice 11 - Performance and Safety Gates
 
-Status: `[ ]`
+Status: `[~]`
 
 Goal:
 
@@ -645,6 +646,16 @@ Validation:
 - no full app freeze during import preview
 - cancellation path for large files
 - diagnostics for oversized/unsupported topology
+
+Implemented 2026-05-28:
+
+- SLD editor grid rendering was moved from the 100k world stage to a viewport-sized overlay to avoid repainting a huge background layer during pan/zoom.
+- SLD editor now culls off-viewport nodes, lines, static symbols, and text with overscan while preserving selected objects.
+- Minimap rendering is paused during viewport panning to avoid recomputing the full minimap model on every pointer move.
+
+Known gap:
+
+- The first-pass layout is still a topology preview, not a real substation SLD layout. A dedicated bay/busbar layout slice is required before treating SCD import output as operator-grade.
 
 ### Slice 12 - C# Migration Readiness
 
