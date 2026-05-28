@@ -162,8 +162,13 @@ const { isDesktop } = useViewport()
         </div>
       </div>
 
-      <div v-if="sequence && state" class="sequence-editor__main-column">
+      <div
+        v-if="sequence && state"
+        class="sequence-editor__main-column"
+        :class="{ 'sequence-editor__main-column--split': selectedStep }"
+      >
         <SequenceStepEditor
+          class="sequence-editor__step-editor"
           :sequence="sequence"
           :step="selectedStep"
           @close="exitStepEdit"
@@ -266,6 +271,20 @@ const { isDesktop } = useViewport()
     min-height: 0;
     flex: 1 1 auto;
     overflow: hidden;
+  }
+
+  .sequence-editor__main-column--split {
+    display: grid;
+    grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .sequence-editor__step-editor {
+    min-height: 0;
+  }
+
+  .sequence-editor__main-column--split .sequence-editor__log {
+    margin-top: 0;
   }
 }
 
