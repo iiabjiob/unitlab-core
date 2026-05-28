@@ -398,7 +398,10 @@ Implemented 2026-05-28:
 - Initial normalized model now uses stable hierarchy-derived IDs for substations, voltage levels, bays, equipment, terminals, and connectivity nodes.
 - Equipment types are normalized into first-pass SLD categories.
 - Voltage-level labels in the graph derive from standard `Voltage` value, `multiplier`, and `unit` when present.
-- Full duplicate handling and terminal-to-declared-connectivity-node validation remain open for the normalization slice.
+- Connectivity nodes now expose a canonical normalized path.
+- Terminal references now resolve to declared connectivity node IDs when possible, including the standard `cNodeName` + hierarchy attribute form.
+- Undeclared terminal connectivity references are preserved with `normalizer.unresolved-connectivity-node` diagnostics.
+- Full duplicate-name handling remains open for the normalization slice.
 
 ### Slice 5 - Electrical Graph Builder
 

@@ -37,7 +37,7 @@ export function buildElectricalGraph(model: NormalizedSclModel): ElectricalGraph
     }
 
     equipment.terminals.forEach((terminal) => {
-      const connectivityNode = terminal.connectivityNode?.trim() || null
+      const connectivityNode = terminal.resolvedConnectivityNodePath ?? normalizePath(terminal.connectivityNode)
       const junction = connectivityNode
         ? ensureJunction(junctions, junctionsByPath, diagnostics, {
           pathName: connectivityNode,
@@ -199,7 +199,7 @@ function mapEquipmentToNode(equipment: SclEquipment): ElectricalGraphNode {
 }
 
 function mapConnectivityNodeToJunction(node: SclConnectivityNode): ElectricalGraphJunction {
-  const pathName = resolveConnectivityNodePath(node)
+  const pathName = node.normalizedPath
 
   return {
     id: junctionId(pathName),
@@ -328,19 +328,6 @@ function resolveEquipmentGroupId(equipment: SclEquipment): string | null {
   return groupId(["substation", equipment.substationName])
 }
 
-function resolveConnectivityNodePath(node: SclConnectivityNode): string {
-  if (node.pathName?.trim()) {
-    return node.pathName.trim()
-  }
-
-  return [
-    node.substationName,
-    node.voltageLevelName,
-    node.bayName,
-    node.name,
-  ].filter(isPresent).join("/") || node.id
-}
-
 function formatVoltageLevelLabel(voltageLevel: SclVoltageLevel): string {
   const voltage = voltageLevel.voltage
   if (!voltage?.value) {
@@ -366,6 +353,13 @@ function sanitizeId(value: string): string {
 function lastPathSegment(value: string): string {
   const parts = value.split("/").map(part => part.trim()).filter(Boolean)
   return parts[parts.length - 1] ?? value
+}
+
+function normalizePath(value: string | null): string | null {
+  if (!value?.trim()) {
+    return null
+  }
+  return value.split("/").map(part => part.trim()).filter(Boolean).join("/")
 }
 
 function uniqueStrings(values: string[]): string[] {

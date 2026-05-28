@@ -54,6 +54,8 @@ export type SclTerminal = {
   id: string
   name: string | null
   connectivityNode: string | null
+  resolvedConnectivityNodeId: string | null
+  resolvedConnectivityNodePath: string | null
   cNodeName: string | null
   substationName: string | null
   voltageLevelName: string | null
@@ -65,6 +67,7 @@ export type SclConnectivityNode = {
   id: string
   name: string | null
   pathName: string | null
+  normalizedPath: string
   substationName: string | null
   voltageLevelName: string | null
   bayName: string | null

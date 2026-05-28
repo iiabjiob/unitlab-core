@@ -12,6 +12,8 @@ const genericFeederBayScd = `<?xml version="1.0" encoding="UTF-8"?>
     </PowerTransformer>
     <VoltageLevel name="VL1">
       <Voltage multiplier="k" unit="V">110</Voltage>
+      <ConnectivityNode name="CN_TR_1" pathName="SS1/VL1/TR1/CN_TR_1"/>
+      <ConnectivityNode name="L1" pathName="SS1/VL1/BUS1/L1"/>
       <Bay sxy:x="164" sxy:y="16" desc="Generic feeder bay" name="BAY1">
         <LNode iedName="IED1" ldInst="CTRL1" lnClass="CSWI" lnInst="1" lnType="GENERIC_CSWI1" prefix="BCU_"/>
         <ConductingEquipment sxy:x="3" sxy:y="4" name="Q01" type="CBR">
@@ -24,6 +26,7 @@ const genericFeederBayScd = `<?xml version="1.0" encoding="UTF-8"?>
           <Terminal bayName="BAY1" cNodeName="CN_Q01_TOP" connectivityNode="SS1/VL1/BAY1/CN_Q01_TOP" name="T2" substationName="SS1" voltageLevelName="VL1"/>
         </ConductingEquipment>
         <ConnectivityNode name="CN_Q01_TOP" pathName="SS1/VL1/BAY1/CN_Q01_TOP"/>
+        <ConnectivityNode name="CN_Q01_BOTTOM" pathName="SS1/VL1/BAY1/CN_Q01_BOTTOM"/>
       </Bay>
     </VoltageLevel>
   </Substation>
@@ -84,6 +87,11 @@ describe("scd-sld-core", () => {
       ["QB1", "DIS", "disconnector"],
     ])
     expect(bay?.equipments[0]?.terminals).toHaveLength(2)
+    expect(bay?.equipments[0]?.terminals[0]).toMatchObject({
+      connectivityNode: "SS1/VL1/BAY1/CN_Q01_TOP",
+      resolvedConnectivityNodeId: "substation/SS1/voltageLevel/VL1/bay/BAY1/connectivityNode/CN_Q01_TOP",
+      resolvedConnectivityNodePath: "SS1/VL1/BAY1/CN_Q01_TOP",
+    })
     expect(model.substations[0]?.powerTransformers[0]).toMatchObject({
       name: "TR1",
       type: "PTR",
@@ -213,6 +221,76 @@ describe("scd-sld-core", () => {
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       stage: "graph",
       code: "graph.terminal-missing-connectivity-node",
+    }))
+  })
+
+  it("resolves terminal connectivity from standard cNodeName hierarchy attributes", () => {
+    const result = generateSldFromScd({
+      fileName: "resolved-cnode.scd",
+      contentHash: "resolved-cnode",
+      xmlText: `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <Substation name="SS1">
+    <VoltageLevel name="VL1">
+      <Bay name="B1">
+        <ConnectivityNode name="CN_A"/>
+        <ConductingEquipment name="Q01" type="CBR">
+          <Terminal cNodeName="CN_A" name="T1" substationName="SS1" voltageLevelName="VL1" bayName="B1"/>
+        </ConductingEquipment>
+      </Bay>
+    </VoltageLevel>
+  </Substation>
+</SCL>`,
+    })
+
+    const terminal = result.model.substations[0]?.voltageLevels[0]?.bays[0]?.equipments[0]?.terminals[0]
+    expect(terminal).toMatchObject({
+      resolvedConnectivityNodeId: "substation/SS1/voltageLevel/VL1/bay/B1/connectivityNode/CN_A",
+      resolvedConnectivityNodePath: "SS1/VL1/B1/CN_A",
+    })
+    expect(result.graph.edges).toContainEqual(expect.objectContaining({
+      sourceConnectivityNode: "SS1/VL1/B1/CN_A",
+      portIds: [
+        "port/substation/SS1/voltageLevel/VL1/bay/B1/equipment/Q01/terminal/T1_1",
+      ],
+    }))
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      code: "normalizer.unresolved-connectivity-node",
+    }))
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      code: "graph.terminal-missing-connectivity-node",
+    }))
+  })
+
+  it("reports terminal references to undeclared connectivity nodes", () => {
+    const result = generateSldFromScd({
+      fileName: "undeclared-cnode.scd",
+      contentHash: "undeclared-cnode",
+      xmlText: `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <Substation name="SS1">
+    <VoltageLevel name="VL1">
+      <Bay name="B1">
+        <ConductingEquipment name="Q01" type="CBR">
+          <Terminal connectivityNode="SS1/VL1/B1/CN_MISSING" name="T1"/>
+        </ConductingEquipment>
+      </Bay>
+    </VoltageLevel>
+  </Substation>
+</SCL>`,
+    })
+
+    expect(result.model.substations[0]?.voltageLevels[0]?.bays[0]?.equipments[0]?.terminals[0]).toMatchObject({
+      resolvedConnectivityNodeId: null,
+      resolvedConnectivityNodePath: "SS1/VL1/B1/CN_MISSING",
+    })
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      severity: "warning",
+      stage: "normalizer",
+      code: "normalizer.unresolved-connectivity-node",
+    }))
+    expect(result.graph.junctions).toContainEqual(expect.objectContaining({
+      pathName: "SS1/VL1/B1/CN_MISSING",
     }))
   })
 

@@ -113,6 +113,8 @@ export function parseScdSource(source: ScdSource): NormalizedSclModel {
     })
   }
 
+  normalizeTerminalConnectivityReferences(model)
+
   return model
 }
 
@@ -325,6 +327,8 @@ function appendTerminal(
     id: `${equipment.id}/terminal/${terminalIdPart}`,
     name: terminalName,
     connectivityNode: readXmlAttribute(event.attributes, "connectivityNode"),
+    resolvedConnectivityNodeId: null,
+    resolvedConnectivityNodePath: null,
     cNodeName: readXmlAttribute(event.attributes, "cNodeName"),
     substationName: readXmlAttribute(event.attributes, "substationName"),
     voltageLevelName: readXmlAttribute(event.attributes, "voltageLevelName"),
@@ -350,6 +354,7 @@ function appendConnectivityNode(
   const voltageLevel = last(voltageLevelStack)
   const bay = last(bayStack)
   const name = readXmlAttribute(event.attributes, "name")
+  const pathName = readXmlAttribute(event.attributes, "pathName")
   const node: SclConnectivityNode = {
     id: buildStableId([
       "substation",
@@ -362,7 +367,15 @@ function appendConnectivityNode(
       name ?? String((bay?.connectivityNodes.length ?? voltageLevel?.connectivityNodes.length ?? substation.connectivityNodes.length) + 1),
     ]),
     name,
-    pathName: readXmlAttribute(event.attributes, "pathName"),
+    pathName,
+    normalizedPath: normalizeConnectivityNodePath({
+      pathName,
+      substationName: substation.name,
+      voltageLevelName: voltageLevel?.name ?? null,
+      bayName: bay?.name ?? null,
+      nodeName: name,
+      fallbackPath: event.sourcePath,
+    }),
     substationName: substation.name,
     voltageLevelName: voltageLevel?.name ?? null,
     bayName: bay?.name ?? null,
@@ -515,6 +528,113 @@ function readVoltage(event: XmlElementEvent): SclVoltage {
 
 function readRequiredName(event: XmlElementEvent): string {
   return readXmlAttribute(event.attributes, "name")?.trim() || "unnamed"
+}
+
+function normalizeTerminalConnectivityReferences(model: NormalizedSclModel) {
+  const declaredNodes = collectConnectivityNodes(model)
+  const declaredNodesByPath = new Map<string, SclConnectivityNode>()
+
+  for (const node of declaredNodes) {
+    const existing = declaredNodesByPath.get(node.normalizedPath)
+    if (existing) {
+      model.diagnostics.push({
+        severity: "warning",
+        stage: "normalizer",
+        code: "normalizer.duplicate-connectivity-node",
+        message: `Duplicate connectivity node "${node.normalizedPath}" was collapsed by path for terminal resolution.`,
+        sourcePath: node.sourcePath,
+        sourceId: node.id,
+      })
+      continue
+    }
+    declaredNodesByPath.set(node.normalizedPath, node)
+  }
+
+  for (const equipment of collectEquipment(model)) {
+    for (const terminal of equipment.terminals) {
+      const normalizedPath = normalizeTerminalConnectivityPath(terminal)
+      terminal.resolvedConnectivityNodePath = normalizedPath
+
+      if (!normalizedPath) {
+        continue
+      }
+
+      const declaredNode = declaredNodesByPath.get(normalizedPath)
+      terminal.resolvedConnectivityNodeId = declaredNode?.id ?? null
+
+      if (!declaredNode) {
+        model.diagnostics.push({
+          severity: "warning",
+          stage: "normalizer",
+          code: "normalizer.unresolved-connectivity-node",
+          message: `Terminal references connectivity node "${normalizedPath}" that is not declared in the parsed SCL topology.`,
+          sourcePath: terminal.sourcePath,
+          sourceId: terminal.id,
+        })
+      }
+    }
+  }
+}
+
+function collectConnectivityNodes(model: NormalizedSclModel): SclConnectivityNode[] {
+  return model.substations.flatMap(substation => [
+    ...substation.connectivityNodes,
+    ...substation.voltageLevels.flatMap(voltageLevel => [
+      ...voltageLevel.connectivityNodes,
+      ...voltageLevel.bays.flatMap(bay => bay.connectivityNodes),
+    ]),
+  ])
+}
+
+function collectEquipment(model: NormalizedSclModel): SclEquipment[] {
+  return model.substations.flatMap(substation => [
+    ...substation.powerTransformers,
+    ...substation.voltageLevels.flatMap(voltageLevel => (
+      voltageLevel.bays.flatMap(bay => bay.equipments)
+    )),
+  ])
+}
+
+function normalizeTerminalConnectivityPath(terminal: SclTerminal): string | null {
+  if (terminal.connectivityNode?.trim()) {
+    return normalizePath(terminal.connectivityNode)
+  }
+
+  return normalizePathParts([
+    terminal.substationName,
+    terminal.voltageLevelName,
+    terminal.bayName,
+    terminal.cNodeName,
+  ])
+}
+
+function normalizeConnectivityNodePath(input: {
+  pathName: string | null
+  substationName: string | null
+  voltageLevelName: string | null
+  bayName: string | null
+  nodeName: string | null
+  fallbackPath: string
+}): string {
+  if (input.pathName?.trim()) {
+    return normalizePath(input.pathName)
+  }
+
+  return normalizePathParts([
+    input.substationName,
+    input.voltageLevelName,
+    input.bayName,
+    input.nodeName,
+  ]) ?? input.fallbackPath
+}
+
+function normalizePath(value: string): string {
+  return value.split("/").map(part => part.trim()).filter(Boolean).join("/")
+}
+
+function normalizePathParts(parts: Array<string | null>): string | null {
+  const path = parts.map(part => part?.trim() ?? "").filter(Boolean).join("/")
+  return path || null
 }
 
 function parseNullableNumber(value: string | null): number | null {
