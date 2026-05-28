@@ -1,14 +1,14 @@
 import { buildSldCellModel } from "./cellModel"
 import { buildElectricalGraph } from "./graph"
+import { layoutSldDocument } from "./layout"
 import { parseScdSource } from "./parser"
-import { createSldDocumentFromGraph } from "./sldDocument"
 import type { GenerateSldOptions, GenerateSldResult, ScdDiagnostic, ScdSource } from "./types"
 
 export function generateSldFromScd(source: ScdSource, options: GenerateSldOptions = {}): GenerateSldResult {
   const model = parseScdSource(source)
   const graph = buildElectricalGraph(model)
   const cellModel = buildSldCellModel(graph)
-  const document = createSldDocumentFromGraph(graph, options)
+  const document = layoutSldDocument(cellModel, graph, options)
 
   return {
     model,
@@ -45,6 +45,7 @@ function mergeDiagnostics(...diagnosticGroups: ScdDiagnostic[][]): ScdDiagnostic
 export { parseScdSource } from "./parser"
 export { buildElectricalGraph } from "./graph"
 export { buildSldCellModel } from "./cellModel"
+export { layoutSldDocument } from "./layout"
 export { createSldDocument, createSldDocumentFromGraph } from "./sldDocument"
 export type {
   ElectricalGraph,

@@ -480,7 +480,8 @@ Implemented 2026-05-28:
 - Added `buildSldCellModel(graph): SldCellModel` as the deterministic grouping layer before coordinate layout.
 - Cell model emits voltage-level lanes, bay cells, ordered node roles, and orphan nodes for equipment outside a bay.
 - `generateSldFromScd(...)` now returns the cell model alongside the normalized model, graph, and renderer-neutral SLD document.
-- Coordinate layout and grid-aligned element placement remain open in this slice.
+- Added deterministic grid-aligned placement for voltage-level lanes, bay cell stacks, lane-ungrouped nodes, and orphan nodes.
+- Orthogonal edge routing metadata remains open in this slice.
 
 ### Slice 7 - UnitLab SLD Adapter
 

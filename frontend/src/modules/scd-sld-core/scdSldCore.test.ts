@@ -213,6 +213,17 @@ describe("scd-sld-core", () => {
       ["Q01", "breaker"],
       ["QB1", "disconnector"],
     ])
+    expect(result.document.elements.map(item => [item.label, item.position])).toEqual([
+      ["TR1", { x: 96, y: 456 }],
+      ["Q01", { x: 168, y: 120 }],
+      ["QB1", { x: 168, y: 168 }],
+    ])
+    for (const element of result.document.elements) {
+      expect(element.position.x).not.toBeNull()
+      expect(element.position.y).not.toBeNull()
+      expect((element.position.x ?? 0) % 24).toBe(0)
+      expect((element.position.y ?? 0) % 24).toBe(0)
+    }
     expect(result.document.connections).toContainEqual(expect.objectContaining({
       sourceConnectivityNode: "SS1/VL1/BAY1/CN_Q01_TOP",
       portIds: expect.arrayContaining([
