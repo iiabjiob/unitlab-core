@@ -520,8 +520,8 @@ describe("scd-sld-core", () => {
     expect(elementsByLabel.get("Q01")?.position).toEqual({ x: 216, y: 216 })
     expect(elementsByLabel.get("QB1")?.position).toEqual({ x: 96, y: 312 })
     expect(elementsByLabel.get("QB2")?.position).toEqual({ x: 336, y: 312 })
-    expect(elementsByLabel.get("QBE1")?.position).toEqual({ x: 144, y: 360 })
-    expect(elementsByLabel.get("QBE2")?.position).toEqual({ x: 384, y: 360 })
+    expect(elementsByLabel.get("QBE1")?.position).toEqual({ x: 168, y: 312 })
+    expect(elementsByLabel.get("QBE2")?.position).toEqual({ x: 408, y: 312 })
 
     const feederConnection = result.document.connections.find(connection => (
       connection.sourceConnectivityNode === "SS1/VL1/BAY1/CN_FEEDER"
@@ -533,6 +533,88 @@ describe("scd-sld-core", () => {
       { x: 216, y: 72 },
     ])
     expect(result.document.connections.some(connection => connection.sourceConnectivityNode.includes("ground"))).toBe(false)
+  })
+
+  it("keeps bus selector disconnectors on the lower branch and bridges incomplete feeder topology", () => {
+    const result = generateSldFromScd({
+      fileName: "incomplete-feeder.scd",
+      contentHash: "incomplete-feeder",
+      xmlText: `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" xmlns:sxy="http://www.iec.ch/61850/2003/SCLcoordinates">
+  <Substation name="SS1">
+    <VoltageLevel name="VL1">
+      <Bay name="BUS1"><ConnectivityNode name="L1" pathName="SS1/VL1/BUS1/L1"/></Bay>
+      <Bay name="BUS2"><ConnectivityNode name="L1" pathName="SS1/VL1/BUS2/L1"/></Bay>
+      <Bay name="BAY1">
+        <ConductingEquipment sxy:x="3" sxy:y="2" name="QE1" type="DIS">
+          <Terminal bayName="BAY1" cNodeName="grounded" connectivityNode="SS1/VL1/BAY1/grounded" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:y="8" name="QB2" type="DIS">
+          <Terminal bayName="BAY1" cNodeName="CN_LOW" connectivityNode="SS1/VL1/BAY1/CN_LOW" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BUS2" cNodeName="L1" connectivityNode="SS1/VL1/BUS2/L1" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="2" sxy:y="4" name="QS1" type="DIS">
+          <Terminal bayName="BAY1" cNodeName="CN_TOP" connectivityNode="SS1/VL1/BAY1/CN_TOP" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BAY1" cNodeName="CN_MID" connectivityNode="SS1/VL1/BAY1/CN_MID" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="3" sxy:y="5" name="QE2" type="DIS">
+          <Terminal bayName="BAY1" cNodeName="grounded" connectivityNode="SS1/VL1/BAY1/grounded" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="2" name="BAY1" type="IFL">
+          <Terminal bayName="BAY1" cNodeName="CN_TOP" connectivityNode="SS1/VL1/BAY1/CN_TOP" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="4" sxy:y="8" name="QB1" type="DIS">
+          <Terminal bayName="BAY1" cNodeName="CN_LOW" connectivityNode="SS1/VL1/BAY1/CN_LOW" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BUS1" cNodeName="L1" connectivityNode="SS1/VL1/BUS1/L1" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="5" sxy:y="9" name="QB1E" type="DIS">
+          <Terminal bayName="BAY1" cNodeName="grounded" connectivityNode="SS1/VL1/BAY1/grounded" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BUS1" cNodeName="L1" connectivityNode="SS1/VL1/BUS1/L1" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="1" sxy:y="9" name="QB2E" type="DIS">
+          <Terminal bayName="BAY1" cNodeName="grounded" connectivityNode="SS1/VL1/BAY1/grounded" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BUS2" cNodeName="L1" connectivityNode="SS1/VL1/BUS2/L1" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="2" sxy:y="6" name="Q01" type="CBR">
+          <Terminal bayName="BAY1" cNodeName="CN_MID" connectivityNode="SS1/VL1/BAY1/CN_MID" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConnectivityNode name="grounded" pathName="SS1/VL1/BAY1/grounded"/>
+        <ConnectivityNode name="CN_TOP" pathName="SS1/VL1/BAY1/CN_TOP"/>
+        <ConnectivityNode name="CN_MID" pathName="SS1/VL1/BAY1/CN_MID"/>
+        <ConnectivityNode name="CN_LOW" pathName="SS1/VL1/BAY1/CN_LOW"/>
+      </Bay>
+    </VoltageLevel>
+  </Substation>
+</SCL>`,
+    }, {
+      gridSize: 24,
+    })
+
+    const elementsByLabel = new Map(result.document.elements.map(element => [element.label, element]))
+    expect(elementsByLabel.get("BAY1")?.position).toEqual({ x: 216, y: 72 })
+    expect(elementsByLabel.get("QE1")?.position).toEqual({ x: 288, y: 120 })
+    expect(elementsByLabel.get("QS1")?.position).toEqual({ x: 216, y: 144 })
+    expect(elementsByLabel.get("QE2")?.position).toEqual({ x: 288, y: 192 })
+    expect(elementsByLabel.get("Q01")?.position).toEqual({ x: 216, y: 216 })
+    expect(elementsByLabel.get("QB2")?.position).toEqual({ x: 96, y: 312 })
+    expect(elementsByLabel.get("QB1")?.position).toEqual({ x: 336, y: 312 })
+    expect(elementsByLabel.get("QB2E")?.position).toEqual({ x: 168, y: 312 })
+    expect(elementsByLabel.get("QB1E")?.position).toEqual({ x: 408, y: 312 })
+
+    expect(result.document.connections).toContainEqual(expect.objectContaining({
+      id: expect.stringContaining("feeder-template-bridge"),
+      route: expect.objectContaining({
+        segments: [
+          expect.objectContaining({
+            terminalOwnerId: "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01",
+            points: [
+              { x: 216, y: 216 },
+              { x: 216, y: 312 },
+            ],
+          }),
+        ],
+      }),
+    }))
   })
 
   it("stops after substation topology and leaves later IED payloads to a future metadata slice", () => {

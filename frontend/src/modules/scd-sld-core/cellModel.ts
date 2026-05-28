@@ -15,6 +15,7 @@ import type {
 export function buildSldCellModel(graph: ElectricalGraph): SldCellModel {
   const diagnostics: ScdDiagnostic[] = [...graph.diagnostics]
   const nodesByGroupId = groupNodesByGroupId(graph.nodes)
+  const busbarConnectedNodeIds = collectBusbarConnectedNodeIds(graph)
   const voltageLevelGroups = graph.groups
     .filter(group => group.kind === "voltage-level")
     .sort(compareGroupsByYThenX)
@@ -26,6 +27,7 @@ export function buildSldCellModel(graph: ElectricalGraph): SldCellModel {
       orderIndex,
       groups: graph.groups,
       nodesByGroupId,
+      busbarConnectedNodeIds,
       assignedNodeIds,
     })
     return lane
@@ -33,7 +35,7 @@ export function buildSldCellModel(graph: ElectricalGraph): SldCellModel {
 
   const orphanNodes = graph.nodes
     .filter(node => !assignedNodeIds.has(node.id))
-    .map((node, orderIndex) => mapNodeToCellNode(node, orderIndex))
+    .map((node, orderIndex) => mapNodeToCellNode(node, orderIndex, busbarConnectedNodeIds))
 
   return {
     schema: "unitlab.scd-sld.cell-model",
@@ -55,6 +57,7 @@ function buildVoltageLevelLane(input: {
   orderIndex: number
   groups: ElectricalGraphGroup[]
   nodesByGroupId: Map<string, ElectricalGraphNode[]>
+  busbarConnectedNodeIds: Set<string>
   assignedNodeIds: Set<string>
 }): SldVoltageLevelLane {
   const bayGroups = input.groups
@@ -62,7 +65,7 @@ function buildVoltageLevelLane(input: {
     .sort(compareGroupsByXThenY)
 
   const bayCells = bayGroups.map((bayGroup, orderIndex) => {
-    const nodes = buildCellNodes(input.nodesByGroupId.get(bayGroup.id) ?? [])
+    const nodes = buildCellNodes(input.nodesByGroupId.get(bayGroup.id) ?? [], input.busbarConnectedNodeIds)
     nodes.forEach(node => input.assignedNodeIds.add(node.graphNodeId))
     return buildBayCell({
       bayGroup,
@@ -72,7 +75,10 @@ function buildVoltageLevelLane(input: {
     })
   })
 
-  const ungroupedNodes = buildCellNodes(input.nodesByGroupId.get(input.voltageLevelGroup.id) ?? [])
+  const ungroupedNodes = buildCellNodes(
+    input.nodesByGroupId.get(input.voltageLevelGroup.id) ?? [],
+    input.busbarConnectedNodeIds,
+  )
   ungroupedNodes.forEach(node => input.assignedNodeIds.add(node.graphNodeId))
 
   return {
@@ -114,13 +120,17 @@ function buildBayCell(input: {
   }
 }
 
-function buildCellNodes(nodes: ElectricalGraphNode[]): SldCellNode[] {
+function buildCellNodes(nodes: ElectricalGraphNode[], busbarConnectedNodeIds: Set<string>): SldCellNode[] {
   return [...nodes]
     .sort(compareNodesForCell)
-    .map((node, orderIndex) => mapNodeToCellNode(node, orderIndex))
+    .map((node, orderIndex) => mapNodeToCellNode(node, orderIndex, busbarConnectedNodeIds))
 }
 
-function mapNodeToCellNode(node: ElectricalGraphNode, orderIndex: number): SldCellNode {
+function mapNodeToCellNode(
+  node: ElectricalGraphNode,
+  orderIndex: number,
+  busbarConnectedNodeIds: Set<string>,
+): SldCellNode {
   return {
     id: `cell-node:${node.id}`,
     graphNodeId: node.id,
@@ -134,8 +144,25 @@ function mapNodeToCellNode(node: ElectricalGraphNode, orderIndex: number): SldCe
     position: node.position,
     generated: node.generated,
     grounded: node.grounded,
+    busbarConnected: busbarConnectedNodeIds.has(node.id),
     sourceLocation: node.sourceLocation,
   }
+}
+
+function collectBusbarConnectedNodeIds(graph: ElectricalGraph): Set<string> {
+  const busbarNodeIds = new Set(graph.nodes.filter(node => node.kind === "busbar").map(node => node.id))
+  const connected = new Set<string>()
+
+  for (const edge of graph.edges) {
+    if (!edge.nodeIds.some(nodeId => busbarNodeIds.has(nodeId))) {
+      continue
+    }
+    edge.nodeIds
+      .filter(nodeId => !busbarNodeIds.has(nodeId))
+      .forEach(nodeId => connected.add(nodeId))
+  }
+
+  return connected
 }
 
 function groupNodesByGroupId(nodes: ElectricalGraphNode[]): Map<string, ElectricalGraphNode[]> {

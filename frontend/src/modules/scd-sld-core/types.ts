@@ -300,6 +300,7 @@ export type SldCellNode = {
   position: SldCoordinate
   generated: boolean
   grounded: boolean
+  busbarConnected: boolean
   sourceLocation?: ScdSourceLocation
 }
 
