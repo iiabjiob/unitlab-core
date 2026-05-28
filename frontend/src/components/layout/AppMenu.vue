@@ -329,7 +329,7 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 .app-menu--compact {
-  padding: 0.75rem 0.25rem;
+  padding: 0.75rem 0.4375rem;
 }
 
 .app-menu__section + .app-menu__section {
@@ -379,6 +379,11 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 .app-menu__entry--compact {
+  box-sizing: border-box;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-right: auto;
+  margin-left: auto;
   padding-right: 0;
   padding-left: 0;
   text-align: center;
@@ -402,7 +407,6 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 .app-menu__entry-content--compact {
-  width: 100%;
   justify-content: center;
 }
 
@@ -418,7 +422,7 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 .app-menu__entry.is-compact {
-  min-height: 2.5rem;
+  min-height: 0;
 }
 
 .app-menu__entry:hover {

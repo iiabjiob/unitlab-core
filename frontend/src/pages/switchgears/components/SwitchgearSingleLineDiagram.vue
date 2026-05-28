@@ -38,6 +38,7 @@ type DiagramEdge = {
   x2: number
   y2: number
   kind: "line" | "arrow"
+  weight?: "normal" | "bold"
   startBinding?: DiagramPortBinding | null
   endBinding?: DiagramPortBinding | null
 }
@@ -100,6 +101,7 @@ type DiagramClipboardEdge = {
   x2: number
   y2: number
   kind: "line" | "arrow"
+  weight?: "normal" | "bold"
 }
 
 type DiagramClipboardStaticElement = {
@@ -393,12 +395,6 @@ const selectionSummary = computed(() => {
 
   return parts.join(" · ")
 })
-const diagramMetricItems = computed(() => [
-  { label: "Switchgears", value: switchgears.value.length },
-  { label: "Lines", value: edges.value.length },
-  { label: "Symbols", value: staticElements.value.length },
-  { label: "Texts", value: textElements.value.length },
-])
 const draftLinePreview = computed(() => {
   if (!dragState.value || dragState.value.type !== "new-line") {
     return null
@@ -435,6 +431,22 @@ const selectedLineKind = computed<"line" | "arrow" | "mixed" | null>(() => {
 
   return "mixed"
 })
+const selectedLineWeight = computed<"normal" | "bold" | "mixed" | null>(() => {
+  const edgeIds = effectiveSelectedEdgeIds()
+  if (edgeIds.length === 0) {
+    return null
+  }
+
+  const weights = new Set(
+    edgeIds.map(edgeId => normalizeEdgeWeight(getEdgeById(edgeId)?.weight)),
+  )
+
+  if (weights.size === 1) {
+    return weights.has("bold") ? "bold" : "normal"
+  }
+
+  return "mixed"
+})
 const selectedStaticSize = computed<DiagramStaticSize | "mixed" | null>(() => {
   const staticIds = new Set(effectiveSelectedStaticIds())
   if (staticIds.size === 0) {
@@ -462,7 +474,6 @@ const canGrowSelectedStaticElements = computed(() => {
   const staticIds = new Set(effectiveSelectedStaticIds())
   return staticElements.value.some(element => staticIds.has(element.id) && element.size !== "lg")
 })
-const staticElementCount = computed(() => staticElements.value.length)
 const singleSelectedSwitchgear = computed(() => {
   const selectedId = selectedNodeIds.value.length === 1
     ? selectedNodeIds.value[0]
@@ -552,6 +563,7 @@ const minimapModel = computed(() => {
         y1: offsetY + (points.y1 - contentMinY) * scale,
         x2: offsetX + (points.x2 - contentMinX) * scale,
         y2: offsetY + (points.y2 - contentMinY) * scale,
+        weight: normalizeEdgeWeight(edge.weight),
         active: selectedEdgeIdSet.value.has(edge.id),
       }
     }),
@@ -681,6 +693,10 @@ function cloneTextElements(source: DiagramTextElement[]) {
 
 function normalizeEdgeKind(value: unknown): "line" | "arrow" {
   return value === "arrow" ? "arrow" : "line"
+}
+
+function normalizeEdgeWeight(value: unknown): "normal" | "bold" {
+  return value === "bold" ? "bold" : "normal"
 }
 
 function normalizeStaticKind(value: unknown): DiagramStaticKind {
@@ -831,6 +847,7 @@ function parseDiagramClipboardPayload(rawText: string): DiagramClipboardSelectio
         x2,
         y2,
         kind: normalizeEdgeKind(edge.kind),
+        weight: normalizeEdgeWeight(edge.weight),
       }]
     })
 
@@ -1465,6 +1482,7 @@ function restoreDiagramState() {
           x2: edge.x2,
           y2: edge.y2,
           kind: normalizeEdgeKind(edge.kind),
+          weight: normalizeEdgeWeight(edge.weight),
           startBinding: normalizePortBinding(edge.startBinding),
           endBinding: normalizePortBinding(edge.endBinding),
         }))
@@ -1578,6 +1596,7 @@ function addEdge(start: { x: number; y: number }, end: { x: number; y: number })
     x2: endEndpoint.point.x,
     y2: endEndpoint.point.y,
     kind: "line",
+    weight: "normal",
     startBinding: startEndpoint.binding,
     endBinding: endEndpoint.binding,
   }
@@ -1673,7 +1692,14 @@ async function handleCopySelection() {
     .filter((edge): edge is DiagramEdge => edge !== null)
     .map((edge) => {
       const points = resolvedEdgePoints(edge)
-      return { x1: points.x1, y1: points.y1, x2: points.x2, y2: points.y2, kind: edge.kind }
+      return {
+        x1: points.x1,
+        y1: points.y1,
+        x2: points.x2,
+        y2: points.y2,
+        kind: edge.kind,
+        weight: normalizeEdgeWeight(edge.weight),
+      }
     })
   const sourceStaticElements = effectiveSelectedStaticIds()
     .map(staticId => getStaticElementById(staticId))
@@ -1765,6 +1791,7 @@ async function handlePasteSelection() {
         x2: end.x,
         y2: end.y,
         kind: edge.kind,
+        weight: normalizeEdgeWeight(edge.weight),
         startBinding: null,
         endBinding: null,
       }
@@ -1949,6 +1976,22 @@ function setSelectedEdgesKind(kind: "line" | "arrow") {
     edges.value = edges.value.map(edge => (
       edgeIds.has(edge.id)
         ? { ...edge, kind }
+        : edge
+    ))
+    closeLineContextMenu()
+  })
+}
+
+function setSelectedEdgesWeight(weight: "normal" | "bold") {
+  const edgeIds = new Set(effectiveSelectedEdgeIds())
+  if (edgeIds.size === 0) {
+    return
+  }
+
+  commitHistoryMutation(() => {
+    edges.value = edges.value.map(edge => (
+      edgeIds.has(edge.id)
+        ? { ...edge, weight }
         : edge
     ))
     closeLineContextMenu()
@@ -3467,6 +3510,11 @@ function edgePath(edge: DiagramEdge): string {
   return `M ${points.x1} ${points.y1} L ${points.x2} ${points.y2}`
 }
 
+function edgeStrokeWidth(edge: DiagramEdge): number {
+  const base = normalizeEdgeWeight(edge.weight) === "bold" ? 4 : 2
+  return selectedEdgeIdSet.value.has(edge.id) ? base + 1 : base
+}
+
 function selectEdge(edgeId: string, event?: MouseEvent) {
   closeLineContextMenu()
   if (event?.shiftKey) {
@@ -3573,20 +3621,6 @@ onBeforeUnmount(() => {
             <path d="M3 2l10 6-5.5 1.5L6 15z"/>
           </svg>
         </button>
-        <button
-          type="button"
-          class="switchgear-sld__tool-button"
-          :class="{ 'switchgear-sld__tool-button--active': interactionTool === 'line' }"
-          title="Draw line"
-          aria-label="Draw line"
-          @click="setInteractionTool('line')"
-        >
-          <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 11 11 3"/>
-            <path d="M10.5 11.5h2.5V9"/>
-            <path d="M3 5.5V3h2.5"/>
-          </svg>
-        </button>
       </div>
 
       <button
@@ -3615,6 +3649,21 @@ onBeforeUnmount(() => {
         <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
           <path d="m10 4 3.5 3.5L10 11"/>
           <path d="M13 7.5H7.75a4.25 4.25 0 1 0 0 8.5H9"/>
+        </svg>
+      </UiButton>
+      <UiButton
+        size="sm"
+        variant="secondary"
+        class="switchgear-sld__icon-action"
+        :class="{ 'switchgear-sld__icon-action--active': interactionTool === 'line' }"
+        title="Draw line"
+        aria-label="Draw line"
+        @click="setInteractionTool('line')"
+      >
+        <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 11 11 3"/>
+          <path d="M10.5 11.5h2.5V9"/>
+          <path d="M3 5.5V3h2.5"/>
         </svg>
       </UiButton>
       <UiButton
@@ -3660,17 +3709,6 @@ onBeforeUnmount(() => {
         </svg>
       </UiButton>
 
-      <div class="switchgear-sld__metrics" aria-label="Diagram metrics">
-        <span
-          v-for="item in diagramMetricItems"
-          :key="item.label"
-          class="switchgear-sld__metric"
-        >
-          <span class="switchgear-sld__metric-value">{{ item.value }}</span>
-          <span class="switchgear-sld__metric-label">{{ item.label }}</span>
-        </span>
-      </div>
-
       <div
         v-if="selectedLineCount > 0"
         class="switchgear-sld__tool-group"
@@ -3690,6 +3728,27 @@ onBeforeUnmount(() => {
           @click="setSelectedEdgesKind('arrow')"
         >
           Arrow
+        </button>
+      </div>
+      <div
+        v-if="selectedLineCount > 0"
+        class="switchgear-sld__tool-group"
+      >
+        <button
+          type="button"
+          class="switchgear-sld__kind-button switchgear-sld__kind-button--split"
+          :class="{ 'switchgear-sld__kind-button--active': selectedLineWeight === 'normal' }"
+          @click="setSelectedEdgesWeight('normal')"
+        >
+          Normal
+        </button>
+        <button
+          type="button"
+          class="switchgear-sld__kind-button"
+          :class="{ 'switchgear-sld__kind-button--active': selectedLineWeight === 'bold' }"
+          @click="setSelectedEdgesWeight('bold')"
+        >
+          Bold
         </button>
       </div>
       <div
@@ -3883,7 +3942,7 @@ onBeforeUnmount(() => {
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 :stroke="selectedEdgeId === edge.id ? '#2563eb' : '#2563eb'"
-                :stroke-width="selectedEdgeIdSet.has(edge.id) ? 3 : 2"
+                :stroke-width="edgeStrokeWidth(edge)"
                 :marker-end="edge.kind === 'arrow' ? 'url(#switchgear-sld-arrowhead)' : undefined"
               />
               <path
@@ -4169,7 +4228,7 @@ onBeforeUnmount(() => {
               :x2="line.x2"
               :y2="line.y2"
               :stroke="line.active ? '#38bdf8' : (isDarkTheme ? '#94a3b8' : '#475569')"
-              :stroke-width="line.active ? 1.8 : 1.2"
+              :stroke-width="line.active ? (line.weight === 'bold' ? 2.4 : 1.8) : (line.weight === 'bold' ? 1.8 : 1.2)"
               stroke-linecap="round"
               :opacity="line.active ? 1 : 0.62"
             />
@@ -4348,6 +4407,16 @@ onBeforeUnmount(() => {
   padding-left: 0;
 }
 
+.switchgear-sld__icon-action--active,
+.switchgear-sld__icon-action--active:hover {
+  border-color: color-mix(in srgb, var(--color-blue-500) 52%, transparent);
+  background: var(--color-blue-600);
+  color: var(--color-white);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    0 0 0 1px color-mix(in srgb, var(--color-blue-400) 30%, transparent);
+}
+
 .switchgear-sld__toolbar-menu-anchor {
   position: relative;
 }
@@ -4390,36 +4459,6 @@ onBeforeUnmount(() => {
 .switchgear-sld__dropdown-item:hover,
 .switchgear-sld__context-item:hover {
   background: var(--color-neutral-100);
-}
-
-.switchgear-sld__metrics {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding-left: 0.25rem;
-}
-
-.switchgear-sld__metric {
-  display: inline-flex;
-  min-height: 1.75rem;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 82%, transparent);
-  border-radius: 0.5rem;
-  background: color-mix(in srgb, var(--color-white) 70%, transparent);
-  color: var(--color-neutral-500);
-  font-size: 0.6875rem;
-  font-weight: 600;
-}
-
-.switchgear-sld__metric-value {
-  color: var(--color-neutral-900);
-  font-family: var(--font-mono);
-}
-
-.switchgear-sld__metric-label {
-  text-transform: uppercase;
 }
 
 .switchgear-sld__viewport {
@@ -4725,14 +4764,14 @@ onBeforeUnmount(() => {
     0 0 0 1px color-mix(in srgb, var(--color-blue-400) 28%, transparent);
 }
 
-:global(.dark .switchgear-sld__metric) {
-  border-color: color-mix(in srgb, var(--color-neutral-700) 72%, transparent);
-  background: color-mix(in srgb, var(--color-neutral-900) 70%, transparent);
-  color: var(--color-neutral-500);
-}
-
-:global(.dark .switchgear-sld__metric-value) {
-  color: var(--color-neutral-100);
+:global(.dark .switchgear-sld__icon-action--active),
+:global(.dark .switchgear-sld__icon-action--active:hover) {
+  border-color: color-mix(in srgb, var(--color-blue-400) 42%, transparent);
+  background: var(--color-blue-600);
+  color: var(--color-white);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.14),
+    0 0 0 1px color-mix(in srgb, var(--color-blue-300) 24%, transparent);
 }
 
 :global(.dark .switchgear-sld__dropdown),

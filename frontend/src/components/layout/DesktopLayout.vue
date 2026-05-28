@@ -44,7 +44,7 @@
         placement="left"
         storageKey="left-aside-width"
         :defaultSize="240"
-        :minSize="72"
+        :minSize="LEFT_ASIDE_MIN_WIDTH_PX"
         :maxSize="400"
         @size-change="handleLeftAsideSizeChange"
       >
@@ -83,7 +83,7 @@ const meta = computed(() => ({
 }))
 
 const LEFT_ASIDE_DEFAULT_WIDTH_PX = 240
-const LEFT_ASIDE_MIN_WIDTH_PX = 72
+const LEFT_ASIDE_MIN_WIDTH_PX = 56
 const LEFT_ASIDE_MAX_WIDTH_PX = 400
 const ASIDE_COMPACT_THRESHOLD_PX = 130
 const LEFT_ASIDE_STORAGE_KEY = "left-aside-width"
