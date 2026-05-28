@@ -7,6 +7,7 @@ import type {
   SldConnection,
   SldDocument,
   SldElement,
+  SldElementVisual,
 } from "./types"
 import { buildElectricalGraph } from "./graph"
 
@@ -46,10 +47,27 @@ function mapGraphNodeToElement(node: ElectricalGraphNode): SldElement {
     kind: node.kind,
     label: node.label,
     equipmentType: node.equipmentType,
+    visual: visualForNode(node),
     substationName: node.substationName,
     voltageLevelName: node.voltageLevelName,
     bayName: node.bayName,
     position: node.position,
+  }
+}
+
+function visualForNode(node: ElectricalGraphNode): SldElementVisual {
+  if (node.kind === "busbar") {
+    return {
+      representation: "busbar",
+      orientation: "horizontal",
+      strokeWeight: "bold",
+    }
+  }
+
+  return {
+    representation: "symbol",
+    orientation: null,
+    strokeWeight: "normal",
   }
 }
 

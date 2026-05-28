@@ -482,7 +482,7 @@ Implemented 2026-05-28:
 - `generateSldFromScd(...)` now returns the cell model alongside the normalized model, graph, and renderer-neutral SLD document.
 - Added deterministic grid-aligned placement for voltage-level lanes, bay cell stacks, lane-ungrouped nodes, and orphan nodes.
 - Added renderer-neutral `orthogonal-star` connection route metadata with grid-aligned anchors and per-node segments.
-- Busbar visual specialization remains open for the SLD editor adapter.
+- Added renderer-neutral element visual metadata so `BBS` equipment is emitted as a bold horizontal busbar representation instead of requiring the app adapter to infer that from equipment type.
 
 ### Slice 7 - UnitLab SLD Adapter
 

@@ -19,6 +19,18 @@ export type ElectricalGraphGroupKind = "substation" | "voltage-level" | "bay"
 
 export type ElectricalGraphEdgeKind = SldConnectionKind
 
+export type SldElementRepresentation = "symbol" | "busbar"
+
+export type SldElementStrokeWeight = "normal" | "bold"
+
+export type SldElementOrientation = "horizontal" | "vertical" | null
+
+export type SldElementVisual = {
+  representation: SldElementRepresentation
+  orientation: SldElementOrientation
+  strokeWeight: SldElementStrokeWeight
+}
+
 export type SldCellNodeRole =
   | "busbar"
   | "switchgear"
@@ -296,6 +308,7 @@ export type SldElement = {
   kind: SldElementKind
   label: string
   equipmentType: string
+  visual: SldElementVisual
   substationName: string | null
   voltageLevelName: string | null
   bayName: string | null

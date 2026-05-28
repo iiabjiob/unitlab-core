@@ -33,6 +33,26 @@ const genericFeederBayScd = `<?xml version="1.0" encoding="UTF-8"?>
   <IED desc="Generic bay controller" manufacturer="Generic Vendor" type="Generic IED" name="IED1"/>
 </SCL>`
 
+const genericBusbarBayScd = `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" revision="B" version="2007">
+  <Substation name="SS1">
+    <VoltageLevel name="VL1">
+      <Voltage multiplier="k" unit="V">110</Voltage>
+      <Bay name="BAY1">
+        <ConductingEquipment name="BUS1" type="BBS">
+          <Terminal bayName="BAY1" cNodeName="CN_BUS" connectivityNode="SS1/VL1/BAY1/CN_BUS" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment name="Q01" type="CBR">
+          <Terminal bayName="BAY1" cNodeName="CN_BUS" connectivityNode="SS1/VL1/BAY1/CN_BUS" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BAY1" cNodeName="CN_OUT" connectivityNode="SS1/VL1/BAY1/CN_OUT" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConnectivityNode name="CN_BUS" pathName="SS1/VL1/BAY1/CN_BUS"/>
+        <ConnectivityNode name="CN_OUT" pathName="SS1/VL1/BAY1/CN_OUT"/>
+      </Bay>
+    </VoltageLevel>
+  </Substation>
+</SCL>`
+
 describe("scd-sld-core", () => {
   it("returns a structured error for empty SCD input", () => {
     const result = generateSldFromScd({
@@ -266,6 +286,36 @@ describe("scd-sld-core", () => {
         }
       }
     }
+    expect(JSON.parse(JSON.stringify(result.document))).toEqual(result.document)
+  })
+
+  it("marks BBS equipment with renderer-neutral busbar visual metadata", () => {
+    const result = generateSldFromScd({
+      fileName: "busbar.scd",
+      contentHash: "busbar",
+      xmlText: genericBusbarBayScd,
+    })
+
+    const busbar = result.document.elements.find(element => element.label === "BUS1")
+    const breaker = result.document.elements.find(element => element.label === "Q01")
+
+    expect(busbar).toMatchObject({
+      kind: "busbar",
+      equipmentType: "BBS",
+      visual: {
+        representation: "busbar",
+        orientation: "horizontal",
+        strokeWeight: "bold",
+      },
+    })
+    expect(breaker?.visual).toEqual({
+      representation: "symbol",
+      orientation: null,
+      strokeWeight: "normal",
+    })
+    expect(result.cellModel.voltageLevels[0]?.bayCells[0]?.busbarNodeIds).toEqual([
+      "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/BUS1",
+    ])
     expect(JSON.parse(JSON.stringify(result.document))).toEqual(result.document)
   })
 
