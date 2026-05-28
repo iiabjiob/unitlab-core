@@ -171,6 +171,8 @@ const MAX_ZOOM = 2.2
 const MINIMAP_WIDTH = 220
 const MINIMAP_HEIGHT = 150
 const GRID_STEP = 24
+const NUDGE_FINE_STEP = 1
+const NUDGE_LARGE_STEP = GRID_STEP * 4
 const PORT_SNAP_DISTANCE = 18
 const HISTORY_LIMIT = 80
 const DIAGRAM_CLIPBOARD_KIND = "unitlab.switchgear-sld-selection"
@@ -258,7 +260,7 @@ const stageGridStyle = computed(() => ({
   backgroundSize: "120px 120px, 120px 120px, 24px 24px, 24px 24px",
 }))
 const zoomLabel = computed(() => `${Math.round(viewState.value.zoom * 100)}%`)
-const selectedNodeIdSet = computed(() => new Set(selectedNodeIds.value))
+const selectedNodeIdSet = computed(() => new Set(effectiveSelectedNodeIds()))
 const selectedEdgeIdSet = computed(() => new Set(selectedEdgeIds.value))
 const selectedStaticIdSet = computed(() => new Set(selectedStaticIds.value))
 const selectedLineCount = computed(() => {
@@ -406,7 +408,7 @@ const minimapModel = computed(() => {
       y: offsetY + (item.y - contentMinY) * scale,
       width: Math.max(3, item.width * scale),
       height: Math.max(3, item.height * scale),
-      active: selectedNodeId.value === item.id || selectedNodeIdSet.value.has(item.id),
+      active: selectedNodeIdSet.value.has(item.id),
     })),
     viewport: {
       x: offsetX + (worldViewportX - contentMinX) * scale,
@@ -1200,6 +1202,9 @@ function effectiveSelectedNodeIds(): number[] {
   if (selectedNodeIds.value.length > 0) {
     return [...selectedNodeIds.value]
   }
+  if (selectedEdgeId.value || selectedEdgeIds.value.length > 0 || selectedStaticIds.value.length > 0) {
+    return []
+  }
   return selectedNodeId.value !== null ? [selectedNodeId.value] : []
 }
 
@@ -1374,6 +1379,85 @@ function alignSelectedNodesBottom() {
   })
 }
 
+function keyboardNudgeDelta(event: KeyboardEvent): { dx: number; dy: number } | null {
+  if (event.ctrlKey || event.metaKey) {
+    return null
+  }
+
+  const step = event.altKey
+    ? NUDGE_FINE_STEP
+    : event.shiftKey
+      ? NUDGE_LARGE_STEP
+      : GRID_STEP
+
+  switch (event.key) {
+    case "ArrowLeft":
+      return { dx: -step, dy: 0 }
+    case "ArrowRight":
+      return { dx: step, dy: 0 }
+    case "ArrowUp":
+      return { dx: 0, dy: -step }
+    case "ArrowDown":
+      return { dx: 0, dy: step }
+    default:
+      return null
+  }
+}
+
+function nudgeSelection(dx: number, dy: number): boolean {
+  const nodeIds = effectiveSelectedNodeIds()
+    .filter(id => switchgears.value.some(item => item.id === id))
+  const edgeIds = new Set(effectiveSelectedEdgeIds())
+  const staticIds = new Set(effectiveSelectedStaticIds())
+
+  if (nodeIds.length === 0 && edgeIds.size === 0 && staticIds.size === 0) {
+    return false
+  }
+
+  return commitHistoryMutation(() => {
+    if (nodeIds.length > 0) {
+      const nextLayout = { ...layoutById.value }
+      nodeIds.forEach((id) => {
+        const index = switchgears.value.findIndex(item => item.id === id)
+        const layout = resolvedLayout(id, index)
+        nextLayout[String(id)] = {
+          x: Math.round(layout.x + dx),
+          y: Math.round(layout.y + dy),
+        }
+      })
+      layoutById.value = nextLayout
+    }
+
+    if (edgeIds.size > 0) {
+      edges.value = edges.value.map(edge => (
+        edgeIds.has(edge.id)
+          ? {
+              ...edge,
+              x1: Math.round(edge.x1 + dx),
+              y1: Math.round(edge.y1 + dy),
+              x2: Math.round(edge.x2 + dx),
+              y2: Math.round(edge.y2 + dy),
+            }
+          : edge
+      ))
+    }
+
+    if (staticIds.size > 0) {
+      staticElements.value = staticElements.value.map(element => (
+        staticIds.has(element.id)
+          ? {
+              ...element,
+              x: Math.round(element.x + dx),
+              y: Math.round(element.y + dy),
+            }
+          : element
+      ))
+    }
+
+    closeLineContextMenu()
+  })
+}
+
 function openLineContextMenu(edgeId: string, event: MouseEvent) {
   const viewport = viewportRef.value
   if (!viewport) {
@@ -1471,6 +1555,17 @@ function handleWindowKeyDown(event: KeyboardEvent) {
       return
     }
     redo()
+    return
+  }
+
+  const nudgeDelta = keyboardNudgeDelta(event)
+  if (nudgeDelta) {
+    if (dragState.value) {
+      return
+    }
+    if (nudgeSelection(nudgeDelta.dx, nudgeDelta.dy)) {
+      event.preventDefault()
+    }
     return
   }
 
@@ -2750,7 +2845,7 @@ onBeforeUnmount(() => {
             :y="resolvedLayout(switchgear.id, index).y + STAGE_PADDING"
             :label-offset-x="resolvedLabelOffset(switchgear.id).x"
             :label-offset-y="resolvedLabelOffset(switchgear.id).y"
-            :selected="selectedNodeId === switchgear.id || selectedNodeIdSet.has(switchgear.id)"
+            :selected="selectedNodeIdSet.has(switchgear.id)"
             @drag-start="beginNodeDrag(switchgear.id, $event)"
             @label-drag-start="beginLabelDrag(switchgear.id, $event)"
             @select="selectNode(switchgear.id, $event)"
