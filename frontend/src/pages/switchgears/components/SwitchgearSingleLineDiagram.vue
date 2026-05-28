@@ -214,8 +214,10 @@ const LABEL_MAX_OFFSET = 220
 const LABEL_DEFAULT_OFFSET: DiagramLabelOffset = { x: 0, y: 22 }
 const STAGE_PADDING = 50000
 const DEFAULT_VIEW: DiagramViewState = { x: 96 - STAGE_PADDING, y: 72 - STAGE_PADDING, zoom: 1 }
-const MIN_ZOOM = 0.45
+const MIN_ZOOM = 0.05
 const MAX_ZOOM = 2.2
+const MARQUEE_AUTOPAN_EDGE_PX = 56
+const MARQUEE_AUTOPAN_MAX_SPEED_PX = 18
 const MINIMAP_WIDTH = 220
 const MINIMAP_HEIGHT = 150
 const GRID_STEP = 24
@@ -301,6 +303,8 @@ const scdImportPreview = ref<ScdImportPreview | null>(null)
 const scdImportCreateCandidates = ref(false)
 const scdImportApplyBusy = ref(false)
 let viewportResizeObserver: ResizeObserver | null = null
+let marqueeAutoPanFrame: number | null = null
+let marqueeAutoPanPointer: { clientX: number; clientY: number } | null = null
 
 const workspaceId = computed(() => workspaceStore.activeWorkspaceId)
 const switchgears = computed(() => switchgearStore.switchgears)
@@ -3010,14 +3014,18 @@ function setInteractionTool(tool: InteractionTool) {
 }
 
 function worldPointFromViewportEvent(event: PointerEvent) {
+  return worldPointFromViewportClient(event.clientX, event.clientY)
+}
+
+function worldPointFromViewportClient(clientX: number, clientY: number) {
   const viewport = viewportRef.value
   if (!viewport) {
     return null
   }
   const rect = viewport.getBoundingClientRect()
   return {
-    x: (event.clientX - rect.left - viewState.value.x) / viewState.value.zoom,
-    y: (event.clientY - rect.top - viewState.value.y) / viewState.value.zoom,
+    x: (clientX - rect.left - viewState.value.x) / viewState.value.zoom,
+    y: (clientY - rect.top - viewState.value.y) / viewState.value.zoom,
   }
 }
 
@@ -3104,9 +3112,87 @@ function handleWheel(event: WheelEvent) {
   }
 }
 
+function updateMarqueeCurrentFromClient(clientX: number, clientY: number): boolean {
+  if (dragState.value?.type !== "marquee") {
+    return false
+  }
+  const world = worldPointFromViewportClient(clientX, clientY)
+  if (!world) {
+    return false
+  }
+  dragState.value = {
+    ...dragState.value,
+    currentX: world.x,
+    currentY: world.y,
+  }
+  return true
+}
+
+function computeMarqueeAutoPanVelocity(clientX: number, clientY: number) {
+  const viewport = viewportRef.value
+  if (!viewport) {
+    return { x: 0, y: 0 }
+  }
+  const rect = viewport.getBoundingClientRect()
+  const leftStrength = clampUnit((MARQUEE_AUTOPAN_EDGE_PX - (clientX - rect.left)) / MARQUEE_AUTOPAN_EDGE_PX)
+  const rightStrength = clampUnit((MARQUEE_AUTOPAN_EDGE_PX - (rect.right - clientX)) / MARQUEE_AUTOPAN_EDGE_PX)
+  const topStrength = clampUnit((MARQUEE_AUTOPAN_EDGE_PX - (clientY - rect.top)) / MARQUEE_AUTOPAN_EDGE_PX)
+  const bottomStrength = clampUnit((MARQUEE_AUTOPAN_EDGE_PX - (rect.bottom - clientY)) / MARQUEE_AUTOPAN_EDGE_PX)
+
+  return {
+    x: (leftStrength - rightStrength) * MARQUEE_AUTOPAN_MAX_SPEED_PX,
+    y: (topStrength - bottomStrength) * MARQUEE_AUTOPAN_MAX_SPEED_PX,
+  }
+}
+
+function clampUnit(value: number): number {
+  return Math.min(1, Math.max(0, value))
+}
+
+function updateMarqueeAutoPan(clientX: number, clientY: number) {
+  marqueeAutoPanPointer = { clientX, clientY }
+  if (marqueeAutoPanFrame !== null) {
+    return
+  }
+  const velocity = computeMarqueeAutoPanVelocity(clientX, clientY)
+  if (velocity.x === 0 && velocity.y === 0) {
+    return
+  }
+  marqueeAutoPanFrame = requestAnimationFrame(runMarqueeAutoPan)
+}
+
+function runMarqueeAutoPan() {
+  marqueeAutoPanFrame = null
+  if (dragState.value?.type !== "marquee" || !marqueeAutoPanPointer) {
+    return
+  }
+  const velocity = computeMarqueeAutoPanVelocity(marqueeAutoPanPointer.clientX, marqueeAutoPanPointer.clientY)
+  if (velocity.x === 0 && velocity.y === 0) {
+    return
+  }
+
+  viewState.value = {
+    ...viewState.value,
+    x: viewState.value.x + velocity.x,
+    y: viewState.value.y + velocity.y,
+  }
+  updateMarqueeCurrentFromClient(marqueeAutoPanPointer.clientX, marqueeAutoPanPointer.clientY)
+  marqueeAutoPanFrame = requestAnimationFrame(runMarqueeAutoPan)
+}
+
+function stopMarqueeAutoPan() {
+  marqueeAutoPanPointer = null
+  if (marqueeAutoPanFrame === null) {
+    return
+  }
+  cancelAnimationFrame(marqueeAutoPanFrame)
+  marqueeAutoPanFrame = null
+}
+
 function stopDragSession() {
   finishDragHistorySession()
   dragState.value = null
+  stopMarqueeAutoPan()
   if (typeof window === "undefined") {
     return
   }
@@ -3129,15 +3215,10 @@ function onWindowPointerMove(event: PointerEvent) {
   }
 
   if (dragState.value.type === "marquee") {
-    const world = worldPointFromViewportEvent(event)
-    if (!world) {
+    if (!updateMarqueeCurrentFromClient(event.clientX, event.clientY)) {
       return
     }
-    dragState.value = {
-      ...dragState.value,
-      currentX: world.x,
-      currentY: world.y,
-    }
+    updateMarqueeAutoPan(event.clientX, event.clientY)
     return
   }
 
