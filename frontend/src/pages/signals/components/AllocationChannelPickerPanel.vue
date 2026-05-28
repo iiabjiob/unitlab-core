@@ -12,12 +12,6 @@
         <div class="allocation-channel-picker__eyebrow">
           {{ signalDirection }} signal
         </div>
-        <div class="allocation-channel-picker__title">
-          {{ signalTitle }}
-        </div>
-        <div v-if="signalKeyText" class="allocation-channel-picker__signal-key">
-          {{ signalKeyText }}
-        </div>
 
         <div class="allocation-channel-picker__current">
           <div class="allocation-channel-picker__eyebrow">
@@ -225,23 +219,6 @@ const tree = useTreeviewController<NodeValue>({
 })
 
 const normalizedQuery = computed(() => query.value.trim().toLowerCase())
-
-const signalTitle = computed(() => {
-  const signalName = props.signalName.trim()
-  if (signalName) return signalName
-  const signalKey = props.signalKey.trim()
-  if (signalKey) return signalKey
-  return "Selected signal"
-})
-
-const signalKeyText = computed(() => {
-  const signalKey = props.signalKey.trim()
-  const signalName = props.signalName.trim()
-  if (!signalKey || signalKey === signalName) {
-    return ""
-  }
-  return signalKey
-})
 
 const matchingChannels = computed(() => {
   const needle = normalizedQuery.value
@@ -828,19 +805,6 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
   text-transform: uppercase;
 }
 
-.allocation-channel-picker__title {
-  color: var(--color-neutral-900);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  margin-top: 0.25rem;
-}
-
-.allocation-channel-picker__signal-key {
-  color: var(--color-neutral-500);
-  font-size: var(--text-xs);
-  margin-top: 0.25rem;
-}
-
 .allocation-channel-picker__current {
   background: var(--color-neutral-50);
   border: 1px solid var(--color-neutral-200);
@@ -1098,7 +1062,6 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
 }
 
 :global(.dark .allocation-channel-picker__eyebrow),
-:global(.dark .allocation-channel-picker__signal-key),
 :global(.dark .allocation-channel-picker__summary-row),
 :global(.dark .allocation-channel-picker__empty),
 :global(.dark .allocation-channel-picker__chevron),
@@ -1106,7 +1069,6 @@ function onPanelKeydownCapture(event: KeyboardEvent) {
   color: var(--color-neutral-400);
 }
 
-:global(.dark .allocation-channel-picker__title),
 :global(.dark .allocation-channel-picker__current-label),
 :global(.dark .allocation-channel-picker__node-label--unit),
 :global(.dark .allocation-channel-picker__search-input) {

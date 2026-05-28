@@ -16,12 +16,40 @@
       tabindex="-1"
       :disabled="disabled"
       :aria-label="ariaLabel"
+      :title="actionLabel"
       @mousedown.stop
       @click.stop.prevent="activate()"
       @keydown.enter.stop.prevent="activate()"
       @keydown.space.stop.prevent="activate()"
     >
-      {{ actionLabel }}
+      <svg
+        v-if="assigned"
+        class="allocation-channel-cell__button-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </svg>
+      <svg
+        v-else
+        class="allocation-channel-cell__button-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M10 13a5 5 0 0 0 7.54.54l2-2a5 5 0 0 0-7.07-7.07l-1.15 1.15" />
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-2 2a5 5 0 0 0 7.07 7.07l1.15-1.15" />
+      </svg>
     </button>
   </div>
 </template>
@@ -129,7 +157,19 @@ const labelClass = computed(() => {
 
 .allocation-channel-cell__button {
   flex-shrink: 0;
-  min-width: 4rem;
+  gap: 0;
+  height: 1.5rem;
+  line-height: 0;
+  min-height: 1.5rem;
+  min-width: 1.5rem;
+  padding: 0;
+  width: 1.5rem;
+}
+
+.allocation-channel-cell__button-icon {
+  flex-shrink: 0;
+  height: 0.875rem;
+  width: 0.875rem;
 }
 
 :global(.dark .allocation-channel-cell__indicator--unassigned),
