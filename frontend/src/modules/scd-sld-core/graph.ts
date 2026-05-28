@@ -9,6 +9,7 @@ import type {
   ScdDiagnostic,
   SclConnectivityNode,
   SclEquipment,
+  SclBay,
   SclSubstation,
   SclVoltageLevel,
 } from "./types"
@@ -74,6 +75,30 @@ export function buildElectricalGraph(model: NormalizedSclModel): ElectricalGraph
     })
   }
 
+  for (const busbarNode of collectSyntheticBusbarNodes(model)) {
+    const junction = ensureJunction(junctions, junctionsByPath, diagnostics, {
+      pathName: busbarNode.connectivityNode.normalizedPath,
+      substationName: busbarNode.connectivityNode.substationName,
+      voltageLevelName: busbarNode.connectivityNode.voltageLevelName,
+      bayName: busbarNode.connectivityNode.bayName,
+      sourcePath: busbarNode.connectivityNode.sourcePath,
+      sourceId: busbarNode.connectivityNode.id,
+    })
+    const node = mapSyntheticBusbarToNode(busbarNode.connectivityNode, busbarNode.label)
+    nodes.push(node)
+    const port: ElectricalGraphPort = {
+      id: `port/${node.id}/terminal/${sanitizeId(busbarNode.connectivityNode.name ?? "busbar")}`,
+      nodeId: node.id,
+      sourceTerminalId: `${node.id}/terminal/${sanitizeId(busbarNode.connectivityNode.name ?? "busbar")}`,
+      name: busbarNode.connectivityNode.name,
+      connectivityNode: busbarNode.connectivityNode.normalizedPath,
+      junctionId: junction.id,
+      sourcePath: busbarNode.connectivityNode.sourcePath,
+    }
+    ports.push(port)
+    junction.portIds.push(port.id)
+  }
+
   const edges = buildEdges(junctions, ports, diagnostics)
 
   return {
@@ -100,6 +125,7 @@ function collectGroups(model: NormalizedSclModel): ElectricalGraphGroup[] {
       name: substation.name,
       label: substation.desc ?? substation.name,
       parentId: null,
+      coordinates: substation.coordinates,
       sourcePath: substation.sourcePath,
     })
 
@@ -119,6 +145,7 @@ function collectVoltageLevelGroups(
     name: voltageLevel.name,
     label: formatVoltageLevelLabel(voltageLevel),
     parentId: groupId(["substation", substation.name]),
+    coordinates: voltageLevel.coordinates,
     sourcePath: voltageLevel.sourcePath,
   })
 
@@ -128,6 +155,7 @@ function collectVoltageLevelGroups(
     name: bay.name,
     label: bay.desc ?? bay.name,
     parentId: voltageLevelGroup.id,
+    coordinates: bay.coordinates,
     sourcePath: bay.sourcePath,
   }))
 
@@ -195,6 +223,24 @@ function mapEquipmentToNode(equipment: SclEquipment): ElectricalGraphNode {
     voltageLevelName: equipment.voltageLevelName,
     bayName: equipment.bayName,
     position: equipment.coordinates,
+    generated: false,
+  }
+}
+
+function mapSyntheticBusbarToNode(node: SclConnectivityNode, label: string): ElectricalGraphNode {
+  return {
+    id: `${node.id}/busbar`,
+    sourceId: `${node.id}/busbar`,
+    sourcePath: node.sourcePath,
+    kind: "busbar",
+    label,
+    equipmentType: "BBS",
+    groupId: resolveConnectivityNodeGroupId(node),
+    substationName: node.substationName,
+    voltageLevelName: node.voltageLevelName,
+    bayName: node.bayName,
+    position: { x: 0, y: 0 },
+    generated: true,
   }
 }
 
@@ -326,6 +372,109 @@ function resolveEquipmentGroupId(equipment: SclEquipment): string | null {
     return groupId(["substation", equipment.substationName, "voltageLevel", equipment.voltageLevelName])
   }
   return groupId(["substation", equipment.substationName])
+}
+
+function resolveConnectivityNodeGroupId(node: SclConnectivityNode): string | null {
+  if (!node.substationName) {
+    return null
+  }
+  if (node.voltageLevelName && node.bayName) {
+    return groupId([
+      "substation",
+      node.substationName,
+      "voltageLevel",
+      node.voltageLevelName,
+      "bay",
+      node.bayName,
+    ])
+  }
+  if (node.voltageLevelName) {
+    return groupId(["substation", node.substationName, "voltageLevel", node.voltageLevelName])
+  }
+  return groupId(["substation", node.substationName])
+}
+
+type SyntheticBusbarNode = {
+  connectivityNode: SclConnectivityNode
+  label: string
+}
+
+function collectSyntheticBusbarNodes(model: NormalizedSclModel): SyntheticBusbarNode[] {
+  const busbars: SyntheticBusbarNode[] = []
+  const seenPaths = new Set<string>()
+
+  for (const substation of model.substations) {
+    for (const voltageLevel of substation.voltageLevels) {
+      for (const node of voltageLevel.connectivityNodes) {
+        if (isVoltageLevelBusbarNode(node) && !seenPaths.has(node.normalizedPath)) {
+          busbars.push({
+            connectivityNode: node,
+            label: busbarLabelFromConnectivityNode(node),
+          })
+          seenPaths.add(node.normalizedPath)
+        }
+      }
+
+      for (const bay of voltageLevel.bays) {
+        if (!isBusbarBay(bay)) {
+          continue
+        }
+        for (const node of bay.connectivityNodes) {
+          if (isGroundConnectivityNode(node) || seenPaths.has(node.normalizedPath)) {
+            continue
+          }
+          busbars.push({
+            connectivityNode: node,
+            label: bay.desc ?? bay.name,
+          })
+          seenPaths.add(node.normalizedPath)
+        }
+      }
+    }
+  }
+
+  return busbars
+}
+
+function isBusbarBay(bay: SclBay): boolean {
+  if (bay.equipments.length > 0 || bay.connectivityNodes.length === 0) {
+    return false
+  }
+  return isBusbarName(bay.name)
+    || bay.connectivityNodes.some(node => isLineConnectivityNode(node) && !isGroundConnectivityNode(node))
+}
+
+function isVoltageLevelBusbarNode(node: SclConnectivityNode): boolean {
+  return !node.bayName
+    && isLineConnectivityNode(node)
+    && isBusbarName(busbarLabelFromConnectivityNode(node))
+}
+
+function isLineConnectivityNode(node: SclConnectivityNode): boolean {
+  return /^l\d+$/i.test(node.name?.trim() ?? "")
+}
+
+function isGroundConnectivityNode(node: SclConnectivityNode): boolean {
+  const value = `${node.name ?? ""} ${node.pathName ?? ""} ${node.normalizedPath}`.toLowerCase()
+  return value.includes("ground")
+}
+
+function isBusbarName(value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  return normalized.includes("busbar")
+    || /^bus\w*$/i.test(value.trim())
+    || normalized.includes(" bus")
+    || normalized.includes("mainbus")
+    || normalized.includes("reservebus")
+    || /^\d+(\.\d+)?\s*kv(\s+bus)?$/i.test(value.trim())
+}
+
+function busbarLabelFromConnectivityNode(node: SclConnectivityNode): string {
+  if (node.bayName) {
+    return node.bayName
+  }
+  const parts = node.normalizedPath.split("/").filter(Boolean)
+  return parts.length >= 2 ? parts[parts.length - 2] ?? (node.name ?? "Busbar") : (node.name ?? "Busbar")
 }
 
 function formatVoltageLevelLabel(voltageLevel: SclVoltageLevel): string {

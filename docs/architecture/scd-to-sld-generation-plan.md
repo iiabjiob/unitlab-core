@@ -443,6 +443,7 @@ Implemented 2026-05-28:
 - Undeclared connectivity references are preserved as implicit junctions with diagnostics instead of being dropped.
 - Graph diagnostics now preserve unsupported equipment and missing terminal connectivity as visible import findings.
 - Added graph invariant coverage for edge-to-node and edge-to-port references.
+- Empty busbar-like bays and voltage-level busbar connectivity nodes are now represented as generated graph busbar nodes with generated ports, so connectivity-node edges can anchor to visible busbar geometry.
 
 ### Slice 6 - Cell Model and Layout MVP
 
@@ -485,6 +486,10 @@ Implemented 2026-05-28:
 - Added deterministic grid-aligned placement for voltage-level lanes, bay cell stacks, lane-ungrouped nodes, and orphan nodes.
 - Added renderer-neutral `orthogonal-star` connection route metadata with grid-aligned anchors and per-node segments.
 - Added renderer-neutral element visual metadata so `BBS` equipment is emitted as a bold horizontal busbar representation instead of requiring the app adapter to infer that from equipment type.
+- Added a first bay/busbar layout pass that uses standard SCL hierarchy coordinates from `Substation` -> `VoltageLevel` -> `Bay` plus relative equipment coordinates.
+- Empty busbar-like bays and voltage-level busbar connectivity nodes now produce generated busbar graph nodes so bay equipment connects to a visible busbar line instead of floating star topology.
+- Bay cells now carry an inferred cell type such as busbar, bus-coupler, transformer, feeder, reactor, protection, switchgear, or unknown for later renderer/UX decisions.
+- Connections that include a busbar endpoint now route each bay element orthogonally to the busbar y-axis while preserving grid-aligned coordinates.
 
 ### Slice 7 - UnitLab SLD Adapter
 
@@ -655,7 +660,7 @@ Implemented 2026-05-28:
 
 Known gap:
 
-- The first-pass layout is still a topology preview, not a real substation SLD layout. A dedicated bay/busbar layout slice is required before treating SCD import output as operator-grade.
+- The layout now respects SCL hierarchy coordinates and busbar-connected cells, but it is still not a full operator-grade substation drawing. Remaining work includes transformer multi-voltage relationships, ground endpoint symbols, ambiguous vendor topology diagnostics, and larger-canvas render pressure.
 
 ### Slice 12 - C# Migration Readiness
 

@@ -232,6 +232,7 @@ const STATIC_SIZES = ["sm", "md", "lg"] as const
 const DEFAULT_STATIC_SIZE: DiagramStaticSize = "md"
 const DEFAULT_TEXT_SIZE: DiagramTextSize = "md"
 const DEFAULT_TEXT_LABEL = "TEXT"
+const GENERATED_IMPORT_LABEL_ID_PREFIX = "sld-import-label:"
 const TEXT_WIDTH_BY_SIZE: Record<DiagramTextSize, number> = {
   md: 96,
 }
@@ -1610,6 +1611,51 @@ function ensureLayoutDefaults(): boolean {
     layoutById.value = nextLayout
   }
   return layoutChanged
+}
+
+function applyDiagramIntegrityCleanup(): boolean {
+  return removeGeneratedSwitchgearDuplicateLabels()
+}
+
+function removeGeneratedSwitchgearDuplicateLabels(): boolean {
+  if (textElements.value.length === 0 || switchgears.value.length === 0) {
+    return false
+  }
+
+  const switchgearNames = new Set(
+    switchgears.value
+      .map(item => normalizeDiagramLabelText(item.name))
+      .filter(Boolean),
+  )
+
+  if (switchgearNames.size === 0) {
+    return false
+  }
+
+  const nextTextElements = textElements.value.filter(element => (
+    !element.id.startsWith(GENERATED_IMPORT_LABEL_ID_PREFIX)
+    || !switchgearNames.has(normalizeDiagramLabelText(element.text))
+  ))
+
+  if (nextTextElements.length === textElements.value.length) {
+    return false
+  }
+
+  const remainingTextIds = new Set(nextTextElements.map(element => element.id))
+  selectedTextIds.value = selectedTextIds.value.filter(id => remainingTextIds.has(id))
+  if (editingTextId.value && !remainingTextIds.has(editingTextId.value)) {
+    editingTextId.value = null
+  }
+  if (textContextMenu.value?.textIds.some(id => !remainingTextIds.has(id))) {
+    textContextMenu.value = null
+  }
+
+  textElements.value = nextTextElements
+  return true
+}
+
+function normalizeDiagramLabelText(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase()
 }
 
 function restoreDiagramState(options: { applyLayoutDefaults?: boolean } = {}) {
@@ -3938,7 +3984,8 @@ watch(
     if (workspaceId.value !== nextWorkspaceId || switchgearStore.loading) {
       return
     }
-    const changed = ensureLayoutDefaults()
+    let changed = ensureLayoutDefaults()
+    changed = applyDiagramIntegrityCleanup() || changed
     if (changed) {
       persistDiagramState()
     }
@@ -3950,7 +3997,8 @@ watch(switchgearIdsSignature, () => {
   if (switchgearStore.loading) {
     return
   }
-  const changed = ensureLayoutDefaults()
+  let changed = ensureLayoutDefaults()
+  changed = applyDiagramIntegrityCleanup() || changed
   if (changed) {
     persistDiagramState()
   }

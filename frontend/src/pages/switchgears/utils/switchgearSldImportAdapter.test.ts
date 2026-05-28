@@ -49,10 +49,10 @@ describe("switchgear SLD import adapter", () => {
 
     const busbarLine = adapted.diagram.edges?.find(edge => edge.id.includes("BUS1"))
     expect(busbarLine).toMatchObject({
-      x1: 1096,
-      y1: 1120,
-      x2: 1240,
-      y2: 1120,
+      x1: 1024,
+      y1: 1072,
+      x2: 1168,
+      y2: 1072,
       kind: "line",
       weight: "bold",
       startBinding: null,
@@ -64,7 +64,7 @@ describe("switchgear SLD import adapter", () => {
         equipmentType: "CBR",
         kind: "breaker",
         switchgearType: "switchgear",
-        position: { x: 1168, y: 1168 },
+        position: { x: 1096, y: 1144 },
       }),
     ])
     expect(adapted.diagram.layoutById).toEqual({})
@@ -87,15 +87,15 @@ describe("switchgear SLD import adapter", () => {
       kind: "transformer",
       size: "md",
       x: 1096,
-      y: 1456,
+      y: 2008,
       rotation: 0,
     }))
     expect(adapted.diagram.edges).toContainEqual(expect.objectContaining({
       id: expect.stringContaining("CN_BUS"),
-      x1: 1168,
-      y1: 1120,
-      x2: 1168,
-      y2: 1144,
+      x1: 1096,
+      y1: 1144,
+      x2: 1096,
+      y2: 1072,
       weight: "normal",
     }))
     expect(adapted.diagram.textElements).toEqual(expect.arrayContaining([

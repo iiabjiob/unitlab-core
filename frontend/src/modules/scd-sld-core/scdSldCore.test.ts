@@ -140,6 +140,7 @@ describe("scd-sld-core", () => {
       ["TR1", "transformer"],
       ["Q01", "breaker"],
       ["QB1", "disconnector"],
+      ["BUS1", "busbar"],
     ])
     expect(result.graph.groups).toContainEqual(expect.objectContaining({
       id: "group/substation/SS1/voltageLevel/VL1",
@@ -191,17 +192,20 @@ describe("scd-sld-core", () => {
     expect(result.cellModel.voltageLevels[0]?.bayCells[0]).toMatchObject({
       groupId: "group/substation/SS1/voltageLevel/VL1/bay/BAY1",
       nodeIds: [
-        "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01",
         "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/QB1",
+        "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01",
       ],
       switchgearNodeIds: [
-        "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01",
         "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/QB1",
+        "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01",
       ],
     })
     expect(result.cellModel.voltageLevels[0]?.bayCells[0]?.nodes.map(node => [node.label, node.role, node.orderIndex])).toEqual([
-      ["Q01", "switchgear", 0],
-      ["QB1", "switchgear", 1],
+      ["QB1", "switchgear", 0],
+      ["Q01", "switchgear", 1],
+    ])
+    expect(result.cellModel.voltageLevels[0]?.ungroupedNodes.map(node => [node.label, node.role, node.generated])).toEqual([
+      ["BUS1", "busbar", true],
     ])
     expect(result.cellModel.orphanNodes.map(node => [node.label, node.role])).toEqual([
       ["TR1", "transformer"],
@@ -232,11 +236,13 @@ describe("scd-sld-core", () => {
       ["TR1", "transformer"],
       ["Q01", "breaker"],
       ["QB1", "disconnector"],
+      ["BUS1", "busbar"],
     ])
     expect(result.document.elements.map(item => [item.label, item.position])).toEqual([
-      ["TR1", { x: 96, y: 456 }],
-      ["Q01", { x: 168, y: 120 }],
-      ["QB1", { x: 168, y: 168 }],
+      ["TR1", { x: 7632, y: 1464 }],
+      ["Q01", { x: 8112, y: 1032 }],
+      ["QB1", { x: 7968, y: 888 }],
+      ["BUS1", { x: 4200, y: 72 }],
     ])
     for (const element of result.document.elements) {
       expect(element.position.x).not.toBeNull()
@@ -260,20 +266,42 @@ describe("scd-sld-core", () => {
     }))
     expect(breakerTopConnection?.route).toEqual({
       kind: "orthogonal-star",
-      anchor: { x: 168, y: 144 },
+      anchor: { x: 8040, y: 960 },
       segments: [
         {
           terminalOwnerId: "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01",
           points: [
-            { x: 168, y: 120 },
-            { x: 168, y: 144 },
+            { x: 8112, y: 1032 },
+            { x: 8040, y: 1032 },
+            { x: 8040, y: 960 },
           ],
         },
         {
           terminalOwnerId: "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/QB1",
           points: [
-            { x: 168, y: 168 },
-            { x: 168, y: 144 },
+            { x: 7968, y: 888 },
+            { x: 8040, y: 888 },
+            { x: 8040, y: 960 },
+          ],
+        },
+      ],
+    })
+    const busbarConnection = result.document.connections.find(connection => (
+      connection.sourceConnectivityNode === "SS1/VL1/BUS1/L1"
+    ))
+    expect(busbarConnection?.terminalOwnerIds).toEqual([
+      "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/QB1",
+      "substation/SS1/voltageLevel/VL1/connectivityNode/L1/busbar",
+    ])
+    expect(busbarConnection?.route).toEqual({
+      kind: "orthogonal-star",
+      anchor: { x: 4200, y: 72 },
+      segments: [
+        {
+          terminalOwnerId: "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/QB1",
+          points: [
+            { x: 7968, y: 888 },
+            { x: 7968, y: 72 },
           ],
         },
       ],

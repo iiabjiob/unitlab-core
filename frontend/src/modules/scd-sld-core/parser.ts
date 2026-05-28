@@ -203,6 +203,7 @@ function openVoltageLevel(
   const voltageLevel: SclVoltageLevel = {
     id,
     name,
+    coordinates: readCoordinates(event),
     voltage: null,
     lNodes: [],
     connectivityNodes: [],

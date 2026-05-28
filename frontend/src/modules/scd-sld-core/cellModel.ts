@@ -5,6 +5,7 @@ import type {
   SclEquipmentKind,
   ScdDiagnostic,
   SldBayCell,
+  SldBayCellType,
   SldCellModel,
   SldCellNode,
   SldCellNodeRole,
@@ -16,7 +17,7 @@ export function buildSldCellModel(graph: ElectricalGraph): SldCellModel {
   const nodesByGroupId = groupNodesByGroupId(graph.nodes)
   const voltageLevelGroups = graph.groups
     .filter(group => group.kind === "voltage-level")
-    .sort(compareGroups)
+    .sort(compareGroupsByYThenX)
 
   const assignedNodeIds = new Set<string>()
   const voltageLevels = voltageLevelGroups.map((voltageLevelGroup, orderIndex) => {
@@ -58,7 +59,7 @@ function buildVoltageLevelLane(input: {
 }): SldVoltageLevelLane {
   const bayGroups = input.groups
     .filter(group => group.kind === "bay" && group.parentId === input.voltageLevelGroup.id)
-    .sort(compareGroups)
+    .sort(compareGroupsByXThenY)
 
   const bayCells = bayGroups.map((bayGroup, orderIndex) => {
     const nodes = buildCellNodes(input.nodesByGroupId.get(bayGroup.id) ?? [])
@@ -80,6 +81,7 @@ function buildVoltageLevelLane(input: {
     name: input.voltageLevelGroup.name,
     label: input.voltageLevelGroup.label,
     orderIndex: input.orderIndex,
+    position: input.voltageLevelGroup.coordinates,
     bayCells,
     ungroupedNodes,
   }
@@ -97,7 +99,9 @@ function buildBayCell(input: {
     voltageLevelGroupId: input.voltageLevelGroupId,
     name: input.bayGroup.name,
     label: input.bayGroup.label,
+    cellType: inferBayCellType(input.bayGroup, input.nodes),
     orderIndex: input.orderIndex,
+    position: input.bayGroup.coordinates,
     nodes: input.nodes,
     nodeIds: input.nodes.map(node => node.graphNodeId),
     busbarNodeIds: nodeIdsByRole(input.nodes, "busbar"),
@@ -127,6 +131,8 @@ function mapNodeToCellNode(node: ElectricalGraphNode, orderIndex: number): SldCe
     equipmentType: node.equipmentType,
     role: roleForKind(node.kind),
     orderIndex,
+    position: node.position,
+    generated: node.generated,
   }
 }
 
@@ -173,13 +179,26 @@ function nodeIdsByRole(nodes: SldCellNode[], role: SldCellNodeRole): string[] {
 }
 
 function compareNodesForCell(left: ElectricalGraphNode, right: ElectricalGraphNode): number {
-  return compareRole(roleForKind(left.kind), roleForKind(right.kind))
+  return compareCoordinateValue(left.position.y, right.position.y)
+    || compareCoordinateValue(left.position.x, right.position.x)
+    || compareRole(roleForKind(left.kind), roleForKind(right.kind))
     || left.label.localeCompare(right.label, undefined, { numeric: true })
     || left.id.localeCompare(right.id)
 }
 
-function compareGroups(left: ElectricalGraphGroup, right: ElectricalGraphGroup): number {
-  return left.name.localeCompare(right.name, undefined, { numeric: true })
+function compareGroupsByXThenY(left: ElectricalGraphGroup, right: ElectricalGraphGroup): number {
+  return compareCoordinateValue(left.coordinates.x, right.coordinates.x)
+    || compareCoordinateValue(left.coordinates.y, right.coordinates.y)
+    || left.sourcePath.localeCompare(right.sourcePath, undefined, { numeric: true })
+    || left.name.localeCompare(right.name, undefined, { numeric: true })
+    || left.id.localeCompare(right.id)
+}
+
+function compareGroupsByYThenX(left: ElectricalGraphGroup, right: ElectricalGraphGroup): number {
+  return compareCoordinateValue(left.coordinates.y, right.coordinates.y)
+    || compareCoordinateValue(left.coordinates.x, right.coordinates.x)
+    || left.sourcePath.localeCompare(right.sourcePath, undefined, { numeric: true })
+    || left.name.localeCompare(right.name, undefined, { numeric: true })
     || left.id.localeCompare(right.id)
 }
 
@@ -205,4 +224,47 @@ function roleOrder(role: SldCellNodeRole): number {
     default:
       return 90
   }
+}
+
+function inferBayCellType(group: ElectricalGraphGroup, nodes: SldCellNode[]): SldBayCellType {
+  const name = `${group.name} ${group.label}`.toLowerCase()
+  if (nodes.some(node => node.role === "busbar") || isBusbarName(name)) {
+    return "busbar"
+  }
+  if (name.includes("coupler")) {
+    return "bus-coupler"
+  }
+  if (nodes.some(node => node.role === "transformer") || /\b(sgt|gt|tr|transformer)\b/i.test(name)) {
+    return "transformer"
+  }
+  if (name.includes("reactor") || nodes.some(node => node.equipmentType.trim().toUpperCase() === "REA")) {
+    return "reactor"
+  }
+  if (name.includes("protection")) {
+    return "protection"
+  }
+  if (nodes.some(node => node.role === "feeder")) {
+    return "feeder"
+  }
+  if (nodes.some(node => node.role === "switchgear")) {
+    return "switchgear"
+  }
+  return "unknown"
+}
+
+function isBusbarName(value: string): boolean {
+  const normalized = value.trim().toLowerCase()
+  return normalized.includes("busbar")
+    || /^bus\w*$/i.test(value.trim())
+    || normalized.includes("mainbus")
+    || normalized.includes("reservebus")
+    || /^\d+(\.\d+)?\s*kv(\s+bus)?$/i.test(value.trim())
+}
+
+function compareCoordinateValue(left: number | null, right: number | null): number {
+  return coordinateValue(left) - coordinateValue(right)
+}
+
+function coordinateValue(value: number | null): number {
+  return Number.isFinite(value) ? (value as number) : 0
 }

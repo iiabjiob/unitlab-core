@@ -46,6 +46,16 @@ export type SldCellNodeRole =
   | "ground"
   | "unknown"
 
+export type SldBayCellType =
+  | "busbar"
+  | "bus-coupler"
+  | "transformer"
+  | "feeder"
+  | "reactor"
+  | "protection"
+  | "switchgear"
+  | "unknown"
+
 export type SldCoordinate = {
   x: number | null
   y: number | null
@@ -140,6 +150,7 @@ export type SclBay = {
 export type SclVoltageLevel = {
   id: string
   name: string
+  coordinates: SldCoordinate
   voltage: SclVoltage | null
   lNodes: SclLogicalNodeRef[]
   connectivityNodes: SclConnectivityNode[]
@@ -192,6 +203,7 @@ export type ElectricalGraphGroup = {
   name: string
   label: string
   parentId: string | null
+  coordinates: SldCoordinate
   sourcePath: string
 }
 
@@ -207,6 +219,7 @@ export type ElectricalGraphNode = {
   voltageLevelName: string | null
   bayName: string | null
   position: SldCoordinate
+  generated: boolean
 }
 
 export type ElectricalGraphPort = {
@@ -263,6 +276,8 @@ export type SldCellNode = {
   equipmentType: string
   role: SldCellNodeRole
   orderIndex: number
+  position: SldCoordinate
+  generated: boolean
 }
 
 export type SldBayCell = {
@@ -271,7 +286,9 @@ export type SldBayCell = {
   voltageLevelGroupId: string
   name: string
   label: string
+  cellType: SldBayCellType
   orderIndex: number
+  position: SldCoordinate
   nodes: SldCellNode[]
   nodeIds: string[]
   busbarNodeIds: string[]
@@ -289,6 +306,7 @@ export type SldVoltageLevelLane = {
   name: string
   label: string
   orderIndex: number
+  position: SldCoordinate
   bayCells: SldBayCell[]
   ungroupedNodes: SldCellNode[]
 }
