@@ -33,6 +33,30 @@ const genericImportScd = `<?xml version="1.0" encoding="UTF-8"?>
   </Substation>
 </SCL>`
 
+const genericFeederArrowScd = `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" xmlns:sxy="http://www.iec.ch/61850/2003/SCLcoordinates" revision="B" version="2007">
+  <Substation name="SS1">
+    <VoltageLevel name="VL1">
+      <Bay name="BAY1">
+        <ConductingEquipment sxy:y="1" name="QE1" type="DIS">
+          <Terminal bayName="BAY1" cNodeName="grounded" connectivityNode="SS1/VL1/BAY1/grounded" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BAY1" cNodeName="CN_TOP" connectivityNode="SS1/VL1/BAY1/CN_TOP" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="3" sxy:y="4" name="Q01" type="CBR">
+          <Terminal bayName="BAY1" cNodeName="CN_TOP" connectivityNode="SS1/VL1/BAY1/CN_TOP" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BAY1" cNodeName="CN_OUT" connectivityNode="SS1/VL1/BAY1/CN_OUT" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="3" sxy:y="7" name="FEEDER" type="IFL">
+          <Terminal bayName="BAY1" cNodeName="CN_OUT" connectivityNode="SS1/VL1/BAY1/CN_OUT" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConnectivityNode name="grounded" pathName="SS1/VL1/BAY1/grounded"/>
+        <ConnectivityNode name="CN_TOP" pathName="SS1/VL1/BAY1/CN_TOP"/>
+        <ConnectivityNode name="CN_OUT" pathName="SS1/VL1/BAY1/CN_OUT"/>
+      </Bay>
+    </VoltageLevel>
+  </Substation>
+</SCL>`
+
 describe("switchgear SLD import adapter", () => {
   it("maps generated busbar visuals into bold editor lines without creating switchgear records", () => {
     const generated = generateSldFromScd({
@@ -104,6 +128,30 @@ describe("switchgear SLD import adapter", () => {
     ]))
     expect(adapted.diagram.textElements).not.toContainEqual(expect.objectContaining({ text: "Q01" }))
     expect(adapted.diagnostics).toEqual([])
+  })
+
+  it("maps feeder exits to arrow edges and grounded disconnectors to earthing candidates", () => {
+    const generated = generateSldFromScd({
+      fileName: "generic-feeder-arrow.scd",
+      contentHash: "generic-feeder-arrow",
+      xmlText: genericFeederArrowScd,
+    }, {
+      gridSize: 24,
+    })
+
+    const adapted = adaptSldDocumentToSwitchgearDiagram(generated.document, {
+      stagePadding: 1000,
+    })
+
+    expect(adapted.diagram.edges).toContainEqual(expect.objectContaining({
+      kind: "arrow",
+      x2: 1216,
+      y2: 1072,
+    }))
+    expect(adapted.switchgearCandidates).toContainEqual(expect.objectContaining({
+      label: "QE1",
+      switchgearType: "earthing",
+    }))
   })
 
   it("replaces only previous generated import overlay when applying a new preview", () => {

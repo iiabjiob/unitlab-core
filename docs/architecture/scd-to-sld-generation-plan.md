@@ -490,6 +490,9 @@ Implemented 2026-05-28:
 - Empty busbar-like bays and voltage-level busbar connectivity nodes now produce generated busbar graph nodes so bay equipment connects to a visible busbar line instead of floating star topology.
 - Bay cells now carry an inferred cell type such as busbar, bus-coupler, transformer, feeder, reactor, protection, switchgear, or unknown for later renderer/UX decisions.
 - Connections that include a busbar endpoint now route each bay element orthogonally to the busbar y-axis while preserving grid-aligned coordinates.
+- Feeder bay cells now use a reusable UnitLab feeder template: feeder exit at the top, line disconnector, circuit breaker, busbar selector disconnectors, and earthing switches positioned in stable relative slots.
+- Feeder exits are adapted into arrow lines in the current editor, and grounded disconnectors are imported as `earthing` switchgear candidates.
+- Shared grounded connectivity nodes are not rendered as star interconnection lines between earthing switches.
 
 ### Slice 7 - UnitLab SLD Adapter
 
@@ -715,6 +718,7 @@ This gets value quickly while keeping safety boundaries intact.
 - Exact supported subset of IEC 61850 SCL for the first production import.
 - Whether the current SLD editor model needs a separate generated-equipment element type before import.
 - How to represent disconnectors visually if the current switchgear symbol remains breaker-only.
+- Whether feeder/busbar cell templates should follow a published IEC 61850 visual convention, an operator-approved UnitLab convention, or a selectable import profile. IEC 61850-6 SCL gives topology and coordinates; the exact reusable visual cell library still needs product ownership.
 - How much vendor-specific naming cleanup belongs in the core vs app-level import profiles.
 
 ## Runtime and Safety Risks

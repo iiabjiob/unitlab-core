@@ -21,7 +21,7 @@ export type SwitchgearSldImportCandidate = {
   label: string
   equipmentType: string
   kind: Extract<SclEquipmentKind, "breaker" | "disconnector">
-  switchgearType: "switchgear" | "disconnector"
+  switchgearType: "switchgear" | "disconnector" | "earthing"
   position: SldRoutePoint
 }
 
@@ -68,6 +68,7 @@ export function adaptSldDocumentToSwitchgearDiagram(
   const staticElements: DiagramStaticElement[] = []
   const textElements: DiagramTextElement[] = []
   const textElementSourceIds = new Set<string>()
+  const elementsBySourceId = new Map(document.elements.map(element => [element.sourceId, element]))
 
   for (const element of document.elements) {
     const position = toDiagramPoint(element.position, stagePadding)
@@ -103,7 +104,7 @@ export function adaptSldDocumentToSwitchgearDiagram(
         label: element.label,
         equipmentType: element.equipmentType,
         kind: element.kind,
-        switchgearType: switchgearTypeForKind(element.kind),
+        switchgearType: switchgearTypeForElement(element),
         position,
       })
       continue
@@ -120,7 +121,7 @@ export function adaptSldDocumentToSwitchgearDiagram(
   }
 
   for (const connection of document.connections) {
-    edges.push(...buildConnectionEdges(connection, stagePadding))
+    edges.push(...buildConnectionEdges(connection, stagePadding, elementsBySourceId))
   }
 
   for (const label of document.labels) {
@@ -236,7 +237,11 @@ function buildBusbarEdge(element: SldElement, position: SldRoutePoint): DiagramE
   }
 }
 
-function buildConnectionEdges(connection: SldConnection, stagePadding: number): DiagramEdge[] {
+function buildConnectionEdges(
+  connection: SldConnection,
+  stagePadding: number,
+  elementsBySourceId: Map<string, SldElement>,
+): DiagramEdge[] {
   const route = connection.route
   if (!route) {
     return []
@@ -256,7 +261,7 @@ function buildConnectionEdges(connection: SldConnection, stagePadding: number): 
         y1: start.y,
         x2: end.x,
         y2: end.y,
-        kind: "line",
+        kind: isFeederArrowSegment(segment.terminalOwnerId, pointIndex, segment.points, elementsBySourceId) ? "arrow" : "line",
         weight: "normal",
         startBinding: null,
         endBinding: null,
@@ -264,6 +269,16 @@ function buildConnectionEdges(connection: SldConnection, stagePadding: number): 
     }
     return edges
   })
+}
+
+function isFeederArrowSegment(
+  terminalOwnerId: string,
+  pointIndex: number,
+  points: SldRoutePoint[],
+  elementsBySourceId: Map<string, SldElement>,
+): boolean {
+  return elementsBySourceId.get(terminalOwnerId)?.kind === "feeder"
+    && pointIndex === points.length - 1
 }
 
 function staticKindForElement(element: SldElement): DiagramStaticKind | null {
@@ -280,8 +295,11 @@ function isSwitchgearCandidateKind(kind: SldElement["kind"]): kind is Switchgear
   return kind === "breaker" || kind === "disconnector"
 }
 
-function switchgearTypeForKind(kind: SwitchgearSldImportCandidate["kind"]): SwitchgearSldImportCandidate["switchgearType"] {
-  return kind === "breaker" ? "switchgear" : "disconnector"
+function switchgearTypeForElement(element: SldElement): SwitchgearSldImportCandidate["switchgearType"] {
+  if (element.kind === "breaker") {
+    return "switchgear"
+  }
+  return element.grounded ? "earthing" : "disconnector"
 }
 
 function fallbackElementText(element: SldElement): string {

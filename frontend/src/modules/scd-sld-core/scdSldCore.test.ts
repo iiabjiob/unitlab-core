@@ -53,6 +53,54 @@ const genericBusbarBayScd = `<?xml version="1.0" encoding="UTF-8"?>
   </Substation>
 </SCL>`
 
+const genericStandardFeederCellScd = `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" xmlns:sxy="http://www.iec.ch/61850/2003/SCLcoordinates" revision="B" version="2007">
+  <Substation name="SS1">
+    <VoltageLevel name="VL1">
+      <Voltage multiplier="k" unit="V">110</Voltage>
+      <Bay name="BUS1">
+        <ConnectivityNode name="L1" pathName="SS1/VL1/BUS1/L1"/>
+      </Bay>
+      <Bay sxy:x="10" name="BUS2">
+        <ConnectivityNode name="L1" pathName="SS1/VL1/BUS2/L1"/>
+      </Bay>
+      <Bay name="BAY1">
+        <ConductingEquipment sxy:y="1" name="QB1" type="DIS">
+          <Terminal bayName="BUS1" cNodeName="L1" connectivityNode="SS1/VL1/BUS1/L1" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BAY1" cNodeName="CN_BUS" connectivityNode="SS1/VL1/BAY1/CN_BUS" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="5" sxy:y="1" name="QB2" type="DIS">
+          <Terminal bayName="BUS2" cNodeName="L1" connectivityNode="SS1/VL1/BUS2/L1" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BAY1" cNodeName="CN_BUS" connectivityNode="SS1/VL1/BAY1/CN_BUS" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="2" name="QBE1" type="DIS">
+          <Terminal bayName="BAY1" cNodeName="grounded" connectivityNode="SS1/VL1/BAY1/grounded" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BUS1" cNodeName="L1" connectivityNode="SS1/VL1/BUS1/L1" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="7" name="QBE2" type="DIS">
+          <Terminal bayName="BAY1" cNodeName="grounded" connectivityNode="SS1/VL1/BAY1/grounded" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BUS2" cNodeName="L1" connectivityNode="SS1/VL1/BUS2/L1" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="3" sxy:y="4" name="Q01" type="CBR">
+          <Terminal bayName="BAY1" cNodeName="CN_TOP" connectivityNode="SS1/VL1/BAY1/CN_TOP" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BAY1" cNodeName="CN_BUS" connectivityNode="SS1/VL1/BAY1/CN_BUS" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="3" sxy:y="7" name="QS1" type="DIS">
+          <Terminal bayName="BAY1" cNodeName="CN_FEEDER" connectivityNode="SS1/VL1/BAY1/CN_FEEDER" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+          <Terminal bayName="BAY1" cNodeName="CN_TOP" connectivityNode="SS1/VL1/BAY1/CN_TOP" name="T2" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConductingEquipment sxy:x="3" sxy:y="12" name="FEEDER" type="IFL">
+          <Terminal bayName="BAY1" cNodeName="CN_FEEDER" connectivityNode="SS1/VL1/BAY1/CN_FEEDER" name="T1" substationName="SS1" voltageLevelName="VL1"/>
+        </ConductingEquipment>
+        <ConnectivityNode name="grounded" pathName="SS1/VL1/BAY1/grounded"/>
+        <ConnectivityNode name="CN_BUS" pathName="SS1/VL1/BAY1/CN_BUS"/>
+        <ConnectivityNode name="CN_TOP" pathName="SS1/VL1/BAY1/CN_TOP"/>
+        <ConnectivityNode name="CN_FEEDER" pathName="SS1/VL1/BAY1/CN_FEEDER"/>
+      </Bay>
+    </VoltageLevel>
+  </Substation>
+</SCL>`
+
 describe("scd-sld-core", () => {
   it("returns a structured error for empty SCD input", () => {
     const result = generateSldFromScd({
@@ -350,6 +398,45 @@ describe("scd-sld-core", () => {
       "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/BUS1",
     ])
     expect(JSON.parse(JSON.stringify(result.document))).toEqual(result.document)
+  })
+
+  it("lays out a feeder bay as a reusable standard cell template", () => {
+    const result = generateSldFromScd({
+      fileName: "standard-feeder.scd",
+      contentHash: "standard-feeder",
+      xmlText: genericStandardFeederCellScd,
+    }, {
+      gridSize: 24,
+    })
+
+    const feederCell = result.cellModel.voltageLevels[0]?.bayCells.find(cell => cell.name === "BAY1")
+    expect(feederCell).toMatchObject({
+      cellType: "feeder",
+    })
+    expect(feederCell?.nodes.filter(node => node.grounded).map(node => node.label)).toEqual([
+      "QBE1",
+      "QBE2",
+    ])
+
+    const elementsByLabel = new Map(result.document.elements.map(element => [element.label, element]))
+    expect(elementsByLabel.get("FEEDER")?.position).toEqual({ x: 216, y: 72 })
+    expect(elementsByLabel.get("QS1")?.position).toEqual({ x: 216, y: 144 })
+    expect(elementsByLabel.get("Q01")?.position).toEqual({ x: 216, y: 216 })
+    expect(elementsByLabel.get("QB1")?.position).toEqual({ x: 96, y: 312 })
+    expect(elementsByLabel.get("QB2")?.position).toEqual({ x: 336, y: 312 })
+    expect(elementsByLabel.get("QBE1")?.position).toEqual({ x: 144, y: 360 })
+    expect(elementsByLabel.get("QBE2")?.position).toEqual({ x: 384, y: 360 })
+
+    const feederConnection = result.document.connections.find(connection => (
+      connection.sourceConnectivityNode === "SS1/VL1/BAY1/CN_FEEDER"
+    ))
+    expect(feederConnection?.route?.segments.find(segment => (
+      segment.terminalOwnerId === "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/FEEDER"
+    ))?.points).toEqual([
+      { x: 216, y: 120 },
+      { x: 216, y: 72 },
+    ])
+    expect(result.document.connections.some(connection => connection.sourceConnectivityNode.includes("ground"))).toBe(false)
   })
 
   it("stops after substation topology and leaves later IED payloads to a future metadata slice", () => {

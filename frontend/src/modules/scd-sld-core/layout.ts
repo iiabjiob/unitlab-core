@@ -2,7 +2,9 @@ import { createSldDocumentFromGraph } from "./sldDocument"
 import type {
   ElectricalGraph,
   GenerateSldOptions,
+  SldBayCell,
   SldCellModel,
+  SldCellNode,
   SldConnection,
   SldConnectionRoute,
   SldCoordinate,
@@ -23,6 +25,14 @@ const UNGROUPED_OFFSET_UNITS = 3
 const BUSBAR_WIDTH_UNITS = 6
 const BUSBAR_HEIGHT_UNITS = 1
 const BUSBAR_SPAN_PADDING_UNITS = 4
+const FEEDER_TEMPLATE_CENTER_X_UNITS = 5
+const FEEDER_TEMPLATE_LEFT_X_UNITS = 0
+const FEEDER_TEMPLATE_RIGHT_X_UNITS = 10
+const FEEDER_TEMPLATE_FEEDER_Y_UNITS = 0
+const FEEDER_TEMPLATE_UPPER_DISCONNECTOR_Y_UNITS = 3
+const FEEDER_TEMPLATE_BREAKER_Y_UNITS = 6
+const FEEDER_TEMPLATE_BUS_SELECTOR_Y_UNITS = 10
+const FEEDER_TEMPLATE_EARTH_Y_UNITS = 12
 
 export function layoutSldDocument(
   cellModel: SldCellModel,
@@ -77,6 +87,12 @@ function buildPositionsBySourceId(cellModel: SldCellModel, gridSize: number): Ma
 
     for (const bayCell of lane.bayCells) {
       const bayOrigin = resolveBayOrigin(laneBase, bayCell.position, bayCell.orderIndex, gridSize)
+      if (shouldUseFeederTemplate(bayCell)) {
+        for (const [sourceId, position] of buildFeederCellPositions(bayOrigin, bayCell, gridSize)) {
+          positions.set(sourceId, position)
+        }
+        continue
+      }
       for (const node of bayCell.nodes) {
         positions.set(node.sourceId, resolveNodePosition(bayOrigin, node.position, node.orderIndex, gridSize))
       }
@@ -113,6 +129,152 @@ function buildPositionsBySourceId(cellModel: SldCellModel, gridSize: number): Ma
   }
 
   return positions
+}
+
+function shouldUseFeederTemplate(bayCell: SldBayCell): boolean {
+  return bayCell.cellType === "feeder" && bayCell.switchgearNodeIds.length > 0
+}
+
+function buildFeederCellPositions(
+  bayOrigin: SldRoutePoint,
+  bayCell: SldBayCell,
+  gridSize: number,
+): Map<string, SldCoordinate> {
+  const positions = new Map<string, SldCoordinate>()
+  const switchgearNodes = bayCell.nodes.filter(node => node.role === "switchgear")
+  const breakerNodes = switchgearNodes.filter(node => node.kind === "breaker")
+  const disconnectorNodes = switchgearNodes.filter(node => node.kind === "disconnector")
+  const groundedDisconnectors = sortNodesBySourcePosition(disconnectorNodes.filter(node => node.grounded))
+  const lineDisconnectors = sortNodesBySourcePosition(disconnectorNodes.filter(node => !node.grounded))
+  const feederNodes = sortNodesBySourcePosition(bayCell.nodes.filter(node => node.role === "feeder"))
+  const assignedSourceIds = new Set<string>()
+
+  feederNodes.forEach((node, index) => assignNodePosition(
+    positions,
+    assignedSourceIds,
+    node,
+    templatePoint(
+      bayOrigin,
+      FEEDER_TEMPLATE_CENTER_X_UNITS,
+      FEEDER_TEMPLATE_FEEDER_Y_UNITS - index * 2,
+      gridSize,
+    ),
+  ))
+
+  const busSelectorCount = lineDisconnectors.length >= 3 ? 2 : Math.min(lineDisconnectors.length, 2)
+  const busSelectorNodes = lineDisconnectors.slice(0, busSelectorCount)
+  const upperDisconnectorNodes = lineDisconnectors.slice(busSelectorCount)
+
+  resolveBusSelectorSlots(busSelectorNodes.length).forEach((slot, index) => {
+    const node = busSelectorNodes[index]
+    if (!node) {
+      return
+    }
+    assignNodePosition(positions, assignedSourceIds, node, templatePoint(
+      bayOrigin,
+      slot,
+      FEEDER_TEMPLATE_BUS_SELECTOR_Y_UNITS,
+      gridSize,
+    ))
+  })
+
+  upperDisconnectorNodes.forEach((node, index) => assignNodePosition(
+    positions,
+    assignedSourceIds,
+    node,
+    templatePoint(
+      bayOrigin,
+      FEEDER_TEMPLATE_CENTER_X_UNITS,
+      FEEDER_TEMPLATE_UPPER_DISCONNECTOR_Y_UNITS + index * 2,
+      gridSize,
+    ),
+  ))
+
+  breakerNodes.forEach((node, index) => assignNodePosition(
+    positions,
+    assignedSourceIds,
+    node,
+    templatePoint(
+      bayOrigin,
+      FEEDER_TEMPLATE_CENTER_X_UNITS,
+      FEEDER_TEMPLATE_BREAKER_Y_UNITS + index * 2,
+      gridSize,
+    ),
+  ))
+
+  resolveGroundedDisconnectorSlots(groundedDisconnectors.length).forEach((slot, index) => {
+    const node = groundedDisconnectors[index]
+    if (!node) {
+      return
+    }
+    assignNodePosition(positions, assignedSourceIds, node, templatePoint(bayOrigin, slot.x, slot.y, gridSize))
+  })
+
+  bayCell.nodes
+    .filter(node => !assignedSourceIds.has(node.sourceId))
+    .forEach((node, index) => assignNodePosition(
+      positions,
+      assignedSourceIds,
+      node,
+      templatePoint(
+        bayOrigin,
+        FEEDER_TEMPLATE_RIGHT_X_UNITS + 2,
+        FEEDER_TEMPLATE_UPPER_DISCONNECTOR_Y_UNITS + index * 2,
+        gridSize,
+      ),
+    ))
+
+  return positions
+}
+
+function assignNodePosition(
+  positions: Map<string, SldCoordinate>,
+  assignedSourceIds: Set<string>,
+  node: SldCellNode,
+  position: SldCoordinate,
+) {
+  positions.set(node.sourceId, position)
+  assignedSourceIds.add(node.sourceId)
+}
+
+function resolveBusSelectorSlots(count: number): number[] {
+  if (count <= 0) {
+    return []
+  }
+  if (count === 1) {
+    return [FEEDER_TEMPLATE_CENTER_X_UNITS]
+  }
+  return [FEEDER_TEMPLATE_LEFT_X_UNITS, FEEDER_TEMPLATE_RIGHT_X_UNITS]
+}
+
+function resolveGroundedDisconnectorSlots(count: number): Array<{ x: number; y: number }> {
+  const slots = [
+    { x: FEEDER_TEMPLATE_LEFT_X_UNITS + 2, y: FEEDER_TEMPLATE_EARTH_Y_UNITS },
+    { x: FEEDER_TEMPLATE_RIGHT_X_UNITS + 2, y: FEEDER_TEMPLATE_EARTH_Y_UNITS },
+    { x: FEEDER_TEMPLATE_RIGHT_X_UNITS + 2, y: FEEDER_TEMPLATE_UPPER_DISCONNECTOR_Y_UNITS },
+    { x: FEEDER_TEMPLATE_RIGHT_X_UNITS + 2, y: FEEDER_TEMPLATE_BREAKER_Y_UNITS },
+  ]
+
+  while (slots.length < count) {
+    slots.push({
+      x: FEEDER_TEMPLATE_RIGHT_X_UNITS + 2,
+      y: FEEDER_TEMPLATE_EARTH_Y_UNITS + (slots.length - 3) * 2,
+    })
+  }
+
+  return slots.slice(0, count)
+}
+
+function templatePoint(
+  bayOrigin: SldRoutePoint,
+  xUnits: number,
+  yUnits: number,
+  gridSize: number,
+): SldCoordinate {
+  return {
+    x: bayOrigin.x + toGridCoordinate(xUnits, gridSize),
+    y: bayOrigin.y + toGridCoordinate(yUnits, gridSize),
+  }
 }
 
 function resolveLaneOrigin(position: SldCoordinate, orderIndex: number, gridSize: number): SldRoutePoint {
@@ -255,9 +417,9 @@ function buildConnectionRoute(
       return {
         kind: "orthogonal-star",
         anchor: busbarEndpoint.point,
-        segments: nonBusbarEndpoints.map(({ terminalOwnerId, point }) => ({
+        segments: nonBusbarEndpoints.map(({ terminalOwnerId, point, element }) => ({
           terminalOwnerId,
-          points: uniqueConsecutivePoints([
+          points: buildEndpointRoutePoints(element, point, [
             point,
             { x: point.x, y: busbarEndpoint.point.y },
           ]),
@@ -274,15 +436,26 @@ function buildConnectionRoute(
   return {
     kind: "orthogonal-star",
     anchor,
-    segments: endpointPositions.map(({ terminalOwnerId, point }) => ({
+    segments: endpointPositions.map(({ terminalOwnerId, point, element }) => ({
       terminalOwnerId,
-      points: uniqueConsecutivePoints([
+      points: buildEndpointRoutePoints(element, point, [
         point,
         { x: anchor.x, y: point.y },
         anchor,
       ]),
     })),
   }
+}
+
+function buildEndpointRoutePoints(
+  element: SldElement | null,
+  point: SldRoutePoint,
+  pointsToAnchor: SldRoutePoint[],
+): SldRoutePoint[] {
+  const points = uniqueConsecutivePoints(pointsToAnchor)
+  return element?.kind === "feeder" && points.length > 1
+    ? [...points].reverse()
+    : points
 }
 
 function snapCoordinate(position: SldCoordinate, gridSize: number): SldCoordinate {
@@ -315,6 +488,20 @@ function uniqueConsecutivePoints(points: SldRoutePoint[]): SldRoutePoint[] {
     const previous = points[index - 1]
     return !previous || previous.x !== point.x || previous.y !== point.y
   })
+}
+
+function sortNodesBySourcePosition(nodes: SldCellNode[]): SldCellNode[] {
+  return [...nodes].sort((left, right) => (
+    coordinateSortValue(left.position.y) - coordinateSortValue(right.position.y)
+    || coordinateSortValue(left.position.x) - coordinateSortValue(right.position.x)
+    || left.orderIndex - right.orderIndex
+    || left.label.localeCompare(right.label, undefined, { numeric: true })
+    || left.id.localeCompare(right.id)
+  ))
+}
+
+function coordinateSortValue(value: number | null): number {
+  return Number.isFinite(value) ? (value as number) : 0
 }
 
 function toGridCoordinate(gridUnits: number, gridSize: number): number {

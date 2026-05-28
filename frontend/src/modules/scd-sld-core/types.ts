@@ -220,6 +220,7 @@ export type ElectricalGraphNode = {
   bayName: string | null
   position: SldCoordinate
   generated: boolean
+  grounded: boolean
 }
 
 export type ElectricalGraphPort = {
@@ -278,6 +279,7 @@ export type SldCellNode = {
   orderIndex: number
   position: SldCoordinate
   generated: boolean
+  grounded: boolean
 }
 
 export type SldBayCell = {
@@ -337,6 +339,7 @@ export type SldElement = {
   voltageLevelName: string | null
   bayName: string | null
   position: SldCoordinate
+  grounded: boolean
 }
 
 export type SldRoutePoint = {

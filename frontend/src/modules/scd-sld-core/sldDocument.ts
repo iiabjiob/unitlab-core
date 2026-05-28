@@ -52,6 +52,7 @@ function mapGraphNodeToElement(node: ElectricalGraphNode): SldElement {
     voltageLevelName: node.voltageLevelName,
     bayName: node.bayName,
     position: node.position,
+    grounded: node.grounded,
   }
 }
 
@@ -75,7 +76,7 @@ function visualForNode(node: ElectricalGraphNode): SldElementVisual {
 
 function buildConnectivityNodeConnections(edges: ElectricalGraphEdge[]): SldConnection[] {
   return edges
-    .filter(edge => edge.nodeIds.length > 1)
+    .filter(edge => edge.nodeIds.length > 1 && !isGroundConnectivityNode(edge.sourceConnectivityNode))
     .map(edge => ({
       id: `connection:${sanitizeId(edge.sourceConnectivityNode)}`,
       kind: "connectivity-node",
@@ -85,6 +86,10 @@ function buildConnectivityNodeConnections(edges: ElectricalGraphEdge[]): SldConn
       terminalOwnerIds: edge.nodeIds,
       route: null,
     }))
+}
+
+function isGroundConnectivityNode(value: string): boolean {
+  return value.trim().toLowerCase().includes("ground")
 }
 
 function sanitizeId(value: string): string {

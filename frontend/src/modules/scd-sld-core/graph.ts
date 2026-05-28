@@ -224,6 +224,11 @@ function mapEquipmentToNode(equipment: SclEquipment): ElectricalGraphNode {
     bayName: equipment.bayName,
     position: equipment.coordinates,
     generated: false,
+    grounded: equipment.terminals.some(terminal => isGroundReference(
+      terminal.resolvedConnectivityNodePath
+      ?? terminal.connectivityNode
+      ?? terminal.cNodeName,
+    )),
   }
 }
 
@@ -241,6 +246,7 @@ function mapSyntheticBusbarToNode(node: SclConnectivityNode, label: string): Ele
     bayName: node.bayName,
     position: { x: 0, y: 0 },
     generated: true,
+    grounded: false,
   }
 }
 
@@ -457,6 +463,10 @@ function isLineConnectivityNode(node: SclConnectivityNode): boolean {
 function isGroundConnectivityNode(node: SclConnectivityNode): boolean {
   const value = `${node.name ?? ""} ${node.pathName ?? ""} ${node.normalizedPath}`.toLowerCase()
   return value.includes("ground")
+}
+
+function isGroundReference(value: string | null): boolean {
+  return value?.trim().toLowerCase().includes("ground") ?? false
 }
 
 function isBusbarName(value: string): boolean {
