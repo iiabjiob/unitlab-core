@@ -45,6 +45,7 @@ export function parseScdSource(source: ScdSource): NormalizedSclModel {
       stage: "xml",
       code: "xml.empty-source",
       message: "SCD source is empty.",
+      sourceLocation: { line: 1, column: 1, offset: 0 },
     })
     return model
   }
@@ -53,8 +54,10 @@ export function parseScdSource(source: ScdSource): NormalizedSclModel {
   const voltageLevelStack: SclVoltageLevel[] = []
   const bayStack: SclBay[] = []
   const equipmentStack: SclEquipment[] = []
+  let firstElementLocation: XmlElementEvent["sourceLocation"] | undefined
 
   for (const event of scanXmlElements(source.xmlText, diagnostics)) {
+    firstElementLocation ??= event.sourceLocation
     if (event.kind === "close") {
       handleCloseEvent(event, substationStack, voltageLevelStack, bayStack, equipmentStack)
       continue
@@ -110,6 +113,7 @@ export function parseScdSource(source: ScdSource): NormalizedSclModel {
       stage: "parser",
       code: "parser.no-substation",
       message: "No Substation section was found in the SCD file.",
+      sourceLocation: firstElementLocation ?? { line: 1, column: 1, offset: 0 },
     })
   }
 
@@ -175,6 +179,7 @@ function openSubstation(model: NormalizedSclModel, substationStack: SclSubstatio
     voltageLevels: [],
     powerTransformers: [],
     sourcePath: event.sourcePath,
+    sourceLocation: event.sourceLocation,
   }
   model.substations.push(substation)
   substationStack.push(substation)
@@ -210,6 +215,7 @@ function openVoltageLevel(
     bays: [],
     substationName: substation.name,
     sourcePath: event.sourcePath,
+    sourceLocation: event.sourceLocation,
   }
   substation.voltageLevels.push(voltageLevel)
   voltageLevelStack.push(voltageLevel)
@@ -234,6 +240,7 @@ function appendVoltage(
       message: `VoltageLevel "${voltageLevel.name}" has multiple Voltage elements; the first value was kept.`,
       sourcePath: event.sourcePath,
       sourceId: voltageLevel.id,
+      sourceLocation: event.sourceLocation,
     })
     return
   }
@@ -274,6 +281,7 @@ function openBay(
     substationName: substation.name,
     voltageLevelName: voltageLevel.name,
     sourcePath: event.sourcePath,
+    sourceLocation: event.sourceLocation,
   }
   voltageLevel.bays.push(bay)
   bayStack.push(bay)
@@ -364,6 +372,7 @@ function appendTerminal(
     voltageLevelName: readXmlAttribute(event.attributes, "voltageLevelName"),
     bayName: readXmlAttribute(event.attributes, "bayName"),
     sourcePath: event.sourcePath,
+    sourceLocation: event.sourceLocation,
   }
   equipment.terminals.push(terminal)
 }
@@ -412,6 +421,7 @@ function appendConnectivityNode(
     voltageLevelName: voltageLevel?.name ?? null,
     bayName: bay?.name ?? null,
     sourcePath: event.sourcePath,
+    sourceLocation: event.sourceLocation,
   }
 
   if (bay) {
@@ -440,6 +450,7 @@ function appendLogicalNode(
     lnType: readXmlAttribute(event.attributes, "lnType"),
     prefix: readXmlAttribute(event.attributes, "prefix"),
     sourcePath: event.sourcePath,
+    sourceLocation: event.sourceLocation,
   }
 
   const equipment = last(equipmentStack)
@@ -483,6 +494,7 @@ function appendIed(model: NormalizedSclModel, event: XmlElementEvent) {
     type: readXmlAttribute(event.attributes, "type"),
     configVersion: readXmlAttribute(event.attributes, "configVersion"),
     sourcePath: event.sourcePath,
+    sourceLocation: event.sourceLocation,
   }
   model.ieds.push(ied)
 }
@@ -523,6 +535,7 @@ function createEquipment(input: {
     voltageLevelName: input.voltageLevelName,
     bayName: input.bayName,
     sourcePath: input.event.sourcePath,
+    sourceLocation: input.event.sourceLocation,
   }
 }
 
@@ -565,6 +578,7 @@ function readVoltage(event: XmlElementEvent): SclVoltage {
     multiplier: readXmlAttribute(event.attributes, "multiplier"),
     unit: readXmlAttribute(event.attributes, "unit"),
     sourcePath: event.sourcePath,
+    sourceLocation: event.sourceLocation,
   }
 }
 
@@ -596,6 +610,7 @@ function normalizeTerminalConnectivityReferences(model: NormalizedSclModel) {
           message: `Terminal references connectivity node "${normalizedPath}" that is not declared in the parsed SCL topology.`,
           sourcePath: terminal.sourcePath,
           sourceId: terminal.id,
+          sourceLocation: terminal.sourceLocation,
         })
       }
     }
@@ -626,6 +641,7 @@ function buildConnectivityNodeLookup(model: NormalizedSclModel): ConnectivityNod
         message: `Duplicate connectivity node "${node.normalizedPath}" was collapsed by path for terminal resolution.`,
         sourcePath: node.sourcePath,
         sourceId: node.id,
+        sourceLocation: node.sourceLocation,
       })
     }
 
@@ -835,6 +851,7 @@ function makeUniqueScopedId(input: {
     message: `${input.entityKind} normalized id "${input.baseId}" is duplicated in the same parent scope; it was disambiguated as "${id}".`,
     sourcePath: input.event.sourcePath,
     sourceId: id,
+    sourceLocation: input.event.sourceLocation,
   })
 
   return id
@@ -864,6 +881,7 @@ function pushParentDiagnostic(
     code: "parser.missing-parent",
     message: `${child} is outside ${parent}; it was skipped.`,
     sourcePath: event.sourcePath,
+    sourceLocation: event.sourceLocation,
   })
 }
 

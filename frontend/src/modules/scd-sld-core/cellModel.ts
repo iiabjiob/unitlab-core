@@ -134,6 +134,7 @@ function mapNodeToCellNode(node: ElectricalGraphNode, orderIndex: number): SldCe
     position: node.position,
     generated: node.generated,
     grounded: node.grounded,
+    sourceLocation: node.sourceLocation,
   }
 }
 

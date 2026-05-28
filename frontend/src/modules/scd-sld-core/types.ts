@@ -1,6 +1,12 @@
 export type ScdDiagnosticSeverity = "info" | "warning" | "error"
 export type ScdDiagnosticStage = "xml" | "parser" | "normalizer" | "graph" | "layout" | "adapter"
 
+export type ScdSourceLocation = {
+  line: number
+  column: number
+  offset: number
+}
+
 export type SclEquipmentKind =
   | "breaker"
   | "disconnector"
@@ -68,6 +74,7 @@ export type ScdDiagnostic = {
   message: string
   sourcePath?: string
   sourceId?: string
+  sourceLocation?: ScdSourceLocation
 }
 
 export type ScdSource = {
@@ -85,6 +92,7 @@ export type SclLogicalNodeRef = {
   lnType: string | null
   prefix: string | null
   sourcePath: string
+  sourceLocation?: ScdSourceLocation
 }
 
 export type SclTerminal = {
@@ -98,6 +106,7 @@ export type SclTerminal = {
   voltageLevelName: string | null
   bayName: string | null
   sourcePath: string
+  sourceLocation?: ScdSourceLocation
 }
 
 export type SclConnectivityNode = {
@@ -109,6 +118,7 @@ export type SclConnectivityNode = {
   voltageLevelName: string | null
   bayName: string | null
   sourcePath: string
+  sourceLocation?: ScdSourceLocation
 }
 
 export type SclVoltage = {
@@ -116,6 +126,7 @@ export type SclVoltage = {
   multiplier: string | null
   unit: string | null
   sourcePath: string
+  sourceLocation?: ScdSourceLocation
 }
 
 export type SclEquipment = {
@@ -132,6 +143,7 @@ export type SclEquipment = {
   voltageLevelName: string | null
   bayName: string | null
   sourcePath: string
+  sourceLocation?: ScdSourceLocation
 }
 
 export type SclBay = {
@@ -145,6 +157,7 @@ export type SclBay = {
   substationName: string
   voltageLevelName: string
   sourcePath: string
+  sourceLocation?: ScdSourceLocation
 }
 
 export type SclVoltageLevel = {
@@ -157,6 +170,7 @@ export type SclVoltageLevel = {
   bays: SclBay[]
   substationName: string
   sourcePath: string
+  sourceLocation?: ScdSourceLocation
 }
 
 export type SclSubstation = {
@@ -169,6 +183,7 @@ export type SclSubstation = {
   voltageLevels: SclVoltageLevel[]
   powerTransformers: SclEquipment[]
   sourcePath: string
+  sourceLocation?: ScdSourceLocation
 }
 
 export type SclIed = {
@@ -179,6 +194,7 @@ export type SclIed = {
   type: string | null
   configVersion: string | null
   sourcePath: string
+  sourceLocation?: ScdSourceLocation
 }
 
 export type NormalizedSclModel = {
@@ -205,6 +221,7 @@ export type ElectricalGraphGroup = {
   parentId: string | null
   coordinates: SldCoordinate
   sourcePath: string
+  sourceLocation?: ScdSourceLocation
 }
 
 export type ElectricalGraphNode = {
@@ -221,6 +238,7 @@ export type ElectricalGraphNode = {
   position: SldCoordinate
   generated: boolean
   grounded: boolean
+  sourceLocation?: ScdSourceLocation
 }
 
 export type ElectricalGraphPort = {
@@ -231,6 +249,7 @@ export type ElectricalGraphPort = {
   connectivityNode: string | null
   junctionId: string | null
   sourcePath: string
+  sourceLocation?: ScdSourceLocation
 }
 
 export type ElectricalGraphJunction = {
@@ -244,6 +263,7 @@ export type ElectricalGraphJunction = {
   bayName: string | null
   position: SldCoordinate
   portIds: string[]
+  sourceLocation?: ScdSourceLocation
 }
 
 export type ElectricalGraphEdge = {
@@ -280,6 +300,7 @@ export type SldCellNode = {
   position: SldCoordinate
   generated: boolean
   grounded: boolean
+  sourceLocation?: ScdSourceLocation
 }
 
 export type SldBayCell = {
@@ -340,6 +361,7 @@ export type SldElement = {
   bayName: string | null
   position: SldCoordinate
   grounded: boolean
+  sourceLocation?: ScdSourceLocation
 }
 
 export type SldRoutePoint = {

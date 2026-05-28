@@ -34,6 +34,7 @@ export function buildElectricalGraph(model: NormalizedSclModel): ElectricalGraph
         message: `Unsupported conducting equipment type "${equipment.type}" is preserved as an unknown SLD node.`,
         sourcePath: equipment.sourcePath,
         sourceId: equipment.id,
+        sourceLocation: equipment.sourceLocation,
       })
     }
 
@@ -47,6 +48,7 @@ export function buildElectricalGraph(model: NormalizedSclModel): ElectricalGraph
           bayName: terminal.bayName ?? equipment.bayName,
           sourcePath: terminal.sourcePath,
           sourceId: terminal.id,
+          sourceLocation: terminal.sourceLocation,
         })
         : null
 
@@ -58,6 +60,7 @@ export function buildElectricalGraph(model: NormalizedSclModel): ElectricalGraph
           message: "Terminal has no connectivity node reference and will be rendered as dangling topology.",
           sourcePath: terminal.sourcePath,
           sourceId: terminal.id,
+          sourceLocation: terminal.sourceLocation,
         })
       }
 
@@ -69,6 +72,7 @@ export function buildElectricalGraph(model: NormalizedSclModel): ElectricalGraph
         connectivityNode,
         junctionId: junction?.id ?? null,
         sourcePath: terminal.sourcePath,
+        sourceLocation: terminal.sourceLocation,
       }
       ports.push(port)
       junction?.portIds.push(port.id)
@@ -83,6 +87,7 @@ export function buildElectricalGraph(model: NormalizedSclModel): ElectricalGraph
       bayName: busbarNode.connectivityNode.bayName,
       sourcePath: busbarNode.connectivityNode.sourcePath,
       sourceId: busbarNode.connectivityNode.id,
+      sourceLocation: busbarNode.connectivityNode.sourceLocation,
     })
     const node = mapSyntheticBusbarToNode(busbarNode.connectivityNode, busbarNode.label)
     nodes.push(node)
@@ -94,6 +99,7 @@ export function buildElectricalGraph(model: NormalizedSclModel): ElectricalGraph
       connectivityNode: busbarNode.connectivityNode.normalizedPath,
       junctionId: junction.id,
       sourcePath: busbarNode.connectivityNode.sourcePath,
+      sourceLocation: busbarNode.connectivityNode.sourceLocation,
     }
     ports.push(port)
     junction.portIds.push(port.id)
@@ -127,6 +133,7 @@ function collectGroups(model: NormalizedSclModel): ElectricalGraphGroup[] {
       parentId: null,
       coordinates: substation.coordinates,
       sourcePath: substation.sourcePath,
+      sourceLocation: substation.sourceLocation,
     })
 
     const voltageGroups = substation.voltageLevels.flatMap(voltageLevel => collectVoltageLevelGroups(substation, voltageLevel))
@@ -147,6 +154,7 @@ function collectVoltageLevelGroups(
     parentId: groupId(["substation", substation.name]),
     coordinates: voltageLevel.coordinates,
     sourcePath: voltageLevel.sourcePath,
+    sourceLocation: voltageLevel.sourceLocation,
   })
 
   const bayGroups = voltageLevel.bays.map(bay => createGroup({
@@ -157,6 +165,7 @@ function collectVoltageLevelGroups(
     parentId: voltageLevelGroup.id,
     coordinates: bay.coordinates,
     sourcePath: bay.sourcePath,
+    sourceLocation: bay.sourceLocation,
   }))
 
   return [voltageLevelGroup, ...bayGroups]
@@ -195,6 +204,7 @@ function dedupeJunctions(
       message: `Duplicate connectivity node "${junction.pathName}" was collapsed into one graph junction.`,
       sourcePath: junction.sourcePath ?? undefined,
       sourceId: junction.sourceId,
+      sourceLocation: junction.sourceLocation,
     })
   }
 
@@ -229,6 +239,7 @@ function mapEquipmentToNode(equipment: SclEquipment): ElectricalGraphNode {
       ?? terminal.connectivityNode
       ?? terminal.cNodeName,
     )),
+    sourceLocation: equipment.sourceLocation,
   }
 }
 
@@ -247,6 +258,7 @@ function mapSyntheticBusbarToNode(node: SclConnectivityNode, label: string): Ele
     position: { x: 0, y: 0 },
     generated: true,
     grounded: false,
+    sourceLocation: node.sourceLocation,
   }
 }
 
@@ -264,6 +276,7 @@ function mapConnectivityNodeToJunction(node: SclConnectivityNode): ElectricalGra
     bayName: node.bayName,
     position: { x: null, y: null },
     portIds: [],
+    sourceLocation: node.sourceLocation,
   }
 }
 
@@ -278,6 +291,7 @@ function ensureJunction(
     bayName: string | null
     sourcePath: string
     sourceId: string
+    sourceLocation?: ElectricalGraphJunction["sourceLocation"]
   },
 ): ElectricalGraphJunction {
   const existing = junctionsByPath.get(input.pathName)
@@ -296,6 +310,7 @@ function ensureJunction(
     bayName: input.bayName,
     position: { x: null, y: null },
     portIds: [],
+    sourceLocation: input.sourceLocation,
   }
   junctions.push(junction)
   junctionsByPath.set(input.pathName, junction)
@@ -306,6 +321,7 @@ function ensureJunction(
     message: `Terminal references connectivity node "${input.pathName}" that is not declared in the parsed topology; an implicit junction was created.`,
     sourcePath: input.sourcePath,
     sourceId: input.sourceId,
+    sourceLocation: input.sourceLocation,
   })
 
   return junction
@@ -327,6 +343,7 @@ function buildEdges(
         message: `Connectivity node "${junction.pathName}" has no terminal references in the parsed topology.`,
         sourcePath: junction.sourcePath ?? undefined,
         sourceId: junction.sourceId,
+        sourceLocation: junction.sourceLocation,
       })
       continue
     }
@@ -339,6 +356,7 @@ function buildEdges(
         message: `Connectivity node "${junction.pathName}" is attached to a single equipment node in the parsed topology.`,
         sourcePath: junction.sourcePath ?? undefined,
         sourceId: junction.sourceId,
+        sourceLocation: junction.sourceLocation,
       })
     }
   }

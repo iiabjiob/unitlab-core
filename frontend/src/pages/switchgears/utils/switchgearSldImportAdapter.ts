@@ -1,4 +1,5 @@
 import type {
+  ScdSourceLocation,
   SclEquipmentKind,
   SldConnection,
   SldDocument,
@@ -31,6 +32,7 @@ export type SwitchgearSldImportAdapterDiagnostic = {
   message: string
   sourceId?: string
   sourcePath?: string
+  sourceLocation?: ScdSourceLocation
 }
 
 export type SwitchgearSldImportAdapterResult = {
@@ -335,6 +337,7 @@ function missingPositionDiagnostic(element: SldElement): SwitchgearSldImportAdap
     message: `Generated SLD element "${element.label}" has no resolved position and was skipped by the diagram adapter.`,
     sourceId: element.sourceId,
     sourcePath: element.sourcePath,
+    sourceLocation: element.sourceLocation,
   }
 }
 

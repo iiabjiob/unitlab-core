@@ -251,6 +251,10 @@ describe("scd-sld-core", () => {
     expect(diagnostics).toEqual([])
     expect(events.find(event => event.localName === "Substation")).toMatchObject({
       name: "Substation",
+      sourceLocation: {
+        line: 4,
+        column: 3,
+      },
       attributes: {
         name: "SS1",
         "sxy:x": "3",
@@ -699,6 +703,9 @@ describe("scd-sld-core", () => {
       severity: "warning",
       stage: "normalizer",
       code: "normalizer.unresolved-connectivity-node",
+      sourceLocation: expect.objectContaining({
+        line: 7,
+      }),
     }))
     expect(result.graph.junctions).toContainEqual(expect.objectContaining({
       pathName: "SS1/VL1/B1/CN_MISSING",
@@ -775,6 +782,9 @@ describe("scd-sld-core", () => {
       severity: "warning",
       stage: "parser",
       code: "parser.duplicate-voltage",
+      sourceLocation: expect.objectContaining({
+        line: 6,
+      }),
     }))
   })
 })

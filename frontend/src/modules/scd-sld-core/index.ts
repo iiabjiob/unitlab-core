@@ -30,6 +30,8 @@ function mergeDiagnostics(...diagnosticGroups: ScdDiagnostic[][]): ScdDiagnostic
       diagnostic.code,
       diagnostic.sourceId ?? "",
       diagnostic.sourcePath ?? "",
+      diagnostic.sourceLocation?.line ?? "",
+      diagnostic.sourceLocation?.column ?? "",
       diagnostic.message,
     ].join("\u0000")
     if (seen.has(key)) {
@@ -63,6 +65,7 @@ export type {
   ScdDiagnosticSeverity,
   ScdDiagnosticStage,
   ScdSource,
+  ScdSourceLocation,
   SclBay,
   SclConnectivityNode,
   SclEquipment,

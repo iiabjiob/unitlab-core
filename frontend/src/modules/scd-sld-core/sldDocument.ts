@@ -62,6 +62,7 @@ function mapGraphNodeToElement(node: ElectricalGraphNode): SldElement {
     bayName: node.bayName,
     position: node.position,
     grounded: node.grounded,
+    sourceLocation: node.sourceLocation,
   }
 }
 

@@ -1,4 +1,4 @@
-import type { ScdDiagnostic } from "./types"
+import type { ScdDiagnostic, ScdSourceLocation } from "./types"
 
 export type XmlAttributes = Record<string, string>
 
@@ -10,6 +10,7 @@ export type XmlElementEvent = {
   selfClosing: boolean
   textContent: string | null
   sourcePath: string
+  sourceLocation: ScdSourceLocation
   depth: number
 }
 
@@ -17,6 +18,7 @@ type StackFrame = {
   localName: string
   segment: string
   childCounts: Record<string, number>
+  sourceLocation: ScdSourceLocation
 }
 
 const XML_TAG_PATTERN = /<[^>]+>/g
@@ -30,6 +32,7 @@ export function* scanXmlElements(
   diagnostics: ScdDiagnostic[] = [],
 ): Generator<XmlElementEvent> {
   const stack: StackFrame[] = []
+  const lineStarts = buildLineStarts(xmlText)
   let match: RegExpExecArray | null
   XML_TAG_PATTERN.lastIndex = 0
 
@@ -40,6 +43,7 @@ export function* scanXmlElements(
       if (!parsed) {
         continue
       }
+      const sourceLocation = resolveSourceLocation(lineStarts, match.index)
 
       if (parsed.kind === "close") {
         const frame = stack[stack.length - 1]
@@ -51,6 +55,7 @@ export function* scanXmlElements(
             code: "xml.mismatched-close-tag",
             message: `Unexpected closing tag </${parsed.name}>.`,
             sourcePath: sourcePath || parsed.localName,
+            sourceLocation,
           })
         } else {
           stack.pop()
@@ -64,6 +69,7 @@ export function* scanXmlElements(
           selfClosing: false,
           textContent: null,
           sourcePath: sourcePath || parsed.localName,
+          sourceLocation,
           depth: stack.length,
         }
         continue
@@ -82,6 +88,7 @@ export function* scanXmlElements(
         selfClosing: parsed.selfClosing,
         textContent: parsed.selfClosing ? null : readImmediateTextContent(xmlText, XML_TAG_PATTERN.lastIndex),
         sourcePath,
+        sourceLocation,
         depth: stack.length,
       }
 
@@ -90,6 +97,7 @@ export function* scanXmlElements(
           localName: parsed.localName,
           segment,
           childCounts: {},
+          sourceLocation,
         })
       }
     }
@@ -105,10 +113,49 @@ export function* scanXmlElements(
         code: "xml.unclosed-tag",
         message: `Unclosed tag <${frame.localName}>.`,
         sourcePath: stack.slice(0, index + 1).map(item => item.segment).join("/"),
+        sourceLocation: frame.sourceLocation,
       })
     }
   } finally {
     XML_TAG_PATTERN.lastIndex = 0
+  }
+}
+
+function buildLineStarts(xmlText: string): number[] {
+  const starts = [0]
+  for (let index = 0; index < xmlText.length; index += 1) {
+    if (xmlText.charCodeAt(index) === 10) {
+      starts.push(index + 1)
+    }
+  }
+  return starts
+}
+
+function resolveSourceLocation(lineStarts: number[], offset: number): ScdSourceLocation {
+  let low = 0
+  let high = lineStarts.length - 1
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2)
+    const lineStart = lineStarts[mid] ?? 0
+    const nextLineStart = lineStarts[mid + 1] ?? Number.POSITIVE_INFINITY
+    if (offset < lineStart) {
+      high = mid - 1
+    } else if (offset >= nextLineStart) {
+      low = mid + 1
+    } else {
+      return {
+        line: mid + 1,
+        column: offset - lineStart + 1,
+        offset,
+      }
+    }
+  }
+
+  return {
+    line: 1,
+    column: offset + 1,
+    offset,
   }
 }
 

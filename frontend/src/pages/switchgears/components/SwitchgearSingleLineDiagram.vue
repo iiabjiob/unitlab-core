@@ -51,7 +51,7 @@ import type {
 
 type DiagramPortOwnerType = DiagramBindablePortOwnerType | "line"
 
-type ScdImportPreviewDiagnostic = Pick<ScdDiagnostic, "severity" | "code" | "message" | "sourceId" | "sourcePath">
+type ScdImportPreviewDiagnostic = Pick<ScdDiagnostic, "severity" | "code" | "message" | "sourceId" | "sourcePath" | "sourceLocation">
 type ScdImportDiagnostic = ScdImportPreviewDiagnostic | SwitchgearSldImportAdapterDiagnostic
 
 type ScdImportPreview = {
@@ -1825,6 +1825,17 @@ function isActionableScdImportDiagnostic(diagnostic: ScdImportDiagnostic): boole
     return false
   }
   return true
+}
+
+function formatScdImportDiagnosticContext(diagnostic: ScdImportDiagnostic): string | null {
+  const parts: string[] = []
+  if (diagnostic.sourceLocation) {
+    parts.push(`line ${diagnostic.sourceLocation.line}:${diagnostic.sourceLocation.column}`)
+  }
+  if (diagnostic.sourcePath) {
+    parts.push(diagnostic.sourcePath)
+  }
+  return parts.length > 0 ? parts.join(" · ") : null
 }
 
 function openScdFileDialog() {
@@ -4850,6 +4861,12 @@ onBeforeUnmount(() => {
                 <span>{{ diagnostic.severity }}</span>
                 <div>
                   <strong>{{ diagnostic.code }}</strong>
+                  <p
+                    v-if="formatScdImportDiagnosticContext(diagnostic)"
+                    class="switchgear-sld__import-diagnostic-context"
+                  >
+                    {{ formatScdImportDiagnosticContext(diagnostic) }}
+                  </p>
                   <p>{{ diagnostic.message }}</p>
                 </div>
               </li>
@@ -5265,6 +5282,12 @@ onBeforeUnmount(() => {
 .switchgear-sld__import-diagnostic p {
   margin-top: 0.1875rem;
   color: var(--color-neutral-600);
+}
+
+.switchgear-sld__import-diagnostic-context {
+  overflow-wrap: anywhere;
+  color: var(--color-neutral-500) !important;
+  font-family: var(--font-mono);
 }
 
 .switchgear-sld__import-diagnostic--error {
@@ -5729,6 +5752,10 @@ onBeforeUnmount(() => {
 :global(.dark .switchgear-sld__import-hash),
 :global(.dark .switchgear-sld__import-diagnostic p) {
   color: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-sld__import-diagnostic-context) {
+  color: var(--color-neutral-400) !important;
 }
 
 :global(.dark .switchgear-sld__import-empty-log) {
