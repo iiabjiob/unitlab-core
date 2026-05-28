@@ -264,6 +264,29 @@ const selectedLineCount = computed(() => {
 })
 const selectedStaticCount = computed(() => selectedStaticIds.value.length)
 const selectedNodeCount = computed(() => effectiveSelectedNodeIds().length)
+const selectedObjectCount = computed(() => (
+  selectedNodeCount.value + selectedLineCount.value + selectedStaticCount.value
+))
+const activeToolLabel = computed(() => interactionTool.value === "hand" ? "Move" : "Select")
+const snapStateLabel = computed(() => snapEnabled.value ? "Snap on" : "Snap off")
+const selectionSummary = computed(() => {
+  if (selectedObjectCount.value === 0) {
+    return "No selection"
+  }
+
+  const parts = [
+    selectedNodeCount.value > 0 ? `${selectedNodeCount.value} switchgear${selectedNodeCount.value > 1 ? "s" : ""}` : null,
+    selectedLineCount.value > 0 ? `${selectedLineCount.value} line${selectedLineCount.value > 1 ? "s" : ""}` : null,
+    selectedStaticCount.value > 0 ? `${selectedStaticCount.value} symbol${selectedStaticCount.value > 1 ? "s" : ""}` : null,
+  ].filter((part): part is string => part !== null)
+
+  return parts.join(" · ")
+})
+const diagramMetricItems = computed(() => [
+  { label: "Switchgears", value: switchgears.value.length },
+  { label: "Lines", value: edges.value.length },
+  { label: "Symbols", value: staticElements.value.length },
+])
 const canUndo = computed(() => undoStack.value.length > 0)
 const canRedo = computed(() => redoStack.value.length > 0)
 const selectedLineKind = computed<"line" | "arrow" | "mixed" | null>(() => {
@@ -2357,6 +2380,18 @@ onBeforeUnmount(() => {
           <path d="M15 6v4" />
         </svg>
       </UiButton>
+
+      <div class="switchgear-sld__metrics" aria-label="Diagram metrics">
+        <span
+          v-for="item in diagramMetricItems"
+          :key="item.label"
+          class="switchgear-sld__metric"
+        >
+          <span class="switchgear-sld__metric-value">{{ item.value }}</span>
+          <span class="switchgear-sld__metric-label">{{ item.label }}</span>
+        </span>
+      </div>
+
       <div
         v-if="selectedLineCount > 0"
         class="switchgear-sld__tool-group"
@@ -2486,6 +2521,21 @@ onBeforeUnmount(() => {
       @wheel.prevent="handleWheel"
     >
       <div class="switchgear-sld__viewport-overlay" :style="viewportOverlayStyle"></div>
+
+      <div class="switchgear-sld__status-strip" aria-live="polite">
+        <span class="switchgear-sld__status-pill switchgear-sld__status-pill--primary">
+          {{ activeToolLabel }}
+        </span>
+        <span
+          class="switchgear-sld__status-pill"
+          :class="{ 'switchgear-sld__status-pill--muted': !snapEnabled }"
+        >
+          {{ snapStateLabel }}
+        </span>
+        <span class="switchgear-sld__status-selection">
+          {{ selectionSummary }}
+        </span>
+      </div>
 
       <div class="switchgear-sld__stage" :style="stageTransformStyle">
         <div class="switchgear-sld__grid" :style="stageGridStyle">
@@ -2728,11 +2778,14 @@ onBeforeUnmount(() => {
   min-height: 0;
   height: 100%;
   flex-direction: column;
-  padding: 1rem;
-  border: 1px solid var(--color-neutral-200);
+  padding: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 82%, transparent);
   border-radius: 1rem;
-  background: color-mix(in srgb, var(--color-white) 80%, transparent);
-  box-shadow: var(--shadow-sm);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-white) 94%, transparent), color-mix(in srgb, var(--color-neutral-50) 86%, transparent));
+  box-shadow:
+    0 18px 40px rgb(15 23 42 / 0.08),
+    inset 0 1px 0 rgb(255 255 255 / 0.72);
 }
 
 .switchgear-sld__toolbar {
@@ -2740,14 +2793,24 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 84%, transparent);
+  border-radius: 0.875rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-white) 92%, transparent), color-mix(in srgb, var(--color-neutral-50) 80%, transparent));
+  box-shadow:
+    0 10px 24px rgb(15 23 42 / 0.06),
+    inset 0 1px 0 rgb(255 255 255 / 0.78);
 }
 
 .switchgear-sld__tool-group {
   display: inline-flex;
   overflow: hidden;
-  border: 1px solid var(--color-neutral-300);
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 82%, transparent);
   border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--color-white) 70%, transparent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.72);
 }
 
 .switchgear-sld__tool-button,
@@ -2757,8 +2820,9 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   border: 0;
-  background: var(--color-neutral-100);
-  color: var(--color-neutral-500);
+  background: transparent;
+  color: var(--color-neutral-600);
+  cursor: pointer;
   font: inherit;
   outline: none;
   transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
@@ -2769,8 +2833,10 @@ onBeforeUnmount(() => {
 }
 
 .switchgear-sld__tool-button--standalone {
-  border: 1px solid var(--color-neutral-300);
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 82%, transparent);
   border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--color-white) 70%, transparent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.72);
 }
 
 .switchgear-sld__kind-button {
@@ -2781,12 +2847,13 @@ onBeforeUnmount(() => {
 
 .switchgear-sld__tool-button--split,
 .switchgear-sld__kind-button--split {
-  border-right: 1px solid var(--color-neutral-300);
+  border-right: 1px solid color-mix(in srgb, var(--color-neutral-300) 82%, transparent);
 }
 
 .switchgear-sld__tool-button:hover,
 .switchgear-sld__kind-button:hover {
-  background: var(--color-neutral-200);
+  background: color-mix(in srgb, var(--color-neutral-200) 76%, transparent);
+  color: var(--color-neutral-900);
 }
 
 .switchgear-sld__tool-button:focus-visible,
@@ -2800,6 +2867,9 @@ onBeforeUnmount(() => {
 .switchgear-sld__kind-button--active:hover {
   background: var(--color-blue-600);
   color: var(--color-white);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.22),
+    0 0 0 1px color-mix(in srgb, var(--color-blue-400) 34%, transparent);
 }
 
 .switchgear-sld__icon {
@@ -2863,6 +2933,37 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 0.75rem;
   margin-left: auto;
+  min-width: 0;
+}
+
+.switchgear-sld__metrics {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding-left: 0.25rem;
+}
+
+.switchgear-sld__metric {
+  display: inline-flex;
+  min-height: 1.75rem;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 82%, transparent);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--color-white) 70%, transparent);
+  color: var(--color-neutral-500);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.switchgear-sld__metric-value {
+  color: var(--color-neutral-900);
+  font-family: var(--font-mono);
+}
+
+.switchgear-sld__metric-label {
+  text-transform: uppercase;
 }
 
 .switchgear-sld__viewport {
@@ -2870,10 +2971,13 @@ onBeforeUnmount(() => {
   min-height: 460px;
   flex: 1 1 auto;
   overflow: hidden;
-  border: 1px solid var(--color-neutral-200);
-  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 82%, transparent);
+  border-radius: 0.875rem;
   background: var(--color-neutral-100);
   cursor: grab;
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.4),
+    inset 0 18px 60px rgb(15 23 42 / 0.08);
 }
 
 .switchgear-sld__viewport:active {
@@ -2884,6 +2988,59 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+.switchgear-sld__status-strip {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 10;
+  display: inline-flex;
+  max-width: calc(100% - 1.5rem);
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 70%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-white) 88%, transparent);
+  box-shadow: 0 12px 28px rgb(15 23 42 / 0.12);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.switchgear-sld__status-pill,
+.switchgear-sld__status-selection {
+  display: inline-flex;
+  min-height: 1.375rem;
+  align-items: center;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.switchgear-sld__status-pill {
+  padding: 0 0.5rem;
+  background: color-mix(in srgb, var(--color-neutral-100) 86%, transparent);
+  color: var(--color-neutral-600);
+}
+
+.switchgear-sld__status-pill--primary {
+  background: color-mix(in srgb, var(--color-blue-600) 12%, transparent);
+  color: var(--color-blue-700);
+}
+
+.switchgear-sld__status-pill--muted {
+  color: var(--color-neutral-400);
+}
+
+.switchgear-sld__status-selection {
+  overflow: hidden;
+  max-width: min(28rem, 45vw);
+  padding: 0 0.25rem;
+  color: var(--color-neutral-600);
+  text-overflow: ellipsis;
 }
 
 .switchgear-sld__stage {
@@ -2919,9 +3076,11 @@ onBeforeUnmount(() => {
   padding: 0.5rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-300) 80%, transparent);
   border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--color-white) 90%, transparent);
-  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 10%), 0 8px 10px -6px rgb(0 0 0 / 10%);
-  backdrop-filter: blur(8px);
+  background: color-mix(in srgb, var(--color-white) 88%, transparent);
+  box-shadow:
+    0 20px 32px -12px rgb(15 23 42 / 0.24),
+    inset 0 1px 0 rgb(255 255 255 / 0.72);
+  backdrop-filter: blur(10px);
 }
 
 .switchgear-sld__zoom-panel {
@@ -2971,8 +3130,21 @@ onBeforeUnmount(() => {
 }
 
 :global(.dark .switchgear-sld) {
-  border-color: var(--color-neutral-800);
-  background: color-mix(in srgb, var(--color-neutral-900) 80%, transparent);
+  border-color: color-mix(in srgb, var(--color-neutral-700) 70%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-neutral-900) 86%, transparent), color-mix(in srgb, var(--color-neutral-950) 82%, transparent));
+  box-shadow:
+    0 18px 42px rgb(0 0 0 / 0.28),
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+:global(.dark .switchgear-sld__toolbar) {
+  border-color: color-mix(in srgb, var(--color-neutral-700) 76%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-neutral-800) 72%, transparent), color-mix(in srgb, var(--color-neutral-900) 86%, transparent));
+  box-shadow:
+    0 14px 28px rgb(0 0 0 / 0.22),
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
 }
 
 :global(.dark .switchgear-sld__tool-group),
@@ -2984,9 +3156,15 @@ onBeforeUnmount(() => {
   border-color: var(--color-neutral-700);
 }
 
+:global(.dark .switchgear-sld__tool-group),
+:global(.dark .switchgear-sld__tool-button--standalone) {
+  background: color-mix(in srgb, var(--color-neutral-800) 76%, transparent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+
 :global(.dark .switchgear-sld__tool-button),
 :global(.dark .switchgear-sld__kind-button) {
-  background: var(--color-neutral-800);
+  background: transparent;
   color: var(--color-neutral-400);
 }
 
@@ -3001,6 +3179,19 @@ onBeforeUnmount(() => {
 :global(.dark .switchgear-sld__kind-button--active:hover) {
   background: var(--color-blue-600);
   color: var(--color-white);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.16),
+    0 0 0 1px color-mix(in srgb, var(--color-blue-400) 28%, transparent);
+}
+
+:global(.dark .switchgear-sld__metric) {
+  border-color: color-mix(in srgb, var(--color-neutral-700) 72%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-900) 70%, transparent);
+  color: var(--color-neutral-500);
+}
+
+:global(.dark .switchgear-sld__metric-value) {
+  color: var(--color-neutral-100);
 }
 
 :global(.dark .switchgear-sld__dropdown),
@@ -3021,12 +3212,42 @@ onBeforeUnmount(() => {
 :global(.dark .switchgear-sld__viewport) {
   border-color: var(--color-neutral-700);
   background: var(--color-neutral-950);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.03),
+    inset 0 22px 80px rgb(0 0 0 / 0.32);
+}
+
+:global(.dark .switchgear-sld__status-strip) {
+  border-color: color-mix(in srgb, var(--color-neutral-700) 74%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-950) 84%, transparent);
+  box-shadow: 0 16px 32px rgb(0 0 0 / 0.3);
+}
+
+:global(.dark .switchgear-sld__status-pill) {
+  background: color-mix(in srgb, var(--color-neutral-800) 78%, transparent);
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-sld__status-pill--primary) {
+  background: color-mix(in srgb, var(--color-blue-500) 18%, transparent);
+  color: var(--color-blue-200);
+}
+
+:global(.dark .switchgear-sld__status-pill--muted) {
+  color: var(--color-neutral-500);
+}
+
+:global(.dark .switchgear-sld__status-selection) {
+  color: var(--color-neutral-300);
 }
 
 :global(.dark .switchgear-sld__zoom-panel),
 :global(.dark .switchgear-sld__minimap) {
   border-color: color-mix(in srgb, var(--color-neutral-700) 80%, transparent);
   background: color-mix(in srgb, var(--color-neutral-900) 85%, transparent);
+  box-shadow:
+    0 20px 36px -12px rgb(0 0 0 / 0.42),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
 }
 
 :global(.dark .switchgear-sld__zoom-label) {

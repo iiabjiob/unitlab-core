@@ -93,12 +93,22 @@ function handlePointerDown(event: PointerEvent) {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--color-blue-600);
-  transition: box-shadow 0.15s ease;
+  cursor: grab;
   outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.switchgear-sld-static-element:hover {
+  background: color-mix(in srgb, var(--color-white) 56%, transparent);
+  border-color: color-mix(in srgb, var(--color-blue-300) 36%, transparent);
+}
+
+.switchgear-sld-static-element:active {
+  cursor: grabbing;
 }
 
 .switchgear-sld-static-element:focus-visible {
@@ -106,9 +116,11 @@ function handlePointerDown(event: PointerEvent) {
 }
 
 .switchgear-sld-static-element--selected {
+  background: color-mix(in srgb, var(--color-white) 62%, transparent);
+  border-color: color-mix(in srgb, var(--color-blue-400) 56%, transparent);
   box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--color-blue-400) 60%, transparent),
-    0 0 0 4px var(--color-white);
+    0 0 0 2px color-mix(in srgb, var(--color-blue-400) 32%, transparent),
+    0 12px 24px rgb(37 99 235 / 0.14);
 }
 
 .switchgear-sld-static-element__graphic {
@@ -116,8 +128,15 @@ function handlePointerDown(event: PointerEvent) {
 }
 
 :global(.dark .switchgear-sld-static-element--selected) {
+  background: color-mix(in srgb, var(--color-neutral-900) 62%, transparent);
+  border-color: color-mix(in srgb, var(--color-blue-400) 52%, transparent);
   box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--color-blue-400) 60%, transparent),
-    0 0 0 4px var(--color-neutral-950);
+    0 0 0 2px color-mix(in srgb, var(--color-blue-400) 28%, transparent),
+    0 14px 26px rgb(14 165 233 / 0.14);
+}
+
+:global(.dark .switchgear-sld-static-element:hover) {
+  background: color-mix(in srgb, var(--color-neutral-900) 58%, transparent);
+  border-color: color-mix(in srgb, var(--color-blue-400) 36%, transparent);
 }
 </style>
