@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest"
 
 import { generateSldFromScd } from "@/modules/scd-sld-core"
-import { adaptSldDocumentToSwitchgearDiagram } from "./switchgearSldImportAdapter"
+import {
+  adaptSldDocumentToSwitchgearDiagram,
+  mergeGeneratedSldDiagramOverlay,
+} from "./switchgearSldImportAdapter"
 
 const genericImportScd = `<?xml version="1.0" encoding="UTF-8"?>
 <SCL xmlns="http://www.iec.ch/61850/2003/SCL" revision="B" version="2007">
@@ -100,5 +103,37 @@ describe("switchgear SLD import adapter", () => {
       expect.objectContaining({ text: "Q01" }),
     ]))
     expect(adapted.diagnostics).toEqual([])
+  })
+
+  it("replaces only previous generated import overlay when applying a new preview", () => {
+    const merged = mergeGeneratedSldDiagramOverlay({
+      edges: [
+        { id: "manual-line", x1: 1, y1: 2, x2: 3, y2: 4, kind: "line", weight: "normal" },
+        { id: "sld-import-connection:old", x1: 10, y1: 20, x2: 30, y2: 40, kind: "line", weight: "normal" },
+      ],
+      staticElements: [
+        { id: "manual-static", kind: "ground", size: "md", x: 1, y: 1, rotation: 0 },
+        { id: "sld-import-static:old", kind: "transformer", size: "md", x: 2, y: 2, rotation: 0 },
+      ],
+      textElements: [
+        { id: "manual-text", text: "MANUAL", size: "md", x: 1, y: 1 },
+        { id: "sld-import-label:old", text: "OLD", size: "md", x: 2, y: 2 },
+      ],
+      snapEnabled: true,
+    }, {
+      edges: [
+        { id: "sld-import-connection:new", x1: 100, y1: 200, x2: 300, y2: 400, kind: "line", weight: "bold" },
+      ],
+      staticElements: [
+        { id: "sld-import-static:new", kind: "transformer", size: "md", x: 12, y: 12, rotation: 0 },
+      ],
+      textElements: [
+        { id: "sld-import-label:new", text: "NEW", size: "md", x: 24, y: 24 },
+      ],
+    })
+
+    expect(merged.edges?.map(edge => edge.id)).toEqual(["manual-line", "sld-import-connection:new"])
+    expect(merged.staticElements?.map(element => element.id)).toEqual(["manual-static", "sld-import-static:new"])
+    expect(merged.textElements?.map(element => element.id)).toEqual(["manual-text", "sld-import-label:new"])
   })
 })

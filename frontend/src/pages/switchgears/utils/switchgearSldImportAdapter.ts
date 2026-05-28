@@ -146,6 +146,35 @@ export function adaptSldDocumentToSwitchgearDiagram(
   }
 }
 
+export function mergeGeneratedSldDiagramOverlay(
+  current: StoredDiagramState,
+  generated: StoredDiagramState,
+): StoredDiagramState {
+  const currentEdges = current.edges ?? current.lines ?? []
+  const generatedEdges = generated.edges ?? generated.lines ?? []
+
+  return {
+    ...current,
+    edges: [
+      ...currentEdges.filter(edge => !isGeneratedSldImportId(edge.id)),
+      ...generatedEdges,
+    ],
+    staticElements: [
+      ...(current.staticElements ?? []).filter(element => !isGeneratedSldImportId(element.id)),
+      ...(generated.staticElements ?? []),
+    ],
+    textElements: [
+      ...(current.textElements ?? []).filter(element => !isGeneratedSldImportId(element.id)),
+      ...(generated.textElements ?? []),
+    ],
+    snapEnabled: current.snapEnabled ?? generated.snapEnabled,
+  }
+}
+
+export function isGeneratedSldImportId(id: string): boolean {
+  return id.startsWith("sld-import-")
+}
+
 function buildBusbarEdge(element: SldElement, position: SldRoutePoint): DiagramEdge {
   const dimensions = element.visual.dimensions ?? {
     width: DEFAULT_BUSBAR_WIDTH,

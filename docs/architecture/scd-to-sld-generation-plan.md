@@ -518,7 +518,7 @@ Implemented 2026-05-28:
 
 ### Slice 8 - Import Review UX
 
-Status: `[ ]`
+Status: `[~]`
 
 Goal:
 
@@ -545,6 +545,13 @@ Validation:
 - Import with warnings can be reviewed and cancelled.
 - Import with blocking errors cannot be applied.
 - No hardware-facing action is triggered by preview.
+
+Implemented 2026-05-28:
+
+- Added SLD editor file selection for SCD input.
+- Added import preview summary with generated diagram counts, switchgear candidate count, source hash, and diagnostics.
+- Apply currently merges only generated diagram overlay objects and replaces previous generated overlay by `sld-import-*` IDs; manual editor objects are preserved.
+- Breaker/disconnector candidates remain review-only and do not create operational switchgear records.
 
 ### Slice 9 - Persistence and Regeneration
 

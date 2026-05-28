@@ -2,7 +2,10 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import UiButton from "@/components/ui/UiButton.vue"
+import UiModal from "@/components/ui/UiModal.vue"
 import WorkspacePlaceholder from "@/components/ui/WorkspacePlaceholder.vue"
+import { generateSldFromScd } from "@/modules/scd-sld-core"
+import type { ScdDiagnostic } from "@/modules/scd-sld-core"
 import { useSwitchgearStore } from "@/stores/switchgearStore"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useChannelStore } from "@/stores/channelStore"
@@ -35,8 +38,25 @@ import type {
   DiagramViewState,
   StoredDiagramState,
 } from "../utils/switchgearSldDiagramTypes"
+import {
+  adaptSldDocumentToSwitchgearDiagram,
+  mergeGeneratedSldDiagramOverlay,
+} from "../utils/switchgearSldImportAdapter"
+import type {
+  SwitchgearSldImportAdapterDiagnostic,
+  SwitchgearSldImportAdapterResult,
+} from "../utils/switchgearSldImportAdapter"
 
 type DiagramPortOwnerType = DiagramBindablePortOwnerType | "line"
+
+type ScdImportPreviewDiagnostic = Pick<ScdDiagnostic, "severity" | "code" | "message" | "sourceId" | "sourcePath">
+
+type ScdImportPreview = {
+  fileName: string
+  sourceHash: string
+  adapterResult: SwitchgearSldImportAdapterResult
+  diagnostics: Array<ScdImportPreviewDiagnostic | SwitchgearSldImportAdapterDiagnostic>
+}
 
 type DiagramLabelOffset = {
   x: number
@@ -243,6 +263,7 @@ const emit = defineEmits<{
 }>()
 
 const viewportRef = ref<HTMLElement | null>(null)
+const scdFileInputRef = ref<HTMLInputElement | null>(null)
 const layoutById = ref<Record<string, DiagramNodeLayout>>({})
 const labelOffsetById = ref<Record<string, DiagramLabelOffset>>({})
 const edges = ref<DiagramEdge[]>([])
@@ -269,6 +290,9 @@ const redoStack = ref<DiagramHistorySnapshot[]>([])
 const historyDragSnapshot = ref<DiagramHistorySnapshot | null>(null)
 const localClipboardSelection = ref<DiagramClipboardSelection | null>(null)
 const clipboardPasteCount = ref(0)
+const scdImportBusy = ref(false)
+const scdImportError = ref<string | null>(null)
+const scdImportPreview = ref<ScdImportPreview | null>(null)
 let viewportResizeObserver: ResizeObserver | null = null
 
 const workspaceId = computed(() => workspaceStore.activeWorkspaceId)
@@ -335,6 +359,32 @@ const selectedNodeCount = computed(() => effectiveSelectedNodeIds().length)
 const selectedObjectCount = computed(() => (
   selectedNodeCount.value + selectedLineCount.value + selectedStaticCount.value + selectedTextCount.value
 ))
+const hasDiagramContent = computed(() => (
+  switchgears.value.length > 0
+  || edges.value.length > 0
+  || staticElements.value.length > 0
+  || textElements.value.length > 0
+))
+const scdImportModalOpen = computed(() => scdImportBusy.value || scdImportPreview.value !== null || scdImportError.value !== null)
+const scdImportSummary = computed(() => {
+  const preview = scdImportPreview.value
+  if (!preview) {
+    return null
+  }
+  const diagram = preview.adapterResult.diagram
+  return {
+    lines: diagram.edges?.length ?? diagram.lines?.length ?? 0,
+    symbols: diagram.staticElements?.length ?? 0,
+    texts: diagram.textElements?.length ?? 0,
+    candidates: preview.adapterResult.switchgearCandidates.length,
+    diagnostics: preview.diagnostics.length,
+    blockingErrors: preview.diagnostics.filter(item => item.severity === "error").length,
+  }
+})
+const canApplyScdImport = computed(() => {
+  const summary = scdImportSummary.value
+  return Boolean(summary && summary.blockingErrors === 0 && (summary.lines > 0 || summary.symbols > 0 || summary.texts > 0))
+})
 const activeToolLabel = computed(() => {
   if (interactionTool.value === "line") {
     return "Draw line"
@@ -1525,6 +1575,119 @@ function normalizeStoredDiagramState(value: unknown): StoredDiagramState | null 
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as StoredDiagramState
     : null
+}
+
+function openScdFileDialog() {
+  if (!workspaceId.value || scdImportBusy.value) {
+    return
+  }
+  scdFileInputRef.value?.click()
+}
+
+async function handleScdFileSelected(event: Event) {
+  const input = event.target as HTMLInputElement | null
+  const file = input?.files?.[0] ?? null
+  if (input) {
+    input.value = ""
+  }
+  if (!file) {
+    return
+  }
+
+  scdImportBusy.value = true
+  scdImportError.value = null
+  scdImportPreview.value = null
+
+  try {
+    const xmlText = await file.text()
+    const sourceHash = await hashText(xmlText)
+    const generated = generateSldFromScd({
+      fileName: file.name,
+      contentHash: sourceHash,
+      xmlText,
+      workspaceId: workspaceId.value,
+    }, {
+      gridSize: GRID_STEP,
+    })
+    const adapterResult = adaptSldDocumentToSwitchgearDiagram(generated.document, {
+      stagePadding: STAGE_PADDING,
+    })
+
+    scdImportPreview.value = {
+      fileName: file.name,
+      sourceHash,
+      adapterResult,
+      diagnostics: [...generated.diagnostics, ...adapterResult.diagnostics],
+    }
+  } catch (error) {
+    scdImportError.value = error instanceof Error ? error.message : "Unable to read SCD file"
+  } finally {
+    scdImportBusy.value = false
+  }
+}
+
+function closeScdImportPreview() {
+  if (scdImportBusy.value) {
+    return
+  }
+  scdImportPreview.value = null
+  scdImportError.value = null
+}
+
+function applyScdImportPreview() {
+  const preview = scdImportPreview.value
+  if (!preview || !canApplyScdImport.value) {
+    return
+  }
+
+  const changed = commitHistoryMutation(() => {
+    const merged = mergeGeneratedSldDiagramOverlay({
+      edges: edges.value,
+      staticElements: staticElements.value,
+      textElements: textElements.value,
+      snapEnabled: snapEnabled.value,
+    }, preview.adapterResult.diagram)
+
+    edges.value = merged.edges ?? []
+    staticElements.value = merged.staticElements ?? []
+    textElements.value = merged.textElements ?? []
+    snapEnabled.value = merged.snapEnabled !== false
+    selectedEdgeId.value = null
+    selectedEdgeIds.value = []
+    selectedNodeIds.value = []
+    selectedStaticIds.value = []
+    selectedTextIds.value = []
+    editingTextId.value = null
+    closeLineContextMenu()
+  })
+
+  const candidateCount = preview.adapterResult.switchgearCandidates.length
+  closeScdImportPreview()
+  if (changed) {
+    toastStore.success(candidateCount > 0
+      ? `Imported SLD overlay. ${candidateCount} switchgear candidates require review.`
+      : "Imported SLD overlay")
+    void nextTick(() => {
+      fitToContent()
+    })
+    return
+  }
+  toastStore.info("SCD import did not change the diagram overlay")
+}
+
+async function hashText(value: string): Promise<string> {
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))
+    return Array.from(new Uint8Array(digest))
+      .map(byte => byte.toString(16).padStart(2, "0"))
+      .join("")
+  }
+
+  let hash = 0
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0
+  }
+  return `fallback:${value.length}:${Math.abs(hash)}`
 }
 
 function toggleSnapEnabled() {
@@ -3680,6 +3843,28 @@ onBeforeUnmount(() => {
           <path d="M5.5 12h5" />
         </svg>
       </UiButton>
+      <input
+        ref="scdFileInputRef"
+        class="switchgear-sld__file-input"
+        type="file"
+        accept=".scd,.sed,.ssd,.xml,application/xml,text/xml"
+        @change="handleScdFileSelected"
+      >
+      <UiButton
+        size="sm"
+        variant="secondary"
+        class="switchgear-sld__icon-action"
+        title="Import SCD"
+        aria-label="Import SCD"
+        :disabled="!workspaceId || scdImportBusy"
+        @click="openScdFileDialog()"
+      >
+        <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 2v7" />
+          <path d="m5 6 3 3 3-3" />
+          <path d="M3 10v2.5A1.5 1.5 0 0 0 4.5 14h7A1.5 1.5 0 0 0 13 12.5V10" />
+        </svg>
+      </UiButton>
 
       <div
         v-if="selectedLineCount > 0"
@@ -3841,10 +4026,10 @@ onBeforeUnmount(() => {
     />
 
     <WorkspacePlaceholder
-      v-else-if="switchgears.length === 0"
+      v-else-if="!hasDiagramContent"
       tag="Single Line Diagram"
       title="No switchgears yet"
-      description="Create switchgears from the sidebar first, then place them on the canvas and connect them with lines."
+      description="Create switchgears from the sidebar or import an SCD overlay."
     />
 
     <div
@@ -4266,6 +4451,105 @@ onBeforeUnmount(() => {
         </svg>
       </div>
     </div>
+
+    <UiModal
+      :open="scdImportModalOpen"
+      title="Import SCD"
+      max-width="3xl"
+      @close="closeScdImportPreview"
+    >
+      <div class="switchgear-sld__import-review">
+        <div v-if="scdImportBusy" class="switchgear-sld__import-state">
+          Parsing SCD topology...
+        </div>
+
+        <div v-else-if="scdImportError" class="switchgear-sld__import-alert">
+          {{ scdImportError }}
+        </div>
+
+        <template v-else-if="scdImportPreview && scdImportSummary">
+          <div class="switchgear-sld__import-heading">
+            <div>
+              <p class="switchgear-sld__import-eyebrow">Source</p>
+              <p class="switchgear-sld__import-title">{{ scdImportPreview.fileName }}</p>
+            </div>
+            <span class="switchgear-sld__import-hash">{{ scdImportPreview.sourceHash.slice(0, 12) }}</span>
+          </div>
+
+          <div class="switchgear-sld__import-metrics">
+            <div class="switchgear-sld__import-metric">
+              <span>Lines</span>
+              <strong>{{ scdImportSummary.lines }}</strong>
+            </div>
+            <div class="switchgear-sld__import-metric">
+              <span>Symbols</span>
+              <strong>{{ scdImportSummary.symbols }}</strong>
+            </div>
+            <div class="switchgear-sld__import-metric">
+              <span>Labels</span>
+              <strong>{{ scdImportSummary.texts }}</strong>
+            </div>
+            <div class="switchgear-sld__import-metric">
+              <span>Switchgear candidates</span>
+              <strong>{{ scdImportSummary.candidates }}</strong>
+            </div>
+          </div>
+
+          <div
+            v-if="scdImportSummary.candidates > 0"
+            class="switchgear-sld__import-note"
+          >
+            Breakers and disconnectors are staged as candidates only. Operational switchgear records are not created by this action.
+          </div>
+
+          <div
+            v-if="scdImportPreview.diagnostics.length > 0"
+            class="switchgear-sld__import-diagnostics"
+          >
+            <p class="switchgear-sld__import-section-title">
+              Diagnostics
+            </p>
+            <ul class="switchgear-sld__import-diagnostic-list">
+              <li
+                v-for="diagnostic in scdImportPreview.diagnostics.slice(0, 8)"
+                :key="`${diagnostic.severity}:${diagnostic.code}:${diagnostic.sourceId ?? diagnostic.sourcePath ?? diagnostic.message}`"
+                class="switchgear-sld__import-diagnostic"
+                :class="`switchgear-sld__import-diagnostic--${diagnostic.severity}`"
+              >
+                <span>{{ diagnostic.severity }}</span>
+                <div>
+                  <strong>{{ diagnostic.code }}</strong>
+                  <p>{{ diagnostic.message }}</p>
+                </div>
+              </li>
+            </ul>
+            <p
+              v-if="scdImportPreview.diagnostics.length > 8"
+              class="switchgear-sld__import-muted"
+            >
+              {{ scdImportPreview.diagnostics.length - 8 }} more diagnostics hidden in this preview.
+            </p>
+          </div>
+        </template>
+      </div>
+
+      <template #footer>
+        <UiButton
+          variant="secondary"
+          :disabled="scdImportBusy"
+          @click="closeScdImportPreview"
+        >
+          Cancel
+        </UiButton>
+        <UiButton
+          variant="primary"
+          :disabled="!canApplyScdImport || scdImportBusy"
+          @click="applyScdImportPreview"
+        >
+          Apply overlay
+        </UiButton>
+      </template>
+    </UiModal>
   </section>
 </template>
 
@@ -4404,6 +4688,15 @@ onBeforeUnmount(() => {
     0 0 0 1px color-mix(in srgb, var(--color-blue-400) 30%, transparent);
 }
 
+.switchgear-sld__file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .switchgear-sld__toolbar-menu-anchor {
   position: relative;
 }
@@ -4450,6 +4743,158 @@ onBeforeUnmount(() => {
 
 :global(.switchgear-sld__node-menu-item) {
   color: var(--color-neutral-900);
+}
+
+.switchgear-sld__import-review {
+  display: grid;
+  gap: 1rem;
+}
+
+.switchgear-sld__import-state,
+.switchgear-sld__import-alert,
+.switchgear-sld__import-note {
+  padding: 0.75rem 0.875rem;
+  border-radius: 0.75rem;
+  font-size: var(--text-sm);
+}
+
+.switchgear-sld__import-state {
+  border: 1px solid color-mix(in srgb, var(--color-blue-300) 60%, transparent);
+  background: color-mix(in srgb, var(--color-blue-50) 72%, transparent);
+  color: var(--color-blue-800);
+}
+
+.switchgear-sld__import-alert {
+  border: 1px solid color-mix(in srgb, var(--color-rose-300) 72%, transparent);
+  background: color-mix(in srgb, var(--color-rose-50) 78%, transparent);
+  color: var(--color-rose-700);
+}
+
+.switchgear-sld__import-note {
+  border: 1px solid color-mix(in srgb, var(--color-amber-300) 70%, transparent);
+  background: color-mix(in srgb, var(--color-amber-50) 78%, transparent);
+  color: var(--color-amber-800);
+}
+
+.switchgear-sld__import-heading,
+.switchgear-sld__import-metrics {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.switchgear-sld__import-heading {
+  justify-content: space-between;
+}
+
+.switchgear-sld__import-eyebrow,
+.switchgear-sld__import-muted {
+  margin: 0;
+  color: var(--color-neutral-500);
+  font-size: var(--text-xs);
+}
+
+.switchgear-sld__import-title,
+.switchgear-sld__import-section-title {
+  margin: 0;
+  color: var(--color-neutral-900);
+  font-weight: 700;
+}
+
+.switchgear-sld__import-title {
+  font-size: var(--text-base);
+}
+
+.switchgear-sld__import-section-title {
+  font-size: var(--text-sm);
+}
+
+.switchgear-sld__import-hash {
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-600);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+
+.switchgear-sld__import-metrics {
+  flex-wrap: wrap;
+}
+
+.switchgear-sld__import-metric {
+  min-width: 8.5rem;
+  flex: 1 1 0;
+  padding: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 84%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-neutral-50) 82%, transparent);
+}
+
+.switchgear-sld__import-metric span,
+.switchgear-sld__import-diagnostic span {
+  display: block;
+  color: var(--color-neutral-500);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.switchgear-sld__import-metric strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--color-neutral-950);
+  font-family: var(--font-mono);
+  font-size: 1.125rem;
+}
+
+.switchgear-sld__import-diagnostics {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.switchgear-sld__import-diagnostic-list {
+  display: grid;
+  max-height: 16rem;
+  gap: 0.5rem;
+  overflow: auto;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.switchgear-sld__import-diagnostic {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 80%, transparent);
+  border-radius: 0.75rem;
+  background: var(--color-white);
+}
+
+.switchgear-sld__import-diagnostic strong,
+.switchgear-sld__import-diagnostic p {
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+.switchgear-sld__import-diagnostic strong {
+  color: var(--color-neutral-800);
+}
+
+.switchgear-sld__import-diagnostic p {
+  margin-top: 0.1875rem;
+  color: var(--color-neutral-600);
+}
+
+.switchgear-sld__import-diagnostic--error {
+  border-color: color-mix(in srgb, var(--color-rose-300) 70%, transparent);
+}
+
+.switchgear-sld__import-diagnostic--warning {
+  border-color: color-mix(in srgb, var(--color-amber-300) 72%, transparent);
 }
 
 .switchgear-sld__viewport {
@@ -4858,5 +5303,57 @@ onBeforeUnmount(() => {
 
 :global(.dark .switchgear-sld__context-shortcut) {
   color: var(--color-neutral-500);
+}
+
+:global(.dark .switchgear-sld__import-state) {
+  border-color: color-mix(in srgb, var(--color-blue-500) 45%, transparent);
+  background: color-mix(in srgb, var(--color-blue-950) 44%, transparent);
+  color: var(--color-blue-100);
+}
+
+:global(.dark .switchgear-sld__import-alert) {
+  border-color: color-mix(in srgb, var(--color-rose-500) 46%, transparent);
+  background: color-mix(in srgb, var(--color-rose-950) 45%, transparent);
+  color: var(--color-rose-100);
+}
+
+:global(.dark .switchgear-sld__import-note) {
+  border-color: color-mix(in srgb, var(--color-amber-500) 46%, transparent);
+  background: color-mix(in srgb, var(--color-amber-950) 42%, transparent);
+  color: var(--color-amber-100);
+}
+
+:global(.dark .switchgear-sld__import-eyebrow),
+:global(.dark .switchgear-sld__import-muted),
+:global(.dark .switchgear-sld__import-metric span),
+:global(.dark .switchgear-sld__import-diagnostic span) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .switchgear-sld__import-title),
+:global(.dark .switchgear-sld__import-section-title),
+:global(.dark .switchgear-sld__import-metric strong),
+:global(.dark .switchgear-sld__import-diagnostic strong) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .switchgear-sld__import-hash),
+:global(.dark .switchgear-sld__import-metric),
+:global(.dark .switchgear-sld__import-diagnostic) {
+  border-color: color-mix(in srgb, var(--color-neutral-700) 78%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-900) 82%, transparent);
+}
+
+:global(.dark .switchgear-sld__import-hash),
+:global(.dark .switchgear-sld__import-diagnostic p) {
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .switchgear-sld__import-diagnostic--error) {
+  border-color: color-mix(in srgb, var(--color-rose-500) 46%, transparent);
+}
+
+:global(.dark .switchgear-sld__import-diagnostic--warning) {
+  border-color: color-mix(in srgb, var(--color-amber-500) 48%, transparent);
 }
 </style>
