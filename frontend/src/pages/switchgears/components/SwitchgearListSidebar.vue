@@ -17,6 +17,10 @@ const route = useRoute()
 const workspaceStore = useWorkspaceStore()
 const toastStore = useToastStore()
 
+const emit = defineEmits<{
+  (event: "importScd"): void
+}>()
+
 function isActive(id: number) {
   return Number(route.params.id) === id
 }
@@ -33,6 +37,11 @@ async function addSwitchgear() {
     toastStore.warning(`Auto-allocation assigned ${assigned}/4 channels. Complete remaining bindings manually.`)
   }
   openSwitchgear(created.id)
+}
+
+function requestScdImport() {
+  if (workspaceMissing.value) return
+  emit("importScd")
 }
 
 // SEARCH
@@ -162,6 +171,16 @@ function resolveFallbackSwitchgear(before: Switchgear[], deletedIds: number[]): 
       >
         + New Switchgear
       </UiButton>
+      <UiButton
+        class="switchgear-list-sidebar__import-button"
+        variant="secondary"
+        size="sm"
+        full
+        :disabled="workspaceMissing"
+        @click="requestScdImport"
+      >
+        Import SCD
+      </UiButton>
       <p
         v-if="workspaceMissing"
         class="switchgear-list-sidebar__workspace-hint"
@@ -246,6 +265,10 @@ function resolveFallbackSwitchgear(before: Switchgear[], deletedIds: number[]): 
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--runtime-accent) 8%, var(--color-white)), color-mix(in srgb, var(--color-white) 88%, var(--color-neutral-100)));
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.78);
+}
+
+.switchgear-list-sidebar__import-button {
+  margin-top: 0.5rem;
 }
 
 .switchgear-list-sidebar__search {

@@ -448,6 +448,16 @@ const scdImportCandidateDecisions = computed<SwitchgearSldCandidateDecision[]>((
 const scdImportCreatableCandidateCount = computed(() => (
   scdImportCandidateDecisions.value.filter(decision => decision.action === "create").length
 ))
+const scdImportReusableCandidateCount = computed(() => (
+  scdImportCandidateDecisions.value.filter(decision => decision.action === "reuse-existing").length
+))
+const scdImportOverlaySummary = computed(() => {
+  const summary = scdImportSummary.value
+  if (!summary) {
+    return "—"
+  }
+  return `${summary.lines} lines · ${summary.symbols} symbols · ${summary.texts} labels`
+})
 const scdImportApplyLabel = computed(() => (
   scdImportCreateCandidates.value && scdImportCreatableCandidateCount.value > 0
     ? "Apply overlay and create records"
@@ -1823,6 +1833,10 @@ function openScdFileDialog() {
   }
   scdFileInputRef.value?.click()
 }
+
+defineExpose({
+  openScdFileDialog,
+})
 
 async function handleScdFileSelected(event: Event) {
   const input = event.target as HTMLInputElement | null
@@ -4152,29 +4166,6 @@ onBeforeUnmount(() => {
           <path d="M5.5 12h5" />
         </svg>
       </UiButton>
-      <input
-        ref="scdFileInputRef"
-        class="switchgear-sld__file-input"
-        type="file"
-        accept=".scd,.sed,.ssd,.xml,application/xml,text/xml"
-        @change="handleScdFileSelected"
-      >
-      <UiButton
-        size="sm"
-        variant="secondary"
-        class="switchgear-sld__icon-action"
-        title="Import SCD"
-        aria-label="Import SCD"
-        :disabled="!workspaceId || scdImportBusy"
-        @click="openScdFileDialog()"
-      >
-        <svg viewBox="0 0 16 16" class="switchgear-sld__icon" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M8 2v7" />
-          <path d="m5 6 3 3 3-3" />
-          <path d="M3 10v2.5A1.5 1.5 0 0 0 4.5 14h7A1.5 1.5 0 0 0 13 12.5V10" />
-        </svg>
-      </UiButton>
-
       <div
         v-if="selectedLineCount > 0"
         class="switchgear-sld__tool-group"
@@ -4761,11 +4752,19 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <input
+      ref="scdFileInputRef"
+      class="switchgear-sld__file-input"
+      type="file"
+      accept=".scd,.sed,.ssd,.xml,application/xml,text/xml"
+      @change="handleScdFileSelected"
+    >
+
     <UiModal
       :open="scdImportModalOpen"
       title="Import SCD"
-      max-width="3xl"
-      desktop-height="min(44rem, 80vh)"
+      max-width="2xl"
+      desktop-height="92vh"
       :content-scroll="false"
       @close="closeScdImportPreview"
     >
@@ -4789,78 +4788,61 @@ onBeforeUnmount(() => {
 
           <div class="switchgear-sld__import-metrics">
             <div class="switchgear-sld__import-metric">
-              <span>Lines</span>
-              <strong>{{ scdImportSummary.lines }}</strong>
-            </div>
-            <div class="switchgear-sld__import-metric">
-              <span>Symbols</span>
-              <strong>{{ scdImportSummary.symbols }}</strong>
-            </div>
-            <div class="switchgear-sld__import-metric">
-              <span>Labels</span>
-              <strong>{{ scdImportSummary.texts }}</strong>
-            </div>
-            <div class="switchgear-sld__import-metric">
-              <span>Switchgear candidates</span>
+              <span>Found</span>
               <strong>{{ scdImportSummary.candidates }}</strong>
             </div>
-          </div>
-
-          <div
-            v-if="scdImportSummary.candidates > 0"
-            class="switchgear-sld__import-note"
-          >
-            Breakers and disconnectors are staged as review candidates. Creating operational switchgear records is explicit and does not create bindings.
+            <div class="switchgear-sld__import-metric">
+              <span>New records</span>
+              <strong>{{ scdImportCreatableCandidateCount }}</strong>
+            </div>
+            <div class="switchgear-sld__import-metric">
+              <span>Existing</span>
+              <strong>{{ scdImportReusableCandidateCount }}</strong>
+            </div>
+            <div class="switchgear-sld__import-metric">
+              <span>Diagnostics</span>
+              <strong>{{ scdImportSummary.diagnostics }}</strong>
+            </div>
           </div>
 
           <div
             v-if="scdImportCandidateDecisions.length > 0"
-            class="switchgear-sld__import-candidates"
+            class="switchgear-sld__import-records"
           >
-            <label class="switchgear-sld__import-candidate-toggle">
-              <input
-                v-model="scdImportCreateCandidates"
-                type="checkbox"
-                :disabled="scdImportCreatableCandidateCount === 0"
+            <div class="switchgear-sld__import-record-summary">
+              <div>
+                <p class="switchgear-sld__import-section-title">Switchgear records</p>
+                <p class="switchgear-sld__import-muted">
+                  {{ scdImportCreatableCandidateCount }} new · {{ scdImportReusableCandidateCount }} matched existing · overlay {{ scdImportOverlaySummary }}
+                </p>
+              </div>
+              <label
+                v-if="scdImportCreatableCandidateCount > 0"
+                class="switchgear-sld__import-candidate-toggle"
               >
-              <span>Create missing switchgear records ({{ scdImportCreatableCandidateCount }})</span>
-            </label>
-            <ul class="switchgear-sld__import-candidate-list">
-              <li
-                v-for="decision in scdImportCandidateDecisions.slice(0, 10)"
-                :key="decision.candidate.id"
-                class="switchgear-sld__import-candidate"
-              >
-                <div>
-                  <strong>{{ decision.createName }}</strong>
-                  <p>{{ decision.candidate.equipmentType }} · {{ decision.candidate.switchgearType }}</p>
-                </div>
-                <span
-                  class="switchgear-sld__import-candidate-status"
-                  :class="`switchgear-sld__import-candidate-status--${decision.action}`"
+                <input
+                  v-model="scdImportCreateCandidates"
+                  type="checkbox"
+                  :disabled="scdImportCreatableCandidateCount === 0"
                 >
-                  {{ decision.action === 'create' ? 'new' : `existing #${decision.existingSwitchgearId}` }}
-                </span>
-              </li>
-            </ul>
-            <p
-              v-if="scdImportCandidateDecisions.length > 10"
-              class="switchgear-sld__import-muted"
-            >
-              {{ scdImportCandidateDecisions.length - 10 }} more candidates hidden in this preview.
-            </p>
+                <span>Create missing records</span>
+              </label>
+            </div>
+            <div class="switchgear-sld__import-note">
+              Operational records are created only when enabled here. SCD import never creates bindings.
+            </div>
           </div>
 
-          <div
-            v-if="scdImportVisibleDiagnostics.length > 0"
-            class="switchgear-sld__import-diagnostics"
-          >
+          <div class="switchgear-sld__import-diagnostics">
             <p class="switchgear-sld__import-section-title">
-              Diagnostics
+              Errors / warnings log
             </p>
-            <ul class="switchgear-sld__import-diagnostic-list">
+            <div v-if="scdImportVisibleDiagnostics.length === 0" class="switchgear-sld__import-empty-log">
+              No actionable errors or warnings.
+            </div>
+            <ul v-else class="switchgear-sld__import-diagnostic-list">
               <li
-                v-for="diagnostic in scdImportVisibleDiagnostics.slice(0, 8)"
+                v-for="diagnostic in scdImportVisibleDiagnostics"
                 :key="`${diagnostic.severity}:${diagnostic.code}:${diagnostic.sourceId ?? diagnostic.sourcePath ?? diagnostic.message}`"
                 class="switchgear-sld__import-diagnostic"
                 :class="`switchgear-sld__import-diagnostic--${diagnostic.severity}`"
@@ -4872,12 +4854,6 @@ onBeforeUnmount(() => {
                 </div>
               </li>
             </ul>
-            <p
-              v-if="scdImportVisibleDiagnostics.length > 8"
-              class="switchgear-sld__import-muted"
-            >
-              {{ scdImportVisibleDiagnostics.length - 8 }} more diagnostics hidden in this preview.
-            </p>
           </div>
         </template>
       </div>
@@ -5095,9 +5071,10 @@ onBeforeUnmount(() => {
 }
 
 .switchgear-sld__import-review {
-  display: grid;
+  display: flex;
   height: 100%;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.75rem;
   min-height: 0;
   overflow: hidden;
 }
@@ -5105,8 +5082,8 @@ onBeforeUnmount(() => {
 .switchgear-sld__import-state,
 .switchgear-sld__import-alert,
 .switchgear-sld__import-note {
-  padding: 0.75rem 0.875rem;
-  border-radius: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-md);
   font-size: var(--text-sm);
 }
 
@@ -5126,6 +5103,7 @@ onBeforeUnmount(() => {
   border: 1px solid color-mix(in srgb, var(--color-amber-300) 70%, transparent);
   background: color-mix(in srgb, var(--color-amber-50) 78%, transparent);
   color: var(--color-amber-800);
+  font-size: var(--text-xs);
 }
 
 .switchgear-sld__import-heading,
@@ -5175,11 +5153,11 @@ onBeforeUnmount(() => {
 }
 
 .switchgear-sld__import-metric {
-  min-width: 8.5rem;
+  min-width: 7rem;
   flex: 1 1 0;
-  padding: 0.75rem;
+  padding: 0.625rem 0.75rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 84%, transparent);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-neutral-50) 82%, transparent);
 }
 
@@ -5203,12 +5181,27 @@ onBeforeUnmount(() => {
 
 .switchgear-sld__import-diagnostics {
   display: grid;
+  flex: 1 1 auto;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  min-height: 18rem;
+  overflow: hidden;
+}
+
+.switchgear-sld__import-records {
+  display: grid;
   gap: 0.5rem;
 }
 
-.switchgear-sld__import-candidates {
-  display: grid;
-  gap: 0.625rem;
+.switchgear-sld__import-record-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 84%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-neutral-50) 82%, transparent);
 }
 
 .switchgear-sld__import-candidate-toggle {
@@ -5231,65 +5224,9 @@ onBeforeUnmount(() => {
   opacity: 0.52;
 }
 
-.switchgear-sld__import-candidate-list {
-  display: grid;
-  max-height: 10rem;
-  gap: 0.5rem;
-  overflow: auto;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-
-.switchgear-sld__import-candidate {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.625rem 0.75rem;
-  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 80%, transparent);
-  border-radius: 0.75rem;
-  background: var(--color-white);
-}
-
-.switchgear-sld__import-candidate strong,
-.switchgear-sld__import-candidate p {
-  margin: 0;
-}
-
-.switchgear-sld__import-candidate strong {
-  color: var(--color-neutral-900);
-  font-size: var(--text-sm);
-}
-
-.switchgear-sld__import-candidate p {
-  margin-top: 0.125rem;
-  color: var(--color-neutral-500);
-  font-size: var(--text-xs);
-}
-
-.switchgear-sld__import-candidate-status {
-  flex: 0 0 auto;
-  padding: 0.1875rem 0.5rem;
-  border-radius: 999px;
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  font-weight: 700;
-}
-
-.switchgear-sld__import-candidate-status--create {
-  background: color-mix(in srgb, var(--color-blue-100) 82%, transparent);
-  color: var(--color-blue-700);
-}
-
-.switchgear-sld__import-candidate-status--reuse-existing {
-  background: color-mix(in srgb, var(--color-neutral-100) 86%, transparent);
-  color: var(--color-neutral-600);
-}
-
 .switchgear-sld__import-diagnostic-list {
   display: grid;
-  max-height: 12rem;
+  min-height: 0;
   gap: 0.5rem;
   overflow: auto;
   padding: 0;
@@ -5301,10 +5238,18 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 5.5rem 1fr;
   gap: 0.75rem;
-  padding: 0.625rem 0.75rem;
+  padding: 0.5rem 0.625rem;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 80%, transparent);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-md);
   background: var(--color-white);
+}
+
+.switchgear-sld__import-empty-log {
+  padding: 0.625rem 0.75rem;
+  border: 1px dashed color-mix(in srgb, var(--color-neutral-300) 80%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
 }
 
 .switchgear-sld__import-diagnostic strong,
@@ -5769,33 +5714,26 @@ onBeforeUnmount(() => {
 :global(.dark .switchgear-sld__import-section-title),
 :global(.dark .switchgear-sld__import-metric strong),
 :global(.dark .switchgear-sld__import-candidate-toggle),
-:global(.dark .switchgear-sld__import-candidate strong),
 :global(.dark .switchgear-sld__import-diagnostic strong) {
   color: var(--color-neutral-100);
 }
 
 :global(.dark .switchgear-sld__import-hash),
 :global(.dark .switchgear-sld__import-metric),
-:global(.dark .switchgear-sld__import-candidate),
+:global(.dark .switchgear-sld__import-record-summary),
 :global(.dark .switchgear-sld__import-diagnostic) {
   border-color: color-mix(in srgb, var(--color-neutral-700) 78%, transparent);
   background: color-mix(in srgb, var(--color-neutral-900) 82%, transparent);
 }
 
 :global(.dark .switchgear-sld__import-hash),
-:global(.dark .switchgear-sld__import-candidate p),
 :global(.dark .switchgear-sld__import-diagnostic p) {
   color: var(--color-neutral-300);
 }
 
-:global(.dark .switchgear-sld__import-candidate-status--create) {
-  background: color-mix(in srgb, var(--color-blue-500) 22%, transparent);
-  color: var(--color-blue-100);
-}
-
-:global(.dark .switchgear-sld__import-candidate-status--reuse-existing) {
-  background: color-mix(in srgb, var(--color-neutral-700) 74%, transparent);
-  color: var(--color-neutral-200);
+:global(.dark .switchgear-sld__import-empty-log) {
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-400);
 }
 
 :global(.dark .switchgear-sld__import-diagnostic--error) {

@@ -32,7 +32,7 @@
       :maxSize="400"
     >
       <aside class="switchgears-page__sidebar">
-        <DeviceListSidebar />
+        <DeviceListSidebar @import-scd="requestScdImport" />
       </aside>
     </ResizablePanel>
 
@@ -61,7 +61,10 @@
       </div>
 
       <div v-else class="switchgears-page__sld-view">
-        <SwitchgearSingleLineDiagram @edit-switchgear-bindings="openSwitchgearBindingsEditor" />
+        <SwitchgearSingleLineDiagram
+          ref="sldDiagramRef"
+          @edit-switchgear-bindings="openSwitchgearBindingsEditor"
+        />
       </div>
     </section>
 
@@ -75,14 +78,14 @@
       @close="sidebarOpen = false"
     >
       <div class="switchgears-page__drawer-content">
-        <DeviceListSidebar />
+        <DeviceListSidebar @import-scd="requestScdImport" />
       </div>
     </SlideOver>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from "vue"
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
@@ -97,6 +100,7 @@ import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/servic
 const { isDesktop } = useViewport()
 const sidebarOpen = ref(false)
 const activeView = ref<"manage" | "sld">("manage")
+const sldDiagramRef = ref<InstanceType<typeof SwitchgearSingleLineDiagram> | null>(null)
 const route = useRoute()
 const router = useRouter()
 const realtimeScopeStore = useRealtimeScopeStore()
@@ -148,6 +152,13 @@ function openSwitchgearBindingsEditor(id: number) {
       bindings: "edit",
     },
   })
+}
+
+async function requestScdImport() {
+  setActiveView("sld")
+  sidebarOpen.value = false
+  await nextTick()
+  sldDiagramRef.value?.openScdFileDialog()
 }
 
 function normalizeSwitchgearsActiveView(value: unknown): "manage" | "sld" | null {

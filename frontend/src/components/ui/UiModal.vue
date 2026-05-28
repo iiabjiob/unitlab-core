@@ -150,6 +150,7 @@ function resolveDesktopDialogStyles(maxWidth?: ModalMaxWidth, desktopHeight?: st
   }
   if (desktopHeight) {
     styles.height = desktopHeight
+    styles.maxHeight = desktopHeight
   }
   return styles
 }
