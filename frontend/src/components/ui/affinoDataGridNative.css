@@ -82,6 +82,15 @@
   touch-action: pan-x pan-y;
 }
 
+.affino-native-data-grid [data-datagrid-resize-handle],
+.affino-native-data-grid .col-resize {
+  cursor: col-resize !important;
+}
+
+.affino-native-data-grid .row-resize-handle {
+  cursor: row-resize !important;
+}
+
 .affino-native-data-grid__grid {
   min-height: 0;
   min-width: 0;
