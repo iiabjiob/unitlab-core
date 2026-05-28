@@ -12,6 +12,12 @@ import { useToastStore } from "@/stores/toastStore"
 import { useThemeStore } from "@/stores/themeStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
+import {
+  UiMenu,
+  UiMenuContent,
+  UiMenuItem,
+  UiMenuTrigger,
+} from "@/components/ui/menu"
 import SwitchgearSingleLineDiagramNode from "./SwitchgearSingleLineDiagramNode.vue"
 import SwitchgearSingleLineDiagramStaticElement from "./SwitchgearSingleLineDiagramStaticElement.vue"
 import SwitchgearSingleLineDiagramTextElement from "./SwitchgearSingleLineDiagramTextElement.vue"
@@ -280,6 +286,10 @@ const deviceStore = useDeviceStore()
 const selectionStore = useSelectionStore()
 const toastStore = useToastStore()
 const themeStore = useThemeStore()
+
+const emit = defineEmits<{
+  (event: "editSwitchgearBindings", id: number): void
+}>()
 
 const viewportRef = ref<HTMLElement | null>(null)
 const layoutById = ref<Record<string, DiagramNodeLayout>>({})
@@ -2555,6 +2565,17 @@ function openDetail(id: number) {
   void router.push({ name: "switchgears.detail", params: { id } })
 }
 
+function requestSwitchgearBindingsEdit(id: number) {
+  closeLineContextMenu()
+  selectedEdgeId.value = null
+  selectedEdgeIds.value = []
+  selectedStaticIds.value = []
+  selectedTextIds.value = []
+  selectedNodeIds.value = [id]
+  editingTextId.value = null
+  emit("editSwitchgearBindings", id)
+}
+
 function setInteractionTool(tool: InteractionTool) {
   closeLineContextMenu()
   interactionTool.value = tool
@@ -4069,20 +4090,34 @@ onBeforeUnmount(() => {
             @context-menu="openTextContextMenu(element.id, $event)"
           />
 
-          <SwitchgearSingleLineDiagramNode
+          <UiMenu
             v-for="(switchgear, index) in switchgears"
             :key="switchgear.id"
-            :switchgear="switchgear"
-            :x="resolvedLayout(switchgear.id, index).x + STAGE_PADDING"
-            :y="resolvedLayout(switchgear.id, index).y + STAGE_PADDING"
-            :label-offset-x="resolvedLabelOffset(switchgear.id).x"
-            :label-offset-y="resolvedLabelOffset(switchgear.id).y"
-            :selected="selectedNodeIdSet.has(switchgear.id)"
-            @drag-start="beginNodeDrag(switchgear.id, $event)"
-            @label-drag-start="beginLabelDrag(switchgear.id, $event)"
-            @select="selectNode(switchgear.id, $event)"
-            @open-detail="openDetail(switchgear.id)"
-          />
+          >
+            <UiMenuTrigger as-child trigger="contextmenu">
+              <SwitchgearSingleLineDiagramNode
+                :switchgear="switchgear"
+                :x="resolvedLayout(switchgear.id, index).x + STAGE_PADDING"
+                :y="resolvedLayout(switchgear.id, index).y + STAGE_PADDING"
+                :label-offset-x="resolvedLabelOffset(switchgear.id).x"
+                :label-offset-y="resolvedLabelOffset(switchgear.id).y"
+                :selected="selectedNodeIdSet.has(switchgear.id)"
+                @drag-start="beginNodeDrag(switchgear.id, $event)"
+                @label-drag-start="beginLabelDrag(switchgear.id, $event)"
+                @select="selectNode(switchgear.id, $event)"
+                @open-detail="openDetail(switchgear.id)"
+              />
+            </UiMenuTrigger>
+
+            <UiMenuContent>
+              <UiMenuItem
+                class="switchgear-sld__node-menu-item"
+                @select="requestSwitchgearBindingsEdit(switchgear.id)"
+              >
+                Edit
+              </UiMenuItem>
+            </UiMenuContent>
+          </UiMenu>
         </div>
       </div>
 
@@ -4461,6 +4496,10 @@ onBeforeUnmount(() => {
   background: var(--color-neutral-100);
 }
 
+:global(.switchgear-sld__node-menu-item) {
+  color: var(--color-neutral-900);
+}
+
 .switchgear-sld__viewport {
   position: relative;
   min-height: 460px;
@@ -4782,6 +4821,10 @@ onBeforeUnmount(() => {
 :global(.dark .switchgear-sld__dropdown-item),
 :global(.dark .switchgear-sld__context-item) {
   color: var(--color-neutral-200);
+}
+
+:global(.dark .switchgear-sld__node-menu-item) {
+  color: var(--color-neutral-100);
 }
 
 :global(.dark .switchgear-sld__dropdown-item:hover),

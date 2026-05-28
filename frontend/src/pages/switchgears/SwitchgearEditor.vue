@@ -24,6 +24,7 @@ const switchgearId = computed(() => Number(route.params.id))
 const switchgear = computed(() => (
   store.switchgears.find(item => item.id === switchgearId.value) ?? null
 ))
+const BINDINGS_EDITOR_QUERY_VALUE = "edit"
 
 const deleteModalOpen = ref(false)
 const bindingsEditorOpen = ref(false)
@@ -42,6 +43,41 @@ watch(
   },
   { immediate: true },
 )
+
+watch(
+  () => [route.params.id, route.query.bindings] as const,
+  () => {
+    syncBindingsEditorFromRoute()
+  },
+  { immediate: true },
+)
+
+function isBindingsEditorQueryRequested(raw: unknown): boolean {
+  const values = Array.isArray(raw) ? raw : [raw]
+  return values.some((value) => {
+    const normalized = String(value ?? "").trim().toLowerCase()
+    return normalized === BINDINGS_EDITOR_QUERY_VALUE
+  })
+}
+
+function clearBindingsEditorQueryFlag() {
+  if (!("bindings" in route.query)) {
+    return
+  }
+  const nextQuery = { ...route.query }
+  delete nextQuery.bindings
+  void router.replace({ query: nextQuery }).catch(() => {
+    return
+  })
+}
+
+function syncBindingsEditorFromRoute() {
+  if (!isBindingsEditorQueryRequested(route.query.bindings)) {
+    return
+  }
+  bindingsEditorOpen.value = true
+  clearBindingsEditorQueryFlag()
+}
 
 async function handleDuplicate() {
   if (!switchgear.value) return

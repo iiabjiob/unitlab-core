@@ -61,7 +61,7 @@
       </div>
 
       <div v-else class="switchgears-page__sld-view">
-        <SwitchgearSingleLineDiagram />
+        <SwitchgearSingleLineDiagram @edit-switchgear-bindings="openSwitchgearBindingsEditor" />
       </div>
     </section>
 
@@ -83,7 +83,7 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue"
-import { useRoute } from "vue-router"
+import { useRoute, useRouter } from "vue-router"
 
 import ResizablePanel from "@/components/ui/ResizablePanel.vue"
 import DeviceListSidebar from "./components/SwitchgearListSidebar.vue"
@@ -98,6 +98,7 @@ const { isDesktop } = useViewport()
 const sidebarOpen = ref(false)
 const activeView = ref<"manage" | "sld">("manage")
 const route = useRoute()
+const router = useRouter()
 const realtimeScopeStore = useRealtimeScopeStore()
 const scopeId = "switchgears:page"
 const LEGACY_ACTIVE_VIEW_STORAGE_KEY = "unitlab.switchgears.active-view"
@@ -134,6 +135,18 @@ function setActiveView(view: "manage" | "sld") {
   activeView.value = view
   writeLocalSetting(localSettingsKeys.switchgearsActiveView, view, {
     legacyKeys: [LEGACY_ACTIVE_VIEW_STORAGE_KEY],
+  })
+}
+
+function openSwitchgearBindingsEditor(id: number) {
+  setActiveView("manage")
+  void router.push({
+    name: "switchgears.detail",
+    params: { id },
+    query: {
+      ...route.query,
+      bindings: "edit",
+    },
   })
 }
 
