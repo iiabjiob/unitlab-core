@@ -78,6 +78,8 @@ SLD document DTO
 UnitLab Vue adapter / persistence / review UI
 ```
 
+Production callers should use `generateSldFromScd(...)`, which executes the complete parser -> graph -> cell model -> layout pipeline. Flat graph-to-document helpers are debug/fallback tools only; `ElectricalGraphNode` is a topology node and is not necessarily the same thing as a final SLD visual element.
+
 ## Ownership Boundaries
 
 ### Portable Core
@@ -493,6 +495,7 @@ Implemented 2026-05-28:
 - Feeder bay cells now use a reusable UnitLab feeder template: feeder exit at the top, line disconnector, circuit breaker, busbar selector disconnectors, and earthing switches positioned in stable relative slots.
 - Feeder exits are adapted into arrow lines in the current editor, and grounded disconnectors are imported as `earthing` switchgear candidates.
 - Shared grounded connectivity nodes are not rendered as star interconnection lines between earthing switches.
+- The public production entrypoint is explicitly `generateSldFromScd(...)`. Graph-to-document helpers are named `createFlatSldDocument(...)` / `createFlatSldDocumentFromGraph(...)` and mark output as `scd-flat-debug` so they do not compete with the cell-model layout pipeline.
 
 ### Slice 7 - UnitLab SLD Adapter
 

@@ -385,7 +385,7 @@ export type SldDocument = {
   labels: SldLabel[]
   diagnostics: ScdDiagnostic[]
   layoutHints: {
-    generatedFrom: "scd"
+    generatedFrom: "scd" | "scd-flat-debug"
     gridSize: number
   }
 }

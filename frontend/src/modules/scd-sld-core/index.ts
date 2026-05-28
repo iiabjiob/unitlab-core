@@ -46,7 +46,7 @@ export { parseScdSource } from "./parser"
 export { buildElectricalGraph } from "./graph"
 export { buildSldCellModel } from "./cellModel"
 export { layoutSldDocument } from "./layout"
-export { createSldDocument, createSldDocumentFromGraph } from "./sldDocument"
+export { createFlatSldDocument, createFlatSldDocumentFromGraph } from "./sldDocument"
 export type {
   ElectricalGraph,
   ElectricalGraphEdge,

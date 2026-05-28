@@ -11,11 +11,20 @@ import type {
 } from "./types"
 import { buildElectricalGraph } from "./graph"
 
-export function createSldDocument(model: NormalizedSclModel, options: GenerateSldOptions = {}): SldDocument {
-  return createSldDocumentFromGraph(buildElectricalGraph(model), options)
+/**
+ * Debug/fallback document builder.
+ *
+ * Production SCD imports must use generateSldFromScd(), which runs:
+ * parse -> electrical graph -> SLD cell model -> deterministic layout.
+ * This helper intentionally maps graph nodes one-to-one into unlaid-out
+ * SLD elements so graph output can be inspected without implying that
+ * ElectricalGraphNode is the final visual element contract.
+ */
+export function createFlatSldDocument(model: NormalizedSclModel, options: GenerateSldOptions = {}): SldDocument {
+  return createFlatSldDocumentFromGraph(buildElectricalGraph(model), options)
 }
 
-export function createSldDocumentFromGraph(graph: ElectricalGraph, options: GenerateSldOptions = {}): SldDocument {
+export function createFlatSldDocumentFromGraph(graph: ElectricalGraph, options: GenerateSldOptions = {}): SldDocument {
   const elements = graph.nodes.map(mapGraphNodeToElement)
 
   return {
@@ -33,7 +42,7 @@ export function createSldDocumentFromGraph(graph: ElectricalGraph, options: Gene
     })),
     diagnostics: [...graph.diagnostics],
     layoutHints: {
-      generatedFrom: "scd",
+      generatedFrom: "scd-flat-debug",
       gridSize: options.gridSize ?? 24,
     },
   }

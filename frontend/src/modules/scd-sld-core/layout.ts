@@ -1,4 +1,4 @@
-import { createSldDocumentFromGraph } from "./sldDocument"
+import { createFlatSldDocumentFromGraph } from "./sldDocument"
 import type {
   ElectricalGraph,
   GenerateSldOptions,
@@ -40,7 +40,7 @@ export function layoutSldDocument(
   options: GenerateSldOptions = {},
 ): SldDocument {
   const gridSize = normalizeGridSize(options.gridSize)
-  const baseDocument = createSldDocumentFromGraph(graph, {
+  const baseDocument = createFlatSldDocumentFromGraph(graph, {
     ...options,
     gridSize,
   })

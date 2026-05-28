@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest"
 
-import { generateSldFromScd, parseScdSource } from "./index"
+import {
+  buildElectricalGraph,
+  buildSldCellModel,
+  createFlatSldDocument,
+  createFlatSldDocumentFromGraph,
+  generateSldFromScd,
+  layoutSldDocument,
+  parseScdSource,
+} from "./index"
+import type { ScdDiagnostic } from "./types"
+import { scanXmlElements } from "./xmlScanner"
 
 const genericFeederBayScd = `<?xml version="1.0" encoding="UTF-8"?>
 <SCL xmlns="http://www.iec.ch/61850/2003/SCL" xmlns:sxy="http://www.iec.ch/61850/2003/SCLcoordinates" revision="B" version="2007">
@@ -119,6 +129,64 @@ describe("scd-sld-core", () => {
     expect(result.document.elements).toEqual([])
   })
 
+  it("preserves diagnostics through pipeline stages and deduplicates the public result list", () => {
+    const result = generateSldFromScd({
+      fileName: "empty.scd",
+      contentHash: "empty",
+      xmlText: "",
+    })
+
+    for (const diagnostics of [
+      result.model.diagnostics,
+      result.graph.diagnostics,
+      result.cellModel.diagnostics,
+      result.document.diagnostics,
+    ]) {
+      expect(diagnostics).toContainEqual(expect.objectContaining({
+        severity: "error",
+        stage: "xml",
+        code: "xml.empty-source",
+      }))
+    }
+
+    expect(result.diagnostics.filter(diagnostic => diagnostic.code === "xml.empty-source")).toHaveLength(1)
+  })
+
+  it("uses the full graph to cell model to layout pipeline for production generation", () => {
+    const source = {
+      fileName: "standard-feeder.scd",
+      contentHash: "standard-feeder",
+      xmlText: genericStandardFeederCellScd,
+    }
+    const options = {
+      generatedAt: "2026-05-28T00:00:00.000Z",
+      gridSize: 24,
+    }
+
+    const result = generateSldFromScd(source, options)
+    const model = parseScdSource(source)
+    const graph = buildElectricalGraph(model)
+    const cellModel = buildSldCellModel(graph)
+    const document = layoutSldDocument(cellModel, graph, options)
+
+    expect(result.model).toEqual(model)
+    expect(result.graph).toEqual(graph)
+    expect(result.cellModel).toEqual(cellModel)
+    expect(result.document).toEqual(document)
+    expect(result.document.layoutHints.generatedFrom).toBe("scd")
+
+    const flatDocument = createFlatSldDocumentFromGraph(graph, options)
+    expect(createFlatSldDocument(model, options)).toEqual(flatDocument)
+    expect(flatDocument.layoutHints.generatedFrom).toBe("scd-flat-debug")
+    expect(flatDocument.diagnostics).toEqual(graph.diagnostics)
+
+    const productionBreaker = result.document.elements.find(element => element.label === "Q01")
+    const flatBreaker = flatDocument.elements.find(element => element.label === "Q01")
+    expect(result.cellModel.voltageLevels[0]?.bayCells.find(cell => cell.name === "BAY1")?.cellType).toBe("feeder")
+    expect(productionBreaker?.position).toEqual({ x: 216, y: 216 })
+    expect(flatBreaker?.position).toEqual({ x: 3, y: 4 })
+  })
+
   it("parses the initial SCD subset into a normalized model", () => {
     const model = parseScdSource({
       fileName: "fixture.scd",
@@ -168,6 +236,30 @@ describe("scd-sld-core", () => {
       kind: "transformer",
     })
     expect(model.ieds).toEqual([])
+  })
+
+  it("scans SCD topology tags through the lightweight XML boundary", () => {
+    const diagnostics: ScdDiagnostic[] = []
+    const events = [...scanXmlElements(`<?xml version="1.0"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" xmlns:sxy="http://www.iec.ch/61850/2003/SCLcoordinates">
+  <!-- ignored by the SCD topology scanner -->
+  <Substation name="SS1" sxy:x="3">
+    <VoltageLevel name="VL1"><Voltage multiplier="k" unit="V">110</Voltage></VoltageLevel>
+  </Substation>
+</SCL>`, diagnostics)]
+
+    expect(diagnostics).toEqual([])
+    expect(events.find(event => event.localName === "Substation")).toMatchObject({
+      name: "Substation",
+      attributes: {
+        name: "SS1",
+        "sxy:x": "3",
+      },
+    })
+    expect(events.find(event => event.localName === "Voltage")).toMatchObject({
+      textContent: "110",
+      sourcePath: "SCL:#1/Substation:SS1/VoltageLevel:VL1/Voltage:#1",
+    })
   })
 
   it("builds an electrical graph from parsed topology", () => {
