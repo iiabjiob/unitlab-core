@@ -43,6 +43,15 @@ const sizeClass = computed(() => {
       :class="sizeClass"
     >
       <rect
+        x="2.5"
+        y="2.5"
+        width="11"
+        height="11"
+        rx="2"
+        class="switchgear-position-icon__plate"
+      />
+
+      <rect
         v-if="state === 'CLOSED'"
         x="2.5"
         y="2.5"
@@ -99,6 +108,10 @@ const sizeClass = computed(() => {
   display: block;
   color: var(--color-blue-600);
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 15%));
+}
+
+.switchgear-position-icon__plate {
+  fill: var(--switchgear-position-icon-plate, transparent);
 }
 
 .switchgear-position-icon__graphic--sm {

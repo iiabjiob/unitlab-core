@@ -3906,6 +3906,7 @@ onBeforeUnmount(() => {
       }"
       :style="viewportSurfaceStyle"
       @pointerdown="beginViewportPan"
+      @contextmenu.prevent
       @wheel.prevent="handleWheel"
     >
       <div class="switchgear-sld__viewport-overlay" :style="viewportOverlayStyle"></div>
@@ -4642,14 +4643,25 @@ onBeforeUnmount(() => {
 
 .switchgear-sld__grid {
   position: relative;
+  isolation: isolate;
 }
 
 .switchgear-sld__edge-layer {
   position: absolute;
   inset: 0;
+  z-index: 0;
   width: 100%;
   height: 100%;
   overflow: visible;
+}
+
+.switchgear-sld__grid :deep(.switchgear-sld-static-element),
+.switchgear-sld__grid :deep(.switchgear-sld-text) {
+  z-index: 2;
+}
+
+.switchgear-sld__grid :deep(.switchgear-sld-node) {
+  z-index: 3;
 }
 
 .switchgear-sld__edge-hitbox {
