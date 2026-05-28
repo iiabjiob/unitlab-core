@@ -19,6 +19,15 @@ export type ElectricalGraphGroupKind = "substation" | "voltage-level" | "bay"
 
 export type ElectricalGraphEdgeKind = SldConnectionKind
 
+export type SldCellNodeRole =
+  | "busbar"
+  | "switchgear"
+  | "transformer"
+  | "feeder"
+  | "measurement"
+  | "ground"
+  | "unknown"
+
 export type SldCoordinate = {
   x: number | null
   y: number | null
@@ -226,6 +235,60 @@ export type ElectricalGraph = {
   diagnostics: ScdDiagnostic[]
 }
 
+export type SldCellNode = {
+  id: string
+  graphNodeId: string
+  sourceId: string
+  sourcePath: string
+  label: string
+  kind: SclEquipmentKind
+  equipmentType: string
+  role: SldCellNodeRole
+  orderIndex: number
+}
+
+export type SldBayCell = {
+  id: string
+  groupId: string
+  voltageLevelGroupId: string
+  name: string
+  label: string
+  orderIndex: number
+  nodes: SldCellNode[]
+  nodeIds: string[]
+  busbarNodeIds: string[]
+  switchgearNodeIds: string[]
+  feederNodeIds: string[]
+  transformerNodeIds: string[]
+  measurementNodeIds: string[]
+  groundNodeIds: string[]
+  unknownNodeIds: string[]
+}
+
+export type SldVoltageLevelLane = {
+  id: string
+  groupId: string
+  name: string
+  label: string
+  orderIndex: number
+  bayCells: SldBayCell[]
+  ungroupedNodes: SldCellNode[]
+}
+
+export type SldCellModel = {
+  schema: "unitlab.scd-sld.cell-model"
+  version: 1
+  sourceHash: string
+  voltageLevels: SldVoltageLevelLane[]
+  orphanNodes: SldCellNode[]
+  diagnostics: ScdDiagnostic[]
+  layoutPolicy: {
+    orientation: "horizontal-voltage-levels"
+    bayOrder: "name-then-id"
+    nodeOrder: "role-then-label"
+  }
+}
+
 export type SldElement = {
   id: string
   sourceId: string
@@ -278,6 +341,7 @@ export type GenerateSldOptions = {
 export type GenerateSldResult = {
   model: NormalizedSclModel
   graph: ElectricalGraph
+  cellModel: SldCellModel
   document: SldDocument
   diagnostics: ScdDiagnostic[]
 }

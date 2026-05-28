@@ -444,7 +444,7 @@ Implemented 2026-05-28:
 
 ### Slice 6 - Cell Model and Layout MVP
 
-Status: `[ ]`
+Status: `[~]`
 
 Goal:
 
@@ -474,6 +474,13 @@ Validation:
   - grid-aligned anchors
   - stable output order
   - deterministic output for same input
+
+Implemented 2026-05-28:
+
+- Added `buildSldCellModel(graph): SldCellModel` as the deterministic grouping layer before coordinate layout.
+- Cell model emits voltage-level lanes, bay cells, ordered node roles, and orphan nodes for equipment outside a bay.
+- `generateSldFromScd(...)` now returns the cell model alongside the normalized model, graph, and renderer-neutral SLD document.
+- Coordinate layout and grid-aligned element placement remain open in this slice.
 
 ### Slice 7 - UnitLab SLD Adapter
 

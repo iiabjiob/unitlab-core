@@ -1,3 +1,4 @@
+import { buildSldCellModel } from "./cellModel"
 import { buildElectricalGraph } from "./graph"
 import { parseScdSource } from "./parser"
 import { createSldDocumentFromGraph } from "./sldDocument"
@@ -6,13 +7,15 @@ import type { GenerateSldOptions, GenerateSldResult, ScdDiagnostic, ScdSource } 
 export function generateSldFromScd(source: ScdSource, options: GenerateSldOptions = {}): GenerateSldResult {
   const model = parseScdSource(source)
   const graph = buildElectricalGraph(model)
+  const cellModel = buildSldCellModel(graph)
   const document = createSldDocumentFromGraph(graph, options)
 
   return {
     model,
     graph,
+    cellModel,
     document,
-    diagnostics: mergeDiagnostics(model.diagnostics, graph.diagnostics, document.diagnostics),
+    diagnostics: mergeDiagnostics(model.diagnostics, graph.diagnostics, cellModel.diagnostics, document.diagnostics),
   }
 }
 
@@ -41,6 +44,7 @@ function mergeDiagnostics(...diagnosticGroups: ScdDiagnostic[][]): ScdDiagnostic
 
 export { parseScdSource } from "./parser"
 export { buildElectricalGraph } from "./graph"
+export { buildSldCellModel } from "./cellModel"
 export { createSldDocument, createSldDocumentFromGraph } from "./sldDocument"
 export type {
   ElectricalGraph,
@@ -66,10 +70,16 @@ export type {
   SclLogicalNodeRef,
   SclSubstation,
   SclTerminal,
+  SclVoltage,
   SclVoltageLevel,
+  SldBayCell,
+  SldCellModel,
+  SldCellNode,
+  SldCellNodeRole,
   SldConnection,
   SldDocument,
   SldElement,
   SldElementKind,
   SldLabel,
+  SldVoltageLevelLane,
 } from "./types"

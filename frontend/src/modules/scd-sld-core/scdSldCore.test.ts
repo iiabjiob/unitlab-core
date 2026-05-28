@@ -46,6 +46,8 @@ describe("scd-sld-core", () => {
       code: "xml.empty-source",
     }))
     expect(result.graph.nodes).toEqual([])
+    expect(result.cellModel.voltageLevels).toEqual([])
+    expect(result.cellModel.orphanNodes).toEqual([])
     expect(result.document.elements).toEqual([])
   })
 
@@ -141,6 +143,50 @@ describe("scd-sld-core", () => {
       expect(edge.nodeIds.every(nodeId => graphNodeIds.has(nodeId))).toBe(true)
       expect(edge.portIds.every(portId => graphPortIds.has(portId))).toBe(true)
     }
+  })
+
+  it("builds a deterministic SLD cell model from graph groups", () => {
+    const result = generateSldFromScd({
+      fileName: "fixture.scd",
+      contentHash: "fixture",
+      xmlText: genericFeederBayScd,
+    })
+
+    expect(result.cellModel).toMatchObject({
+      schema: "unitlab.scd-sld.cell-model",
+      sourceHash: "fixture",
+      layoutPolicy: {
+        orientation: "horizontal-voltage-levels",
+        bayOrder: "name-then-id",
+        nodeOrder: "role-then-label",
+      },
+    })
+    expect(result.cellModel.voltageLevels).toHaveLength(1)
+    expect(result.cellModel.voltageLevels[0]).toMatchObject({
+      groupId: "group/substation/SS1/voltageLevel/VL1",
+      label: "110 kV",
+      orderIndex: 0,
+    })
+    expect(result.cellModel.voltageLevels[0]?.bayCells).toHaveLength(1)
+    expect(result.cellModel.voltageLevels[0]?.bayCells[0]).toMatchObject({
+      groupId: "group/substation/SS1/voltageLevel/VL1/bay/BAY1",
+      nodeIds: [
+        "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01",
+        "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/QB1",
+      ],
+      switchgearNodeIds: [
+        "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01",
+        "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/QB1",
+      ],
+    })
+    expect(result.cellModel.voltageLevels[0]?.bayCells[0]?.nodes.map(node => [node.label, node.role, node.orderIndex])).toEqual([
+      ["Q01", "switchgear", 0],
+      ["QB1", "switchgear", 1],
+    ])
+    expect(result.cellModel.orphanNodes.map(node => [node.label, node.role])).toEqual([
+      ["TR1", "transformer"],
+    ])
+    expect(JSON.parse(JSON.stringify(result.cellModel))).toEqual(result.cellModel)
   })
 
   it("creates a renderer-neutral SLD document from the electrical graph", () => {
