@@ -82,6 +82,12 @@
   touch-action: pan-x pan-y;
 }
 
+.affino-native-data-grid .datagrid-app-toolbar:not(.datagrid-app-toolbar--integrated) {
+  box-sizing: border-box;
+  padding: var(--datagrid-app-toolbar-surface-padding-block, 10px)
+    var(--datagrid-app-toolbar-surface-padding-inline, 12px);
+}
+
 .affino-native-data-grid [data-datagrid-resize-handle],
 .affino-native-data-grid .col-resize {
   cursor: col-resize !important;
