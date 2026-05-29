@@ -14,6 +14,21 @@ export type XmlElementEvent = {
   depth: number
 }
 
+export type XmlElementRange = {
+  name: string
+  localName: string
+  text: string
+  startOffset: number
+  sourceLocation: ScdSourceLocation
+}
+
+export type XmlScannerOptions = {
+  baseOffset?: number
+  baseLine?: number
+  baseColumn?: number
+  sourcePathPrefix?: readonly string[]
+}
+
 type StackFrame = {
   localName: string
   segment: string
@@ -30,9 +45,11 @@ const XML_ATTRIBUTE_PATTERN = /([^\s"'=<>`]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
 export function* scanXmlElements(
   xmlText: string,
   diagnostics: ScdDiagnostic[] = [],
+  options: XmlScannerOptions = {},
 ): Generator<XmlElementEvent> {
   const stack: StackFrame[] = []
-  const lineStarts = buildLineStarts(xmlText)
+  const locationTracker = createLineTracker(xmlText, options)
+  const sourcePathPrefix = options.sourcePathPrefix ?? []
   let match: RegExpExecArray | null
   XML_TAG_PATTERN.lastIndex = 0
 
@@ -43,11 +60,12 @@ export function* scanXmlElements(
       if (!parsed) {
         continue
       }
-      const sourceLocation = resolveSourceLocation(lineStarts, match.index)
+      locationTracker.advanceTo(match.index)
+      const sourceLocation = locationTracker.locationAt(match.index)
 
       if (parsed.kind === "close") {
         const frame = stack[stack.length - 1]
-        const sourcePath = stack.map(item => item.segment).join("/")
+        const sourcePath = [...sourcePathPrefix, ...stack.map(item => item.segment)].join("/")
         if (!frame || frame.localName !== parsed.localName) {
           diagnostics.push({
             severity: "warning",
@@ -70,7 +88,7 @@ export function* scanXmlElements(
           textContent: null,
           sourcePath: sourcePath || parsed.localName,
           sourceLocation,
-          depth: stack.length,
+          depth: sourcePathPrefix.length + stack.length,
         }
         continue
       }
@@ -78,7 +96,7 @@ export function* scanXmlElements(
       const parent = stack[stack.length - 1] ?? null
       const occurrence = nextChildOccurrence(parent, parsed.localName)
       const segment = buildSourcePathSegment(parsed.localName, parsed.attributes, occurrence)
-      const sourcePath = [...stack.map(item => item.segment), segment].join("/")
+      const sourcePath = [...sourcePathPrefix, ...stack.map(item => item.segment), segment].join("/")
 
       yield {
         kind: "open",
@@ -89,7 +107,7 @@ export function* scanXmlElements(
         textContent: parsed.selfClosing ? null : readImmediateTextContent(xmlText, XML_TAG_PATTERN.lastIndex),
         sourcePath,
         sourceLocation,
-        depth: stack.length,
+        depth: sourcePathPrefix.length + stack.length,
       }
 
       if (!parsed.selfClosing) {
@@ -112,7 +130,7 @@ export function* scanXmlElements(
         stage: "xml",
         code: "xml.unclosed-tag",
         message: `Unclosed tag <${frame.localName}>.`,
-        sourcePath: stack.slice(0, index + 1).map(item => item.segment).join("/"),
+        sourcePath: [...sourcePathPrefix, ...stack.slice(0, index + 1).map(item => item.segment)].join("/"),
         sourceLocation: frame.sourceLocation,
       })
     }
@@ -121,41 +139,115 @@ export function* scanXmlElements(
   }
 }
 
-function buildLineStarts(xmlText: string): number[] {
-  const starts = [0]
-  for (let index = 0; index < xmlText.length; index += 1) {
-    if (xmlText.charCodeAt(index) === 10) {
-      starts.push(index + 1)
+export function findXmlElementRanges(
+  xmlText: string,
+  localNames: readonly string[],
+  diagnostics: ScdDiagnostic[] = [],
+): XmlElementRange[] {
+  const targetNames = new Set(localNames)
+  const ranges: XmlElementRange[] = []
+  const openTargets: Array<{
+    name: string
+    localName: string
+    startOffset: number
+    sourceLocation: ScdSourceLocation
+  }> = []
+  const locationTracker = createLineTracker(xmlText)
+  let match: RegExpExecArray | null
+  XML_TAG_PATTERN.lastIndex = 0
+
+  try {
+    while ((match = XML_TAG_PATTERN.exec(xmlText)) !== null) {
+      const parsed = parseRawTagName(match[0])
+      if (!parsed) {
+        continue
+      }
+      locationTracker.advanceTo(match.index)
+      const sourceLocation = locationTracker.locationAt(match.index)
+
+      if (parsed.kind === "open") {
+        if (!targetNames.has(parsed.localName)) {
+          continue
+        }
+
+        if (parsed.selfClosing) {
+          ranges.push({
+            name: parsed.name,
+            localName: parsed.localName,
+            text: match[0],
+            startOffset: match.index,
+            sourceLocation,
+          })
+          continue
+        }
+
+        openTargets.push({
+          name: parsed.name,
+          localName: parsed.localName,
+          startOffset: match.index,
+          sourceLocation,
+        })
+        continue
+      }
+
+      const active = openTargets[openTargets.length - 1]
+      if (!active || active.name !== parsed.name) {
+        continue
+      }
+
+      openTargets.pop()
+      ranges.push({
+        name: active.name,
+        localName: active.localName,
+        text: xmlText.slice(active.startOffset, XML_TAG_PATTERN.lastIndex),
+        startOffset: active.startOffset,
+        sourceLocation: active.sourceLocation,
+      })
     }
+
+    for (const active of openTargets) {
+      diagnostics.push({
+        severity: "warning",
+        stage: "xml",
+        code: "xml.unclosed-tag",
+        message: `Unclosed tag <${active.name}>.`,
+        sourcePath: active.localName,
+        sourceLocation: active.sourceLocation,
+      })
+    }
+  } finally {
+    XML_TAG_PATTERN.lastIndex = 0
   }
-  return starts
+
+  return ranges
 }
 
-function resolveSourceLocation(lineStarts: number[], offset: number): ScdSourceLocation {
-  let low = 0
-  let high = lineStarts.length - 1
-
-  while (low <= high) {
-    const mid = Math.floor((low + high) / 2)
-    const lineStart = lineStarts[mid] ?? 0
-    const nextLineStart = lineStarts[mid + 1] ?? Number.POSITIVE_INFINITY
-    if (offset < lineStart) {
-      high = mid - 1
-    } else if (offset >= nextLineStart) {
-      low = mid + 1
-    } else {
-      return {
-        line: mid + 1,
-        column: offset - lineStart + 1,
-        offset,
-      }
-    }
-  }
+function createLineTracker(xmlText: string, options: XmlScannerOptions = {}) {
+  const baseOffset = options.baseOffset ?? 0
+  let cursor = 0
+  let line = options.baseLine ?? 1
+  let lineStartOffset = 1 - (options.baseColumn ?? 1)
 
   return {
-    line: 1,
-    column: offset + 1,
-    offset,
+    advanceTo(offset: number) {
+      while (cursor < offset) {
+        const newlineIndex = xmlText.indexOf("\n", cursor)
+        if (newlineIndex === -1 || newlineIndex >= offset) {
+          cursor = offset
+          return
+        }
+        line += 1
+        lineStartOffset = newlineIndex + 1
+        cursor = newlineIndex + 1
+      }
+    },
+    locationAt(offset: number): ScdSourceLocation {
+      return {
+        line,
+        column: offset - lineStartOffset + 1,
+        offset: baseOffset + offset,
+      }
+    },
   }
 }
 
@@ -201,6 +293,42 @@ function parseRawTag(rawTag: string):
     name,
     localName: getLocalName(name),
     attributes,
+    selfClosing,
+  }
+}
+
+function parseRawTagName(rawTag: string):
+  | { kind: "open"; name: string; localName: string; selfClosing: boolean }
+  | { kind: "close"; name: string; localName: string }
+  | null {
+  const inner = rawTag.slice(1, -1).trim()
+  if (!inner || inner.startsWith("?") || inner.startsWith("!")) {
+    return null
+  }
+
+  if (inner.startsWith("/")) {
+    const name = inner.slice(1).trim().split(/\s+/)[0] ?? ""
+    if (!name) {
+      return null
+    }
+    return {
+      kind: "close",
+      name,
+      localName: getLocalName(name),
+    }
+  }
+
+  const selfClosing = inner.endsWith("/")
+  const normalized = selfClosing ? inner.slice(0, -1).trim() : inner
+  const name = normalized.split(/\s+/)[0] ?? ""
+  if (!name) {
+    return null
+  }
+
+  return {
+    kind: "open",
+    name,
+    localName: getLocalName(name),
     selfClosing,
   }
 }

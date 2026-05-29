@@ -236,6 +236,26 @@ export type SclIed = {
   sourceLocation?: ScdSourceLocation
 }
 
+export type SclAddressParameter = {
+  type: string | null
+  value: string | null
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclConnectedAccessPoint = {
+  iedName: string | null
+  accessPointName: string | null
+  subNetworkName: string | null
+  subNetworkType: string | null
+  ipAddress: string | null
+  ipSubnet: string | null
+  ipGateway: string | null
+  addressParameters: SclAddressParameter[]
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
 export type SclAccessPoint = {
   id: string
   name: string
@@ -243,6 +263,7 @@ export type SclAccessPoint = {
   router: boolean | null
   clock: boolean | null
   server: SclServer | null
+  connectedAccessPoints: SclConnectedAccessPoint[]
   sourcePath: string
   sourceLocation?: ScdSourceLocation
 }

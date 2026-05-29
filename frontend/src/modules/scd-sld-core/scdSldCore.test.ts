@@ -14,7 +14,7 @@ import {
 import { parseIedCommunicationModel } from "./communicationParser"
 import { parseSclTopology } from "./topologyParser"
 import type { ScdDiagnostic } from "./types"
-import { scanXmlElements } from "./xmlScanner"
+import { findXmlElementRanges, scanXmlElements } from "./xmlScanner"
 
 const genericFeederBayScd = `<?xml version="1.0" encoding="UTF-8"?>
 <SCL xmlns="http://www.iec.ch/61850/2003/SCL" xmlns:sxy="http://www.iec.ch/61850/2003/SCLcoordinates" revision="B" version="2007">
@@ -275,6 +275,55 @@ describe("scd-sld-core", () => {
     expect(events.find(event => event.localName === "Voltage")).toMatchObject({
       textContent: "110",
       sourcePath: "SCL:#1/Substation:SS1/VoltageLevel:VL1/Voltage:#1",
+    })
+  })
+
+  it("scans selected SCD element ranges without losing source locations", () => {
+    const diagnostics: ScdDiagnostic[] = []
+    const xmlText = `<?xml version="1.0"?>
+<SCL>
+  <Header id="H1"/>
+  <IED name="IED1">
+    <AccessPoint name="AP1"/>
+  </IED>
+  <DataTypeTemplates>
+    <LNodeType id="ignored"/>
+  </DataTypeTemplates>
+</SCL>`
+
+    const ranges = findXmlElementRanges(xmlText, ["IED"], diagnostics)
+
+    expect(diagnostics).toEqual([])
+    expect(ranges).toHaveLength(1)
+    expect(ranges[0]).toMatchObject({
+      localName: "IED",
+      sourceLocation: {
+        line: 4,
+        column: 3,
+      },
+    })
+
+    const events = [...scanXmlElements(ranges[0]?.text ?? "", diagnostics, {
+      baseOffset: ranges[0]?.startOffset ?? 0,
+      baseLine: ranges[0]?.sourceLocation.line ?? 1,
+      baseColumn: ranges[0]?.sourceLocation.column ?? 1,
+      sourcePathPrefix: ["SCL:#1"],
+    })]
+
+    expect(diagnostics).toEqual([])
+    expect(events.find(event => event.localName === "IED")).toMatchObject({
+      sourcePath: "SCL:#1/IED:IED1",
+      sourceLocation: {
+        line: 4,
+        column: 3,
+      },
+    })
+    expect(events.find(event => event.localName === "AccessPoint")).toMatchObject({
+      sourcePath: "SCL:#1/IED:IED1/AccessPoint:AP1",
+      sourceLocation: {
+        line: 5,
+        column: 5,
+      },
     })
   })
 
@@ -720,6 +769,17 @@ describe("scd-sld-core", () => {
       <Bay name="BAY1"/>
     </VoltageLevel>
   </Substation>
+  <Communication>
+    <SubNetwork name="StationBus" type="8-MMS">
+      <ConnectedAP iedName="IED1" apName="AP1">
+        <Address>
+          <P type="IP">192.168.10.21</P>
+          <P type="IP-SUBNET">255.255.255.0</P>
+          <P type="IP-GATEWAY">192.168.10.1</P>
+        </Address>
+      </ConnectedAP>
+    </SubNetwork>
+  </Communication>
   <IED desc="Generic bay controller" manufacturer="Generic Vendor" type="Generic IED" configVersion="1" name="IED1">
     <AccessPoint name="AP1" router="false" clock="true">
       <Server>
@@ -757,6 +817,15 @@ describe("scd-sld-core", () => {
           name: "AP1",
           router: false,
           clock: true,
+          connectedAccessPoints: [
+            expect.objectContaining({
+              subNetworkName: "StationBus",
+              subNetworkType: "8-MMS",
+              ipAddress: "192.168.10.21",
+              ipSubnet: "255.255.255.0",
+              ipGateway: "192.168.10.1",
+            }),
+          ],
         }),
       ],
     })

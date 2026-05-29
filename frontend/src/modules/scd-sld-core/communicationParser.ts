@@ -3,6 +3,7 @@ import type {
   NormalizedSclModel,
   ScdDiagnostic,
   SclAccessPoint,
+  SclConnectedAccessPoint,
   SclDataSet,
   SclDataSetMember,
   SclDataSetMemberKind,
@@ -13,7 +14,12 @@ import type {
   SclReportEnabled,
   SclServer,
 } from "./types"
-import { readXmlAttribute, scanXmlElements, type XmlElementEvent } from "./xmlScanner"
+import {
+  findXmlElementRanges,
+  readXmlAttribute,
+  scanXmlElements,
+  type XmlElementEvent,
+} from "./xmlScanner"
 import {
   buildChildId,
   buildStableId,
@@ -38,87 +44,95 @@ export function parseIedCommunicationModel(xmlText: string, diagnostics: ScdDiag
   const reportControlStack: SclReportControl[] = []
   const rptEnabledStack: SclReportEnabled[] = []
 
-  for (const event of scanXmlElements(xmlText, localDiagnostics)) {
-    if (event.kind === "close") {
-      handleIedCommunicationCloseEvent(
-        event,
-        iedStack,
-        accessPointStack,
-        serverStack,
-        logicalDeviceStack,
-        logicalNodeStack,
-        dataSetStack,
-        reportControlStack,
-        rptEnabledStack,
-      )
-      continue
-    }
-
-    switch (event.localName) {
-      case "IED":
-        openCommunicationIed(ieds, iedStack, localDiagnostics, event)
-        break
-      case "AccessPoint":
-        openAccessPoint(iedStack, accessPointStack, localDiagnostics, event)
-        break
-      case "Server":
-        openServer(accessPointStack, serverStack, localDiagnostics, event)
-        break
-      case "LDevice":
-        openLogicalDevice(serverStack, logicalDeviceStack, localDiagnostics, event)
-        break
-      case "LN0":
-      case "LN":
-        openRuntimeLogicalNode(
+  for (const range of findXmlElementRanges(xmlText, ["IED"], localDiagnostics)) {
+    for (const event of scanXmlElements(range.text, localDiagnostics, {
+      baseOffset: range.startOffset,
+      baseLine: range.sourceLocation.line,
+      baseColumn: range.sourceLocation.column,
+      sourcePathPrefix: ["SCL:#1"],
+    })) {
+      if (event.kind === "close") {
+        handleIedCommunicationCloseEvent(
+          event,
           iedStack,
           accessPointStack,
+          serverStack,
           logicalDeviceStack,
           logicalNodeStack,
-          localDiagnostics,
-          event,
+          dataSetStack,
+          reportControlStack,
+          rptEnabledStack,
         )
-        break
-      case "DataSet":
-        openDataSet(logicalNodeStack, dataSetStack, localDiagnostics, event)
-        break
-      case "FCDA":
-      case "FCD":
-        appendDataSetMember(dataSetStack, localDiagnostics, event)
-        break
-      case "ReportControl":
-        openReportControl(logicalNodeStack, reportControlStack, localDiagnostics, event)
-        break
-      case "TrgOps":
-        applyReportTriggerOptions(reportControlStack, localDiagnostics, event)
-        break
-      case "OptFields":
-        applyReportOptionalFields(reportControlStack, localDiagnostics, event)
-        break
-      case "RptEnabled":
-        openRptEnabled(reportControlStack, rptEnabledStack, localDiagnostics, event)
-        break
-      case "ClientLN":
-        appendReportClient(rptEnabledStack, localDiagnostics, event)
-        break
-      default:
-        break
-    }
+        continue
+      }
 
-    if (event.selfClosing) {
-      handleIedCommunicationCloseEvent(
-        event,
-        iedStack,
-        accessPointStack,
-        serverStack,
-        logicalDeviceStack,
-        logicalNodeStack,
-        dataSetStack,
-        reportControlStack,
-        rptEnabledStack,
-      )
+      switch (event.localName) {
+        case "IED":
+          openCommunicationIed(ieds, iedStack, localDiagnostics, event)
+          break
+        case "AccessPoint":
+          openAccessPoint(iedStack, accessPointStack, localDiagnostics, event)
+          break
+        case "Server":
+          openServer(accessPointStack, serverStack, localDiagnostics, event)
+          break
+        case "LDevice":
+          openLogicalDevice(serverStack, logicalDeviceStack, localDiagnostics, event)
+          break
+        case "LN0":
+        case "LN":
+          openRuntimeLogicalNode(
+            iedStack,
+            accessPointStack,
+            logicalDeviceStack,
+            logicalNodeStack,
+            localDiagnostics,
+            event,
+          )
+          break
+        case "DataSet":
+          openDataSet(logicalNodeStack, dataSetStack, localDiagnostics, event)
+          break
+        case "FCDA":
+        case "FCD":
+          appendDataSetMember(dataSetStack, localDiagnostics, event)
+          break
+        case "ReportControl":
+          openReportControl(logicalNodeStack, reportControlStack, localDiagnostics, event)
+          break
+        case "TrgOps":
+          applyReportTriggerOptions(reportControlStack, localDiagnostics, event)
+          break
+        case "OptFields":
+          applyReportOptionalFields(reportControlStack, localDiagnostics, event)
+          break
+        case "RptEnabled":
+          openRptEnabled(reportControlStack, rptEnabledStack, localDiagnostics, event)
+          break
+        case "ClientLN":
+          appendReportClient(rptEnabledStack, localDiagnostics, event)
+          break
+        default:
+          break
+      }
+
+      if (event.selfClosing) {
+        handleIedCommunicationCloseEvent(
+          event,
+          iedStack,
+          accessPointStack,
+          serverStack,
+          logicalDeviceStack,
+          logicalNodeStack,
+          dataSetStack,
+          reportControlStack,
+          rptEnabledStack,
+        )
+      }
     }
   }
 
+  applyConnectedAccessPoints(xmlText, ieds, localDiagnostics)
   mergeUniqueDiagnostics(diagnostics, localDiagnostics)
   return ieds
 }
@@ -221,11 +235,185 @@ function openAccessPoint(
     router: parseBooleanAttribute(readXmlAttribute(event.attributes, "router")),
     clock: parseBooleanAttribute(readXmlAttribute(event.attributes, "clock")),
     server: null,
+    connectedAccessPoints: [],
     sourcePath: event.sourcePath,
     sourceLocation: event.sourceLocation,
   }
   ied.accessPoints.push(accessPoint)
   accessPointStack.push(accessPoint)
+}
+
+type ParsedSubNetwork = {
+  name: string | null
+  type: string | null
+}
+
+function applyConnectedAccessPoints(
+  xmlText: string,
+  ieds: SclIed[],
+  diagnostics: ScdDiagnostic[],
+) {
+  const accessPointByKey = new Map<string, SclAccessPoint>()
+  for (const ied of ieds) {
+    for (const accessPoint of ied.accessPoints) {
+      accessPointByKey.set(buildConnectedAccessPointKey(ied.name, accessPoint.name), accessPoint)
+    }
+  }
+
+  for (const connectedAccessPoint of parseConnectedAccessPoints(xmlText, diagnostics)) {
+    if (!connectedAccessPoint.iedName || !connectedAccessPoint.accessPointName) {
+      continue
+    }
+
+    const accessPoint = accessPointByKey.get(buildConnectedAccessPointKey(
+      connectedAccessPoint.iedName,
+      connectedAccessPoint.accessPointName,
+    ))
+    if (!accessPoint) {
+      continue
+    }
+
+    accessPoint.connectedAccessPoints.push(connectedAccessPoint)
+  }
+}
+
+function parseConnectedAccessPoints(
+  xmlText: string,
+  diagnostics: ScdDiagnostic[],
+): SclConnectedAccessPoint[] {
+  const connectedAccessPoints: SclConnectedAccessPoint[] = []
+  const subNetworkStack: ParsedSubNetwork[] = []
+  const connectedAccessPointStack: SclConnectedAccessPoint[] = []
+  let addressDepth = 0
+
+  for (const range of findXmlElementRanges(xmlText, ["Communication"], diagnostics)) {
+    for (const event of scanXmlElements(range.text, diagnostics, {
+      baseOffset: range.startOffset,
+      baseLine: range.sourceLocation.line,
+      baseColumn: range.sourceLocation.column,
+      sourcePathPrefix: ["SCL:#1"],
+    })) {
+      if (event.kind === "close") {
+        handleConnectedAccessPointCloseEvent(event, subNetworkStack, connectedAccessPointStack, () => {
+          addressDepth = Math.max(0, addressDepth - 1)
+        })
+        continue
+      }
+
+      switch (event.localName) {
+        case "SubNetwork":
+          subNetworkStack.push({
+            name: readXmlAttribute(event.attributes, "name"),
+            type: readXmlAttribute(event.attributes, "type"),
+          })
+          break
+        case "ConnectedAP":
+          openConnectedAccessPoint(
+            connectedAccessPoints,
+            connectedAccessPointStack,
+            subNetworkStack,
+            event,
+          )
+          break
+        case "Address":
+          if (connectedAccessPointStack.length) {
+            addressDepth += 1
+          }
+          break
+        case "P":
+          appendAddressParameter(connectedAccessPointStack, addressDepth, event)
+          break
+        default:
+          break
+      }
+
+      if (event.selfClosing) {
+        handleConnectedAccessPointCloseEvent(event, subNetworkStack, connectedAccessPointStack, () => {
+          addressDepth = Math.max(0, addressDepth - 1)
+        })
+      }
+    }
+  }
+
+  return connectedAccessPoints
+}
+
+function handleConnectedAccessPointCloseEvent(
+  event: XmlElementEvent,
+  subNetworkStack: ParsedSubNetwork[],
+  connectedAccessPointStack: SclConnectedAccessPoint[],
+  closeAddress: () => void,
+) {
+  switch (event.localName) {
+    case "SubNetwork":
+      subNetworkStack.pop()
+      break
+    case "ConnectedAP":
+      connectedAccessPointStack.pop()
+      break
+    case "Address":
+      closeAddress()
+      break
+    default:
+      break
+  }
+}
+
+function openConnectedAccessPoint(
+  connectedAccessPoints: SclConnectedAccessPoint[],
+  connectedAccessPointStack: SclConnectedAccessPoint[],
+  subNetworkStack: ParsedSubNetwork[],
+  event: XmlElementEvent,
+) {
+  const subNetwork = last(subNetworkStack) ?? null
+  const connectedAccessPoint: SclConnectedAccessPoint = {
+    iedName: readXmlAttribute(event.attributes, "iedName"),
+    accessPointName: readXmlAttribute(event.attributes, "apName"),
+    subNetworkName: subNetwork?.name ?? null,
+    subNetworkType: subNetwork?.type ?? null,
+    ipAddress: null,
+    ipSubnet: null,
+    ipGateway: null,
+    addressParameters: [],
+    sourcePath: event.sourcePath,
+    sourceLocation: event.sourceLocation,
+  }
+
+  connectedAccessPoints.push(connectedAccessPoint)
+  connectedAccessPointStack.push(connectedAccessPoint)
+}
+
+function appendAddressParameter(
+  connectedAccessPointStack: SclConnectedAccessPoint[],
+  addressDepth: number,
+  event: XmlElementEvent,
+) {
+  const connectedAccessPoint = last(connectedAccessPointStack)
+  if (!connectedAccessPoint || addressDepth <= 0) {
+    return
+  }
+
+  const parameter = {
+    type: readXmlAttribute(event.attributes, "type"),
+    value: event.textContent,
+    sourcePath: event.sourcePath,
+    sourceLocation: event.sourceLocation,
+  }
+  connectedAccessPoint.addressParameters.push(parameter)
+
+  switch (normalizeAddressParameterType(parameter.type)) {
+    case "IP":
+      connectedAccessPoint.ipAddress ??= parameter.value
+      break
+    case "IP-SUBNET":
+      connectedAccessPoint.ipSubnet ??= parameter.value
+      break
+    case "IP-GATEWAY":
+      connectedAccessPoint.ipGateway ??= parameter.value
+      break
+    default:
+      break
+  }
 }
 
 function openServer(
@@ -726,6 +914,14 @@ function formatDataSetMemberReference(member: SclDataSetMember, dataSet: SclData
   const objectReference = `${ldInst}/${logicalNodeName}${dataPath ? `.${dataPath}` : ""}`
 
   return `${objectReference}${fcSuffix}${ixSuffix}`
+}
+
+function buildConnectedAccessPointKey(iedName: string, accessPointName: string): string {
+  return `${iedName}\u0000${accessPointName}`
+}
+
+function normalizeAddressParameterType(value: string | null): string {
+  return value?.trim().toUpperCase() ?? ""
 }
 
 function formatLogicalNodeName(prefix: string | null, lnClass: string, lnInst: string | null): string {

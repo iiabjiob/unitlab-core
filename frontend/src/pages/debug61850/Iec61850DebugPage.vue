@@ -4,10 +4,17 @@ import { RouterLink } from "vue-router"
 import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
 
 import UiButton from "@/components/ui/UiButton.vue"
-import type { NormalizedSclModel } from "@/modules/scd-sld-core"
-import {
-  buildIec61850DebugTreeRows,
-  type Iec61850DebugTreeRow,
+import UiModal from "@/components/ui/UiModal.vue"
+import type {
+  Iec61850DebugDetailAction,
+  Iec61850DebugDetailRow,
+  Iec61850DebugDetailSection,
+  Iec61850DebugDiagnosticSummary,
+  Iec61850DebugDocument,
+  Iec61850DebugListDialogItem,
+  Iec61850DebugReportSignalsAction,
+  Iec61850DebugStats,
+  Iec61850DebugTreeRow,
 } from "./iec61850DebugTree"
 import type {
   Iec61850DebugWorkerRequest,
@@ -22,11 +29,31 @@ type LoadProgress = {
 
 type ParseResult = {
   contentHash: string
-  model: NormalizedSclModel
+  document: Iec61850DebugDocument
   parseDurationMs: number
+  treeBuildDurationMs: number
 }
 
-const DEBUG_TREE_SIGNAL_ROW_LIMIT = 500
+const EMPTY_STATS: Iec61850DebugStats = {
+  sites: 0,
+  voltageLevels: 0,
+  bays: 0,
+  switchgears: 0,
+  ieds: 0,
+  logicalDevices: 0,
+  dataSets: 0,
+  reports: 0,
+  reportSignals: 0,
+}
+
+const EMPTY_DIAGNOSTIC_SUMMARY: Iec61850DebugDiagnosticSummary = {
+  error: 0,
+  warning: 0,
+  info: 0,
+  total: 0,
+  rendered: 0,
+  omitted: 0,
+}
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const fileName = ref<string | null>(null)
@@ -34,9 +61,11 @@ const contentHash = ref<string | null>(null)
 const loading = ref(false)
 const loadProgress = ref<LoadProgress | null>(null)
 const readError = ref<string | null>(null)
-const model = shallowRef<NormalizedSclModel | null>(null)
+const debugDocument = shallowRef<Iec61850DebugDocument | null>(null)
 const selectedValue = ref<NodeValue | null>(null)
+const detailDialog = ref<Iec61850DebugDetailAction | null>(null)
 const pendingDefaultExpansion = ref(false)
+const showReportCandidatesOnlyWithSignals = ref(false)
 let loadRequestId = 0
 let activeParse: { worker: Worker; reject: (error: Error) => void } | null = null
 
@@ -45,14 +74,7 @@ const tree = useTreeviewController<NodeValue>({
   loop: true,
 })
 
-const treeRows = computed<Iec61850DebugTreeRow[]>(() => (
-  model.value
-    ? buildIec61850DebugTreeRows(model.value, {
-        maxSignalRowsPerCollection: DEBUG_TREE_SIGNAL_ROW_LIMIT,
-        maxDetailRowsPerSection: DEBUG_TREE_SIGNAL_ROW_LIMIT,
-      })
-    : []
-))
+const treeRows = computed<Iec61850DebugTreeRow[]>(() => debugDocument.value?.treeRows ?? [])
 
 const treeNodes = computed<TreeviewNode<NodeValue>[]>(() =>
   treeRows.value.map(row => ({ value: row.value, parent: row.parent })),
@@ -70,6 +92,7 @@ const parentByValue = computed(() => {
   return map
 })
 
+const expandedSet = computed(() => new Set(tree.state.value.expanded))
 const childrenByParent = computed(() => {
   const map = new Map<NodeValue | null, NodeValue[]>()
   treeRows.value.forEach((row) => {
@@ -79,39 +102,20 @@ const childrenByParent = computed(() => {
   })
   return map
 })
-
-const expandedSet = computed(() => new Set(tree.state.value.expanded))
 const visibleRows = computed(() => treeRows.value.filter(row => isNodeVisible(row.value)))
 const selectedRow = computed(() => (
   selectedValue.value ? rowByValue.value.get(selectedValue.value) ?? null : treeRows.value[0] ?? null
 ))
 
-const diagnostics = computed(() => model.value?.diagnostics ?? [])
-const diagnosticsBySeverity = computed(() => ({
-  error: diagnostics.value.filter(item => item.severity === "error").length,
-  warning: diagnostics.value.filter(item => item.severity === "warning").length,
-  info: diagnostics.value.filter(item => item.severity === "info").length,
-}))
+const diagnostics = computed(() => debugDocument.value?.diagnostics ?? [])
+const diagnosticSummary = computed(() => debugDocument.value?.diagnosticSummary ?? EMPTY_DIAGNOSTIC_SUMMARY)
 
-const stats = computed(() => ({
-  sites: model.value?.substations.length ?? 0,
-  voltageLevels: model.value?.substations.reduce((sum, site) => sum + site.voltageLevels.length, 0) ?? 0,
-  bays: model.value?.substations.reduce(
-    (sum, site) => sum + site.voltageLevels.reduce((vlSum, vl) => vlSum + vl.bays.length, 0),
-    0,
-  ) ?? 0,
-  switchgears: model.value ? countSwitchgears(model.value) : 0,
-  ieds: model.value?.ieds.length ?? 0,
-  logicalDevices: model.value ? countLogicalDevices(model.value) : 0,
-  dataSets: model.value ? countDataSets(model.value) : 0,
-  reports: model.value?.reportSubscriptions.length ?? 0,
-  reportSignals: model.value?.reportSubscriptions.reduce((sum, candidate) => sum + candidate.signalCount, 0) ?? 0,
-}))
+const stats = computed(() => debugDocument.value?.stats ?? EMPTY_STATS)
 
 const statusLabel = computed(() => {
   if (loading.value) return loadProgress.value?.label ?? "Reading SCD"
   if (readError.value) return "Parse failed"
-  if (!model.value) return "No SCD loaded"
+  if (!debugDocument.value) return "No SCD loaded"
   return `${fileName.value ?? "SCD"} · ${stats.value.sites} site · ${stats.value.ieds} IED · ${stats.value.reports} reports`
 })
 
@@ -163,7 +167,7 @@ async function onFileSelected(event: Event) {
   loading.value = true
   fileName.value = file.name
   contentHash.value = null
-  model.value = null
+  debugDocument.value = null
   selectedValue.value = null
   loadProgress.value = {
     label: "Reading SCD",
@@ -172,26 +176,23 @@ async function onFileSelected(event: Event) {
   readError.value = null
 
   try {
-    const xmlText = await file.text()
-    if (requestId !== loadRequestId) return
-
     loadProgress.value = {
-      label: "Starting parser",
-      detail: `${file.name} · ${formatBytes(xmlText.length)}`,
+      label: "Starting worker",
+      detail: `${file.name} · ${formatBytes(file.size)}`,
     }
-    const parsed = await parseScdInWorker(requestId, file.name, xmlText)
+    const parsed = await parseScdInWorker(requestId, file)
     if (requestId !== loadRequestId) return
 
     contentHash.value = parsed.contentHash
-    model.value = parsed.model
+    debugDocument.value = parsed.document
     loadProgress.value = {
-      label: "Building debug tree",
-      detail: `Parsed in ${parsed.parseDurationMs}ms · capped signal rows at ${DEBUG_TREE_SIGNAL_ROW_LIMIT} per DataSet/report`,
+      label: "Rendering debug tree",
+      detail: `Parsed in ${parsed.parseDurationMs}ms · tree in ${parsed.treeBuildDurationMs}ms`,
     }
     pendingDefaultExpansion.value = true
   } catch (error) {
     if (error instanceof Error && error.message === "cancelled") return
-    model.value = null
+    debugDocument.value = null
     fileName.value = file.name
     contentHash.value = null
     readError.value = error instanceof Error ? error.message : "Failed to read SCD file"
@@ -204,7 +205,7 @@ async function onFileSelected(event: Event) {
   }
 }
 
-function parseScdInWorker(requestId: number, selectedFileName: string, xmlText: string): Promise<ParseResult> {
+function parseScdInWorker(requestId: number, selectedFile: File): Promise<ParseResult> {
   terminateActiveParse()
 
   return new Promise((resolve, reject) => {
@@ -218,7 +219,7 @@ function parseScdInWorker(requestId: number, selectedFileName: string, xmlText: 
       if (message.type === "progress") {
         loadProgress.value = {
           label: message.label,
-          detail: selectedFileName,
+          detail: `${selectedFile.name} · ${formatBytes(selectedFile.size)}`,
         }
         return
       }
@@ -231,8 +232,9 @@ function parseScdInWorker(requestId: number, selectedFileName: string, xmlText: 
 
       resolve({
         contentHash: message.contentHash,
-        model: message.model,
+        document: message.document,
         parseDurationMs: message.parseDurationMs,
+        treeBuildDurationMs: message.treeBuildDurationMs,
       })
     }
 
@@ -244,8 +246,7 @@ function parseScdInWorker(requestId: number, selectedFileName: string, xmlText: 
     worker.postMessage({
       type: "parse",
       requestId,
-      fileName: selectedFileName,
-      xmlText,
+      file: selectedFile,
     } satisfies Iec61850DebugWorkerRequest)
   })
 }
@@ -271,9 +272,6 @@ function applyDefaultExpansion() {
       row.kind === "site"
       || row.kind === "voltage-level"
       || row.kind === "ieds-group"
-      || row.kind === "ied"
-      || row.kind === "access-point"
-      || row.kind === "server"
     ) {
       tree.expand(row.value)
     }
@@ -295,6 +293,73 @@ function onTreeRowClick(row: Iec61850DebugTreeRow) {
   if (!row.isLeaf) {
     tree.toggle(row.value)
   }
+}
+
+function openDetailDialog(action: Iec61850DebugDetailAction) {
+  detailDialog.value = action
+}
+
+function openDetailRowAction(row: Iec61850DebugDetailRow) {
+  if (row.action) {
+    openDetailDialog(row.action)
+    return
+  }
+  if (row.reportSignalsAction) {
+    openReportSignalsDialog(row.label, row.reportSignalsAction)
+  }
+}
+
+function openReportSignalsDialog(reportControlName: string, action: Iec61850DebugReportSignalsAction) {
+  const reportRow = rowByValue.value.get(action.reportControlValue)
+  const signalRows = reportRow?.detail.sections
+    .find(section => section.title === "Resolved signals")
+    ?.rows ?? []
+
+  detailDialog.value = {
+    kind: "list-dialog",
+    title: `${reportControlName} signals`,
+    subtitle: `${action.reportKind} · ${action.dataSetRef ?? "unresolved DataSet"} · ${action.signalCount} signals`,
+    emptyLabel: "No resolved report signals.",
+    items: signalRowsToDialogItems(reportControlName, action, signalRows),
+  }
+}
+
+function signalRowsToDialogItems(
+  reportControlName: string,
+  action: Iec61850DebugReportSignalsAction,
+  signalRows: Iec61850DebugDetailRow[],
+): Iec61850DebugListDialogItem[] {
+  return signalRows.map((signalRow): Iec61850DebugListDialogItem => ({
+    title: signalRow.value,
+    subtitle: `${reportControlName} · ${action.dataSetRef ?? "unresolved DataSet"}`,
+    rows: [
+      { label: "ReportControl", value: reportControlName },
+      { label: "report kind", value: action.reportKind },
+      { label: "DataSet ref", value: action.dataSetRef ?? "—" },
+      { label: "signal row", value: signalRow.label },
+      { label: "signal ref", value: signalRow.value },
+    ],
+  }))
+}
+
+function closeDetailDialog() {
+  detailDialog.value = null
+}
+
+function isReportCandidatesSection(section: Iec61850DebugDetailSection): boolean {
+  return section.title === "Report candidates"
+}
+
+function visibleDetailRows(section: Iec61850DebugDetailSection) {
+  if (!isReportCandidatesSection(section) || !showReportCandidatesOnlyWithSignals.value) {
+    return section.rows
+  }
+  return section.rows.filter(row => (row.signalCount ?? 0) > 0)
+}
+
+function reportCandidatesFilterSummary(section: Iec61850DebugDetailSection): string {
+  const withSignals = section.rows.filter(row => (row.signalCount ?? 0) > 0).length
+  return `${withSignals} of ${section.rows.length}`
 }
 
 function bindItemElement(value: NodeValue) {
@@ -477,34 +542,6 @@ function formatBytes(value: number): string {
   return `${size >= 10 || unitIndex === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[unitIndex]}`
 }
 
-function countSwitchgears(value: NormalizedSclModel): number {
-  return value.substations.reduce((siteSum, site) => (
-    siteSum + site.voltageLevels.reduce((voltageSum, voltageLevel) => (
-      voltageSum + voltageLevel.bays.reduce((baySum, bay) => (
-        baySum + bay.equipments.filter(equipment => equipment.kind === "breaker" || equipment.kind === "disconnector").length
-      ), 0)
-    ), 0)
-  ), 0)
-}
-
-function countLogicalDevices(value: NormalizedSclModel): number {
-  return value.ieds.reduce((sum, ied) => (
-    sum + ied.accessPoints.reduce((apSum, accessPoint) => (
-      apSum + (accessPoint.server?.logicalDevices.length ?? 0)
-    ), 0)
-  ), 0)
-}
-
-function countDataSets(value: NormalizedSclModel): number {
-  return value.ieds.reduce((sum, ied) => (
-    sum + ied.accessPoints.reduce((apSum, accessPoint) => (
-      apSum + (accessPoint.server?.logicalDevices.reduce((ldSum, logicalDevice) => (
-        ldSum + logicalDevice.logicalNodes.reduce((lnSum, logicalNode) => lnSum + logicalNode.dataSets.length, 0)
-      ), 0) ?? 0)
-    ), 0)
-  ), 0)
-}
-
 onUnmounted(() => {
   terminateActiveParse()
 })
@@ -524,7 +561,7 @@ onUnmounted(() => {
           Bay templates
         </RouterLink>
         <UiButton variant="secondary" size="sm" :disabled="loading" @click="openFileDialog">
-          {{ model ? "Load another SCD" : "Choose SCD" }}
+          {{ debugDocument ? "Load another SCD" : "Choose SCD" }}
         </UiButton>
         <input
           ref="fileInput"
@@ -551,7 +588,7 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <section v-if="model" class="iec61850-debug-page__summary" aria-label="SCD summary">
+    <section v-if="debugDocument" class="iec61850-debug-page__summary" aria-label="SCD summary">
       <div class="iec61850-debug-page__metric">
         <span class="iec61850-debug-page__metric-label">Sites</span>
         <span class="iec61850-debug-page__metric-value">{{ stats.sites }}</span>
@@ -601,7 +638,7 @@ onUnmounted(() => {
           <span v-if="treeRows.length" class="iec61850-debug-page__panel-count">{{ treeRows.length }} nodes</span>
         </div>
 
-        <div v-if="!model" class="iec61850-debug-page__empty">
+        <div v-if="!debugDocument" class="iec61850-debug-page__empty">
           Choose an SCD file to inspect topology, IEDs, DataSets and ReportControls.
         </div>
 
@@ -663,42 +700,110 @@ onUnmounted(() => {
               :key="section.title"
               class="iec61850-debug-page__section"
             >
-              <h3>{{ section.title }}</h3>
-              <dl class="iec61850-debug-page__property-list">
-                <template v-for="row in section.rows" :key="`${section.title}:${row.label}`">
+              <div class="iec61850-debug-page__section-heading">
+                <h3>{{ section.title }}</h3>
+                <label
+                  v-if="isReportCandidatesSection(section)"
+                  class="iec61850-debug-page__section-filter"
+                >
+                  <input
+                    v-model="showReportCandidatesOnlyWithSignals"
+                    type="checkbox"
+                  />
+                  <span>Show only with signals</span>
+                  <span class="iec61850-debug-page__section-filter-count">
+                    {{ reportCandidatesFilterSummary(section) }}
+                  </span>
+                </label>
+              </div>
+              <dl v-if="visibleDetailRows(section).length" class="iec61850-debug-page__property-list">
+                <template v-for="row in visibleDetailRows(section)" :key="`${section.title}:${row.label}`">
                   <dt>{{ row.label }}</dt>
-                  <dd>{{ row.value }}</dd>
+                  <dd>
+                    <button
+                      v-if="row.action || row.reportSignalsAction"
+                      type="button"
+                      class="iec61850-debug-page__property-action"
+                      @click="openDetailRowAction(row)"
+                    >
+                      {{ row.value }}
+                    </button>
+                    <span v-else>{{ row.value }}</span>
+                  </dd>
                 </template>
               </dl>
+              <div v-else class="iec61850-debug-page__section-empty">
+                No report candidates with signals.
+              </div>
             </section>
           </div>
         </article>
       </section>
     </main>
 
-    <section v-if="model" class="iec61850-debug-page__diagnostics" aria-label="Parser diagnostics">
+    <section v-if="debugDocument" class="iec61850-debug-page__diagnostics" aria-label="Parser diagnostics">
       <div class="iec61850-debug-page__panel-header">
         <span>Diagnostics</span>
         <span class="iec61850-debug-page__panel-count">
-          {{ diagnosticsBySeverity.error }} errors · {{ diagnosticsBySeverity.warning }} warnings · {{ diagnosticsBySeverity.info }} info
+          {{ diagnosticSummary.error }} errors · {{ diagnosticSummary.warning }} warnings · {{ diagnosticSummary.info }} info
         </span>
       </div>
       <div v-if="!diagnostics.length" class="iec61850-debug-page__diagnostics-empty">
         No parser diagnostics.
       </div>
-      <div v-else class="iec61850-debug-page__diagnostics-list">
-        <div
-          v-for="diagnostic in diagnostics"
-          :key="`${diagnostic.stage}:${diagnostic.code}:${diagnostic.sourcePath ?? ''}:${diagnostic.message}`"
-          class="iec61850-debug-page__diagnostic"
-          :class="`is-${diagnostic.severity}`"
-        >
-          <span class="iec61850-debug-page__diagnostic-code">{{ diagnostic.stage }}.{{ diagnostic.code }}</span>
-          <span class="iec61850-debug-page__diagnostic-message">{{ diagnostic.message }}</span>
-          <span v-if="diagnostic.sourcePath" class="iec61850-debug-page__diagnostic-path">{{ diagnostic.sourcePath }}</span>
+      <template v-else>
+        <div v-if="diagnosticSummary.omitted > 0" class="iec61850-debug-page__diagnostics-empty">
+          Showing {{ diagnosticSummary.rendered }} of {{ diagnosticSummary.total }} diagnostics.
+        </div>
+        <div class="iec61850-debug-page__diagnostics-list">
+          <div
+            v-for="diagnostic in diagnostics"
+            :key="`${diagnostic.stage}:${diagnostic.code}:${diagnostic.sourcePath ?? ''}:${diagnostic.message}`"
+            class="iec61850-debug-page__diagnostic"
+            :class="`is-${diagnostic.severity}`"
+          >
+            <span class="iec61850-debug-page__diagnostic-code">{{ diagnostic.stage }}.{{ diagnostic.code }}</span>
+            <span class="iec61850-debug-page__diagnostic-message">{{ diagnostic.message }}</span>
+            <span v-if="diagnostic.sourcePath" class="iec61850-debug-page__diagnostic-path">{{ diagnostic.sourcePath }}</span>
+          </div>
+        </div>
+      </template>
+    </section>
+
+    <UiModal
+      :open="Boolean(detailDialog)"
+      :title="detailDialog?.title ?? 'Details'"
+      max-width="5xl"
+      desktop-height="78vh"
+      :content-scroll="false"
+      @close="closeDetailDialog"
+    >
+      <div v-if="detailDialog" class="iec61850-debug-page__list-dialog">
+        <p class="iec61850-debug-page__list-dialog-subtitle">{{ detailDialog.subtitle }}</p>
+        <p class="iec61850-debug-page__list-dialog-count">{{ detailDialog.items.length }} items</p>
+
+        <div v-if="!detailDialog.items.length" class="iec61850-debug-page__empty">
+          {{ detailDialog.emptyLabel }}
+        </div>
+
+        <div v-else class="iec61850-debug-page__list-dialog-items">
+          <article
+            v-for="item in detailDialog.items"
+            :key="`${item.title}:${item.subtitle}`"
+            class="iec61850-debug-page__list-dialog-item"
+          >
+            <h3>{{ item.title }}</h3>
+            <p>{{ item.subtitle }}</p>
+            <dl class="iec61850-debug-page__property-list">
+              <template v-for="row in item.rows" :key="`${item.title}:${row.label}`">
+                <dt>{{ row.label }}</dt>
+                <dd>{{ row.value }}</dd>
+              </template>
+            </dl>
+          </article>
         </div>
       </div>
-    </section>
+    </UiModal>
   </div>
 </template>
 
@@ -1012,7 +1117,7 @@ onUnmounted(() => {
 
 .iec61850-debug-page__detail-heading h2,
 .iec61850-debug-page__detail-heading p,
-.iec61850-debug-page__section h3 {
+.iec61850-debug-page__section-heading h3 {
   margin: 0;
 }
 
@@ -1041,13 +1146,53 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--color-white) 80%, transparent);
 }
 
-.iec61850-debug-page__section h3 {
+.iec61850-debug-page__section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid color-mix(in srgb, var(--color-neutral-200) 74%, transparent);
+}
+
+.iec61850-debug-page__section-heading h3 {
   color: var(--color-neutral-500);
   font-size: 0.6875rem;
   letter-spacing: 0;
   text-transform: uppercase;
+}
+
+.iec61850-debug-page__section-filter {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--color-neutral-600);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.iec61850-debug-page__section-filter input {
+  flex: 0 0 auto;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin: 0;
+  accent-color: color-mix(in srgb, var(--runtime-accent) 82%, var(--color-blue-600));
+}
+
+.iec61850-debug-page__section-filter-count {
+  color: var(--color-neutral-400);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.iec61850-debug-page__section-empty {
+  padding: 0.75rem;
+  color: var(--color-neutral-500);
+  font-size: 0.75rem;
 }
 
 .iec61850-debug-page__property-list {
@@ -1074,6 +1219,83 @@ onUnmounted(() => {
   overflow-wrap: anywhere;
   color: var(--color-neutral-850, var(--color-neutral-900));
   font-family: var(--font-mono);
+}
+
+.iec61850-debug-page__property-action {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--runtime-accent) 78%, var(--color-neutral-900));
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.iec61850-debug-page__property-action:hover {
+  color: color-mix(in srgb, var(--runtime-accent) 92%, var(--color-neutral-950));
+}
+
+.iec61850-debug-page__list-dialog {
+  display: flex;
+  box-sizing: border-box;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow: hidden;
+}
+
+.iec61850-debug-page__list-dialog-subtitle,
+.iec61850-debug-page__list-dialog-count {
+  margin: 0;
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+}
+
+.iec61850-debug-page__list-dialog-count {
+  font-weight: 700;
+}
+
+.iec61850-debug-page__list-dialog-items {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.iec61850-debug-page__list-dialog-item {
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 82%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-white) 82%, transparent);
+}
+
+.iec61850-debug-page__list-dialog-item h3,
+.iec61850-debug-page__list-dialog-item p {
+  margin: 0;
+}
+
+.iec61850-debug-page__list-dialog-item h3 {
+  padding: 0.75rem 0.75rem 0;
+  color: var(--color-neutral-950);
+  font-size: 0.875rem;
+  line-height: 1.25;
+}
+
+.iec61850-debug-page__list-dialog-item p {
+  padding: 0.25rem 0.75rem 0.75rem;
+  color: var(--color-neutral-500);
+  font-size: 0.75rem;
 }
 
 .iec61850-debug-page__diagnostics {
@@ -1155,6 +1377,7 @@ onUnmounted(() => {
 
 :global(.dark .iec61850-debug-page__metric),
 :global(.dark .iec61850-debug-page__section),
+:global(.dark .iec61850-debug-page__list-dialog-item),
 :global(.dark .iec61850-debug-page__nav-link) {
   border-color: var(--color-neutral-800);
   background: color-mix(in srgb, var(--color-neutral-950) 58%, transparent);
@@ -1162,14 +1385,24 @@ onUnmounted(() => {
 
 :global(.dark .iec61850-debug-page__metric-value),
 :global(.dark .iec61850-debug-page__progress-title),
+:global(.dark .iec61850-debug-page__list-dialog-item h3),
 :global(.dark .iec61850-debug-page__property-list dd) {
   color: var(--color-neutral-100);
 }
 
+:global(.dark .iec61850-debug-page__property-action) {
+  color: color-mix(in srgb, var(--runtime-accent) 72%, var(--color-neutral-100));
+}
+
 :global(.dark .iec61850-debug-page__panel-header),
 :global(.dark .iec61850-debug-page__detail-heading),
-:global(.dark .iec61850-debug-page__section h3) {
+:global(.dark .iec61850-debug-page__section-heading) {
   border-color: var(--color-neutral-800);
+}
+
+:global(.dark .iec61850-debug-page__section-filter),
+:global(.dark .iec61850-debug-page__section-empty) {
+  color: var(--color-neutral-400);
 }
 
 :global(.dark .iec61850-debug-page__empty),

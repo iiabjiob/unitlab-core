@@ -12,6 +12,8 @@ Reference standards:
 The SCD core now extracts a runtime-facing IEC 61850 inventory alongside the existing SLD topology model:
 
 - `IED`
+- `Communication` / `SubNetwork` / `ConnectedAP`
+- `Address` / `P` communication address parameters, including `IP`, `IP-SUBNET`, and `IP-GATEWAY`
 - `AccessPoint`
 - `Server`
 - `LDevice`
@@ -31,7 +33,7 @@ The SCD core now extracts a runtime-facing IEC 61850 inventory alongside the exi
 
 Current file responsibilities:
 
-- `xmlScanner.ts`: lightweight SCL tag/attribute scanner. It is not a full XML parser.
+- `xmlScanner.ts`: lightweight SCL tag/attribute scanner and selected-element range finder. It is not a full XML parser.
 - `parser.ts`: orchestration only; builds `NormalizedSclModel` and runs normalization steps.
 - `topologyParser.ts`: SCD topology extraction for `Substation`, `VoltageLevel`, `Bay`, equipment, terminals, connectivity nodes, and `LNode` references.
 - `communicationParser.ts`: IED/access point/server/logical device/logical node/DataSet/ReportControl inventory extraction and report DataSet resolution.
@@ -50,13 +52,14 @@ Current file responsibilities:
 The tree now shows:
 
 - electrical topology from `Substation` to switchgear equipment;
+- IED communication IP addresses from `ConnectedAP`;
 - IED access points, servers, logical devices, and logical nodes;
 - DataSets and their signal members;
 - ReportControls and the resolved report signal set.
 
 This view is inspection-only. Loading an SCD file in the debug page does not create report subscriptions, enable reports, reserve RCBs, or persist runtime evidence.
 
-Large SCD files are parsed in `frontend/src/pages/debug61850/iec61850DebugWorker.ts` so XML scanning, hashing, and SCL normalization do not block the Vue main thread. The page keeps the normalized model in a shallow reference and caps rendered DataSet/report signal tree rows per collection; the model still preserves the full parsed signal inventory.
+Large SCD files are read, hashed, parsed, and converted to a bounded debug document in `frontend/src/pages/debug61850/iec61850DebugWorker.ts` so file text decoding, XML scanning, SCL normalization, and debug tree construction do not block the Vue main thread. The page receives summary data, full diagnostic counts, capped diagnostic rows, and capped tree rows; the core parser still preserves the full parsed signal inventory for production pipelines.
 
 ## Runtime Boundary
 

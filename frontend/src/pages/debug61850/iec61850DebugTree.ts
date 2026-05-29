@@ -41,6 +41,31 @@ export type Iec61850DebugNodeKind =
 export type Iec61850DebugDetailRow = {
   label: string
   value: string
+  signalCount?: number
+  action?: Iec61850DebugDetailAction
+  reportSignalsAction?: Iec61850DebugReportSignalsAction
+}
+
+export type Iec61850DebugDetailAction = {
+  kind: "list-dialog"
+  title: string
+  subtitle: string
+  emptyLabel: string
+  items: Iec61850DebugListDialogItem[]
+}
+
+export type Iec61850DebugListDialogItem = {
+  title: string
+  subtitle: string
+  rows: Iec61850DebugDetailRow[]
+}
+
+export type Iec61850DebugReportSignalsAction = {
+  kind: "report-signals-dialog"
+  reportControlValue: string
+  reportKind: string
+  dataSetRef: string | null
+  signalCount: number
 }
 
 export type Iec61850DebugDetailSection = {
@@ -64,14 +89,80 @@ export type Iec61850DebugTreeRow = {
   detail: Iec61850DebugDetail
 }
 
+export type Iec61850DebugStats = {
+  sites: number
+  voltageLevels: number
+  bays: number
+  switchgears: number
+  ieds: number
+  logicalDevices: number
+  dataSets: number
+  reports: number
+  reportSignals: number
+}
+
+export type Iec61850DebugDocument = {
+  stats: Iec61850DebugStats
+  diagnosticSummary: Iec61850DebugDiagnosticSummary
+  diagnostics: NormalizedSclModel["diagnostics"]
+  treeRows: Iec61850DebugTreeRow[]
+}
+
+export type Iec61850DebugDiagnosticSummary = {
+  error: number
+  warning: number
+  info: number
+  total: number
+  rendered: number
+  omitted: number
+}
+
 export type BuildIec61850DebugTreeRowsOptions = {
   maxSignalRowsPerCollection?: number
+  maxTotalSignalRows?: number
   maxDetailRowsPerSection?: number
+  maxDiagnostics?: number
 }
 
 type ResolvedDebugTreeOptions = {
   maxSignalRowsPerCollection: number
+  maxTotalSignalRows: number
   maxDetailRowsPerSection: number
+  maxDiagnostics: number
+}
+
+export function buildIec61850DebugDocument(
+  model: NormalizedSclModel,
+  options: BuildIec61850DebugTreeRowsOptions = {},
+): Iec61850DebugDocument {
+  const resolvedOptions = resolveOptions(options)
+  const diagnostics = resolvedOptions.maxDiagnostics === Number.POSITIVE_INFINITY
+    ? model.diagnostics
+    : model.diagnostics.slice(0, resolvedOptions.maxDiagnostics)
+
+  return {
+    stats: buildIec61850DebugStats(model),
+    diagnosticSummary: buildDiagnosticSummary(model.diagnostics, diagnostics.length),
+    diagnostics,
+    treeRows: buildIec61850DebugTreeRows(model, resolvedOptions),
+  }
+}
+
+export function buildIec61850DebugStats(model: NormalizedSclModel): Iec61850DebugStats {
+  return {
+    sites: model.substations.length,
+    voltageLevels: model.substations.reduce((sum, site) => sum + site.voltageLevels.length, 0),
+    bays: model.substations.reduce(
+      (sum, site) => sum + site.voltageLevels.reduce((vlSum, vl) => vlSum + vl.bays.length, 0),
+      0,
+    ),
+    switchgears: countSwitchgears(model),
+    ieds: model.ieds.length,
+    logicalDevices: countLogicalDevices(model),
+    dataSets: collectDataSets(model).length,
+    reports: model.reportSubscriptions.length,
+    reportSignals: model.reportSubscriptions.reduce((sum, candidate) => sum + candidate.signalCount, 0),
+  }
 }
 
 export function buildIec61850DebugTreeRows(
@@ -81,6 +172,14 @@ export function buildIec61850DebugTreeRows(
   const resolvedOptions = resolveOptions(options)
   const rows: Iec61850DebugTreeRow[] = []
   const dataSetById = new Map(collectDataSets(model).map(dataSet => [dataSet.id, dataSet]))
+  let renderedSignalRows = 0
+  const takeVisibleSignalRows = <T>(items: readonly T[]): T[] => {
+    const remainingGlobalRows = Math.max(0, resolvedOptions.maxTotalSignalRows - renderedSignalRows)
+    const limit = Math.min(resolvedOptions.maxSignalRowsPerCollection, remainingGlobalRows)
+    const visibleRows = items.slice(0, limit)
+    renderedSignalRows += visibleRows.length
+    return visibleRows
+  }
 
   model.substations.forEach((site) => {
     const siteValue = siteNodeValue(site)
@@ -127,7 +226,7 @@ export function buildIec61850DebugTreeRows(
           label: "Switchgears",
           valueLabel: String(switchgears.length),
           isLeaf: switchgears.length === 0,
-          detail: buildSwitchgearsGroupDetail(bay, switchgears),
+          detail: buildSwitchgearsGroupDetail(bay, switchgears, resolvedOptions),
         })
 
         switchgears.forEach((equipment) => {
@@ -154,7 +253,7 @@ export function buildIec61850DebugTreeRows(
       label: "IEDs",
       valueLabel: String(model.ieds.length),
       isLeaf: model.ieds.length === 0,
-      detail: buildIedsGroupDetail(model),
+      detail: buildIedsGroupDetail(model, resolvedOptions),
     })
 
     model.ieds.forEach((ied) => {
@@ -166,7 +265,7 @@ export function buildIec61850DebugTreeRows(
         label: ied.name,
         valueLabel: `${ied.accessPoints.length} AP`,
         isLeaf: ied.accessPoints.length === 0,
-        detail: buildIedDetail(ied),
+        detail: buildIedDetail(ied, resolvedOptions),
       })
 
       ied.accessPoints.forEach((accessPoint) => {
@@ -178,7 +277,7 @@ export function buildIec61850DebugTreeRows(
           label: accessPoint.name,
           valueLabel: accessPoint.server ? "Server" : "No server",
           isLeaf: !accessPoint.server,
-          detail: buildAccessPointDetail(accessPoint, ied),
+          detail: buildAccessPointDetail(accessPoint, ied, resolvedOptions),
         })
 
         if (!accessPoint.server) {
@@ -193,7 +292,7 @@ export function buildIec61850DebugTreeRows(
           label: "Server",
           valueLabel: `${accessPoint.server.logicalDevices.length} LD`,
           isLeaf: accessPoint.server.logicalDevices.length === 0,
-          detail: buildServerDetail(accessPoint.server, accessPoint, ied),
+          detail: buildServerDetail(accessPoint.server, accessPoint, ied, resolvedOptions),
         })
 
         accessPoint.server.logicalDevices.forEach((logicalDevice) => {
@@ -205,7 +304,7 @@ export function buildIec61850DebugTreeRows(
             label: logicalDevice.inst,
             valueLabel: `${logicalDevice.logicalNodes.length} LN`,
             isLeaf: logicalDevice.logicalNodes.length === 0,
-            detail: buildLogicalDeviceDetail(logicalDevice, accessPoint, ied),
+            detail: buildLogicalDeviceDetail(logicalDevice, accessPoint, ied, resolvedOptions),
           })
 
           logicalDevice.logicalNodes.forEach((logicalNode) => {
@@ -218,7 +317,7 @@ export function buildIec61850DebugTreeRows(
               label: logicalNode.logicalNodeName,
               valueLabel: `${logicalNode.dataSets.length} DS · ${logicalNode.reportControls.length} RCB`,
               isLeaf: childCount === 0,
-              detail: buildLogicalNodeDetail(logicalNode),
+              detail: buildLogicalNodeDetail(logicalNode, resolvedOptions),
             })
 
             if (logicalNode.dataSets.length) {
@@ -230,7 +329,7 @@ export function buildIec61850DebugTreeRows(
                 label: "DataSets",
                 valueLabel: String(logicalNode.dataSets.length),
                 isLeaf: false,
-                detail: buildDataSetsGroupDetail(logicalNode),
+                detail: buildDataSetsGroupDetail(logicalNode, resolvedOptions),
               })
 
               logicalNode.dataSets.forEach((dataSet) => {
@@ -245,7 +344,7 @@ export function buildIec61850DebugTreeRows(
                   detail: buildDataSetDetail(dataSet, resolvedOptions),
                 })
 
-                const visibleMembers = dataSet.members.slice(0, resolvedOptions.maxSignalRowsPerCollection)
+                const visibleMembers = takeVisibleSignalRows(dataSet.members)
                 visibleMembers.forEach((member, index) => {
                   rows.push({
                     value: dataSetMemberNodeValue(member),
@@ -278,7 +377,7 @@ export function buildIec61850DebugTreeRows(
                 label: "ReportControls",
                 valueLabel: String(logicalNode.reportControls.length),
                 isLeaf: false,
-                detail: buildReportsGroupDetail(logicalNode),
+                detail: buildReportsGroupDetail(logicalNode, resolvedOptions),
               })
 
               logicalNode.reportControls.forEach((reportControl) => {
@@ -295,7 +394,7 @@ export function buildIec61850DebugTreeRows(
                   detail: buildReportControlDetail(reportControl, reportDataSet, resolvedOptions),
                 })
 
-                const visibleReportSignals = reportSignals.slice(0, resolvedOptions.maxSignalRowsPerCollection)
+                const visibleReportSignals = takeVisibleSignalRows(reportSignals)
                 visibleReportSignals.forEach((member, index) => {
                   rows.push({
                     value: reportSignalNodeValue(reportControl, member),
@@ -331,10 +430,22 @@ export function isSwitchgearEquipment(equipment: SclEquipment): boolean {
   return equipment.kind === "breaker" || equipment.kind === "disconnector"
 }
 
+function countSwitchgears(value: NormalizedSclModel): number {
+  return value.substations.reduce((siteSum, site) => (
+    siteSum + site.voltageLevels.reduce((voltageSum, voltageLevel) => (
+      voltageSum + voltageLevel.bays.reduce((baySum, bay) => (
+        baySum + bay.equipments.filter(isSwitchgearEquipment).length
+      ), 0)
+    ), 0)
+  ), 0)
+}
+
 function resolveOptions(options: BuildIec61850DebugTreeRowsOptions): ResolvedDebugTreeOptions {
   return {
     maxSignalRowsPerCollection: normalizeLimit(options.maxSignalRowsPerCollection),
+    maxTotalSignalRows: normalizeLimit(options.maxTotalSignalRows),
     maxDetailRowsPerSection: normalizeLimit(options.maxDetailRowsPerSection),
+    maxDiagnostics: normalizeLimit(options.maxDiagnostics),
   }
 }
 
@@ -378,6 +489,26 @@ function appendOmittedSignalRow(
       ],
     },
   })
+}
+
+function buildDiagnosticSummary(
+  diagnostics: NormalizedSclModel["diagnostics"],
+  rendered: number,
+): Iec61850DebugDiagnosticSummary {
+  const summary: Iec61850DebugDiagnosticSummary = {
+    error: 0,
+    warning: 0,
+    info: 0,
+    total: diagnostics.length,
+    rendered,
+    omitted: Math.max(0, diagnostics.length - rendered),
+  }
+
+  for (const diagnostic of diagnostics) {
+    summary[diagnostic.severity] += 1
+  }
+
+  return summary
 }
 
 function siteNodeValue(site: SclSubstation): string {
@@ -525,7 +656,11 @@ function buildBayDetail(bay: SclBay, switchgearCount: number): Iec61850DebugDeta
   }
 }
 
-function buildSwitchgearsGroupDetail(bay: SclBay, switchgears: SclEquipment[]): Iec61850DebugDetail {
+function buildSwitchgearsGroupDetail(
+  bay: SclBay,
+  switchgears: SclEquipment[],
+  options: ResolvedDebugTreeOptions,
+): Iec61850DebugDetail {
   return {
     title: `${bay.name} switchgears`,
     subtitle: "ConductingEquipment CBR/DIS subset",
@@ -537,7 +672,9 @@ function buildSwitchgearsGroupDetail(bay: SclBay, switchgears: SclEquipment[]): 
         row("switchgear count", switchgears.length),
       ]),
       section("Members", switchgears.length
-        ? switchgears.map(equipment => row(equipment.name, `${equipment.kind} · ${equipment.type}`))
+        ? limitedRows(switchgears, options.maxDetailRowsPerSection, equipment => (
+          row(equipment.name, `${equipment.kind} · ${equipment.type}`)
+        ))
         : [row("members", "none")]),
     ],
   }
@@ -569,7 +706,10 @@ function buildSwitchgearDetail(equipment: SclEquipment): Iec61850DebugDetail {
   }
 }
 
-function buildIedsGroupDetail(model: NormalizedSclModel): Iec61850DebugDetail {
+function buildIedsGroupDetail(
+  model: NormalizedSclModel,
+  options: ResolvedDebugTreeOptions,
+): Iec61850DebugDetail {
   const dataSets = collectDataSets(model)
   const reportControls = collectReportControls(model)
 
@@ -593,16 +733,15 @@ function buildIedsGroupDetail(model: NormalizedSclModel): Iec61850DebugDetail {
         row("subscription candidates", model.reportSubscriptions.length),
       ]),
       section("Report candidates", model.reportSubscriptions.length
-        ? model.reportSubscriptions.map(candidate => row(
-          candidate.reportControlName,
-          `${candidate.reportKind} · ${candidate.dataSetRef ?? "unresolved DataSet"} · ${candidate.signalCount} signals`,
-        ))
+        ? limitedRows(model.reportSubscriptions, options.maxDetailRowsPerSection, reportCandidateRow)
         : [row("candidates", "none")]),
     ],
   }
 }
 
-function buildIedDetail(ied: SclIed): Iec61850DebugDetail {
+function buildIedDetail(ied: SclIed, options: ResolvedDebugTreeOptions): Iec61850DebugDetail {
+  const dataSets = collectIedDataSets(ied)
+  const reportControls = collectIedReportControls(ied)
   return {
     title: ied.name,
     subtitle: "SCL IED",
@@ -613,6 +752,7 @@ function buildIedDetail(ied: SclIed): Iec61850DebugDetail {
         row("manufacturer", ied.manufacturer),
         row("type", ied.type),
         row("configVersion", ied.configVersion),
+        row("IP addresses", formatIedIpAddresses(ied)),
         row("normalized id", ied.id),
         row("source path", ied.sourcePath),
       ]),
@@ -620,14 +760,20 @@ function buildIedDetail(ied: SclIed): Iec61850DebugDetail {
         row("access points", ied.accessPoints.length),
         row("logical devices", countIedLogicalDevices(ied)),
         row("logical nodes", countIedLogicalNodes(ied)),
-        row("DataSets", collectIedDataSets(ied).length),
-        row("ReportControls", collectIedReportControls(ied).length),
+        actionRow("DataSets", dataSets.length, dataSetListAction(`${ied.name} DataSets`, "IED DataSet declarations", dataSets, options)),
+        actionRow("ReportControls", reportControls.length, reportControlListAction(`${ied.name} ReportControls`, "IED report control declarations", reportControls)),
       ]),
     ],
   }
 }
 
-function buildAccessPointDetail(accessPoint: SclAccessPoint, ied: SclIed): Iec61850DebugDetail {
+function buildAccessPointDetail(
+  accessPoint: SclAccessPoint,
+  ied: SclIed,
+  options: ResolvedDebugTreeOptions,
+): Iec61850DebugDetail {
+  const dataSets = collectAccessPointDataSets(accessPoint)
+  const reportControls = collectAccessPointReportControls(accessPoint)
   return {
     title: accessPoint.name,
     subtitle: "SCL AccessPoint",
@@ -638,21 +784,30 @@ function buildAccessPointDetail(accessPoint: SclAccessPoint, ied: SclIed): Iec61
         row("desc", accessPoint.desc),
         row("router", accessPoint.router),
         row("clock", accessPoint.clock),
+        row("IP address", formatAccessPointIpAddress(accessPoint)),
         row("server present", Boolean(accessPoint.server)),
         row("normalized id", accessPoint.id),
         row("source path", accessPoint.sourcePath),
       ]),
+      section("Communication", accessPointCommunicationRows(accessPoint)),
       section("Runtime inventory", [
         row("logical devices", accessPoint.server?.logicalDevices.length ?? 0),
         row("logical nodes", countAccessPointLogicalNodes(accessPoint)),
-        row("DataSets", collectAccessPointDataSets(accessPoint).length),
-        row("ReportControls", collectAccessPointReportControls(accessPoint).length),
+        actionRow("DataSets", dataSets.length, dataSetListAction(`${ied.name}/${accessPoint.name} DataSets`, "AccessPoint DataSet declarations", dataSets, options)),
+        actionRow("ReportControls", reportControls.length, reportControlListAction(`${ied.name}/${accessPoint.name} ReportControls`, "AccessPoint report control declarations", reportControls)),
       ]),
     ],
   }
 }
 
-function buildServerDetail(server: SclServer, accessPoint: SclAccessPoint, ied: SclIed): Iec61850DebugDetail {
+function buildServerDetail(
+  server: SclServer,
+  accessPoint: SclAccessPoint,
+  ied: SclIed,
+  options: ResolvedDebugTreeOptions,
+): Iec61850DebugDetail {
+  const dataSets = collectServerDataSets(server)
+  const reportControls = collectServerReportControls(server)
   return {
     title: "Server",
     subtitle: "SCL AccessPoint Server",
@@ -660,14 +815,15 @@ function buildServerDetail(server: SclServer, accessPoint: SclAccessPoint, ied: 
       section("Scope", [
         row("IED", ied.name),
         row("access point", accessPoint.name),
+        row("IP address", formatAccessPointIpAddress(accessPoint)),
         row("normalized id", server.id),
         row("source path", server.sourcePath),
       ]),
       section("Runtime inventory", [
         row("logical devices", server.logicalDevices.length),
         row("logical nodes", countServerLogicalNodes(server)),
-        row("DataSets", collectServerDataSets(server).length),
-        row("ReportControls", collectServerReportControls(server).length),
+        actionRow("DataSets", dataSets.length, dataSetListAction(`${ied.name}/${accessPoint.name} Server DataSets`, "Server DataSet declarations", dataSets, options)),
+        actionRow("ReportControls", reportControls.length, reportControlListAction(`${ied.name}/${accessPoint.name} Server ReportControls`, "Server report control declarations", reportControls)),
       ]),
     ],
   }
@@ -677,7 +833,10 @@ function buildLogicalDeviceDetail(
   logicalDevice: SclLogicalDevice,
   accessPoint: SclAccessPoint,
   ied: SclIed,
+  options: ResolvedDebugTreeOptions,
 ): Iec61850DebugDetail {
+  const dataSets = logicalDevice.logicalNodes.flatMap(logicalNode => logicalNode.dataSets)
+  const reportControls = logicalDevice.logicalNodes.flatMap(logicalNode => logicalNode.reportControls)
   return {
     title: logicalDevice.inst,
     subtitle: "SCL LDevice",
@@ -693,14 +852,17 @@ function buildLogicalDeviceDetail(
       ]),
       section("Runtime inventory", [
         row("logical nodes", logicalDevice.logicalNodes.length),
-        row("DataSets", logicalDevice.logicalNodes.reduce((sum, node) => sum + node.dataSets.length, 0)),
-        row("ReportControls", logicalDevice.logicalNodes.reduce((sum, node) => sum + node.reportControls.length, 0)),
+        actionRow("DataSets", dataSets.length, dataSetListAction(`${ied.name}/${logicalDevice.inst} DataSets`, "Logical device DataSet declarations", dataSets, options)),
+        actionRow("ReportControls", reportControls.length, reportControlListAction(`${ied.name}/${logicalDevice.inst} ReportControls`, "Logical device report control declarations", reportControls)),
       ]),
     ],
   }
 }
 
-function buildLogicalNodeDetail(logicalNode: SclLogicalNode): Iec61850DebugDetail {
+function buildLogicalNodeDetail(
+  logicalNode: SclLogicalNode,
+  options: ResolvedDebugTreeOptions,
+): Iec61850DebugDetail {
   return {
     title: logicalNode.logicalNodeName,
     subtitle: `SCL ${logicalNode.tagName}`,
@@ -719,15 +881,18 @@ function buildLogicalNodeDetail(logicalNode: SclLogicalNode): Iec61850DebugDetai
         row("source path", logicalNode.sourcePath),
       ]),
       section("Runtime inventory", [
-        row("DataSets", logicalNode.dataSets.length),
+        actionRow("DataSets", logicalNode.dataSets.length, dataSetListAction(`${logicalNode.logicalNodeName} DataSets`, "Logical node DataSet declarations", logicalNode.dataSets, options)),
         row("DataSet members", logicalNode.dataSets.reduce((sum, dataSet) => sum + dataSet.members.length, 0)),
-        row("ReportControls", logicalNode.reportControls.length),
+        actionRow("ReportControls", logicalNode.reportControls.length, reportControlListAction(`${logicalNode.logicalNodeName} ReportControls`, "Logical node report control declarations", logicalNode.reportControls)),
       ]),
     ],
   }
 }
 
-function buildDataSetsGroupDetail(logicalNode: SclLogicalNode): Iec61850DebugDetail {
+function buildDataSetsGroupDetail(
+  logicalNode: SclLogicalNode,
+  options: ResolvedDebugTreeOptions,
+): Iec61850DebugDetail {
   return {
     title: `${logicalNode.logicalNodeName} DataSets`,
     subtitle: "IEC 61850 DataSet declarations",
@@ -739,7 +904,9 @@ function buildDataSetsGroupDetail(logicalNode: SclLogicalNode): Iec61850DebugDet
         row("logical node", logicalNode.logicalNodeName),
         row("DataSets", logicalNode.dataSets.length),
       ]),
-      section("Members", logicalNode.dataSets.map(dataSet => row(dataSet.name, `${dataSet.members.length} signals`))),
+      section("Members", limitedRows(logicalNode.dataSets, options.maxDetailRowsPerSection, dataSet => (
+        row(dataSet.name, `${dataSet.members.length} signals`)
+      ))),
     ],
   }
 }
@@ -795,7 +962,10 @@ function buildDataSetMemberDetail(
   }
 }
 
-function buildReportsGroupDetail(logicalNode: SclLogicalNode): Iec61850DebugDetail {
+function buildReportsGroupDetail(
+  logicalNode: SclLogicalNode,
+  options: ResolvedDebugTreeOptions,
+): Iec61850DebugDetail {
   return {
     title: `${logicalNode.logicalNodeName} ReportControls`,
     subtitle: "IEC 61850 report control declarations",
@@ -807,7 +977,7 @@ function buildReportsGroupDetail(logicalNode: SclLogicalNode): Iec61850DebugDeta
         row("logical node", logicalNode.logicalNodeName),
         row("ReportControls", logicalNode.reportControls.length),
       ]),
-      section("Members", logicalNode.reportControls.map(reportControl => row(
+      section("Members", limitedRows(logicalNode.reportControls, options.maxDetailRowsPerSection, reportControl => row(
         reportControl.name,
         `${reportKindLabel(reportControl)} · ${reportControl.dataSetRef ?? "unresolved DataSet"}`,
       ))),
@@ -897,6 +1067,99 @@ function buildReportSignalDetail(
       ]),
       section("Address", dataSetMemberRows(member)),
     ],
+  }
+}
+
+function accessPointCommunicationRows(accessPoint: SclAccessPoint): Iec61850DebugDetailRow[] {
+  if (!accessPoint.connectedAccessPoints.length) {
+    return [row("ConnectedAP", "not declared")]
+  }
+
+  return accessPoint.connectedAccessPoints.flatMap((connectedAccessPoint, index) => {
+    const label = connectedAccessPoint.subNetworkName ?? `ConnectedAP ${index + 1}`
+    return [
+      row(`${label} subnet`, connectedAccessPoint.subNetworkName),
+      row(`${label} type`, connectedAccessPoint.subNetworkType),
+      row(`${label} IP`, connectedAccessPoint.ipAddress),
+      row(`${label} subnet mask`, connectedAccessPoint.ipSubnet),
+      row(`${label} gateway`, connectedAccessPoint.ipGateway),
+      ...connectedAccessPoint.addressParameters.map(parameter => row(
+        `${label} ${parameter.type ?? "P"}`,
+        parameter.value,
+      )),
+    ]
+  })
+}
+
+function formatIedIpAddresses(ied: SclIed): string {
+  const addresses = ied.accessPoints.flatMap(accessPoint => (
+    accessPoint.connectedAccessPoints
+      .map(connectedAccessPoint => connectedAccessPoint.ipAddress)
+      .filter(isPresent)
+  ))
+  return addresses.length ? Array.from(new Set(addresses)).join(", ") : "—"
+}
+
+function formatAccessPointIpAddress(accessPoint: SclAccessPoint): string {
+  const addresses = accessPoint.connectedAccessPoints
+    .map(connectedAccessPoint => connectedAccessPoint.ipAddress)
+    .filter(isPresent)
+  return addresses.length ? Array.from(new Set(addresses)).join(", ") : "—"
+}
+
+function dataSetListAction(
+  title: string,
+  subtitle: string,
+  dataSets: readonly SclDataSet[],
+  options: ResolvedDebugTreeOptions,
+): Iec61850DebugDetailAction {
+  return {
+    kind: "list-dialog",
+    title,
+    subtitle,
+    emptyLabel: "No DataSets.",
+    items: dataSets.map(dataSet => ({
+      title: dataSet.name,
+      subtitle: `${dataSet.iedName}/${dataSet.accessPointName}/${dataSet.logicalDeviceInst}/${dataSet.logicalNodeName} · ${dataSet.members.length} signals`,
+      rows: [
+        row("DataSet ref", formatDataSetReference(dataSet)),
+        row("desc", dataSet.desc),
+        row("signals", dataSet.members.length),
+        row("normalized id", dataSet.id),
+        row("source path", dataSet.sourcePath),
+        ...limitedRows(dataSet.members, options.maxDetailRowsPerSection, (member, index) => (
+          row(`signal ${index + 1}`, member.reference)
+        )),
+      ],
+    })),
+  }
+}
+
+function reportControlListAction(
+  title: string,
+  subtitle: string,
+  reportControls: readonly SclReportControl[],
+): Iec61850DebugDetailAction {
+  return {
+    kind: "list-dialog",
+    title,
+    subtitle,
+    emptyLabel: "No ReportControls.",
+    items: reportControls.map(reportControl => ({
+      title: reportControl.name,
+      subtitle: `${reportKindLabel(reportControl)} · ${reportControl.dataSetRef ?? "unresolved DataSet"}`,
+      rows: [
+        row("rptID", reportControl.rptId),
+        row("datSet", reportControl.dataSetName),
+        row("confRev", reportControl.confRev),
+        row("buffered", reportControl.buffered),
+        row("indexed", reportControl.indexed),
+        row("bufTime ms", reportControl.bufferTimeMs),
+        row("intgPd ms", reportControl.integrityPeriodMs),
+        row("normalized id", reportControl.id),
+        row("source path", reportControl.sourcePath),
+      ],
+    })),
   }
 }
 
@@ -1001,11 +1264,42 @@ function row(label: string, value: unknown): Iec61850DebugDetailRow {
   }
 }
 
+function actionRow(
+  label: string,
+  value: unknown,
+  action: Iec61850DebugDetailAction,
+): Iec61850DebugDetailRow {
+  return {
+    label,
+    value: formatValue(value),
+    action,
+  }
+}
+
+function reportCandidateRow(candidate: NormalizedSclModel["reportSubscriptions"][number]): Iec61850DebugDetailRow {
+  return {
+    label: candidate.reportControlName,
+    value: `${candidate.reportKind} · ${candidate.dataSetRef ?? "unresolved DataSet"} · ${candidate.signalCount} signals`,
+    signalCount: candidate.signalCount,
+    reportSignalsAction: {
+      kind: "report-signals-dialog",
+      reportControlValue: `report-control:${candidate.reportControlId}`,
+      reportKind: candidate.reportKind,
+      dataSetRef: candidate.dataSetRef,
+      signalCount: candidate.signalCount,
+    },
+  }
+}
+
 function formatVoltage(voltage: SclVoltage | null): string {
   if (!voltage?.value) {
     return "—"
   }
   return `${voltage.value} ${voltage.multiplier ?? ""}${voltage.unit ?? ""}`.trim()
+}
+
+function formatDataSetReference(dataSet: SclDataSet): string {
+  return `${dataSet.iedName}/${dataSet.accessPointName}/${dataSet.logicalDeviceInst}/${dataSet.logicalNodeName}.${dataSet.name}`
 }
 
 function reportKindLabel(reportControl: SclReportControl): "BRCB" | "URCB" {
@@ -1089,4 +1383,8 @@ function formatValue(value: unknown): string {
     return value ? "true" : "false"
   }
   return String(value)
+}
+
+function isPresent(value: string | null | undefined): value is string {
+  return Boolean(value)
 }

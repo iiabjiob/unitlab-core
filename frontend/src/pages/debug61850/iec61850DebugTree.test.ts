@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest"
 
 import { parseScdSource } from "@/modules/scd-sld-core"
-import { buildIec61850DebugTreeRows } from "./iec61850DebugTree"
+import {
+  buildIec61850DebugDocument,
+  buildIec61850DebugTreeRows,
+} from "./iec61850DebugTree"
 
 const fixtureScd = `<?xml version="1.0" encoding="UTF-8"?>
 <SCL xmlns="http://www.iec.ch/61850/2003/SCL">
@@ -27,6 +30,15 @@ const runtimeScd = `<?xml version="1.0" encoding="UTF-8"?>
       <Bay name="BAY1"/>
     </VoltageLevel>
   </Substation>
+  <Communication>
+    <SubNetwork name="StationBus" type="8-MMS">
+      <ConnectedAP iedName="IED1" apName="AP1">
+        <Address>
+          <P type="IP">192.168.10.21</P>
+        </Address>
+      </ConnectedAP>
+    </SubNetwork>
+  </Communication>
   <IED name="IED1" manufacturer="Generic Vendor" type="Generic IED">
     <AccessPoint name="AP1">
       <Server>
@@ -127,6 +139,128 @@ describe("iec61850DebugTree", () => {
         { label: "signal count", value: "1" },
       ]),
     }))
+    expect(iedsGroup?.detail.sections).toContainEqual(expect.objectContaining({
+      title: "Report candidates",
+      rows: expect.arrayContaining([
+        expect.objectContaining({
+          label: "brcbEvents",
+          signalCount: 1,
+          reportSignalsAction: {
+            kind: "report-signals-dialog",
+            reportControlValue: "report-control:ied/IED1/accessPoint/AP1/server/lDevice/LD0/ln/LLN0/reportControl/brcbEvents",
+            reportKind: "buffered",
+            dataSetRef: "IED1/AP1/LD0/LLN0.dsEvents",
+            signalCount: 1,
+          },
+        }),
+      ]),
+    }))
+
+    expect(accessPoint?.detail.sections).toContainEqual(expect.objectContaining({
+      title: "Identity",
+      rows: expect.arrayContaining([
+        { label: "IP address", value: "192.168.10.21" },
+      ]),
+    }))
+
+    expect(lln0?.detail.sections).toContainEqual(expect.objectContaining({
+      title: "Runtime inventory",
+      rows: expect.arrayContaining([
+        expect.objectContaining({
+          label: "DataSets",
+          value: "1",
+          action: expect.objectContaining({
+            title: "LLN0 DataSets",
+            items: [
+              expect.objectContaining({
+                title: "dsEvents",
+                rows: expect.arrayContaining([
+                  { label: "signals", value: "1" },
+                  { label: "signal 1", value: "LD0/XCBR1.Pos.stVal[ST]" },
+                ]),
+              }),
+            ],
+          }),
+        }),
+        expect.objectContaining({
+          label: "ReportControls",
+          value: "1",
+          action: expect.objectContaining({
+            title: "LLN0 ReportControls",
+            items: [
+              expect.objectContaining({
+                title: "brcbEvents",
+              }),
+            ],
+          }),
+        }),
+      ]),
+    }))
+  })
+
+  it("builds a bounded debug document for worker transfer", () => {
+    const model = parseScdSource({
+      fileName: "runtime.scd",
+      contentHash: "runtime",
+      xmlText: runtimeScd,
+    })
+
+    const document = buildIec61850DebugDocument(model, {
+      maxSignalRowsPerCollection: 0,
+      maxDetailRowsPerSection: 0,
+    })
+
+    expect(document.stats).toMatchObject({
+      sites: 1,
+      voltageLevels: 1,
+      bays: 1,
+      ieds: 1,
+      logicalDevices: 1,
+      dataSets: 1,
+      reports: 1,
+      reportSignals: 1,
+    })
+    expect(document.diagnostics).toBe(model.diagnostics)
+    expect(document.treeRows.some(row => row.kind === "dataset-member" && row.valueLabel === "capped")).toBe(true)
+    expect(document.treeRows.some(row => row.kind === "report-signal" && row.valueLabel === "capped")).toBe(true)
+  })
+
+  it("caps debug diagnostics while keeping full severity counts", () => {
+    const model = parseScdSource({
+      fileName: "runtime.scd",
+      contentHash: "runtime",
+      xmlText: runtimeScd,
+    })
+    model.diagnostics.push(
+      {
+        severity: "warning",
+        stage: "parser",
+        code: "test.warning",
+        message: "warning",
+        sourceLocation: { line: 1, column: 1, offset: 0 },
+      },
+      {
+        severity: "error",
+        stage: "parser",
+        code: "test.error",
+        message: "error",
+        sourceLocation: { line: 1, column: 1, offset: 0 },
+      },
+    )
+
+    const document = buildIec61850DebugDocument(model, {
+      maxDiagnostics: 1,
+    })
+
+    expect(document.diagnostics).toHaveLength(1)
+    expect(document.diagnosticSummary).toMatchObject({
+      error: 1,
+      warning: 1,
+      info: 0,
+      total: 2,
+      rendered: 1,
+      omitted: 1,
+    })
   })
 
   it("caps rendered DataSet and report signal rows for large debug views", () => {
@@ -160,4 +294,25 @@ describe("iec61850DebugTree", () => {
       ],
     }))
   })
+
+  it("caps rendered signal rows globally for worker-sized debug documents", () => {
+    const model = parseScdSource({
+      fileName: "runtime.scd",
+      contentHash: "runtime",
+      xmlText: runtimeScd,
+    })
+
+    const rows = buildIec61850DebugTreeRows(model, {
+      maxTotalSignalRows: 1,
+    })
+
+    expect(rows.filter(row => row.kind === "dataset-member" && row.valueLabel !== "capped")).toHaveLength(1)
+    expect(rows.filter(row => row.kind === "report-signal" && row.valueLabel !== "capped")).toHaveLength(0)
+    expect(rows).toContainEqual(expect.objectContaining({
+      kind: "report-signal",
+      label: "1 more signals not rendered",
+      valueLabel: "capped",
+    }))
+  })
+
 })
