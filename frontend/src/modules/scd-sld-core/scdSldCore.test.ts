@@ -5,7 +5,9 @@ import {
   buildSldCellModel,
   createFlatSldDocument,
   createFlatSldDocumentFromGraph,
+  FEEDER_TEMPLATE_UNITS,
   generateSldFromScd,
+  getSldBayLayoutTemplates,
   layoutSldDocument,
   parseScdSource,
 } from "./index"
@@ -561,13 +563,34 @@ describe("scd-sld-core", () => {
         segments: [
           expect.objectContaining({
             points: [
-              { x: 96, y: 312 },
+              { x: 96, y: 324 },
               { x: 168, y: 312 },
             ],
           }),
         ],
       }),
     }))
+  })
+
+  it("describes double bus feeder disconnectors away from selector bridge bends", () => {
+    const template = getSldBayLayoutTemplates().find(item => item.id === "double-bus-feeder.vertical-up")
+
+    expect(template).toBeTruthy()
+    const busDisconnectors = template?.slots.filter(slot => slot.role === "busDisconnector") ?? []
+    const earthSwitches = template?.slots.filter(slot => slot.role === "earthSwitch") ?? []
+
+    expect(busDisconnectors.map(slot => slot.point.y)).toEqual([
+      FEEDER_TEMPLATE_UNITS.busDisconnectorY,
+      FEEDER_TEMPLATE_UNITS.busDisconnectorY,
+    ])
+    expect(busDisconnectors.every(slot => slot.point.y > FEEDER_TEMPLATE_UNITS.busSelectorBridgeY)).toBe(true)
+    expect(busDisconnectors.every(slot => slot.point.y < FEEDER_TEMPLATE_UNITS.busbarUpperY)).toBe(true)
+    expect(earthSwitches.map(slot => slot.point.y)).toEqual(busDisconnectors.map(slot => slot.point.y))
+    expect(earthSwitches.every((slot, index) => slot.point.x > (busDisconnectors[index]?.point.x ?? Number.POSITIVE_INFINITY))).toBe(true)
+    expect(template?.wires.filter(wire => wire.id.startsWith("earth-")).map(wire => wire.points[0]?.y)).toEqual([
+      FEEDER_TEMPLATE_UNITS.busDisconnectorY + FEEDER_TEMPLATE_UNITS.busEarthBranchDeltaY,
+      FEEDER_TEMPLATE_UNITS.busDisconnectorY + FEEDER_TEMPLATE_UNITS.busEarthBranchDeltaY,
+    ])
   })
 
   it("keeps bus selector disconnectors on the lower branch and bridges incomplete feeder topology", () => {
@@ -627,9 +650,9 @@ describe("scd-sld-core", () => {
 
     const elementsByLabel = new Map(result.document.elements.map(element => [element.label, element]))
     expect(elementsByLabel.get("BAY1")?.position).toEqual({ x: 216, y: 72 })
-    expect(elementsByLabel.get("QE1")?.position).toEqual({ x: 288, y: 120 })
+    expect(elementsByLabel.get("QE1")?.position).toEqual({ x: 288, y: 96 })
     expect(elementsByLabel.get("QS1")?.position).toEqual({ x: 216, y: 144 })
-    expect(elementsByLabel.get("QE2")?.position).toEqual({ x: 288, y: 192 })
+    expect(elementsByLabel.get("QE2")?.position).toEqual({ x: 288, y: 168 })
     expect(elementsByLabel.get("Q01")?.position).toEqual({ x: 216, y: 216 })
     expect(elementsByLabel.get("QB2")?.position).toEqual({ x: 96, y: 312 })
     expect(elementsByLabel.get("QB1")?.position).toEqual({ x: 336, y: 312 })
@@ -639,15 +662,15 @@ describe("scd-sld-core", () => {
     expect(result.document.connections).toContainEqual(expect.objectContaining({
       id: expect.stringContaining("feeder-template-bridge"),
       route: expect.objectContaining({
-        segments: [
+        segments: expect.arrayContaining([
           expect.objectContaining({
             terminalOwnerId: "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01",
             points: [
               { x: 216, y: 216 },
-              { x: 216, y: 312 },
+              { x: 216, y: 288 },
             ],
           }),
-        ],
+        ]),
       }),
     }))
   })

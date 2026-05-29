@@ -32,7 +32,9 @@ const FEEDER_TEMPLATE_RIGHT_X_UNITS = FEEDER_TEMPLATE_UNITS.rightX
 const FEEDER_TEMPLATE_FEEDER_Y_UNITS = FEEDER_TEMPLATE_UNITS.feederY
 const FEEDER_TEMPLATE_UPPER_DISCONNECTOR_Y_UNITS = FEEDER_TEMPLATE_UNITS.upperDisconnectorY
 const FEEDER_TEMPLATE_BREAKER_Y_UNITS = FEEDER_TEMPLATE_UNITS.breakerY
-const FEEDER_TEMPLATE_BUS_SELECTOR_Y_UNITS = FEEDER_TEMPLATE_UNITS.busSelectorY
+const FEEDER_TEMPLATE_BUS_SELECTOR_BRIDGE_Y_UNITS = FEEDER_TEMPLATE_UNITS.busSelectorBridgeY
+const FEEDER_TEMPLATE_BUS_DISCONNECTOR_Y_UNITS = FEEDER_TEMPLATE_UNITS.busDisconnectorY
+const FEEDER_TEMPLATE_BUS_EARTH_BRANCH_DELTA_Y_UNITS = FEEDER_TEMPLATE_UNITS.busEarthBranchDeltaY
 const FEEDER_TEMPLATE_SIDE_EARTH_X_OFFSET_UNITS = FEEDER_TEMPLATE_UNITS.sideEarthXOffset
 const FEEDER_TEMPLATE_SIDE_EARTH_Y_UNITS = FEEDER_TEMPLATE_UNITS.sideEarthY
 const FEEDER_TEMPLATE_SIDE_EARTH_Y_STEP_UNITS = FEEDER_TEMPLATE_UNITS.sideEarthYStep
@@ -71,7 +73,7 @@ export function layoutSldDocument(
     connections: [
       ...routedConnections,
       ...buildFeederTemplateBridgeConnections(cellModel, routedConnections, elementPositionsBySourceId, gridSize),
-      ...buildFeederTemplateGroundConnections(cellModel, routedConnections, elementPositionsBySourceId),
+      ...buildFeederTemplateGroundConnections(cellModel, routedConnections, elementPositionsBySourceId, gridSize),
     ],
     labels: elements.map(element => ({
       id: `${element.id}/label`,
@@ -184,7 +186,7 @@ function buildFeederCellPositions(
     assignNodePosition(positions, assignedSourceIds, node, templatePoint(
       bayOrigin,
       slot,
-      FEEDER_TEMPLATE_BUS_SELECTOR_Y_UNITS,
+      FEEDER_TEMPLATE_BUS_DISCONNECTOR_Y_UNITS,
       gridSize,
     ))
   })
@@ -238,7 +240,7 @@ function buildFeederCellPositions(
       templatePoint(
         bayOrigin,
         (slot ?? FEEDER_TEMPLATE_CENTER_X_UNITS) + FEEDER_TEMPLATE_SIDE_EARTH_X_OFFSET_UNITS,
-        FEEDER_TEMPLATE_BUS_SELECTOR_Y_UNITS,
+        FEEDER_TEMPLATE_BUS_DISCONNECTOR_Y_UNITS,
         gridSize,
       ),
     )
@@ -446,13 +448,33 @@ function buildFeederTemplateBridgeConnections(
       }
 
       const busSelectorY = snapNumber(average(busSelectorPoints.map(point => point.y)), gridSize)
+      const bridgeY = busSelectorY - toGridCoordinate(
+        FEEDER_TEMPLATE_BUS_DISCONNECTOR_Y_UNITS - FEEDER_TEMPLATE_BUS_SELECTOR_BRIDGE_Y_UNITS,
+        gridSize,
+      )
+      const bridgeAnchor = { x: sourcePoint.x, y: bridgeY }
       const points = uniqueConsecutivePoints([
         sourcePoint,
-        { x: sourcePoint.x, y: busSelectorY },
+        bridgeAnchor,
       ])
       if (points.length < 2) {
         continue
       }
+
+      const busSelectorSegments = busSelectorNodes.flatMap((node) => {
+        const point = positionsBySourceId.get(node.sourceId)
+        if (!point) {
+          return []
+        }
+        return [{
+          terminalOwnerId: node.sourceId,
+          points: uniqueConsecutivePoints([
+            point,
+            { x: point.x, y: bridgeY },
+            bridgeAnchor,
+          ]),
+        }]
+      })
 
       connections.push({
         id: `connection:feeder-template-bridge:${sanitizeId(bayCell.id)}`,
@@ -463,11 +485,14 @@ function buildFeederTemplateBridgeConnections(
         terminalOwnerIds: [bridgeSource.sourceId, ...busSelectorNodes.map(node => node.sourceId)],
         route: {
           kind: "orthogonal-star",
-          anchor: points[points.length - 1]!,
-          segments: [{
-            terminalOwnerId: bridgeSource.sourceId,
-            points,
-          }],
+          anchor: bridgeAnchor,
+          segments: [
+            {
+              terminalOwnerId: bridgeSource.sourceId,
+              points,
+            },
+            ...busSelectorSegments,
+          ],
         },
       })
     }
@@ -480,6 +505,7 @@ function buildFeederTemplateGroundConnections(
   cellModel: SldCellModel,
   existingConnections: SldConnection[],
   positionsBySourceId: Map<string, SldRoutePoint>,
+  gridSize: number,
 ): SldConnection[] {
   const connections: SldConnection[] = []
 
@@ -508,7 +534,7 @@ function buildFeederTemplateGroundConnections(
         }
 
         const targetPoint = groundNode.busbarConnected
-          ? resolveNearestPointOnSameSide(groundPoint, busSelectorNodes, positionsBySourceId)
+          ? resolveBusbarGroundConnectionPoint(groundPoint, busSelectorNodes, positionsBySourceId, gridSize)
           : resolveSideGroundConnectionPoint(groundPoint, centerX, centralNodes, positionsBySourceId)
         if (!targetPoint) {
           continue
@@ -574,6 +600,21 @@ function resolveNearestPointOnSameSide(
     .filter((candidate): candidate is SldRoutePoint => candidate !== undefined)
     .sort((left, right) => Math.abs(left.x - point.x) - Math.abs(right.x - point.x))[0]
   return nearest ? { x: nearest.x, y: point.y } : null
+}
+
+function resolveBusbarGroundConnectionPoint(
+  point: SldRoutePoint,
+  nodes: SldCellNode[],
+  positionsBySourceId: Map<string, SldRoutePoint>,
+  gridSize: number,
+): SldRoutePoint | null {
+  const nearest = resolveNearestPointOnSameSide(point, nodes, positionsBySourceId)
+  return nearest
+    ? {
+        x: nearest.x,
+        y: nearest.y + FEEDER_TEMPLATE_BUS_EARTH_BRANCH_DELTA_Y_UNITS * gridSize,
+      }
+    : null
 }
 
 function resolveSideGroundConnectionPoint(

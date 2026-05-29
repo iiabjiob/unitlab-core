@@ -15,9 +15,13 @@ export const FEEDER_TEMPLATE_UNITS = {
   feederY: 0,
   upperDisconnectorY: 3,
   breakerY: 6,
-  busSelectorY: 10,
+  busSelectorBridgeY: 9,
+  busDisconnectorY: 10,
+  busbarUpperY: 12,
+  busbarLowerY: 15,
+  busEarthBranchDeltaY: 0.5,
   sideEarthXOffset: 3,
-  sideEarthY: 2,
+  sideEarthY: 1,
   sideEarthYStep: 3,
 } as const
 
@@ -80,7 +84,7 @@ const singleBusFeederTemplate: SldBayLayoutTemplate = {
     feederSlot("outgoing", "Outgoing feeder", FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.feederY, true),
     disconnectorSlot("line-disconnector", "Line disconnector", "lineDisconnector", FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.upperDisconnectorY, false),
     breakerSlot("circuit-breaker", "Circuit breaker", FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.breakerY, true),
-    disconnectorSlot("bus-disconnector", "Bus disconnector", "busDisconnector", FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.busSelectorY, true),
+    disconnectorSlot("bus-disconnector", "Bus disconnector", "busDisconnector", FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.busDisconnectorY, true),
     disconnectorSlot("earth-switch", "Earth switch", "earthSwitch", FEEDER_TEMPLATE_UNITS.centerX + FEEDER_TEMPLATE_UNITS.sideEarthXOffset, FEEDER_TEMPLATE_UNITS.sideEarthY, false),
   ],
   wires: [
@@ -94,15 +98,15 @@ const singleBusFeederTemplate: SldBayLayoutTemplate = {
     ]),
     primaryWire("breaker-to-bus-disconnector", "Breaker to bus disconnector", [
       point(FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.breakerY),
-      point(FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.busSelectorY),
+      point(FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.busDisconnectorY),
     ]),
     primaryWire("bus-disconnector-to-busbar", "Bus disconnector to busbar", [
-      point(FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.busSelectorY),
-      point(FEEDER_TEMPLATE_UNITS.centerX, 12),
+      point(FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.busDisconnectorY),
+      point(FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.busbarUpperY),
     ]),
     busbarWire("busbar", "Busbar", [
-      point(FEEDER_TEMPLATE_UNITS.leftX, 12),
-      point(FEEDER_TEMPLATE_UNITS.rightX, 12),
+      point(FEEDER_TEMPLATE_UNITS.leftX, FEEDER_TEMPLATE_UNITS.busbarUpperY),
+      point(FEEDER_TEMPLATE_UNITS.rightX, FEEDER_TEMPLATE_UNITS.busbarUpperY),
     ]),
     primaryWire("earth-branch", "Earth switch branch", [
       point(FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.sideEarthY),
@@ -128,10 +132,10 @@ const doubleBusFeederTemplate: SldBayLayoutTemplate = {
     feederSlot("outgoing", "Outgoing feeder", FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.feederY, true),
     disconnectorSlot("line-disconnector", "Line disconnector", "lineDisconnector", FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.upperDisconnectorY, false),
     breakerSlot("circuit-breaker", "Circuit breaker", FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.breakerY, true),
-    disconnectorSlot("bus-disconnector-a", "Bus disconnector A", "busDisconnector", FEEDER_TEMPLATE_UNITS.leftX, FEEDER_TEMPLATE_UNITS.busSelectorY, true),
-    disconnectorSlot("bus-disconnector-b", "Bus disconnector B", "busDisconnector", FEEDER_TEMPLATE_UNITS.rightX, FEEDER_TEMPLATE_UNITS.busSelectorY, true),
-    disconnectorSlot("earth-switch-a", "Earth switch A", "earthSwitch", FEEDER_TEMPLATE_UNITS.leftX + FEEDER_TEMPLATE_UNITS.sideEarthXOffset, FEEDER_TEMPLATE_UNITS.busSelectorY, false),
-    disconnectorSlot("earth-switch-b", "Earth switch B", "earthSwitch", FEEDER_TEMPLATE_UNITS.rightX + FEEDER_TEMPLATE_UNITS.sideEarthXOffset, FEEDER_TEMPLATE_UNITS.busSelectorY, false),
+    disconnectorSlot("bus-disconnector-a", "Bus disconnector A", "busDisconnector", FEEDER_TEMPLATE_UNITS.leftX, FEEDER_TEMPLATE_UNITS.busDisconnectorY, true),
+    disconnectorSlot("bus-disconnector-b", "Bus disconnector B", "busDisconnector", FEEDER_TEMPLATE_UNITS.rightX, FEEDER_TEMPLATE_UNITS.busDisconnectorY, true),
+    disconnectorSlot("earth-switch-a", "Earth switch A", "earthSwitch", FEEDER_TEMPLATE_UNITS.leftX + FEEDER_TEMPLATE_UNITS.sideEarthXOffset, FEEDER_TEMPLATE_UNITS.busDisconnectorY, false),
+    disconnectorSlot("earth-switch-b", "Earth switch B", "earthSwitch", FEEDER_TEMPLATE_UNITS.rightX + FEEDER_TEMPLATE_UNITS.sideEarthXOffset, FEEDER_TEMPLATE_UNITS.busDisconnectorY, false),
   ],
   wires: [
     primaryWire("outgoing-to-line-disconnector", "Outgoing vertical", [
@@ -144,35 +148,35 @@ const doubleBusFeederTemplate: SldBayLayoutTemplate = {
     ]),
     primaryWire("breaker-to-selector-bridge", "Breaker to selector bridge", [
       point(FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.breakerY),
-      point(FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.busSelectorY),
+      point(FEEDER_TEMPLATE_UNITS.centerX, FEEDER_TEMPLATE_UNITS.busSelectorBridgeY),
     ]),
     primaryWire("selector-bridge", "Selector bridge", [
-      point(FEEDER_TEMPLATE_UNITS.leftX, FEEDER_TEMPLATE_UNITS.busSelectorY),
-      point(FEEDER_TEMPLATE_UNITS.rightX, FEEDER_TEMPLATE_UNITS.busSelectorY),
+      point(FEEDER_TEMPLATE_UNITS.leftX, FEEDER_TEMPLATE_UNITS.busSelectorBridgeY),
+      point(FEEDER_TEMPLATE_UNITS.rightX, FEEDER_TEMPLATE_UNITS.busSelectorBridgeY),
     ]),
     primaryWire("selector-a-to-busbar-a", "Bus selector A to busbar A", [
-      point(FEEDER_TEMPLATE_UNITS.leftX, FEEDER_TEMPLATE_UNITS.busSelectorY),
-      point(FEEDER_TEMPLATE_UNITS.leftX, 12),
+      point(FEEDER_TEMPLATE_UNITS.leftX, FEEDER_TEMPLATE_UNITS.busSelectorBridgeY),
+      point(FEEDER_TEMPLATE_UNITS.leftX, FEEDER_TEMPLATE_UNITS.busbarUpperY),
     ]),
     primaryWire("selector-b-to-busbar-b", "Bus selector B to busbar B", [
-      point(FEEDER_TEMPLATE_UNITS.rightX, FEEDER_TEMPLATE_UNITS.busSelectorY),
-      point(FEEDER_TEMPLATE_UNITS.rightX, 15),
+      point(FEEDER_TEMPLATE_UNITS.rightX, FEEDER_TEMPLATE_UNITS.busSelectorBridgeY),
+      point(FEEDER_TEMPLATE_UNITS.rightX, FEEDER_TEMPLATE_UNITS.busbarLowerY),
     ]),
     busbarWire("busbar-a", "Busbar A", [
-      point(FEEDER_TEMPLATE_UNITS.leftX - 2, 12),
-      point(FEEDER_TEMPLATE_UNITS.rightX + 2, 12),
+      point(FEEDER_TEMPLATE_UNITS.leftX - 2, FEEDER_TEMPLATE_UNITS.busbarUpperY),
+      point(FEEDER_TEMPLATE_UNITS.rightX + 2, FEEDER_TEMPLATE_UNITS.busbarUpperY),
     ]),
     busbarWire("busbar-b", "Busbar B", [
-      point(FEEDER_TEMPLATE_UNITS.leftX - 2, 15),
-      point(FEEDER_TEMPLATE_UNITS.rightX + 2, 15),
+      point(FEEDER_TEMPLATE_UNITS.leftX - 2, FEEDER_TEMPLATE_UNITS.busbarLowerY),
+      point(FEEDER_TEMPLATE_UNITS.rightX + 2, FEEDER_TEMPLATE_UNITS.busbarLowerY),
     ]),
     primaryWire("earth-a", "Earth switch A branch", [
-      point(FEEDER_TEMPLATE_UNITS.leftX, FEEDER_TEMPLATE_UNITS.busSelectorY),
-      point(FEEDER_TEMPLATE_UNITS.leftX + FEEDER_TEMPLATE_UNITS.sideEarthXOffset, FEEDER_TEMPLATE_UNITS.busSelectorY),
+      point(FEEDER_TEMPLATE_UNITS.leftX, FEEDER_TEMPLATE_UNITS.busDisconnectorY + FEEDER_TEMPLATE_UNITS.busEarthBranchDeltaY),
+      point(FEEDER_TEMPLATE_UNITS.leftX + FEEDER_TEMPLATE_UNITS.sideEarthXOffset, FEEDER_TEMPLATE_UNITS.busDisconnectorY),
     ]),
     primaryWire("earth-b", "Earth switch B branch", [
-      point(FEEDER_TEMPLATE_UNITS.rightX, FEEDER_TEMPLATE_UNITS.busSelectorY),
-      point(FEEDER_TEMPLATE_UNITS.rightX + FEEDER_TEMPLATE_UNITS.sideEarthXOffset, FEEDER_TEMPLATE_UNITS.busSelectorY),
+      point(FEEDER_TEMPLATE_UNITS.rightX, FEEDER_TEMPLATE_UNITS.busDisconnectorY + FEEDER_TEMPLATE_UNITS.busEarthBranchDeltaY),
+      point(FEEDER_TEMPLATE_UNITS.rightX + FEEDER_TEMPLATE_UNITS.sideEarthXOffset, FEEDER_TEMPLATE_UNITS.busDisconnectorY),
     ]),
   ],
   labels: [

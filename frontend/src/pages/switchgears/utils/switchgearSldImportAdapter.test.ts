@@ -162,15 +162,15 @@ describe("switchgear SLD import adapter", () => {
       kind: "ground",
       size: "sm",
       x: 1336,
-      y: 1120,
+      y: 1096,
       rotation: 0,
     }))
     expect(adapted.diagram.edges).toContainEqual(expect.objectContaining({
       id: expect.stringContaining("sld-import-ground-connection"),
       x1: 1288,
-      y1: 1120,
+      y1: 1096,
       x2: 1324,
-      y2: 1120,
+      y2: 1096,
       kind: "line",
     }))
     expect(adapted.switchgearCandidates).toContainEqual(expect.objectContaining({

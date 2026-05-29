@@ -14,7 +14,7 @@ const templates = getSldBayLayoutTemplates()
 const selectedTemplateId = ref(templates[0]?.id ?? "")
 
 const unitSize = 34
-const stagePadding = 56
+const stagePadding = 150
 
 const selectedTemplate = computed<SldBayLayoutTemplate | null>(() => (
   templates.find(template => template.id === selectedTemplateId.value) ?? templates[0] ?? null
@@ -201,11 +201,11 @@ function wireClass(wire: SldBayLayoutTemplateWire): string {
               />
 
               <g v-if="slot.role === 'earthSwitch'" class="iec61850-template-page__ground-symbol" transform="translate(28 0)">
-                <path d="M 0 -12 L 0 4 M -9 4 L 9 4 M -6 9 L 6 9 M -3 14 L 3 14" />
+                <path d="M -12 0 L 4 0 M 4 -9 L 4 9 M 9 -6 L 9 6 M 14 -3 L 14 3" />
               </g>
 
-              <text class="iec61850-template-page__slot-label" x="22" y="4">{{ slot.label }}</text>
-              <text class="iec61850-template-page__slot-coordinate" x="22" y="18">
+              <text class="iec61850-template-page__slot-label" x="44" y="4" text-anchor="start">{{ slot.label }}</text>
+              <text class="iec61850-template-page__slot-coordinate" x="44" y="18" text-anchor="start">
                 {{ slot.point.x }}, {{ slot.point.y }}
               </text>
             </g>
@@ -386,7 +386,10 @@ function wireClass(wire: SldBayLayoutTemplateWire): string {
 
 .iec61850-template-page__template-items {
   display: grid;
+  flex: 1 1 0;
   gap: 0.5rem;
+  align-content: start;
+  min-height: 0;
   overflow: auto;
   padding: 0.75rem;
 }
@@ -433,7 +436,7 @@ function wireClass(wire: SldBayLayoutTemplateWire): string {
 }
 
 .iec61850-template-page__preview-stage {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   overflow: auto;
   padding: 1rem;
@@ -524,12 +527,19 @@ function wireClass(wire: SldBayLayoutTemplateWire): string {
 
 .iec61850-template-page__model-content {
   display: grid;
+  flex: 1 1 0;
+  grid-template-rows: minmax(0, 0.75fr) minmax(0, 1fr) minmax(0, 1.65fr);
   gap: 0.75rem;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
   padding: 1rem;
+  padding-bottom: 1.5rem;
 }
 
 .iec61850-template-page__model-section {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 82%, transparent);
   border-radius: var(--radius-md);
@@ -537,6 +547,7 @@ function wireClass(wire: SldBayLayoutTemplateWire): string {
 }
 
 .iec61850-template-page__model-section h2 {
+  flex: 0 0 auto;
   margin: 0;
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid color-mix(in srgb, var(--color-neutral-200) 74%, transparent);
@@ -548,8 +559,12 @@ function wireClass(wire: SldBayLayoutTemplateWire): string {
 
 .iec61850-template-page__property-list {
   display: grid;
+  flex: 1 1 0;
   grid-template-columns: minmax(8rem, 0.44fr) minmax(0, 1fr);
+  min-height: 0;
   margin: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .iec61850-template-page__property-list dt,
@@ -576,6 +591,11 @@ function wireClass(wire: SldBayLayoutTemplateWire): string {
 
 .iec61850-template-page__slot-table {
   display: grid;
+  flex: 1 1 0;
+  align-content: start;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .iec61850-template-page__slot-table-row {
@@ -591,12 +611,16 @@ function wireClass(wire: SldBayLayoutTemplateWire): string {
 }
 
 .iec61850-template-page__json {
-  max-height: 20rem;
+  flex: 1 1 0;
+  min-height: 0;
   margin: 0;
   overflow: auto;
   padding: 0.75rem;
   font-size: 0.6875rem;
   line-height: 1.45;
+  scrollbar-gutter: stable;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 :global(.dark .iec61850-template-page) {
