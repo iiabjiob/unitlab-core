@@ -1,0 +1,62 @@
+{
+  "schema": "unitlab.iec61850.ied-simulator-fixture.v1",
+  "devices": [
+    {
+      "iedName": "IED1",
+      "accessPointName": "AP1",
+      "dataSets": [
+        {
+          "reference": "IED1/AP1/LD0/LLN0.dsEvents",
+          "members": [
+            {
+              "dataSetIndex": 0,
+              "reference": "LD0/XCBR1.Pos.stVal[ST]",
+              "kind": "FCDA",
+              "fc": "ST",
+              "initialValue": 0
+            },
+            {
+              "dataSetIndex": 1,
+              "reference": "LD0/PGGIO1.Ind1[ST]",
+              "kind": "FCDA",
+              "fc": "ST",
+              "initialValue": 1
+            }
+          ]
+        }
+      ],
+      "reports": [
+        {
+          "key": "IED1/AP1/LD0/LLN0/brcbEvents/buffered",
+          "logicalDeviceInst": "LD0",
+          "logicalNodeName": "LLN0",
+          "reportControlName": "brcbEvents",
+          "reportKind": "buffered",
+          "rptId": "IED1LD0/LLN0.BR.Events",
+          "dataSetRef": "IED1/AP1/LD0/LLN0.dsEvents",
+          "confRev": "7",
+          "indexed": true,
+          "bufferTimeMs": 100,
+          "integrityPeriodMs": 1000,
+          "triggerOptions": {
+            "dataChange": true,
+            "qualityChange": true,
+            "dataUpdate": false,
+            "periodic": false,
+            "generalInterrogation": true
+          },
+          "optionalFields": {
+            "sequenceNumber": true,
+            "timestamp": true,
+            "reasonCode": true,
+            "dataSetName": true,
+            "dataReference": true,
+            "entryId": true,
+            "configRevision": true,
+            "bufferOverflow": true
+          }
+        }
+      ]
+    }
+  ]
+}

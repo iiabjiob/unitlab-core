@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slice 13A-13B, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slice 13A-13C, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -283,6 +283,26 @@ Still planned:
 Validation:
 
 - Backend service tests cover fixture payload shape, required-report filtering, selected-signal isolation, and missing-DataSet rejection.
+
+### Slice 13C - External IED Simulator Process Scaffold
+
+Implemented in this slice:
+
+- Added `simulator/iec61850_ied` as the isolated home for the future libIEC61850-based IED simulator process.
+- Added a C/CMake CLI scaffold that accepts `--fixture`, `--ied`, `--bind`, `--port`, and `--dry-run`.
+- The scaffold validates the UnitLab fixture schema and selected IED name in dry-run mode.
+- Non-dry-run execution fails closed with `MMS_SERVER_NOT_IMPLEMENTED`; it does not pretend to expose MMS.
+- Optional CMake wiring can check libIEC61850 headers/library without making UnitLab backend depend on them.
+
+Still planned:
+
+- Fixture JSON parser and libIEC61850 server model loader.
+- One DataSet plus one URCB/BRCB exposed over MMS.
+- Backend integration test connecting through the MMS endpoint catalog.
+
+Validation:
+
+- Native C compile and dry-run fixture smoke test.
 
 ## Current Risks
 
