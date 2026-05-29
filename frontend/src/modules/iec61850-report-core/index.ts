@@ -11,6 +11,12 @@ export {
   toReportControlRef,
 } from "./reportManager"
 export {
+  buildIec61850SimulatorDevicesFromPlan,
+  buildIec61850SimulatorEndpoint,
+  runIec61850ReportSubscriptionPlan,
+  runIec61850SimulatorSubscriptionPlan,
+} from "./subscriptionRunner"
+export {
   createIec61850SimulatorAdapter,
   Iec61850SimulatorStateError,
   reportControlKey,
@@ -56,6 +62,13 @@ export type {
   Iec61850SimulatorEvent,
   Iec61850SimulatorEventKind,
 } from "./simulator"
+export type {
+  Iec61850ReportSubscriptionRunReportResult,
+  Iec61850ReportSubscriptionRunResult,
+  Iec61850SimulatorSubscriptionRunResult,
+  RunIec61850ReportSubscriptionPlanOptions,
+  RunIec61850SimulatorSubscriptionPlanOptions,
+} from "./subscriptionRunner"
 export type {
   Iec61850ReportEventDiagnostic,
   Iec61850ReportEventDiagnosticCode,

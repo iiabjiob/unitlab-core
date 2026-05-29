@@ -56,7 +56,7 @@ describe("iec61850DebugSimulator", () => {
       accessPointName: "AP1",
       reportControlName: "brcbEvents",
       matchedSignalCount: 2,
-      lifecycleState: "disabled",
+      lifecycleState: "released",
       errorCode: null,
     })
     expect(run.reports[0]?.event?.values.map(value => value.reference)).toEqual([

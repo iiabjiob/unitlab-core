@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-6 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, and the IEC/C# compliance map are implemented.
+Status: slices 1-7 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -139,9 +139,24 @@ Validation:
 - Frontend unit tests cover explicit simulator plan/GI execution from debug-view merge data.
 - No implicit reserve/enable from selection alone.
 
-### Slice 7 - MMS Adapter Spike Behind Simulator Parity
+### Slice 7 - Core Subscription Plan Runner
 
-Planned only after slices 1-6 pass:
+Implemented in this slice:
+
+- Subscription-plan execution moved into `frontend/src/modules/iec61850-report-core`.
+- The runner executes read, reserve, enable, GI, disable, and release for each required report in the plan.
+- The runner always attempts cleanup after partial failure; a reserved report is released even when activation fails.
+- The debug view now calls the core simulator runner instead of owning runtime sequencing itself.
+- Simulator endpoint/device construction is kept in the portable core module for later backend/C# parity work.
+
+Validation:
+
+- Frontend unit tests cover successful GI execution and cleanup after simulator activation failure.
+- No real MMS/device communication, public REST endpoint, or WebSocket contract is introduced.
+
+### Slice 8 - MMS Adapter Spike Behind Simulator Parity
+
+Planned only after simulator runner parity passes:
 
 - Add an adapter boundary for IEC 61850-8-1 MMS.
 - Connect/read RCB attributes against a controlled simulator or lab IED.

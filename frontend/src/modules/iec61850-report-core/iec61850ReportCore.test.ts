@@ -12,6 +12,8 @@ import {
   Iec61850ReportManager,
   normalizeIec61850ReportEvent,
   reportControlKey,
+  runIec61850ReportSubscriptionPlan,
+  runIec61850SimulatorSubscriptionPlan,
   UNITLAB_INTERNAL_REPORT_TERMS,
   toReportControlRef,
   type Iec61850DeviceEndpoint,
@@ -438,6 +440,106 @@ describe("iec61850-report-core", () => {
       "LD0/XCBR1.Pos.stVal[ST]",
     ])
     expect(plan.diagnostics).toEqual([])
+  })
+
+  it("runs a simulator subscription plan with GI and cleanup evidence", async () => {
+    const candidate = firstReportCandidate()
+    const plan = buildIec61850ReportSubscriptionPlan({
+      candidates: [candidate],
+      selectedSignals: [
+        { id: "sig-1", address: "IED1LD0/XCBR1/Pos/stVal[ST]" },
+        { id: "sig-2", address: "IED1LD0/PGGIO1/Ind1[ST]" },
+      ],
+    })
+
+    const run = await runIec61850SimulatorSubscriptionPlan({
+      plan,
+      clientId: "unitlab",
+      now: () => new Date("2026-05-29T12:00:00.000Z"),
+    })
+
+    expect(run.reports).toHaveLength(1)
+    expect(run.reports[0]).toMatchObject({
+      reportControlName: "brcbEvents",
+      matchedSignalCount: 2,
+      lifecycleState: "released",
+      errorCode: null,
+    })
+    expect(run.reports[0]?.event?.values.map(value => value.reference)).toEqual([
+      "LD0/XCBR1.Pos.stVal[ST]",
+      "LD0/PGGIO1.Ind1[ST]",
+    ])
+    expect(run.eventLog.map(event => event.kind)).toEqual([
+      "connect",
+      "read",
+      "disconnect",
+      "connect",
+      "reserve",
+      "disconnect",
+      "connect",
+      "enable",
+      "disconnect",
+      "connect",
+      "general-interrogation",
+      "report",
+      "disconnect",
+      "connect",
+      "disable",
+      "disconnect",
+      "connect",
+      "release",
+      "disconnect",
+    ])
+  })
+
+  it("releases a reserved simulator report when activation fails", async () => {
+    const candidate = firstReportCandidate()
+    const reference = toReportControlRef(candidate)
+    const plan = buildIec61850ReportSubscriptionPlan({
+      candidates: [candidate],
+      selectedSignals: [
+        { id: "sig-1", address: "IED1LD0/XCBR1/Pos/stVal[ST]" },
+      ],
+    })
+    const adapter = createIec61850SimulatorAdapter({
+      devices: [{
+        endpoint,
+        reports: [candidate],
+        overrides: {
+          [reportControlKey(reference)]: { confRev: "8" } satisfies Partial<Iec61850ReportControlState>,
+        },
+      }],
+      now: () => new Date("2026-05-29T12:00:00.000Z"),
+    })
+
+    const run = await runIec61850ReportSubscriptionPlan({
+      plan,
+      adapter,
+      clientId: "unitlab",
+      endpointForCandidate: () => endpoint,
+      now: () => new Date("2026-05-29T12:00:00.000Z"),
+    })
+
+    expect(run.reports[0]).toMatchObject({
+      lifecycleState: "released",
+      event: null,
+      errorCode: "CONFREV_STALE",
+    })
+    expect(run.reports[0]?.diagnostics.map(diagnostic => diagnostic.code)).toContain("CONFREV_MISMATCH")
+    expect(adapter.getEventLog().map(event => event.kind)).toEqual([
+      "connect",
+      "read",
+      "disconnect",
+      "connect",
+      "reserve",
+      "disconnect",
+      "connect",
+      "failure",
+      "disconnect",
+      "connect",
+      "release",
+      "disconnect",
+    ])
   })
 
   it("marks duplicate, unmatched, ambiguous, parent FCD, and multi-report selected signals", () => {
