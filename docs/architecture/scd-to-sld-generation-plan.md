@@ -324,7 +324,12 @@ Implemented 2026-05-28:
 
 - Added a small framework-neutral XML scanner boundary for SCL topology extraction.
 - Scanner supports namespace-qualified element and attribute names used by SCD files.
-- Parser stops after substation topology for the first SLD slice so large IED/DataTypeTemplates payloads do not block the import path.
+- Parser initially stopped after substation topology for the first SLD slice so large IED/DataTypeTemplates payloads did not block the import path.
+
+Updated 2026-05-29:
+
+- The topology parser still ignores DataTypeTemplates, but the core now runs a second lightweight SCL pass for IEC 61850 runtime inventory: `IED`, `AccessPoint`, `Server`, `LDevice`, `LN0`/`LN`, `DataSet`, `FCDA`/`FCD`, `ReportControl`, `TrgOps`, `OptFields`, and `RptEnabled`/`ClientLN`.
+- See `docs/architecture/iec61850-device-report-core.md` for the report subscription preparation model and current runtime boundaries.
 
 ### Slice 3 - Minimal SCD Parser
 
@@ -363,7 +368,7 @@ Implemented 2026-05-28:
 
 - Initial parser extracts `SCL`, `Substation`, `VoltageLevel`, `Bay`, `PowerTransformer`, `ConductingEquipment`, `Terminal`, `ConnectivityNode`, and `LNode`.
 - `VoltageLevel` now captures its standard `Voltage` child value and `multiplier`/`unit` attributes for later lane and label decisions.
-- Top-level `IED` metadata is intentionally deferred; current parser keeps reachable IED references through `LNode`.
+- Top-level `IED` runtime metadata was deferred in the first SLD slice; as of 2026-05-29, the core extracts IED access points, logical devices/nodes, DataSets, report controls, and a derived report subscription inventory.
 - Local smoke validation passed against uploaded `/workspace/.refs/sld-rev2.scd`.
 - Committed parser/graph fixtures use generic standard-shaped names; the uploaded reference SCD remains a compatibility smoke input only.
 

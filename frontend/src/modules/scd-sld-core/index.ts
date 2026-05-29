@@ -44,7 +44,7 @@ function mergeDiagnostics(...diagnosticGroups: ScdDiagnostic[][]): ScdDiagnostic
   return diagnostics
 }
 
-export { parseScdSource } from "./parser"
+export { buildIec61850ReportSubscriptionInventory, parseScdSource } from "./parser"
 export { buildElectricalGraph } from "./graph"
 export { buildSldCellModel } from "./cellModel"
 export { layoutSldDocument } from "./layout"
@@ -68,18 +68,31 @@ export type {
   ElectricalGraphPort,
   GenerateSldOptions,
   GenerateSldResult,
+  Iec61850ReportSubscriptionCandidate,
   NormalizedSclModel,
   ScdDiagnostic,
   ScdDiagnosticSeverity,
   ScdDiagnosticStage,
   ScdSource,
   ScdSourceLocation,
+  SclAccessPoint,
   SclBay,
   SclConnectivityNode,
+  SclDataSet,
+  SclDataSetMember,
+  SclDataSetMemberKind,
   SclEquipment,
   SclEquipmentKind,
   SclIed,
+  SclLogicalDevice,
+  SclLogicalNode,
   SclLogicalNodeRef,
+  SclReportClient,
+  SclReportControl,
+  SclReportEnabled,
+  SclReportOptionalFields,
+  SclReportTriggerOptions,
+  SclServer,
   SclSubstation,
   SclTerminal,
   SclVoltage,

@@ -231,8 +231,167 @@ export type SclIed = {
   manufacturer: string | null
   type: string | null
   configVersion: string | null
+  accessPoints: SclAccessPoint[]
   sourcePath: string
   sourceLocation?: ScdSourceLocation
+}
+
+export type SclAccessPoint = {
+  id: string
+  name: string
+  desc: string | null
+  router: boolean | null
+  clock: boolean | null
+  server: SclServer | null
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclServer = {
+  id: string
+  logicalDevices: SclLogicalDevice[]
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclLogicalDevice = {
+  id: string
+  inst: string
+  desc: string | null
+  ldName: string | null
+  logicalNodes: SclLogicalNode[]
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclLogicalNode = {
+  id: string
+  tagName: "LN0" | "LN"
+  logicalNodeName: string
+  prefix: string | null
+  lnClass: string
+  lnInst: string | null
+  lnType: string | null
+  desc: string | null
+  iedName: string
+  accessPointName: string
+  logicalDeviceInst: string
+  dataSets: SclDataSet[]
+  reportControls: SclReportControl[]
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclDataSetMemberKind = "FCDA" | "FCD"
+
+export type SclDataSetMember = {
+  id: string
+  kind: SclDataSetMemberKind
+  ldInst: string | null
+  prefix: string | null
+  lnClass: string | null
+  lnInst: string | null
+  doName: string | null
+  daName: string | null
+  fc: string | null
+  ix: string | null
+  reference: string
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclDataSet = {
+  id: string
+  name: string
+  desc: string | null
+  iedName: string
+  accessPointName: string
+  logicalDeviceInst: string
+  logicalNodeName: string
+  members: SclDataSetMember[]
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclReportTriggerOptions = {
+  dataChange: boolean | null
+  qualityChange: boolean | null
+  dataUpdate: boolean | null
+  periodic: boolean | null
+  generalInterrogation: boolean | null
+}
+
+export type SclReportOptionalFields = {
+  sequenceNumber: boolean | null
+  timestamp: boolean | null
+  reasonCode: boolean | null
+  dataSetName: boolean | null
+  dataReference: boolean | null
+  entryId: boolean | null
+  configRevision: boolean | null
+  bufferOverflow: boolean | null
+}
+
+export type SclReportClient = {
+  iedName: string | null
+  accessPointRef: string | null
+  logicalDeviceInst: string | null
+  prefix: string | null
+  lnClass: string | null
+  lnInst: string | null
+  desc: string | null
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclReportEnabled = {
+  max: number | null
+  desc: string | null
+  clients: SclReportClient[]
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclReportControl = {
+  id: string
+  name: string
+  desc: string | null
+  rptId: string | null
+  dataSetName: string | null
+  dataSetId: string | null
+  dataSetRef: string | null
+  confRev: string | null
+  buffered: boolean
+  indexed: boolean | null
+  bufferTimeMs: number | null
+  integrityPeriodMs: number | null
+  triggerOptions: SclReportTriggerOptions
+  optionalFields: SclReportOptionalFields
+  rptEnabled: SclReportEnabled | null
+  iedName: string
+  accessPointName: string
+  logicalDeviceInst: string
+  logicalNodeName: string
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type Iec61850ReportSubscriptionCandidate = {
+  id: string
+  iedName: string
+  accessPointName: string
+  logicalDeviceInst: string
+  logicalNodeName: string
+  reportControlId: string
+  reportControlName: string
+  reportKind: "buffered" | "unbuffered"
+  rptId: string | null
+  dataSetId: string | null
+  dataSetRef: string | null
+  confRev: string | null
+  indexed: boolean | null
+  signalCount: number
+  signals: SclDataSetMember[]
 }
 
 export type NormalizedSclModel = {
@@ -248,6 +407,7 @@ export type NormalizedSclModel = {
   }
   substations: SclSubstation[]
   ieds: SclIed[]
+  reportSubscriptions: Iec61850ReportSubscriptionCandidate[]
   diagnostics: ScdDiagnostic[]
 }
 

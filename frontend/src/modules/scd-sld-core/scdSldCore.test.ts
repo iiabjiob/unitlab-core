@@ -237,7 +237,15 @@ describe("scd-sld-core", () => {
       type: "PTR",
       kind: "transformer",
     })
-    expect(model.ieds).toEqual([])
+    expect(model.ieds).toEqual([
+      expect.objectContaining({
+        id: "ied/IED1",
+        name: "IED1",
+        manufacturer: "Generic Vendor",
+        accessPoints: [],
+      }),
+    ])
+    expect(model.reportSubscriptions).toEqual([])
   })
 
   it("scans SCD topology tags through the lightweight XML boundary", () => {
@@ -675,15 +683,140 @@ describe("scd-sld-core", () => {
     }))
   })
 
-  it("stops after substation topology and leaves later IED payloads to a future metadata slice", () => {
+  it("parses IED report and dataset structure for future IEC 61850 subscriptions", () => {
     const model = parseScdSource({
-      fileName: "fixture.scd",
-      contentHash: "fixture",
-      xmlText: genericFeederBayScd,
+      fileName: "reports.scd",
+      contentHash: "reports",
+      xmlText: `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" revision="B" version="2007">
+  <Substation name="SS1">
+    <VoltageLevel name="VL1">
+      <Bay name="BAY1"/>
+    </VoltageLevel>
+  </Substation>
+  <IED desc="Generic bay controller" manufacturer="Generic Vendor" type="Generic IED" configVersion="1" name="IED1">
+    <AccessPoint name="AP1" router="false" clock="true">
+      <Server>
+        <LDevice inst="LD0" ldName="IED1LD0">
+          <LN0 lnType="LLN0_TYPE">
+            <DataSet name="dsEvents" desc="Event report signals">
+              <FCDA ldInst="LD0" lnClass="XCBR" lnInst="1" doName="Pos" daName="stVal" fc="ST"/>
+              <FCDA ldInst="LD0" prefix="P" lnClass="GGIO" lnInst="1" doName="Ind1" fc="ST"/>
+            </DataSet>
+            <ReportControl name="brcbEvents" rptID="IED1LD0/LLN0.BR.Events" datSet="dsEvents" confRev="7" buffered="true" indexed="true" bufTime="100" intgPd="1000">
+              <TrgOps dchg="true" qchg="true" dupd="false" period="false" gi="true"/>
+              <OptFields seqNum="true" timeStamp="true" reasonCode="true" dataSet="true" dataRef="true" entryID="true" configRef="true" bufOvfl="true"/>
+              <RptEnabled max="4">
+                <ClientLN iedName="CLIENT1" apRef="AP1" ldInst="LD0" lnClass="LLN0"/>
+              </RptEnabled>
+            </ReportControl>
+          </LN0>
+          <LN lnClass="XCBR" inst="1" lnType="XCBR_TYPE"/>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>`,
     })
 
     expect(model.substations).toHaveLength(1)
-    expect(model.ieds).toHaveLength(0)
+    expect(model.ieds).toHaveLength(1)
+    expect(model.ieds[0]).toMatchObject({
+      id: "ied/IED1",
+      name: "IED1",
+      manufacturer: "Generic Vendor",
+      configVersion: "1",
+      accessPoints: [
+        expect.objectContaining({
+          name: "AP1",
+          router: false,
+          clock: true,
+        }),
+      ],
+    })
+
+    const logicalDevice = model.ieds[0]?.accessPoints[0]?.server?.logicalDevices[0]
+    expect(logicalDevice).toMatchObject({
+      inst: "LD0",
+      ldName: "IED1LD0",
+    })
+    expect(logicalDevice?.logicalNodes.map(node => node.logicalNodeName)).toEqual([
+      "LLN0",
+      "XCBR1",
+    ])
+
+    const lln0 = logicalDevice?.logicalNodes[0]
+    const dataSet = lln0?.dataSets[0]
+    expect(dataSet).toMatchObject({
+      name: "dsEvents",
+      logicalNodeName: "LLN0",
+      members: [
+        expect.objectContaining({
+          kind: "FCDA",
+          reference: "LD0/XCBR1.Pos.stVal[ST]",
+        }),
+        expect.objectContaining({
+          kind: "FCDA",
+          reference: "LD0/PGGIO1.Ind1[ST]",
+        }),
+      ],
+    })
+
+    const reportControl = lln0?.reportControls[0]
+    expect(reportControl).toMatchObject({
+      name: "brcbEvents",
+      rptId: "IED1LD0/LLN0.BR.Events",
+      dataSetName: "dsEvents",
+      dataSetId: dataSet?.id,
+      dataSetRef: "IED1/AP1/LD0/LLN0.dsEvents",
+      confRev: "7",
+      buffered: true,
+      indexed: true,
+      bufferTimeMs: 100,
+      integrityPeriodMs: 1000,
+      triggerOptions: {
+        dataChange: true,
+        qualityChange: true,
+        dataUpdate: false,
+        periodic: false,
+        generalInterrogation: true,
+      },
+      optionalFields: {
+        sequenceNumber: true,
+        timestamp: true,
+        reasonCode: true,
+        dataSetName: true,
+        dataReference: true,
+        entryId: true,
+        configRevision: true,
+        bufferOverflow: true,
+      },
+      rptEnabled: expect.objectContaining({
+        max: 4,
+        clients: [
+          expect.objectContaining({
+            iedName: "CLIENT1",
+            accessPointRef: "AP1",
+            logicalDeviceInst: "LD0",
+            lnClass: "LLN0",
+          }),
+        ],
+      }),
+    })
+    expect(model.reportSubscriptions).toEqual([
+      expect.objectContaining({
+        reportControlId: reportControl?.id,
+        reportControlName: "brcbEvents",
+        reportKind: "buffered",
+        dataSetId: dataSet?.id,
+        dataSetRef: "IED1/AP1/LD0/LLN0.dsEvents",
+        signalCount: 2,
+      }),
+    ])
+    expect(model.reportSubscriptions[0]?.signals.map(signal => signal.reference)).toEqual([
+      "LD0/XCBR1.Pos.stVal[ST]",
+      "LD0/PGGIO1.Ind1[ST]",
+    ])
   })
 
   it("keeps unresolved terminal topology visible as graph diagnostics", () => {
