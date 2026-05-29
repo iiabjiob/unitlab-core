@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slice 13A-13C, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slice 13A-13D, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -303,6 +303,24 @@ Still planned:
 Validation:
 
 - Native C compile and dry-run fixture smoke test.
+
+### Slice 13D - External IED Simulator Fixture Parser
+
+Implemented in this slice:
+
+- The external simulator scaffold now has a no-dependency fixture scanner for the UnitLab fixture schema.
+- Dry-run mode validates exact schema, selected IED name, access point, DataSet array, report array, and DataSet member count.
+- The scanner reports fixture counts for the selected IED so the future libIEC61850 model loader has a deterministic input summary.
+- It remains schema-specific and is not a general JSON parser.
+
+Still planned:
+
+- Materialize parsed DataSet/report records into model-loader structures.
+- Create the libIEC61850 IED model from those records.
+
+Validation:
+
+- Native C compile, positive dry-run fixture smoke test, and negative missing-IED dry-run smoke test.
 
 ## Current Risks
 

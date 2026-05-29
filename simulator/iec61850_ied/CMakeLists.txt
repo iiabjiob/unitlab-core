@@ -8,7 +8,10 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 option(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850 "Link libIEC61850 for the internal IEC 61850 IED simulator" OFF)
 
-add_executable(unitlab-iec61850-ied-sim src/main.c)
+add_executable(unitlab-iec61850-ied-sim
+  src/fixture_parser.c
+  src/main.c
+)
 
 if(MSVC)
   target_compile_options(unitlab-iec61850-ied-sim PRIVATE /W4)

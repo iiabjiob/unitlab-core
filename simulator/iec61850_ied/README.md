@@ -44,6 +44,21 @@ Do not ship a libIEC61850-linked binary as part of closed UnitLab runtime withou
 ```
 
 The dry run only verifies that the fixture file is readable, contains the UnitLab fixture schema, and references the selected IED name.
+It also reports the selected fixture shape:
+
+```text
+unitlab-iec61850-ied-sim: fixture accepted
+schema=unitlab.iec61850.ied-simulator-fixture.v1
+ied=IED1
+accessPoint=AP1
+devices=1
+dataSets=1
+reports=1
+signals=2
+bind=127.0.0.1
+port=1102
+libiec61850=not-linked
+```
 
 ## Fixture Contract
 

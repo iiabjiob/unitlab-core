@@ -3,11 +3,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "fixture_parser.h"
+
 #ifdef UNITLAB_WITH_LIBIEC61850
 #include <iec61850_server.h>
 #endif
-
-#define UNITLAB_IED_SIM_SCHEMA "unitlab.iec61850.ied-simulator-fixture.v1"
 
 typedef struct SimulatorOptions {
     const char* fixture_path;
@@ -151,19 +151,6 @@ static char* read_text_file(const char* path)
     return buffer;
 }
 
-static int validate_fixture_boundary(const SimulatorOptions* options, const char* fixture_text)
-{
-    if (strstr(fixture_text, UNITLAB_IED_SIM_SCHEMA) == NULL) {
-        fprintf(stderr, "FIXTURE_SCHEMA_MISMATCH: expected schema %s.\n", UNITLAB_IED_SIM_SCHEMA);
-        return 0;
-    }
-    if (strstr(fixture_text, options->ied_name) == NULL) {
-        fprintf(stderr, "FIXTURE_IED_NOT_FOUND: IED \"%s\" is not present in fixture.\n", options->ied_name);
-        return 0;
-    }
-    return 1;
-}
-
 static const char* libiec61850_status(void)
 {
 #ifdef UNITLAB_WITH_LIBIEC61850
@@ -189,9 +176,17 @@ int main(int argc, char** argv)
         return 66;
     }
 
-    int valid = validate_fixture_boundary(&options, fixture_text);
+    UnitLabIedFixtureSummary fixture_summary;
+    char fixture_error[256];
+    int valid = unitlab_parse_ied_fixture_summary(
+        fixture_text,
+        options.ied_name,
+        &fixture_summary,
+        fixture_error,
+        sizeof(fixture_error));
     free(fixture_text);
     if (!valid) {
+        fprintf(stderr, "%s\n", fixture_error);
         return 65;
     }
 
@@ -199,6 +194,11 @@ int main(int argc, char** argv)
         printf("unitlab-iec61850-ied-sim: fixture accepted\n");
         printf("schema=%s\n", UNITLAB_IED_SIM_SCHEMA);
         printf("ied=%s\n", options.ied_name);
+        printf("accessPoint=%s\n", fixture_summary.access_point_name);
+        printf("devices=%zu\n", fixture_summary.device_count);
+        printf("dataSets=%zu\n", fixture_summary.data_set_count);
+        printf("reports=%zu\n", fixture_summary.report_count);
+        printf("signals=%zu\n", fixture_summary.signal_count);
         printf("bind=%s\n", options.bind_address);
         printf("port=%d\n", options.port);
         printf("libiec61850=%s\n", libiec61850_status());
