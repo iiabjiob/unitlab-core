@@ -4,9 +4,15 @@ import { parseScdSource } from "../scd-sld-core"
 import {
   buildIec61850ReportSubscriptionPlan,
   createIec61850SimulatorAdapter,
+  getIec61850ReportComplianceTerms,
+  IEC61850_REPORT_CONTROL_ATTRIBUTE_TERMS,
+  IEC61850_REPORT_PAYLOAD_FIELD_TERMS,
+  IEC61850_REPORT_STANDARD_DOCUMENTS,
+  IEC61850_TRIGGER_OPTION_TERMS,
   Iec61850ReportManager,
   normalizeIec61850ReportEvent,
   reportControlKey,
+  UNITLAB_INTERNAL_REPORT_TERMS,
   toReportControlRef,
   type Iec61850DeviceEndpoint,
   type Iec61850ReportControlCandidate,
@@ -89,6 +95,56 @@ describe("iec61850-report-core", () => {
       "SIGNAL_COUNT_MISMATCH",
       "TRGOPS_MISMATCH",
     ])
+  })
+
+  it("keeps IEC report standard terms separate from UnitLab-only runtime terms", () => {
+    expect(IEC61850_REPORT_STANDARD_DOCUMENTS.map(document => document.id)).toEqual([
+      "IEC_61850_6_2024",
+      "IEC_61850_7_2_2020",
+      "IEC_61850_8_1_2020",
+    ])
+    expect(IEC61850_REPORT_CONTROL_ATTRIBUTE_TERMS.map(term => term.standardName)).toEqual([
+      "RptID",
+      "RptEna",
+      "DatSet",
+      "ConfRev",
+      "OptFlds",
+      "TrgOps",
+      "BufTm",
+      "IntgPd",
+      "GI",
+      "SqNum",
+      "EntryID",
+      "TimeOfEntry",
+      "Owner",
+      "Resv",
+      "ResvTms",
+      "PurgeBuf",
+    ])
+    expect(IEC61850_TRIGGER_OPTION_TERMS.map(term => [term.standardName, term.internalName])).toEqual([
+      ["dchg", "dataChange"],
+      ["qchg", "qualityChange"],
+      ["dupd", "dataUpdate"],
+      ["period", "periodic"],
+      ["gi", "generalInterrogation"],
+    ])
+    expect(IEC61850_REPORT_PAYLOAD_FIELD_TERMS.map(term => term.standardName)).toEqual([
+      "SqNum",
+      "TimeOfEntry",
+      "ReasonForInclusion",
+      "DataSet",
+      "DataRef",
+      "EntryID",
+      "ConfRev",
+      "BufOvfl",
+    ])
+    expect(UNITLAB_INTERNAL_REPORT_TERMS.map(term => term.standardName)).toEqual([
+      "lifecycleState",
+      "simulatorEventLog",
+      "diagnostics",
+    ])
+    expect(UNITLAB_INTERNAL_REPORT_TERMS.every(term => term.standardDocument === null && term.status === "internal-only")).toBe(true)
+    expect(getIec61850ReportComplianceTerms().filter(term => term.status === "internal-only")).toEqual(UNITLAB_INTERNAL_REPORT_TERMS)
   })
 
   it("runs simulator reservation, enable, GI, disable, and release without real devices", async () => {

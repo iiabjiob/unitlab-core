@@ -1,11 +1,12 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-4 started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, and report event normalization are implemented in `frontend/src/modules/iec61850-report-core`.
+Status: slices 1-4 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, and the IEC/C# compliance map are implemented in `frontend/src/modules/iec61850-report-core`.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
 - `docs/.IEC61850/IEC 61850-7-2-2020.pdf` for DataSet, report control, trigger option, optional field, reservation, enable, and GI semantics.
 - `docs/.IEC61850/IEC 61850-8-1-2020.pdf` for the future MMS mapping.
+- `docs/architecture/iec61850-report-core-compliance-map.md` for the current IEC-to-UnitLab mapping and C# portability guardrails.
 
 ## Safety Position
 
@@ -99,6 +100,7 @@ Validation:
 
 Planned:
 
+- Before this slice starts, keep `standardTerms.ts` and the compliance map aligned with the IEC-facing DTOs.
 - Move live session ownership to backend services before any real MMS adapter exists.
 - REST remains for explicit plan/read/prepare commands.
 - WebSocket emits runtime state and normalized report events.

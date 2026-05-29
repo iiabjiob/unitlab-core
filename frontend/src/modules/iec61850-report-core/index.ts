@@ -15,6 +15,16 @@ export {
   Iec61850SimulatorStateError,
   reportControlKey,
 } from "./simulator"
+export {
+  getIec61850ReportComplianceTerms,
+  IEC61850_OPTIONAL_FIELD_TERMS,
+  IEC61850_REPORT_CONTROL_ATTRIBUTE_TERMS,
+  IEC61850_REPORT_PAYLOAD_FIELD_TERMS,
+  IEC61850_REPORT_STANDARD_DOCUMENTS,
+  IEC61850_SCL_REPORT_TERMS,
+  IEC61850_TRIGGER_OPTION_TERMS,
+  UNITLAB_INTERNAL_REPORT_TERMS,
+} from "./standardTerms"
 export type {
   Iec61850DeviceEndpoint,
   Iec61850ReportConnection,
@@ -54,3 +64,8 @@ export type {
   NormalizeIec61850ReportEventInput,
   NormalizeIec61850ReportEventResult,
 } from "./reportEventNormalizer"
+export type {
+  Iec61850StandardDocumentId,
+  Iec61850StandardTerm,
+  Iec61850StandardTermStatus,
+} from "./standardTerms"
