@@ -11,6 +11,8 @@ import {
   layoutSldDocument,
   parseScdSource,
 } from "./index"
+import { parseIedCommunicationModel } from "./communicationParser"
+import { parseSclTopology } from "./topologyParser"
 import type { ScdDiagnostic } from "./types"
 import { scanXmlElements } from "./xmlScanner"
 
@@ -274,6 +276,30 @@ describe("scd-sld-core", () => {
       textContent: "110",
       sourcePath: "SCL:#1/Substation:SS1/VoltageLevel:VL1/Voltage:#1",
     })
+  })
+
+  it("keeps topology extraction isolated from IED communication inventory parsing", () => {
+    const diagnostics: ScdDiagnostic[] = []
+    const topology = parseSclTopology(genericFeederBayScd, diagnostics)
+
+    expect(diagnostics).toEqual([])
+    expect(topology.scl).toEqual({ version: "2007", revision: "B" })
+    expect(topology.substations).toHaveLength(1)
+    expect(topology.substations[0]?.voltageLevels[0]?.bays[0]?.equipments.map(equipment => equipment.name)).toEqual([
+      "Q01",
+      "QB1",
+    ])
+
+    const iedDiagnostics: ScdDiagnostic[] = []
+    const ieds = parseIedCommunicationModel(genericFeederBayScd, iedDiagnostics)
+    expect(iedDiagnostics).toEqual([])
+    expect(ieds).toEqual([
+      expect.objectContaining({
+        name: "IED1",
+        manufacturer: "Generic Vendor",
+        accessPoints: [],
+      }),
+    ])
   })
 
   it("builds an electrical graph from parsed topology", () => {

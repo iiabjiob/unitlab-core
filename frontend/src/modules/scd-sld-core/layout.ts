@@ -1,4 +1,4 @@
-import { createFlatSldDocumentFromGraph } from "./sldDocument"
+import { createBaseSldDocumentFromGraph } from "./sldDocumentBase"
 import { FEEDER_TEMPLATE_UNITS } from "./bayTemplates"
 import type {
   ElectricalGraph,
@@ -45,7 +45,7 @@ export function layoutSldDocument(
   options: GenerateSldOptions = {},
 ): SldDocument {
   const gridSize = normalizeGridSize(options.gridSize)
-  const baseDocument = createFlatSldDocumentFromGraph(graph, {
+  const baseDocument = createBaseSldDocumentFromGraph(graph, {
     ...options,
     gridSize,
   })

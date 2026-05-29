@@ -24,7 +24,7 @@ type StackFrame = {
 const XML_TAG_PATTERN = /<[^>]+>/g
 const XML_ATTRIBUTE_PATTERN = /([^\s"'=<>`]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
 
-// Lightweight SCL topology scanner, not a generic XML parser. It is designed
+// Lightweight SCL scanner boundary, not a generic XML parser. It is designed
 // for standard SCD element/attribute traversal in this core slice and does not
 // attempt DTD/CDATA processing, namespace URI resolution, or full XML recovery.
 export function* scanXmlElements(
