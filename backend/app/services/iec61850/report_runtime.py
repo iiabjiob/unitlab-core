@@ -702,18 +702,22 @@ def _run_plan_report(
         read_result = service.read_report_control(session_id=session_id, endpoint=endpoint, candidate=candidate)
         last_state = read_result.state
         diagnostics.extend(read_result.diagnostics)
-        last_state = service.reserve_report_control(session_id=session_id, candidate=candidate, client_id=client_id)
-        reserved = True
-        last_state = service.enable_report_control(session_id=session_id, candidate=candidate, client_id=client_id)
-        enabled = True
-        event = service.send_general_interrogation(session_id=session_id, candidate=candidate, client_id=client_id)
-        observation_result = map_report_event_to_signal_observations(
-            candidate=candidate,
-            matched_signals=report.matched_signals,
-            event=event,
-        )
-        observations = observation_result.observations
-        diagnostics.extend(observation_result.diagnostics)
+        if _has_blocking_runtime_diagnostics(read_result.diagnostics):
+            error_code = "REPORT_CONTROL_PRECHECK_FAILED"
+            error_message = "Live ReportControl state does not match the SCD-derived subscription plan."
+        else:
+            last_state = service.reserve_report_control(session_id=session_id, candidate=candidate, client_id=client_id)
+            reserved = True
+            last_state = service.enable_report_control(session_id=session_id, candidate=candidate, client_id=client_id)
+            enabled = True
+            event = service.send_general_interrogation(session_id=session_id, candidate=candidate, client_id=client_id)
+            observation_result = map_report_event_to_signal_observations(
+                candidate=candidate,
+                matched_signals=report.matched_signals,
+                event=event,
+            )
+            observations = observation_result.observations
+            diagnostics.extend(observation_result.diagnostics)
     except Iec61850ReportRuntimeError as error:
         error_code = error.code
         error_message = str(error)
@@ -799,6 +803,10 @@ def _runtime_diagnostic_from_error(
         message=str(error),
         reference=to_report_control_ref(candidate),
     )
+
+
+def _has_blocking_runtime_diagnostics(diagnostics: Sequence[Iec61850RuntimeDiagnostic]) -> bool:
+    return any(diagnostic.severity == "error" for diagnostic in diagnostics)
 
 
 def _find_plan_report(

@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-11 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, and the IEC/C# compliance map are implemented.
+Status: slices 1-12 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -23,7 +23,7 @@ GOOSE and Sampled Values are explicitly out of scope for this plan and stay in a
 3. Build a report subscription plan containing the required IEDs, RCBs, DataSets, and signal references.
 4. Connect to an endpoint through an adapter.
 5. Read live RCB state: `DatSet`, `ConfRev`, `TrgOps`, `OptFlds`, reservation/owner state, `RptEna`, buffer/integrity settings.
-6. Compare live state with the SCD-derived plan and surface diagnostics.
+6. Compare live state with the SCD-derived plan and block reservation/enable when the comparison returns error diagnostics.
 7. Reserve the selected RCB instance when required.
 8. Configure only allowed fields while disabled.
 9. Enable the report.
@@ -216,7 +216,23 @@ Validation:
 - Backend service tests cover unplanned report event diagnostics and unselected value preservation.
 - Simulator-only; no real MMS/device communication.
 
-### Slice 12 - MMS Adapter Spike Behind Simulator Parity
+### Slice 12 - Activation Precheck Gate
+
+Implemented in this slice:
+
+- Core and backend subscription runners stop after the read stage when live ReportControl state has error diagnostics.
+- Blocking precheck failures return `REPORT_CONTROL_PRECHECK_FAILED` with the read diagnostics preserved as run evidence.
+- Reservation, enable, GI, disable, and release are not attempted when the read comparison already proves the live RCB does not match the SCD-derived plan.
+- Warning diagnostics remain non-blocking so `TrgOps`/`OptFlds` differences can still be surfaced without preventing simulator validation.
+- No public REST/WebSocket API, real MMS connection, GOOSE, or SV handling is added.
+
+Validation:
+
+- Frontend core tests cover simulator precheck failure without reserve/enable.
+- Backend service tests cover simulator/backend precheck failure without reserve/enable.
+- Simulator-only; no real MMS/device communication.
+
+### Slice 13 - MMS Adapter Spike Behind Simulator Parity
 
 Planned only after simulator runner parity passes:
 

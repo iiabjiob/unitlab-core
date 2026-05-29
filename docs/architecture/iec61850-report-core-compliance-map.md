@@ -71,6 +71,7 @@ These are intentionally internal and must not be treated as IEC attributes:
 | `Iec61850ReportSubscriptionRunResult` | Backend/core execution evidence for simulator subscription-plan runs |
 | `Iec61850SignalObservation` | UnitLab signal-level evidence derived from normalized report values; mirrored in backend simulator runtime |
 | `REPORT_NOT_IN_PLAN` | UnitLab diagnostic for report events that do not match the active subscription plan |
+| `REPORT_CONTROL_PRECHECK_FAILED` | UnitLab run status for blocked activation after live RCB state returns error diagnostics |
 
 ## C# Portability Rules
 

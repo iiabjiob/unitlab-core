@@ -20,6 +20,7 @@ import {
   type Iec61850DeviceEndpoint,
   type Iec61850ReportControlCandidate,
   type Iec61850ReportControlState,
+  type Iec61850ReportManagerAdapter,
   type Iec61850ReportReason,
 } from "./index"
 
@@ -512,6 +513,32 @@ describe("iec61850-report-core", () => {
 
   it("releases a reserved simulator report when activation fails", async () => {
     const candidate = firstReportCandidate()
+    const plan = buildIec61850ReportSubscriptionPlan({
+      candidates: [candidate],
+      selectedSignals: [
+        { id: "sig-1", address: "IED1LD0/XCBR1/Pos/stVal[ST]" },
+      ],
+    })
+    const adapter = createEnableFailureAdapter(candidate)
+
+    const run = await runIec61850ReportSubscriptionPlan({
+      plan,
+      adapter,
+      clientId: "unitlab",
+      endpointForCandidate: () => endpoint,
+      now: () => new Date("2026-05-29T12:00:00.000Z"),
+    })
+
+    expect(run.reports[0]).toMatchObject({
+      lifecycleState: "released",
+      event: null,
+      errorCode: "ENABLE_FAILED",
+    })
+    expect(adapter.releaseCalled).toBe(true)
+  })
+
+  it("does not reserve or enable a simulator plan when read precheck has errors", async () => {
+    const candidate = firstReportCandidate()
     const reference = toReportControlRef(candidate)
     const plan = buildIec61850ReportSubscriptionPlan({
       candidates: [candidate],
@@ -524,7 +551,7 @@ describe("iec61850-report-core", () => {
         endpoint,
         reports: [candidate],
         overrides: {
-          [reportControlKey(reference)]: { confRev: "8" } satisfies Partial<Iec61850ReportControlState>,
+          [reportControlKey(reference)]: { dataSetRef: "IED1/AP1/LD0/LLN0.otherDs" } satisfies Partial<Iec61850ReportControlState>,
         },
       }],
       now: () => new Date("2026-05-29T12:00:00.000Z"),
@@ -539,23 +566,14 @@ describe("iec61850-report-core", () => {
     })
 
     expect(run.reports[0]).toMatchObject({
-      lifecycleState: "released",
+      lifecycleState: "read",
       event: null,
-      errorCode: "CONFREV_STALE",
+      errorCode: "REPORT_CONTROL_PRECHECK_FAILED",
     })
-    expect(run.reports[0]?.diagnostics.map(diagnostic => diagnostic.code)).toContain("CONFREV_MISMATCH")
+    expect(run.reports[0]?.diagnostics.map(diagnostic => diagnostic.code)).toEqual(["DATASET_MISMATCH"])
     expect(adapter.getEventLog().map(event => event.kind)).toEqual([
       "connect",
       "read",
-      "disconnect",
-      "connect",
-      "reserve",
-      "disconnect",
-      "connect",
-      "failure",
-      "disconnect",
-      "connect",
-      "release",
       "disconnect",
     ])
   })
@@ -700,5 +718,80 @@ function cloneCandidate(
     signals: [...candidate.signals],
     triggerOptions: { ...candidate.triggerOptions },
     optionalFields: { ...candidate.optionalFields },
+  }
+}
+
+function createEnableFailureAdapter(
+  candidate: Iec61850ReportControlCandidate,
+): Iec61850ReportManagerAdapter & { readonly releaseCalled: boolean } {
+  let releaseCalled = false
+  const state = reportStateFromCandidate(candidate)
+
+  return {
+    get releaseCalled() {
+      return releaseCalled
+    },
+    async connect() {
+      return {
+        async readReportControl() {
+          state.lifecycleState = "read"
+          return cloneReportState(state)
+        },
+        async reserveReportControl(_reference, clientId) {
+          state.reservedBy = clientId
+          state.owner = clientId
+          state.lifecycleState = "reserved"
+          return cloneReportState(state)
+        },
+        async releaseReportControl() {
+          releaseCalled = true
+          state.reservedBy = null
+          state.owner = null
+          state.lifecycleState = "released"
+          return cloneReportState(state)
+        },
+        async enableReportControl() {
+          state.lifecycleState = "failed"
+          throw Object.assign(new Error("enable failed"), { code: "ENABLE_FAILED" })
+        },
+        async disableReportControl() {
+          throw new Error("disable should not be called after failed enable")
+        },
+        async sendGeneralInterrogation() {
+          throw new Error("GI should not be called after failed enable")
+        },
+        async disconnect() {},
+      }
+    },
+  }
+}
+
+function reportStateFromCandidate(candidate: Iec61850ReportControlCandidate): Iec61850ReportControlState {
+  return {
+    reference: toReportControlRef(candidate),
+    lifecycleState: "disconnected",
+    rptId: candidate.rptId,
+    dataSetRef: candidate.dataSetRef,
+    confRev: candidate.confRev,
+    indexed: candidate.indexed,
+    bufferTimeMs: candidate.bufferTimeMs,
+    integrityPeriodMs: candidate.integrityPeriodMs,
+    triggerOptions: { ...candidate.triggerOptions },
+    optionalFields: { ...candidate.optionalFields },
+    signalCount: candidate.signalCount,
+    enabled: false,
+    reservedBy: null,
+    owner: null,
+    sequenceNumber: 0,
+    giInProgress: false,
+  }
+}
+
+function cloneReportState(state: Iec61850ReportControlState): Iec61850ReportControlState {
+  return {
+    ...state,
+    reference: { ...state.reference },
+    triggerOptions: { ...state.triggerOptions },
+    optionalFields: { ...state.optionalFields },
   }
 }

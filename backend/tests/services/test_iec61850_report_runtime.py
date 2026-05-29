@@ -291,6 +291,27 @@ def test_backend_runtime_subscription_plan_runner_releases_after_activation_fail
     assert adapter.release_called is True
 
 
+def test_backend_runtime_subscription_plan_runner_blocks_activation_on_read_mismatch() -> None:
+    candidate = _candidate()
+    adapter = _ReadMismatchAdapter(candidate)
+
+    run = run_report_subscription_plan(
+        plan=_subscription_plan(candidate),
+        adapter=adapter,
+        client_id="unitlab",
+        endpoint_for_device=lambda _: _endpoint(),
+        now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC),
+    )
+
+    assert len(run.reports) == 1
+    assert run.reports[0].error_code == "REPORT_CONTROL_PRECHECK_FAILED"
+    assert run.reports[0].runtime_status == Iec61850RuntimeStatus.READ
+    assert run.reports[0].event is None
+    assert run.reports[0].observations == ()
+    assert [diagnostic.code for diagnostic in run.reports[0].diagnostics] == ["DATASET_MISMATCH"]
+    assert adapter.reserve_called is False
+
+
 def _endpoint() -> Iec61850DeviceEndpoint:
     return Iec61850DeviceEndpoint(
         id="sim:IED1/AP1",
@@ -468,6 +489,64 @@ class _EnableFailureSession:
 
     def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent:
         raise AssertionError("GI should not be called after failed enable")
+
+    def disconnect(self) -> None:
+        return None
+
+
+class _ReadMismatchAdapter:
+    def __init__(self, candidate: Iec61850ReportControlCandidate) -> None:
+        self._candidate = candidate
+        self.reserve_called = False
+
+    def connect(
+        self,
+        *,
+        session_id: str,
+        endpoint: Iec61850DeviceEndpoint,
+        candidates: list[Iec61850ReportControlCandidate],
+    ) -> "_ReadMismatchSession":
+        assert candidates == [self._candidate]
+        return _ReadMismatchSession(candidate=self._candidate, adapter=self)
+
+
+class _ReadMismatchSession:
+    def __init__(self, *, candidate: Iec61850ReportControlCandidate, adapter: _ReadMismatchAdapter) -> None:
+        self._candidate = candidate
+        self._adapter = adapter
+        self._state = Iec61850ReportControlState(
+            reference=to_report_control_ref(candidate),
+            runtime_status=Iec61850RuntimeStatus.DISCONNECTED,
+            rpt_id=candidate.rpt_id,
+            data_set_ref="IED1/AP1/LD0/LLN0.otherDs",
+            conf_rev=candidate.conf_rev,
+            indexed=candidate.indexed,
+            buffer_time_ms=candidate.buffer_time_ms,
+            integrity_period_ms=candidate.integrity_period_ms,
+            trigger_options=candidate.trigger_options,
+            optional_fields=candidate.optional_fields,
+            signal_count=candidate.signal_count,
+        )
+
+    def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlState:
+        self._state.runtime_status = Iec61850RuntimeStatus.READ
+        return self._state
+
+    def reserve_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        self._adapter.reserve_called = True
+        raise AssertionError("reserve should not be called when read precheck fails")
+
+    def release_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        raise AssertionError("release should not be called without reservation")
+
+    def enable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        raise AssertionError("enable should not be called when read precheck fails")
+
+    def disable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        raise AssertionError("disable should not be called when read precheck fails")
+
+    def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent:
+        raise AssertionError("GI should not be called when read precheck fails")
 
     def disconnect(self) -> None:
         return None

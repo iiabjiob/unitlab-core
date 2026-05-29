@@ -181,14 +181,19 @@ async function runReportPlan(input: {
     readResult = await manager.readReportControl(endpoint, candidate)
     lastState = readResult.state
     diagnostics.push(...readResult.diagnostics)
-    lastState = await manager.reserveReportControl(endpoint, candidate, clientId)
-    reserved = true
-    lastState = await manager.enableReportControl(endpoint, candidate, clientId)
-    enabled = true
-    event = await manager.sendGeneralInterrogation(endpoint, candidate, clientId)
-    const observationResult = mapIec61850ReportPlanEventToSignalObservations(reportPlan, event)
-    observations = observationResult.observations
-    diagnostics.push(...observationResult.diagnostics)
+    if (hasBlockingRuntimeDiagnostics(readResult.diagnostics)) {
+      errorCode = "REPORT_CONTROL_PRECHECK_FAILED"
+      errorMessage = "Live ReportControl state does not match the SCD-derived subscription plan."
+    } else {
+      lastState = await manager.reserveReportControl(endpoint, candidate, clientId)
+      reserved = true
+      lastState = await manager.enableReportControl(endpoint, candidate, clientId)
+      enabled = true
+      event = await manager.sendGeneralInterrogation(endpoint, candidate, clientId)
+      const observationResult = mapIec61850ReportPlanEventToSignalObservations(reportPlan, event)
+      observations = observationResult.observations
+      diagnostics.push(...observationResult.diagnostics)
+    }
   } catch (error) {
     const normalized = normalizeRunError(error)
     errorCode = normalized.code
@@ -274,6 +279,10 @@ function runtimeDiagnosticFromError(
     message: error instanceof Error ? error.message : "IEC 61850 report cleanup failed.",
     reference: toReportControlRef(candidate),
   }
+}
+
+function hasBlockingRuntimeDiagnostics(diagnostics: Iec61850ReportRuntimeDiagnostic[]): boolean {
+  return diagnostics.some(diagnostic => diagnostic.severity === "error")
 }
 
 function normalizeRunError(error: unknown): { code: string; message: string } {

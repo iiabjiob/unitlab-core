@@ -1164,11 +1164,12 @@ onUnmounted(() => {
 .iec61850-debug-page {
   display: flex;
   height: 100%;
-  min-height: 0;
+  min-height: 100%;
   flex-direction: column;
   gap: 0.75rem;
   padding: 1rem;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   color: var(--color-neutral-800);
 }
 
@@ -1347,8 +1348,9 @@ onUnmounted(() => {
 
 .iec61850-debug-page__workspace {
   display: grid;
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
+  height: min(42rem, calc(100vh - 14rem));
+  min-height: 26rem;
   grid-template-columns: minmax(20rem, 0.9fr) minmax(24rem, 1.4fr);
   gap: 0.75rem;
 }
@@ -1789,10 +1791,6 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--color-amber-50) 68%, var(--color-white));
 }
 
-.iec61850-debug-page__runtime {
-  flex: 0 0 min(14rem, 24%);
-}
-
 .iec61850-debug-page__runtime-summary {
   display: grid;
   flex: 0 0 auto;
@@ -1834,6 +1832,13 @@ onUnmounted(() => {
   min-height: 0;
   overflow: hidden;
   padding: 0.75rem;
+}
+
+.iec61850-debug-page__runtime {
+  order: 6;
+  flex: 0 0 auto;
+  height: clamp(28rem, calc(100vh - 8rem), 48rem);
+  min-height: 0;
 }
 
 .iec61850-debug-page__runtime-section {
@@ -1919,13 +1924,18 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--color-red-100) 58%, var(--color-white));
 }
 
-.iec61850-debug-page__diagnostics {
-  flex: 0 0 min(12rem, 24%);
-}
-
 .iec61850-debug-page__diagnostics-list {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   padding: 0.5rem;
+}
+
+.iec61850-debug-page__diagnostics {
+  order: 5;
+  flex: 0 0 auto;
+  height: clamp(24rem, calc(100vh - 8rem), 44rem);
+  min-height: 0;
 }
 
 .iec61850-debug-page__diagnostic {
@@ -2125,10 +2135,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 1023px) {
-  .iec61850-debug-page {
-    overflow: auto;
-  }
-
   .iec61850-debug-page__header {
     align-items: flex-start;
     flex-direction: column;
@@ -2139,13 +2145,17 @@ onUnmounted(() => {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .iec61850-debug-page__workspace {
+    height: auto;
+    min-height: 0;
+  }
+
   .iec61850-debug-page__merge-body {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .iec61850-debug-page__runtime {
-    flex-basis: auto;
-    max-height: 28rem;
+    height: clamp(28rem, calc(100vh - 6rem), 44rem);
   }
 
   .iec61850-debug-page__runtime-body {
@@ -2162,8 +2172,7 @@ onUnmounted(() => {
   }
 
   .iec61850-debug-page__diagnostics {
-    flex-basis: auto;
-    max-height: 18rem;
+    height: clamp(24rem, calc(100vh - 6rem), 40rem);
   }
 }
 </style>
