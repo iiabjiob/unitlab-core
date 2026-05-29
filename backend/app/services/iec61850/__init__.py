@@ -43,6 +43,13 @@ from .report_runtime import (
     run_simulator_report_subscription_plan,
     to_report_control_ref,
 )
+from .mms_adapter import (
+    Iec61850MmsEndpointCatalog,
+    Iec61850MmsEndpointCatalogEntry,
+    Iec61850UnavailableMmsAdapter,
+    build_mms_endpoint_catalog,
+    create_unavailable_mms_adapter,
+)
 
 __all__ = [
     "Iec61850DataSetMember",
@@ -77,8 +84,13 @@ __all__ = [
     "Iec61850SignalObservation",
     "Iec61850SimulatorSubscriptionRunResult",
     "Iec61850UnselectedReportValue",
+    "Iec61850MmsEndpointCatalog",
+    "Iec61850MmsEndpointCatalogEntry",
+    "Iec61850UnavailableMmsAdapter",
     "build_simulator_endpoint_for_plan_device",
+    "build_mms_endpoint_catalog",
     "create_iec61850_simulator_adapter",
+    "create_unavailable_mms_adapter",
     "map_report_event_to_subscription_plan_observations",
     "map_report_event_to_signal_observations",
     "normalize_report_data_reference",

@@ -25,7 +25,10 @@ from app.services.iec61850 import (
     Iec61850RuntimeStatus,
     Iec61850RuntimeTriggerOptions,
     Iec61850SelectedSignal,
+    build_mms_endpoint_catalog,
     create_iec61850_simulator_adapter,
+    create_unavailable_mms_adapter,
+    Iec61850MmsEndpointCatalogEntry,
     map_report_event_to_subscription_plan_observations,
     map_report_event_to_signal_observations,
     normalize_report_data_reference,
@@ -310,6 +313,84 @@ def test_backend_runtime_subscription_plan_runner_blocks_activation_on_read_mism
     assert run.reports[0].observations == ()
     assert [diagnostic.code for diagnostic in run.reports[0].diagnostics] == ["DATASET_MISMATCH"]
     assert adapter.reserve_called is False
+
+
+def test_backend_runtime_builds_mms_endpoint_from_catalog() -> None:
+    candidate = _candidate()
+    catalog = build_mms_endpoint_catalog((
+        Iec61850MmsEndpointCatalogEntry(
+            ied_name="IED1",
+            access_point_name="AP1",
+            host="127.0.0.1",
+            port=1102,
+        ),
+    ))
+
+    endpoint = catalog.endpoint_for_plan_device(_subscription_plan(candidate).devices[0])
+
+    assert endpoint.id == "mms:IED1/AP1@127.0.0.1:1102"
+    assert endpoint.mode == Iec61850RuntimeMode.MMS
+    assert endpoint.ied_name == "IED1"
+    assert endpoint.access_point_name == "AP1"
+    assert endpoint.host == "127.0.0.1"
+    assert endpoint.port == 1102
+
+
+def test_backend_runtime_rejects_missing_mms_endpoint() -> None:
+    catalog = build_mms_endpoint_catalog(())
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        catalog.endpoint_for_plan_device(_subscription_plan(_candidate()).devices[0])
+
+    assert error.value.code == "MMS_ENDPOINT_NOT_CONFIGURED"
+
+
+def test_backend_runtime_rejects_invalid_mms_endpoint_catalog_entries() -> None:
+    with pytest.raises(Iec61850ReportRuntimeError) as duplicate_error:
+        build_mms_endpoint_catalog((
+            Iec61850MmsEndpointCatalogEntry(ied_name="IED1", access_point_name="AP1", host="127.0.0.1"),
+            Iec61850MmsEndpointCatalogEntry(ied_name="ied1", access_point_name="ap1", host="127.0.0.2"),
+        ))
+    assert duplicate_error.value.code == "DUPLICATE_MMS_ENDPOINT"
+
+    with pytest.raises(Iec61850ReportRuntimeError) as host_error:
+        build_mms_endpoint_catalog((
+            Iec61850MmsEndpointCatalogEntry(ied_name="IED1", access_point_name="AP1", host=" "),
+        ))
+    assert host_error.value.code == "INVALID_MMS_ENDPOINT"
+
+    with pytest.raises(Iec61850ReportRuntimeError) as port_error:
+        build_mms_endpoint_catalog((
+            Iec61850MmsEndpointCatalogEntry(ied_name="IED1", access_point_name="AP1", host="127.0.0.1", port=70000),
+        ))
+    assert port_error.value.code == "INVALID_MMS_ENDPOINT"
+
+
+def test_backend_runtime_mms_adapter_fails_closed_until_implemented() -> None:
+    candidate = _candidate()
+    catalog = build_mms_endpoint_catalog((
+        Iec61850MmsEndpointCatalogEntry(
+            ied_name="IED1",
+            access_point_name="AP1",
+            host="127.0.0.1",
+            port=1102,
+        ),
+    ))
+
+    run = run_report_subscription_plan(
+        plan=_subscription_plan(candidate),
+        adapter=create_unavailable_mms_adapter(),
+        client_id="unitlab",
+        endpoint_for_device=catalog.endpoint_for_plan_device,
+        now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC),
+    )
+
+    assert len(run.reports) == 1
+    assert run.reports[0].runtime_status == Iec61850RuntimeStatus.FAILED
+    assert run.reports[0].error_code == "MMS_ADAPTER_NOT_IMPLEMENTED"
+    assert run.reports[0].event is None
+    assert run.reports[0].observations == ()
+    assert [diagnostic.code for diagnostic in run.reports[0].diagnostics] == ["MMS_ADAPTER_NOT_IMPLEMENTED"]
 
 
 def _endpoint() -> Iec61850DeviceEndpoint:

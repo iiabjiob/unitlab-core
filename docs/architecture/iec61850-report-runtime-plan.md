@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slice 13A, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -247,6 +247,24 @@ Validation:
 
 - Lab-only validation checklist.
 - Timeout, disconnect, reservation conflict, stale state, and cleanup evidence.
+
+### Slice 13A - Backend MMS Endpoint Boundary
+
+Implemented in this slice:
+
+- Backend runtime can map a planned IED/access point to an explicit MMS endpoint catalog entry.
+- The endpoint catalog fails closed for missing, duplicate, empty-host, and invalid-port entries.
+- An unavailable MMS adapter exists only as a guardrail; it accepts MMS endpoints and returns `MMS_ADAPTER_NOT_IMPLEMENTED` instead of simulating success.
+- The existing subscription-plan runner can now exercise the real-MMS boundary shape without opening a socket or embedding a third-party stack.
+
+Still planned:
+
+- External libIEC61850 IED simulator process for internal tests.
+- Real MMS client adapter or self-owned MMS client implementation behind the same runtime contract.
+
+Validation:
+
+- Backend service tests cover endpoint resolution, missing endpoint diagnostics, and fail-closed MMS adapter behavior.
 
 ## Current Risks
 

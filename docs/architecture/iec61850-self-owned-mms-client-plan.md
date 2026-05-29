@@ -213,4 +213,5 @@ Exit criteria:
 
 - Implemented today: SCD report inventory, Signal List merge, subscription plan builder, simulator-only report runtime, normalized report event DTOs, observation mapping, backend simulator parity, incoming report routing, and activation precheck gates.
 - Not implemented today: real MMS transport, self-owned MMS client, real IED connection, report persistence, GOOSE, Sampled Values, and IEC 62351 security.
-- Next architecture step: keep the existing simulator-only runtime as the reference behavior and add a backend adapter boundary that can later host either a reference-stack adapter or the self-owned MMS client.
+- Implemented boundary step: backend has an explicit MMS endpoint catalog and a fail-closed unavailable MMS adapter.
+- Next architecture step: add an external libIEC61850 IED simulator process for internal tests, then connect UnitLab to it through the same backend report-runtime contract.
