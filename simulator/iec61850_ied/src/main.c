@@ -160,6 +160,14 @@ static const char* libiec61850_status(void)
 #endif
 }
 
+static const char* optional_bool_label(UnitLabIedFixtureOptionalBool field)
+{
+    if (!field.known) {
+        return "unknown";
+    }
+    return field.value ? "true" : "false";
+}
+
 int main(int argc, char** argv)
 {
     SimulatorOptions options;
@@ -207,6 +215,8 @@ int main(int argc, char** argv)
         }
         if (fixture_model.report_count > 0U) {
             printf("firstReport=%s\n", fixture_model.reports[0].key);
+            printf("firstReportTriggerGI=%s\n", optional_bool_label(fixture_model.reports[0].trigger_options.general_interrogation));
+            printf("firstReportOptDataRef=%s\n", optional_bool_label(fixture_model.reports[0].optional_fields.data_reference));
         }
         printf("bind=%s\n", options.bind_address);
         printf("port=%d\n", options.port);

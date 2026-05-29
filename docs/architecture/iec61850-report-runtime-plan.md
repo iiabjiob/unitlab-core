@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slice 13A-13E, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slice 13A-13F, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -339,6 +339,23 @@ Still planned:
 Validation:
 
 - Native C compile, positive dry-run fixture smoke test, and negative missing-IED dry-run smoke test.
+
+### Slice 13F - External IED Simulator Report Option Records
+
+Implemented in this slice:
+
+- The simulator fixture parser now materializes `triggerOptions` and `optionalFields` into typed C records.
+- Dry-run output surfaces first-report GI trigger and data-reference optional-field values for deterministic smoke checks.
+- Missing `triggerOptions` or `optionalFields` now fails fixture parsing before any future MMS server can start.
+
+Still planned:
+
+- Feed the report option records into libIEC61850 report-control creation.
+- Add fixture-level negative tests for malformed option values once a simulator test harness exists.
+
+Validation:
+
+- Native C compile, CMake configure/build, and positive dry-run fixture smoke test.
 
 ## Current Risks
 

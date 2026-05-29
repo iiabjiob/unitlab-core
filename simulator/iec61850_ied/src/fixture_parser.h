@@ -27,6 +27,30 @@ typedef struct UnitLabIedFixtureDataSet {
     UnitLabIedFixtureSignal* signals;
 } UnitLabIedFixtureDataSet;
 
+typedef struct UnitLabIedFixtureOptionalBool {
+    int known;
+    int value;
+} UnitLabIedFixtureOptionalBool;
+
+typedef struct UnitLabIedFixtureTriggerOptions {
+    UnitLabIedFixtureOptionalBool data_change;
+    UnitLabIedFixtureOptionalBool quality_change;
+    UnitLabIedFixtureOptionalBool data_update;
+    UnitLabIedFixtureOptionalBool periodic;
+    UnitLabIedFixtureOptionalBool general_interrogation;
+} UnitLabIedFixtureTriggerOptions;
+
+typedef struct UnitLabIedFixtureOptionalFields {
+    UnitLabIedFixtureOptionalBool sequence_number;
+    UnitLabIedFixtureOptionalBool timestamp;
+    UnitLabIedFixtureOptionalBool reason_code;
+    UnitLabIedFixtureOptionalBool data_set_name;
+    UnitLabIedFixtureOptionalBool data_reference;
+    UnitLabIedFixtureOptionalBool entry_id;
+    UnitLabIedFixtureOptionalBool config_revision;
+    UnitLabIedFixtureOptionalBool buffer_overflow;
+} UnitLabIedFixtureOptionalFields;
+
 typedef struct UnitLabIedFixtureReport {
     char key[256];
     char logical_device_inst[128];
@@ -42,6 +66,8 @@ typedef struct UnitLabIedFixtureReport {
     int buffer_time_ms;
     int integrity_period_ms_known;
     int integrity_period_ms;
+    UnitLabIedFixtureTriggerOptions trigger_options;
+    UnitLabIedFixtureOptionalFields optional_fields;
 } UnitLabIedFixtureReport;
 
 typedef struct UnitLabIedFixtureModel {

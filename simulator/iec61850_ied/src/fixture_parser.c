@@ -161,6 +161,11 @@ static int parse_optional_bool_after_key(JsonRange range, const char* key, int* 
     return 1;
 }
 
+static int parse_optional_bool_field(JsonRange range, const char* key, UnitLabIedFixtureOptionalBool* field)
+{
+    return parse_optional_bool_after_key(range, key, &field->known, &field->value);
+}
+
 static int parse_long_token(const char* cursor, const char* end, long* value)
 {
     char* parsed_end = NULL;
@@ -305,6 +310,33 @@ static const char* find_matching(const char* open_pos, const char* end, char ope
     return NULL;
 }
 
+static int extract_object_after_key(JsonRange range, const char* key, JsonRange* object_range)
+{
+    const char* key_pos = find_key(range, key);
+    if (key_pos == NULL) {
+        return 0;
+    }
+
+    const char* cursor = key_pos + strlen(key) + 2U;
+    cursor = skip_ws(cursor, range.end);
+    if (cursor >= range.end || *cursor != ':') {
+        return 0;
+    }
+    cursor++;
+    cursor = skip_ws(cursor, range.end);
+    if (cursor >= range.end || *cursor != '{') {
+        return 0;
+    }
+
+    const char* object_end = find_matching(cursor, range.end, '{', '}');
+    if (object_end == NULL) {
+        return 0;
+    }
+    object_range->start = cursor;
+    object_range->end = object_end;
+    return 1;
+}
+
 static int extract_array_after_key(JsonRange range, const char* key, JsonRange* array_range)
 {
     const char* key_pos = find_key(range, key);
@@ -424,6 +456,86 @@ static int validate_schema(JsonRange root, char* error, size_t error_size)
     return 1;
 }
 
+static int parse_trigger_options(
+    JsonRange report_range,
+    UnitLabIedFixtureTriggerOptions* options,
+    char* error,
+    size_t error_size)
+{
+    JsonRange options_range;
+    if (!extract_object_after_key(report_range, "triggerOptions", &options_range)) {
+        set_error(error, error_size, "FIXTURE_REPORT_TRGOPS_MISSING: ReportControl requires triggerOptions object.");
+        return 0;
+    }
+    if (!parse_optional_bool_field(options_range, "dataChange", &options->data_change)) {
+        set_error(error, error_size, "FIXTURE_REPORT_TRGOPS_INVALID: dataChange must be a boolean or null.");
+        return 0;
+    }
+    if (!parse_optional_bool_field(options_range, "qualityChange", &options->quality_change)) {
+        set_error(error, error_size, "FIXTURE_REPORT_TRGOPS_INVALID: qualityChange must be a boolean or null.");
+        return 0;
+    }
+    if (!parse_optional_bool_field(options_range, "dataUpdate", &options->data_update)) {
+        set_error(error, error_size, "FIXTURE_REPORT_TRGOPS_INVALID: dataUpdate must be a boolean or null.");
+        return 0;
+    }
+    if (!parse_optional_bool_field(options_range, "periodic", &options->periodic)) {
+        set_error(error, error_size, "FIXTURE_REPORT_TRGOPS_INVALID: periodic must be a boolean or null.");
+        return 0;
+    }
+    if (!parse_optional_bool_field(options_range, "generalInterrogation", &options->general_interrogation)) {
+        set_error(error, error_size, "FIXTURE_REPORT_TRGOPS_INVALID: generalInterrogation must be a boolean or null.");
+        return 0;
+    }
+    return 1;
+}
+
+static int parse_optional_fields(
+    JsonRange report_range,
+    UnitLabIedFixtureOptionalFields* fields,
+    char* error,
+    size_t error_size)
+{
+    JsonRange fields_range;
+    if (!extract_object_after_key(report_range, "optionalFields", &fields_range)) {
+        set_error(error, error_size, "FIXTURE_REPORT_OPTFIELDS_MISSING: ReportControl requires optionalFields object.");
+        return 0;
+    }
+    if (!parse_optional_bool_field(fields_range, "sequenceNumber", &fields->sequence_number)) {
+        set_error(error, error_size, "FIXTURE_REPORT_OPTFIELDS_INVALID: sequenceNumber must be a boolean or null.");
+        return 0;
+    }
+    if (!parse_optional_bool_field(fields_range, "timestamp", &fields->timestamp)) {
+        set_error(error, error_size, "FIXTURE_REPORT_OPTFIELDS_INVALID: timestamp must be a boolean or null.");
+        return 0;
+    }
+    if (!parse_optional_bool_field(fields_range, "reasonCode", &fields->reason_code)) {
+        set_error(error, error_size, "FIXTURE_REPORT_OPTFIELDS_INVALID: reasonCode must be a boolean or null.");
+        return 0;
+    }
+    if (!parse_optional_bool_field(fields_range, "dataSetName", &fields->data_set_name)) {
+        set_error(error, error_size, "FIXTURE_REPORT_OPTFIELDS_INVALID: dataSetName must be a boolean or null.");
+        return 0;
+    }
+    if (!parse_optional_bool_field(fields_range, "dataReference", &fields->data_reference)) {
+        set_error(error, error_size, "FIXTURE_REPORT_OPTFIELDS_INVALID: dataReference must be a boolean or null.");
+        return 0;
+    }
+    if (!parse_optional_bool_field(fields_range, "entryId", &fields->entry_id)) {
+        set_error(error, error_size, "FIXTURE_REPORT_OPTFIELDS_INVALID: entryId must be a boolean or null.");
+        return 0;
+    }
+    if (!parse_optional_bool_field(fields_range, "configRevision", &fields->config_revision)) {
+        set_error(error, error_size, "FIXTURE_REPORT_OPTFIELDS_INVALID: configRevision must be a boolean or null.");
+        return 0;
+    }
+    if (!parse_optional_bool_field(fields_range, "bufferOverflow", &fields->buffer_overflow)) {
+        set_error(error, error_size, "FIXTURE_REPORT_OPTFIELDS_INVALID: bufferOverflow must be a boolean or null.");
+        return 0;
+    }
+    return 1;
+}
+
 static int parse_signal(JsonRange signal_range, UnitLabIedFixtureSignal* signal, char* error, size_t error_size)
 {
     if (!parse_size_after_key(signal_range, "dataSetIndex", &signal->data_set_index)) {
@@ -532,6 +644,12 @@ static int parse_report(JsonRange report_range, UnitLabIedFixtureReport* report,
     }
     if (!parse_optional_int_after_key(report_range, "integrityPeriodMs", &report->integrity_period_ms_known, &report->integrity_period_ms)) {
         set_error(error, error_size, "FIXTURE_REPORT_INTGPD_INVALID: ReportControl integrityPeriodMs must be a non-negative integer or null.");
+        return 0;
+    }
+    if (!parse_trigger_options(report_range, &report->trigger_options, error, error_size)) {
+        return 0;
+    }
+    if (!parse_optional_fields(report_range, &report->optional_fields, error, error_size)) {
         return 0;
     }
     return 1;
