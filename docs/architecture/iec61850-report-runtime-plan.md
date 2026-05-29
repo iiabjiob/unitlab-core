@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slice 13A, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slice 13A-13B, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -265,6 +265,24 @@ Still planned:
 Validation:
 
 - Backend service tests cover endpoint resolution, missing endpoint diagnostics, and fail-closed MMS adapter behavior.
+
+### Slice 13B - External IED Simulator Fixture Boundary
+
+Implemented in this slice:
+
+- Backend runtime can export a required-report subset of a subscription plan as a JSON-serializable IED simulator fixture.
+- The fixture contains only IED/access point, DataSet members, ReportControl attributes, trigger options, and optional fields needed by an external MMS IED simulator.
+- Signal List selected-signal IDs and FAT test semantics are intentionally excluded from the fixture; UnitLab still owns matching and evidence.
+- Fixture export fails closed when a required ReportControl has no `DatSet` reference.
+
+Still planned:
+
+- C/libIEC61850 process that consumes this fixture and exposes one simulated IED over MMS.
+- Integration test that connects UnitLab backend to that process through the MMS endpoint catalog.
+
+Validation:
+
+- Backend service tests cover fixture payload shape, required-report filtering, selected-signal isolation, and missing-DataSet rejection.
 
 ## Current Risks
 

@@ -50,6 +50,16 @@ from .mms_adapter import (
     build_mms_endpoint_catalog,
     create_unavailable_mms_adapter,
 )
+from .ied_simulator_fixture import (
+    IED_SIMULATOR_FIXTURE_SCHEMA,
+    Iec61850IedSimulatorFixture,
+    Iec61850IedSimulatorFixtureDataSet,
+    Iec61850IedSimulatorFixtureDevice,
+    Iec61850IedSimulatorFixtureReport,
+    Iec61850IedSimulatorFixtureSignal,
+    build_ied_simulator_fixture_from_subscription_plan,
+    ied_simulator_fixture_to_payload,
+)
 
 __all__ = [
     "Iec61850DataSetMember",
@@ -87,10 +97,18 @@ __all__ = [
     "Iec61850MmsEndpointCatalog",
     "Iec61850MmsEndpointCatalogEntry",
     "Iec61850UnavailableMmsAdapter",
+    "IED_SIMULATOR_FIXTURE_SCHEMA",
+    "Iec61850IedSimulatorFixture",
+    "Iec61850IedSimulatorFixtureDataSet",
+    "Iec61850IedSimulatorFixtureDevice",
+    "Iec61850IedSimulatorFixtureReport",
+    "Iec61850IedSimulatorFixtureSignal",
+    "build_ied_simulator_fixture_from_subscription_plan",
     "build_simulator_endpoint_for_plan_device",
     "build_mms_endpoint_catalog",
     "create_iec61850_simulator_adapter",
     "create_unavailable_mms_adapter",
+    "ied_simulator_fixture_to_payload",
     "map_report_event_to_subscription_plan_observations",
     "map_report_event_to_signal_observations",
     "normalize_report_data_reference",

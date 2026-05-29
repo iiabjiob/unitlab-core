@@ -25,9 +25,11 @@ from app.services.iec61850 import (
     Iec61850RuntimeStatus,
     Iec61850RuntimeTriggerOptions,
     Iec61850SelectedSignal,
+    build_ied_simulator_fixture_from_subscription_plan,
     build_mms_endpoint_catalog,
     create_iec61850_simulator_adapter,
     create_unavailable_mms_adapter,
+    ied_simulator_fixture_to_payload,
     Iec61850MmsEndpointCatalogEntry,
     map_report_event_to_subscription_plan_observations,
     map_report_event_to_signal_observations,
@@ -393,6 +395,110 @@ def test_backend_runtime_mms_adapter_fails_closed_until_implemented() -> None:
     assert [diagnostic.code for diagnostic in run.reports[0].diagnostics] == ["MMS_ADAPTER_NOT_IMPLEMENTED"]
 
 
+def test_backend_runtime_builds_ied_simulator_fixture_from_required_reports() -> None:
+    candidate = _candidate()
+    ignored_candidate = _candidate(id="report-ignored")
+    plan = Iec61850ReportSubscriptionPlan(
+        selected_signal_count=2,
+        matched_signal_count=2,
+        unmatched_signal_count=0,
+        ambiguous_signal_count=0,
+        required_report_count=1,
+        devices=(
+            Iec61850ReportSubscriptionPlanDevice(
+                ied_name=candidate.ied_name,
+                access_point_name=candidate.access_point_name,
+                reports=(
+                    Iec61850ReportSubscriptionPlanReport(
+                        status="required",
+                        candidate=candidate,
+                        matched_signals=_matched_signals(),
+                    ),
+                    Iec61850ReportSubscriptionPlanReport(
+                        status="candidate",
+                        candidate=ignored_candidate,
+                        matched_signals=(),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
+    payload = ied_simulator_fixture_to_payload(fixture)
+
+    assert payload["schema"] == "unitlab.iec61850.ied-simulator-fixture.v1"
+    assert payload["devices"] == [
+        {
+            "iedName": "IED1",
+            "accessPointName": "AP1",
+            "dataSets": [
+                {
+                    "reference": "IED1/AP1/LD0/LLN0.dsEvents",
+                    "members": [
+                        {
+                            "dataSetIndex": 0,
+                            "reference": "LD0/XCBR1.Pos.stVal[ST]",
+                            "kind": "FCDA",
+                            "fc": "ST",
+                            "initialValue": 0,
+                        },
+                        {
+                            "dataSetIndex": 1,
+                            "reference": "LD0/PGGIO1.Ind1[ST]",
+                            "kind": "FCDA",
+                            "fc": "ST",
+                            "initialValue": 1,
+                        },
+                    ],
+                },
+            ],
+            "reports": [
+                {
+                    "key": "IED1/AP1/LD0/LLN0/brcbEvents/buffered",
+                    "logicalDeviceInst": "LD0",
+                    "logicalNodeName": "LLN0",
+                    "reportControlName": "brcbEvents",
+                    "reportKind": "buffered",
+                    "rptId": "IED1LD0/LLN0.BR.Events",
+                    "dataSetRef": "IED1/AP1/LD0/LLN0.dsEvents",
+                    "confRev": "7",
+                    "indexed": True,
+                    "bufferTimeMs": 100,
+                    "integrityPeriodMs": 1000,
+                    "triggerOptions": {
+                        "dataChange": True,
+                        "qualityChange": True,
+                        "dataUpdate": False,
+                        "periodic": False,
+                        "generalInterrogation": True,
+                    },
+                    "optionalFields": {
+                        "sequenceNumber": True,
+                        "timestamp": True,
+                        "reasonCode": True,
+                        "dataSetName": True,
+                        "dataReference": True,
+                        "entryId": True,
+                        "configRevision": True,
+                        "bufferOverflow": True,
+                    },
+                },
+            ],
+        },
+    ]
+    assert "sig-1" not in repr(payload)
+
+
+def test_backend_runtime_rejects_ied_simulator_fixture_without_dataset_ref() -> None:
+    candidate = _candidate(data_set_ref=None)
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(candidate))
+
+    assert error.value.code == "SIMULATOR_FIXTURE_DATASET_MISSING"
+
+
 def _endpoint() -> Iec61850DeviceEndpoint:
     return Iec61850DeviceEndpoint(
         id="sim:IED1/AP1",
@@ -404,7 +510,7 @@ def _endpoint() -> Iec61850DeviceEndpoint:
     )
 
 
-def _candidate(id: str = "report-1", conf_rev: str = "7") -> Iec61850ReportControlCandidate:
+def _candidate(id: str = "report-1", conf_rev: str = "7", data_set_ref: str | None = "IED1/AP1/LD0/LLN0.dsEvents") -> Iec61850ReportControlCandidate:
     return Iec61850ReportControlCandidate(
         id=id,
         ied_name="IED1",
@@ -414,7 +520,7 @@ def _candidate(id: str = "report-1", conf_rev: str = "7") -> Iec61850ReportContr
         report_control_name="brcbEvents",
         report_kind=Iec61850ReportKind.BUFFERED,
         rpt_id="IED1LD0/LLN0.BR.Events",
-        data_set_ref="IED1/AP1/LD0/LLN0.dsEvents",
+        data_set_ref=data_set_ref,
         conf_rev=conf_rev,
         indexed=True,
         buffer_time_ms=100,

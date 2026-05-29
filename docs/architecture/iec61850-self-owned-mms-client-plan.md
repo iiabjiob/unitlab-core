@@ -211,7 +211,7 @@ Exit criteria:
 
 ## Current Project Position
 
-- Implemented today: SCD report inventory, Signal List merge, subscription plan builder, simulator-only report runtime, normalized report event DTOs, observation mapping, backend simulator parity, incoming report routing, and activation precheck gates.
+- Implemented today: SCD report inventory, Signal List merge, subscription plan builder, simulator-only report runtime, normalized report event DTOs, observation mapping, backend simulator parity, incoming report routing, activation precheck gates, MMS endpoint catalog, and external IED simulator fixture export.
 - Not implemented today: real MMS transport, self-owned MMS client, real IED connection, report persistence, GOOSE, Sampled Values, and IEC 62351 security.
-- Implemented boundary step: backend has an explicit MMS endpoint catalog and a fail-closed unavailable MMS adapter.
-- Next architecture step: add an external libIEC61850 IED simulator process for internal tests, then connect UnitLab to it through the same backend report-runtime contract.
+- Implemented boundary step: backend has an explicit MMS endpoint catalog, a fail-closed unavailable MMS adapter, and a JSON fixture boundary for an external IED simulator.
+- Next architecture step: add an external libIEC61850 IED simulator process that consumes the fixture, then connect UnitLab to it through the same backend report-runtime contract.
