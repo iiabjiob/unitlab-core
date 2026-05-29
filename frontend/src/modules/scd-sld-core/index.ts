@@ -48,7 +48,15 @@ export { parseScdSource } from "./parser"
 export { buildElectricalGraph } from "./graph"
 export { buildSldCellModel } from "./cellModel"
 export { layoutSldDocument } from "./layout"
+export { FEEDER_TEMPLATE_UNITS, getSldBayLayoutTemplates } from "./bayTemplates"
 export { createFlatSldDocument, createFlatSldDocumentFromGraph } from "./sldDocument"
+export type {
+  SldBayLayoutTemplate,
+  SldBayLayoutTemplateLabel,
+  SldBayLayoutTemplatePoint,
+  SldBayLayoutTemplateSlot,
+  SldBayLayoutTemplateWire,
+} from "./bayTemplates"
 export type {
   ElectricalGraph,
   ElectricalGraphEdge,

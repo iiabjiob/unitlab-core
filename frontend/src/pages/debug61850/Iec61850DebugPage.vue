@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, type ComponentPublicInstance } from "vue"
+import { RouterLink } from "vue-router"
 import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
 
 import UiButton from "@/components/ui/UiButton.vue"
@@ -350,6 +351,9 @@ function shortHash(value: string | null): string {
       </div>
 
       <div class="iec61850-debug-page__actions">
+        <RouterLink class="iec61850-debug-page__nav-link" to="/61850-debug/templates">
+          Bay templates
+        </RouterLink>
         <UiButton variant="secondary" size="sm" :disabled="loading" @click="openFileDialog">
           {{ model ? "Load another SCD" : "Choose SCD" }}
         </UiButton>
@@ -574,6 +578,22 @@ function shortHash(value: string | null): string {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
+  gap: 0.5rem;
+}
+
+.iec61850-debug-page__nav-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--runtime-accent) 26%, var(--color-neutral-300));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-white) 80%, transparent);
+  color: var(--color-neutral-800);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .iec61850-debug-page__file-input {
@@ -876,12 +896,14 @@ function shortHash(value: string | null): string {
 }
 
 :global(.dark .iec61850-debug-page__title),
-:global(.dark .iec61850-debug-page__detail-heading h2) {
+:global(.dark .iec61850-debug-page__detail-heading h2),
+:global(.dark .iec61850-debug-page__nav-link) {
   color: var(--color-neutral-50);
 }
 
 :global(.dark .iec61850-debug-page__metric),
-:global(.dark .iec61850-debug-page__section) {
+:global(.dark .iec61850-debug-page__section),
+:global(.dark .iec61850-debug-page__nav-link) {
   border-color: var(--color-neutral-800);
   background: color-mix(in srgb, var(--color-neutral-950) 58%, transparent);
 }
