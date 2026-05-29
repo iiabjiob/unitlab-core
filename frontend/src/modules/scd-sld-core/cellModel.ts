@@ -4,8 +4,13 @@ import type {
   ElectricalGraphNode,
   SclEquipmentKind,
   ScdDiagnostic,
+  SldBayEquipmentRole,
+  SldBayInterpretation,
   SldBayCell,
   SldBayCellType,
+  SldBayEarthSwitchPlacement,
+  SldBayLayoutVariant,
+  SldBayOutgoingSide,
   SldCellModel,
   SldCellNode,
   SldCellNodeRole,
@@ -99,13 +104,18 @@ function buildBayCell(input: {
   orderIndex: number
   nodes: SldCellNode[]
 }): SldBayCell {
+  const cellType = inferBayCellType(input.bayGroup, input.nodes)
+  const interpretation = inferBayInterpretation(cellType, input.nodes)
+
   return {
     id: `cell:${input.bayGroup.id}`,
     groupId: input.bayGroup.id,
     voltageLevelGroupId: input.voltageLevelGroupId,
     name: input.bayGroup.name,
     label: input.bayGroup.label,
-    cellType: inferBayCellType(input.bayGroup, input.nodes),
+    cellType,
+    interpretation,
+    layoutVariant: buildBayLayoutVariant(interpretation, input.nodes),
     orderIndex: input.orderIndex,
     position: input.bayGroup.coordinates,
     nodes: input.nodes,
@@ -121,9 +131,10 @@ function buildBayCell(input: {
 }
 
 function buildCellNodes(nodes: ElectricalGraphNode[], busbarConnectedNodeIds: Set<string>): SldCellNode[] {
-  return [...nodes]
+  const cellNodes = [...nodes]
     .sort(compareNodesForCell)
     .map((node, orderIndex) => mapNodeToCellNode(node, orderIndex, busbarConnectedNodeIds))
+  return assignBayEquipmentRoles(cellNodes)
 }
 
 function mapNodeToCellNode(
@@ -140,12 +151,45 @@ function mapNodeToCellNode(
     kind: node.kind,
     equipmentType: node.equipmentType,
     role: roleForKind(node.kind),
+    equipmentRole: "unknown",
     orderIndex,
     position: node.position,
     generated: node.generated,
     grounded: node.grounded,
     busbarConnected: busbarConnectedNodeIds.has(node.id),
     sourceLocation: node.sourceLocation,
+  }
+}
+
+function assignBayEquipmentRoles(nodes: SldCellNode[]): SldCellNode[] {
+  return nodes.map(node => ({
+    ...node,
+    equipmentRole: inferBayEquipmentRole(node),
+  }))
+}
+
+function inferBayEquipmentRole(node: SldCellNode): SldBayEquipmentRole {
+  switch (node.kind) {
+    case "busbar":
+      return "busbar"
+    case "breaker":
+      return "circuitBreaker"
+    case "disconnector":
+      if (node.grounded) {
+        return "earthSwitch"
+      }
+      return node.busbarConnected ? "busDisconnector" : "lineDisconnector"
+    case "transformer":
+      return "transformer"
+    case "feeder":
+      return "feederTerminal"
+    case "measurement":
+      return "measurement"
+    case "ground":
+      return "ground"
+    case "unknown":
+    default:
+      return node.role === "switchgear" ? "genericSwitchgear" : "unknown"
   }
 }
 
@@ -253,6 +297,97 @@ function roleOrder(role: SldCellNodeRole): number {
     default:
       return 90
   }
+}
+
+function inferBayInterpretation(cellType: SldBayCellType, nodes: SldCellNode[]): SldBayInterpretation {
+  if (cellType === "busbar") {
+    return "busbar"
+  }
+  if (cellType === "bus-coupler") {
+    return "bus-coupler"
+  }
+  if (nodes.some(node => node.equipmentRole === "transformer") || cellType === "transformer") {
+    return "transformer-feeder"
+  }
+  if (isBusbarEarthCell(nodes)) {
+    return "busbar-earth"
+  }
+  if (isFeederLikeCell(cellType, nodes)) {
+    return nodes.filter(node => node.equipmentRole === "busDisconnector").length > 1
+      ? "double-bus-feeder"
+      : "single-bus-feeder"
+  }
+  if (cellType === "switchgear") {
+    return "switchgear"
+  }
+  return "unknown"
+}
+
+function buildBayLayoutVariant(
+  interpretation: SldBayInterpretation,
+  nodes: SldCellNode[],
+): SldBayLayoutVariant {
+  const busbarCount = resolveBusbarCount(interpretation, nodes)
+  const outgoingSide = resolveOutgoingSide(nodes)
+
+  return {
+    templateId: `${interpretation}.${busbarCount}-bus.${outgoingSide}`,
+    orientation: outgoingSide === "bottom" ? "down" : "up",
+    busbarCount,
+    outgoingSide,
+    earthSwitchPlacement: resolveEarthSwitchPlacement(nodes),
+    confidence: resolveLayoutConfidence(interpretation, nodes),
+  }
+}
+
+function isBusbarEarthCell(nodes: SldCellNode[]): boolean {
+  return nodes.length > 0
+    && nodes.every(node => node.equipmentRole === "earthSwitch" || node.equipmentRole === "busbar")
+    && nodes.some(node => node.equipmentRole === "earthSwitch")
+}
+
+function isFeederLikeCell(cellType: SldBayCellType, nodes: SldCellNode[]): boolean {
+  return cellType === "feeder"
+    || nodes.some(node => node.equipmentRole === "feederTerminal")
+}
+
+function resolveBusbarCount(interpretation: SldBayInterpretation, nodes: SldCellNode[]): number {
+  if (interpretation === "busbar" || interpretation === "unknown") {
+    return 0
+  }
+
+  const busDisconnectorCount = nodes.filter(node => node.equipmentRole === "busDisconnector").length
+  return Math.max(1, Math.min(3, busDisconnectorCount || nodes.filter(node => node.busbarConnected).length))
+}
+
+function resolveOutgoingSide(nodes: SldCellNode[]): SldBayOutgoingSide {
+  return nodes.some(node => node.equipmentRole === "feederTerminal" || node.equipmentRole === "lineDisconnector")
+    ? "top"
+    : "none"
+}
+
+function resolveEarthSwitchPlacement(nodes: SldCellNode[]): SldBayEarthSwitchPlacement {
+  const earthSwitches = nodes.filter(node => node.equipmentRole === "earthSwitch")
+  if (earthSwitches.length === 0) {
+    return "none"
+  }
+
+  const hasBusSide = earthSwitches.some(node => node.busbarConnected)
+  const hasLineSide = earthSwitches.some(node => !node.busbarConnected)
+  if (hasBusSide && hasLineSide) {
+    return "both"
+  }
+  return hasBusSide ? "bus-side" : "line-side"
+}
+
+function resolveLayoutConfidence(interpretation: SldBayInterpretation, nodes: SldCellNode[]): SldBayLayoutVariant["confidence"] {
+  if (interpretation === "unknown") {
+    return "low"
+  }
+  if (nodes.some(node => node.position.x !== null || node.position.y !== null)) {
+    return "high"
+  }
+  return "medium"
 }
 
 function inferBayCellType(group: ElectricalGraphGroup, nodes: SldCellNode[]): SldBayCellType {

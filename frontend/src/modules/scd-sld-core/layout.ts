@@ -139,7 +139,10 @@ function buildPositionsBySourceId(cellModel: SldCellModel, gridSize: number): Ma
 }
 
 function shouldUseFeederTemplate(bayCell: SldBayCell): boolean {
-  return bayCell.cellType === "feeder" && bayCell.switchgearNodeIds.length > 0
+  return bayCell.cellType === "feeder"
+    && (bayCell.interpretation === "single-bus-feeder"
+      || bayCell.interpretation === "double-bus-feeder")
+    && bayCell.switchgearNodeIds.length > 0
 }
 
 function buildFeederCellPositions(
@@ -148,16 +151,16 @@ function buildFeederCellPositions(
   gridSize: number,
 ): Map<string, SldCoordinate> {
   const positions = new Map<string, SldCoordinate>()
-  const switchgearNodes = bayCell.nodes.filter(node => node.role === "switchgear")
-  const breakerNodes = switchgearNodes.filter(node => node.kind === "breaker")
-  const disconnectorNodes = switchgearNodes.filter(node => node.kind === "disconnector")
-  const groundedDisconnectors = disconnectorNodes.filter(node => node.grounded)
-  const lineDisconnectors = disconnectorNodes.filter(node => !node.grounded)
-  const busSelectorNodes = sortNodesBySourceXThenY(lineDisconnectors.filter(node => node.busbarConnected))
-  const upperDisconnectorNodes = sortNodesBySourcePosition(lineDisconnectors.filter(node => !node.busbarConnected))
-  const busbarGroundedDisconnectors = sortNodesBySourceXThenY(groundedDisconnectors.filter(node => node.busbarConnected))
-  const sideGroundedDisconnectors = sortNodesBySourcePosition(groundedDisconnectors.filter(node => !node.busbarConnected))
-  const feederNodes = sortNodesBySourcePosition(bayCell.nodes.filter(node => node.role === "feeder"))
+  const breakerNodes = bayCell.nodes.filter(node => node.equipmentRole === "circuitBreaker")
+  const busSelectorNodes = sortNodesBySourceXThenY(bayCell.nodes.filter(node => node.equipmentRole === "busDisconnector"))
+  const upperDisconnectorNodes = sortNodesBySourcePosition(bayCell.nodes.filter(node => node.equipmentRole === "lineDisconnector"))
+  const busbarGroundedDisconnectors = sortNodesBySourceXThenY(
+    bayCell.nodes.filter(node => node.equipmentRole === "earthSwitch" && node.busbarConnected),
+  )
+  const sideGroundedDisconnectors = sortNodesBySourcePosition(
+    bayCell.nodes.filter(node => node.equipmentRole === "earthSwitch" && !node.busbarConnected),
+  )
+  const feederNodes = sortNodesBySourcePosition(bayCell.nodes.filter(node => node.equipmentRole === "feederTerminal"))
   const assignedSourceIds = new Set<string>()
 
   feederNodes.forEach((node, index) => assignNodePosition(
@@ -419,14 +422,14 @@ function buildFeederTemplateBridgeConnections(
       }
 
       const busSelectorNodes = bayCell.nodes
-        .filter(node => node.role === "switchgear" && node.kind === "disconnector" && !node.grounded && node.busbarConnected)
+        .filter(node => node.equipmentRole === "busDisconnector")
         .sort(compareCellNodesByPosition(positionsBySourceId, "x-then-y"))
       if (busSelectorNodes.length === 0) {
         continue
       }
 
       const centralNodes = bayCell.nodes
-        .filter(node => node.role === "switchgear" && !node.grounded && !node.busbarConnected)
+        .filter(node => node.equipmentRole === "circuitBreaker" || node.equipmentRole === "lineDisconnector")
         .sort(compareCellNodesByPosition(positionsBySourceId, "y-then-x"))
       const bridgeSource = centralNodes[centralNodes.length - 1]
       if (!bridgeSource || hasExistingConnectionBetween(existingConnections, bridgeSource.sourceId, busSelectorNodes.map(node => node.sourceId))) {
@@ -486,14 +489,14 @@ function buildFeederTemplateGroundConnections(
       }
 
       const busSelectorNodes = bayCell.nodes
-        .filter(node => node.role === "switchgear" && node.kind === "disconnector" && !node.grounded && node.busbarConnected)
+        .filter(node => node.equipmentRole === "busDisconnector")
         .sort(compareCellNodesByPosition(positionsBySourceId, "x-then-y"))
       const centralNodes = bayCell.nodes
-        .filter(node => node.role === "switchgear" && !node.grounded && !node.busbarConnected)
+        .filter(node => node.equipmentRole === "circuitBreaker" || node.equipmentRole === "lineDisconnector")
         .sort(compareCellNodesByPosition(positionsBySourceId, "y-then-x"))
       const centerX = resolveCellCenterX(bayCell, positionsBySourceId)
 
-      for (const groundNode of bayCell.nodes.filter(node => node.kind === "disconnector" && node.grounded)) {
+      for (const groundNode of bayCell.nodes.filter(node => node.equipmentRole === "earthSwitch")) {
         if (hasRoutedSegment(existingConnections, groundNode.sourceId)) {
           continue
         }
@@ -543,7 +546,11 @@ function resolveCellCenterX(
   positionsBySourceId: Map<string, SldRoutePoint>,
 ): number | null {
   const centerNode = bayCell.nodes
-    .filter(node => !node.grounded && !node.busbarConnected && (node.role === "switchgear" || node.role === "feeder"))
+    .filter(node => (
+      node.equipmentRole === "circuitBreaker"
+      || node.equipmentRole === "lineDisconnector"
+      || node.equipmentRole === "feederTerminal"
+    ))
     .map(node => positionsBySourceId.get(node.sourceId))
     .find((point): point is SldRoutePoint => point !== undefined)
   if (centerNode) {

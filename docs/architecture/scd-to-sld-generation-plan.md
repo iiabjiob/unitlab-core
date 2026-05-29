@@ -491,8 +491,9 @@ Implemented 2026-05-28:
 - Added a first bay/busbar layout pass that uses standard SCL hierarchy coordinates from `Substation` -> `VoltageLevel` -> `Bay` plus relative equipment coordinates.
 - Empty busbar-like bays and voltage-level busbar connectivity nodes now produce generated busbar graph nodes so bay equipment connects to a visible busbar line instead of floating star topology.
 - Bay cells now carry an inferred cell type such as busbar, bus-coupler, transformer, feeder, reactor, protection, switchgear, or unknown for later renderer/UX decisions.
+- Bay cells now carry a canonical interpretation and layout variant. Equipment inside a bay receives a topology-derived role such as circuit breaker, bus disconnector, line disconnector, earth switch, feeder terminal, transformer, or busbar before the layout pass.
 - Connections that include a busbar endpoint now route each bay element orthogonally to the busbar y-axis while preserving grid-aligned coordinates.
-- Feeder bay cells now use a reusable UnitLab feeder template: feeder exit at the top, line disconnector, circuit breaker, busbar selector disconnectors, and earthing switches positioned in stable relative slots.
+- Feeder bay cells now use a reusable UnitLab feeder template driven by canonical roles: feeder exit at the top, line disconnector, circuit breaker, busbar selector disconnectors, and earthing switches positioned in stable relative slots.
 - Feeder exits are adapted into arrow lines in the current editor, and grounded disconnectors are imported as `earthing` switchgear candidates.
 - Shared grounded connectivity nodes are not rendered as star interconnection lines between earthing switches.
 - The public production entrypoint is explicitly `generateSldFromScd(...)`. Graph-to-document helpers are named `createFlatSldDocument(...)` / `createFlatSldDocumentFromGraph(...)` and mark output as `scd-flat-debug` so they do not compete with the cell-model layout pipeline.

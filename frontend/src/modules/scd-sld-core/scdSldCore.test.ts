@@ -344,9 +344,14 @@ describe("scd-sld-core", () => {
         "substation/SS1/voltageLevel/VL1/bay/BAY1/equipment/Q01",
       ],
     })
-    expect(result.cellModel.voltageLevels[0]?.bayCells[0]?.nodes.map(node => [node.label, node.role, node.orderIndex])).toEqual([
-      ["QB1", "switchgear", 0],
-      ["Q01", "switchgear", 1],
+    expect(result.cellModel.voltageLevels[0]?.bayCells[0]?.nodes.map(node => [
+      node.label,
+      node.role,
+      node.equipmentRole,
+      node.orderIndex,
+    ])).toEqual([
+      ["QB1", "switchgear", "busDisconnector", 0],
+      ["Q01", "switchgear", "circuitBreaker", 1],
     ])
     expect(result.cellModel.voltageLevels[0]?.ungroupedNodes.map(node => [node.label, node.role, node.generated])).toEqual([
       ["BUS1", "busbar", true],
@@ -508,11 +513,29 @@ describe("scd-sld-core", () => {
     const feederCell = result.cellModel.voltageLevels[0]?.bayCells.find(cell => cell.name === "BAY1")
     expect(feederCell).toMatchObject({
       cellType: "feeder",
+      interpretation: "double-bus-feeder",
+      layoutVariant: {
+        templateId: "double-bus-feeder.2-bus.top",
+        orientation: "up",
+        busbarCount: 2,
+        outgoingSide: "top",
+        earthSwitchPlacement: "bus-side",
+        confidence: "high",
+      },
     })
     expect(feederCell?.nodes.filter(node => node.grounded).map(node => node.label)).toEqual([
       "QBE1",
       "QBE2",
     ])
+    expect(Object.fromEntries(feederCell?.nodes.map(node => [node.label, node.equipmentRole]) ?? [])).toEqual({
+      QBE1: "earthSwitch",
+      QBE2: "earthSwitch",
+      QB1: "busDisconnector",
+      QB2: "busDisconnector",
+      Q01: "circuitBreaker",
+      QS1: "lineDisconnector",
+      FEEDER: "feederTerminal",
+    })
 
     const elementsByLabel = new Map(result.document.elements.map(element => [element.label, element]))
     expect(elementsByLabel.get("FEEDER")?.position).toEqual({ x: 216, y: 72 })

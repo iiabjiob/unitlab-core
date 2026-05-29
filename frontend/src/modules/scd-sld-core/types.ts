@@ -52,6 +52,19 @@ export type SldCellNodeRole =
   | "ground"
   | "unknown"
 
+export type SldBayEquipmentRole =
+  | "busbar"
+  | "circuitBreaker"
+  | "busDisconnector"
+  | "lineDisconnector"
+  | "earthSwitch"
+  | "transformer"
+  | "feederTerminal"
+  | "measurement"
+  | "ground"
+  | "genericSwitchgear"
+  | "unknown"
+
 export type SldBayCellType =
   | "busbar"
   | "bus-coupler"
@@ -61,6 +74,31 @@ export type SldBayCellType =
   | "protection"
   | "switchgear"
   | "unknown"
+
+export type SldBayInterpretation =
+  | "busbar"
+  | "bus-coupler"
+  | "single-bus-feeder"
+  | "double-bus-feeder"
+  | "transformer-feeder"
+  | "busbar-earth"
+  | "switchgear"
+  | "unknown"
+
+export type SldBayLayoutOrientation = "up" | "down"
+
+export type SldBayOutgoingSide = "top" | "bottom" | "none"
+
+export type SldBayEarthSwitchPlacement = "line-side" | "bus-side" | "both" | "none"
+
+export type SldBayLayoutVariant = {
+  templateId: string
+  orientation: SldBayLayoutOrientation
+  busbarCount: number
+  outgoingSide: SldBayOutgoingSide
+  earthSwitchPlacement: SldBayEarthSwitchPlacement
+  confidence: "high" | "medium" | "low"
+}
 
 export type SldCoordinate = {
   x: number | null
@@ -296,6 +334,7 @@ export type SldCellNode = {
   kind: SclEquipmentKind
   equipmentType: string
   role: SldCellNodeRole
+  equipmentRole: SldBayEquipmentRole
   orderIndex: number
   position: SldCoordinate
   generated: boolean
@@ -311,6 +350,8 @@ export type SldBayCell = {
   name: string
   label: string
   cellType: SldBayCellType
+  interpretation: SldBayInterpretation
+  layoutVariant: SldBayLayoutVariant
   orderIndex: number
   position: SldCoordinate
   nodes: SldCellNode[]
