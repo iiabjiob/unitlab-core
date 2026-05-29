@@ -1,5 +1,5 @@
 <template>
-  <teleport :to="APP_OVERLAY_HOST_SELECTOR">
+  <teleport to="body">
     <transition name="fade-modal">
       <div
         v-if="isOpen"
@@ -49,7 +49,6 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue"
 import { createDialogFocusOrchestrator, type DialogCloseReason, useDialogController } from "@affino/dialog-vue"
 import { useViewport } from "@/composables/useViewport"
-import { APP_OVERLAY_HOST_SELECTOR } from "@/utils/overlayHost"
 
 type ModalMaxWidth = "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "6xl"
 

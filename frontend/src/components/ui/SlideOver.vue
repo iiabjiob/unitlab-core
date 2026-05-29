@@ -1,5 +1,5 @@
 <template>
-  <teleport :to="APP_OVERLAY_HOST_SELECTOR">
+  <teleport to="body">
     <div v-if="isOpen" class="slide-over">
       <div
         class="slide-over__backdrop"
@@ -84,7 +84,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onBeforeUnmount } from "vue"
 import { createDialogFocusOrchestrator, type DialogCloseReason, useDialogController } from "@affino/dialog-vue"
-import { APP_OVERLAY_HOST_SELECTOR } from "@/utils/overlayHost"
 
 type Placement = "left" | "right" | "bottom"
 

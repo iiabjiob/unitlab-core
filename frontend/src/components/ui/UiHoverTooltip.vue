@@ -12,7 +12,6 @@ import {
   DEFAULT_TOOLTIP_CLOSE_DELAY_MS,
   DEFAULT_TOOLTIP_OPEN_DELAY_MS,
 } from "@/components/ui/tooltipDefaults"
-import { APP_OVERLAY_HOST_SELECTOR } from "@/utils/overlayHost"
 
 type TooltipPlacement = "top" | "bottom" | "left" | "right"
 type TooltipAlign = "start" | "center" | "end"
@@ -64,7 +63,6 @@ const { triggerRef, tooltipRef, tooltipStyle, teleportTarget } = useFloatingTool
   placement: props.placement,
   align: props.align,
   gutter: 8,
-  teleportTo: APP_OVERLAY_HOST_SELECTOR,
   zIndex: props.zIndex,
 })
 
@@ -249,7 +247,7 @@ function triggerHasFocus(): boolean {
 <template>
   <slot :setTriggerRef="setTriggerRef" :getTriggerProps="getTriggerProps" />
 
-  <Teleport :to="teleportTarget || APP_OVERLAY_HOST_SELECTOR">
+  <Teleport :to="teleportTarget || 'body'">
     <div
       v-if="!disabled && tooltipController.state.value.open"
       ref="tooltipRef"

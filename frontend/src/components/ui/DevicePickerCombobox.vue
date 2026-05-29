@@ -8,7 +8,6 @@ import { useDeviceStore } from "@/stores/deviceStore"
 import { useThemeStore } from "@/stores/themeStore"
 import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import type { Device, DeviceStatus, DeviceType } from "@/types/device"
-import { APP_OVERLAY_HOST_SELECTOR } from "@/utils/overlayHost"
 
 const props = withDefaults(defineProps<{
   modelValue: number | null
@@ -139,7 +138,6 @@ const floating = useFloatingPopover(popover, {
   align: "start",
   gutter: 6,
   viewportPadding: 8,
-  teleportTo: APP_OVERLAY_HOST_SELECTOR,
   zIndex: 1250,
 })
 

@@ -8,7 +8,6 @@ import { runStoreBootstrap } from "@/composables/useStoreBootstrap"
 import { useSequenceStore } from "@/stores/sequenceStore"
 import { useThemeStore } from "@/stores/themeStore"
 import type { SequenceDef } from "@/types/sequences"
-import { APP_OVERLAY_HOST_SELECTOR } from "@/utils/overlayHost"
 
 const props = withDefaults(defineProps<{
   modelValue: number | null
@@ -117,7 +116,6 @@ const floating = useFloatingPopover(popover, {
   align: "start",
   gutter: 6,
   viewportPadding: 8,
-  teleportTo: APP_OVERLAY_HOST_SELECTOR,
   zIndex: 1250,
 })
 
