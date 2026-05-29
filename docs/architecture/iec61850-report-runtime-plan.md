@@ -7,6 +7,7 @@ References:
 - `docs/.IEC61850/IEC 61850-7-2-2020.pdf` for DataSet, report control, trigger option, optional field, reservation, enable, and GI semantics.
 - `docs/.IEC61850/IEC 61850-8-1-2020.pdf` for the future MMS mapping.
 - `docs/architecture/iec61850-report-core-compliance-map.md` for the current IEC-to-UnitLab mapping and C# portability guardrails.
+- `docs/architecture/iec61850-self-owned-mms-client-plan.md` for the self-owned MMS client decision, required standards, public references, and implementation slices.
 
 ## Safety Position
 
@@ -238,7 +239,9 @@ Planned only after simulator runner parity passes:
 
 - Add an adapter boundary for IEC 61850-8-1 MMS.
 - Connect/read RCB attributes against a controlled simulator or lab IED.
+- Keep the adapter replaceable: reference-stack adapters and the future self-owned MMS client must expose the same UnitLab report-runtime contract.
 - Keep real enable/reserve/GI behind a backend feature flag and explicit operator action.
+- Do not embed GPL MMS code in UnitLab production runtime without a separate licensing decision.
 
 Validation:
 
@@ -249,6 +252,6 @@ Validation:
 
 - The SCD parser does not expand `DataTypeTemplates`; value typing remains shallow.
 - RCB indexed instance allocation is not planned yet.
-- Real MMS encoding/decoding library choice is unresolved.
+- Real MMS transport is unresolved; the current direction is a replaceable backend adapter, with a self-owned MMS client tracked separately.
 - Report event persistence and test evidence linking are future backend slices.
 - GOOSE and SV remain separate protocol tracks.

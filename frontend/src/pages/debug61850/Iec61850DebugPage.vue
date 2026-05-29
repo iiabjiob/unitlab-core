@@ -44,6 +44,13 @@ type ParseResult = {
   treeBuildDurationMs: number
 }
 
+type SimulatorSummaryItem = {
+  label: string
+  count: number
+  severity?: "error" | "warning" | "info"
+  detail?: string | null
+}
+
 const EMPTY_STATS: Iec61850DebugStats = {
   sites: 0,
   voltageLevels: 0,
@@ -132,9 +139,22 @@ const stats = computed(() => debugDocument.value?.stats ?? EMPTY_STATS)
 const mergeMatchedPreview = computed(() => signalListMergeDialog.value?.matches.slice(0, 100) ?? [])
 const mergeMissPreview = computed(() => signalListMergeDialog.value?.misses.slice(0, 100) ?? [])
 const mergeReportPreview = computed(() => signalListMergeDialog.value?.matchedReports.slice(0, 100) ?? [])
-const simulatorReportPreview = computed(() => simulatorResult.value?.reports.slice(0, 100) ?? [])
-const simulatorEventPreview = computed(() => simulatorResult.value?.eventLog.slice(0, 80) ?? [])
-const simulatorDiagnosticsPreview = computed(() => simulatorResult.value?.diagnostics.slice(0, 80) ?? [])
+const simulatorReportIssueCount = computed(() => simulatorResult.value?.reports.filter(isSimulatorReportIssue).length ?? 0)
+const simulatorReportPreview = computed(() => {
+  const reports = simulatorResult.value?.reports ?? []
+  return reports.filter(isSimulatorReportIssue).slice(0, 100)
+})
+const simulatorReportSummary = computed(() => summarizeSimulatorReports(simulatorResult.value?.reports ?? []))
+const simulatorEventSummary = computed(() => summarizeSimulatorEvents(simulatorResult.value?.eventLog ?? []))
+const simulatorDiagnosticsSummary = computed(() => summarizeSimulatorDiagnostics(simulatorResult.value?.diagnostics ?? []))
+const simulatorDiagnosticCounts = computed(() => {
+  const counts = { error: 0, warning: 0, info: 0, total: 0 }
+  for (const diagnostic of simulatorResult.value?.diagnostics ?? []) {
+    counts.total += 1
+    counts[diagnostic.severity] += 1
+  }
+  return counts
+})
 const simulatorGiValueCount = computed(() => (
   simulatorResult.value?.reports.reduce((sum, report) => sum + (report.event?.values.length ?? 0), 0) ?? 0
 ))
@@ -455,21 +475,81 @@ function closeSignalListMergeDialog() {
   signalListMergeDialog.value = null
 }
 
+function isSimulatorReportIssue(report: Iec61850DebugSimulatorRunResult["reports"][number]): boolean {
+  return Boolean(report.errorCode || report.diagnostics.some(diagnostic => diagnostic.severity === "error"))
+}
+
+function summarizeSimulatorReports(
+  reports: Iec61850DebugSimulatorRunResult["reports"],
+): SimulatorSummaryItem[] {
+  const summaries = new Map<string, SimulatorSummaryItem>()
+  for (const report of reports) {
+    const label = `${report.reportKind} · ${simulatorReportStatusLabel(report)}`
+    const values = report.event?.values.length ?? 0
+    const existing = summaries.get(label)
+    if (existing) {
+      existing.count += 1
+      existing.detail = `${Number.parseInt(existing.detail ?? "0", 10) + values} GI values`
+      continue
+    }
+    summaries.set(label, {
+      label,
+      count: 1,
+      severity: report.errorCode ? "error" : "info",
+      detail: `${values} GI values`,
+    })
+  }
+  return Array.from(summaries.values())
+    .sort((left, right) => severityRank(right.severity) - severityRank(left.severity) || right.count - left.count || left.label.localeCompare(right.label))
+}
+
+function summarizeSimulatorEvents(
+  events: Iec61850DebugSimulatorRunResult["eventLog"],
+): SimulatorSummaryItem[] {
+  const counts = new Map<string, number>()
+  for (const event of events) {
+    counts.set(event.kind, (counts.get(event.kind) ?? 0) + 1)
+  }
+  return Array.from(counts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label))
+}
+
+function summarizeSimulatorDiagnostics(
+  diagnostics: Iec61850DebugSimulatorRunResult["diagnostics"],
+): SimulatorSummaryItem[] {
+  const summaries = new Map<string, SimulatorSummaryItem>()
+  for (const diagnostic of diagnostics) {
+    const existing = summaries.get(diagnostic.code)
+    if (existing) {
+      existing.count += 1
+      continue
+    }
+    summaries.set(diagnostic.code, {
+      label: diagnostic.code,
+      count: 1,
+      severity: diagnostic.severity,
+      detail: diagnostic.message,
+    })
+  }
+  return Array.from(summaries.values())
+    .sort((left, right) => severityRank(right.severity) - severityRank(left.severity) || right.count - left.count || left.label.localeCompare(right.label))
+    .slice(0, 80)
+}
+
+function severityRank(severity: SimulatorSummaryItem["severity"]): number {
+  if (severity === "error") return 3
+  if (severity === "warning") return 2
+  if (severity === "info") return 1
+  return 0
+}
+
 function simulatorReportStatusClass(report: Iec61850DebugSimulatorRunResult["reports"][number]): string {
   return report.errorCode ? "is-error" : "is-success"
 }
 
 function simulatorReportStatusLabel(report: Iec61850DebugSimulatorRunResult["reports"][number]): string {
   return report.errorCode ? report.errorCode : report.lifecycleState
-}
-
-function simulatorDiagnosticTarget(
-  diagnostic: Iec61850DebugSimulatorRunResult["diagnostics"][number],
-): string | null {
-  if ("reference" in diagnostic) {
-    return `${diagnostic.reference.iedName}/${diagnostic.reference.accessPointName}/${diagnostic.reference.logicalDeviceInst}/${diagnostic.reference.logicalNodeName}.${diagnostic.reference.reportControlName}`
-  }
-  return diagnostic.address ?? diagnostic.signalId ?? null
 }
 
 function isReportCandidatesSection(section: Iec61850DebugDetailSection): boolean {
@@ -879,7 +959,7 @@ onUnmounted(() => {
       <div class="iec61850-debug-page__panel-header">
         <span>Simulator runtime</span>
         <span class="iec61850-debug-page__panel-count">
-          {{ simulatorResult.reports.length }} reports · {{ simulatorResult.eventLog.length }} events
+          {{ simulatorResult.reports.length }} reports · {{ simulatorEventSummary.length }} event kinds
         </span>
       </div>
 
@@ -887,6 +967,10 @@ onUnmounted(() => {
         <div class="iec61850-debug-page__runtime-metric">
           <span>Plan reports</span>
           <strong>{{ simulatorResult.plan.requiredReportCount }}</strong>
+        </div>
+        <div class="iec61850-debug-page__runtime-metric">
+          <span>Report issues</span>
+          <strong>{{ simulatorReportIssueCount }}</strong>
         </div>
         <div class="iec61850-debug-page__runtime-metric">
           <span>Matched signals</span>
@@ -897,21 +981,35 @@ onUnmounted(() => {
           <strong>{{ simulatorGiValueCount }}</strong>
         </div>
         <div class="iec61850-debug-page__runtime-metric">
-          <span>Diagnostics</span>
-          <strong>{{ simulatorResult.diagnostics.length }}</strong>
+          <span>Errors</span>
+          <strong>{{ simulatorDiagnosticCounts.error }}</strong>
+        </div>
+        <div class="iec61850-debug-page__runtime-metric">
+          <span>Warnings</span>
+          <strong>{{ simulatorDiagnosticCounts.warning }}</strong>
+        </div>
+        <div class="iec61850-debug-page__runtime-metric">
+          <span>Info</span>
+          <strong>{{ simulatorDiagnosticCounts.info }}</strong>
         </div>
       </section>
 
       <div class="iec61850-debug-page__runtime-body">
         <section class="iec61850-debug-page__runtime-section">
-          <h3>Reports</h3>
+          <h3>{{ simulatorReportIssueCount ? "Report issues" : "Report summary" }}</h3>
           <p
-            v-if="simulatorResult.reports.length > simulatorReportPreview.length"
+            v-if="simulatorReportIssueCount"
             class="iec61850-debug-page__runtime-note"
           >
-            Showing first {{ simulatorReportPreview.length }} of {{ simulatorResult.reports.length }}.
+            Showing first {{ simulatorReportPreview.length }} of {{ simulatorReportIssueCount }} issue reports.
           </p>
-          <div class="iec61850-debug-page__runtime-list">
+          <p
+            v-else
+            class="iec61850-debug-page__runtime-note"
+          >
+            All reports completed; grouped by report kind and final state.
+          </p>
+          <div v-if="simulatorReportIssueCount" class="iec61850-debug-page__runtime-list">
             <article
               v-for="report in simulatorReportPreview"
               :key="report.candidateId"
@@ -926,50 +1024,60 @@ onUnmounted(() => {
               </small>
             </article>
           </div>
-        </section>
-
-        <section class="iec61850-debug-page__runtime-section">
-          <h3>Events</h3>
-          <p
-            v-if="simulatorResult.eventLog.length > simulatorEventPreview.length"
-            class="iec61850-debug-page__runtime-note"
-          >
-            Showing first {{ simulatorEventPreview.length }} of {{ simulatorResult.eventLog.length }}.
-          </p>
-          <div class="iec61850-debug-page__runtime-list">
+          <div v-else class="iec61850-debug-page__runtime-list">
             <article
-              v-for="(event, index) in simulatorEventPreview"
-              :key="`${event.at}:${event.kind}:${event.reportControlKey}:${index}`"
+              v-for="summary in simulatorReportSummary"
+              :key="summary.label"
               class="iec61850-debug-page__runtime-item"
             >
-              <strong>{{ event.kind }}</strong>
-              <span>{{ event.reportControlKey }}</span>
-              <code>{{ event.clientId ?? event.code ?? "simulator" }}</code>
+              <strong>{{ summary.label }}</strong>
+              <span>{{ summary.count }} reports</span>
+              <code v-if="summary.detail">{{ summary.detail }}</code>
             </article>
           </div>
         </section>
 
         <section class="iec61850-debug-page__runtime-section">
-          <h3>Diagnostics</h3>
+          <h3>Event summary</h3>
           <p
-            v-if="simulatorResult.diagnostics.length > simulatorDiagnosticsPreview.length"
+            v-if="simulatorResult.eventLog.length"
             class="iec61850-debug-page__runtime-note"
           >
-            Showing first {{ simulatorDiagnosticsPreview.length }} of {{ simulatorResult.diagnostics.length }}.
+            {{ simulatorResult.eventLog.length }} raw simulator events grouped by kind.
           </p>
-          <div v-if="!simulatorDiagnosticsPreview.length" class="iec61850-debug-page__section-empty">
-            No simulator diagnostics.
+          <div class="iec61850-debug-page__runtime-list">
+            <article
+              v-for="event in simulatorEventSummary"
+              :key="event.label"
+              class="iec61850-debug-page__runtime-item"
+            >
+              <strong>{{ event.label }}</strong>
+              <span>{{ event.count }} events</span>
+            </article>
+          </div>
+        </section>
+
+        <section class="iec61850-debug-page__runtime-section">
+          <h3>Advisory codes</h3>
+          <p
+            v-if="simulatorResult.diagnostics.length > simulatorDiagnosticsSummary.length"
+            class="iec61850-debug-page__runtime-note"
+          >
+            {{ simulatorResult.diagnostics.length }} non-blocking diagnostics grouped into {{ simulatorDiagnosticsSummary.length }} shown codes.
+          </p>
+          <div v-if="!simulatorDiagnosticsSummary.length" class="iec61850-debug-page__section-empty">
+            No simulator advisories.
           </div>
           <div v-else class="iec61850-debug-page__runtime-list">
             <article
-              v-for="(diagnostic, index) in simulatorDiagnosticsPreview"
-              :key="`${diagnostic.code}:${diagnostic.message}:${index}`"
+              v-for="diagnostic in simulatorDiagnosticsSummary"
+              :key="diagnostic.label"
               class="iec61850-debug-page__runtime-item"
               :class="`is-${diagnostic.severity}`"
             >
-              <strong>{{ diagnostic.code }}</strong>
-              <span>{{ diagnostic.message }}</span>
-              <code v-if="simulatorDiagnosticTarget(diagnostic)">{{ simulatorDiagnosticTarget(diagnostic) }}</code>
+              <strong>{{ diagnostic.label }}</strong>
+              <span>{{ diagnostic.count }} {{ diagnostic.severity ?? "info" }}</span>
+              <code v-if="diagnostic.detail">{{ diagnostic.detail }}</code>
             </article>
           </div>
         </section>

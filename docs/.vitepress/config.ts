@@ -38,6 +38,7 @@ export default defineConfig({
         text: "Engineering Notes",
         items: [
           { text: "Signal List Migration Plan", link: "/architecture/signal-list-allocation-migration-plan" },
+          { text: "IEC 61850 MMS Client Plan", link: "/architecture/iec61850-self-owned-mms-client-plan" },
         ],
       },
     ],
