@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest"
 
 import { parseScdSource } from "../scd-sld-core"
 import {
+  buildIec61850ReportSubscriptionPlan,
   createIec61850SimulatorAdapter,
   Iec61850ReportManager,
   reportControlKey,
   toReportControlRef,
   type Iec61850DeviceEndpoint,
+  type Iec61850ReportControlCandidate,
 } from "./index"
 
 const reportScd = `<?xml version="1.0" encoding="UTF-8"?>
@@ -121,6 +123,71 @@ describe("iec61850-report-core", () => {
       owner: null,
     })
   })
+
+  it("builds a deterministic subscription plan from selected full-path Signal List addresses", () => {
+    const candidate = firstReportCandidate()
+    const plan = buildIec61850ReportSubscriptionPlan({
+      candidates: [candidate],
+      selectedSignals: [
+        { id: "sig-1", address: "IED1LD0/XCBR1/Pos/stVal[ST]" },
+        { id: "sig-2", address: "IED1!IED1LD0/PGGIO1/Ind1[ST]" },
+      ],
+    })
+
+    expect(plan).toMatchObject({
+      selectedSignalCount: 2,
+      matchedSignalCount: 2,
+      unmatchedSignalCount: 0,
+      ambiguousSignalCount: 0,
+      requiredReportCount: 1,
+    })
+    expect(plan.devices).toHaveLength(1)
+    expect(plan.devices[0]?.reports[0]?.candidate.reportControlName).toBe("brcbEvents")
+    expect(plan.devices[0]?.reports[0]?.matchedSignals.map(signal => signal.modelReference)).toEqual([
+      "LD0/PGGIO1.Ind1[ST]",
+      "LD0/XCBR1.Pos.stVal[ST]",
+    ])
+    expect(plan.diagnostics).toEqual([])
+  })
+
+  it("marks duplicate, unmatched, ambiguous, parent FCD, and multi-report selected signals", () => {
+    const candidate = firstReportCandidate()
+    const secondReport = cloneCandidate(candidate, {
+      id: "IED1/AP1/LD0/LLN0/urcbEvents/subscription",
+      reportControlName: "urcbEvents",
+      reportKind: "unbuffered",
+    })
+    const secondIed = cloneCandidate(candidate, {
+      id: "IED2/AP1/LD0/LLN0/brcbEvents/subscription",
+      iedName: "IED2",
+    })
+
+    const plan = buildIec61850ReportSubscriptionPlan({
+      candidates: [candidate, secondReport, secondIed],
+      selectedSignals: [
+        { id: "exact", address: "IED1LD0/XCBR1/Pos/stVal[ST]" },
+        { id: "duplicate", address: "IED1LD0/XCBR1.Pos.stVal[ST]" },
+        { id: "parent", address: "IED1LD0/XCBR1/Pos/stVal/q[ST]" },
+        { id: "ambiguous", address: "LD0/XCBR1.Pos.stVal[ST]" },
+        { id: "missing", address: "IED1LD0/XCBR1/Pos/Oper.ctlVal[CO]" },
+      ],
+    })
+
+    expect(plan.matchedSignalCount).toBe(3)
+    expect(plan.unmatchedSignalCount).toBe(1)
+    expect(plan.ambiguousSignalCount).toBe(1)
+    expect(plan.requiredReportCount).toBe(2)
+    expect(plan.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+      "MULTIPLE_REPORT_CANDIDATES",
+      "DUPLICATE_SELECTED_SIGNAL",
+      "MULTIPLE_REPORT_CANDIDATES",
+      "FCD_PARENT_MATCH",
+      "MULTIPLE_REPORT_CANDIDATES",
+      "SIGNAL_AMBIGUOUS",
+      "SIGNAL_NOT_FOUND",
+    ])
+    expect(plan.ambiguousSignals[0]?.candidates.map(candidate => candidate.iedName)).toEqual(["IED1", "IED2"])
+  })
 })
 
 function firstReportCandidate() {
@@ -134,4 +201,17 @@ function firstReportCandidate() {
     throw new Error("Report fixture did not produce a subscription candidate")
   }
   return candidate
+}
+
+function cloneCandidate(
+  candidate: Iec61850ReportControlCandidate,
+  overrides: Partial<Iec61850ReportControlCandidate>,
+): Iec61850ReportControlCandidate {
+  return {
+    ...candidate,
+    ...overrides,
+    signals: [...candidate.signals],
+    triggerOptions: { ...candidate.triggerOptions },
+    optionalFields: { ...candidate.optionalFields },
+  }
 }

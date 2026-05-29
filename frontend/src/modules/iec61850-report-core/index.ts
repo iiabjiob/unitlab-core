@@ -1,4 +1,7 @@
 export {
+  buildIec61850ReportSubscriptionPlan,
+} from "./planBuilder"
+export {
   compareReportControlState,
   Iec61850ReportManager,
   toReportControlRef,
@@ -19,8 +22,14 @@ export type {
   Iec61850ReportManagerReadOnlyAdapter,
   Iec61850ReportRuntimeDiagnostic,
   Iec61850ReportSignal,
+  Iec61850ReportSubscriptionPlan,
+  Iec61850ReportSubscriptionPlanDevice,
+  Iec61850ReportSubscriptionPlanDiagnostic,
+  Iec61850ReportSubscriptionPlanReport,
+  Iec61850ReportSubscriptionPlanSignal,
   Iec61850ReportValue,
   Iec61850RuntimeMode,
+  Iec61850SelectedSignal,
 } from "./types"
 export type {
   Iec61850SimulatorAdapterOptions,

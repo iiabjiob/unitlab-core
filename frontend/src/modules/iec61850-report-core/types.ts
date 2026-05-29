@@ -57,6 +57,64 @@ export type Iec61850ReportControlReadResult = {
   diagnostics: Iec61850ReportRuntimeDiagnostic[]
 }
 
+export type Iec61850SelectedSignal = {
+  id: string
+  address: string
+  label?: string | null
+}
+
+export type Iec61850ReportSubscriptionPlanDiagnostic = {
+  severity: "error" | "warning" | "info"
+  code:
+    | "SIGNAL_NOT_FOUND"
+    | "SIGNAL_AMBIGUOUS"
+    | "DUPLICATE_SELECTED_SIGNAL"
+    | "FCD_PARENT_MATCH"
+    | "MULTIPLE_REPORT_CANDIDATES"
+  message: string
+  signalId?: string
+  address?: string
+}
+
+export type Iec61850ReportSubscriptionPlanSignal = {
+  selectedSignal: Iec61850SelectedSignal
+  modelReference: string
+  iedName: string
+  matchKind: "exact" | "fcd-parent"
+}
+
+export type Iec61850ReportSubscriptionPlanReport = {
+  status: "required"
+  candidate: Iec61850ReportControlCandidate
+  matchedSignals: Iec61850ReportSubscriptionPlanSignal[]
+}
+
+export type Iec61850ReportSubscriptionPlanDevice = {
+  iedName: string
+  accessPointName: string
+  reports: Iec61850ReportSubscriptionPlanReport[]
+}
+
+export type Iec61850ReportSubscriptionPlan = {
+  selectedSignalCount: number
+  matchedSignalCount: number
+  unmatchedSignalCount: number
+  ambiguousSignalCount: number
+  requiredReportCount: number
+  devices: Iec61850ReportSubscriptionPlanDevice[]
+  matchedSignals: Iec61850ReportSubscriptionPlanSignal[]
+  unmatchedSignals: Iec61850SelectedSignal[]
+  ambiguousSignals: Array<{
+    selectedSignal: Iec61850SelectedSignal
+    candidates: Array<{
+      iedName: string
+      reference: string
+      reportCandidateIds: string[]
+    }>
+  }>
+  diagnostics: Iec61850ReportSubscriptionPlanDiagnostic[]
+}
+
 export type Iec61850ReportValue = {
   reference: string
   value: boolean | number | string | null

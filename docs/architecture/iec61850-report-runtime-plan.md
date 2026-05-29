@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slice 1 started. Simulator-only report runtime contracts are implemented in `frontend/src/modules/iec61850-report-core`.
+Status: slices 1-2 started. Simulator-only report runtime contracts and the subscription plan builder are implemented in `frontend/src/modules/iec61850-report-core`.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -49,17 +49,19 @@ Validation:
 
 ### Slice 2 - Subscription Plan Builder
 
-Planned:
+Implemented in this slice:
 
 - Build a deterministic subscription plan from SCD report candidates plus selected Signal List rows.
 - Group by IED/access point/logical device/report control.
 - Prefer exact full-path signal matches.
 - Mark unresolved, duplicate, and ambiguous signal matches.
 - Distinguish required reports from candidate reports.
+- Support parent FCD matches for selected leaf addresses when the DataSet member is a parent object.
+- Keep ST/CO/MX functional constraints distinct when the selected address includes an explicit functional constraint.
 
 Validation:
 
-- Fixtures with duplicate device names, repeated DataSet members, missing DataSets, and mixed ST/CO/MX functional constraints.
+- Unit tests cover duplicate selections, unresolved signals, ambiguous signals across IEDs, parent FCD matches, and multiple report candidates for one selected signal.
 
 ### Slice 3 - Simulator State Machine Hardening
 
