@@ -56,6 +56,8 @@ The tree now shows:
 
 This view is inspection-only. Loading an SCD file in the debug page does not create report subscriptions, enable reports, reserve RCBs, or persist runtime evidence.
 
+Large SCD files are parsed in `frontend/src/pages/debug61850/iec61850DebugWorker.ts` so XML scanning, hashing, and SCL normalization do not block the Vue main thread. The page keeps the normalized model in a shallow reference and caps rendered DataSet/report signal tree rows per collection; the model still preserves the full parsed signal inventory.
+
 ## Runtime Boundary
 
 This slice does not subscribe to devices, open MMS sessions, write backend state, or mutate hardware-facing runtime state. It only normalizes SCD metadata so the later backend/runtime slice can validate report subscriptions against an explicit device and DataSet structure.

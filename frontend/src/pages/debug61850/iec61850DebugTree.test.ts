@@ -128,4 +128,36 @@ describe("iec61850DebugTree", () => {
       ]),
     }))
   })
+
+  it("caps rendered DataSet and report signal rows for large debug views", () => {
+    const model = parseScdSource({
+      fileName: "runtime.scd",
+      contentHash: "runtime",
+      xmlText: runtimeScd,
+    })
+
+    const rows = buildIec61850DebugTreeRows(model, {
+      maxSignalRowsPerCollection: 0,
+      maxDetailRowsPerSection: 0,
+    })
+
+    expect(rows).toContainEqual(expect.objectContaining({
+      kind: "dataset-member",
+      label: "1 more signals not rendered",
+      valueLabel: "capped",
+    }))
+    expect(rows).toContainEqual(expect.objectContaining({
+      kind: "report-signal",
+      label: "1 more signals not rendered",
+      valueLabel: "capped",
+    }))
+
+    const dataSet = rows.find(row => row.kind === "dataset")
+    expect(dataSet?.detail.sections).toContainEqual(expect.objectContaining({
+      title: "Signals",
+      rows: [
+        { label: "omitted", value: "1 rows not rendered in debug view" },
+      ],
+    }))
+  })
 })

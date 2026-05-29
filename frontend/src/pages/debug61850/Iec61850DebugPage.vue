@@ -1,25 +1,44 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch, type ComponentPublicInstance } from "vue"
+import { computed, nextTick, onUnmounted, ref, shallowRef, watch, type ComponentPublicInstance } from "vue"
 import { RouterLink } from "vue-router"
 import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
 
 import UiButton from "@/components/ui/UiButton.vue"
-import { parseScdSource, type NormalizedSclModel } from "@/modules/scd-sld-core"
+import type { NormalizedSclModel } from "@/modules/scd-sld-core"
 import {
   buildIec61850DebugTreeRows,
   type Iec61850DebugTreeRow,
 } from "./iec61850DebugTree"
+import type {
+  Iec61850DebugWorkerRequest,
+  Iec61850DebugWorkerResponse,
+} from "./iec61850DebugWorker"
 
 type NodeValue = string
+type LoadProgress = {
+  label: string
+  detail: string | null
+}
+
+type ParseResult = {
+  contentHash: string
+  model: NormalizedSclModel
+  parseDurationMs: number
+}
+
+const DEBUG_TREE_SIGNAL_ROW_LIMIT = 500
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const fileName = ref<string | null>(null)
 const contentHash = ref<string | null>(null)
 const loading = ref(false)
+const loadProgress = ref<LoadProgress | null>(null)
 const readError = ref<string | null>(null)
-const model = ref<NormalizedSclModel | null>(null)
+const model = shallowRef<NormalizedSclModel | null>(null)
 const selectedValue = ref<NodeValue | null>(null)
 const pendingDefaultExpansion = ref(false)
+let loadRequestId = 0
+let activeParse: { worker: Worker; reject: (error: Error) => void } | null = null
 
 const tree = useTreeviewController<NodeValue>({
   nodes: [],
@@ -27,7 +46,12 @@ const tree = useTreeviewController<NodeValue>({
 })
 
 const treeRows = computed<Iec61850DebugTreeRow[]>(() => (
-  model.value ? buildIec61850DebugTreeRows(model.value) : []
+  model.value
+    ? buildIec61850DebugTreeRows(model.value, {
+        maxSignalRowsPerCollection: DEBUG_TREE_SIGNAL_ROW_LIMIT,
+        maxDetailRowsPerSection: DEBUG_TREE_SIGNAL_ROW_LIMIT,
+      })
+    : []
 ))
 
 const treeNodes = computed<TreeviewNode<NodeValue>[]>(() =>
@@ -76,7 +100,7 @@ const stats = computed(() => ({
     (sum, site) => sum + site.voltageLevels.reduce((vlSum, vl) => vlSum + vl.bays.length, 0),
     0,
   ) ?? 0,
-  switchgears: treeRows.value.filter(row => row.kind === "switchgear").length,
+  switchgears: model.value ? countSwitchgears(model.value) : 0,
   ieds: model.value?.ieds.length ?? 0,
   logicalDevices: model.value ? countLogicalDevices(model.value) : 0,
   dataSets: model.value ? countDataSets(model.value) : 0,
@@ -85,7 +109,7 @@ const stats = computed(() => ({
 }))
 
 const statusLabel = computed(() => {
-  if (loading.value) return "Reading SCD"
+  if (loading.value) return loadProgress.value?.label ?? "Reading SCD"
   if (readError.value) return "Parse failed"
   if (!model.value) return "No SCD loaded"
   return `${fileName.value ?? "SCD"} · ${stats.value.sites} site · ${stats.value.ieds} IED · ${stats.value.reports} reports`
@@ -133,47 +157,112 @@ async function onFileSelected(event: Event) {
   const file = input?.files?.[0]
   if (!file) return
 
+  const requestId = loadRequestId + 1
+  loadRequestId = requestId
+  terminateActiveParse()
   loading.value = true
+  fileName.value = file.name
+  contentHash.value = null
+  model.value = null
+  selectedValue.value = null
+  loadProgress.value = {
+    label: "Reading SCD",
+    detail: `${file.name} · ${formatBytes(file.size)}`,
+  }
   readError.value = null
 
   try {
     const xmlText = await file.text()
-    const hash = await hashText(xmlText)
-    const parsed = parseScdSource({
-      fileName: file.name,
-      contentHash: hash,
-      xmlText,
-    })
+    if (requestId !== loadRequestId) return
 
-    fileName.value = file.name
-    contentHash.value = hash
-    model.value = parsed
+    loadProgress.value = {
+      label: "Starting parser",
+      detail: `${file.name} · ${formatBytes(xmlText.length)}`,
+    }
+    const parsed = await parseScdInWorker(requestId, file.name, xmlText)
+    if (requestId !== loadRequestId) return
+
+    contentHash.value = parsed.contentHash
+    model.value = parsed.model
+    loadProgress.value = {
+      label: "Building debug tree",
+      detail: `Parsed in ${parsed.parseDurationMs}ms · capped signal rows at ${DEBUG_TREE_SIGNAL_ROW_LIMIT} per DataSet/report`,
+    }
     pendingDefaultExpansion.value = true
   } catch (error) {
+    if (error instanceof Error && error.message === "cancelled") return
     model.value = null
     fileName.value = file.name
     contentHash.value = null
     readError.value = error instanceof Error ? error.message : "Failed to read SCD file"
   } finally {
-    loading.value = false
+    if (requestId === loadRequestId) {
+      loading.value = false
+      loadProgress.value = null
+    }
     if (input) input.value = ""
   }
 }
 
-async function hashText(value: string): Promise<string> {
-  if (globalThis.crypto?.subtle) {
-    const bytes = new TextEncoder().encode(value)
-    const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes)
-    return Array.from(new Uint8Array(digest))
-      .map(byte => byte.toString(16).padStart(2, "0"))
-      .join("")
-  }
+function parseScdInWorker(requestId: number, selectedFileName: string, xmlText: string): Promise<ParseResult> {
+  terminateActiveParse()
 
-  let hash = 0
-  for (let index = 0; index < value.length; index += 1) {
-    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("./iec61850DebugWorker.ts", import.meta.url), { type: "module" })
+    activeParse = { worker, reject }
+
+    worker.onmessage = (event: MessageEvent<Iec61850DebugWorkerResponse>) => {
+      const message = event.data
+      if (message.requestId !== requestId) return
+
+      if (message.type === "progress") {
+        loadProgress.value = {
+          label: message.label,
+          detail: selectedFileName,
+        }
+        return
+      }
+
+      cleanupActiveParse(worker)
+      if (message.type === "error") {
+        reject(new Error(message.message))
+        return
+      }
+
+      resolve({
+        contentHash: message.contentHash,
+        model: message.model,
+        parseDurationMs: message.parseDurationMs,
+      })
+    }
+
+    worker.onerror = (event) => {
+      cleanupActiveParse(worker)
+      reject(new Error(event.message || "SCD worker failed"))
+    }
+
+    worker.postMessage({
+      type: "parse",
+      requestId,
+      fileName: selectedFileName,
+      xmlText,
+    } satisfies Iec61850DebugWorkerRequest)
+  })
+}
+
+function terminateActiveParse() {
+  if (!activeParse) return
+  const current = activeParse
+  activeParse = null
+  current.worker.terminate()
+  current.reject(new Error("cancelled"))
+}
+
+function cleanupActiveParse(worker: Worker) {
+  if (activeParse?.worker === worker) {
+    activeParse = null
   }
-  return `fallback-${value.length}-${Math.abs(hash)}`
+  worker.terminate()
 }
 
 function applyDefaultExpansion() {
@@ -376,6 +465,28 @@ function shortHash(value: string | null): string {
   return value ? value.slice(0, 12) : "—"
 }
 
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0 B"
+  const units = ["B", "KB", "MB", "GB"]
+  let size = value
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex += 1
+  }
+  return `${size >= 10 || unitIndex === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[unitIndex]}`
+}
+
+function countSwitchgears(value: NormalizedSclModel): number {
+  return value.substations.reduce((siteSum, site) => (
+    siteSum + site.voltageLevels.reduce((voltageSum, voltageLevel) => (
+      voltageSum + voltageLevel.bays.reduce((baySum, bay) => (
+        baySum + bay.equipments.filter(equipment => equipment.kind === "breaker" || equipment.kind === "disconnector").length
+      ), 0)
+    ), 0)
+  ), 0)
+}
+
 function countLogicalDevices(value: NormalizedSclModel): number {
   return value.ieds.reduce((sum, ied) => (
     sum + ied.accessPoints.reduce((apSum, accessPoint) => (
@@ -393,6 +504,10 @@ function countDataSets(value: NormalizedSclModel): number {
     ), 0)
   ), 0)
 }
+
+onUnmounted(() => {
+  terminateActiveParse()
+})
 </script>
 
 <template>
@@ -424,6 +539,16 @@ function countDataSets(value: NormalizedSclModel): number {
 
     <section v-if="readError" class="iec61850-debug-page__alert">
       {{ readError }}
+    </section>
+
+    <section v-if="loading" class="iec61850-debug-page__progress" aria-live="polite">
+      <div class="iec61850-debug-page__progress-copy">
+        <span class="iec61850-debug-page__progress-title">{{ loadProgress?.label ?? "Reading SCD" }}</span>
+        <span v-if="loadProgress?.detail" class="iec61850-debug-page__progress-detail">{{ loadProgress.detail }}</span>
+      </div>
+      <div class="iec61850-debug-page__progress-track" aria-hidden="true">
+        <span class="iec61850-debug-page__progress-bar"></span>
+      </div>
     </section>
 
     <section v-if="model" class="iec61850-debug-page__summary" aria-label="SCD summary">
@@ -594,6 +719,7 @@ function countDataSets(value: NormalizedSclModel): number {
 .iec61850-debug-page__tree-panel,
 .iec61850-debug-page__detail-panel,
 .iec61850-debug-page__diagnostics,
+.iec61850-debug-page__progress,
 .iec61850-debug-page__alert {
   border: 1px solid color-mix(in srgb, var(--runtime-accent) 12%, var(--color-neutral-200));
   border-radius: var(--radius-lg);
@@ -680,6 +806,53 @@ function countDataSets(value: NormalizedSclModel): number {
   border-color: var(--color-red-300);
   color: var(--color-red-700);
   font-size: var(--text-sm);
+}
+
+.iec61850-debug-page__progress {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 0.625rem;
+  padding: 0.75rem 1rem;
+}
+
+.iec61850-debug-page__progress-copy {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.iec61850-debug-page__progress-title {
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.iec61850-debug-page__progress-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-neutral-500);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.iec61850-debug-page__progress-track {
+  position: relative;
+  overflow: hidden;
+  height: 0.375rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--runtime-accent) 12%, var(--color-neutral-200));
+}
+
+.iec61850-debug-page__progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 36%;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--runtime-accent) 82%, var(--color-blue-500));
+  animation: iec61850-progress-scan 1.15s ease-in-out infinite;
 }
 
 .iec61850-debug-page__summary {
@@ -964,6 +1137,7 @@ function countDataSets(value: NormalizedSclModel): number {
 :global(.dark .iec61850-debug-page__summary),
 :global(.dark .iec61850-debug-page__tree-panel),
 :global(.dark .iec61850-debug-page__detail-panel),
+:global(.dark .iec61850-debug-page__progress),
 :global(.dark .iec61850-debug-page__diagnostics) {
   border-color: color-mix(in srgb, var(--runtime-accent) 14%, var(--color-neutral-800));
   background:
@@ -987,6 +1161,7 @@ function countDataSets(value: NormalizedSclModel): number {
 }
 
 :global(.dark .iec61850-debug-page__metric-value),
+:global(.dark .iec61850-debug-page__progress-title),
 :global(.dark .iec61850-debug-page__property-list dd) {
   color: var(--color-neutral-100);
 }
@@ -1036,6 +1211,20 @@ function countDataSets(value: NormalizedSclModel): number {
 :global(.dark .iec61850-debug-page__diagnostic.is-info) {
   background: color-mix(in srgb, var(--color-blue-900) 28%, transparent);
   color: var(--color-blue-100);
+}
+
+@keyframes iec61850-progress-scan {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  50% {
+    transform: translateX(120%);
+  }
+
+  100% {
+    transform: translateX(280%);
+  }
 }
 
 @media (max-width: 1023px) {

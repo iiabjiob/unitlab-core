@@ -64,7 +64,21 @@ export type Iec61850DebugTreeRow = {
   detail: Iec61850DebugDetail
 }
 
-export function buildIec61850DebugTreeRows(model: NormalizedSclModel): Iec61850DebugTreeRow[] {
+export type BuildIec61850DebugTreeRowsOptions = {
+  maxSignalRowsPerCollection?: number
+  maxDetailRowsPerSection?: number
+}
+
+type ResolvedDebugTreeOptions = {
+  maxSignalRowsPerCollection: number
+  maxDetailRowsPerSection: number
+}
+
+export function buildIec61850DebugTreeRows(
+  model: NormalizedSclModel,
+  options: BuildIec61850DebugTreeRowsOptions = {},
+): Iec61850DebugTreeRow[] {
+  const resolvedOptions = resolveOptions(options)
   const rows: Iec61850DebugTreeRow[] = []
   const dataSetById = new Map(collectDataSets(model).map(dataSet => [dataSet.id, dataSet]))
 
@@ -228,10 +242,11 @@ export function buildIec61850DebugTreeRows(model: NormalizedSclModel): Iec61850D
                   label: dataSet.name,
                   valueLabel: `${dataSet.members.length} signals`,
                   isLeaf: dataSet.members.length === 0,
-                  detail: buildDataSetDetail(dataSet),
+                  detail: buildDataSetDetail(dataSet, resolvedOptions),
                 })
 
-                dataSet.members.forEach((member, index) => {
+                const visibleMembers = dataSet.members.slice(0, resolvedOptions.maxSignalRowsPerCollection)
+                visibleMembers.forEach((member, index) => {
                   rows.push({
                     value: dataSetMemberNodeValue(member),
                     parent: dataSetValue,
@@ -241,6 +256,15 @@ export function buildIec61850DebugTreeRows(model: NormalizedSclModel): Iec61850D
                     isLeaf: true,
                     detail: buildDataSetMemberDetail(member, dataSet, index),
                   })
+                })
+                appendOmittedSignalRow(rows, {
+                  parent: dataSetValue,
+                  value: `${dataSetValue}:omitted`,
+                  kind: "dataset-member",
+                  total: dataSet.members.length,
+                  rendered: visibleMembers.length,
+                  title: `${dataSet.name} omitted signals`,
+                  subtitle: "DataSet signal rows capped for debug rendering",
                 })
               })
             }
@@ -268,10 +292,11 @@ export function buildIec61850DebugTreeRows(model: NormalizedSclModel): Iec61850D
                   label: reportControl.name,
                   valueLabel: reportKindLabel(reportControl),
                   isLeaf: reportSignals.length === 0,
-                  detail: buildReportControlDetail(reportControl, reportDataSet),
+                  detail: buildReportControlDetail(reportControl, reportDataSet, resolvedOptions),
                 })
 
-                reportSignals.forEach((member, index) => {
+                const visibleReportSignals = reportSignals.slice(0, resolvedOptions.maxSignalRowsPerCollection)
+                visibleReportSignals.forEach((member, index) => {
                   rows.push({
                     value: reportSignalNodeValue(reportControl, member),
                     parent: reportControlValue,
@@ -281,6 +306,15 @@ export function buildIec61850DebugTreeRows(model: NormalizedSclModel): Iec61850D
                     isLeaf: true,
                     detail: buildReportSignalDetail(reportControl, member, reportDataSet, index),
                   })
+                })
+                appendOmittedSignalRow(rows, {
+                  parent: reportControlValue,
+                  value: `${reportControlValue}:omitted`,
+                  kind: "report-signal",
+                  total: reportSignals.length,
+                  rendered: visibleReportSignals.length,
+                  title: `${reportControl.name} omitted report signals`,
+                  subtitle: "Report signal rows capped for debug rendering",
                 })
               })
             }
@@ -295,6 +329,55 @@ export function buildIec61850DebugTreeRows(model: NormalizedSclModel): Iec61850D
 
 export function isSwitchgearEquipment(equipment: SclEquipment): boolean {
   return equipment.kind === "breaker" || equipment.kind === "disconnector"
+}
+
+function resolveOptions(options: BuildIec61850DebugTreeRowsOptions): ResolvedDebugTreeOptions {
+  return {
+    maxSignalRowsPerCollection: normalizeLimit(options.maxSignalRowsPerCollection),
+    maxDetailRowsPerSection: normalizeLimit(options.maxDetailRowsPerSection),
+  }
+}
+
+function normalizeLimit(value: number | undefined): number {
+  if (value === undefined) return Number.POSITIVE_INFINITY
+  if (!Number.isFinite(value)) return Number.POSITIVE_INFINITY
+  return Math.max(0, Math.floor(value))
+}
+
+function appendOmittedSignalRow(
+  rows: Iec61850DebugTreeRow[],
+  input: {
+    parent: string
+    value: string
+    kind: "dataset-member" | "report-signal"
+    total: number
+    rendered: number
+    title: string
+    subtitle: string
+  },
+) {
+  const omitted = Math.max(0, input.total - input.rendered)
+  if (omitted === 0) return
+
+  rows.push({
+    value: input.value,
+    parent: input.parent,
+    kind: input.kind,
+    label: `${omitted} more signals not rendered`,
+    valueLabel: "capped",
+    isLeaf: true,
+    detail: {
+      title: input.title,
+      subtitle: input.subtitle,
+      sections: [
+        section("Rendering cap", [
+          row("rendered", input.rendered),
+          row("omitted", omitted),
+          row("total", input.total),
+        ]),
+      ],
+    },
+  })
 }
 
 function siteNodeValue(site: SclSubstation): string {
@@ -661,7 +744,13 @@ function buildDataSetsGroupDetail(logicalNode: SclLogicalNode): Iec61850DebugDet
   }
 }
 
-function buildDataSetDetail(dataSet: SclDataSet): Iec61850DebugDetail {
+function buildDataSetDetail(dataSet: SclDataSet, options: ResolvedDebugTreeOptions): Iec61850DebugDetail {
+  const signalRows = limitedRows(
+    dataSet.members,
+    options.maxDetailRowsPerSection,
+    (member, index) => row(`signal ${index + 1}`, member.reference),
+  )
+
   return {
     title: dataSet.name,
     subtitle: "IEC 61850 DataSet",
@@ -680,7 +769,7 @@ function buildDataSetDetail(dataSet: SclDataSet): Iec61850DebugDetail {
         row("logical node", dataSet.logicalNodeName),
       ]),
       section("Signals", dataSet.members.length
-        ? dataSet.members.map((member, index) => row(`signal ${index + 1}`, member.reference))
+        ? signalRows
         : [row("signals", "none")]),
     ],
   }
@@ -729,7 +818,12 @@ function buildReportsGroupDetail(logicalNode: SclLogicalNode): Iec61850DebugDeta
 function buildReportControlDetail(
   reportControl: SclReportControl,
   dataSet: SclDataSet | null,
+  options: ResolvedDebugTreeOptions,
 ): Iec61850DebugDetail {
+  const signalRows = dataSet
+    ? limitedRows(dataSet.members, options.maxDetailRowsPerSection, (member, index) => row(`signal ${index + 1}`, member.reference))
+    : [row("signals", "none")]
+
   return {
     title: reportControl.name,
     subtitle: `IEC 61850 ${reportKindLabel(reportControl)}`,
@@ -778,6 +872,7 @@ function buildReportControlDetail(
         row("bufOvfl", reportControl.optionalFields.bufferOverflow),
       ]),
       section("RptEnabled", reportEnabledRows(reportControl.rptEnabled)),
+      section("Resolved signals", signalRows),
     ],
   }
 }
@@ -873,6 +968,19 @@ function reportEnabledRows(rptEnabled: SclReportEnabled | null): Iec61850DebugDe
       ].filter(Boolean).join("") || null),
     ]),
   ]
+}
+
+function limitedRows<T>(
+  items: readonly T[],
+  limit: number,
+  mapItem: (item: T, index: number) => Iec61850DebugDetailRow,
+): Iec61850DebugDetailRow[] {
+  const rendered = items.slice(0, limit).map(mapItem)
+  const omitted = Math.max(0, items.length - rendered.length)
+  if (omitted > 0) {
+    rendered.push(row("omitted", `${omitted} rows not rendered in debug view`))
+  }
+  return rendered
 }
 
 function coordinateRows(coordinates: SldCoordinate): Iec61850DebugDetailRow[] {
