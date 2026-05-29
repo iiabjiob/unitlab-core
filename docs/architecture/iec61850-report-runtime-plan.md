@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-9 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, and the IEC/C# compliance map are implemented.
+Status: slices 1-10 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -184,7 +184,24 @@ Validation:
 - Backend service tests cover GI observation mapping and subset data-change observation diagnostics.
 - Simulator-only; no real MMS/device communication.
 
-### Slice 10 - MMS Adapter Spike Behind Simulator Parity
+### Slice 10 - Backend Subscription Plan Runner
+
+Implemented in this slice:
+
+- Backend runtime can execute a full subscription plan grouped by IED/access point.
+- Each required report follows the simulator-backed sequence: connect, read, reserve, enable, GI, observation mapping, disable, release, disconnect.
+- Partial failures still attempt cleanup; a report reserved before activation failure is released before the run result is returned.
+- Plan run results carry per-report runtime status, normalized report event, selected signal observations, diagnostics, and error code/message.
+- Simulator wrapper returns the backend simulator event log as validation evidence.
+- No public REST/WebSocket API, real MMS connection, GOOSE, or SV handling is added.
+
+Validation:
+
+- Backend service tests cover successful simulator plan execution with observations.
+- Backend service tests cover cleanup/release after activation failure.
+- Simulator-only; no real MMS/device communication.
+
+### Slice 11 - MMS Adapter Spike Behind Simulator Parity
 
 Planned only after simulator runner parity passes:
 

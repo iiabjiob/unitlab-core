@@ -9,12 +9,17 @@ from app.services.iec61850 import (
     Iec61850DeviceEndpoint,
     Iec61850OptionalFields,
     Iec61850ReportControlCandidate,
+    Iec61850ReportControlRef,
+    Iec61850ReportControlState,
     Iec61850ReportEvent,
     Iec61850ReportEventValue,
     Iec61850ReportKind,
     Iec61850ReportReason,
     Iec61850ReportRuntimeError,
     Iec61850ReportRuntimeService,
+    Iec61850ReportSubscriptionPlan,
+    Iec61850ReportSubscriptionPlanDevice,
+    Iec61850ReportSubscriptionPlanReport,
     Iec61850ReportSubscriptionPlanSignal,
     Iec61850RuntimeMode,
     Iec61850RuntimeStatus,
@@ -23,6 +28,8 @@ from app.services.iec61850 import (
     create_iec61850_simulator_adapter,
     map_report_event_to_signal_observations,
     normalize_report_data_reference,
+    run_report_subscription_plan,
+    run_simulator_report_subscription_plan,
     to_report_control_ref,
 )
 
@@ -188,6 +195,55 @@ def test_backend_runtime_service_can_enforce_enabled_disconnect_failure() -> Non
     assert missing_error.value.code == "SESSION_NOT_FOUND"
 
 
+def test_backend_runtime_runs_simulator_subscription_plan_with_observations() -> None:
+    candidate = _candidate()
+    run = run_simulator_report_subscription_plan(
+        plan=_subscription_plan(candidate),
+        client_id="unitlab",
+        now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC),
+    )
+
+    assert run.diagnostics == ()
+    assert len(run.reports) == 1
+    assert run.reports[0].runtime_status == Iec61850RuntimeStatus.RELEASED
+    assert run.reports[0].error_code is None
+    assert [(observation.selected_signal_id, observation.model_reference, observation.value) for observation in run.reports[0].observations] == [
+        ("sig-1", "LD0/XCBR1.Pos.stVal[ST]", 0),
+        ("sig-2", "LD0/PGGIO1.Ind1[ST]", 1),
+    ]
+    assert [event.kind for event in run.event_log] == [
+        "connect",
+        "read",
+        "reserve",
+        "enable",
+        "general-interrogation",
+        "report",
+        "disable",
+        "release",
+        "disconnect",
+    ]
+
+
+def test_backend_runtime_subscription_plan_runner_releases_after_activation_failure() -> None:
+    candidate = _candidate()
+    adapter = _EnableFailureAdapter(candidate)
+
+    run = run_report_subscription_plan(
+        plan=_subscription_plan(candidate),
+        adapter=adapter,
+        client_id="unitlab",
+        endpoint_for_device=lambda _: _endpoint(),
+        now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC),
+    )
+
+    assert len(run.reports) == 1
+    assert run.reports[0].error_code == "ENABLE_FAILED"
+    assert run.reports[0].runtime_status == Iec61850RuntimeStatus.RELEASED
+    assert run.reports[0].event is None
+    assert run.reports[0].observations == ()
+    assert adapter.release_called is True
+
+
 def _endpoint() -> Iec61850DeviceEndpoint:
     return Iec61850DeviceEndpoint(
         id="sim:IED1/AP1",
@@ -253,3 +309,91 @@ def _matched_signals() -> tuple[Iec61850ReportSubscriptionPlanSignal, ...]:
             match_kind="exact",
         ),
     )
+
+
+def _subscription_plan(candidate: Iec61850ReportControlCandidate) -> Iec61850ReportSubscriptionPlan:
+    return Iec61850ReportSubscriptionPlan(
+        selected_signal_count=2,
+        matched_signal_count=2,
+        unmatched_signal_count=0,
+        ambiguous_signal_count=0,
+        required_report_count=1,
+        devices=(
+            Iec61850ReportSubscriptionPlanDevice(
+                ied_name=candidate.ied_name,
+                access_point_name=candidate.access_point_name,
+                reports=(
+                    Iec61850ReportSubscriptionPlanReport(
+                        status="required",
+                        candidate=candidate,
+                        matched_signals=_matched_signals(),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+
+class _EnableFailureAdapter:
+    def __init__(self, candidate: Iec61850ReportControlCandidate) -> None:
+        self._candidate = candidate
+        self.release_called = False
+
+    def connect(
+        self,
+        *,
+        session_id: str,
+        endpoint: Iec61850DeviceEndpoint,
+        candidates: list[Iec61850ReportControlCandidate],
+    ) -> "_EnableFailureSession":
+        assert candidates == [self._candidate]
+        return _EnableFailureSession(candidate=self._candidate, adapter=self)
+
+
+class _EnableFailureSession:
+    def __init__(self, *, candidate: Iec61850ReportControlCandidate, adapter: _EnableFailureAdapter) -> None:
+        self._candidate = candidate
+        self._adapter = adapter
+        self._state = Iec61850ReportControlState(
+            reference=to_report_control_ref(candidate),
+            runtime_status=Iec61850RuntimeStatus.DISCONNECTED,
+            rpt_id=candidate.rpt_id,
+            data_set_ref=candidate.data_set_ref,
+            conf_rev=candidate.conf_rev,
+            indexed=candidate.indexed,
+            buffer_time_ms=candidate.buffer_time_ms,
+            integrity_period_ms=candidate.integrity_period_ms,
+            trigger_options=candidate.trigger_options,
+            optional_fields=candidate.optional_fields,
+            signal_count=candidate.signal_count,
+        )
+
+    def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlState:
+        self._state.runtime_status = Iec61850RuntimeStatus.READ
+        return self._state
+
+    def reserve_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        self._state.reserved_by = client_id
+        self._state.owner = client_id
+        self._state.runtime_status = Iec61850RuntimeStatus.RESERVED
+        return self._state
+
+    def release_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        self._adapter.release_called = True
+        self._state.reserved_by = None
+        self._state.owner = None
+        self._state.runtime_status = Iec61850RuntimeStatus.RELEASED
+        return self._state
+
+    def enable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        self._state.runtime_status = Iec61850RuntimeStatus.FAILED
+        raise Iec61850ReportRuntimeError("ENABLE_FAILED", "enable failed")
+
+    def disable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState:
+        raise AssertionError("disable should not be called after failed enable")
+
+    def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent:
+        raise AssertionError("GI should not be called after failed enable")
+
+    def disconnect(self) -> None:
+        return None

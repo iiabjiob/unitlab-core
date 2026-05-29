@@ -188,6 +188,40 @@ class Iec61850ReportSubscriptionPlanSignal:
 
 
 @dataclass(frozen=True, slots=True)
+class Iec61850ReportSubscriptionPlanReport:
+    status: str
+    candidate: Iec61850ReportControlCandidate
+    matched_signals: tuple[Iec61850ReportSubscriptionPlanSignal, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850ReportSubscriptionPlanDevice:
+    ied_name: str
+    access_point_name: str
+    reports: tuple[Iec61850ReportSubscriptionPlanReport, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850ReportSubscriptionPlanDiagnostic:
+    severity: str
+    code: str
+    message: str
+    signal_id: str | None = None
+    address: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850ReportSubscriptionPlan:
+    selected_signal_count: int
+    matched_signal_count: int
+    unmatched_signal_count: int
+    ambiguous_signal_count: int
+    required_report_count: int
+    devices: tuple[Iec61850ReportSubscriptionPlanDevice, ...]
+    diagnostics: tuple[Iec61850ReportSubscriptionPlanDiagnostic, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class Iec61850SignalObservation:
     event_id: str
     report_candidate_id: str
@@ -230,6 +264,43 @@ class Iec61850ReportObservationResult:
     observations: tuple[Iec61850SignalObservation, ...]
     unselected_values: tuple[Iec61850UnselectedReportValue, ...]
     diagnostics: tuple[Iec61850ReportObservationDiagnostic, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850ReportSubscriptionRunReportResult:
+    candidate_id: str
+    ied_name: str
+    access_point_name: str
+    report_control_name: str
+    report_kind: Iec61850ReportKind
+    data_set_ref: str | None
+    signal_count: int
+    matched_signal_count: int
+    runtime_status: Iec61850RuntimeStatus
+    diagnostics: tuple[Iec61850RuntimeDiagnostic | Iec61850ReportObservationDiagnostic, ...]
+    observations: tuple[Iec61850SignalObservation, ...]
+    event: Iec61850ReportEvent | None
+    error_code: str | None
+    error_message: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850ReportSubscriptionRunResult:
+    plan: Iec61850ReportSubscriptionPlan
+    reports: tuple[Iec61850ReportSubscriptionRunReportResult, ...]
+    diagnostics: tuple[Iec61850ReportSubscriptionPlanDiagnostic | Iec61850RuntimeDiagnostic | Iec61850ReportObservationDiagnostic, ...]
+    started_at: str
+    finished_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850SimulatorSubscriptionRunResult:
+    plan: Iec61850ReportSubscriptionPlan
+    reports: tuple[Iec61850ReportSubscriptionRunReportResult, ...]
+    diagnostics: tuple[Iec61850ReportSubscriptionPlanDiagnostic | Iec61850RuntimeDiagnostic | Iec61850ReportObservationDiagnostic, ...]
+    event_log: tuple[Iec61850ReportRuntimeEvent, ...]
+    started_at: str
+    finished_at: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -476,6 +547,254 @@ def normalize_report_data_reference(data_reference: str, candidate: Iec61850Repo
     value = _mms_reference_to_dot_reference(value)
     value = _slash_reference_to_dot_reference(value)
     return value
+
+
+def run_report_subscription_plan(
+    *,
+    plan: Iec61850ReportSubscriptionPlan,
+    adapter: Iec61850ReportRuntimeAdapter,
+    client_id: str,
+    endpoint_for_device: Callable[[Iec61850ReportSubscriptionPlanDevice], Iec61850DeviceEndpoint],
+    session_id_prefix: str = "iec61850-plan",
+    now: Callable[[], datetime] | None = None,
+) -> Iec61850ReportSubscriptionRunResult:
+    timestamp = now or _utc_now
+    service = Iec61850ReportRuntimeService(adapter)
+    started_at = timestamp().isoformat().replace("+00:00", "Z")
+    reports: list[Iec61850ReportSubscriptionRunReportResult] = []
+    diagnostics: list[Iec61850ReportSubscriptionPlanDiagnostic | Iec61850RuntimeDiagnostic | Iec61850ReportObservationDiagnostic] = list(plan.diagnostics)
+
+    for device_index, device in enumerate(plan.devices):
+        endpoint = endpoint_for_device(device)
+        session_id = f"{session_id_prefix}:{device_index}:{device.ied_name}/{device.access_point_name}"
+        try:
+            service.open_session(
+                session_id=session_id,
+                endpoint=endpoint,
+                candidates=[report.candidate for report in device.reports],
+            )
+        except Iec61850ReportRuntimeError as error:
+            failed_reports = tuple(
+                _failed_plan_report(
+                    report,
+                    error.code,
+                    str(error),
+                    diagnostics=(_runtime_diagnostic_from_error(report.candidate, error.code, error),),
+                )
+                for report in device.reports
+            )
+            reports.extend(failed_reports)
+            for failed_report in failed_reports:
+                diagnostics.extend(failed_report.diagnostics)
+            continue
+
+        try:
+            for report in device.reports:
+                result = _run_plan_report(
+                    service=service,
+                    session_id=session_id,
+                    endpoint=endpoint,
+                    report=report,
+                    client_id=client_id,
+                )
+                reports.append(result)
+                diagnostics.extend(result.diagnostics)
+        finally:
+            try:
+                service.close_session(session_id)
+            except Iec61850ReportRuntimeError:
+                pass
+
+    return Iec61850ReportSubscriptionRunResult(
+        plan=plan,
+        reports=tuple(reports),
+        diagnostics=tuple(diagnostics),
+        started_at=started_at,
+        finished_at=timestamp().isoformat().replace("+00:00", "Z"),
+    )
+
+
+def run_simulator_report_subscription_plan(
+    *,
+    plan: Iec61850ReportSubscriptionPlan,
+    client_id: str = "unitlab-backend-simulator",
+    now: Callable[[], datetime] | None = None,
+) -> Iec61850SimulatorSubscriptionRunResult:
+    adapter = create_iec61850_simulator_adapter(now=now)
+    result = run_report_subscription_plan(
+        plan=plan,
+        adapter=adapter,
+        client_id=client_id,
+        endpoint_for_device=build_simulator_endpoint_for_plan_device,
+        now=now,
+    )
+    return Iec61850SimulatorSubscriptionRunResult(
+        plan=result.plan,
+        reports=result.reports,
+        diagnostics=result.diagnostics,
+        event_log=adapter.get_event_log(),
+        started_at=result.started_at,
+        finished_at=result.finished_at,
+    )
+
+
+def build_simulator_endpoint_for_plan_device(
+    device: Iec61850ReportSubscriptionPlanDevice,
+) -> Iec61850DeviceEndpoint:
+    return Iec61850DeviceEndpoint(
+        id=f"sim:{device.ied_name}/{device.access_point_name}",
+        mode=Iec61850RuntimeMode.SIMULATOR,
+        ied_name=device.ied_name,
+        access_point_name=device.access_point_name,
+        host=None,
+        port=102,
+    )
+
+
+def _run_plan_report(
+    *,
+    service: Iec61850ReportRuntimeService,
+    session_id: str,
+    endpoint: Iec61850DeviceEndpoint,
+    report: Iec61850ReportSubscriptionPlanReport,
+    client_id: str,
+) -> Iec61850ReportSubscriptionRunReportResult:
+    candidate = report.candidate
+    diagnostics: list[Iec61850RuntimeDiagnostic | Iec61850ReportObservationDiagnostic] = []
+    last_state: Iec61850ReportControlState | None = None
+    event: Iec61850ReportEvent | None = None
+    observations: tuple[Iec61850SignalObservation, ...] = ()
+    reserved = False
+    enabled = False
+    error_code: str | None = None
+    error_message: str | None = None
+
+    try:
+        read_result = service.read_report_control(session_id=session_id, endpoint=endpoint, candidate=candidate)
+        last_state = read_result.state
+        diagnostics.extend(read_result.diagnostics)
+        last_state = service.reserve_report_control(session_id=session_id, candidate=candidate, client_id=client_id)
+        reserved = True
+        last_state = service.enable_report_control(session_id=session_id, candidate=candidate, client_id=client_id)
+        enabled = True
+        event = service.send_general_interrogation(session_id=session_id, candidate=candidate, client_id=client_id)
+        observation_result = map_report_event_to_signal_observations(
+            candidate=candidate,
+            matched_signals=report.matched_signals,
+            event=event,
+        )
+        observations = observation_result.observations
+        diagnostics.extend(observation_result.diagnostics)
+    except Iec61850ReportRuntimeError as error:
+        error_code = error.code
+        error_message = str(error)
+        diagnostics.append(_runtime_diagnostic_from_error(candidate, error.code, error))
+    except Exception as error:
+        error_code = "REPORT_RUN_FAILED"
+        error_message = str(error)
+        diagnostics.append(Iec61850RuntimeDiagnostic(
+            severity="error",
+            code="REPORT_RUN_FAILED",
+            message=str(error),
+            reference=to_report_control_ref(candidate),
+        ))
+    finally:
+        cleanup_state, cleanup_diagnostics = _cleanup_report_control(
+            service=service,
+            session_id=session_id,
+            candidate=candidate,
+            client_id=client_id,
+            enabled=enabled,
+            reserved=reserved,
+        )
+        if cleanup_state is not None:
+            last_state = cleanup_state
+        diagnostics.extend(cleanup_diagnostics)
+        if error_code is None and cleanup_diagnostics:
+            error_code = cleanup_diagnostics[0].code
+            error_message = cleanup_diagnostics[0].message
+
+    return Iec61850ReportSubscriptionRunReportResult(
+        candidate_id=candidate.id,
+        ied_name=candidate.ied_name,
+        access_point_name=candidate.access_point_name,
+        report_control_name=candidate.report_control_name,
+        report_kind=candidate.report_kind,
+        data_set_ref=candidate.data_set_ref,
+        signal_count=candidate.signal_count,
+        matched_signal_count=len(report.matched_signals),
+        runtime_status=last_state.runtime_status if last_state is not None else Iec61850RuntimeStatus.FAILED,
+        diagnostics=tuple(diagnostics),
+        observations=observations,
+        event=event,
+        error_code=error_code,
+        error_message=error_message,
+    )
+
+
+def _cleanup_report_control(
+    *,
+    service: Iec61850ReportRuntimeService,
+    session_id: str,
+    candidate: Iec61850ReportControlCandidate,
+    client_id: str,
+    enabled: bool,
+    reserved: bool,
+) -> tuple[Iec61850ReportControlState | None, tuple[Iec61850RuntimeDiagnostic, ...]]:
+    diagnostics: list[Iec61850RuntimeDiagnostic] = []
+    last_state: Iec61850ReportControlState | None = None
+
+    if enabled:
+        try:
+            last_state = service.disable_report_control(session_id=session_id, candidate=candidate, client_id=client_id)
+        except Iec61850ReportRuntimeError as error:
+            diagnostics.append(_runtime_diagnostic_from_error(candidate, "DISABLE_CLEANUP_FAILED", error))
+
+    if reserved:
+        try:
+            last_state = service.release_report_control(session_id=session_id, candidate=candidate, client_id=client_id)
+        except Iec61850ReportRuntimeError as error:
+            diagnostics.append(_runtime_diagnostic_from_error(candidate, "RELEASE_CLEANUP_FAILED", error))
+
+    return last_state, tuple(diagnostics)
+
+
+def _runtime_diagnostic_from_error(
+    candidate: Iec61850ReportControlCandidate,
+    code: str,
+    error: Iec61850ReportRuntimeError,
+) -> Iec61850RuntimeDiagnostic:
+    return Iec61850RuntimeDiagnostic(
+        severity="error",
+        code=code,
+        message=str(error),
+        reference=to_report_control_ref(candidate),
+    )
+
+
+def _failed_plan_report(
+    report: Iec61850ReportSubscriptionPlanReport,
+    error_code: str,
+    error_message: str,
+    diagnostics: tuple[Iec61850RuntimeDiagnostic | Iec61850ReportObservationDiagnostic, ...] = (),
+) -> Iec61850ReportSubscriptionRunReportResult:
+    candidate = report.candidate
+    return Iec61850ReportSubscriptionRunReportResult(
+        candidate_id=candidate.id,
+        ied_name=candidate.ied_name,
+        access_point_name=candidate.access_point_name,
+        report_control_name=candidate.report_control_name,
+        report_kind=candidate.report_kind,
+        data_set_ref=candidate.data_set_ref,
+        signal_count=candidate.signal_count,
+        matched_signal_count=len(report.matched_signals),
+        runtime_status=Iec61850RuntimeStatus.FAILED,
+        diagnostics=diagnostics,
+        observations=(),
+        event=None,
+        error_code=error_code,
+        error_message=error_message,
+    )
 
 
 def create_iec61850_simulator_adapter(
