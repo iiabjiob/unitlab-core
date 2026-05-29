@@ -8,6 +8,7 @@ export {
 } from "./reportManager"
 export {
   createIec61850SimulatorAdapter,
+  Iec61850SimulatorStateError,
   reportControlKey,
 } from "./simulator"
 export type {
@@ -18,6 +19,7 @@ export type {
   Iec61850ReportControlRef,
   Iec61850ReportControlState,
   Iec61850ReportEvent,
+  Iec61850ReportLifecycleState,
   Iec61850ReportManagerAdapter,
   Iec61850ReportManagerReadOnlyAdapter,
   Iec61850ReportRuntimeDiagnostic,
@@ -32,6 +34,9 @@ export type {
   Iec61850SelectedSignal,
 } from "./types"
 export type {
+  Iec61850SimulatorAdapter,
   Iec61850SimulatorAdapterOptions,
   Iec61850SimulatorDevice,
+  Iec61850SimulatorEvent,
+  Iec61850SimulatorEventKind,
 } from "./simulator"

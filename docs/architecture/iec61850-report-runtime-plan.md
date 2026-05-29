@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-2 started. Simulator-only report runtime contracts and the subscription plan builder are implemented in `frontend/src/modules/iec61850-report-core`.
+Status: slices 1-3 started. Simulator-only report runtime contracts, the subscription plan builder, and the simulator state machine are implemented in `frontend/src/modules/iec61850-report-core`.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -65,11 +65,14 @@ Validation:
 
 ### Slice 3 - Simulator State Machine Hardening
 
-Planned:
+Implemented in this slice:
 
 - Explicit lifecycle states: disconnected, connected, read, reserved, enabled, GI pending, reporting, disabled, released, failed.
 - Deterministic failures for reservation conflict, enable without reservation, GI while disabled, stale `ConfRev`, and disconnect during enabled state.
 - Simulator event log for command/read/report operations.
+- `Iec61850ReportControlState.lifecycleState` now exposes the last simulator report-control lifecycle state.
+- `createIec61850SimulatorAdapter()` returns an adapter with `getEventLog()` and `clearEventLog()` for simulator validation.
+- Enabled disconnect failure is available through `strictDisconnectWhileEnabled` so existing short-lived manager calls remain compatible while strict session behavior can be tested.
 
 Validation:
 

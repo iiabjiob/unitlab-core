@@ -9,6 +9,7 @@ import {
   toReportControlRef,
   type Iec61850DeviceEndpoint,
   type Iec61850ReportControlCandidate,
+  type Iec61850ReportControlState,
 } from "./index"
 
 const reportScd = `<?xml version="1.0" encoding="UTF-8"?>
@@ -121,6 +122,94 @@ describe("iec61850-report-core", () => {
     await expect(manager.releaseReportControl(endpoint, candidate, "unitlab")).resolves.toMatchObject({
       reservedBy: null,
       owner: null,
+    })
+  })
+
+  it("records simulator lifecycle transitions in a deterministic event log", async () => {
+    const candidate = firstReportCandidate()
+    const reference = toReportControlRef(candidate)
+    const adapter = createIec61850SimulatorAdapter({
+      devices: [{ endpoint, reports: [candidate] }],
+      now: () => new Date("2026-05-29T12:00:00.000Z"),
+    })
+
+    const connection = await adapter.connect(endpoint)
+    await expect(connection.readReportControl(reference)).resolves.toMatchObject({ lifecycleState: "read" })
+    await expect(connection.reserveReportControl(reference, "unitlab")).resolves.toMatchObject({ lifecycleState: "reserved" })
+    await expect(connection.enableReportControl(reference, "unitlab")).resolves.toMatchObject({ lifecycleState: "enabled" })
+    await expect(connection.sendGeneralInterrogation(reference, "unitlab")).resolves.toMatchObject({
+      sequenceNumber: 1,
+      values: expect.any(Array),
+    })
+    await expect(connection.disableReportControl(reference, "unitlab")).resolves.toMatchObject({ lifecycleState: "disabled" })
+    await expect(connection.releaseReportControl(reference, "unitlab")).resolves.toMatchObject({ lifecycleState: "released" })
+    await connection.disconnect()
+
+    expect(adapter.getEventLog().map(event => event.kind)).toEqual([
+      "connect",
+      "read",
+      "reserve",
+      "enable",
+      "general-interrogation",
+      "report",
+      "disable",
+      "release",
+      "disconnect",
+    ])
+    expect(adapter.getEventLog().map(event => event.at)).toEqual(Array.from({ length: 9 }, () => "2026-05-29T12:00:00.000Z"))
+  })
+
+  it("fails invalid simulator state transitions with stable error codes", async () => {
+    const candidate = firstReportCandidate()
+    const reference = toReportControlRef(candidate)
+
+    const enableWithoutReservation = createIec61850SimulatorAdapter({ devices: [{ endpoint, reports: [candidate] }] })
+    await expect((await enableWithoutReservation.connect(endpoint)).enableReportControl(reference, "unitlab")).rejects.toMatchObject({
+      code: "ENABLE_WITHOUT_RESERVATION",
+    })
+
+    const giWhileDisabled = createIec61850SimulatorAdapter({ devices: [{ endpoint, reports: [candidate] }] })
+    await expect((await giWhileDisabled.connect(endpoint)).sendGeneralInterrogation(reference, "unitlab")).rejects.toMatchObject({
+      code: "GI_WHILE_DISABLED",
+    })
+
+    const reservationConflict = createIec61850SimulatorAdapter({ devices: [{ endpoint, reports: [candidate] }] })
+    const reservationConflictConnection = await reservationConflict.connect(endpoint)
+    await reservationConflictConnection.reserveReportControl(reference, "unitlab")
+    await expect(reservationConflictConnection.reserveReportControl(reference, "other-client")).rejects.toMatchObject({
+      code: "RESERVATION_CONFLICT",
+    })
+
+    const staleConfRev = createIec61850SimulatorAdapter({
+      devices: [{
+        endpoint,
+        reports: [candidate],
+        overrides: {
+          [reportControlKey(reference)]: { confRev: "8" } satisfies Partial<Iec61850ReportControlState>,
+        },
+      }],
+    })
+    const staleConfRevConnection = await staleConfRev.connect(endpoint)
+    await staleConfRevConnection.reserveReportControl(reference, "unitlab")
+    await expect(staleConfRevConnection.enableReportControl(reference, "unitlab")).rejects.toMatchObject({
+      code: "CONFREV_STALE",
+    })
+
+    const enabledDisconnect = createIec61850SimulatorAdapter({
+      devices: [{ endpoint, reports: [candidate] }],
+      strictDisconnectWhileEnabled: true,
+    })
+    const enabledDisconnectConnection = await enabledDisconnect.connect(endpoint)
+    await enabledDisconnectConnection.reserveReportControl(reference, "unitlab")
+    await enabledDisconnectConnection.enableReportControl(reference, "unitlab")
+    await expect(enabledDisconnectConnection.disconnect()).rejects.toMatchObject({
+      code: "DISCONNECT_WHILE_ENABLED",
+    })
+    const enabledDisconnectEvents = enabledDisconnect.getEventLog()
+    expect(enabledDisconnectEvents[enabledDisconnectEvents.length - 1]).toMatchObject({
+      kind: "failure",
+      lifecycleState: "failed",
+      code: "DISCONNECT_WHILE_ENABLED",
     })
   })
 

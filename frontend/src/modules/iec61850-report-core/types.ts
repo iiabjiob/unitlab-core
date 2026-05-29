@@ -25,8 +25,21 @@ export type Iec61850ReportControlRef = {
   reportKind: "buffered" | "unbuffered"
 }
 
+export type Iec61850ReportLifecycleState =
+  | "disconnected"
+  | "connected"
+  | "read"
+  | "reserved"
+  | "enabled"
+  | "gi-pending"
+  | "reporting"
+  | "disabled"
+  | "released"
+  | "failed"
+
 export type Iec61850ReportControlState = {
   reference: Iec61850ReportControlRef
+  lifecycleState: Iec61850ReportLifecycleState
   rptId: string | null
   dataSetRef: string | null
   confRev: string | null
