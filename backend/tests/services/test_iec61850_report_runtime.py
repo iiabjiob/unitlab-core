@@ -26,6 +26,7 @@ from app.services.iec61850 import (
     Iec61850RuntimeTriggerOptions,
     Iec61850SelectedSignal,
     create_iec61850_simulator_adapter,
+    map_report_event_to_subscription_plan_observations,
     map_report_event_to_signal_observations,
     normalize_report_data_reference,
     run_report_subscription_plan,
@@ -137,6 +138,52 @@ def test_backend_runtime_maps_subset_report_to_signal_observation_diagnostics() 
     assert result.observations[0].reason_code == Iec61850ReportReason.DATA_CHANGE
     assert result.diagnostics[0].code == "SIGNAL_NOT_INCLUDED_IN_REPORT_EVENT"
     assert result.diagnostics[0].signal_id == "sig-2"
+
+
+def test_backend_runtime_routes_report_events_through_subscription_plan() -> None:
+    candidate = _candidate()
+    event = _data_change_event(candidate)
+
+    result = map_report_event_to_subscription_plan_observations(
+        plan=_subscription_plan(candidate),
+        event=event,
+    )
+
+    assert result.report_candidate_id == candidate.id
+    assert [(observation.selected_signal_id, observation.value) for observation in result.observations] == [("sig-1", True)]
+    assert result.diagnostics[0].code == "SIGNAL_NOT_INCLUDED_IN_REPORT_EVENT"
+
+    unplanned_event = Iec61850ReportEvent(
+        id="event-unplanned",
+        endpoint_id="sim:IED1/AP1",
+        received_at="2026-05-29T12:00:04Z",
+        report_control=Iec61850ReportControlRef(
+            ied_name="IED1",
+            access_point_name="AP1",
+            logical_device_inst="LD0",
+            logical_node_name="LLN0",
+            report_control_name="unknownReport",
+            report_kind=Iec61850ReportKind.BUFFERED,
+        ),
+        rpt_id=None,
+        data_set_ref=None,
+        conf_rev=None,
+        sequence_number=4,
+        time_of_entry="2026-05-29T12:00:04Z",
+        entry_id="entry-4",
+        buffer_overflow=False,
+        reason=Iec61850ReportReason.DATA_CHANGE,
+        values=event.values,
+    )
+    unplanned_result = map_report_event_to_subscription_plan_observations(
+        plan=_subscription_plan(candidate),
+        event=unplanned_event,
+    )
+
+    assert unplanned_result.report_candidate_id is None
+    assert unplanned_result.observations == ()
+    assert [value.reference for value in unplanned_result.unselected_values] == ["LD0/XCBR1.Pos.stVal[ST]"]
+    assert unplanned_result.diagnostics[0].code == "REPORT_NOT_IN_PLAN"
 
 
 def test_backend_runtime_service_surfaces_deterministic_simulator_failures() -> None:
@@ -307,6 +354,33 @@ def _matched_signals() -> tuple[Iec61850ReportSubscriptionPlanSignal, ...]:
             model_reference="LD0/PGGIO1.Ind1[ST]",
             ied_name="IED1",
             match_kind="exact",
+        ),
+    )
+
+
+def _data_change_event(candidate: Iec61850ReportControlCandidate) -> Iec61850ReportEvent:
+    return Iec61850ReportEvent(
+        id="event-1",
+        endpoint_id="sim:IED1/AP1",
+        received_at="2026-05-29T12:00:03Z",
+        report_control=to_report_control_ref(candidate),
+        rpt_id=candidate.rpt_id,
+        data_set_ref=candidate.data_set_ref,
+        conf_rev=candidate.conf_rev,
+        sequence_number=3,
+        time_of_entry="2026-05-29T12:00:03Z",
+        entry_id="entry-3",
+        buffer_overflow=False,
+        reason=Iec61850ReportReason.DATA_CHANGE,
+        values=(
+            Iec61850ReportEventValue(
+                data_set_index=0,
+                reference="LD0/XCBR1.Pos.stVal[ST]",
+                data_reference="IED1LD0/XCBR1$ST$Pos$stVal",
+                value=True,
+                reason_code=Iec61850ReportReason.DATA_CHANGE,
+                timestamp="2026-05-29T12:00:03Z",
+            ),
         ),
     )
 

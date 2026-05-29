@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-10 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, and the IEC/C# compliance map are implemented.
+Status: slices 1-11 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -201,7 +201,22 @@ Validation:
 - Backend service tests cover cleanup/release after activation failure.
 - Simulator-only; no real MMS/device communication.
 
-### Slice 11 - MMS Adapter Spike Behind Simulator Parity
+### Slice 11 - Backend Incoming Report Event Routing
+
+Implemented in this slice:
+
+- Backend runtime can route a normalized incoming report event through a subscription plan before producing signal observations.
+- Report events matching required plan reports reuse the same selected-signal observation mapper used by GI execution.
+- Report events that do not match any planned ReportControl produce `REPORT_NOT_IN_PLAN` diagnostics and preserve reported values as unselected evidence.
+- The mapper is simulator-safe and adapter-neutral; it does not open sockets, add REST/WebSocket contracts, or enable real MMS.
+
+Validation:
+
+- Backend service tests cover planned subset data-change report routing.
+- Backend service tests cover unplanned report event diagnostics and unselected value preservation.
+- Simulator-only; no real MMS/device communication.
+
+### Slice 12 - MMS Adapter Spike Behind Simulator Parity
 
 Planned only after simulator runner parity passes:
 

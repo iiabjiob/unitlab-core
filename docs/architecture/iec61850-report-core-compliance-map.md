@@ -70,6 +70,7 @@ These are intentionally internal and must not be treated as IEC attributes:
 | `Iec61850ReportSubscriptionPlan` | FAT planning DTO derived from SCD and selected Signal List rows |
 | `Iec61850ReportSubscriptionRunResult` | Backend/core execution evidence for simulator subscription-plan runs |
 | `Iec61850SignalObservation` | UnitLab signal-level evidence derived from normalized report values; mirrored in backend simulator runtime |
+| `REPORT_NOT_IN_PLAN` | UnitLab diagnostic for report events that do not match the active subscription plan |
 
 ## C# Portability Rules
 

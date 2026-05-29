@@ -260,7 +260,7 @@ class Iec61850ReportObservationDiagnostic:
 @dataclass(frozen=True, slots=True)
 class Iec61850ReportObservationResult:
     event_id: str
-    report_candidate_id: str
+    report_candidate_id: str | None
     observations: tuple[Iec61850SignalObservation, ...]
     unselected_values: tuple[Iec61850UnselectedReportValue, ...]
     diagnostics: tuple[Iec61850ReportObservationDiagnostic, ...]
@@ -535,6 +535,35 @@ def map_report_event_to_signal_observations(
     )
 
 
+def map_report_event_to_subscription_plan_observations(
+    *,
+    plan: Iec61850ReportSubscriptionPlan,
+    event: Iec61850ReportEvent,
+) -> Iec61850ReportObservationResult:
+    report = _find_plan_report(plan, event.report_control)
+    if report is None:
+        return Iec61850ReportObservationResult(
+            event_id=event.id,
+            report_candidate_id=None,
+            observations=(),
+            unselected_values=tuple(_to_unselected_report_value(value) for value in event.values),
+            diagnostics=(
+                Iec61850ReportObservationDiagnostic(
+                    severity="error",
+                    code="REPORT_NOT_IN_PLAN",
+                    message="Report event does not match any required ReportControl in the subscription plan.",
+                    reference=event.report_control,
+                ),
+            ),
+        )
+
+    return map_report_event_to_signal_observations(
+        candidate=report.candidate,
+        matched_signals=report.matched_signals,
+        event=event,
+    )
+
+
 def normalize_report_data_reference(data_reference: str, candidate: Iec61850ReportControlCandidate) -> str:
     value = data_reference.strip()
     if not value:
@@ -769,6 +798,40 @@ def _runtime_diagnostic_from_error(
         code=code,
         message=str(error),
         reference=to_report_control_ref(candidate),
+    )
+
+
+def _find_plan_report(
+    plan: Iec61850ReportSubscriptionPlan,
+    reference: Iec61850ReportControlRef,
+) -> Iec61850ReportSubscriptionPlanReport | None:
+    for device in plan.devices:
+        for report in device.reports:
+            if _same_report_control(report.candidate, reference):
+                return report
+    return None
+
+
+def _same_report_control(
+    candidate: Iec61850ReportControlCandidate,
+    reference: Iec61850ReportControlRef,
+) -> bool:
+    return (
+        candidate.ied_name == reference.ied_name
+        and candidate.access_point_name == reference.access_point_name
+        and candidate.logical_device_inst == reference.logical_device_inst
+        and candidate.logical_node_name == reference.logical_node_name
+        and candidate.report_control_name == reference.report_control_name
+        and candidate.report_kind == reference.report_kind
+    )
+
+
+def _to_unselected_report_value(value: Iec61850ReportEventValue) -> Iec61850UnselectedReportValue:
+    return Iec61850UnselectedReportValue(
+        data_set_index=value.data_set_index,
+        reference=value.reference,
+        data_reference=value.data_reference,
+        value=value.value,
     )
 
 
