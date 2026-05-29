@@ -11,6 +11,10 @@ import {
   mergeIec61850SignalList,
   type Iec61850SignalListMergeResult,
 } from "./iec61850SignalListMerge"
+import {
+  runIec61850DebugSimulator,
+  type Iec61850DebugSimulatorRunResult,
+} from "./iec61850DebugSimulator"
 import type {
   Iec61850DebugDetailAction,
   Iec61850DebugDetailRow,
@@ -66,15 +70,18 @@ const fileName = ref<string | null>(null)
 const contentHash = ref<string | null>(null)
 const loading = ref(false)
 const mergingSignalList = ref(false)
+const simulatingReports = ref(false)
 const loadProgress = ref<LoadProgress | null>(null)
 const readError = ref<string | null>(null)
 const debugDocument = shallowRef<Iec61850DebugDocument | null>(null)
 const selectedValue = ref<NodeValue | null>(null)
 const detailDialog = ref<Iec61850DebugDetailAction | null>(null)
 const signalListMergeDialog = ref<Iec61850SignalListMergeResult | null>(null)
+const simulatorResult = shallowRef<Iec61850DebugSimulatorRunResult | null>(null)
 const pendingDefaultExpansion = ref(false)
 const showReportCandidatesOnlyWithSignals = ref(false)
 let loadRequestId = 0
+let simulatorRequestId = 0
 let activeParse: { worker: Worker; reject: (error: Error) => void } | null = null
 
 const signalSheetStore = useSignalSheetStore()
@@ -125,6 +132,19 @@ const stats = computed(() => debugDocument.value?.stats ?? EMPTY_STATS)
 const mergeMatchedPreview = computed(() => signalListMergeDialog.value?.matches.slice(0, 100) ?? [])
 const mergeMissPreview = computed(() => signalListMergeDialog.value?.misses.slice(0, 100) ?? [])
 const mergeReportPreview = computed(() => signalListMergeDialog.value?.matchedReports.slice(0, 100) ?? [])
+const simulatorReportPreview = computed(() => simulatorResult.value?.reports.slice(0, 100) ?? [])
+const simulatorEventPreview = computed(() => simulatorResult.value?.eventLog.slice(0, 80) ?? [])
+const simulatorDiagnosticsPreview = computed(() => simulatorResult.value?.diagnostics.slice(0, 80) ?? [])
+const simulatorGiValueCount = computed(() => (
+  simulatorResult.value?.reports.reduce((sum, report) => sum + (report.event?.values.length ?? 0), 0) ?? 0
+))
+const canRunSimulator = computed(() => Boolean(
+  debugDocument.value
+  && signalListMergeDialog.value?.matches.length
+  && !loading.value
+  && !mergingSignalList.value
+  && !simulatingReports.value,
+))
 
 const statusLabel = computed(() => {
   if (loading.value) return loadProgress.value?.label ?? "Reading SCD"
@@ -175,6 +195,7 @@ async function mergeWithSignalList() {
   if (!document || mergingSignalList.value) return
 
   mergingSignalList.value = true
+  simulatorResult.value = null
   try {
     const [sheet, rows] = await Promise.all([
       signalSheetStore.ensureSheetLoaded(),
@@ -188,6 +209,7 @@ async function mergeWithSignalList() {
 
     const result = mergeIec61850SignalList(document, rows, sheet)
     signalListMergeDialog.value = result
+    simulatorResult.value = null
     if (!result.addressColumn) {
       toastStore.warning("IEC 61850 address column was not detected in Signal List.")
       return
@@ -200,6 +222,41 @@ async function mergeWithSignalList() {
   }
 }
 
+async function runSimulatorReports() {
+  const document = debugDocument.value
+  const mergeResult = signalListMergeDialog.value
+  if (!document || !mergeResult || simulatingReports.value) return
+
+  if (!mergeResult.matches.length) {
+    toastStore.info("No matched IEC 61850 signals for simulator run.")
+    simulatorResult.value = null
+    return
+  }
+
+  const requestId = simulatorRequestId + 1
+  simulatorRequestId = requestId
+  simulatingReports.value = true
+  try {
+    const result = await runIec61850DebugSimulator(document, mergeResult)
+    if (requestId !== simulatorRequestId || debugDocument.value !== document) return
+    simulatorResult.value = result
+    const failedReports = result.reports.filter(report => report.errorCode).length
+    if (failedReports) {
+      toastStore.warning(`IEC 61850 simulator: ${failedReports}/${result.reports.length} reports failed.`)
+      return
+    }
+    toastStore.success(`IEC 61850 simulator: ${result.reports.length} reports completed.`)
+  } catch (error) {
+    if (requestId === simulatorRequestId) {
+      toastStore.error(error instanceof Error ? error.message : "IEC 61850 simulator failed")
+    }
+  } finally {
+    if (requestId === simulatorRequestId) {
+      simulatingReports.value = false
+    }
+  }
+}
+
 async function onFileSelected(event: Event) {
   const input = event.target as HTMLInputElement | null
   const file = input?.files?.[0]
@@ -207,11 +264,15 @@ async function onFileSelected(event: Event) {
 
   const requestId = loadRequestId + 1
   loadRequestId = requestId
+  simulatorRequestId += 1
   terminateActiveParse()
   loading.value = true
+  simulatingReports.value = false
   fileName.value = file.name
   contentHash.value = null
   debugDocument.value = null
+  signalListMergeDialog.value = null
+  simulatorResult.value = null
   selectedValue.value = null
   loadProgress.value = {
     label: "Reading SCD",
@@ -392,6 +453,23 @@ function closeDetailDialog() {
 
 function closeSignalListMergeDialog() {
   signalListMergeDialog.value = null
+}
+
+function simulatorReportStatusClass(report: Iec61850DebugSimulatorRunResult["reports"][number]): string {
+  return report.errorCode ? "is-error" : "is-success"
+}
+
+function simulatorReportStatusLabel(report: Iec61850DebugSimulatorRunResult["reports"][number]): string {
+  return report.errorCode ? report.errorCode : report.lifecycleState
+}
+
+function simulatorDiagnosticTarget(
+  diagnostic: Iec61850DebugSimulatorRunResult["diagnostics"][number],
+): string | null {
+  if ("reference" in diagnostic) {
+    return `${diagnostic.reference.iedName}/${diagnostic.reference.accessPointName}/${diagnostic.reference.logicalDeviceInst}/${diagnostic.reference.logicalNodeName}.${diagnostic.reference.reportControlName}`
+  }
+  return diagnostic.address ?? diagnostic.signalId ?? null
 }
 
 function isReportCandidatesSection(section: Iec61850DebugDetailSection): boolean {
@@ -797,6 +875,107 @@ onUnmounted(() => {
       </section>
     </main>
 
+    <section v-if="simulatorResult" class="iec61850-debug-page__runtime" aria-label="IEC 61850 simulator runtime">
+      <div class="iec61850-debug-page__panel-header">
+        <span>Simulator runtime</span>
+        <span class="iec61850-debug-page__panel-count">
+          {{ simulatorResult.reports.length }} reports · {{ simulatorResult.eventLog.length }} events
+        </span>
+      </div>
+
+      <section class="iec61850-debug-page__runtime-summary" aria-label="Simulator summary">
+        <div class="iec61850-debug-page__runtime-metric">
+          <span>Plan reports</span>
+          <strong>{{ simulatorResult.plan.requiredReportCount }}</strong>
+        </div>
+        <div class="iec61850-debug-page__runtime-metric">
+          <span>Matched signals</span>
+          <strong>{{ simulatorResult.plan.matchedSignalCount }}</strong>
+        </div>
+        <div class="iec61850-debug-page__runtime-metric">
+          <span>GI values</span>
+          <strong>{{ simulatorGiValueCount }}</strong>
+        </div>
+        <div class="iec61850-debug-page__runtime-metric">
+          <span>Diagnostics</span>
+          <strong>{{ simulatorResult.diagnostics.length }}</strong>
+        </div>
+      </section>
+
+      <div class="iec61850-debug-page__runtime-body">
+        <section class="iec61850-debug-page__runtime-section">
+          <h3>Reports</h3>
+          <p
+            v-if="simulatorResult.reports.length > simulatorReportPreview.length"
+            class="iec61850-debug-page__runtime-note"
+          >
+            Showing first {{ simulatorReportPreview.length }} of {{ simulatorResult.reports.length }}.
+          </p>
+          <div class="iec61850-debug-page__runtime-list">
+            <article
+              v-for="report in simulatorReportPreview"
+              :key="report.candidateId"
+              class="iec61850-debug-page__runtime-item"
+              :class="simulatorReportStatusClass(report)"
+            >
+              <strong>{{ report.reportControlName }}</strong>
+              <span>{{ report.reportKind }} · {{ report.iedName }} / {{ report.accessPointName }}</span>
+              <code>{{ report.dataSetRef ?? "unresolved DataSet" }}</code>
+              <small>
+                {{ simulatorReportStatusLabel(report) }} · {{ report.matchedSignalCount }} matched · {{ report.event?.values.length ?? 0 }} values
+              </small>
+            </article>
+          </div>
+        </section>
+
+        <section class="iec61850-debug-page__runtime-section">
+          <h3>Events</h3>
+          <p
+            v-if="simulatorResult.eventLog.length > simulatorEventPreview.length"
+            class="iec61850-debug-page__runtime-note"
+          >
+            Showing first {{ simulatorEventPreview.length }} of {{ simulatorResult.eventLog.length }}.
+          </p>
+          <div class="iec61850-debug-page__runtime-list">
+            <article
+              v-for="(event, index) in simulatorEventPreview"
+              :key="`${event.at}:${event.kind}:${event.reportControlKey}:${index}`"
+              class="iec61850-debug-page__runtime-item"
+            >
+              <strong>{{ event.kind }}</strong>
+              <span>{{ event.reportControlKey }}</span>
+              <code>{{ event.clientId ?? event.code ?? "simulator" }}</code>
+            </article>
+          </div>
+        </section>
+
+        <section class="iec61850-debug-page__runtime-section">
+          <h3>Diagnostics</h3>
+          <p
+            v-if="simulatorResult.diagnostics.length > simulatorDiagnosticsPreview.length"
+            class="iec61850-debug-page__runtime-note"
+          >
+            Showing first {{ simulatorDiagnosticsPreview.length }} of {{ simulatorResult.diagnostics.length }}.
+          </p>
+          <div v-if="!simulatorDiagnosticsPreview.length" class="iec61850-debug-page__section-empty">
+            No simulator diagnostics.
+          </div>
+          <div v-else class="iec61850-debug-page__runtime-list">
+            <article
+              v-for="(diagnostic, index) in simulatorDiagnosticsPreview"
+              :key="`${diagnostic.code}:${diagnostic.message}:${index}`"
+              class="iec61850-debug-page__runtime-item"
+              :class="`is-${diagnostic.severity}`"
+            >
+              <strong>{{ diagnostic.code }}</strong>
+              <span>{{ diagnostic.message }}</span>
+              <code v-if="simulatorDiagnosticTarget(diagnostic)">{{ simulatorDiagnosticTarget(diagnostic) }}</code>
+            </article>
+          </div>
+        </section>
+      </div>
+    </section>
+
     <section v-if="debugDocument" class="iec61850-debug-page__diagnostics" aria-label="Parser diagnostics">
       <div class="iec61850-debug-page__panel-header">
         <span>Diagnostics</span>
@@ -890,6 +1069,16 @@ onUnmounted(() => {
           <div class="iec61850-debug-page__merge-metric">
             <span>IEDs</span>
             <strong>{{ signalListMergeDialog.matchedIeds.length }}</strong>
+          </div>
+          <div class="iec61850-debug-page__merge-action">
+            <UiButton
+              variant="secondary"
+              size="sm"
+              :disabled="!canRunSimulator"
+              @click="runSimulatorReports"
+            >
+              {{ simulatingReports ? "Simulating..." : "Run simulator GI" }}
+            </UiButton>
           </div>
         </section>
 
@@ -987,6 +1176,7 @@ onUnmounted(() => {
 .iec61850-debug-page__summary,
 .iec61850-debug-page__tree-panel,
 .iec61850-debug-page__detail-panel,
+.iec61850-debug-page__runtime,
 .iec61850-debug-page__diagnostics,
 .iec61850-debug-page__progress,
 .iec61850-debug-page__alert {
@@ -1165,6 +1355,7 @@ onUnmounted(() => {
 
 .iec61850-debug-page__tree-panel,
 .iec61850-debug-page__detail-panel,
+.iec61850-debug-page__runtime,
 .iec61850-debug-page__diagnostics {
   display: flex;
   min-height: 0;
@@ -1508,6 +1699,13 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+.iec61850-debug-page__merge-action {
+  display: flex;
+  min-width: 0;
+  align-items: end;
+  justify-content: flex-start;
+}
+
 .iec61850-debug-page__merge-body {
   display: grid;
   flex: 1 1 auto;
@@ -1591,6 +1789,136 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--color-amber-50) 68%, var(--color-white));
 }
 
+.iec61850-debug-page__runtime {
+  flex: 0 0 min(14rem, 24%);
+}
+
+.iec61850-debug-page__runtime-summary {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-neutral-200) 72%, transparent);
+}
+
+.iec61850-debug-page__runtime-metric {
+  min-width: 0;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 82%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-white) 82%, transparent);
+}
+
+.iec61850-debug-page__runtime-metric span {
+  display: block;
+  color: var(--color-neutral-500);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.iec61850-debug-page__runtime-metric strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--color-neutral-950);
+  font-size: 0.875rem;
+}
+
+.iec61850-debug-page__runtime-body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.75rem;
+}
+
+.iec61850-debug-page__runtime-section {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 82%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-white) 80%, transparent);
+}
+
+.iec61850-debug-page__runtime-section h3 {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-neutral-200) 74%, transparent);
+  color: var(--color-neutral-500);
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.iec61850-debug-page__runtime-note {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.5rem 0.75rem 0;
+  color: var(--color-neutral-500);
+  font-size: 0.75rem;
+}
+
+.iec61850-debug-page__runtime-list {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.iec61850-debug-page__runtime-item {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 72%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-white) 82%, transparent);
+  color: var(--color-neutral-700);
+  font-size: 0.75rem;
+}
+
+.iec61850-debug-page__runtime-item strong {
+  overflow-wrap: anywhere;
+  color: var(--color-neutral-950);
+  font-size: 0.8125rem;
+}
+
+.iec61850-debug-page__runtime-item span,
+.iec61850-debug-page__runtime-item small {
+  overflow-wrap: anywhere;
+  color: var(--color-neutral-500);
+}
+
+.iec61850-debug-page__runtime-item code {
+  overflow-wrap: anywhere;
+  color: var(--color-neutral-850, var(--color-neutral-900));
+  font-family: var(--font-mono);
+}
+
+.iec61850-debug-page__runtime-item.is-success {
+  border-color: color-mix(in srgb, var(--color-emerald-300) 54%, var(--color-neutral-200));
+}
+
+.iec61850-debug-page__runtime-item.is-warning {
+  border-color: color-mix(in srgb, var(--color-amber-300) 54%, var(--color-neutral-200));
+  background: color-mix(in srgb, var(--color-amber-50) 68%, var(--color-white));
+}
+
+.iec61850-debug-page__runtime-item.is-error {
+  border-color: color-mix(in srgb, var(--color-red-300) 54%, var(--color-neutral-200));
+  background: color-mix(in srgb, var(--color-red-100) 58%, var(--color-white));
+}
+
 .iec61850-debug-page__diagnostics {
   flex: 0 0 min(12rem, 24%);
 }
@@ -1652,6 +1980,7 @@ onUnmounted(() => {
 :global(.dark .iec61850-debug-page__summary),
 :global(.dark .iec61850-debug-page__tree-panel),
 :global(.dark .iec61850-debug-page__detail-panel),
+:global(.dark .iec61850-debug-page__runtime),
 :global(.dark .iec61850-debug-page__progress),
 :global(.dark .iec61850-debug-page__diagnostics) {
   border-color: color-mix(in srgb, var(--runtime-accent) 14%, var(--color-neutral-800));
@@ -1674,6 +2003,9 @@ onUnmounted(() => {
 :global(.dark .iec61850-debug-page__merge-metric),
 :global(.dark .iec61850-debug-page__merge-section),
 :global(.dark .iec61850-debug-page__merge-item),
+:global(.dark .iec61850-debug-page__runtime-metric),
+:global(.dark .iec61850-debug-page__runtime-section),
+:global(.dark .iec61850-debug-page__runtime-item),
 :global(.dark .iec61850-debug-page__nav-link) {
   border-color: var(--color-neutral-800);
   background: color-mix(in srgb, var(--color-neutral-950) 58%, transparent);
@@ -1685,6 +2017,9 @@ onUnmounted(() => {
 :global(.dark .iec61850-debug-page__merge-metric strong),
 :global(.dark .iec61850-debug-page__merge-item strong),
 :global(.dark .iec61850-debug-page__merge-item code),
+:global(.dark .iec61850-debug-page__runtime-metric strong),
+:global(.dark .iec61850-debug-page__runtime-item strong),
+:global(.dark .iec61850-debug-page__runtime-item code),
 :global(.dark .iec61850-debug-page__property-list dd) {
   color: var(--color-neutral-100);
 }
@@ -1696,7 +2031,9 @@ onUnmounted(() => {
 :global(.dark .iec61850-debug-page__panel-header),
 :global(.dark .iec61850-debug-page__detail-heading),
 :global(.dark .iec61850-debug-page__section-heading),
-:global(.dark .iec61850-debug-page__merge-section h3) {
+:global(.dark .iec61850-debug-page__merge-section h3),
+:global(.dark .iec61850-debug-page__runtime-summary),
+:global(.dark .iec61850-debug-page__runtime-section h3) {
   border-color: var(--color-neutral-800);
 }
 
@@ -1705,13 +2042,31 @@ onUnmounted(() => {
 :global(.dark .iec61850-debug-page__merge-metric span),
 :global(.dark .iec61850-debug-page__merge-section-note),
 :global(.dark .iec61850-debug-page__merge-item span),
-:global(.dark .iec61850-debug-page__merge-item small) {
+:global(.dark .iec61850-debug-page__merge-item small),
+:global(.dark .iec61850-debug-page__runtime-metric span),
+:global(.dark .iec61850-debug-page__runtime-note),
+:global(.dark .iec61850-debug-page__runtime-item span),
+:global(.dark .iec61850-debug-page__runtime-item small) {
   color: var(--color-neutral-400);
 }
 
 :global(.dark .iec61850-debug-page__merge-item.is-miss) {
   border-color: color-mix(in srgb, var(--color-amber-800) 62%, var(--color-neutral-800));
   background: color-mix(in srgb, var(--color-amber-900) 18%, var(--color-neutral-950));
+}
+
+:global(.dark .iec61850-debug-page__runtime-item.is-success) {
+  border-color: color-mix(in srgb, var(--color-emerald-900) 62%, var(--color-neutral-800));
+}
+
+:global(.dark .iec61850-debug-page__runtime-item.is-warning) {
+  border-color: color-mix(in srgb, var(--color-amber-800) 62%, var(--color-neutral-800));
+  background: color-mix(in srgb, var(--color-amber-900) 18%, var(--color-neutral-950));
+}
+
+:global(.dark .iec61850-debug-page__runtime-item.is-error) {
+  border-color: color-mix(in srgb, var(--color-red-800) 62%, var(--color-neutral-800));
+  background: color-mix(in srgb, var(--color-red-900) 18%, var(--color-neutral-950));
 }
 
 :global(.dark .iec61850-debug-page__empty),
@@ -1785,6 +2140,15 @@ onUnmounted(() => {
   }
 
   .iec61850-debug-page__merge-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .iec61850-debug-page__runtime {
+    flex-basis: auto;
+    max-height: 28rem;
+  }
+
+  .iec61850-debug-page__runtime-body {
     grid-template-columns: minmax(0, 1fr);
   }
 

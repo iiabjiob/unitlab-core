@@ -1,5 +1,6 @@
 import type {
   NormalizedSclModel,
+  Iec61850ReportSubscriptionCandidate,
   SclAccessPoint,
   SclBay,
   SclDataSet,
@@ -129,6 +130,7 @@ export type Iec61850DebugDocument = {
   stats: Iec61850DebugStats
   diagnosticSummary: Iec61850DebugDiagnosticSummary
   diagnostics: NormalizedSclModel["diagnostics"]
+  reportCandidates: Iec61850ReportSubscriptionCandidate[]
   signalInventory: Iec61850DebugSignalInventory
   treeRows: Iec61850DebugTreeRow[]
 }
@@ -169,6 +171,7 @@ export function buildIec61850DebugDocument(
     stats: buildIec61850DebugStats(model),
     diagnosticSummary: buildDiagnosticSummary(model.diagnostics, diagnostics.length),
     diagnostics,
+    reportCandidates: model.reportSubscriptions,
     signalInventory: buildIec61850DebugSignalInventory(model),
     treeRows: buildIec61850DebugTreeRows(model, resolvedOptions),
   }

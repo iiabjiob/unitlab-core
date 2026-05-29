@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-5 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, and the IEC/C# compliance map are implemented.
+Status: slices 1-6 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -121,15 +121,22 @@ Validation:
 
 ### Slice 6 - Debug UI Integration
 
-Planned:
+Implemented in this slice:
 
-- Show report plan, simulator state, diagnostics, and GI result in the 61850 debug view.
-- Keep every hardware-affecting future action explicit.
-- Keep simulator mode visually distinct from real device mode.
+- The 61850 debug view can run an explicit simulator-only GI cycle after Signal List merge.
+- The debug view shows the simulator plan summary, report lifecycle result, simulator event log, diagnostics, and GI value count.
+- The UI action remains explicit; selecting tree nodes, Signal List rows, reports, or DataSets does not reserve, enable, disable, or run GI.
+- The implementation uses the frontend simulator adapter only and does not add public REST/WebSocket contracts or real MMS/device communication.
+
+Still planned:
+
+- Backend REST/WebSocket runtime UI integration once the public API shape is approved.
+- Real-device mode must remain visually distinct from simulator mode and must stay backend-owned.
+- Browser verification with large project SCD files.
 
 Validation:
 
-- Browser verification for large SCD responsiveness.
+- Frontend unit tests cover explicit simulator plan/GI execution from debug-view merge data.
 - No implicit reserve/enable from selection alone.
 
 ### Slice 7 - MMS Adapter Spike Behind Simulator Parity

@@ -45,6 +45,7 @@ const debugDocument: Iec61850DebugDocument = {
     omitted: 0,
   },
   diagnostics: [],
+  reportCandidates: [],
   signalInventory: {
     dataSetSignals: [
       {

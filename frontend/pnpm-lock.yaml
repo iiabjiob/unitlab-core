@@ -23,9 +23,6 @@ importers:
       '@affino/menu-vue':
         specifier: 2.1.1
         version: 2.1.1(@affino/menu-core@1.1.0)(vue@3.5.25(typescript@5.8.3))
-      '@affino/overlay-host':
-        specifier: ^1.1.0
-        version: 1.1.0
       '@affino/popover-vue':
         specifier: ^1.0.0
         version: 1.0.0(vue@3.5.25(typescript@5.8.3))
