@@ -101,10 +101,35 @@ export type Iec61850DebugStats = {
   reportSignals: number
 }
 
+export type Iec61850DebugSignalInventoryDataSetSignal = {
+  reference: string
+  dataSetId: string
+  dataSetRef: string
+  iedName: string
+  accessPointName: string
+}
+
+export type Iec61850DebugSignalInventoryReportSignal = {
+  reference: string
+  reportControlId: string
+  reportControlName: string
+  reportKind: "BRCB" | "URCB"
+  dataSetId: string | null
+  dataSetRef: string | null
+  iedName: string
+  accessPointName: string
+}
+
+export type Iec61850DebugSignalInventory = {
+  dataSetSignals: Iec61850DebugSignalInventoryDataSetSignal[]
+  reportSignals: Iec61850DebugSignalInventoryReportSignal[]
+}
+
 export type Iec61850DebugDocument = {
   stats: Iec61850DebugStats
   diagnosticSummary: Iec61850DebugDiagnosticSummary
   diagnostics: NormalizedSclModel["diagnostics"]
+  signalInventory: Iec61850DebugSignalInventory
   treeRows: Iec61850DebugTreeRow[]
 }
 
@@ -144,6 +169,7 @@ export function buildIec61850DebugDocument(
     stats: buildIec61850DebugStats(model),
     diagnosticSummary: buildDiagnosticSummary(model.diagnostics, diagnostics.length),
     diagnostics,
+    signalInventory: buildIec61850DebugSignalInventory(model),
     treeRows: buildIec61850DebugTreeRows(model, resolvedOptions),
   }
 }
@@ -162,6 +188,28 @@ export function buildIec61850DebugStats(model: NormalizedSclModel): Iec61850Debu
     dataSets: collectDataSets(model).length,
     reports: model.reportSubscriptions.length,
     reportSignals: model.reportSubscriptions.reduce((sum, candidate) => sum + candidate.signalCount, 0),
+  }
+}
+
+export function buildIec61850DebugSignalInventory(model: NormalizedSclModel): Iec61850DebugSignalInventory {
+  return {
+    dataSetSignals: collectDataSets(model).flatMap(dataSet => dataSet.members.map(member => ({
+      reference: member.reference,
+      dataSetId: dataSet.id,
+      dataSetRef: formatDataSetReference(dataSet),
+      iedName: dataSet.iedName,
+      accessPointName: dataSet.accessPointName,
+    }))),
+    reportSignals: model.reportSubscriptions.flatMap(candidate => candidate.signals.map(signal => ({
+      reference: signal.reference,
+      reportControlId: candidate.reportControlId,
+      reportControlName: candidate.reportControlName,
+      reportKind: candidate.reportKind === "buffered" ? "BRCB" : "URCB",
+      dataSetId: candidate.dataSetId,
+      dataSetRef: candidate.dataSetRef,
+      iedName: candidate.iedName,
+      accessPointName: candidate.accessPointName,
+    }))),
   }
 }
 

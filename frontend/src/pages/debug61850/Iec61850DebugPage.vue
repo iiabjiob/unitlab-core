@@ -5,6 +5,12 @@ import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
 
 import UiButton from "@/components/ui/UiButton.vue"
 import UiModal from "@/components/ui/UiModal.vue"
+import { useSignalSheetStore } from "@/stores/signalSheetStore"
+import { useToastStore } from "@/stores/toastStore"
+import {
+  mergeIec61850SignalList,
+  type Iec61850SignalListMergeResult,
+} from "./iec61850SignalListMerge"
 import type {
   Iec61850DebugDetailAction,
   Iec61850DebugDetailRow,
@@ -59,15 +65,20 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const fileName = ref<string | null>(null)
 const contentHash = ref<string | null>(null)
 const loading = ref(false)
+const mergingSignalList = ref(false)
 const loadProgress = ref<LoadProgress | null>(null)
 const readError = ref<string | null>(null)
 const debugDocument = shallowRef<Iec61850DebugDocument | null>(null)
 const selectedValue = ref<NodeValue | null>(null)
 const detailDialog = ref<Iec61850DebugDetailAction | null>(null)
+const signalListMergeDialog = ref<Iec61850SignalListMergeResult | null>(null)
 const pendingDefaultExpansion = ref(false)
 const showReportCandidatesOnlyWithSignals = ref(false)
 let loadRequestId = 0
 let activeParse: { worker: Worker; reject: (error: Error) => void } | null = null
+
+const signalSheetStore = useSignalSheetStore()
+const toastStore = useToastStore()
 
 const tree = useTreeviewController<NodeValue>({
   nodes: [],
@@ -111,6 +122,9 @@ const diagnostics = computed(() => debugDocument.value?.diagnostics ?? [])
 const diagnosticSummary = computed(() => debugDocument.value?.diagnosticSummary ?? EMPTY_DIAGNOSTIC_SUMMARY)
 
 const stats = computed(() => debugDocument.value?.stats ?? EMPTY_STATS)
+const mergeMatchedPreview = computed(() => signalListMergeDialog.value?.matches.slice(0, 100) ?? [])
+const mergeMissPreview = computed(() => signalListMergeDialog.value?.misses.slice(0, 100) ?? [])
+const mergeReportPreview = computed(() => signalListMergeDialog.value?.matchedReports.slice(0, 100) ?? [])
 
 const statusLabel = computed(() => {
   if (loading.value) return loadProgress.value?.label ?? "Reading SCD"
@@ -154,6 +168,36 @@ watch(
 
 function openFileDialog() {
   fileInput.value?.click()
+}
+
+async function mergeWithSignalList() {
+  const document = debugDocument.value
+  if (!document || mergingSignalList.value) return
+
+  mergingSignalList.value = true
+  try {
+    const [sheet, rows] = await Promise.all([
+      signalSheetStore.ensureSheetLoaded(),
+      signalSheetStore.ensureAllocationsLoaded(),
+    ])
+    if (!rows.length) {
+      toastStore.info("Signal List is empty.")
+      signalListMergeDialog.value = null
+      return
+    }
+
+    const result = mergeIec61850SignalList(document, rows, sheet)
+    signalListMergeDialog.value = result
+    if (!result.addressColumn) {
+      toastStore.warning("IEC 61850 address column was not detected in Signal List.")
+      return
+    }
+    toastStore.success(`IEC 61850 merge: ${result.matchedRows}/${result.addressRows} addresses matched.`)
+  } catch (error) {
+    toastStore.error(error instanceof Error ? error.message : "Failed to merge with Signal List")
+  } finally {
+    mergingSignalList.value = false
+  }
 }
 
 async function onFileSelected(event: Event) {
@@ -344,6 +388,10 @@ function signalRowsToDialogItems(
 
 function closeDetailDialog() {
   detailDialog.value = null
+}
+
+function closeSignalListMergeDialog() {
+  signalListMergeDialog.value = null
 }
 
 function isReportCandidatesSection(section: Iec61850DebugDetailSection): boolean {
@@ -560,6 +608,14 @@ onUnmounted(() => {
         <RouterLink class="iec61850-debug-page__nav-link" to="/61850-debug/templates">
           Bay templates
         </RouterLink>
+        <UiButton
+          variant="secondary"
+          size="sm"
+          :disabled="!debugDocument || loading || mergingSignalList"
+          @click="mergeWithSignalList"
+        >
+          {{ mergingSignalList ? "Merging..." : "Merge with Signal List" }}
+        </UiButton>
         <UiButton variant="secondary" size="sm" :disabled="loading" @click="openFileDialog">
           {{ debugDocument ? "Load another SCD" : "Choose SCD" }}
         </UiButton>
@@ -801,6 +857,114 @@ onUnmounted(() => {
               </template>
             </dl>
           </article>
+        </div>
+      </div>
+    </UiModal>
+
+    <UiModal
+      :open="Boolean(signalListMergeDialog)"
+      title="Merge with Signal List"
+      max-width="6xl"
+      desktop-height="78vh"
+      :content-scroll="false"
+      @close="closeSignalListMergeDialog"
+    >
+      <div v-if="signalListMergeDialog" class="iec61850-debug-page__merge-dialog">
+        <section class="iec61850-debug-page__merge-summary" aria-label="Merge summary">
+          <div class="iec61850-debug-page__merge-metric">
+            <span>Signal rows</span>
+            <strong>{{ signalListMergeDialog.rowCount }}</strong>
+          </div>
+          <div class="iec61850-debug-page__merge-metric">
+            <span>Address column</span>
+            <strong>{{ signalListMergeDialog.addressColumn ?? "not detected" }}</strong>
+          </div>
+          <div class="iec61850-debug-page__merge-metric">
+            <span>Matched</span>
+            <strong>{{ signalListMergeDialog.matchedRows }} / {{ signalListMergeDialog.addressRows }}</strong>
+          </div>
+          <div class="iec61850-debug-page__merge-metric">
+            <span>Reports</span>
+            <strong>{{ signalListMergeDialog.matchedReports.length }}</strong>
+          </div>
+          <div class="iec61850-debug-page__merge-metric">
+            <span>IEDs</span>
+            <strong>{{ signalListMergeDialog.matchedIeds.length }}</strong>
+          </div>
+        </section>
+
+        <div class="iec61850-debug-page__merge-body">
+          <section class="iec61850-debug-page__merge-section">
+            <h3>Reports involved</h3>
+            <p
+              v-if="signalListMergeDialog.matchedReports.length > mergeReportPreview.length"
+              class="iec61850-debug-page__merge-section-note"
+            >
+              Showing first {{ mergeReportPreview.length }} of {{ signalListMergeDialog.matchedReports.length }}.
+            </p>
+            <div v-if="!mergeReportPreview.length" class="iec61850-debug-page__section-empty">
+              No reports matched.
+            </div>
+            <div v-else class="iec61850-debug-page__merge-list">
+              <article
+                v-for="report in mergeReportPreview"
+                :key="`${report.iedName}:${report.name}:${report.dataSetRef}`"
+                class="iec61850-debug-page__merge-item"
+              >
+                <strong>{{ report.name }}</strong>
+                <span>{{ report.kind }} · {{ report.iedName ?? "unknown IED" }}</span>
+                <code>{{ report.dataSetRef ?? "unresolved DataSet" }}</code>
+              </article>
+            </div>
+          </section>
+
+          <section class="iec61850-debug-page__merge-section">
+            <h3>Matched signals</h3>
+            <p
+              v-if="signalListMergeDialog.matches.length > mergeMatchedPreview.length"
+              class="iec61850-debug-page__merge-section-note"
+            >
+              Showing first {{ mergeMatchedPreview.length }} of {{ signalListMergeDialog.matches.length }}.
+            </p>
+            <div v-if="!mergeMatchedPreview.length" class="iec61850-debug-page__section-empty">
+              No Signal List rows matched IEC 61850 model signals.
+            </div>
+            <div v-else class="iec61850-debug-page__merge-list">
+              <article
+                v-for="match in mergeMatchedPreview"
+                :key="`match:${match.signalId}`"
+                class="iec61850-debug-page__merge-item"
+              >
+                <strong>{{ match.signalName || match.signalKey }}</strong>
+                <span>{{ match.address }}</span>
+                <code>{{ match.modelReference }}</code>
+                <small>{{ match.reports.length }} reports · {{ match.dataSets.length }} DataSets</small>
+              </article>
+            </div>
+          </section>
+
+          <section class="iec61850-debug-page__merge-section">
+            <h3>Not found</h3>
+            <p
+              v-if="signalListMergeDialog.misses.length > mergeMissPreview.length"
+              class="iec61850-debug-page__merge-section-note"
+            >
+              Showing first {{ mergeMissPreview.length }} of {{ signalListMergeDialog.misses.length }}.
+            </p>
+            <div v-if="!mergeMissPreview.length" class="iec61850-debug-page__section-empty">
+              No unmatched IEC 61850 addresses.
+            </div>
+            <div v-else class="iec61850-debug-page__merge-list">
+              <article
+                v-for="miss in mergeMissPreview"
+                :key="`miss:${miss.signalId}`"
+                class="iec61850-debug-page__merge-item is-miss"
+              >
+                <strong>{{ miss.signalName || miss.signalKey }}</strong>
+                <span>{{ miss.address }}</span>
+              </article>
+            </div>
+          </section>
         </div>
       </div>
     </UiModal>
@@ -1298,6 +1462,135 @@ onUnmounted(() => {
   font-size: 0.75rem;
 }
 
+.iec61850-debug-page__merge-dialog {
+  display: flex;
+  box-sizing: border-box;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow: hidden;
+}
+
+.iec61850-debug-page__merge-summary {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 0.5rem;
+}
+
+.iec61850-debug-page__merge-metric {
+  min-width: 0;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 82%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-white) 82%, transparent);
+}
+
+.iec61850-debug-page__merge-metric span {
+  display: block;
+  color: var(--color-neutral-500);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.iec61850-debug-page__merge-metric strong {
+  display: block;
+  min-width: 0;
+  margin-top: 0.25rem;
+  overflow: hidden;
+  color: var(--color-neutral-950);
+  font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.iec61850-debug-page__merge-body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.iec61850-debug-page__merge-section {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 82%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-white) 80%, transparent);
+}
+
+.iec61850-debug-page__merge-section h3 {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-neutral-200) 74%, transparent);
+  color: var(--color-neutral-500);
+  font-size: 0.6875rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.iec61850-debug-page__merge-section-note {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.5rem 0.75rem 0;
+  color: var(--color-neutral-500);
+  font-size: 0.75rem;
+}
+
+.iec61850-debug-page__merge-list {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.iec61850-debug-page__merge-item {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 0.25rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-200) 72%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-white) 82%, transparent);
+  color: var(--color-neutral-700);
+  font-size: 0.75rem;
+}
+
+.iec61850-debug-page__merge-item strong {
+  overflow-wrap: anywhere;
+  color: var(--color-neutral-950);
+  font-size: 0.8125rem;
+}
+
+.iec61850-debug-page__merge-item span,
+.iec61850-debug-page__merge-item small {
+  overflow-wrap: anywhere;
+  color: var(--color-neutral-500);
+}
+
+.iec61850-debug-page__merge-item code {
+  overflow-wrap: anywhere;
+  color: var(--color-neutral-850, var(--color-neutral-900));
+  font-family: var(--font-mono);
+}
+
+.iec61850-debug-page__merge-item.is-miss {
+  border-color: color-mix(in srgb, var(--color-amber-300) 54%, var(--color-neutral-200));
+  background: color-mix(in srgb, var(--color-amber-50) 68%, var(--color-white));
+}
+
 .iec61850-debug-page__diagnostics {
   flex: 0 0 min(12rem, 24%);
 }
@@ -1378,6 +1671,9 @@ onUnmounted(() => {
 :global(.dark .iec61850-debug-page__metric),
 :global(.dark .iec61850-debug-page__section),
 :global(.dark .iec61850-debug-page__list-dialog-item),
+:global(.dark .iec61850-debug-page__merge-metric),
+:global(.dark .iec61850-debug-page__merge-section),
+:global(.dark .iec61850-debug-page__merge-item),
 :global(.dark .iec61850-debug-page__nav-link) {
   border-color: var(--color-neutral-800);
   background: color-mix(in srgb, var(--color-neutral-950) 58%, transparent);
@@ -1386,6 +1682,9 @@ onUnmounted(() => {
 :global(.dark .iec61850-debug-page__metric-value),
 :global(.dark .iec61850-debug-page__progress-title),
 :global(.dark .iec61850-debug-page__list-dialog-item h3),
+:global(.dark .iec61850-debug-page__merge-metric strong),
+:global(.dark .iec61850-debug-page__merge-item strong),
+:global(.dark .iec61850-debug-page__merge-item code),
 :global(.dark .iec61850-debug-page__property-list dd) {
   color: var(--color-neutral-100);
 }
@@ -1396,13 +1695,23 @@ onUnmounted(() => {
 
 :global(.dark .iec61850-debug-page__panel-header),
 :global(.dark .iec61850-debug-page__detail-heading),
-:global(.dark .iec61850-debug-page__section-heading) {
+:global(.dark .iec61850-debug-page__section-heading),
+:global(.dark .iec61850-debug-page__merge-section h3) {
   border-color: var(--color-neutral-800);
 }
 
 :global(.dark .iec61850-debug-page__section-filter),
-:global(.dark .iec61850-debug-page__section-empty) {
+:global(.dark .iec61850-debug-page__section-empty),
+:global(.dark .iec61850-debug-page__merge-metric span),
+:global(.dark .iec61850-debug-page__merge-section-note),
+:global(.dark .iec61850-debug-page__merge-item span),
+:global(.dark .iec61850-debug-page__merge-item small) {
   color: var(--color-neutral-400);
+}
+
+:global(.dark .iec61850-debug-page__merge-item.is-miss) {
+  border-color: color-mix(in srgb, var(--color-amber-800) 62%, var(--color-neutral-800));
+  background: color-mix(in srgb, var(--color-amber-900) 18%, var(--color-neutral-950));
 }
 
 :global(.dark .iec61850-debug-page__empty),
@@ -1472,6 +1781,10 @@ onUnmounted(() => {
 
   .iec61850-debug-page__summary,
   .iec61850-debug-page__workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .iec61850-debug-page__merge-body {
     grid-template-columns: minmax(0, 1fr);
   }
 

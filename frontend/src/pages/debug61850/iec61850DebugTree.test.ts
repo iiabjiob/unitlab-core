@@ -221,6 +221,8 @@ describe("iec61850DebugTree", () => {
       reportSignals: 1,
     })
     expect(document.diagnostics).toBe(model.diagnostics)
+    expect(document.signalInventory.dataSetSignals).toHaveLength(1)
+    expect(document.signalInventory.reportSignals).toHaveLength(1)
     expect(document.treeRows.some(row => row.kind === "dataset-member" && row.valueLabel === "capped")).toBe(true)
     expect(document.treeRows.some(row => row.kind === "report-signal" && row.valueLabel === "capped")).toBe(true)
   })
