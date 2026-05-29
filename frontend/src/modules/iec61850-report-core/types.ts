@@ -128,10 +128,27 @@ export type Iec61850ReportSubscriptionPlan = {
   diagnostics: Iec61850ReportSubscriptionPlanDiagnostic[]
 }
 
+export type Iec61850ReportReason =
+  | "general-interrogation"
+  | "data-change"
+  | "quality-change"
+  | "data-update"
+  | "integrity"
+
+export type Iec61850ReportJsonValue =
+  | boolean
+  | number
+  | string
+  | null
+  | Iec61850ReportJsonValue[]
+  | { [key: string]: Iec61850ReportJsonValue }
+
 export type Iec61850ReportValue = {
+  dataSetIndex: number
   reference: string
-  value: boolean | number | string | null
-  reasonCode: "general-interrogation" | "data-change" | "quality-change" | "data-update" | "integrity"
+  dataReference: string | null
+  value: Iec61850ReportJsonValue
+  reasonCode: Iec61850ReportReason
   timestamp: string
 }
 
@@ -143,8 +160,11 @@ export type Iec61850ReportEvent = {
   rptId: string | null
   dataSetRef: string | null
   confRev: string | null
-  sequenceNumber: number
-  reason: "general-interrogation" | "data-change" | "quality-change" | "data-update" | "integrity"
+  sequenceNumber: number | null
+  timeOfEntry: string | null
+  entryId: string | null
+  bufferOverflow: boolean | null
+  reason: Iec61850ReportReason
   values: Iec61850ReportValue[]
 }
 

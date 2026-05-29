@@ -2,6 +2,10 @@ export {
   buildIec61850ReportSubscriptionPlan,
 } from "./planBuilder"
 export {
+  normalizeIec61850ReportEvent,
+  normalizeReportDataReference,
+} from "./reportEventNormalizer"
+export {
   compareReportControlState,
   Iec61850ReportManager,
   toReportControlRef,
@@ -19,9 +23,11 @@ export type {
   Iec61850ReportControlRef,
   Iec61850ReportControlState,
   Iec61850ReportEvent,
+  Iec61850ReportJsonValue,
   Iec61850ReportLifecycleState,
   Iec61850ReportManagerAdapter,
   Iec61850ReportManagerReadOnlyAdapter,
+  Iec61850ReportReason,
   Iec61850ReportRuntimeDiagnostic,
   Iec61850ReportSignal,
   Iec61850ReportSubscriptionPlan,
@@ -40,3 +46,11 @@ export type {
   Iec61850SimulatorEvent,
   Iec61850SimulatorEventKind,
 } from "./simulator"
+export type {
+  Iec61850ReportEventDiagnostic,
+  Iec61850ReportEventDiagnosticCode,
+  Iec61850ReportPayload,
+  Iec61850ReportPayloadValue,
+  NormalizeIec61850ReportEventInput,
+  NormalizeIec61850ReportEventResult,
+} from "./reportEventNormalizer"

@@ -5,11 +5,13 @@ import {
   buildIec61850ReportSubscriptionPlan,
   createIec61850SimulatorAdapter,
   Iec61850ReportManager,
+  normalizeIec61850ReportEvent,
   reportControlKey,
   toReportControlRef,
   type Iec61850DeviceEndpoint,
   type Iec61850ReportControlCandidate,
   type Iec61850ReportControlState,
+  type Iec61850ReportReason,
 } from "./index"
 
 const reportScd = `<?xml version="1.0" encoding="UTF-8"?>
@@ -211,6 +213,149 @@ describe("iec61850-report-core", () => {
       lifecycleState: "failed",
       code: "DISCONNECT_WHILE_ENABLED",
     })
+  })
+
+  it("normalizes report payload values into SCD DataSet order", () => {
+    const candidate = firstReportCandidate()
+    const result = normalizeIec61850ReportEvent({
+      endpointId: endpoint.id,
+      candidate,
+      receivedAt: "2026-05-29T12:00:00.500Z",
+      previousSequenceNumber: 1,
+      payload: {
+        rptId: candidate.rptId,
+        dataSetRef: candidate.dataSetRef,
+        confRev: candidate.confRev,
+        sequenceNumber: 2,
+        timeOfEntry: "2026-05-29T12:00:00.100Z",
+        entryId: "entry-2",
+        bufferOverflow: false,
+        reason: "general-interrogation",
+        values: [
+          {
+            dataReference: "IED1LD0/PGGIO1/Ind1[ST]",
+            value: true,
+            reasonCode: "general-interrogation",
+            timestamp: "2026-05-29T12:00:00.100Z",
+          },
+          {
+            dataReference: "LD0/XCBR1$ST$Pos$stVal",
+            value: 2,
+            reasonCode: "general-interrogation",
+            timestamp: "2026-05-29T12:00:00.100Z",
+          },
+        ],
+      },
+    })
+
+    expect(result.diagnostics).toEqual([])
+    expect(result.event).toMatchObject({
+      dataSetRef: candidate.dataSetRef,
+      confRev: candidate.confRev,
+      sequenceNumber: 2,
+      timeOfEntry: "2026-05-29T12:00:00.100Z",
+      entryId: "entry-2",
+      bufferOverflow: false,
+      reason: "general-interrogation",
+    })
+    expect(result.event.values.map(value => ({
+      dataSetIndex: value.dataSetIndex,
+      reference: value.reference,
+      dataReference: value.dataReference,
+      value: value.value,
+    }))).toEqual([
+      {
+        dataSetIndex: 0,
+        reference: "LD0/XCBR1.Pos.stVal[ST]",
+        dataReference: "LD0/XCBR1$ST$Pos$stVal",
+        value: 2,
+      },
+      {
+        dataSetIndex: 1,
+        reference: "LD0/PGGIO1.Ind1[ST]",
+        dataReference: "IED1LD0/PGGIO1/Ind1[ST]",
+        value: true,
+      },
+    ])
+  })
+
+  it("keeps report reasons explicit for data change, quality change, and integrity fixtures", () => {
+    const candidate = firstReportCandidate()
+    const reasons: Iec61850ReportReason[] = ["data-change", "quality-change", "integrity"]
+
+    for (const reason of reasons) {
+      const result = normalizeIec61850ReportEvent({
+        endpointId: endpoint.id,
+        candidate,
+        receivedAt: "2026-05-29T12:00:01.000Z",
+        payload: {
+          rptId: candidate.rptId,
+          dataSetRef: candidate.dataSetRef,
+          confRev: candidate.confRev,
+          sequenceNumber: 10,
+          timeOfEntry: "2026-05-29T12:00:01.000Z",
+          entryId: `entry-${reason}`,
+          bufferOverflow: false,
+          reason,
+          values: [{
+            dataReference: "LD0/XCBR1.Pos.stVal[ST]",
+            value: reason,
+            reasonCode: reason,
+            timestamp: "2026-05-29T12:00:01.000Z",
+          }],
+        },
+      })
+
+      expect(result.event.reason).toBe(reason)
+      expect(result.event.values[0]).toMatchObject({
+        reasonCode: reason,
+        value: reason,
+      })
+    }
+  })
+
+  it("surfaces report normalization diagnostics without rejecting the event", () => {
+    const candidate = firstReportCandidate()
+    const result = normalizeIec61850ReportEvent({
+      endpointId: endpoint.id,
+      candidate,
+      receivedAt: "2026-05-29T12:00:02.000Z",
+      previousSequenceNumber: 2,
+      payload: {
+        rptId: candidate.rptId,
+        dataSetRef: "IED1/AP1/LD0/LLN0.otherDs",
+        confRev: "8",
+        sequenceNumber: 2,
+        values: [
+          { dataReference: "LD0/UNKNOWN1.Pos.stVal[ST]", value: 1 },
+          { dataReference: "LD0/XCBR1.Pos.stVal[ST]", value: 2 },
+          { dataReference: "LD0/XCBR1.Pos.stVal[ST]", value: 3 },
+        ],
+      },
+    })
+
+    expect(result.event.values).toHaveLength(1)
+    expect(result.event.values[0]).toMatchObject({
+      dataSetIndex: 0,
+      reference: "LD0/XCBR1.Pos.stVal[ST]",
+      value: 2,
+    })
+    expect(result.diagnostics.map(diagnostic => diagnostic.code)).toEqual(expect.arrayContaining([
+      "DUPLICATE_SEQUENCE_NUMBER",
+      "MISSING_TIME_OF_ENTRY",
+      "MISSING_REASON_CODE",
+      "MISSING_ENTRY_ID",
+      "MISSING_BUFFER_OVERFLOW",
+      "DATASET_MISMATCH",
+      "CONFREV_MISMATCH",
+      "VALUE_COUNT_MISMATCH",
+      "UNKNOWN_DATA_REFERENCE",
+      "DUPLICATE_DATA_REFERENCE",
+    ]))
+    expect(result.diagnostics.filter(diagnostic => diagnostic.severity === "error").map(diagnostic => diagnostic.code)).toEqual([
+      "DATASET_MISMATCH",
+      "CONFREV_MISMATCH",
+    ])
   })
 
   it("builds a deterministic subscription plan from selected full-path Signal List addresses", () => {

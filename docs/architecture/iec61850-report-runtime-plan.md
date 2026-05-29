@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-3 started. Simulator-only report runtime contracts, the subscription plan builder, and the simulator state machine are implemented in `frontend/src/modules/iec61850-report-core`.
+Status: slices 1-4 started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, and report event normalization are implemented in `frontend/src/modules/iec61850-report-core`.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -81,12 +81,15 @@ Validation:
 
 ### Slice 4 - Report Event Normalization
 
-Planned:
+Implemented in this slice:
 
 - Normalize report payloads into `Iec61850ReportEvent`.
 - Map values to DataSet order.
 - Carry sequence number, time of entry, reason code, DataSet reference, config revision, entry ID, buffer overflow, and optional data references when present.
 - Surface missing optional fields as diagnostics, not fatal errors.
+- Preserve reported subset events for data change, quality change, and integrity reports while still ordering known values by SCD DataSet index.
+- Support common report data-reference forms used by simulator/MMS-facing adapters: SCD dot form, slash form, IED-prefixed full path, and `$FC$` MMS-style form.
+- Route simulator GI through the same normalizer used for future adapter payloads.
 
 Validation:
 

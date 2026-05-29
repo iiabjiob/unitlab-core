@@ -5,10 +5,9 @@ import type {
   Iec61850ReportControlCandidate,
   Iec61850ReportControlRef,
   Iec61850ReportControlState,
-  Iec61850ReportEvent,
   Iec61850ReportManagerAdapter,
-  Iec61850ReportValue,
 } from "./types"
+import { normalizeIec61850ReportEvent } from "./reportEventNormalizer"
 import { toReportControlRef } from "./reportManager"
 
 export type Iec61850SimulatorDevice = {
@@ -68,6 +67,7 @@ type SimulatorDeviceState = {
 }
 
 type SimulatorReportState = {
+  candidate: Iec61850ReportControlCandidate
   expectedConfRev: string | null
   signalRefs: string[]
   state: Iec61850ReportControlState
@@ -117,6 +117,7 @@ export function createIec61850SimulatorAdapter(
       const key = reportControlKey(reference)
       const override = device.overrides?.[key] ?? {}
       reports.set(key, {
+        candidate,
         expectedConfRev: candidate.confRev,
         signalRefs: candidate.signals.map(signal => signal.reference),
         state: {
@@ -238,26 +239,32 @@ function createConnection(
       transition(runtime, device, events, "general-interrogation", "gi-pending", clientId)
       state.sequenceNumber += 1
       const receivedAt = now().toISOString()
-      const values = runtime.signalRefs.map((signalRef, index): Iec61850ReportValue => ({
-        reference: signalRef,
-        value: index,
-        reasonCode: "general-interrogation",
-        timestamp: receivedAt,
-      }))
+      const result = normalizeIec61850ReportEvent({
+        endpointId: device.endpoint.id,
+        candidate: runtime.candidate,
+        reportControl: reference,
+        receivedAt,
+        payload: {
+          rptId: state.rptId,
+          dataSetRef: state.dataSetRef,
+          confRev: state.confRev,
+          sequenceNumber: state.sequenceNumber,
+          timeOfEntry: receivedAt,
+          entryId: `${device.endpoint.id}:${reportControlKey(reference)}:${state.sequenceNumber}`,
+          bufferOverflow: false,
+          reason: "general-interrogation",
+          values: runtime.signalRefs.map((signalRef, index) => ({
+            dataReference: signalRef,
+            value: index,
+            reasonCode: "general-interrogation",
+            timestamp: receivedAt,
+          })),
+        },
+      })
+      const event = result.event
       state.giInProgress = false
       transition(runtime, device, events, "report", "reporting", clientId)
-      return {
-        id: `${device.endpoint.id}:${reportControlKey(reference)}:${state.sequenceNumber}`,
-        endpointId: device.endpoint.id,
-        receivedAt,
-        reportControl: reference,
-        rptId: state.rptId,
-        dataSetRef: state.dataSetRef,
-        confRev: state.confRev,
-        sequenceNumber: state.sequenceNumber,
-        reason: "general-interrogation",
-        values,
-      }
+      return event
     },
     async disconnect() {
       if (!connected) {
