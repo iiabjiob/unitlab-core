@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-4 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, and the IEC/C# compliance map are implemented in `frontend/src/modules/iec61850-report-core`.
+Status: slices 1-5 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -98,9 +98,17 @@ Validation:
 
 ### Slice 5 - Backend Runtime Boundary
 
-Planned:
+Implemented in this slice:
 
 - Before this slice starts, keep `standardTerms.ts` and the compliance map aligned with the IEC-facing DTOs.
+- Internal backend runtime service boundary in `backend/app/services/iec61850`.
+- Backend-owned simulator session lifecycle: open, read, reserve, enable, GI, disable, release, close.
+- Simulator event log for command/read/report evidence.
+- Deterministic backend errors for missing sessions, enable without reservation, GI while disabled, reservation conflict, and strict enabled disconnect.
+- No public REST/WebSocket contract is added in this slice.
+
+Still planned:
+
 - Move live session ownership to backend services before any real MMS adapter exists.
 - REST remains for explicit plan/read/prepare commands.
 - WebSocket emits runtime state and normalized report events.
