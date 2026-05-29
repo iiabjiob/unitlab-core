@@ -103,6 +103,7 @@ export const UNITLAB_INTERNAL_REPORT_TERMS: readonly Iec61850StandardTerm[] = [
   term("lifecycleState", null, "Iec61850ReportControlState.lifecycleState", "internal-only", "UnitLab simulator/session diagnostic state; not an IEC attribute."),
   term("simulatorEventLog", null, "Iec61850SimulatorEvent", "internal-only", "UnitLab validation evidence; not an IEC service payload."),
   term("diagnostics", null, "Iec61850ReportRuntimeDiagnostic", "internal-only", "UnitLab validation output; not an IEC attribute."),
+  term("signalObservations", null, "Iec61850SignalObservation", "internal-only", "UnitLab FAT signal-level evidence derived from normalized report values; not an IEC attribute."),
 ] as const
 
 export function getIec61850ReportComplianceTerms(): readonly Iec61850StandardTerm[] {

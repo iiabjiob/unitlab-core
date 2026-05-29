@@ -1,5 +1,10 @@
 import { Iec61850ReportManager, toReportControlRef } from "./reportManager"
 import {
+  mapIec61850ReportPlanEventToSignalObservations,
+  type Iec61850ReportObservationDiagnostic,
+  type Iec61850SignalObservation,
+} from "./signalObservationMapper"
+import {
   createIec61850SimulatorAdapter,
   type Iec61850SimulatorDevice,
   type Iec61850SimulatorEvent,
@@ -28,7 +33,8 @@ export type Iec61850ReportSubscriptionRunReportResult = {
   signalCount: number
   matchedSignalCount: number
   lifecycleState: Iec61850ReportLifecycleState
-  diagnostics: Iec61850ReportRuntimeDiagnostic[]
+  diagnostics: Array<Iec61850ReportRuntimeDiagnostic | Iec61850ReportObservationDiagnostic>
+  observations: Iec61850SignalObservation[]
   event: Iec61850ReportEvent | null
   errorCode: string | null
   errorMessage: string | null
@@ -37,7 +43,7 @@ export type Iec61850ReportSubscriptionRunReportResult = {
 export type Iec61850ReportSubscriptionRunResult = {
   plan: Iec61850ReportSubscriptionPlan
   reports: Iec61850ReportSubscriptionRunReportResult[]
-  diagnostics: Array<Iec61850ReportSubscriptionPlanDiagnostic | Iec61850ReportRuntimeDiagnostic>
+  diagnostics: Array<Iec61850ReportSubscriptionPlanDiagnostic | Iec61850ReportRuntimeDiagnostic | Iec61850ReportObservationDiagnostic>
   startedAt: string
   finishedAt: string
 }
@@ -161,10 +167,11 @@ async function runReportPlan(input: {
 }): Promise<Iec61850ReportSubscriptionRunReportResult> {
   const { reportPlan, endpoint, manager, clientId } = input
   const candidate = reportPlan.candidate
-  const diagnostics: Iec61850ReportRuntimeDiagnostic[] = []
+  const diagnostics: Array<Iec61850ReportRuntimeDiagnostic | Iec61850ReportObservationDiagnostic> = []
   let readResult: Iec61850ReportControlReadResult | null = null
   let lastState: Iec61850ReportControlState | null = null
   let event: Iec61850ReportEvent | null = null
+  let observations: Iec61850SignalObservation[] = []
   let reserved = false
   let enabled = false
   let errorCode: string | null = null
@@ -179,6 +186,9 @@ async function runReportPlan(input: {
     lastState = await manager.enableReportControl(endpoint, candidate, clientId)
     enabled = true
     event = await manager.sendGeneralInterrogation(endpoint, candidate, clientId)
+    const observationResult = mapIec61850ReportPlanEventToSignalObservations(reportPlan, event)
+    observations = observationResult.observations
+    diagnostics.push(...observationResult.diagnostics)
   } catch (error) {
     const normalized = normalizeRunError(error)
     errorCode = normalized.code
@@ -213,6 +223,7 @@ async function runReportPlan(input: {
     matchedSignalCount: reportPlan.matchedSignals.length,
     lifecycleState: lastState?.lifecycleState ?? (errorCode ? "failed" : "disconnected"),
     diagnostics,
+    observations,
     event,
     errorCode,
     errorMessage,

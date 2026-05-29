@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-7 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, and the IEC/C# compliance map are implemented.
+Status: slices 1-8 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -154,7 +154,22 @@ Validation:
 - Frontend unit tests cover successful GI execution and cleanup after simulator activation failure.
 - No real MMS/device communication, public REST endpoint, or WebSocket contract is introduced.
 
-### Slice 8 - MMS Adapter Spike Behind Simulator Parity
+### Slice 8 - Report Event Observation Mapping
+
+Implemented in this slice:
+
+- Normalized report events can be mapped back to selected Signal List rows through the subscription plan.
+- `Iec61850SignalObservation` carries selected signal id/address/label, model reference, report value, reason code, timestamp, and match kind.
+- Subset reports, such as data-change events, produce observations only for included values and info diagnostics for selected signals not included in that event.
+- Unplanned report events are surfaced as observation diagnostics instead of being silently dropped.
+- The core subscription runner now includes signal observations for each successful report event.
+
+Validation:
+
+- Frontend unit tests cover GI observations, subset data-change observations, and unplanned report diagnostics.
+- Observations are UnitLab evidence DTOs, not IEC attributes.
+
+### Slice 9 - MMS Adapter Spike Behind Simulator Parity
 
 Planned only after simulator runner parity passes:
 

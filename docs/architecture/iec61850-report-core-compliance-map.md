@@ -68,6 +68,7 @@ These are intentionally internal and must not be treated as IEC attributes:
 | `Iec61850SimulatorEvent` | Simulator validation evidence |
 | `Iec61850ReportRuntimeDiagnostic` | UnitLab validation result |
 | `Iec61850ReportSubscriptionPlan` | FAT planning DTO derived from SCD and selected Signal List rows |
+| `Iec61850SignalObservation` | UnitLab signal-level evidence derived from normalized report values |
 
 ## C# Portability Rules
 

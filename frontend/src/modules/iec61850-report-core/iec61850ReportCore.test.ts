@@ -10,6 +10,7 @@ import {
   IEC61850_REPORT_STANDARD_DOCUMENTS,
   IEC61850_TRIGGER_OPTION_TERMS,
   Iec61850ReportManager,
+  mapIec61850ReportEventToSignalObservations,
   normalizeIec61850ReportEvent,
   reportControlKey,
   runIec61850ReportSubscriptionPlan,
@@ -144,6 +145,7 @@ describe("iec61850-report-core", () => {
       "lifecycleState",
       "simulatorEventLog",
       "diagnostics",
+      "signalObservations",
     ])
     expect(UNITLAB_INTERNAL_REPORT_TERMS.every(term => term.standardDocument === null && term.status === "internal-only")).toBe(true)
     expect(getIec61850ReportComplianceTerms().filter(term => term.status === "internal-only")).toEqual(UNITLAB_INTERNAL_REPORT_TERMS)
@@ -469,6 +471,22 @@ describe("iec61850-report-core", () => {
       "LD0/XCBR1.Pos.stVal[ST]",
       "LD0/PGGIO1.Ind1[ST]",
     ])
+    expect(run.reports[0]?.observations.map(observation => ({
+      selectedSignalId: observation.selectedSignalId,
+      modelReference: observation.modelReference,
+      value: observation.value,
+    }))).toEqual([
+      {
+        selectedSignalId: "sig-1",
+        modelReference: "LD0/XCBR1.Pos.stVal[ST]",
+        value: 0,
+      },
+      {
+        selectedSignalId: "sig-2",
+        modelReference: "LD0/PGGIO1.Ind1[ST]",
+        value: 1,
+      },
+    ])
     expect(run.eventLog.map(event => event.kind)).toEqual([
       "connect",
       "read",
@@ -540,6 +558,83 @@ describe("iec61850-report-core", () => {
       "release",
       "disconnect",
     ])
+  })
+
+  it("maps subset report events to selected signal observations without treating omitted signals as fatal", () => {
+    const candidate = firstReportCandidate()
+    const plan = buildIec61850ReportSubscriptionPlan({
+      candidates: [candidate],
+      selectedSignals: [
+        { id: "sig-1", address: "IED1LD0/XCBR1/Pos/stVal[ST]" },
+        { id: "sig-2", address: "IED1LD0/PGGIO1/Ind1[ST]" },
+      ],
+    })
+    const { event } = normalizeIec61850ReportEvent({
+      endpointId: endpoint.id,
+      candidate,
+      receivedAt: "2026-05-29T12:00:03.000Z",
+      payload: {
+        rptId: candidate.rptId,
+        dataSetRef: candidate.dataSetRef,
+        confRev: candidate.confRev,
+        sequenceNumber: 3,
+        timeOfEntry: "2026-05-29T12:00:03.000Z",
+        entryId: "entry-3",
+        bufferOverflow: false,
+        reason: "data-change",
+        values: [{
+          dataReference: "LD0/XCBR1.Pos.stVal[ST]",
+          value: true,
+          reasonCode: "data-change",
+          timestamp: "2026-05-29T12:00:03.000Z",
+        }],
+      },
+    })
+
+    const result = mapIec61850ReportEventToSignalObservations(plan, event)
+
+    expect(result.reportCandidateId).toBe(candidate.id)
+    expect(result.observations).toHaveLength(1)
+    expect(result.observations[0]).toMatchObject({
+      selectedSignalId: "sig-1",
+      selectedSignalAddress: "IED1LD0/XCBR1/Pos/stVal[ST]",
+      modelReference: "LD0/XCBR1.Pos.stVal[ST]",
+      value: true,
+      reasonCode: "data-change",
+    })
+    expect(result.diagnostics).toEqual([expect.objectContaining({
+      severity: "info",
+      code: "SIGNAL_NOT_INCLUDED_IN_REPORT_EVENT",
+      signalId: "sig-2",
+    })])
+  })
+
+  it("keeps unplanned report events visible as observation diagnostics", () => {
+    const candidate = firstReportCandidate()
+    const plan = buildIec61850ReportSubscriptionPlan({
+      candidates: [],
+      selectedSignals: [
+        { id: "sig-1", address: "IED1LD0/XCBR1/Pos/stVal[ST]" },
+      ],
+    })
+    const { event } = normalizeIec61850ReportEvent({
+      endpointId: endpoint.id,
+      candidate,
+      receivedAt: "2026-05-29T12:00:04.000Z",
+      payload: {
+        values: [{ dataReference: "LD0/XCBR1.Pos.stVal[ST]", value: 1 }],
+      },
+    })
+
+    const result = mapIec61850ReportEventToSignalObservations(plan, event)
+
+    expect(result.reportCandidateId).toBeNull()
+    expect(result.observations).toEqual([])
+    expect(result.unselectedValues).toHaveLength(1)
+    expect(result.diagnostics).toEqual([expect.objectContaining({
+      severity: "error",
+      code: "REPORT_NOT_IN_PLAN",
+    })])
   })
 
   it("marks duplicate, unmatched, ambiguous, parent FCD, and multi-report selected signals", () => {

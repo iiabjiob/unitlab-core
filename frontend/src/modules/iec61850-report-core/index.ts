@@ -6,6 +6,10 @@ export {
   normalizeReportDataReference,
 } from "./reportEventNormalizer"
 export {
+  mapIec61850ReportEventToSignalObservations,
+  mapIec61850ReportPlanEventToSignalObservations,
+} from "./signalObservationMapper"
+export {
   compareReportControlState,
   Iec61850ReportManager,
   toReportControlRef,
@@ -77,6 +81,13 @@ export type {
   NormalizeIec61850ReportEventInput,
   NormalizeIec61850ReportEventResult,
 } from "./reportEventNormalizer"
+export type {
+  Iec61850ReportObservationDiagnostic,
+  Iec61850ReportObservationDiagnosticCode,
+  Iec61850ReportObservationResult,
+  Iec61850SignalObservation,
+  Iec61850UnselectedReportValue,
+} from "./signalObservationMapper"
 export type {
   Iec61850StandardDocumentId,
   Iec61850StandardTerm,
