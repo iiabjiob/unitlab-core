@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "fixture_parser.h"
+#include "model_plan.h"
 
 #ifdef UNITLAB_WITH_LIBIEC61850
 #include <iec61850_server.h>
@@ -198,6 +199,14 @@ int main(int argc, char** argv)
         return 65;
     }
 
+    UnitLabIedModelPlan model_plan;
+    char model_error[256];
+    if (!unitlab_build_ied_model_plan(&fixture_model, &model_plan, model_error, sizeof(model_error))) {
+        fprintf(stderr, "%s\n", model_error);
+        unitlab_free_ied_fixture_model(&fixture_model);
+        return 65;
+    }
+
     if (options.dry_run) {
         printf("unitlab-iec61850-ied-sim: fixture accepted\n");
         printf("schema=%s\n", UNITLAB_IED_SIM_SCHEMA);
@@ -218,15 +227,30 @@ int main(int argc, char** argv)
             printf("firstReportTriggerGI=%s\n", optional_bool_label(fixture_model.reports[0].trigger_options.general_interrogation));
             printf("firstReportOptDataRef=%s\n", optional_bool_label(fixture_model.reports[0].optional_fields.data_reference));
         }
+        printf("modelLogicalDevices=%zu\n", model_plan.logical_device_count);
+        printf("modelLogicalNodes=%zu\n", model_plan.logical_node_count);
+        printf("modelDataSets=%zu\n", model_plan.data_set_count);
+        printf("modelReports=%zu\n", model_plan.report_count);
+        if (model_plan.logical_device_count > 0U) {
+            printf("firstModelLogicalDevice=%s\n", model_plan.logical_devices[0].inst);
+        }
+        if (model_plan.logical_node_count > 0U) {
+            printf(
+                "firstModelLogicalNode=%s/%s\n",
+                model_plan.logical_nodes[0].logical_device_inst,
+                model_plan.logical_nodes[0].name);
+        }
         printf("bind=%s\n", options.bind_address);
         printf("port=%d\n", options.port);
         printf("libiec61850=%s\n", libiec61850_status());
+        unitlab_free_ied_model_plan(&model_plan);
         unitlab_free_ied_fixture_model(&fixture_model);
         return 0;
     }
 
     fprintf(stderr, "MMS_SERVER_NOT_IMPLEMENTED: this slice only validates the external simulator process boundary.\n");
     fprintf(stderr, "libiec61850=%s\n", libiec61850_status());
+    unitlab_free_ied_model_plan(&model_plan);
     unitlab_free_ied_fixture_model(&fixture_model);
     return 69;
 }

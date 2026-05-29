@@ -60,6 +60,12 @@ firstSignal=LD0/XCBR1.Pos.stVal[ST]
 firstReport=IED1/AP1/LD0/LLN0/brcbEvents/buffered
 firstReportTriggerGI=true
 firstReportOptDataRef=true
+modelLogicalDevices=1
+modelLogicalNodes=3
+modelDataSets=1
+modelReports=1
+firstModelLogicalDevice=LD0
+firstModelLogicalNode=LD0/XCBR1
 bind=127.0.0.1
 port=1102
 libiec61850=not-linked
@@ -85,7 +91,7 @@ It intentionally excludes:
 
 ## Next Slice
 
-Implement the libIEC61850 server model loader for one fixture device:
+Implement the libIEC61850 server model loader from the model plan:
 
 1. Load one `IedModel`.
 2. Create one logical device and logical nodes.

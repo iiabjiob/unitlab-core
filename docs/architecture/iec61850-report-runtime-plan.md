@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slice 13A-13F, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slice 13A-13G, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -352,6 +352,24 @@ Still planned:
 
 - Feed the report option records into libIEC61850 report-control creation.
 - Add fixture-level negative tests for malformed option values once a simulator test harness exists.
+
+Validation:
+
+- Native C compile, CMake configure/build, and positive dry-run fixture smoke test.
+
+### Slice 13G - External IED Simulator Model Plan
+
+Implemented in this slice:
+
+- Added a C model-plan builder that derives logical devices, logical nodes, DataSets, and ReportControls from the materialized fixture.
+- The model plan validates that every ReportControl references an exported DataSet.
+- DataSet member references are parsed into logical-device/logical-node ownership before any future MMS server starts.
+- Dry-run output now reports model LD/LN/DataSet/Report counts and first LD/LN keys.
+
+Still planned:
+
+- Convert the model plan into libIEC61850 `IedModel`, DataSet, and ReportControl objects.
+- Add C-level negative fixtures for invalid signal references and missing report DataSets.
 
 Validation:
 

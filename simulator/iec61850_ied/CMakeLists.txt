@@ -11,6 +11,7 @@ option(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850 "Link libIEC61850 for the internal 
 add_executable(unitlab-iec61850-ied-sim
   src/fixture_parser.c
   src/main.c
+  src/model_plan.c
 )
 
 if(MSVC)

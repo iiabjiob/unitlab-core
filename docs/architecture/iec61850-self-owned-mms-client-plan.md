@@ -211,7 +211,7 @@ Exit criteria:
 
 ## Current Project Position
 
-- Implemented today: SCD report inventory, Signal List merge, subscription plan builder, simulator-only report runtime, normalized report event DTOs, observation mapping, backend simulator parity, incoming report routing, activation precheck gates, MMS endpoint catalog, external IED simulator fixture export, external IED simulator process scaffold, fixture parser/model materialization, and report option records.
+- Implemented today: SCD report inventory, Signal List merge, subscription plan builder, simulator-only report runtime, normalized report event DTOs, observation mapping, backend simulator parity, incoming report routing, activation precheck gates, MMS endpoint catalog, external IED simulator fixture export, external IED simulator process scaffold, fixture parser/model materialization, report option records, and external simulator model plan.
 - Not implemented today: real MMS transport, self-owned MMS client, real IED connection, report persistence, GOOSE, Sampled Values, and IEC 62351 security.
-- Implemented boundary step: backend has an explicit MMS endpoint catalog, a fail-closed unavailable MMS adapter, a JSON fixture boundary for an external IED simulator, a C/CMake simulator process scaffold, materialized fixture records, and report option records.
-- Next architecture step: implement the libIEC61850 server model loader behind that process scaffold, then connect UnitLab to it through the same backend report-runtime contract.
+- Implemented boundary step: backend has an explicit MMS endpoint catalog, a fail-closed unavailable MMS adapter, a JSON fixture boundary for an external IED simulator, a C/CMake simulator process scaffold, materialized fixture records, report option records, and an external simulator model plan.
+- Next architecture step: implement the libIEC61850 server model loader from the model plan, then connect UnitLab to it through the same backend report-runtime contract.
