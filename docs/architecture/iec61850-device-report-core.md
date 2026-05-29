@@ -67,6 +67,8 @@ This slice does not subscribe to devices, open MMS sessions, write backend state
 
 The future runtime owner must remain backend-side. The frontend debug view may visualize this model, but it must not become the source of truth for report enablement, received report ordering, acknowledgements, stale state, or evidence persistence.
 
+The report runtime roadmap is tracked in `docs/architecture/iec61850-report-runtime-plan.md`. The first implementation slice is simulator-only and defines portable report manager contracts in `frontend/src/modules/iec61850-report-core`; it does not connect to real devices.
+
 ## Known Gaps
 
 - No MMS connection, report enable, reservation, GI, or buffered entry replay is implemented.

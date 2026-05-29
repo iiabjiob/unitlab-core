@@ -411,6 +411,10 @@ export type Iec61850ReportSubscriptionCandidate = {
   dataSetRef: string | null
   confRev: string | null
   indexed: boolean | null
+  bufferTimeMs: number | null
+  integrityPeriodMs: number | null
+  triggerOptions: SclReportTriggerOptions
+  optionalFields: SclReportOptionalFields
   signalCount: number
   signals: SclDataSetMember[]
 }

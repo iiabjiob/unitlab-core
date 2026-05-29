@@ -809,6 +809,10 @@ export function buildIec61850ReportSubscriptionInventory(
       dataSetRef: reportControl.dataSetRef,
       confRev: reportControl.confRev,
       indexed: reportControl.indexed,
+      bufferTimeMs: reportControl.bufferTimeMs,
+      integrityPeriodMs: reportControl.integrityPeriodMs,
+      triggerOptions: reportControl.triggerOptions,
+      optionalFields: reportControl.optionalFields,
       signalCount: signals.length,
       signals,
     }
