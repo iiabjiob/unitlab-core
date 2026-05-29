@@ -1,8 +1,17 @@
 import type {
   NormalizedSclModel,
+  SclAccessPoint,
   SclBay,
+  SclDataSet,
+  SclDataSetMember,
   SclEquipment,
+  SclIed,
+  SclLogicalDevice,
+  SclLogicalNode,
   SclLogicalNodeRef,
+  SclReportControl,
+  SclReportEnabled,
+  SclServer,
   SclSubstation,
   SclTerminal,
   SclVoltage,
@@ -16,6 +25,18 @@ export type Iec61850DebugNodeKind =
   | "bay"
   | "switchgears-group"
   | "switchgear"
+  | "ieds-group"
+  | "ied"
+  | "access-point"
+  | "server"
+  | "logical-device"
+  | "logical-node"
+  | "datasets-group"
+  | "dataset"
+  | "dataset-member"
+  | "reports-group"
+  | "report-control"
+  | "report-signal"
 
 export type Iec61850DebugDetailRow = {
   label: string
@@ -45,6 +66,7 @@ export type Iec61850DebugTreeRow = {
 
 export function buildIec61850DebugTreeRows(model: NormalizedSclModel): Iec61850DebugTreeRow[] {
   const rows: Iec61850DebugTreeRow[] = []
+  const dataSetById = new Map(collectDataSets(model).map(dataSet => [dataSet.id, dataSet]))
 
   model.substations.forEach((site) => {
     const siteValue = siteNodeValue(site)
@@ -109,6 +131,165 @@ export function buildIec61850DebugTreeRows(model: NormalizedSclModel): Iec61850D
     })
   })
 
+  if (model.ieds.length) {
+    const iedsGroupValue = iedsGroupNodeValue()
+    rows.push({
+      value: iedsGroupValue,
+      parent: null,
+      kind: "ieds-group",
+      label: "IEDs",
+      valueLabel: String(model.ieds.length),
+      isLeaf: model.ieds.length === 0,
+      detail: buildIedsGroupDetail(model),
+    })
+
+    model.ieds.forEach((ied) => {
+      const iedValue = iedNodeValue(ied)
+      rows.push({
+        value: iedValue,
+        parent: iedsGroupValue,
+        kind: "ied",
+        label: ied.name,
+        valueLabel: `${ied.accessPoints.length} AP`,
+        isLeaf: ied.accessPoints.length === 0,
+        detail: buildIedDetail(ied),
+      })
+
+      ied.accessPoints.forEach((accessPoint) => {
+        const accessPointValue = accessPointNodeValue(accessPoint)
+        rows.push({
+          value: accessPointValue,
+          parent: iedValue,
+          kind: "access-point",
+          label: accessPoint.name,
+          valueLabel: accessPoint.server ? "Server" : "No server",
+          isLeaf: !accessPoint.server,
+          detail: buildAccessPointDetail(accessPoint, ied),
+        })
+
+        if (!accessPoint.server) {
+          return
+        }
+
+        const serverValue = serverNodeValue(accessPoint.server)
+        rows.push({
+          value: serverValue,
+          parent: accessPointValue,
+          kind: "server",
+          label: "Server",
+          valueLabel: `${accessPoint.server.logicalDevices.length} LD`,
+          isLeaf: accessPoint.server.logicalDevices.length === 0,
+          detail: buildServerDetail(accessPoint.server, accessPoint, ied),
+        })
+
+        accessPoint.server.logicalDevices.forEach((logicalDevice) => {
+          const logicalDeviceValue = logicalDeviceNodeValue(logicalDevice)
+          rows.push({
+            value: logicalDeviceValue,
+            parent: serverValue,
+            kind: "logical-device",
+            label: logicalDevice.inst,
+            valueLabel: `${logicalDevice.logicalNodes.length} LN`,
+            isLeaf: logicalDevice.logicalNodes.length === 0,
+            detail: buildLogicalDeviceDetail(logicalDevice, accessPoint, ied),
+          })
+
+          logicalDevice.logicalNodes.forEach((logicalNode) => {
+            const logicalNodeValue = logicalNodeNodeValue(logicalNode)
+            const childCount = logicalNode.dataSets.length + logicalNode.reportControls.length
+            rows.push({
+              value: logicalNodeValue,
+              parent: logicalDeviceValue,
+              kind: "logical-node",
+              label: logicalNode.logicalNodeName,
+              valueLabel: `${logicalNode.dataSets.length} DS · ${logicalNode.reportControls.length} RCB`,
+              isLeaf: childCount === 0,
+              detail: buildLogicalNodeDetail(logicalNode),
+            })
+
+            if (logicalNode.dataSets.length) {
+              const dataSetsValue = dataSetsGroupNodeValue(logicalNode)
+              rows.push({
+                value: dataSetsValue,
+                parent: logicalNodeValue,
+                kind: "datasets-group",
+                label: "DataSets",
+                valueLabel: String(logicalNode.dataSets.length),
+                isLeaf: false,
+                detail: buildDataSetsGroupDetail(logicalNode),
+              })
+
+              logicalNode.dataSets.forEach((dataSet) => {
+                const dataSetValue = dataSetNodeValue(dataSet)
+                rows.push({
+                  value: dataSetValue,
+                  parent: dataSetsValue,
+                  kind: "dataset",
+                  label: dataSet.name,
+                  valueLabel: `${dataSet.members.length} signals`,
+                  isLeaf: dataSet.members.length === 0,
+                  detail: buildDataSetDetail(dataSet),
+                })
+
+                dataSet.members.forEach((member, index) => {
+                  rows.push({
+                    value: dataSetMemberNodeValue(member),
+                    parent: dataSetValue,
+                    kind: "dataset-member",
+                    label: member.reference,
+                    valueLabel: member.kind,
+                    isLeaf: true,
+                    detail: buildDataSetMemberDetail(member, dataSet, index),
+                  })
+                })
+              })
+            }
+
+            if (logicalNode.reportControls.length) {
+              const reportsValue = reportsGroupNodeValue(logicalNode)
+              rows.push({
+                value: reportsValue,
+                parent: logicalNodeValue,
+                kind: "reports-group",
+                label: "ReportControls",
+                valueLabel: String(logicalNode.reportControls.length),
+                isLeaf: false,
+                detail: buildReportsGroupDetail(logicalNode),
+              })
+
+              logicalNode.reportControls.forEach((reportControl) => {
+                const reportDataSet = reportControl.dataSetId ? dataSetById.get(reportControl.dataSetId) ?? null : null
+                const reportSignals = reportDataSet?.members ?? []
+                const reportControlValue = reportControlNodeValue(reportControl)
+                rows.push({
+                  value: reportControlValue,
+                  parent: reportsValue,
+                  kind: "report-control",
+                  label: reportControl.name,
+                  valueLabel: reportKindLabel(reportControl),
+                  isLeaf: reportSignals.length === 0,
+                  detail: buildReportControlDetail(reportControl, reportDataSet),
+                })
+
+                reportSignals.forEach((member, index) => {
+                  rows.push({
+                    value: reportSignalNodeValue(reportControl, member),
+                    parent: reportControlValue,
+                    kind: "report-signal",
+                    label: member.reference,
+                    valueLabel: member.fc,
+                    isLeaf: true,
+                    detail: buildReportSignalDetail(reportControl, member, reportDataSet, index),
+                  })
+                })
+              })
+            }
+          })
+        })
+      })
+    })
+  }
+
   return rows
 }
 
@@ -134,6 +315,54 @@ function switchgearsGroupNodeValue(bay: SclBay): string {
 
 function switchgearNodeValue(equipment: SclEquipment): string {
   return `switchgear:${equipment.id}`
+}
+
+function iedsGroupNodeValue(): string {
+  return "ieds:root"
+}
+
+function iedNodeValue(ied: SclIed): string {
+  return `ied:${ied.id}`
+}
+
+function accessPointNodeValue(accessPoint: SclAccessPoint): string {
+  return `access-point:${accessPoint.id}`
+}
+
+function serverNodeValue(server: SclServer): string {
+  return `server:${server.id}`
+}
+
+function logicalDeviceNodeValue(logicalDevice: SclLogicalDevice): string {
+  return `logical-device:${logicalDevice.id}`
+}
+
+function logicalNodeNodeValue(logicalNode: SclLogicalNode): string {
+  return `logical-node:${logicalNode.id}`
+}
+
+function dataSetsGroupNodeValue(logicalNode: SclLogicalNode): string {
+  return `datasets:${logicalNode.id}`
+}
+
+function dataSetNodeValue(dataSet: SclDataSet): string {
+  return `dataset:${dataSet.id}`
+}
+
+function dataSetMemberNodeValue(member: SclDataSetMember): string {
+  return `dataset-member:${member.id}`
+}
+
+function reportsGroupNodeValue(logicalNode: SclLogicalNode): string {
+  return `reports:${logicalNode.id}`
+}
+
+function reportControlNodeValue(reportControl: SclReportControl): string {
+  return `report-control:${reportControl.id}`
+}
+
+function reportSignalNodeValue(reportControl: SclReportControl, member: SclDataSetMember): string {
+  return `report-signal:${reportControl.id}:${member.id}`
 }
 
 function buildSiteDetail(site: SclSubstation): Iec61850DebugDetail {
@@ -257,6 +486,325 @@ function buildSwitchgearDetail(equipment: SclEquipment): Iec61850DebugDetail {
   }
 }
 
+function buildIedsGroupDetail(model: NormalizedSclModel): Iec61850DebugDetail {
+  const dataSets = collectDataSets(model)
+  const reportControls = collectReportControls(model)
+
+  return {
+    title: "IEDs",
+    subtitle: "IEC 61850 device runtime inventory",
+    sections: [
+      section("Source", [
+        row("file", model.source.fileName),
+        row("content hash", model.source.contentHash),
+        row("SCL version", model.scl.version),
+        row("SCL revision", model.scl.revision),
+      ]),
+      section("Inventory", [
+        row("IEDs", model.ieds.length),
+        row("access points", countAccessPoints(model)),
+        row("logical devices", countLogicalDevices(model)),
+        row("logical nodes", countLogicalNodes(model)),
+        row("DataSets", dataSets.length),
+        row("ReportControls", reportControls.length),
+        row("subscription candidates", model.reportSubscriptions.length),
+      ]),
+      section("Report candidates", model.reportSubscriptions.length
+        ? model.reportSubscriptions.map(candidate => row(
+          candidate.reportControlName,
+          `${candidate.reportKind} · ${candidate.dataSetRef ?? "unresolved DataSet"} · ${candidate.signalCount} signals`,
+        ))
+        : [row("candidates", "none")]),
+    ],
+  }
+}
+
+function buildIedDetail(ied: SclIed): Iec61850DebugDetail {
+  return {
+    title: ied.name,
+    subtitle: "SCL IED",
+    sections: [
+      section("Identity", [
+        row("name", ied.name),
+        row("desc", ied.desc),
+        row("manufacturer", ied.manufacturer),
+        row("type", ied.type),
+        row("configVersion", ied.configVersion),
+        row("normalized id", ied.id),
+        row("source path", ied.sourcePath),
+      ]),
+      section("Runtime inventory", [
+        row("access points", ied.accessPoints.length),
+        row("logical devices", countIedLogicalDevices(ied)),
+        row("logical nodes", countIedLogicalNodes(ied)),
+        row("DataSets", collectIedDataSets(ied).length),
+        row("ReportControls", collectIedReportControls(ied).length),
+      ]),
+    ],
+  }
+}
+
+function buildAccessPointDetail(accessPoint: SclAccessPoint, ied: SclIed): Iec61850DebugDetail {
+  return {
+    title: accessPoint.name,
+    subtitle: "SCL AccessPoint",
+    sections: [
+      section("Identity", [
+        row("IED", ied.name),
+        row("name", accessPoint.name),
+        row("desc", accessPoint.desc),
+        row("router", accessPoint.router),
+        row("clock", accessPoint.clock),
+        row("server present", Boolean(accessPoint.server)),
+        row("normalized id", accessPoint.id),
+        row("source path", accessPoint.sourcePath),
+      ]),
+      section("Runtime inventory", [
+        row("logical devices", accessPoint.server?.logicalDevices.length ?? 0),
+        row("logical nodes", countAccessPointLogicalNodes(accessPoint)),
+        row("DataSets", collectAccessPointDataSets(accessPoint).length),
+        row("ReportControls", collectAccessPointReportControls(accessPoint).length),
+      ]),
+    ],
+  }
+}
+
+function buildServerDetail(server: SclServer, accessPoint: SclAccessPoint, ied: SclIed): Iec61850DebugDetail {
+  return {
+    title: "Server",
+    subtitle: "SCL AccessPoint Server",
+    sections: [
+      section("Scope", [
+        row("IED", ied.name),
+        row("access point", accessPoint.name),
+        row("normalized id", server.id),
+        row("source path", server.sourcePath),
+      ]),
+      section("Runtime inventory", [
+        row("logical devices", server.logicalDevices.length),
+        row("logical nodes", countServerLogicalNodes(server)),
+        row("DataSets", collectServerDataSets(server).length),
+        row("ReportControls", collectServerReportControls(server).length),
+      ]),
+    ],
+  }
+}
+
+function buildLogicalDeviceDetail(
+  logicalDevice: SclLogicalDevice,
+  accessPoint: SclAccessPoint,
+  ied: SclIed,
+): Iec61850DebugDetail {
+  return {
+    title: logicalDevice.inst,
+    subtitle: "SCL LDevice",
+    sections: [
+      section("Identity", [
+        row("IED", ied.name),
+        row("access point", accessPoint.name),
+        row("inst", logicalDevice.inst),
+        row("ldName", logicalDevice.ldName),
+        row("desc", logicalDevice.desc),
+        row("normalized id", logicalDevice.id),
+        row("source path", logicalDevice.sourcePath),
+      ]),
+      section("Runtime inventory", [
+        row("logical nodes", logicalDevice.logicalNodes.length),
+        row("DataSets", logicalDevice.logicalNodes.reduce((sum, node) => sum + node.dataSets.length, 0)),
+        row("ReportControls", logicalDevice.logicalNodes.reduce((sum, node) => sum + node.reportControls.length, 0)),
+      ]),
+    ],
+  }
+}
+
+function buildLogicalNodeDetail(logicalNode: SclLogicalNode): Iec61850DebugDetail {
+  return {
+    title: logicalNode.logicalNodeName,
+    subtitle: `SCL ${logicalNode.tagName}`,
+    sections: [
+      section("Identity", [
+        row("IED", logicalNode.iedName),
+        row("access point", logicalNode.accessPointName),
+        row("ldInst", logicalNode.logicalDeviceInst),
+        row("logical node", logicalNode.logicalNodeName),
+        row("prefix", logicalNode.prefix),
+        row("lnClass", logicalNode.lnClass),
+        row("lnInst", logicalNode.lnInst),
+        row("lnType", logicalNode.lnType),
+        row("desc", logicalNode.desc),
+        row("normalized id", logicalNode.id),
+        row("source path", logicalNode.sourcePath),
+      ]),
+      section("Runtime inventory", [
+        row("DataSets", logicalNode.dataSets.length),
+        row("DataSet members", logicalNode.dataSets.reduce((sum, dataSet) => sum + dataSet.members.length, 0)),
+        row("ReportControls", logicalNode.reportControls.length),
+      ]),
+    ],
+  }
+}
+
+function buildDataSetsGroupDetail(logicalNode: SclLogicalNode): Iec61850DebugDetail {
+  return {
+    title: `${logicalNode.logicalNodeName} DataSets`,
+    subtitle: "IEC 61850 DataSet declarations",
+    sections: [
+      section("Scope", [
+        row("IED", logicalNode.iedName),
+        row("access point", logicalNode.accessPointName),
+        row("ldInst", logicalNode.logicalDeviceInst),
+        row("logical node", logicalNode.logicalNodeName),
+        row("DataSets", logicalNode.dataSets.length),
+      ]),
+      section("Members", logicalNode.dataSets.map(dataSet => row(dataSet.name, `${dataSet.members.length} signals`))),
+    ],
+  }
+}
+
+function buildDataSetDetail(dataSet: SclDataSet): Iec61850DebugDetail {
+  return {
+    title: dataSet.name,
+    subtitle: "IEC 61850 DataSet",
+    sections: [
+      section("Identity", [
+        row("name", dataSet.name),
+        row("desc", dataSet.desc),
+        row("DataSet ref", `${dataSet.iedName}/${dataSet.accessPointName}/${dataSet.logicalDeviceInst}/${dataSet.logicalNodeName}.${dataSet.name}`),
+        row("normalized id", dataSet.id),
+        row("source path", dataSet.sourcePath),
+      ]),
+      section("Scope", [
+        row("IED", dataSet.iedName),
+        row("access point", dataSet.accessPointName),
+        row("ldInst", dataSet.logicalDeviceInst),
+        row("logical node", dataSet.logicalNodeName),
+      ]),
+      section("Signals", dataSet.members.length
+        ? dataSet.members.map((member, index) => row(`signal ${index + 1}`, member.reference))
+        : [row("signals", "none")]),
+    ],
+  }
+}
+
+function buildDataSetMemberDetail(
+  member: SclDataSetMember,
+  dataSet: SclDataSet,
+  index: number,
+): Iec61850DebugDetail {
+  return {
+    title: member.reference,
+    subtitle: `IEC 61850 DataSet member · ${member.kind}`,
+    sections: [
+      section("Scope", [
+        row("DataSet", dataSet.name),
+        row("member index", index + 1),
+        row("normalized id", member.id),
+        row("source path", member.sourcePath),
+      ]),
+      section("Address", dataSetMemberRows(member)),
+    ],
+  }
+}
+
+function buildReportsGroupDetail(logicalNode: SclLogicalNode): Iec61850DebugDetail {
+  return {
+    title: `${logicalNode.logicalNodeName} ReportControls`,
+    subtitle: "IEC 61850 report control declarations",
+    sections: [
+      section("Scope", [
+        row("IED", logicalNode.iedName),
+        row("access point", logicalNode.accessPointName),
+        row("ldInst", logicalNode.logicalDeviceInst),
+        row("logical node", logicalNode.logicalNodeName),
+        row("ReportControls", logicalNode.reportControls.length),
+      ]),
+      section("Members", logicalNode.reportControls.map(reportControl => row(
+        reportControl.name,
+        `${reportKindLabel(reportControl)} · ${reportControl.dataSetRef ?? "unresolved DataSet"}`,
+      ))),
+    ],
+  }
+}
+
+function buildReportControlDetail(
+  reportControl: SclReportControl,
+  dataSet: SclDataSet | null,
+): Iec61850DebugDetail {
+  return {
+    title: reportControl.name,
+    subtitle: `IEC 61850 ${reportKindLabel(reportControl)}`,
+    sections: [
+      section("Identity", [
+        row("name", reportControl.name),
+        row("desc", reportControl.desc),
+        row("rptID", reportControl.rptId),
+        row("kind", reportKindLabel(reportControl)),
+        row("indexed", reportControl.indexed),
+        row("confRev", reportControl.confRev),
+        row("normalized id", reportControl.id),
+        row("source path", reportControl.sourcePath),
+      ]),
+      section("Scope", [
+        row("IED", reportControl.iedName),
+        row("access point", reportControl.accessPointName),
+        row("ldInst", reportControl.logicalDeviceInst),
+        row("logical node", reportControl.logicalNodeName),
+      ]),
+      section("DataSet", [
+        row("datSet", reportControl.dataSetName),
+        row("resolved DataSet", dataSet?.name),
+        row("DataSet ref", reportControl.dataSetRef),
+        row("signal count", dataSet?.members.length ?? 0),
+      ]),
+      section("Timing", [
+        row("bufTime ms", reportControl.bufferTimeMs),
+        row("intgPd ms", reportControl.integrityPeriodMs),
+      ]),
+      section("Trigger options", [
+        row("dchg", reportControl.triggerOptions.dataChange),
+        row("qchg", reportControl.triggerOptions.qualityChange),
+        row("dupd", reportControl.triggerOptions.dataUpdate),
+        row("period", reportControl.triggerOptions.periodic),
+        row("gi", reportControl.triggerOptions.generalInterrogation),
+      ]),
+      section("Optional fields", [
+        row("seqNum", reportControl.optionalFields.sequenceNumber),
+        row("timeStamp", reportControl.optionalFields.timestamp),
+        row("reasonCode", reportControl.optionalFields.reasonCode),
+        row("dataSet", reportControl.optionalFields.dataSetName),
+        row("dataRef", reportControl.optionalFields.dataReference),
+        row("entryID", reportControl.optionalFields.entryId),
+        row("configRef", reportControl.optionalFields.configRevision),
+        row("bufOvfl", reportControl.optionalFields.bufferOverflow),
+      ]),
+      section("RptEnabled", reportEnabledRows(reportControl.rptEnabled)),
+    ],
+  }
+}
+
+function buildReportSignalDetail(
+  reportControl: SclReportControl,
+  member: SclDataSetMember,
+  dataSet: SclDataSet | null,
+  index: number,
+): Iec61850DebugDetail {
+  return {
+    title: member.reference,
+    subtitle: `Report signal · ${reportControl.name}`,
+    sections: [
+      section("Report", [
+        row("ReportControl", reportControl.name),
+        row("kind", reportKindLabel(reportControl)),
+        row("rptID", reportControl.rptId),
+        row("DataSet", dataSet?.name),
+        row("DataSet ref", reportControl.dataSetRef),
+        row("signal index", index + 1),
+      ]),
+      section("Address", dataSetMemberRows(member)),
+    ],
+  }
+}
+
 function terminalRows(terminals: SclTerminal[]): Iec61850DebugDetailRow[] {
   if (!terminals.length) {
     return [row("terminals", "none")]
@@ -290,6 +838,43 @@ function logicalNodeRows(lNodes: SclLogicalNodeRef[]): Iec61850DebugDetailRow[] 
   ))
 }
 
+function dataSetMemberRows(member: SclDataSetMember): Iec61850DebugDetailRow[] {
+  return [
+    row("kind", member.kind),
+    row("reference", member.reference),
+    row("ldInst", member.ldInst),
+    row("prefix", member.prefix),
+    row("lnClass", member.lnClass),
+    row("lnInst", member.lnInst),
+    row("doName", member.doName),
+    row("daName", member.daName),
+    row("fc", member.fc),
+    row("ix", member.ix),
+  ]
+}
+
+function reportEnabledRows(rptEnabled: SclReportEnabled | null): Iec61850DebugDetailRow[] {
+  if (!rptEnabled) {
+    return [row("RptEnabled", "not declared")]
+  }
+
+  return [
+    row("max", rptEnabled.max),
+    row("desc", rptEnabled.desc),
+    row("clients", rptEnabled.clients.length),
+    ...rptEnabled.clients.flatMap((client, index) => [
+      row(`client ${index + 1} IED`, client.iedName),
+      row(`client ${index + 1} apRef`, client.accessPointRef),
+      row(`client ${index + 1} ldInst`, client.logicalDeviceInst),
+      row(`client ${index + 1} LN`, [
+        client.prefix,
+        client.lnClass,
+        client.lnInst,
+      ].filter(Boolean).join("") || null),
+    ]),
+  ]
+}
+
 function coordinateRows(coordinates: SldCoordinate): Iec61850DebugDetailRow[] {
   return [
     row("x", coordinates.x),
@@ -313,6 +898,76 @@ function formatVoltage(voltage: SclVoltage | null): string {
     return "—"
   }
   return `${voltage.value} ${voltage.multiplier ?? ""}${voltage.unit ?? ""}`.trim()
+}
+
+function reportKindLabel(reportControl: SclReportControl): "BRCB" | "URCB" {
+  return reportControl.buffered ? "BRCB" : "URCB"
+}
+
+function collectDataSets(model: NormalizedSclModel): SclDataSet[] {
+  return model.ieds.flatMap(ied => collectIedDataSets(ied))
+}
+
+function collectReportControls(model: NormalizedSclModel): SclReportControl[] {
+  return model.ieds.flatMap(ied => collectIedReportControls(ied))
+}
+
+function collectIedDataSets(ied: SclIed): SclDataSet[] {
+  return ied.accessPoints.flatMap(accessPoint => collectAccessPointDataSets(accessPoint))
+}
+
+function collectIedReportControls(ied: SclIed): SclReportControl[] {
+  return ied.accessPoints.flatMap(accessPoint => collectAccessPointReportControls(accessPoint))
+}
+
+function collectAccessPointDataSets(accessPoint: SclAccessPoint): SclDataSet[] {
+  return accessPoint.server ? collectServerDataSets(accessPoint.server) : []
+}
+
+function collectAccessPointReportControls(accessPoint: SclAccessPoint): SclReportControl[] {
+  return accessPoint.server ? collectServerReportControls(accessPoint.server) : []
+}
+
+function collectServerDataSets(server: SclServer): SclDataSet[] {
+  return server.logicalDevices.flatMap(logicalDevice => (
+    logicalDevice.logicalNodes.flatMap(logicalNode => logicalNode.dataSets)
+  ))
+}
+
+function collectServerReportControls(server: SclServer): SclReportControl[] {
+  return server.logicalDevices.flatMap(logicalDevice => (
+    logicalDevice.logicalNodes.flatMap(logicalNode => logicalNode.reportControls)
+  ))
+}
+
+function countAccessPoints(model: NormalizedSclModel): number {
+  return model.ieds.reduce((sum, ied) => sum + ied.accessPoints.length, 0)
+}
+
+function countLogicalDevices(model: NormalizedSclModel): number {
+  return model.ieds.reduce((sum, ied) => sum + countIedLogicalDevices(ied), 0)
+}
+
+function countLogicalNodes(model: NormalizedSclModel): number {
+  return model.ieds.reduce((sum, ied) => sum + countIedLogicalNodes(ied), 0)
+}
+
+function countIedLogicalDevices(ied: SclIed): number {
+  return ied.accessPoints.reduce((sum, accessPoint) => (
+    sum + (accessPoint.server?.logicalDevices.length ?? 0)
+  ), 0)
+}
+
+function countIedLogicalNodes(ied: SclIed): number {
+  return ied.accessPoints.reduce((sum, accessPoint) => sum + countAccessPointLogicalNodes(accessPoint), 0)
+}
+
+function countAccessPointLogicalNodes(accessPoint: SclAccessPoint): number {
+  return accessPoint.server ? countServerLogicalNodes(accessPoint.server) : 0
+}
+
+function countServerLogicalNodes(server: SclServer): number {
+  return server.logicalDevices.reduce((sum, logicalDevice) => sum + logicalDevice.logicalNodes.length, 0)
 }
 
 function formatValue(value: unknown): string {

@@ -77,13 +77,18 @@ const stats = computed(() => ({
     0,
   ) ?? 0,
   switchgears: treeRows.value.filter(row => row.kind === "switchgear").length,
+  ieds: model.value?.ieds.length ?? 0,
+  logicalDevices: model.value ? countLogicalDevices(model.value) : 0,
+  dataSets: model.value ? countDataSets(model.value) : 0,
+  reports: model.value?.reportSubscriptions.length ?? 0,
+  reportSignals: model.value?.reportSubscriptions.reduce((sum, candidate) => sum + candidate.signalCount, 0) ?? 0,
 }))
 
 const statusLabel = computed(() => {
   if (loading.value) return "Reading SCD"
   if (readError.value) return "Parse failed"
   if (!model.value) return "No SCD loaded"
-  return `${fileName.value ?? "SCD"} · ${stats.value.sites} site · ${stats.value.switchgears} switchgears`
+  return `${fileName.value ?? "SCD"} · ${stats.value.sites} site · ${stats.value.ieds} IED · ${stats.value.reports} reports`
 })
 
 const itemElements = new Map<NodeValue, HTMLButtonElement>()
@@ -173,7 +178,14 @@ async function hashText(value: string): Promise<string> {
 
 function applyDefaultExpansion() {
   for (const row of treeRows.value) {
-    if (row.kind === "site" || row.kind === "voltage-level") {
+    if (
+      row.kind === "site"
+      || row.kind === "voltage-level"
+      || row.kind === "ieds-group"
+      || row.kind === "ied"
+      || row.kind === "access-point"
+      || row.kind === "server"
+    ) {
       tree.expand(row.value)
     }
   }
@@ -331,6 +343,30 @@ function nodeKindLabel(kind: string): string {
       return "group"
     case "switchgear":
       return "switchgear"
+    case "ieds-group":
+      return "group"
+    case "ied":
+      return "ied"
+    case "access-point":
+      return "ap"
+    case "server":
+      return "server"
+    case "logical-device":
+      return "ld"
+    case "logical-node":
+      return "ln"
+    case "datasets-group":
+      return "group"
+    case "dataset":
+      return "dataset"
+    case "dataset-member":
+      return "signal"
+    case "reports-group":
+      return "group"
+    case "report-control":
+      return "rcb"
+    case "report-signal":
+      return "signal"
     default:
       return kind
   }
@@ -338,6 +374,24 @@ function nodeKindLabel(kind: string): string {
 
 function shortHash(value: string | null): string {
   return value ? value.slice(0, 12) : "—"
+}
+
+function countLogicalDevices(value: NormalizedSclModel): number {
+  return value.ieds.reduce((sum, ied) => (
+    sum + ied.accessPoints.reduce((apSum, accessPoint) => (
+      apSum + (accessPoint.server?.logicalDevices.length ?? 0)
+    ), 0)
+  ), 0)
+}
+
+function countDataSets(value: NormalizedSclModel): number {
+  return value.ieds.reduce((sum, ied) => (
+    sum + ied.accessPoints.reduce((apSum, accessPoint) => (
+      apSum + (accessPoint.server?.logicalDevices.reduce((ldSum, logicalDevice) => (
+        ldSum + logicalDevice.logicalNodes.reduce((lnSum, logicalNode) => lnSum + logicalNode.dataSets.length, 0)
+      ), 0) ?? 0)
+    ), 0)
+  ), 0)
 }
 </script>
 
@@ -389,6 +443,26 @@ function shortHash(value: string | null): string {
         <span class="iec61850-debug-page__metric-label">Switchgears</span>
         <span class="iec61850-debug-page__metric-value">{{ stats.switchgears }}</span>
       </div>
+      <div class="iec61850-debug-page__metric">
+        <span class="iec61850-debug-page__metric-label">IEDs</span>
+        <span class="iec61850-debug-page__metric-value">{{ stats.ieds }}</span>
+      </div>
+      <div class="iec61850-debug-page__metric">
+        <span class="iec61850-debug-page__metric-label">Logical devices</span>
+        <span class="iec61850-debug-page__metric-value">{{ stats.logicalDevices }}</span>
+      </div>
+      <div class="iec61850-debug-page__metric">
+        <span class="iec61850-debug-page__metric-label">DataSets</span>
+        <span class="iec61850-debug-page__metric-value">{{ stats.dataSets }}</span>
+      </div>
+      <div class="iec61850-debug-page__metric">
+        <span class="iec61850-debug-page__metric-label">Reports</span>
+        <span class="iec61850-debug-page__metric-value">{{ stats.reports }}</span>
+      </div>
+      <div class="iec61850-debug-page__metric">
+        <span class="iec61850-debug-page__metric-label">Report signals</span>
+        <span class="iec61850-debug-page__metric-value">{{ stats.reportSignals }}</span>
+      </div>
       <div class="iec61850-debug-page__metric iec61850-debug-page__metric--wide">
         <span class="iec61850-debug-page__metric-label">Source hash</span>
         <span class="iec61850-debug-page__metric-value">{{ shortHash(contentHash) }}</span>
@@ -396,14 +470,14 @@ function shortHash(value: string | null): string {
     </section>
 
     <main class="iec61850-debug-page__workspace">
-      <section class="iec61850-debug-page__tree-panel" aria-label="SCD topology tree">
+      <section class="iec61850-debug-page__tree-panel" aria-label="SCD model tree">
         <div class="iec61850-debug-page__panel-header">
-          <span>Topology</span>
+          <span>SCL model</span>
           <span v-if="treeRows.length" class="iec61850-debug-page__panel-count">{{ treeRows.length }} nodes</span>
         </div>
 
         <div v-if="!model" class="iec61850-debug-page__empty">
-          Choose an SCD file to inspect Substation, VoltageLevel, Bay and ConductingEquipment CBR/DIS structure.
+          Choose an SCD file to inspect topology, IEDs, DataSets and ReportControls.
         </div>
 
         <div
@@ -411,7 +485,7 @@ function shortHash(value: string | null): string {
           class="iec61850-debug-page__tree"
           role="tree"
           tabindex="0"
-          aria-label="IEC 61850 topology"
+          aria-label="IEC 61850 SCL model"
           @keydown="onTreeRootKeydown"
         >
           <button
@@ -611,7 +685,7 @@ function shortHash(value: string | null): string {
 .iec61850-debug-page__summary {
   display: grid;
   flex: 0 0 auto;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
   gap: 0.5rem;
   padding: 0.75rem;
 }
@@ -622,6 +696,10 @@ function shortHash(value: string | null): string {
   border: 1px solid color-mix(in srgb, var(--color-neutral-200) 80%, transparent);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--color-white) 78%, transparent);
+}
+
+.iec61850-debug-page__metric--wide {
+  grid-column: span 2;
 }
 
 .iec61850-debug-page__metric-value {
@@ -973,6 +1051,10 @@ function shortHash(value: string | null): string {
   .iec61850-debug-page__summary,
   .iec61850-debug-page__workspace {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .iec61850-debug-page__metric--wide {
+    grid-column: span 1;
   }
 
   .iec61850-debug-page__tree-panel,

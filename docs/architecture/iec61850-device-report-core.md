@@ -25,6 +25,19 @@ The SCD core now extracts a runtime-facing IEC 61850 inventory alongside the exi
 
 `NormalizedSclModel.reportSubscriptions` is a derived inventory for future report subscription work. It links each `ReportControl` to the resolved DataSet when the DataSet is found in the same logical device scope, and carries the DataSet member references that will become report signal bindings.
 
+## Debug Visualization
+
+`frontend/src/pages/debug61850/Iec61850DebugPage.vue` visualizes the normalized SCL model through the existing Affino Treeview panel and property panel.
+
+The tree now shows:
+
+- electrical topology from `Substation` to switchgear equipment;
+- IED access points, servers, logical devices, and logical nodes;
+- DataSets and their signal members;
+- ReportControls and the resolved report signal set.
+
+This view is inspection-only. Loading an SCD file in the debug page does not create report subscriptions, enable reports, reserve RCBs, or persist runtime evidence.
+
 ## Runtime Boundary
 
 This slice does not subscribe to devices, open MMS sessions, write backend state, or mutate hardware-facing runtime state. It only normalizes SCD metadata so the later backend/runtime slice can validate report subscriptions against an explicit device and DataSet structure.
