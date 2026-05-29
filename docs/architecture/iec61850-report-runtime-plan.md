@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slice 13A-13D, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slice 13A-13E, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -317,6 +317,24 @@ Still planned:
 
 - Materialize parsed DataSet/report records into model-loader structures.
 - Create the libIEC61850 IED model from those records.
+
+Validation:
+
+- Native C compile, positive dry-run fixture smoke test, and negative missing-IED dry-run smoke test.
+
+### Slice 13E - External IED Simulator Fixture Model Records
+
+Implemented in this slice:
+
+- The fixture scanner now materializes the selected IED into C records for access point, DataSets, DataSet members, and ReportControls.
+- Dry-run output includes first DataSet, first signal, and first ReportControl keys for deterministic model-loader smoke checks.
+- Parsed records are heap-owned by the simulator process and released through an explicit free function.
+- The parser still remains limited to UnitLab fixture schema and does not become a general JSON dependency.
+
+Still planned:
+
+- Parse trigger option and optional-field subobjects into C records.
+- Feed the materialized records into libIEC61850 model creation.
 
 Validation:
 

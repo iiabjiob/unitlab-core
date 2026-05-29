@@ -176,12 +176,12 @@ int main(int argc, char** argv)
         return 66;
     }
 
-    UnitLabIedFixtureSummary fixture_summary;
+    UnitLabIedFixtureModel fixture_model;
     char fixture_error[256];
-    int valid = unitlab_parse_ied_fixture_summary(
+    int valid = unitlab_parse_ied_fixture_model(
         fixture_text,
         options.ied_name,
-        &fixture_summary,
+        &fixture_model,
         fixture_error,
         sizeof(fixture_error));
     free(fixture_text);
@@ -193,19 +193,30 @@ int main(int argc, char** argv)
     if (options.dry_run) {
         printf("unitlab-iec61850-ied-sim: fixture accepted\n");
         printf("schema=%s\n", UNITLAB_IED_SIM_SCHEMA);
-        printf("ied=%s\n", options.ied_name);
-        printf("accessPoint=%s\n", fixture_summary.access_point_name);
-        printf("devices=%zu\n", fixture_summary.device_count);
-        printf("dataSets=%zu\n", fixture_summary.data_set_count);
-        printf("reports=%zu\n", fixture_summary.report_count);
-        printf("signals=%zu\n", fixture_summary.signal_count);
+        printf("ied=%s\n", fixture_model.ied_name);
+        printf("accessPoint=%s\n", fixture_model.access_point_name);
+        printf("devices=%zu\n", fixture_model.device_count);
+        printf("dataSets=%zu\n", fixture_model.data_set_count);
+        printf("reports=%zu\n", fixture_model.report_count);
+        printf("signals=%zu\n", fixture_model.signal_count);
+        if (fixture_model.data_set_count > 0U) {
+            printf("firstDataSet=%s\n", fixture_model.data_sets[0].reference);
+        }
+        if (fixture_model.data_set_count > 0U && fixture_model.data_sets[0].signal_count > 0U) {
+            printf("firstSignal=%s\n", fixture_model.data_sets[0].signals[0].reference);
+        }
+        if (fixture_model.report_count > 0U) {
+            printf("firstReport=%s\n", fixture_model.reports[0].key);
+        }
         printf("bind=%s\n", options.bind_address);
         printf("port=%d\n", options.port);
         printf("libiec61850=%s\n", libiec61850_status());
+        unitlab_free_ied_fixture_model(&fixture_model);
         return 0;
     }
 
     fprintf(stderr, "MMS_SERVER_NOT_IMPLEMENTED: this slice only validates the external simulator process boundary.\n");
     fprintf(stderr, "libiec61850=%s\n", libiec61850_status());
+    unitlab_free_ied_fixture_model(&fixture_model);
     return 69;
 }
