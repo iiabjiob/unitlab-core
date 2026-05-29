@@ -173,6 +173,66 @@ class Iec61850ReportEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class Iec61850SelectedSignal:
+    id: str
+    address: str
+    label: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850ReportSubscriptionPlanSignal:
+    selected_signal: Iec61850SelectedSignal
+    model_reference: str
+    ied_name: str
+    match_kind: str
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850SignalObservation:
+    event_id: str
+    report_candidate_id: str
+    selected_signal_id: str
+    selected_signal_address: str
+    selected_signal_label: str | None
+    ied_name: str
+    model_reference: str
+    match_kind: str
+    data_set_index: int
+    data_reference: str | None
+    value: bool | int | float | str | None
+    reason_code: Iec61850ReportReason
+    timestamp: str
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850UnselectedReportValue:
+    data_set_index: int
+    reference: str
+    data_reference: str | None
+    value: bool | int | float | str | None
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850ReportObservationDiagnostic:
+    severity: str
+    code: str
+    message: str
+    reference: Iec61850ReportControlRef
+    signal_id: str | None = None
+    address: str | None = None
+    data_reference: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850ReportObservationResult:
+    event_id: str
+    report_candidate_id: str
+    observations: tuple[Iec61850SignalObservation, ...]
+    unselected_values: tuple[Iec61850UnselectedReportValue, ...]
+    diagnostics: tuple[Iec61850ReportObservationDiagnostic, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Iec61850ReportRuntimeEvent:
     id: str
     at: str
@@ -336,6 +396,86 @@ def compare_report_control_state(
         diagnostics.append(Iec61850RuntimeDiagnostic("warning", "OPTFIELDS_MISMATCH", "Live OptFlds does not match SCD.", reference))
 
     return tuple(diagnostics)
+
+
+def map_report_event_to_signal_observations(
+    *,
+    candidate: Iec61850ReportControlCandidate,
+    matched_signals: Sequence[Iec61850ReportSubscriptionPlanSignal],
+    event: Iec61850ReportEvent,
+) -> Iec61850ReportObservationResult:
+    values_by_reference = {
+        _normalize_observation_reference(value.reference, candidate): value
+        for value in event.values
+    }
+    selected_references: set[str] = set()
+    observations: list[Iec61850SignalObservation] = []
+    diagnostics: list[Iec61850ReportObservationDiagnostic] = []
+
+    for signal in matched_signals:
+        key = _normalize_observation_reference(signal.model_reference, candidate)
+        selected_references.add(key)
+        value = values_by_reference.get(key)
+        if value is None:
+            diagnostics.append(Iec61850ReportObservationDiagnostic(
+                severity="info",
+                code="SIGNAL_NOT_INCLUDED_IN_REPORT_EVENT",
+                message=f'Selected signal "{signal.selected_signal.address}" was not included in this report event.',
+                reference=event.report_control,
+                signal_id=signal.selected_signal.id,
+                address=signal.selected_signal.address,
+                data_reference=signal.model_reference,
+            ))
+            continue
+
+        observations.append(Iec61850SignalObservation(
+            event_id=event.id,
+            report_candidate_id=candidate.id,
+            selected_signal_id=signal.selected_signal.id,
+            selected_signal_address=signal.selected_signal.address,
+            selected_signal_label=signal.selected_signal.label,
+            ied_name=signal.ied_name,
+            model_reference=signal.model_reference,
+            match_kind=signal.match_kind,
+            data_set_index=value.data_set_index,
+            data_reference=value.data_reference,
+            value=value.value,
+            reason_code=value.reason_code,
+            timestamp=value.timestamp,
+        ))
+
+    unselected_values = tuple(
+        Iec61850UnselectedReportValue(
+            data_set_index=value.data_set_index,
+            reference=value.reference,
+            data_reference=value.data_reference,
+            value=value.value,
+        )
+        for value in event.values
+        if _normalize_observation_reference(value.reference, candidate) not in selected_references
+    )
+
+    return Iec61850ReportObservationResult(
+        event_id=event.id,
+        report_candidate_id=candidate.id,
+        observations=tuple(sorted(observations, key=lambda observation: (observation.data_set_index, observation.selected_signal_id))),
+        unselected_values=unselected_values,
+        diagnostics=tuple(diagnostics),
+    )
+
+
+def normalize_report_data_reference(data_reference: str, candidate: Iec61850ReportControlCandidate) -> str:
+    value = data_reference.strip()
+    if not value:
+        return ""
+    if "!" in value:
+        value = value.split("!", 1)[1]
+    ied_prefixed_ld = f"{candidate.ied_name}{candidate.logical_device_inst}"
+    if value.startswith(ied_prefixed_ld):
+        value = value[len(candidate.ied_name):]
+    value = _mms_reference_to_dot_reference(value)
+    value = _slash_reference_to_dot_reference(value)
+    return value
 
 
 def create_iec61850_simulator_adapter(
@@ -629,6 +769,44 @@ def report_control_key(reference: Iec61850ReportControlRef) -> str:
         reference.report_control_name,
         reference.report_kind.value,
     ))
+
+
+def _normalize_observation_reference(reference: str, candidate: Iec61850ReportControlCandidate) -> str:
+    return normalize_report_data_reference(reference, candidate).lower()
+
+
+def _mms_reference_to_dot_reference(reference: str) -> str:
+    if "$" not in reference:
+        return reference
+    logical_node_ref, fc, *path = reference.split("$")
+    if not logical_node_ref or not fc or not path:
+        return reference.replace("$", ".")
+    return f"{logical_node_ref}.{'.'.join(path)}[{fc}]"
+
+
+def _slash_reference_to_dot_reference(reference: str) -> str:
+    fc = _extract_functional_constraint(reference)
+    without_fc = _remove_functional_constraint(reference)
+    parts = [part for part in without_fc.split("/") if part]
+    if len(parts) < 3:
+        return reference
+    ld_inst, logical_node_name, *data_path = parts
+    return f"{ld_inst}/{logical_node_name}.{'.'.join(data_path)}{f'[{fc}]' if fc else ''}"
+
+
+def _extract_functional_constraint(reference: str) -> str | None:
+    if not reference.endswith("]") or "[" not in reference:
+        return None
+    start = reference.rfind("[")
+    if start < 0 or start >= len(reference) - 1:
+        return None
+    return reference[start + 1:-1]
+
+
+def _remove_functional_constraint(reference: str) -> str:
+    if not reference.endswith("]") or "[" not in reference:
+        return reference
+    return reference[:reference.rfind("[")]
 
 
 def _utc_now() -> datetime:

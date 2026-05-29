@@ -9,14 +9,21 @@ from app.services.iec61850 import (
     Iec61850DeviceEndpoint,
     Iec61850OptionalFields,
     Iec61850ReportControlCandidate,
+    Iec61850ReportEvent,
+    Iec61850ReportEventValue,
     Iec61850ReportKind,
     Iec61850ReportReason,
     Iec61850ReportRuntimeError,
     Iec61850ReportRuntimeService,
+    Iec61850ReportSubscriptionPlanSignal,
     Iec61850RuntimeMode,
     Iec61850RuntimeStatus,
     Iec61850RuntimeTriggerOptions,
+    Iec61850SelectedSignal,
     create_iec61850_simulator_adapter,
+    map_report_event_to_signal_observations,
+    normalize_report_data_reference,
+    to_report_control_ref,
 )
 
 
@@ -58,6 +65,71 @@ def test_backend_runtime_service_owns_simulator_session_flow() -> None:
         "release",
         "disconnect",
     ]
+
+
+def test_backend_runtime_maps_gi_report_to_signal_observations() -> None:
+    candidate = _candidate()
+    endpoint = _endpoint()
+    adapter = create_iec61850_simulator_adapter(now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC))
+    service = Iec61850ReportRuntimeService(adapter)
+    service.open_session(session_id="session-1", endpoint=endpoint, candidates=[candidate])
+    service.reserve_report_control(session_id="session-1", candidate=candidate, client_id="unitlab")
+    service.enable_report_control(session_id="session-1", candidate=candidate, client_id="unitlab")
+
+    report = service.send_general_interrogation(session_id="session-1", candidate=candidate, client_id="unitlab")
+    result = map_report_event_to_signal_observations(
+        candidate=candidate,
+        matched_signals=_matched_signals(),
+        event=report,
+    )
+
+    assert result.diagnostics == ()
+    assert [(observation.selected_signal_id, observation.model_reference, observation.value) for observation in result.observations] == [
+        ("sig-1", "LD0/XCBR1.Pos.stVal[ST]", 0),
+        ("sig-2", "LD0/PGGIO1.Ind1[ST]", 1),
+    ]
+    assert result.unselected_values == ()
+
+
+def test_backend_runtime_maps_subset_report_to_signal_observation_diagnostics() -> None:
+    candidate = _candidate()
+    report = Iec61850ReportEvent(
+        id="event-1",
+        endpoint_id="sim:IED1/AP1",
+        received_at="2026-05-29T12:00:03Z",
+        report_control=to_report_control_ref(candidate),
+        rpt_id=candidate.rpt_id,
+        data_set_ref=candidate.data_set_ref,
+        conf_rev=candidate.conf_rev,
+        sequence_number=3,
+        time_of_entry="2026-05-29T12:00:03Z",
+        entry_id="entry-3",
+        buffer_overflow=False,
+        reason=Iec61850ReportReason.DATA_CHANGE,
+        values=(
+            Iec61850ReportEventValue(
+                data_set_index=0,
+                reference="LD0/XCBR1.Pos.stVal[ST]",
+                data_reference="IED1LD0/XCBR1$ST$Pos$stVal",
+                value=True,
+                reason_code=Iec61850ReportReason.DATA_CHANGE,
+                timestamp="2026-05-29T12:00:03Z",
+            ),
+        ),
+    )
+
+    result = map_report_event_to_signal_observations(
+        candidate=candidate,
+        matched_signals=_matched_signals(),
+        event=report,
+    )
+
+    assert normalize_report_data_reference("IED1LD0/XCBR1$ST$Pos$stVal", candidate) == "LD0/XCBR1.Pos.stVal[ST]"
+    assert len(result.observations) == 1
+    assert result.observations[0].selected_signal_id == "sig-1"
+    assert result.observations[0].reason_code == Iec61850ReportReason.DATA_CHANGE
+    assert result.diagnostics[0].code == "SIGNAL_NOT_INCLUDED_IN_REPORT_EVENT"
+    assert result.diagnostics[0].signal_id == "sig-2"
 
 
 def test_backend_runtime_service_surfaces_deterministic_simulator_failures() -> None:
@@ -162,5 +234,22 @@ def _candidate(id: str = "report-1", conf_rev: str = "7") -> Iec61850ReportContr
         signals=(
             Iec61850DataSetMember(reference="LD0/XCBR1.Pos.stVal[ST]", fc="ST"),
             Iec61850DataSetMember(reference="LD0/PGGIO1.Ind1[ST]", fc="ST"),
+        ),
+    )
+
+
+def _matched_signals() -> tuple[Iec61850ReportSubscriptionPlanSignal, ...]:
+    return (
+        Iec61850ReportSubscriptionPlanSignal(
+            selected_signal=Iec61850SelectedSignal(id="sig-1", address="IED1LD0/XCBR1/Pos/stVal[ST]"),
+            model_reference="LD0/XCBR1.Pos.stVal[ST]",
+            ied_name="IED1",
+            match_kind="exact",
+        ),
+        Iec61850ReportSubscriptionPlanSignal(
+            selected_signal=Iec61850SelectedSignal(id="sig-2", address="IED1LD0/PGGIO1/Ind1[ST]"),
+            model_reference="LD0/PGGIO1.Ind1[ST]",
+            ied_name="IED1",
+            match_kind="exact",
         ),
     )

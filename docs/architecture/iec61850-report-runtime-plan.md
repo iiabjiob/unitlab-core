@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-8 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, and the IEC/C# compliance map are implemented.
+Status: slices 1-9 plus compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -169,7 +169,22 @@ Validation:
 - Frontend unit tests cover GI observations, subset data-change observations, and unplanned report diagnostics.
 - Observations are UnitLab evidence DTOs, not IEC attributes.
 
-### Slice 9 - MMS Adapter Spike Behind Simulator Parity
+### Slice 9 - Backend Observation Mapping Parity
+
+Implemented in this slice:
+
+- Backend simulator runtime now has signal observation DTOs mirroring the portable frontend core shape.
+- Backend report events can be mapped to selected Signal List observations with selected signal id/address/label, model reference, report value, reason code, timestamp, and match kind.
+- Backend mapper supports MMS-style `$FC$` data references, slash references, IED-prefixed references, and SCD dot references.
+- Subset report events produce observations for included selected signals and info diagnostics for selected signals not included in that event.
+- No public REST/WebSocket API is added.
+
+Validation:
+
+- Backend service tests cover GI observation mapping and subset data-change observation diagnostics.
+- Simulator-only; no real MMS/device communication.
+
+### Slice 10 - MMS Adapter Spike Behind Simulator Parity
 
 Planned only after simulator runner parity passes:
 
