@@ -17,6 +17,16 @@ typedef struct ServerThreadContext {
     UnitLabIedModelLoadResult load_result;
 } ServerThreadContext;
 
+typedef struct ReportProbeContext {
+    volatile int report_count;
+    int value_count;
+    int first_value;
+    int first_reason;
+    int conf_rev;
+    char rpt_id[128];
+    char data_set_name[256];
+} ReportProbeContext;
+
 static int expect_true(int condition, const char* message)
 {
     if (!condition) {
@@ -156,6 +166,81 @@ static IedConnection connect_with_retry(int port, IedClientError* final_error)
     return NULL;
 }
 
+static void report_callback(void* parameter, ClientReport report)
+{
+    ReportProbeContext* context = (ReportProbeContext*)parameter;
+    context->report_count++;
+
+    char* rpt_id = ClientReport_getRptId(report);
+    if (rpt_id != NULL) {
+        snprintf(context->rpt_id, sizeof(context->rpt_id), "%s", rpt_id);
+    }
+
+    const char* data_set_name = ClientReport_getDataSetName(report);
+    if (data_set_name != NULL) {
+        snprintf(context->data_set_name, sizeof(context->data_set_name), "%s", data_set_name);
+    }
+
+    if (ClientReport_hasConfRev(report)) {
+        context->conf_rev = (int)ClientReport_getConfRev(report);
+    }
+    if (ClientReport_hasReasonForInclusion(report)) {
+        context->first_reason = ClientReport_getReasonForInclusion(report, 0);
+    }
+
+    MmsValue* values = ClientReport_getDataSetValues(report);
+    if (values != NULL) {
+        context->value_count = (int)MmsValue_getArraySize(values);
+        if (context->value_count > 0) {
+            MmsValue* first_value = MmsValue_getElement(values, 0);
+            if (first_value != NULL) {
+                context->first_value = MmsValue_toInt32(first_value);
+            }
+        }
+    }
+}
+
+static int verify_report_gi(IedConnection connection)
+{
+    int passed = 1;
+    IedClientError error = IED_ERROR_OK;
+    const char* rcb_ref = "IED1LD0/LLN0.BR.brcbEvents";
+    ReportProbeContext context = {0};
+
+    ClientReportControlBlock rcb = IedConnection_getRCBValues(connection, &error, rcb_ref, NULL);
+    passed &= expect_true(error == IED_ERROR_OK, "BRCB metadata read should succeed before GI");
+    passed &= expect_true(rcb != NULL, "BRCB should be readable before GI");
+    if (rcb == NULL) {
+        return 0;
+    }
+
+    IedConnection_installReportHandler(connection, rcb_ref, ClientReportControlBlock_getRptId(rcb), report_callback, &context);
+
+    ClientReportControlBlock_setRptEna(rcb, true);
+    ClientReportControlBlock_setGI(rcb, true);
+    IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_RPT_ENA | RCB_ELEMENT_GI, true);
+    passed &= expect_true(error == IED_ERROR_OK, "BRCB enable and GI write should succeed");
+
+    for (int attempt = 0; attempt < 20 && context.report_count == 0; attempt++) {
+        Thread_sleep(100);
+    }
+
+    passed &= expect_true(context.report_count > 0, "GI should produce at least one report");
+    passed &= expect_string(context.rpt_id, "events", "GI report RptID");
+    passed &= expect_string_contains(context.data_set_name, "dsEvents", "GI report DataSet name");
+    passed &= expect_true(context.conf_rev == 1, "GI report ConfRev should come from fixture");
+    passed &= expect_true(context.value_count == 1, "GI report should include one DataSet value");
+    passed &= expect_true(context.first_value == 1, "GI report value should come from fixture initialValue");
+    passed &= expect_true((context.first_reason & IEC61850_REASON_GI) != 0, "GI report reason should include GI");
+
+    ClientReportControlBlock_setRptEna(rcb, false);
+    IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_RPT_ENA, true);
+    passed &= expect_true(error == IED_ERROR_OK, "BRCB disable should succeed");
+    IedConnection_uninstallReportHandler(connection, rcb_ref);
+    ClientReportControlBlock_destroy(rcb);
+    return passed;
+}
+
 static int verify_server_metadata(IedConnection connection)
 {
     int passed = 1;
@@ -250,6 +335,7 @@ int main(void)
 
     if (connection != NULL) {
         passed &= verify_server_metadata(connection);
+        passed &= verify_report_gi(connection);
         IedConnection_close(connection);
         IedConnection_destroy(connection);
     }
@@ -259,6 +345,10 @@ int main(void)
         unitlab_probe_ied_server_metadata(&fixture, &plan, &server.config, &probe_result),
         probe_result.message);
     passed &= expect_string(probe_result.code, "IEC61850_METADATA_PROBE_OK", "metadata probe status code");
+    passed &= expect_true(
+        unitlab_probe_ied_server_gi(&fixture, &plan, &server.config, &probe_result),
+        probe_result.message);
+    passed &= expect_string(probe_result.code, "IEC61850_GI_PROBE_OK", "GI probe status code");
 
     server.stop_requested = 1;
     Thread_destroy(server_thread);

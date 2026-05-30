@@ -1,6 +1,6 @@
 # UnitLab IEC 61850 IED Simulator
 
-Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan/loader boundary, can start one libIEC61850 MMS server when built with libIEC61850, and can probe DataSet/BRCB metadata through a linked client.
+Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan/loader boundary, can start one libIEC61850 MMS server when built with libIEC61850, and can probe DataSet/BRCB metadata plus a GI report through a linked client.
 
 This directory is the boundary for the future libIEC61850-based IED simulator. It is intentionally separate from UnitLab backend/core runtime so GPL/native code cannot leak into production logic by accident.
 
@@ -187,6 +187,31 @@ libiec61850=linked
 
 The backend uses this as an internal simulator readiness helper. It proves MMS metadata is readable from the external simulator, but it is not the production MMS adapter.
 
+## GI Probe
+
+When linked with libIEC61850, `--gi-probe` connects to an already running simulator endpoint, enables the first ReportControl, requests GI, verifies the received report metadata, checks the DataSet value count, and checks the first reported value against the fixture `initialValue`:
+
+```bash
+/tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim \
+  --fixture simulator/iec61850_ied/examples/single-report.fixture.json \
+  --ied IED1 \
+  --bind 127.0.0.1 \
+  --port 1102 \
+  --gi-probe
+```
+
+Expected result:
+
+```text
+unitlab-iec61850-ied-sim: GI probe accepted
+ied=IED1
+endpoint=127.0.0.1:1102
+reports=1
+libiec61850=linked
+```
+
+The probe is a simulator validation tool. It is not a substitute for the future backend MMS adapter and does not execute production subscriptions.
+
 ## Linked Client Smoke
 
 When built with libIEC61850, CTest also runs `unitlab-iec61850-ied-linked-client-smoke`.
@@ -198,6 +223,7 @@ That test starts the simulator on `127.0.0.1`, connects with libIEC61850's `IedC
 - DataSet member directory discovery;
 - BRCB directory discovery;
 - BRCB metadata reads for `RptID`, `DatSet`, `ConfRev`, `BufTm`, and `IntgPd`.
+- BRCB enable, GI request, report callback, and first fixture value validation.
 
 This remains an internal simulator validation path. It does not make UnitLab production runtime depend on libIEC61850.
 
@@ -219,6 +245,6 @@ The model plan now normalizes the fixture into the validated blueprint that the 
 Continue the libIEC61850 server runtime from this model plan:
 
 1. Wire the backend MMS adapter to the external simulator endpoint.
-2. Support GI emission with fixture initial values.
-3. Add backend adapter coverage for read/reserve/enable/disable once the MMS adapter contract is implemented.
+2. Add backend adapter coverage for read/reserve/enable/disable/GI once the MMS adapter contract is implemented.
+3. Add typed FCD/CDC expansion from SCL `DataTypeTemplates`.
 4. Keep all unsupported services fail-closed.

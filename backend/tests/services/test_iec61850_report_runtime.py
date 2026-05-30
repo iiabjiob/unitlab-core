@@ -39,6 +39,7 @@ from app.services.iec61850 import (
     normalize_report_data_reference,
     prepare_ied_simulator_process_plan,
     prepare_ied_simulator_process_plan_from_subscription_plan,
+    run_ied_simulator_gi_probe,
     run_ied_simulator_metadata_probe,
     run_ied_simulator_process_plan_startup_checks,
     run_ied_simulator_startup_check,
@@ -666,6 +667,46 @@ def test_backend_runtime_external_ied_simulator_metadata_probe_fails_closed(tmp_
 
     assert error.value.code == "SIMULATOR_METADATA_PROBE_FAILED"
     assert "IEC61850_METADATA_PROBE_RCB_READ_FAILED" in str(error.value)
+
+
+def test_backend_runtime_external_ied_simulator_gi_probe_uses_safe_process_invocation(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+
+    def runner(command, **kwargs):
+        assert isinstance(command, tuple)
+        assert command[-1] == "--gi-probe"
+        assert "--dry-run" not in command
+        assert kwargs == {
+            "capture_output": True,
+            "text": True,
+            "timeout": 4.0,
+            "check": False,
+        }
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="GI probe accepted\n", stderr="")
+
+    result = run_ied_simulator_gi_probe(spec, timeout_seconds=4.0, runner=runner)
+
+    assert result.return_code == 0
+    assert result.stdout == "GI probe accepted\n"
+    assert result.command[-1] == "--gi-probe"
+
+
+def test_backend_runtime_external_ied_simulator_gi_probe_fails_closed(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=69,
+            stdout="",
+            stderr="IEC61850_GI_PROBE_REPORT_TIMEOUT\n",
+        )
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        run_ied_simulator_gi_probe(spec, runner=runner)
+
+    assert error.value.code == "SIMULATOR_GI_PROBE_FAILED"
+    assert "IEC61850_GI_PROBE_REPORT_TIMEOUT" in str(error.value)
 
 
 def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_path) -> None:

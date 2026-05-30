@@ -17,7 +17,7 @@
             },
             {
               "dataSetIndex": 1,
-              "reference": "LD0/PGGIO1.Ind1[ST]",
+              "reference": "LD0/PGGIO1.Ind1.stVal[ST]",
               "kind": "FCDA",
               "fc": "ST",
               "initialValue": 1

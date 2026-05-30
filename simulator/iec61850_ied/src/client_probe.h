@@ -11,4 +11,10 @@ int unitlab_probe_ied_server_metadata(
     const UnitLabIedServerConfig* config,
     UnitLabIedModelLoadResult* result);
 
+int unitlab_probe_ied_server_gi(
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    const UnitLabIedServerConfig* config,
+    UnitLabIedModelLoadResult* result);
+
 #endif

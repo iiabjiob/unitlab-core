@@ -62,6 +62,10 @@ class Iec61850IedSimulatorProcessSpec:
         return (*self.base_command, "--metadata-probe")
 
     @property
+    def gi_probe_command(self) -> tuple[str, ...]:
+        return (*self.base_command, "--gi-probe")
+
+    @property
     def endpoint(self) -> Iec61850DeviceEndpoint:
         return Iec61850DeviceEndpoint(
             id=f"mms-simulator:{self.ied_name}/{self.access_point_name}@{self.bind_address}:{self.port}",
@@ -363,6 +367,46 @@ def run_ied_simulator_metadata_probe(
         raise Iec61850ReportRuntimeError(
             "SIMULATOR_METADATA_PROBE_FAILED",
             f"IEC 61850 IED simulator metadata probe failed with exit code {completed.returncode}: {details}",
+        )
+    return result
+
+
+def run_ied_simulator_gi_probe(
+    spec: Iec61850IedSimulatorProcessSpec,
+    *,
+    timeout_seconds: float = 5.0,
+    runner: ProcessRunner = subprocess.run,
+) -> Iec61850IedSimulatorProcessResult:
+    if spec.dry_run:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_GI_PROBE_DRY_RUN_SPEC",
+            "IEC 61850 IED simulator GI probe requires a non-dry-run process spec.",
+        )
+    try:
+        completed = runner(
+            spec.gi_probe_command,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_GI_PROBE_TIMEOUT",
+            f"IEC 61850 IED simulator GI probe timed out after {timeout_seconds:g}s.",
+        ) from exc
+
+    result = Iec61850IedSimulatorProcessResult(
+        command=spec.gi_probe_command,
+        return_code=completed.returncode,
+        stdout=completed.stdout or "",
+        stderr=completed.stderr or "",
+    )
+    if completed.returncode != 0:
+        details = (result.stderr or result.stdout).strip()
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_GI_PROBE_FAILED",
+            f"IEC 61850 IED simulator GI probe failed with exit code {completed.returncode}: {details}",
         )
     return result
 

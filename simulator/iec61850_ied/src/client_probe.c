@@ -16,7 +16,24 @@ static void set_probe_result(UnitLabIedModelLoadResult* result, int loaded, cons
 
 #ifdef UNITLAB_WITH_LIBIEC61850
 
+#include <hal_thread.h>
 #include <iec61850_client.h>
+
+#include <stdlib.h>
+
+typedef struct UnitLabGiProbeContext {
+    volatile int report_count;
+    UnitLabIedFixtureValueKind expected_value_kind;
+    int value_count;
+    int first_integer_value;
+    int first_boolean_value;
+    float first_real_value;
+    char first_string_value[128];
+    int first_reason;
+    int conf_rev;
+    char rpt_id[128];
+    char data_set_name[256];
+} UnitLabGiProbeContext;
 
 static int list_contains(LinkedList list, const char* expected)
 {
@@ -69,6 +86,140 @@ static IedConnection connect_to_server(const UnitLabIedServerConfig* config, Uni
     }
 
     return connection;
+}
+
+static int parse_int32_value(const char* source, int32_t* value)
+{
+    char* end = NULL;
+    long parsed = strtol(source, &end, 10);
+    if (source == end || end == NULL || *end != '\0' || parsed < INT32_MIN || parsed > INT32_MAX) {
+        return 0;
+    }
+    *value = (int32_t)parsed;
+    return 1;
+}
+
+static int parse_real32_value(const char* source, float* value)
+{
+    char* end = NULL;
+    double parsed = strtod(source, &end);
+    if (source == end || end == NULL || *end != '\0') {
+        return 0;
+    }
+    *value = (float)parsed;
+    return 1;
+}
+
+static void report_callback(void* parameter, ClientReport report)
+{
+    UnitLabGiProbeContext* context = (UnitLabGiProbeContext*)parameter;
+    context->report_count++;
+
+    char* rpt_id = ClientReport_getRptId(report);
+    if (rpt_id != NULL) {
+        snprintf(context->rpt_id, sizeof(context->rpt_id), "%s", rpt_id);
+    }
+
+    const char* data_set_name = ClientReport_getDataSetName(report);
+    if (data_set_name != NULL) {
+        snprintf(context->data_set_name, sizeof(context->data_set_name), "%s", data_set_name);
+    }
+
+    if (ClientReport_hasConfRev(report)) {
+        context->conf_rev = (int)ClientReport_getConfRev(report);
+    }
+    if (ClientReport_hasReasonForInclusion(report)) {
+        context->first_reason = ClientReport_getReasonForInclusion(report, 0);
+    }
+
+    MmsValue* values = ClientReport_getDataSetValues(report);
+    if (values == NULL) {
+        return;
+    }
+    context->value_count = (int)MmsValue_getArraySize(values);
+    if (context->value_count == 0) {
+        return;
+    }
+
+    MmsValue* first_value = MmsValue_getElement(values, 0);
+    if (first_value == NULL) {
+        return;
+    }
+    switch (context->expected_value_kind) {
+        case UNITLAB_IED_FIXTURE_VALUE_BOOLEAN:
+            context->first_boolean_value = MmsValue_getBoolean(first_value) ? 1 : 0;
+            break;
+        case UNITLAB_IED_FIXTURE_VALUE_INTEGER:
+            context->first_integer_value = MmsValue_toInt32(first_value);
+            break;
+        case UNITLAB_IED_FIXTURE_VALUE_REAL:
+            context->first_real_value = MmsValue_toFloat(first_value);
+            break;
+        case UNITLAB_IED_FIXTURE_VALUE_STRING: {
+            const char* string_value = MmsValue_toString(first_value);
+            if (string_value != NULL) {
+                snprintf(context->first_string_value, sizeof(context->first_string_value), "%s", string_value);
+            }
+            break;
+        }
+        case UNITLAB_IED_FIXTURE_VALUE_NULL:
+        case UNITLAB_IED_FIXTURE_VALUE_UNKNOWN:
+        default:
+            break;
+    }
+}
+
+static int validate_first_gi_value(
+    const UnitLabIedModelSignal* signal,
+    const UnitLabGiProbeContext* context,
+    UnitLabIedModelLoadResult* result)
+{
+    switch (signal->initial_value_kind) {
+        case UNITLAB_IED_FIXTURE_VALUE_BOOLEAN: {
+            int expected = strcmp(signal->initial_value, "true") == 0 ? 1 : 0;
+            if (context->first_boolean_value != expected) {
+                set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_MISMATCH", "IEC 61850 GI probe read an unexpected boolean value.");
+                return 0;
+            }
+            return 1;
+        }
+        case UNITLAB_IED_FIXTURE_VALUE_INTEGER: {
+            int32_t expected = 0;
+            if (!parse_int32_value(signal->initial_value, &expected) || context->first_integer_value != expected) {
+                set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_MISMATCH", "IEC 61850 GI probe read an unexpected integer value.");
+                return 0;
+            }
+            return 1;
+        }
+        case UNITLAB_IED_FIXTURE_VALUE_REAL: {
+            float expected = 0.0F;
+            float delta = context->first_real_value;
+            if (!parse_real32_value(signal->initial_value, &expected)) {
+                set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_PARSE_FAILED", "IEC 61850 GI probe could not parse the expected real value.");
+                return 0;
+            }
+            delta -= expected;
+            if (delta < 0.0F) {
+                delta = -delta;
+            }
+            if (delta > 0.0001F) {
+                set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_MISMATCH", "IEC 61850 GI probe read an unexpected real value.");
+                return 0;
+            }
+            return 1;
+        }
+        case UNITLAB_IED_FIXTURE_VALUE_STRING:
+            if (strcmp(context->first_string_value, signal->initial_value) != 0) {
+                set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_MISMATCH", "IEC 61850 GI probe read an unexpected string value.");
+                return 0;
+            }
+            return 1;
+        case UNITLAB_IED_FIXTURE_VALUE_NULL:
+        case UNITLAB_IED_FIXTURE_VALUE_UNKNOWN:
+        default:
+            set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_KIND_UNSUPPORTED", "IEC 61850 GI probe requires a typed first DataSet value.");
+            return 0;
+    }
 }
 
 static int verify_logical_devices(
@@ -301,6 +452,152 @@ int unitlab_probe_ied_server_metadata(
     return 1;
 }
 
+int unitlab_probe_ied_server_gi(
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    const UnitLabIedServerConfig* config,
+    UnitLabIedModelLoadResult* result)
+{
+    if (fixture == NULL || plan == NULL || config == NULL || result == NULL) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_INVALID_ARGUMENT", "Fixture, model plan, server config, and result are required.");
+        return 0;
+    }
+    if (plan->report_count == 0U || plan->data_set_count == 0U || plan->signal_count == 0U) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_EMPTY_PLAN", "IEC 61850 GI probe requires at least one report, DataSet, and signal.");
+        return 0;
+    }
+
+    const UnitLabIedModelReportControl* report = &plan->reports[0];
+    const UnitLabIedModelDataSet* data_set = &plan->data_sets[report->data_set_index];
+    const UnitLabIedModelSignal* first_signal = &plan->signals[data_set->first_signal_index];
+    IedConnection connection = connect_to_server(config, result);
+    if (connection == NULL) {
+        return 0;
+    }
+
+    char logical_node_ref[256];
+    char rcb_ref[384];
+    int passed = format_ref(
+        logical_node_ref,
+        sizeof(logical_node_ref),
+        result,
+        "IEC61850_GI_PROBE_LN_REF_OVERFLOW",
+        "%s%s/%s",
+        fixture->ied_name,
+        report->logical_device_inst,
+        report->logical_node_name);
+    if (passed) {
+        passed = format_ref(
+            rcb_ref,
+            sizeof(rcb_ref),
+            result,
+            "IEC61850_GI_PROBE_RCB_REF_OVERFLOW",
+            report->is_buffered ? "%s.BR.%s" : "%s.RP.%s",
+            logical_node_ref,
+            report->name,
+            "");
+    }
+
+    IedClientError error = IED_ERROR_OK;
+    ClientReportControlBlock rcb = NULL;
+    UnitLabGiProbeContext context = {
+        .expected_value_kind = first_signal->initial_value_kind,
+    };
+    if (passed) {
+        rcb = IedConnection_getRCBValues(connection, &error, rcb_ref, NULL);
+        if (error != IED_ERROR_OK || rcb == NULL) {
+            set_probe_result(result, 0, "IEC61850_GI_PROBE_RCB_READ_FAILED", "IEC 61850 GI probe failed to read ReportControl values.");
+            passed = 0;
+        }
+    }
+
+    if (passed) {
+        IedConnection_installReportHandler(connection, rcb_ref, ClientReportControlBlock_getRptId(rcb), report_callback, &context);
+        if (report->is_buffered) {
+            ClientReportControlBlock_setResvTms(rcb, 30);
+            IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_RESV_TMS, true);
+            if (error != IED_ERROR_OK) {
+                char message[256];
+                snprintf(message, sizeof(message), "IEC 61850 GI probe failed to reserve the buffered ReportControl: %s.", IedClientError_toString(error));
+                set_probe_result(result, 0, "IEC61850_GI_PROBE_RESERVE_FAILED", message);
+                passed = 0;
+            }
+        }
+    }
+
+    if (passed) {
+        ClientReportControlBlock_setRptEna(rcb, true);
+        IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_RPT_ENA, true);
+        if (error != IED_ERROR_OK) {
+            char message[256];
+            snprintf(message, sizeof(message), "IEC 61850 GI probe failed to enable the ReportControl: %s.", IedClientError_toString(error));
+            set_probe_result(result, 0, "IEC61850_GI_PROBE_ENABLE_FAILED", message);
+            passed = 0;
+        }
+    }
+
+    if (passed) {
+        ClientReportControlBlock_setGI(rcb, true);
+        IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_GI, true);
+        if (error != IED_ERROR_OK) {
+            char message[256];
+            snprintf(message, sizeof(message), "IEC 61850 GI probe failed to request GI: %s.", IedClientError_toString(error));
+            set_probe_result(result, 0, "IEC61850_GI_PROBE_GI_FAILED", message);
+            passed = 0;
+        }
+    }
+
+    if (passed) {
+        for (int attempt = 0; attempt < 30 && context.report_count == 0; attempt++) {
+            Thread_sleep(100);
+        }
+        if (context.report_count == 0) {
+            set_probe_result(result, 0, "IEC61850_GI_PROBE_REPORT_TIMEOUT", "IEC 61850 GI probe did not receive a report after GI.");
+            passed = 0;
+        }
+    }
+
+    if (passed && report->rpt_id[0] != '\0' && strcmp(context.rpt_id, report->rpt_id) != 0) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_RPTID_MISMATCH", "IEC 61850 GI probe received an unexpected RptID.");
+        passed = 0;
+    }
+    if (passed && strstr(context.data_set_name, data_set->name) == NULL) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_DATASET_MISMATCH", "IEC 61850 GI probe received an unexpected DataSet name.");
+        passed = 0;
+    }
+    if (passed && report->conf_rev_known && context.conf_rev != (int)report->conf_rev) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_CONFREV_MISMATCH", "IEC 61850 GI probe received an unexpected ConfRev.");
+        passed = 0;
+    }
+    if (passed && context.value_count != (int)data_set->member_count) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_COUNT_MISMATCH", "IEC 61850 GI probe received an unexpected number of DataSet values.");
+        passed = 0;
+    }
+    if (passed) {
+        passed = validate_first_gi_value(first_signal, &context, result);
+    }
+    if (passed && report->optional_fields.reason_code.known && report->optional_fields.reason_code.value && (context.first_reason & IEC61850_REASON_GI) == 0) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_REASON_MISMATCH", "IEC 61850 GI probe received a report without GI reason.");
+        passed = 0;
+    }
+
+    if (rcb != NULL) {
+        ClientReportControlBlock_setRptEna(rcb, false);
+        IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_RPT_ENA, true);
+        IedConnection_uninstallReportHandler(connection, rcb_ref);
+        ClientReportControlBlock_destroy(rcb);
+    }
+    IedConnection_close(connection);
+    IedConnection_destroy(connection);
+
+    if (!passed) {
+        return 0;
+    }
+
+    set_probe_result(result, 1, "IEC61850_GI_PROBE_OK", "IEC 61850 GI probe enabled a report, requested GI, and received fixture values.");
+    return 1;
+}
+
 #else
 
 int unitlab_probe_ied_server_metadata(
@@ -317,6 +614,23 @@ int unitlab_probe_ied_server_metadata(
         0,
         "LIBIEC61850_NOT_LINKED",
         "libIEC61850 is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before probing MMS metadata.");
+    return 0;
+}
+
+int unitlab_probe_ied_server_gi(
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    const UnitLabIedServerConfig* config,
+    UnitLabIedModelLoadResult* result)
+{
+    (void)fixture;
+    (void)plan;
+    (void)config;
+    set_probe_result(
+        result,
+        0,
+        "LIBIEC61850_NOT_LINKED",
+        "libIEC61850 is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before probing MMS GI.");
     return 0;
 }
 
