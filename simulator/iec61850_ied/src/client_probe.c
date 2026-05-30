@@ -452,29 +452,25 @@ int unitlab_probe_ied_server_metadata(
     return 1;
 }
 
-int unitlab_probe_ied_server_gi(
+static int probe_gi_report(
+    IedConnection connection,
     const UnitLabIedFixtureModel* fixture,
     const UnitLabIedModelPlan* plan,
-    const UnitLabIedServerConfig* config,
+    const UnitLabIedModelReportControl* report,
     UnitLabIedModelLoadResult* result)
 {
-    if (fixture == NULL || plan == NULL || config == NULL || result == NULL) {
-        set_probe_result(result, 0, "IEC61850_GI_PROBE_INVALID_ARGUMENT", "Fixture, model plan, server config, and result are required.");
-        return 0;
-    }
-    if (plan->report_count == 0U || plan->data_set_count == 0U || plan->signal_count == 0U) {
-        set_probe_result(result, 0, "IEC61850_GI_PROBE_EMPTY_PLAN", "IEC 61850 GI probe requires at least one report, DataSet, and signal.");
+    if (report->data_set_index >= plan->data_set_count) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_DATASET_INDEX_INVALID", "IEC 61850 GI probe found a ReportControl with an invalid DataSet index.");
         return 0;
     }
 
-    const UnitLabIedModelReportControl* report = &plan->reports[0];
     const UnitLabIedModelDataSet* data_set = &plan->data_sets[report->data_set_index];
-    const UnitLabIedModelSignal* first_signal = &plan->signals[data_set->first_signal_index];
-    IedConnection connection = connect_to_server(config, result);
-    if (connection == NULL) {
+    if (data_set->member_count == 0U || data_set->first_signal_index >= plan->signal_count) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_DATASET_EMPTY", "IEC 61850 GI probe requires every ReportControl DataSet to have at least one signal.");
         return 0;
     }
 
+    const UnitLabIedModelSignal* first_signal = &plan->signals[data_set->first_signal_index];
     char logical_node_ref[256];
     char rcb_ref[384];
     int passed = format_ref(
@@ -587,6 +583,37 @@ int unitlab_probe_ied_server_gi(
         IedConnection_uninstallReportHandler(connection, rcb_ref);
         ClientReportControlBlock_destroy(rcb);
     }
+    return passed;
+}
+
+int unitlab_probe_ied_server_gi(
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    const UnitLabIedServerConfig* config,
+    UnitLabIedModelLoadResult* result)
+{
+    if (fixture == NULL || plan == NULL || config == NULL || result == NULL) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_INVALID_ARGUMENT", "Fixture, model plan, server config, and result are required.");
+        return 0;
+    }
+    if (plan->report_count == 0U || plan->data_set_count == 0U || plan->signal_count == 0U) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_EMPTY_PLAN", "IEC 61850 GI probe requires at least one report, DataSet, and signal.");
+        return 0;
+    }
+
+    IedConnection connection = connect_to_server(config, result);
+    if (connection == NULL) {
+        return 0;
+    }
+
+    int passed = 1;
+    for (size_t index = 0U; index < plan->report_count; index++) {
+        if (!probe_gi_report(connection, fixture, plan, &plan->reports[index], result)) {
+            passed = 0;
+            break;
+        }
+    }
+
     IedConnection_close(connection);
     IedConnection_destroy(connection);
 
@@ -594,7 +621,9 @@ int unitlab_probe_ied_server_gi(
         return 0;
     }
 
-    set_probe_result(result, 1, "IEC61850_GI_PROBE_OK", "IEC 61850 GI probe enabled a report, requested GI, and received fixture values.");
+    char message[192];
+    snprintf(message, sizeof(message), "IEC 61850 GI probe validated %zu ReportControl(s).", plan->report_count);
+    set_probe_result(result, 1, "IEC61850_GI_PROBE_OK", message);
     return 1;
 }
 

@@ -77,10 +77,23 @@ static UnitLabIedFixtureModel valid_fixture(
         .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
         .initial_value = "1",
     };
+    signals[1] = (UnitLabIedFixtureSignal){
+        .data_set_index = 0U,
+        .reference = "LD0/PGGIO1.Ind1.stVal[ST]",
+        .kind = "FCDA",
+        .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+        .initial_value = "2",
+    };
     data_sets[0] = (UnitLabIedFixtureDataSet){
         .reference = "IED1/AP1/LD0/LLN0.dsEvents",
         .signal_count = 1U,
         .signals = signals,
+    };
+    data_sets[1] = (UnitLabIedFixtureDataSet){
+        .reference = "IED1/AP1/LD0/LLN0.dsUpdates",
+        .signal_count = 1U,
+        .signals = &signals[1],
     };
     reports[0] = (UnitLabIedFixtureReport){
         .key = "IED1/AP1/LD0/LLN0/brcbEvents/buffered",
@@ -115,15 +128,48 @@ static UnitLabIedFixtureModel valid_fixture(
             .buffer_overflow = { .known = 1, .value = 1 },
         },
     };
+    reports[1] = (UnitLabIedFixtureReport){
+        .key = "IED1/AP1/LD0/LLN0/urcbUpdates/unbuffered",
+        .logical_device_inst = "LD0",
+        .logical_node_name = "LLN0",
+        .report_control_name = "urcbUpdates",
+        .report_kind = "unbuffered",
+        .rpt_id = "updates",
+        .data_set_ref = "IED1/AP1/LD0/LLN0.dsUpdates",
+        .conf_rev = "2",
+        .indexed_known = 1,
+        .indexed = 0,
+        .buffer_time_ms_known = 1,
+        .buffer_time_ms = 0,
+        .integrity_period_ms_known = 1,
+        .integrity_period_ms = 0,
+        .trigger_options = {
+            .data_change = { .known = 1, .value = 1 },
+            .quality_change = { .known = 1, .value = 1 },
+            .data_update = { .known = 1, .value = 0 },
+            .periodic = { .known = 1, .value = 0 },
+            .general_interrogation = { .known = 1, .value = 1 },
+        },
+        .optional_fields = {
+            .sequence_number = { .known = 1, .value = 1 },
+            .timestamp = { .known = 1, .value = 1 },
+            .reason_code = { .known = 1, .value = 1 },
+            .data_set_name = { .known = 1, .value = 1 },
+            .data_reference = { .known = 1, .value = 1 },
+            .entry_id = { .known = 1, .value = 1 },
+            .config_revision = { .known = 1, .value = 1 },
+            .buffer_overflow = { .known = 1, .value = 1 },
+        },
+    };
     return (UnitLabIedFixtureModel){
         .device_count = 1U,
         .ied_name = "IED1",
         .access_point_name = "AP1",
-        .data_set_count = 1U,
+        .data_set_count = 2U,
         .data_sets = data_sets,
-        .report_count = 1U,
+        .report_count = 2U,
         .reports = reports,
-        .signal_count = 1U,
+        .signal_count = 2U,
     };
 }
 
@@ -298,9 +344,9 @@ static int verify_server_metadata(IedConnection connection)
 
 int main(void)
 {
-    UnitLabIedFixtureSignal signals[1];
-    UnitLabIedFixtureDataSet data_sets[1];
-    UnitLabIedFixtureReport reports[1];
+    UnitLabIedFixtureSignal signals[2];
+    UnitLabIedFixtureDataSet data_sets[2];
+    UnitLabIedFixtureReport reports[2];
     UnitLabIedFixtureModel fixture = valid_fixture(data_sets, reports, signals);
     UnitLabIedModelPlan plan;
     char error[256];
@@ -349,6 +395,7 @@ int main(void)
         unitlab_probe_ied_server_gi(&fixture, &plan, &server.config, &probe_result),
         probe_result.message);
     passed &= expect_string(probe_result.code, "IEC61850_GI_PROBE_OK", "GI probe status code");
+    passed &= expect_string_contains(probe_result.message, "2 ReportControl", "GI probe should validate all fixture ReportControls");
 
     server.stop_requested = 1;
     Thread_destroy(server_thread);
