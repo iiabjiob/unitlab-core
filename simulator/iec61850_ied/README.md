@@ -1,6 +1,6 @@
 # UnitLab IEC 61850 IED Simulator
 
-Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan/loader boundary and can start one libIEC61850 MMS server when built with libIEC61850.
+Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan/loader boundary, can start one libIEC61850 MMS server when built with libIEC61850, and has a linked client smoke test for DataSet/BRCB metadata reads.
 
 This directory is the boundary for the future libIEC61850-based IED simulator. It is intentionally separate from UnitLab backend/core runtime so GPL/native code cannot leak into production logic by accident.
 
@@ -18,6 +18,7 @@ Dry-run scaffold build without libIEC61850:
 ```bash
 cmake -S simulator/iec61850_ied -B /tmp/unitlab-iec61850-ied-build
 cmake --build /tmp/unitlab-iec61850-ied-build
+ctest --test-dir /tmp/unitlab-iec61850-ied-build --output-on-failure
 ```
 
 Build with libIEC61850 availability check:
@@ -28,6 +29,7 @@ cmake -S simulator/iec61850_ied -B /tmp/unitlab-iec61850-ied-build \
   -DLIBIEC61850_INCLUDE_DIR="/path/to/libiec61850/src/iec61850/inc;/path/to/libiec61850/src/common/inc;/path/to/libiec61850/hal/inc;/path/to/libiec61850/src/mms/inc;/path/to/libiec61850/src/logging" \
   -DLIBIEC61850_LIBRARY=/path/to/libiec61850/build/src/libiec61850.so
 cmake --build /tmp/unitlab-iec61850-ied-build
+ctest --test-dir /tmp/unitlab-iec61850-ied-build --output-on-failure
 ```
 
 Do not ship a libIEC61850-linked binary as part of closed UnitLab runtime without a separate licensing decision.
@@ -159,6 +161,20 @@ Expected current result with libIEC61850:
 
 The linked path creates the dynamic `IedModel`, logical devices, logical nodes, data objects, FCDA data attributes, DataSets, DataSet entries, ReportControls, and `IedServer`.
 
+## Linked Client Smoke
+
+When built with libIEC61850, CTest also runs `unitlab-iec61850-ied-linked-client-smoke`.
+
+That test starts the simulator on `127.0.0.1`, connects with libIEC61850's `IedConnection` client API, and verifies:
+
+- logical device discovery;
+- DataSet directory discovery;
+- DataSet member directory discovery;
+- BRCB directory discovery;
+- BRCB metadata reads for `RptID`, `DatSet`, `ConfRev`, `BufTm`, and `IntgPd`.
+
+This remains an internal simulator validation path. It does not make UnitLab production runtime depend on libIEC61850.
+
 ## Next Slice
 
 The model plan now normalizes the fixture into the validated blueprint that the future libIEC61850 loader must consume:
@@ -176,8 +192,7 @@ The model plan now normalizes the fixture into the validated blueprint that the 
 
 Continue the libIEC61850 server runtime from this model plan:
 
-1. Add a client-side smoke check that connects to `127.0.0.1` and reads RCB/DataSet metadata.
-2. Wire the backend MMS adapter to the external simulator endpoint.
-3. Add explicit readiness probing instead of relying only on process liveness.
-4. Support GI emission with fixture initial values.
-5. Keep all unsupported services fail-closed.
+1. Wire the backend MMS adapter to the external simulator endpoint.
+2. Add explicit readiness probing instead of relying only on process liveness.
+3. Support GI emission with fixture initial values.
+4. Keep all unsupported services fail-closed.

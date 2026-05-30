@@ -83,3 +83,21 @@ add_test(
   NAME unitlab-iec61850-ied-model-loader
   COMMAND unitlab-iec61850-ied-model-loader-test
 )
+
+if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)
+  add_executable(unitlab-iec61850-ied-linked-client-smoke-test
+    src/libiec61850_model_builder.c
+    src/model_loader.c
+    src/model_plan.c
+    tests/linked_client_smoke_test.c
+  )
+  target_compile_definitions(unitlab-iec61850-ied-linked-client-smoke-test PRIVATE UNITLAB_WITH_LIBIEC61850=1)
+  target_include_directories(unitlab-iec61850-ied-linked-client-smoke-test PRIVATE src "${LIBIEC61850_INCLUDE_DIR}")
+  target_link_libraries(unitlab-iec61850-ied-linked-client-smoke-test PRIVATE "${LIBIEC61850_LIBRARY}")
+  unitlab_iec61850_sim_warnings(unitlab-iec61850-ied-linked-client-smoke-test)
+
+  add_test(
+    NAME unitlab-iec61850-ied-linked-client-smoke
+    COMMAND unitlab-iec61850-ied-linked-client-smoke-test
+  )
+endif()
