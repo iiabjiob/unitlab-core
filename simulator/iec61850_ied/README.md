@@ -193,6 +193,6 @@ The model plan now normalizes the fixture into the validated blueprint that the 
 Continue the libIEC61850 server runtime from this model plan:
 
 1. Wire the backend MMS adapter to the external simulator endpoint.
-2. Add explicit readiness probing instead of relying only on process liveness.
+2. Add backend MMS metadata readiness once the adapter can read DataSet/RCB metadata.
 3. Support GI emission with fixture initial values.
 4. Keep all unsupported services fail-closed.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import subprocess
 import time
 from dataclasses import dataclass, replace
@@ -125,6 +126,7 @@ class Iec61850IedSimulatorProcessPlanRunResult:
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 ProcessFactory = Callable[..., subprocess.Popen[str]]
 SleepFn = Callable[[float], None]
+SocketConnector = Callable[[tuple[str, int], float], object]
 
 
 def write_ied_simulator_fixture_file(
@@ -317,13 +319,74 @@ def run_ied_simulator_process_plan_startup_checks(
     )
 
 
+def wait_ied_simulator_process_ready(
+    spec: Iec61850IedSimulatorProcessSpec,
+    process: subprocess.Popen[str],
+    *,
+    timeout_seconds: float = 5.0,
+    retry_interval_seconds: float = 0.05,
+    connector: SocketConnector = socket.create_connection,
+    sleep: SleepFn = time.sleep,
+) -> None:
+    endpoint = spec.endpoint
+    if endpoint.mode != Iec61850RuntimeMode.MMS:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_ENDPOINT_MODE_INVALID",
+            "IEC 61850 IED simulator readiness requires an MMS endpoint.",
+        )
+    if not endpoint.host:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_ENDPOINT_HOST_INVALID",
+            "IEC 61850 IED simulator readiness requires an endpoint host.",
+        )
+    if endpoint.port <= 0 or endpoint.port > 65535:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_ENDPOINT_PORT_INVALID",
+            f"IEC 61850 IED simulator readiness requires a valid TCP port, got {endpoint.port}.",
+        )
+
+    deadline = time.monotonic() + max(timeout_seconds, 0.0)
+    last_error: OSError | None = None
+    while True:
+        return_code = process.poll()
+        if return_code is not None:
+            stdout, stderr = _communicate_finished_process(process)
+            details = (stderr or stdout).strip()
+            raise Iec61850ReportRuntimeError(
+                "SIMULATOR_PROCESS_EXITED",
+                f"IEC 61850 IED simulator process exited before endpoint readiness with code {return_code}: {details}",
+            )
+
+        remaining = max(deadline - time.monotonic(), 0.0)
+        try:
+            connection = connector((endpoint.host, endpoint.port), min(remaining, 1.0))
+            close = getattr(connection, "close", None)
+            if callable(close):
+                close()
+            return
+        except OSError as exc:
+            last_error = exc
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            details = f": {last_error}" if last_error is not None else ""
+            raise Iec61850ReportRuntimeError(
+                "SIMULATOR_ENDPOINT_READY_TIMEOUT",
+                f"IEC 61850 IED simulator endpoint {endpoint.host}:{endpoint.port} did not become reachable within {timeout_seconds:g}s{details}.",
+            )
+        sleep(min(retry_interval_seconds, remaining))
+
+
 def start_ied_simulator_process(
     spec: Iec61850IedSimulatorProcessSpec,
     *,
     startup_check_timeout_seconds: float = 5.0,
     startup_grace_seconds: float = 0.1,
+    readiness_timeout_seconds: float = 5.0,
+    readiness_retry_interval_seconds: float = 0.05,
     runner: ProcessRunner = subprocess.run,
     process_factory: ProcessFactory = subprocess.Popen,
+    readiness_connector: SocketConnector = socket.create_connection,
     sleep: SleepFn = time.sleep,
 ) -> Iec61850IedSimulatorProcessHandle:
     if spec.dry_run:
@@ -361,12 +424,26 @@ def start_ied_simulator_process(
             f"IEC 61850 IED simulator process exited during startup with code {return_code}: {details}",
         )
 
-    return Iec61850IedSimulatorProcessHandle(
+    handle = Iec61850IedSimulatorProcessHandle(
         spec=spec,
         endpoint=spec.endpoint,
         pid=process.pid,
         process=process,
     )
+    try:
+        wait_ied_simulator_process_ready(
+            spec,
+            process,
+            timeout_seconds=readiness_timeout_seconds,
+            retry_interval_seconds=readiness_retry_interval_seconds,
+            connector=readiness_connector,
+            sleep=sleep,
+        )
+    except Exception:
+        stop_ied_simulator_process(handle)
+        raise
+
+    return handle
 
 
 def start_ied_simulator_process_plan(
@@ -374,9 +451,12 @@ def start_ied_simulator_process_plan(
     *,
     startup_check_timeout_seconds: float = 5.0,
     startup_grace_seconds: float = 0.1,
+    readiness_timeout_seconds: float = 5.0,
+    readiness_retry_interval_seconds: float = 0.05,
     terminate_timeout_seconds: float = 5.0,
     runner: ProcessRunner = subprocess.run,
     process_factory: ProcessFactory = subprocess.Popen,
+    readiness_connector: SocketConnector = socket.create_connection,
     sleep: SleepFn = time.sleep,
 ) -> tuple[Iec61850IedSimulatorProcessHandle, ...]:
     handles: list[Iec61850IedSimulatorProcessHandle] = []
@@ -387,8 +467,11 @@ def start_ied_simulator_process_plan(
                     spec,
                     startup_check_timeout_seconds=startup_check_timeout_seconds,
                     startup_grace_seconds=startup_grace_seconds,
+                    readiness_timeout_seconds=readiness_timeout_seconds,
+                    readiness_retry_interval_seconds=readiness_retry_interval_seconds,
                     runner=runner,
                     process_factory=process_factory,
+                    readiness_connector=readiness_connector,
                     sleep=sleep,
                 )
             )
@@ -412,9 +495,12 @@ def run_report_subscription_plan_with_external_ied_simulators(
     base_port: int = 1102,
     startup_check_timeout_seconds: float = 5.0,
     startup_grace_seconds: float = 0.1,
+    readiness_timeout_seconds: float = 5.0,
+    readiness_retry_interval_seconds: float = 0.05,
     terminate_timeout_seconds: float = 5.0,
     runner: ProcessRunner = subprocess.run,
     process_factory: ProcessFactory = subprocess.Popen,
+    readiness_connector: SocketConnector = socket.create_connection,
     sleep: SleepFn = time.sleep,
 ) -> Iec61850IedSimulatorProcessPlanRunResult:
     process_plan = prepare_ied_simulator_process_plan_from_subscription_plan(
@@ -428,9 +514,12 @@ def run_report_subscription_plan_with_external_ied_simulators(
         process_plan,
         startup_check_timeout_seconds=startup_check_timeout_seconds,
         startup_grace_seconds=startup_grace_seconds,
+        readiness_timeout_seconds=readiness_timeout_seconds,
+        readiness_retry_interval_seconds=readiness_retry_interval_seconds,
         terminate_timeout_seconds=terminate_timeout_seconds,
         runner=runner,
         process_factory=process_factory,
+        readiness_connector=readiness_connector,
         sleep=sleep,
     )
     stop_results: tuple[Iec61850IedSimulatorProcessStopResult, ...] = ()

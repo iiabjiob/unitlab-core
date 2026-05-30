@@ -48,6 +48,7 @@ from app.services.iec61850 import (
     start_ied_simulator_process_plan,
     stop_ied_simulator_process,
     to_report_control_ref,
+    wait_ied_simulator_process_ready,
     write_ied_simulator_fixture_file,
 )
 
@@ -649,6 +650,7 @@ def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_pat
         startup_grace_seconds=0,
         runner=runner,
         process_factory=process_factory,
+        readiness_connector=_ready_socket_connector,
     )
     stop = stop_ied_simulator_process(handle)
 
@@ -657,6 +659,54 @@ def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_pat
     assert process.terminated is True
     assert stop.return_code == 0
     assert stop.killed is False
+
+
+def test_backend_runtime_external_ied_simulator_process_readiness_uses_tcp_probe(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+    process = _FakeSimulatorProcess(pid=61850)
+    attempts: list[tuple[tuple[str, int], float]] = []
+
+    def connector(address, timeout):
+        attempts.append((address, timeout))
+        return _FakeSocket()
+
+    wait_ied_simulator_process_ready(
+        spec,
+        process,
+        timeout_seconds=1.0,
+        connector=connector,
+        sleep=lambda _: None,
+    )
+
+    assert attempts[0][0] == ("127.0.0.1", 1102)
+    assert 0 < attempts[0][1] <= 1.0
+
+
+def test_backend_runtime_external_ied_simulator_process_readiness_fails_closed_and_stops_process(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+    process = _FakeSimulatorProcess(pid=61850)
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+
+    def process_factory(command, **kwargs):
+        return process
+
+    def connector(address, timeout):
+        raise OSError("connection refused")
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        start_ied_simulator_process(
+            spec,
+            startup_grace_seconds=0,
+            readiness_timeout_seconds=0,
+            runner=runner,
+            process_factory=process_factory,
+            readiness_connector=connector,
+        )
+
+    assert error.value.code == "SIMULATOR_ENDPOINT_READY_TIMEOUT"
+    assert process.terminated is True
 
 
 def test_backend_runtime_rejects_dry_run_spec_for_external_ied_simulator_process_start(tmp_path) -> None:
@@ -705,6 +755,7 @@ def test_backend_runtime_kills_external_ied_simulator_process_after_stop_timeout
         startup_grace_seconds=0,
         runner=runner,
         process_factory=process_factory,
+        readiness_connector=_ready_socket_connector,
     )
     stop = stop_ied_simulator_process(handle, terminate_timeout_seconds=0.1)
 
@@ -839,6 +890,7 @@ def test_backend_runtime_external_ied_simulator_process_plan_cleans_up_on_partia
             startup_grace_seconds=0,
             runner=runner,
             process_factory=process_factory,
+            readiness_connector=_ready_socket_connector,
         )
 
     assert error.value.code == "SIMULATOR_PROCESS_EXITED"
@@ -867,6 +919,7 @@ def test_backend_runtime_external_ied_simulator_wrapper_runs_through_mms_boundar
         startup_grace_seconds=0,
         runner=runner,
         process_factory=process_factory,
+        readiness_connector=_ready_socket_connector,
     )
 
     assert result.subscription_run.reports[0].error_code == "MMS_ADAPTER_NOT_IMPLEMENTED"
@@ -897,6 +950,7 @@ def test_backend_runtime_external_ied_simulator_wrapper_cleans_up_after_runtime_
             startup_grace_seconds=0,
             runner=runner,
             process_factory=process_factory,
+            readiness_connector=_ready_socket_connector,
         )
 
     assert process.terminated is True
@@ -1116,6 +1170,18 @@ class _FakeSimulatorProcess:
 
     def communicate(self) -> tuple[str, str]:
         return self._stdout, self._stderr
+
+
+class _FakeSocket:
+    def __init__(self) -> None:
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def _ready_socket_connector(address, timeout):
+    return _FakeSocket()
 
 
 class _ExplodingAdapter:
