@@ -37,8 +37,8 @@ class Iec61850IedSimulatorProcessSpec:
     dry_run: bool = False
 
     @property
-    def command(self) -> tuple[str, ...]:
-        command: tuple[str, ...] = (
+    def base_command(self) -> tuple[str, ...]:
+        return (
             self.binary_path,
             "--fixture",
             self.fixture_path,
@@ -49,9 +49,17 @@ class Iec61850IedSimulatorProcessSpec:
             "--port",
             str(self.port),
         )
+
+    @property
+    def command(self) -> tuple[str, ...]:
+        command = self.base_command
         if self.dry_run:
             return (*command, "--dry-run")
         return command
+
+    @property
+    def metadata_probe_command(self) -> tuple[str, ...]:
+        return (*self.base_command, "--metadata-probe")
 
     @property
     def endpoint(self) -> Iec61850DeviceEndpoint:
@@ -319,6 +327,46 @@ def run_ied_simulator_process_plan_startup_checks(
     )
 
 
+def run_ied_simulator_metadata_probe(
+    spec: Iec61850IedSimulatorProcessSpec,
+    *,
+    timeout_seconds: float = 5.0,
+    runner: ProcessRunner = subprocess.run,
+) -> Iec61850IedSimulatorProcessResult:
+    if spec.dry_run:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_METADATA_PROBE_DRY_RUN_SPEC",
+            "IEC 61850 IED simulator metadata probe requires a non-dry-run process spec.",
+        )
+    try:
+        completed = runner(
+            spec.metadata_probe_command,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_METADATA_PROBE_TIMEOUT",
+            f"IEC 61850 IED simulator metadata probe timed out after {timeout_seconds:g}s.",
+        ) from exc
+
+    result = Iec61850IedSimulatorProcessResult(
+        command=spec.metadata_probe_command,
+        return_code=completed.returncode,
+        stdout=completed.stdout or "",
+        stderr=completed.stderr or "",
+    )
+    if completed.returncode != 0:
+        details = (result.stderr or result.stdout).strip()
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_METADATA_PROBE_FAILED",
+            f"IEC 61850 IED simulator metadata probe failed with exit code {completed.returncode}: {details}",
+        )
+    return result
+
+
 def wait_ied_simulator_process_ready(
     spec: Iec61850IedSimulatorProcessSpec,
     process: subprocess.Popen[str],
@@ -384,6 +432,7 @@ def start_ied_simulator_process(
     startup_grace_seconds: float = 0.1,
     readiness_timeout_seconds: float = 5.0,
     readiness_retry_interval_seconds: float = 0.05,
+    metadata_probe_timeout_seconds: float = 5.0,
     runner: ProcessRunner = subprocess.run,
     process_factory: ProcessFactory = subprocess.Popen,
     readiness_connector: SocketConnector = socket.create_connection,
@@ -439,6 +488,11 @@ def start_ied_simulator_process(
             connector=readiness_connector,
             sleep=sleep,
         )
+        run_ied_simulator_metadata_probe(
+            spec,
+            timeout_seconds=metadata_probe_timeout_seconds,
+            runner=runner,
+        )
     except Exception:
         stop_ied_simulator_process(handle)
         raise
@@ -453,6 +507,7 @@ def start_ied_simulator_process_plan(
     startup_grace_seconds: float = 0.1,
     readiness_timeout_seconds: float = 5.0,
     readiness_retry_interval_seconds: float = 0.05,
+    metadata_probe_timeout_seconds: float = 5.0,
     terminate_timeout_seconds: float = 5.0,
     runner: ProcessRunner = subprocess.run,
     process_factory: ProcessFactory = subprocess.Popen,
@@ -469,6 +524,7 @@ def start_ied_simulator_process_plan(
                     startup_grace_seconds=startup_grace_seconds,
                     readiness_timeout_seconds=readiness_timeout_seconds,
                     readiness_retry_interval_seconds=readiness_retry_interval_seconds,
+                    metadata_probe_timeout_seconds=metadata_probe_timeout_seconds,
                     runner=runner,
                     process_factory=process_factory,
                     readiness_connector=readiness_connector,
@@ -497,6 +553,7 @@ def run_report_subscription_plan_with_external_ied_simulators(
     startup_grace_seconds: float = 0.1,
     readiness_timeout_seconds: float = 5.0,
     readiness_retry_interval_seconds: float = 0.05,
+    metadata_probe_timeout_seconds: float = 5.0,
     terminate_timeout_seconds: float = 5.0,
     runner: ProcessRunner = subprocess.run,
     process_factory: ProcessFactory = subprocess.Popen,
@@ -516,6 +573,7 @@ def run_report_subscription_plan_with_external_ied_simulators(
         startup_grace_seconds=startup_grace_seconds,
         readiness_timeout_seconds=readiness_timeout_seconds,
         readiness_retry_interval_seconds=readiness_retry_interval_seconds,
+        metadata_probe_timeout_seconds=metadata_probe_timeout_seconds,
         terminate_timeout_seconds=terminate_timeout_seconds,
         runner=runner,
         process_factory=process_factory,

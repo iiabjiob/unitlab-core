@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slices 13A-13Y, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, backend external simulator endpoint resolution, backend external simulator run orchestration, native external simulator loader validation, DataSet member path blueprinting, initial-value type preservation, report-control runtime blueprinting, report-control bit-mask blueprinting, DataSetEntry variable blueprinting, linked IED/LD/LN container creation, linked MMS server startup, linked client metadata smoke validation, backend simulator endpoint readiness probing, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slices 13A-13Z, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, backend external simulator endpoint resolution, backend external simulator run orchestration, native external simulator loader validation, DataSet member path blueprinting, initial-value type preservation, report-control runtime blueprinting, report-control bit-mask blueprinting, DataSetEntry variable blueprinting, linked IED/LD/LN container creation, linked MMS server startup, linked client metadata smoke validation, backend simulator endpoint readiness probing, backend external simulator metadata probing, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -720,18 +720,39 @@ Implemented in this slice:
 Still planned:
 
 - Wire the backend MMS adapter contract to this simulator endpoint.
-- Add a backend-side MMS metadata readiness check once the adapter can read DataSet/RCB metadata.
 - Add GI/report event smoke coverage through the same adapter boundary.
 
 Validation:
 
 - Backend service tests cover TCP readiness probing, fail-closed timeout, process cleanup after readiness failure, process-plan cleanup, and wrapper cleanup.
 
+### Slice 13Z - Backend External Simulator Metadata Probe
+
+Implemented in this slice:
+
+- The native simulator binary now supports `--metadata-probe` when built with libIEC61850.
+- The probe connects to a running simulator endpoint with libIEC61850 client APIs and verifies logical devices, DataSets, DataSet member counts, BRCB/URCB directories, and RCB values for `RptID`, `DatSet`, `ConfRev`, `BufTm`, and `IntgPd`.
+- Backend external simulator startup now runs this metadata probe after TCP readiness before treating the simulator as ready for runtime execution.
+- Metadata probe failure fails closed with `SIMULATOR_METADATA_PROBE_FAILED` and stops the spawned simulator process.
+- The backend still does not link libIEC61850; it invokes the external simulator binary as an internal test helper.
+
+Still planned:
+
+- Wire the backend MMS adapter contract to this simulator endpoint for actual runtime read/reserve/enable/GI.
+- Add GI/report event smoke coverage through the same adapter boundary.
+
+Validation:
+
+- Native unlinked CMake build and CTest remain independent from libIEC61850.
+- Native linked CMake build and CTest validate the metadata probe against a real in-process libIEC61850 server.
+- Linked CLI validation starts the server process and runs `--metadata-probe` against it.
+- Backend service tests cover metadata-probe command construction, failure handling, and spawned-process cleanup.
+
 ## Current Risks
 
 - The SCD parser does not expand `DataTypeTemplates`; value typing remains shallow.
 - RCB indexed instance allocation is not planned yet.
-- Backend MMS adapter readiness is not wired to the external simulator endpoint yet; current backend readiness is TCP reachability only.
+- Backend MMS adapter runtime is not wired to the external simulator endpoint yet; metadata readiness currently runs through the external simulator helper binary.
 - Production MMS client transport is unresolved; the current direction is a replaceable backend adapter, with a self-owned MMS client tracked separately.
 - Report event persistence and test evidence linking are future backend slices.
 - GOOSE and SV remain separate protocol tracks.

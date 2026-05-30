@@ -1,6 +1,6 @@
 # UnitLab IEC 61850 IED Simulator
 
-Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan/loader boundary, can start one libIEC61850 MMS server when built with libIEC61850, and has a linked client smoke test for DataSet/BRCB metadata reads.
+Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan/loader boundary, can start one libIEC61850 MMS server when built with libIEC61850, and can probe DataSet/BRCB metadata through a linked client.
 
 This directory is the boundary for the future libIEC61850-based IED simulator. It is intentionally separate from UnitLab backend/core runtime so GPL/native code cannot leak into production logic by accident.
 
@@ -161,6 +161,32 @@ Expected current result with libIEC61850:
 
 The linked path creates the dynamic `IedModel`, logical devices, logical nodes, data objects, FCDA data attributes, DataSets, DataSet entries, ReportControls, and `IedServer`.
 
+## Metadata Probe
+
+When linked with libIEC61850, `--metadata-probe` connects to an already running simulator endpoint and verifies the server metadata against the fixture/model plan:
+
+```bash
+/tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim \
+  --fixture simulator/iec61850_ied/examples/single-report.fixture.json \
+  --ied IED1 \
+  --bind 127.0.0.1 \
+  --port 1102 \
+  --metadata-probe
+```
+
+Expected result:
+
+```text
+unitlab-iec61850-ied-sim: metadata probe accepted
+ied=IED1
+endpoint=127.0.0.1:1102
+dataSets=1
+reports=1
+libiec61850=linked
+```
+
+The backend uses this as an internal simulator readiness helper. It proves MMS metadata is readable from the external simulator, but it is not the production MMS adapter.
+
 ## Linked Client Smoke
 
 When built with libIEC61850, CTest also runs `unitlab-iec61850-ied-linked-client-smoke`.
@@ -193,6 +219,6 @@ The model plan now normalizes the fixture into the validated blueprint that the 
 Continue the libIEC61850 server runtime from this model plan:
 
 1. Wire the backend MMS adapter to the external simulator endpoint.
-2. Add backend MMS metadata readiness once the adapter can read DataSet/RCB metadata.
-3. Support GI emission with fixture initial values.
+2. Support GI emission with fixture initial values.
+3. Add backend adapter coverage for read/reserve/enable/disable once the MMS adapter contract is implemented.
 4. Keep all unsupported services fail-closed.

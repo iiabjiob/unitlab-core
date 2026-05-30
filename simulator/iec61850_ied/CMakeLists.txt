@@ -17,6 +17,7 @@ function(unitlab_iec61850_sim_warnings target_name)
 endfunction()
 
 add_executable(unitlab-iec61850-ied-sim
+  src/client_probe.c
   src/fixture_parser.c
   src/libiec61850_model_builder.c
   src/main.c
@@ -86,6 +87,7 @@ add_test(
 
 if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)
   add_executable(unitlab-iec61850-ied-linked-client-smoke-test
+    src/client_probe.c
     src/libiec61850_model_builder.c
     src/model_loader.c
     src/model_plan.c

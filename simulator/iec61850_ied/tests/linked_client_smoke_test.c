@@ -1,3 +1,4 @@
+#include "client_probe.h"
 #include "model_loader.h"
 
 #include <hal_thread.h>
@@ -252,6 +253,12 @@ int main(void)
         IedConnection_close(connection);
         IedConnection_destroy(connection);
     }
+
+    UnitLabIedModelLoadResult probe_result;
+    passed &= expect_true(
+        unitlab_probe_ied_server_metadata(&fixture, &plan, &server.config, &probe_result),
+        probe_result.message);
+    passed &= expect_string(probe_result.code, "IEC61850_METADATA_PROBE_OK", "metadata probe status code");
 
     server.stop_requested = 1;
     Thread_destroy(server_thread);

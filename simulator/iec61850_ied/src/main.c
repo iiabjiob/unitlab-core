@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "client_probe.h"
 #include "fixture_parser.h"
 #include "model_loader.h"
 #include "model_plan.h"
@@ -16,6 +17,7 @@ typedef struct SimulatorOptions {
     int port;
     int dry_run;
     int smoke_start;
+    int metadata_probe;
 } SimulatorOptions;
 
 static volatile sig_atomic_t g_running = 1;
@@ -40,7 +42,7 @@ static int immediate_stop_requested(void* context)
 
 static void print_usage(const char* program_name)
 {
-    printf("Usage: %s --fixture PATH --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start]\n", program_name);
+    printf("Usage: %s --fixture PATH --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--metadata-probe]\n", program_name);
     printf("\n");
     printf("Options:\n");
     printf("  --fixture PATH   UnitLab IEC 61850 IED simulator fixture JSON.\n");
@@ -49,6 +51,7 @@ static void print_usage(const char* program_name)
     printf("  --port PORT      TCP port for the MMS server. Default: 102.\n");
     printf("  --dry-run        Validate CLI and fixture boundary without opening MMS.\n");
     printf("  --smoke-start    Start and stop the linked MMS server once, then exit.\n");
+    printf("  --metadata-probe Connect to the endpoint and verify DataSet/BRCB metadata, then exit.\n");
     printf("  --help           Show this help text.\n");
 }
 
@@ -74,6 +77,7 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
     options->port = 102;
     options->dry_run = 0;
     options->smoke_start = 0;
+    options->metadata_probe = 0;
 
     for (int index = 1; index < argc; index++) {
         const char* arg = argv[index];
@@ -87,6 +91,10 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         }
         if (strcmp(arg, "--smoke-start") == 0) {
             options->smoke_start = 1;
+            continue;
+        }
+        if (strcmp(arg, "--metadata-probe") == 0) {
+            options->metadata_probe = 1;
             continue;
         }
         if (strcmp(arg, "--fixture") == 0 && index + 1 < argc) {
@@ -124,8 +132,8 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         fprintf(stderr, "BIND_REQUIRED: --bind ADDRESS cannot be empty.\n");
         return -1;
     }
-    if (options->dry_run && options->smoke_start) {
-        fprintf(stderr, "INVALID_ARGUMENT: --dry-run and --smoke-start are mutually exclusive.\n");
+    if ((options->dry_run ? 1 : 0) + (options->smoke_start ? 1 : 0) + (options->metadata_probe ? 1 : 0) > 1) {
+        fprintf(stderr, "INVALID_ARGUMENT: --dry-run, --smoke-start, and --metadata-probe are mutually exclusive.\n");
         return -1;
     }
 
@@ -340,6 +348,24 @@ int main(int argc, char** argv)
         .bind_address = options.bind_address,
         .port = options.port,
     };
+    if (options.metadata_probe) {
+        if (!unitlab_probe_ied_server_metadata(&fixture_model, &model_plan, &server_config, &load_result)) {
+            fprintf(stderr, "%s: %s\n", load_result.code, load_result.message);
+            fprintf(stderr, "libiec61850=%s\n", libiec61850_status());
+            unitlab_free_ied_model_plan(&model_plan);
+            unitlab_free_ied_fixture_model(&fixture_model);
+            return 69;
+        }
+        printf("unitlab-iec61850-ied-sim: metadata probe accepted\n");
+        printf("ied=%s\n", fixture_model.ied_name);
+        printf("endpoint=%s:%d\n", options.bind_address, options.port);
+        printf("dataSets=%zu\n", model_plan.data_set_count);
+        printf("reports=%zu\n", model_plan.report_count);
+        printf("libiec61850=%s\n", libiec61850_status());
+        unitlab_free_ied_model_plan(&model_plan);
+        unitlab_free_ied_fixture_model(&fixture_model);
+        return 0;
+    }
     if (options.smoke_start) {
         if (!unitlab_run_ied_server(&fixture_model, &model_plan, &server_config, immediate_stop_requested, NULL, &load_result)) {
             fprintf(stderr, "%s: %s\n", load_result.code, load_result.message);

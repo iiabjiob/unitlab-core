@@ -39,6 +39,7 @@ from app.services.iec61850 import (
     normalize_report_data_reference,
     prepare_ied_simulator_process_plan,
     prepare_ied_simulator_process_plan_from_subscription_plan,
+    run_ied_simulator_metadata_probe,
     run_ied_simulator_process_plan_startup_checks,
     run_ied_simulator_startup_check,
     run_report_subscription_plan,
@@ -627,13 +628,58 @@ def test_backend_runtime_external_ied_simulator_startup_check_fails_closed(tmp_p
     assert "LIBIEC61850_NOT_LINKED" in str(error.value)
 
 
+def test_backend_runtime_external_ied_simulator_metadata_probe_uses_safe_process_invocation(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+
+    def runner(command, **kwargs):
+        assert isinstance(command, tuple)
+        assert command[-1] == "--metadata-probe"
+        assert "--dry-run" not in command
+        assert kwargs == {
+            "capture_output": True,
+            "text": True,
+            "timeout": 3.0,
+            "check": False,
+        }
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="metadata probe accepted\n", stderr="")
+
+    result = run_ied_simulator_metadata_probe(spec, timeout_seconds=3.0, runner=runner)
+
+    assert result.return_code == 0
+    assert result.stdout == "metadata probe accepted\n"
+    assert result.command[-1] == "--metadata-probe"
+
+
+def test_backend_runtime_external_ied_simulator_metadata_probe_fails_closed(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=69,
+            stdout="",
+            stderr="IEC61850_METADATA_PROBE_RCB_READ_FAILED\n",
+        )
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        run_ied_simulator_metadata_probe(spec, runner=runner)
+
+    assert error.value.code == "SIMULATOR_METADATA_PROBE_FAILED"
+    assert "IEC61850_METADATA_PROBE_RCB_READ_FAILED" in str(error.value)
+
+
 def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
     process = _FakeSimulatorProcess(pid=61850)
+    commands: list[tuple[str, ...]] = []
 
     def runner(command, **kwargs):
-        assert command[-1] == "--dry-run"
-        return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+        commands.append(command)
+        if command[-1] == "--dry-run":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+        if command[-1] == "--metadata-probe":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout="metadata probe accepted\n", stderr="")
+        raise AssertionError(f"unexpected simulator helper command: {command}")
 
     def process_factory(command, **kwargs):
         assert command == spec.command
@@ -656,6 +702,7 @@ def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_pat
 
     assert handle.pid == 61850
     assert handle.endpoint.id == "mms-simulator:IED1/AP1@127.0.0.1:1102"
+    assert [command[-1] for command in commands] == ["--dry-run", "--metadata-probe"]
     assert process.terminated is True
     assert stop.return_code == 0
     assert stop.killed is False
@@ -706,6 +753,33 @@ def test_backend_runtime_external_ied_simulator_process_readiness_fails_closed_a
         )
 
     assert error.value.code == "SIMULATOR_ENDPOINT_READY_TIMEOUT"
+    assert process.terminated is True
+
+
+def test_backend_runtime_external_ied_simulator_metadata_probe_failure_stops_process(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+    process = _FakeSimulatorProcess(pid=61850)
+
+    def runner(command, **kwargs):
+        if command[-1] == "--dry-run":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+        if command[-1] == "--metadata-probe":
+            return subprocess.CompletedProcess(args=command, returncode=69, stdout="", stderr="RCB read failed\n")
+        raise AssertionError(f"unexpected simulator helper command: {command}")
+
+    def process_factory(command, **kwargs):
+        return process
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        start_ied_simulator_process(
+            spec,
+            startup_grace_seconds=0,
+            runner=runner,
+            process_factory=process_factory,
+            readiness_connector=_ready_socket_connector,
+        )
+
+    assert error.value.code == "SIMULATOR_METADATA_PROBE_FAILED"
     assert process.terminated is True
 
 
