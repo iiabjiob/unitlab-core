@@ -43,6 +43,8 @@ from app.services.iec61850 import (
     run_ied_simulator_metadata_probe,
     run_ied_simulator_process_plan_gi_probes,
     run_ied_simulator_process_plan_gi_validation,
+    run_ied_simulator_process_plan_report_gi_probes,
+    run_ied_simulator_process_plan_report_gi_validation,
     run_ied_simulator_process_plan_startup_checks,
     run_ied_simulator_startup_check,
     run_report_subscription_plan,
@@ -1039,6 +1041,32 @@ def test_backend_runtime_external_ied_simulator_process_plan_runs_gi_probes(tmp_
     assert [command[-1] for command in commands] == ["--gi-probe", "--gi-probe"]
 
 
+def test_backend_runtime_external_ied_simulator_process_plan_runs_report_gi_probes(tmp_path) -> None:
+    plan = _multi_device_subscription_plan()
+    fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    process_plan = prepare_ied_simulator_process_plan(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=tmp_path / "multi-device.fixture.json",
+        base_port=12000,
+    )
+    commands: list[tuple[str, ...]] = []
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
+
+    probes = run_ied_simulator_process_plan_report_gi_probes(process_plan, plan, runner=runner)
+
+    assert [probe.return_code for probe in probes] == [0, 0]
+    assert [command[-3:] for command in commands] == [
+        ("--gi-probe", "--report-key", "IED1/AP1/LD0/LLN0/brcbEvents/buffered"),
+        ("--gi-probe", "--report-key", "IED2/AP1/LD0/LLN0/brcbEvents/buffered"),
+    ]
+
+
 def test_backend_runtime_prepares_external_ied_simulator_process_plan_from_subscription_plan(tmp_path) -> None:
     plan = _multi_device_subscription_plan()
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
@@ -1220,6 +1248,53 @@ def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_stops
     assert process.terminated is True
 
 
+def test_backend_runtime_external_ied_simulator_process_plan_report_gi_validation_cleans_up(tmp_path) -> None:
+    plan = _multi_device_subscription_plan()
+    fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    process_plan = prepare_ied_simulator_process_plan(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=tmp_path / "multi-device.fixture.json",
+    )
+    processes = [_FakeSimulatorProcess(pid=1), _FakeSimulatorProcess(pid=2)]
+    commands: list[str] = []
+
+    def runner(command, **kwargs):
+        commands.append(_probe_command_label(command))
+        if command[-1] == "--dry-run":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+        if command[-1] == "--metadata-probe":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
+        if "--report-key" in command:
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
+        raise AssertionError(f"unexpected simulator helper command: {command}")
+
+    def process_factory(command, **kwargs):
+        return processes.pop(0)
+
+    result = run_ied_simulator_process_plan_report_gi_validation(
+        process_plan,
+        plan,
+        startup_grace_seconds=0,
+        runner=runner,
+        process_factory=process_factory,
+        readiness_connector=_ready_socket_connector,
+    )
+
+    assert commands == [
+        "--dry-run",
+        "--metadata-probe",
+        "--dry-run",
+        "--metadata-probe",
+        "gi:IED1/AP1/LD0/LLN0/brcbEvents/buffered",
+        "gi:IED2/AP1/LD0/LLN0/brcbEvents/buffered",
+    ]
+    assert [probe.return_code for probe in result.gi_probe_results] == [0, 0]
+    assert [stop.pid for stop in result.stop_results] == [2, 1]
+
+
 def test_backend_runtime_external_ied_simulator_subscription_plan_gi_validation(tmp_path) -> None:
     plan = _multi_device_subscription_plan()
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
@@ -1228,12 +1303,12 @@ def test_backend_runtime_external_ied_simulator_subscription_plan_gi_validation(
     commands: list[str] = []
 
     def runner(command, **kwargs):
-        commands.append(command[-1])
+        commands.append(_probe_command_label(command))
         if command[-1] == "--dry-run":
             return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
         if command[-1] == "--metadata-probe":
             return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
-        if command[-1] == "--gi-probe":
+        if "--report-key" in command:
             return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
         raise AssertionError(f"unexpected simulator helper command: {command}")
 
@@ -1254,7 +1329,14 @@ def test_backend_runtime_external_ied_simulator_subscription_plan_gi_validation(
     fixture_payload = json.loads(tmp_path.joinpath("multi-device.fixture.json").read_text(encoding="utf-8"))
     assert fixture_payload["devices"][1]["iedName"] == "IED2"
     assert [endpoint.port for endpoint in result.process_plan.endpoints] == [12102, 12103]
-    assert commands == ["--dry-run", "--metadata-probe", "--dry-run", "--metadata-probe", "--gi-probe", "--gi-probe"]
+    assert commands == [
+        "--dry-run",
+        "--metadata-probe",
+        "--dry-run",
+        "--metadata-probe",
+        "gi:IED1/AP1/LD0/LLN0/brcbEvents/buffered",
+        "gi:IED2/AP1/LD0/LLN0/brcbEvents/buffered",
+    ]
     assert [probe.return_code for probe in result.gi_probe_results] == [0, 0]
     assert [stop.pid for stop in result.stop_results] == [2, 1]
 
@@ -1525,6 +1607,12 @@ def _simulator_probe_stdout(command: tuple[str, ...], *, probe: str) -> str:
             "libiec61850=linked\n"
         )
     raise AssertionError(f"unknown probe type: {probe}")
+
+
+def _probe_command_label(command: tuple[str, ...]) -> str:
+    if "--report-key" in command:
+        return f"gi:{command[command.index('--report-key') + 1]}"
+    return command[-1]
 
 
 class _FakeSimulatorProcess:

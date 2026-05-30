@@ -22,7 +22,9 @@ from .report_runtime import (
     Iec61850ReportSubscriptionPlan,
     Iec61850ReportSubscriptionPlanDevice,
     Iec61850RuntimeMode,
+    report_control_key,
     run_report_subscription_plan,
+    to_report_control_ref,
 )
 
 
@@ -119,8 +121,11 @@ class Iec61850IedSimulatorProcessPlan:
         return tuple(spec.endpoint for spec in self.specs)
 
     def endpoint_for_plan_device(self, device: Iec61850ReportSubscriptionPlanDevice) -> Iec61850DeviceEndpoint:
+        return self.spec_for_plan_device(device).endpoint
+
+    def spec_for_plan_device(self, device: Iec61850ReportSubscriptionPlanDevice) -> Iec61850IedSimulatorProcessSpec:
         matches = tuple(
-            spec.endpoint
+            spec
             for spec in self.specs
             if _endpoint_key(spec.ied_name, spec.access_point_name) == _endpoint_key(device.ied_name, device.access_point_name)
         )
@@ -462,6 +467,30 @@ def run_ied_simulator_process_plan_gi_probes(
     )
 
 
+def run_ied_simulator_process_plan_report_gi_probes(
+    plan: Iec61850IedSimulatorProcessPlan,
+    subscription_plan: Iec61850ReportSubscriptionPlan,
+    *,
+    timeout_seconds: float = 5.0,
+    runner: ProcessRunner = subprocess.run,
+) -> tuple[Iec61850IedSimulatorProcessResult, ...]:
+    results: list[Iec61850IedSimulatorProcessResult] = []
+    for device in subscription_plan.devices:
+        spec = plan.spec_for_plan_device(device)
+        for report in device.reports:
+            if report.status != "required":
+                continue
+            results.append(
+                run_ied_simulator_gi_probe(
+                    spec,
+                    report_key=report_control_key(to_report_control_ref(report.candidate)),
+                    timeout_seconds=timeout_seconds,
+                    runner=runner,
+                )
+            )
+    return tuple(results)
+
+
 def wait_ied_simulator_process_ready(
     spec: Iec61850IedSimulatorProcessSpec,
     process: subprocess.Popen[str],
@@ -682,6 +711,55 @@ def run_ied_simulator_process_plan_gi_validation(
     )
 
 
+def run_ied_simulator_process_plan_report_gi_validation(
+    plan: Iec61850IedSimulatorProcessPlan,
+    subscription_plan: Iec61850ReportSubscriptionPlan,
+    *,
+    startup_check_timeout_seconds: float = 5.0,
+    startup_grace_seconds: float = 0.1,
+    readiness_timeout_seconds: float = 5.0,
+    readiness_retry_interval_seconds: float = 0.05,
+    metadata_probe_timeout_seconds: float = 5.0,
+    gi_probe_timeout_seconds: float = 5.0,
+    terminate_timeout_seconds: float = 5.0,
+    runner: ProcessRunner = subprocess.run,
+    process_factory: ProcessFactory = subprocess.Popen,
+    readiness_connector: SocketConnector = socket.create_connection,
+    sleep: SleepFn = time.sleep,
+) -> Iec61850IedSimulatorProcessPlanProbeResult:
+    handles = start_ied_simulator_process_plan(
+        plan,
+        startup_check_timeout_seconds=startup_check_timeout_seconds,
+        startup_grace_seconds=startup_grace_seconds,
+        readiness_timeout_seconds=readiness_timeout_seconds,
+        readiness_retry_interval_seconds=readiness_retry_interval_seconds,
+        metadata_probe_timeout_seconds=metadata_probe_timeout_seconds,
+        terminate_timeout_seconds=terminate_timeout_seconds,
+        runner=runner,
+        process_factory=process_factory,
+        readiness_connector=readiness_connector,
+        sleep=sleep,
+    )
+    stop_results: tuple[Iec61850IedSimulatorProcessStopResult, ...] = ()
+    try:
+        gi_probe_results = run_ied_simulator_process_plan_report_gi_probes(
+            plan,
+            subscription_plan,
+            timeout_seconds=gi_probe_timeout_seconds,
+            runner=runner,
+        )
+    finally:
+        stop_results = stop_ied_simulator_processes(
+            tuple(reversed(handles)),
+            terminate_timeout_seconds=terminate_timeout_seconds,
+        )
+    return Iec61850IedSimulatorProcessPlanProbeResult(
+        process_plan=plan,
+        gi_probe_results=gi_probe_results,
+        stop_results=stop_results,
+    )
+
+
 def validate_report_subscription_plan_with_external_ied_simulators(
     *,
     subscription_plan: Iec61850ReportSubscriptionPlan,
@@ -708,8 +786,9 @@ def validate_report_subscription_plan_with_external_ied_simulators(
         bind_address=bind_address,
         base_port=base_port,
     )
-    return run_ied_simulator_process_plan_gi_validation(
+    return run_ied_simulator_process_plan_report_gi_validation(
         process_plan,
+        subscription_plan,
         startup_check_timeout_seconds=startup_check_timeout_seconds,
         startup_grace_seconds=startup_grace_seconds,
         readiness_timeout_seconds=readiness_timeout_seconds,
