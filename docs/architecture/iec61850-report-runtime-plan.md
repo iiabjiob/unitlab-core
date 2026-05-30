@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slice 13A-13I, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slice 13A-13J, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -411,6 +411,25 @@ Still planned:
 Validation:
 
 - Native C compile, CMake configure/build, CTest model-plan test, dry-run smoke test, and fail-closed non-dry-run smoke test.
+
+### Slice 13J - Backend External Simulator Process Boundary
+
+Implemented in this slice:
+
+- Backend runtime can write an external IED simulator fixture file from the existing fixture DTO.
+- Backend runtime can build a safe no-shell process command for the external simulator binary with fixture path, selected IED, bind address, and port.
+- The process spec exposes the MMS endpoint that UnitLab will use once the external simulator runs a real MMS server.
+- The startup check runs the simulator in `--dry-run` mode first and fails closed on missing binary, missing fixture device, timeout, or non-zero exit.
+- No public REST/WebSocket API and no real MMS connection are introduced.
+
+Still planned:
+
+- Start and supervise a long-running simulator process after the C simulator can expose real MMS.
+- Connect backend report-runtime execution to that endpoint through the MMS adapter boundary.
+
+Validation:
+
+- Backend service tests cover fixture-file writing, command construction, endpoint shape, missing binary, missing IED, safe process invocation, and failed dry-run checks.
 
 ## Current Risks
 

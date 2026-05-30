@@ -60,6 +60,13 @@ from .ied_simulator_fixture import (
     build_ied_simulator_fixture_from_subscription_plan,
     ied_simulator_fixture_to_payload,
 )
+from .ied_simulator_process import (
+    Iec61850IedSimulatorProcessResult,
+    Iec61850IedSimulatorProcessSpec,
+    build_ied_simulator_process_spec,
+    run_ied_simulator_startup_check,
+    write_ied_simulator_fixture_file,
+)
 
 __all__ = [
     "Iec61850DataSetMember",
@@ -103,7 +110,10 @@ __all__ = [
     "Iec61850IedSimulatorFixtureDevice",
     "Iec61850IedSimulatorFixtureReport",
     "Iec61850IedSimulatorFixtureSignal",
+    "Iec61850IedSimulatorProcessResult",
+    "Iec61850IedSimulatorProcessSpec",
     "build_ied_simulator_fixture_from_subscription_plan",
+    "build_ied_simulator_process_spec",
     "build_simulator_endpoint_for_plan_device",
     "build_mms_endpoint_catalog",
     "create_iec61850_simulator_adapter",
@@ -113,7 +123,9 @@ __all__ = [
     "map_report_event_to_signal_observations",
     "normalize_report_data_reference",
     "report_control_key",
+    "run_ied_simulator_startup_check",
     "run_report_subscription_plan",
     "run_simulator_report_subscription_plan",
     "to_report_control_ref",
+    "write_ied_simulator_fixture_file",
 ]

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 from datetime import UTC, datetime
 
 import pytest
@@ -25,6 +27,7 @@ from app.services.iec61850 import (
     Iec61850RuntimeStatus,
     Iec61850RuntimeTriggerOptions,
     Iec61850SelectedSignal,
+    build_ied_simulator_process_spec,
     build_ied_simulator_fixture_from_subscription_plan,
     build_mms_endpoint_catalog,
     create_iec61850_simulator_adapter,
@@ -34,9 +37,11 @@ from app.services.iec61850 import (
     map_report_event_to_subscription_plan_observations,
     map_report_event_to_signal_observations,
     normalize_report_data_reference,
+    run_ied_simulator_startup_check,
     run_report_subscription_plan,
     run_simulator_report_subscription_plan,
     to_report_control_ref,
+    write_ied_simulator_fixture_file,
 )
 
 
@@ -497,6 +502,121 @@ def test_backend_runtime_rejects_ied_simulator_fixture_without_dataset_ref() -> 
         build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(candidate))
 
     assert error.value.code == "SIMULATOR_FIXTURE_DATASET_MISSING"
+
+
+def test_backend_runtime_prepares_external_ied_simulator_process(tmp_path) -> None:
+    fixture = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(_candidate()))
+    fixture_path = write_ied_simulator_fixture_file(fixture, tmp_path / "ied1.fixture.json")
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+
+    spec = build_ied_simulator_process_spec(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=fixture_path,
+        ied_name="ied1",
+        bind_address="127.0.0.1",
+        port=1102,
+        dry_run=True,
+    )
+
+    assert json.loads(fixture_path.read_text(encoding="utf-8"))["schema"] == "unitlab.iec61850.ied-simulator-fixture.v1"
+    assert spec.command == (
+        str(binary_path),
+        "--fixture",
+        str(fixture_path),
+        "--ied",
+        "IED1",
+        "--bind",
+        "127.0.0.1",
+        "--port",
+        "1102",
+        "--dry-run",
+    )
+    assert spec.endpoint.mode == Iec61850RuntimeMode.MMS
+    assert spec.endpoint.id == "mms-simulator:IED1/AP1@127.0.0.1:1102"
+
+
+def test_backend_runtime_rejects_invalid_external_ied_simulator_process_config(tmp_path) -> None:
+    fixture = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(_candidate()))
+    fixture_path = tmp_path / "ied1.fixture.json"
+
+    with pytest.raises(Iec61850ReportRuntimeError) as missing_binary:
+        build_ied_simulator_process_spec(
+            fixture=fixture,
+            binary_path=tmp_path / "missing-simulator",
+            fixture_path=fixture_path,
+            ied_name="IED1",
+        )
+    assert missing_binary.value.code == "SIMULATOR_BINARY_NOT_FOUND"
+
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    with pytest.raises(Iec61850ReportRuntimeError) as missing_device:
+        build_ied_simulator_process_spec(
+            fixture=fixture,
+            binary_path=binary_path,
+            fixture_path=fixture_path,
+            ied_name="MISSING",
+        )
+    assert missing_device.value.code == "SIMULATOR_DEVICE_NOT_IN_FIXTURE"
+
+
+def test_backend_runtime_external_ied_simulator_startup_check_uses_safe_process_invocation(tmp_path) -> None:
+    fixture = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(_candidate()))
+    fixture_path = tmp_path / "ied1.fixture.json"
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    spec = build_ied_simulator_process_spec(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=fixture_path,
+        ied_name="IED1",
+    )
+
+    def runner(command, **kwargs):
+        assert isinstance(command, tuple)
+        assert command[-1] == "--dry-run"
+        assert kwargs == {
+            "capture_output": True,
+            "text": True,
+            "timeout": 2.5,
+            "check": False,
+        }
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+
+    result = run_ied_simulator_startup_check(spec, timeout_seconds=2.5, runner=runner)
+
+    assert result.return_code == 0
+    assert result.stdout == "fixture accepted\n"
+    assert result.command[-1] == "--dry-run"
+
+
+def test_backend_runtime_external_ied_simulator_startup_check_fails_closed(tmp_path) -> None:
+    fixture = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(_candidate()))
+    fixture_path = tmp_path / "ied1.fixture.json"
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    spec = build_ied_simulator_process_spec(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=fixture_path,
+        ied_name="IED1",
+    )
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=69,
+            stdout="",
+            stderr="LIBIEC61850_NOT_LINKED\n",
+        )
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        run_ied_simulator_startup_check(spec, runner=runner)
+
+    assert error.value.code == "SIMULATOR_PROCESS_CHECK_FAILED"
+    assert "LIBIEC61850_NOT_LINKED" in str(error.value)
 
 
 def _endpoint() -> Iec61850DeviceEndpoint:
