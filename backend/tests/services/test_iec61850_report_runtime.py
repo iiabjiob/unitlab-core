@@ -719,6 +719,31 @@ def test_backend_runtime_external_ied_simulator_gi_probe_uses_safe_process_invoc
     assert result.command[-1] == "--gi-probe"
 
 
+def test_backend_runtime_external_ied_simulator_gi_probe_can_target_report_key(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+    report_key = "IED1/AP1/LD0/LLN0/brcbEvents/buffered"
+
+    def runner(command, **kwargs):
+        assert command[-3:] == ("--gi-probe", "--report-key", report_key)
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
+
+    result = run_ied_simulator_gi_probe(spec, report_key=report_key, timeout_seconds=4.0, runner=runner)
+
+    assert result.return_code == 0
+    assert result.command[-2:] == ("--report-key", report_key)
+    assert "reportKey=IED1/AP1/LD0/LLN0/brcbEvents/buffered\n" in result.stdout
+    assert "reports=1\n" in result.stdout
+
+
+def test_backend_runtime_external_ied_simulator_gi_probe_rejects_empty_report_key(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        run_ied_simulator_gi_probe(spec, report_key="  ")
+
+    assert error.value.code == "SIMULATOR_GI_PROBE_REPORT_KEY_INVALID"
+
+
 def test_backend_runtime_external_ied_simulator_gi_probe_fails_closed(tmp_path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
 
@@ -759,6 +784,32 @@ def test_backend_runtime_external_ied_simulator_gi_probe_rejects_malformed_succe
 
     assert error.value.code == "SIMULATOR_GI_PROBE_OUTPUT_INVALID"
     assert 'expected libiec61850="linked"' in str(error.value)
+
+
+def test_backend_runtime_external_ied_simulator_targeted_gi_probe_rejects_malformed_success_output(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+    report_key = "IED1/AP1/LD0/LLN0/brcbEvents/buffered"
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout=(
+                "unitlab-iec61850-ied-sim: GI probe accepted\n"
+                f"ied={spec.ied_name}\n"
+                f"endpoint={spec.bind_address}:{spec.port}\n"
+                "reports=2\n"
+                "libiec61850=linked\n"
+            ),
+            stderr="",
+        )
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        run_ied_simulator_gi_probe(spec, report_key=report_key, runner=runner)
+
+    assert error.value.code == "SIMULATOR_GI_PROBE_OUTPUT_INVALID"
+    assert f'expected reportKey="{report_key}"' in str(error.value)
+    assert 'expected reports="1"' in str(error.value)
 
 
 def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_path) -> None:
@@ -1461,11 +1512,16 @@ def _simulator_probe_stdout(command: tuple[str, ...], *, probe: str) -> str:
             "libiec61850=linked\n"
         )
     if probe == "gi":
+        report_key_index = command.index("--report-key") + 1 if "--report-key" in command else None
+        report_key = command[report_key_index] if report_key_index is not None else None
+        report_key_line = f"reportKey={report_key}\n" if report_key is not None else ""
+        report_count = "1" if report_key is not None else "1"
         return (
             "unitlab-iec61850-ied-sim: GI probe accepted\n"
             f"ied={ied_name}\n"
             f"endpoint={bind_address}:{port}\n"
-            "reports=1\n"
+            f"{report_key_line}"
+            f"reports={report_count}\n"
             "libiec61850=linked\n"
         )
     raise AssertionError(f"unknown probe type: {probe}")

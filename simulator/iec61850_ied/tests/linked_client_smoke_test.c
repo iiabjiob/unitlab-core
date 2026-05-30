@@ -411,10 +411,19 @@ int main(void)
         probe_result.message);
     passed &= expect_string(probe_result.code, "IEC61850_METADATA_PROBE_OK", "metadata probe status code");
     passed &= expect_true(
-        unitlab_probe_ied_server_gi(&fixture, &plan, &server.config, &probe_result),
+        unitlab_probe_ied_server_gi(&fixture, &plan, &server.config, NULL, &probe_result),
         probe_result.message);
     passed &= expect_string(probe_result.code, "IEC61850_GI_PROBE_OK", "GI probe status code");
     passed &= expect_string_contains(probe_result.message, "2 ReportControl", "GI probe should validate all fixture ReportControls");
+    passed &= expect_true(
+        unitlab_probe_ied_server_gi(&fixture, &plan, &server.config, "IED1/AP1/LD0/LLN0/urcbUpdates/unbuffered", &probe_result),
+        probe_result.message);
+    passed &= expect_string(probe_result.code, "IEC61850_GI_PROBE_OK", "targeted GI probe status code");
+    passed &= expect_string_contains(probe_result.message, "1 ReportControl", "targeted GI probe should validate one ReportControl");
+    passed &= expect_true(
+        !unitlab_probe_ied_server_gi(&fixture, &plan, &server.config, "IED1/AP1/LD0/LLN0/missing/buffered", &probe_result),
+        "targeted GI probe should reject an unknown ReportControl key");
+    passed &= expect_string(probe_result.code, "IEC61850_GI_PROBE_REPORT_NOT_FOUND", "targeted GI probe missing report status code");
 
     server.stop_requested = 1;
     Thread_destroy(server_thread);

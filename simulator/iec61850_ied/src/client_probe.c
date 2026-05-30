@@ -782,6 +782,7 @@ int unitlab_probe_ied_server_gi(
     const UnitLabIedFixtureModel* fixture,
     const UnitLabIedModelPlan* plan,
     const UnitLabIedServerConfig* config,
+    const char* report_key,
     UnitLabIedModelLoadResult* result)
 {
     if (fixture == NULL || plan == NULL || config == NULL || result == NULL) {
@@ -793,17 +794,23 @@ int unitlab_probe_ied_server_gi(
         return 0;
     }
 
+    int has_report_key = report_key != NULL && report_key[0] != '\0';
     IedConnection connection = connect_to_server(config, result);
     if (connection == NULL) {
         return 0;
     }
 
     int passed = 1;
+    size_t validated_count = 0U;
     for (size_t index = 0U; index < plan->report_count; index++) {
+        if (has_report_key && strcmp(plan->reports[index].key, report_key) != 0) {
+            continue;
+        }
         if (!probe_gi_report(connection, fixture, plan, &plan->reports[index], result)) {
             passed = 0;
             break;
         }
+        validated_count++;
     }
 
     IedConnection_close(connection);
@@ -812,9 +819,13 @@ int unitlab_probe_ied_server_gi(
     if (!passed) {
         return 0;
     }
+    if (has_report_key && validated_count == 0U) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_REPORT_NOT_FOUND", "IEC 61850 GI probe did not find the requested ReportControl key.");
+        return 0;
+    }
 
     char message[192];
-    snprintf(message, sizeof(message), "IEC 61850 GI probe validated %zu ReportControl(s).", plan->report_count);
+    snprintf(message, sizeof(message), "IEC 61850 GI probe validated %zu ReportControl(s).", validated_count);
     set_probe_result(result, 1, "IEC61850_GI_PROBE_OK", message);
     return 1;
 }
@@ -842,11 +853,13 @@ int unitlab_probe_ied_server_gi(
     const UnitLabIedFixtureModel* fixture,
     const UnitLabIedModelPlan* plan,
     const UnitLabIedServerConfig* config,
+    const char* report_key,
     UnitLabIedModelLoadResult* result)
 {
     (void)fixture;
     (void)plan;
     (void)config;
+    (void)report_key;
     set_probe_result(
         result,
         0,

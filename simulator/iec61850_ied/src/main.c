@@ -19,6 +19,7 @@ typedef struct SimulatorOptions {
     int smoke_start;
     int metadata_probe;
     int gi_probe;
+    const char* report_key;
 } SimulatorOptions;
 
 static volatile sig_atomic_t g_running = 1;
@@ -43,7 +44,7 @@ static int immediate_stop_requested(void* context)
 
 static void print_usage(const char* program_name)
 {
-    printf("Usage: %s --fixture PATH --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--metadata-probe] [--gi-probe]\n", program_name);
+    printf("Usage: %s --fixture PATH --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--metadata-probe] [--gi-probe] [--report-key KEY]\n", program_name);
     printf("\n");
     printf("Options:\n");
     printf("  --fixture PATH   UnitLab IEC 61850 IED simulator fixture JSON.\n");
@@ -53,7 +54,8 @@ static void print_usage(const char* program_name)
     printf("  --dry-run        Validate CLI and fixture boundary without opening MMS.\n");
     printf("  --smoke-start    Start and stop the linked MMS server once, then exit.\n");
     printf("  --metadata-probe Connect to the endpoint and verify DataSet/BRCB metadata, then exit.\n");
-    printf("  --gi-probe       Connect to the endpoint, enable first report, request GI, verify fixture values, then exit.\n");
+    printf("  --gi-probe       Connect to the endpoint, enable report(s), request GI, verify fixture values, then exit.\n");
+    printf("  --report-key KEY Limit --gi-probe validation to one fixture ReportControl key.\n");
     printf("  --help           Show this help text.\n");
 }
 
@@ -81,6 +83,7 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
     options->smoke_start = 0;
     options->metadata_probe = 0;
     options->gi_probe = 0;
+    options->report_key = NULL;
 
     for (int index = 1; index < argc; index++) {
         const char* arg = argv[index];
@@ -102,6 +105,10 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         }
         if (strcmp(arg, "--gi-probe") == 0) {
             options->gi_probe = 1;
+            continue;
+        }
+        if (strcmp(arg, "--report-key") == 0 && index + 1 < argc) {
+            options->report_key = argv[++index];
             continue;
         }
         if (strcmp(arg, "--fixture") == 0 && index + 1 < argc) {
@@ -141,6 +148,14 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
     }
     if ((options->dry_run ? 1 : 0) + (options->smoke_start ? 1 : 0) + (options->metadata_probe ? 1 : 0) + (options->gi_probe ? 1 : 0) > 1) {
         fprintf(stderr, "INVALID_ARGUMENT: --dry-run, --smoke-start, --metadata-probe, and --gi-probe are mutually exclusive.\n");
+        return -1;
+    }
+    if (options->report_key != NULL && options->report_key[0] == '\0') {
+        fprintf(stderr, "INVALID_ARGUMENT: --report-key cannot be empty.\n");
+        return -1;
+    }
+    if (options->report_key != NULL && !options->gi_probe) {
+        fprintf(stderr, "INVALID_ARGUMENT: --report-key requires --gi-probe.\n");
         return -1;
     }
 
@@ -374,7 +389,7 @@ int main(int argc, char** argv)
         return 0;
     }
     if (options.gi_probe) {
-        if (!unitlab_probe_ied_server_gi(&fixture_model, &model_plan, &server_config, &load_result)) {
+        if (!unitlab_probe_ied_server_gi(&fixture_model, &model_plan, &server_config, options.report_key, &load_result)) {
             fprintf(stderr, "%s: %s\n", load_result.code, load_result.message);
             fprintf(stderr, "libiec61850=%s\n", libiec61850_status());
             unitlab_free_ied_model_plan(&model_plan);
@@ -384,7 +399,13 @@ int main(int argc, char** argv)
         printf("unitlab-iec61850-ied-sim: GI probe accepted\n");
         printf("ied=%s\n", fixture_model.ied_name);
         printf("endpoint=%s:%d\n", options.bind_address, options.port);
-        printf("reports=%zu\n", model_plan.report_count);
+        if (options.report_key != NULL) {
+            printf("reportKey=%s\n", options.report_key);
+            printf("reports=1\n");
+        }
+        else {
+            printf("reports=%zu\n", model_plan.report_count);
+        }
         printf("libiec61850=%s\n", libiec61850_status());
         unitlab_free_ied_model_plan(&model_plan);
         unitlab_free_ied_fixture_model(&fixture_model);

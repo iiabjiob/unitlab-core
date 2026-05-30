@@ -65,6 +65,15 @@ class Iec61850IedSimulatorProcessSpec:
     def gi_probe_command(self) -> tuple[str, ...]:
         return (*self.base_command, "--gi-probe")
 
+    def gi_probe_command_for_report(self, report_key: str) -> tuple[str, ...]:
+        report_key_text = report_key.strip()
+        if not report_key_text:
+            raise Iec61850ReportRuntimeError(
+                "SIMULATOR_GI_PROBE_REPORT_KEY_INVALID",
+                "IEC 61850 IED simulator GI probe report key is required.",
+            )
+        return (*self.gi_probe_command, "--report-key", report_key_text)
+
     @property
     def endpoint(self) -> Iec61850DeviceEndpoint:
         return Iec61850DeviceEndpoint(
@@ -389,6 +398,7 @@ def run_ied_simulator_metadata_probe(
 def run_ied_simulator_gi_probe(
     spec: Iec61850IedSimulatorProcessSpec,
     *,
+    report_key: str | None = None,
     timeout_seconds: float = 5.0,
     runner: ProcessRunner = subprocess.run,
 ) -> Iec61850IedSimulatorProcessResult:
@@ -397,9 +407,10 @@ def run_ied_simulator_gi_probe(
             "SIMULATOR_GI_PROBE_DRY_RUN_SPEC",
             "IEC 61850 IED simulator GI probe requires a non-dry-run process spec.",
         )
+    command = spec.gi_probe_command if report_key is None else spec.gi_probe_command_for_report(report_key)
     try:
         completed = runner(
-            spec.gi_probe_command,
+            command,
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
@@ -412,7 +423,7 @@ def run_ied_simulator_gi_probe(
         ) from exc
 
     result = Iec61850IedSimulatorProcessResult(
-        command=spec.gi_probe_command,
+        command=command,
         return_code=completed.returncode,
         stdout=completed.stdout or "",
         stderr=completed.stderr or "",
@@ -430,6 +441,7 @@ def run_ied_simulator_gi_probe(
         probe_label="GI probe",
         accepted_line="unitlab-iec61850-ied-sim: GI probe accepted",
         require_data_sets=False,
+        expected_report_key=report_key.strip() if report_key is not None else None,
     )
     return result
 
@@ -822,6 +834,7 @@ def _validate_probe_output(
     probe_label: str,
     accepted_line: str,
     require_data_sets: bool,
+    expected_report_key: str | None = None,
 ) -> None:
     lines = tuple(line.strip() for line in result.stdout.splitlines() if line.strip())
     fields = _parse_probe_output_fields(lines)
@@ -836,6 +849,11 @@ def _validate_probe_output(
         failures.append(f'expected endpoint="{expected_endpoint}"')
     if not _is_unsigned_integer(fields.get("reports")):
         failures.append('missing numeric "reports" field')
+    if expected_report_key is not None:
+        if fields.get("reportKey") != expected_report_key:
+            failures.append(f'expected reportKey="{expected_report_key}"')
+        if fields.get("reports") != "1":
+            failures.append('expected reports="1" for a targeted report probe')
     if require_data_sets and not _is_unsigned_integer(fields.get("dataSets")):
         failures.append('missing numeric "dataSets" field')
     if fields.get("libiec61850") != "linked":

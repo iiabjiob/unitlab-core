@@ -15,6 +15,7 @@ int unitlab_probe_ied_server_gi(
     const UnitLabIedFixtureModel* fixture,
     const UnitLabIedModelPlan* plan,
     const UnitLabIedServerConfig* config,
+    const char* report_key,
     UnitLabIedModelLoadResult* result);
 
 #endif
