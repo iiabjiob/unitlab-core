@@ -163,7 +163,7 @@ The linked path creates the dynamic `IedModel`, logical devices, logical nodes, 
 
 ## Metadata Probe
 
-When linked with libIEC61850, `--metadata-probe` connects to an already running simulator endpoint and verifies the server metadata against the fixture/model plan. It checks LD/DataSet/ReportControl directories, DataSet member counts, core RCB attributes, `TrgOps`, `OptFlds`, and the initial disabled/unreserved RCB state:
+When linked with libIEC61850, `--metadata-probe` connects to an already running simulator endpoint and verifies the server metadata against the fixture/model plan. It checks LD/DataSet/ReportControl directories, DataSet member counts and member order, core RCB attributes, `TrgOps`, `OptFlds`, and the initial disabled/unreserved RCB state:
 
 ```bash
 /tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim \

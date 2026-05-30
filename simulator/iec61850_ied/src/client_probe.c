@@ -417,17 +417,51 @@ static int verify_data_sets(
         }
 
         int member_count = LinkedList_size(members);
-        LinkedList_destroy(members);
         if (member_count != (int)data_set->member_count) {
             char message[256];
             snprintf(message, sizeof(message), "IEC 61850 metadata probe found %d DataSet members; expected %zu.", member_count, data_set->member_count);
             set_probe_result(result, 0, "IEC61850_METADATA_PROBE_DATASET_MEMBER_COUNT_MISMATCH", message);
+            LinkedList_destroy(members);
             return 0;
         }
         if (is_deletable) {
             set_probe_result(result, 0, "IEC61850_METADATA_PROBE_DATASET_DELETABLE", "IEC 61850 metadata probe expected a non-deletable configured DataSet.");
+            LinkedList_destroy(members);
             return 0;
         }
+
+        LinkedList member = LinkedList_getNext(members);
+        for (size_t member_index = 0U; member_index < data_set->member_count; member_index++) {
+            size_t signal_index = data_set->first_signal_index + member_index;
+            if (signal_index >= plan->signal_count || member == NULL) {
+                set_probe_result(result, 0, "IEC61850_METADATA_PROBE_DATASET_MEMBER_MISSING", "IEC 61850 metadata probe did not find an expected DataSet member.");
+                LinkedList_destroy(members);
+                return 0;
+            }
+
+            const UnitLabIedModelSignal* signal = &plan->signals[signal_index];
+            const char* actual_member = (const char*)LinkedList_getData(member);
+            char expected_suffix[256];
+            if (!format_ref(
+                    expected_suffix,
+                    sizeof(expected_suffix),
+                    result,
+                    "IEC61850_METADATA_PROBE_DATASET_MEMBER_REF_OVERFLOW",
+                    "/%s.%s[%s]",
+                    signal->logical_node_name,
+                    signal->object_reference,
+                    signal->fc)) {
+                LinkedList_destroy(members);
+                return 0;
+            }
+            if (actual_member == NULL || strstr(actual_member, expected_suffix) == NULL) {
+                set_probe_result(result, 0, "IEC61850_METADATA_PROBE_DATASET_MEMBER_MISMATCH", "IEC 61850 metadata probe found an unexpected DataSet member order or reference.");
+                LinkedList_destroy(members);
+                return 0;
+            }
+            member = LinkedList_getNext(member);
+        }
+        LinkedList_destroy(members);
     }
     return 1;
 }
