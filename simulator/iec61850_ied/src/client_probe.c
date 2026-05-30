@@ -637,8 +637,42 @@ static int probe_gi_report(
     if (rcb != NULL) {
         ClientReportControlBlock_setRptEna(rcb, false);
         IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_RPT_ENA, true);
+        if (error != IED_ERROR_OK && passed) {
+            char message[256];
+            snprintf(message, sizeof(message), "IEC 61850 GI probe failed to disable the ReportControl during cleanup: %s.", IedClientError_toString(error));
+            set_probe_result(result, 0, "IEC61850_GI_PROBE_DISABLE_FAILED", message);
+            passed = 0;
+        }
+        if (report->is_buffered) {
+            ClientReportControlBlock_setResvTms(rcb, 0);
+            IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_RESV_TMS, true);
+            if (error != IED_ERROR_OK && passed) {
+                char message[256];
+                snprintf(message, sizeof(message), "IEC 61850 GI probe failed to release the buffered ReportControl during cleanup: %s.", IedClientError_toString(error));
+                set_probe_result(result, 0, "IEC61850_GI_PROBE_RELEASE_FAILED", message);
+                passed = 0;
+            }
+        }
         IedConnection_uninstallReportHandler(connection, rcb_ref);
         ClientReportControlBlock_destroy(rcb);
+    }
+    if (passed) {
+        ClientReportControlBlock cleanup_rcb = IedConnection_getRCBValues(connection, &error, rcb_ref, NULL);
+        if (error != IED_ERROR_OK || cleanup_rcb == NULL) {
+            set_probe_result(result, 0, "IEC61850_GI_PROBE_CLEANUP_READ_FAILED", "IEC 61850 GI probe failed to read ReportControl state after cleanup.");
+            passed = 0;
+        }
+        if (cleanup_rcb != NULL) {
+            if (ClientReportControlBlock_getRptEna(cleanup_rcb)) {
+                set_probe_result(result, 0, "IEC61850_GI_PROBE_CLEANUP_ENABLED", "IEC 61850 GI probe cleanup left the ReportControl enabled.");
+                passed = 0;
+            }
+            if (passed && report->is_buffered && ClientReportControlBlock_hasResvTms(cleanup_rcb) && ClientReportControlBlock_getResvTms(cleanup_rcb) != 0) {
+                set_probe_result(result, 0, "IEC61850_GI_PROBE_CLEANUP_RESERVED", "IEC 61850 GI probe cleanup left the buffered ReportControl reserved.");
+                passed = 0;
+            }
+            ClientReportControlBlock_destroy(cleanup_rcb);
+        }
     }
     return passed;
 }
