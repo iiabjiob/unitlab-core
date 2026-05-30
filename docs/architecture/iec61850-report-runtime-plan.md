@@ -641,6 +641,28 @@ Validation:
 
 - Native C compile, CMake configure/build, CTest fixture-parser/model-plan/model-loader tests, and dry-run fixture smoke test without libIEC61850 linked.
 
+### Slice 13V - External IED Simulator Dynamic DataSet/RCB Creation
+
+Implemented in this slice:
+
+- When built with `UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON`, the external simulator loader now consumes the validated model plan through real libIEC61850 dynamic model APIs.
+- The linked loader creates data objects, FCDA data attribute paths, initial MMS values, DataSets, DataSet entries, and ReportControls after LD/LN creation succeeds.
+- The linked loader now fails closed with `LIBIEC61850_SERVER_NOT_IMPLEMENTED` only after the dynamic model, DataSets, and ReportControls have been created and destroyed.
+- The unlinked path still fails closed with `LIBIEC61850_NOT_LINKED`.
+- No MMS server is started and no fake report success is reported.
+
+Still planned:
+
+- Start one local `IedServer` from the dynamic model.
+- Add a local client smoke test that connects to the simulator and reads DataSet/RCB metadata.
+- Expand typed SCD/DataTypeTemplates support before claiming accurate FCD/CDC expansion.
+
+Validation:
+
+- Native C compile, CMake configure/build, CTest fixture-parser/model-plan/model-loader tests without libIEC61850 linked.
+- Linked CMake configure/build and CTest fixture-parser/model-plan/model-loader tests against a locally built libIEC61850 checkout.
+- Linked non-dry-run smoke test verifies the model creation path reaches the explicit server-not-implemented boundary.
+
 ## Current Risks
 
 - The SCD parser does not expand `DataTypeTemplates`; value typing remains shallow.

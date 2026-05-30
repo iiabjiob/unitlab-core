@@ -25,8 +25,8 @@ Build with libIEC61850 availability check:
 ```bash
 cmake -S simulator/iec61850_ied -B /tmp/unitlab-iec61850-ied-build \
   -DUNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON \
-  -DLIBIEC61850_INCLUDE_DIR=/path/to/libiec61850/src/iec61850/inc \
-  -DLIBIEC61850_LIBRARY=/path/to/libiec61850/build/libiec61850.a
+  -DLIBIEC61850_INCLUDE_DIR="/path/to/libiec61850/src/iec61850/inc;/path/to/libiec61850/src/common/inc;/path/to/libiec61850/hal/inc;/path/to/libiec61850/src/mms/inc;/path/to/libiec61850/src/logging" \
+  -DLIBIEC61850_LIBRARY=/path/to/libiec61850/build/src/libiec61850.so
 cmake --build /tmp/unitlab-iec61850-ied-build
 ```
 
@@ -131,11 +131,11 @@ libiec61850=not-linked
 Expected current result with libIEC61850:
 
 ```text
-LIBIEC61850_DO_DA_LOADER_NOT_IMPLEMENTED: libIEC61850 IED/LD/LN containers were created, but DO/DA/DataSet/RCB creation is not implemented in this slice.
+LIBIEC61850_SERVER_NOT_IMPLEMENTED: libIEC61850 dynamic IED model, DataSets, and ReportControls were created, but MMS server startup is not implemented in this slice.
 libiec61850=linked
 ```
 
-The linked path already creates and destroys the dynamic `IedModel`, logical devices, and logical nodes before failing closed. It does not start MMS.
+The linked path creates and destroys the dynamic `IedModel`, logical devices, logical nodes, data objects, FCDA data attributes, DataSets, DataSet entries, and ReportControls before failing closed. It does not start MMS.
 
 ## Next Slice
 
@@ -150,11 +150,12 @@ The model plan now normalizes the fixture into the validated blueprint that the 
 - Unsupported report kinds and malformed `ConfRev` values fail before server startup.
 - `TrgOps` and `OptFlds` are converted to the bit masks expected by libIEC61850 `ReportControlBlock_create`.
 - DataSet entries are converted to the MMS variable-name form expected by libIEC61850 `DataSetEntry_create`.
+- The linked loader now consumes the blueprint through libIEC61850 dynamic model APIs.
 
-Continue the libIEC61850 server model loader from this model plan:
+Continue the libIEC61850 server runtime from this model plan:
 
-1. Create data objects and data attributes from the DataSet member blueprint.
-2. Create one DataSet from fixture members.
-3. Create one URCB/BRCB from fixture report metadata.
+1. Start one local `IedServer` only after the dynamic model survives construction.
+2. Keep the process in a controlled runtime loop with explicit shutdown.
+3. Add a client-side smoke check that connects to `127.0.0.1` and reads RCB/DataSet metadata.
 4. Support GI emission with fixture initial values.
 5. Keep all unsupported services fail-closed.

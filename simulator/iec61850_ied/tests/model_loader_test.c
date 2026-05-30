@@ -100,7 +100,7 @@ static int test_loader_fails_closed_without_server_backend(void)
         passed &= expect_true(!loaded, "loader should fail closed until MMS server backend is implemented");
         passed &= expect_true(result.loaded == 0, "loader result should not report loaded");
 #ifdef UNITLAB_WITH_LIBIEC61850
-        passed &= expect_string(result.code, "LIBIEC61850_DO_DA_LOADER_NOT_IMPLEMENTED", "linked loader failure code");
+        passed &= expect_string(result.code, "LIBIEC61850_SERVER_NOT_IMPLEMENTED", "linked loader failure code");
 #else
         passed &= expect_string(result.code, "LIBIEC61850_NOT_LINKED", "unlinked loader failure code");
 #endif
@@ -108,6 +108,80 @@ static int test_loader_fails_closed_without_server_backend(void)
     unitlab_free_ied_model_plan(&plan);
     return passed;
 }
+
+#ifdef UNITLAB_WITH_LIBIEC61850
+static int test_linked_loader_accepts_supported_initial_value_shapes_until_server_start(void)
+{
+    UnitLabIedFixtureSignal signals[4] = {
+        {
+            .data_set_index = 0U,
+            .reference = "LD0/GGIO1.Ind1.stVal[ST]",
+            .kind = "FCDA",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_BOOLEAN,
+            .initial_value = "true",
+        },
+        {
+            .data_set_index = 1U,
+            .reference = "LD0/GGIO1.Ind2.stVal[ST]",
+            .kind = "FCDA",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+            .initial_value = "42",
+        },
+        {
+            .data_set_index = 2U,
+            .reference = "LD0/MMXU1.A.phsA.cVal.mag.f[MX]",
+            .kind = "FCDA",
+            .fc = "MX",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_REAL,
+            .initial_value = "3.14",
+        },
+        {
+            .data_set_index = 3U,
+            .reference = "LD0/GGIO1.NamPlt.vendor[DC]",
+            .kind = "FCDA",
+            .fc = "DC",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING,
+            .initial_value = "UnitLab",
+        },
+    };
+    UnitLabIedFixtureDataSet data_sets[1] = {
+        {
+            .reference = "IED1/AP1/LD0/LLN0.dsEvents",
+            .signal_count = 4U,
+            .signals = signals,
+        },
+    };
+    UnitLabIedFixtureReport reports[1] = {
+        report_for_data_set("IED1/AP1/LD0/LLN0.dsEvents"),
+    };
+    UnitLabIedFixtureModel fixture = {
+        .device_count = 1U,
+        .ied_name = "IED1",
+        .access_point_name = "AP1",
+        .data_set_count = 1U,
+        .data_sets = data_sets,
+        .report_count = 1U,
+        .reports = reports,
+        .signal_count = 4U,
+    };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLoadResult result;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 1102,
+    };
+    int passed = build_valid_plan(&fixture, &plan);
+    if (passed) {
+        int loaded = unitlab_load_ied_model(&fixture, &plan, &config, &result);
+        passed &= expect_true(!loaded, "linked loader should still fail closed before MMS server startup");
+        passed &= expect_string(result.code, "LIBIEC61850_SERVER_NOT_IMPLEMENTED", "linked typed value loader code");
+    }
+    unitlab_free_ied_model_plan(&plan);
+    return passed;
+}
+#endif
 
 static int test_loader_rejects_invalid_arguments(void)
 {
@@ -182,6 +256,9 @@ int main(void)
 {
     int passed = 1;
     passed &= test_loader_fails_closed_without_server_backend();
+#ifdef UNITLAB_WITH_LIBIEC61850
+    passed &= test_linked_loader_accepts_supported_initial_value_shapes_until_server_start();
+#endif
     passed &= test_loader_rejects_invalid_arguments();
     passed &= test_loader_rejects_empty_plan();
     passed &= test_loader_rejects_invalid_bind();
