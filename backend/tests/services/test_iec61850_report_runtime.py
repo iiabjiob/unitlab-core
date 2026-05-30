@@ -42,6 +42,7 @@ from app.services.iec61850 import (
     run_ied_simulator_process_plan_startup_checks,
     run_ied_simulator_startup_check,
     run_report_subscription_plan,
+    run_report_subscription_plan_with_external_ied_simulators,
     run_simulator_report_subscription_plan,
     start_ied_simulator_process,
     start_ied_simulator_process_plan,
@@ -845,6 +846,62 @@ def test_backend_runtime_external_ied_simulator_process_plan_cleans_up_on_partia
     assert failed_process.terminated is False
 
 
+def test_backend_runtime_external_ied_simulator_wrapper_runs_through_mms_boundary_and_cleans_up(tmp_path) -> None:
+    plan = _subscription_plan(_candidate())
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    process = _FakeSimulatorProcess(pid=61850)
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+
+    def process_factory(command, **kwargs):
+        return process
+
+    result = run_report_subscription_plan_with_external_ied_simulators(
+        subscription_plan=plan,
+        adapter=create_unavailable_mms_adapter(),
+        client_id="unitlab",
+        binary_path=binary_path,
+        fixture_path=tmp_path / "ied1.fixture.json",
+        startup_grace_seconds=0,
+        runner=runner,
+        process_factory=process_factory,
+    )
+
+    assert result.subscription_run.reports[0].error_code == "MMS_ADAPTER_NOT_IMPLEMENTED"
+    assert result.process_plan.endpoints[0].id == "mms-simulator:IED1/AP1@127.0.0.1:1102"
+    assert result.stop_results[0].pid == 61850
+    assert process.terminated is True
+
+
+def test_backend_runtime_external_ied_simulator_wrapper_cleans_up_after_runtime_exception(tmp_path) -> None:
+    plan = _subscription_plan(_candidate())
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    process = _FakeSimulatorProcess(pid=61850)
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+
+    def process_factory(command, **kwargs):
+        return process
+
+    with pytest.raises(RuntimeError):
+        run_report_subscription_plan_with_external_ied_simulators(
+            subscription_plan=plan,
+            adapter=_ExplodingAdapter(),
+            client_id="unitlab",
+            binary_path=binary_path,
+            fixture_path=tmp_path / "ied1.fixture.json",
+            startup_grace_seconds=0,
+            runner=runner,
+            process_factory=process_factory,
+        )
+
+    assert process.terminated is True
+
+
 def _endpoint() -> Iec61850DeviceEndpoint:
     return Iec61850DeviceEndpoint(
         id="sim:IED1/AP1",
@@ -1059,6 +1116,11 @@ class _FakeSimulatorProcess:
 
     def communicate(self) -> tuple[str, str]:
         return self._stdout, self._stderr
+
+
+class _ExplodingAdapter:
+    def connect(self, **kwargs):
+        raise RuntimeError("runtime exploded")
 
 
 class _EnableFailureAdapter:

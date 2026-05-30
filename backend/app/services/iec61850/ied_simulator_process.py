@@ -15,10 +15,13 @@ from .ied_simulator_fixture import (
 )
 from .report_runtime import (
     Iec61850DeviceEndpoint,
+    Iec61850ReportRuntimeAdapter,
     Iec61850ReportRuntimeError,
+    Iec61850ReportSubscriptionRunResult,
     Iec61850ReportSubscriptionPlan,
     Iec61850ReportSubscriptionPlanDevice,
     Iec61850RuntimeMode,
+    run_report_subscription_plan,
 )
 
 
@@ -110,6 +113,13 @@ class Iec61850IedSimulatorProcessPlan:
                 f'IEC 61850 simulator process endpoint for "{device.ied_name}/{device.access_point_name}" is configured more than once.',
             )
         return matches[0]
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850IedSimulatorProcessPlanRunResult:
+    process_plan: Iec61850IedSimulatorProcessPlan
+    subscription_run: Iec61850ReportSubscriptionRunResult
+    stop_results: tuple[Iec61850IedSimulatorProcessStopResult, ...]
 
 
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
@@ -389,6 +399,58 @@ def start_ied_simulator_process_plan(
         )
         raise
     return tuple(handles)
+
+
+def run_report_subscription_plan_with_external_ied_simulators(
+    *,
+    subscription_plan: Iec61850ReportSubscriptionPlan,
+    adapter: Iec61850ReportRuntimeAdapter,
+    client_id: str,
+    binary_path: str | Path,
+    fixture_path: str | Path,
+    bind_address: str = "127.0.0.1",
+    base_port: int = 1102,
+    startup_check_timeout_seconds: float = 5.0,
+    startup_grace_seconds: float = 0.1,
+    terminate_timeout_seconds: float = 5.0,
+    runner: ProcessRunner = subprocess.run,
+    process_factory: ProcessFactory = subprocess.Popen,
+    sleep: SleepFn = time.sleep,
+) -> Iec61850IedSimulatorProcessPlanRunResult:
+    process_plan = prepare_ied_simulator_process_plan_from_subscription_plan(
+        subscription_plan=subscription_plan,
+        binary_path=binary_path,
+        fixture_path=fixture_path,
+        bind_address=bind_address,
+        base_port=base_port,
+    )
+    handles = start_ied_simulator_process_plan(
+        process_plan,
+        startup_check_timeout_seconds=startup_check_timeout_seconds,
+        startup_grace_seconds=startup_grace_seconds,
+        terminate_timeout_seconds=terminate_timeout_seconds,
+        runner=runner,
+        process_factory=process_factory,
+        sleep=sleep,
+    )
+    stop_results: tuple[Iec61850IedSimulatorProcessStopResult, ...] = ()
+    try:
+        subscription_run = run_report_subscription_plan(
+            plan=subscription_plan,
+            adapter=adapter,
+            client_id=client_id,
+            endpoint_for_device=process_plan.endpoint_for_plan_device,
+        )
+    finally:
+        stop_results = stop_ied_simulator_processes(
+            tuple(reversed(handles)),
+            terminate_timeout_seconds=terminate_timeout_seconds,
+        )
+    return Iec61850IedSimulatorProcessPlanRunResult(
+        process_plan=process_plan,
+        subscription_run=subscription_run,
+        stop_results=stop_results,
+    )
 
 
 def stop_ied_simulator_process(
