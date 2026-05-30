@@ -38,10 +38,14 @@ static UnitLabIedFixtureReport report_for_data_set(const char* data_set_ref)
         .indexed_known = 1,
         .indexed = 0,
         .buffer_time_ms_known = 1,
-        .buffer_time_ms = 0,
+        .buffer_time_ms = 100,
         .integrity_period_ms_known = 1,
-        .integrity_period_ms = 0,
+        .integrity_period_ms = 1000,
     };
+    report.trigger_options.data_change = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    report.trigger_options.general_interrogation = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    report.optional_fields.sequence_number = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    report.optional_fields.data_reference = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
     snprintf(report.data_set_ref, sizeof(report.data_set_ref), "%s", data_set_ref);
     return report;
 }
@@ -113,6 +117,20 @@ static int test_model_plan_builds_blueprint(void)
         passed &= expect_string(plan.data_sets[0].name, "dsEvents", "DataSet name");
         passed &= expect_string(plan.reports[0].name, "brcbEvents", "ReportControl name");
         passed &= expect_string(plan.reports[0].report_kind, "buffered", "ReportControl kind");
+        passed &= expect_true(plan.reports[0].is_buffered == 1, "ReportControl buffered flag");
+        passed &= expect_string(plan.reports[0].rpt_id, "events", "ReportControl rptID");
+        passed &= expect_true(plan.reports[0].conf_rev_known == 1, "ReportControl ConfRev known");
+        passed &= expect_true(plan.reports[0].conf_rev == 1U, "ReportControl ConfRev");
+        passed &= expect_true(plan.reports[0].indexed_known == 1, "ReportControl indexed known");
+        passed &= expect_true(plan.reports[0].indexed == 0, "ReportControl indexed value");
+        passed &= expect_true(plan.reports[0].buffer_time_ms_known == 1, "ReportControl BufTm known");
+        passed &= expect_true(plan.reports[0].buffer_time_ms == 100U, "ReportControl BufTm");
+        passed &= expect_true(plan.reports[0].integrity_period_ms_known == 1, "ReportControl IntgPd known");
+        passed &= expect_true(plan.reports[0].integrity_period_ms == 1000U, "ReportControl IntgPd");
+        passed &= expect_true(plan.reports[0].trigger_options.data_change.known == 1, "ReportControl dchg known");
+        passed &= expect_true(plan.reports[0].trigger_options.data_change.value == 1, "ReportControl dchg value");
+        passed &= expect_true(plan.reports[0].optional_fields.data_reference.known == 1, "ReportControl dataRef known");
+        passed &= expect_true(plan.reports[0].optional_fields.data_reference.value == 1, "ReportControl dataRef value");
         passed &= expect_string(plan.signals[0].logical_node_name, "XCBR1", "first signal LN");
         passed &= expect_string(plan.signals[0].kind, "FCDA", "first signal kind");
         passed &= expect_string(plan.signals[0].object_reference, "Pos.stVal", "first signal object reference");
@@ -255,6 +273,70 @@ static int test_invalid_signal_kind_fails(void)
         && expect_true(starts_with(error, "MODEL_PLAN_SIGNAL_KIND_INVALID"), "invalid signal kind error code");
 }
 
+static int test_invalid_report_kind_fails(void)
+{
+    UnitLabIedFixtureSignal signals[1] = {
+        {
+            .data_set_index = 0U,
+            .reference = "LD0/XCBR1.Pos.stVal[ST]",
+            .kind = "FCDA",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+            .initial_value = "0",
+        },
+    };
+    UnitLabIedFixtureDataSet data_sets[1] = {
+        {
+            .reference = "IED1/AP1/LD0/LLN0.dsEvents",
+            .signal_count = 1U,
+            .signals = signals,
+        },
+    };
+    UnitLabIedFixtureReport reports[1] = {
+        report_for_data_set("IED1/AP1/LD0/LLN0.dsEvents"),
+    };
+    snprintf(reports[0].report_kind, sizeof(reports[0].report_kind), "%s", "unknown");
+    UnitLabIedFixtureModel fixture = fixture_for(data_sets, 1U, reports, 1U, 1U);
+    UnitLabIedModelPlan plan;
+    char error[256];
+    int ok = unitlab_build_ied_model_plan(&fixture, &plan, error, sizeof(error));
+    unitlab_free_ied_model_plan(&plan);
+    return expect_true(!ok, "invalid report kind should fail")
+        && expect_true(starts_with(error, "MODEL_PLAN_REPORT_KIND_INVALID"), "invalid report kind error code");
+}
+
+static int test_invalid_report_conf_rev_fails(void)
+{
+    UnitLabIedFixtureSignal signals[1] = {
+        {
+            .data_set_index = 0U,
+            .reference = "LD0/XCBR1.Pos.stVal[ST]",
+            .kind = "FCDA",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+            .initial_value = "0",
+        },
+    };
+    UnitLabIedFixtureDataSet data_sets[1] = {
+        {
+            .reference = "IED1/AP1/LD0/LLN0.dsEvents",
+            .signal_count = 1U,
+            .signals = signals,
+        },
+    };
+    UnitLabIedFixtureReport reports[1] = {
+        report_for_data_set("IED1/AP1/LD0/LLN0.dsEvents"),
+    };
+    snprintf(reports[0].conf_rev, sizeof(reports[0].conf_rev), "%s", "bad");
+    UnitLabIedFixtureModel fixture = fixture_for(data_sets, 1U, reports, 1U, 1U);
+    UnitLabIedModelPlan plan;
+    char error[256];
+    int ok = unitlab_build_ied_model_plan(&fixture, &plan, error, sizeof(error));
+    unitlab_free_ied_model_plan(&plan);
+    return expect_true(!ok, "invalid report ConfRev should fail")
+        && expect_true(starts_with(error, "MODEL_PLAN_REPORT_CONFREV_INVALID"), "invalid ConfRev error code");
+}
+
 static int test_unknown_initial_value_kind_fails(void)
 {
     UnitLabIedFixtureSignal signals[1] = {
@@ -325,6 +407,8 @@ int main(void)
     passed &= test_invalid_signal_reference_fails();
     passed &= test_signal_fc_mismatch_fails();
     passed &= test_invalid_signal_kind_fails();
+    passed &= test_invalid_report_kind_fails();
+    passed &= test_invalid_report_conf_rev_fails();
     passed &= test_unknown_initial_value_kind_fails();
     passed &= test_dataset_context_mismatch_fails();
     return passed ? 0 : 1;

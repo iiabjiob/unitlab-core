@@ -2,6 +2,7 @@
 #define UNITLAB_IEC61850_IED_MODEL_PLAN_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "fixture_parser.h"
 
@@ -29,8 +30,20 @@ typedef struct UnitLabIedModelReportControl {
     char logical_node_name[128];
     char name[128];
     char report_kind[32];
+    int is_buffered;
+    char rpt_id[256];
     char data_set_ref[256];
     size_t data_set_index;
+    int conf_rev_known;
+    uint32_t conf_rev;
+    int indexed_known;
+    int indexed;
+    int buffer_time_ms_known;
+    uint32_t buffer_time_ms;
+    int integrity_period_ms_known;
+    uint32_t integrity_period_ms;
+    UnitLabIedFixtureTriggerOptions trigger_options;
+    UnitLabIedFixtureOptionalFields optional_fields;
 } UnitLabIedModelReportControl;
 
 typedef struct UnitLabIedModelSignal {

@@ -68,6 +68,13 @@ modelSignals=2
 firstModelLogicalDevice=LD0
 firstModelLogicalNode=LD0/LLN0
 firstModelDataSet=LD0/LLN0.dsEvents
+firstModelReport=IED1/AP1/LD0/LLN0/brcbEvents/buffered
+firstModelReportRptID=IED1LD0/LLN0.BR.Events
+firstModelReportBuffered=true
+firstModelReportConfRevKnown=true
+firstModelReportConfRev=7
+firstModelReportBufTm=100
+firstModelReportIntgPd=1000
 firstModelSignal=LD0/XCBR1.Pos.stVal[ST]
 firstModelSignalKind=FCDA
 firstModelSignalDO=Pos
@@ -88,7 +95,7 @@ The fixture is produced by backend `build_ied_simulator_fixture_from_subscriptio
 - IED name and access point name.
 - DataSet references and ordered members.
 - DataSet member initial values with preserved JSON value kinds.
-- ReportControl metadata needed by the simulator.
+- ReportControl metadata needed by the simulator: `RptID`, `ConfRev`, kind, indexed flag, `BufTm`, and `IntgPd`.
 - Trigger options and optional fields.
 
 It intentionally excludes:
@@ -122,11 +129,12 @@ libiec61850=not-linked
 The model plan now normalizes the fixture into the validated blueprint that the future libIEC61850 loader must consume:
 
 - DataSet owner LD/LN/name parsed from the fixture reference.
-- ReportControl owner LD/LN/name/kind parsed from the fixture report metadata.
+- ReportControl owner LD/LN/name/kind/runtime attributes parsed from the fixture report metadata.
 - DataSet member references parsed into LD/LN/member kind/object reference/data object/data attribute path/FC/initial value kind/initial value.
 - Fixture DataSet context and signal FC mismatches fail before server startup.
 - Unsupported DataSet member kinds fail before server startup.
 - Malformed or unknown initial value tokens fail before server startup.
+- Unsupported report kinds and malformed `ConfRev` values fail before server startup.
 
 Implement the libIEC61850 server model loader from this model plan:
 

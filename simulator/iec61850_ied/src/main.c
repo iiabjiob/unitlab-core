@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -263,6 +264,15 @@ int main(int argc, char** argv)
                 model_plan.data_sets[0].logical_device_inst,
                 model_plan.data_sets[0].logical_node_name,
                 model_plan.data_sets[0].name);
+        }
+        if (model_plan.report_count > 0U) {
+            printf("firstModelReport=%s\n", model_plan.reports[0].key);
+            printf("firstModelReportRptID=%s\n", model_plan.reports[0].rpt_id);
+            printf("firstModelReportBuffered=%s\n", model_plan.reports[0].is_buffered ? "true" : "false");
+            printf("firstModelReportConfRevKnown=%s\n", model_plan.reports[0].conf_rev_known ? "true" : "false");
+            printf("firstModelReportConfRev=%" PRIu32 "\n", model_plan.reports[0].conf_rev);
+            printf("firstModelReportBufTm=%" PRIu32 "\n", model_plan.reports[0].buffer_time_ms);
+            printf("firstModelReportIntgPd=%" PRIu32 "\n", model_plan.reports[0].integrity_period_ms);
         }
         if (model_plan.signal_count > 0U) {
             printf(

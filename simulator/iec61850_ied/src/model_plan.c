@@ -91,6 +91,60 @@ static int validate_signal_kind(const UnitLabIedFixtureSignal* signal, char* err
     return 0;
 }
 
+static int parse_uint32_string(const char* source, int* known, uint32_t* value)
+{
+    if (known == NULL || value == NULL) {
+        return 0;
+    }
+    *known = 0;
+    *value = 0U;
+    if (source == NULL || source[0] == '\0') {
+        return 1;
+    }
+
+    unsigned long parsed = 0U;
+    for (const char* cursor = source; *cursor != '\0'; cursor++) {
+        if (*cursor < '0' || *cursor > '9') {
+            return 0;
+        }
+        parsed = (parsed * 10UL) + (unsigned long)(*cursor - '0');
+        if (parsed > 4294967295UL) {
+            return 0;
+        }
+    }
+    *known = 1;
+    *value = (uint32_t)parsed;
+    return 1;
+}
+
+static int copy_optional_uint32(int source_known, int source_value, int* target_known, uint32_t* target_value)
+{
+    if (target_known == NULL || target_value == NULL || source_value < 0) {
+        return 0;
+    }
+    *target_known = source_known;
+    *target_value = source_known ? (uint32_t)source_value : 0U;
+    return 1;
+}
+
+static int derive_report_buffered_flag(
+    const UnitLabIedFixtureReport* report,
+    UnitLabIedModelReportControl* model_report,
+    char* error,
+    size_t error_size)
+{
+    if (strcmp(report->report_kind, "buffered") == 0) {
+        model_report->is_buffered = 1;
+        return 1;
+    }
+    if (strcmp(report->report_kind, "unbuffered") == 0) {
+        model_report->is_buffered = 0;
+        return 1;
+    }
+    set_error(error, error_size, "MODEL_PLAN_REPORT_KIND_INVALID: %s", report->report_kind);
+    return 0;
+}
+
 static int parse_fc_suffix(
     const UnitLabIedFixtureSignal* signal,
     const char* body_end,
@@ -474,12 +528,44 @@ int unitlab_build_ied_model_plan(
             unitlab_free_ied_model_plan(plan);
             return 0;
         }
+        if (!derive_report_buffered_flag(report, model_report, error, error_size)) {
+            unitlab_free_ied_model_plan(plan);
+            return 0;
+        }
+        if (!copy_string(model_report->rpt_id, sizeof(model_report->rpt_id), report->rpt_id)) {
+            set_error(error, error_size, "MODEL_PLAN_REPORT_RPTID_TOO_LONG: %s", report->rpt_id);
+            unitlab_free_ied_model_plan(plan);
+            return 0;
+        }
         if (!copy_string(model_report->data_set_ref, sizeof(model_report->data_set_ref), report->data_set_ref)) {
             set_error(error, error_size, "MODEL_PLAN_REPORT_DATASET_TOO_LONG: %s", report->data_set_ref);
             unitlab_free_ied_model_plan(plan);
             return 0;
         }
+        if (!parse_uint32_string(report->conf_rev, &model_report->conf_rev_known, &model_report->conf_rev)) {
+            set_error(error, error_size, "MODEL_PLAN_REPORT_CONFREV_INVALID: %s", report->key);
+            unitlab_free_ied_model_plan(plan);
+            return 0;
+        }
+        if (!copy_optional_uint32(report->buffer_time_ms_known, report->buffer_time_ms, &model_report->buffer_time_ms_known, &model_report->buffer_time_ms)) {
+            set_error(error, error_size, "MODEL_PLAN_REPORT_BUFTM_INVALID: %s", report->key);
+            unitlab_free_ied_model_plan(plan);
+            return 0;
+        }
+        if (!copy_optional_uint32(
+                report->integrity_period_ms_known,
+                report->integrity_period_ms,
+                &model_report->integrity_period_ms_known,
+                &model_report->integrity_period_ms)) {
+            set_error(error, error_size, "MODEL_PLAN_REPORT_INTGPD_INVALID: %s", report->key);
+            unitlab_free_ied_model_plan(plan);
+            return 0;
+        }
         model_report->data_set_index = data_set_index;
+        model_report->indexed_known = report->indexed_known;
+        model_report->indexed = report->indexed;
+        model_report->trigger_options = report->trigger_options;
+        model_report->optional_fields = report->optional_fields;
         plan->report_count++;
     }
 
