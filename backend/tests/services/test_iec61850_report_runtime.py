@@ -40,6 +40,8 @@ from app.services.iec61850 import (
     run_ied_simulator_startup_check,
     run_report_subscription_plan,
     run_simulator_report_subscription_plan,
+    start_ied_simulator_process,
+    stop_ied_simulator_process,
     to_report_control_ref,
     write_ied_simulator_fixture_file,
 )
@@ -619,6 +621,94 @@ def test_backend_runtime_external_ied_simulator_startup_check_fails_closed(tmp_p
     assert "LIBIEC61850_NOT_LINKED" in str(error.value)
 
 
+def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+    process = _FakeSimulatorProcess(pid=61850)
+
+    def runner(command, **kwargs):
+        assert command[-1] == "--dry-run"
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+
+    def process_factory(command, **kwargs):
+        assert command == spec.command
+        assert command[-1] != "--dry-run"
+        assert kwargs == {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "text": True,
+        }
+        return process
+
+    handle = start_ied_simulator_process(
+        spec,
+        startup_grace_seconds=0,
+        runner=runner,
+        process_factory=process_factory,
+    )
+    stop = stop_ied_simulator_process(handle)
+
+    assert handle.pid == 61850
+    assert handle.endpoint.id == "mms-simulator:IED1/AP1@127.0.0.1:1102"
+    assert process.terminated is True
+    assert stop.return_code == 0
+    assert stop.killed is False
+
+
+def test_backend_runtime_rejects_dry_run_spec_for_external_ied_simulator_process_start(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path, dry_run=True)
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        start_ied_simulator_process(spec)
+
+    assert error.value.code == "SIMULATOR_PROCESS_START_DRY_RUN_SPEC"
+
+
+def test_backend_runtime_fails_when_external_ied_simulator_process_exits_during_startup(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+    process = _FakeSimulatorProcess(pid=61850, return_code=69, stderr="LIBIEC61850_NOT_LINKED\n")
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+
+    def process_factory(command, **kwargs):
+        return process
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        start_ied_simulator_process(
+            spec,
+            startup_grace_seconds=0,
+            runner=runner,
+            process_factory=process_factory,
+        )
+
+    assert error.value.code == "SIMULATOR_PROCESS_EXITED"
+    assert "LIBIEC61850_NOT_LINKED" in str(error.value)
+
+
+def test_backend_runtime_kills_external_ied_simulator_process_after_stop_timeout(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+    process = _FakeSimulatorProcess(pid=61850, wait_timeout=True)
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+
+    def process_factory(command, **kwargs):
+        return process
+
+    handle = start_ied_simulator_process(
+        spec,
+        startup_grace_seconds=0,
+        runner=runner,
+        process_factory=process_factory,
+    )
+    stop = stop_ied_simulator_process(handle, terminate_timeout_seconds=0.1)
+
+    assert process.terminated is True
+    assert process.killed is True
+    assert stop.return_code == -9
+    assert stop.killed is True
+
+
 def _endpoint() -> Iec61850DeviceEndpoint:
     return Iec61850DeviceEndpoint(
         id="sim:IED1/AP1",
@@ -734,6 +824,59 @@ def _subscription_plan(candidate: Iec61850ReportControlCandidate) -> Iec61850Rep
             ),
         ),
     )
+
+
+def _external_simulator_process_spec(tmp_path, *, dry_run: bool = False):
+    fixture = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(_candidate()))
+    fixture_path = tmp_path / "ied1.fixture.json"
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    return build_ied_simulator_process_spec(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=fixture_path,
+        ied_name="IED1",
+        dry_run=dry_run,
+    )
+
+
+class _FakeSimulatorProcess:
+    def __init__(
+        self,
+        *,
+        pid: int,
+        return_code: int | None = None,
+        stdout: str = "",
+        stderr: str = "",
+        wait_timeout: bool = False,
+    ) -> None:
+        self.pid = pid
+        self._return_code = return_code
+        self._stdout = stdout
+        self._stderr = stderr
+        self._wait_timeout = wait_timeout
+        self.terminated = False
+        self.killed = False
+
+    def poll(self) -> int | None:
+        return self._return_code
+
+    def terminate(self) -> None:
+        self.terminated = True
+        if not self._wait_timeout:
+            self._return_code = 0
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        if self._wait_timeout and not self.killed:
+            raise subprocess.TimeoutExpired(cmd="unitlab-iec61850-ied-sim", timeout=timeout)
+        return self._return_code
+
+    def kill(self) -> None:
+        self.killed = True
+        self._return_code = -9
+
+    def communicate(self) -> tuple[str, str]:
+        return self._stdout, self._stderr
 
 
 class _EnableFailureAdapter:

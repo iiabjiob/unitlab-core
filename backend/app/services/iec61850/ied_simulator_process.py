@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Sequence
@@ -65,7 +66,24 @@ class Iec61850IedSimulatorProcessResult:
     stderr: str
 
 
+@dataclass(frozen=True, slots=True)
+class Iec61850IedSimulatorProcessHandle:
+    spec: Iec61850IedSimulatorProcessSpec
+    endpoint: Iec61850DeviceEndpoint
+    pid: int
+    process: subprocess.Popen[str]
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850IedSimulatorProcessStopResult:
+    pid: int
+    return_code: int | None
+    killed: bool
+
+
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
+ProcessFactory = Callable[..., subprocess.Popen[str]]
+SleepFn = Callable[[float], None]
 
 
 def write_ied_simulator_fixture_file(
@@ -175,6 +193,86 @@ def run_ied_simulator_startup_check(
             f"IEC 61850 IED simulator dry-run check failed with exit code {completed.returncode}: {details}",
         )
     return result
+
+
+def start_ied_simulator_process(
+    spec: Iec61850IedSimulatorProcessSpec,
+    *,
+    startup_check_timeout_seconds: float = 5.0,
+    startup_grace_seconds: float = 0.1,
+    runner: ProcessRunner = subprocess.run,
+    process_factory: ProcessFactory = subprocess.Popen,
+    sleep: SleepFn = time.sleep,
+) -> Iec61850IedSimulatorProcessHandle:
+    if spec.dry_run:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_PROCESS_START_DRY_RUN_SPEC",
+            "IEC 61850 IED simulator process start requires a non-dry-run process spec.",
+        )
+
+    run_ied_simulator_startup_check(
+        spec,
+        timeout_seconds=startup_check_timeout_seconds,
+        runner=runner,
+    )
+    try:
+        process = process_factory(
+            spec.command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as exc:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_PROCESS_START_FAILED",
+            f"IEC 61850 IED simulator process could not be started: {exc}",
+        ) from exc
+
+    if startup_grace_seconds > 0:
+        sleep(startup_grace_seconds)
+    return_code = process.poll()
+    if return_code is not None:
+        stdout, stderr = _communicate_finished_process(process)
+        details = (stderr or stdout).strip()
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_PROCESS_EXITED",
+            f"IEC 61850 IED simulator process exited during startup with code {return_code}: {details}",
+        )
+
+    return Iec61850IedSimulatorProcessHandle(
+        spec=spec,
+        endpoint=spec.endpoint,
+        pid=process.pid,
+        process=process,
+    )
+
+
+def stop_ied_simulator_process(
+    handle: Iec61850IedSimulatorProcessHandle,
+    *,
+    terminate_timeout_seconds: float = 5.0,
+) -> Iec61850IedSimulatorProcessStopResult:
+    return_code = handle.process.poll()
+    killed = False
+    if return_code is None:
+        handle.process.terminate()
+        try:
+            return_code = handle.process.wait(timeout=terminate_timeout_seconds)
+        except subprocess.TimeoutExpired:
+            handle.process.kill()
+            killed = True
+            return_code = handle.process.wait(timeout=terminate_timeout_seconds)
+
+    return Iec61850IedSimulatorProcessStopResult(
+        pid=handle.pid,
+        return_code=return_code,
+        killed=killed,
+    )
+
+
+def _communicate_finished_process(process: subprocess.Popen[str]) -> tuple[str, str]:
+    stdout, stderr = process.communicate()
+    return stdout or "", stderr or ""
 
 
 def _find_fixture_device(

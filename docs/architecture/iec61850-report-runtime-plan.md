@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slice 13A-13J, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slice 13A-13K, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -430,6 +430,26 @@ Still planned:
 Validation:
 
 - Backend service tests cover fixture-file writing, command construction, endpoint shape, missing binary, missing IED, safe process invocation, and failed dry-run checks.
+
+### Slice 13K - Backend External Simulator Process Lifecycle
+
+Implemented in this slice:
+
+- Backend runtime can start the external simulator process only from a non-dry-run process spec.
+- Process start always runs the existing dry-run startup check before spawning the long-running command.
+- The long-running process is spawned without shell expansion and with captured stdout/stderr.
+- Premature process exit during the startup grace period fails closed with simulator stderr/stdout included in the diagnostic.
+- Backend runtime can stop the simulator process with terminate first and kill fallback after timeout.
+- No public REST/WebSocket API and no real MMS connection are introduced.
+
+Still planned:
+
+- Use this lifecycle helper only after the C simulator can expose a real MMS server.
+- Connect backend report-runtime execution to that endpoint through the MMS adapter boundary.
+
+Validation:
+
+- Backend service tests cover no-shell spawn, dry-run-spec rejection, premature-exit diagnostics, and terminate/kill cleanup.
 
 ## Current Risks
 
