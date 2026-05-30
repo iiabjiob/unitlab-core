@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slices 13A-13AJ, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, backend external simulator endpoint resolution, backend external simulator run orchestration, native external simulator loader validation, DataSet member path blueprinting, initial-value type preservation, report-control runtime blueprinting, report-control bit-mask blueprinting, DataSetEntry variable blueprinting, linked IED/LD/LN container creation, linked MMS server startup, linked client metadata smoke validation, backend simulator endpoint readiness probing, backend external simulator metadata probing, linked GI/report smoke validation, backend external simulator process-plan GI validation, backend subscription-plan simulator GI validation, all-report GI probe validation, all-value GI probe validation, GI DataRef validation, GI cleanup validation, GI optional-field validation, RCB mask/state metadata validation, DataSet member metadata validation, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slices 13A-13AK, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, backend external simulator endpoint resolution, backend external simulator run orchestration, native external simulator loader validation, DataSet member path blueprinting, initial-value type preservation, report-control runtime blueprinting, report-control bit-mask blueprinting, DataSetEntry variable blueprinting, linked IED/LD/LN container creation, linked MMS server startup, linked client metadata smoke validation, backend simulator endpoint readiness probing, backend external simulator metadata probing, linked GI/report smoke validation, backend external simulator process-plan GI validation, backend subscription-plan simulator GI validation, all-report GI probe validation, all-value GI probe validation, GI DataRef validation, GI cleanup validation, GI optional-field validation, RCB mask/state metadata validation, DataSet member metadata validation, backend external simulator probe output validation, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -940,6 +940,25 @@ Validation:
 
 - Native linked CTest covers DataSet member metadata validation through a real in-process libIEC61850 server.
 - Native unlinked CTest still validates the fail-closed no-libIEC61850 path.
+
+### Slice 13AK - Backend External IED Simulator Probe Output Validation
+
+Implemented in this slice:
+
+- Backend metadata and GI probe helpers now validate the native simulator stdout contract after a zero exit code.
+- The backend requires the probe accepted marker, selected IED name, bind endpoint, numeric report count, and `libiec61850=linked`.
+- Metadata probes additionally require a numeric DataSet count.
+- Malformed successful output fails closed with deterministic backend errors instead of treating the simulator as ready.
+- This is still simulator validation only; it does not execute production subscriptions and does not add a production MMS client.
+
+Still planned:
+
+- Wire the backend MMS adapter contract to this simulator endpoint for actual runtime read/reserve/enable/GI.
+- Add typed FCD/CDC expansion from SCL `DataTypeTemplates`.
+
+Validation:
+
+- Backend service tests cover valid probe stdout and malformed-success stdout for metadata and GI probes.
 
 ## Current Risks
 

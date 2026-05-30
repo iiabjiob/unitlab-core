@@ -375,6 +375,14 @@ def run_ied_simulator_metadata_probe(
             "SIMULATOR_METADATA_PROBE_FAILED",
             f"IEC 61850 IED simulator metadata probe failed with exit code {completed.returncode}: {details}",
         )
+    _validate_probe_output(
+        spec=spec,
+        result=result,
+        error_code="SIMULATOR_METADATA_PROBE_OUTPUT_INVALID",
+        probe_label="metadata probe",
+        accepted_line="unitlab-iec61850-ied-sim: metadata probe accepted",
+        require_data_sets=True,
+    )
     return result
 
 
@@ -415,6 +423,14 @@ def run_ied_simulator_gi_probe(
             "SIMULATOR_GI_PROBE_FAILED",
             f"IEC 61850 IED simulator GI probe failed with exit code {completed.returncode}: {details}",
         )
+    _validate_probe_output(
+        spec=spec,
+        result=result,
+        error_code="SIMULATOR_GI_PROBE_OUTPUT_INVALID",
+        probe_label="GI probe",
+        accepted_line="unitlab-iec61850-ied-sim: GI probe accepted",
+        require_data_sets=False,
+    )
     return result
 
 
@@ -796,6 +812,54 @@ def stop_ied_simulator_processes(
 def _communicate_finished_process(process: subprocess.Popen[str]) -> tuple[str, str]:
     stdout, stderr = process.communicate()
     return stdout or "", stderr or ""
+
+
+def _validate_probe_output(
+    *,
+    spec: Iec61850IedSimulatorProcessSpec,
+    result: Iec61850IedSimulatorProcessResult,
+    error_code: str,
+    probe_label: str,
+    accepted_line: str,
+    require_data_sets: bool,
+) -> None:
+    lines = tuple(line.strip() for line in result.stdout.splitlines() if line.strip())
+    fields = _parse_probe_output_fields(lines)
+    expected_endpoint = f"{spec.bind_address}:{spec.port}"
+    failures: list[str] = []
+
+    if accepted_line not in lines:
+        failures.append(f'missing accepted marker "{accepted_line}"')
+    if fields.get("ied") != spec.ied_name:
+        failures.append(f'expected ied="{spec.ied_name}"')
+    if fields.get("endpoint") != expected_endpoint:
+        failures.append(f'expected endpoint="{expected_endpoint}"')
+    if not _is_unsigned_integer(fields.get("reports")):
+        failures.append('missing numeric "reports" field')
+    if require_data_sets and not _is_unsigned_integer(fields.get("dataSets")):
+        failures.append('missing numeric "dataSets" field')
+    if fields.get("libiec61850") != "linked":
+        failures.append('expected libiec61850="linked"')
+
+    if failures:
+        details = (result.stdout or result.stderr).strip()
+        raise Iec61850ReportRuntimeError(
+            error_code,
+            f"IEC 61850 IED simulator {probe_label} returned malformed output: {', '.join(failures)}. Output: {details}",
+        )
+
+
+def _parse_probe_output_fields(lines: Sequence[str]) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for line in lines:
+        key, separator, value = line.partition("=")
+        if separator:
+            fields[key.strip()] = value.strip()
+    return fields
+
+
+def _is_unsigned_integer(value: str | None) -> bool:
+    return value is not None and value.isdigit()
 
 
 def _find_fixture_device(

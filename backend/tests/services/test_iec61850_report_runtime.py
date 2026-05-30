@@ -645,12 +645,12 @@ def test_backend_runtime_external_ied_simulator_metadata_probe_uses_safe_process
             "timeout": 3.0,
             "check": False,
         }
-        return subprocess.CompletedProcess(args=command, returncode=0, stdout="metadata probe accepted\n", stderr="")
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
 
     result = run_ied_simulator_metadata_probe(spec, timeout_seconds=3.0, runner=runner)
 
     assert result.return_code == 0
-    assert result.stdout == "metadata probe accepted\n"
+    assert result.stdout == _simulator_probe_stdout(spec.metadata_probe_command, probe="metadata")
     assert result.command[-1] == "--metadata-probe"
 
 
@@ -672,6 +672,31 @@ def test_backend_runtime_external_ied_simulator_metadata_probe_fails_closed(tmp_
     assert "IEC61850_METADATA_PROBE_RCB_READ_FAILED" in str(error.value)
 
 
+def test_backend_runtime_external_ied_simulator_metadata_probe_rejects_malformed_success_output(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout=(
+                "unitlab-iec61850-ied-sim: metadata probe accepted\n"
+                "ied=OTHER\n"
+                f"endpoint={spec.bind_address}:{spec.port}\n"
+                "dataSets=1\n"
+                "reports=1\n"
+                "libiec61850=linked\n"
+            ),
+            stderr="",
+        )
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        run_ied_simulator_metadata_probe(spec, runner=runner)
+
+    assert error.value.code == "SIMULATOR_METADATA_PROBE_OUTPUT_INVALID"
+    assert 'expected ied="IED1"' in str(error.value)
+
+
 def test_backend_runtime_external_ied_simulator_gi_probe_uses_safe_process_invocation(tmp_path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
 
@@ -685,12 +710,12 @@ def test_backend_runtime_external_ied_simulator_gi_probe_uses_safe_process_invoc
             "timeout": 4.0,
             "check": False,
         }
-        return subprocess.CompletedProcess(args=command, returncode=0, stdout="GI probe accepted\n", stderr="")
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
 
     result = run_ied_simulator_gi_probe(spec, timeout_seconds=4.0, runner=runner)
 
     assert result.return_code == 0
-    assert result.stdout == "GI probe accepted\n"
+    assert result.stdout == _simulator_probe_stdout(spec.gi_probe_command, probe="gi")
     assert result.command[-1] == "--gi-probe"
 
 
@@ -712,6 +737,30 @@ def test_backend_runtime_external_ied_simulator_gi_probe_fails_closed(tmp_path) 
     assert "IEC61850_GI_PROBE_REPORT_TIMEOUT" in str(error.value)
 
 
+def test_backend_runtime_external_ied_simulator_gi_probe_rejects_malformed_success_output(tmp_path) -> None:
+    spec = _external_simulator_process_spec(tmp_path)
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=0,
+            stdout=(
+                "unitlab-iec61850-ied-sim: GI probe accepted\n"
+                f"ied={spec.ied_name}\n"
+                f"endpoint={spec.bind_address}:{spec.port}\n"
+                "reports=1\n"
+                "libiec61850=unlinked\n"
+            ),
+            stderr="",
+        )
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        run_ied_simulator_gi_probe(spec, runner=runner)
+
+    assert error.value.code == "SIMULATOR_GI_PROBE_OUTPUT_INVALID"
+    assert 'expected libiec61850="linked"' in str(error.value)
+
+
 def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_path) -> None:
     spec = _external_simulator_process_spec(tmp_path)
     process = _FakeSimulatorProcess(pid=61850)
@@ -722,7 +771,7 @@ def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_pat
         if command[-1] == "--dry-run":
             return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
         if command[-1] == "--metadata-probe":
-            return subprocess.CompletedProcess(args=command, returncode=0, stdout="metadata probe accepted\n", stderr="")
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
         raise AssertionError(f"unexpected simulator helper command: {command}")
 
     def process_factory(command, **kwargs):
@@ -863,6 +912,8 @@ def test_backend_runtime_kills_external_ied_simulator_process_after_stop_timeout
     process = _FakeSimulatorProcess(pid=61850, wait_timeout=True)
 
     def runner(command, **kwargs):
+        if command[-1] == "--metadata-probe":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
         return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
 
     def process_factory(command, **kwargs):
@@ -929,7 +980,7 @@ def test_backend_runtime_external_ied_simulator_process_plan_runs_gi_probes(tmp_
 
     def runner(command, **kwargs):
         commands.append(command)
-        return subprocess.CompletedProcess(args=command, returncode=0, stdout=f"{command[4]} GI accepted\n", stderr="")
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
 
     probes = run_ied_simulator_process_plan_gi_probes(process_plan, runner=runner)
 
@@ -1020,6 +1071,8 @@ def test_backend_runtime_external_ied_simulator_process_plan_cleans_up_on_partia
     processes = [started_process, failed_process]
 
     def runner(command, **kwargs):
+        if command[-1] == "--metadata-probe":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
         return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
 
     def process_factory(command, **kwargs):
@@ -1054,8 +1107,12 @@ def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_clean
 
     def runner(command, **kwargs):
         commands.append(command[-1])
-        if command[-1] in {"--dry-run", "--metadata-probe", "--gi-probe"}:
-            return subprocess.CompletedProcess(args=command, returncode=0, stdout=f"{command[-1]} accepted\n", stderr="")
+        if command[-1] == "--dry-run":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+        if command[-1] == "--metadata-probe":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
+        if command[-1] == "--gi-probe":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
         raise AssertionError(f"unexpected simulator helper command: {command}")
 
     def process_factory(command, **kwargs):
@@ -1088,8 +1145,10 @@ def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_stops
     process = _FakeSimulatorProcess(pid=61850)
 
     def runner(command, **kwargs):
-        if command[-1] in {"--dry-run", "--metadata-probe"}:
-            return subprocess.CompletedProcess(args=command, returncode=0, stdout=f"{command[-1]} accepted\n", stderr="")
+        if command[-1] == "--dry-run":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+        if command[-1] == "--metadata-probe":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
         if command[-1] == "--gi-probe":
             return subprocess.CompletedProcess(args=command, returncode=69, stdout="", stderr="GI timeout\n")
         raise AssertionError(f"unexpected simulator helper command: {command}")
@@ -1119,8 +1178,12 @@ def test_backend_runtime_external_ied_simulator_subscription_plan_gi_validation(
 
     def runner(command, **kwargs):
         commands.append(command[-1])
-        if command[-1] in {"--dry-run", "--metadata-probe", "--gi-probe"}:
-            return subprocess.CompletedProcess(args=command, returncode=0, stdout=f"{command[-1]} accepted\n", stderr="")
+        if command[-1] == "--dry-run":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+        if command[-1] == "--metadata-probe":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
+        if command[-1] == "--gi-probe":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="gi"), stderr="")
         raise AssertionError(f"unexpected simulator helper command: {command}")
 
     def process_factory(command, **kwargs):
@@ -1152,6 +1215,8 @@ def test_backend_runtime_external_ied_simulator_wrapper_runs_through_mms_boundar
     process = _FakeSimulatorProcess(pid=61850)
 
     def runner(command, **kwargs):
+        if command[-1] == "--metadata-probe":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
         return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
 
     def process_factory(command, **kwargs):
@@ -1182,6 +1247,8 @@ def test_backend_runtime_external_ied_simulator_wrapper_cleans_up_after_runtime_
     process = _FakeSimulatorProcess(pid=61850)
 
     def runner(command, **kwargs):
+        if command[-1] == "--metadata-probe":
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=_simulator_probe_stdout(command, probe="metadata"), stderr="")
         return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
 
     def process_factory(command, **kwargs):
@@ -1378,6 +1445,30 @@ def _external_simulator_process_spec(tmp_path, *, dry_run: bool = False):
         ied_name="IED1",
         dry_run=dry_run,
     )
+
+
+def _simulator_probe_stdout(command: tuple[str, ...], *, probe: str) -> str:
+    ied_name = command[command.index("--ied") + 1]
+    bind_address = command[command.index("--bind") + 1]
+    port = command[command.index("--port") + 1]
+    if probe == "metadata":
+        return (
+            "unitlab-iec61850-ied-sim: metadata probe accepted\n"
+            f"ied={ied_name}\n"
+            f"endpoint={bind_address}:{port}\n"
+            "dataSets=1\n"
+            "reports=1\n"
+            "libiec61850=linked\n"
+        )
+    if probe == "gi":
+        return (
+            "unitlab-iec61850-ied-sim: GI probe accepted\n"
+            f"ied={ied_name}\n"
+            f"endpoint={bind_address}:{port}\n"
+            "reports=1\n"
+            "libiec61850=linked\n"
+        )
+    raise AssertionError(f"unknown probe type: {probe}")
 
 
 class _FakeSimulatorProcess:
