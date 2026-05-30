@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slice 13A-13N, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, backend external simulator endpoint resolution, backend external simulator run orchestration, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slice 13A-13O, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, backend external simulator endpoint resolution, backend external simulator run orchestration, native external simulator loader validation, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -506,6 +506,25 @@ Still planned:
 Validation:
 
 - Backend service tests cover fail-closed MMS adapter execution through external simulator processes and cleanup after runtime exceptions.
+
+### Slice 13O - External IED Simulator Loader Validation
+
+Implemented in this slice:
+
+- Added a native C test target for the external simulator model-loader boundary.
+- The loader is validated to fail closed when libIEC61850 is not linked, and to report the not-implemented loader code when compiled with libIEC61850 support.
+- Guardrails cover null arguments, empty model plans, empty bind addresses, and invalid TCP ports before any future MMS server can start.
+- CMake/CTest now runs both the model-plan blueprint test and the model-loader guardrail test.
+- No MMS server is started and no fake report success is reported.
+
+Still planned:
+
+- Convert the validated model plan into real libIEC61850 server model objects.
+- Start one MMS server only after the model load path is real.
+
+Validation:
+
+- Native C compile, CMake configure/build, and CTest model-plan/model-loader tests.
 
 ## Current Risks
 

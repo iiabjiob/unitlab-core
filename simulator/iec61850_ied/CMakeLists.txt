@@ -50,3 +50,16 @@ add_test(
   NAME unitlab-iec61850-ied-model-plan
   COMMAND unitlab-iec61850-ied-model-plan-test
 )
+
+add_executable(unitlab-iec61850-ied-model-loader-test
+  src/model_loader.c
+  src/model_plan.c
+  tests/model_loader_test.c
+)
+target_include_directories(unitlab-iec61850-ied-model-loader-test PRIVATE src)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-ied-model-loader-test)
+
+add_test(
+  NAME unitlab-iec61850-ied-model-loader
+  COMMAND unitlab-iec61850-ied-model-loader-test
+)
