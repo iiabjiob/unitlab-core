@@ -38,6 +38,7 @@ from app.services.iec61850 import (
     map_report_event_to_signal_observations,
     normalize_report_data_reference,
     prepare_ied_simulator_process_plan,
+    prepare_ied_simulator_process_plan_from_subscription_plan,
     run_ied_simulator_process_plan_startup_checks,
     run_ied_simulator_startup_check,
     run_report_subscription_plan,
@@ -732,6 +733,7 @@ def test_backend_runtime_prepares_external_ied_simulator_process_plan_for_requir
         "mms-simulator:IED1/AP1@127.0.0.1:12000",
         "mms-simulator:IED2/AP1@127.0.0.1:12001",
     ]
+    assert process_plan.endpoint_for_plan_device(plan.devices[1]).id == "mms-simulator:IED2/AP1@127.0.0.1:12001"
 
     def runner(command, **kwargs):
         return subprocess.CompletedProcess(args=command, returncode=0, stdout=f"{command[4]} accepted\n", stderr="")
@@ -740,6 +742,74 @@ def test_backend_runtime_prepares_external_ied_simulator_process_plan_for_requir
 
     assert [check.return_code for check in checks] == [0, 0]
     assert [check.command[-1] for check in checks] == ["--dry-run", "--dry-run"]
+
+
+def test_backend_runtime_prepares_external_ied_simulator_process_plan_from_subscription_plan(tmp_path) -> None:
+    plan = _multi_device_subscription_plan()
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+
+    process_plan = prepare_ied_simulator_process_plan_from_subscription_plan(
+        subscription_plan=plan,
+        binary_path=binary_path,
+        fixture_path=tmp_path / "multi-device.fixture.json",
+        base_port=13000,
+    )
+
+    assert [spec.ied_name for spec in process_plan.specs] == ["IED1", "IED2"]
+    assert [endpoint.port for endpoint in process_plan.endpoints] == [13000, 13001]
+    assert json.loads(tmp_path.joinpath("multi-device.fixture.json").read_text(encoding="utf-8"))["devices"][0]["reports"][0]["key"] == "IED1/AP1/LD0/LLN0/brcbEvents/buffered"
+
+
+def test_backend_runtime_external_ied_simulator_process_plan_endpoint_resolver_fails_closed(tmp_path) -> None:
+    plan = _multi_device_subscription_plan()
+    fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    process_plan = prepare_ied_simulator_process_plan(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=tmp_path / "multi-device.fixture.json",
+    )
+    missing_device = Iec61850ReportSubscriptionPlanDevice(
+        ied_name="MISSING",
+        access_point_name="AP1",
+        reports=(),
+    )
+
+    with pytest.raises(Iec61850ReportRuntimeError) as missing_error:
+        process_plan.endpoint_for_plan_device(missing_device)
+    assert missing_error.value.code == "SIMULATOR_PROCESS_ENDPOINT_NOT_CONFIGURED"
+
+    duplicate_plan = process_plan.__class__(
+        fixture_path=process_plan.fixture_path,
+        specs=(process_plan.specs[0], process_plan.specs[0]),
+    )
+    with pytest.raises(Iec61850ReportRuntimeError) as duplicate_error:
+        duplicate_plan.endpoint_for_plan_device(plan.devices[0])
+    assert duplicate_error.value.code == "SIMULATOR_PROCESS_ENDPOINT_DUPLICATE"
+
+
+def test_backend_runtime_external_ied_simulator_endpoints_feed_mms_adapter_boundary(tmp_path) -> None:
+    plan = _subscription_plan(_candidate())
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    process_plan = prepare_ied_simulator_process_plan_from_subscription_plan(
+        subscription_plan=plan,
+        binary_path=binary_path,
+        fixture_path=tmp_path / "ied1.fixture.json",
+    )
+
+    run = run_report_subscription_plan(
+        plan=plan,
+        adapter=create_unavailable_mms_adapter(),
+        client_id="unitlab",
+        endpoint_for_device=process_plan.endpoint_for_plan_device,
+        now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC),
+    )
+
+    assert run.reports[0].runtime_status == Iec61850RuntimeStatus.FAILED
+    assert run.reports[0].error_code == "MMS_ADAPTER_NOT_IMPLEMENTED"
 
 
 def test_backend_runtime_external_ied_simulator_process_plan_cleans_up_on_partial_start_failure(tmp_path) -> None:

@@ -10,11 +10,14 @@ from typing import Callable, Sequence
 from .ied_simulator_fixture import (
     Iec61850IedSimulatorFixture,
     Iec61850IedSimulatorFixtureDevice,
+    build_ied_simulator_fixture_from_subscription_plan,
     ied_simulator_fixture_to_payload,
 )
 from .report_runtime import (
     Iec61850DeviceEndpoint,
     Iec61850ReportRuntimeError,
+    Iec61850ReportSubscriptionPlan,
+    Iec61850ReportSubscriptionPlanDevice,
     Iec61850RuntimeMode,
 )
 
@@ -89,6 +92,24 @@ class Iec61850IedSimulatorProcessPlan:
     @property
     def endpoints(self) -> tuple[Iec61850DeviceEndpoint, ...]:
         return tuple(spec.endpoint for spec in self.specs)
+
+    def endpoint_for_plan_device(self, device: Iec61850ReportSubscriptionPlanDevice) -> Iec61850DeviceEndpoint:
+        matches = tuple(
+            spec.endpoint
+            for spec in self.specs
+            if _endpoint_key(spec.ied_name, spec.access_point_name) == _endpoint_key(device.ied_name, device.access_point_name)
+        )
+        if not matches:
+            raise Iec61850ReportRuntimeError(
+                "SIMULATOR_PROCESS_ENDPOINT_NOT_CONFIGURED",
+                f'IEC 61850 simulator process endpoint for "{device.ied_name}/{device.access_point_name}" is not configured.',
+            )
+        if len(matches) > 1:
+            raise Iec61850ReportRuntimeError(
+                "SIMULATOR_PROCESS_ENDPOINT_DUPLICATE",
+                f'IEC 61850 simulator process endpoint for "{device.ied_name}/{device.access_point_name}" is configured more than once.',
+            )
+        return matches[0]
 
 
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
@@ -211,6 +232,26 @@ def prepare_ied_simulator_process_plan(
     return Iec61850IedSimulatorProcessPlan(
         fixture_path=str(written_fixture_path),
         specs=specs,
+    )
+
+
+def prepare_ied_simulator_process_plan_from_subscription_plan(
+    *,
+    subscription_plan: Iec61850ReportSubscriptionPlan,
+    binary_path: str | Path,
+    fixture_path: str | Path,
+    bind_address: str = "127.0.0.1",
+    base_port: int = 1102,
+    dry_run: bool = False,
+) -> Iec61850IedSimulatorProcessPlan:
+    fixture = build_ied_simulator_fixture_from_subscription_plan(subscription_plan)
+    return prepare_ied_simulator_process_plan(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=fixture_path,
+        bind_address=bind_address,
+        base_port=base_port,
+        dry_run=dry_run,
     )
 
 
@@ -404,3 +445,7 @@ def _find_fixture_device(
         "SIMULATOR_DEVICE_NOT_IN_FIXTURE",
         f'IEC 61850 IED simulator fixture does not contain selected IED "{ied_name}".',
     )
+
+
+def _endpoint_key(ied_name: str, access_point_name: str) -> tuple[str, str]:
+    return (ied_name.strip().lower(), access_point_name.strip().lower())
