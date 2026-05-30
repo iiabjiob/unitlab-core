@@ -62,13 +62,18 @@ from .ied_simulator_fixture import (
 )
 from .ied_simulator_process import (
     Iec61850IedSimulatorProcessHandle,
+    Iec61850IedSimulatorProcessPlan,
     Iec61850IedSimulatorProcessResult,
     Iec61850IedSimulatorProcessSpec,
     Iec61850IedSimulatorProcessStopResult,
     build_ied_simulator_process_spec,
+    prepare_ied_simulator_process_plan,
+    run_ied_simulator_process_plan_startup_checks,
     run_ied_simulator_startup_check,
     start_ied_simulator_process,
+    start_ied_simulator_process_plan,
     stop_ied_simulator_process,
+    stop_ied_simulator_processes,
     write_ied_simulator_fixture_file,
 )
 
@@ -115,6 +120,7 @@ __all__ = [
     "Iec61850IedSimulatorFixtureReport",
     "Iec61850IedSimulatorFixtureSignal",
     "Iec61850IedSimulatorProcessHandle",
+    "Iec61850IedSimulatorProcessPlan",
     "Iec61850IedSimulatorProcessResult",
     "Iec61850IedSimulatorProcessSpec",
     "Iec61850IedSimulatorProcessStopResult",
@@ -128,12 +134,16 @@ __all__ = [
     "map_report_event_to_subscription_plan_observations",
     "map_report_event_to_signal_observations",
     "normalize_report_data_reference",
+    "prepare_ied_simulator_process_plan",
     "report_control_key",
+    "run_ied_simulator_process_plan_startup_checks",
     "run_ied_simulator_startup_check",
     "run_report_subscription_plan",
     "run_simulator_report_subscription_plan",
     "start_ied_simulator_process",
+    "start_ied_simulator_process_plan",
     "stop_ied_simulator_process",
+    "stop_ied_simulator_processes",
     "to_report_control_ref",
     "write_ied_simulator_fixture_file",
 ]

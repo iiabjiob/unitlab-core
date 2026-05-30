@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slice 13A-13K, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slice 13A-13L, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -450,6 +450,26 @@ Still planned:
 Validation:
 
 - Backend service tests cover no-shell spawn, dry-run-spec rejection, premature-exit diagnostics, and terminate/kill cleanup.
+
+### Slice 13L - Backend External Simulator Process Plan
+
+Implemented in this slice:
+
+- Backend runtime can write one fixture file for a required-device set and build deterministic simulator process specs for each fixture device.
+- Process specs receive deterministic ports from a caller-provided base port.
+- The process plan exposes the MMS endpoints UnitLab will later use for report-runtime execution.
+- Backend runtime can run dry-run startup checks across the full process plan.
+- Backend runtime can start process-plan specs sequentially and stops already-started simulators if a later simulator fails during startup.
+- No public REST/WebSocket API and no real MMS connection are introduced.
+
+Still planned:
+
+- Use process-plan start only after the C simulator exposes a real MMS server.
+- Connect backend report-runtime execution to those endpoints through the MMS adapter boundary.
+
+Validation:
+
+- Backend service tests cover process-plan fixture writing, deterministic spec/endpoint generation, dry-run checks, and cleanup after partial start failure.
 
 ## Current Risks
 

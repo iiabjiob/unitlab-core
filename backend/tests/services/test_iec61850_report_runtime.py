@@ -37,10 +37,13 @@ from app.services.iec61850 import (
     map_report_event_to_subscription_plan_observations,
     map_report_event_to_signal_observations,
     normalize_report_data_reference,
+    prepare_ied_simulator_process_plan,
+    run_ied_simulator_process_plan_startup_checks,
     run_ied_simulator_startup_check,
     run_report_subscription_plan,
     run_simulator_report_subscription_plan,
     start_ied_simulator_process,
+    start_ied_simulator_process_plan,
     stop_ied_simulator_process,
     to_report_control_ref,
     write_ied_simulator_fixture_file,
@@ -709,6 +712,69 @@ def test_backend_runtime_kills_external_ied_simulator_process_after_stop_timeout
     assert stop.killed is True
 
 
+def test_backend_runtime_prepares_external_ied_simulator_process_plan_for_required_devices(tmp_path) -> None:
+    plan = _multi_device_subscription_plan()
+    fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+
+    process_plan = prepare_ied_simulator_process_plan(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=tmp_path / "multi-device.fixture.json",
+        base_port=12000,
+    )
+
+    assert json.loads(tmp_path.joinpath("multi-device.fixture.json").read_text(encoding="utf-8"))["devices"][1]["iedName"] == "IED2"
+    assert [spec.ied_name for spec in process_plan.specs] == ["IED1", "IED2"]
+    assert [spec.port for spec in process_plan.specs] == [12000, 12001]
+    assert [endpoint.id for endpoint in process_plan.endpoints] == [
+        "mms-simulator:IED1/AP1@127.0.0.1:12000",
+        "mms-simulator:IED2/AP1@127.0.0.1:12001",
+    ]
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout=f"{command[4]} accepted\n", stderr="")
+
+    checks = run_ied_simulator_process_plan_startup_checks(process_plan, runner=runner)
+
+    assert [check.return_code for check in checks] == [0, 0]
+    assert [check.command[-1] for check in checks] == ["--dry-run", "--dry-run"]
+
+
+def test_backend_runtime_external_ied_simulator_process_plan_cleans_up_on_partial_start_failure(tmp_path) -> None:
+    plan = _multi_device_subscription_plan()
+    fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    process_plan = prepare_ied_simulator_process_plan(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=tmp_path / "multi-device.fixture.json",
+    )
+    started_process = _FakeSimulatorProcess(pid=1)
+    failed_process = _FakeSimulatorProcess(pid=2, return_code=69, stderr="LIBIEC61850_NOT_LINKED\n")
+    processes = [started_process, failed_process]
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="fixture accepted\n", stderr="")
+
+    def process_factory(command, **kwargs):
+        return processes.pop(0)
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        start_ied_simulator_process_plan(
+            process_plan,
+            startup_grace_seconds=0,
+            runner=runner,
+            process_factory=process_factory,
+        )
+
+    assert error.value.code == "SIMULATOR_PROCESS_EXITED"
+    assert started_process.terminated is True
+    assert failed_process.terminated is False
+
+
 def _endpoint() -> Iec61850DeviceEndpoint:
     return Iec61850DeviceEndpoint(
         id="sim:IED1/AP1",
@@ -720,16 +786,22 @@ def _endpoint() -> Iec61850DeviceEndpoint:
     )
 
 
-def _candidate(id: str = "report-1", conf_rev: str = "7", data_set_ref: str | None = "IED1/AP1/LD0/LLN0.dsEvents") -> Iec61850ReportControlCandidate:
+def _candidate(
+    id: str = "report-1",
+    conf_rev: str = "7",
+    data_set_ref: str | None = "IED1/AP1/LD0/LLN0.dsEvents",
+    ied_name: str = "IED1",
+    access_point_name: str = "AP1",
+) -> Iec61850ReportControlCandidate:
     return Iec61850ReportControlCandidate(
         id=id,
-        ied_name="IED1",
-        access_point_name="AP1",
+        ied_name=ied_name,
+        access_point_name=access_point_name,
         logical_device_inst="LD0",
         logical_node_name="LLN0",
         report_control_name="brcbEvents",
         report_kind=Iec61850ReportKind.BUFFERED,
-        rpt_id="IED1LD0/LLN0.BR.Events",
+        rpt_id=f"{ied_name}LD0/LLN0.BR.Events",
         data_set_ref=data_set_ref,
         conf_rev=conf_rev,
         indexed=True,
@@ -818,6 +890,46 @@ def _subscription_plan(candidate: Iec61850ReportControlCandidate) -> Iec61850Rep
                     Iec61850ReportSubscriptionPlanReport(
                         status="required",
                         candidate=candidate,
+                        matched_signals=_matched_signals(),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+
+def _multi_device_subscription_plan() -> Iec61850ReportSubscriptionPlan:
+    first_candidate = _candidate(id="report-1")
+    second_candidate = _candidate(
+        id="report-2",
+        data_set_ref="IED2/AP1/LD0/LLN0.dsEvents",
+        ied_name="IED2",
+    )
+    return Iec61850ReportSubscriptionPlan(
+        selected_signal_count=4,
+        matched_signal_count=4,
+        unmatched_signal_count=0,
+        ambiguous_signal_count=0,
+        required_report_count=2,
+        devices=(
+            Iec61850ReportSubscriptionPlanDevice(
+                ied_name=first_candidate.ied_name,
+                access_point_name=first_candidate.access_point_name,
+                reports=(
+                    Iec61850ReportSubscriptionPlanReport(
+                        status="required",
+                        candidate=first_candidate,
+                        matched_signals=_matched_signals(),
+                    ),
+                ),
+            ),
+            Iec61850ReportSubscriptionPlanDevice(
+                ied_name=second_candidate.ied_name,
+                access_point_name=second_candidate.access_point_name,
+                reports=(
+                    Iec61850ReportSubscriptionPlanReport(
+                        status="required",
+                        candidate=second_candidate,
                         matched_signals=_matched_signals(),
                     ),
                 ),

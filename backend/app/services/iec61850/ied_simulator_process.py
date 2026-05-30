@@ -81,6 +81,16 @@ class Iec61850IedSimulatorProcessStopResult:
     killed: bool
 
 
+@dataclass(frozen=True, slots=True)
+class Iec61850IedSimulatorProcessPlan:
+    fixture_path: str
+    specs: tuple[Iec61850IedSimulatorProcessSpec, ...]
+
+    @property
+    def endpoints(self) -> tuple[Iec61850DeviceEndpoint, ...]:
+        return tuple(spec.endpoint for spec in self.specs)
+
+
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 ProcessFactory = Callable[..., subprocess.Popen[str]]
 SleepFn = Callable[[float], None]
@@ -159,6 +169,51 @@ def build_ied_simulator_process_spec(
     )
 
 
+def prepare_ied_simulator_process_plan(
+    *,
+    fixture: Iec61850IedSimulatorFixture,
+    binary_path: str | Path,
+    fixture_path: str | Path,
+    bind_address: str = "127.0.0.1",
+    base_port: int = 1102,
+    dry_run: bool = False,
+) -> Iec61850IedSimulatorProcessPlan:
+    if not fixture.devices:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_FIXTURE_EMPTY",
+            "IEC 61850 IED simulator process plan requires at least one fixture device.",
+        )
+    if base_port <= 0 or base_port > 65535:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_PORT_INVALID",
+            f"IEC 61850 IED simulator base port {base_port} is outside range 1..65535.",
+        )
+    final_port = base_port + len(fixture.devices) - 1
+    if final_port > 65535:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_PORT_RANGE_INVALID",
+            f"IEC 61850 IED simulator port range {base_port}..{final_port} exceeds 65535.",
+        )
+
+    written_fixture_path = write_ied_simulator_fixture_file(fixture, fixture_path)
+    specs = tuple(
+        build_ied_simulator_process_spec(
+            fixture=fixture,
+            binary_path=binary_path,
+            fixture_path=written_fixture_path,
+            ied_name=device.ied_name,
+            bind_address=bind_address,
+            port=base_port + index,
+            dry_run=dry_run,
+        )
+        for index, device in enumerate(fixture.devices)
+    )
+    return Iec61850IedSimulatorProcessPlan(
+        fixture_path=str(written_fixture_path),
+        specs=specs,
+    )
+
+
 def run_ied_simulator_startup_check(
     spec: Iec61850IedSimulatorProcessSpec,
     *,
@@ -193,6 +248,22 @@ def run_ied_simulator_startup_check(
             f"IEC 61850 IED simulator dry-run check failed with exit code {completed.returncode}: {details}",
         )
     return result
+
+
+def run_ied_simulator_process_plan_startup_checks(
+    plan: Iec61850IedSimulatorProcessPlan,
+    *,
+    timeout_seconds: float = 5.0,
+    runner: ProcessRunner = subprocess.run,
+) -> tuple[Iec61850IedSimulatorProcessResult, ...]:
+    return tuple(
+        run_ied_simulator_startup_check(
+            spec,
+            timeout_seconds=timeout_seconds,
+            runner=runner,
+        )
+        for spec in plan.specs
+    )
 
 
 def start_ied_simulator_process(
@@ -247,6 +318,38 @@ def start_ied_simulator_process(
     )
 
 
+def start_ied_simulator_process_plan(
+    plan: Iec61850IedSimulatorProcessPlan,
+    *,
+    startup_check_timeout_seconds: float = 5.0,
+    startup_grace_seconds: float = 0.1,
+    terminate_timeout_seconds: float = 5.0,
+    runner: ProcessRunner = subprocess.run,
+    process_factory: ProcessFactory = subprocess.Popen,
+    sleep: SleepFn = time.sleep,
+) -> tuple[Iec61850IedSimulatorProcessHandle, ...]:
+    handles: list[Iec61850IedSimulatorProcessHandle] = []
+    try:
+        for spec in plan.specs:
+            handles.append(
+                start_ied_simulator_process(
+                    spec,
+                    startup_check_timeout_seconds=startup_check_timeout_seconds,
+                    startup_grace_seconds=startup_grace_seconds,
+                    runner=runner,
+                    process_factory=process_factory,
+                    sleep=sleep,
+                )
+            )
+    except Exception:
+        stop_ied_simulator_processes(
+            tuple(reversed(handles)),
+            terminate_timeout_seconds=terminate_timeout_seconds,
+        )
+        raise
+    return tuple(handles)
+
+
 def stop_ied_simulator_process(
     handle: Iec61850IedSimulatorProcessHandle,
     *,
@@ -267,6 +370,20 @@ def stop_ied_simulator_process(
         pid=handle.pid,
         return_code=return_code,
         killed=killed,
+    )
+
+
+def stop_ied_simulator_processes(
+    handles: Sequence[Iec61850IedSimulatorProcessHandle],
+    *,
+    terminate_timeout_seconds: float = 5.0,
+) -> tuple[Iec61850IedSimulatorProcessStopResult, ...]:
+    return tuple(
+        stop_ied_simulator_process(
+            handle,
+            terminate_timeout_seconds=terminate_timeout_seconds,
+        )
+        for handle in handles
     )
 
 
