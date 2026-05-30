@@ -28,6 +28,7 @@ typedef struct UnitLabGiProbeContext {
     int value_count;
     int first_reason;
     int conf_rev;
+    int validate_data_reference;
     int value_validation_failed;
     size_t value_validation_index;
     char value_validation_code[96];
@@ -235,6 +236,10 @@ static void report_callback(void* parameter, ClientReport report)
         set_value_validation_error(context, 0U, "IEC61850_GI_PROBE_CONTEXT_INVALID", "IEC 61850 GI probe callback is missing DataSet context.");
         return;
     }
+    if (context->validate_data_reference && !ClientReport_hasDataReference(report)) {
+        set_value_validation_error(context, 0U, "IEC61850_GI_PROBE_DATAREF_MISSING", "IEC 61850 GI probe expected DataRef optional field values.");
+        return;
+    }
     for (size_t index = 0U; index < context->data_set->member_count; index++) {
         size_t signal_index = context->data_set->first_signal_index + index;
         if (signal_index >= context->plan->signal_count) {
@@ -255,6 +260,17 @@ static void report_callback(void* parameter, ClientReport report)
         if (!validate_gi_mms_value(&context->plan->signals[signal_index], value, code, sizeof(code), message, sizeof(message))) {
             set_value_validation_error(context, index, code, message);
             return;
+        }
+        if (context->validate_data_reference) {
+            const char* data_reference = ClientReport_getDataReference(report, (int)index);
+            if (data_reference == NULL || data_reference[0] == '\0') {
+                set_value_validation_error(context, index, "IEC61850_GI_PROBE_DATAREF_MISSING", "IEC 61850 GI probe received an empty DataRef value.");
+                return;
+            }
+            if (strstr(data_reference, context->plan->signals[signal_index].data_set_entry_variable) == NULL) {
+                set_value_validation_error(context, index, "IEC61850_GI_PROBE_DATAREF_MISMATCH", "IEC 61850 GI probe received an unexpected DataRef value.");
+                return;
+            }
         }
     }
 }
@@ -535,6 +551,7 @@ static int probe_gi_report(
     UnitLabGiProbeContext context = {
         .plan = plan,
         .data_set = data_set,
+        .validate_data_reference = report->optional_fields.data_reference.known && report->optional_fields.data_reference.value,
     };
     if (passed) {
         rcb = IedConnection_getRCBValues(connection, &error, rcb_ref, NULL);

@@ -189,7 +189,7 @@ The backend uses this as an internal simulator readiness helper. It proves MMS m
 
 ## GI Probe
 
-When linked with libIEC61850, `--gi-probe` connects to an already running simulator endpoint and validates every ReportControl in the selected fixture device. For each ReportControl it enables reporting, requests GI, verifies the received report metadata, checks the DataSet value count, and checks every reported value against the fixture `initialValue` entries:
+When linked with libIEC61850, `--gi-probe` connects to an already running simulator endpoint and validates every ReportControl in the selected fixture device. For each ReportControl it enables reporting, requests GI, verifies the received report metadata, checks the DataSet value count, checks every reported value against the fixture `initialValue` entries, and verifies DataRef values when `OptFlds.dataReference` is enabled:
 
 ```bash
 /tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim \
@@ -223,7 +223,7 @@ That test starts the simulator on `127.0.0.1`, connects with libIEC61850's `IedC
 - DataSet member directory discovery;
 - BRCB directory discovery;
 - BRCB metadata reads for `RptID`, `DatSet`, `ConfRev`, `BufTm`, and `IntgPd`;
-- BRCB and URCB GI request, report callback, and all fixture value validation.
+- BRCB and URCB GI request, report callback, all fixture value validation, and DataRef validation when enabled.
 
 This remains an internal simulator validation path. It does not make UnitLab production runtime depend on libIEC61850.
 
