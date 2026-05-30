@@ -145,6 +145,38 @@ static int derive_report_buffered_flag(
     return 0;
 }
 
+static void append_optional_bool_mask(UnitLabIedFixtureOptionalBool field, uint8_t bit, uint8_t* mask)
+{
+    if (field.known && field.value) {
+        *mask = (uint8_t)(*mask | bit);
+    }
+}
+
+static uint8_t build_trigger_options_mask(const UnitLabIedFixtureTriggerOptions* options)
+{
+    uint8_t mask = 0U;
+    append_optional_bool_mask(options->data_change, UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED, &mask);
+    append_optional_bool_mask(options->quality_change, UNITLAB_IED_MODEL_TRG_OPT_QUALITY_CHANGED, &mask);
+    append_optional_bool_mask(options->data_update, UNITLAB_IED_MODEL_TRG_OPT_DATA_UPDATE, &mask);
+    append_optional_bool_mask(options->periodic, UNITLAB_IED_MODEL_TRG_OPT_INTEGRITY, &mask);
+    append_optional_bool_mask(options->general_interrogation, UNITLAB_IED_MODEL_TRG_OPT_GI, &mask);
+    return mask;
+}
+
+static uint8_t build_optional_fields_mask(const UnitLabIedFixtureOptionalFields* fields)
+{
+    uint8_t mask = 0U;
+    append_optional_bool_mask(fields->sequence_number, UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM, &mask);
+    append_optional_bool_mask(fields->timestamp, UNITLAB_IED_MODEL_RPT_OPT_TIME_STAMP, &mask);
+    append_optional_bool_mask(fields->reason_code, UNITLAB_IED_MODEL_RPT_OPT_REASON_FOR_INCLUSION, &mask);
+    append_optional_bool_mask(fields->data_set_name, UNITLAB_IED_MODEL_RPT_OPT_DATA_SET, &mask);
+    append_optional_bool_mask(fields->data_reference, UNITLAB_IED_MODEL_RPT_OPT_DATA_REFERENCE, &mask);
+    append_optional_bool_mask(fields->buffer_overflow, UNITLAB_IED_MODEL_RPT_OPT_BUFFER_OVERFLOW, &mask);
+    append_optional_bool_mask(fields->entry_id, UNITLAB_IED_MODEL_RPT_OPT_ENTRY_ID, &mask);
+    append_optional_bool_mask(fields->config_revision, UNITLAB_IED_MODEL_RPT_OPT_CONF_REV, &mask);
+    return mask;
+}
+
 static int parse_fc_suffix(
     const UnitLabIedFixtureSignal* signal,
     const char* body_end,
@@ -566,6 +598,8 @@ int unitlab_build_ied_model_plan(
         model_report->indexed = report->indexed;
         model_report->trigger_options = report->trigger_options;
         model_report->optional_fields = report->optional_fields;
+        model_report->trigger_options_mask = build_trigger_options_mask(&report->trigger_options);
+        model_report->optional_fields_mask = build_optional_fields_mask(&report->optional_fields);
         plan->report_count++;
     }
 

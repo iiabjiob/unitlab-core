@@ -75,6 +75,8 @@ firstModelReportConfRevKnown=true
 firstModelReportConfRev=7
 firstModelReportBufTm=100
 firstModelReportIntgPd=1000
+firstModelReportTrgOpsMask=19
+firstModelReportOptFldsMask=255
 firstModelSignal=LD0/XCBR1.Pos.stVal[ST]
 firstModelSignalKind=FCDA
 firstModelSignalDO=Pos
@@ -135,6 +137,7 @@ The model plan now normalizes the fixture into the validated blueprint that the 
 - Unsupported DataSet member kinds fail before server startup.
 - Malformed or unknown initial value tokens fail before server startup.
 - Unsupported report kinds and malformed `ConfRev` values fail before server startup.
+- `TrgOps` and `OptFlds` are converted to the bit masks expected by libIEC61850 `ReportControlBlock_create`.
 
 Implement the libIEC61850 server model loader from this model plan:
 

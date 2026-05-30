@@ -273,6 +273,8 @@ int main(int argc, char** argv)
             printf("firstModelReportConfRev=%" PRIu32 "\n", model_plan.reports[0].conf_rev);
             printf("firstModelReportBufTm=%" PRIu32 "\n", model_plan.reports[0].buffer_time_ms);
             printf("firstModelReportIntgPd=%" PRIu32 "\n", model_plan.reports[0].integrity_period_ms);
+            printf("firstModelReportTrgOpsMask=%u\n", (unsigned int)model_plan.reports[0].trigger_options_mask);
+            printf("firstModelReportOptFldsMask=%u\n", (unsigned int)model_plan.reports[0].optional_fields_mask);
         }
         if (model_plan.signal_count > 0U) {
             printf(

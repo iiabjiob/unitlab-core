@@ -43,9 +43,18 @@ static UnitLabIedFixtureReport report_for_data_set(const char* data_set_ref)
         .integrity_period_ms = 1000,
     };
     report.trigger_options.data_change = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    report.trigger_options.quality_change = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 0 };
+    report.trigger_options.data_update = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 0 };
+    report.trigger_options.periodic = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 0 };
     report.trigger_options.general_interrogation = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
     report.optional_fields.sequence_number = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    report.optional_fields.timestamp = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 0 };
+    report.optional_fields.reason_code = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 0 };
+    report.optional_fields.data_set_name = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 0 };
     report.optional_fields.data_reference = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    report.optional_fields.buffer_overflow = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 0 };
+    report.optional_fields.entry_id = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 0 };
+    report.optional_fields.config_revision = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 0 };
     snprintf(report.data_set_ref, sizeof(report.data_set_ref), "%s", data_set_ref);
     return report;
 }
@@ -131,6 +140,14 @@ static int test_model_plan_builds_blueprint(void)
         passed &= expect_true(plan.reports[0].trigger_options.data_change.value == 1, "ReportControl dchg value");
         passed &= expect_true(plan.reports[0].optional_fields.data_reference.known == 1, "ReportControl dataRef known");
         passed &= expect_true(plan.reports[0].optional_fields.data_reference.value == 1, "ReportControl dataRef value");
+        passed &= expect_true(
+            plan.reports[0].trigger_options_mask
+                == (UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED | UNITLAB_IED_MODEL_TRG_OPT_GI),
+            "ReportControl TrgOps mask");
+        passed &= expect_true(
+            plan.reports[0].optional_fields_mask
+                == (UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM | UNITLAB_IED_MODEL_RPT_OPT_DATA_REFERENCE),
+            "ReportControl OptFlds mask");
         passed &= expect_string(plan.signals[0].logical_node_name, "XCBR1", "first signal LN");
         passed &= expect_string(plan.signals[0].kind, "FCDA", "first signal kind");
         passed &= expect_string(plan.signals[0].object_reference, "Pos.stVal", "first signal object reference");

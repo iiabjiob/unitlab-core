@@ -6,6 +6,21 @@
 
 #include "fixture_parser.h"
 
+#define UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED 1U
+#define UNITLAB_IED_MODEL_TRG_OPT_QUALITY_CHANGED 2U
+#define UNITLAB_IED_MODEL_TRG_OPT_DATA_UPDATE 4U
+#define UNITLAB_IED_MODEL_TRG_OPT_INTEGRITY 8U
+#define UNITLAB_IED_MODEL_TRG_OPT_GI 16U
+
+#define UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM 1U
+#define UNITLAB_IED_MODEL_RPT_OPT_TIME_STAMP 2U
+#define UNITLAB_IED_MODEL_RPT_OPT_REASON_FOR_INCLUSION 4U
+#define UNITLAB_IED_MODEL_RPT_OPT_DATA_SET 8U
+#define UNITLAB_IED_MODEL_RPT_OPT_DATA_REFERENCE 16U
+#define UNITLAB_IED_MODEL_RPT_OPT_BUFFER_OVERFLOW 32U
+#define UNITLAB_IED_MODEL_RPT_OPT_ENTRY_ID 64U
+#define UNITLAB_IED_MODEL_RPT_OPT_CONF_REV 128U
+
 typedef struct UnitLabIedModelLogicalDevice {
     char inst[128];
 } UnitLabIedModelLogicalDevice;
@@ -44,6 +59,8 @@ typedef struct UnitLabIedModelReportControl {
     uint32_t integrity_period_ms;
     UnitLabIedFixtureTriggerOptions trigger_options;
     UnitLabIedFixtureOptionalFields optional_fields;
+    uint8_t trigger_options_mask;
+    uint8_t optional_fields_mask;
 } UnitLabIedModelReportControl;
 
 typedef struct UnitLabIedModelSignal {
