@@ -8,6 +8,14 @@ int unitlab_validate_libiec61850_dynamic_model(
     const UnitLabIedFixtureModel* fixture,
     const UnitLabIedModelPlan* plan,
     UnitLabIedModelLoadResult* result);
+
+int unitlab_run_libiec61850_server(
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    const UnitLabIedServerConfig* config,
+    UnitLabIedServerStopRequested stop_requested,
+    void* stop_context,
+    UnitLabIedModelLoadResult* result);
 #endif
 
 #endif

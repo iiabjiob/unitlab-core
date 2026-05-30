@@ -3,6 +3,8 @@
 #ifdef UNITLAB_WITH_LIBIEC61850
 
 #include <iec61850_dynamic_model.h>
+#include <iec61850_server.h>
+#include <hal_thread.h>
 #include <mms_value.h>
 
 #include <stdint.h>
@@ -438,6 +440,54 @@ int unitlab_validate_libiec61850_dynamic_model(
     int created = create_libiec61850_model(fixture, plan, &handles, result);
     destroy_libiec61850_handles(&handles);
     return created;
+}
+
+int unitlab_run_libiec61850_server(
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    const UnitLabIedServerConfig* config,
+    UnitLabIedServerStopRequested stop_requested,
+    void* stop_context,
+    UnitLabIedModelLoadResult* result)
+{
+    UnitLabLibIedModelHandles handles = {0};
+    IedServer server = NULL;
+    if (!create_libiec61850_model(fixture, plan, &handles, result)) {
+        destroy_libiec61850_handles(&handles);
+        return 0;
+    }
+
+    server = IedServer_create(handles.ied_model);
+    if (server == NULL) {
+        destroy_libiec61850_handles(&handles);
+        set_result(result, "LIBIEC61850_SERVER_CREATE_FAILED", "libIEC61850 failed to create the IED server.");
+        return 0;
+    }
+
+    IedServer_setLocalIpAddress(server, config->bind_address);
+    IedServer_start(server, config->port);
+    if (!IedServer_isRunning(server)) {
+        IedServer_destroy(server);
+        destroy_libiec61850_handles(&handles);
+        set_result(result, "LIBIEC61850_SERVER_START_FAILED", "libIEC61850 failed to start the IED server on the requested endpoint.");
+        return 0;
+    }
+
+    result->loaded = 1;
+    snprintf(result->code, sizeof(result->code), "%s", "LIBIEC61850_SERVER_RUNNING");
+    snprintf(result->message, sizeof(result->message), "%s", "libIEC61850 IED server is running.");
+
+    while (stop_requested == NULL || !stop_requested(stop_context)) {
+        Thread_sleep(100);
+    }
+
+    IedServer_stop(server);
+    IedServer_destroy(server);
+    destroy_libiec61850_handles(&handles);
+    result->loaded = 0;
+    snprintf(result->code, sizeof(result->code), "%s", "LIBIEC61850_SERVER_STOPPED");
+    snprintf(result->message, sizeof(result->message), "%s", "libIEC61850 IED server stopped cleanly.");
+    return 1;
 }
 
 #endif

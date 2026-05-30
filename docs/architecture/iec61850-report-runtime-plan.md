@@ -663,10 +663,33 @@ Validation:
 - Linked CMake configure/build and CTest fixture-parser/model-plan/model-loader tests against a locally built libIEC61850 checkout.
 - Linked non-dry-run smoke test verifies the model creation path reaches the explicit server-not-implemented boundary.
 
+### Slice 13W - External IED Simulator MMS Server Runtime
+
+Implemented in this slice:
+
+- When built with `UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON`, the external simulator can now create an `IedServer` from the dynamic model and start listening on the configured TCP endpoint.
+- Non-dry-run simulator execution keeps the process alive until SIGTERM or SIGINT, then stops and destroys the libIEC61850 server and dynamic model cleanly.
+- `--smoke-start` starts and immediately stops the linked MMS server for deterministic local validation without leaving a process running.
+- The unlinked path still fails closed with `LIBIEC61850_NOT_LINKED`.
+- No fake report subscription success is reported; backend MMS adapter support remains a separate slice.
+
+Still planned:
+
+- Add a local libIEC61850 client smoke check that connects to the simulator and reads DataSet/RCB metadata.
+- Wire the backend MMS adapter to the external simulator endpoint.
+- Add explicit process readiness probing instead of process-liveness-only startup checks.
+
+Validation:
+
+- Native C compile, CMake configure/build, CTest fixture-parser/model-plan/model-loader tests without libIEC61850 linked.
+- Linked CMake configure/build and CTest fixture-parser/model-plan/model-loader tests against a locally built libIEC61850 checkout.
+- Linked `--smoke-start` validates server start/stop.
+- Linked non-dry-run run under SIGTERM validates process lifetime and clean shutdown.
+
 ## Current Risks
 
 - The SCD parser does not expand `DataTypeTemplates`; value typing remains shallow.
 - RCB indexed instance allocation is not planned yet.
-- Real MMS transport is unresolved; the current direction is a replaceable backend adapter, with a self-owned MMS client tracked separately.
+- Production MMS client transport is unresolved; the current direction is a replaceable backend adapter, with a self-owned MMS client tracked separately.
 - Report event persistence and test evidence linking are future backend slices.
 - GOOSE and SV remain separate protocol tracks.

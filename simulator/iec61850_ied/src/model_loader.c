@@ -86,3 +86,34 @@ int unitlab_load_ied_model(
     return 0;
 #endif
 }
+
+int unitlab_run_ied_server(
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    const UnitLabIedServerConfig* config,
+    UnitLabIedServerStopRequested stop_requested,
+    void* stop_context,
+    UnitLabIedModelLoadResult* result)
+{
+    if (result != NULL) {
+        memset(result, 0, sizeof(*result));
+    }
+    if (!validate_loader_inputs(fixture, plan, config, result)) {
+        return 0;
+    }
+
+#ifdef UNITLAB_WITH_LIBIEC61850
+    return unitlab_run_libiec61850_server(fixture, plan, config, stop_requested, stop_context, result);
+#else
+    (void)fixture;
+    (void)plan;
+    (void)config;
+    (void)stop_requested;
+    (void)stop_context;
+    set_result(
+        result,
+        "LIBIEC61850_NOT_LINKED",
+        "libIEC61850 is not linked; build with UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON before starting the MMS server.");
+    return 0;
+#endif
+}

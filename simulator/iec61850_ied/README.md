@@ -1,13 +1,13 @@
 # UnitLab IEC 61850 IED Simulator
 
-Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan/loader boundary, but it does not run an MMS server yet.
+Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan/loader boundary and can start one libIEC61850 MMS server when built with libIEC61850.
 
 This directory is the boundary for the future libIEC61850-based IED simulator. It is intentionally separate from UnitLab backend/core runtime so GPL/native code cannot leak into production logic by accident.
 
 ## Purpose
 
 - Consume the JSON fixture exported by backend IEC 61850 runtime.
-- Later expose one simulated IED over MMS.
+- Expose one simulated IED over MMS for internal UnitLab tests when linked with libIEC61850.
 - Let UnitLab backend connect to the simulator through the same `Iec61850ClientAdapter` contract used for real IEDs.
 - Keep Signal List matching, FAT evidence, diagnostics, and report planning owned by UnitLab.
 
@@ -109,9 +109,32 @@ It intentionally excludes:
 - Operator decisions.
 - Runtime evidence.
 
+## Smoke Start
+
+When linked with libIEC61850, `--smoke-start` builds the dynamic model, starts the MMS server, stops it immediately, and exits:
+
+```bash
+/tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim \
+  --fixture simulator/iec61850_ied/examples/single-report.fixture.json \
+  --ied IED1 \
+  --bind 127.0.0.1 \
+  --port 1102 \
+  --smoke-start
+```
+
+Expected result:
+
+```text
+unitlab-iec61850-ied-sim: server smoke-start accepted
+ied=IED1
+bind=127.0.0.1
+port=1102
+libiec61850=linked
+```
+
 ## Non-Dry-Run Status
 
-The non-dry-run path validates inputs and fails closed until the full server model is implemented:
+The non-dry-run path starts the linked MMS server and keeps the process alive until SIGTERM or SIGINT:
 
 ```bash
 /tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim \
@@ -131,11 +154,10 @@ libiec61850=not-linked
 Expected current result with libIEC61850:
 
 ```text
-LIBIEC61850_SERVER_NOT_IMPLEMENTED: libIEC61850 dynamic IED model, DataSets, and ReportControls were created, but MMS server startup is not implemented in this slice.
-libiec61850=linked
+<process keeps running until terminated>
 ```
 
-The linked path creates and destroys the dynamic `IedModel`, logical devices, logical nodes, data objects, FCDA data attributes, DataSets, DataSet entries, and ReportControls before failing closed. It does not start MMS.
+The linked path creates the dynamic `IedModel`, logical devices, logical nodes, data objects, FCDA data attributes, DataSets, DataSet entries, ReportControls, and `IedServer`.
 
 ## Next Slice
 
@@ -154,8 +176,8 @@ The model plan now normalizes the fixture into the validated blueprint that the 
 
 Continue the libIEC61850 server runtime from this model plan:
 
-1. Start one local `IedServer` only after the dynamic model survives construction.
-2. Keep the process in a controlled runtime loop with explicit shutdown.
-3. Add a client-side smoke check that connects to `127.0.0.1` and reads RCB/DataSet metadata.
+1. Add a client-side smoke check that connects to `127.0.0.1` and reads RCB/DataSet metadata.
+2. Wire the backend MMS adapter to the external simulator endpoint.
+3. Add explicit readiness probing instead of relying only on process liveness.
 4. Support GI emission with fixture initial values.
 5. Keep all unsupported services fail-closed.

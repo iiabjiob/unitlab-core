@@ -17,10 +17,20 @@ typedef struct UnitLabIedModelLoadResult {
     char message[256];
 } UnitLabIedModelLoadResult;
 
+typedef int (*UnitLabIedServerStopRequested)(void* context);
+
 int unitlab_load_ied_model(
     const UnitLabIedFixtureModel* fixture,
     const UnitLabIedModelPlan* plan,
     const UnitLabIedServerConfig* config,
+    UnitLabIedModelLoadResult* result);
+
+int unitlab_run_ied_server(
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    const UnitLabIedServerConfig* config,
+    UnitLabIedServerStopRequested stop_requested,
+    void* stop_context,
     UnitLabIedModelLoadResult* result);
 
 #endif
