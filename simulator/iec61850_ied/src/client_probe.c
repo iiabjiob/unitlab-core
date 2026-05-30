@@ -28,6 +28,11 @@ typedef struct UnitLabGiProbeContext {
     int value_count;
     int first_reason;
     int conf_rev;
+    int has_sequence_number;
+    int has_timestamp;
+    int has_data_set_name;
+    int has_reason_for_inclusion;
+    int has_conf_rev;
     int validate_data_reference;
     int value_validation_failed;
     size_t value_validation_index;
@@ -123,6 +128,39 @@ static void set_value_validation_error(UnitLabGiProbeContext* context, size_t in
     snprintf(context->value_validation_message, sizeof(context->value_validation_message), "%s", message);
 }
 
+static int optional_field_enabled(UnitLabIedFixtureOptionalBool field)
+{
+    return field.known && field.value;
+}
+
+static int validate_gi_optional_fields(
+    const UnitLabIedModelReportControl* report,
+    const UnitLabGiProbeContext* context,
+    UnitLabIedModelLoadResult* result)
+{
+    if (optional_field_enabled(report->optional_fields.sequence_number) && !context->has_sequence_number) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_SEQNUM_MISSING", "IEC 61850 GI probe expected SeqNum optional field.");
+        return 0;
+    }
+    if (optional_field_enabled(report->optional_fields.timestamp) && !context->has_timestamp) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_TIMESTAMP_MISSING", "IEC 61850 GI probe expected TimeOfEntry optional field.");
+        return 0;
+    }
+    if (optional_field_enabled(report->optional_fields.data_set_name) && !context->has_data_set_name) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_DATASET_NAME_MISSING", "IEC 61850 GI probe expected DatSet optional field.");
+        return 0;
+    }
+    if (optional_field_enabled(report->optional_fields.reason_code) && !context->has_reason_for_inclusion) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_REASON_MISSING", "IEC 61850 GI probe expected ReasonForInclusion optional field.");
+        return 0;
+    }
+    if (optional_field_enabled(report->optional_fields.config_revision) && !context->has_conf_rev) {
+        set_probe_result(result, 0, "IEC61850_GI_PROBE_CONFREV_MISSING", "IEC 61850 GI probe expected ConfRev optional field.");
+        return 0;
+    }
+    return 1;
+}
+
 static int validate_gi_mms_value(
     const UnitLabIedModelSignal* signal,
     MmsValue* value,
@@ -212,17 +250,27 @@ static void report_callback(void* parameter, ClientReport report)
     }
 
     const char* data_set_name = ClientReport_getDataSetName(report);
+    if (ClientReport_hasDataSetName(report)) {
+        context->has_data_set_name = 1;
+    }
     if (data_set_name != NULL) {
         snprintf(context->data_set_name, sizeof(context->data_set_name), "%s", data_set_name);
     }
 
+    if (ClientReport_hasSeqNum(report)) {
+        context->has_sequence_number = 1;
+    }
+    if (ClientReport_hasTimestamp(report)) {
+        context->has_timestamp = 1;
+    }
     if (ClientReport_hasConfRev(report)) {
+        context->has_conf_rev = 1;
         context->conf_rev = (int)ClientReport_getConfRev(report);
     }
     if (ClientReport_hasReasonForInclusion(report)) {
+        context->has_reason_for_inclusion = 1;
         context->first_reason = ClientReport_getReasonForInclusion(report, 0);
     }
-
     MmsValue* values = ClientReport_getDataSetValues(report);
     if (values == NULL) {
         return;
@@ -610,6 +658,9 @@ static int probe_gi_report(
     if (passed && report->rpt_id[0] != '\0' && strcmp(context.rpt_id, report->rpt_id) != 0) {
         set_probe_result(result, 0, "IEC61850_GI_PROBE_RPTID_MISMATCH", "IEC 61850 GI probe received an unexpected RptID.");
         passed = 0;
+    }
+    if (passed) {
+        passed = validate_gi_optional_fields(report, &context, result);
     }
     if (passed && strstr(context.data_set_name, data_set->name) == NULL) {
         set_probe_result(result, 0, "IEC61850_GI_PROBE_DATASET_MISMATCH", "IEC 61850 GI probe received an unexpected DataSet name.");
