@@ -41,6 +41,8 @@ from app.services.iec61850 import (
     prepare_ied_simulator_process_plan_from_subscription_plan,
     run_ied_simulator_gi_probe,
     run_ied_simulator_metadata_probe,
+    run_ied_simulator_process_plan_gi_probes,
+    run_ied_simulator_process_plan_gi_validation,
     run_ied_simulator_process_plan_startup_checks,
     run_ied_simulator_startup_check,
     run_report_subscription_plan,
@@ -911,6 +913,29 @@ def test_backend_runtime_prepares_external_ied_simulator_process_plan_for_requir
     assert [check.command[-1] for check in checks] == ["--dry-run", "--dry-run"]
 
 
+def test_backend_runtime_external_ied_simulator_process_plan_runs_gi_probes(tmp_path) -> None:
+    plan = _multi_device_subscription_plan()
+    fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    process_plan = prepare_ied_simulator_process_plan(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=tmp_path / "multi-device.fixture.json",
+        base_port=12000,
+    )
+    commands: list[tuple[str, ...]] = []
+
+    def runner(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout=f"{command[4]} GI accepted\n", stderr="")
+
+    probes = run_ied_simulator_process_plan_gi_probes(process_plan, runner=runner)
+
+    assert [probe.return_code for probe in probes] == [0, 0]
+    assert [command[-1] for command in commands] == ["--gi-probe", "--gi-probe"]
+
+
 def test_backend_runtime_prepares_external_ied_simulator_process_plan_from_subscription_plan(tmp_path) -> None:
     plan = _multi_device_subscription_plan()
     binary_path = tmp_path / "unitlab-iec61850-ied-sim"
@@ -1011,6 +1036,77 @@ def test_backend_runtime_external_ied_simulator_process_plan_cleans_up_on_partia
     assert error.value.code == "SIMULATOR_PROCESS_EXITED"
     assert started_process.terminated is True
     assert failed_process.terminated is False
+
+
+def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_cleans_up(tmp_path) -> None:
+    plan = _multi_device_subscription_plan()
+    fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    process_plan = prepare_ied_simulator_process_plan(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=tmp_path / "multi-device.fixture.json",
+    )
+    processes = [_FakeSimulatorProcess(pid=1), _FakeSimulatorProcess(pid=2)]
+    commands: list[str] = []
+
+    def runner(command, **kwargs):
+        commands.append(command[-1])
+        if command[-1] in {"--dry-run", "--metadata-probe", "--gi-probe"}:
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=f"{command[-1]} accepted\n", stderr="")
+        raise AssertionError(f"unexpected simulator helper command: {command}")
+
+    def process_factory(command, **kwargs):
+        return processes.pop(0)
+
+    result = run_ied_simulator_process_plan_gi_validation(
+        process_plan,
+        startup_grace_seconds=0,
+        runner=runner,
+        process_factory=process_factory,
+        readiness_connector=_ready_socket_connector,
+    )
+
+    assert commands == ["--dry-run", "--metadata-probe", "--dry-run", "--metadata-probe", "--gi-probe", "--gi-probe"]
+    assert [probe.return_code for probe in result.gi_probe_results] == [0, 0]
+    assert [stop.pid for stop in result.stop_results] == [2, 1]
+    assert result.stop_results[0].killed is False
+
+
+def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_stops_after_probe_failure(tmp_path) -> None:
+    plan = _subscription_plan(_candidate())
+    fixture = build_ied_simulator_fixture_from_subscription_plan(plan)
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    process_plan = prepare_ied_simulator_process_plan(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=tmp_path / "ied1.fixture.json",
+    )
+    process = _FakeSimulatorProcess(pid=61850)
+
+    def runner(command, **kwargs):
+        if command[-1] in {"--dry-run", "--metadata-probe"}:
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=f"{command[-1]} accepted\n", stderr="")
+        if command[-1] == "--gi-probe":
+            return subprocess.CompletedProcess(args=command, returncode=69, stdout="", stderr="GI timeout\n")
+        raise AssertionError(f"unexpected simulator helper command: {command}")
+
+    def process_factory(command, **kwargs):
+        return process
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        run_ied_simulator_process_plan_gi_validation(
+            process_plan,
+            startup_grace_seconds=0,
+            runner=runner,
+            process_factory=process_factory,
+            readiness_connector=_ready_socket_connector,
+        )
+
+    assert error.value.code == "SIMULATOR_GI_PROBE_FAILED"
+    assert process.terminated is True
 
 
 def test_backend_runtime_external_ied_simulator_wrapper_runs_through_mms_boundary_and_cleans_up(tmp_path) -> None:

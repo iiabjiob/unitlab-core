@@ -135,6 +135,13 @@ class Iec61850IedSimulatorProcessPlanRunResult:
     stop_results: tuple[Iec61850IedSimulatorProcessStopResult, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class Iec61850IedSimulatorProcessPlanProbeResult:
+    process_plan: Iec61850IedSimulatorProcessPlan
+    gi_probe_results: tuple[Iec61850IedSimulatorProcessResult, ...]
+    stop_results: tuple[Iec61850IedSimulatorProcessStopResult, ...]
+
+
 ProcessRunner = Callable[..., subprocess.CompletedProcess[str]]
 ProcessFactory = Callable[..., subprocess.Popen[str]]
 SleepFn = Callable[[float], None]
@@ -411,6 +418,22 @@ def run_ied_simulator_gi_probe(
     return result
 
 
+def run_ied_simulator_process_plan_gi_probes(
+    plan: Iec61850IedSimulatorProcessPlan,
+    *,
+    timeout_seconds: float = 5.0,
+    runner: ProcessRunner = subprocess.run,
+) -> tuple[Iec61850IedSimulatorProcessResult, ...]:
+    return tuple(
+        run_ied_simulator_gi_probe(
+            spec,
+            timeout_seconds=timeout_seconds,
+            runner=runner,
+        )
+        for spec in plan.specs
+    )
+
+
 def wait_ied_simulator_process_ready(
     spec: Iec61850IedSimulatorProcessSpec,
     process: subprocess.Popen[str],
@@ -582,6 +605,53 @@ def start_ied_simulator_process_plan(
         )
         raise
     return tuple(handles)
+
+
+def run_ied_simulator_process_plan_gi_validation(
+    plan: Iec61850IedSimulatorProcessPlan,
+    *,
+    startup_check_timeout_seconds: float = 5.0,
+    startup_grace_seconds: float = 0.1,
+    readiness_timeout_seconds: float = 5.0,
+    readiness_retry_interval_seconds: float = 0.05,
+    metadata_probe_timeout_seconds: float = 5.0,
+    gi_probe_timeout_seconds: float = 5.0,
+    terminate_timeout_seconds: float = 5.0,
+    runner: ProcessRunner = subprocess.run,
+    process_factory: ProcessFactory = subprocess.Popen,
+    readiness_connector: SocketConnector = socket.create_connection,
+    sleep: SleepFn = time.sleep,
+) -> Iec61850IedSimulatorProcessPlanProbeResult:
+    handles = start_ied_simulator_process_plan(
+        plan,
+        startup_check_timeout_seconds=startup_check_timeout_seconds,
+        startup_grace_seconds=startup_grace_seconds,
+        readiness_timeout_seconds=readiness_timeout_seconds,
+        readiness_retry_interval_seconds=readiness_retry_interval_seconds,
+        metadata_probe_timeout_seconds=metadata_probe_timeout_seconds,
+        terminate_timeout_seconds=terminate_timeout_seconds,
+        runner=runner,
+        process_factory=process_factory,
+        readiness_connector=readiness_connector,
+        sleep=sleep,
+    )
+    stop_results: tuple[Iec61850IedSimulatorProcessStopResult, ...] = ()
+    try:
+        gi_probe_results = run_ied_simulator_process_plan_gi_probes(
+            plan,
+            timeout_seconds=gi_probe_timeout_seconds,
+            runner=runner,
+        )
+    finally:
+        stop_results = stop_ied_simulator_processes(
+            tuple(reversed(handles)),
+            terminate_timeout_seconds=terminate_timeout_seconds,
+        )
+    return Iec61850IedSimulatorProcessPlanProbeResult(
+        process_plan=plan,
+        gi_probe_results=gi_probe_results,
+        stop_results=stop_results,
+    )
 
 
 def run_report_subscription_plan_with_external_ied_simulators(
