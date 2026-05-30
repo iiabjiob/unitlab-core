@@ -67,7 +67,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['@affino/menu-vue'],
+    exclude: ['@affino/menu-vue', '@affino/treeview-vue'],
   },
   plugins: [
     patchAffinoMenuPointerRelatedTarget(),

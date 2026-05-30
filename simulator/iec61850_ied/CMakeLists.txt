@@ -8,17 +8,21 @@ set(CMAKE_C_EXTENSIONS OFF)
 
 option(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850 "Link libIEC61850 for the internal IEC 61850 IED simulator" OFF)
 
+function(unitlab_iec61850_sim_warnings target_name)
+  if(MSVC)
+    target_compile_options(${target_name} PRIVATE /W4)
+  else()
+    target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+endfunction()
+
 add_executable(unitlab-iec61850-ied-sim
   src/fixture_parser.c
   src/main.c
+  src/model_loader.c
   src/model_plan.c
 )
-
-if(MSVC)
-  target_compile_options(unitlab-iec61850-ied-sim PRIVATE /W4)
-else()
-  target_compile_options(unitlab-iec61850-ied-sim PRIVATE -Wall -Wextra -Wpedantic)
-endif()
+unitlab_iec61850_sim_warnings(unitlab-iec61850-ied-sim)
 
 if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)
   find_path(LIBIEC61850_INCLUDE_DIR iec61850_server.h)
@@ -32,3 +36,17 @@ if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)
   target_include_directories(unitlab-iec61850-ied-sim PRIVATE "${LIBIEC61850_INCLUDE_DIR}")
   target_link_libraries(unitlab-iec61850-ied-sim PRIVATE "${LIBIEC61850_LIBRARY}")
 endif()
+
+enable_testing()
+
+add_executable(unitlab-iec61850-ied-model-plan-test
+  src/model_plan.c
+  tests/model_plan_test.c
+)
+target_include_directories(unitlab-iec61850-ied-model-plan-test PRIVATE src)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-ied-model-plan-test)
+
+add_test(
+  NAME unitlab-iec61850-ied-model-plan
+  COMMAND unitlab-iec61850-ied-model-plan-test
+)

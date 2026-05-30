@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slice 13A-13G, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slice 13A-13I, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -374,6 +374,43 @@ Still planned:
 Validation:
 
 - Native C compile, CMake configure/build, and positive dry-run fixture smoke test.
+
+### Slice 13H - External IED Simulator Loader Boundary
+
+Implemented in this slice:
+
+- Added a fail-closed model-loader boundary above the external simulator model plan.
+- Non-dry-run execution validates the fixture, builds the model plan, and then fails with `LIBIEC61850_NOT_LINKED` unless the simulator is built with libIEC61850.
+- When compiled with libIEC61850 support, the boundary still fails with `LIBIEC61850_MODEL_LOADER_NOT_IMPLEMENTED` until the real model creation slice lands.
+- No MMS server is started and no fake success is reported.
+
+Still planned:
+
+- Create libIEC61850 model objects from the model plan.
+- Start one MMS server only after the model load path is real.
+
+Validation:
+
+- Native C compile, CMake configure/build, dry-run smoke test, and fail-closed non-dry-run smoke test.
+
+### Slice 13I - External IED Simulator Model Blueprint
+
+Implemented in this slice:
+
+- The external simulator model plan now carries normalized blueprint records for DataSets, ReportControls, and DataSet member signals.
+- DataSet references are validated against the selected IED/access point before any future MMS server startup.
+- DataSet member references are normalized into logical device, logical node, object reference, functional constraint, member index, and initial value records.
+- Signal functional constraint mismatches between the reference suffix and fixture `fc` field fail closed.
+- Added a native C model-plan test target for positive blueprint construction and negative malformed plan cases.
+
+Still planned:
+
+- Convert the blueprint records into libIEC61850 `IedModel`, DataSet, ReportControl, and value objects.
+- Start one MMS server only after the model load path is real.
+
+Validation:
+
+- Native C compile, CMake configure/build, CTest model-plan test, dry-run smoke test, and fail-closed non-dry-run smoke test.
 
 ## Current Risks
 

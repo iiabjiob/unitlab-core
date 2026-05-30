@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, shallowRef, watch, type ComponentPublicInstance } from "vue"
 import { RouterLink } from "vue-router"
-import { useTreeviewController, type TreeviewNode } from "@affino/treeview-vue"
+import { useVirtualTreeviewController, type TreeviewNode, type VirtualTreeviewRow } from "@affino/treeview-vue"
 
 import UiButton from "@/components/ui/UiButton.vue"
 import UiModal from "@/components/ui/UiModal.vue"
@@ -51,6 +51,14 @@ type SimulatorSummaryItem = {
   detail?: string | null
 }
 
+type RenderedDebugTreeRow = {
+  row: Iec61850DebugTreeRow
+  meta: VirtualTreeviewRow<NodeValue>
+}
+
+const TREE_ROW_HEIGHT = 32
+const TREE_OVERSCAN_ROWS = 12
+
 const EMPTY_STATS: Iec61850DebugStats = {
   sites: 0,
   voltageLevels: 0,
@@ -87,6 +95,9 @@ const signalListMergeDialog = ref<Iec61850SignalListMergeResult | null>(null)
 const simulatorResult = shallowRef<Iec61850DebugSimulatorRunResult | null>(null)
 const pendingDefaultExpansion = ref(false)
 const showReportCandidatesOnlyWithSignals = ref(false)
+const treeSearchQuery = ref("")
+const treeViewportRef = ref<HTMLElement | null>(null)
+let treeViewportResizeObserver: ResizeObserver | null = null
 let loadRequestId = 0
 let simulatorRequestId = 0
 let activeParse: { worker: Worker; reject: (error: Error) => void } | null = null
@@ -94,15 +105,22 @@ let activeParse: { worker: Worker; reject: (error: Error) => void } | null = nul
 const signalSheetStore = useSignalSheetStore()
 const toastStore = useToastStore()
 
-const tree = useTreeviewController<NodeValue>({
+const tree = useVirtualTreeviewController<NodeValue>({
   nodes: [],
   loop: true,
+  rowHeight: TREE_ROW_HEIGHT,
+  overscan: TREE_OVERSCAN_ROWS,
+  viewportHeight: 0,
 })
 
 const treeRows = computed<Iec61850DebugTreeRow[]>(() => debugDocument.value?.treeRows ?? [])
 
 const treeNodes = computed<TreeviewNode<NodeValue>[]>(() =>
-  treeRows.value.map(row => ({ value: row.value, parent: row.parent })),
+  treeRows.value.map(row => ({
+    value: row.value,
+    parent: row.parent,
+    text: buildTreeSearchText(row),
+  })),
 )
 
 const rowByValue = computed(() => {
@@ -117,7 +135,6 @@ const parentByValue = computed(() => {
   return map
 })
 
-const expandedSet = computed(() => new Set(tree.state.value.expanded))
 const childrenByParent = computed(() => {
   const map = new Map<NodeValue | null, NodeValue[]>()
   treeRows.value.forEach((row) => {
@@ -127,10 +144,35 @@ const childrenByParent = computed(() => {
   })
   return map
 })
-const visibleRows = computed(() => treeRows.value.filter(row => isNodeVisible(row.value)))
+const renderedTreeRows = computed<RenderedDebugTreeRow[]>(() => {
+  const rendered: RenderedDebugTreeRow[] = []
+  for (const meta of tree.visibleRows.value) {
+    const row = rowByValue.value.get(meta.value)
+    if (row) {
+      rendered.push({ row, meta })
+    }
+  }
+  return rendered
+})
 const selectedRow = computed(() => (
   selectedValue.value ? rowByValue.value.get(selectedValue.value) ?? null : treeRows.value[0] ?? null
 ))
+const normalizedTreeSearchQuery = computed(() => treeSearchQuery.value.trim())
+const treeSearchMatchCount = computed(() => {
+  void tree.state.value
+  return tree.getSearchMatchCount()
+})
+const treeVisibleCount = computed(() => {
+  void tree.state.value
+  return tree.getVisibleCount()
+})
+const treePanelCountLabel = computed(() => {
+  if (!treeRows.value.length) return ""
+  if (normalizedTreeSearchQuery.value) {
+    return `${treeSearchMatchCount.value}/${treeRows.value.length} matches`
+  }
+  return `${treeRows.value.length} nodes`
+})
 
 const diagnostics = computed(() => debugDocument.value?.diagnostics ?? [])
 const diagnosticSummary = computed(() => debugDocument.value?.diagnosticSummary ?? EMPTY_DIAGNOSTIC_SUMMARY)
@@ -176,6 +218,35 @@ const statusLabel = computed(() => {
 const itemElements = new Map<NodeValue, HTMLButtonElement>()
 
 watch(
+  treeViewportRef,
+  (element) => {
+    treeViewportResizeObserver?.disconnect()
+    treeViewportResizeObserver = null
+
+    if (!element) {
+      tree.setViewportHeight(0)
+      return
+    }
+
+    const updateViewportHeight = () => {
+      tree.setViewportHeight(element.clientHeight)
+      tree.refreshWindow()
+    }
+
+    updateViewportHeight()
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(updateViewportHeight)
+    }
+
+    if (typeof ResizeObserver !== "undefined") {
+      treeViewportResizeObserver = new ResizeObserver(updateViewportHeight)
+      treeViewportResizeObserver.observe(element)
+    }
+  },
+  { flush: "post" },
+)
+
+watch(
   treeNodes,
   (nodes) => {
     tree.registerNodes(nodes)
@@ -197,10 +268,20 @@ watch(
   { immediate: true },
 )
 
+watch(treeSearchQuery, (query) => {
+  tree.setSearchQuery(query)
+  setTreeScrollTop(0)
+})
+
 watch(
   () => tree.state.value.active,
   async (active) => {
     if (!active) return
+    await nextTick()
+    if (focusNodeElement(active)) return
+    tree.scrollToValue(active)
+    tree.refreshWindow()
+    syncTreeViewportScrollTop()
     await nextTick()
     focusNodeElement(active)
   },
@@ -294,6 +375,7 @@ async function onFileSelected(event: Event) {
   signalListMergeDialog.value = null
   simulatorResult.value = null
   selectedValue.value = null
+  treeSearchQuery.value = ""
   loadProgress.value = {
     label: "Reading SCD",
     detail: `${file.name} · ${formatBytes(file.size)}`,
@@ -581,40 +663,41 @@ function bindItemElement(value: NodeValue) {
   }
 }
 
-function focusNodeElement(value: NodeValue) {
+function focusNodeElement(value: NodeValue): boolean {
   const element = itemElements.get(value)
-  if (!element) return
+  if (!element) return false
   element.focus({ preventScroll: true })
   element.scrollIntoView({ block: "nearest" })
-}
-
-function isNodeVisible(value: NodeValue): boolean {
-  let cursor = parentByValue.value.get(value) ?? null
-  while (cursor) {
-    if (!expandedSet.value.has(cursor)) return false
-    cursor = parentByValue.value.get(cursor) ?? null
-  }
   return true
 }
 
-function nodeLevel(value: NodeValue): number {
-  let level = 1
-  let cursor = parentByValue.value.get(value) ?? null
-  const visited = new Set<NodeValue>()
-  while (cursor && !visited.has(cursor)) {
-    visited.add(cursor)
-    level += 1
-    cursor = parentByValue.value.get(cursor) ?? null
+function syncTreeViewportScrollTop() {
+  const viewport = treeViewportRef.value
+  if (!viewport) return
+  if (Math.abs(viewport.scrollTop - tree.scrollTop.value) > 0.5) {
+    viewport.scrollTop = tree.scrollTop.value
   }
-  return level
+}
+
+function setTreeScrollTop(scrollTop: number) {
+  tree.setScrollTop(scrollTop)
+  tree.refreshWindow()
+  syncTreeViewportScrollTop()
+}
+
+function onTreeScroll(event: Event) {
+  const target = event.currentTarget
+  if (target instanceof HTMLElement) {
+    tree.setScrollTop(target.scrollTop)
+  }
+}
+
+function clearTreeSearch() {
+  treeSearchQuery.value = ""
 }
 
 function isSelected(value: NodeValue): boolean {
   return selectedValue.value === value
-}
-
-function isActive(value: NodeValue): boolean {
-  return tree.isActive(value)
 }
 
 function isExpanded(value: NodeValue): boolean {
@@ -732,6 +815,19 @@ function nodeKindLabel(kind: string): string {
   }
 }
 
+function buildTreeSearchText(row: Iec61850DebugTreeRow): string {
+  return [
+    row.kind,
+    nodeKindLabel(row.kind),
+    row.label,
+    row.valueLabel,
+    row.detail.title,
+    row.detail.subtitle,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ")
+}
+
 function shortHash(value: string | null): string {
   return value ? value.slice(0, 12) : "—"
 }
@@ -749,6 +845,8 @@ function formatBytes(value: number): string {
 }
 
 onUnmounted(() => {
+  treeViewportResizeObserver?.disconnect()
+  treeViewportResizeObserver = null
   terminateActiveParse()
 })
 </script>
@@ -849,47 +947,83 @@ onUnmounted(() => {
       <section class="iec61850-debug-page__tree-panel" aria-label="SCD model tree">
         <div class="iec61850-debug-page__panel-header">
           <span>SCL model</span>
-          <span v-if="treeRows.length" class="iec61850-debug-page__panel-count">{{ treeRows.length }} nodes</span>
+          <span v-if="treePanelCountLabel" class="iec61850-debug-page__panel-count">{{ treePanelCountLabel }}</span>
         </div>
 
         <div v-if="!debugDocument" class="iec61850-debug-page__empty">
           Choose an SCD file to inspect topology, IEDs, DataSets and ReportControls.
         </div>
 
-        <div
-          v-else
-          class="iec61850-debug-page__tree"
-          role="tree"
-          tabindex="0"
-          aria-label="IEC 61850 SCL model"
-          @keydown="onTreeRootKeydown"
-        >
-          <button
-            v-for="row in visibleRows"
-            :key="row.value"
-            :ref="bindItemElement(row.value)"
-            type="button"
-            class="iec61850-debug-page__tree-row"
-            :class="{
-              'is-selected': isSelected(row.value),
-              'is-active': isActive(row.value),
-            }"
-            role="treeitem"
-            :aria-level="nodeLevel(row.value)"
-            :aria-selected="isSelected(row.value)"
-            :aria-expanded="row.isLeaf ? undefined : isExpanded(row.value)"
-            :tabindex="isActive(row.value) ? 0 : -1"
-            :style="{ paddingLeft: `${Math.max(8, nodeLevel(row.value) * 14)}px` }"
-            @click="onTreeRowClick(row)"
+        <template v-else>
+          <div class="iec61850-debug-page__tree-toolbar">
+            <input
+              v-model="treeSearchQuery"
+              type="search"
+              class="iec61850-debug-page__tree-search"
+              placeholder="Search SCL model"
+              autocomplete="off"
+              spellcheck="false"
+            >
+            <button
+              v-if="normalizedTreeSearchQuery"
+              type="button"
+              class="iec61850-debug-page__tree-search-clear"
+              @click="clearTreeSearch"
+            >
+              Clear
+            </button>
+          </div>
+
+          <div
+            ref="treeViewportRef"
+            class="iec61850-debug-page__tree"
+            role="tree"
+            tabindex="0"
+            aria-label="IEC 61850 SCL model"
+            @scroll.passive="onTreeScroll"
+            @keydown="onTreeRootKeydown"
           >
-            <span class="iec61850-debug-page__tree-toggle" aria-hidden="true">
-              {{ row.isLeaf ? "•" : (isExpanded(row.value) ? "▾" : "▸") }}
-            </span>
-            <span class="iec61850-debug-page__tree-kind">{{ nodeKindLabel(row.kind) }}</span>
-            <span class="iec61850-debug-page__tree-label">{{ row.label }}</span>
-            <span v-if="row.valueLabel" class="iec61850-debug-page__tree-value">{{ row.valueLabel }}</span>
-          </button>
-        </div>
+            <div v-if="treeVisibleCount === 0" class="iec61850-debug-page__tree-empty">
+              {{ normalizedTreeSearchQuery ? "No matching SCL nodes." : "No SCL nodes." }}
+            </div>
+            <div
+              v-else
+              class="iec61850-debug-page__tree-spacer"
+              :style="{ height: `${tree.totalHeight.value}px` }"
+            >
+              <button
+                v-for="{ row, meta } in renderedTreeRows"
+                :key="row.value"
+                :ref="bindItemElement(row.value)"
+                type="button"
+                class="iec61850-debug-page__tree-row iec61850-debug-page__tree-row--virtual"
+                :class="{
+                  'is-selected': isSelected(row.value),
+                  'is-active': meta.active,
+                  'is-match': meta.matched,
+                }"
+                role="treeitem"
+                :aria-level="meta.depth + 1"
+                :aria-selected="isSelected(row.value)"
+                :aria-expanded="row.isLeaf ? undefined : isExpanded(row.value)"
+                :tabindex="meta.active ? 0 : -1"
+                :style="{
+                  height: `${meta.height}px`,
+                  transform: `translateY(${meta.top}px)`,
+                  paddingLeft: `${Math.max(8, (meta.depth + 1) * 14)}px`,
+                }"
+                @click="onTreeRowClick(row)"
+              >
+                <span class="iec61850-debug-page__tree-toggle" aria-hidden="true">
+                  {{ row.isLeaf ? "•" : (isExpanded(row.value) ? "▾" : "▸") }}
+                </span>
+                <span class="iec61850-debug-page__tree-kind">{{ nodeKindLabel(row.kind) }}</span>
+                <span class="iec61850-debug-page__tree-label">{{ row.label }}</span>
+                <span v-if="row.valueLabel" class="iec61850-debug-page__tree-value">{{ row.valueLabel }}</span>
+              </button>
+            </div>
+          </div>
+        </template>
       </section>
 
       <section class="iec61850-debug-page__detail-panel" aria-label="Selected SCD element details">
@@ -1500,12 +1634,67 @@ onUnmounted(() => {
   line-height: 1.4;
 }
 
+.iec61850-debug-page__tree-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-neutral-200) 72%, transparent);
+}
+
+.iec61850-debug-page__tree-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 2rem;
+  padding: 0 0.625rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 78%, transparent);
+  border-radius: var(--radius-sm);
+  background: var(--color-white);
+  color: var(--color-neutral-900);
+  font-size: var(--text-sm);
+  outline: none;
+}
+
+.iec61850-debug-page__tree-search:focus {
+  border-color: color-mix(in srgb, var(--runtime-accent) 54%, var(--color-neutral-300));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--runtime-accent) 18%, transparent);
+}
+
+.iec61850-debug-page__tree-search-clear {
+  flex: 0 0 auto;
+  height: 2rem;
+  padding: 0 0.625rem;
+  border: 1px solid color-mix(in srgb, var(--color-neutral-300) 74%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-neutral-50) 88%, var(--color-white));
+  color: var(--color-neutral-600);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.iec61850-debug-page__tree-search-clear:hover {
+  border-color: color-mix(in srgb, var(--runtime-accent) 24%, var(--color-neutral-300));
+  color: var(--color-neutral-900);
+}
+
 .iec61850-debug-page__tree {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   padding: 0.5rem;
   outline: none;
+}
+
+.iec61850-debug-page__tree-empty {
+  padding: 0.75rem 0.5rem;
+  color: var(--color-neutral-500);
+  font-size: var(--text-sm);
+}
+
+.iec61850-debug-page__tree-spacer {
+  position: relative;
+  min-height: 100%;
 }
 
 .iec61850-debug-page__tree-row {
@@ -1525,6 +1714,14 @@ onUnmounted(() => {
   text-align: left;
 }
 
+.iec61850-debug-page__tree-row--virtual {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  contain: layout style paint;
+}
+
 .iec61850-debug-page__tree-row:hover {
   border-color: color-mix(in srgb, var(--runtime-accent) 12%, var(--color-neutral-200));
   background: color-mix(in srgb, var(--color-neutral-100) 68%, transparent);
@@ -1538,6 +1735,10 @@ onUnmounted(() => {
 
 .iec61850-debug-page__tree-row.is-active {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--runtime-accent) 18%, transparent);
+}
+
+.iec61850-debug-page__tree-row.is-match .iec61850-debug-page__tree-label {
+  color: color-mix(in srgb, var(--runtime-accent) 78%, var(--color-neutral-900));
 }
 
 .iec61850-debug-page__tree-toggle {
@@ -2193,6 +2394,26 @@ onUnmounted(() => {
   color: var(--color-neutral-400);
 }
 
+:global(.dark .iec61850-debug-page__tree-toolbar) {
+  border-color: color-mix(in srgb, var(--color-neutral-800) 74%, transparent);
+}
+
+:global(.dark .iec61850-debug-page__tree-search) {
+  border-color: color-mix(in srgb, var(--color-neutral-700) 82%, transparent);
+  background: var(--color-neutral-950);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .iec61850-debug-page__tree-search-clear) {
+  border-color: color-mix(in srgb, var(--color-neutral-700) 74%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-900) 86%, transparent);
+  color: var(--color-neutral-300);
+}
+
+:global(.dark .iec61850-debug-page__tree-empty) {
+  color: var(--color-neutral-400);
+}
+
 :global(.dark .iec61850-debug-page__tree-row) {
   color: var(--color-neutral-200);
 }
@@ -2206,6 +2427,10 @@ onUnmounted(() => {
   border-color: color-mix(in srgb, var(--runtime-accent) 34%, var(--color-neutral-700));
   background: color-mix(in srgb, var(--runtime-accent) 14%, var(--color-neutral-900));
   color: var(--color-neutral-50);
+}
+
+:global(.dark .iec61850-debug-page__tree-row.is-match .iec61850-debug-page__tree-label) {
+  color: color-mix(in srgb, var(--runtime-accent) 72%, var(--color-neutral-50));
 }
 
 :global(.dark .iec61850-debug-page__property-list dt),

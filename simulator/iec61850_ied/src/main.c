@@ -4,11 +4,8 @@
 #include <string.h>
 
 #include "fixture_parser.h"
+#include "model_loader.h"
 #include "model_plan.h"
-
-#ifdef UNITLAB_WITH_LIBIEC61850
-#include <iec61850_server.h>
-#endif
 
 typedef struct SimulatorOptions {
     const char* fixture_path;
@@ -231,6 +228,7 @@ int main(int argc, char** argv)
         printf("modelLogicalNodes=%zu\n", model_plan.logical_node_count);
         printf("modelDataSets=%zu\n", model_plan.data_set_count);
         printf("modelReports=%zu\n", model_plan.report_count);
+        printf("modelSignals=%zu\n", model_plan.signal_count);
         if (model_plan.logical_device_count > 0U) {
             printf("firstModelLogicalDevice=%s\n", model_plan.logical_devices[0].inst);
         }
@@ -240,6 +238,21 @@ int main(int argc, char** argv)
                 model_plan.logical_nodes[0].logical_device_inst,
                 model_plan.logical_nodes[0].name);
         }
+        if (model_plan.data_set_count > 0U) {
+            printf(
+                "firstModelDataSet=%s/%s.%s\n",
+                model_plan.data_sets[0].logical_device_inst,
+                model_plan.data_sets[0].logical_node_name,
+                model_plan.data_sets[0].name);
+        }
+        if (model_plan.signal_count > 0U) {
+            printf(
+                "firstModelSignal=%s/%s.%s[%s]\n",
+                model_plan.signals[0].logical_device_inst,
+                model_plan.signals[0].logical_node_name,
+                model_plan.signals[0].object_reference,
+                model_plan.signals[0].fc);
+        }
         printf("bind=%s\n", options.bind_address);
         printf("port=%d\n", options.port);
         printf("libiec61850=%s\n", libiec61850_status());
@@ -248,9 +261,20 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    fprintf(stderr, "MMS_SERVER_NOT_IMPLEMENTED: this slice only validates the external simulator process boundary.\n");
-    fprintf(stderr, "libiec61850=%s\n", libiec61850_status());
+    UnitLabIedModelLoadResult load_result;
+    UnitLabIedServerConfig server_config = {
+        .bind_address = options.bind_address,
+        .port = options.port,
+    };
+    if (!unitlab_load_ied_model(&fixture_model, &model_plan, &server_config, &load_result)) {
+        fprintf(stderr, "%s: %s\n", load_result.code, load_result.message);
+        fprintf(stderr, "libiec61850=%s\n", libiec61850_status());
+        unitlab_free_ied_model_plan(&model_plan);
+        unitlab_free_ied_fixture_model(&fixture_model);
+        return 69;
+    }
+
     unitlab_free_ied_model_plan(&model_plan);
     unitlab_free_ied_fixture_model(&fixture_model);
-    return 69;
+    return 0;
 }

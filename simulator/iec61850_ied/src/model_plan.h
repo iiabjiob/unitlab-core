@@ -16,14 +16,33 @@ typedef struct UnitLabIedModelLogicalNode {
 
 typedef struct UnitLabIedModelDataSet {
     char reference[256];
+    char logical_device_inst[128];
+    char logical_node_name[128];
+    char name[128];
+    size_t first_signal_index;
     size_t member_count;
 } UnitLabIedModelDataSet;
 
 typedef struct UnitLabIedModelReportControl {
     char key[256];
+    char logical_device_inst[128];
+    char logical_node_name[128];
+    char name[128];
+    char report_kind[32];
     char data_set_ref[256];
     size_t data_set_index;
 } UnitLabIedModelReportControl;
+
+typedef struct UnitLabIedModelSignal {
+    char reference[256];
+    size_t data_set_index;
+    size_t member_index;
+    char logical_device_inst[128];
+    char logical_node_name[128];
+    char object_reference[192];
+    char fc[32];
+    char initial_value[128];
+} UnitLabIedModelSignal;
 
 typedef struct UnitLabIedModelPlan {
     size_t logical_device_count;
@@ -34,6 +53,8 @@ typedef struct UnitLabIedModelPlan {
     UnitLabIedModelDataSet* data_sets;
     size_t report_count;
     UnitLabIedModelReportControl* reports;
+    size_t signal_count;
+    UnitLabIedModelSignal* signals;
 } UnitLabIedModelPlan;
 
 int unitlab_build_ied_model_plan(
