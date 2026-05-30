@@ -82,6 +82,7 @@ from .ied_simulator_process import (
     start_ied_simulator_process_plan,
     stop_ied_simulator_process,
     stop_ied_simulator_processes,
+    validate_report_subscription_plan_with_external_ied_simulators,
     wait_ied_simulator_process_ready,
     write_ied_simulator_fixture_file,
 )
@@ -163,5 +164,6 @@ __all__ = [
     "stop_ied_simulator_processes",
     "wait_ied_simulator_process_ready",
     "to_report_control_ref",
+    "validate_report_subscription_plan_with_external_ied_simulators",
     "write_ied_simulator_fixture_file",
 ]

@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slices 13A-13AB, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, backend external simulator endpoint resolution, backend external simulator run orchestration, native external simulator loader validation, DataSet member path blueprinting, initial-value type preservation, report-control runtime blueprinting, report-control bit-mask blueprinting, DataSetEntry variable blueprinting, linked IED/LD/LN container creation, linked MMS server startup, linked client metadata smoke validation, backend simulator endpoint readiness probing, backend external simulator metadata probing, linked GI/report smoke validation, backend external simulator process-plan GI validation, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slices 13A-13AC, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, backend external simulator endpoint resolution, backend external simulator run orchestration, native external simulator loader validation, DataSet member path blueprinting, initial-value type preservation, report-control runtime blueprinting, report-control bit-mask blueprinting, DataSetEntry variable blueprinting, linked IED/LD/LN container creation, linked MMS server startup, linked client metadata smoke validation, backend simulator endpoint readiness probing, backend external simulator metadata probing, linked GI/report smoke validation, backend external simulator process-plan GI validation, backend subscription-plan simulator GI validation, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -789,6 +789,24 @@ Validation:
 - Backend service tests cover process-plan GI probe command construction.
 - Backend service tests cover process-plan GI validation cleanup after success.
 - Backend service tests cover process-plan GI validation cleanup after GI probe failure.
+
+### Slice 13AC - Backend Subscription-Plan Simulator GI Validation
+
+Implemented in this slice:
+
+- Backend runtime can validate a subscription plan directly against external IED simulator processes without requiring callers to manually build the process plan first.
+- The helper writes the simulator fixture from the subscription plan, allocates simulator endpoints, starts all required simulator processes, runs metadata and GI probes, and stops the processes.
+- The result returns the generated process plan, GI probe results, and process stop evidence for audit/debug workflows.
+- This remains an explicit simulator validation path only; it does not execute production MMS subscriptions and does not add public REST/WebSocket API surface.
+
+Still planned:
+
+- Wire the backend MMS adapter contract to this simulator endpoint for actual runtime read/reserve/enable/GI.
+- Add UI controls only after runtime ownership and operator gating are defined.
+
+Validation:
+
+- Backend service tests cover subscription-plan fixture creation, endpoint allocation, GI probe command sequence, and process cleanup.
 
 ## Current Risks
 

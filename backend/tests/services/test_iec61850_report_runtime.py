@@ -52,6 +52,7 @@ from app.services.iec61850 import (
     start_ied_simulator_process_plan,
     stop_ied_simulator_process,
     to_report_control_ref,
+    validate_report_subscription_plan_with_external_ied_simulators,
     wait_ied_simulator_process_ready,
     write_ied_simulator_fixture_file,
 )
@@ -1107,6 +1108,41 @@ def test_backend_runtime_external_ied_simulator_process_plan_gi_validation_stops
 
     assert error.value.code == "SIMULATOR_GI_PROBE_FAILED"
     assert process.terminated is True
+
+
+def test_backend_runtime_external_ied_simulator_subscription_plan_gi_validation(tmp_path) -> None:
+    plan = _multi_device_subscription_plan()
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+    processes = [_FakeSimulatorProcess(pid=1), _FakeSimulatorProcess(pid=2)]
+    commands: list[str] = []
+
+    def runner(command, **kwargs):
+        commands.append(command[-1])
+        if command[-1] in {"--dry-run", "--metadata-probe", "--gi-probe"}:
+            return subprocess.CompletedProcess(args=command, returncode=0, stdout=f"{command[-1]} accepted\n", stderr="")
+        raise AssertionError(f"unexpected simulator helper command: {command}")
+
+    def process_factory(command, **kwargs):
+        return processes.pop(0)
+
+    result = validate_report_subscription_plan_with_external_ied_simulators(
+        subscription_plan=plan,
+        binary_path=binary_path,
+        fixture_path=tmp_path / "multi-device.fixture.json",
+        base_port=12102,
+        startup_grace_seconds=0,
+        runner=runner,
+        process_factory=process_factory,
+        readiness_connector=_ready_socket_connector,
+    )
+
+    fixture_payload = json.loads(tmp_path.joinpath("multi-device.fixture.json").read_text(encoding="utf-8"))
+    assert fixture_payload["devices"][1]["iedName"] == "IED2"
+    assert [endpoint.port for endpoint in result.process_plan.endpoints] == [12102, 12103]
+    assert commands == ["--dry-run", "--metadata-probe", "--dry-run", "--metadata-probe", "--gi-probe", "--gi-probe"]
+    assert [probe.return_code for probe in result.gi_probe_results] == [0, 0]
+    assert [stop.pid for stop in result.stop_results] == [2, 1]
 
 
 def test_backend_runtime_external_ied_simulator_wrapper_runs_through_mms_boundary_and_cleans_up(tmp_path) -> None:

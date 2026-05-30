@@ -654,6 +654,48 @@ def run_ied_simulator_process_plan_gi_validation(
     )
 
 
+def validate_report_subscription_plan_with_external_ied_simulators(
+    *,
+    subscription_plan: Iec61850ReportSubscriptionPlan,
+    binary_path: str | Path,
+    fixture_path: str | Path,
+    bind_address: str = "127.0.0.1",
+    base_port: int = 1102,
+    startup_check_timeout_seconds: float = 5.0,
+    startup_grace_seconds: float = 0.1,
+    readiness_timeout_seconds: float = 5.0,
+    readiness_retry_interval_seconds: float = 0.05,
+    metadata_probe_timeout_seconds: float = 5.0,
+    gi_probe_timeout_seconds: float = 5.0,
+    terminate_timeout_seconds: float = 5.0,
+    runner: ProcessRunner = subprocess.run,
+    process_factory: ProcessFactory = subprocess.Popen,
+    readiness_connector: SocketConnector = socket.create_connection,
+    sleep: SleepFn = time.sleep,
+) -> Iec61850IedSimulatorProcessPlanProbeResult:
+    process_plan = prepare_ied_simulator_process_plan_from_subscription_plan(
+        subscription_plan=subscription_plan,
+        binary_path=binary_path,
+        fixture_path=fixture_path,
+        bind_address=bind_address,
+        base_port=base_port,
+    )
+    return run_ied_simulator_process_plan_gi_validation(
+        process_plan,
+        startup_check_timeout_seconds=startup_check_timeout_seconds,
+        startup_grace_seconds=startup_grace_seconds,
+        readiness_timeout_seconds=readiness_timeout_seconds,
+        readiness_retry_interval_seconds=readiness_retry_interval_seconds,
+        metadata_probe_timeout_seconds=metadata_probe_timeout_seconds,
+        gi_probe_timeout_seconds=gi_probe_timeout_seconds,
+        terminate_timeout_seconds=terminate_timeout_seconds,
+        runner=runner,
+        process_factory=process_factory,
+        readiness_connector=readiness_connector,
+        sleep=sleep,
+    )
+
+
 def run_report_subscription_plan_with_external_ied_simulators(
     *,
     subscription_plan: Iec61850ReportSubscriptionPlan,
