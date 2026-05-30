@@ -100,7 +100,7 @@ static int test_loader_fails_closed_without_server_backend(void)
         passed &= expect_true(!loaded, "loader should fail closed until MMS server backend is implemented");
         passed &= expect_true(result.loaded == 0, "loader result should not report loaded");
 #ifdef UNITLAB_WITH_LIBIEC61850
-        passed &= expect_string(result.code, "LIBIEC61850_MODEL_LOADER_NOT_IMPLEMENTED", "linked loader failure code");
+        passed &= expect_string(result.code, "LIBIEC61850_DO_DA_LOADER_NOT_IMPLEMENTED", "linked loader failure code");
 #else
         passed &= expect_string(result.code, "LIBIEC61850_NOT_LINKED", "unlinked loader failure code");
 #endif

@@ -71,6 +71,12 @@ add_executable(unitlab-iec61850-ied-model-loader-test
 target_include_directories(unitlab-iec61850-ied-model-loader-test PRIVATE src)
 unitlab_iec61850_sim_warnings(unitlab-iec61850-ied-model-loader-test)
 
+if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)
+  target_compile_definitions(unitlab-iec61850-ied-model-loader-test PRIVATE UNITLAB_WITH_LIBIEC61850=1)
+  target_include_directories(unitlab-iec61850-ied-model-loader-test PRIVATE "${LIBIEC61850_INCLUDE_DIR}")
+  target_link_libraries(unitlab-iec61850-ied-model-loader-test PRIVATE "${LIBIEC61850_LIBRARY}")
+endif()
+
 add_test(
   NAME unitlab-iec61850-ied-model-loader
   COMMAND unitlab-iec61850-ied-model-loader-test

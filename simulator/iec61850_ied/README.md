@@ -109,9 +109,9 @@ It intentionally excludes:
 - Operator decisions.
 - Runtime evidence.
 
-## Next Slice
+## Non-Dry-Run Status
 
-The non-dry-run path validates inputs and fails closed until the loader is implemented:
+The non-dry-run path validates inputs and fails closed until the full server model is implemented:
 
 ```bash
 /tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim \
@@ -128,6 +128,15 @@ LIBIEC61850_NOT_LINKED: libIEC61850 is not linked; build with UNITLAB_IEC61850_S
 libiec61850=not-linked
 ```
 
+Expected current result with libIEC61850:
+
+```text
+LIBIEC61850_DO_DA_LOADER_NOT_IMPLEMENTED: libIEC61850 IED/LD/LN containers were created, but DO/DA/DataSet/RCB creation is not implemented in this slice.
+libiec61850=linked
+```
+
+The linked path already creates and destroys the dynamic `IedModel`, logical devices, and logical nodes before failing closed. It does not start MMS.
+
 ## Next Slice
 
 The model plan now normalizes the fixture into the validated blueprint that the future libIEC61850 loader must consume:
@@ -142,11 +151,10 @@ The model plan now normalizes the fixture into the validated blueprint that the 
 - `TrgOps` and `OptFlds` are converted to the bit masks expected by libIEC61850 `ReportControlBlock_create`.
 - DataSet entries are converted to the MMS variable-name form expected by libIEC61850 `DataSetEntry_create`.
 
-Implement the libIEC61850 server model loader from this model plan:
+Continue the libIEC61850 server model loader from this model plan:
 
-1. Load one `IedModel`.
-2. Create one logical device and logical nodes.
-3. Create one DataSet from fixture members.
-4. Create one URCB/BRCB from fixture report metadata.
-5. Support GI emission with fixture initial values.
-6. Keep all unsupported services fail-closed.
+1. Create data objects and data attributes from the DataSet member blueprint.
+2. Create one DataSet from fixture members.
+3. Create one URCB/BRCB from fixture report metadata.
+4. Support GI emission with fixture initial values.
+5. Keep all unsupported services fail-closed.
