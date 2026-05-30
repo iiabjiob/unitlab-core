@@ -1,6 +1,6 @@
 # IEC 61850 Report Runtime Plan
 
-Status: slices 1-12, slice 13A-13S, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, backend external simulator endpoint resolution, backend external simulator run orchestration, native external simulator loader validation, DataSet member path blueprinting, initial-value type preservation, report-control runtime blueprinting, report-control bit-mask blueprinting, and the IEC/C# compliance map are implemented.
+Status: slices 1-12, slice 13A-13T, and compliance guardrails started. Simulator-only report runtime contracts, the subscription plan builder, the simulator state machine, report event normalization, backend session ownership scaffolding, debug-view simulator execution, core subscription-plan execution, report-to-signal observation mapping, backend observation parity, backend subscription-plan execution, backend incoming report routing, activation precheck gating, the backend MMS endpoint boundary, the external IED simulator fixture boundary, the external simulator process scaffold, the fixture parser/model materialization, the external simulator model plan/loader boundary, model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, backend external simulator endpoint resolution, backend external simulator run orchestration, native external simulator loader validation, DataSet member path blueprinting, initial-value type preservation, report-control runtime blueprinting, report-control bit-mask blueprinting, DataSetEntry variable blueprinting, and the IEC/C# compliance map are implemented.
 
 References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
@@ -598,6 +598,25 @@ Still planned:
 
 - Create real libIEC61850 URCB/BRCB instances from the ReportControl blueprint and masks.
 - Start one MMS server only after model creation succeeds.
+
+Validation:
+
+- Native C compile, CMake configure/build, CTest fixture-parser/model-plan/model-loader tests, and dry-run fixture smoke test.
+
+### Slice 13T - External IED Simulator DataSetEntry Variable Blueprint
+
+Implemented in this slice:
+
+- The external simulator model plan now converts each DataSet member object reference into the MMS variable-name format expected by libIEC61850 `DataSetEntry_create`.
+- DataSetEntry variable names include LD, LN, FC, and `$`-separated object path components.
+- The blueprint keeps an explicit optional component field for future array-member support, but current fixture members use no component.
+- Dry-run output exposes the first model DataSetEntry variable and component for deterministic fixture checks.
+- No MMS server is started and no fake report success is reported.
+
+Still planned:
+
+- Use the DataSetEntry variable blueprint when creating real libIEC61850 DataSets.
+- Add array index/component support only when a fixture or SCD source proves it is needed.
 
 Validation:
 

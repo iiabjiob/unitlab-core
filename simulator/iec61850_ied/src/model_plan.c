@@ -49,6 +49,41 @@ static int normalize_object_reference(
     return 1;
 }
 
+static int format_data_set_entry_variable(
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    const char* fc,
+    const char* object_reference,
+    char* destination,
+    size_t destination_size)
+{
+    if (
+        logical_device_inst == NULL
+        || logical_node_name == NULL
+        || fc == NULL
+        || object_reference == NULL
+        || destination == NULL
+        || destination_size == 0U
+    ) {
+        return 0;
+    }
+
+    int written = snprintf(destination, destination_size, "%s/%s$%s$", logical_device_inst, logical_node_name, fc);
+    if (written <= 0 || (size_t)written >= destination_size) {
+        return 0;
+    }
+
+    size_t used = (size_t)written;
+    for (const char* cursor = object_reference; *cursor != '\0'; cursor++) {
+        if (used + 1U >= destination_size) {
+            return 0;
+        }
+        destination[used++] = *cursor == '.' ? '$' : *cursor;
+    }
+    destination[used] = '\0';
+    return 1;
+}
+
 static int parse_object_path(
     const char* object_reference,
     char* data_object_name,
@@ -290,6 +325,18 @@ static int parse_signal_reference(
         set_error(error, error_size, "MODEL_PLAN_SIGNAL_OBJECT_INVALID: %s", reference);
         return 0;
     }
+    if (!format_data_set_entry_variable(
+            model_signal->logical_device_inst,
+            model_signal->logical_node_name,
+            model_signal->fc,
+            model_signal->object_reference,
+            model_signal->data_set_entry_variable,
+            sizeof(model_signal->data_set_entry_variable))) {
+        set_error(error, error_size, "MODEL_PLAN_SIGNAL_DATASET_ENTRY_TOO_LONG: %s", reference);
+        return 0;
+    }
+    model_signal->data_set_entry_component_known = 0;
+    model_signal->data_set_entry_component[0] = '\0';
     if (!copy_string(model_signal->initial_value, sizeof(model_signal->initial_value), signal->initial_value)) {
         set_error(error, error_size, "MODEL_PLAN_SIGNAL_VALUE_TOO_LONG: %s", reference);
         return 0;

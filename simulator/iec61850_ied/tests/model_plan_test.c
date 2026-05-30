@@ -153,6 +153,12 @@ static int test_model_plan_builds_blueprint(void)
         passed &= expect_string(plan.signals[0].object_reference, "Pos.stVal", "first signal object reference");
         passed &= expect_string(plan.signals[0].data_object_name, "Pos", "first signal data object");
         passed &= expect_string(plan.signals[0].data_attribute_path, "stVal", "first signal data attribute");
+        passed &= expect_string(
+            plan.signals[0].data_set_entry_variable,
+            "LD0/XCBR1$ST$Pos$stVal",
+            "first signal DataSetEntry variable");
+        passed &= expect_true(plan.signals[0].data_set_entry_component_known == 0, "first signal DataSetEntry component known");
+        passed &= expect_string(plan.signals[0].data_set_entry_component, "", "first signal DataSetEntry component");
         passed &= expect_string(plan.signals[0].fc, "ST", "first signal FC");
         passed &= expect_true(plan.signals[0].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "first signal value kind");
         passed &= expect_string(plan.signals[0].initial_value, "0", "first signal initial value");
@@ -160,6 +166,10 @@ static int test_model_plan_builds_blueprint(void)
         passed &= expect_string(plan.signals[1].object_reference, "Ind1", "second signal FCD parent object reference");
         passed &= expect_string(plan.signals[1].data_object_name, "Ind1", "second signal data object");
         passed &= expect_string(plan.signals[1].data_attribute_path, "", "second signal data attribute");
+        passed &= expect_string(
+            plan.signals[1].data_set_entry_variable,
+            "LD0/PGGIO1$ST$Ind1",
+            "second signal DataSetEntry variable");
         passed &= expect_true(plan.signals[1].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "second signal value kind");
     }
     unitlab_free_ied_model_plan(&plan);

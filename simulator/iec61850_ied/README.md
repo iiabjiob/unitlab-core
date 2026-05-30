@@ -81,6 +81,8 @@ firstModelSignal=LD0/XCBR1.Pos.stVal[ST]
 firstModelSignalKind=FCDA
 firstModelSignalDO=Pos
 firstModelSignalDA=stVal
+firstModelSignalDataSetEntryVariable=LD0/XCBR1$ST$Pos$stVal
+firstModelSignalDataSetEntryComponent=<none>
 firstModelSignalValueKind=integer
 firstModelSignalInitialValue=0
 bind=127.0.0.1
@@ -132,12 +134,13 @@ The model plan now normalizes the fixture into the validated blueprint that the 
 
 - DataSet owner LD/LN/name parsed from the fixture reference.
 - ReportControl owner LD/LN/name/kind/runtime attributes parsed from the fixture report metadata.
-- DataSet member references parsed into LD/LN/member kind/object reference/data object/data attribute path/FC/initial value kind/initial value.
+- DataSet member references parsed into LD/LN/member kind/object reference/data object/data attribute path/FC/libIEC61850 DataSetEntry variable/initial value kind/initial value.
 - Fixture DataSet context and signal FC mismatches fail before server startup.
 - Unsupported DataSet member kinds fail before server startup.
 - Malformed or unknown initial value tokens fail before server startup.
 - Unsupported report kinds and malformed `ConfRev` values fail before server startup.
 - `TrgOps` and `OptFlds` are converted to the bit masks expected by libIEC61850 `ReportControlBlock_create`.
+- DataSet entries are converted to the MMS variable-name form expected by libIEC61850 `DataSetEntry_create`.
 
 Implement the libIEC61850 server model loader from this model plan:
 

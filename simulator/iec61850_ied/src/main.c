@@ -286,6 +286,12 @@ int main(int argc, char** argv)
             printf("firstModelSignalKind=%s\n", model_plan.signals[0].kind);
             printf("firstModelSignalDO=%s\n", model_plan.signals[0].data_object_name);
             printf("firstModelSignalDA=%s\n", model_plan.signals[0].data_attribute_path);
+            printf("firstModelSignalDataSetEntryVariable=%s\n", model_plan.signals[0].data_set_entry_variable);
+            printf(
+                "firstModelSignalDataSetEntryComponent=%s\n",
+                model_plan.signals[0].data_set_entry_component_known
+                    ? model_plan.signals[0].data_set_entry_component
+                    : "<none>");
             printf("firstModelSignalValueKind=%s\n", value_kind_label(model_plan.signals[0].initial_value_kind));
             printf("firstModelSignalInitialValue=%s\n", model_plan.signals[0].initial_value);
         }

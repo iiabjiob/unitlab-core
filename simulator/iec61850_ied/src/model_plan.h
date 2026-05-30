@@ -73,6 +73,9 @@ typedef struct UnitLabIedModelSignal {
     char data_object_name[128];
     char data_attribute_path[128];
     char object_reference[192];
+    char data_set_entry_variable[256];
+    int data_set_entry_component_known;
+    char data_set_entry_component[128];
     char fc[32];
     UnitLabIedFixtureValueKind initial_value_kind;
     char initial_value[128];
