@@ -13,11 +13,21 @@ typedef struct UnitLabIedFixtureSummary {
     char access_point_name[128];
 } UnitLabIedFixtureSummary;
 
+typedef enum UnitLabIedFixtureValueKind {
+    UNITLAB_IED_FIXTURE_VALUE_UNKNOWN = 0,
+    UNITLAB_IED_FIXTURE_VALUE_NULL,
+    UNITLAB_IED_FIXTURE_VALUE_BOOLEAN,
+    UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+    UNITLAB_IED_FIXTURE_VALUE_REAL,
+    UNITLAB_IED_FIXTURE_VALUE_STRING,
+} UnitLabIedFixtureValueKind;
+
 typedef struct UnitLabIedFixtureSignal {
     size_t data_set_index;
     char reference[256];
     char kind[32];
     char fc[32];
+    UnitLabIedFixtureValueKind initial_value_kind;
     char initial_value[128];
 } UnitLabIedFixtureSignal;
 

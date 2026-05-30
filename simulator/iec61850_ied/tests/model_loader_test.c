@@ -51,6 +51,7 @@ static UnitLabIedFixtureModel valid_fixture(
         .reference = "LD0/XCBR1.Pos.stVal[ST]",
         .kind = "FCDA",
         .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
         .initial_value = "0",
     };
     data_sets[0] = (UnitLabIedFixtureDataSet){

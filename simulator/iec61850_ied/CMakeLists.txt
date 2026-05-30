@@ -39,6 +39,18 @@ endif()
 
 enable_testing()
 
+add_executable(unitlab-iec61850-ied-fixture-parser-test
+  src/fixture_parser.c
+  tests/fixture_parser_test.c
+)
+target_include_directories(unitlab-iec61850-ied-fixture-parser-test PRIVATE src)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-ied-fixture-parser-test)
+
+add_test(
+  NAME unitlab-iec61850-ied-fixture-parser
+  COMMAND unitlab-iec61850-ied-fixture-parser-test
+)
+
 add_executable(unitlab-iec61850-ied-model-plan-test
   src/model_plan.c
   tests/model_plan_test.c

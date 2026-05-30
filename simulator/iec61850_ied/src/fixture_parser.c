@@ -271,6 +271,98 @@ static int parse_raw_value_after_key(JsonRange range, const char* key, char* out
     return 1;
 }
 
+static int is_integer_token(const char* value)
+{
+    const char* cursor = value;
+    if (*cursor == '-' || *cursor == '+') {
+        cursor++;
+    }
+    if (*cursor == '\0') {
+        return 0;
+    }
+    while (*cursor != '\0') {
+        if (*cursor < '0' || *cursor > '9') {
+            return 0;
+        }
+        cursor++;
+    }
+    return 1;
+}
+
+static int is_real_token(const char* value)
+{
+    char* end = NULL;
+    int has_real_marker = 0;
+    for (const char* cursor = value; *cursor != '\0'; cursor++) {
+        if (*cursor == '.' || *cursor == 'e' || *cursor == 'E') {
+            has_real_marker = 1;
+            break;
+        }
+    }
+    if (!has_real_marker) {
+        return 0;
+    }
+    (void)strtod(value, &end);
+    return end != value && end != NULL && *end == '\0';
+}
+
+static int parse_initial_value_after_key(
+    JsonRange range,
+    const char* key,
+    UnitLabIedFixtureValueKind* value_kind,
+    char* output,
+    size_t output_size)
+{
+    if (value_kind == NULL || output == NULL || output_size == 0U) {
+        return 0;
+    }
+    *value_kind = UNITLAB_IED_FIXTURE_VALUE_UNKNOWN;
+    output[0] = '\0';
+
+    const char* key_pos = find_key(range, key);
+    if (key_pos == NULL) {
+        return 0;
+    }
+
+    const char* cursor = key_pos + strlen(key) + 2U;
+    cursor = skip_ws(cursor, range.end);
+    if (cursor >= range.end || *cursor != ':') {
+        return 0;
+    }
+    cursor++;
+    cursor = skip_ws(cursor, range.end);
+
+    if (cursor < range.end && *cursor == '"') {
+        if (parse_json_string(cursor, range.end, output, output_size) == NULL) {
+            return 0;
+        }
+        *value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+        return 1;
+    }
+
+    if (!parse_raw_value_after_key(range, key, output, output_size)) {
+        return 0;
+    }
+    if (strcmp(output, "null") == 0) {
+        *value_kind = UNITLAB_IED_FIXTURE_VALUE_NULL;
+        return 1;
+    }
+    if (strcmp(output, "true") == 0 || strcmp(output, "false") == 0) {
+        *value_kind = UNITLAB_IED_FIXTURE_VALUE_BOOLEAN;
+        return 1;
+    }
+    if (is_integer_token(output)) {
+        *value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER;
+        return 1;
+    }
+    if (is_real_token(output)) {
+        *value_kind = UNITLAB_IED_FIXTURE_VALUE_REAL;
+        return 1;
+    }
+    *value_kind = UNITLAB_IED_FIXTURE_VALUE_UNKNOWN;
+    return 0;
+}
+
 static const char* find_matching(const char* open_pos, const char* end, char open_char, char close_char)
 {
     int depth = 0;
@@ -554,7 +646,12 @@ static int parse_signal(JsonRange signal_range, UnitLabIedFixtureSignal* signal,
         set_error(error, error_size, "FIXTURE_SIGNAL_FC_INVALID: DataSet member fc must be a string or null.");
         return 0;
     }
-    if (!parse_raw_value_after_key(signal_range, "initialValue", signal->initial_value, sizeof(signal->initial_value))) {
+    if (!parse_initial_value_after_key(
+            signal_range,
+            "initialValue",
+            &signal->initial_value_kind,
+            signal->initial_value,
+            sizeof(signal->initial_value))) {
         set_error(error, error_size, "FIXTURE_SIGNAL_INITIAL_VALUE_INVALID: DataSet member requires initialValue.");
         return 0;
     }

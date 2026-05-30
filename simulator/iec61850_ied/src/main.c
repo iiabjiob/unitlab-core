@@ -166,6 +166,25 @@ static const char* optional_bool_label(UnitLabIedFixtureOptionalBool field)
     return field.value ? "true" : "false";
 }
 
+static const char* value_kind_label(UnitLabIedFixtureValueKind value_kind)
+{
+    switch (value_kind) {
+        case UNITLAB_IED_FIXTURE_VALUE_NULL:
+            return "null";
+        case UNITLAB_IED_FIXTURE_VALUE_BOOLEAN:
+            return "boolean";
+        case UNITLAB_IED_FIXTURE_VALUE_INTEGER:
+            return "integer";
+        case UNITLAB_IED_FIXTURE_VALUE_REAL:
+            return "real";
+        case UNITLAB_IED_FIXTURE_VALUE_STRING:
+            return "string";
+        case UNITLAB_IED_FIXTURE_VALUE_UNKNOWN:
+        default:
+            return "unknown";
+    }
+}
+
 int main(int argc, char** argv)
 {
     SimulatorOptions options;
@@ -255,6 +274,8 @@ int main(int argc, char** argv)
             printf("firstModelSignalKind=%s\n", model_plan.signals[0].kind);
             printf("firstModelSignalDO=%s\n", model_plan.signals[0].data_object_name);
             printf("firstModelSignalDA=%s\n", model_plan.signals[0].data_attribute_path);
+            printf("firstModelSignalValueKind=%s\n", value_kind_label(model_plan.signals[0].initial_value_kind));
+            printf("firstModelSignalInitialValue=%s\n", model_plan.signals[0].initial_value);
         }
         printf("bind=%s\n", options.bind_address);
         printf("port=%d\n", options.port);

@@ -208,6 +208,11 @@ static int parse_signal_reference(
         set_error(error, error_size, "MODEL_PLAN_SIGNAL_VALUE_TOO_LONG: %s", reference);
         return 0;
     }
+    if (signal->initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_UNKNOWN) {
+        set_error(error, error_size, "MODEL_PLAN_SIGNAL_VALUE_KIND_UNKNOWN: %s", reference);
+        return 0;
+    }
+    model_signal->initial_value_kind = signal->initial_value_kind;
     return 1;
 }
 

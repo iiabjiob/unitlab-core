@@ -44,6 +44,7 @@ typedef struct UnitLabIedModelSignal {
     char data_attribute_path[128];
     char object_reference[192];
     char fc[32];
+    UnitLabIedFixtureValueKind initial_value_kind;
     char initial_value[128];
 } UnitLabIedModelSignal;
 
