@@ -5,19 +5,7 @@
 
 #include "fixture_parser.h"
 #include "model_plan.h"
-
-typedef struct UnitLabIedServerConfig {
-    const char* bind_address;
-    int port;
-} UnitLabIedServerConfig;
-
-typedef struct UnitLabIedModelLoadResult {
-    int loaded;
-    char code[64];
-    char message[256];
-} UnitLabIedModelLoadResult;
-
-typedef int (*UnitLabIedServerStopRequested)(void* context);
+#include "server_runtime.h"
 
 int unitlab_load_ied_model(
     const UnitLabIedFixtureModel* fixture,
