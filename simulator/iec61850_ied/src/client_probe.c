@@ -508,6 +508,22 @@ static int verify_reports(
             set_probe_result(result, 0, "IEC61850_METADATA_PROBE_INTGPD_MISMATCH", "IEC 61850 metadata probe read an unexpected IntgPd.");
             passed = 0;
         }
+        if (passed && ClientReportControlBlock_getTrgOps(rcb) != report->trigger_options_mask) {
+            set_probe_result(result, 0, "IEC61850_METADATA_PROBE_TRGOPS_MISMATCH", "IEC 61850 metadata probe read unexpected TrgOps.");
+            passed = 0;
+        }
+        if (passed && ClientReportControlBlock_getOptFlds(rcb) != report->optional_fields_mask) {
+            set_probe_result(result, 0, "IEC61850_METADATA_PROBE_OPTFIELDS_MISMATCH", "IEC 61850 metadata probe read unexpected OptFlds.");
+            passed = 0;
+        }
+        if (passed && ClientReportControlBlock_getRptEna(rcb)) {
+            set_probe_result(result, 0, "IEC61850_METADATA_PROBE_RCB_ENABLED", "IEC 61850 metadata probe expected ReportControl to be disabled.");
+            passed = 0;
+        }
+        if (passed && report->is_buffered && ClientReportControlBlock_hasResvTms(rcb) && ClientReportControlBlock_getResvTms(rcb) != 0) {
+            set_probe_result(result, 0, "IEC61850_METADATA_PROBE_RCB_RESERVED", "IEC 61850 metadata probe expected buffered ReportControl to be unreserved.");
+            passed = 0;
+        }
         const UnitLabIedModelDataSet* data_set = &plan->data_sets[report->data_set_index];
         const char* data_set_ref = ClientReportControlBlock_getDataSetReference(rcb);
         if (passed && (data_set_ref == NULL || strstr(data_set_ref, data_set->name) == NULL)) {

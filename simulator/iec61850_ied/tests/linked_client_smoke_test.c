@@ -297,6 +297,9 @@ static int verify_report_gi(IedConnection connection)
     ClientReportControlBlock_setRptEna(rcb, false);
     IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_RPT_ENA, true);
     passed &= expect_true(error == IED_ERROR_OK, "BRCB disable should succeed");
+    ClientReportControlBlock_setResvTms(rcb, 0);
+    IedConnection_setRCBValues(connection, &error, rcb, RCB_ELEMENT_RESV_TMS, true);
+    passed &= expect_true(error == IED_ERROR_OK, "BRCB release should succeed");
     IedConnection_uninstallReportHandler(connection, rcb_ref);
     ClientReportControlBlock_destroy(rcb);
     return passed;
