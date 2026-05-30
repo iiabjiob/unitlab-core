@@ -20,7 +20,7 @@ typedef struct ServerThreadContext {
 typedef struct ReportProbeContext {
     volatile int report_count;
     int value_count;
-    int first_value;
+    int values[4];
     int first_reason;
     int conf_rev;
     char rpt_id[128];
@@ -78,22 +78,30 @@ static UnitLabIedFixtureModel valid_fixture(
         .initial_value = "1",
     };
     signals[1] = (UnitLabIedFixtureSignal){
-        .data_set_index = 0U,
+        .data_set_index = 1U,
         .reference = "LD0/PGGIO1.Ind1.stVal[ST]",
         .kind = "FCDA",
         .fc = "ST",
         .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
         .initial_value = "2",
     };
+    signals[2] = (UnitLabIedFixtureSignal){
+        .data_set_index = 0U,
+        .reference = "LD0/PGGIO2.Ind1.stVal[ST]",
+        .kind = "FCDA",
+        .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+        .initial_value = "3",
+    };
     data_sets[0] = (UnitLabIedFixtureDataSet){
         .reference = "IED1/AP1/LD0/LLN0.dsEvents",
-        .signal_count = 1U,
+        .signal_count = 2U,
         .signals = signals,
     };
     data_sets[1] = (UnitLabIedFixtureDataSet){
         .reference = "IED1/AP1/LD0/LLN0.dsUpdates",
         .signal_count = 1U,
-        .signals = &signals[1],
+        .signals = &signals[2],
     };
     reports[0] = (UnitLabIedFixtureReport){
         .key = "IED1/AP1/LD0/LLN0/brcbEvents/buffered",
@@ -169,7 +177,7 @@ static UnitLabIedFixtureModel valid_fixture(
         .data_sets = data_sets,
         .report_count = 2U,
         .reports = reports,
-        .signal_count = 2U,
+        .signal_count = 3U,
     };
 }
 
@@ -240,7 +248,13 @@ static void report_callback(void* parameter, ClientReport report)
         if (context->value_count > 0) {
             MmsValue* first_value = MmsValue_getElement(values, 0);
             if (first_value != NULL) {
-                context->first_value = MmsValue_toInt32(first_value);
+                context->values[0] = MmsValue_toInt32(first_value);
+            }
+            if (context->value_count > 1) {
+                MmsValue* second_value = MmsValue_getElement(values, 1);
+                if (second_value != NULL) {
+                    context->values[1] = MmsValue_toInt32(second_value);
+                }
             }
         }
     }
@@ -275,8 +289,9 @@ static int verify_report_gi(IedConnection connection)
     passed &= expect_string(context.rpt_id, "events", "GI report RptID");
     passed &= expect_string_contains(context.data_set_name, "dsEvents", "GI report DataSet name");
     passed &= expect_true(context.conf_rev == 1, "GI report ConfRev should come from fixture");
-    passed &= expect_true(context.value_count == 1, "GI report should include one DataSet value");
-    passed &= expect_true(context.first_value == 1, "GI report value should come from fixture initialValue");
+    passed &= expect_true(context.value_count == 2, "GI report should include both DataSet values");
+    passed &= expect_true(context.values[0] == 1, "GI report first value should come from fixture initialValue");
+    passed &= expect_true(context.values[1] == 2, "GI report second value should come from fixture initialValue");
     passed &= expect_true((context.first_reason & IEC61850_REASON_GI) != 0, "GI report reason should include GI");
 
     ClientReportControlBlock_setRptEna(rcb, false);
@@ -304,7 +319,8 @@ static int verify_server_metadata(IedConnection connection)
     passed &= expect_true(error == IED_ERROR_OK, "DataSet directory read should succeed");
     passed &= expect_true(data_sets != NULL, "DataSet directory should be present");
     if (data_sets != NULL) {
-        passed &= expect_true(string_list_contains(data_sets, "dsEvents"), "LLN0 should expose the fixture DataSet");
+        passed &= expect_true(string_list_contains(data_sets, "dsEvents"), "LLN0 should expose the fixture events DataSet");
+        passed &= expect_true(string_list_contains(data_sets, "dsUpdates"), "LLN0 should expose the fixture updates DataSet");
         LinkedList_destroy(data_sets);
     }
 
@@ -314,7 +330,7 @@ static int verify_server_metadata(IedConnection connection)
     passed &= expect_true(data_set_members != NULL, "DataSet member directory should be present");
     passed &= expect_true(!is_deletable, "fixture DataSet should be non-deletable");
     if (data_set_members != NULL) {
-        passed &= expect_true(LinkedList_size(data_set_members) == 1, "DataSet should expose one member");
+        passed &= expect_true(LinkedList_size(data_set_members) == 2, "DataSet should expose both members");
         LinkedList_destroy(data_set_members);
     }
 
@@ -344,7 +360,7 @@ static int verify_server_metadata(IedConnection connection)
 
 int main(void)
 {
-    UnitLabIedFixtureSignal signals[2];
+    UnitLabIedFixtureSignal signals[3];
     UnitLabIedFixtureDataSet data_sets[2];
     UnitLabIedFixtureReport reports[2];
     UnitLabIedFixtureModel fixture = valid_fixture(data_sets, reports, signals);

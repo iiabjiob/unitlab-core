@@ -23,14 +23,15 @@ static void set_probe_result(UnitLabIedModelLoadResult* result, int loaded, cons
 
 typedef struct UnitLabGiProbeContext {
     volatile int report_count;
-    UnitLabIedFixtureValueKind expected_value_kind;
+    const UnitLabIedModelPlan* plan;
+    const UnitLabIedModelDataSet* data_set;
     int value_count;
-    int first_integer_value;
-    int first_boolean_value;
-    float first_real_value;
-    char first_string_value[128];
     int first_reason;
     int conf_rev;
+    int value_validation_failed;
+    size_t value_validation_index;
+    char value_validation_code[96];
+    char value_validation_message[256];
     char rpt_id[128];
     char data_set_name[256];
 } UnitLabGiProbeContext;
@@ -110,6 +111,95 @@ static int parse_real32_value(const char* source, float* value)
     return 1;
 }
 
+static void set_value_validation_error(UnitLabGiProbeContext* context, size_t index, const char* code, const char* message)
+{
+    if (context->value_validation_failed) {
+        return;
+    }
+    context->value_validation_failed = 1;
+    context->value_validation_index = index;
+    snprintf(context->value_validation_code, sizeof(context->value_validation_code), "%s", code);
+    snprintf(context->value_validation_message, sizeof(context->value_validation_message), "%s", message);
+}
+
+static int validate_gi_mms_value(
+    const UnitLabIedModelSignal* signal,
+    MmsValue* value,
+    char* code,
+    size_t code_size,
+    char* message,
+    size_t message_size)
+{
+    switch (signal->initial_value_kind) {
+        case UNITLAB_IED_FIXTURE_VALUE_BOOLEAN: {
+            int expected = 0;
+            if (strcmp(signal->initial_value, "true") == 0) {
+                expected = 1;
+            }
+            else if (strcmp(signal->initial_value, "false") != 0) {
+                snprintf(code, code_size, "IEC61850_GI_PROBE_VALUE_PARSE_FAILED");
+                snprintf(message, message_size, "IEC 61850 GI probe could not parse an expected boolean value.");
+                return 0;
+            }
+            if ((MmsValue_getBoolean(value) ? 1 : 0) != expected) {
+                snprintf(code, code_size, "IEC61850_GI_PROBE_VALUE_MISMATCH");
+                snprintf(message, message_size, "IEC 61850 GI probe read an unexpected boolean value.");
+                return 0;
+            }
+            return 1;
+        }
+        case UNITLAB_IED_FIXTURE_VALUE_INTEGER: {
+            int32_t expected = 0;
+            if (!parse_int32_value(signal->initial_value, &expected)) {
+                snprintf(code, code_size, "IEC61850_GI_PROBE_VALUE_PARSE_FAILED");
+                snprintf(message, message_size, "IEC 61850 GI probe could not parse an expected integer value.");
+                return 0;
+            }
+            if (MmsValue_toInt32(value) != expected) {
+                snprintf(code, code_size, "IEC61850_GI_PROBE_VALUE_MISMATCH");
+                snprintf(message, message_size, "IEC 61850 GI probe read an unexpected integer value.");
+                return 0;
+            }
+            return 1;
+        }
+        case UNITLAB_IED_FIXTURE_VALUE_REAL: {
+            float expected = 0.0F;
+            float actual = MmsValue_toFloat(value);
+            float delta = actual;
+            if (!parse_real32_value(signal->initial_value, &expected)) {
+                snprintf(code, code_size, "IEC61850_GI_PROBE_VALUE_PARSE_FAILED");
+                snprintf(message, message_size, "IEC 61850 GI probe could not parse an expected real value.");
+                return 0;
+            }
+            delta -= expected;
+            if (delta < 0.0F) {
+                delta = -delta;
+            }
+            if (delta > 0.0001F) {
+                snprintf(code, code_size, "IEC61850_GI_PROBE_VALUE_MISMATCH");
+                snprintf(message, message_size, "IEC 61850 GI probe read an unexpected real value.");
+                return 0;
+            }
+            return 1;
+        }
+        case UNITLAB_IED_FIXTURE_VALUE_STRING: {
+            const char* string_value = MmsValue_toString(value);
+            if (string_value == NULL || strcmp(string_value, signal->initial_value) != 0) {
+                snprintf(code, code_size, "IEC61850_GI_PROBE_VALUE_MISMATCH");
+                snprintf(message, message_size, "IEC 61850 GI probe read an unexpected string value.");
+                return 0;
+            }
+            return 1;
+        }
+        case UNITLAB_IED_FIXTURE_VALUE_NULL:
+        case UNITLAB_IED_FIXTURE_VALUE_UNKNOWN:
+        default:
+            snprintf(code, code_size, "IEC61850_GI_PROBE_VALUE_KIND_UNSUPPORTED");
+            snprintf(message, message_size, "IEC 61850 GI probe requires typed DataSet values.");
+            return 0;
+    }
+}
+
 static void report_callback(void* parameter, ClientReport report)
 {
     UnitLabGiProbeContext* context = (UnitLabGiProbeContext*)parameter;
@@ -141,84 +231,31 @@ static void report_callback(void* parameter, ClientReport report)
         return;
     }
 
-    MmsValue* first_value = MmsValue_getElement(values, 0);
-    if (first_value == NULL) {
+    if (context->plan == NULL || context->data_set == NULL) {
+        set_value_validation_error(context, 0U, "IEC61850_GI_PROBE_CONTEXT_INVALID", "IEC 61850 GI probe callback is missing DataSet context.");
         return;
     }
-    switch (context->expected_value_kind) {
-        case UNITLAB_IED_FIXTURE_VALUE_BOOLEAN:
-            context->first_boolean_value = MmsValue_getBoolean(first_value) ? 1 : 0;
-            break;
-        case UNITLAB_IED_FIXTURE_VALUE_INTEGER:
-            context->first_integer_value = MmsValue_toInt32(first_value);
-            break;
-        case UNITLAB_IED_FIXTURE_VALUE_REAL:
-            context->first_real_value = MmsValue_toFloat(first_value);
-            break;
-        case UNITLAB_IED_FIXTURE_VALUE_STRING: {
-            const char* string_value = MmsValue_toString(first_value);
-            if (string_value != NULL) {
-                snprintf(context->first_string_value, sizeof(context->first_string_value), "%s", string_value);
-            }
-            break;
+    for (size_t index = 0U; index < context->data_set->member_count; index++) {
+        size_t signal_index = context->data_set->first_signal_index + index;
+        if (signal_index >= context->plan->signal_count) {
+            set_value_validation_error(context, index, "IEC61850_GI_PROBE_SIGNAL_INDEX_INVALID", "IEC 61850 GI probe DataSet member points outside the signal plan.");
+            return;
         }
-        case UNITLAB_IED_FIXTURE_VALUE_NULL:
-        case UNITLAB_IED_FIXTURE_VALUE_UNKNOWN:
-        default:
-            break;
-    }
-}
-
-static int validate_first_gi_value(
-    const UnitLabIedModelSignal* signal,
-    const UnitLabGiProbeContext* context,
-    UnitLabIedModelLoadResult* result)
-{
-    switch (signal->initial_value_kind) {
-        case UNITLAB_IED_FIXTURE_VALUE_BOOLEAN: {
-            int expected = strcmp(signal->initial_value, "true") == 0 ? 1 : 0;
-            if (context->first_boolean_value != expected) {
-                set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_MISMATCH", "IEC 61850 GI probe read an unexpected boolean value.");
-                return 0;
-            }
-            return 1;
+        if (index >= (size_t)context->value_count) {
+            set_value_validation_error(context, index, "IEC61850_GI_PROBE_VALUE_COUNT_MISMATCH", "IEC 61850 GI probe received fewer values than expected.");
+            return;
         }
-        case UNITLAB_IED_FIXTURE_VALUE_INTEGER: {
-            int32_t expected = 0;
-            if (!parse_int32_value(signal->initial_value, &expected) || context->first_integer_value != expected) {
-                set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_MISMATCH", "IEC 61850 GI probe read an unexpected integer value.");
-                return 0;
-            }
-            return 1;
+        MmsValue* value = MmsValue_getElement(values, index);
+        if (value == NULL) {
+            set_value_validation_error(context, index, "IEC61850_GI_PROBE_VALUE_MISSING", "IEC 61850 GI probe received a null DataSet value.");
+            return;
         }
-        case UNITLAB_IED_FIXTURE_VALUE_REAL: {
-            float expected = 0.0F;
-            float delta = context->first_real_value;
-            if (!parse_real32_value(signal->initial_value, &expected)) {
-                set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_PARSE_FAILED", "IEC 61850 GI probe could not parse the expected real value.");
-                return 0;
-            }
-            delta -= expected;
-            if (delta < 0.0F) {
-                delta = -delta;
-            }
-            if (delta > 0.0001F) {
-                set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_MISMATCH", "IEC 61850 GI probe read an unexpected real value.");
-                return 0;
-            }
-            return 1;
+        char code[96];
+        char message[256];
+        if (!validate_gi_mms_value(&context->plan->signals[signal_index], value, code, sizeof(code), message, sizeof(message))) {
+            set_value_validation_error(context, index, code, message);
+            return;
         }
-        case UNITLAB_IED_FIXTURE_VALUE_STRING:
-            if (strcmp(context->first_string_value, signal->initial_value) != 0) {
-                set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_MISMATCH", "IEC 61850 GI probe read an unexpected string value.");
-                return 0;
-            }
-            return 1;
-        case UNITLAB_IED_FIXTURE_VALUE_NULL:
-        case UNITLAB_IED_FIXTURE_VALUE_UNKNOWN:
-        default:
-            set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_KIND_UNSUPPORTED", "IEC 61850 GI probe requires a typed first DataSet value.");
-            return 0;
     }
 }
 
@@ -470,7 +507,6 @@ static int probe_gi_report(
         return 0;
     }
 
-    const UnitLabIedModelSignal* first_signal = &plan->signals[data_set->first_signal_index];
     char logical_node_ref[256];
     char rcb_ref[384];
     int passed = format_ref(
@@ -497,7 +533,8 @@ static int probe_gi_report(
     IedClientError error = IED_ERROR_OK;
     ClientReportControlBlock rcb = NULL;
     UnitLabGiProbeContext context = {
-        .expected_value_kind = first_signal->initial_value_kind,
+        .plan = plan,
+        .data_set = data_set,
     };
     if (passed) {
         rcb = IedConnection_getRCBValues(connection, &error, rcb_ref, NULL);
@@ -569,8 +606,11 @@ static int probe_gi_report(
         set_probe_result(result, 0, "IEC61850_GI_PROBE_VALUE_COUNT_MISMATCH", "IEC 61850 GI probe received an unexpected number of DataSet values.");
         passed = 0;
     }
-    if (passed) {
-        passed = validate_first_gi_value(first_signal, &context, result);
+    if (passed && context.value_validation_failed) {
+        char message[320];
+        snprintf(message, sizeof(message), "%s DataSet member index: %zu.", context.value_validation_message, context.value_validation_index);
+        set_probe_result(result, 0, context.value_validation_code, message);
+        passed = 0;
     }
     if (passed && report->optional_fields.reason_code.known && report->optional_fields.reason_code.value && (context.first_reason & IEC61850_REASON_GI) == 0) {
         set_probe_result(result, 0, "IEC61850_GI_PROBE_REASON_MISMATCH", "IEC 61850 GI probe received a report without GI reason.");
