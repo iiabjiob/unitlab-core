@@ -1,6 +1,6 @@
 # UnitLab IEC 61850 IED Simulator
 
-Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan boundary, but it does not run an MMS server yet.
+Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan/loader boundary, but it does not run an MMS server yet.
 
 This directory is the boundary for the future libIEC61850-based IED simulator. It is intentionally separate from UnitLab backend/core runtime so GPL/native code cannot leak into production logic by accident.
 
@@ -69,6 +69,9 @@ firstModelLogicalDevice=LD0
 firstModelLogicalNode=LD0/LLN0
 firstModelDataSet=LD0/LLN0.dsEvents
 firstModelSignal=LD0/XCBR1.Pos.stVal[ST]
+firstModelSignalKind=FCDA
+firstModelSignalDO=Pos
+firstModelSignalDA=stVal
 bind=127.0.0.1
 port=1102
 libiec61850=not-linked
@@ -117,8 +120,9 @@ The model plan now normalizes the fixture into the validated blueprint that the 
 
 - DataSet owner LD/LN/name parsed from the fixture reference.
 - ReportControl owner LD/LN/name/kind parsed from the fixture report metadata.
-- DataSet member references parsed into LD/LN/object reference/FC/initial value.
+- DataSet member references parsed into LD/LN/member kind/object reference/data object/data attribute path/FC/initial value.
 - Fixture DataSet context and signal FC mismatches fail before server startup.
+- Unsupported DataSet member kinds fail before server startup.
 
 Implement the libIEC61850 server model loader from this model plan:
 

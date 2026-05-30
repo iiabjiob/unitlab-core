@@ -252,6 +252,9 @@ int main(int argc, char** argv)
                 model_plan.signals[0].logical_node_name,
                 model_plan.signals[0].object_reference,
                 model_plan.signals[0].fc);
+            printf("firstModelSignalKind=%s\n", model_plan.signals[0].kind);
+            printf("firstModelSignalDO=%s\n", model_plan.signals[0].data_object_name);
+            printf("firstModelSignalDA=%s\n", model_plan.signals[0].data_attribute_path);
         }
         printf("bind=%s\n", options.bind_address);
         printf("port=%d\n", options.port);

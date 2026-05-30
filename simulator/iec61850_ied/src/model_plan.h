@@ -35,10 +35,13 @@ typedef struct UnitLabIedModelReportControl {
 
 typedef struct UnitLabIedModelSignal {
     char reference[256];
+    char kind[32];
     size_t data_set_index;
     size_t member_index;
     char logical_device_inst[128];
     char logical_node_name[128];
+    char data_object_name[128];
+    char data_attribute_path[128];
     char object_reference[192];
     char fc[32];
     char initial_value[128];

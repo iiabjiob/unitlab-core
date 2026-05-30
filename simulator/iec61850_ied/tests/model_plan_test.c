@@ -72,7 +72,7 @@ static int test_model_plan_builds_blueprint(void)
         {
             .data_set_index = 0U,
             .reference = "LD0/XCBR1.Pos.stVal[ST]",
-            .kind = "FCD",
+            .kind = "FCDA",
             .fc = "ST",
             .initial_value = "0",
         },
@@ -112,9 +112,15 @@ static int test_model_plan_builds_blueprint(void)
         passed &= expect_string(plan.reports[0].name, "brcbEvents", "ReportControl name");
         passed &= expect_string(plan.reports[0].report_kind, "buffered", "ReportControl kind");
         passed &= expect_string(plan.signals[0].logical_node_name, "XCBR1", "first signal LN");
+        passed &= expect_string(plan.signals[0].kind, "FCDA", "first signal kind");
         passed &= expect_string(plan.signals[0].object_reference, "Pos.stVal", "first signal object reference");
+        passed &= expect_string(plan.signals[0].data_object_name, "Pos", "first signal data object");
+        passed &= expect_string(plan.signals[0].data_attribute_path, "stVal", "first signal data attribute");
         passed &= expect_string(plan.signals[0].fc, "ST", "first signal FC");
+        passed &= expect_string(plan.signals[1].kind, "FCD", "second signal kind");
         passed &= expect_string(plan.signals[1].object_reference, "Ind1", "second signal FCD parent object reference");
+        passed &= expect_string(plan.signals[1].data_object_name, "Ind1", "second signal data object");
+        passed &= expect_string(plan.signals[1].data_attribute_path, "", "second signal data attribute");
     }
     unitlab_free_ied_model_plan(&plan);
     return passed;
@@ -210,6 +216,36 @@ static int test_signal_fc_mismatch_fails(void)
         && expect_true(starts_with(error, "MODEL_PLAN_SIGNAL_FC_MISMATCH"), "FC mismatch error code");
 }
 
+static int test_invalid_signal_kind_fails(void)
+{
+    UnitLabIedFixtureSignal signals[1] = {
+        {
+            .data_set_index = 0U,
+            .reference = "LD0/XCBR1.Pos.stVal[ST]",
+            .kind = "BAD",
+            .fc = "ST",
+            .initial_value = "0",
+        },
+    };
+    UnitLabIedFixtureDataSet data_sets[1] = {
+        {
+            .reference = "IED1/AP1/LD0/LLN0.dsEvents",
+            .signal_count = 1U,
+            .signals = signals,
+        },
+    };
+    UnitLabIedFixtureReport reports[1] = {
+        report_for_data_set("IED1/AP1/LD0/LLN0.dsEvents"),
+    };
+    UnitLabIedFixtureModel fixture = fixture_for(data_sets, 1U, reports, 1U, 1U);
+    UnitLabIedModelPlan plan;
+    char error[256];
+    int ok = unitlab_build_ied_model_plan(&fixture, &plan, error, sizeof(error));
+    unitlab_free_ied_model_plan(&plan);
+    return expect_true(!ok, "invalid signal kind should fail")
+        && expect_true(starts_with(error, "MODEL_PLAN_SIGNAL_KIND_INVALID"), "invalid signal kind error code");
+}
+
 static int test_dataset_context_mismatch_fails(void)
 {
     UnitLabIedFixtureSignal signals[1] = {
@@ -247,6 +283,7 @@ int main(void)
     passed &= test_missing_report_dataset_fails();
     passed &= test_invalid_signal_reference_fails();
     passed &= test_signal_fc_mismatch_fails();
+    passed &= test_invalid_signal_kind_fails();
     passed &= test_dataset_context_mismatch_fails();
     return passed ? 0 : 1;
 }

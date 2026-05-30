@@ -49,6 +49,48 @@ static int normalize_object_reference(
     return 1;
 }
 
+static int parse_object_path(
+    const char* object_reference,
+    char* data_object_name,
+    size_t data_object_name_size,
+    char* data_attribute_path,
+    size_t data_attribute_path_size)
+{
+    const char* dot = strchr(object_reference, '.');
+    size_t data_object_length = dot == NULL ? strlen(object_reference) : (size_t)(dot - object_reference);
+    if (data_object_length == 0U || data_object_length >= data_object_name_size) {
+        return 0;
+    }
+
+    memcpy(data_object_name, object_reference, data_object_length);
+    data_object_name[data_object_length] = '\0';
+
+    if (dot == NULL) {
+        if (data_attribute_path_size == 0U) {
+            return 0;
+        }
+        data_attribute_path[0] = '\0';
+        return 1;
+    }
+
+    const char* data_attribute = dot + 1;
+    size_t data_attribute_length = strlen(data_attribute);
+    if (data_attribute_length == 0U || data_attribute_length >= data_attribute_path_size) {
+        return 0;
+    }
+    memcpy(data_attribute_path, data_attribute, data_attribute_length + 1U);
+    return 1;
+}
+
+static int validate_signal_kind(const UnitLabIedFixtureSignal* signal, char* error, size_t error_size)
+{
+    if (strcmp(signal->kind, "FCD") == 0 || strcmp(signal->kind, "FCDA") == 0) {
+        return 1;
+    }
+    set_error(error, error_size, "MODEL_PLAN_SIGNAL_KIND_INVALID: %s", signal->reference);
+    return 0;
+}
+
 static int parse_fc_suffix(
     const UnitLabIedFixtureSignal* signal,
     const char* body_end,
@@ -104,6 +146,9 @@ static int parse_signal_reference(
         set_error(error, error_size, "MODEL_PLAN_SIGNAL_REFERENCE_INVALID: %s", reference);
         return 0;
     }
+    if (!validate_signal_kind(signal, error, error_size)) {
+        return 0;
+    }
 
     if (!parse_fc_suffix(signal, reference_end, model_signal->fc, sizeof(model_signal->fc), &reference_body_end, error, error_size)) {
         return 0;
@@ -138,12 +183,25 @@ static int parse_signal_reference(
         set_error(error, error_size, "MODEL_PLAN_SIGNAL_REFERENCE_TOO_LONG: %s", reference);
         return 0;
     }
+    if (!copy_string(model_signal->kind, sizeof(model_signal->kind), signal->kind)) {
+        set_error(error, error_size, "MODEL_PLAN_SIGNAL_KIND_TOO_LONG: %s", reference);
+        return 0;
+    }
     memcpy(model_signal->logical_device_inst, reference, logical_device_length);
     model_signal->logical_device_inst[logical_device_length] = '\0';
     memcpy(model_signal->logical_node_name, node_start, logical_node_length);
     model_signal->logical_node_name[logical_node_length] = '\0';
     if (!normalize_object_reference(object_start, object_length, model_signal->object_reference, sizeof(model_signal->object_reference))) {
         set_error(error, error_size, "MODEL_PLAN_SIGNAL_OBJECT_TOO_LONG: %s", reference);
+        return 0;
+    }
+    if (!parse_object_path(
+            model_signal->object_reference,
+            model_signal->data_object_name,
+            sizeof(model_signal->data_object_name),
+            model_signal->data_attribute_path,
+            sizeof(model_signal->data_attribute_path))) {
+        set_error(error, error_size, "MODEL_PLAN_SIGNAL_OBJECT_INVALID: %s", reference);
         return 0;
     }
     if (!copy_string(model_signal->initial_value, sizeof(model_signal->initial_value), signal->initial_value)) {

@@ -49,7 +49,7 @@ static UnitLabIedFixtureModel valid_fixture(
     signals[0] = (UnitLabIedFixtureSignal){
         .data_set_index = 0U,
         .reference = "LD0/XCBR1.Pos.stVal[ST]",
-        .kind = "FCD",
+        .kind = "FCDA",
         .fc = "ST",
         .initial_value = "0",
     };
