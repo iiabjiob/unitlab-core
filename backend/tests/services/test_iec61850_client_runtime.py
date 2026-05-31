@@ -10,6 +10,7 @@ from app.services.iec61850.report_runtime import (
     Iec61850ReportControlCandidate,
     Iec61850ReportKind,
     Iec61850ReportReason,
+    Iec61850RuntimeStatus,
     Iec61850ReportSubscriptionPlan,
     Iec61850ReportSubscriptionPlanDevice,
     Iec61850ReportSubscriptionPlanReport,
@@ -44,7 +45,7 @@ def test_client_runtime_wraps_shared_session_lifecycle() -> None:
     assert [value.reference for value in report.values] == ["LD0/XCBR1.Pos.stVal[ST]"]
 
     assert runtime.disable_report_control(session_id="client-session", candidate=candidate, client_id="unitlab").enabled is False
-    assert runtime.release_report_control(session_id="client-session", candidate=candidate, client_id="unitlab").released is True
+    assert runtime.release_report_control(session_id="client-session", candidate=candidate, client_id="unitlab").runtime_status == Iec61850RuntimeStatus.RELEASED
     runtime.close_session("client-session")
 
     kinds = [event.kind for event in runtime.transcript()]
