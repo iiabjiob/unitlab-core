@@ -4,9 +4,9 @@
 #include "../../unitlab_mms_types.h"
 
 /*
- * Raw full-buffer session-SPDU boundary.
+ * Raw session-SPDU boundary.
  * Exact X.225 session kernel SPDU codes are classified here, but the SPDU body stays opaque.
- * This wrapper consumes the whole supplied buffer and is not yet a general X.225 SPDU stream parser.
+ * The decoder parses one SPDU using the X.225 SI/LI header and stops at the indicated length.
  * No runtime state transition is performed by this layer.
  */
 typedef enum UnitLabMmsSessionSpduKind {

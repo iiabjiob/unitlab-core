@@ -122,6 +122,27 @@ static int session_code_to_kind(uint8_t code, UnitLabMmsSessionSpduKind* kind)
     }
 }
 
+static int session_read_length_indicator(const uint8_t* buffer, size_t buffer_length, size_t* li_length, size_t* parameter_length)
+{
+    if (li_length == NULL || parameter_length == NULL) {
+        return 0;
+    }
+    if (buffer_length < 2U) {
+        return 0;
+    }
+    if (buffer[1U] != 0xFFU) {
+        *li_length = 1U;
+        *parameter_length = (size_t)buffer[1U];
+        return 1;
+    }
+    if (buffer_length < 4U) {
+        return 0;
+    }
+    *li_length = 3U;
+    *parameter_length = ((size_t)buffer[2U] << 8U) | (size_t)buffer[3U];
+    return 1;
+}
+
 void unitlab_mms_session_spdu_init(UnitLabMmsSessionSpdu* spdu)
 {
     if (spdu == NULL) {
@@ -134,8 +155,11 @@ void unitlab_mms_session_spdu_init(UnitLabMmsSessionSpdu* spdu)
 int unitlab_mms_session_spdu_encode(const UnitLabMmsSessionSpdu* spdu, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     uint8_t expected_code = 0U;
+    size_t li_length = 0U;
+    size_t parameter_length = 0U;
+    size_t expected_length = 0U;
 
-    /* Raw full-buffer wrapper: validate the declared kind against the first SPDU byte, then copy the raw SPDU bytes unchanged. */
+    /* Raw SPDU copy: validate the declared kind and the SI/LI length indicator, then preserve the encoded bytes unchanged. */
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -148,8 +172,8 @@ int unitlab_mms_session_spdu_encode(const UnitLabMmsSessionSpdu* spdu, uint8_t* 
         session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session SPDU bytes are required when length is non-zero.");
         return 0;
     }
-    if (spdu->spdu_length == 0U) {
-        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session SPDU length must be non-zero.");
+    if (spdu->spdu_length < 2U) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session SPDU length is too small.");
         return 0;
     }
     if (!session_kind_to_code(spdu->kind, &expected_code)) {
@@ -158,6 +182,15 @@ int unitlab_mms_session_spdu_encode(const UnitLabMmsSessionSpdu* spdu, uint8_t* 
     }
     if (spdu->spdu_bytes[0] != expected_code) {
         session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "session SPDU code does not match the declared kind.");
+        return 0;
+    }
+    if (!session_read_length_indicator(spdu->spdu_bytes, spdu->spdu_length, &li_length, &parameter_length)) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "session SPDU length indicator is invalid.");
+        return 0;
+    }
+    expected_length = 1U + li_length + parameter_length;
+    if (expected_length != spdu->spdu_length) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "session SPDU length indicator does not match the raw SPDU length.");
         return 0;
     }
     if (spdu->spdu_length > buffer_length) {
@@ -173,8 +206,9 @@ int unitlab_mms_session_spdu_encode(const UnitLabMmsSessionSpdu* spdu, uint8_t* 
 int unitlab_mms_session_spdu_decode(UnitLabMmsSessionSpdu* spdu, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsSessionSpduKind kind;
-    size_t raw_parameter_length = 0U;
-
+    size_t li_length = 0U;
+    size_t parameter_length = 0U;
+    size_t total_length = 0U;
 
     if (consumed_length != NULL) {
         *consumed_length = 0U;
@@ -183,25 +217,31 @@ int unitlab_mms_session_spdu_decode(UnitLabMmsSessionSpdu* spdu, const uint8_t* 
         session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session SPDU decode requires spdu, buffer, and consumed_length.");
         return 0;
     }
-    if (buffer_length == 0U) {
-        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "session SPDU buffer is empty.");
+    if (buffer_length < 2U) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "session SPDU buffer is too small.");
         return 0;
     }
     if (!session_code_to_kind(buffer[0], &kind)) {
         session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "unsupported session SPDU code.");
         return 0;
     }
+    if (!session_read_length_indicator(buffer, buffer_length, &li_length, &parameter_length)) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "session SPDU length indicator is invalid or truncated.");
+        return 0;
+    }
+    total_length = 1U + li_length + parameter_length;
+    if (total_length > buffer_length) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "session SPDU is truncated.");
+        return 0;
+    }
     unitlab_mms_session_spdu_init(spdu);
     spdu->kind = kind;
     spdu->spdu_bytes = buffer;
-    spdu->spdu_length = buffer_length;
-    spdu->encoded_length = buffer_length;
-    if (buffer_length > 1U) {
-        raw_parameter_length = buffer_length - 1U;
-        spdu->raw_parameter_bytes = &buffer[1];
-        spdu->raw_parameter_length = raw_parameter_length;
-    }
-    *consumed_length = buffer_length;
+    spdu->spdu_length = total_length;
+    spdu->encoded_length = total_length;
+    spdu->raw_parameter_bytes = &buffer[1U + li_length];
+    spdu->raw_parameter_length = parameter_length;
+    *consumed_length = total_length;
     session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
