@@ -105,10 +105,17 @@ static void operation_result_project_from_runtime(
     const UnitLabMmsRuntimeEventLog* trace,
     const UnitLabMmsRuntimeEvent* event)
 {
+    UnitLabMmsDiagnostic diagnostic_copy;
+
     if (operation_result == NULL) {
         return;
     }
-    unitlab_mms_operation_result_from_trace(operation_result, ok, diagnostic, trace, event);
+    if (diagnostic != NULL) {
+        diagnostic_copy = *diagnostic;
+        unitlab_mms_operation_result_from_trace(operation_result, ok, &diagnostic_copy, trace, event);
+        return;
+    }
+    unitlab_mms_operation_result_from_trace(operation_result, ok, NULL, trace, event);
 }
 
 
@@ -454,17 +461,24 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
                 return 0;
             }
             if (pending_request->invoke_id != semantic_result->pdu.invoke_id) {
+                UnitLabMmsRuntimeEvent mismatch_event;
+                UnitLabMmsRuntimeEventLog mismatch_trace;
+
                 set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVOKE_ID_MISMATCH, "response invoke id does not match pending request.");
-                unitlab_mms_runtime_event_init(&operation_result->event);
-                operation_result->event.kind = UNITLAB_MMS_RUNTIME_EVENT_REQUEST_CORRELATION_MISMATCH;
-                operation_result->event.invoke_id = semantic_result->pdu.invoke_id;
-                operation_result->event.correlation_id = pending_request->correlation_id;
-                operation_result->event.state_before = (uint32_t)pending_request->state;
-                operation_result->event.state_after = (uint32_t)pending_request->state;
-                operation_result->event.diagnostic_code = UNITLAB_MMS_DIAGNOSTIC_INVOKE_ID_MISMATCH;
-                strncpy(operation_result->event.diagnostic_message, operation_result->diagnostic.message, sizeof(operation_result->event.diagnostic_message) - 1U);
-                operation_result->event.diagnostic_message[sizeof(operation_result->event.diagnostic_message) - 1U] = '\0';
+                unitlab_mms_runtime_event_init(&mismatch_event);
+                unitlab_mms_runtime_event_log_init(&mismatch_trace);
+                mismatch_event.kind = UNITLAB_MMS_RUNTIME_EVENT_REQUEST_CORRELATION_MISMATCH;
+                mismatch_event.invoke_id = semantic_result->pdu.invoke_id;
+                mismatch_event.correlation_id = pending_request->correlation_id;
+                mismatch_event.state_before = (uint32_t)pending_request->state;
+                mismatch_event.state_after = (uint32_t)pending_request->state;
+                mismatch_event.diagnostic_code = UNITLAB_MMS_DIAGNOSTIC_INVOKE_ID_MISMATCH;
+                strncpy(mismatch_event.diagnostic_message, operation_result->diagnostic.message, sizeof(mismatch_event.diagnostic_message) - 1U);
+                mismatch_event.diagnostic_message[sizeof(mismatch_event.diagnostic_message) - 1U] = '\0';
+                mismatch_trace.events[0] = mismatch_event;
+                mismatch_trace.count = 1U;
                 operation_result->ok = 0;
+                operation_result_project_from_runtime(operation_result, 0, &operation_result->diagnostic, &mismatch_trace, &mismatch_trace.events[0]);
                 return 0;
             }
             operation_result->ok = unitlab_mms_pending_request_complete(pending_request, semantic_result->pdu.timestamp_ms, &operation_result->diagnostic);

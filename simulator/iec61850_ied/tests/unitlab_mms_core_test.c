@@ -437,6 +437,7 @@ static void test_runtime_apply_semantic_correlation_mismatch(void)
     assert(operation_result.event.correlation_id == 99U);
     assert(request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE);
     assert(unitlab_mms_runtime_event_log_count(&request.event_log) == 1U);
+    assert(unitlab_mms_runtime_event_log_count(&operation_result.trace) == 1U);
 }
 
 int main(void)
