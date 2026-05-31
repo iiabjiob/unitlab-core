@@ -134,7 +134,7 @@ void unitlab_mms_operation_result_init(UnitLabMmsOperationResult* result)
     memset(result, 0, sizeof(*result));
 }
 
-void unitlab_mms_operation_result_from_event(UnitLabMmsOperationResult* result, int ok, const UnitLabMmsDiagnostic* diagnostic, const UnitLabMmsRuntimeEvent* event)
+void unitlab_mms_operation_result_from_trace(UnitLabMmsOperationResult* result, int ok, const UnitLabMmsDiagnostic* diagnostic, const UnitLabMmsRuntimeEventLog* trace, const UnitLabMmsRuntimeEvent* event)
 {
     if (result == NULL) {
         return;
@@ -144,9 +144,17 @@ void unitlab_mms_operation_result_from_event(UnitLabMmsOperationResult* result, 
     if (diagnostic != NULL) {
         result->diagnostic = *diagnostic;
     }
+    if (trace != NULL) {
+        result->trace = *trace;
+    }
     if (event != NULL) {
         result->event = *event;
     }
+}
+
+void unitlab_mms_operation_result_from_event(UnitLabMmsOperationResult* result, int ok, const UnitLabMmsDiagnostic* diagnostic, const UnitLabMmsRuntimeEvent* event)
+{
+    unitlab_mms_operation_result_from_trace(result, ok, diagnostic, NULL, event);
 }
 
 void unitlab_mms_session_init(UnitLabMmsSession* session)

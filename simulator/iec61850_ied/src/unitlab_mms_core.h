@@ -65,6 +65,7 @@ typedef struct UnitLabMmsOperationResult {
     int ok;
     UnitLabMmsDiagnostic diagnostic;
     UnitLabMmsRuntimeEvent event;
+    UnitLabMmsRuntimeEventLog trace;
 } UnitLabMmsOperationResult;
 
 typedef struct UnitLabMmsSession {
@@ -107,6 +108,7 @@ size_t unitlab_mms_runtime_event_log_count(const UnitLabMmsRuntimeEventLog* even
 const UnitLabMmsRuntimeEvent* unitlab_mms_runtime_event_log_at(const UnitLabMmsRuntimeEventLog* event_log, size_t index);
 void unitlab_mms_operation_result_init(UnitLabMmsOperationResult* result);
 void unitlab_mms_operation_result_from_event(UnitLabMmsOperationResult* result, int ok, const UnitLabMmsDiagnostic* diagnostic, const UnitLabMmsRuntimeEvent* event);
+void unitlab_mms_operation_result_from_trace(UnitLabMmsOperationResult* result, int ok, const UnitLabMmsDiagnostic* diagnostic, const UnitLabMmsRuntimeEventLog* trace, const UnitLabMmsRuntimeEvent* event);
 void unitlab_mms_session_init(UnitLabMmsSession* session);
 void unitlab_mms_session_reset(UnitLabMmsSession* session);
 uint32_t unitlab_mms_session_next_invoke_id(UnitLabMmsSession* session);
