@@ -5,6 +5,7 @@ Status: decision record and implementation roadmap. No self-owned MMS client is 
 This plan records the project decision that UnitLab will implement its own IEC 61850 MMS client and simulator flow. Open-source stacks remain useful as reference implementations and interoperability oracles, but UnitLab core, simulator, and report workflow must not become dependent on a single third-party MMS runtime.
 
 See also: [UnitLab IEC 61850 MMS Core Boundary](./iec61850-unitlab-mms-core-boundary.md).
+See also: [UnitLab IEC 61850 MMS Client Boundary](./iec61850-unitlab-mms-client-boundary.md).
 See also: [UnitLab MMS Semantic Contract](./iec61850-unitlab-mms-semantic-contract.md).
 See also: [UnitLab MMS Layered Architecture](./iec61850-unitlab-mms-layered-architecture.md).
 
@@ -29,7 +30,7 @@ SCD + Signal List
 
 `libiec61850` is a reference implementation and interoperability oracle, not the runtime authority. It may be used to compare behavior, inspect frames, and validate parity, but UnitLab code must own the client/server state machines, diagnostics, and simulator behavior.
 
-The self-owned MMS client and the simulator should follow the same internal service flow and share the same report-control lifecycle model so the virtual IED and the real IED execute the same UnitLab semantics.
+The self-owned MMS client and the simulator should follow the same internal service flow and share the same report-control lifecycle model so the virtual IED and the real IED execute the same UnitLab semantics. The client-side boundary is mandatory because UnitLab will subscribe to its own virtual IEDs and ingest their report streams as evidence.
 
 ## Non-Negotiable Boundaries
 

@@ -4,6 +4,7 @@ Status: architecture note and implementation boundary. This document defines the
 
 See also: [UnitLab MMS Semantic Contract](./iec61850-unitlab-mms-semantic-contract.md).
 See also: [UnitLab MMS Layered Architecture](./iec61850-unitlab-mms-layered-architecture.md).
+See also: [UnitLab IEC 61850 MMS Client Boundary](./iec61850-unitlab-mms-client-boundary.md).
 
 ## Goal
 
@@ -107,6 +108,17 @@ Responsibilities:
 - injected errors and cleanup behavior;
 - parity with the client-side service flow.
 
+### 5. Client Orchestration
+
+Use the same service-layer contract to consume report streams from the virtual IED or a real IED.
+
+Responsibilities:
+
+- subscribe to report streams;
+- trigger GI and correlate responses;
+- record report evidence and runtime snapshots;
+- keep the same lifecycle semantics as the server/runtime side.
+
 ## Contract Principles
 
 - Domain code must not see BER, ACSE, COTP, or MMS PDU details.
@@ -168,14 +180,14 @@ Exit criteria:
 - a selected report-control path can be exercised end to end;
 - report events decode into UnitLab evidence DTOs.
 
-### Slice 5 - Simulator Parity
+### Slice 5 - Client Parity
 
-Apply the same contract to the virtual IED simulator and validate against `libiec61850` as a reference oracle.
+Apply the same contract to the client orchestration path and validate against `libiec61850` as a reference oracle.
 
 Exit criteria:
 
-- simulator and client follow the same UnitLab state machine;
-- parity tests cover association, RCB access, GI, and cleanup.
+- client and simulator follow the same UnitLab state machine;
+- parity tests cover association, RCB access, GI, report reception, and cleanup.
 
 ## Validation Expectations
 
