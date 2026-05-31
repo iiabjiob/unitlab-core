@@ -5,6 +5,7 @@ Status: decision record and implementation roadmap. No self-owned MMS client is 
 This plan records the project decision that UnitLab will implement its own IEC 61850 MMS client and simulator flow. Open-source stacks remain useful as reference implementations and interoperability oracles, but UnitLab core, simulator, and report workflow must not become dependent on a single third-party MMS runtime.
 
 See also: [UnitLab IEC 61850 MMS Core Boundary](./iec61850-unitlab-mms-core-boundary.md).
+See also: [UnitLab MMS Semantic Contract](./iec61850-unitlab-mms-semantic-contract.md).
 
 ## Ownership Model
 
@@ -98,6 +99,38 @@ These references are not normative, but they are useful for comparison, pcaps, a
 ## Implementation Slices
 
 ### Slice 0 - UnitLab MMS Core Boundary
+
+Before protocol work expands, define the internal boundary that both the client and simulator will share:
+
+- `UnitLabMmsSession` owns association state, request correlation, timeout handling, and disconnect cleanup.
+- `UnitLabMmsReportControl` owns `read / reserve / enable / disable / GI` semantics and report-control state transitions.
+- `UnitLabMmsTransport` owns TCP/MMS framing and raw frame exchange only.
+- `libiec61850` is used as a reference oracle for pcap comparison and behavioral parity tests, not as a production runtime dependency.
+- The simulator reuses the same service-layer contract so the virtual IED and the future real IED exercise the same UnitLab state machine.
+
+Exit criteria:
+
+- The internal client/simulator API is stable enough that the backend report runtime can target it without knowing transport details.
+- A single read-only request path and a single report-control state path exist in both the simulator and client design.
+
+### Slice 0A - UnitLab MMS Semantic Contract
+
+Before any BER, ACSE, or MMS encoder/decoder work lands, freeze the behavior contract for request success, failure, timeout, and report reception.
+
+Deliverables:
+
+- transport-independent semantic PDU structs;
+- typed runtime event and diagnostic mapping;
+- request lifecycle rules for pending requests;
+- report acceptance semantics for `GI_PENDING -> REPORTING`;
+- golden tests that prove wire-independent behavior.
+
+Exit criteria:
+
+- the wire layer can only decode into semantic results and diagnostics;
+- runtime state transitions remain owned by UnitLab orchestration;
+- no encoder or decoder changes lifecycle state directly.
+
 
 Before protocol work expands, define the internal boundary that both the client and simulator will share:
 

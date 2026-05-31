@@ -6,6 +6,7 @@ References:
 - `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL source structure.
 - `docs/.IEC61850/IEC 61850-7-2-2020.pdf` for DataSet, report control, trigger option, optional field, reservation, enable, and GI semantics.
 - `docs/.IEC61850/IEC 61850-8-1-2020.pdf` for the future MMS mapping.
+- `docs/architecture/iec61850-unitlab-mms-semantic-contract.md` for the pre-wire behavioral contract.
 - `docs/architecture/iec61850-report-core-compliance-map.md` for the current IEC-to-UnitLab mapping and C# portability guardrails.
 - `docs/architecture/iec61850-self-owned-mms-client-plan.md` for the self-owned MMS client decision, required standards, public references, and implementation slices.
 
