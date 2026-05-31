@@ -13,7 +13,6 @@ import {
   Iec61850ReportManager,
   mapIec61850ReportEventToSignalObservations,
   normalizeIec61850ReportEvent,
-  reportControlKey,
   runIec61850ReportSubscriptionPlan,
   runIec61850SimulatorSubscriptionPlan,
   UNITLAB_INTERNAL_REPORT_TERMS,
@@ -24,6 +23,7 @@ import {
   type Iec61850ReportManagerAdapter,
   type Iec61850ReportReason,
 } from "./index"
+import { reportControlKey } from "./simulator"
 
 const reportScd = `<?xml version="1.0" encoding="UTF-8"?>
 <SCL xmlns="http://www.iec.ch/61850/2003/SCL" revision="B" version="2007">

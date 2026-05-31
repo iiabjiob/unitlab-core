@@ -1,6 +1,6 @@
 import type {
   NormalizedSclModel,
-  Iec61850ReportSubscriptionCandidate,
+  SclReportControlCandidate,
   SclAccessPoint,
   SclBay,
   SclDataSet,
@@ -130,7 +130,7 @@ export type Iec61850DebugDocument = {
   stats: Iec61850DebugStats
   diagnosticSummary: Iec61850DebugDiagnosticSummary
   diagnostics: NormalizedSclModel["diagnostics"]
-  reportCandidates: Iec61850ReportSubscriptionCandidate[]
+  reportCandidates: SclReportControlCandidate[]
   signalInventory: Iec61850DebugSignalInventory
   treeRows: Iec61850DebugTreeRow[]
 }

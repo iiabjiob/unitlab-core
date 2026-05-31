@@ -23,7 +23,6 @@ export {
 export {
   createIec61850SimulatorAdapter,
   Iec61850SimulatorStateError,
-  reportControlKey,
 } from "./simulator"
 export {
   getIec61850ReportComplianceTerms,

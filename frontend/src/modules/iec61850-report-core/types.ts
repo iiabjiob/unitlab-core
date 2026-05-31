@@ -1,5 +1,5 @@
 import type {
-  Iec61850ReportSubscriptionCandidate,
+  SclReportControlCandidate,
   NormalizedDataLeaf,
   SclDataSetMember,
   SclReportOptionalFields,
@@ -186,6 +186,6 @@ export type Iec61850ReportManagerAdapter = {
 
 export type Iec61850ReportManagerReadOnlyAdapter = Pick<Iec61850ReportManagerAdapter, "connect">
 
-export type Iec61850ReportControlCandidate = Iec61850ReportSubscriptionCandidate
+export type Iec61850ReportControlCandidate = SclReportControlCandidate
 
 export type Iec61850ReportSignal = NormalizedDataLeaf

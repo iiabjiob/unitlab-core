@@ -69,7 +69,7 @@ export type {
   ElectricalGraphPort,
   GenerateSldOptions,
   GenerateSldResult,
-  Iec61850ReportSubscriptionCandidate,
+  SclReportControlCandidate,
   NormalizedDataLeaf,
   NormalizedDatasetEntry,
   NormalizedSclModel,

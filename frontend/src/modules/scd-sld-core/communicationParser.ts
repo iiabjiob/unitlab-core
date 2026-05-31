@@ -1,5 +1,5 @@
 import type {
-  Iec61850ReportSubscriptionCandidate,
+  SclReportControlCandidate,
   NormalizedSclModel,
   ScdDiagnostic,
   SclAccessPoint,
@@ -789,10 +789,10 @@ export function normalizeReportDataSetReferences(model: NormalizedSclModel) {
 
 export function buildIec61850ReportSubscriptionInventory(
   model: NormalizedSclModel,
-): Iec61850ReportSubscriptionCandidate[] {
+): SclReportControlCandidate[] {
   const dataSetsById = new Map(collectIedDataSets(model.ieds).map(dataSet => [dataSet.id, dataSet]))
 
-  return collectReportControls(model.ieds).map((reportControl): Iec61850ReportSubscriptionCandidate => {
+  return collectReportControls(model.ieds).map((reportControl): SclReportControlCandidate => {
     const dataSet = reportControl.dataSetId ? dataSetsById.get(reportControl.dataSetId) ?? null : null
     const signals = dataSet?.members ?? []
     const normalizedDatasetEntries = normalizeIec61850DatasetEntries({ model, candidate: {

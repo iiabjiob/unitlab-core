@@ -1,5 +1,5 @@
 import type {
-  Iec61850ReportSubscriptionCandidate,
+  SclReportControlCandidate,
   NormalizedDataLeaf,
   NormalizedDatasetEntry,
   NormalizedSclModel,
@@ -188,7 +188,7 @@ export function parseSclDataTypeTemplates(xmlText: string, diagnostics: ScdDiagn
 
 export function normalizeIec61850DatasetEntries(input: {
   model: NormalizedSclModel
-  candidate: Iec61850ReportSubscriptionCandidate
+  candidate: SclReportControlCandidate
   dataSet: SclDataSet | null
 }): NormalizedDatasetEntry[] {
   const { model, dataSet } = input

@@ -538,7 +538,7 @@ export type SclReportControl = {
   sourceLocation?: ScdSourceLocation
 }
 
-export type Iec61850ReportSubscriptionCandidate = {
+export type SclReportControlCandidate = {
   id: string
   iedName: string
   accessPointName: string
@@ -566,6 +566,7 @@ export type Iec61850ReportSubscriptionCandidate = {
   normalizedDatasetEntries: NormalizedDatasetEntry[]
 }
 
+
 export type NormalizedSclModel = {
   schema: "unitlab.scd-sld.normalized-scl"
   version: 1
@@ -580,7 +581,7 @@ export type NormalizedSclModel = {
   dataTypeTemplates: SclDataTypeTemplatesModel
   substations: SclSubstation[]
   ieds: SclIed[]
-  reportSubscriptions: Iec61850ReportSubscriptionCandidate[]
+  reportSubscriptions: SclReportControlCandidate[]
   diagnostics: ScdDiagnostic[]
 }
 
