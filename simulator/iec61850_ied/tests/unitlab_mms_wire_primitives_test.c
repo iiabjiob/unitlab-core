@@ -317,6 +317,7 @@ static void test_wire_association_fixture_decode_roundtrip(void)
     unitlab_mms_wire_association_fixture_init(&fixture);
     fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
     fixture.transport.cotp.eot = 1;
+    fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
     fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
     fixture.presentation.payload_bytes = acse_buffer;
     fixture.presentation.payload_length = acse_length;
@@ -327,6 +328,9 @@ static void test_wire_association_fixture_decode_roundtrip(void)
     assert(consumed_length == frame_length);
     assert(decoded_fixture.transport.tpkt.version == 3U);
     assert(decoded_fixture.transport.cotp.kind == UNITLAB_MMS_COTP_TPDU_DT);
+    assert(decoded_fixture.session.kind == UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER);
+    assert(decoded_fixture.session.raw_parameter_length == presentation_length);
+    assert(memcmp(decoded_fixture.session.raw_parameter_bytes, presentation_buffer, presentation_length) == 0);
     assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED);
     assert(decoded_fixture.presentation.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION);
     assert(decoded_fixture.presentation.tag.constructed == 0);
@@ -376,6 +380,7 @@ static void test_wire_association_fixture_fully_encoded_roundtrip(void)
     unitlab_mms_wire_association_fixture_init(&fixture);
     fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
     fixture.transport.cotp.eot = 1;
+    fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
     fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
     fixture.presentation.payload_bytes = fully_encoded_payload;
     fixture.presentation.payload_length = sizeof(fully_encoded_payload);
@@ -386,6 +391,9 @@ static void test_wire_association_fixture_fully_encoded_roundtrip(void)
     assert(consumed_length == frame_length);
     assert(decoded_fixture.transport.tpkt.version == 3U);
     assert(decoded_fixture.transport.cotp.kind == UNITLAB_MMS_COTP_TPDU_DT);
+    assert(decoded_fixture.session.kind == UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER);
+    assert(decoded_fixture.session.raw_parameter_length == presentation_length);
+    assert(memcmp(decoded_fixture.session.raw_parameter_bytes, presentation_buffer, presentation_length) == 0);
     assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
     assert(decoded_fixture.presentation.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION);
     assert(decoded_fixture.presentation.tag.constructed == 1);
@@ -397,13 +405,16 @@ static void test_wire_association_fixture_fully_encoded_roundtrip(void)
 static void test_wire_association_fixture_encode_roundtrip(void)
 {
     uint8_t acse_buffer[64];
+    uint8_t presentation_buffer[96];
     uint8_t frame_buffer[128];
     UnitLabMmsPdu mms_pdu;
     UnitLabMmsAcseApdu acse_apdu;
+    UnitLabMmsPresentationApdu presentation_apdu;
     UnitLabMmsWireAssociationFixture fixture;
     UnitLabMmsWireAssociationFixture decoded_fixture;
     size_t mms_length = 0U;
     size_t acse_length = 0U;
+    size_t presentation_length = 0U;
     size_t frame_length = 0U;
     size_t consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
@@ -422,9 +433,16 @@ static void test_wire_association_fixture_encode_roundtrip(void)
     acse_apdu.apdu_length = mms_length;
     assert(unitlab_mms_acse_encode(&acse_apdu, acse_buffer, sizeof(acse_buffer), &acse_length, &diagnostic) == 1);
 
+    unitlab_mms_presentation_apdu_init(&presentation_apdu);
+    presentation_apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
+    presentation_apdu.payload_bytes = acse_buffer;
+    presentation_apdu.payload_length = acse_length;
+    assert(unitlab_mms_presentation_encode(&presentation_apdu, presentation_buffer, sizeof(presentation_buffer), &presentation_length, &diagnostic) == 1);
+
     unitlab_mms_wire_association_fixture_init(&fixture);
     fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
     fixture.transport.cotp.eot = 1;
+    fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
     fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
     fixture.presentation.payload_bytes = acse_buffer;
     fixture.presentation.payload_length = acse_length;
@@ -434,6 +452,9 @@ static void test_wire_association_fixture_encode_roundtrip(void)
     assert(unitlab_mms_wire_association_fixture_decode(&decoded_fixture, frame_buffer, frame_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == frame_length);
     assert(decoded_fixture.transport.cotp.kind == UNITLAB_MMS_COTP_TPDU_DT);
+    assert(decoded_fixture.session.kind == UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER);
+    assert(decoded_fixture.session.raw_parameter_length == presentation_length);
+    assert(memcmp(decoded_fixture.session.raw_parameter_bytes, presentation_buffer, presentation_length) == 0);
     assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED);
     assert(decoded_fixture.presentation.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION);
     assert(decoded_fixture.presentation.tag.constructed == 0);

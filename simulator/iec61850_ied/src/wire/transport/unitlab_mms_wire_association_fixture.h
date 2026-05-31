@@ -3,14 +3,16 @@
 
 #include "../../unitlab_mms_types.h"
 #include "../presentation/unitlab_mms_presentation.h"
+#include "../session/unitlab_mms_session_spdu.h"
 #include "unitlab_mms_transport_frame.h"
 
 /*
  * Narrow golden-test helper for one ISO-on-TCP association-style nested payload.
- * It only composes TPKT + COTP + exact X.226 Presentation User-data and leaves ACSE/MMS interpretation to the caller.
+ * It composes TPKT + COTP + Session SPDU + exact X.226 Presentation User-data and leaves ACSE/MMS interpretation to the caller.
  */
 typedef struct UnitLabMmsWireAssociationFixture {
     UnitLabMmsTransportFrame transport;
+    UnitLabMmsSessionSpdu session;
     UnitLabMmsPresentationApdu presentation;
     size_t encoded_length;
 } UnitLabMmsWireAssociationFixture;
