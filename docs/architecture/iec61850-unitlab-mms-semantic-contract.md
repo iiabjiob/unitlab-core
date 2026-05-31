@@ -117,6 +117,13 @@ The first transport-independent semantic PDU layer now exists in `simulator/iec6
 - report-control activation and GI flows;
 - pending-request correlation and timeouts.
 
+The first semantic PDU layer now separates service outcome from the payload shape:
+
+- `UnitLabMmsSemanticResult` owns `ok`, `outcome`, `pdu`, and `diagnostic`.
+- `UnitLabMmsDecodedPdu` owns transport-independent fields only.
+- malformed/decode failure state lives in `UnitLabMmsDecodeDiagnostic`, not inside the PDU.
+- reject-specific fields are reserved in `UnitLabMmsReject`.
+
 These structures are the only legal input to state transition rules.
 
 ## State Transition Rules

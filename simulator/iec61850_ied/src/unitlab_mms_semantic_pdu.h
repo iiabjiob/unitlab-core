@@ -12,6 +12,13 @@ typedef enum UnitLabMmsDecodeClassification {
     UNITLAB_MMS_DECODE_CLASSIFICATION_CORRELATION_MISMATCH = 5
 } UnitLabMmsDecodeClassification;
 
+typedef enum UnitLabMmsServiceOutcome {
+    UNITLAB_MMS_SERVICE_OUTCOME_NONE = 0,
+    UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS = 1,
+    UNITLAB_MMS_SERVICE_OUTCOME_REJECT = 2,
+    UNITLAB_MMS_SERVICE_OUTCOME_ERROR = 3
+} UnitLabMmsServiceOutcome;
+
 typedef enum UnitLabMmsDecodedPduKind {
     UNITLAB_MMS_DECODED_PDU_NONE = 0,
     UNITLAB_MMS_DECODED_PDU_ASSOCIATE_REQUEST = 1,
@@ -27,6 +34,13 @@ typedef enum UnitLabMmsDecodedPduKind {
     UNITLAB_MMS_DECODED_PDU_REJECT = 11
 } UnitLabMmsDecodedPduKind;
 
+typedef struct UnitLabMmsReject {
+    uint32_t reject_for_invoke_id;
+    uint32_t reject_class;
+    uint32_t reject_code;
+    uint32_t service_error_code;
+} UnitLabMmsReject;
+
 typedef struct UnitLabMmsDecodedPdu {
     UnitLabMmsDecodedPduKind kind;
     uint32_t invoke_id;
@@ -37,20 +51,21 @@ typedef struct UnitLabMmsDecodedPdu {
     char attribute_reference[64];
     char report_control_reference[128];
     char data_set_reference[128];
-    const uint8_t* value_bytes;
+    const uint8_t* value_bytes; /* Caller-owned decode buffer; valid only while the buffer lives. */
     size_t value_length;
     int buffered;
-    int malformed;
+    UnitLabMmsReject reject;
 } UnitLabMmsDecodedPdu;
 
 typedef struct UnitLabMmsDecodeDiagnostic {
     UnitLabMmsDecodeClassification classification;
     UnitLabMmsDiagnostic diagnostic;
-    char detail[256];
+    char detail[256]; /* Technical decode context; diagnostic.message remains the human-readable message. */
 } UnitLabMmsDecodeDiagnostic;
 
 typedef struct UnitLabMmsSemanticResult {
     int ok;
+    UnitLabMmsServiceOutcome outcome;
     UnitLabMmsDecodedPdu pdu;
     UnitLabMmsDecodeDiagnostic diagnostic;
 } UnitLabMmsSemanticResult;
@@ -58,6 +73,7 @@ typedef struct UnitLabMmsSemanticResult {
 void unitlab_mms_decoded_pdu_init(UnitLabMmsDecodedPdu* pdu);
 void unitlab_mms_decode_diagnostic_init(UnitLabMmsDecodeDiagnostic* diagnostic);
 void unitlab_mms_semantic_result_init(UnitLabMmsSemanticResult* result);
-void unitlab_mms_decode_diagnostic_set(UnitLabMmsDecodeDiagnostic* diagnostic, UnitLabMmsDecodeClassification classification, UnitLabMmsDiagnosticCode code, const char* detail);
+void unitlab_mms_decode_diagnostic_set(UnitLabMmsDecodeDiagnostic* diagnostic, UnitLabMmsDecodeClassification classification, UnitLabMmsDiagnosticCode code, const char* detail, const char* message);
+void unitlab_mms_semantic_result_from_decoded_pdu(UnitLabMmsSemanticResult* result, UnitLabMmsServiceOutcome outcome, const UnitLabMmsDecodedPdu* pdu, const UnitLabMmsDecodeDiagnostic* diagnostic);
 
 #endif

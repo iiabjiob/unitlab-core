@@ -106,6 +106,8 @@ Notes:
 | client | high-level client flow (future) | wire parsing internals |
 | server | high-level server flow (future) | wire parsing internals |
 
+The semantic layer is the bridge between runtime ownership and wire-level codec work. It projects decoded transport data into `UnitLabMmsSemanticResult` and `UnitLabMmsDecodedPdu` before any runtime mutation happens.
+
 ## Non-Negotiable Boundaries
 
 - `wire/` must not know about UnitLab FAT workflow.
