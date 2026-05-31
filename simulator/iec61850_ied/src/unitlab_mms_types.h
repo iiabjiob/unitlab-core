@@ -79,11 +79,19 @@ typedef struct UnitLabMmsRuntimeEventLog {
     UnitLabMmsRuntimeEvent events[UNITLAB_MMS_RUNTIME_EVENT_LOG_CAPACITY];
 } UnitLabMmsRuntimeEventLog;
 
+typedef struct UnitLabMmsReject {
+    uint32_t reject_for_invoke_id;
+    uint32_t reject_class;
+    uint32_t reject_code;
+    uint32_t service_error_code;
+} UnitLabMmsReject;
+
 typedef struct UnitLabMmsOperationResult {
     int ok;
     UnitLabMmsDiagnostic diagnostic;
     UnitLabMmsRuntimeEvent event;
     UnitLabMmsRuntimeEventLog trace;
+    UnitLabMmsReject reject;
 } UnitLabMmsOperationResult;
 
 void unitlab_mms_diagnostic_clear(UnitLabMmsDiagnostic* diagnostic);

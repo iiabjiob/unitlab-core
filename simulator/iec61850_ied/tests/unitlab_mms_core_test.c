@@ -384,6 +384,31 @@ static void test_runtime_apply_semantic_result(void)
     assert(unitlab_mms_runtime_event_log_count(&operation_result.trace) == 1U);
 }
 
+static void test_runtime_apply_semantic_reject(void)
+{
+    UnitLabMmsSemanticResult semantic_result;
+    UnitLabMmsOperationResult operation_result;
+
+    unitlab_mms_semantic_result_init(&semantic_result);
+    unitlab_mms_operation_result_init(&operation_result);
+
+    semantic_result.ok = 1;
+    semantic_result.outcome = UNITLAB_MMS_SERVICE_OUTCOME_REJECT;
+    semantic_result.pdu.kind = UNITLAB_MMS_DECODED_PDU_REJECT;
+    semantic_result.pdu.reject.reject_for_invoke_id = 19U;
+    semantic_result.pdu.reject.reject_class = 3U;
+    semantic_result.pdu.reject.reject_code = 7U;
+    semantic_result.pdu.reject.service_error_code = 11U;
+
+    assert(unitlab_mms_runtime_apply_semantic_result(NULL, NULL, &semantic_result, &operation_result) == 0);
+    assert(operation_result.ok == 0);
+    assert(operation_result.reject.reject_for_invoke_id == 19U);
+    assert(operation_result.reject.reject_class == 3U);
+    assert(operation_result.reject.reject_code == 7U);
+    assert(operation_result.reject.service_error_code == 11U);
+    assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+}
+
 int main(void)
 {
     test_defaults();
@@ -398,6 +423,7 @@ int main(void)
     test_pending_request_lifecycle();
     test_semantic_pdu_defaults();
     test_runtime_apply_semantic_result();
+    test_runtime_apply_semantic_reject();
     printf("unitlab-mms-core: ok\n");
     return 0;
 }

@@ -485,6 +485,7 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
             return 1;
         }
         case UNITLAB_MMS_DECODED_PDU_REJECT:
+            operation_result->reject = semantic_result->pdu.reject;
             set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "semantic reject requires a wire-layer reject handler.");
             operation_result->ok = 0;
             return 0;

@@ -34,13 +34,6 @@ typedef enum UnitLabMmsDecodedPduKind {
     UNITLAB_MMS_DECODED_PDU_REJECT = 11
 } UnitLabMmsDecodedPduKind;
 
-typedef struct UnitLabMmsReject {
-    uint32_t reject_for_invoke_id;
-    uint32_t reject_class;
-    uint32_t reject_code;
-    uint32_t service_error_code;
-} UnitLabMmsReject;
-
 typedef struct UnitLabMmsDecodedPdu {
     UnitLabMmsDecodedPduKind kind;
     uint32_t invoke_id;
