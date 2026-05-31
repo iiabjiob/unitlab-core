@@ -115,7 +115,7 @@ Responsibilities:
 
 - The backend now exposes the UnitLab MMS boundary contracts in `backend/app/services/iec61850/unitlab_mms_core.py`, and the module no longer re-exports report-runtime DTOs as pseudo-boundary aliases.
 - The in-memory simulator already conforms to `UnitLabMmsSession` and `UnitLabMmsRuntimeAdapter` via runtime-checkable protocols.
-- Deterministic scripted and recorded transport helpers now exist for transport-oriented tests and parity capture, a transport exchange helper binds request/response bytes with bounds checks, an in-memory association helper exercises open/release/abort semantics, a report-control helper covers IEC 61850 reserve/enable/GI/disable/release transitions, a named-variable access helper covers read/write/snapshot behavior, runtime event structs are now carried alongside these boundaries, and a copy-safe runtime snapshot DTO captures session/report-control/transport/result state for replay and evidence. They are not wire MMS framing.
+- Deterministic scripted and recorded transport helpers now exist for transport-oriented tests and parity capture, a transport exchange helper binds request/response bytes with bounds checks, an in-memory association helper exercises open/release/abort semantics, a report-control helper covers IEC 61850 reserve/enable/GI/disable/release transitions, a named-variable access helper covers read/write/snapshot behavior, the kernel now exposes typed runtime events, request-correlation and timeout DTOs, transport-independent semantic PDU structs, and a copy-safe runtime snapshot DTO for replay and evidence. They are not wire MMS framing.
 - Real MMS wire transport remains a planned layer.
 
 ## Implementation Slices

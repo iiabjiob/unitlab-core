@@ -62,11 +62,17 @@ static void runtime_event_set(
         return;
     }
     event->kind = kind;
+    event->request_kind = 0U;
     event->state_before = state_before;
     event->state_after = state_after;
     event->invoke_id = invoke_id;
+    event->correlation_id = 0U;
+    event->timestamp_ms = 0U;
+    event->deadline_ms = 0U;
     event->request_length = request_length;
     event->response_length = response_length;
+    event->timed_out = 0;
+    event->completed = 0;
     event->diagnostic_code = diagnostic_code;
     if (diagnostic_message == NULL) {
         event->diagnostic_message[0] = '\0';
@@ -110,6 +116,116 @@ void unitlab_mms_runtime_event_init(UnitLabMmsRuntimeEvent* event)
 void unitlab_mms_runtime_event_log_init(UnitLabMmsRuntimeEventLog* event_log)
 {
     runtime_event_log_clear(event_log);
+}
+
+void unitlab_mms_pending_request_init(UnitLabMmsPendingRequest* request)
+{
+    if (request == NULL) {
+        return;
+    }
+    memset(request, 0, sizeof(*request));
+    request->state = UNITLAB_MMS_PENDING_REQUEST_IDLE;
+    runtime_event_clear(&request->last_event);
+}
+
+int unitlab_mms_pending_request_start(UnitLabMmsPendingRequest* request, UnitLabMmsRequestKind kind, uint32_t invoke_id, uint32_t correlation_id, uint64_t deadline_ms, uint64_t timestamp_ms, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (request == NULL) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "pending request is required to start tracking.");
+        return 0;
+    }
+    request->kind = kind;
+    request->state = UNITLAB_MMS_PENDING_REQUEST_ACTIVE;
+    request->invoke_id = invoke_id;
+    request->correlation_id = correlation_id;
+    request->deadline_ms = deadline_ms;
+    request->timestamp_ms = timestamp_ms;
+    request->timed_out = 0;
+    request->completed = 0;
+    runtime_event_set(&request->last_event, UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST, 0U, 0U, invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    request->last_event.request_kind = (uint32_t)kind;
+    request->last_event.correlation_id = correlation_id;
+    request->last_event.timestamp_ms = timestamp_ms;
+    request->last_event.deadline_ms = deadline_ms;
+    request->last_event.completed = 0;
+    request->last_event.timed_out = 0;
+    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
+int unitlab_mms_pending_request_complete(UnitLabMmsPendingRequest* request, uint64_t completed_at_ms, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (request == NULL) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "pending request is required to complete tracking.");
+        return 0;
+    }
+    if (request->state != UNITLAB_MMS_PENDING_REQUEST_ACTIVE) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "pending request must be active before completion.");
+        return 0;
+    }
+    request->state = UNITLAB_MMS_PENDING_REQUEST_COMPLETED;
+    request->completed = 1;
+    request->timed_out = 0;
+    request->last_event.kind = UNITLAB_MMS_RUNTIME_EVENT_REQUEST_COMPLETED;
+    request->last_event.timestamp_ms = completed_at_ms;
+    request->last_event.completed = 1;
+    request->last_event.timed_out = 0;
+    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
+int unitlab_mms_pending_request_mark_timed_out(UnitLabMmsPendingRequest* request, uint64_t timed_out_at_ms, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (request == NULL) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "pending request is required to mark timeout.");
+        return 0;
+    }
+    if (request->state != UNITLAB_MMS_PENDING_REQUEST_ACTIVE) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "pending request must be active before timeout.");
+        return 0;
+    }
+    request->state = UNITLAB_MMS_PENDING_REQUEST_TIMED_OUT;
+    request->timed_out = 1;
+    request->completed = 0;
+    request->last_event.kind = UNITLAB_MMS_RUNTIME_EVENT_REQUEST_TIMED_OUT;
+    request->last_event.timestamp_ms = timed_out_at_ms;
+    request->last_event.deadline_ms = request->deadline_ms;
+    request->last_event.completed = 0;
+    request->last_event.timed_out = 1;
+    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_TIMEOUT, NULL);
+    return 1;
+}
+
+void unitlab_mms_associate_request_init(UnitLabMmsAssociateRequest* request)
+{
+    if (request == NULL) {
+        return;
+    }
+    memset(request, 0, sizeof(*request));
+}
+
+void unitlab_mms_read_request_init(UnitLabMmsReadRequest* request)
+{
+    if (request == NULL) {
+        return;
+    }
+    memset(request, 0, sizeof(*request));
+}
+
+void unitlab_mms_write_request_init(UnitLabMmsWriteRequest* request)
+{
+    if (request == NULL) {
+        return;
+    }
+    memset(request, 0, sizeof(*request));
+}
+
+void unitlab_mms_information_report_init(UnitLabMmsInformationReport* report)
+{
+    if (report == NULL) {
+        return;
+    }
+    memset(report, 0, sizeof(*report));
 }
 
 size_t unitlab_mms_runtime_event_log_count(const UnitLabMmsRuntimeEventLog* event_log)

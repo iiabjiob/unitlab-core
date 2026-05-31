@@ -121,7 +121,7 @@ It intentionally excludes:
 - Operator decisions.
 - Runtime evidence.
 
-Runtime evidence is captured separately by the C-owned runtime kernel through event logs, operation results, and a copy-safe runtime snapshot DTO for replay/debug capture.
+Runtime evidence is captured separately by the C-owned runtime kernel through typed event records, pending-request correlation/timeout DTOs, semantic PDU structs, operation results, and a copy-safe runtime snapshot DTO for replay/debug capture.
 
 ## Smoke Start
 
