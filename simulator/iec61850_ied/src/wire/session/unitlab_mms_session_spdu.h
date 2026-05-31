@@ -31,6 +31,8 @@ typedef struct UnitLabMmsSessionSpdu {
     UnitLabMmsSessionSpduKind kind;
     const uint8_t* spdu_bytes; /* Caller-owned decode buffer; valid only while that buffer lives. */
     size_t spdu_length;
+    const uint8_t* parameter_bytes; /* Points inside spdu_bytes after the SI/LI header; caller-owned buffer. */
+    size_t parameter_length;
     size_t encoded_length;
 } UnitLabMmsSessionSpdu;
 

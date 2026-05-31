@@ -92,6 +92,8 @@ static void test_cotp_cr_roundtrip(void)
     assert(consumed_length == encoded_length);
     assert(decoded_tpdu.kind == UNITLAB_MMS_COTP_TPDU_CR);
     assert(decoded_tpdu.source_reference == 0x1234U);
+    assert(decoded_tpdu.payload_bytes == &buffer[2]);
+    assert(decoded_tpdu.payload_length == encoded_length - 2U);
     assert(decoded_tpdu.user_data_length == sizeof(user_data));
     assert(memcmp(decoded_tpdu.user_data, user_data, sizeof(user_data)) == 0);
 }
@@ -119,6 +121,8 @@ static void test_cotp_dt_roundtrip(void)
     assert(consumed_length == encoded_length);
     assert(decoded_tpdu.kind == UNITLAB_MMS_COTP_TPDU_DT);
     assert(decoded_tpdu.eot == 1);
+    assert(decoded_tpdu.payload_bytes == &buffer[2]);
+    assert(decoded_tpdu.payload_length == encoded_length - 2U);
     assert(decoded_tpdu.user_data_length == sizeof(user_data));
     assert(memcmp(decoded_tpdu.user_data, user_data, sizeof(user_data)) == 0);
 }
@@ -451,6 +455,8 @@ static void test_session_spdu_roundtrips(void)
         assert(consumed_length == encoded_length);
         assert(decoded_spdu.kind == cases[i].kind);
         assert(decoded_spdu.spdu_length == cases[i].payload_length);
+        assert(decoded_spdu.parameter_length == cases[i].payload_length - 1U);
+        assert(decoded_spdu.parameter_bytes == &decoded_spdu.spdu_bytes[1]);
         assert(memcmp(decoded_spdu.spdu_bytes, cases[i].payload, cases[i].payload_length) == 0);
     }
 }

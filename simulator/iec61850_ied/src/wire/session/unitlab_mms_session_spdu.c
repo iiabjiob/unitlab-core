@@ -171,6 +171,8 @@ int unitlab_mms_session_spdu_encode(const UnitLabMmsSessionSpdu* spdu, uint8_t* 
 int unitlab_mms_session_spdu_decode(UnitLabMmsSessionSpdu* spdu, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsSessionSpduKind kind;
+    size_t parameter_length = 0U;
+
 
     if (consumed_length != NULL) {
         *consumed_length = 0U;
@@ -192,6 +194,11 @@ int unitlab_mms_session_spdu_decode(UnitLabMmsSessionSpdu* spdu, const uint8_t* 
     spdu->spdu_bytes = buffer;
     spdu->spdu_length = buffer_length;
     spdu->encoded_length = buffer_length;
+    if (buffer_length > 1U) {
+        parameter_length = buffer_length - 1U;
+        spdu->parameter_bytes = &buffer[1];
+        spdu->parameter_length = parameter_length;
+    }
     *consumed_length = buffer_length;
     session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;

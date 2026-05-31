@@ -143,6 +143,8 @@ int unitlab_mms_cotp_decode(UnitLabMmsCotpTpdu* tpdu, const uint8_t* buffer, siz
     }
     code = buffer[index++];
     unitlab_mms_cotp_tpdu_init(tpdu);
+    tpdu->payload_bytes = &buffer[2];
+    tpdu->payload_length = total_length - 2U;
     switch (code) {
         case 0xE0U:
             if (total_length < index + 5U) {
