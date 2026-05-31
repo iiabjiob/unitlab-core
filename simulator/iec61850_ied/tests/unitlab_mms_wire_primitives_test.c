@@ -2,7 +2,7 @@
 #include "../src/wire/ber/unitlab_mms_ber.h"
 #include "../src/wire/presentation/unitlab_mms_presentation.h"
 #include "../src/wire/transport/unitlab_mms_transport_frame.h"
-#include "../src/wire/transport/unitlab_mms_wire_envelope.h"
+#include "../src/wire/transport/unitlab_mms_wire_association_fixture.h"
 #include "../src/wire/mms/unitlab_mms_pdu.h"
 #include "../src/wire/iso/unitlab_mms_cotp.h"
 #include "../src/wire/iso/unitlab_mms_tpkt.h"
@@ -402,7 +402,7 @@ static void test_mms_pdu_confirmed_request_roundtrip(void)
     size_t encoded_length = 0U;
     size_t consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
-    const uint8_t payload[7] = { 0x02U, 0x01U, 0x05U, 0x80U, 0x01U, 0xAAU, 0x00U };
+    const uint8_t payload[6] = { 0x02U, 0x01U, 0x05U, 0xA4U, 0x01U, 0xAAU };
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     unitlab_mms_pdu_init(&pdu);
@@ -418,8 +418,9 @@ static void test_mms_pdu_confirmed_request_roundtrip(void)
     assert(decoded_pdu.has_invoke_id == 1);
     assert(decoded_pdu.invoke_id == 5U);
     assert(decoded_pdu.has_service == 1);
+    assert(decoded_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
     assert(decoded_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
-    assert(decoded_pdu.service_tag.tag_number == 0U);
+    assert(decoded_pdu.service_tag.tag_number == 4U);
     assert(decoded_pdu.service_length == 1U);
     assert(decoded_pdu.service_bytes[0] == 0xAAU);
     assert(decoded_pdu.pdu_length == sizeof(payload));
@@ -434,7 +435,7 @@ static void test_mms_pdu_unconfirmed_roundtrip(void)
     size_t encoded_length = 0U;
     size_t consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
-    const uint8_t payload[2] = { 0x01U, 0x00U };
+    const uint8_t payload[3] = { 0xA0U, 0x01U, 0xAAU };
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     unitlab_mms_pdu_init(&pdu);
@@ -448,7 +449,12 @@ static void test_mms_pdu_unconfirmed_roundtrip(void)
     assert(consumed_length == encoded_length);
     assert(decoded_pdu.kind == UNITLAB_MMS_PDU_UNCONFIRMED);
     assert(decoded_pdu.has_invoke_id == 0);
-    assert(decoded_pdu.has_service == 0);
+    assert(decoded_pdu.has_service == 1);
+    assert(decoded_pdu.service_kind == UNITLAB_MMS_SERVICE_INFORMATION_REPORT);
+    assert(decoded_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(decoded_pdu.service_tag.tag_number == 0U);
+    assert(decoded_pdu.service_length == 1U);
+    assert(decoded_pdu.service_bytes[0] == 0xAAU);
     assert(decoded_pdu.pdu_length == sizeof(payload));
     assert(memcmp(decoded_pdu.pdu_bytes, payload, sizeof(payload)) == 0);
 }
@@ -461,7 +467,7 @@ static void test_mms_pdu_confirmed_request_roundtrip_with_wide_invoke_id(void)
     size_t encoded_length = 0U;
     size_t consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
-    const uint8_t payload[10] = { 0x02U, 0x05U, 0x00U, 0xFFU, 0xFFU, 0xFFU, 0xFFU, 0x80U, 0x01U, 0xAAU };
+    const uint8_t payload[10] = { 0x02U, 0x05U, 0x00U, 0xFFU, 0xFFU, 0xFFU, 0xFFU, 0xA5U, 0x01U, 0xAAU };
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     unitlab_mms_pdu_init(&pdu);
@@ -477,8 +483,9 @@ static void test_mms_pdu_confirmed_request_roundtrip_with_wide_invoke_id(void)
     assert(decoded_pdu.has_invoke_id == 1);
     assert(decoded_pdu.invoke_id == 0xFFFFFFFFU);
     assert(decoded_pdu.has_service == 1);
+    assert(decoded_pdu.service_kind == UNITLAB_MMS_SERVICE_WRITE);
     assert(decoded_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
-    assert(decoded_pdu.service_tag.tag_number == 0U);
+    assert(decoded_pdu.service_tag.tag_number == 5U);
     assert(decoded_pdu.service_length == 1U);
     assert(decoded_pdu.service_bytes[0] == 0xAAU);
     assert(decoded_pdu.pdu_length == sizeof(payload));

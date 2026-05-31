@@ -126,7 +126,7 @@ add_executable(unitlab-iec61850-wire-foundation-test
   src/wire/ber/unitlab_mms_ber_writer.c
   src/wire/presentation/unitlab_mms_presentation.c
   src/wire/transport/unitlab_mms_transport_frame.c
-  src/wire/transport/unitlab_mms_wire_envelope.c
+  src/wire/transport/unitlab_mms_wire_association_fixture.c
   src/wire/mms/unitlab_mms_pdu.c
   src/wire/iso/unitlab_mms_cotp.c
   src/wire/iso/unitlab_mms_tpkt.c

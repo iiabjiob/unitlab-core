@@ -110,6 +110,26 @@ static int pdu_tag_to_kind(const UnitLabMmsBerTag* tag, UnitLabMmsPduKind* kind)
     }
 }
 
+static UnitLabMmsServiceKind pdu_classify_service_kind(UnitLabMmsPduKind kind, const UnitLabMmsBerTag* service_tag)
+{
+    if (service_tag == NULL) {
+        return UNITLAB_MMS_SERVICE_NONE;
+    }
+    if (service_tag->tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC) {
+        return UNITLAB_MMS_SERVICE_RAW;
+    }
+    if ((kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE) && service_tag->tag_number == 4U) {
+        return UNITLAB_MMS_SERVICE_READ;
+    }
+    if ((kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE) && service_tag->tag_number == 5U) {
+        return UNITLAB_MMS_SERVICE_WRITE;
+    }
+    if (kind == UNITLAB_MMS_PDU_UNCONFIRMED && service_tag->tag_number == 0U) {
+        return UNITLAB_MMS_SERVICE_INFORMATION_REPORT;
+    }
+    return UNITLAB_MMS_SERVICE_RAW;
+}
+
 static int pdu_decode_invoke_id(const UnitLabMmsBerElement* element, uint32_t* invoke_id, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsBerElement child;
@@ -183,6 +203,7 @@ void unitlab_mms_pdu_init(UnitLabMmsPdu* pdu)
     }
     memset(pdu, 0, sizeof(*pdu));
     pdu->kind = UNITLAB_MMS_PDU_NONE;
+    pdu->service_kind = UNITLAB_MMS_SERVICE_NONE;
 }
 
 int unitlab_mms_pdu_encode(const UnitLabMmsPdu* pdu, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
@@ -254,15 +275,39 @@ int unitlab_mms_pdu_decode(UnitLabMmsPdu* pdu, const uint8_t* buffer, size_t buf
             return 0;
         }
         service_consumed_length = offset;
-        if (service_consumed_length < element.value_length) {
-            if (!unitlab_mms_ber_read(&service_element, &element.value_bytes[service_consumed_length], element.value_length - service_consumed_length, &offset, diagnostic)) {
-                return 0;
-            }
-            pdu->service_tag = service_element.tag;
-            pdu->has_service = 1;
-            pdu->service_bytes = service_element.value_bytes;
-            pdu->service_length = service_element.value_length;
+        if (service_consumed_length >= element.value_length) {
+            pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS confirmed PDU is missing a service choice.");
+            return 0;
         }
+        unitlab_mms_ber_element_init(&service_element);
+        if (!unitlab_mms_ber_read(&service_element, &element.value_bytes[service_consumed_length], element.value_length - service_consumed_length, &offset, diagnostic)) {
+            return 0;
+        }
+        if (service_consumed_length + offset != element.value_length) {
+            pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS confirmed PDU contains trailing service bytes.");
+            return 0;
+        }
+        pdu->service_tag = service_element.tag;
+        pdu->has_service = 1;
+        pdu->service_kind = pdu_classify_service_kind(kind, &service_element.tag);
+        pdu->service_bytes = service_element.value_bytes;
+        pdu->service_length = service_element.value_length;
+    } else if (kind == UNITLAB_MMS_PDU_UNCONFIRMED) {
+        UnitLabMmsBerElement service_element;
+        size_t offset = 0U;
+        unitlab_mms_ber_element_init(&service_element);
+        if (!unitlab_mms_ber_read(&service_element, element.value_bytes, element.value_length, &offset, diagnostic)) {
+            return 0;
+        }
+        if (offset != element.value_length) {
+            pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS unconfirmed PDU contains trailing service bytes.");
+            return 0;
+        }
+        pdu->service_tag = service_element.tag;
+        pdu->has_service = 1;
+        pdu->service_kind = pdu_classify_service_kind(kind, &service_element.tag);
+        pdu->service_bytes = service_element.value_bytes;
+        pdu->service_length = service_element.value_length;
     }
     pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;

@@ -19,12 +19,21 @@ typedef enum UnitLabMmsPduKind {
     UNITLAB_MMS_PDU_CONCLUDE_ERROR = 11
 } UnitLabMmsPduKind;
 
+typedef enum UnitLabMmsServiceKind {
+    UNITLAB_MMS_SERVICE_NONE = 0,
+    UNITLAB_MMS_SERVICE_RAW = 1,
+    UNITLAB_MMS_SERVICE_READ = 2,
+    UNITLAB_MMS_SERVICE_WRITE = 3,
+    UNITLAB_MMS_SERVICE_INFORMATION_REPORT = 4
+} UnitLabMmsServiceKind;
+
 typedef struct UnitLabMmsPdu {
     UnitLabMmsPduKind kind;
     uint32_t invoke_id;
     int has_invoke_id;
     UnitLabMmsBerTag service_tag;
     int has_service;
+    UnitLabMmsServiceKind service_kind;
     const uint8_t* service_bytes; /* Caller-owned decode buffer; valid only while that buffer lives. */
     size_t service_length;
     const uint8_t* pdu_bytes; /* Caller-owned decode buffer; valid only while that buffer lives. */
