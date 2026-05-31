@@ -122,7 +122,7 @@ Responsibilities:
 
 - The lower-level UnitLab MMS runtime boundary already exists in the simulator tree and the Python backend service layer; both expose session, pending request, transport exchange, diagnostics, runtime events, runtime snapshots, report-control ownership, and semantic bridges.
 - The virtual IED/server path already uses the UnitLab-owned report runtime and MMS lower layer to process incoming bytes and build first-slice confirmed response frames.
-- The client/orchestration layer itself is not implemented yet. This document defines the next boundary so the client can be added without changing the lower-layer contract.
+- The backend client-side façade now exists in `backend/app/services/iec61850/client_runtime.py` and reuses the same report-runtime contract for association, report-control operations, GI, and subscription-plan execution. It is still transport-agnostic and does not parse BER, ACSE, COTP, or MMS PDUs directly.
 
 ## Implementation Slices
 

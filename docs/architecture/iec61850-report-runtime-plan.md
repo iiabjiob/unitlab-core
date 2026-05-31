@@ -124,7 +124,7 @@ Still planned:
 - REST remains for explicit plan/read/prepare commands.
 - WebSocket emits runtime state and normalized report events.
 - Persist only auditable runtime actions and later test evidence; do not persist transient frontend session state as authority.
-- Add a client-side orchestration boundary so UnitLab can subscribe to its own virtual IEDs and consume reports as evidence.
+- Expand the client-side orchestration boundary so UnitLab can subscribe to its own virtual IEDs and consume reports as evidence through a transport-backed client implementation.
 
 Validation:
 

@@ -22,7 +22,7 @@ SCD + Signal List
   -> virtual IED or real IED
 ```
 
-The same internal flow must be used for both the simulator and the future real IED path. Only the transport endpoint changes.
+The same internal flow must be used for both the simulator and the future real IED path. Only the transport endpoint changes. The backend client-side façade is now present and reuses the shared report-runtime contract; the wire transport remains a later replacement boundary.
 
 ## Ownership Model
 
