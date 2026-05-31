@@ -123,6 +123,7 @@ add_executable(unitlab-iec61850-wire-foundation-test
   src/wire/ber/unitlab_mms_ber_length.c
   src/wire/ber/unitlab_mms_ber_reader.c
   src/wire/ber/unitlab_mms_ber_writer.c
+  src/wire/iso/unitlab_mms_cotp.c
   src/wire/iso/unitlab_mms_tpkt.c
   tests/unitlab_mms_wire_primitives_test.c
 )

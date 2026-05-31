@@ -137,6 +137,7 @@ Out of scope for the first wire slice:
 Initial implemented wire foundation:
 
 - TPKT frame wrap/unwrap
+- COTP CR/CC/DR/DT encode/decode
 - BER tag encode/decode
 - BER length encode/decode
 - BER TLV read/write

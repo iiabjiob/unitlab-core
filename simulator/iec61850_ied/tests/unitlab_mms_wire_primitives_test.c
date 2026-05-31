@@ -1,4 +1,5 @@
 #include "../src/wire/ber/unitlab_mms_ber.h"
+#include "../src/wire/iso/unitlab_mms_cotp.h"
 #include "../src/wire/iso/unitlab_mms_tpkt.h"
 
 #include <assert.h>
@@ -32,6 +33,63 @@ static void test_tpkt_rejects_invalid_version(void)
     unitlab_mms_diagnostic_clear(&diagnostic);
     assert(unitlab_mms_tpkt_unwrap(frame, sizeof(frame), &decoded_payload, &payload_length, &diagnostic) == 0);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+}
+
+static void test_cotp_cr_roundtrip(void)
+{
+    uint8_t buffer[32];
+    UnitLabMmsCotpTpdu tpdu;
+    UnitLabMmsCotpTpdu decoded_tpdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t user_data[3] = { 0xAAU, 0xBBU, 0xCCU };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_cotp_tpdu_init(&tpdu);
+    tpdu.kind = UNITLAB_MMS_COTP_TPDU_CR;
+    tpdu.destination_reference = 0U;
+    tpdu.source_reference = 0x1234U;
+    tpdu.tpdu_class = 0x00U;
+    tpdu.user_data = user_data;
+    tpdu.user_data_length = sizeof(user_data);
+    assert(unitlab_mms_cotp_encode(&tpdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(encoded_length == 11U);
+    assert(buffer[0] == 10U);
+    unitlab_mms_cotp_tpdu_init(&decoded_tpdu);
+    assert(unitlab_mms_cotp_decode(&decoded_tpdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_tpdu.kind == UNITLAB_MMS_COTP_TPDU_CR);
+    assert(decoded_tpdu.source_reference == 0x1234U);
+    assert(decoded_tpdu.user_data_length == sizeof(user_data));
+    assert(memcmp(decoded_tpdu.user_data, user_data, sizeof(user_data)) == 0);
+}
+
+static void test_cotp_dt_roundtrip(void)
+{
+    uint8_t buffer[32];
+    UnitLabMmsCotpTpdu tpdu;
+    UnitLabMmsCotpTpdu decoded_tpdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t user_data[2] = { 0x01U, 0x02U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_cotp_tpdu_init(&tpdu);
+    tpdu.kind = UNITLAB_MMS_COTP_TPDU_DT;
+    tpdu.eot = 1;
+    tpdu.user_data = user_data;
+    tpdu.user_data_length = sizeof(user_data);
+    assert(unitlab_mms_cotp_encode(&tpdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(buffer[0] == 5U);
+    unitlab_mms_cotp_tpdu_init(&decoded_tpdu);
+    assert(unitlab_mms_cotp_decode(&decoded_tpdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_tpdu.kind == UNITLAB_MMS_COTP_TPDU_DT);
+    assert(decoded_tpdu.eot == 1);
+    assert(decoded_tpdu.user_data_length == sizeof(user_data));
+    assert(memcmp(decoded_tpdu.user_data, user_data, sizeof(user_data)) == 0);
 }
 
 static void test_ber_length_roundtrip(void)
@@ -112,6 +170,8 @@ int main(void)
 {
     test_tpkt_roundtrip();
     test_tpkt_rejects_invalid_version();
+    test_cotp_cr_roundtrip();
+    test_cotp_dt_roundtrip();
     test_ber_length_roundtrip();
     test_ber_tag_roundtrip();
     test_ber_element_roundtrip();
