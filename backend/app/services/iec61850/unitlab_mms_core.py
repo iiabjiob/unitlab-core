@@ -87,6 +87,23 @@ class UnitLabMmsScriptedTransport:
         return tuple(self._sent_payloads)
 
 
+class UnitLabMmsRecordedTransport:
+    def __init__(self, transport: UnitLabMmsTransport) -> None:
+        self._transport = transport
+        self._transcript: list[UnitLabMmsTransportExchange] = []
+
+    def send(self, payload: bytes) -> bytes:
+        response = self._transport.send(payload)
+        self._transcript.append(UnitLabMmsTransportExchange(request=bytes(payload), response=bytes(response)))
+        return response
+
+    def close(self) -> None:
+        self._transport.close()
+
+    def transcript(self) -> tuple[UnitLabMmsTransportExchange, ...]:
+        return tuple(self._transcript)
+
+
 @runtime_checkable
 class UnitLabMmsTransport(Protocol):
     def send(self, payload: bytes) -> bytes: ...
@@ -134,6 +151,7 @@ __all__ = [
     "UnitLabMmsReportObservationResult",
     "UnitLabMmsReportReason",
     "UnitLabMmsRuntimeAdapter",
+    "UnitLabMmsRecordedTransport",
     "UnitLabMmsScriptedTransport",
     "UnitLabMmsTransportExchange",
     "UnitLabMmsRuntimeError",

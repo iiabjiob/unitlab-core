@@ -59,6 +59,7 @@ from app.services.iec61850 import (
     write_ied_simulator_fixture_file,
 )
 from app.services.iec61850.unitlab_mms_core import (
+    UnitLabMmsRecordedTransport,
     UnitLabMmsRuntimeAdapter,
     UnitLabMmsScriptedTransport,
     UnitLabMmsSession,
@@ -86,6 +87,14 @@ def test_backend_runtime_unitlab_mms_scripted_transport_returns_scripted_respons
     assert transport.send(b"request-1") == b"response-1"
     assert transport.send(b"request-2") == b"response-2"
     assert transport.sent_payloads() == (b"request-1", b"request-2")
+
+
+def test_backend_runtime_unitlab_mms_recorded_transport_captures_transcript() -> None:
+    transport = UnitLabMmsRecordedTransport(UnitLabMmsScriptedTransport((b"response-1",)))
+
+    assert transport.send(b"request-1") == b"response-1"
+    assert transport.transcript()[0].request == b"request-1"
+    assert transport.transcript()[0].response == b"response-1"
 
 
 def test_backend_runtime_unitlab_mms_scripted_transport_fails_closed_after_close() -> None:
