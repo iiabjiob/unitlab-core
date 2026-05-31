@@ -49,6 +49,7 @@ int unitlab_mms_transport_frame_encode(const UnitLabMmsTransportFrame* frame, ui
     if (!unitlab_mms_cotp_encode(&frame->cotp, &buffer[4], buffer_length - 4U, &cotp_length, diagnostic)) {
         return 0;
     }
+    /* TPKT header is written inline to avoid an extra payload copy. Keep in sync with unitlab_mms_tpkt_wrap(). */
     total_length = cotp_length + 4U;
     if (total_length > UINT16_MAX) {
         transport_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "transport frame is too large.");
@@ -79,6 +80,10 @@ int unitlab_mms_transport_frame_decode(UnitLabMmsTransportFrame* frame, const ui
     }
     unitlab_mms_transport_frame_init(frame);
     if (!unitlab_mms_tpkt_unwrap(buffer, buffer_length, &payload_bytes, &payload_length, &frame_length, diagnostic)) {
+        return 0;
+    }
+    if (payload_length == 0U) {
+        transport_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "transport frame payload is empty.");
         return 0;
     }
     if (!unitlab_mms_cotp_decode(&frame->cotp, payload_bytes, payload_length, &payload_consumed_length, diagnostic)) {

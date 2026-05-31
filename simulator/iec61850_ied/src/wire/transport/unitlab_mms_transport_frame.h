@@ -5,6 +5,7 @@
 #include "../iso/unitlab_mms_cotp.h"
 #include "../iso/unitlab_mms_tpkt.h"
 
+/* One ISO-on-TCP frame: TPKT carrying exactly one COTP TPDU. */
 typedef struct UnitLabMmsTransportFrame {
     UnitLabMmsTpktHeader tpkt;
     UnitLabMmsCotpTpdu cotp;

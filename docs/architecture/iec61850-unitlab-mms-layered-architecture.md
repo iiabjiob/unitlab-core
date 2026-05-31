@@ -143,7 +143,7 @@ Initial implemented wire foundation:
 - BER TLV read/write
 - ACSE APDU top-level classify/wrap/unwrap
 - presentation APDU raw BER wrapper boundary
-- TPKT+COTP transport frame composition helper
+- RFC1006/TPKT + COTP transport frame composition helper
 - wire envelope decode helper across TPKT/COTP/presentation/ACSE/MMS raw wrappers
 - MMS MMSpdu top-level classify/wrap/unwrap
 
