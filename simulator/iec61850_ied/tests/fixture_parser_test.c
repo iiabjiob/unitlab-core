@@ -35,7 +35,7 @@ static const char* fixture_with_initial_values(void)
             "\"dataSets\":[{"
                 "\"reference\":\"IED1/AP1/LD0/LLN0.dsEvents\","
                 "\"members\":["
-                    "{\"dataSetIndex\":0,\"reference\":\"LD0/GGIO1.Ind1.stVal[ST]\",\"kind\":\"FCDA\",\"fc\":\"ST\",\"initialValue\":true},"
+                    "{\"dataSetIndex\":0,\"reference\":\"LD0/GGIO1.Ind1.stVal[ST]\",\"kind\":\"FCDA\",\"component\":\"phaseA\",\"fc\":\"ST\",\"initialValue\":true},"
                     "{\"dataSetIndex\":1,\"reference\":\"LD0/GGIO1.Ind2.stVal[ST]\",\"kind\":\"FCDA\",\"fc\":\"ST\",\"initialValue\":42},"
                     "{\"dataSetIndex\":2,\"reference\":\"LD0/MMXU1.A.phsA.cVal.mag.f[MX]\",\"kind\":\"FCDA\",\"fc\":\"MX\",\"initialValue\":3.14},"
                     "{\"dataSetIndex\":3,\"reference\":\"LD0/GGIO1.NamPlt.vendor[DC]\",\"kind\":\"FCDA\",\"fc\":\"DC\",\"initialValue\":\"UnitLab\"},"
@@ -131,6 +131,7 @@ static int test_initial_value_kinds_are_preserved(void)
     int passed = expect_true(parsed, "fixture should parse");
     if (parsed) {
         UnitLabIedFixtureSignal* signals = model.data_sets[0].signals;
+        passed &= expect_string(signals[0].component, "phaseA", "component value");
         passed &= expect_true(signals[0].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_BOOLEAN, "boolean value kind");
         passed &= expect_string(signals[0].initial_value, "true", "boolean value");
         passed &= expect_true(signals[1].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "integer value kind");

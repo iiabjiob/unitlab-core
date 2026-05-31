@@ -26,6 +26,7 @@ typedef struct UnitLabIedFixtureSignal {
     size_t data_set_index;
     char reference[256];
     char kind[32];
+    char component[128];
     char fc[32];
     UnitLabIedFixtureValueKind initial_value_kind;
     char initial_value[128];

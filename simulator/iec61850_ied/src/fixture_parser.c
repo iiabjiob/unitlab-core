@@ -642,6 +642,10 @@ static int parse_signal(JsonRange signal_range, UnitLabIedFixtureSignal* signal,
         set_error(error, error_size, "FIXTURE_SIGNAL_KIND_INVALID: DataSet member requires kind.");
         return 0;
     }
+    if (!parse_nullable_string_after_key(signal_range, "component", signal->component, sizeof(signal->component))) {
+        set_error(error, error_size, "FIXTURE_SIGNAL_COMPONENT_INVALID: DataSet member component must be a string or null.");
+        return 0;
+    }
     if (!parse_nullable_string_after_key(signal_range, "fc", signal->fc, sizeof(signal->fc))) {
         set_error(error, error_size, "FIXTURE_SIGNAL_FC_INVALID: DataSet member fc must be a string or null.");
         return 0;

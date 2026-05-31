@@ -101,6 +101,7 @@ The fixture is produced by backend `build_ied_simulator_fixture_from_subscriptio
 - IED name and access point name.
 - DataSet references and ordered members.
 - DataSet member initial values with preserved JSON value kinds.
+- Optional DataSet member `component` metadata for array-member or component-specific fixtures.
 - ReportControl metadata needed by the simulator: `RptID`, `ConfRev`, kind, indexed flag, `BufTm`, and `IntgPd`.
 - Trigger options and optional fields.
 
@@ -233,7 +234,7 @@ The model plan now normalizes the fixture into the validated blueprint that the 
 
 - DataSet owner LD/LN/name parsed from the fixture reference.
 - ReportControl owner LD/LN/name/kind/runtime attributes parsed from the fixture report metadata.
-- DataSet member references parsed into LD/LN/member kind/object reference/data object/data attribute path/FC/libIEC61850 DataSetEntry variable/initial value kind/initial value.
+- DataSet member references parsed into LD/LN/member kind/component/object reference/data object/data attribute path/FC/libIEC61850 DataSetEntry variable/initial value kind/initial value.
 - Fixture DataSet context and signal FC mismatches fail before server startup.
 - Unsupported DataSet member kinds fail before server startup.
 - Malformed or unknown initial value tokens fail before server startup.

@@ -335,8 +335,19 @@ static int parse_signal_reference(
         set_error(error, error_size, "MODEL_PLAN_SIGNAL_DATASET_ENTRY_TOO_LONG: %s", reference);
         return 0;
     }
-    model_signal->data_set_entry_component_known = 0;
-    model_signal->data_set_entry_component[0] = '\0';
+    model_signal->data_set_entry_component_known = signal->component[0] != '\0';
+    if (model_signal->data_set_entry_component_known) {
+        if (!copy_string(
+                model_signal->data_set_entry_component,
+                sizeof(model_signal->data_set_entry_component),
+                signal->component)) {
+            set_error(error, error_size, "MODEL_PLAN_SIGNAL_DATASET_ENTRY_COMPONENT_TOO_LONG: %s", reference);
+            return 0;
+        }
+    }
+    else {
+        model_signal->data_set_entry_component[0] = '\0';
+    }
     if (!copy_string(model_signal->initial_value, sizeof(model_signal->initial_value), signal->initial_value)) {
         set_error(error, error_size, "MODEL_PLAN_SIGNAL_VALUE_TOO_LONG: %s", reference);
         return 0;

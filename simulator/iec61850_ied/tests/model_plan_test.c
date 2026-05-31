@@ -86,6 +86,7 @@ static int test_model_plan_builds_blueprint(void)
             .data_set_index = 0U,
             .reference = "LD0/XCBR1.Pos.stVal[ST]",
             .kind = "FCDA",
+            .component = "phaseA",
             .fc = "ST",
             .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
             .initial_value = "0",
@@ -157,8 +158,8 @@ static int test_model_plan_builds_blueprint(void)
             plan.signals[0].data_set_entry_variable,
             "LD0/XCBR1$ST$Pos$stVal",
             "first signal DataSetEntry variable");
-        passed &= expect_true(plan.signals[0].data_set_entry_component_known == 0, "first signal DataSetEntry component known");
-        passed &= expect_string(plan.signals[0].data_set_entry_component, "", "first signal DataSetEntry component");
+        passed &= expect_true(plan.signals[0].data_set_entry_component_known == 1, "first signal DataSetEntry component known");
+        passed &= expect_string(plan.signals[0].data_set_entry_component, "phaseA", "first signal DataSetEntry component");
         passed &= expect_string(plan.signals[0].fc, "ST", "first signal FC");
         passed &= expect_true(plan.signals[0].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "first signal value kind");
         passed &= expect_string(plan.signals[0].initial_value, "0", "first signal initial value");
