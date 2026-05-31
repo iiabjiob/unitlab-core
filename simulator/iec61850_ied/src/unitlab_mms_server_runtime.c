@@ -439,6 +439,66 @@ int unitlab_mms_server_runtime_apply_incoming_bytes(UnitLabMmsServerRuntime* ser
     return 1;
 }
 
+int unitlab_mms_server_runtime_apply_association_request_bytes(UnitLabMmsServerRuntime* server_runtime, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsOperationResult* operation_result)
+{
+    UnitLabMmsPdu wire_pdu;
+    size_t transport_consumed_length = 0U;
+
+    if (consumed_length != NULL) {
+        *consumed_length = 0U;
+    }
+    if (server_runtime == NULL || buffer == NULL || consumed_length == NULL || operation_result == NULL) {
+        if (operation_result != NULL) {
+            unitlab_mms_operation_result_init(operation_result);
+            operation_result->diagnostic.code = UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT;
+            snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Server runtime, buffer, consumed length, and operation result are required.");
+            server_runtime_fail_and_capture(server_runtime, operation_result);
+        }
+        return 0;
+    }
+    if (server_runtime->state != UNITLAB_MMS_SERVER_RUNTIME_RUNNING) {
+        unitlab_mms_operation_result_init(operation_result);
+        operation_result->diagnostic.code = UNITLAB_MMS_DIAGNOSTIC_BAD_STATE;
+        snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Server runtime must be running before applying association request bytes.");
+        server_runtime_fail_and_capture(server_runtime, operation_result);
+        return 0;
+    }
+
+    unitlab_mms_operation_result_init(operation_result);
+    unitlab_mms_pdu_init(&wire_pdu);
+    if (!server_runtime_decode_transport_to_wire_pdu(buffer, buffer_length, &transport_consumed_length, &wire_pdu, operation_result)) {
+        server_runtime_fail_and_capture(server_runtime, operation_result);
+        return 0;
+    }
+    if (wire_pdu.kind != UNITLAB_MMS_PDU_INITIATE_REQUEST) {
+        operation_result->diagnostic.code = UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED;
+        snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Association request bytes must carry an MMS initiate request.");
+        server_runtime_fail_and_capture(server_runtime, operation_result);
+        return 0;
+    }
+    if (!unitlab_mms_transport_exchange_bind_request(
+            &server_runtime->transport,
+            buffer,
+            transport_consumed_length,
+            0U,
+            &operation_result->diagnostic)) {
+        server_runtime_fail_and_capture(server_runtime, operation_result);
+        return 0;
+    }
+    server_runtime_set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    operation_result->ok = 1;
+    unitlab_mms_operation_result_from_trace(
+        operation_result,
+        1,
+        &operation_result->diagnostic,
+        &server_runtime->transport.event_log,
+        &server_runtime->transport.last_event);
+    server_runtime->last_result = *operation_result;
+    unitlab_mms_server_runtime_capture_snapshot(server_runtime);
+    *consumed_length = transport_consumed_length;
+    return 1;
+}
+
 int unitlab_mms_server_runtime_apply_association_bytes(UnitLabMmsServerRuntime* server_runtime, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsOperationResult* operation_result)
 {
     return unitlab_mms_server_runtime_apply_incoming_bytes(server_runtime, buffer, buffer_length, consumed_length, operation_result);
