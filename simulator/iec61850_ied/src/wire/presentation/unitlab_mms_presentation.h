@@ -6,19 +6,24 @@
 
 typedef enum UnitLabMmsPresentationApduKind {
     UNITLAB_MMS_PRESENTATION_APDU_NONE = 0,
-    UNITLAB_MMS_PRESENTATION_APDU_CONNECT_OR_ACCEPT = 1,
-    UNITLAB_MMS_PRESENTATION_APDU_USER_DATA = 2,
-    UNITLAB_MMS_PRESENTATION_APDU_ABORT = 3
+    UNITLAB_MMS_PRESENTATION_APDU_RAW = 1,
+    UNITLAB_MMS_PRESENTATION_APDU_UNKNOWN = 2
 } UnitLabMmsPresentationApduKind;
 
 typedef struct UnitLabMmsPresentationApdu {
     UnitLabMmsPresentationApduKind kind;
-    UnitLabMmsBerTag tag;
+    UnitLabMmsBerTag tag; /* Decoded outer Presentation BER element tag. */
     const uint8_t* payload_bytes; /* Caller-owned decode buffer; valid only while that buffer lives. */
     size_t payload_length;
     size_t encoded_length;
 } UnitLabMmsPresentationApdu;
 
+/*
+ * Presentation is intentionally raw at this boundary.
+ * Exact CP/CPA/CPR/TD and user-data ASN.1 mappings must be added later from ITU-T X.226 / ISO8823-PRESENTATION.
+ * Do not guess Presentation APDU tag mappings here.
+ * No runtime state transition is performed by this layer.
+ */
 void unitlab_mms_presentation_apdu_init(UnitLabMmsPresentationApdu* apdu);
 int unitlab_mms_presentation_encode(const UnitLabMmsPresentationApdu* apdu, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_presentation_decode(UnitLabMmsPresentationApdu* apdu, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsDiagnostic* diagnostic);

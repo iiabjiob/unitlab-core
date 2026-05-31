@@ -142,10 +142,10 @@ Initial implemented wire foundation:
 - BER length encode/decode
 - BER TLV read/write
 - ACSE APDU top-level classify/wrap/unwrap
-- presentation APDU top-level classify/wrap/unwrap (opaque payload boundary)
+- presentation APDU raw BER wrapper boundary
 - MMS MMSpdu top-level classify/wrap/unwrap
 
-Presentation is now implemented as an opaque top-level wrapper only. The MMS PDU wrapper currently peels the top-level `invokeID` and the next service TLV for confirmed request/response/error PDUs, validates `invokeID` as a minimal Unsigned32 BER integer, and leaves full service field decode pending.
+Presentation is intentionally raw at this boundary only. The MMS PDU wrapper currently peels the top-level `invokeID` and the next service TLV for confirmed request/response/error PDUs, validates `invokeID` as a minimal Unsigned32 BER integer, and leaves full service field decode pending.
 
 ## Evolution Path
 
