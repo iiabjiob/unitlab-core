@@ -72,10 +72,37 @@ static void test_result_projection(void)
     assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_NONE);
 }
 
+static void test_reject_projection(void)
+{
+    UnitLabMmsDecodedPdu pdu;
+    UnitLabMmsDecodeDiagnostic diagnostic;
+    UnitLabMmsSemanticResult result;
+
+    unitlab_mms_decoded_pdu_init(&pdu);
+    unitlab_mms_decode_diagnostic_init(&diagnostic);
+    unitlab_mms_semantic_result_init(&result);
+
+    pdu.kind = UNITLAB_MMS_DECODED_PDU_REJECT;
+    pdu.reject.reject_for_invoke_id = 19U;
+    pdu.reject.reject_class = 3U;
+    pdu.reject.reject_code = 7U;
+    pdu.reject.service_error_code = 11U;
+    unitlab_mms_semantic_result_from_decoded_pdu(&result, UNITLAB_MMS_SERVICE_OUTCOME_REJECT, &pdu, &diagnostic);
+
+    assert(result.ok == 1);
+    assert(result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_REJECT);
+    assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_REJECT);
+    assert(result.pdu.reject.reject_for_invoke_id == 19U);
+    assert(result.pdu.reject.reject_class == 3U);
+    assert(result.pdu.reject.reject_code == 7U);
+    assert(result.pdu.reject.service_error_code == 11U);
+}
+
 int main(void)
 {
     test_defaults();
     test_diagnostic_set();
     test_result_projection();
+    test_reject_projection();
     return 0;
 }
