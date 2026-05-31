@@ -6,6 +6,7 @@ This plan records the project decision that UnitLab will implement its own IEC 6
 
 See also: [UnitLab IEC 61850 MMS Core Boundary](./iec61850-unitlab-mms-core-boundary.md).
 See also: [UnitLab MMS Semantic Contract](./iec61850-unitlab-mms-semantic-contract.md).
+See also: [UnitLab MMS Layered Architecture](./iec61850-unitlab-mms-layered-architecture.md).
 
 ## Ownership Model
 

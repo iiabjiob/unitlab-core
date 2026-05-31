@@ -2,6 +2,9 @@
 
 Status: architecture note and implementation boundary. This document defines the UnitLab-owned MMS runtime layer that will back both the virtual IED simulator and the future real-device client.
 
+See also: [UnitLab MMS Semantic Contract](./iec61850-unitlab-mms-semantic-contract.md).
+See also: [UnitLab MMS Layered Architecture](./iec61850-unitlab-mms-layered-architecture.md).
+
 ## Goal
 
 Build a UnitLab-owned IEC 61850 MMS core that controls association, request correlation, report-control state, and report activation semantics without depending on `libiec61850` as a runtime authority.

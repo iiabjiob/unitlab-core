@@ -29,6 +29,10 @@ Wire layer cannot change lifecycle state directly.
 
 It may only return semantic decode results and diagnostics. Runtime orchestration owns all state transitions.
 
+## Layered Architecture Reference
+
+The intended physical layer split is documented in [UnitLab MMS Layered Architecture](./iec61850-unitlab-mms-layered-architecture.md).
+
 ## Runtime Ownership Table
 
 | Layer | Owns |
