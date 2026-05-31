@@ -61,6 +61,9 @@ from app.services.iec61850 import (
 from app.services.iec61850.unitlab_mms_core import (
     UnitLabMmsAssociation,
     UnitLabMmsInMemoryAssociation,
+    UnitLabMmsInMemoryNamedVariableAccess,
+    UnitLabMmsNamedVariable,
+    UnitLabMmsNamedVariableAccess,
     UnitLabMmsRecordedTransport,
     UnitLabMmsRuntimeAdapter,
     UnitLabMmsScriptedTransport,
@@ -143,6 +146,49 @@ def test_backend_runtime_unitlab_mms_scripted_transport_fails_closed_after_close
         transport.send(b"request-1")
 
     assert error.value.code == "TRANSPORT_CLOSED"
+
+
+def test_backend_runtime_unitlab_mms_named_variable_access_reads_and_writes_when_association_is_open() -> None:
+    transport = UnitLabMmsScriptedTransport((b"response-1",))
+    association = UnitLabMmsInMemoryAssociation(session_id="session-3", endpoint=_endpoint(), transport=transport)
+    association.open()
+    access = UnitLabMmsInMemoryNamedVariableAccess(
+        association=association,
+        variables=(
+            UnitLabMmsNamedVariable(reference="LD0/LLN0$ST$Mod.stVal", value=False, writable=True, data_type="BOOLEAN"),
+            UnitLabMmsNamedVariable(reference="LD0/LLN0$ST$Mod.q", value="good", writable=False, data_type="Quality"),
+        ),
+    )
+
+    assert isinstance(access, UnitLabMmsNamedVariableAccess)
+    assert access.read("LD0/LLN0$ST$Mod.stVal").value is False
+    assert access.write("LD0/LLN0$ST$Mod.stVal", True).value is True
+    assert [item.reference for item in access.snapshot()] == ["LD0/LLN0$ST$Mod.q", "LD0/LLN0$ST$Mod.stVal"]
+
+
+def test_backend_runtime_unitlab_mms_named_variable_access_fails_closed_for_missing_or_read_only_values() -> None:
+    transport = UnitLabMmsScriptedTransport((b"response-1",))
+    association = UnitLabMmsInMemoryAssociation(session_id="session-4", endpoint=_endpoint(), transport=transport)
+    association.open()
+    access = UnitLabMmsInMemoryNamedVariableAccess(
+        association=association,
+        variables=(
+            UnitLabMmsNamedVariable(reference="LD0/LLN0$ST$Mod.stVal", value=False, writable=False, data_type="BOOLEAN"),
+        ),
+    )
+
+    with pytest.raises(Iec61850ReportRuntimeError) as missing_error:
+        access.read("LD0/LLN0$ST$Mod.q")
+    assert missing_error.value.code == "NAMED_VARIABLE_NOT_FOUND"
+
+    with pytest.raises(Iec61850ReportRuntimeError) as read_only_error:
+        access.write("LD0/LLN0$ST$Mod.stVal", True)
+    assert read_only_error.value.code == "NAMED_VARIABLE_READ_ONLY"
+
+    association.release()
+    with pytest.raises(Iec61850ReportRuntimeError) as closed_error:
+        access.snapshot()
+    assert closed_error.value.code == "ASSOCIATION_NOT_OPEN"
 
 
 def test_backend_runtime_service_owns_simulator_session_flow() -> None:

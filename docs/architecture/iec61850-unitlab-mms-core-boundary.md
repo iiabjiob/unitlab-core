@@ -92,7 +92,7 @@ Responsibilities:
 
 - The backend now exposes the UnitLab MMS boundary contracts in `backend/app/services/iec61850/unitlab_mms_core.py`.
 - The in-memory simulator already conforms to `UnitLabMmsSession` and `UnitLabMmsRuntimeAdapter` via runtime-checkable protocols.
-- Deterministic scripted and recorded transport helpers now exist for transport-oriented tests and parity capture, and an in-memory association helper exercises open/release/abort semantics. They are not wire MMS framing.
+- Deterministic scripted and recorded transport helpers now exist for transport-oriented tests and parity capture, an in-memory association helper exercises open/release/abort semantics, and a named-variable access helper covers read/write/snapshot behavior. They are not wire MMS framing.
 - Real MMS wire transport remains a planned layer.
 
 ## Implementation Slices

@@ -180,6 +180,92 @@ class UnitLabMmsInMemoryAssociation:
         return self._state
 
 
+@dataclass(frozen=True, slots=True)
+class UnitLabMmsNamedVariable:
+    reference: str
+    value: bool | int | float | str | None
+    writable: bool = False
+    data_type: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UnitLabMmsNamedVariableState:
+    reference: str
+    value: bool | int | float | str | None
+    writable: bool
+    data_type: str | None
+    read_count: int = 0
+    write_count: int = 0
+
+
+@runtime_checkable
+class UnitLabMmsNamedVariableAccess(Protocol):
+    def read(self, reference: str) -> UnitLabMmsNamedVariableState: ...
+    def write(self, reference: str, value: bool | int | float | str | None) -> UnitLabMmsNamedVariableState: ...
+    def snapshot(self) -> tuple[UnitLabMmsNamedVariableState, ...]: ...
+
+
+class UnitLabMmsInMemoryNamedVariableAccess:
+    def __init__(self, *, association: UnitLabMmsAssociation, variables: Sequence[UnitLabMmsNamedVariable] = ()) -> None:
+        self._association = association
+        self._variables = {
+            variable.reference: UnitLabMmsNamedVariableState(
+                reference=variable.reference,
+                value=variable.value,
+                writable=variable.writable,
+                data_type=variable.data_type,
+            )
+            for variable in variables
+        }
+
+    def read(self, reference: str) -> UnitLabMmsNamedVariableState:
+        self._require_open_association()
+        state = self._require_variable(reference)
+        updated = UnitLabMmsNamedVariableState(
+            reference=state.reference,
+            value=state.value,
+            writable=state.writable,
+            data_type=state.data_type,
+            read_count=state.read_count + 1,
+            write_count=state.write_count,
+        )
+        self._variables[reference] = updated
+        return updated
+
+    def write(self, reference: str, value: bool | int | float | str | None) -> UnitLabMmsNamedVariableState:
+        self._require_open_association()
+        state = self._require_variable(reference)
+        if not state.writable:
+            raise UnitLabMmsRuntimeError('NAMED_VARIABLE_READ_ONLY', f'Named variable "{reference}" is read-only.')
+        if state.value is not None and value is not None and type(state.value) is not type(value):
+            raise UnitLabMmsRuntimeError('NAMED_VARIABLE_TYPE_MISMATCH', f'Named variable "{reference}" does not accept value type {type(value).__name__}.')
+        updated = UnitLabMmsNamedVariableState(
+            reference=state.reference,
+            value=value,
+            writable=state.writable,
+            data_type=state.data_type,
+            read_count=state.read_count,
+            write_count=state.write_count + 1,
+        )
+        self._variables[reference] = updated
+        return updated
+
+    def snapshot(self) -> tuple[UnitLabMmsNamedVariableState, ...]:
+        self._require_open_association()
+        return tuple(self._variables[reference] for reference in sorted(self._variables))
+
+    def _require_open_association(self) -> None:
+        state = self._association.state()
+        if not state.opened or state.released or state.aborted:
+            raise UnitLabMmsRuntimeError('ASSOCIATION_NOT_OPEN', 'UnitLab MMS association is not open.')
+
+    def _require_variable(self, reference: str) -> UnitLabMmsNamedVariableState:
+        variable = self._variables.get(reference)
+        if variable is None:
+            raise UnitLabMmsRuntimeError('NAMED_VARIABLE_NOT_FOUND', f'Named variable "{reference}" is not available.')
+        return variable
+
+
 @runtime_checkable
 class UnitLabMmsTransport(Protocol):
     def send(self, payload: bytes) -> bytes: ...
@@ -230,6 +316,9 @@ __all__ = [
     "UnitLabMmsAssociation",
     "UnitLabMmsAssociationState",
     "UnitLabMmsInMemoryAssociation",
+    "UnitLabMmsNamedVariable",
+    "UnitLabMmsNamedVariableAccess",
+    "UnitLabMmsNamedVariableState",
     "UnitLabMmsRecordedTransport",
     "UnitLabMmsScriptedTransport",
     "UnitLabMmsTransportExchange",
