@@ -1,6 +1,7 @@
 #ifndef UNITLAB_IEC61850_IED_UNITLAB_MMS_SERVER_RUNTIME_H
 #define UNITLAB_IEC61850_IED_UNITLAB_MMS_SERVER_RUNTIME_H
 
+#include "server_runtime.h"
 #include "unitlab_mms_core.h"
 #include "wire/mms/unitlab_mms_pdu.h"
 
@@ -11,7 +12,17 @@
  * runtime objects and snapshots, but does not do socket, TPKT, or ACSE I/O.
  */
 
+typedef enum UnitLabMmsServerRuntimeState {
+    UNITLAB_MMS_SERVER_RUNTIME_IDLE = 0,
+    UNITLAB_MMS_SERVER_RUNTIME_PREPARED = 1,
+    UNITLAB_MMS_SERVER_RUNTIME_RUNNING = 2,
+    UNITLAB_MMS_SERVER_RUNTIME_STOPPED = 3,
+    UNITLAB_MMS_SERVER_RUNTIME_FAILED = 4
+} UnitLabMmsServerRuntimeState;
+
 typedef struct UnitLabMmsServerRuntime {
+    UnitLabMmsServerRuntimeState state;
+    UnitLabIedServerConfig config;
     UnitLabMmsSession session;
     UnitLabMmsPendingRequest pending_request;
     UnitLabIec61850ReportControl report_control;
@@ -21,6 +32,9 @@ typedef struct UnitLabMmsServerRuntime {
 } UnitLabMmsServerRuntime;
 
 void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime);
+int unitlab_mms_server_runtime_prepare(UnitLabMmsServerRuntime* server_runtime, const UnitLabIedServerConfig* config, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_server_runtime_start(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_server_runtime_stop(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_server_runtime_apply_wire_pdu(UnitLabMmsServerRuntime* server_runtime, const UnitLabMmsPdu* wire_pdu, UnitLabMmsOperationResult* operation_result);
 void unitlab_mms_server_runtime_capture_snapshot(UnitLabMmsServerRuntime* server_runtime);
 
