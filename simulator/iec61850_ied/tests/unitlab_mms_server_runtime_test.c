@@ -3,6 +3,7 @@
 #include "unitlab_mms_server_runtime.h"
 #include "wire/mms/unitlab_mms_pdu.h"
 #include "wire/transport/unitlab_mms_wire_association_fixture.h"
+#include "wire/orchestration/unitlab_mms_wire_builder.h"
 
 static UnitLabMmsPdu make_information_report_pdu(void)
 {
@@ -204,6 +205,49 @@ static void test_server_runtime_apply_wire_pdu_requires_running_state(void)
     assert(server_runtime.state == UNITLAB_MMS_SERVER_RUNTIME_RUNNING);
 }
 
+static void test_wire_builder_builds_confirmed_response_frame_roundtrips(void)
+{
+    UnitLabMmsPdu response_pdu;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsWireAssociationFixture fixture;
+    uint8_t response_bytes[256];
+    uint8_t response_payload[6] = { 0x02U, 0x01U, 0x29U, 0xA4U, 0x01U, 0xAAU };
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+
+    unitlab_mms_pdu_init(&response_pdu);
+    response_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_RESPONSE;
+    response_pdu.has_invoke_id = 1;
+    response_pdu.invoke_id = 41U;
+    response_pdu.has_service = 1;
+    response_pdu.service_kind = UNITLAB_MMS_SERVICE_READ;
+    response_pdu.pdu_bytes = response_payload;
+    response_pdu.pdu_length = sizeof(response_payload);
+
+    assert(unitlab_mms_build_confirmed_response_frame(&response_pdu, response_bytes, sizeof(response_bytes), &encoded_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(encoded_length > 0U);
+
+    unitlab_mms_wire_association_fixture_init(&fixture);
+    assert(unitlab_mms_wire_association_fixture_decode(&fixture, response_bytes, encoded_length, &consumed_length, &diagnostic));
+    assert(consumed_length == encoded_length);
+    assert(fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED);
+    assert(fixture.presentation.payload_length > 0U);
+    {
+        UnitLabMmsPdu decoded_response;
+        size_t response_consumed_length = 0U;
+
+        unitlab_mms_pdu_init(&decoded_response);
+        assert(unitlab_mms_pdu_decode(&decoded_response, fixture.presentation.payload_bytes, fixture.presentation.payload_length, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == fixture.presentation.payload_length);
+        assert(decoded_response.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
+        assert(decoded_response.has_invoke_id == 1);
+        assert(decoded_response.invoke_id == 41U);
+        assert(decoded_response.has_service == 1);
+        assert(decoded_response.service_kind == UNITLAB_MMS_SERVICE_READ);
+    }
+}
+
 static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -213,7 +257,7 @@ static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
         .port = 102,
     };
     uint8_t response_bytes[256];
-    uint8_t response_payload[2] = { 0x80U, 0x00U };
+    uint8_t response_payload[6] = { 0x02U, 0x01U, 0x29U, 0xA4U, 0x01U, 0xAAU };
     size_t encoded_length = 0U;
     size_t consumed_length = 0U;
     UnitLabMmsWireAssociationFixture fixture;
@@ -240,6 +284,19 @@ static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
     assert(consumed_length == encoded_length);
     assert(fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED);
     assert(fixture.presentation.payload_length > 0U);
+    {
+        UnitLabMmsPdu decoded_response;
+        size_t response_consumed_length = 0U;
+
+        unitlab_mms_pdu_init(&decoded_response);
+        assert(unitlab_mms_pdu_decode(&decoded_response, fixture.presentation.payload_bytes, fixture.presentation.payload_length, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == fixture.presentation.payload_length);
+        assert(decoded_response.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
+        assert(decoded_response.has_invoke_id == 1);
+        assert(decoded_response.invoke_id == 41U);
+        assert(decoded_response.has_service == 1);
+        assert(decoded_response.service_kind == UNITLAB_MMS_SERVICE_READ);
+    }
 }
 
 static void test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_tail(void)
@@ -287,6 +344,7 @@ int main(void)
     test_server_runtime_prepare_start_stop();
     test_server_runtime_apply_association_request_bytes_accepts_initiate_request();
     test_server_runtime_apply_association_request_bytes_rejects_non_initiate_request();
+    test_wire_builder_builds_confirmed_response_frame_roundtrips();
     test_server_runtime_build_confirmed_response_bytes_roundtrips();
     test_server_runtime_apply_wire_pdu_requires_running_state();
     test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_tail();

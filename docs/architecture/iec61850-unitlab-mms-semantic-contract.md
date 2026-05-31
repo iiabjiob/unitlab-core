@@ -126,7 +126,7 @@ The first semantic PDU layer now separates service outcome from the payload shap
 - the first wire-to-semantic bridge maps first-slice MMS wire PDU classifications into these semantic results without mutating runtime state.
 - the runtime bridge applies semantic results to session/request/report ownership, keeping wire decode and lifecycle transitions separate.
 - first-slice confirmed READ/WRITE requests project into pending-request ingress, while responses remain the lifecycle-completing path.
-- the server runtime may now build first-slice confirmed response bytes from a pending request and raw service payload without changing the wire/runtime split.
+- the server runtime may now build first-slice confirmed response bytes from a pending request through a wire/orchestration builder that owns the nesting construction without changing the wire/runtime split.
 - server ingress is now split into incoming-bytes handling and a thin association-request validator, keeping the nested wire decode helper separate from server orchestration.
 
 These structures are the only legal input to state transition rules.

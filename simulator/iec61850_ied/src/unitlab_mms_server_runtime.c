@@ -2,12 +2,11 @@
 
 #include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
 
+#include "wire/orchestration/unitlab_mms_wire_builder.h"
 #include "wire/presentation/unitlab_mms_presentation.h"
 #include "wire/session/unitlab_mms_session_spdu.h"
 #include "wire/transport/unitlab_mms_transport_frame.h"
-#include "wire/transport/unitlab_mms_wire_association_fixture.h"
 #include "unitlab_mms_runtime_bridge.h"
 
 static void server_runtime_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, const char* message)
@@ -322,9 +321,6 @@ int unitlab_mms_server_runtime_release_report_control(UnitLabMmsServerRuntime* s
 int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRuntime* server_runtime, const uint8_t* service_bytes, size_t service_length, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsPdu response_pdu;
-    UnitLabMmsWireAssociationFixture fixture;
-    uint8_t* response_payload = NULL;
-    size_t response_payload_length = 0U;
     size_t response_length = 0U;
 
     if (encoded_length != NULL) {
@@ -341,31 +337,10 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
     if (!server_runtime_prepare_confirmed_response_pdu(server_runtime, service_bytes, service_length, &response_pdu, diagnostic)) {
         return 0;
     }
-    /* TODO(portability): replace heap scratch with caller-provided scratch when embedded targets require it. */
-    response_payload = (uint8_t*)malloc(buffer_length);
-    if (response_payload == NULL) {
-        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Response scratch allocation failed.");
+
+    if (!unitlab_mms_build_confirmed_response_frame(&response_pdu, buffer, buffer_length, &response_length, diagnostic)) {
         return 0;
     }
-
-    if (!unitlab_mms_pdu_encode(&response_pdu, response_payload, buffer_length, &response_payload_length, diagnostic)) {
-        free(response_payload);
-        return 0;
-    }
-
-    unitlab_mms_wire_association_fixture_init(&fixture);
-    fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
-    fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
-    fixture.presentation.payload_bytes = response_payload;
-    fixture.presentation.payload_length = response_payload_length;
-    fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
-    /* The association fixture owns the nesting construction; only the outer TPDU kind is supplied here. */
-
-    if (!unitlab_mms_wire_association_fixture_encode(&fixture, buffer, buffer_length, &response_length, diagnostic)) {
-        free(response_payload);
-        return 0;
-    }
-    free(response_payload);
     if (!unitlab_mms_transport_exchange_bind_response(&server_runtime->transport, buffer, buffer_length, diagnostic)) {
         return 0;
     }
