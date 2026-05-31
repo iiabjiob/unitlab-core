@@ -43,8 +43,6 @@ static int build_information_report_association_bytes(uint8_t* buffer, size_t bu
     fixture.presentation.payload_bytes = pdu_encoded;
     fixture.presentation.payload_length = pdu_length;
     fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
-    fixture.transport.cotp.user_data = pdu_encoded;
-    fixture.transport.cotp.user_data_length = pdu_length;
 
     payload_length = 0U;
     if (!unitlab_mms_wire_association_fixture_encode(&fixture, buffer, buffer_length, &payload_length, diagnostic)) {
@@ -76,8 +74,6 @@ static int build_initiate_request_association_bytes(uint8_t* buffer, size_t buff
     fixture.presentation.payload_bytes = pdu_encoded;
     fixture.presentation.payload_length = pdu_length;
     fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
-    fixture.transport.cotp.user_data = pdu_encoded;
-    fixture.transport.cotp.user_data_length = pdu_length;
 
     payload_length = 0U;
     if (!unitlab_mms_wire_association_fixture_encode(&fixture, buffer, buffer_length, &payload_length, diagnostic)) {
