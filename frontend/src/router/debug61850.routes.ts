@@ -11,6 +11,15 @@ export const debug61850Routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: "/61850-debug/client",
+    name: "iec61850.debug.client",
+    component: () => import("@/pages/debug61850/Iec61850ClientTestPage.vue"),
+    meta: {
+      leftAside: true,
+      layout: "auto",
+    },
+  },
+  {
     path: "/61850-debug",
     name: "iec61850.debug",
     component: () => import("@/pages/debug61850/Iec61850DebugPage.vue"),

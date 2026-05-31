@@ -14,6 +14,7 @@ from app.api.v1.core_network.router import router as core_network_router
 from app.api.v1.core_ntp.router import router as core_ntp_router
 from app.api.v1.core_diag.router import router as core_diag_router
 from app.api.v1.core_provision.router import router as core_provision_router
+from app.api.v1.iec61850.router import router as iec61850_client_router
 
 from app.ws.router import router as ws_router
 
@@ -123,6 +124,7 @@ app.include_router(core_network_router)
 app.include_router(core_ntp_router)
 app.include_router(core_diag_router)
 app.include_router(core_provision_router)
+app.include_router(iec61850_client_router)
 
 logger.info("✅ REST API routers registered")
 
