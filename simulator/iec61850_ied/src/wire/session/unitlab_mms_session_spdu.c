@@ -135,6 +135,8 @@ int unitlab_mms_session_spdu_encode(const UnitLabMmsSessionSpdu* spdu, uint8_t* 
 {
     uint8_t expected_code = 0U;
 
+    /* Raw full-buffer wrapper: validate the declared kind against the first SPDU byte, then copy the raw SPDU bytes unchanged. */
+
     if (encoded_length != NULL) {
         *encoded_length = 0U;
     }
@@ -171,7 +173,7 @@ int unitlab_mms_session_spdu_encode(const UnitLabMmsSessionSpdu* spdu, uint8_t* 
 int unitlab_mms_session_spdu_decode(UnitLabMmsSessionSpdu* spdu, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsSessionSpduKind kind;
-    size_t parameter_length = 0U;
+    size_t raw_parameter_length = 0U;
 
 
     if (consumed_length != NULL) {
@@ -195,9 +197,9 @@ int unitlab_mms_session_spdu_decode(UnitLabMmsSessionSpdu* spdu, const uint8_t* 
     spdu->spdu_length = buffer_length;
     spdu->encoded_length = buffer_length;
     if (buffer_length > 1U) {
-        parameter_length = buffer_length - 1U;
-        spdu->parameter_bytes = &buffer[1];
-        spdu->parameter_length = parameter_length;
+        raw_parameter_length = buffer_length - 1U;
+        spdu->raw_parameter_bytes = &buffer[1];
+        spdu->raw_parameter_length = raw_parameter_length;
     }
     *consumed_length = buffer_length;
     session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);

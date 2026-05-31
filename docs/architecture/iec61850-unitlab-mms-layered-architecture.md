@@ -146,7 +146,7 @@ Initial implemented wire foundation:
 - BER TLV read/write
 - ACSE APDU top-level classify/wrap/unwrap using exact X.227 application tags for AARQ/AARE/RLRQ/RLRE/ABRT
 - raw ACSE field view preserves the exact outer sequence elements without semantic interpretation
-- session SPDU raw boundary for exact X.225 kernel/data-transfer SPDU codes
+- session SPDU raw full-buffer boundary for exact X.225 kernel/data-transfer SPDU codes
 - presentation APDU raw BER wrapper boundary
 - RFC1006/TPKT + COTP transport frame composition helper
 - association-fixture encode/decode helper across TPKT/COTP/raw presentation wrappers

@@ -455,10 +455,27 @@ static void test_session_spdu_roundtrips(void)
         assert(consumed_length == encoded_length);
         assert(decoded_spdu.kind == cases[i].kind);
         assert(decoded_spdu.spdu_length == cases[i].payload_length);
-        assert(decoded_spdu.parameter_length == cases[i].payload_length - 1U);
-        assert(decoded_spdu.parameter_bytes == &decoded_spdu.spdu_bytes[1]);
+        assert(decoded_spdu.raw_parameter_length == cases[i].payload_length - 1U);
+        assert(decoded_spdu.raw_parameter_bytes == &decoded_spdu.spdu_bytes[1]);
         assert(memcmp(decoded_spdu.spdu_bytes, cases[i].payload, cases[i].payload_length) == 0);
     }
+}
+
+static void test_session_spdu_rejects_mismatched_declared_kind_and_code(void)
+{
+    uint8_t buffer[8];
+    UnitLabMmsSessionSpdu spdu;
+    size_t encoded_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[4] = { 13U, 0x01U, 0x02U, 0x03U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_session_spdu_init(&spdu);
+    spdu.kind = UNITLAB_MMS_SESSION_SPDU_ACCEPT;
+    spdu.spdu_bytes = payload;
+    spdu.spdu_length = sizeof(payload);
+    assert(unitlab_mms_session_spdu_encode(&spdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 0);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
 }
 
 static void test_acse_raw_field_view(void)
@@ -832,6 +849,7 @@ int main(void)
     test_acse_top_level_roundtrips();
     test_acse_raw_field_view();
     test_session_spdu_roundtrips();
+    test_session_spdu_rejects_mismatched_declared_kind_and_code();
     test_presentation_raw_roundtrip_preserves_outer_tag();
     test_presentation_decode_accepts_arbitrary_outer_tag_as_raw();
     test_presentation_encode_rejects_non_raw_kind();
