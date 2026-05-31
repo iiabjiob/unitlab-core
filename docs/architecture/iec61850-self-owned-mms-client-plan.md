@@ -6,6 +6,13 @@ This plan records the project decision that UnitLab will implement its own IEC 6
 
 See also: [UnitLab IEC 61850 MMS Core Boundary](./iec61850-unitlab-mms-core-boundary.md).
 
+## Ownership Model
+
+- C owns protocol primitives and the wire-level MMS engine.
+- Python owns orchestration, diagnostics, evidence, APIs, tests, and process management around the engine.
+- Vue/TS owns the engineering workspace.
+- The backend runtime and simulator both target the same UnitLab-owned service contracts so the transport engine can be swapped without changing report-flow semantics.
+
 ## Decision
 
 Build the IEC 61850 report runtime around a stable UnitLab adapter boundary, but keep the transport/runtime implementation owned by UnitLab:

@@ -11,6 +11,13 @@ References:
 
 See also: [UnitLab IEC 61850 MMS Core Boundary](./iec61850-unitlab-mms-core-boundary.md).
 
+## Ownership Model
+
+- C owns protocol primitives and the wire-level MMS engine.
+- Python owns orchestration, diagnostics, evidence, APIs, tests, and process management around the engine.
+- Vue/TS owns the engineering workspace.
+- The backend runtime and simulator both target the same UnitLab-owned service contracts so the transport engine can be swapped without changing report-flow semantics.
+
 ## Safety Position
 
 No real IED connection is allowed in the first runtime slices. All connect/read/reserve/enable/disable/GI behavior must run through a simulator adapter until the simulator flows, diagnostics, and operator-visible state are proven.

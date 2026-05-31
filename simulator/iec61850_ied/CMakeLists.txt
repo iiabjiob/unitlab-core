@@ -23,6 +23,7 @@ add_executable(unitlab-iec61850-ied-sim
   src/main.c
   src/model_loader.c
   src/model_plan.c
+  src/unitlab_mms_core.c
 )
 unitlab_iec61850_sim_warnings(unitlab-iec61850-ied-sim)
 
@@ -83,6 +84,18 @@ endif()
 add_test(
   NAME unitlab-iec61850-ied-model-loader
   COMMAND unitlab-iec61850-ied-model-loader-test
+)
+
+add_executable(unitlab-iec61850-mms-core-test
+  src/unitlab_mms_core.c
+  tests/unitlab_mms_core_test.c
+)
+target_include_directories(unitlab-iec61850-mms-core-test PRIVATE src)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-mms-core-test)
+
+add_test(
+  NAME unitlab-iec61850-mms-core
+  COMMAND unitlab-iec61850-mms-core-test
 )
 
 if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)

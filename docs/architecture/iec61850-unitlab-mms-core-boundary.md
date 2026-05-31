@@ -20,6 +20,28 @@ SCD + Signal List
 
 The same internal flow must be used for both the simulator and the future real IED path. Only the transport endpoint changes.
 
+## Ownership Model
+
+The implementation stack is intentionally split by responsibility:
+
+- C owns the wire-level protocol engine:
+  - protocol primitives;
+  - BER;
+  - MMS PDUs;
+  - transport and session framing;
+  - parser and encoder;
+  - embedded portability.
+- Python owns orchestration around that engine:
+  - backend runtime;
+  - diagnostics and evidence;
+  - APIs;
+  - tests;
+  - process management;
+  - simulator/session control.
+- Vue/TS owns the engineering workspace and operator-facing UI.
+
+The UnitLab MMS boundary in this document is the seam where the C implementation will plug in later. The Python-side contracts stay stable so the runtime, simulator, and evidence flow do not need to change when the transport engine is replaced.
+
 ### Owned by UnitLab
 
 - Session lifecycle and association state.
@@ -39,7 +61,7 @@ The same internal flow must be used for both the simulator and the future real I
 
 ### 1. Transport
 
-Own TCP, TPKT, COTP, presentation, ACSE, and MMS framing in a dedicated transport layer.
+Own TCP, TPKT, COTP, presentation, ACSE, and MMS framing in a dedicated transport layer. The long-term implementation target for this layer is C.
 
 Responsibilities:
 

@@ -4,6 +4,8 @@ Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan
 
 This directory is the boundary for the future libIEC61850-based IED simulator. It is intentionally separate from UnitLab backend/core runtime so GPL/native code cannot leak into production logic by accident.
 
+The C-owned seam starts in `src/unitlab_mms_core.c` and `src/unitlab_mms_core.h`. That module owns the UnitLab transport/session/report-control contract that the future wire-level implementation will fill in. libIEC61850 stays in the simulator as a reference backend and interoperability oracle.
+
 ## Purpose
 
 - Consume the JSON fixture exported by backend IEC 61850 runtime.
