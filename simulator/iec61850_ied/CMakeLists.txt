@@ -21,6 +21,7 @@ add_library(unitlab-iec61850-mms STATIC
   src/unitlab_mms_semantic_pdu.c
   src/unitlab_mms_wire_semantic_bridge.c
   src/unitlab_mms_runtime_bridge.c
+  src/unitlab_mms_server_runtime.c
   src/unitlab_mms_core.c
   src/unitlab_iec61850_report_runtime.c
   src/wire/ber/unitlab_mms_ber_tag.c
@@ -163,6 +164,17 @@ unitlab_iec61850_sim_warnings(unitlab-iec61850-mms-public-api-test)
 add_test(
   NAME unitlab-iec61850-mms-public-api
   COMMAND unitlab-iec61850-mms-public-api-test
+)
+
+add_executable(unitlab-iec61850-mms-server-runtime-test
+  tests/unitlab_mms_server_runtime_test.c
+)
+target_link_libraries(unitlab-iec61850-mms-server-runtime-test PRIVATE unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-mms-server-runtime-test)
+
+add_test(
+  NAME unitlab-iec61850-mms-server-runtime
+  COMMAND unitlab-iec61850-mms-server-runtime-test
 )
 
 if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)
