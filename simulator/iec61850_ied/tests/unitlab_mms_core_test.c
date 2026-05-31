@@ -48,7 +48,7 @@ static void test_defaults(void)
     assert(operation_result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_NONE);
     assert(unitlab_mms_runtime_event_log_count(&operation_result.trace) == 0U);
     assert(snapshot.session.state == UNITLAB_MMS_SESSION_DISCONNECTED);
-    assert(snapshot.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
+    assert(snapshot.report_control_state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
     assert(snapshot.transport.invoke_id == 0U);
     assert(snapshot.last_result.ok == 0);
 }
@@ -157,11 +157,13 @@ static void test_runtime_snapshot_capture(void)
 
     unitlab_mms_runtime_snapshot_capture(&snapshot, &session, &report_control, &transport, &result);
     assert(snapshot.session.state == UNITLAB_MMS_SESSION_ASSOCIATING);
-    assert(snapshot.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_RESERVED);
+    assert(snapshot.report_control_state == UNITLAB_IEC61850_REPORT_CONTROL_RESERVED);
     assert(snapshot.transport.invoke_id == 77U);
     assert(snapshot.last_result.ok == 1);
     assert(snapshot.last_result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_RESPONSE);
     assert(unitlab_mms_runtime_event_log_count(&snapshot.last_result.trace) == 2U);
+    assert(snapshot.report_control_last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE);
+    assert(unitlab_mms_runtime_event_log_count(&snapshot.report_control_event_log) == 1U);
 }
 static void test_session_transitions(void)
 {
@@ -247,18 +249,18 @@ static void test_report_control_reset(void)
 
 static void test_typed_event_and_aliases(void)
 {
-    assert(UNITLAB_MMS_EVENT_ASSOCIATION_REQUESTED == UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_ASSOCIATION);
-    assert(UNITLAB_MMS_EVENT_ASSOCIATION_OPENED == UNITLAB_MMS_RUNTIME_EVENT_SESSION_COMPLETE_ASSOCIATION);
-    assert(UNITLAB_MMS_EVENT_ASSOCIATION_RELEASED == UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_RELEASE);
-    assert(UNITLAB_MMS_EVENT_ASSOCIATION_ABORTED == UNITLAB_MMS_RUNTIME_EVENT_SESSION_ABORT);
-    assert(UNITLAB_MMS_EVENT_RCB_RESERVED == UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE);
-    assert(UNITLAB_MMS_EVENT_RCB_ENABLED == UNITLAB_MMS_RUNTIME_EVENT_REPORT_ENABLE);
-    assert(UNITLAB_MMS_EVENT_GI_REQUESTED == UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI);
-    assert(UNITLAB_MMS_EVENT_RCB_DISABLED == UNITLAB_MMS_RUNTIME_EVENT_REPORT_DISABLE);
-    assert(UNITLAB_MMS_EVENT_RCB_RELEASED == UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE);
-    assert(UNITLAB_MMS_EVENT_REQUEST_BOUND == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST);
-    assert(UNITLAB_MMS_EVENT_REQUEST_COMPLETED == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_RESPONSE);
-    assert(UNITLAB_MMS_EVENT_REPORT_RECEIVED == 10);
+    assert(UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_ASSOCIATION == 1);
+    assert(UNITLAB_MMS_RUNTIME_EVENT_SESSION_COMPLETE_ASSOCIATION == 2);
+    assert(UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_RELEASE == 3);
+    assert(UNITLAB_MMS_RUNTIME_EVENT_SESSION_ABORT == 4);
+    assert(UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE == UNITLAB_MMS_RUNTIME_EVENT_RCB_RESERVED);
+    assert(UNITLAB_MMS_RUNTIME_EVENT_REPORT_ENABLE == UNITLAB_MMS_RUNTIME_EVENT_RCB_ENABLED);
+    assert(UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI == UNITLAB_MMS_RUNTIME_EVENT_GI_REQUESTED);
+    assert(UNITLAB_MMS_RUNTIME_EVENT_REPORT_DISABLE == UNITLAB_MMS_RUNTIME_EVENT_RCB_DISABLED);
+    assert(UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE == UNITLAB_MMS_RUNTIME_EVENT_RCB_RELEASED);
+    assert(UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_BOUND);
+    assert(UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_RESPONSE == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_COMPLETED);
+    assert(UNITLAB_MMS_RUNTIME_EVENT_REPORT_RECEIVED == 15);
 }
 
 static void test_pending_request_lifecycle(void)
@@ -280,10 +282,11 @@ static void test_pending_request_lifecycle(void)
     assert(request.correlation_id == 7U);
     assert(request.deadline_ms == 1000U);
     assert(request.timestamp_ms == 100U);
-    assert(request.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST);
+    assert(request.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED);
     assert(request.last_event.request_kind == UNITLAB_MMS_REQUEST_READ);
     assert(request.last_event.correlation_id == 7U);
     assert(request.last_event.deadline_ms == 1000U);
+    assert(unitlab_mms_runtime_event_log_count(&request.event_log) == 1U);
 
     assert(unitlab_mms_pending_request_complete(&request, 150U, &diagnostic) == 1);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
@@ -293,6 +296,7 @@ static void test_pending_request_lifecycle(void)
     assert(request.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_COMPLETED);
     assert(request.last_event.timestamp_ms == 150U);
     assert(request.last_event.completed == 1);
+    assert(unitlab_mms_runtime_event_log_count(&request.event_log) == 2U);
 
     unitlab_mms_pending_request_init(&request);
     assert(unitlab_mms_pending_request_start(&request, UNITLAB_MMS_REQUEST_WRITE, 42U, 8U, 2000U, 200U, &diagnostic) == 1);
@@ -305,6 +309,7 @@ static void test_pending_request_lifecycle(void)
     assert(request.last_event.deadline_ms == 2000U);
     assert(request.last_event.timestamp_ms == 2200U);
     assert(request.last_event.timed_out == 1);
+    assert(unitlab_mms_runtime_event_log_count(&request.event_log) == 2U);
 }
 
 static void test_semantic_pdu_defaults(void)

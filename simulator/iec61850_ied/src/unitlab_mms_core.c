@@ -98,24 +98,35 @@ static void runtime_event_set_and_append(
     runtime_event_log_append(event_log, event);
 }
 
-void unitlab_mms_diagnostic_clear(UnitLabMmsDiagnostic* diagnostic)
+
+void unitlab_mms_runtime_snapshot_init(UnitLabMmsRuntimeSnapshot* snapshot)
 {
-    if (diagnostic == NULL) {
+    if (snapshot == NULL) {
         return;
     }
-    diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_OK;
-    diagnostic->message[0] = '\0';
+    memset(snapshot, 0, sizeof(*snapshot));
 }
 
-void unitlab_mms_runtime_event_init(UnitLabMmsRuntimeEvent* event)
+void unitlab_mms_runtime_snapshot_capture(UnitLabMmsRuntimeSnapshot* snapshot, const UnitLabMmsSession* session, const UnitLabIec61850ReportControl* report_control, const UnitLabMmsTransportExchange* transport, const UnitLabMmsOperationResult* last_result)
 {
-    runtime_event_clear(event);
-}
-
-
-void unitlab_mms_runtime_event_log_init(UnitLabMmsRuntimeEventLog* event_log)
-{
-    runtime_event_log_clear(event_log);
+    if (snapshot == NULL) {
+        return;
+    }
+    unitlab_mms_runtime_snapshot_init(snapshot);
+    if (session != NULL) {
+        snapshot->session = *session;
+    }
+    if (report_control != NULL) {
+        snapshot->report_control_state = report_control->state;
+        snapshot->report_control_last_event = report_control->last_event;
+        snapshot->report_control_event_log = report_control->event_log;
+    }
+    if (transport != NULL) {
+        snapshot->transport = *transport;
+    }
+    if (last_result != NULL) {
+        snapshot->last_result = *last_result;
+    }
 }
 
 void unitlab_mms_pending_request_init(UnitLabMmsPendingRequest* request)
@@ -126,12 +137,23 @@ void unitlab_mms_pending_request_init(UnitLabMmsPendingRequest* request)
     memset(request, 0, sizeof(*request));
     request->state = UNITLAB_MMS_PENDING_REQUEST_IDLE;
     runtime_event_clear(&request->last_event);
+    runtime_event_log_clear(&request->event_log);
 }
 
 int unitlab_mms_pending_request_start(UnitLabMmsPendingRequest* request, UnitLabMmsRequestKind kind, uint32_t invoke_id, uint32_t correlation_id, uint64_t deadline_ms, uint64_t timestamp_ms, UnitLabMmsDiagnostic* diagnostic)
 {
     if (request == NULL) {
         set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "pending request is required to start tracking.");
+        return 0;
+    }
+    if (request->state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_REQUEST_ALREADY_ACTIVE, "pending request is already active.");
+        runtime_event_set(&request->last_event, UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED, request->state, request->state, invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_REQUEST_ALREADY_ACTIVE, diagnostic == NULL ? "pending request is already active." : diagnostic->message);
+        request->last_event.request_kind = (uint32_t)kind;
+        request->last_event.correlation_id = correlation_id;
+        request->last_event.timestamp_ms = timestamp_ms;
+        request->last_event.deadline_ms = deadline_ms;
+        runtime_event_log_append(&request->event_log, &request->last_event);
         return 0;
     }
     request->kind = kind;
@@ -142,13 +164,14 @@ int unitlab_mms_pending_request_start(UnitLabMmsPendingRequest* request, UnitLab
     request->timestamp_ms = timestamp_ms;
     request->timed_out = 0;
     request->completed = 0;
-    runtime_event_set(&request->last_event, UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST, 0U, 0U, invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set(&request->last_event, UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED, 0U, 0U, invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     request->last_event.request_kind = (uint32_t)kind;
     request->last_event.correlation_id = correlation_id;
     request->last_event.timestamp_ms = timestamp_ms;
     request->last_event.deadline_ms = deadline_ms;
     request->last_event.completed = 0;
     request->last_event.timed_out = 0;
+    runtime_event_log_append(&request->event_log, &request->last_event);
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
@@ -160,16 +183,21 @@ int unitlab_mms_pending_request_complete(UnitLabMmsPendingRequest* request, uint
         return 0;
     }
     if (request->state != UNITLAB_MMS_PENDING_REQUEST_ACTIVE) {
-        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "pending request must be active before completion.");
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_REQUEST_NOT_ACTIVE, "pending request must be active before completion.");
+        runtime_event_set(&request->last_event, UNITLAB_MMS_RUNTIME_EVENT_REQUEST_COMPLETED, request->state, request->state, request->invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_REQUEST_NOT_ACTIVE, diagnostic == NULL ? "pending request must be active before completion." : diagnostic->message);
+        request->last_event.request_kind = (uint32_t)request->kind;
+        request->last_event.timestamp_ms = completed_at_ms;
+        runtime_event_log_append(&request->event_log, &request->last_event);
         return 0;
     }
     request->state = UNITLAB_MMS_PENDING_REQUEST_COMPLETED;
     request->completed = 1;
     request->timed_out = 0;
-    request->last_event.kind = UNITLAB_MMS_RUNTIME_EVENT_REQUEST_COMPLETED;
+    runtime_event_set(&request->last_event, UNITLAB_MMS_RUNTIME_EVENT_REQUEST_COMPLETED, UNITLAB_MMS_PENDING_REQUEST_ACTIVE, request->state, request->invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    request->last_event.request_kind = (uint32_t)request->kind;
     request->last_event.timestamp_ms = completed_at_ms;
     request->last_event.completed = 1;
-    request->last_event.timed_out = 0;
+    runtime_event_log_append(&request->event_log, &request->last_event);
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
@@ -181,17 +209,25 @@ int unitlab_mms_pending_request_mark_timed_out(UnitLabMmsPendingRequest* request
         return 0;
     }
     if (request->state != UNITLAB_MMS_PENDING_REQUEST_ACTIVE) {
-        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "pending request must be active before timeout.");
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_REQUEST_NOT_ACTIVE, "pending request must be active before timeout.");
+        runtime_event_set(&request->last_event, UNITLAB_MMS_RUNTIME_EVENT_REQUEST_TIMED_OUT, request->state, request->state, request->invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_REQUEST_NOT_ACTIVE, diagnostic == NULL ? "pending request must be active before timeout." : diagnostic->message);
+        request->last_event.request_kind = (uint32_t)request->kind;
+        request->last_event.timestamp_ms = timed_out_at_ms;
+        request->last_event.deadline_ms = request->deadline_ms;
+        request->last_event.timed_out = 1;
+        runtime_event_log_append(&request->event_log, &request->last_event);
         return 0;
     }
     request->state = UNITLAB_MMS_PENDING_REQUEST_TIMED_OUT;
     request->timed_out = 1;
     request->completed = 0;
-    request->last_event.kind = UNITLAB_MMS_RUNTIME_EVENT_REQUEST_TIMED_OUT;
+    runtime_event_set(&request->last_event, UNITLAB_MMS_RUNTIME_EVENT_REQUEST_TIMED_OUT, UNITLAB_MMS_PENDING_REQUEST_ACTIVE, request->state, request->invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_TIMEOUT, NULL);
+    request->last_event.request_kind = (uint32_t)request->kind;
     request->last_event.timestamp_ms = timed_out_at_ms;
     request->last_event.deadline_ms = request->deadline_ms;
     request->last_event.completed = 0;
     request->last_event.timed_out = 1;
+    runtime_event_log_append(&request->event_log, &request->last_event);
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_TIMEOUT, NULL);
     return 1;
 }
@@ -226,80 +262,6 @@ void unitlab_mms_information_report_init(UnitLabMmsInformationReport* report)
         return;
     }
     memset(report, 0, sizeof(*report));
-}
-
-size_t unitlab_mms_runtime_event_log_count(const UnitLabMmsRuntimeEventLog* event_log)
-{
-    return event_log == NULL ? 0U : event_log->count;
-}
-
-const UnitLabMmsRuntimeEvent* unitlab_mms_runtime_event_log_at(const UnitLabMmsRuntimeEventLog* event_log, size_t index)
-{
-    if (event_log == NULL || index >= event_log->count) {
-        return NULL;
-    }
-    return &event_log->events[index];
-}
-
-
-void unitlab_mms_operation_result_init(UnitLabMmsOperationResult* result)
-{
-    if (result == NULL) {
-        return;
-    }
-    memset(result, 0, sizeof(*result));
-}
-
-void unitlab_mms_operation_result_from_trace(UnitLabMmsOperationResult* result, int ok, const UnitLabMmsDiagnostic* diagnostic, const UnitLabMmsRuntimeEventLog* trace, const UnitLabMmsRuntimeEvent* event)
-{
-    if (result == NULL) {
-        return;
-    }
-    unitlab_mms_operation_result_init(result);
-    result->ok = ok;
-    if (diagnostic != NULL) {
-        result->diagnostic = *diagnostic;
-    }
-    if (trace != NULL) {
-        result->trace = *trace;
-    }
-    if (event != NULL) {
-        result->event = *event;
-    }
-}
-
-void unitlab_mms_operation_result_from_event(UnitLabMmsOperationResult* result, int ok, const UnitLabMmsDiagnostic* diagnostic, const UnitLabMmsRuntimeEvent* event)
-{
-    unitlab_mms_operation_result_from_trace(result, ok, diagnostic, NULL, event);
-}
-
-
-void unitlab_mms_runtime_snapshot_init(UnitLabMmsRuntimeSnapshot* snapshot)
-{
-    if (snapshot == NULL) {
-        return;
-    }
-    memset(snapshot, 0, sizeof(*snapshot));
-}
-
-void unitlab_mms_runtime_snapshot_capture(UnitLabMmsRuntimeSnapshot* snapshot, const UnitLabMmsSession* session, const UnitLabIec61850ReportControl* report_control, const UnitLabMmsTransportExchange* transport, const UnitLabMmsOperationResult* last_result)
-{
-    if (snapshot == NULL) {
-        return;
-    }
-    unitlab_mms_runtime_snapshot_init(snapshot);
-    if (session != NULL) {
-        snapshot->session = *session;
-    }
-    if (report_control != NULL) {
-        snapshot->report_control = *report_control;
-    }
-    if (transport != NULL) {
-        snapshot->transport = *transport;
-    }
-    if (last_result != NULL) {
-        snapshot->last_result = *last_result;
-    }
 }
 
 void unitlab_mms_session_init(UnitLabMmsSession* session)
@@ -413,103 +375,6 @@ int unitlab_mms_session_abort(UnitLabMmsSession* session, UnitLabMmsDiagnostic* 
     session->active_invoke_id = 0U;
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     runtime_event_set_and_append(&session->last_event, &session->event_log, UNITLAB_MMS_RUNTIME_EVENT_SESSION_ABORT, before, session->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-    return 1;
-}
-
-void unitlab_iec61850_report_control_init(UnitLabIec61850ReportControl* report_control)
-{
-    if (report_control == NULL) {
-        return;
-    }
-    report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_DISABLED;
-    runtime_event_clear(&report_control->last_event);
-    runtime_event_log_clear(&report_control->event_log);
-}
-
-void unitlab_iec61850_report_control_reset(UnitLabIec61850ReportControl* report_control)
-{
-    unitlab_iec61850_report_control_init(report_control);
-}
-
-static int report_control_fail(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, UnitLabMmsRuntimeEventKind kind, const char* message)
-{
-    if (report_control != NULL) {
-        runtime_event_set_and_append(&report_control->last_event, &report_control->event_log, kind, report_control->state, report_control->state, 0U, 0U, 0U, code, message);
-    }
-    set_diagnostic(diagnostic, code, message);
-    return 0;
-}
-
-int unitlab_iec61850_report_control_reserve(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
-{
-    if (report_control == NULL) {
-        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE, "report control is required for reserve.");
-    }
-    if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_DISABLED) {
-        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE, "reserve requires a disabled report control.");
-    }
-    UnitLabIec61850ReportControlState before = report_control->state;
-    report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_RESERVED;
-    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-    runtime_event_set_and_append(&report_control->last_event, &report_control->event_log, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE, before, report_control->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-    return 1;
-}
-
-int unitlab_iec61850_report_control_enable(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
-{
-    if (report_control == NULL) {
-        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, UNITLAB_MMS_RUNTIME_EVENT_REPORT_ENABLE, "report control is required for enable.");
-    }
-    if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_RESERVED) {
-        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, UNITLAB_MMS_RUNTIME_EVENT_REPORT_ENABLE, "enable requires a reserved report control.");
-    }
-    UnitLabIec61850ReportControlState before = report_control->state;
-    report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_ENABLED;
-    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-    runtime_event_set_and_append(&report_control->last_event, &report_control->event_log, UNITLAB_MMS_RUNTIME_EVENT_REPORT_ENABLE, before, report_control->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-    return 1;
-}
-
-int unitlab_iec61850_report_control_request_gi(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
-{
-    if (report_control == NULL) {
-        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI, "report control is required for GI.");
-    }
-    if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_ENABLED) {
-        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI, "GI requires an enabled report control.");
-    }
-    UnitLabIec61850ReportControlState before = report_control->state;
-    report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING;
-    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-    runtime_event_set_and_append(&report_control->last_event, &report_control->event_log, UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI, before, report_control->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-    return 1;
-}
-
-int unitlab_iec61850_report_control_disable(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
-{
-    if (report_control == NULL) {
-        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, UNITLAB_MMS_RUNTIME_EVENT_REPORT_DISABLE, "report control is required for disable.");
-    }
-    if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_ENABLED && report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING && report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_REPORTING) {
-        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, UNITLAB_MMS_RUNTIME_EVENT_REPORT_DISABLE, "disable requires an enabled report control.");
-    }
-    UnitLabIec61850ReportControlState before = report_control->state;
-    report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_DISABLED;
-    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-    runtime_event_set_and_append(&report_control->last_event, &report_control->event_log, UNITLAB_MMS_RUNTIME_EVENT_REPORT_DISABLE, before, report_control->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-    return 1;
-}
-
-int unitlab_iec61850_report_control_release(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
-{
-    if (report_control == NULL) {
-        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE, "report control is required for release.");
-    }
-    if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_DISABLED) {
-        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE, "release requires a disabled report control.");
-    }
-    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-    runtime_event_set_and_append(&report_control->last_event, &report_control->event_log, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE, report_control->state, report_control->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
 

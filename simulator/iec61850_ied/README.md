@@ -121,7 +121,7 @@ It intentionally excludes:
 - Operator decisions.
 - Runtime evidence.
 
-Runtime evidence is captured separately by the C-owned runtime kernel through typed event records, pending-request correlation/timeout DTOs, semantic PDU structs, operation results, and a copy-safe runtime snapshot DTO for replay/debug capture.
+Runtime evidence is captured separately by the C-owned runtime kernel through typed event records, pending-request correlation/timeout DTOs with per-request traces, semantic PDU structs, operation results, and a copy-safe runtime snapshot DTO for replay/debug capture. Report-control evidence is owned by `unitlab_iec61850_report_runtime.c`; session/request/transport evidence is owned by `unitlab_mms_core.c`.
 
 ## Smoke Start
 
