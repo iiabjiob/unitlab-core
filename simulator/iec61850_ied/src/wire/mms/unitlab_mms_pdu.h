@@ -23,6 +23,10 @@ typedef struct UnitLabMmsPdu {
     UnitLabMmsPduKind kind;
     uint32_t invoke_id;
     int has_invoke_id;
+    UnitLabMmsBerTag service_tag;
+    int has_service;
+    const uint8_t* service_bytes; /* Caller-owned decode buffer; valid only while that buffer lives. */
+    size_t service_length;
     const uint8_t* pdu_bytes; /* Caller-owned decode buffer; valid only while that buffer lives. */
     size_t pdu_length;
     size_t encoded_length;
