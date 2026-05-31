@@ -35,28 +35,11 @@ from .report_runtime import (
     Iec61850UnselectedReportValue,
 )
 
-UnitLabMmsDataSetMember = Iec61850DataSetMember
-UnitLabMmsDeviceEndpoint = Iec61850DeviceEndpoint
-UnitLabMmsOptionalFields = Iec61850OptionalFields
-UnitLabMmsReportControlCandidate = Iec61850ReportControlCandidate
-UnitLabMmsReportControlReadResult = Iec61850ReportControlReadResult
-UnitLabMmsReportControlRef = Iec61850ReportControlRef
-UnitLabMmsReportControlState = Iec61850ReportControlState
-UnitLabMmsReportEvent = Iec61850ReportEvent
-UnitLabMmsReportEventValue = Iec61850ReportEventValue
-UnitLabMmsReportKind = Iec61850ReportKind
-UnitLabMmsReportObservationDiagnostic = Iec61850ReportObservationDiagnostic
-UnitLabMmsReportObservationResult = Iec61850ReportObservationResult
-UnitLabMmsReportReason = Iec61850ReportReason
-UnitLabMmsRuntimeError = Iec61850ReportRuntimeError
-UnitLabMmsRuntimeEvent = Iec61850ReportRuntimeEvent
-UnitLabMmsRuntimeMode = Iec61850RuntimeMode
-UnitLabMmsRuntimeStatus = Iec61850RuntimeStatus
-UnitLabMmsRuntimeTriggerOptions = Iec61850RuntimeTriggerOptions
-UnitLabMmsSelectedSignal = Iec61850SelectedSignal
-UnitLabMmsSignalObservation = Iec61850SignalObservation
-UnitLabMmsSimulatorSubscriptionRunResult = Iec61850SimulatorSubscriptionRunResult
-UnitLabMmsUnselectedReportValue = Iec61850UnselectedReportValue
+
+class UnitLabMmsRuntimeError(Exception):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,7 +107,7 @@ class UnitLabMmsAssociation(Protocol):
 
 
 class UnitLabMmsInMemoryAssociation:
-    def __init__(self, *, session_id: str, endpoint: UnitLabMmsDeviceEndpoint, transport: UnitLabMmsTransport) -> None:
+    def __init__(self, *, session_id: str, endpoint: Iec61850DeviceEndpoint, transport: UnitLabMmsTransport) -> None:
         self._session_id = session_id
         self._endpoint = endpoint
         self._transport = transport
@@ -274,12 +257,12 @@ class UnitLabMmsTransport(Protocol):
 
 @runtime_checkable
 class UnitLabMmsSession(Protocol):
-    def read_report_control(self, reference: UnitLabMmsReportControlRef) -> UnitLabMmsReportControlState: ...
-    def reserve_report_control(self, reference: UnitLabMmsReportControlRef, client_id: str) -> UnitLabMmsReportControlState: ...
-    def release_report_control(self, reference: UnitLabMmsReportControlRef, client_id: str) -> UnitLabMmsReportControlState: ...
-    def enable_report_control(self, reference: UnitLabMmsReportControlRef, client_id: str) -> UnitLabMmsReportControlState: ...
-    def disable_report_control(self, reference: UnitLabMmsReportControlRef, client_id: str) -> UnitLabMmsReportControlState: ...
-    def send_general_interrogation(self, reference: UnitLabMmsReportControlRef, client_id: str) -> UnitLabMmsReportEvent: ...
+    def read_report_control(self, reference: Iec61850ReportControlRef) -> Iec61850ReportControlState: ...
+    def reserve_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState: ...
+    def release_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState: ...
+    def enable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState: ...
+    def disable_report_control(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportControlState: ...
+    def send_general_interrogation(self, reference: Iec61850ReportControlRef, client_id: str) -> Iec61850ReportEvent: ...
     def disconnect(self) -> None: ...
 
 
@@ -292,45 +275,24 @@ class UnitLabMmsRuntimeAdapter(Protocol):
         self,
         *,
         session_id: str,
-        endpoint: UnitLabMmsDeviceEndpoint,
-        candidates: Sequence[UnitLabMmsReportControlCandidate],
+        endpoint: Iec61850DeviceEndpoint,
+        candidates: Sequence[Iec61850ReportControlCandidate],
     ) -> UnitLabMmsSession: ...
 
 
 __all__ = [
-    "UnitLabMmsDataSetMember",
-    "UnitLabMmsDeviceEndpoint",
-    "UnitLabMmsOptionalFields",
-    "UnitLabMmsReportControl",
-    "UnitLabMmsReportControlCandidate",
-    "UnitLabMmsReportControlReadResult",
-    "UnitLabMmsReportControlRef",
-    "UnitLabMmsReportControlState",
-    "UnitLabMmsReportEvent",
-    "UnitLabMmsReportEventValue",
-    "UnitLabMmsReportKind",
-    "UnitLabMmsReportObservationDiagnostic",
-    "UnitLabMmsReportObservationResult",
-    "UnitLabMmsReportReason",
-    "UnitLabMmsRuntimeAdapter",
     "UnitLabMmsAssociation",
     "UnitLabMmsAssociationState",
     "UnitLabMmsInMemoryAssociation",
+    "UnitLabMmsInMemoryNamedVariableAccess",
     "UnitLabMmsNamedVariable",
     "UnitLabMmsNamedVariableAccess",
     "UnitLabMmsNamedVariableState",
     "UnitLabMmsRecordedTransport",
-    "UnitLabMmsScriptedTransport",
-    "UnitLabMmsTransportExchange",
+    "UnitLabMmsRuntimeAdapter",
     "UnitLabMmsRuntimeError",
-    "UnitLabMmsRuntimeEvent",
-    "UnitLabMmsRuntimeMode",
-    "UnitLabMmsRuntimeStatus",
-    "UnitLabMmsRuntimeTriggerOptions",
-    "UnitLabMmsSelectedSignal",
+    "UnitLabMmsScriptedTransport",
     "UnitLabMmsSession",
-    "UnitLabMmsSignalObservation",
-    "UnitLabMmsSimulatorSubscriptionRunResult",
     "UnitLabMmsTransport",
-    "UnitLabMmsUnselectedReportValue",
+    "UnitLabMmsTransportExchange",
 ]

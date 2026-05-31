@@ -71,6 +71,8 @@ from app.services.iec61850.unitlab_mms_core import (
     UnitLabMmsTransport,
 )
 
+import app.services.iec61850.unitlab_mms_core as unitlab_mms_core
+
 
 def test_backend_runtime_simulator_objects_match_unitlab_mms_boundary_protocols() -> None:
     candidate = _candidate()
@@ -83,6 +85,12 @@ def test_backend_runtime_simulator_objects_match_unitlab_mms_boundary_protocols(
     assert isinstance(session, UnitLabMmsSession)
     assert session.read_report_control(to_report_control_ref(candidate)).runtime_status == Iec61850RuntimeStatus.READ
     session.disconnect()
+
+
+def test_backend_runtime_unitlab_mms_boundary_module_exposes_only_real_boundary_types() -> None:
+    assert not hasattr(unitlab_mms_core, "UnitLabMmsDeviceEndpoint")
+    assert not hasattr(unitlab_mms_core, "UnitLabMmsReportControlCandidate")
+    assert not hasattr(unitlab_mms_core, "UnitLabMmsReportControlRef")
 
 
 def test_backend_runtime_unitlab_mms_scripted_transport_returns_scripted_responses() -> None:
