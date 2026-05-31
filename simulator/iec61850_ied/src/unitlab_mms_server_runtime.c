@@ -2,10 +2,12 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "wire/presentation/unitlab_mms_presentation.h"
 #include "wire/session/unitlab_mms_session_spdu.h"
 #include "wire/transport/unitlab_mms_transport_frame.h"
+#include "wire/transport/unitlab_mms_wire_association_fixture.h"
 #include "unitlab_mms_runtime_bridge.h"
 
 static void server_runtime_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, const char* message)
@@ -120,6 +122,36 @@ int unitlab_mms_server_runtime_stop(UnitLabMmsServerRuntime* server_runtime, Uni
     return 1;
 }
 
+static int server_runtime_prepare_confirmed_response_pdu(
+    const UnitLabMmsServerRuntime* server_runtime,
+    const uint8_t* service_bytes,
+    size_t service_length,
+    UnitLabMmsPdu* response_pdu,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    if (server_runtime == NULL || response_pdu == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime and response PDU are required.");
+        return 0;
+    }
+    if (server_runtime->pending_request.state != UNITLAB_MMS_PENDING_REQUEST_ACTIVE) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, "Pending request must be active before building a response.");
+        return 0;
+    }
+    if (server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_READ && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_WRITE) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Only first-slice READ/WRITE responses are supported.");
+        return 0;
+    }
+    unitlab_mms_pdu_init(response_pdu);
+    response_pdu->kind = UNITLAB_MMS_PDU_CONFIRMED_RESPONSE;
+    response_pdu->has_invoke_id = 1;
+    response_pdu->invoke_id = server_runtime->pending_request.invoke_id;
+    response_pdu->has_service = 1;
+    response_pdu->service_kind = server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_READ ? UNITLAB_MMS_SERVICE_READ : UNITLAB_MMS_SERVICE_WRITE;
+    response_pdu->pdu_bytes = service_bytes;
+    response_pdu->pdu_length = service_length;
+    return 1;
+}
+
 static int server_runtime_require_running(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic)
 {
     if (server_runtime->state != UNITLAB_MMS_SERVER_RUNTIME_RUNNING) {
@@ -210,6 +242,71 @@ int unitlab_mms_server_runtime_release_report_control(UnitLabMmsServerRuntime* s
         return 0;
     }
     server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    unitlab_mms_server_runtime_capture_snapshot(server_runtime);
+    return 1;
+}
+
+int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRuntime* server_runtime, const uint8_t* service_bytes, size_t service_length, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsPdu response_pdu;
+    UnitLabMmsWireAssociationFixture fixture;
+    uint8_t* response_payload = NULL;
+    size_t response_payload_length = 0U;
+    size_t response_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (server_runtime == NULL || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime, buffer, and encoded_length are required.");
+        return 0;
+    }
+    if (server_runtime->state != UNITLAB_MMS_SERVER_RUNTIME_RUNNING) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, "Server runtime must be running before building response bytes.");
+        return 0;
+    }
+    if (!server_runtime_prepare_confirmed_response_pdu(server_runtime, service_bytes, service_length, &response_pdu, diagnostic)) {
+        return 0;
+    }
+    response_payload = (uint8_t*)malloc(buffer_length);
+    if (response_payload == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Response scratch allocation failed.");
+        return 0;
+    }
+
+    if (!unitlab_mms_pdu_encode(&response_pdu, response_payload, buffer_length, &response_payload_length, diagnostic)) {
+        free(response_payload);
+        return 0;
+    }
+
+    unitlab_mms_wire_association_fixture_init(&fixture);
+    fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
+    fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
+    fixture.presentation.payload_bytes = response_payload;
+    fixture.presentation.payload_length = response_payload_length;
+    fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
+    fixture.transport.cotp.user_data = response_payload;
+    fixture.transport.cotp.user_data_length = response_payload_length;
+
+    if (!unitlab_mms_wire_association_fixture_encode(&fixture, buffer, buffer_length, &response_length, diagnostic)) {
+        free(response_payload);
+        return 0;
+    }
+    free(response_payload);
+    if (!unitlab_mms_transport_exchange_bind_response(&server_runtime->transport, buffer, buffer_length, diagnostic)) {
+        return 0;
+    }
+    if (!unitlab_mms_transport_exchange_set_response_length(&server_runtime->transport, response_length, diagnostic)) {
+        return 0;
+    }
+    *encoded_length = response_length;
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    unitlab_mms_operation_result_from_trace(
+        &server_runtime->last_result,
+        1,
+        diagnostic,
+        &server_runtime->transport.event_log,
+        &server_runtime->transport.last_event);
     unitlab_mms_server_runtime_capture_snapshot(server_runtime);
     return 1;
 }
