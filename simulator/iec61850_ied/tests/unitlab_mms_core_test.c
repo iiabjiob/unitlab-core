@@ -409,6 +409,36 @@ static void test_runtime_apply_semantic_reject(void)
     assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
 }
 
+
+static void test_runtime_apply_semantic_correlation_mismatch(void)
+{
+    UnitLabMmsPendingRequest request;
+    UnitLabMmsSemanticResult semantic_result;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_pending_request_init(&request);
+    unitlab_mms_semantic_result_init(&semantic_result);
+    unitlab_mms_operation_result_init(&operation_result);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    assert(unitlab_mms_pending_request_start(&request, UNITLAB_MMS_REQUEST_READ, 41U, 99U, 1000U, 10U, &diagnostic) == 1);
+    semantic_result.ok = 1;
+    semantic_result.outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
+    semantic_result.pdu.kind = UNITLAB_MMS_DECODED_PDU_READ_RESPONSE;
+    semantic_result.pdu.invoke_id = 77U;
+    semantic_result.pdu.timestamp_ms = 15U;
+
+    assert(unitlab_mms_runtime_apply_semantic_result(NULL, &request, &semantic_result, &operation_result) == 0);
+    assert(operation_result.ok == 0);
+    assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_INVOKE_ID_MISMATCH);
+    assert(operation_result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_CORRELATION_MISMATCH);
+    assert(operation_result.event.invoke_id == 77U);
+    assert(operation_result.event.correlation_id == 99U);
+    assert(request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE);
+    assert(unitlab_mms_runtime_event_log_count(&request.event_log) == 1U);
+}
+
 int main(void)
 {
     test_defaults();
@@ -424,6 +454,7 @@ int main(void)
     test_semantic_pdu_defaults();
     test_runtime_apply_semantic_result();
     test_runtime_apply_semantic_reject();
+    test_runtime_apply_semantic_correlation_mismatch();
     printf("unitlab-mms-core: ok\n");
     return 0;
 }
