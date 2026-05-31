@@ -663,6 +663,38 @@ static void test_mms_pdu_confirmed_response_roundtrip(void)
     assert(memcmp(decoded_pdu.pdu_bytes, payload, sizeof(payload)) == 0);
 }
 
+static void test_mms_pdu_decode_stops_at_indicated_length(void)
+{
+    uint8_t buffer[32];
+    UnitLabMmsPdu pdu;
+    UnitLabMmsPdu decoded_pdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[6] = { 0x02U, 0x01U, 0x05U, 0xA4U, 0x01U, 0xAAU };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_pdu_init(&pdu);
+    pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+    pdu.pdu_bytes = payload;
+    pdu.pdu_length = sizeof(payload);
+    assert(unitlab_mms_pdu_encode(&pdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    buffer[encoded_length + 0U] = 0xDEU;
+    buffer[encoded_length + 1U] = 0xADU;
+    buffer[encoded_length + 2U] = 0xBEU;
+    buffer[encoded_length + 3U] = 0xEFU;
+    unitlab_mms_pdu_init(&decoded_pdu);
+    assert(unitlab_mms_pdu_decode(&decoded_pdu, buffer, encoded_length + 4U, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST);
+    assert(decoded_pdu.has_invoke_id == 1);
+    assert(decoded_pdu.invoke_id == 5U);
+    assert(decoded_pdu.has_service == 1);
+    assert(decoded_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
+    assert(decoded_pdu.service_length == 1U);
+    assert(decoded_pdu.service_bytes[0] == 0xAAU);
+}
+
 static void test_mms_pdu_unconfirmed_roundtrip(void)
 {
     uint8_t buffer[32];
@@ -948,6 +980,7 @@ int main(void)
     test_presentation_rejects_truncated_ber();
     test_mms_pdu_confirmed_request_roundtrip();
     test_mms_pdu_confirmed_response_roundtrip();
+    test_mms_pdu_decode_stops_at_indicated_length();
     test_mms_pdu_unconfirmed_roundtrip();
     test_mms_pdu_confirmed_request_roundtrip_with_wide_invoke_id();
     test_mms_pdu_rejects_non_minimal_invoke_id();
