@@ -59,10 +59,39 @@ static void test_report_control_reset(void)
     assert(report_control.gi_requested == 0);
 }
 
+static void test_session_transitions(void)
+{
+    UnitLabMmsSession session;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_session_init(&session);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    assert(unitlab_mms_session_begin_association(&session, &diagnostic) == 1);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATING);
+    assert(session.active_invoke_id == 1U);
+
+    assert(unitlab_mms_session_complete_association(&session, 999U, &diagnostic) == 0);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+    assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATING);
+
+    assert(unitlab_mms_session_complete_association(&session, 1U, &diagnostic) == 1);
+    assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATED);
+    assert(unitlab_mms_session_is_associated(&session) == 1);
+
+    assert(unitlab_mms_session_begin_release(&session, &diagnostic) == 1);
+    assert(session.state == UNITLAB_MMS_SESSION_RELEASING);
+
+    assert(unitlab_mms_session_abort(&session, &diagnostic) == 1);
+    assert(session.state == UNITLAB_MMS_SESSION_ABORTED);
+}
+
 int main(void)
 {
     test_defaults();
     test_invoke_id_sequence();
+    test_session_transitions();
     test_report_control_reset();
     printf("unitlab-mms-core: ok\n");
     return 0;

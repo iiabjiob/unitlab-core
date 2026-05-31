@@ -29,6 +29,7 @@ typedef enum UnitLabMmsSessionState {
 typedef struct UnitLabMmsSession {
     UnitLabMmsSessionState state;
     uint32_t next_invoke_id;
+    uint32_t active_invoke_id;
 } UnitLabMmsSession;
 
 typedef enum UnitLabMmsReportControlState {
@@ -57,6 +58,11 @@ void unitlab_mms_diagnostic_clear(UnitLabMmsDiagnostic* diagnostic);
 void unitlab_mms_session_init(UnitLabMmsSession* session);
 void unitlab_mms_session_reset(UnitLabMmsSession* session);
 uint32_t unitlab_mms_session_next_invoke_id(UnitLabMmsSession* session);
+int unitlab_mms_session_begin_association(UnitLabMmsSession* session, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_session_complete_association(UnitLabMmsSession* session, uint32_t invoke_id, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_session_begin_release(UnitLabMmsSession* session, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_session_abort(UnitLabMmsSession* session, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_session_is_associated(const UnitLabMmsSession* session);
 void unitlab_mms_report_control_init(UnitLabMmsReportControl* report_control);
 void unitlab_mms_report_control_reset(UnitLabMmsReportControl* report_control);
 void unitlab_mms_transport_exchange_init(UnitLabMmsTransportExchange* exchange);
