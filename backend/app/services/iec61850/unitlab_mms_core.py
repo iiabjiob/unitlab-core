@@ -104,6 +104,82 @@ class UnitLabMmsRecordedTransport:
         return tuple(self._transcript)
 
 
+@dataclass(frozen=True, slots=True)
+class UnitLabMmsAssociationState:
+    session_id: str
+    endpoint_id: str
+    opened: bool
+    released: bool
+    aborted: bool
+    abort_code: str | None = None
+    abort_message: str | None = None
+
+
+@runtime_checkable
+class UnitLabMmsAssociation(Protocol):
+    def open(self) -> UnitLabMmsAssociationState: ...
+    def release(self) -> UnitLabMmsAssociationState: ...
+    def abort(self, code: str, message: str) -> UnitLabMmsAssociationState: ...
+    def state(self) -> UnitLabMmsAssociationState: ...
+
+
+class UnitLabMmsInMemoryAssociation:
+    def __init__(self, *, session_id: str, endpoint: UnitLabMmsDeviceEndpoint, transport: UnitLabMmsTransport) -> None:
+        self._session_id = session_id
+        self._endpoint = endpoint
+        self._transport = transport
+        self._state = UnitLabMmsAssociationState(
+            session_id=session_id,
+            endpoint_id=endpoint.id,
+            opened=False,
+            released=False,
+            aborted=False,
+        )
+
+    def open(self) -> UnitLabMmsAssociationState:
+        if self._state.opened:
+            raise UnitLabMmsRuntimeError('ASSOCIATION_ALREADY_OPEN', 'UnitLab MMS association is already open.')
+        if self._state.released or self._state.aborted:
+            raise UnitLabMmsRuntimeError('ASSOCIATION_ALREADY_CLOSED', 'UnitLab MMS association has already been closed.')
+        self._state = UnitLabMmsAssociationState(
+            session_id=self._session_id,
+            endpoint_id=self._endpoint.id,
+            opened=True,
+            released=False,
+            aborted=False,
+        )
+        return self.state()
+
+    def release(self) -> UnitLabMmsAssociationState:
+        if not self._state.opened or self._state.released or self._state.aborted:
+            raise UnitLabMmsRuntimeError('ASSOCIATION_NOT_OPEN', 'UnitLab MMS association is not open.')
+        self._transport.close()
+        self._state = UnitLabMmsAssociationState(
+            session_id=self._session_id,
+            endpoint_id=self._endpoint.id,
+            opened=False,
+            released=True,
+            aborted=False,
+        )
+        return self.state()
+
+    def abort(self, code: str, message: str) -> UnitLabMmsAssociationState:
+        self._transport.close()
+        self._state = UnitLabMmsAssociationState(
+            session_id=self._session_id,
+            endpoint_id=self._endpoint.id,
+            opened=False,
+            released=False,
+            aborted=True,
+            abort_code=code,
+            abort_message=message,
+        )
+        return self.state()
+
+    def state(self) -> UnitLabMmsAssociationState:
+        return self._state
+
+
 @runtime_checkable
 class UnitLabMmsTransport(Protocol):
     def send(self, payload: bytes) -> bytes: ...
@@ -151,6 +227,9 @@ __all__ = [
     "UnitLabMmsReportObservationResult",
     "UnitLabMmsReportReason",
     "UnitLabMmsRuntimeAdapter",
+    "UnitLabMmsAssociation",
+    "UnitLabMmsAssociationState",
+    "UnitLabMmsInMemoryAssociation",
     "UnitLabMmsRecordedTransport",
     "UnitLabMmsScriptedTransport",
     "UnitLabMmsTransportExchange",

@@ -59,6 +59,8 @@ from app.services.iec61850 import (
     write_ied_simulator_fixture_file,
 )
 from app.services.iec61850.unitlab_mms_core import (
+    UnitLabMmsAssociation,
+    UnitLabMmsInMemoryAssociation,
     UnitLabMmsRecordedTransport,
     UnitLabMmsRuntimeAdapter,
     UnitLabMmsScriptedTransport,
@@ -95,6 +97,41 @@ def test_backend_runtime_unitlab_mms_recorded_transport_captures_transcript() ->
     assert transport.send(b"request-1") == b"response-1"
     assert transport.transcript()[0].request == b"request-1"
     assert transport.transcript()[0].response == b"response-1"
+
+
+def test_backend_runtime_unitlab_mms_in_memory_association_tracks_open_release_and_abort() -> None:
+    transport = UnitLabMmsScriptedTransport((b"response-1",))
+    association = UnitLabMmsInMemoryAssociation(
+        session_id="session-1",
+        endpoint=_endpoint(),
+        transport=transport,
+    )
+
+    assert isinstance(association, UnitLabMmsAssociation)
+    assert association.open().opened is True
+    assert association.release().released is True
+
+    with pytest.raises(Iec61850ReportRuntimeError) as reopen_error:
+        association.open()
+    assert reopen_error.value.code == "ASSOCIATION_ALREADY_CLOSED"
+
+    with pytest.raises(Iec61850ReportRuntimeError) as release_error:
+        transport.send(b"request-1")
+    assert release_error.value.code == "TRANSPORT_CLOSED"
+
+    abort_transport = UnitLabMmsScriptedTransport((b"response-2",))
+    abort_association = UnitLabMmsInMemoryAssociation(
+        session_id="session-2",
+        endpoint=_endpoint(),
+        transport=abort_transport,
+    )
+
+    abort_association.open()
+    aborted_state = abort_association.abort("ABORTED", "association aborted")
+
+    assert aborted_state.aborted is True
+    assert aborted_state.abort_code == "ABORTED"
+    assert aborted_state.abort_message == "association aborted"
 
 
 def test_backend_runtime_unitlab_mms_scripted_transport_fails_closed_after_close() -> None:
