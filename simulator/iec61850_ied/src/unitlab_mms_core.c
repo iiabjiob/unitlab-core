@@ -136,11 +136,89 @@ void unitlab_mms_report_control_init(UnitLabMmsReportControl* report_control)
     }
     report_control->state = UNITLAB_MMS_REPORT_CONTROL_DISABLED;
     report_control->gi_requested = 0;
+    report_control->reserved = 0;
+    report_control->enabled = 0;
 }
 
 void unitlab_mms_report_control_reset(UnitLabMmsReportControl* report_control)
 {
     unitlab_mms_report_control_init(report_control);
+}
+
+static int report_control_fail(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, const char* message)
+{
+    set_diagnostic(diagnostic, code, message);
+    return 0;
+}
+
+int unitlab_mms_report_control_reserve(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (report_control == NULL) {
+        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "report control is required for reserve.");
+    }
+    if (report_control->state != UNITLAB_MMS_REPORT_CONTROL_DISABLED || report_control->reserved) {
+        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "reserve requires a disabled and unreserved report control.");
+    }
+    report_control->state = UNITLAB_MMS_REPORT_CONTROL_RESERVED;
+    report_control->reserved = 1;
+    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
+int unitlab_mms_report_control_enable(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (report_control == NULL) {
+        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "report control is required for enable.");
+    }
+    if (!report_control->reserved || report_control->state != UNITLAB_MMS_REPORT_CONTROL_RESERVED) {
+        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, "enable requires a reserved report control.");
+    }
+    report_control->state = UNITLAB_MMS_REPORT_CONTROL_ENABLED;
+    report_control->enabled = 1;
+    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
+int unitlab_mms_report_control_request_gi(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (report_control == NULL) {
+        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "report control is required for GI.");
+    }
+    if (!report_control->enabled || report_control->state != UNITLAB_MMS_REPORT_CONTROL_ENABLED) {
+        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, "GI requires an enabled report control.");
+    }
+    report_control->state = UNITLAB_MMS_REPORT_CONTROL_GI_PENDING;
+    report_control->gi_requested = 1;
+    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
+int unitlab_mms_report_control_disable(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (report_control == NULL) {
+        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "report control is required for disable.");
+    }
+    if (!report_control->enabled || (report_control->state != UNITLAB_MMS_REPORT_CONTROL_ENABLED && report_control->state != UNITLAB_MMS_REPORT_CONTROL_GI_PENDING && report_control->state != UNITLAB_MMS_REPORT_CONTROL_REPORTING)) {
+        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, "disable requires an enabled report control.");
+    }
+    report_control->state = UNITLAB_MMS_REPORT_CONTROL_DISABLED;
+    report_control->enabled = 0;
+    report_control->gi_requested = 0;
+    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
+int unitlab_mms_report_control_release(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (report_control == NULL) {
+        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "report control is required for release.");
+    }
+    if (report_control->state != UNITLAB_MMS_REPORT_CONTROL_DISABLED) {
+        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "release requires a disabled report control.");
+    }
+    report_control->reserved = 0;
+    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
 }
 
 void unitlab_mms_transport_exchange_init(UnitLabMmsTransportExchange* exchange)

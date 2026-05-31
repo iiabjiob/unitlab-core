@@ -6,6 +6,12 @@ This directory is the boundary for the future libIEC61850-based IED simulator. I
 
 The C-owned seam starts in `src/unitlab_mms_core.c` and `src/unitlab_mms_core.h`. That module owns the UnitLab transport/session/report-control contract that the future wire-level implementation will fill in. libIEC61850 stays in the simulator as a reference backend and interoperability oracle.
 
+Current C-owned helpers include:
+
+- session lifecycle and invoke-id correlation;
+- report-control reserve/enable/GI/disable/release transitions;
+- in-memory transport exchange and association helpers used by focused tests.
+
 ## Purpose
 
 - Consume the JSON fixture exported by backend IEC 61850 runtime.

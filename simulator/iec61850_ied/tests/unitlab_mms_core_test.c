@@ -57,6 +57,38 @@ static void test_report_control_reset(void)
     unitlab_mms_report_control_reset(&report_control);
     assert(report_control.state == UNITLAB_MMS_REPORT_CONTROL_DISABLED);
     assert(report_control.gi_requested == 0);
+    assert(report_control.reserved == 0);
+    assert(report_control.enabled == 0);
+}
+
+static void test_report_control_lifecycle(void)
+{
+    UnitLabMmsReportControl report_control;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_report_control_init(&report_control);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    assert(unitlab_mms_report_control_reserve(&report_control, &diagnostic) == 1);
+    assert(report_control.state == UNITLAB_MMS_REPORT_CONTROL_RESERVED);
+    assert(report_control.reserved == 1);
+
+    assert(unitlab_mms_report_control_enable(&report_control, &diagnostic) == 1);
+    assert(report_control.state == UNITLAB_MMS_REPORT_CONTROL_ENABLED);
+    assert(report_control.enabled == 1);
+
+    assert(unitlab_mms_report_control_request_gi(&report_control, &diagnostic) == 1);
+    assert(report_control.state == UNITLAB_MMS_REPORT_CONTROL_GI_PENDING);
+    assert(report_control.gi_requested == 1);
+
+    report_control.state = UNITLAB_MMS_REPORT_CONTROL_REPORTING;
+    assert(unitlab_mms_report_control_disable(&report_control, &diagnostic) == 1);
+    assert(report_control.state == UNITLAB_MMS_REPORT_CONTROL_DISABLED);
+    assert(report_control.enabled == 0);
+    assert(report_control.gi_requested == 0);
+
+    assert(unitlab_mms_report_control_release(&report_control, &diagnostic) == 1);
+    assert(report_control.reserved == 0);
 }
 
 static void test_session_transitions(void)
@@ -92,6 +124,7 @@ int main(void)
     test_defaults();
     test_invoke_id_sequence();
     test_session_transitions();
+    test_report_control_lifecycle();
     test_report_control_reset();
     printf("unitlab-mms-core: ok\n");
     return 0;

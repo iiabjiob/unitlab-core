@@ -43,6 +43,8 @@ typedef enum UnitLabMmsReportControlState {
 typedef struct UnitLabMmsReportControl {
     UnitLabMmsReportControlState state;
     int gi_requested;
+    int reserved;
+    int enabled;
 } UnitLabMmsReportControl;
 
 typedef struct UnitLabMmsTransportExchange {
@@ -65,6 +67,11 @@ int unitlab_mms_session_abort(UnitLabMmsSession* session, UnitLabMmsDiagnostic* 
 int unitlab_mms_session_is_associated(const UnitLabMmsSession* session);
 void unitlab_mms_report_control_init(UnitLabMmsReportControl* report_control);
 void unitlab_mms_report_control_reset(UnitLabMmsReportControl* report_control);
+int unitlab_mms_report_control_reserve(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_report_control_enable(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_report_control_request_gi(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_report_control_disable(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_report_control_release(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
 void unitlab_mms_transport_exchange_init(UnitLabMmsTransportExchange* exchange);
 
 #endif
