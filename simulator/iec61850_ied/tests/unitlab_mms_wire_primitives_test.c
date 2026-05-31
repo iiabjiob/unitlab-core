@@ -565,6 +565,34 @@ static void test_session_spdu_rejects_mismatched_declared_kind_and_code(void)
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
 }
 
+static void test_acse_decode_stops_at_indicated_length(void)
+{
+    uint8_t buffer[32];
+    UnitLabMmsAcseApdu apdu;
+    UnitLabMmsAcseApdu decoded_apdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[8] = { 0x80U, 0x01U, 0x00U, 0x81U, 0x01U, 0x2AU, 0x82U, 0x00U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_acse_apdu_init(&apdu);
+    apdu.kind = UNITLAB_MMS_ACSE_APDU_AARQ;
+    apdu.apdu_bytes = payload;
+    apdu.apdu_length = sizeof(payload);
+    assert(unitlab_mms_acse_encode(&apdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    buffer[encoded_length + 0U] = 0xDEU;
+    buffer[encoded_length + 1U] = 0xADU;
+    buffer[encoded_length + 2U] = 0xBEU;
+    buffer[encoded_length + 3U] = 0xEFU;
+    unitlab_mms_acse_apdu_init(&decoded_apdu);
+    assert(unitlab_mms_acse_decode(&decoded_apdu, buffer, encoded_length + 4U, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_apdu.kind == UNITLAB_MMS_ACSE_APDU_AARQ);
+    assert(decoded_apdu.field_count == 3U);
+    assert(decoded_apdu.apdu_length == sizeof(payload));
+}
+
 static void test_acse_raw_field_view(void)
 {
     uint8_t buffer[32];
@@ -967,6 +995,7 @@ int main(void)
     test_wire_association_fixture_decode_roundtrip();
     test_wire_association_fixture_encode_roundtrip();
     test_acse_top_level_roundtrips();
+    test_acse_decode_stops_at_indicated_length();
     test_acse_raw_field_view();
     test_session_spdu_roundtrip_long_length_indicator();
     test_session_spdu_decode_stops_at_indicated_length();
