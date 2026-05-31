@@ -139,6 +139,22 @@ static int pdu_decode_invoke_id(const UnitLabMmsBerElement* element, uint32_t* i
         pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID length is invalid.");
         return 0;
     }
+    if (child.value_length == 1U) {
+        if (child.value_bytes[0] > 0x7FU) {
+            pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID must be encoded as a non-negative integer.");
+            return 0;
+        }
+    } else {
+        if (child.value_bytes[0] == 0U) {
+            if (child.value_length < 2U || child.value_bytes[1] < 0x80U) {
+                pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID uses a non-minimal leading zero.");
+                return 0;
+            }
+        } else if (child.value_bytes[0] > 0x7FU) {
+            pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID must be encoded as a non-negative integer.");
+            return 0;
+        }
+    }
     if (child.value_length == 5U && child.value_bytes[0] != 0U) {
         pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID overflows Unsigned32.");
         return 0;
