@@ -32,6 +32,11 @@ static void report_runtime_event_append(UnitLabIec61850ReportControl* report_con
     report_control->event_log.count++;
 }
 
+static void report_runtime_diagnostic_clear(UnitLabMmsDiagnostic* diagnostic)
+{
+    unitlab_mms_diagnostic_clear(diagnostic);
+}
+
 static int report_control_fail(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, UnitLabMmsRuntimeEventKind kind, const char* message)
 {
     if (report_control != NULL) {
@@ -71,13 +76,11 @@ int unitlab_iec61850_report_control_reserve(UnitLabIec61850ReportControl* report
         return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE, "report control is required for reserve.");
     }
     if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_DISABLED) {
-        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_RCB_NOT_RESERVED, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE, "reserve requires a disabled report control.");
+        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_RCB_NOT_DISABLED, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE, "reserve requires a disabled report control.");
     }
     UnitLabIec61850ReportControlState before = report_control->state;
     report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_RESERVED;
-    if (diagnostic != NULL) {
-        unitlab_mms_diagnostic_clear(diagnostic);
-    }
+    report_runtime_diagnostic_clear(diagnostic);
     report_runtime_event_set(&report_control->last_event, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE, before, report_control->state, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     report_runtime_event_append(report_control, &report_control->last_event);
     return 1;
@@ -93,9 +96,7 @@ int unitlab_iec61850_report_control_enable(UnitLabIec61850ReportControl* report_
     }
     UnitLabIec61850ReportControlState before = report_control->state;
     report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_ENABLED;
-    if (diagnostic != NULL) {
-        unitlab_mms_diagnostic_clear(diagnostic);
-    }
+    report_runtime_diagnostic_clear(diagnostic);
     report_runtime_event_set(&report_control->last_event, UNITLAB_MMS_RUNTIME_EVENT_REPORT_ENABLE, before, report_control->state, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     report_runtime_event_append(report_control, &report_control->last_event);
     return 1;
@@ -111,9 +112,7 @@ int unitlab_iec61850_report_control_request_gi(UnitLabIec61850ReportControl* rep
     }
     UnitLabIec61850ReportControlState before = report_control->state;
     report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING;
-    if (diagnostic != NULL) {
-        unitlab_mms_diagnostic_clear(diagnostic);
-    }
+    report_runtime_diagnostic_clear(diagnostic);
     report_runtime_event_set(&report_control->last_event, UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI, before, report_control->state, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     report_runtime_event_append(report_control, &report_control->last_event);
     return 1;
@@ -129,10 +128,24 @@ int unitlab_iec61850_report_control_disable(UnitLabIec61850ReportControl* report
     }
     UnitLabIec61850ReportControlState before = report_control->state;
     report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_DISABLED;
-    if (diagnostic != NULL) {
-        unitlab_mms_diagnostic_clear(diagnostic);
-    }
+    report_runtime_diagnostic_clear(diagnostic);
     report_runtime_event_set(&report_control->last_event, UNITLAB_MMS_RUNTIME_EVENT_REPORT_DISABLE, before, report_control->state, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    report_runtime_event_append(report_control, &report_control->last_event);
+    return 1;
+}
+
+int unitlab_iec61850_report_control_accept_report(UnitLabIec61850ReportControl* report_control, uint32_t invoke_id, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (report_control == NULL) {
+        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RECEIVED, "report control is required to accept a report.");
+    }
+    if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING) {
+        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RECEIVED, "report acceptance requires a GI-pending report control.");
+    }
+    UnitLabIec61850ReportControlState before = report_control->state;
+    report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_REPORTING;
+    report_runtime_diagnostic_clear(diagnostic);
+    report_runtime_event_set(&report_control->last_event, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RECEIVED, before, report_control->state, invoke_id, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     report_runtime_event_append(report_control, &report_control->last_event);
     return 1;
 }
@@ -145,9 +158,7 @@ int unitlab_iec61850_report_control_release(UnitLabIec61850ReportControl* report
     if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_DISABLED) {
         return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE, "release requires a disabled report control.");
     }
-    if (diagnostic != NULL) {
-        unitlab_mms_diagnostic_clear(diagnostic);
-    }
+    report_runtime_diagnostic_clear(diagnostic);
     report_runtime_event_set(&report_control->last_event, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE, report_control->state, report_control->state, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     report_runtime_event_append(report_control, &report_control->last_event);
     return 1;

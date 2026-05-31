@@ -224,16 +224,22 @@ static void test_report_control_lifecycle(void)
     assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI);
     assert(unitlab_mms_runtime_event_log_count(&report_control.event_log) == 3U);
 
-    report_control.state = UNITLAB_IEC61850_REPORT_CONTROL_REPORTING;
+    assert(unitlab_iec61850_report_control_accept_report(&report_control, 77U, &diagnostic) == 1);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_REPORTING);
+    assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_RECEIVED);
+    assert(report_control.last_event.invoke_id == 77U);
+    assert(unitlab_mms_runtime_event_log_count(&report_control.event_log) == 4U);
+
     assert(unitlab_iec61850_report_control_disable(&report_control, &diagnostic) == 1);
     assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
     assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_DISABLE);
-    assert(unitlab_mms_runtime_event_log_count(&report_control.event_log) == 4U);
+    assert(unitlab_mms_runtime_event_log_count(&report_control.event_log) == 5U);
 
     assert(unitlab_iec61850_report_control_release(&report_control, &diagnostic) == 1);
     assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
     assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE);
-    assert(unitlab_mms_runtime_event_log_count(&report_control.event_log) == 5U);
+    assert(unitlab_mms_runtime_event_log_count(&report_control.event_log) == 6U);
 }
 
 static void test_report_control_reset(void)
@@ -260,7 +266,6 @@ static void test_typed_event_and_aliases(void)
     assert(UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE == UNITLAB_MMS_RUNTIME_EVENT_RCB_RELEASED);
     assert(UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_BOUND);
     assert(UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_RESPONSE == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_COMPLETED);
-    assert(UNITLAB_MMS_RUNTIME_EVENT_REPORT_RECEIVED == 15);
 }
 
 static void test_pending_request_lifecycle(void)

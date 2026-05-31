@@ -23,6 +23,7 @@ int unitlab_iec61850_report_control_reserve(UnitLabIec61850ReportControl* report
 int unitlab_iec61850_report_control_enable(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_iec61850_report_control_request_gi(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_iec61850_report_control_disable(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_iec61850_report_control_accept_report(UnitLabIec61850ReportControl* report_control, uint32_t invoke_id, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_iec61850_report_control_release(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
 
 #endif
