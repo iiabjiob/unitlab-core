@@ -42,6 +42,10 @@ from .report_runtime import (
     run_simulator_report_subscription_plan,
     to_report_control_ref,
 )
+from .client_runtime import (
+    Iec61850MmsClientEvent,
+    Iec61850MmsClientRuntime,
+)
 from .mms_adapter import (
     Iec61850MmsEndpointCatalog,
     Iec61850MmsEndpointCatalogEntry,
@@ -121,6 +125,8 @@ __all__ = [
     "Iec61850SignalObservation",
     "Iec61850SimulatorSubscriptionRunResult",
     "Iec61850UnselectedReportValue",
+    "Iec61850MmsClientEvent",
+    "Iec61850MmsClientRuntime",
     "Iec61850MmsEndpointCatalog",
     "Iec61850MmsEndpointCatalogEntry",
     "Iec61850UnavailableMmsAdapter",
