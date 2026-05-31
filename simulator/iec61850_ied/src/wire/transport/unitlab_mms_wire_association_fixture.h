@@ -8,7 +8,10 @@
 
 /*
  * Narrow golden-test helper for one ISO-on-TCP association-style nested payload.
- * It composes TPKT + COTP + Session SPDU + exact X.226 Presentation User-data and leaves ACSE/MMS interpretation to the caller.
+ * The encoder owns the full nesting construction: the caller provides raw
+ * Presentation payload bytes, and the helper composes TPKT + COTP + Session SPDU
+ * + exact X.226 Presentation User-data. transport.cotp.user_data is not an input
+ * to the encode contract.
  */
 typedef struct UnitLabMmsWireAssociationFixture {
     UnitLabMmsTransportFrame transport;

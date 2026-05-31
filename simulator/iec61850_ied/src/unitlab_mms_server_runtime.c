@@ -341,6 +341,7 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
     if (!server_runtime_prepare_confirmed_response_pdu(server_runtime, service_bytes, service_length, &response_pdu, diagnostic)) {
         return 0;
     }
+    /* TODO(portability): replace heap scratch with caller-provided scratch when embedded targets require it. */
     response_payload = (uint8_t*)malloc(buffer_length);
     if (response_payload == NULL) {
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Response scratch allocation failed.");
@@ -358,8 +359,7 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
     fixture.presentation.payload_bytes = response_payload;
     fixture.presentation.payload_length = response_payload_length;
     fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
-    fixture.transport.cotp.user_data = response_payload;
-    fixture.transport.cotp.user_data_length = response_payload_length;
+    /* The association fixture owns the nesting construction; only the outer TPDU kind is supplied here. */
 
     if (!unitlab_mms_wire_association_fixture_encode(&fixture, buffer, buffer_length, &response_length, diagnostic)) {
         free(response_payload);
