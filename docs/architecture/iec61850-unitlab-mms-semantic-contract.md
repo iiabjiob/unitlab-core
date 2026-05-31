@@ -29,6 +29,47 @@ Wire layer cannot change lifecycle state directly.
 
 It may only return semantic decode results and diagnostics. Runtime orchestration owns all state transitions.
 
+## Runtime Ownership Table
+
+| Layer | Owns |
+| --- | --- |
+| Transport | bytes, framing, socket lifecycle |
+| BER | tag/length/value parsing |
+| MMS decode | semantic PDU extraction |
+| Runtime | request lifecycle, state transitions |
+| IEC 61850 runtime | RCB/report semantics |
+| UnitLab orchestration | evidence/FAT workflow |
+
+## Malformed Classification
+
+The semantic layer must distinguish the following classes before any runtime transition is applied:
+
+- decode failure
+- semantic invalid
+- unsupported semantic
+- unexpected service
+- correlation mismatch
+
+These must not collapse into a generic protocol error unless the downstream runtime explicitly maps them that way for a documented reason.
+
+## First Wire Slice Lock
+
+The first wire slice is intentionally narrow.
+
+In scope:
+
+- Associate
+- Release
+- Read one variable
+- Write one variable
+- Receive one InformationReport
+
+Out of scope for the first wire slice:
+
+- generic MMS object model
+- generic ASN.1 framework
+- dynamic schema engine
+
 ## Core Semantic Flow
 
 ```text
