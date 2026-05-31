@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol, Sequence, runtime_checkable
 
 from .report_runtime import (
@@ -58,6 +59,34 @@ UnitLabMmsSimulatorSubscriptionRunResult = Iec61850SimulatorSubscriptionRunResul
 UnitLabMmsUnselectedReportValue = Iec61850UnselectedReportValue
 
 
+@dataclass(frozen=True, slots=True)
+class UnitLabMmsTransportExchange:
+    request: bytes
+    response: bytes
+
+
+class UnitLabMmsScriptedTransport:
+    def __init__(self, responses: Sequence[bytes] = ()) -> None:
+        self._responses = [bytes(response) for response in responses]
+        self._sent_payloads: list[bytes] = []
+        self._closed = False
+
+    def send(self, payload: bytes) -> bytes:
+        if self._closed:
+            raise UnitLabMmsRuntimeError('TRANSPORT_CLOSED', 'UnitLab MMS transport is already closed.')
+        payload_bytes = bytes(payload)
+        self._sent_payloads.append(payload_bytes)
+        if not self._responses:
+            raise UnitLabMmsRuntimeError('TRANSPORT_RESPONSE_UNAVAILABLE', 'UnitLab MMS scripted transport has no queued response.')
+        return self._responses.pop(0)
+
+    def close(self) -> None:
+        self._closed = True
+
+    def sent_payloads(self) -> tuple[bytes, ...]:
+        return tuple(self._sent_payloads)
+
+
 @runtime_checkable
 class UnitLabMmsTransport(Protocol):
     def send(self, payload: bytes) -> bytes: ...
@@ -105,6 +134,8 @@ __all__ = [
     "UnitLabMmsReportObservationResult",
     "UnitLabMmsReportReason",
     "UnitLabMmsRuntimeAdapter",
+    "UnitLabMmsScriptedTransport",
+    "UnitLabMmsTransportExchange",
     "UnitLabMmsRuntimeError",
     "UnitLabMmsRuntimeEvent",
     "UnitLabMmsRuntimeMode",

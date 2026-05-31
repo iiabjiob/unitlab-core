@@ -60,9 +60,10 @@ from app.services.iec61850 import (
 )
 from app.services.iec61850.unitlab_mms_core import (
     UnitLabMmsRuntimeAdapter,
+    UnitLabMmsScriptedTransport,
     UnitLabMmsSession,
+    UnitLabMmsTransport,
 )
-
 
 
 def test_backend_runtime_simulator_objects_match_unitlab_mms_boundary_protocols() -> None:
@@ -76,6 +77,26 @@ def test_backend_runtime_simulator_objects_match_unitlab_mms_boundary_protocols(
     assert isinstance(session, UnitLabMmsSession)
     assert session.read_report_control(to_report_control_ref(candidate)).runtime_status == Iec61850RuntimeStatus.READ
     session.disconnect()
+
+
+def test_backend_runtime_unitlab_mms_scripted_transport_returns_scripted_responses() -> None:
+    transport = UnitLabMmsScriptedTransport((b"response-1", b"response-2"))
+
+    assert isinstance(transport, UnitLabMmsTransport)
+    assert transport.send(b"request-1") == b"response-1"
+    assert transport.send(b"request-2") == b"response-2"
+    assert transport.sent_payloads() == (b"request-1", b"request-2")
+
+
+def test_backend_runtime_unitlab_mms_scripted_transport_fails_closed_after_close() -> None:
+    transport = UnitLabMmsScriptedTransport((b"response-1",))
+
+    transport.close()
+
+    with pytest.raises(Iec61850ReportRuntimeError) as error:
+        transport.send(b"request-1")
+
+    assert error.value.code == "TRANSPORT_CLOSED"
 
 
 def test_backend_runtime_service_owns_simulator_session_flow() -> None:
