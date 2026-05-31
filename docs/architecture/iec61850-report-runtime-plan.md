@@ -334,7 +334,7 @@ Implemented in this slice:
 Still planned:
 
 - Parse trigger option and optional-field subobjects into C records.
-- Feed the materialized records into libIEC61850 model creation.
+- Feed the materialized records into the UnitLab simulator/runtime model creation path, then compare the resulting behavior against libiec61850 as a reference oracle.
 
 Validation:
 

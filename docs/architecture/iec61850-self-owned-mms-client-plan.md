@@ -2,29 +2,32 @@
 
 Status: decision record and implementation roadmap. No self-owned MMS client is implemented yet.
 
-This plan records the project decision that UnitLab may implement its own IEC 61850 MMS client if the required standards are available through project channels. Open-source stacks remain useful for comparison and simulator validation, but UnitLab core and report workflow must not become dependent on a single third-party MMS implementation.
+This plan records the project decision that UnitLab will implement its own IEC 61850 MMS client and simulator flow. Open-source stacks remain useful as reference implementations and interoperability oracles, but UnitLab core, simulator, and report workflow must not become dependent on a single third-party MMS runtime.
 
 ## Decision
 
-Build the IEC 61850 report runtime around a stable UnitLab adapter boundary:
+Build the IEC 61850 report runtime around a stable UnitLab adapter boundary, but keep the transport/runtime implementation owned by UnitLab:
 
 ```text
 SCD + Signal List
   -> report subscription plan
-  -> Iec61850ClientAdapter
-  -> MMS client implementation
-  -> real IED or lab simulator
+  -> UnitLab IEC 61850 runtime
+  -> UnitLab MMS client / UnitLab MMS simulator
+  -> real IED or virtual IED
 ```
 
-The self-owned MMS client is one possible implementation of `Iec61850ClientAdapter`. It must remain replaceable by another implementation, such as IEC61850bean, libIEC61850 in a test-only tool, or a commercial stack, without changing the SCD parser, subscription planner, FAT evidence DTOs, or debug UI.
+`libiec61850` is a reference implementation and interoperability oracle, not the runtime authority. It may be used to compare behavior, inspect frames, and validate parity, but UnitLab code must own the client/server state machines, diagnostics, and simulator behavior.
+
+The self-owned MMS client and the simulator should follow the same internal service flow and share the same report-control lifecycle model so the virtual IED and the real IED execute the same UnitLab semantics.
 
 ## Non-Negotiable Boundaries
 
 - `frontend/src/modules/scd-sld-core` stays framework-neutral and does not know about MMS frames, sockets, native libraries, Java, or backend clients.
 - `frontend/src/modules/iec61850-report-core` keeps portable DTOs, planning logic, report state semantics, diagnostics, and simulator-only validation.
 - Backend/runtime owns real device sessions, command ordering, timeouts, reconnects, and evidence persistence.
-- The self-owned MMS client must live behind an adapter boundary and must not leak BER, ACSE, COTP, or MMS PDU details into UnitLab domain models.
+- The self-owned MMS client and simulator must live behind an adapter boundary and must not leak BER, ACSE, COTP, or MMS PDU details into UnitLab domain models.
 - Open-source or commercial stacks may be used as reference implementations, but not as hidden authorities for UnitLab business logic.
+- The same UnitLab MMS flow must be used for both the virtual IED path and the future real-device path; only the transport endpoint changes.
 - GOOSE, Sampled Values, controls, file services, and IEC 62351 security are out of scope for the first self-owned MMS client milestone.
 
 ## Local IEC 61850 Documents
@@ -84,6 +87,21 @@ These references are not normative, but they are useful for comparison, pcaps, a
 | Wireshark MMS/ACSE/COTP dissectors | https://www.wireshark.org/docs/dfref/m/mms.html | Packet inspection, pcap validation, field-level comparison |
 
 ## Implementation Slices
+
+### Slice 0 - UnitLab MMS Core Boundary
+
+Before protocol work expands, define the internal boundary that both the client and simulator will share:
+
+- `UnitLabMmsSession` owns association state, request correlation, timeout handling, and disconnect cleanup.
+- `UnitLabMmsReportControl` owns `read / reserve / enable / disable / GI` semantics and report-control state transitions.
+- `UnitLabMmsTransport` owns TCP/MMS framing and raw frame exchange only.
+- `libiec61850` is used as a reference oracle for pcap comparison and behavioral parity tests, not as a production runtime dependency.
+- The simulator reuses the same service-layer contract so the virtual IED and the future real IED exercise the same UnitLab state machine.
+
+Exit criteria:
+
+- The internal client/simulator API is stable enough that the backend report runtime can target it without knowing transport details.
+- A single read-only request path and a single report-control state path exist in both the simulator and client design.
 
 ### Slice A - Protocol Research Pack
 
@@ -214,4 +232,4 @@ Exit criteria:
 - Implemented today: SCD report inventory, Signal List merge, subscription plan builder, simulator-only report runtime, normalized report event DTOs, observation mapping, backend simulator parity, incoming report routing, activation precheck gates, MMS endpoint catalog, external IED simulator fixture export, external IED simulator process scaffold, fixture parser/model materialization, report option records, external simulator model plan, fail-closed loader boundary, external simulator model-plan blueprint validation, backend external simulator process preparation, backend external simulator lifecycle guardrails, backend external simulator process-plan orchestration, backend external simulator endpoint resolution, backend external simulator run orchestration, native external simulator loader validation, DataSet member path blueprinting, initial-value type preservation, report-control runtime blueprinting, report-control bit-mask blueprinting, DataSetEntry variable blueprinting, and linked IED/LD/LN container creation.
 - Not implemented today: real MMS transport, self-owned MMS client, real IED connection, report persistence, GOOSE, Sampled Values, and IEC 62351 security.
 - Implemented boundary step: backend has an explicit MMS endpoint catalog, a fail-closed unavailable MMS adapter, a JSON fixture boundary for an external IED simulator, a C/CMake simulator process scaffold, materialized fixture records, report option records, an external simulator model plan, a fail-closed loader boundary, validated model-plan blueprint records for future libIEC61850 construction, native loader guardrail tests, explicit DataSet member kind/DO/DA path records, typed initial values, ReportControl runtime fields and libIEC61850-compatible bit masks, DataSetEntry variable names, linked dynamic `IedModel`/LD/LN container creation, and a backend process-boundary helper for fixture writing, command construction, endpoint shape, endpoint resolution, dry-run startup checks, process-plan orchestration, run orchestration through the report-runtime boundary, no-shell spawn, premature-exit diagnostics, and terminate/kill cleanup.
-- Next architecture step: implement real libIEC61850 model creation from the model plan, then connect UnitLab to it through the same backend report-runtime contract.
+- Next architecture step: define the shared UnitLab MMS core boundary, then implement the client and simulator on top of it and validate parity against libiec61850.
