@@ -213,10 +213,11 @@ function resolveInitialLeftAsideWidth() {
 }
 
 .desktop-layout__content {
+  display: flex;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
-  overflow: hidden;
+  overflow: auto;
 }
 
 :global(.dark .desktop-layout) {
