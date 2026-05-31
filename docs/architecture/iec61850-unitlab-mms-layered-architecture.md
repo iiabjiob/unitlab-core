@@ -101,6 +101,7 @@ Notes:
 - A thin server-side ownership aggregate is now being introduced on top of the reusable lower layer for future server orchestration.
 - The server boundary now has explicit prepare/start/stop lifecycle state on top of the reusable lower layer.
 - The server boundary also owns report-control reserve/enable/GI/release orchestration through the reusable report runtime layer.
+- The server boundary now has a raw association-byte ingress helper that decodes the lower-layer wire chain before applying runtime ownership.
 
 ## Layer Ownership
 
