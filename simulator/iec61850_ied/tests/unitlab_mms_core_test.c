@@ -384,6 +384,32 @@ static void test_runtime_apply_semantic_result(void)
     assert(unitlab_mms_runtime_event_log_count(&operation_result.trace) == 1U);
 }
 
+static void test_runtime_apply_semantic_decode_failure(void)
+{
+    UnitLabMmsSession session;
+    UnitLabMmsSemanticResult semantic_result;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_session_init(&session);
+    unitlab_mms_semantic_result_init(&semantic_result);
+    unitlab_mms_operation_result_init(&operation_result);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    semantic_result.ok = 0;
+    semantic_result.outcome = UNITLAB_MMS_SERVICE_OUTCOME_ERROR;
+    semantic_result.diagnostic.classification = UNITLAB_MMS_DECODE_CLASSIFICATION_DECODE_FAILURE;
+    semantic_result.diagnostic.diagnostic.code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+    semantic_result.diagnostic.diagnostic.message[0] = '\0';
+
+    assert(unitlab_mms_runtime_apply_semantic_result(&session, NULL, &semantic_result, &operation_result) == 0);
+    assert(operation_result.ok == 0);
+    assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+    assert(operation_result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_NONE);
+    assert(unitlab_mms_runtime_event_log_count(&operation_result.trace) == 0U);
+    assert(session.state == UNITLAB_MMS_SESSION_DISCONNECTED);
+}
+
 static void test_runtime_apply_semantic_reject(void)
 {
     UnitLabMmsSemanticResult semantic_result;
@@ -456,6 +482,7 @@ int main(void)
     test_runtime_apply_semantic_result();
     test_runtime_apply_semantic_reject();
     test_runtime_apply_semantic_correlation_mismatch();
+    test_runtime_apply_semantic_decode_failure();
     printf("unitlab-mms-core: ok\n");
     return 0;
 }
