@@ -338,7 +338,7 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
         return 0;
     }
 
-    if (!unitlab_mms_build_confirmed_response_frame(&response_pdu, buffer, buffer_length, &response_length, diagnostic)) {
+    if (!unitlab_mms_build_confirmed_response_frame(&response_pdu, server_runtime->wire_scratch, sizeof(server_runtime->wire_scratch), buffer, buffer_length, &response_length, diagnostic)) {
         return 0;
     }
     if (!unitlab_mms_transport_exchange_bind_response(&server_runtime->transport, buffer, buffer_length, diagnostic)) {

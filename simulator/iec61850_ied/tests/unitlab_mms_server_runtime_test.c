@@ -224,7 +224,8 @@ static void test_wire_builder_builds_confirmed_response_frame_roundtrips(void)
     response_pdu.pdu_bytes = response_payload;
     response_pdu.pdu_length = sizeof(response_payload);
 
-    assert(unitlab_mms_build_confirmed_response_frame(&response_pdu, response_bytes, sizeof(response_bytes), &encoded_length, &diagnostic));
+    uint8_t scratch[256];
+    assert(unitlab_mms_build_confirmed_response_frame(&response_pdu, scratch, sizeof(scratch), response_bytes, sizeof(response_bytes), &encoded_length, &diagnostic));
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(encoded_length > 0U);
 

@@ -20,6 +20,8 @@ typedef enum UnitLabMmsServerRuntimeState {
     UNITLAB_MMS_SERVER_RUNTIME_FAILED = 4
 } UnitLabMmsServerRuntimeState;
 
+#define UNITLAB_MMS_SERVER_RUNTIME_WIRE_SCRATCH_LENGTH 1024U
+
 typedef struct UnitLabMmsServerRuntime {
     UnitLabMmsServerRuntimeState state;
     UnitLabIedServerConfig config;
@@ -29,6 +31,7 @@ typedef struct UnitLabMmsServerRuntime {
     UnitLabMmsTransportExchange transport;
     UnitLabMmsOperationResult last_result;
     UnitLabMmsRuntimeSnapshot snapshot;
+    uint8_t wire_scratch[UNITLAB_MMS_SERVER_RUNTIME_WIRE_SCRATCH_LENGTH];
 } UnitLabMmsServerRuntime;
 
 void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime);
