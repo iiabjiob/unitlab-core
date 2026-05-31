@@ -8,7 +8,6 @@ from app.services.iec61850.report_runtime import (
     Iec61850DeviceEndpoint,
     Iec61850OptionalFields,
     Iec61850ReportControlCandidate,
-    Iec61850ReportEventValue,
     Iec61850ReportKind,
     Iec61850ReportReason,
     Iec61850ReportSubscriptionPlan,
@@ -47,6 +46,18 @@ def test_client_runtime_wraps_shared_session_lifecycle() -> None:
     assert runtime.disable_report_control(session_id="client-session", candidate=candidate, client_id="unitlab").enabled is False
     assert runtime.release_report_control(session_id="client-session", candidate=candidate, client_id="unitlab").released is True
     runtime.close_session("client-session")
+
+    kinds = [event.kind for event in runtime.transcript()]
+    assert kinds == [
+        "session-open",
+        "report-control-read",
+        "report-control-reserve",
+        "report-control-enable",
+        "report-control-gi",
+        "report-control-disable",
+        "report-control-release",
+        "session-close",
+    ]
 
 
 def test_client_runtime_runs_subscription_plan_against_simulator_adapter() -> None:
@@ -93,6 +104,7 @@ def test_client_runtime_runs_subscription_plan_against_simulator_adapter() -> No
     assert result.reports[0].event is not None
     assert result.reports[0].event.reason == Iec61850ReportReason.GENERAL_INTERROGATION
     assert len(result.diagnostics) == 0
+    assert runtime.transcript()[-1].kind == "subscription-plan-report"
 
 
 def _endpoint() -> Iec61850DeviceEndpoint:

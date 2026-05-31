@@ -54,7 +54,7 @@ The UnitLab MMS client boundary is the seam where the orchestration layer will c
 - Request correlation, timeout handling, and resend policy.
 - Report subscription activation and GI trigger flow.
 - Incoming report normalization and evidence capture.
-- Runtime event/result snapshots for replay and diagnostics.
+- Runtime event/result snapshots and client-side transcripts for replay and diagnostics.
 - Simulator-backed parity behavior.
 
 ### Reference-only
@@ -122,7 +122,7 @@ Responsibilities:
 
 - The lower-level UnitLab MMS runtime boundary already exists in the simulator tree and the Python backend service layer; both expose session, pending request, transport exchange, diagnostics, runtime events, runtime snapshots, report-control ownership, and semantic bridges.
 - The virtual IED/server path already uses the UnitLab-owned report runtime and MMS lower layer to process incoming bytes and build first-slice confirmed response frames.
-- The backend client-side façade now exists in `backend/app/services/iec61850/client_runtime.py` and reuses the same report-runtime contract for association, report-control operations, GI, and subscription-plan execution. It is still transport-agnostic and does not parse BER, ACSE, COTP, or MMS PDUs directly.
+- The backend client-side façade now exists in `backend/app/services/iec61850/client_runtime.py` and reuses the same report-runtime contract for association, report-control operations, GI, and subscription-plan execution. It now also keeps a replayable transcript of client-side orchestration events for evidence/debug capture. It is still transport-agnostic and does not parse BER, ACSE, COTP, or MMS PDUs directly.
 
 ## Implementation Slices
 
