@@ -123,6 +123,7 @@ The first semantic PDU layer now separates service outcome from the payload shap
 - `UnitLabMmsDecodedPdu` owns transport-independent fields only.
 - malformed/decode failure state lives in `UnitLabMmsDecodeDiagnostic`, not inside the PDU.
 - reject-specific fields are reserved in `UnitLabMmsReject`.
+- the first wire-to-semantic bridge maps first-slice MMS wire PDU classifications into these semantic results without mutating runtime state.
 
 These structures are the only legal input to state transition rules.
 

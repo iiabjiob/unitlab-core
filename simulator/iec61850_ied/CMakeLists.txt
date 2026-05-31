@@ -107,6 +107,7 @@ add_test(
 add_executable(unitlab-iec61850-mms-semantic-test
   src/unitlab_mms_types.c
   src/unitlab_mms_semantic_pdu.c
+  src/unitlab_mms_wire_semantic_bridge.c
   tests/unitlab_mms_semantic_pdu_test.c
 )
 target_include_directories(unitlab-iec61850-mms-semantic-test PRIVATE src)
