@@ -98,6 +98,36 @@ static void test_cotp_cr_roundtrip(void)
     assert(memcmp(decoded_tpdu.user_data, user_data, sizeof(user_data)) == 0);
 }
 
+static void test_cotp_decode_stops_at_indicated_length(void)
+{
+    uint8_t buffer[16];
+    UnitLabMmsCotpTpdu tpdu;
+    UnitLabMmsCotpTpdu decoded_tpdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t user_data[2] = { 0x01U, 0x02U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_cotp_tpdu_init(&tpdu);
+    tpdu.kind = UNITLAB_MMS_COTP_TPDU_DT;
+    tpdu.eot = 1;
+    tpdu.user_data = user_data;
+    tpdu.user_data_length = sizeof(user_data);
+    assert(unitlab_mms_cotp_encode(&tpdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    buffer[encoded_length + 0U] = 0xDEU;
+    buffer[encoded_length + 1U] = 0xADU;
+    buffer[encoded_length + 2U] = 0xBEU;
+    buffer[encoded_length + 3U] = 0xEFU;
+    unitlab_mms_cotp_tpdu_init(&decoded_tpdu);
+    assert(unitlab_mms_cotp_decode(&decoded_tpdu, buffer, encoded_length + 4U, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_tpdu.kind == UNITLAB_MMS_COTP_TPDU_DT);
+    assert(decoded_tpdu.eot == 1);
+    assert(decoded_tpdu.payload_length == encoded_length - 2U);
+    assert(memcmp(decoded_tpdu.payload_bytes, &buffer[2], decoded_tpdu.payload_length) == 0);
+}
+
 static void test_cotp_dt_roundtrip(void)
 {
     uint8_t buffer[32];
@@ -900,6 +930,7 @@ int main(void)
     test_tpkt_rejects_invalid_version();
     test_cotp_cr_roundtrip();
     test_cotp_dt_roundtrip();
+    test_cotp_decode_stops_at_indicated_length();
     test_transport_frame_roundtrip();
     test_wire_association_fixture_decode_roundtrip();
     test_wire_association_fixture_encode_roundtrip();
