@@ -18,6 +18,13 @@ int unitlab_mms_ber_write(const UnitLabMmsBerElement* element, uint8_t* buffer, 
         }
         return 0;
     }
+    if (element->value_length != 0U && element->value_bytes == NULL) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT;
+            diagnostic->message[0] = '\0';
+        }
+        return 0;
+    }
     if (!unitlab_mms_ber_tag_encode(&element->tag, buffer, buffer_length, &tag_length, diagnostic)) {
         return 0;
     }
@@ -33,7 +40,7 @@ int unitlab_mms_ber_write(const UnitLabMmsBerElement* element, uint8_t* buffer, 
         }
         return 0;
     }
-    if (element->value_length != 0U && element->value_bytes != NULL) {
+    if (element->value_length != 0U) {
         memcpy(&buffer[offset], element->value_bytes, element->value_length);
     }
     offset += element->value_length;

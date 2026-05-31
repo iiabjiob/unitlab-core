@@ -117,7 +117,7 @@ int unitlab_mms_ber_tag_decode(UnitLabMmsBerTag* tag, const uint8_t* buffer, siz
     }
     do {
         if (index >= buffer_length) {
-            ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "BER tag uses truncated long-form tag number.");
+            ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "BER tag uses truncated long-form tag number.");
             return 0;
         }
         uint8_t octet = buffer[index++];
@@ -130,6 +130,10 @@ int unitlab_mms_ber_tag_decode(UnitLabMmsBerTag* tag, const uint8_t* buffer, siz
             break;
         }
     } while (1);
+    if (tag_number < 31U) {
+        ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "BER tag uses non-minimal high-tag-number form.");
+        return 0;
+    }
     tag->tag_number = tag_number;
     *consumed_length = index;
     ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);

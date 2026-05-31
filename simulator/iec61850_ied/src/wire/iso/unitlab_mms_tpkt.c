@@ -61,7 +61,7 @@ int unitlab_mms_tpkt_wrap(const uint8_t* payload_bytes, size_t payload_length, u
     return 1;
 }
 
-int unitlab_mms_tpkt_unwrap(const uint8_t* frame_bytes, size_t frame_length, const uint8_t** payload_bytes, size_t* payload_length, UnitLabMmsDiagnostic* diagnostic)
+int unitlab_mms_tpkt_unwrap(const uint8_t* frame_bytes, size_t frame_length, const uint8_t** payload_bytes, size_t* payload_length, size_t* consumed_length, UnitLabMmsDiagnostic* diagnostic)
 {
     uint16_t total_length;
 
@@ -71,7 +71,10 @@ int unitlab_mms_tpkt_unwrap(const uint8_t* frame_bytes, size_t frame_length, con
     if (payload_length != NULL) {
         *payload_length = 0U;
     }
-    if (frame_bytes == NULL || payload_bytes == NULL || payload_length == NULL) {
+    if (consumed_length != NULL) {
+        *consumed_length = 0U;
+    }
+    if (frame_bytes == NULL || payload_bytes == NULL || payload_length == NULL || consumed_length == NULL) {
         tpkt_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "TPKT unwrap requires frame bytes and payload outputs.");
         return 0;
     }
@@ -94,6 +97,7 @@ int unitlab_mms_tpkt_unwrap(const uint8_t* frame_bytes, size_t frame_length, con
     }
     *payload_bytes = &frame_bytes[4];
     *payload_length = (size_t)total_length - 4U;
+    *consumed_length = total_length;
     tpkt_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }

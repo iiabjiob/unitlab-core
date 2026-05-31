@@ -14,14 +14,16 @@ static void test_tpkt_roundtrip(void)
     const uint8_t* decoded_payload = NULL;
     size_t frame_length = 0U;
     size_t payload_length = 0U;
+    size_t consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     assert(unitlab_mms_tpkt_wrap(payload, sizeof(payload), frame, sizeof(frame), &frame_length, &diagnostic) == 1);
     assert(frame_length == 8U);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
-    assert(unitlab_mms_tpkt_unwrap(frame, frame_length, &decoded_payload, &payload_length, &diagnostic) == 1);
+    assert(unitlab_mms_tpkt_unwrap(frame, frame_length + 4U, &decoded_payload, &payload_length, &consumed_length, &diagnostic) == 1);
     assert(payload_length == sizeof(payload));
+    assert(consumed_length == frame_length);
     assert(memcmp(decoded_payload, payload, sizeof(payload)) == 0);
 }
 
@@ -30,10 +32,11 @@ static void test_tpkt_rejects_invalid_version(void)
     const uint8_t frame[4] = { 2U, 0U, 0U, 4U };
     const uint8_t* decoded_payload = NULL;
     size_t payload_length = 0U;
+    size_t consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
 
     unitlab_mms_diagnostic_clear(&diagnostic);
-    assert(unitlab_mms_tpkt_unwrap(frame, sizeof(frame), &decoded_payload, &payload_length, &diagnostic) == 0);
+    assert(unitlab_mms_tpkt_unwrap(frame, sizeof(frame), &decoded_payload, &payload_length, &consumed_length, &diagnostic) == 0);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
 }
 
@@ -171,13 +174,19 @@ static void test_mms_pdu_unconfirmed_roundtrip(void)
 
 static void test_ber_length_roundtrip(void)
 {
-    uint8_t buffer[8];
+    uint8_t buffer[16];
     size_t encoded_length = 0U;
     size_t decoded_length = 0U;
     size_t consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
 
     unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_ber_length_encode(0U, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(encoded_length == 1U);
+    assert(unitlab_mms_ber_length_decode(&decoded_length, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(decoded_length == 0U);
+    assert(consumed_length == 1U);
+
     assert(unitlab_mms_ber_length_encode(127U, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
     assert(encoded_length == 1U);
     assert(unitlab_mms_ber_length_decode(&decoded_length, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
@@ -189,11 +198,36 @@ static void test_ber_length_roundtrip(void)
     assert(unitlab_mms_ber_length_decode(&decoded_length, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
     assert(decoded_length == 128U);
     assert(consumed_length == 2U);
+
+    {
+        const uint8_t long_form_small_value[2] = { 0x81U, 0x01U };
+        assert(unitlab_mms_ber_length_decode(&decoded_length, long_form_small_value, sizeof(long_form_small_value), &consumed_length, &diagnostic) == 1);
+        assert(decoded_length == 1U);
+        assert(consumed_length == 2U);
+    }
+
+    {
+        const uint8_t indefinite_length[1] = { 0x80U };
+        assert(unitlab_mms_ber_length_decode(&decoded_length, indefinite_length, sizeof(indefinite_length), &consumed_length, &diagnostic) == 0);
+        assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+    }
+
+    {
+        const uint8_t truncated_length[2] = { 0x82U, 0x01U };
+        assert(unitlab_mms_ber_length_decode(&decoded_length, truncated_length, sizeof(truncated_length), &consumed_length, &diagnostic) == 0);
+        assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL);
+    }
+
+    {
+        const uint8_t unsupported_octet_count[10] = { 0x89U, 0x01U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U };
+        assert(unitlab_mms_ber_length_decode(&decoded_length, unsupported_octet_count, sizeof(unsupported_octet_count), &consumed_length, &diagnostic) == 0);
+        assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+    }
 }
 
 static void test_ber_tag_roundtrip(void)
 {
-    uint8_t buffer[8];
+    uint8_t buffer[16];
     size_t encoded_length = 0U;
     size_t consumed_length = 0U;
     UnitLabMmsBerTag tag;
@@ -213,6 +247,59 @@ static void test_ber_tag_roundtrip(void)
     assert(decoded_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
     assert(decoded_tag.constructed == 1);
     assert(decoded_tag.tag_number == 5U);
+}
+
+static void test_ber_tag_long_form_valid(void)
+{
+    const uint8_t tag_bytes[2] = { 0x1FU, 0x1FU };
+    UnitLabMmsBerTag decoded_tag;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_tag_init(&decoded_tag);
+    assert(unitlab_mms_ber_tag_decode(&decoded_tag, tag_bytes, sizeof(tag_bytes), &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == 2U);
+    assert(decoded_tag.tag_number == 31U);
+}
+
+static void test_ber_tag_rejects_non_minimal_long_form(void)
+{
+    const uint8_t tag_bytes[2] = { 0x1FU, 0x1EU };
+    UnitLabMmsBerTag decoded_tag;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_tag_init(&decoded_tag);
+    assert(unitlab_mms_ber_tag_decode(&decoded_tag, tag_bytes, sizeof(tag_bytes), &consumed_length, &diagnostic) == 0);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+}
+
+static void test_ber_tag_rejects_truncated_long_form(void)
+{
+    const uint8_t tag_bytes[1] = { 0x1FU };
+    UnitLabMmsBerTag decoded_tag;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_tag_init(&decoded_tag);
+    assert(unitlab_mms_ber_tag_decode(&decoded_tag, tag_bytes, sizeof(tag_bytes), &consumed_length, &diagnostic) == 0);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL);
+}
+
+static void test_ber_tag_rejects_overflow_long_form(void)
+{
+    const uint8_t tag_bytes[7] = { 0x1FU, 0xFFU, 0xFFU, 0xFFU, 0xFFU, 0xFFU, 0x7FU };
+    UnitLabMmsBerTag decoded_tag;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_tag_init(&decoded_tag);
+    assert(unitlab_mms_ber_tag_decode(&decoded_tag, tag_bytes, sizeof(tag_bytes), &consumed_length, &diagnostic) == 0);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
 }
 
 static void test_ber_element_roundtrip(void)
@@ -243,6 +330,24 @@ static void test_ber_element_roundtrip(void)
     assert(memcmp(decoded_element.value_bytes, value, sizeof(value)) == 0);
 }
 
+static void test_ber_element_rejects_missing_value_bytes(void)
+{
+    uint8_t buffer[16];
+    UnitLabMmsBerElement element;
+    size_t encoded_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_element_init(&element);
+    element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_APPLICATION;
+    element.tag.constructed = 0;
+    element.tag.tag_number = 2U;
+    element.value_bytes = NULL;
+    element.value_length = 1U;
+    assert(unitlab_mms_ber_write(&element, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 0);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT);
+}
+
 int main(void)
 {
     test_tpkt_roundtrip();
@@ -254,6 +359,11 @@ int main(void)
     test_mms_pdu_unconfirmed_roundtrip();
     test_ber_length_roundtrip();
     test_ber_tag_roundtrip();
+    test_ber_tag_long_form_valid();
+    test_ber_tag_rejects_non_minimal_long_form();
+    test_ber_tag_rejects_truncated_long_form();
+    test_ber_tag_rejects_overflow_long_form();
     test_ber_element_roundtrip();
+    test_ber_element_rejects_missing_value_bytes();
     return 0;
 }

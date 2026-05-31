@@ -96,20 +96,12 @@ int unitlab_mms_ber_length_decode(size_t* value_length, const uint8_t* buffer, s
         ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "BER length buffer is too small.");
         return 0;
     }
-    if (buffer[1U] == 0U) {
-        ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "BER length must use the shortest definite form.");
-        return 0;
-    }
     for (size_t i = 0U; i < octet_count; i++) {
         if (length > (SIZE_MAX >> 8U)) {
             ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "BER length overflow.");
             return 0;
         }
         length = (length << 8U) | (size_t)buffer[1U + i];
-    }
-    if (length <= 127U) {
-        ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "BER length must use short form for values up to 127.");
-        return 0;
     }
     *value_length = length;
     *consumed_length = 1U + octet_count;
