@@ -58,6 +58,24 @@ from app.services.iec61850 import (
     wait_ied_simulator_process_ready,
     write_ied_simulator_fixture_file,
 )
+from app.services.iec61850.unitlab_mms_core import (
+    UnitLabMmsRuntimeAdapter,
+    UnitLabMmsSession,
+)
+
+
+
+def test_backend_runtime_simulator_objects_match_unitlab_mms_boundary_protocols() -> None:
+    candidate = _candidate()
+    endpoint = _endpoint()
+    adapter = create_iec61850_simulator_adapter(now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC))
+
+    assert isinstance(adapter, UnitLabMmsRuntimeAdapter)
+
+    session = adapter.connect(session_id="session-boundary", endpoint=endpoint, candidates=[candidate])
+    assert isinstance(session, UnitLabMmsSession)
+    assert session.read_report_control(to_report_control_ref(candidate)).runtime_status == Iec61850RuntimeStatus.READ
+    session.disconnect()
 
 
 def test_backend_runtime_service_owns_simulator_session_flow() -> None:

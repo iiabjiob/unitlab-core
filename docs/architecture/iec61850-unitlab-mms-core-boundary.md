@@ -88,6 +88,12 @@ Responsibilities:
 - The simulator and client must share the same lifecycle semantics.
 - `libiec61850` may validate behavior, but it must not own the contract.
 
+## Current Implementation
+
+- The backend now exposes the UnitLab MMS boundary contracts in `backend/app/services/iec61850/unitlab_mms_core.py`.
+- The in-memory simulator already conforms to `UnitLabMmsSession` and `UnitLabMmsRuntimeAdapter` via runtime-checkable protocols.
+- Transport remains a planned layer; no real MMS wire transport is implemented yet.
+
 ## Implementation Slices
 
 ### Slice 0 - Core Boundary
