@@ -411,6 +411,63 @@ static void test_acse_top_level_roundtrips(void)
     }
 }
 
+static void test_session_spdu_roundtrip_long_length_indicator(void)
+{
+    uint8_t buffer[400];
+    UnitLabMmsSessionSpdu spdu;
+    UnitLabMmsSessionSpdu decoded_spdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    uint8_t payload[1U + 3U + 260U];
+
+    payload[0] = 1U;
+    payload[1] = 0xFFU;
+    payload[2] = 0x01U;
+    payload[3] = 0x04U;
+    for (size_t i = 0U; i < 260U; i++) {
+        payload[4U + i] = (uint8_t)(i & 0xFFU);
+    }
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_session_spdu_init(&spdu);
+    spdu.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
+    spdu.spdu_bytes = payload;
+    spdu.spdu_length = sizeof(payload);
+    assert(unitlab_mms_session_spdu_encode(&spdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(encoded_length == sizeof(payload));
+    unitlab_mms_session_spdu_init(&decoded_spdu);
+    assert(unitlab_mms_session_spdu_decode(&decoded_spdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_spdu.kind == UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER);
+    assert(decoded_spdu.spdu_length == sizeof(payload));
+    assert(decoded_spdu.raw_parameter_length == 260U);
+    assert(memcmp(decoded_spdu.raw_parameter_bytes, &payload[4], 260U) == 0);
+}
+
+static void test_session_spdu_decode_stops_at_indicated_length(void)
+{
+    uint8_t buffer[16];
+    UnitLabMmsSessionSpdu spdu;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t raw_spdu[5] = { 1U, 3U, 0xAAU, 0xBBU, 0xCCU };
+
+    memcpy(buffer, raw_spdu, sizeof(raw_spdu));
+    buffer[5] = 0xDEU;
+    buffer[6] = 0xADU;
+    buffer[7] = 0xBEU;
+    buffer[8] = 0xEFU;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_session_spdu_init(&spdu);
+    assert(unitlab_mms_session_spdu_decode(&spdu, buffer, sizeof(raw_spdu) + 4U, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == sizeof(raw_spdu));
+    assert(spdu.spdu_length == sizeof(raw_spdu));
+    assert(spdu.raw_parameter_length == 3U);
+    assert(memcmp(spdu.raw_parameter_bytes, &raw_spdu[2], 3U) == 0);
+}
+
 static void test_session_spdu_roundtrips(void)
 {
     struct {
@@ -848,6 +905,8 @@ int main(void)
     test_wire_association_fixture_encode_roundtrip();
     test_acse_top_level_roundtrips();
     test_acse_raw_field_view();
+    test_session_spdu_roundtrip_long_length_indicator();
+    test_session_spdu_decode_stops_at_indicated_length();
     test_session_spdu_roundtrips();
     test_session_spdu_rejects_mismatched_declared_kind_and_code();
     test_session_spdu_rejects_mismatched_declared_kind_and_code();
