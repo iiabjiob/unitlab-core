@@ -127,6 +127,7 @@ The first semantic PDU layer now separates service outcome from the payload shap
 - the runtime bridge applies semantic results to session/request/report ownership, keeping wire decode and lifecycle transitions separate.
 - first-slice confirmed READ/WRITE requests project into pending-request ingress, while responses remain the lifecycle-completing path.
 - the server runtime may now build first-slice confirmed response bytes from a pending request and raw service payload without changing the wire/runtime split.
+- server ingress is now named as incoming-bytes handling because it decodes through the full nested wire path before applying runtime ownership.
 
 These structures are the only legal input to state transition rules.
 

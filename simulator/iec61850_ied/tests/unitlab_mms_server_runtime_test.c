@@ -163,7 +163,7 @@ static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
     assert(fixture.presentation.payload_length > 0U);
 }
 
-static void test_server_runtime_apply_association_bytes_roundtrips_and_consumes_tail(void)
+static void test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_tail(void)
 {
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsOperationResult operation_result;
@@ -190,7 +190,7 @@ static void test_server_runtime_apply_association_bytes_roundtrips_and_consumes_
     wire_bytes[wire_length++] = 0x55U;
 
     unitlab_mms_operation_result_init(&operation_result);
-    assert(unitlab_mms_server_runtime_apply_association_bytes(&server_runtime, wire_bytes, wire_length, &consumed_length, &operation_result));
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, wire_bytes, wire_length, &consumed_length, &operation_result));
     assert(operation_result.ok == 1);
     assert(consumed_length < wire_length);
     tail_length = wire_length - consumed_length;
@@ -208,6 +208,6 @@ int main(void)
     test_server_runtime_prepare_start_stop();
     test_server_runtime_build_confirmed_response_bytes_roundtrips();
     test_server_runtime_apply_wire_pdu_requires_running_state();
-    test_server_runtime_apply_association_bytes_roundtrips_and_consumes_tail();
+    test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_tail();
     return 0;
 }

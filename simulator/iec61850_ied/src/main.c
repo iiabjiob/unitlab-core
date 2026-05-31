@@ -511,7 +511,7 @@ int main(int argc, char** argv)
             unitlab_free_ied_fixture_model(&fixture_model);
             return 69;
         }
-        if (!unitlab_mms_server_runtime_apply_association_bytes(&server_runtime, association_bytes, association_length, &consumed_length, &operation_result)) {
+        if (!unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, association_bytes, association_length, &consumed_length, &operation_result)) {
             fprintf(stderr, "%s: %s\n", "NATIVE_SERVER_ASSOCIATION_APPLY_FAILED", operation_result.diagnostic.message);
             unitlab_free_ied_model_plan(&model_plan);
             unitlab_free_ied_fixture_model(&fixture_model);
