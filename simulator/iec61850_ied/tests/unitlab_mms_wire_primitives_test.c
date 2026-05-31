@@ -406,6 +406,38 @@ static void test_acse_top_level_roundtrips(void)
     }
 }
 
+static void test_acse_raw_field_view(void)
+{
+    uint8_t buffer[32];
+    UnitLabMmsAcseApdu apdu;
+    UnitLabMmsAcseApdu decoded_apdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[8] = { 0x80U, 0x01U, 0x00U, 0x81U, 0x01U, 0x2AU, 0x82U, 0x00U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_acse_apdu_init(&apdu);
+    apdu.kind = UNITLAB_MMS_ACSE_APDU_AARQ;
+    apdu.apdu_bytes = payload;
+    apdu.apdu_length = sizeof(payload);
+    assert(unitlab_mms_acse_encode(&apdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    unitlab_mms_acse_apdu_init(&decoded_apdu);
+    assert(unitlab_mms_acse_decode(&decoded_apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_apdu.kind == UNITLAB_MMS_ACSE_APDU_AARQ);
+    assert(decoded_apdu.field_count == 3U);
+    assert(decoded_apdu.fields[0].tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(decoded_apdu.fields[0].tag.tag_number == 0U);
+    assert(decoded_apdu.fields[0].value_length == 1U);
+    assert(decoded_apdu.fields[0].value_bytes[0] == 0x00U);
+    assert(decoded_apdu.fields[1].tag.tag_number == 1U);
+    assert(decoded_apdu.fields[1].value_length == 1U);
+    assert(decoded_apdu.fields[1].value_bytes[0] == 0x2AU);
+    assert(decoded_apdu.fields[2].tag.tag_number == 2U);
+    assert(decoded_apdu.fields[2].value_length == 0U);
+}
+
 static void test_mms_pdu_confirmed_request_roundtrip(void)
 {
     uint8_t buffer[32];
@@ -743,6 +775,7 @@ int main(void)
     test_wire_association_fixture_decode_roundtrip();
     test_wire_association_fixture_encode_roundtrip();
     test_acse_top_level_roundtrips();
+    test_acse_raw_field_view();
     test_presentation_raw_roundtrip_preserves_outer_tag();
     test_presentation_decode_accepts_arbitrary_outer_tag_as_raw();
     test_presentation_encode_rejects_non_raw_kind();

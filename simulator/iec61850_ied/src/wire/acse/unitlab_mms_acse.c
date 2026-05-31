@@ -74,6 +74,34 @@ static int acse_tag_to_kind(const UnitLabMmsBerTag* tag, UnitLabMmsAcseApduKind*
     }
 }
 
+static int acse_parse_raw_fields(const uint8_t* buffer, size_t buffer_length, UnitLabMmsAcseApdu* apdu, UnitLabMmsDiagnostic* diagnostic)
+{
+    size_t offset = 0U;
+
+    if (apdu == NULL) {
+        return 0;
+    }
+    apdu->field_count = 0U;
+    while (offset < buffer_length) {
+        size_t consumed_length = 0U;
+        if (apdu->field_count >= (sizeof(apdu->fields) / sizeof(apdu->fields[0]))) {
+            acse_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "ACSE APDU contains too many raw fields.");
+            return 0;
+        }
+        unitlab_mms_ber_element_init(&apdu->fields[apdu->field_count]);
+        if (!unitlab_mms_ber_read(&apdu->fields[apdu->field_count], &buffer[offset], buffer_length - offset, &consumed_length, diagnostic)) {
+            return 0;
+        }
+        if (consumed_length == 0U) {
+            acse_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "ACSE APDU contains an empty raw field.");
+            return 0;
+        }
+        offset += consumed_length;
+        apdu->field_count++;
+    }
+    return 1;
+}
+
 void unitlab_mms_acse_apdu_init(UnitLabMmsAcseApdu* apdu)
 {
     if (apdu == NULL) {
@@ -139,6 +167,11 @@ int unitlab_mms_acse_decode(UnitLabMmsAcseApdu* apdu, const uint8_t* buffer, siz
     apdu->apdu_bytes = element.value_bytes;
     apdu->apdu_length = element.value_length;
     apdu->encoded_length = element.encoded_length;
+    if (element.value_length != 0U) {
+        if (!acse_parse_raw_fields(element.value_bytes, element.value_length, apdu, diagnostic)) {
+            return 0;
+        }
+    }
     acse_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }

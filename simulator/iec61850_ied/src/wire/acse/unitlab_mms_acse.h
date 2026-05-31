@@ -13,10 +13,14 @@ typedef enum UnitLabMmsAcseApduKind {
     UNITLAB_MMS_ACSE_APDU_ABRT = 5
 } UnitLabMmsAcseApduKind;
 
+/* X.227 ACSE top-level APDUs are parsed as exact raw field sequences; no semantic interpretation happens here. */
+
 typedef struct UnitLabMmsAcseApdu {
     UnitLabMmsAcseApduKind kind;
-    const uint8_t* apdu_bytes;
+    const uint8_t* apdu_bytes; /* Caller-owned decode buffer; valid only while that buffer lives. */
     size_t apdu_length;
+    UnitLabMmsBerElement fields[16]; /* Raw decoded field view; pointers reference the caller-owned decode buffer. */
+    size_t field_count;
     size_t encoded_length;
 } UnitLabMmsAcseApdu;
 
