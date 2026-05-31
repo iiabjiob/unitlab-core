@@ -16,6 +16,30 @@ function(unitlab_iec61850_sim_warnings target_name)
   endif()
 endfunction()
 
+add_library(unitlab-iec61850-mms STATIC
+  src/unitlab_mms_types.c
+  src/unitlab_mms_semantic_pdu.c
+  src/unitlab_mms_wire_semantic_bridge.c
+  src/unitlab_mms_runtime_bridge.c
+  src/unitlab_mms_core.c
+  src/unitlab_iec61850_report_runtime.c
+  src/wire/ber/unitlab_mms_ber_tag.c
+  src/wire/ber/unitlab_mms_ber_length.c
+  src/wire/ber/unitlab_mms_ber_reader.c
+  src/wire/ber/unitlab_mms_ber_writer.c
+  src/wire/acse/unitlab_mms_acse.c
+  src/wire/session/unitlab_mms_session_spdu.c
+  src/wire/presentation/unitlab_mms_presentation.c
+  src/wire/transport/unitlab_mms_transport_frame.c
+  src/wire/transport/unitlab_mms_wire_association_fixture.c
+  src/wire/mms/unitlab_mms_pdu.c
+  src/wire/iso/unitlab_mms_cotp.c
+  src/wire/iso/unitlab_mms_tpkt.c
+)
+target_include_directories(unitlab-iec61850-mms PUBLIC src)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-mms)
+add_library(unitlab::iec61850_mms ALIAS unitlab-iec61850-mms)
+
 add_executable(unitlab-iec61850-ied-sim
   src/client_probe.c
   src/fixture_parser.c
@@ -23,11 +47,8 @@ add_executable(unitlab-iec61850-ied-sim
   src/main.c
   src/model_loader.c
   src/model_plan.c
-  src/unitlab_mms_core.c
-  src/unitlab_mms_types.c
-  src/unitlab_mms_semantic_pdu.c
-  src/unitlab_iec61850_report_runtime.c
 )
+target_link_libraries(unitlab-iec61850-ied-sim PRIVATE unitlab-iec61850-mms)
 unitlab_iec61850_sim_warnings(unitlab-iec61850-ied-sim)
 
 if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)
@@ -90,13 +111,9 @@ add_test(
 )
 
 add_executable(unitlab-iec61850-mms-core-test
-  src/unitlab_mms_core.c
-  src/unitlab_mms_types.c
-  src/unitlab_mms_semantic_pdu.c
-  src/unitlab_iec61850_report_runtime.c
   tests/unitlab_mms_core_test.c
 )
-target_include_directories(unitlab-iec61850-mms-core-test PRIVATE src)
+target_link_libraries(unitlab-iec61850-mms-core-test PRIVATE unitlab-iec61850-mms)
 unitlab_iec61850_sim_warnings(unitlab-iec61850-mms-core-test)
 
 add_test(
@@ -105,12 +122,9 @@ add_test(
 )
 
 add_executable(unitlab-iec61850-mms-semantic-test
-  src/unitlab_mms_types.c
-  src/unitlab_mms_semantic_pdu.c
-  src/unitlab_mms_wire_semantic_bridge.c
   tests/unitlab_mms_semantic_pdu_test.c
 )
-target_include_directories(unitlab-iec61850-mms-semantic-test PRIVATE src)
+target_link_libraries(unitlab-iec61850-mms-semantic-test PRIVATE unitlab-iec61850-mms)
 unitlab_iec61850_sim_warnings(unitlab-iec61850-mms-semantic-test)
 
 add_test(
@@ -119,15 +133,9 @@ add_test(
 )
 
 add_executable(unitlab-iec61850-mms-runtime-bridge-test
-  src/unitlab_mms_types.c
-  src/unitlab_mms_semantic_pdu.c
-  src/unitlab_mms_wire_semantic_bridge.c
-  src/unitlab_mms_runtime_bridge.c
-  src/unitlab_mms_core.c
-  src/unitlab_iec61850_report_runtime.c
   tests/unitlab_mms_runtime_bridge_test.c
 )
-target_include_directories(unitlab-iec61850-mms-runtime-bridge-test PRIVATE src)
+target_link_libraries(unitlab-iec61850-mms-runtime-bridge-test PRIVATE unitlab-iec61850-mms)
 unitlab_iec61850_sim_warnings(unitlab-iec61850-mms-runtime-bridge-test)
 
 add_test(
@@ -136,27 +144,25 @@ add_test(
 )
 
 add_executable(unitlab-iec61850-wire-foundation-test
-  src/unitlab_mms_types.c
-  src/wire/ber/unitlab_mms_ber_tag.c
-  src/wire/ber/unitlab_mms_ber_length.c
-  src/wire/acse/unitlab_mms_acse.c
-  src/wire/session/unitlab_mms_session_spdu.c
-  src/wire/ber/unitlab_mms_ber_reader.c
-  src/wire/ber/unitlab_mms_ber_writer.c
-  src/wire/presentation/unitlab_mms_presentation.c
-  src/wire/transport/unitlab_mms_transport_frame.c
-  src/wire/transport/unitlab_mms_wire_association_fixture.c
-  src/wire/mms/unitlab_mms_pdu.c
-  src/wire/iso/unitlab_mms_cotp.c
-  src/wire/iso/unitlab_mms_tpkt.c
   tests/unitlab_mms_wire_primitives_test.c
 )
-target_include_directories(unitlab-iec61850-wire-foundation-test PRIVATE src)
+target_link_libraries(unitlab-iec61850-wire-foundation-test PRIVATE unitlab-iec61850-mms)
 unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-foundation-test)
 
 add_test(
   NAME unitlab-iec61850-wire-foundation
   COMMAND unitlab-iec61850-wire-foundation-test
+)
+
+add_executable(unitlab-iec61850-mms-public-api-test
+  tests/unitlab_mms_public_api_test.c
+)
+target_link_libraries(unitlab-iec61850-mms-public-api-test PRIVATE unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-mms-public-api-test)
+
+add_test(
+  NAME unitlab-iec61850-mms-public-api
+  COMMAND unitlab-iec61850-mms-public-api-test
 )
 
 if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)
