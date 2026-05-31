@@ -117,6 +117,100 @@ int unitlab_mms_server_runtime_stop(UnitLabMmsServerRuntime* server_runtime, Uni
     return 1;
 }
 
+static int server_runtime_require_running(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (server_runtime->state != UNITLAB_MMS_SERVER_RUNTIME_RUNNING) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, "Server runtime must be running for report-control operations.");
+        return 0;
+    }
+    return 1;
+}
+
+int unitlab_mms_server_runtime_reserve_report_control(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (server_runtime == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime is required.");
+        return 0;
+    }
+    if (!server_runtime_require_running(server_runtime, diagnostic)) {
+        return 0;
+    }
+    if (!unitlab_iec61850_report_control_reserve(&server_runtime->report_control, diagnostic)) {
+        return 0;
+    }
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    unitlab_mms_server_runtime_capture_snapshot(server_runtime);
+    return 1;
+}
+
+int unitlab_mms_server_runtime_enable_report_control(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (server_runtime == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime is required.");
+        return 0;
+    }
+    if (!server_runtime_require_running(server_runtime, diagnostic)) {
+        return 0;
+    }
+    if (!unitlab_iec61850_report_control_enable(&server_runtime->report_control, diagnostic)) {
+        return 0;
+    }
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    unitlab_mms_server_runtime_capture_snapshot(server_runtime);
+    return 1;
+}
+
+int unitlab_mms_server_runtime_request_general_interrogation(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (server_runtime == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime is required.");
+        return 0;
+    }
+    if (!server_runtime_require_running(server_runtime, diagnostic)) {
+        return 0;
+    }
+    if (!unitlab_iec61850_report_control_request_gi(&server_runtime->report_control, diagnostic)) {
+        return 0;
+    }
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    unitlab_mms_server_runtime_capture_snapshot(server_runtime);
+    return 1;
+}
+
+int unitlab_mms_server_runtime_disable_report_control(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (server_runtime == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime is required.");
+        return 0;
+    }
+    if (!server_runtime_require_running(server_runtime, diagnostic)) {
+        return 0;
+    }
+    if (!unitlab_iec61850_report_control_disable(&server_runtime->report_control, diagnostic)) {
+        return 0;
+    }
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    unitlab_mms_server_runtime_capture_snapshot(server_runtime);
+    return 1;
+}
+
+int unitlab_mms_server_runtime_release_report_control(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (server_runtime == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime is required.");
+        return 0;
+    }
+    if (!server_runtime_require_running(server_runtime, diagnostic)) {
+        return 0;
+    }
+    if (!unitlab_iec61850_report_control_release(&server_runtime->report_control, diagnostic)) {
+        return 0;
+    }
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    unitlab_mms_server_runtime_capture_snapshot(server_runtime);
+    return 1;
+}
+
 int unitlab_mms_server_runtime_apply_wire_pdu(UnitLabMmsServerRuntime* server_runtime, const UnitLabMmsPdu* wire_pdu, UnitLabMmsOperationResult* operation_result)
 {
     if (server_runtime == NULL) {
@@ -130,9 +224,10 @@ int unitlab_mms_server_runtime_apply_wire_pdu(UnitLabMmsServerRuntime* server_ru
         }
         return 0;
     }
-    if (!unitlab_mms_runtime_apply_wire_pdu(
+    if (!unitlab_mms_runtime_apply_wire_pdu_with_report_control(
             &server_runtime->session,
             &server_runtime->pending_request,
+            &server_runtime->report_control,
             wire_pdu,
             operation_result)) {
         if (operation_result != NULL) {

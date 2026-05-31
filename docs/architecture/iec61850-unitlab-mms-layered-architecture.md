@@ -100,6 +100,7 @@ Notes:
 - The reusable lower-layer C boundary is exposed through `unitlab-iec61850-mms` and `unitlab_iec61850_mms.h` for future server/client reuse.
 - A thin server-side ownership aggregate is now being introduced on top of the reusable lower layer for future server orchestration.
 - The server boundary now has explicit prepare/start/stop lifecycle state on top of the reusable lower layer.
+- The server boundary also owns report-control reserve/enable/GI/release orchestration through the reusable report runtime layer.
 
 ## Layer Ownership
 

@@ -70,9 +70,17 @@ static void test_server_runtime_apply_wire_pdu_requires_running_state(void)
 
     assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
     assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(server_runtime.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_RESERVED);
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    assert(server_runtime.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_ENABLED);
+    assert(unitlab_mms_server_runtime_request_general_interrogation(&server_runtime, &diagnostic));
+    assert(server_runtime.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING);
+
     unitlab_mms_operation_result_init(&operation_result);
     assert(unitlab_mms_server_runtime_apply_wire_pdu(&server_runtime, &wire_pdu, &operation_result));
     assert(operation_result.ok == 1);
+    assert(server_runtime.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_REPORTING);
     assert(server_runtime.state == UNITLAB_MMS_SERVER_RUNTIME_RUNNING);
 }
 
