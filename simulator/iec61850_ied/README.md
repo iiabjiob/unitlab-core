@@ -4,13 +4,14 @@ Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan
 
 This directory is the boundary for the future libIEC61850-based IED simulator. It is intentionally separate from UnitLab backend/core runtime so GPL/native code cannot leak into production logic by accident.
 
-The C-owned seam starts in `src/unitlab_mms_core.c` and `src/unitlab_mms_core.h`. That module owns the UnitLab transport/session/report-control contract that the future wire-level implementation will fill in. libIEC61850 stays in the simulator as a reference backend and interoperability oracle.
+The C-owned seam starts in `src/unitlab_mms_core.c` and `src/unitlab_mms_core.h`. That module owns the UnitLab transport/session boundary plus the IEC 61850 report-control semantics that the future wire-level implementation will fill in. libIEC61850 stays in the simulator as a reference backend and interoperability oracle.
 
 Current C-owned helpers include:
 
 - session lifecycle and invoke-id correlation;
-- report-control reserve/enable/GI/disable/release transitions;
-- in-memory transport exchange and association helpers used by focused tests.
+- IEC 61850 report-control reserve/enable/GI/disable/release transitions;
+- runtime event/result records for replay and evidence shaping;
+- in-memory transport exchange helpers with request/response binding and association helpers used by focused tests.
 
 ## Purpose
 

@@ -37,7 +37,8 @@ The implementation stack is intentionally split by responsibility:
   - APIs;
   - tests;
   - process management;
-  - simulator/session control.
+  - simulator/session control;
+  - runtime event/result shaping.
 - Vue/TS owns the engineering workspace and operator-facing UI.
 
 The UnitLab MMS boundary in this document is the seam where the C implementation will plug in later. The Python-side contracts stay stable so the runtime, simulator, and evidence flow do not need to change when the transport engine is replaced.
@@ -46,9 +47,9 @@ The UnitLab MMS boundary in this document is the seam where the C implementation
 
 - Session lifecycle and association state.
 - Request correlation and timeout handling.
-- Report-control lifecycle: read, reserve, enable, disable, GI, release.
-- MMS transport framing and request/response dispatch.
-- Diagnostics and evidence DTOs.
+- IEC 61850 report-control semantics: read, reserve, enable, disable, GI, release.
+- Transport framing and request/response dispatch.
+- Diagnostics, evidence DTOs, and runtime event/result structs.
 - Simulator behavior and failure injection.
 
 ### Reference-only
@@ -114,7 +115,7 @@ Responsibilities:
 
 - The backend now exposes the UnitLab MMS boundary contracts in `backend/app/services/iec61850/unitlab_mms_core.py`, and the module no longer re-exports report-runtime DTOs as pseudo-boundary aliases.
 - The in-memory simulator already conforms to `UnitLabMmsSession` and `UnitLabMmsRuntimeAdapter` via runtime-checkable protocols.
-- Deterministic scripted and recorded transport helpers now exist for transport-oriented tests and parity capture, an in-memory association helper exercises open/release/abort semantics, a report-control helper covers reserve/enable/GI/disable/release transitions, and a named-variable access helper covers read/write/snapshot behavior. They are not wire MMS framing.
+- Deterministic scripted and recorded transport helpers now exist for transport-oriented tests and parity capture, a transport exchange helper binds request/response bytes with bounds checks, an in-memory association helper exercises open/release/abort semantics, a report-control helper covers IEC 61850 reserve/enable/GI/disable/release transitions, a named-variable access helper covers read/write/snapshot behavior, and runtime event structs are now carried alongside these boundaries. They are not wire MMS framing.
 - Real MMS wire transport remains a planned layer.
 
 ## Implementation Slices

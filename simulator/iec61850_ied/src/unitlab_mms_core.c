@@ -17,6 +17,43 @@ static int set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnostic
     return 1;
 }
 
+static void runtime_event_clear(UnitLabMmsRuntimeEvent* event)
+{
+    if (event == NULL) {
+        return;
+    }
+    memset(event, 0, sizeof(*event));
+}
+
+static void runtime_event_set(
+    UnitLabMmsRuntimeEvent* event,
+    UnitLabMmsRuntimeEventKind kind,
+    uint32_t state_before,
+    uint32_t state_after,
+    uint32_t invoke_id,
+    size_t request_length,
+    size_t response_length,
+    UnitLabMmsDiagnosticCode diagnostic_code,
+    const char* diagnostic_message)
+{
+    if (event == NULL) {
+        return;
+    }
+    event->kind = kind;
+    event->state_before = state_before;
+    event->state_after = state_after;
+    event->invoke_id = invoke_id;
+    event->request_length = request_length;
+    event->response_length = response_length;
+    event->diagnostic_code = diagnostic_code;
+    if (diagnostic_message == NULL) {
+        event->diagnostic_message[0] = '\0';
+        return;
+    }
+    strncpy(event->diagnostic_message, diagnostic_message, sizeof(event->diagnostic_message) - 1U);
+    event->diagnostic_message[sizeof(event->diagnostic_message) - 1U] = '\0';
+}
+
 void unitlab_mms_diagnostic_clear(UnitLabMmsDiagnostic* diagnostic)
 {
     if (diagnostic == NULL) {
@@ -24,6 +61,11 @@ void unitlab_mms_diagnostic_clear(UnitLabMmsDiagnostic* diagnostic)
     }
     diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_OK;
     diagnostic->message[0] = '\0';
+}
+
+void unitlab_mms_runtime_event_init(UnitLabMmsRuntimeEvent* event)
+{
+    runtime_event_clear(event);
 }
 
 void unitlab_mms_session_init(UnitLabMmsSession* session)
@@ -34,6 +76,7 @@ void unitlab_mms_session_init(UnitLabMmsSession* session)
     session->state = UNITLAB_MMS_SESSION_DISCONNECTED;
     session->next_invoke_id = 1U;
     session->active_invoke_id = 0U;
+    runtime_event_clear(&session->last_event);
 }
 
 void unitlab_mms_session_reset(UnitLabMmsSession* session)
@@ -75,11 +118,13 @@ int unitlab_mms_session_begin_association(UnitLabMmsSession* session, UnitLabMms
     }
     if (session->state != UNITLAB_MMS_SESSION_DISCONNECTED) {
         set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "association can only begin from disconnected state.");
+        runtime_event_set(&session->last_event, UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_ASSOCIATION, session->state, session->state, 0U, 0U, 0U, diagnostic == NULL ? UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR : diagnostic->code, diagnostic == NULL ? "session is required for association start." : diagnostic->message);
         return 0;
     }
     session->state = UNITLAB_MMS_SESSION_ASSOCIATING;
     session->active_invoke_id = unitlab_mms_session_next_invoke_id(session);
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set(&session->last_event, UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_ASSOCIATION, UNITLAB_MMS_SESSION_DISCONNECTED, session->state, session->active_invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
 
@@ -91,14 +136,17 @@ int unitlab_mms_session_complete_association(UnitLabMmsSession* session, uint32_
     }
     if (session->state != UNITLAB_MMS_SESSION_ASSOCIATING) {
         set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "association can only complete from associating state.");
+        runtime_event_set(&session->last_event, UNITLAB_MMS_RUNTIME_EVENT_SESSION_COMPLETE_ASSOCIATION, session->state, session->state, invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, diagnostic == NULL ? "session is required for association completion." : diagnostic->message);
         return 0;
     }
     if (session->active_invoke_id != invoke_id) {
         set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "association invoke id does not match active request.");
+        runtime_event_set(&session->last_event, UNITLAB_MMS_RUNTIME_EVENT_SESSION_COMPLETE_ASSOCIATION, session->state, session->state, invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, diagnostic == NULL ? "association invoke id does not match active request." : diagnostic->message);
         return 0;
     }
     session->state = UNITLAB_MMS_SESSION_ASSOCIATED;
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set(&session->last_event, UNITLAB_MMS_RUNTIME_EVENT_SESSION_COMPLETE_ASSOCIATION, UNITLAB_MMS_SESSION_ASSOCIATING, session->state, invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
 
@@ -110,10 +158,12 @@ int unitlab_mms_session_begin_release(UnitLabMmsSession* session, UnitLabMmsDiag
     }
     if (session->state != UNITLAB_MMS_SESSION_ASSOCIATED) {
         set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, "release requires an associated session.");
+        runtime_event_set(&session->last_event, UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_RELEASE, session->state, session->state, session->active_invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, diagnostic == NULL ? "session is required for release." : diagnostic->message);
         return 0;
     }
     session->state = UNITLAB_MMS_SESSION_RELEASING;
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set(&session->last_event, UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_RELEASE, UNITLAB_MMS_SESSION_ASSOCIATED, session->state, session->active_invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
 
@@ -123,101 +173,107 @@ int unitlab_mms_session_abort(UnitLabMmsSession* session, UnitLabMmsDiagnostic* 
         set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session is required for abort.");
         return 0;
     }
+    UnitLabMmsSessionState before = session->state;
     session->state = UNITLAB_MMS_SESSION_ABORTED;
     session->active_invoke_id = 0U;
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set(&session->last_event, UNITLAB_MMS_RUNTIME_EVENT_SESSION_ABORT, before, session->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
 
-void unitlab_mms_report_control_init(UnitLabMmsReportControl* report_control)
+void unitlab_iec61850_report_control_init(UnitLabIec61850ReportControl* report_control)
 {
     if (report_control == NULL) {
         return;
     }
-    report_control->state = UNITLAB_MMS_REPORT_CONTROL_DISABLED;
-    report_control->gi_requested = 0;
-    report_control->reserved = 0;
-    report_control->enabled = 0;
+    report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_DISABLED;
+    runtime_event_clear(&report_control->last_event);
 }
 
-void unitlab_mms_report_control_reset(UnitLabMmsReportControl* report_control)
+void unitlab_iec61850_report_control_reset(UnitLabIec61850ReportControl* report_control)
 {
-    unitlab_mms_report_control_init(report_control);
+    unitlab_iec61850_report_control_init(report_control);
 }
 
-static int report_control_fail(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, const char* message)
+static int report_control_fail(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, UnitLabMmsRuntimeEventKind kind, const char* message)
 {
+    if (report_control != NULL) {
+        runtime_event_set(&report_control->last_event, kind, report_control->state, report_control->state, 0U, 0U, 0U, code, message);
+    }
     set_diagnostic(diagnostic, code, message);
     return 0;
 }
 
-int unitlab_mms_report_control_reserve(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
+int unitlab_iec61850_report_control_reserve(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
 {
     if (report_control == NULL) {
-        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "report control is required for reserve.");
+        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE, "report control is required for reserve.");
     }
-    if (report_control->state != UNITLAB_MMS_REPORT_CONTROL_DISABLED || report_control->reserved) {
-        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "reserve requires a disabled and unreserved report control.");
+    if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_DISABLED) {
+        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE, "reserve requires a disabled report control.");
     }
-    report_control->state = UNITLAB_MMS_REPORT_CONTROL_RESERVED;
-    report_control->reserved = 1;
+    UnitLabIec61850ReportControlState before = report_control->state;
+    report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_RESERVED;
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set(&report_control->last_event, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE, before, report_control->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
 
-int unitlab_mms_report_control_enable(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
+int unitlab_iec61850_report_control_enable(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
 {
     if (report_control == NULL) {
-        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "report control is required for enable.");
+        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, UNITLAB_MMS_RUNTIME_EVENT_REPORT_ENABLE, "report control is required for enable.");
     }
-    if (!report_control->reserved || report_control->state != UNITLAB_MMS_REPORT_CONTROL_RESERVED) {
-        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, "enable requires a reserved report control.");
+    if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_RESERVED) {
+        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, UNITLAB_MMS_RUNTIME_EVENT_REPORT_ENABLE, "enable requires a reserved report control.");
     }
-    report_control->state = UNITLAB_MMS_REPORT_CONTROL_ENABLED;
-    report_control->enabled = 1;
+    UnitLabIec61850ReportControlState before = report_control->state;
+    report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_ENABLED;
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set(&report_control->last_event, UNITLAB_MMS_RUNTIME_EVENT_REPORT_ENABLE, before, report_control->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
 
-int unitlab_mms_report_control_request_gi(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
+int unitlab_iec61850_report_control_request_gi(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
 {
     if (report_control == NULL) {
-        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "report control is required for GI.");
+        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI, "report control is required for GI.");
     }
-    if (!report_control->enabled || report_control->state != UNITLAB_MMS_REPORT_CONTROL_ENABLED) {
-        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, "GI requires an enabled report control.");
+    if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_ENABLED) {
+        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI, "GI requires an enabled report control.");
     }
-    report_control->state = UNITLAB_MMS_REPORT_CONTROL_GI_PENDING;
-    report_control->gi_requested = 1;
+    UnitLabIec61850ReportControlState before = report_control->state;
+    report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING;
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set(&report_control->last_event, UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI, before, report_control->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
 
-int unitlab_mms_report_control_disable(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
+int unitlab_iec61850_report_control_disable(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
 {
     if (report_control == NULL) {
-        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "report control is required for disable.");
+        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, UNITLAB_MMS_RUNTIME_EVENT_REPORT_DISABLE, "report control is required for disable.");
     }
-    if (!report_control->enabled || (report_control->state != UNITLAB_MMS_REPORT_CONTROL_ENABLED && report_control->state != UNITLAB_MMS_REPORT_CONTROL_GI_PENDING && report_control->state != UNITLAB_MMS_REPORT_CONTROL_REPORTING)) {
-        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, "disable requires an enabled report control.");
+    if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_ENABLED && report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING && report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_REPORTING) {
+        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_NOT_ASSOCIATED, UNITLAB_MMS_RUNTIME_EVENT_REPORT_DISABLE, "disable requires an enabled report control.");
     }
-    report_control->state = UNITLAB_MMS_REPORT_CONTROL_DISABLED;
-    report_control->enabled = 0;
-    report_control->gi_requested = 0;
+    UnitLabIec61850ReportControlState before = report_control->state;
+    report_control->state = UNITLAB_IEC61850_REPORT_CONTROL_DISABLED;
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set(&report_control->last_event, UNITLAB_MMS_RUNTIME_EVENT_REPORT_DISABLE, before, report_control->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
 
-int unitlab_mms_report_control_release(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
+int unitlab_iec61850_report_control_release(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic)
 {
     if (report_control == NULL) {
-        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "report control is required for release.");
+        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE, "report control is required for release.");
     }
-    if (report_control->state != UNITLAB_MMS_REPORT_CONTROL_DISABLED) {
-        return report_control_fail(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "release requires a disabled report control.");
+    if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_DISABLED) {
+        return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE, "release requires a disabled report control.");
     }
-    report_control->reserved = 0;
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set(&report_control->last_event, UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE, report_control->state, report_control->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
 
@@ -227,4 +283,65 @@ void unitlab_mms_transport_exchange_init(UnitLabMmsTransportExchange* exchange)
         return;
     }
     memset(exchange, 0, sizeof(*exchange));
+    runtime_event_clear(&exchange->last_event);
+}
+
+int unitlab_mms_transport_exchange_bind_request(UnitLabMmsTransportExchange* exchange, const uint8_t* request_bytes, size_t request_length, uint32_t invoke_id, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (exchange == NULL) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "transport exchange is required for request binding.");
+        return 0;
+    }
+    if (request_bytes == NULL && request_length != 0U) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "request bytes are required when request length is non-zero.");
+        runtime_event_set(&exchange->last_event, UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST, 0U, 0U, invoke_id, request_length, 0U, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "request bytes are required when request length is non-zero.");
+        return 0;
+    }
+    exchange->request_bytes = request_bytes;
+    exchange->request_length = request_length;
+    exchange->invoke_id = invoke_id;
+    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set(&exchange->last_event, UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST, 0U, 0U, invoke_id, request_length, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
+int unitlab_mms_transport_exchange_bind_response(UnitLabMmsTransportExchange* exchange, uint8_t* response_bytes, size_t response_capacity, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (exchange == NULL) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "transport exchange is required for response binding.");
+        return 0;
+    }
+    if (response_bytes == NULL && response_capacity != 0U) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "response bytes are required when response capacity is non-zero.");
+        runtime_event_set(&exchange->last_event, UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_RESPONSE, 0U, 0U, exchange->invoke_id, 0U, response_capacity, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "response bytes are required when response capacity is non-zero.");
+        return 0;
+    }
+    exchange->response_bytes = response_bytes;
+    exchange->response_capacity = response_capacity;
+    exchange->response_length = 0U;
+    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set(&exchange->last_event, UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_RESPONSE, 0U, 0U, exchange->invoke_id, 0U, response_capacity, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
+int unitlab_mms_transport_exchange_set_response_length(UnitLabMmsTransportExchange* exchange, size_t response_length, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (exchange == NULL) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "transport exchange is required for response length.");
+        return 0;
+    }
+    if (exchange->response_bytes == NULL && response_length != 0U) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "response buffer is not bound.");
+        runtime_event_set(&exchange->last_event, UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_SET_RESPONSE_LENGTH, 0U, 0U, exchange->invoke_id, exchange->request_length, response_length, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "response buffer is not bound.");
+        return 0;
+    }
+    if (response_length > exchange->response_capacity) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "response length exceeds bound capacity.");
+        runtime_event_set(&exchange->last_event, UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_SET_RESPONSE_LENGTH, 0U, 0U, exchange->invoke_id, exchange->request_length, response_length, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "response length exceeds bound capacity.");
+        return 0;
+    }
+    exchange->response_length = response_length;
+    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set(&exchange->last_event, UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_SET_RESPONSE_LENGTH, 0U, 0U, exchange->invoke_id, exchange->request_length, response_length, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
 }

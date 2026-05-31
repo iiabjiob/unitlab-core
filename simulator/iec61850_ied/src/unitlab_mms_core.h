@@ -26,26 +26,52 @@ typedef enum UnitLabMmsSessionState {
     UNITLAB_MMS_SESSION_ABORTED = 4
 } UnitLabMmsSessionState;
 
+typedef enum UnitLabMmsRuntimeEventKind {
+    UNITLAB_MMS_RUNTIME_EVENT_NONE = 0,
+    UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_ASSOCIATION = 1,
+    UNITLAB_MMS_RUNTIME_EVENT_SESSION_COMPLETE_ASSOCIATION = 2,
+    UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_RELEASE = 3,
+    UNITLAB_MMS_RUNTIME_EVENT_SESSION_ABORT = 4,
+    UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST = 5,
+    UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_RESPONSE = 6,
+    UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_SET_RESPONSE_LENGTH = 7,
+    UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE = 8,
+    UNITLAB_MMS_RUNTIME_EVENT_REPORT_ENABLE = 9,
+    UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI = 10,
+    UNITLAB_MMS_RUNTIME_EVENT_REPORT_DISABLE = 11,
+    UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE = 12
+} UnitLabMmsRuntimeEventKind;
+
+typedef struct UnitLabMmsRuntimeEvent {
+    UnitLabMmsRuntimeEventKind kind;
+    uint32_t state_before;
+    uint32_t state_after;
+    uint32_t invoke_id;
+    size_t request_length;
+    size_t response_length;
+    UnitLabMmsDiagnosticCode diagnostic_code;
+    char diagnostic_message[256];
+} UnitLabMmsRuntimeEvent;
+
 typedef struct UnitLabMmsSession {
     UnitLabMmsSessionState state;
     uint32_t next_invoke_id;
     uint32_t active_invoke_id;
+    UnitLabMmsRuntimeEvent last_event;
 } UnitLabMmsSession;
 
-typedef enum UnitLabMmsReportControlState {
-    UNITLAB_MMS_REPORT_CONTROL_DISABLED = 0,
-    UNITLAB_MMS_REPORT_CONTROL_RESERVED = 1,
-    UNITLAB_MMS_REPORT_CONTROL_ENABLED = 2,
-    UNITLAB_MMS_REPORT_CONTROL_GI_PENDING = 3,
-    UNITLAB_MMS_REPORT_CONTROL_REPORTING = 4
-} UnitLabMmsReportControlState;
+typedef enum UnitLabIec61850ReportControlState {
+    UNITLAB_IEC61850_REPORT_CONTROL_DISABLED = 0,
+    UNITLAB_IEC61850_REPORT_CONTROL_RESERVED = 1,
+    UNITLAB_IEC61850_REPORT_CONTROL_ENABLED = 2,
+    UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING = 3,
+    UNITLAB_IEC61850_REPORT_CONTROL_REPORTING = 4
+} UnitLabIec61850ReportControlState;
 
-typedef struct UnitLabMmsReportControl {
-    UnitLabMmsReportControlState state;
-    int gi_requested;
-    int reserved;
-    int enabled;
-} UnitLabMmsReportControl;
+typedef struct UnitLabIec61850ReportControl {
+    UnitLabIec61850ReportControlState state;
+    UnitLabMmsRuntimeEvent last_event;
+} UnitLabIec61850ReportControl;
 
 typedef struct UnitLabMmsTransportExchange {
     const uint8_t* request_bytes;
@@ -54,9 +80,11 @@ typedef struct UnitLabMmsTransportExchange {
     size_t response_capacity;
     size_t response_length;
     uint32_t invoke_id;
+    UnitLabMmsRuntimeEvent last_event;
 } UnitLabMmsTransportExchange;
 
 void unitlab_mms_diagnostic_clear(UnitLabMmsDiagnostic* diagnostic);
+void unitlab_mms_runtime_event_init(UnitLabMmsRuntimeEvent* event);
 void unitlab_mms_session_init(UnitLabMmsSession* session);
 void unitlab_mms_session_reset(UnitLabMmsSession* session);
 uint32_t unitlab_mms_session_next_invoke_id(UnitLabMmsSession* session);
@@ -65,13 +93,16 @@ int unitlab_mms_session_complete_association(UnitLabMmsSession* session, uint32_
 int unitlab_mms_session_begin_release(UnitLabMmsSession* session, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_session_abort(UnitLabMmsSession* session, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_session_is_associated(const UnitLabMmsSession* session);
-void unitlab_mms_report_control_init(UnitLabMmsReportControl* report_control);
-void unitlab_mms_report_control_reset(UnitLabMmsReportControl* report_control);
-int unitlab_mms_report_control_reserve(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
-int unitlab_mms_report_control_enable(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
-int unitlab_mms_report_control_request_gi(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
-int unitlab_mms_report_control_disable(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
-int unitlab_mms_report_control_release(UnitLabMmsReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
+void unitlab_iec61850_report_control_init(UnitLabIec61850ReportControl* report_control);
+void unitlab_iec61850_report_control_reset(UnitLabIec61850ReportControl* report_control);
+int unitlab_iec61850_report_control_reserve(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_iec61850_report_control_enable(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_iec61850_report_control_request_gi(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_iec61850_report_control_disable(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_iec61850_report_control_release(UnitLabIec61850ReportControl* report_control, UnitLabMmsDiagnostic* diagnostic);
 void unitlab_mms_transport_exchange_init(UnitLabMmsTransportExchange* exchange);
+int unitlab_mms_transport_exchange_bind_request(UnitLabMmsTransportExchange* exchange, const uint8_t* request_bytes, size_t request_length, uint32_t invoke_id, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_transport_exchange_bind_response(UnitLabMmsTransportExchange* exchange, uint8_t* response_bytes, size_t response_capacity, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_transport_exchange_set_response_length(UnitLabMmsTransportExchange* exchange, size_t response_length, UnitLabMmsDiagnostic* diagnostic);
 
 #endif

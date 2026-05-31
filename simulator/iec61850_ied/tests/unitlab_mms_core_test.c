@@ -9,7 +9,7 @@ static void test_defaults(void)
 {
     UnitLabMmsDiagnostic diagnostic;
     UnitLabMmsSession session;
-    UnitLabMmsReportControl report_control;
+    UnitLabIec61850ReportControl report_control;
     UnitLabMmsTransportExchange exchange;
 
     memset(&diagnostic, 0xA5, sizeof(diagnostic));
@@ -19,21 +19,24 @@ static void test_defaults(void)
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     unitlab_mms_session_init(&session);
-    unitlab_mms_report_control_init(&report_control);
+    unitlab_iec61850_report_control_init(&report_control);
     unitlab_mms_transport_exchange_init(&exchange);
 
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(diagnostic.message[0] == '\0');
     assert(session.state == UNITLAB_MMS_SESSION_DISCONNECTED);
     assert(session.next_invoke_id == 1U);
-    assert(report_control.state == UNITLAB_MMS_REPORT_CONTROL_DISABLED);
-    assert(report_control.gi_requested == 0);
+    assert(session.active_invoke_id == 0U);
+    assert(session.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_NONE);
+    assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
+    assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_NONE);
     assert(exchange.request_bytes == NULL);
     assert(exchange.request_length == 0U);
     assert(exchange.response_bytes == NULL);
     assert(exchange.response_capacity == 0U);
     assert(exchange.response_length == 0U);
     assert(exchange.invoke_id == 0U);
+    assert(exchange.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_NONE);
 }
 
 static void test_invoke_id_sequence(void)
@@ -48,47 +51,40 @@ static void test_invoke_id_sequence(void)
     assert(session.next_invoke_id == 1U);
 }
 
-static void test_report_control_reset(void)
+static void test_transport_exchange_bindings(void)
 {
-    UnitLabMmsReportControl report_control;
-
-    report_control.state = UNITLAB_MMS_REPORT_CONTROL_REPORTING;
-    report_control.gi_requested = 1;
-    unitlab_mms_report_control_reset(&report_control);
-    assert(report_control.state == UNITLAB_MMS_REPORT_CONTROL_DISABLED);
-    assert(report_control.gi_requested == 0);
-    assert(report_control.reserved == 0);
-    assert(report_control.enabled == 0);
-}
-
-static void test_report_control_lifecycle(void)
-{
-    UnitLabMmsReportControl report_control;
+    UnitLabMmsTransportExchange exchange;
     UnitLabMmsDiagnostic diagnostic;
+    uint8_t response_buffer[8];
+    const uint8_t request_buffer[3] = { 0x01U, 0x02U, 0x03U };
 
-    unitlab_mms_report_control_init(&report_control);
+    unitlab_mms_transport_exchange_init(&exchange);
     unitlab_mms_diagnostic_clear(&diagnostic);
 
-    assert(unitlab_mms_report_control_reserve(&report_control, &diagnostic) == 1);
-    assert(report_control.state == UNITLAB_MMS_REPORT_CONTROL_RESERVED);
-    assert(report_control.reserved == 1);
+    assert(unitlab_mms_transport_exchange_bind_request(&exchange, request_buffer, sizeof(request_buffer), 17U, &diagnostic) == 1);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(exchange.request_bytes == request_buffer);
+    assert(exchange.request_length == sizeof(request_buffer));
+    assert(exchange.invoke_id == 17U);
+    assert(exchange.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST);
+    assert(exchange.last_event.request_length == sizeof(request_buffer));
 
-    assert(unitlab_mms_report_control_enable(&report_control, &diagnostic) == 1);
-    assert(report_control.state == UNITLAB_MMS_REPORT_CONTROL_ENABLED);
-    assert(report_control.enabled == 1);
+    assert(unitlab_mms_transport_exchange_bind_response(&exchange, response_buffer, sizeof(response_buffer), &diagnostic) == 1);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(exchange.response_bytes == response_buffer);
+    assert(exchange.response_capacity == sizeof(response_buffer));
+    assert(exchange.response_length == 0U);
+    assert(exchange.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_RESPONSE);
+    assert(exchange.last_event.response_length == sizeof(response_buffer));
 
-    assert(unitlab_mms_report_control_request_gi(&report_control, &diagnostic) == 1);
-    assert(report_control.state == UNITLAB_MMS_REPORT_CONTROL_GI_PENDING);
-    assert(report_control.gi_requested == 1);
+    assert(unitlab_mms_transport_exchange_set_response_length(&exchange, 4U, &diagnostic) == 1);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(exchange.response_length == 4U);
+    assert(exchange.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_SET_RESPONSE_LENGTH);
+    assert(exchange.last_event.response_length == 4U);
 
-    report_control.state = UNITLAB_MMS_REPORT_CONTROL_REPORTING;
-    assert(unitlab_mms_report_control_disable(&report_control, &diagnostic) == 1);
-    assert(report_control.state == UNITLAB_MMS_REPORT_CONTROL_DISABLED);
-    assert(report_control.enabled == 0);
-    assert(report_control.gi_requested == 0);
-
-    assert(unitlab_mms_report_control_release(&report_control, &diagnostic) == 1);
-    assert(report_control.reserved == 0);
+    assert(unitlab_mms_transport_exchange_set_response_length(&exchange, sizeof(response_buffer) + 1U, &diagnostic) == 0);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
 }
 
 static void test_session_transitions(void)
@@ -103,10 +99,12 @@ static void test_session_transitions(void)
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATING);
     assert(session.active_invoke_id == 1U);
+    assert(session.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_ASSOCIATION);
 
     assert(unitlab_mms_session_complete_association(&session, 999U, &diagnostic) == 0);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
     assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATING);
+    assert(session.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_COMPLETE_ASSOCIATION);
 
     assert(unitlab_mms_session_complete_association(&session, 1U, &diagnostic) == 1);
     assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATED);
@@ -114,15 +112,58 @@ static void test_session_transitions(void)
 
     assert(unitlab_mms_session_begin_release(&session, &diagnostic) == 1);
     assert(session.state == UNITLAB_MMS_SESSION_RELEASING);
+    assert(session.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_RELEASE);
 
     assert(unitlab_mms_session_abort(&session, &diagnostic) == 1);
     assert(session.state == UNITLAB_MMS_SESSION_ABORTED);
+    assert(session.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_ABORT);
+}
+
+static void test_report_control_lifecycle(void)
+{
+    UnitLabIec61850ReportControl report_control;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_iec61850_report_control_init(&report_control);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    assert(unitlab_iec61850_report_control_reserve(&report_control, &diagnostic) == 1);
+    assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_RESERVED);
+    assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE);
+
+    assert(unitlab_iec61850_report_control_enable(&report_control, &diagnostic) == 1);
+    assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_ENABLED);
+    assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_ENABLE);
+
+    assert(unitlab_iec61850_report_control_request_gi(&report_control, &diagnostic) == 1);
+    assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING);
+    assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI);
+
+    report_control.state = UNITLAB_IEC61850_REPORT_CONTROL_REPORTING;
+    assert(unitlab_iec61850_report_control_disable(&report_control, &diagnostic) == 1);
+    assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
+    assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_DISABLE);
+
+    assert(unitlab_iec61850_report_control_release(&report_control, &diagnostic) == 1);
+    assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
+    assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE);
+}
+
+static void test_report_control_reset(void)
+{
+    UnitLabIec61850ReportControl report_control;
+
+    report_control.state = UNITLAB_IEC61850_REPORT_CONTROL_REPORTING;
+    unitlab_iec61850_report_control_reset(&report_control);
+    assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
+    assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_NONE);
 }
 
 int main(void)
 {
     test_defaults();
     test_invoke_id_sequence();
+    test_transport_exchange_bindings();
     test_session_transitions();
     test_report_control_lifecycle();
     test_report_control_reset();
