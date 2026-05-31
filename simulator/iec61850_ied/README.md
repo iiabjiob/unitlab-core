@@ -10,7 +10,7 @@ Current C-owned helpers include:
 
 - session lifecycle and invoke-id correlation;
 - IEC 61850 report-control reserve/enable/GI/disable/release transitions;
-- runtime event/result records and short replay-oriented logs;
+- runtime event/result records, short replay-oriented logs, and operation-result projection helpers;
 - in-memory transport exchange helpers with request/response binding and association helpers used by focused tests.
 
 ## Purpose

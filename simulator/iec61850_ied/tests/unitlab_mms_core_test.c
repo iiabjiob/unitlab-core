@@ -11,6 +11,7 @@ static void test_defaults(void)
     UnitLabMmsSession session;
     UnitLabIec61850ReportControl report_control;
     UnitLabMmsTransportExchange exchange;
+    UnitLabMmsOperationResult operation_result;
 
     memset(&diagnostic, 0xA5, sizeof(diagnostic));
     memset(&session, 0xA5, sizeof(session));
@@ -21,6 +22,7 @@ static void test_defaults(void)
     unitlab_mms_session_init(&session);
     unitlab_iec61850_report_control_init(&report_control);
     unitlab_mms_transport_exchange_init(&exchange);
+    unitlab_mms_operation_result_init(&operation_result);
 
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(diagnostic.message[0] == '\0');
@@ -40,6 +42,8 @@ static void test_defaults(void)
     assert(exchange.invoke_id == 0U);
     assert(exchange.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_NONE);
     assert(unitlab_mms_runtime_event_log_count(&exchange.event_log) == 0U);
+    assert(operation_result.ok == 0);
+    assert(operation_result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_NONE);
 }
 
 static void test_invoke_id_sequence(void)
@@ -92,6 +96,29 @@ static void test_transport_exchange_bindings(void)
 
     assert(unitlab_mms_transport_exchange_set_response_length(&exchange, sizeof(response_buffer) + 1U, &diagnostic) == 0);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+}
+
+
+static void test_operation_result_projection(void)
+{
+    UnitLabMmsTransportExchange exchange;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult result;
+    uint8_t response_buffer[4];
+    const uint8_t request_buffer[2] = { 0xAAU, 0x55U };
+
+    unitlab_mms_transport_exchange_init(&exchange);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    assert(unitlab_mms_transport_exchange_bind_request(&exchange, request_buffer, sizeof(request_buffer), 9U, &diagnostic) == 1);
+    unitlab_mms_operation_result_from_event(&result, 1, &diagnostic, &exchange.last_event);
+    assert(result.ok == 1);
+    assert(result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST);
+
+    assert(unitlab_mms_transport_exchange_bind_response(&exchange, response_buffer, sizeof(response_buffer), &diagnostic) == 1);
+    unitlab_mms_operation_result_from_event(&result, 1, &diagnostic, &exchange.last_event);
+    assert(result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_RESPONSE);
 }
 
 static void test_session_transitions(void)
@@ -181,6 +208,7 @@ int main(void)
     test_defaults();
     test_invoke_id_sequence();
     test_transport_exchange_bindings();
+    test_operation_result_projection();
     test_session_transitions();
     test_report_control_lifecycle();
     test_report_control_reset();

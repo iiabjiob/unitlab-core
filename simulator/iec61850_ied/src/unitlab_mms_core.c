@@ -125,6 +125,30 @@ const UnitLabMmsRuntimeEvent* unitlab_mms_runtime_event_log_at(const UnitLabMmsR
     return &event_log->events[index];
 }
 
+
+void unitlab_mms_operation_result_init(UnitLabMmsOperationResult* result)
+{
+    if (result == NULL) {
+        return;
+    }
+    memset(result, 0, sizeof(*result));
+}
+
+void unitlab_mms_operation_result_from_event(UnitLabMmsOperationResult* result, int ok, const UnitLabMmsDiagnostic* diagnostic, const UnitLabMmsRuntimeEvent* event)
+{
+    if (result == NULL) {
+        return;
+    }
+    unitlab_mms_operation_result_init(result);
+    result->ok = ok;
+    if (diagnostic != NULL) {
+        result->diagnostic = *diagnostic;
+    }
+    if (event != NULL) {
+        result->event = *event;
+    }
+}
+
 void unitlab_mms_session_init(UnitLabMmsSession* session)
 {
     if (session == NULL) {
