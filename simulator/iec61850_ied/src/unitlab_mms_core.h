@@ -101,6 +101,13 @@ typedef struct UnitLabMmsTransportExchange {
     UnitLabMmsRuntimeEventLog event_log;
 } UnitLabMmsTransportExchange;
 
+typedef struct UnitLabMmsRuntimeSnapshot {
+    UnitLabMmsSession session;
+    UnitLabIec61850ReportControl report_control;
+    UnitLabMmsTransportExchange transport;
+    UnitLabMmsOperationResult last_result;
+} UnitLabMmsRuntimeSnapshot;
+
 void unitlab_mms_diagnostic_clear(UnitLabMmsDiagnostic* diagnostic);
 void unitlab_mms_runtime_event_init(UnitLabMmsRuntimeEvent* event);
 void unitlab_mms_runtime_event_log_init(UnitLabMmsRuntimeEventLog* event_log);
@@ -109,6 +116,8 @@ const UnitLabMmsRuntimeEvent* unitlab_mms_runtime_event_log_at(const UnitLabMmsR
 void unitlab_mms_operation_result_init(UnitLabMmsOperationResult* result);
 void unitlab_mms_operation_result_from_event(UnitLabMmsOperationResult* result, int ok, const UnitLabMmsDiagnostic* diagnostic, const UnitLabMmsRuntimeEvent* event);
 void unitlab_mms_operation_result_from_trace(UnitLabMmsOperationResult* result, int ok, const UnitLabMmsDiagnostic* diagnostic, const UnitLabMmsRuntimeEventLog* trace, const UnitLabMmsRuntimeEvent* event);
+void unitlab_mms_runtime_snapshot_init(UnitLabMmsRuntimeSnapshot* snapshot);
+void unitlab_mms_runtime_snapshot_capture(UnitLabMmsRuntimeSnapshot* snapshot, const UnitLabMmsSession* session, const UnitLabIec61850ReportControl* report_control, const UnitLabMmsTransportExchange* transport, const UnitLabMmsOperationResult* last_result);
 void unitlab_mms_session_init(UnitLabMmsSession* session);
 void unitlab_mms_session_reset(UnitLabMmsSession* session);
 uint32_t unitlab_mms_session_next_invoke_id(UnitLabMmsSession* session);

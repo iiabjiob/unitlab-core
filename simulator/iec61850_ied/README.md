@@ -121,6 +121,8 @@ It intentionally excludes:
 - Operator decisions.
 - Runtime evidence.
 
+Runtime evidence is captured separately by the C-owned runtime kernel through event logs, operation results, and a copy-safe runtime snapshot DTO for replay/debug capture.
+
 ## Smoke Start
 
 When linked with libIEC61850, `--smoke-start` builds the dynamic model, starts the MMS server, stops it immediately, and exits:

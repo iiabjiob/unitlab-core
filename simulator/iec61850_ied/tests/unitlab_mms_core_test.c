@@ -12,6 +12,7 @@ static void test_defaults(void)
     UnitLabIec61850ReportControl report_control;
     UnitLabMmsTransportExchange exchange;
     UnitLabMmsOperationResult operation_result;
+    UnitLabMmsRuntimeSnapshot snapshot;
 
     memset(&diagnostic, 0xA5, sizeof(diagnostic));
     memset(&session, 0xA5, sizeof(session));
@@ -23,6 +24,7 @@ static void test_defaults(void)
     unitlab_iec61850_report_control_init(&report_control);
     unitlab_mms_transport_exchange_init(&exchange);
     unitlab_mms_operation_result_init(&operation_result);
+    unitlab_mms_runtime_snapshot_init(&snapshot);
 
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(diagnostic.message[0] == '\0');
@@ -45,6 +47,10 @@ static void test_defaults(void)
     assert(operation_result.ok == 0);
     assert(operation_result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_NONE);
     assert(unitlab_mms_runtime_event_log_count(&operation_result.trace) == 0U);
+    assert(snapshot.session.state == UNITLAB_MMS_SESSION_DISCONNECTED);
+    assert(snapshot.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
+    assert(snapshot.transport.invoke_id == 0U);
+    assert(snapshot.last_result.ok == 0);
 }
 
 static void test_invoke_id_sequence(void)
@@ -124,6 +130,39 @@ static void test_operation_result_projection(void)
     assert(unitlab_mms_runtime_event_log_count(&result.trace) == 2U);
 }
 
+
+static void test_runtime_snapshot_capture(void)
+{
+    UnitLabMmsSession session;
+    UnitLabIec61850ReportControl report_control;
+    UnitLabMmsTransportExchange transport;
+    UnitLabMmsOperationResult result;
+    UnitLabMmsRuntimeSnapshot snapshot;
+    UnitLabMmsDiagnostic diagnostic;
+    uint8_t response_buffer[2];
+    const uint8_t request_buffer[1] = { 0x10U };
+
+    unitlab_mms_session_init(&session);
+    unitlab_iec61850_report_control_init(&report_control);
+    unitlab_mms_transport_exchange_init(&transport);
+    unitlab_mms_operation_result_init(&result);
+    unitlab_mms_runtime_snapshot_init(&snapshot);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    assert(unitlab_mms_session_begin_association(&session, &diagnostic) == 1);
+    assert(unitlab_iec61850_report_control_reserve(&report_control, &diagnostic) == 1);
+    assert(unitlab_mms_transport_exchange_bind_request(&transport, request_buffer, sizeof(request_buffer), 77U, &diagnostic) == 1);
+    assert(unitlab_mms_transport_exchange_bind_response(&transport, response_buffer, sizeof(response_buffer), &diagnostic) == 1);
+    unitlab_mms_operation_result_from_trace(&result, 1, &diagnostic, &transport.event_log, &transport.last_event);
+
+    unitlab_mms_runtime_snapshot_capture(&snapshot, &session, &report_control, &transport, &result);
+    assert(snapshot.session.state == UNITLAB_MMS_SESSION_ASSOCIATING);
+    assert(snapshot.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_RESERVED);
+    assert(snapshot.transport.invoke_id == 77U);
+    assert(snapshot.last_result.ok == 1);
+    assert(snapshot.last_result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_RESPONSE);
+    assert(unitlab_mms_runtime_event_log_count(&snapshot.last_result.trace) == 2U);
+}
 static void test_session_transitions(void)
 {
     UnitLabMmsSession session;
@@ -212,6 +251,7 @@ int main(void)
     test_invoke_id_sequence();
     test_transport_exchange_bindings();
     test_operation_result_projection();
+    test_runtime_snapshot_capture();
     test_session_transitions();
     test_report_control_lifecycle();
     test_report_control_reset();

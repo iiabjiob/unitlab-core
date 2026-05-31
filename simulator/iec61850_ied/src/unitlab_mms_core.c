@@ -157,6 +157,35 @@ void unitlab_mms_operation_result_from_event(UnitLabMmsOperationResult* result, 
     unitlab_mms_operation_result_from_trace(result, ok, diagnostic, NULL, event);
 }
 
+
+void unitlab_mms_runtime_snapshot_init(UnitLabMmsRuntimeSnapshot* snapshot)
+{
+    if (snapshot == NULL) {
+        return;
+    }
+    memset(snapshot, 0, sizeof(*snapshot));
+}
+
+void unitlab_mms_runtime_snapshot_capture(UnitLabMmsRuntimeSnapshot* snapshot, const UnitLabMmsSession* session, const UnitLabIec61850ReportControl* report_control, const UnitLabMmsTransportExchange* transport, const UnitLabMmsOperationResult* last_result)
+{
+    if (snapshot == NULL) {
+        return;
+    }
+    unitlab_mms_runtime_snapshot_init(snapshot);
+    if (session != NULL) {
+        snapshot->session = *session;
+    }
+    if (report_control != NULL) {
+        snapshot->report_control = *report_control;
+    }
+    if (transport != NULL) {
+        snapshot->transport = *transport;
+    }
+    if (last_result != NULL) {
+        snapshot->last_result = *last_result;
+    }
+}
+
 void unitlab_mms_session_init(UnitLabMmsSession* session)
 {
     if (session == NULL) {
