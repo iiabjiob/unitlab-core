@@ -27,6 +27,28 @@ static void test_tpkt_roundtrip(void)
     assert(memcmp(decoded_payload, payload, sizeof(payload)) == 0);
 }
 
+static void test_tpkt_unwrap_ignores_trailing_bytes(void)
+{
+    uint8_t frame[16];
+    const uint8_t payload[3] = { 0xAAU, 0xBBU, 0xCCU };
+    const uint8_t* decoded_payload = NULL;
+    size_t frame_length = 0U;
+    size_t payload_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_tpkt_wrap(payload, sizeof(payload), frame, sizeof(frame), &frame_length, &diagnostic) == 1);
+    frame[frame_length + 0U] = 0xDEU;
+    frame[frame_length + 1U] = 0xADU;
+    frame[frame_length + 2U] = 0xBEU;
+    frame[frame_length + 3U] = 0xEFU;
+    assert(unitlab_mms_tpkt_unwrap(frame, frame_length + 4U, &decoded_payload, &payload_length, &consumed_length, &diagnostic) == 1);
+    assert(payload_length == sizeof(payload));
+    assert(consumed_length == frame_length);
+    assert(memcmp(decoded_payload, payload, sizeof(payload)) == 0);
+}
+
 static void test_tpkt_rejects_invalid_version(void)
 {
     const uint8_t frame[4] = { 2U, 0U, 0U, 4U };
@@ -249,6 +271,12 @@ static void test_ber_length_roundtrip(void)
     }
 
     {
+        const uint8_t leading_zero_length[3] = { 0x82U, 0x00U, 0x80U };
+        assert(unitlab_mms_ber_length_decode(&decoded_length, leading_zero_length, sizeof(leading_zero_length), &consumed_length, &diagnostic) == 0);
+        assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+    }
+
+    {
         const uint8_t unsupported_octet_count[10] = { 0x89U, 0x01U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U };
         assert(unitlab_mms_ber_length_decode(&decoded_length, unsupported_octet_count, sizeof(unsupported_octet_count), &consumed_length, &diagnostic) == 0);
         assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
@@ -381,6 +409,7 @@ static void test_ber_element_rejects_missing_value_bytes(void)
 int main(void)
 {
     test_tpkt_roundtrip();
+    test_tpkt_unwrap_ignores_trailing_bytes();
     test_tpkt_rejects_invalid_version();
     test_cotp_cr_roundtrip();
     test_cotp_dt_roundtrip();

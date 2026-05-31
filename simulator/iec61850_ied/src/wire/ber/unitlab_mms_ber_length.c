@@ -96,6 +96,10 @@ int unitlab_mms_ber_length_decode(size_t* value_length, const uint8_t* buffer, s
         ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "BER length buffer is too small.");
         return 0;
     }
+    if (octet_count > 1U && buffer[1U] == 0U) {
+        ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "BER long-form length must not use a leading zero.");
+        return 0;
+    }
     for (size_t i = 0U; i < octet_count; i++) {
         if (length > (SIZE_MAX >> 8U)) {
             ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "BER length overflow.");
