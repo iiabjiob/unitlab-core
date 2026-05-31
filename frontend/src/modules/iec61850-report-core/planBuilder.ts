@@ -48,8 +48,8 @@ type ReferenceVariantContext = {
 export function buildIec61850ReportSubscriptionPlan(
   options: BuildPlanOptions,
 ): Iec61850ReportSubscriptionPlan {
-  const index = buildSignalIndex(options.candidates)
   const diagnostics: Iec61850ReportSubscriptionPlanDiagnostic[] = []
+  const index = buildSignalIndex(options.candidates, diagnostics)
   const matchedSignals: Iec61850ReportSubscriptionPlanSignal[] = []
   const unmatchedSignals: Iec61850SelectedSignal[] = []
   const ambiguousSignals: Iec61850ReportSubscriptionPlan["ambiguousSignals"] = []
@@ -170,8 +170,8 @@ export function buildIec61850ReportSubscriptionPlan(
   }
 }
 
-function buildSignalIndex(candidates: readonly Iec61850ReportControlCandidate[]): SignalIndex {
-  const ldInsts = collectKnownLdInsts(candidates)
+function buildSignalIndex(candidates: readonly Iec61850ReportControlCandidate[], diagnostics: Iec61850ReportSubscriptionPlanDiagnostic[]): SignalIndex {
+  const ldInsts = collectKnownLdInsts(candidates, diagnostics)
   const index: SignalIndex = {
     byVariant: new Map(),
     reportsById: new Map(),
@@ -181,7 +181,7 @@ function buildSignalIndex(candidates: readonly Iec61850ReportControlCandidate[])
 
   for (const candidate of candidates) {
     index.reportsById.set(candidate.id, candidate)
-    for (const signal of getIec61850ReportCandidateSignals(candidate)) {
+    for (const signal of getIec61850ReportCandidateSignals(candidate, diagnostics)) {
       const key = `${normalizeReference(candidate.iedName)}\u0000${normalizeReference(signal.reference)}`
       const modelSignal = signalsByKey.get(key) ?? {
         key,
@@ -194,6 +194,7 @@ function buildSignalIndex(candidates: readonly Iec61850ReportControlCandidate[])
       for (const variant of referenceVariants(signal.reference, {
         iedName: candidate.iedName,
         knownLdInsts: ldInsts,
+        includeParentPaths: true,
       })) {
         addVariant(index, variant, modelSignal)
       }
@@ -237,11 +238,11 @@ function collectCandidates(index: SignalIndex, address: string, includeParentPat
   return new Set()
 }
 
-function collectKnownLdInsts(candidates: readonly Iec61850ReportControlCandidate[]): Set<string> {
+function collectKnownLdInsts(candidates: readonly Iec61850ReportControlCandidate[], diagnostics: Iec61850ReportSubscriptionPlanDiagnostic[]): Set<string> {
   const ldInsts = new Set<string>()
   for (const candidate of candidates) {
     addNormalized(ldInsts, candidate.logicalDeviceInst)
-    for (const signal of getIec61850ReportCandidateSignals(candidate)) {
+    for (const signal of getIec61850ReportCandidateSignals(candidate, diagnostics)) {
       addNormalized(ldInsts, parseReference(normalizeReference(signal.reference))?.ldInst)
     }
     const dataSetRefParts = normalizeReference(candidate.dataSetRef ?? "").split("/").filter(Boolean)

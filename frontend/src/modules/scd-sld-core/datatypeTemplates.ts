@@ -206,36 +206,38 @@ function resolveDatasetMember(
   member: SclDataSetMember,
 ): NormalizedDatasetEntry {
   const diagnostics: ScdDiagnostic[] = []
+  const context = buildMemberContext(dataSet, member)
   const sourceKind = member.kind === "FCD" ? "FCD" : "FCDA"
+  const datasetRef = formatDataSetReference(dataSet)
   const logicalNode = findLogicalNodeForMember(model, dataSet, member, diagnostics)
   if (!logicalNode || !logicalNode.lnType) {
-    return { datasetRef: formatDataSetReference(dataSet), memberRef: member.reference, leaves: [], sourceKind, diagnostics }
+    return { datasetRef, memberRef: member.reference, leaves: [], sourceKind, diagnostics }
   }
 
   if (!model.dataTypeTemplates.lNodeTypes.length || !model.dataTypeTemplates.doTypes.length) {
-    diagnostics.push(errorDiagnostic(member, "datatype-templates.missing-template-root", "DataTypeTemplates are unavailable."))
-    return { datasetRef: formatDataSetReference(dataSet), memberRef: member.reference, leaves: [], sourceKind, diagnostics }
+    pushMemberDiagnostic(diagnostics, member, "datatype-templates.missing-template-root", "DataTypeTemplates are unavailable.", context)
+    return { datasetRef, memberRef: member.reference, leaves: [], sourceKind, diagnostics }
   }
 
-  const lNodeType = findUniqueById(model.dataTypeTemplates.lNodeTypes, logicalNode.lnType, "LNodeType", member, diagnostics)
+  const lNodeType = findUniqueById(model.dataTypeTemplates.lNodeTypes, logicalNode.lnType, "LNodeType", member, diagnostics, buildMemberContext(dataSet, member, { templateKind: "LNodeType", templateId: logicalNode.lnType }))
   if (!lNodeType) {
-    return { datasetRef: formatDataSetReference(dataSet), memberRef: member.reference, leaves: [], sourceKind, diagnostics }
+    return { datasetRef, memberRef: member.reference, leaves: [], sourceKind, diagnostics }
   }
 
   if (!member.doName) {
-    diagnostics.push(errorDiagnostic(member, "datatype-templates.missing-do", "DataSet member requires doName."))
-    return { datasetRef: formatDataSetReference(dataSet), memberRef: member.reference, leaves: [], sourceKind, diagnostics }
+    pushMemberDiagnostic(diagnostics, member, "datatype-templates.missing-do", "DataSet member requires doName.", context)
+    return { datasetRef, memberRef: member.reference, leaves: [], sourceKind, diagnostics }
   }
 
   const doTemplate = lNodeType.dos.find(item => item.name === member.doName)
   if (!doTemplate) {
-    diagnostics.push(errorDiagnostic(member, "datatype-templates.missing-do", `Missing DO: ${member.doName}`))
-    return { datasetRef: formatDataSetReference(dataSet), memberRef: member.reference, leaves: [], sourceKind, diagnostics }
+    pushMemberDiagnostic(diagnostics, member, "datatype-templates.missing-do", `Missing DO: ${member.doName}`, context)
+    return { datasetRef, memberRef: member.reference, leaves: [], sourceKind, diagnostics }
   }
 
-  const doType = doTemplate.type ? findUniqueById(model.dataTypeTemplates.doTypes, doTemplate.type, "DOType", member, diagnostics) : null
+  const doType = doTemplate.type ? findUniqueById(model.dataTypeTemplates.doTypes, doTemplate.type, "DOType", member, diagnostics, buildMemberContext(dataSet, member, { templateKind: "DOType", templateId: doTemplate.type })) : null
   if (!doType) {
-    return { datasetRef: formatDataSetReference(dataSet), memberRef: member.reference, leaves: [], sourceKind, diagnostics }
+    return { datasetRef, memberRef: member.reference, leaves: [], sourceKind, diagnostics }
   }
 
   const pathFilter = member.daName?.trim() ? member.daName.trim().split(".").filter(Boolean) : []
@@ -261,11 +263,11 @@ function resolveDatasetMember(
 
   if (!ok || leaves.length === 0) {
     if (!hasError) {
-      diagnostics.push(errorDiagnostic(member, "datatype-templates.unsupported-structured-member", `Unsupported structured member: ${member.reference}`))
+      pushMemberDiagnostic(diagnostics, member, "datatype-templates.empty-normalized-leaves", `No normalized reportable leaves were resolved for ${member.reference}.`, context)
     }
   }
 
-  return { datasetRef: formatDataSetReference(dataSet), memberRef: member.reference, leaves, sourceKind, diagnostics }
+  return { datasetRef, memberRef: member.reference, leaves, sourceKind, diagnostics }
 }
 
 type ExpandInput = {
@@ -294,7 +296,7 @@ function expandDoType(input: ExpandInput): boolean {
   }
 
   for (const sdo of input.doType.sdos) {
-    const nestedDoType = sdo.type ? findUniqueById(input.model.dataTypeTemplates.doTypes, sdo.type, "DOType", input.member, input.diagnostics) : null
+    const nestedDoType = sdo.type ? findUniqueById(input.model.dataTypeTemplates.doTypes, sdo.type, "DOType", input.member, input.diagnostics, buildMemberContext(input.dataSet, input.member, { templateKind: "DOType", templateId: sdo.type })) : null
     if (!nestedDoType) {
       continue
     }
@@ -323,29 +325,31 @@ function expandAttribute(input: {
   leaves: NormalizedDataLeaf[]
   diagnostics: ScdDiagnostic[]
 }): boolean {
-  const { attribute, pathPrefix, pathFilter, requestedFc, inheritedFc, diagnostics, member } = input
+  const { attribute, pathPrefix, pathFilter, requestedFc, inheritedFc, diagnostics, member, dataSet } = input
   const currentPath = [...pathPrefix, attribute.name]
+  const context = buildMemberContext(dataSet, member, {
+    bType: attribute.bType,
+    count: attribute.count,
+  })
 
-  if (pathFilter.length > 0) {
-    const prefix = pathFilter.slice(0, currentPath.length)
-    if (prefix.join(".") !== currentPath.join(".")) {
-      return false
-    }
+  if (pathFilter.length > 0 && !matchesPathFilter(currentPath, pathFilter)) {
+    return false
   }
 
-  const bType = normalizeBType(attribute.bType, member, diagnostics)
+  if (attribute.count != null && attribute.count > 1) {
+    pushMemberDiagnostic(diagnostics, member, "datatype-templates.array-count-not-supported", `Array expansion is not supported for count=${attribute.count} on ${member.reference}.`, context)
+    return false
+  }
+
+  const bType = normalizeBType(attribute.bType, member, diagnostics, context)
   if (!bType) {
     return false
   }
 
   const effectiveFc = attribute.fc?.trim() || inheritedFc || requestedFc
-  if (attribute.fc && requestedFc && attribute.fc.trim() !== requestedFc) {
-    diagnostics.push(errorDiagnostic(member, "datatype-templates.incompatible-fc", `Incompatible fc: ${member.reference}`))
-    return false
-  }
 
   if (attribute.type && bType === "Struct") {
-    const daType = findUniqueById(input.model.dataTypeTemplates.daTypes, attribute.type, "DAType", member, diagnostics)
+    const daType = findUniqueById(input.model.dataTypeTemplates.daTypes, attribute.type, "DAType", member, diagnostics, buildMemberContext(dataSet, member, { bType: attribute.bType, count: attribute.count, templateKind: "DAType", templateId: attribute.type }))
     if (!daType) {
       return false
     }
@@ -375,28 +379,33 @@ function expandAttribute(input: {
   }
 
   if (bType === "Struct") {
-    diagnostics.push(errorDiagnostic(member, "datatype-templates.unsupported-structured-member", `Unsupported structured member: ${member.reference}`))
-    return false
-  }
-
-  if (pathFilter.length > 0 && currentPath.length !== pathFilter.length) {
+    pushMemberDiagnostic(diagnostics, member, "datatype-templates.unsupported-structured-member", `Unsupported structured member ${member.reference}.`, context)
     return false
   }
 
   if (!effectiveFc) {
-    diagnostics.push(errorDiagnostic(member, "datatype-templates.missing-fc", `Missing fc: ${member.reference}`))
+    pushMemberDiagnostic(diagnostics, member, "datatype-templates.missing-fc", `Missing fc for ${member.reference}.`, context)
     return false
   }
   if (requestedFc && effectiveFc !== requestedFc) {
-    diagnostics.push(errorDiagnostic(member, "datatype-templates.incompatible-fc", `Incompatible fc: ${member.reference}`))
+    pushMemberDiagnostic(diagnostics, member, "datatype-templates.incompatible-fc", `Incompatible fc ${requestedFc} for ${member.reference}; resolved leaf fc is ${effectiveFc}.`, context)
     return false
   }
 
-  const enumType = attribute.bType?.trim() === "Enum" && attribute.type
-    ? findUniqueById(input.model.dataTypeTemplates.enumTypes, attribute.type, "EnumType", member, diagnostics)
-    : null
-  if (attribute.bType?.trim() === "Enum" && attribute.type && !enumType) {
+  if (pathFilter.length > 0 && !isPathPrefix(pathFilter, currentPath)) {
     return false
+  }
+
+  let enumType: SclEnumType | null = null
+  if (bType === "Enum") {
+    if (!attribute.type) {
+      pushMemberDiagnostic(diagnostics, member, "datatype-templates.missing-enumtype", `Enum attribute ${member.reference} is missing type.`, context)
+      return false
+    }
+    enumType = findUniqueById(input.model.dataTypeTemplates.enumTypes, attribute.type, "EnumType", member, diagnostics, buildMemberContext(dataSet, member, { bType: attribute.bType, count: attribute.count, templateKind: "EnumType", templateId: attribute.type }))
+    if (!enumType) {
+      return false
+    }
   }
 
   input.leaves.push({
@@ -417,21 +426,30 @@ function expandAttribute(input: {
     isReportable: true,
     source: {
       datasetName: input.dataSet.name,
-      originalFcda: member,
+      originalFcda: {
+        reference: member.reference,
+        kind: member.kind,
+        sourcePath: member.sourcePath,
+      },
       templateIds: [input.logicalNode.lnType ?? "", attribute.type ?? ""].filter(Boolean),
     },
   })
   return true
 }
 
-function normalizeBType(value: string | null, member: SclDataSetMember, diagnostics: ScdDiagnostic[]): string | null {
+function normalizeBType(
+  value: string | null,
+  member: SclDataSetMember,
+  diagnostics: ScdDiagnostic[],
+  context: NonNullable<ScdDiagnostic["context"]>,
+): string | null {
   const bType = value?.trim() ?? ""
   if (!bType) {
-    diagnostics.push(errorDiagnostic(member, "datatype-templates.unknown-btype", `Unknown bType: ${member.reference}`))
+    pushMemberDiagnostic(diagnostics, member, "datatype-templates.unknown-btype", `Unknown bType for ${member.reference}.`, context)
     return null
   }
   if (!KNOWN_B_TYPES.has(bType)) {
-    diagnostics.push(errorDiagnostic(member, "datatype-templates.unknown-btype", `Unknown bType: ${bType}`))
+    pushMemberDiagnostic(diagnostics, member, "datatype-templates.unknown-btype", `Unknown bType "${bType}" for ${member.reference}.`, context)
     return null
   }
   return bType
@@ -443,6 +461,7 @@ function findLogicalNodeForMember(
   member: SclDataSetMember,
   diagnostics: ScdDiagnostic[],
 ): SclLogicalNode | null {
+  const context = buildMemberContext(dataSet, member)
   const logicalNodeName = member.lnClass ? formatLogicalNodeName(member.prefix, member.lnClass, member.lnInst) : dataSet.logicalNodeName
   const ldInst = member.ldInst?.trim() || dataSet.logicalDeviceInst
   const matches = collectLogicalNodes(model).filter(node =>
@@ -455,11 +474,11 @@ function findLogicalNodeForMember(
     return matches[0]!
   }
   if (matches.length > 1) {
-    diagnostics.push(errorDiagnostic(member, "datatype-templates.ambiguous-reference", `Ambiguous reference: ${member.reference}`))
+    pushMemberDiagnostic(diagnostics, member, "datatype-templates.ambiguous-reference", `Ambiguous reference: ${member.reference}.`, context)
     return null
   }
 
-  diagnostics.push(errorDiagnostic(member, "datatype-templates.missing-logical-node", `Missing logical node: ${member.reference}`))
+  pushMemberDiagnostic(diagnostics, member, "datatype-templates.missing-logical-node", `Missing logical node: ${member.reference}.`, context)
   return null
 }
 
@@ -467,27 +486,60 @@ function collectLogicalNodes(model: NormalizedSclModel): SclLogicalNode[] {
   return model.ieds.flatMap(ied => ied.accessPoints.flatMap(accessPoint => accessPoint.server?.logicalDevices.flatMap(logicalDevice => logicalDevice.logicalNodes) ?? []))
 }
 
-function errorDiagnostic(member: SclDataSetMember, code: string, message: string): ScdDiagnostic {
-  return {
+function pushMemberDiagnostic(
+  diagnostics: ScdDiagnostic[],
+  member: SclDataSetMember,
+  code: string,
+  message: string,
+  context: NonNullable<ScdDiagnostic["context"]>,
+): void {
+  diagnostics.push({
     severity: "error",
     stage: "normalizer",
     code,
     message,
     sourcePath: member.sourcePath,
     sourceLocation: member.sourceLocation,
+    context,
+  })
+}
+
+function buildMemberContext(
+  dataSet: SclDataSet,
+  member: SclDataSetMember,
+  extras: Partial<NonNullable<ScdDiagnostic["context"]>> = {},
+): NonNullable<ScdDiagnostic["context"]> {
+  return {
+    datasetRef: formatDataSetReference(dataSet),
+    memberRef: member.reference,
+    iedName: dataSet.iedName,
+    ldInst: member.ldInst?.trim() || dataSet.logicalDeviceInst,
+    lnClass: member.lnClass,
+    lnInst: member.lnInst,
+    doName: member.doName,
+    daName: member.daName,
+    fc: member.fc,
+    ...extras,
   }
 }
 
-function findUniqueById<T extends { id: string }>(items: readonly T[], id: string, kind: string, member: SclDataSetMember, diagnostics: ScdDiagnostic[]): T | null {
+function findUniqueById<T extends { id: string }>(
+  items: readonly T[],
+  id: string,
+  kind: string,
+  member: SclDataSetMember,
+  diagnostics: ScdDiagnostic[],
+  context: NonNullable<ScdDiagnostic["context"]>,
+): T | null {
   const matches = items.filter(item => item.id === id)
   if (matches.length === 1) {
     return matches[0]!
   }
   if (matches.length === 0) {
-    diagnostics.push(errorDiagnostic(member, missingKindCode(kind), `Missing ${kind}: ${id}`))
+    pushMemberDiagnostic(diagnostics, member, missingKindCode(kind), `Missing ${kind}: ${id}`, context)
     return null
   }
-  diagnostics.push(errorDiagnostic(member, ambiguousKindCode(kind), `Ambiguous ${kind}: ${id}`))
+  pushMemberDiagnostic(diagnostics, member, ambiguousKindCode(kind), `Ambiguous ${kind}: ${id}`, context)
   return null
 }
 
@@ -580,6 +632,17 @@ function buildLeafReference(logicalNode: SclLogicalNode, doName: string, daPath:
 
 function formatDataSetReference(dataSet: SclDataSet): string {
   return `${dataSet.iedName}/${dataSet.accessPointName}/${dataSet.logicalDeviceInst}/${dataSet.logicalNodeName}.${dataSet.name}`
+}
+
+function isPathPrefix(prefix: string[], path: string[]): boolean {
+  if (prefix.length > path.length) {
+    return false
+  }
+  return prefix.every((part, index) => part === path[index])
+}
+
+function matchesPathFilter(currentPath: string[], pathFilter: string[]): boolean {
+  return isPathPrefix(currentPath, pathFilter) || isPathPrefix(pathFilter, currentPath)
 }
 
 function lastFrame<T extends TemplateFrame["kind"]>(stack: TemplateFrame[], ...kinds: T[]): Extract<TemplateFrame, { kind: T }> | null {

@@ -166,7 +166,7 @@ function mapPayloadValues(
   diagnostics: Iec61850ReportEventDiagnostic[],
 ): Iec61850ReportValue[] {
   const { candidate, payload, receivedAt } = input
-  const expectedSignals = getIec61850ReportCandidateSignals(candidate)
+  const expectedSignals = getIec61850ReportCandidateSignals(candidate, diagnostics)
   const hasDataReferences = payload.values.some(value => value.dataReference != null && value.dataReference.trim() !== "")
   const assigned: AssignedValue[] = []
 
@@ -182,7 +182,7 @@ function mapPayloadValues(
   }
 
   if (hasDataReferences) {
-    const index = buildReferenceIndex(candidate)
+    const index = buildReferenceIndex(candidate, diagnostics)
     const usedIndexes = new Set<number>()
     payload.values.forEach((payloadValue, payloadIndex) => {
       const dataReference = payloadValue.dataReference?.trim() ?? ""
@@ -235,9 +235,9 @@ function mapPayloadValues(
     }))
 }
 
-function buildReferenceIndex(candidate: Iec61850ReportControlCandidate): ReferenceIndex {
+function buildReferenceIndex(candidate: Iec61850ReportControlCandidate, diagnostics: Iec61850ReportEventDiagnostic[]): ReferenceIndex {
   const index: ReferenceIndex = new Map()
-  getIec61850ReportCandidateSignals(candidate).forEach((signal, signalIndex) => {
+  getIec61850ReportCandidateSignals(candidate, diagnostics).forEach((signal, signalIndex) => {
     for (const variant of buildReferenceVariants(signal.reference, candidate)) {
       const key = normalizeReportDataReference(variant, candidate)
       const existing = index.get(key)
@@ -271,6 +271,19 @@ function buildReferenceVariants(reference: string, candidate: Iec61850ReportCont
     const mmsReference = dotReferenceToMmsReference(reference, fc)
     variants.add(mmsReference)
     variants.add(`${candidate.iedName}${mmsReference}`)
+  }
+
+  const body = withoutFc
+  const dotIndex = body.indexOf(".")
+  if (dotIndex > 0 && dotIndex < body.length - 1) {
+    const logicalNodeRef = body.slice(0, dotIndex)
+    const dataPath = body.slice(dotIndex + 1).split(".")
+    for (let end = dataPath.length - 1; end >= 1; end -= 1) {
+      const parentPath = dataPath.slice(0, end).join(".")
+      const parentReference = `${logicalNodeRef}.${parentPath}${fc ? `[${fc}]` : ""}`
+      variants.add(parentReference)
+      variants.add(`${candidate.iedName}${parentReference}`)
+    }
   }
 
   return [...variants]

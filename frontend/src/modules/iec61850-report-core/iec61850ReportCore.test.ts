@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { parseScdSource } from "../scd-sld-core"
+import { getIec61850ReportCandidateSignals } from "./normalizedSignals"
 import {
   buildIec61850ReportSubscriptionPlan,
   createIec61850SimulatorAdapter,
@@ -54,6 +55,8 @@ const reportScd = `<?xml version="1.0" encoding="UTF-8"?>
               <OptFields seqNum="true" timeStamp="true" reasonCode="true" dataSet="true" dataRef="true" entryID="true" configRef="true" bufOvfl="true"/>
             </ReportControl>
           </LN0>
+          <LN lnClass="XCBR" inst="1" lnType="XCBR_TYPE"/>
+          <LN prefix="P" lnClass="GGIO" inst="1" lnType="GGIO_TYPE"/>
         </LDevice>
       </Server>
     </AccessPoint>
@@ -113,6 +116,23 @@ describe("iec61850-report-core", () => {
       "SIGNAL_COUNT_MISMATCH",
       "TRGOPS_MISMATCH",
     ])
+  })
+
+  it("emits a transitional warning when raw dataset signals are used", () => {
+    const candidate = {
+      ...firstReportCandidate(),
+      normalizedSignals: [],
+      normalizedDatasetEntries: [],
+    }
+    const diagnostics: Array<{ severity: "warning" | "error" | "info"; code: string; message: string; [key: string]: unknown }> = []
+
+    const signals = getIec61850ReportCandidateSignals(candidate, diagnostics)
+
+    expect(signals.map(signal => signal.reference)).toEqual(candidate.signals.map(signal => signal.reference))
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      severity: "warning",
+      code: "TRANSITIONAL_RAW_SIGNAL_FALLBACK",
+    }))
   })
 
   it("keeps IEC report standard terms separate from UnitLab-only runtime terms", () => {
@@ -190,7 +210,7 @@ describe("iec61850-report-core", () => {
     })
     expect(report.values.map(value => value.reference)).toEqual([
       "LD0/XCBR1.Pos.stVal[ST]",
-      "LD0/PGGIO1.Ind1[ST]",
+      "LD0/PGGIO1.Ind1.stVal[ST]",
     ])
 
     await expect(manager.disableReportControl(endpoint, candidate, "unitlab")).resolves.toMatchObject({
@@ -347,7 +367,7 @@ describe("iec61850-report-core", () => {
       },
       {
         dataSetIndex: 1,
-        reference: "LD0/PGGIO1.Ind1[ST]",
+        reference: "LD0/PGGIO1.Ind1.stVal[ST]",
         dataReference: "IED1LD0/PGGIO1/Ind1[ST]",
         value: true,
       },
@@ -453,7 +473,7 @@ describe("iec61850-report-core", () => {
     expect(plan.devices).toHaveLength(1)
     expect(plan.devices[0]?.reports[0]?.candidate.reportControlName).toBe("brcbEvents")
     expect(plan.devices[0]?.reports[0]?.matchedSignals.map(signal => signal.modelReference)).toEqual([
-      "LD0/PGGIO1.Ind1[ST]",
+      "LD0/PGGIO1.Ind1.stVal[ST]",
       "LD0/XCBR1.Pos.stVal[ST]",
     ])
     expect(plan.diagnostics).toEqual([])
@@ -484,7 +504,7 @@ describe("iec61850-report-core", () => {
     })
     expect(run.reports[0]?.event?.values.map(value => value.reference)).toEqual([
       "LD0/XCBR1.Pos.stVal[ST]",
-      "LD0/PGGIO1.Ind1[ST]",
+      "LD0/PGGIO1.Ind1.stVal[ST]",
     ])
     expect(run.reports[0]?.observations.map(observation => ({
       selectedSignalId: observation.selectedSignalId,
@@ -498,7 +518,7 @@ describe("iec61850-report-core", () => {
       },
       {
         selectedSignalId: "sig-2",
-        modelReference: "LD0/PGGIO1.Ind1[ST]",
+        modelReference: "LD0/PGGIO1.Ind1.stVal[ST]",
         value: 1,
       },
     ])

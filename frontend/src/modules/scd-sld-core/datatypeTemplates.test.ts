@@ -37,6 +37,7 @@ function buildBaseFixture(overrides: {
       <DO name="SPCSO1" type="${spcDoTypeId}" desc="Single point status"/>
       <DO name="DPCSO1" type="${dpsDoTypeId}" desc="Double point status"/>
       <DO name="A" type="MV_DO" desc="Measured value"/>
+      <DO name="Cnt" type="MV_DO" desc="Counted measured value"/>
       <DO name="W" type="CMV_DO" desc="Complex measured value"/>
       <DO name="CtlModel" type="CTL_DO" desc="Enum control model"/>
     </LNodeType>
@@ -97,6 +98,9 @@ function buildBaseFixture(overrides: {
               <FCD ldInst="LD1" lnClass="LLN0" doName="SPCSO1" fc="${stValFc}"/>
               <FCD ldInst="LD1" lnClass="LLN0" doName="DPCSO1" fc="${stValFc}"/>
               <FCD ldInst="LD1" lnClass="LLN0" doName="A" fc="${mvFc}"/>
+              <FCD ldInst="LD1" lnClass="LLN0" doName="A" daName="mag" fc="${mvFc}"/>
+              <FCDA ldInst="LD1" lnClass="LLN0" doName="A" daName="mag.f" fc="${mvFc}"/>
+              <FCD ldInst="LD1" lnClass="LLN0" doName="Cnt" daName="mag" fc="${mvFc}"/>
               <FCD ldInst="LD1" lnClass="LLN0" doName="W" fc="${cmvFc}"/>
               <FCDA ldInst="LD1" lnClass="LLN0" doName="CtlModel" daName="ctlModel" fc="${ctlMemberFc}"/>
             </DataSet>
@@ -155,6 +159,14 @@ describe("IEC 61850 DataTypeTemplates normalization", () => {
     expect(dps.leaves.map(leaf => leaf.daPath.join("."))).toEqual(["stVal", "q", "t"])
   })
 
+  it("resolves structured DA members and direct leaf members", () => {
+    const subscription = getSubscription()
+    const structured = getEntry(subscription, "A.mag[MX]")
+    const direct = getEntry(subscription, "A.mag.f[MX]")
+    expect(structured.leaves.map(leaf => leaf.daPath.join(".")).sort()).toEqual(["mag.f"])
+    expect(direct.leaves.map(leaf => leaf.daPath.join(".")).sort()).toEqual(["mag.f"])
+  })
+
   it("resolves MV-like leaves", () => {
     const subscription = getSubscription()
     const entry = getEntry(subscription, "A[MX]")
@@ -173,6 +185,32 @@ describe("IEC 61850 DataTypeTemplates normalization", () => {
     expect(entry.leaves).toHaveLength(1)
     expect(entry.leaves[0]?.enumType).toBe("CtlModelType")
     expect(entry.leaves[0]?.bType).toBe("Enum")
+  })
+
+  it("inherits fc for nested BDA leaves when the child has no own fc", () => {
+    const inheritedFixture = buildBaseFixture().replace('<BDA name="f" bType="FLOAT32" fc="MX"/>', '<BDA name="f" bType="FLOAT32"/>')
+    const subscription = getSubscription(buildModel(inheritedFixture))
+    const entry = getEntry(subscription, "A.mag[MX]")
+    expect(entry.leaves).toHaveLength(1)
+    expect(entry.leaves[0]?.fc).toBe("MX")
+  })
+
+  it("honors an explicit child fc on nested BDA leaves", () => {
+    const overrideFixture = buildBaseFixture()
+      .replace('<BDA name="f" bType="FLOAT32" fc="MX"/>', '<BDA name="f" bType="FLOAT32" fc="ST"/>')
+      .replace('<FCDA ldInst="LD1" lnClass="LLN0" doName="A" daName="mag.f" fc="MX"/>', '<FCDA ldInst="LD1" lnClass="LLN0" doName="A" daName="mag.f" fc="ST"/>')
+    const subscription = getSubscription(buildModel(overrideFixture))
+    const entry = getEntry(subscription, "A.mag.f[ST]")
+    expect(entry.leaves).toHaveLength(1)
+    expect(entry.leaves[0]?.fc).toBe("ST")
+  })
+
+  it("fails closed when enum type is unknown", () => {
+    const model = buildModel(buildBaseFixture({ ctlEnumTypeId: "MissingEnumType" }))
+    const subscription = getSubscription(model)
+    const entry = getEntry(subscription, "CtlModel.ctlModel")
+    expect(entry.leaves).toHaveLength(0)
+    expect(entry.diagnostics.some(diagnostic => diagnostic.code === "datatype-templates.unknown-enumtype")).toBe(true)
   })
 
   it("uses the same resolver path for FCDA and FCD members", () => {
@@ -206,6 +244,14 @@ describe("IEC 61850 DataTypeTemplates normalization", () => {
     const entry = getEntry(subscription, "CtlModel.ctlModel")
     expect(entry.leaves).toHaveLength(0)
     expect(entry.diagnostics.some(diagnostic => diagnostic.code === "datatype-templates.incompatible-fc")).toBe(true)
+  })
+
+  it("fails closed when count > 1 is encountered", () => {
+    const countFixture = buildBaseFixture().replace('<BDA name="f" bType="FLOAT32" fc="MX"/>', '<BDA name="f" bType="FLOAT32" fc="MX" count="2"/>')
+    const subscription = getSubscription(buildModel(countFixture))
+    const entry = getEntry(subscription, "A.mag[MX]")
+    expect(entry.leaves).toHaveLength(0)
+    expect(entry.diagnostics.some(diagnostic => diagnostic.code === "datatype-templates.array-count-not-supported")).toBe(true)
   })
 
   it("fails closed when bType is unknown", () => {

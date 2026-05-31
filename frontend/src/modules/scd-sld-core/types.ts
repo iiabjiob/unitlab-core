@@ -105,6 +105,22 @@ export type SldCoordinate = {
   y: number | null
 }
 
+export type ScdDiagnosticContext = {
+  datasetRef?: string
+  memberRef?: string
+  iedName?: string | null
+  ldInst?: string | null
+  lnClass?: string | null
+  lnInst?: string | null
+  doName?: string | null
+  daName?: string | null
+  fc?: string | null
+  templateKind?: string
+  templateId?: string | null
+  bType?: string | null
+  count?: number | null
+}
+
 export type ScdDiagnostic = {
   severity: ScdDiagnosticSeverity
   stage: ScdDiagnosticStage
@@ -113,6 +129,7 @@ export type ScdDiagnostic = {
   sourcePath?: string
   sourceId?: string
   sourceLocation?: ScdSourceLocation
+  context?: ScdDiagnosticContext
 }
 
 export type ScdSource = {
@@ -321,11 +338,6 @@ export type SclDataSetMember = {
   sourceLocation?: ScdSourceLocation
 }
 
-export type SclDataTypeTemplateSource = {
-  sourcePath: string
-  sourceLocation?: ScdSourceLocation
-}
-
 export type SclEnumVal = {
   value: string
   desc: string | null
@@ -400,19 +412,19 @@ export type SclLNodeType = {
   sourceLocation?: ScdSourceLocation
 }
 
-export type SclDataTypeTemplatesModel = {
-  lNodeTypes: SclLNodeType[]
-  doTypes: SclDoType[]
-  daTypes: SclDaType[]
-  enumTypes: SclEnumType[]
-}
-
 export type SclDaType = {
   id: string
   desc: string | null
   bdas: SclBda[]
   sourcePath: string
   sourceLocation?: ScdSourceLocation
+}
+
+export type SclDataTypeTemplatesModel = {
+  lNodeTypes: SclLNodeType[]
+  doTypes: SclDoType[]
+  daTypes: SclDaType[]
+  enumTypes: SclEnumType[]
 }
 
 export type NormalizedDataLeaf = {
@@ -433,7 +445,11 @@ export type NormalizedDataLeaf = {
   isReportable: boolean
   source?: {
     datasetName?: string
-    originalFcda?: unknown
+    originalFcda?: {
+      reference: string
+      kind: SclDataSetMemberKind
+      sourcePath: string
+    }
     templateIds?: string[]
   }
 }
@@ -442,7 +458,7 @@ export type NormalizedDatasetEntry = {
   datasetRef: string
   memberRef: string
   leaves: NormalizedDataLeaf[]
-  sourceKind: "FCDA" | "FCD" | "DO" | "DA"
+  sourceKind: "FCDA" | "FCD"
   diagnostics: ScdDiagnostic[]
 }
 
