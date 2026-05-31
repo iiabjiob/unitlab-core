@@ -2,6 +2,7 @@
 #define UNITLAB_IEC61850_IED_UNITLAB_MMS_CORE_H
 
 #include "unitlab_mms_types.h"
+#include "unitlab_mms_semantic_pdu.h"
 #include "unitlab_iec61850_report_runtime.h"
 
 typedef enum UnitLabMmsSessionState {
@@ -117,6 +118,8 @@ uint32_t unitlab_mms_session_next_invoke_id(UnitLabMmsSession* session);
 int unitlab_mms_session_begin_association(UnitLabMmsSession* session, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_session_complete_association(UnitLabMmsSession* session, uint32_t invoke_id, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_session_begin_release(UnitLabMmsSession* session, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_session_complete_release(UnitLabMmsSession* session, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLabMmsPendingRequest* pending_request, const UnitLabMmsSemanticResult* semantic_result, UnitLabMmsOperationResult* operation_result);
 int unitlab_mms_session_abort(UnitLabMmsSession* session, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_session_is_associated(const UnitLabMmsSession* session);
 void unitlab_mms_pending_request_init(UnitLabMmsPendingRequest* request);

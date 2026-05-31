@@ -92,6 +92,7 @@ add_test(
 add_executable(unitlab-iec61850-mms-core-test
   src/unitlab_mms_core.c
   src/unitlab_mms_types.c
+  src/unitlab_mms_semantic_pdu.c
   src/unitlab_iec61850_report_runtime.c
   tests/unitlab_mms_core_test.c
 )

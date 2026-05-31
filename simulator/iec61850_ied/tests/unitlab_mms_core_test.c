@@ -342,6 +342,48 @@ static void test_semantic_pdu_defaults(void)
     assert(report.buffered == 0);
 }
 
+static void test_runtime_apply_semantic_result(void)
+{
+    UnitLabMmsSession session;
+    UnitLabMmsSemanticResult semantic_result;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_session_init(&session);
+    unitlab_mms_semantic_result_init(&semantic_result);
+    unitlab_mms_operation_result_init(&operation_result);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    assert(unitlab_mms_session_begin_association(&session, &diagnostic) == 1);
+    semantic_result.ok = 1;
+    semantic_result.outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
+    semantic_result.pdu.kind = UNITLAB_MMS_DECODED_PDU_ASSOCIATE_RESPONSE;
+    semantic_result.pdu.invoke_id = session.active_invoke_id;
+
+    assert(unitlab_mms_runtime_apply_semantic_result(&session, NULL, &semantic_result, &operation_result) == 1);
+    assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATED);
+    assert(operation_result.ok == 1);
+    assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(operation_result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_COMPLETE_ASSOCIATION);
+    assert(unitlab_mms_runtime_event_log_count(&operation_result.trace) == 2U);
+
+    unitlab_mms_semantic_result_init(&semantic_result);
+    unitlab_mms_operation_result_init(&operation_result);
+    semantic_result.ok = 1;
+    semantic_result.outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
+    semantic_result.pdu.kind = UNITLAB_MMS_DECODED_PDU_INFORMATION_REPORT;
+    semantic_result.pdu.invoke_id = 55U;
+    semantic_result.pdu.correlation_id = 12U;
+    semantic_result.pdu.timestamp_ms = 1234U;
+
+    assert(unitlab_mms_runtime_apply_semantic_result(NULL, NULL, &semantic_result, &operation_result) == 1);
+    assert(operation_result.ok == 1);
+    assert(operation_result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_RECEIVED);
+    assert(operation_result.event.invoke_id == 55U);
+    assert(operation_result.event.correlation_id == 12U);
+    assert(unitlab_mms_runtime_event_log_count(&operation_result.trace) == 1U);
+}
+
 int main(void)
 {
     test_defaults();
@@ -355,6 +397,7 @@ int main(void)
     test_typed_event_and_aliases();
     test_pending_request_lifecycle();
     test_semantic_pdu_defaults();
+    test_runtime_apply_semantic_result();
     printf("unitlab-mms-core: ok\n");
     return 0;
 }

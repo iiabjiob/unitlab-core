@@ -98,6 +98,19 @@ static void runtime_event_set_and_append(
     runtime_event_log_append(event_log, event);
 }
 
+static void operation_result_project_from_runtime(
+    UnitLabMmsOperationResult* operation_result,
+    int ok,
+    const UnitLabMmsDiagnostic* diagnostic,
+    const UnitLabMmsRuntimeEventLog* trace,
+    const UnitLabMmsRuntimeEvent* event)
+{
+    if (operation_result == NULL) {
+        return;
+    }
+    unitlab_mms_operation_result_from_trace(operation_result, ok, diagnostic, trace, event);
+}
+
 
 void unitlab_mms_runtime_snapshot_init(UnitLabMmsRuntimeSnapshot* snapshot)
 {
@@ -364,6 +377,25 @@ int unitlab_mms_session_begin_release(UnitLabMmsSession* session, UnitLabMmsDiag
     return 1;
 }
 
+int unitlab_mms_session_complete_release(UnitLabMmsSession* session, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (session == NULL) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session is required for release completion.");
+        return 0;
+    }
+    if (session->state != UNITLAB_MMS_SESSION_RELEASING) {
+        set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, "release can only complete from releasing state.");
+        runtime_event_set_and_append(&session->last_event, &session->event_log, UNITLAB_MMS_RUNTIME_EVENT_SESSION_RELEASED, session->state, session->state, session->active_invoke_id, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, diagnostic == NULL ? "release can only complete from releasing state." : diagnostic->message);
+        return 0;
+    }
+    UnitLabMmsSessionState before = session->state;
+    session->state = UNITLAB_MMS_SESSION_DISCONNECTED;
+    session->active_invoke_id = 0U;
+    set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    runtime_event_set_and_append(&session->last_event, &session->event_log, UNITLAB_MMS_RUNTIME_EVENT_SESSION_RELEASED, before, session->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
 int unitlab_mms_session_abort(UnitLabMmsSession* session, UnitLabMmsDiagnostic* diagnostic)
 {
     if (session == NULL) {
@@ -376,6 +408,91 @@ int unitlab_mms_session_abort(UnitLabMmsSession* session, UnitLabMmsDiagnostic* 
     set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     runtime_event_set_and_append(&session->last_event, &session->event_log, UNITLAB_MMS_RUNTIME_EVENT_SESSION_ABORT, before, session->state, 0U, 0U, 0U, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
+}
+
+int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLabMmsPendingRequest* pending_request, const UnitLabMmsSemanticResult* semantic_result, UnitLabMmsOperationResult* operation_result)
+{
+    if (operation_result == NULL) {
+        return 0;
+    }
+    unitlab_mms_operation_result_init(operation_result);
+    if (semantic_result == NULL) {
+        set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "semantic result is required.");
+        operation_result->ok = 0;
+        return 0;
+    }
+    operation_result->diagnostic = semantic_result->diagnostic.diagnostic;
+    if (!semantic_result->ok) {
+        operation_result->ok = 0;
+        return 0;
+    }
+
+    switch (semantic_result->pdu.kind) {
+        case UNITLAB_MMS_DECODED_PDU_ASSOCIATE_RESPONSE:
+            if (session == NULL) {
+                set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session is required to apply associate response.");
+                operation_result->ok = 0;
+                return 0;
+            }
+            operation_result->ok = unitlab_mms_session_complete_association(session, semantic_result->pdu.invoke_id, &operation_result->diagnostic);
+            operation_result_project_from_runtime(operation_result, operation_result->ok, &operation_result->diagnostic, &session->event_log, &session->last_event);
+            return operation_result->ok;
+        case UNITLAB_MMS_DECODED_PDU_RELEASE_RESPONSE:
+            if (session == NULL) {
+                set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session is required to apply release response.");
+                operation_result->ok = 0;
+                return 0;
+            }
+            operation_result->ok = unitlab_mms_session_complete_release(session, &operation_result->diagnostic);
+            operation_result_project_from_runtime(operation_result, operation_result->ok, &operation_result->diagnostic, &session->event_log, &session->last_event);
+            return operation_result->ok;
+        case UNITLAB_MMS_DECODED_PDU_READ_RESPONSE:
+        case UNITLAB_MMS_DECODED_PDU_WRITE_RESPONSE:
+            if (pending_request == NULL) {
+                set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "pending request is required to apply read/write response.");
+                operation_result->ok = 0;
+                return 0;
+            }
+            operation_result->ok = unitlab_mms_pending_request_complete(pending_request, semantic_result->pdu.timestamp_ms, &operation_result->diagnostic);
+            operation_result_project_from_runtime(operation_result, operation_result->ok, &operation_result->diagnostic, &pending_request->event_log, &pending_request->last_event);
+            return operation_result->ok;
+        case UNITLAB_MMS_DECODED_PDU_ABORT:
+            if (session == NULL) {
+                set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session is required to apply abort.");
+                operation_result->ok = 0;
+                return 0;
+            }
+            operation_result->ok = unitlab_mms_session_abort(session, &operation_result->diagnostic);
+            operation_result_project_from_runtime(operation_result, operation_result->ok, &operation_result->diagnostic, &session->event_log, &session->last_event);
+            return operation_result->ok;
+        case UNITLAB_MMS_DECODED_PDU_INFORMATION_REPORT:
+        {
+            UnitLabMmsRuntimeEvent event;
+            UnitLabMmsRuntimeEventLog trace;
+
+            unitlab_mms_runtime_event_init(&event);
+            unitlab_mms_runtime_event_log_init(&trace);
+            event.kind = UNITLAB_MMS_RUNTIME_EVENT_REPORT_RECEIVED;
+            event.invoke_id = semantic_result->pdu.invoke_id;
+            event.correlation_id = semantic_result->pdu.correlation_id;
+            event.timestamp_ms = semantic_result->pdu.timestamp_ms;
+            event.deadline_ms = semantic_result->pdu.deadline_ms;
+            event.diagnostic_code = UNITLAB_MMS_DIAGNOSTIC_OK;
+            trace.events[0] = event;
+            trace.count = 1U;
+            operation_result->ok = 1;
+            operation_result_project_from_runtime(operation_result, 1, &operation_result->diagnostic, &trace, &trace.events[0]);
+            return 1;
+        }
+        case UNITLAB_MMS_DECODED_PDU_REJECT:
+            set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "semantic reject requires a wire-layer reject handler.");
+            operation_result->ok = 0;
+            return 0;
+        default:
+            set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "unsupported semantic PDU kind.");
+            operation_result->ok = 0;
+            return 0;
+    }
 }
 
 void unitlab_mms_transport_exchange_init(UnitLabMmsTransportExchange* exchange)
