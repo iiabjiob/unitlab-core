@@ -1,7 +1,7 @@
 #ifndef UNITLAB_IEC61850_IED_UNITLAB_MMS_WIRE_SEMANTIC_BRIDGE_H
 #define UNITLAB_IEC61850_IED_UNITLAB_MMS_WIRE_SEMANTIC_BRIDGE_H
 
-#include "unitlab_mms_semantic_pdu.h"
+#include "unitlab_mms_core.h"
 #include "wire/mms/unitlab_mms_pdu.h"
 
 /*

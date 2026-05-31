@@ -118,6 +118,23 @@ add_test(
   COMMAND unitlab-iec61850-mms-semantic-test
 )
 
+add_executable(unitlab-iec61850-mms-runtime-bridge-test
+  src/unitlab_mms_types.c
+  src/unitlab_mms_semantic_pdu.c
+  src/unitlab_mms_wire_semantic_bridge.c
+  src/unitlab_mms_runtime_bridge.c
+  src/unitlab_mms_core.c
+  src/unitlab_iec61850_report_runtime.c
+  tests/unitlab_mms_runtime_bridge_test.c
+)
+target_include_directories(unitlab-iec61850-mms-runtime-bridge-test PRIVATE src)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-mms-runtime-bridge-test)
+
+add_test(
+  NAME unitlab-iec61850-mms-runtime-bridge
+  COMMAND unitlab-iec61850-mms-runtime-bridge-test
+)
+
 add_executable(unitlab-iec61850-wire-foundation-test
   src/unitlab_mms_types.c
   src/wire/ber/unitlab_mms_ber_tag.c

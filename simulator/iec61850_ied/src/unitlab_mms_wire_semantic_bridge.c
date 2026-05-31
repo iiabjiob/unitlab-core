@@ -98,3 +98,4 @@ int unitlab_mms_semantic_result_from_wire_pdu(UnitLabMmsSemanticResult* result, 
     }
     return result->ok;
 }
+
