@@ -50,6 +50,38 @@ static void test_wire_information_report_applies_to_runtime(void)
     assert(result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
 }
 
+static void test_wire_information_report_applies_to_report_control(void)
+{
+    UnitLabIec61850ReportControl report_control;
+    UnitLabMmsOperationResult result;
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_iec61850_report_control_init(&report_control);
+    unitlab_mms_operation_result_init(&result);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    assert(unitlab_iec61850_report_control_reserve(&report_control, &diagnostic) == 1);
+    assert(unitlab_iec61850_report_control_enable(&report_control, &diagnostic) == 1);
+    assert(unitlab_iec61850_report_control_request_gi(&report_control, &diagnostic) == 1);
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    wire_pdu.kind = UNITLAB_MMS_PDU_UNCONFIRMED;
+    wire_pdu.has_service = 1;
+    wire_pdu.service_kind = UNITLAB_MMS_SERVICE_INFORMATION_REPORT;
+    wire_pdu.invoke_id = 88U;
+    wire_pdu.service_length = 3U;
+
+    assert(unitlab_mms_runtime_apply_wire_pdu_with_report_control(NULL, NULL, &report_control, &wire_pdu, &result) == 1);
+    assert(result.ok == 1);
+    assert(result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_RECEIVED);
+    assert(result.event.invoke_id == 88U);
+    assert(result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_REPORTING);
+    assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_RECEIVED);
+    assert(report_control.last_event.invoke_id == 88U);
+}
+
 static void test_wire_correlation_mismatch_fails_closed(void)
 {
     UnitLabMmsSession session;
@@ -96,6 +128,7 @@ int main(void)
 {
     test_wire_read_response_applies_to_runtime();
     test_wire_information_report_applies_to_runtime();
+    test_wire_information_report_applies_to_report_control();
     test_wire_correlation_mismatch_fails_closed();
     test_wire_reject_projection();
     return 0;
