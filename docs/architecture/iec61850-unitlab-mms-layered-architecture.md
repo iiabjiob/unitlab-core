@@ -1,6 +1,6 @@
 # UnitLab MMS Layered Architecture
 
-Status: target architecture. This document defines the intended layer split for the UnitLab-owned MMS stack before the wire-level implementation starts. The first transport-independent `semantic/` layer stub exists in `simulator/iec61850_ied/src/unitlab_mms_semantic_pdu.{h,c}`, and the initial wire foundation exists in `simulator/iec61850_ied/src/wire/{ber,iso}`.
+Status: target architecture. This document defines the intended layer split for the UnitLab-owned MMS stack before the wire-level implementation starts. The first transport-independent `semantic/` layer stub exists in `simulator/iec61850_ied/src/unitlab_mms_semantic_pdu.{h,c}`, and the initial wire foundation exists in `simulator/iec61850_ied/src/wire/{ber,iso,acse,presentation,mms}`.
 
 See also:
 - [UnitLab MMS Semantic Contract](./iec61850-unitlab-mms-semantic-contract.md)
@@ -142,9 +142,10 @@ Initial implemented wire foundation:
 - BER length encode/decode
 - BER TLV read/write
 - ACSE APDU top-level classify/wrap/unwrap
+- presentation APDU top-level classify/wrap/unwrap (opaque payload boundary)
 - MMS MMSpdu top-level classify/wrap/unwrap
 
-Presentation remains pending. The MMS PDU wrapper currently peels the top-level `invokeID` and the next service TLV for confirmed request/response/error PDUs, validates `invokeID` as a minimal Unsigned32 BER integer, and leaves full service field decode pending.
+Presentation is now implemented as an opaque top-level wrapper only. The MMS PDU wrapper currently peels the top-level `invokeID` and the next service TLV for confirmed request/response/error PDUs, validates `invokeID` as a minimal Unsigned32 BER integer, and leaves full service field decode pending.
 
 ## Evolution Path
 

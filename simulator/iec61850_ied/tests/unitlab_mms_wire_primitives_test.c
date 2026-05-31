@@ -1,5 +1,6 @@
 #include "../src/wire/acse/unitlab_mms_acse.h"
 #include "../src/wire/ber/unitlab_mms_ber.h"
+#include "../src/wire/presentation/unitlab_mms_presentation.h"
 #include "../src/wire/mms/unitlab_mms_pdu.h"
 #include "../src/wire/iso/unitlab_mms_cotp.h"
 #include "../src/wire/iso/unitlab_mms_tpkt.h"
@@ -117,6 +118,100 @@ static void test_cotp_dt_roundtrip(void)
     assert(decoded_tpdu.eot == 1);
     assert(decoded_tpdu.user_data_length == sizeof(user_data));
     assert(memcmp(decoded_tpdu.user_data, user_data, sizeof(user_data)) == 0);
+}
+
+static void test_presentation_connect_or_accept_roundtrip(void)
+{
+    uint8_t buffer[32];
+    UnitLabMmsPresentationApdu apdu;
+    UnitLabMmsPresentationApdu decoded_apdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[3] = { 0x30U, 0x01U, 0x00U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_presentation_apdu_init(&apdu);
+    apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_CONNECT_OR_ACCEPT;
+    apdu.payload_bytes = payload;
+    apdu.payload_length = sizeof(payload);
+    assert(unitlab_mms_presentation_encode(&apdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(buffer[0] == 0x31U);
+    unitlab_mms_presentation_apdu_init(&decoded_apdu);
+    assert(unitlab_mms_presentation_decode(&decoded_apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_apdu.kind == UNITLAB_MMS_PRESENTATION_APDU_CONNECT_OR_ACCEPT);
+    assert(decoded_apdu.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(decoded_apdu.tag.tag_number == 17U);
+    assert(decoded_apdu.payload_length == sizeof(payload));
+    assert(memcmp(decoded_apdu.payload_bytes, payload, sizeof(payload)) == 0);
+}
+
+static void test_presentation_user_data_roundtrip(void)
+{
+    uint8_t buffer[32];
+    UnitLabMmsPresentationApdu apdu;
+    UnitLabMmsPresentationApdu decoded_apdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[4] = { 0x02U, 0x01U, 0x03U, 0xA0U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_presentation_apdu_init(&apdu);
+    apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_USER_DATA;
+    apdu.payload_bytes = payload;
+    apdu.payload_length = sizeof(payload);
+    assert(unitlab_mms_presentation_encode(&apdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(buffer[0] == 0x61U);
+    unitlab_mms_presentation_apdu_init(&decoded_apdu);
+    assert(unitlab_mms_presentation_decode(&decoded_apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_apdu.kind == UNITLAB_MMS_PRESENTATION_APDU_USER_DATA);
+    assert(decoded_apdu.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION);
+    assert(decoded_apdu.tag.tag_number == 1U);
+    assert(decoded_apdu.payload_length == sizeof(payload));
+    assert(memcmp(decoded_apdu.payload_bytes, payload, sizeof(payload)) == 0);
+}
+
+static void test_presentation_abort_roundtrip(void)
+{
+    uint8_t buffer[32];
+    UnitLabMmsPresentationApdu apdu;
+    UnitLabMmsPresentationApdu decoded_apdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[2] = { 0x80U, 0x00U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_presentation_apdu_init(&apdu);
+    apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_ABORT;
+    apdu.payload_bytes = payload;
+    apdu.payload_length = sizeof(payload);
+    assert(unitlab_mms_presentation_encode(&apdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(buffer[0] == 0xA0U);
+    unitlab_mms_presentation_apdu_init(&decoded_apdu);
+    assert(unitlab_mms_presentation_decode(&decoded_apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_apdu.kind == UNITLAB_MMS_PRESENTATION_APDU_ABORT);
+    assert(decoded_apdu.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(decoded_apdu.tag.tag_number == 0U);
+    assert(decoded_apdu.payload_length == sizeof(payload));
+    assert(memcmp(decoded_apdu.payload_bytes, payload, sizeof(payload)) == 0);
+}
+
+static void test_presentation_rejects_unsupported_tag(void)
+{
+    const uint8_t buffer[3] = { 0x62U, 0x01U, 0x00U };
+    UnitLabMmsPresentationApdu decoded_apdu;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_presentation_apdu_init(&decoded_apdu);
+    assert(unitlab_mms_presentation_decode(&decoded_apdu, buffer, sizeof(buffer), &consumed_length, &diagnostic) == 0);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED);
 }
 
 static void test_acse_aarq_roundtrip(void)
@@ -438,6 +533,10 @@ int main(void)
     test_cotp_cr_roundtrip();
     test_cotp_dt_roundtrip();
     test_acse_aarq_roundtrip();
+    test_presentation_connect_or_accept_roundtrip();
+    test_presentation_user_data_roundtrip();
+    test_presentation_abort_roundtrip();
+    test_presentation_rejects_unsupported_tag();
     test_mms_pdu_confirmed_request_roundtrip();
     test_mms_pdu_unconfirmed_roundtrip();
     test_mms_pdu_confirmed_request_roundtrip_with_wide_invoke_id();
