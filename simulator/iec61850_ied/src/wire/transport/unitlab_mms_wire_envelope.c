@@ -1,5 +1,6 @@
 #include "unitlab_mms_wire_envelope.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 static void wire_envelope_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, const char* message)
@@ -16,74 +17,107 @@ static void wire_envelope_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitL
     diagnostic->message[sizeof(diagnostic->message) - 1U] = '\0';
 }
 
-void unitlab_mms_wire_envelope_init(UnitLabMmsWireEnvelope* envelope)
+void unitlab_mms_wire_association_fixture_init(UnitLabMmsWireAssociationFixture* fixture)
 {
-    if (envelope == NULL) {
+    if (fixture == NULL) {
         return;
     }
-    memset(envelope, 0, sizeof(*envelope));
-    unitlab_mms_transport_frame_init(&envelope->transport);
-    unitlab_mms_presentation_apdu_init(&envelope->presentation);
-    unitlab_mms_acse_apdu_init(&envelope->acse);
-    unitlab_mms_pdu_init(&envelope->pdu);
+    memset(fixture, 0, sizeof(*fixture));
+    unitlab_mms_transport_frame_init(&fixture->transport);
+    unitlab_mms_presentation_apdu_init(&fixture->presentation);
 }
 
-int unitlab_mms_wire_envelope_decode(UnitLabMmsWireEnvelope* envelope, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsDiagnostic* diagnostic)
+int unitlab_mms_wire_association_fixture_encode(const UnitLabMmsWireAssociationFixture* fixture, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
-    const uint8_t* presentation_bytes = NULL;
+    uint8_t* presentation_scratch = NULL;
+    UnitLabMmsPresentationApdu presentation_apdu;
+    UnitLabMmsTransportFrame transport_frame;
     size_t presentation_length = 0U;
+    size_t transport_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (fixture == NULL || buffer == NULL || encoded_length == NULL) {
+        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "association fixture encode requires fixture, buffer, and encoded_length.");
+        return 0;
+    }
+    if (buffer_length == 0U) {
+        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "association fixture buffer is too small.");
+        return 0;
+    }
+    if (fixture->presentation.kind != UNITLAB_MMS_PRESENTATION_APDU_RAW) {
+        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "association fixture requires a raw presentation wrapper.");
+        return 0;
+    }
+    if (fixture->presentation.payload_length != 0U && fixture->presentation.payload_bytes == NULL) {
+        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "association fixture presentation payload bytes are required when length is non-zero.");
+        return 0;
+    }
+    if (fixture->transport.cotp.user_data_length != 0U && fixture->transport.cotp.user_data != NULL) {
+        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "association fixture transport user_data must not be prebound.");
+        return 0;
+    }
+
+    presentation_scratch = (uint8_t*)malloc(buffer_length);
+    if (presentation_scratch == NULL) {
+        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "association fixture scratch allocation failed.");
+        return 0;
+    }
+
+    unitlab_mms_presentation_apdu_init(&presentation_apdu);
+    presentation_apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_RAW;
+    presentation_apdu.tag = fixture->presentation.tag;
+    presentation_apdu.payload_bytes = fixture->presentation.payload_bytes;
+    presentation_apdu.payload_length = fixture->presentation.payload_length;
+    if (!unitlab_mms_presentation_encode(&presentation_apdu, presentation_scratch, buffer_length, &presentation_length, diagnostic)) {
+        free(presentation_scratch);
+        return 0;
+    }
+
+    unitlab_mms_transport_frame_init(&transport_frame);
+    transport_frame.cotp = fixture->transport.cotp;
+    transport_frame.cotp.user_data = presentation_scratch;
+    transport_frame.cotp.user_data_length = presentation_length;
+    if (!unitlab_mms_transport_frame_encode(&transport_frame, buffer, buffer_length, &transport_length, diagnostic)) {
+        free(presentation_scratch);
+        return 0;
+    }
+
+    free(presentation_scratch);
+    *encoded_length = transport_length;
+    wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
+int unitlab_mms_wire_association_fixture_decode(UnitLabMmsWireAssociationFixture* fixture, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsDiagnostic* diagnostic)
+{
     size_t transport_consumed_length = 0U;
     size_t presentation_consumed_length = 0U;
-    size_t acse_consumed_length = 0U;
-    size_t pdu_consumed_length = 0U;
 
     if (consumed_length != NULL) {
         *consumed_length = 0U;
     }
-    if (envelope == NULL || buffer == NULL || consumed_length == NULL) {
-        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "wire envelope decode requires envelope, buffer, and consumed_length.");
+    if (fixture == NULL || buffer == NULL || consumed_length == NULL) {
+        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "association fixture decode requires fixture, buffer, and consumed_length.");
         return 0;
     }
-    unitlab_mms_wire_envelope_init(envelope);
-    if (!unitlab_mms_transport_frame_decode(&envelope->transport, buffer, buffer_length, &transport_consumed_length, diagnostic)) {
+    unitlab_mms_wire_association_fixture_init(fixture);
+    if (!unitlab_mms_transport_frame_decode(&fixture->transport, buffer, buffer_length, &transport_consumed_length, diagnostic)) {
         return 0;
     }
-    if (envelope->transport.cotp.user_data_length == 0U || envelope->transport.cotp.user_data == NULL) {
-        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "wire envelope is missing presentation bytes.");
+    if (fixture->transport.cotp.user_data_length == 0U || fixture->transport.cotp.user_data == NULL) {
+        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "association fixture is missing presentation bytes.");
         return 0;
     }
-    if (!unitlab_mms_presentation_decode(&envelope->presentation, envelope->transport.cotp.user_data, envelope->transport.cotp.user_data_length, &presentation_consumed_length, diagnostic)) {
+    if (!unitlab_mms_presentation_decode(&fixture->presentation, fixture->transport.cotp.user_data, fixture->transport.cotp.user_data_length, &presentation_consumed_length, diagnostic)) {
         return 0;
     }
-    if (presentation_consumed_length != envelope->transport.cotp.user_data_length) {
-        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "wire envelope contains trailing presentation bytes.");
+    if (presentation_consumed_length != fixture->transport.cotp.user_data_length) {
+        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "association fixture contains trailing presentation bytes.");
         return 0;
     }
-    presentation_bytes = envelope->presentation.payload_bytes;
-    presentation_length = envelope->presentation.payload_length;
-    if (presentation_length == 0U || presentation_bytes == NULL) {
-        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "wire envelope is missing ACSE bytes.");
-        return 0;
-    }
-    if (!unitlab_mms_acse_decode(&envelope->acse, presentation_bytes, presentation_length, &acse_consumed_length, diagnostic)) {
-        return 0;
-    }
-    if (acse_consumed_length != presentation_length) {
-        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "wire envelope contains trailing ACSE bytes.");
-        return 0;
-    }
-    if (envelope->acse.apdu_length == 0U || envelope->acse.apdu_bytes == NULL) {
-        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "wire envelope is missing MMS bytes.");
-        return 0;
-    }
-    if (!unitlab_mms_pdu_decode(&envelope->pdu, envelope->acse.apdu_bytes, envelope->acse.apdu_length, &pdu_consumed_length, diagnostic)) {
-        return 0;
-    }
-    if (pdu_consumed_length != envelope->acse.apdu_length) {
-        wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "wire envelope contains trailing MMS bytes.");
-        return 0;
-    }
-    envelope->encoded_length = transport_consumed_length;
+    fixture->encoded_length = transport_consumed_length;
     *consumed_length = transport_consumed_length;
     wire_envelope_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;

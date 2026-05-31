@@ -2,20 +2,21 @@
 #define UNITLAB_IEC61850_IED_UNITLAB_MMS_WIRE_ENVELOPE_H
 
 #include "../../unitlab_mms_types.h"
-#include "../acse/unitlab_mms_acse.h"
-#include "../mms/unitlab_mms_pdu.h"
 #include "../presentation/unitlab_mms_presentation.h"
 #include "unitlab_mms_transport_frame.h"
 
-typedef struct UnitLabMmsWireEnvelope {
+/*
+ * Narrow golden-test helper for one ISO-on-TCP association-style nested raw payload.
+ * It only composes TPKT + COTP + raw Presentation and leaves ACSE/MMS interpretation to the caller.
+ */
+typedef struct UnitLabMmsWireAssociationFixture {
     UnitLabMmsTransportFrame transport;
     UnitLabMmsPresentationApdu presentation;
-    UnitLabMmsAcseApdu acse;
-    UnitLabMmsPdu pdu;
     size_t encoded_length;
-} UnitLabMmsWireEnvelope;
+} UnitLabMmsWireAssociationFixture;
 
-void unitlab_mms_wire_envelope_init(UnitLabMmsWireEnvelope* envelope);
-int unitlab_mms_wire_envelope_decode(UnitLabMmsWireEnvelope* envelope, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsDiagnostic* diagnostic);
+void unitlab_mms_wire_association_fixture_init(UnitLabMmsWireAssociationFixture* fixture);
+int unitlab_mms_wire_association_fixture_encode(const UnitLabMmsWireAssociationFixture* fixture, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_wire_association_fixture_decode(UnitLabMmsWireAssociationFixture* fixture, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsDiagnostic* diagnostic);
 
 #endif
