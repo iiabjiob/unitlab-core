@@ -1,4 +1,5 @@
 #include "../src/wire/acse/unitlab_mms_acse.h"
+#include "../src/wire/session/unitlab_mms_session_spdu.h"
 #include "../src/wire/ber/unitlab_mms_ber.h"
 #include "../src/wire/presentation/unitlab_mms_presentation.h"
 #include "../src/wire/transport/unitlab_mms_transport_frame.h"
@@ -406,6 +407,54 @@ static void test_acse_top_level_roundtrips(void)
     }
 }
 
+static void test_session_spdu_roundtrips(void)
+{
+    struct {
+        UnitLabMmsSessionSpduKind kind;
+        uint8_t code;
+        const uint8_t payload[4];
+        size_t payload_length;
+    } cases[] = {
+        { UNITLAB_MMS_SESSION_SPDU_CONNECT, 13U, { 13U, 0x01U, 0x02U, 0x03U }, 4U },
+        { UNITLAB_MMS_SESSION_SPDU_CONNECT_DATA_OVERFLOW, 15U, { 15U, 0xAAU, 0xBBU, 0xCCU }, 4U },
+        { UNITLAB_MMS_SESSION_SPDU_OVERFLOW_ACCEPT, 16U, { 16U, 0x11U, 0x22U, 0x33U }, 4U },
+        { UNITLAB_MMS_SESSION_SPDU_ACCEPT, 14U, { 14U, 0x44U, 0x55U, 0x66U }, 4U },
+        { UNITLAB_MMS_SESSION_SPDU_REFUSE, 12U, { 12U, 0x77U, 0x88U, 0x99U }, 4U },
+        { UNITLAB_MMS_SESSION_SPDU_FINISH, 9U, { 9U, 0x10U, 0x20U, 0x30U }, 4U },
+        { UNITLAB_MMS_SESSION_SPDU_DISCONNECT, 10U, { 10U, 0x40U, 0x50U, 0x60U }, 4U },
+        { UNITLAB_MMS_SESSION_SPDU_ABORT, 25U, { 25U, 0x70U, 0x80U, 0x90U }, 4U },
+        { UNITLAB_MMS_SESSION_SPDU_ABORT_ACCEPT, 26U, { 26U, 0xA0U, 0xB0U, 0xC0U }, 4U },
+        { UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER, 1U, { 1U, 0x01U, 0x00U, 0xFFU }, 4U },
+        { UNITLAB_MMS_SESSION_SPDU_EXPEDITED_DATA, 5U, { 5U, 0x02U, 0x03U, 0x04U }, 4U },
+        { UNITLAB_MMS_SESSION_SPDU_TYPED_DATA, 33U, { 33U, 0x05U, 0x06U, 0x07U }, 4U },
+        { UNITLAB_MMS_SESSION_SPDU_CAPABILITY_DATA, 61U, { 61U, 0x08U, 0x09U, 0x0AU }, 4U },
+        { UNITLAB_MMS_SESSION_SPDU_CAPABILITY_DATA_ACK, 62U, { 62U, 0x0BU, 0x0CU, 0x0DU }, 4U },
+    };
+    uint8_t buffer[8];
+    UnitLabMmsSessionSpdu spdu;
+    UnitLabMmsSessionSpdu decoded_spdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    for (size_t i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        unitlab_mms_session_spdu_init(&spdu);
+        spdu.kind = cases[i].kind;
+        spdu.spdu_bytes = cases[i].payload;
+        spdu.spdu_length = cases[i].payload_length;
+        assert(unitlab_mms_session_spdu_encode(&spdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+        assert(encoded_length == cases[i].payload_length);
+        assert(buffer[0] == cases[i].code);
+        unitlab_mms_session_spdu_init(&decoded_spdu);
+        assert(unitlab_mms_session_spdu_decode(&decoded_spdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+        assert(consumed_length == encoded_length);
+        assert(decoded_spdu.kind == cases[i].kind);
+        assert(decoded_spdu.spdu_length == cases[i].payload_length);
+        assert(memcmp(decoded_spdu.spdu_bytes, cases[i].payload, cases[i].payload_length) == 0);
+    }
+}
+
 static void test_acse_raw_field_view(void)
 {
     uint8_t buffer[32];
@@ -776,6 +825,7 @@ int main(void)
     test_wire_association_fixture_encode_roundtrip();
     test_acse_top_level_roundtrips();
     test_acse_raw_field_view();
+    test_session_spdu_roundtrips();
     test_presentation_raw_roundtrip_preserves_outer_tag();
     test_presentation_decode_accepts_arbitrary_outer_tag_as_raw();
     test_presentation_encode_rejects_non_raw_kind();

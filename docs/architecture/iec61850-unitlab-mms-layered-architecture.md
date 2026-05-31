@@ -67,6 +67,9 @@ native/unitlab_mms/
         unitlab_mms_acse_encode.c
         unitlab_mms_acse_decode.c
 
+      session/
+        unitlab_mms_session_spdu.c
+
       presentation/
         unitlab_mms_presentation_encode.c
         unitlab_mms_presentation_decode.c
@@ -143,6 +146,7 @@ Initial implemented wire foundation:
 - BER TLV read/write
 - ACSE APDU top-level classify/wrap/unwrap using exact X.227 application tags for AARQ/AARE/RLRQ/RLRE/ABRT
 - raw ACSE field view preserves the exact outer sequence elements without semantic interpretation
+- session SPDU raw boundary for exact X.225 kernel/data-transfer SPDU codes
 - presentation APDU raw BER wrapper boundary
 - RFC1006/TPKT + COTP transport frame composition helper
 - association-fixture encode/decode helper across TPKT/COTP/raw presentation wrappers
