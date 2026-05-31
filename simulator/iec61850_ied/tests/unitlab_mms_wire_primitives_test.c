@@ -1,3 +1,4 @@
+#include "../src/wire/acse/unitlab_mms_acse.h"
 #include "../src/wire/ber/unitlab_mms_ber.h"
 #include "../src/wire/iso/unitlab_mms_cotp.h"
 #include "../src/wire/iso/unitlab_mms_tpkt.h"
@@ -92,6 +93,31 @@ static void test_cotp_dt_roundtrip(void)
     assert(memcmp(decoded_tpdu.user_data, user_data, sizeof(user_data)) == 0);
 }
 
+static void test_acse_aarq_roundtrip(void)
+{
+    uint8_t buffer[32];
+    UnitLabMmsAcseApdu apdu;
+    UnitLabMmsAcseApdu decoded_apdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[4] = { 0x30U, 0x02U, 0x01U, 0x01U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_acse_apdu_init(&apdu);
+    apdu.kind = UNITLAB_MMS_ACSE_APDU_AARQ;
+    apdu.apdu_bytes = payload;
+    apdu.apdu_length = sizeof(payload);
+    assert(unitlab_mms_acse_encode(&apdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(buffer[0] == 0x60U);
+    unitlab_mms_acse_apdu_init(&decoded_apdu);
+    assert(unitlab_mms_acse_decode(&decoded_apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_apdu.kind == UNITLAB_MMS_ACSE_APDU_AARQ);
+    assert(decoded_apdu.apdu_length == sizeof(payload));
+    assert(memcmp(decoded_apdu.apdu_bytes, payload, sizeof(payload)) == 0);
+}
+
 static void test_ber_length_roundtrip(void)
 {
     uint8_t buffer[8];
@@ -172,6 +198,7 @@ int main(void)
     test_tpkt_rejects_invalid_version();
     test_cotp_cr_roundtrip();
     test_cotp_dt_roundtrip();
+    test_acse_aarq_roundtrip();
     test_ber_length_roundtrip();
     test_ber_tag_roundtrip();
     test_ber_element_roundtrip();

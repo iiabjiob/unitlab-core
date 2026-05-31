@@ -141,8 +141,9 @@ Initial implemented wire foundation:
 - BER tag encode/decode
 - BER length encode/decode
 - BER TLV read/write
+- ACSE APDU top-level classify/wrap/unwrap
 
-ACSE, presentation, and MMS PDU decode remain pending in the next wire slice.
+Presentation and MMS PDU field decode remain pending in the next wire slice.
 
 ## Evolution Path
 
