@@ -25,6 +25,7 @@ add_executable(unitlab-iec61850-ied-sim
   src/model_plan.c
   src/unitlab_mms_core.c
   src/unitlab_mms_types.c
+  src/unitlab_mms_semantic_pdu.c
   src/unitlab_iec61850_report_runtime.c
 )
 unitlab_iec61850_sim_warnings(unitlab-iec61850-ied-sim)
@@ -100,6 +101,19 @@ unitlab_iec61850_sim_warnings(unitlab-iec61850-mms-core-test)
 add_test(
   NAME unitlab-iec61850-mms-core
   COMMAND unitlab-iec61850-mms-core-test
+)
+
+add_executable(unitlab-iec61850-mms-semantic-test
+  src/unitlab_mms_types.c
+  src/unitlab_mms_semantic_pdu.c
+  tests/unitlab_mms_semantic_pdu_test.c
+)
+target_include_directories(unitlab-iec61850-mms-semantic-test PRIVATE src)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-mms-semantic-test)
+
+add_test(
+  NAME unitlab-iec61850-mms-semantic
+  COMMAND unitlab-iec61850-mms-semantic-test
 )
 
 if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)

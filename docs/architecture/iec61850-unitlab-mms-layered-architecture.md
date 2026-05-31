@@ -1,6 +1,6 @@
 # UnitLab MMS Layered Architecture
 
-Status: target architecture. This document defines the intended layer split for the UnitLab-owned MMS stack before the wire-level implementation starts.
+Status: target architecture. This document defines the intended layer split for the UnitLab-owned MMS stack before the wire-level implementation starts. The first transport-independent `semantic/` layer stub now exists in `simulator/iec61850_ied/src/unitlab_mms_semantic_pdu.{h,c}`.
 
 See also:
 - [UnitLab MMS Semantic Contract](./iec61850-unitlab-mms-semantic-contract.md)
