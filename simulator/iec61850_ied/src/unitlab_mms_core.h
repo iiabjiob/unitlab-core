@@ -53,11 +53,19 @@ typedef struct UnitLabMmsRuntimeEvent {
     char diagnostic_message[256];
 } UnitLabMmsRuntimeEvent;
 
+#define UNITLAB_MMS_RUNTIME_EVENT_LOG_CAPACITY 8U
+
+typedef struct UnitLabMmsRuntimeEventLog {
+    size_t count;
+    UnitLabMmsRuntimeEvent events[UNITLAB_MMS_RUNTIME_EVENT_LOG_CAPACITY];
+} UnitLabMmsRuntimeEventLog;
+
 typedef struct UnitLabMmsSession {
     UnitLabMmsSessionState state;
     uint32_t next_invoke_id;
     uint32_t active_invoke_id;
     UnitLabMmsRuntimeEvent last_event;
+    UnitLabMmsRuntimeEventLog event_log;
 } UnitLabMmsSession;
 
 typedef enum UnitLabIec61850ReportControlState {
@@ -71,6 +79,7 @@ typedef enum UnitLabIec61850ReportControlState {
 typedef struct UnitLabIec61850ReportControl {
     UnitLabIec61850ReportControlState state;
     UnitLabMmsRuntimeEvent last_event;
+    UnitLabMmsRuntimeEventLog event_log;
 } UnitLabIec61850ReportControl;
 
 typedef struct UnitLabMmsTransportExchange {
@@ -81,10 +90,14 @@ typedef struct UnitLabMmsTransportExchange {
     size_t response_length;
     uint32_t invoke_id;
     UnitLabMmsRuntimeEvent last_event;
+    UnitLabMmsRuntimeEventLog event_log;
 } UnitLabMmsTransportExchange;
 
 void unitlab_mms_diagnostic_clear(UnitLabMmsDiagnostic* diagnostic);
 void unitlab_mms_runtime_event_init(UnitLabMmsRuntimeEvent* event);
+void unitlab_mms_runtime_event_log_init(UnitLabMmsRuntimeEventLog* event_log);
+size_t unitlab_mms_runtime_event_log_count(const UnitLabMmsRuntimeEventLog* event_log);
+const UnitLabMmsRuntimeEvent* unitlab_mms_runtime_event_log_at(const UnitLabMmsRuntimeEventLog* event_log, size_t index);
 void unitlab_mms_session_init(UnitLabMmsSession* session);
 void unitlab_mms_session_reset(UnitLabMmsSession* session);
 uint32_t unitlab_mms_session_next_invoke_id(UnitLabMmsSession* session);

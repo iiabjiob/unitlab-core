@@ -28,8 +28,10 @@ static void test_defaults(void)
     assert(session.next_invoke_id == 1U);
     assert(session.active_invoke_id == 0U);
     assert(session.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_NONE);
+    assert(unitlab_mms_runtime_event_log_count(&session.event_log) == 0U);
     assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
     assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_NONE);
+    assert(unitlab_mms_runtime_event_log_count(&report_control.event_log) == 0U);
     assert(exchange.request_bytes == NULL);
     assert(exchange.request_length == 0U);
     assert(exchange.response_bytes == NULL);
@@ -37,6 +39,7 @@ static void test_defaults(void)
     assert(exchange.response_length == 0U);
     assert(exchange.invoke_id == 0U);
     assert(exchange.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_NONE);
+    assert(unitlab_mms_runtime_event_log_count(&exchange.event_log) == 0U);
 }
 
 static void test_invoke_id_sequence(void)
@@ -68,6 +71,8 @@ static void test_transport_exchange_bindings(void)
     assert(exchange.invoke_id == 17U);
     assert(exchange.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST);
     assert(exchange.last_event.request_length == sizeof(request_buffer));
+    assert(unitlab_mms_runtime_event_log_count(&exchange.event_log) == 1U);
+    assert(unitlab_mms_runtime_event_log_at(&exchange.event_log, 0U) != NULL);
 
     assert(unitlab_mms_transport_exchange_bind_response(&exchange, response_buffer, sizeof(response_buffer), &diagnostic) == 1);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
@@ -76,12 +81,14 @@ static void test_transport_exchange_bindings(void)
     assert(exchange.response_length == 0U);
     assert(exchange.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_RESPONSE);
     assert(exchange.last_event.response_length == sizeof(response_buffer));
+    assert(unitlab_mms_runtime_event_log_count(&exchange.event_log) == 2U);
 
     assert(unitlab_mms_transport_exchange_set_response_length(&exchange, 4U, &diagnostic) == 1);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(exchange.response_length == 4U);
     assert(exchange.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_SET_RESPONSE_LENGTH);
     assert(exchange.last_event.response_length == 4U);
+    assert(unitlab_mms_runtime_event_log_count(&exchange.event_log) == 3U);
 
     assert(unitlab_mms_transport_exchange_set_response_length(&exchange, sizeof(response_buffer) + 1U, &diagnostic) == 0);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
@@ -100,11 +107,13 @@ static void test_session_transitions(void)
     assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATING);
     assert(session.active_invoke_id == 1U);
     assert(session.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_ASSOCIATION);
+    assert(unitlab_mms_runtime_event_log_count(&session.event_log) == 1U);
 
     assert(unitlab_mms_session_complete_association(&session, 999U, &diagnostic) == 0);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
     assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATING);
     assert(session.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_COMPLETE_ASSOCIATION);
+    assert(unitlab_mms_runtime_event_log_count(&session.event_log) == 2U);
 
     assert(unitlab_mms_session_complete_association(&session, 1U, &diagnostic) == 1);
     assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATED);
@@ -113,10 +122,12 @@ static void test_session_transitions(void)
     assert(unitlab_mms_session_begin_release(&session, &diagnostic) == 1);
     assert(session.state == UNITLAB_MMS_SESSION_RELEASING);
     assert(session.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_RELEASE);
+    assert(unitlab_mms_runtime_event_log_count(&session.event_log) == 4U);
 
     assert(unitlab_mms_session_abort(&session, &diagnostic) == 1);
     assert(session.state == UNITLAB_MMS_SESSION_ABORTED);
     assert(session.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_ABORT);
+    assert(unitlab_mms_runtime_event_log_count(&session.event_log) == 5U);
 }
 
 static void test_report_control_lifecycle(void)
@@ -130,23 +141,28 @@ static void test_report_control_lifecycle(void)
     assert(unitlab_iec61850_report_control_reserve(&report_control, &diagnostic) == 1);
     assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_RESERVED);
     assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_RESERVE);
+    assert(unitlab_mms_runtime_event_log_count(&report_control.event_log) == 1U);
 
     assert(unitlab_iec61850_report_control_enable(&report_control, &diagnostic) == 1);
     assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_ENABLED);
     assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_ENABLE);
+    assert(unitlab_mms_runtime_event_log_count(&report_control.event_log) == 2U);
 
     assert(unitlab_iec61850_report_control_request_gi(&report_control, &diagnostic) == 1);
     assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING);
     assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI);
+    assert(unitlab_mms_runtime_event_log_count(&report_control.event_log) == 3U);
 
     report_control.state = UNITLAB_IEC61850_REPORT_CONTROL_REPORTING;
     assert(unitlab_iec61850_report_control_disable(&report_control, &diagnostic) == 1);
     assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
     assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_DISABLE);
+    assert(unitlab_mms_runtime_event_log_count(&report_control.event_log) == 4U);
 
     assert(unitlab_iec61850_report_control_release(&report_control, &diagnostic) == 1);
     assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
     assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REPORT_RELEASE);
+    assert(unitlab_mms_runtime_event_log_count(&report_control.event_log) == 5U);
 }
 
 static void test_report_control_reset(void)
@@ -157,6 +173,7 @@ static void test_report_control_reset(void)
     unitlab_iec61850_report_control_reset(&report_control);
     assert(report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
     assert(report_control.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_NONE);
+    assert(unitlab_mms_runtime_event_log_count(&report_control.event_log) == 0U);
 }
 
 int main(void)
