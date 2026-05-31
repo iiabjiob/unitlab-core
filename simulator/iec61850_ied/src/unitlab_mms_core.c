@@ -453,6 +453,23 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
             operation_result->ok = unitlab_mms_session_complete_release(session, &operation_result->diagnostic);
             operation_result_project_from_runtime(operation_result, operation_result->ok, &operation_result->diagnostic, &session->event_log, &session->last_event);
             return operation_result->ok;
+        case UNITLAB_MMS_DECODED_PDU_READ_REQUEST:
+        case UNITLAB_MMS_DECODED_PDU_WRITE_REQUEST:
+            if (pending_request == NULL) {
+                set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "pending request is required to apply read/write request.");
+                operation_result->ok = 0;
+                return 0;
+            }
+            operation_result->ok = unitlab_mms_pending_request_start(
+                pending_request,
+                semantic_result->pdu.kind == UNITLAB_MMS_DECODED_PDU_READ_REQUEST ? UNITLAB_MMS_REQUEST_READ : UNITLAB_MMS_REQUEST_WRITE,
+                semantic_result->pdu.invoke_id,
+                semantic_result->pdu.correlation_id,
+                semantic_result->pdu.deadline_ms,
+                semantic_result->pdu.timestamp_ms,
+                &operation_result->diagnostic);
+            operation_result_project_from_runtime(operation_result, operation_result->ok, &operation_result->diagnostic, &pending_request->event_log, &pending_request->last_event);
+            return operation_result->ok;
         case UNITLAB_MMS_DECODED_PDU_READ_RESPONSE:
         case UNITLAB_MMS_DECODED_PDU_WRITE_RESPONSE:
             if (pending_request == NULL) {

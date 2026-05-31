@@ -291,6 +291,16 @@ int unitlab_mms_server_runtime_apply_association_bytes(UnitLabMmsServerRuntime* 
         snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Association bytes contain trailing MMS bytes.");
         return 0;
     }
+    if (!unitlab_mms_transport_exchange_bind_request(
+            &server_runtime->transport,
+            buffer,
+            transport_consumed_length,
+            wire_pdu.has_invoke_id ? wire_pdu.invoke_id : 0U,
+            &operation_result->diagnostic)) {
+        server_runtime->last_result = *operation_result;
+        unitlab_mms_server_runtime_capture_snapshot(server_runtime);
+        return 0;
+    }
     if (!unitlab_mms_runtime_apply_wire_pdu_with_report_control(
             &server_runtime->session,
             &server_runtime->pending_request,

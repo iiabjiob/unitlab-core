@@ -125,6 +125,7 @@ The first semantic PDU layer now separates service outcome from the payload shap
 - reject-specific fields are reserved in `UnitLabMmsReject`.
 - the first wire-to-semantic bridge maps first-slice MMS wire PDU classifications into these semantic results without mutating runtime state.
 - the runtime bridge applies semantic results to session/request/report ownership, keeping wire decode and lifecycle transitions separate.
+- first-slice confirmed READ/WRITE requests project into pending-request ingress, while responses remain the lifecycle-completing path.
 
 These structures are the only legal input to state transition rules.
 

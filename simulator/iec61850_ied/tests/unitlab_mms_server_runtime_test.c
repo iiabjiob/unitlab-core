@@ -157,6 +157,9 @@ static void test_server_runtime_apply_association_bytes_roundtrips_and_consumes_
     assert(consumed_length < wire_length);
     tail_length = wire_length - consumed_length;
     assert(tail_length == 2U);
+    assert(server_runtime.transport.request_bytes == wire_bytes);
+    assert(server_runtime.transport.request_length == consumed_length);
+    assert(server_runtime.transport.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST);
     assert(server_runtime.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_REPORTING);
     assert(server_runtime.state == UNITLAB_MMS_SERVER_RUNTIME_RUNNING);
 }

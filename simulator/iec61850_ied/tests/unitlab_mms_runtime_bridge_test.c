@@ -4,6 +4,34 @@
 #include <assert.h>
 #include <string.h>
 
+static void test_wire_read_request_starts_pending_request(void)
+{
+    UnitLabMmsSession session;
+    UnitLabMmsPendingRequest request;
+    UnitLabMmsOperationResult result;
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_session_init(&session);
+    unitlab_mms_pending_request_init(&request);
+    unitlab_mms_operation_result_init(&result);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    wire_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+    wire_pdu.has_invoke_id = 1;
+    wire_pdu.invoke_id = 52U;
+    wire_pdu.has_service = 1;
+    wire_pdu.service_kind = UNITLAB_MMS_SERVICE_READ;
+
+    assert(unitlab_mms_runtime_apply_wire_pdu(&session, &request, &wire_pdu, &result) == 1);
+    assert(result.ok == 1);
+    assert(result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE);
+    assert(request.invoke_id == 52U);
+    assert(result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED);
+}
+
 static void test_wire_read_response_applies_to_runtime(void)
 {
     UnitLabMmsSession session;
@@ -126,6 +154,7 @@ static void test_wire_reject_projection(void)
 
 int main(void)
 {
+    test_wire_read_request_starts_pending_request();
     test_wire_read_response_applies_to_runtime();
     test_wire_information_report_applies_to_runtime();
     test_wire_information_report_applies_to_report_control();
