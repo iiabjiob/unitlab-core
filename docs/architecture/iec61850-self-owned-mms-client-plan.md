@@ -4,6 +4,8 @@ Status: decision record and implementation roadmap. No self-owned MMS client is 
 
 This plan records the project decision that UnitLab will implement its own IEC 61850 MMS client and simulator flow. Open-source stacks remain useful as reference implementations and interoperability oracles, but UnitLab core, simulator, and report workflow must not become dependent on a single third-party MMS runtime.
 
+See also: [UnitLab IEC 61850 MMS Core Boundary](./iec61850-unitlab-mms-core-boundary.md).
+
 ## Decision
 
 Build the IEC 61850 report runtime around a stable UnitLab adapter boundary, but keep the transport/runtime implementation owned by UnitLab:

@@ -9,6 +9,8 @@ References:
 - `docs/architecture/iec61850-report-core-compliance-map.md` for the current IEC-to-UnitLab mapping and C# portability guardrails.
 - `docs/architecture/iec61850-self-owned-mms-client-plan.md` for the self-owned MMS client decision, required standards, public references, and implementation slices.
 
+See also: [UnitLab IEC 61850 MMS Core Boundary](./iec61850-unitlab-mms-core-boundary.md).
+
 ## Safety Position
 
 No real IED connection is allowed in the first runtime slices. All connect/read/reserve/enable/disable/GI behavior must run through a simulator adapter until the simulator flows, diagnostics, and operator-visible state are proven.
