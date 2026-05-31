@@ -146,6 +146,23 @@ port=1102
 libiec61850=linked
 ```
 
+When libIEC61850 is not linked, `--native-smoke-start` exercises the UnitLab-owned server runtime boundary directly, including the native lower-layer association ingress path:
+
+```bash
+/tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim   --fixture simulator/iec61850_ied/examples/single-report.fixture.json   --ied IED1   --native-smoke-start
+```
+
+Expected result:
+
+```text
+unitlab-iec61850-ied-sim: native server smoke-start accepted
+ied=IED1
+bind=0.0.0.0
+port=102
+runtime=2
+reportControl=4
+```
+
 ## Non-Dry-Run Status
 
 The non-dry-run path starts the linked MMS server and keeps the process alive until SIGTERM or SIGINT:

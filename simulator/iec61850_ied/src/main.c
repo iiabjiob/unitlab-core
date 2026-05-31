@@ -9,6 +9,10 @@
 #include "fixture_parser.h"
 #include "model_loader.h"
 #include "model_plan.h"
+#include "unitlab_mms_server_runtime.h"
+#include "wire/ber/unitlab_mms_ber.h"
+#include "wire/mms/unitlab_mms_pdu.h"
+#include "wire/transport/unitlab_mms_wire_association_fixture.h"
 
 typedef struct SimulatorOptions {
     const char* fixture_path;
@@ -17,6 +21,7 @@ typedef struct SimulatorOptions {
     int port;
     int dry_run;
     int smoke_start;
+    int native_smoke_start;
     int metadata_probe;
     int gi_probe;
     const char* report_key;
@@ -44,7 +49,7 @@ static int immediate_stop_requested(void* context)
 
 static void print_usage(const char* program_name)
 {
-    printf("Usage: %s --fixture PATH --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--metadata-probe] [--gi-probe] [--report-key KEY]\n", program_name);
+    printf("Usage: %s --fixture PATH --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--native-smoke-start] [--metadata-probe] [--gi-probe] [--report-key KEY]\n", program_name);
     printf("\n");
     printf("Options:\n");
     printf("  --fixture PATH   UnitLab IEC 61850 IED simulator fixture JSON.\n");
@@ -53,6 +58,7 @@ static void print_usage(const char* program_name)
     printf("  --port PORT      TCP port for the MMS server. Default: 102.\n");
     printf("  --dry-run        Validate CLI and fixture boundary without opening MMS.\n");
     printf("  --smoke-start    Start and stop the linked MMS server once, then exit.\n");
+    printf("  --native-smoke-start Exercise the native server-runtime boundary once, then exit.\n");
     printf("  --metadata-probe Connect to the endpoint and verify DataSet/BRCB metadata, then exit.\n");
     printf("  --gi-probe       Connect to the endpoint, enable report(s), request GI, verify fixture values, then exit.\n");
     printf("  --report-key KEY Limit --gi-probe validation to one fixture ReportControl key.\n");
@@ -81,6 +87,7 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
     options->port = 102;
     options->dry_run = 0;
     options->smoke_start = 0;
+    options->native_smoke_start = 0;
     options->metadata_probe = 0;
     options->gi_probe = 0;
     options->report_key = NULL;
@@ -97,6 +104,10 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         }
         if (strcmp(arg, "--smoke-start") == 0) {
             options->smoke_start = 1;
+            continue;
+        }
+        if (strcmp(arg, "--native-smoke-start") == 0) {
+            options->native_smoke_start = 1;
             continue;
         }
         if (strcmp(arg, "--metadata-probe") == 0) {
@@ -146,8 +157,8 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         fprintf(stderr, "BIND_REQUIRED: --bind ADDRESS cannot be empty.\n");
         return -1;
     }
-    if ((options->dry_run ? 1 : 0) + (options->smoke_start ? 1 : 0) + (options->metadata_probe ? 1 : 0) + (options->gi_probe ? 1 : 0) > 1) {
-        fprintf(stderr, "INVALID_ARGUMENT: --dry-run, --smoke-start, --metadata-probe, and --gi-probe are mutually exclusive.\n");
+    if ((options->dry_run ? 1 : 0) + (options->smoke_start ? 1 : 0) + (options->native_smoke_start ? 1 : 0) + (options->metadata_probe ? 1 : 0) + (options->gi_probe ? 1 : 0) > 1) {
+        fprintf(stderr, "INVALID_ARGUMENT: --dry-run, --smoke-start, --native-smoke-start, --metadata-probe, and --gi-probe are mutually exclusive.\n");
         return -1;
     }
     if (options->report_key != NULL && options->report_key[0] == '\0') {
@@ -227,6 +238,58 @@ static const char* optional_bool_label(UnitLabIedFixtureOptionalBool field)
         return "unknown";
     }
     return field.value ? "true" : "false";
+}
+
+static int build_native_information_report_association_bytes(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsWireAssociationFixture fixture;
+    UnitLabMmsPdu pdu;
+    UnitLabMmsBerElement service_element;
+    uint8_t service_bytes[8];
+    uint8_t pdu_bytes[32];
+    size_t service_length = 0U;
+    size_t pdu_length = 0U;
+
+    if (buffer == NULL || encoded_length == NULL) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT;
+            diagnostic->message[0] = '\0';
+        }
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&service_element);
+    service_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    service_element.tag.constructed = 1;
+    service_element.tag.tag_number = 0U;
+    service_element.value_bytes = NULL;
+    service_element.value_length = 0U;
+    if (!unitlab_mms_ber_write(&service_element, service_bytes, sizeof(service_bytes), &service_length, diagnostic)) {
+        return 0;
+    }
+
+    unitlab_mms_pdu_init(&pdu);
+    pdu.kind = UNITLAB_MMS_PDU_UNCONFIRMED;
+    pdu.has_service = 1;
+    pdu.service_kind = UNITLAB_MMS_SERVICE_INFORMATION_REPORT;
+    pdu.pdu_bytes = service_bytes;
+    pdu.pdu_length = service_length;
+    if (!unitlab_mms_pdu_encode(&pdu, pdu_bytes, sizeof(pdu_bytes), &pdu_length, diagnostic)) {
+        return 0;
+    }
+
+    unitlab_mms_wire_association_fixture_init(&fixture);
+    fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
+    fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
+    fixture.presentation.payload_bytes = pdu_bytes;
+    fixture.presentation.payload_length = pdu_length;
+    fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
+    fixture.transport.cotp.user_data = pdu_bytes;
+    fixture.transport.cotp.user_data_length = pdu_length;
+    if (!unitlab_mms_wire_association_fixture_encode(&fixture, buffer, buffer_length, encoded_length, diagnostic)) {
+        return 0;
+    }
+    return 1;
 }
 
 static const char* value_kind_label(UnitLabIedFixtureValueKind value_kind)
@@ -411,6 +474,66 @@ int main(int argc, char** argv)
         unitlab_free_ied_fixture_model(&fixture_model);
         return 0;
     }
+    if (options.native_smoke_start) {
+        UnitLabMmsServerRuntime server_runtime;
+        UnitLabMmsDiagnostic server_diagnostic;
+        UnitLabMmsOperationResult operation_result;
+        uint8_t association_bytes[256];
+        size_t association_length = 0U;
+        size_t consumed_length = 0U;
+
+        unitlab_mms_server_runtime_init(&server_runtime);
+        unitlab_mms_diagnostic_clear(&server_diagnostic);
+        unitlab_mms_operation_result_init(&operation_result);
+        if (!unitlab_mms_server_runtime_prepare(&server_runtime, &server_config, &server_diagnostic)) {
+            fprintf(stderr, "%s: %s\n", "NATIVE_SERVER_PREPARE_FAILED", server_diagnostic.message);
+            unitlab_free_ied_model_plan(&model_plan);
+            unitlab_free_ied_fixture_model(&fixture_model);
+            return 69;
+        }
+        if (!unitlab_mms_server_runtime_start(&server_runtime, &server_diagnostic)) {
+            fprintf(stderr, "%s: %s\n", "NATIVE_SERVER_START_FAILED", server_diagnostic.message);
+            unitlab_free_ied_model_plan(&model_plan);
+            unitlab_free_ied_fixture_model(&fixture_model);
+            return 69;
+        }
+        if (!unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &server_diagnostic)
+            || !unitlab_mms_server_runtime_enable_report_control(&server_runtime, &server_diagnostic)
+            || !unitlab_mms_server_runtime_request_general_interrogation(&server_runtime, &server_diagnostic)) {
+            fprintf(stderr, "%s: %s\n", "NATIVE_SERVER_REPORT_SETUP_FAILED", server_diagnostic.message);
+            unitlab_free_ied_model_plan(&model_plan);
+            unitlab_free_ied_fixture_model(&fixture_model);
+            return 69;
+        }
+        if (!build_native_information_report_association_bytes(association_bytes, sizeof(association_bytes), &association_length, &server_diagnostic)) {
+            fprintf(stderr, "%s: %s\n", "NATIVE_SERVER_ASSOCIATION_BUILD_FAILED", server_diagnostic.message);
+            unitlab_free_ied_model_plan(&model_plan);
+            unitlab_free_ied_fixture_model(&fixture_model);
+            return 69;
+        }
+        if (!unitlab_mms_server_runtime_apply_association_bytes(&server_runtime, association_bytes, association_length, &consumed_length, &operation_result)) {
+            fprintf(stderr, "%s: %s\n", "NATIVE_SERVER_ASSOCIATION_APPLY_FAILED", operation_result.diagnostic.message);
+            unitlab_free_ied_model_plan(&model_plan);
+            unitlab_free_ied_fixture_model(&fixture_model);
+            return 69;
+        }
+        if (consumed_length != association_length) {
+            fprintf(stderr, "NATIVE_SERVER_ASSOCIATION_TAIL: consumed=%zu total=%zu\n", consumed_length, association_length);
+            unitlab_free_ied_model_plan(&model_plan);
+            unitlab_free_ied_fixture_model(&fixture_model);
+            return 69;
+        }
+        printf("unitlab-iec61850-ied-sim: native server smoke-start accepted\n");
+        printf("ied=%s\n", fixture_model.ied_name);
+        printf("bind=%s\n", options.bind_address);
+        printf("port=%d\n", options.port);
+        printf("runtime=%d\n", server_runtime.state);
+        printf("reportControl=%d\n", server_runtime.report_control.state);
+        unitlab_free_ied_model_plan(&model_plan);
+        unitlab_free_ied_fixture_model(&fixture_model);
+        return 0;
+    }
+
     if (options.smoke_start) {
         if (!unitlab_run_ied_server(&fixture_model, &model_plan, &server_config, immediate_stop_requested, NULL, &load_result)) {
             fprintf(stderr, "%s: %s\n", load_result.code, load_result.message);

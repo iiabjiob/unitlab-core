@@ -680,6 +680,7 @@ Implemented in this slice:
 - When built with `UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON`, the external simulator can now create an `IedServer` from the dynamic model and start listening on the configured TCP endpoint.
 - Non-dry-run simulator execution keeps the process alive until SIGTERM or SIGINT, then stops and destroys the libIEC61850 server and dynamic model cleanly.
 - `--smoke-start` starts and immediately stops the linked MMS server for deterministic local validation without leaving a process running.
+- `--native-smoke-start` validates the UnitLab-owned server runtime boundary without libIEC61850 by running a native association-byte smoke path.
 - The unlinked path still fails closed with `LIBIEC61850_NOT_LINKED`.
 - No fake report subscription success is reported; backend MMS adapter support remains a separate slice.
 
