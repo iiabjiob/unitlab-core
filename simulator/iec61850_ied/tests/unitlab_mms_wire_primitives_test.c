@@ -369,8 +369,18 @@ static void test_transport_frame_roundtrip(void)
     assert(memcmp(decoded_frame.cotp.user_data, user_data, sizeof(user_data)) == 0);
 }
 
-static void test_acse_aarq_roundtrip(void)
+static void test_acse_top_level_roundtrips(void)
 {
+    struct {
+        UnitLabMmsAcseApduKind kind;
+        uint8_t tag;
+    } cases[] = {
+        { UNITLAB_MMS_ACSE_APDU_AARQ, 0x60U },
+        { UNITLAB_MMS_ACSE_APDU_AARE, 0x61U },
+        { UNITLAB_MMS_ACSE_APDU_RLRQ, 0x62U },
+        { UNITLAB_MMS_ACSE_APDU_RLRE, 0x63U },
+        { UNITLAB_MMS_ACSE_APDU_ABRT, 0x64U },
+    };
     uint8_t buffer[32];
     UnitLabMmsAcseApdu apdu;
     UnitLabMmsAcseApdu decoded_apdu;
@@ -379,19 +389,21 @@ static void test_acse_aarq_roundtrip(void)
     UnitLabMmsDiagnostic diagnostic;
     const uint8_t payload[4] = { 0x30U, 0x02U, 0x01U, 0x01U };
 
-    unitlab_mms_diagnostic_clear(&diagnostic);
-    unitlab_mms_acse_apdu_init(&apdu);
-    apdu.kind = UNITLAB_MMS_ACSE_APDU_AARQ;
-    apdu.apdu_bytes = payload;
-    apdu.apdu_length = sizeof(payload);
-    assert(unitlab_mms_acse_encode(&apdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
-    assert(buffer[0] == 0x60U);
-    unitlab_mms_acse_apdu_init(&decoded_apdu);
-    assert(unitlab_mms_acse_decode(&decoded_apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
-    assert(consumed_length == encoded_length);
-    assert(decoded_apdu.kind == UNITLAB_MMS_ACSE_APDU_AARQ);
-    assert(decoded_apdu.apdu_length == sizeof(payload));
-    assert(memcmp(decoded_apdu.apdu_bytes, payload, sizeof(payload)) == 0);
+    for (size_t i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        unitlab_mms_acse_apdu_init(&apdu);
+        apdu.kind = cases[i].kind;
+        apdu.apdu_bytes = payload;
+        apdu.apdu_length = sizeof(payload);
+        assert(unitlab_mms_acse_encode(&apdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+        assert(buffer[0] == cases[i].tag);
+        unitlab_mms_acse_apdu_init(&decoded_apdu);
+        assert(unitlab_mms_acse_decode(&decoded_apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+        assert(consumed_length == encoded_length);
+        assert(decoded_apdu.kind == cases[i].kind);
+        assert(decoded_apdu.apdu_length == sizeof(payload));
+        assert(memcmp(decoded_apdu.apdu_bytes, payload, sizeof(payload)) == 0);
+    }
 }
 
 static void test_mms_pdu_confirmed_request_roundtrip(void)
@@ -423,6 +435,39 @@ static void test_mms_pdu_confirmed_request_roundtrip(void)
     assert(decoded_pdu.service_tag.tag_number == 4U);
     assert(decoded_pdu.service_length == 1U);
     assert(decoded_pdu.service_bytes[0] == 0xAAU);
+    assert(decoded_pdu.pdu_length == sizeof(payload));
+    assert(memcmp(decoded_pdu.pdu_bytes, payload, sizeof(payload)) == 0);
+}
+
+static void test_mms_pdu_confirmed_response_roundtrip(void)
+{
+    uint8_t buffer[32];
+    UnitLabMmsPdu pdu;
+    UnitLabMmsPdu decoded_pdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[6] = { 0x02U, 0x01U, 0x06U, 0xA5U, 0x01U, 0xBBU };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_pdu_init(&pdu);
+    pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_RESPONSE;
+    pdu.pdu_bytes = payload;
+    pdu.pdu_length = sizeof(payload);
+    assert(unitlab_mms_pdu_encode(&pdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(buffer[0] == 0x61U);
+    unitlab_mms_pdu_init(&decoded_pdu);
+    assert(unitlab_mms_pdu_decode(&decoded_pdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
+    assert(decoded_pdu.has_invoke_id == 1);
+    assert(decoded_pdu.invoke_id == 6U);
+    assert(decoded_pdu.has_service == 1);
+    assert(decoded_pdu.service_kind == UNITLAB_MMS_SERVICE_WRITE);
+    assert(decoded_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(decoded_pdu.service_tag.tag_number == 5U);
+    assert(decoded_pdu.service_length == 1U);
+    assert(decoded_pdu.service_bytes[0] == 0xBBU);
     assert(decoded_pdu.pdu_length == sizeof(payload));
     assert(memcmp(decoded_pdu.pdu_bytes, payload, sizeof(payload)) == 0);
 }
@@ -697,13 +742,14 @@ int main(void)
     test_transport_frame_roundtrip();
     test_wire_association_fixture_decode_roundtrip();
     test_wire_association_fixture_encode_roundtrip();
-    test_acse_aarq_roundtrip();
+    test_acse_top_level_roundtrips();
     test_presentation_raw_roundtrip_preserves_outer_tag();
     test_presentation_decode_accepts_arbitrary_outer_tag_as_raw();
     test_presentation_encode_rejects_non_raw_kind();
     test_presentation_encode_rejects_null_payload_bytes();
     test_presentation_rejects_truncated_ber();
     test_mms_pdu_confirmed_request_roundtrip();
+    test_mms_pdu_confirmed_response_roundtrip();
     test_mms_pdu_unconfirmed_roundtrip();
     test_mms_pdu_confirmed_request_roundtrip_with_wide_invoke_id();
     test_mms_pdu_rejects_non_minimal_invoke_id();

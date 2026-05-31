@@ -141,12 +141,12 @@ Initial implemented wire foundation:
 - BER tag encode/decode
 - BER length encode/decode
 - BER TLV read/write
-- ACSE APDU top-level classify/wrap/unwrap
+- ACSE APDU top-level classify/wrap/unwrap using exact X.227 application tags for AARQ/AARE/RLRQ/RLRE/ABRT
 - presentation APDU raw BER wrapper boundary
 - RFC1006/TPKT + COTP transport frame composition helper
 - association-fixture encode/decode helper across TPKT/COTP/raw presentation wrappers
 - MMS MMSpdu top-level classify/wrap/unwrap
-- narrow service classification for confirmed Read/Write and unconfirmed InformationReport choices
+- narrow service classification for confirmed Read/Write responses and unconfirmed InformationReport choices
 
 Presentation is intentionally raw at this boundary only. The association fixture helper is decode-safe and encode-safe for staged raw payloads, but it does not interpret ACSE or MMS semantics. The MMS PDU wrapper currently peels the top-level `invokeID` and the next service TLV for confirmed request/response/error PDUs, validates `invokeID` as a minimal Unsigned32 BER integer, and leaves full service field decode pending.
 
