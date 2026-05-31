@@ -49,6 +49,20 @@ const genericFeederBayScd = `<?xml version="1.0" encoding="UTF-8"?>
 
 const genericBusbarBayScd = `<?xml version="1.0" encoding="UTF-8"?>
 <SCL xmlns="http://www.iec.ch/61850/2003/SCL" revision="B" version="2007">
+  <DataTypeTemplates>
+    <LNodeType id="LLN0_TYPE" lnClass="LLN0">
+      <DO name="Beh" type="SPS_DO"/>
+    </LNodeType>
+    <LNodeType id="XCBR_TYPE" lnClass="XCBR">
+      <DO name="Pos" type="SPS_DO"/>
+    </LNodeType>
+    <LNodeType id="GGIO_TYPE" lnClass="GGIO">
+      <DO name="Ind1" type="SPS_DO"/>
+    </LNodeType>
+    <DOType id="SPS_DO" cdc="SPS">
+      <DA name="stVal" bType="BOOLEAN" fc="ST"/>
+    </DOType>
+  </DataTypeTemplates>
   <Substation name="SS1">
     <VoltageLevel name="VL1">
       <Voltage multiplier="k" unit="V">110</Voltage>
@@ -764,6 +778,20 @@ describe("scd-sld-core", () => {
       contentHash: "reports",
       xmlText: `<?xml version="1.0" encoding="UTF-8"?>
 <SCL xmlns="http://www.iec.ch/61850/2003/SCL" revision="B" version="2007">
+  <DataTypeTemplates>
+    <LNodeType id="LLN0_TYPE" lnClass="LLN0">
+      <DO name="Beh" type="SPS_DO"/>
+    </LNodeType>
+    <LNodeType id="XCBR_TYPE" lnClass="XCBR">
+      <DO name="Pos" type="SPS_DO"/>
+    </LNodeType>
+    <LNodeType id="GGIO_TYPE" lnClass="GGIO">
+      <DO name="Ind1" type="SPS_DO"/>
+    </LNodeType>
+    <DOType id="SPS_DO" cdc="SPS">
+      <DA name="stVal" bType="BOOLEAN" fc="ST"/>
+    </DOType>
+  </DataTypeTemplates>
   <Substation name="SS1">
     <VoltageLevel name="VL1">
       <Bay name="BAY1"/>
@@ -798,6 +826,7 @@ describe("scd-sld-core", () => {
             </ReportControl>
           </LN0>
           <LN lnClass="XCBR" inst="1" lnType="XCBR_TYPE"/>
+          <LN prefix="P" lnClass="GGIO" inst="1" lnType="GGIO_TYPE"/>
         </LDevice>
       </Server>
     </AccessPoint>
@@ -838,6 +867,7 @@ describe("scd-sld-core", () => {
     expect(logicalDevice?.logicalNodes.map(node => node.logicalNodeName)).toEqual([
       "LLN0",
       "XCBR1",
+      "PGGIO1",
     ])
 
     const lln0 = logicalDevice?.logicalNodes[0]

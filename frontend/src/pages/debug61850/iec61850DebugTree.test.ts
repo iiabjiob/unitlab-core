@@ -25,6 +25,17 @@ const fixtureScd = `<?xml version="1.0" encoding="UTF-8"?>
 
 const runtimeScd = `<?xml version="1.0" encoding="UTF-8"?>
 <SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <DataTypeTemplates>
+    <LNodeType id="LLN0_TYPE" lnClass="LLN0">
+      <DO name="Beh" type="SPS_DO"/>
+    </LNodeType>
+    <LNodeType id="XCBR_TYPE" lnClass="XCBR">
+      <DO name="Pos" type="SPS_DO"/>
+    </LNodeType>
+    <DOType id="SPS_DO" cdc="SPS">
+      <DA name="stVal" bType="BOOLEAN" fc="ST"/>
+    </DOType>
+  </DataTypeTemplates>
   <Substation name="SS1">
     <VoltageLevel name="VL1">
       <Bay name="BAY1"/>

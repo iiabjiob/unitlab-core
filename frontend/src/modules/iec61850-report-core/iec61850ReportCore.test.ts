@@ -26,6 +26,20 @@ import {
 
 const reportScd = `<?xml version="1.0" encoding="UTF-8"?>
 <SCL xmlns="http://www.iec.ch/61850/2003/SCL" revision="B" version="2007">
+  <DataTypeTemplates>
+    <LNodeType id="LLN0_TYPE" lnClass="LLN0">
+      <DO name="Beh" type="SPS_DO"/>
+    </LNodeType>
+    <LNodeType id="XCBR_TYPE" lnClass="XCBR">
+      <DO name="Pos" type="SPS_DO"/>
+    </LNodeType>
+    <LNodeType id="GGIO_TYPE" lnClass="GGIO">
+      <DO name="Ind1" type="SPS_DO"/>
+    </LNodeType>
+    <DOType id="SPS_DO" cdc="SPS">
+      <DA name="stVal" bType="BOOLEAN" fc="ST"/>
+    </DOType>
+  </DataTypeTemplates>
   <IED name="IED1">
     <AccessPoint name="AP1">
       <Server>
@@ -705,7 +719,10 @@ function firstReportCandidate() {
   if (!candidate) {
     throw new Error("Report fixture did not produce a subscription candidate")
   }
-  return candidate
+  return {
+    ...candidate,
+    signalCount: candidate.normalizedSignals.length || candidate.signals.length,
+  }
 }
 
 function cloneCandidate(
@@ -716,6 +733,12 @@ function cloneCandidate(
     ...candidate,
     ...overrides,
     signals: [...candidate.signals],
+    normalizedSignals: [...candidate.normalizedSignals],
+    normalizedDatasetEntries: candidate.normalizedDatasetEntries.map(entry => ({
+      ...entry,
+      leaves: [...entry.leaves],
+      diagnostics: [...entry.diagnostics],
+    })),
     triggerOptions: { ...candidate.triggerOptions },
     optionalFields: { ...candidate.optionalFields },
   }

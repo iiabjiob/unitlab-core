@@ -321,6 +321,131 @@ export type SclDataSetMember = {
   sourceLocation?: ScdSourceLocation
 }
 
+export type SclDataTypeTemplateSource = {
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclEnumVal = {
+  value: string
+  desc: string | null
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclEnumType = {
+  id: string
+  desc: string | null
+  values: SclEnumVal[]
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclBda = {
+  name: string
+  bType: string | null
+  type: string | null
+  fc: string | null
+  count: number | null
+  desc: string | null
+  bdas: SclBda[]
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclDa = {
+  name: string
+  bType: string | null
+  type: string | null
+  fc: string | null
+  count: number | null
+  desc: string | null
+  bdas: SclBda[]
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclSdo = {
+  name: string
+  type: string | null
+  desc: string | null
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclDoType = {
+  id: string
+  cdc: string | null
+  desc: string | null
+  das: SclDa[]
+  sdos: SclSdo[]
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclDo = {
+  name: string
+  type: string | null
+  desc: string | null
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclLNodeType = {
+  id: string
+  lnClass: string | null
+  iedType: string | null
+  dos: SclDo[]
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type SclDataTypeTemplatesModel = {
+  lNodeTypes: SclLNodeType[]
+  doTypes: SclDoType[]
+  daTypes: SclDaType[]
+  enumTypes: SclEnumType[]
+}
+
+export type SclDaType = {
+  id: string
+  desc: string | null
+  bdas: SclBda[]
+  sourcePath: string
+  sourceLocation?: ScdSourceLocation
+}
+
+export type NormalizedDataLeaf = {
+  reference: string
+  iedName?: string
+  ldInst: string
+  prefix?: string
+  lnClass: string
+  lnInst?: string
+  lnType: string
+  doName: string
+  daPath: string[]
+  fc: string
+  cdc?: string
+  bType: string
+  type?: string
+  enumType?: string
+  isReportable: boolean
+  source?: {
+    datasetName?: string
+    originalFcda?: unknown
+    templateIds?: string[]
+  }
+}
+
+export type NormalizedDatasetEntry = {
+  datasetRef: string
+  memberRef: string
+  leaves: NormalizedDataLeaf[]
+  sourceKind: "FCDA" | "FCD" | "DO" | "DA"
+  diagnostics: ScdDiagnostic[]
+}
+
 export type SclDataSet = {
   id: string
   name: string
@@ -417,6 +542,8 @@ export type Iec61850ReportSubscriptionCandidate = {
   optionalFields: SclReportOptionalFields
   signalCount: number
   signals: SclDataSetMember[]
+  normalizedSignals: NormalizedDataLeaf[]
+  normalizedDatasetEntries: NormalizedDatasetEntry[]
 }
 
 export type NormalizedSclModel = {
@@ -430,6 +557,7 @@ export type NormalizedSclModel = {
     version: string | null
     revision: string | null
   }
+  dataTypeTemplates: SclDataTypeTemplatesModel
   substations: SclSubstation[]
   ieds: SclIed[]
   reportSubscriptions: Iec61850ReportSubscriptionCandidate[]

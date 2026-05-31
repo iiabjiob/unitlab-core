@@ -7,6 +7,7 @@ import type {
   Iec61850ReportReason,
   Iec61850ReportValue,
 } from "./types"
+import { getIec61850ReportCandidateSignals } from "./normalizedSignals"
 
 export type Iec61850ReportPayloadValue = {
   dataReference?: string | null
@@ -165,7 +166,7 @@ function mapPayloadValues(
   diagnostics: Iec61850ReportEventDiagnostic[],
 ): Iec61850ReportValue[] {
   const { candidate, payload, receivedAt } = input
-  const expectedSignals = candidate.signals
+  const expectedSignals = getIec61850ReportCandidateSignals(candidate)
   const hasDataReferences = payload.values.some(value => value.dataReference != null && value.dataReference.trim() !== "")
   const assigned: AssignedValue[] = []
 
@@ -236,7 +237,7 @@ function mapPayloadValues(
 
 function buildReferenceIndex(candidate: Iec61850ReportControlCandidate): ReferenceIndex {
   const index: ReferenceIndex = new Map()
-  candidate.signals.forEach((signal, signalIndex) => {
+  getIec61850ReportCandidateSignals(candidate).forEach((signal, signalIndex) => {
     for (const variant of buildReferenceVariants(signal.reference, candidate)) {
       const key = normalizeReportDataReference(variant, candidate)
       const existing = index.get(key)

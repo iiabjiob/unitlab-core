@@ -31,6 +31,7 @@ import {
   pushParentDiagnostic,
   readRequiredName,
 } from "./parserUtils"
+import { normalizeIec61850DatasetEntries } from "./datatypeTemplates"
 
 export function parseIedCommunicationModel(xmlText: string, diagnostics: ScdDiagnostic[]): SclIed[] {
   const localDiagnostics: ScdDiagnostic[] = []
@@ -794,8 +795,7 @@ export function buildIec61850ReportSubscriptionInventory(
   return collectReportControls(model.ieds).map((reportControl): Iec61850ReportSubscriptionCandidate => {
     const dataSet = reportControl.dataSetId ? dataSetsById.get(reportControl.dataSetId) ?? null : null
     const signals = dataSet?.members ?? []
-
-    return {
+    const normalizedDatasetEntries = normalizeIec61850DatasetEntries({ model, candidate: {
       id: `${reportControl.id}/subscription`,
       iedName: reportControl.iedName,
       accessPointName: reportControl.accessPointName,
@@ -815,6 +815,35 @@ export function buildIec61850ReportSubscriptionInventory(
       optionalFields: reportControl.optionalFields,
       signalCount: signals.length,
       signals,
+      normalizedSignals: [],
+      normalizedDatasetEntries: [],
+    }, dataSet })
+
+    const normalizedSignals = normalizedDatasetEntries.flatMap(entry => entry.leaves)
+    normalizedDatasetEntries.forEach(entry => model.diagnostics.push(...entry.diagnostics))
+
+    return {
+      id: `${reportControl.id}/subscription`,
+      iedName: reportControl.iedName,
+      accessPointName: reportControl.accessPointName,
+      logicalDeviceInst: reportControl.logicalDeviceInst,
+      logicalNodeName: reportControl.logicalNodeName,
+      reportControlId: reportControl.id,
+      reportControlName: reportControl.name,
+      reportKind: reportControl.buffered ? "buffered" : "unbuffered",
+      rptId: reportControl.rptId,
+      dataSetId: reportControl.dataSetId,
+      dataSetRef: reportControl.dataSetRef,
+      confRev: reportControl.confRev,
+      indexed: reportControl.indexed,
+      bufferTimeMs: reportControl.bufferTimeMs,
+      integrityPeriodMs: reportControl.integrityPeriodMs,
+      triggerOptions: reportControl.triggerOptions,
+      optionalFields: reportControl.optionalFields,
+      signalCount: normalizedSignals.length,
+      signals,
+      normalizedSignals,
+      normalizedDatasetEntries,
     }
   })
 }

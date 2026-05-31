@@ -5,6 +5,7 @@ import type {
   Iec61850ReportSubscriptionPlanSignal,
   Iec61850SelectedSignal,
 } from "./types"
+import { getIec61850ReportCandidateSignals } from "./normalizedSignals"
 
 type BuildPlanOptions = {
   candidates: readonly Iec61850ReportControlCandidate[]
@@ -180,7 +181,7 @@ function buildSignalIndex(candidates: readonly Iec61850ReportControlCandidate[])
 
   for (const candidate of candidates) {
     index.reportsById.set(candidate.id, candidate)
-    for (const signal of candidate.signals) {
+    for (const signal of getIec61850ReportCandidateSignals(candidate)) {
       const key = `${normalizeReference(candidate.iedName)}\u0000${normalizeReference(signal.reference)}`
       const modelSignal = signalsByKey.get(key) ?? {
         key,
@@ -240,7 +241,7 @@ function collectKnownLdInsts(candidates: readonly Iec61850ReportControlCandidate
   const ldInsts = new Set<string>()
   for (const candidate of candidates) {
     addNormalized(ldInsts, candidate.logicalDeviceInst)
-    for (const signal of candidate.signals) {
+    for (const signal of getIec61850ReportCandidateSignals(candidate)) {
       addNormalized(ldInsts, parseReference(normalizeReference(signal.reference))?.ldInst)
     }
     const dataSetRefParts = normalizeReference(candidate.dataSetRef ?? "").split("/").filter(Boolean)

@@ -45,6 +45,7 @@ function mergeDiagnostics(...diagnosticGroups: ScdDiagnostic[][]): ScdDiagnostic
 }
 
 export { buildIec61850ReportSubscriptionInventory, parseScdSource } from "./parser"
+export { parseSclDataTypeTemplates } from "./datatypeTemplates"
 export { buildElectricalGraph } from "./graph"
 export { buildSldCellModel } from "./cellModel"
 export { layoutSldDocument } from "./layout"
@@ -69,6 +70,8 @@ export type {
   GenerateSldOptions,
   GenerateSldResult,
   Iec61850ReportSubscriptionCandidate,
+  NormalizedDataLeaf,
+  NormalizedDatasetEntry,
   NormalizedSclModel,
   ScdDiagnostic,
   ScdDiagnosticSeverity,
@@ -81,8 +84,16 @@ export type {
   SclConnectedAccessPoint,
   SclConnectivityNode,
   SclDataSet,
+  SclBda,
+  SclDa,
+  SclDaType,
   SclDataSetMember,
   SclDataSetMemberKind,
+  SclDataTypeTemplatesModel,
+  SclDo,
+  SclDoType,
+  SclEnumType,
+  SclEnumVal,
   SclEquipment,
   SclEquipmentKind,
   SclIed,

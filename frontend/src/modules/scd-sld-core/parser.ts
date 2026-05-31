@@ -4,6 +4,7 @@ import {
   normalizeReportDataSetReferences,
   parseIedCommunicationModel,
 } from "./communicationParser"
+import { parseSclDataTypeTemplates } from "./datatypeTemplates"
 import { normalizeTerminalConnectivityReferences } from "./topologyNormalizer"
 import { parseSclTopology } from "./topologyParser"
 
@@ -19,6 +20,12 @@ export function parseScdSource(source: ScdSource): NormalizedSclModel {
     scl: {
       version: null,
       revision: null,
+    },
+    dataTypeTemplates: {
+      lNodeTypes: [],
+      doTypes: [],
+      daTypes: [],
+      enumTypes: [],
     },
     substations: [],
     ieds: [],
@@ -39,6 +46,7 @@ export function parseScdSource(source: ScdSource): NormalizedSclModel {
 
   const topology = parseSclTopology(source.xmlText, diagnostics)
   model.scl = topology.scl
+  model.dataTypeTemplates = parseSclDataTypeTemplates(source.xmlText, diagnostics)
   model.substations = topology.substations
 
   if (model.substations.length === 0) {

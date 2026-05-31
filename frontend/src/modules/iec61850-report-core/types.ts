@@ -1,5 +1,6 @@
 import type {
   Iec61850ReportSubscriptionCandidate,
+  NormalizedDataLeaf,
   SclDataSetMember,
   SclReportOptionalFields,
   SclReportTriggerOptions,
@@ -186,4 +187,4 @@ export type Iec61850ReportManagerReadOnlyAdapter = Pick<Iec61850ReportManagerAda
 
 export type Iec61850ReportControlCandidate = Iec61850ReportSubscriptionCandidate
 
-export type Iec61850ReportSignal = SclDataSetMember
+export type Iec61850ReportSignal = NormalizedDataLeaf
