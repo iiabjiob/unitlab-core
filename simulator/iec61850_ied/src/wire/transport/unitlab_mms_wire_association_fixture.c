@@ -46,8 +46,8 @@ int unitlab_mms_wire_association_fixture_encode(const UnitLabMmsWireAssociationF
         wire_association_fixture_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "association fixture buffer is too small.");
         return 0;
     }
-    if (fixture->presentation.kind != UNITLAB_MMS_PRESENTATION_APDU_RAW) {
-        wire_association_fixture_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "association fixture requires a raw presentation wrapper.");
+    if (fixture->presentation.kind != UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED && fixture->presentation.kind != UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED) {
+        wire_association_fixture_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "association fixture requires exact X.226 Presentation User-data.");
         return 0;
     }
     if (fixture->presentation.payload_length != 0U && fixture->presentation.payload_bytes == NULL) {
@@ -66,8 +66,7 @@ int unitlab_mms_wire_association_fixture_encode(const UnitLabMmsWireAssociationF
     }
 
     unitlab_mms_presentation_apdu_init(&presentation_apdu);
-    presentation_apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_RAW;
-    presentation_apdu.tag = fixture->presentation.tag;
+    presentation_apdu.kind = fixture->presentation.kind;
     presentation_apdu.payload_bytes = fixture->presentation.payload_bytes;
     presentation_apdu.payload_length = fixture->presentation.payload_length;
     if (!unitlab_mms_presentation_encode(&presentation_apdu, presentation_scratch, buffer_length, &presentation_length, diagnostic)) {

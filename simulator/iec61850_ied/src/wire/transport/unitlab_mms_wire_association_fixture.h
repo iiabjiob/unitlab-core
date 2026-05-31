@@ -6,8 +6,8 @@
 #include "unitlab_mms_transport_frame.h"
 
 /*
- * Narrow golden-test helper for one ISO-on-TCP association-style nested raw payload.
- * It only composes TPKT + COTP + raw Presentation and leaves ACSE/MMS interpretation to the caller.
+ * Narrow golden-test helper for one ISO-on-TCP association-style nested payload.
+ * It only composes TPKT + COTP + exact X.226 Presentation User-data and leaves ACSE/MMS interpretation to the caller.
  */
 typedef struct UnitLabMmsWireAssociationFixture {
     UnitLabMmsTransportFrame transport;

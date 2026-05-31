@@ -6,8 +6,8 @@
 
 typedef enum UnitLabMmsPresentationApduKind {
     UNITLAB_MMS_PRESENTATION_APDU_NONE = 0,
-    UNITLAB_MMS_PRESENTATION_APDU_RAW = 1,
-    UNITLAB_MMS_PRESENTATION_APDU_UNKNOWN = 2
+    UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED = 1,
+    UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED = 2
 } UnitLabMmsPresentationApduKind;
 
 typedef struct UnitLabMmsPresentationApdu {
@@ -19,9 +19,10 @@ typedef struct UnitLabMmsPresentationApdu {
 } UnitLabMmsPresentationApdu;
 
 /*
- * Presentation is intentionally raw at this boundary.
- * Exact CP/CPA/CPR/TD and user-data ASN.1 mappings must be added later from ITU-T X.226 / ISO8823-PRESENTATION.
- * Do not guess Presentation APDU tag mappings here.
+ * Exact X.226 Presentation User-data boundary.
+ * simply-encoded-data maps to [APPLICATION 0] IMPLICIT OCTET STRING.
+ * fully-encoded-data maps to [APPLICATION 1] IMPLICIT SEQUENCE OF PDV-list.
+ * Do not guess additional Presentation PDU mappings here.
  * No runtime state transition is performed by this layer.
  */
 void unitlab_mms_presentation_apdu_init(UnitLabMmsPresentationApdu* apdu);

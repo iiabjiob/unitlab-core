@@ -147,13 +147,13 @@ Initial implemented wire foundation:
 - ACSE APDU top-level classify/wrap/unwrap using exact X.227 application tags for AARQ/AARE/RLRQ/RLRE/ABRT
 - raw ACSE field view preserves the exact outer sequence elements without semantic interpretation
 - session SPDU raw boundary that parses one X.225 SPDU via SI/LI and preserves the opaque parameter view
-- presentation APDU raw BER wrapper boundary
+- presentation User-data boundary with exact X.226 simply-encoded-data and fully-encoded-data mapping
 - RFC1006/TPKT + COTP transport frame composition helper
-- association-fixture encode/decode helper across TPKT/COTP/raw presentation wrappers
+- association-fixture encode/decode helper across TPKT/COTP/exact Presentation User-data wrappers
 - MMS MMSpdu top-level classify/wrap/unwrap
 - narrow service classification for confirmed Read/Write responses and unconfirmed InformationReport choices
 
-Presentation is intentionally raw at this boundary only. The association fixture helper is decode-safe and encode-safe for staged raw payloads, but it does not interpret ACSE or MMS semantics. The MMS PDU wrapper currently peels the top-level `invokeID` and the next service TLV for confirmed request/response/error PDUs, validates `invokeID` as a minimal Unsigned32 BER integer, and leaves full service field decode pending.
+Presentation is intentionally exact-only at this boundary. The association fixture helper is decode-safe and encode-safe for staged Presentation User-data payloads, but it does not interpret ACSE or MMS semantics. The MMS PDU wrapper currently peels the top-level `invokeID` and the next service TLV for confirmed request/response/error PDUs, validates `invokeID` as a minimal Unsigned32 BER integer, and leaves full service field decode pending.
 
 ## Evolution Path
 

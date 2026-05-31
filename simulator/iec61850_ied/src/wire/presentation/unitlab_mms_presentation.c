@@ -37,8 +37,8 @@ int unitlab_mms_presentation_encode(const UnitLabMmsPresentationApdu* apdu, uint
         presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "presentation encode requires apdu, buffer, and encoded_length.");
         return 0;
     }
-    if (apdu->kind != UNITLAB_MMS_PRESENTATION_APDU_RAW) {
-        presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "presentation encode supports raw APDU only.");
+    if (apdu->kind != UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED && apdu->kind != UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED) {
+        presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "presentation encode supports simply-encoded-data and fully-encoded-data only.");
         return 0;
     }
     if (apdu->payload_length != 0U && apdu->payload_bytes == NULL) {
@@ -46,7 +46,15 @@ int unitlab_mms_presentation_encode(const UnitLabMmsPresentationApdu* apdu, uint
         return 0;
     }
     unitlab_mms_ber_element_init(&element);
-    element.tag = apdu->tag;
+    if (apdu->kind == UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED) {
+        element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_APPLICATION;
+        element.tag.constructed = 0;
+        element.tag.tag_number = 0U;
+    } else {
+        element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_APPLICATION;
+        element.tag.constructed = 1;
+        element.tag.tag_number = 1U;
+    }
     element.value_bytes = apdu->payload_bytes;
     element.value_length = apdu->payload_length;
     if (!unitlab_mms_ber_write(&element, buffer, buffer_length, encoded_length, diagnostic)) {
@@ -71,8 +79,20 @@ int unitlab_mms_presentation_decode(UnitLabMmsPresentationApdu* apdu, const uint
     if (!unitlab_mms_ber_read(&element, buffer, buffer_length, consumed_length, diagnostic)) {
         return 0;
     }
-    unitlab_mms_presentation_apdu_init(apdu);
-    apdu->kind = UNITLAB_MMS_PRESENTATION_APDU_RAW;
+    if (element.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_APPLICATION) {
+        presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "presentation user-data tag is unsupported.");
+        return 0;
+    }
+    if (element.tag.tag_number == 0U && element.tag.constructed == 0) {
+        unitlab_mms_presentation_apdu_init(apdu);
+        apdu->kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
+    } else if (element.tag.tag_number == 1U && element.tag.constructed == 1) {
+        unitlab_mms_presentation_apdu_init(apdu);
+        apdu->kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
+    } else {
+        presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "presentation user-data tag is unsupported.");
+        return 0;
+    }
     apdu->tag = element.tag;
     apdu->payload_bytes = element.value_bytes;
     apdu->payload_length = element.value_length;
