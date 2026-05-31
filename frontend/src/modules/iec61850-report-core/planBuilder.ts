@@ -5,7 +5,7 @@ import type {
   Iec61850ReportSubscriptionPlanSignal,
   Iec61850SelectedSignal,
 } from "./types"
-import { getIec61850ReportCandidateSignals } from "./normalizedSignals"
+import { getIec61850ReportCandidateLeaves } from "./normalizedSignals"
 
 type BuildPlanOptions = {
   candidates: readonly Iec61850ReportControlCandidate[]
@@ -171,7 +171,7 @@ export function buildIec61850ReportSubscriptionPlan(
 }
 
 function buildSignalIndex(candidates: readonly Iec61850ReportControlCandidate[], diagnostics: Iec61850ReportSubscriptionPlanDiagnostic[]): SignalIndex {
-  const ldInsts = collectKnownLdInsts(candidates, diagnostics)
+  const ldInsts = collectKnownLdInsts(candidates)
   const index: SignalIndex = {
     byVariant: new Map(),
     reportsById: new Map(),
@@ -181,7 +181,8 @@ function buildSignalIndex(candidates: readonly Iec61850ReportControlCandidate[],
 
   for (const candidate of candidates) {
     index.reportsById.set(candidate.id, candidate)
-    for (const signal of getIec61850ReportCandidateSignals(candidate, diagnostics)) {
+    const leaves = getIec61850ReportCandidateLeaves(candidate, diagnostics)
+    for (const signal of leaves) {
       const key = `${normalizeReference(candidate.iedName)}\u0000${normalizeReference(signal.reference)}`
       const modelSignal = signalsByKey.get(key) ?? {
         key,
@@ -238,11 +239,11 @@ function collectCandidates(index: SignalIndex, address: string, includeParentPat
   return new Set()
 }
 
-function collectKnownLdInsts(candidates: readonly Iec61850ReportControlCandidate[], diagnostics: Iec61850ReportSubscriptionPlanDiagnostic[]): Set<string> {
+function collectKnownLdInsts(candidates: readonly Iec61850ReportControlCandidate[]): Set<string> {
   const ldInsts = new Set<string>()
   for (const candidate of candidates) {
     addNormalized(ldInsts, candidate.logicalDeviceInst)
-    for (const signal of getIec61850ReportCandidateSignals(candidate, diagnostics)) {
+    for (const signal of candidate.normalizedSignals) {
       addNormalized(ldInsts, parseReference(normalizeReference(signal.reference))?.ldInst)
     }
     const dataSetRefParts = normalizeReference(candidate.dataSetRef ?? "").split("/").filter(Boolean)

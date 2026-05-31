@@ -19,7 +19,6 @@ import type {
   SclVoltageLevel,
   SldCoordinate,
 } from "@/modules/scd-sld-core"
-import { getIec61850ReportCandidateSignals } from "@/modules/iec61850-report-core/normalizedSignals"
 
 export type Iec61850DebugNodeKind =
   | "site"
@@ -204,7 +203,7 @@ export function buildIec61850DebugSignalInventory(model: NormalizedSclModel): Ie
       iedName: dataSet.iedName,
       accessPointName: dataSet.accessPointName,
     }))),
-    reportSignals: model.reportSubscriptions.flatMap(candidate => getIec61850ReportCandidateSignals(candidate).map(signal => ({
+    reportSignals: model.reportSubscriptions.flatMap(candidate => candidate.normalizedDatasetEntries.flatMap(entry => entry.leaves).map(signal => ({
       reference: signal.reference,
       reportControlId: candidate.reportControlId,
       reportControlName: candidate.reportControlName,

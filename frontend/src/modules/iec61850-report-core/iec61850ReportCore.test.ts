@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { parseScdSource } from "../scd-sld-core"
-import { getIec61850ReportCandidateSignals } from "./normalizedSignals"
+import { getIec61850ReportCandidateLeaves } from "./normalizedSignals"
 import {
   buildIec61850ReportSubscriptionPlan,
   createIec61850SimulatorAdapter,
@@ -118,20 +118,43 @@ describe("iec61850-report-core", () => {
     ])
   })
 
-  it("emits a transitional warning when raw dataset signals are used", () => {
+  it("fails closed when normalized dataset leaves are unavailable", () => {
     const candidate = {
       ...firstReportCandidate(),
       normalizedSignals: [],
       normalizedDatasetEntries: [],
+      signalCount: 0,
     }
     const diagnostics: Array<{ severity: "warning" | "error" | "info"; code: string; message: string; [key: string]: unknown }> = []
 
-    const signals = getIec61850ReportCandidateSignals(candidate, diagnostics)
+    const signals = getIec61850ReportCandidateLeaves(candidate, diagnostics)
 
-    expect(signals.map(signal => signal.reference)).toEqual(candidate.signals.map(signal => signal.reference))
+    expect(signals).toEqual([])
     expect(diagnostics).toContainEqual(expect.objectContaining({
-      severity: "warning",
-      code: "TRANSITIONAL_RAW_SIGNAL_FALLBACK",
+      severity: "error",
+      code: "NORMALIZED_DATASET_REQUIRED",
+    }))
+  })
+
+  it("fails closed when raw dataset members exist but normalized leaves are missing", () => {
+    const candidate = {
+      ...firstReportCandidate(),
+      normalizedSignals: [],
+      normalizedDatasetEntries: [],
+      signalCount: 0,
+    }
+    const plan = buildIec61850ReportSubscriptionPlan({
+      candidates: [candidate],
+      selectedSignals: [
+        { id: "sig-1", address: "IED1LD0/XCBR1/Pos/stVal[ST]" },
+      ],
+    })
+
+    expect(plan.matchedSignalCount).toBe(0)
+    expect(plan.unmatchedSignalCount).toBe(1)
+    expect(plan.diagnostics).toContainEqual(expect.objectContaining({
+      severity: "error",
+      code: "NORMALIZED_DATASET_REQUIRED",
     }))
   })
 
@@ -741,7 +764,7 @@ function firstReportCandidate() {
   }
   return {
     ...candidate,
-    signalCount: candidate.normalizedSignals.length || candidate.signals.length,
+    signalCount: candidate.normalizedSignals.length,
   }
 }
 

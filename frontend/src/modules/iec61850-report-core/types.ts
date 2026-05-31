@@ -85,6 +85,7 @@ export type Iec61850ReportSubscriptionPlanDiagnostic = {
     | "DUPLICATE_SELECTED_SIGNAL"
     | "FCD_PARENT_MATCH"
     | "MULTIPLE_REPORT_CANDIDATES"
+    | "NORMALIZED_DATASET_REQUIRED"
   message: string
   signalId?: string
   address?: string

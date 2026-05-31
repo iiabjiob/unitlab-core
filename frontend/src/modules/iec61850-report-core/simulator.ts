@@ -7,7 +7,6 @@ import type {
   Iec61850ReportControlState,
   Iec61850ReportManagerAdapter,
 } from "./types"
-import { getIec61850ReportCandidateSignals } from "./normalizedSignals"
 import { normalizeIec61850ReportEvent } from "./reportEventNormalizer"
 import { toReportControlRef } from "./reportManager"
 
@@ -120,7 +119,7 @@ export function createIec61850SimulatorAdapter(
       reports.set(key, {
         candidate,
         expectedConfRev: candidate.confRev,
-        signalRefs: getIec61850ReportCandidateSignals(candidate).map(signal => signal.reference),
+        signalRefs: candidate.normalizedSignals.map(signal => signal.reference),
         state: {
           ...stateFromCandidate(candidate),
           ...override,

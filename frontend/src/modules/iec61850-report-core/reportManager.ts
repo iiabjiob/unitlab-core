@@ -101,7 +101,7 @@ export function compareReportControlState(
     diagnostics.push({
       severity: "warning",
       code: "DATASET_EMPTY",
-      message: "ReportControl has no resolved DataSet signals in the SCD model.",
+      message: "ReportControl has no normalized DataSet leaves in the SCD model.",
       reference,
     })
   }

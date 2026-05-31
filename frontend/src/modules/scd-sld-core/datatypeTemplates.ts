@@ -13,7 +13,6 @@ import type {
   SclDo,
   SclDoType,
   SclEnumType,
-  SclIed,
   SclLNodeType,
   SclLogicalNode,
 } from "./types"

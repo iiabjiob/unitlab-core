@@ -5,9 +5,10 @@ import type {
   Iec61850ReportEvent,
   Iec61850ReportJsonValue,
   Iec61850ReportReason,
+  Iec61850ReportSignal,
   Iec61850ReportValue,
 } from "./types"
-import { getIec61850ReportCandidateSignals } from "./normalizedSignals"
+import { getIec61850ReportCandidateLeaves } from "./normalizedSignals"
 
 export type Iec61850ReportPayloadValue = {
   dataReference?: string | null
@@ -45,6 +46,7 @@ export type Iec61850ReportEventDiagnosticCode =
   | "UNKNOWN_DATA_REFERENCE"
   | "DUPLICATE_DATA_REFERENCE"
   | "DATA_REFERENCE_AMBIGUOUS"
+  | "NORMALIZED_DATASET_REQUIRED"
 
 export type Iec61850ReportEventDiagnostic = {
   severity: "error" | "warning" | "info"
@@ -166,7 +168,7 @@ function mapPayloadValues(
   diagnostics: Iec61850ReportEventDiagnostic[],
 ): Iec61850ReportValue[] {
   const { candidate, payload, receivedAt } = input
-  const expectedSignals = getIec61850ReportCandidateSignals(candidate, diagnostics)
+  const expectedSignals = getIec61850ReportCandidateLeaves(candidate, diagnostics)
   const hasDataReferences = payload.values.some(value => value.dataReference != null && value.dataReference.trim() !== "")
   const assigned: AssignedValue[] = []
 
@@ -182,7 +184,7 @@ function mapPayloadValues(
   }
 
   if (hasDataReferences) {
-    const index = buildReferenceIndex(candidate, diagnostics)
+    const index = buildReferenceIndex(candidate, expectedSignals)
     const usedIndexes = new Set<number>()
     payload.values.forEach((payloadValue, payloadIndex) => {
       const dataReference = payloadValue.dataReference?.trim() ?? ""
@@ -235,9 +237,9 @@ function mapPayloadValues(
     }))
 }
 
-function buildReferenceIndex(candidate: Iec61850ReportControlCandidate, diagnostics: Iec61850ReportEventDiagnostic[]): ReferenceIndex {
+function buildReferenceIndex(candidate: Iec61850ReportControlCandidate, expectedSignals: readonly Iec61850ReportSignal[]): ReferenceIndex {
   const index: ReferenceIndex = new Map()
-  getIec61850ReportCandidateSignals(candidate, diagnostics).forEach((signal, signalIndex) => {
+  expectedSignals.forEach((signal, signalIndex) => {
     for (const variant of buildReferenceVariants(signal.reference, candidate)) {
       const key = normalizeReportDataReference(variant, candidate)
       const existing = index.get(key)

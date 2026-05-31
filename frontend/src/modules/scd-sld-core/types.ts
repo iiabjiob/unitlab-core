@@ -557,6 +557,10 @@ export type Iec61850ReportSubscriptionCandidate = {
   triggerOptions: SclReportTriggerOptions
   optionalFields: SclReportOptionalFields
   signalCount: number
+  /**
+   * Raw SCL dataset members retained for debug/source trace only.
+   * Runtime/report planning must use normalizedDatasetEntries[].leaves.
+   */
   signals: SclDataSetMember[]
   normalizedSignals: NormalizedDataLeaf[]
   normalizedDatasetEntries: NormalizedDatasetEntry[]
