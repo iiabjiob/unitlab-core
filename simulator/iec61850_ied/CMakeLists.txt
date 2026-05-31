@@ -117,6 +117,23 @@ add_test(
   COMMAND unitlab-iec61850-mms-semantic-test
 )
 
+add_executable(unitlab-iec61850-wire-foundation-test
+  src/unitlab_mms_types.c
+  src/wire/ber/unitlab_mms_ber_tag.c
+  src/wire/ber/unitlab_mms_ber_length.c
+  src/wire/ber/unitlab_mms_ber_reader.c
+  src/wire/ber/unitlab_mms_ber_writer.c
+  src/wire/iso/unitlab_mms_tpkt.c
+  tests/unitlab_mms_wire_primitives_test.c
+)
+target_include_directories(unitlab-iec61850-wire-foundation-test PRIVATE src)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-foundation-test)
+
+add_test(
+  NAME unitlab-iec61850-wire-foundation
+  COMMAND unitlab-iec61850-wire-foundation-test
+)
+
 if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)
   add_executable(unitlab-iec61850-ied-linked-client-smoke-test
     src/client_probe.c

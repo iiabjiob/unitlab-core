@@ -1,6 +1,6 @@
 # UnitLab MMS Layered Architecture
 
-Status: target architecture. This document defines the intended layer split for the UnitLab-owned MMS stack before the wire-level implementation starts. The first transport-independent `semantic/` layer stub now exists in `simulator/iec61850_ied/src/unitlab_mms_semantic_pdu.{h,c}`.
+Status: target architecture. This document defines the intended layer split for the UnitLab-owned MMS stack before the wire-level implementation starts. The first transport-independent `semantic/` layer stub exists in `simulator/iec61850_ied/src/unitlab_mms_semantic_pdu.{h,c}`, and the initial wire foundation exists in `simulator/iec61850_ied/src/wire/{ber,iso}`.
 
 See also:
 - [UnitLab MMS Semantic Contract](./iec61850-unitlab-mms-semantic-contract.md)
@@ -133,6 +133,15 @@ Out of scope for the first wire slice:
 - generic ASN.1 framework
 - dynamic schema engine
 - client/server feature expansion beyond the first slice
+
+Initial implemented wire foundation:
+
+- TPKT frame wrap/unwrap
+- BER tag encode/decode
+- BER length encode/decode
+- BER TLV read/write
+
+ACSE, presentation, and MMS PDU decode remain pending in the next wire slice.
 
 ## Evolution Path
 

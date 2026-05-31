@@ -1,0 +1,119 @@
+#include "../src/wire/ber/unitlab_mms_ber.h"
+#include "../src/wire/iso/unitlab_mms_tpkt.h"
+
+#include <assert.h>
+#include <string.h>
+
+static void test_tpkt_roundtrip(void)
+{
+    uint8_t frame[16];
+    const uint8_t payload[4] = { 0x11U, 0x22U, 0x33U, 0x44U };
+    const uint8_t* decoded_payload = NULL;
+    size_t frame_length = 0U;
+    size_t payload_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_tpkt_wrap(payload, sizeof(payload), frame, sizeof(frame), &frame_length, &diagnostic) == 1);
+    assert(frame_length == 8U);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(unitlab_mms_tpkt_unwrap(frame, frame_length, &decoded_payload, &payload_length, &diagnostic) == 1);
+    assert(payload_length == sizeof(payload));
+    assert(memcmp(decoded_payload, payload, sizeof(payload)) == 0);
+}
+
+static void test_tpkt_rejects_invalid_version(void)
+{
+    const uint8_t frame[4] = { 2U, 0U, 0U, 4U };
+    const uint8_t* decoded_payload = NULL;
+    size_t payload_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_tpkt_unwrap(frame, sizeof(frame), &decoded_payload, &payload_length, &diagnostic) == 0);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+}
+
+static void test_ber_length_roundtrip(void)
+{
+    uint8_t buffer[8];
+    size_t encoded_length = 0U;
+    size_t decoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_ber_length_encode(127U, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(encoded_length == 1U);
+    assert(unitlab_mms_ber_length_decode(&decoded_length, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(decoded_length == 127U);
+    assert(consumed_length == 1U);
+
+    assert(unitlab_mms_ber_length_encode(128U, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(encoded_length == 2U);
+    assert(unitlab_mms_ber_length_decode(&decoded_length, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(decoded_length == 128U);
+    assert(consumed_length == 2U);
+}
+
+static void test_ber_tag_roundtrip(void)
+{
+    uint8_t buffer[8];
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsBerTag tag;
+    UnitLabMmsBerTag decoded_tag;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_tag_init(&tag);
+    tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    tag.constructed = 1;
+    tag.tag_number = 5U;
+    assert(unitlab_mms_ber_tag_encode(&tag, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(encoded_length == 1U);
+    unitlab_mms_ber_tag_init(&decoded_tag);
+    assert(unitlab_mms_ber_tag_decode(&decoded_tag, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == 1U);
+    assert(decoded_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(decoded_tag.constructed == 1);
+    assert(decoded_tag.tag_number == 5U);
+}
+
+static void test_ber_element_roundtrip(void)
+{
+    uint8_t buffer[16];
+    UnitLabMmsBerElement element;
+    UnitLabMmsBerElement decoded_element;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t value[3] = { 0x01U, 0x02U, 0x03U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_element_init(&element);
+    element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_APPLICATION;
+    element.tag.constructed = 0;
+    element.tag.tag_number = 2U;
+    element.value_bytes = value;
+    element.value_length = sizeof(value);
+    assert(unitlab_mms_ber_write(&element, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(encoded_length == 5U);
+    unitlab_mms_ber_element_init(&decoded_element);
+    assert(unitlab_mms_ber_read(&decoded_element, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION);
+    assert(decoded_element.tag.tag_number == 2U);
+    assert(decoded_element.value_length == sizeof(value));
+    assert(memcmp(decoded_element.value_bytes, value, sizeof(value)) == 0);
+}
+
+int main(void)
+{
+    test_tpkt_roundtrip();
+    test_tpkt_rejects_invalid_version();
+    test_ber_length_roundtrip();
+    test_ber_tag_roundtrip();
+    test_ber_element_roundtrip();
+    return 0;
+}
