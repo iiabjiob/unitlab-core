@@ -144,7 +144,7 @@ Initial implemented wire foundation:
 - ACSE APDU top-level classify/wrap/unwrap
 - MMS MMSpdu top-level classify/wrap/unwrap
 
-Presentation and MMS PDU field decode remain pending in the next wire slice.
+Presentation remains pending. The MMS PDU wrapper currently extracts the top-level `invokeID` for confirmed request/response/error PDUs, but full service field decode remains pending.
 
 ## Evolution Path
 

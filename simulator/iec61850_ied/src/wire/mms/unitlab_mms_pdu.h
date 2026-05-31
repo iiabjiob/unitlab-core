@@ -21,6 +21,8 @@ typedef enum UnitLabMmsPduKind {
 
 typedef struct UnitLabMmsPdu {
     UnitLabMmsPduKind kind;
+    uint32_t invoke_id;
+    int has_invoke_id;
     const uint8_t* pdu_bytes; /* Caller-owned decode buffer; valid only while that buffer lives. */
     size_t pdu_length;
     size_t encoded_length;

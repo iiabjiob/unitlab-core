@@ -110,6 +110,60 @@ static int pdu_tag_to_kind(const UnitLabMmsBerTag* tag, UnitLabMmsPduKind* kind)
     }
 }
 
+static int pdu_decode_invoke_id(const UnitLabMmsBerElement* element, uint32_t* invoke_id, UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement child;
+    size_t consumed_length = 0U;
+    uint32_t value = 0U;
+
+    if (invoke_id == NULL || element == NULL) {
+        return 0;
+    }
+    if (element->value_length == 0U || element->value_bytes == NULL) {
+        pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS confirmed PDU is missing invokeID.");
+        return 0;
+    }
+    unitlab_mms_ber_element_init(&child);
+    if (!unitlab_mms_ber_read(&child, element->value_bytes, element->value_length, &consumed_length, diagnostic)) {
+        return 0;
+    }
+    if (consumed_length == 0U || consumed_length > element->value_length) {
+        pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID element is truncated.");
+        return 0;
+    }
+    if (child.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL || child.tag.tag_number != 2U || child.tag.constructed != 0) {
+        pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID element is not an INTEGER.");
+        return 0;
+    }
+    if (child.value_length == 0U || child.value_length > 5U) {
+        pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID length is invalid.");
+        return 0;
+    }
+    if (child.value_length == 5U && child.value_bytes[0] != 0U) {
+        pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID overflows Unsigned32.");
+        return 0;
+    }
+    if (child.value_length == 1U && child.value_bytes[0] > 0x7FU) {
+        pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID must be encoded as a non-negative integer.");
+        return 0;
+    }
+    {
+        size_t start_index = 0U;
+        if (child.value_length == 5U) {
+            start_index = 1U;
+        }
+        for (size_t i = start_index; i < child.value_length; i++) {
+            if (value > (UINT32_MAX >> 8U)) {
+                pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID overflows Unsigned32.");
+                return 0;
+            }
+            value = (value << 8U) | (uint32_t)child.value_bytes[i];
+        }
+    }
+    *invoke_id = value;
+    return 1;
+}
+
 void unitlab_mms_pdu_init(UnitLabMmsPdu* pdu)
 {
     if (pdu == NULL) {
@@ -175,6 +229,12 @@ int unitlab_mms_pdu_decode(UnitLabMmsPdu* pdu, const uint8_t* buffer, size_t buf
     pdu->pdu_bytes = element.value_bytes;
     pdu->pdu_length = element.value_length;
     pdu->encoded_length = element.encoded_length;
+    if (kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE || kind == UNITLAB_MMS_PDU_CONFIRMED_ERROR) {
+        if (!pdu_decode_invoke_id(&element, &pdu->invoke_id, diagnostic)) {
+            return 0;
+        }
+        pdu->has_invoke_id = 1;
+    }
     pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
