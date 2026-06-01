@@ -41,7 +41,7 @@ Start a capture in one terminal:
 sudo tcpdump -i any -s 0 -w /workspace/iec61850-wire.pcap 'tcp port 12447 or tcp port 12448'
 ```
 
-Then in another terminal run `Start wire` and `Emit wire report` in the debug page. The current native-wire smoke frame is a standards ACSE AARQ carrying an MMS initiate request, so Wireshark should now decode through ACSE before the MMS payload. Stop the capture with `Ctrl+C` after the test.
+Then in another terminal run `Start wire` and `Emit wire report` in the debug page. The current native-wire smoke frame is a standards ACSE AARQ carrying an MMS initiate request, so Wireshark should now decode through ACSE before the MMS payload. The native data socket also accepts the follow-up confirmed read/write requests for the association path and returns standards-shaped confirmed responses. Stop the capture with `Ctrl+C` after the test.
 
 Open `/workspace/iec61850-wire.pcap` in Wireshark on your host. If Wireshark does not decode the payload as MMS automatically, use `Analyze -> Decode As...` and map TCP ports `12447` and `12448` to the ISO-on-TCP / TPKT stack.
 

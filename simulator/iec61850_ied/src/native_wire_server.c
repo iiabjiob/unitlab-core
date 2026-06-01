@@ -6,6 +6,7 @@
 #include <netdb.h>
 #include <poll.h>
 #include <signal.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,6 +54,114 @@ static int send_all(int fd, const uint8_t* buffer, size_t length)
         }
         offset += (size_t)written;
     }
+    return 1;
+}
+
+static uint64_t native_wire_now_ms(void)
+{
+    return (uint64_t)time(NULL) * 1000ULL;
+}
+
+static size_t encode_ber_uint32_value(uint32_t value, uint8_t* buffer, size_t buffer_length)
+{
+    uint8_t encoded[5U];
+    size_t encoded_length = 0U;
+    size_t start = 0U;
+
+    if (buffer == NULL || buffer_length == 0U) {
+        return 0U;
+    }
+    do {
+        encoded[sizeof(encoded) - 1U - encoded_length] = (uint8_t)(value & 0xFFU);
+        encoded_length++;
+        value >>= 8U;
+    } while (value != 0U && encoded_length < sizeof(encoded));
+
+    start = sizeof(encoded) - encoded_length;
+    if (encoded[start] & 0x80U) {
+        if (start == 0U) {
+            return 0U;
+        }
+        start--;
+        encoded[start] = 0x00U;
+        encoded_length++;
+    }
+    if (encoded_length > buffer_length) {
+        return 0U;
+    }
+    memcpy(buffer, &encoded[start], encoded_length);
+    return encoded_length;
+}
+
+static int build_native_confirmed_response_payload(
+    const UnitLabMmsServerRuntime* server_runtime,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement invoke_id_element;
+    UnitLabMmsBerElement service_element;
+    uint8_t invoke_id_bytes[5U];
+    size_t invoke_id_length = 0U;
+    size_t invoke_id_encoded_length = 0U;
+    size_t service_encoded_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (server_runtime == NULL || buffer == NULL || encoded_length == NULL) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT;
+            diagnostic->message[0] = '\0';
+        }
+        return 0;
+    }
+    if (server_runtime->pending_request.state != UNITLAB_MMS_PENDING_REQUEST_ACTIVE) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BAD_STATE;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Confirmed response payload requires an active pending request.");
+        }
+        return 0;
+    }
+    if (server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_READ && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_WRITE) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Confirmed response payload supports read and write requests only.");
+        }
+        return 0;
+    }
+
+    invoke_id_length = encode_ber_uint32_value(server_runtime->pending_request.invoke_id, invoke_id_bytes, sizeof(invoke_id_bytes));
+    if (invoke_id_length == 0U) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", "Confirmed response invokeID encoding failed.");
+        }
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&invoke_id_element);
+    invoke_id_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+    invoke_id_element.tag.constructed = 0;
+    invoke_id_element.tag.tag_number = 2U;
+    invoke_id_element.value_bytes = invoke_id_bytes;
+    invoke_id_element.value_length = invoke_id_length;
+    if (!unitlab_mms_ber_write(&invoke_id_element, buffer, buffer_length, &invoke_id_encoded_length, diagnostic)) {
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&service_element);
+    service_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    service_element.tag.constructed = 0;
+    service_element.tag.tag_number = server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_READ ? 4U : 5U;
+    service_element.value_bytes = NULL;
+    service_element.value_length = 0U;
+    if (!unitlab_mms_ber_write(&service_element, &buffer[invoke_id_encoded_length], buffer_length - invoke_id_encoded_length, &service_encoded_length, diagnostic)) {
+        return 0;
+    }
+
+    *encoded_length = invoke_id_encoded_length + service_encoded_length;
     return 1;
 }
 
@@ -399,7 +508,42 @@ int unitlab_run_native_wire_server(
                             set_result(result, "NATIVE_WIRE_SERVER_ASSOCIATION_RESPONSE_SEND_FAILED", "Native wire server could not send association response frame.");
                             goto fail;
                         }
+                        if (!unitlab_mms_session_complete_association(&server_runtime->session, server_runtime->session.active_invoke_id, &response_diagnostic)) {
+                            set_result(result, "NATIVE_WIRE_SERVER_ASSOCIATION_COMPLETE_FAILED", response_diagnostic.message);
+                            goto fail;
+                        }
                         printf("native-wire-server: association-response-sent bytes=%zu\n", response_length);
+                        fflush(stdout);
+                    }
+                    else if (unitlab_mms_server_runtime_apply_incoming_bytes(server_runtime, incoming, (size_t)received, &consumed_length, &incoming_result)
+                        && server_runtime->pending_request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE
+                        && server_runtime->pending_request.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED) {
+                        uint8_t response_payload[16U];
+                        size_t response_payload_length = 0U;
+                        if (!build_native_confirmed_response_payload(server_runtime, response_payload, sizeof(response_payload), &response_payload_length, &response_diagnostic)) {
+                            set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_PAYLOAD_BUILD_FAILED", response_diagnostic.message);
+                            goto fail;
+                        }
+                        if (!unitlab_mms_server_runtime_build_confirmed_response_bytes(
+                                server_runtime,
+                                response_payload,
+                                response_payload_length,
+                                response_frame,
+                                sizeof(response_frame),
+                                &response_length,
+                                &response_diagnostic)) {
+                            set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_BUILD_FAILED", response_diagnostic.message);
+                            goto fail;
+                        }
+                        if (!send_all(data_client_fd, response_frame, response_length)) {
+                            set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_SEND_FAILED", "Native wire server could not send confirmed response frame.");
+                            goto fail;
+                        }
+                        if (!unitlab_mms_pending_request_complete(&server_runtime->pending_request, native_wire_now_ms(), &response_diagnostic)) {
+                            set_result(result, "NATIVE_WIRE_SERVER_REQUEST_COMPLETE_FAILED", response_diagnostic.message);
+                            goto fail;
+                        }
+                        printf("native-wire-server: confirmed-response-sent bytes=%zu\n", response_length);
                         fflush(stdout);
                     }
                     else {
