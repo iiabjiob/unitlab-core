@@ -438,6 +438,7 @@ int main(int argc, char** argv)
     UnitLabIedServerConfig server_config = {
         .bind_address = options.bind_address,
         .port = options.port,
+        .control_port = options.port < 65535 ? options.port + 1 : 0,
     };
     if (options.metadata_probe) {
         if (!unitlab_probe_ied_server_metadata(&fixture_model, &model_plan, &server_config, &load_result)) {

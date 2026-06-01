@@ -14,7 +14,7 @@ See also: [UnitLab MMS Layered Architecture](./iec61850-unitlab-mms-layered-arch
 - C owns protocol primitives and the wire-level MMS engine.
 - Python owns orchestration, diagnostics, evidence, APIs, tests, and process management around the engine.
 - Vue/TS owns the engineering workspace.
-- The backend runtime and simulator both target the same UnitLab-owned service contracts so the transport engine can be swapped without changing report-flow semantics.
+- The backend runtime and simulator both target the same UnitLab-owned service contracts so the transport engine can be swapped without changing report-flow semantics. The first live-wire FAT step uses a separate compose-service virtual IED with data/control sockets so Wireshark can observe the real on-network dialogue.
 
 ## Decision
 

@@ -682,7 +682,7 @@ Implemented in this slice:
 - Non-dry-run simulator execution keeps the process alive until SIGTERM or SIGINT, then stops and destroys the libIEC61850 server and dynamic model cleanly.
 - `--smoke-start` starts and immediately stops the linked MMS server for deterministic local validation without leaving a process running.
 - `--native-smoke-start` validates the UnitLab-owned server runtime boundary without libIEC61850 by running a native association-byte smoke path.
-- `--native-wire-start` opens a native TCP listener that can emit wire frames on command for live transport smoke and Wireshark validation; the backend client control slice can now start that mode, trigger report emission, and capture the raw frame bytes.
+- `--native-wire-start` opens a native TCP listener that can emit wire frames on command for live transport smoke and Wireshark validation; the backend client control slice can now drive the separate compose-service virtual IED over its data/control sockets, trigger report emission, and capture the raw frame bytes.
 - The unlinked path still fails closed with `LIBIEC61850_NOT_LINKED`.
 - No fake report subscription success is reported; backend MMS adapter support remains a separate slice.
 

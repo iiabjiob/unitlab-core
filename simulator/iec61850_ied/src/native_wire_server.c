@@ -14,8 +14,8 @@
 #include <unistd.h>
 
 #include "wire/ber/unitlab_mms_ber.h"
-#include "wire/orchestration/unitlab_mms_wire_builder.h"
 #include "wire/mms/unitlab_mms_pdu.h"
+#include "wire/orchestration/unitlab_mms_wire_builder.h"
 
 static void set_result(UnitLabIedModelLoadResult* result, const char* code, const char* message)
 {
@@ -25,6 +25,34 @@ static void set_result(UnitLabIedModelLoadResult* result, const char* code, cons
     result->loaded = 0;
     snprintf(result->code, sizeof(result->code), "%s", code);
     snprintf(result->message, sizeof(result->message), "%s", message);
+}
+
+static void close_fd(int* fd)
+{
+    if (fd == NULL || *fd < 0) {
+        return;
+    }
+    close(*fd);
+    *fd = -1;
+}
+
+static int send_all(int fd, const uint8_t* buffer, size_t length)
+{
+    size_t offset = 0U;
+    while (offset < length) {
+        ssize_t written = send(fd, buffer + offset, length - offset, 0);
+        if (written < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return 0;
+        }
+        if (written == 0) {
+            return 0;
+        }
+        offset += (size_t)written;
+    }
+    return 1;
 }
 
 static int build_empty_information_report_frame(
@@ -66,26 +94,7 @@ static int build_empty_information_report_frame(
         diagnostic);
 }
 
-static int send_all(int fd, const uint8_t* buffer, size_t length)
-{
-    size_t offset = 0U;
-    while (offset < length) {
-        ssize_t written = send(fd, buffer + offset, length - offset, 0);
-        if (written < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return 0;
-        }
-        if (written == 0) {
-            return 0;
-        }
-        offset += (size_t)written;
-    }
-    return 1;
-}
-
-static int resolve_listener(const UnitLabIedServerConfig* config, struct addrinfo** out_info)
+static int resolve_listener(const char* bind_address, int port, struct addrinfo** out_info)
 {
     struct addrinfo hints;
     char port_text[16U];
@@ -99,38 +108,18 @@ static int resolve_listener(const UnitLabIedServerConfig* config, struct addrinf
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-    snprintf(port_text, sizeof(port_text), "%d", config->port);
-    status = getaddrinfo(config->bind_address, port_text, &hints, out_info);
+    snprintf(port_text, sizeof(port_text), "%d", port);
+    status = getaddrinfo(bind_address, port_text, &hints, out_info);
     return status == 0;
 }
 
-int unitlab_run_native_wire_server(
-    UnitLabMmsServerRuntime* server_runtime,
-    const UnitLabIedServerConfig* config,
-    UnitLabIedModelLoadResult* result,
-    UnitLabIedServerStopRequested stop_requested,
-    void* stop_context)
+static int bind_listen(const char* bind_address, int port)
 {
     struct addrinfo* listener_info = NULL;
     int listen_fd = -1;
-    int client_fd = -1;
-    uint8_t frame[2048U];
-    size_t frame_length = 0U;
 
-    if (result != NULL) {
-        memset(result, 0, sizeof(*result));
-    }
-    if (server_runtime == NULL || config == NULL || result == NULL) {
-        set_result(result, "NATIVE_WIRE_SERVER_INVALID_ARGUMENT", "Native wire server requires runtime, config, and result.");
-        return 0;
-    }
-    if (server_runtime->state != UNITLAB_MMS_SERVER_RUNTIME_RUNNING) {
-        set_result(result, "NATIVE_WIRE_SERVER_BAD_STATE", "Native wire server requires a running server runtime.");
-        return 0;
-    }
-    if (!resolve_listener(config, &listener_info)) {
-        set_result(result, "NATIVE_WIRE_SERVER_RESOLVE_FAILED", "Native wire server could not resolve bind address.");
-        return 0;
+    if (!resolve_listener(bind_address, port, &listener_info)) {
+        return -1;
     }
 
     for (struct addrinfo* current = listener_info; current != NULL; current = current->ai_next) {
@@ -148,118 +137,248 @@ int unitlab_run_native_wire_server(
     }
 
     freeaddrinfo(listener_info);
-    if (listen_fd < 0) {
-        set_result(result, "NATIVE_WIRE_SERVER_LISTEN_FAILED", "Native wire server could not bind/listen on the requested endpoint.");
+    return listen_fd;
+}
+
+static int accept_connection(int listen_fd)
+{
+    int client_fd = accept(listen_fd, NULL, NULL);
+    if (client_fd < 0) {
+        if (errno == EINTR) {
+            return -2;
+        }
+        return -1;
+    }
+    return client_fd;
+}
+
+static int read_command_from_socket(int fd, char* command, size_t command_length)
+{
+    ssize_t received = recv(fd, command, command_length - 1U, 0);
+    if (received <= 0) {
+        return 0;
+    }
+    command[received] = '\0';
+    char* newline = strchr(command, '\n');
+    if (newline != NULL) {
+        *newline = '\0';
+    }
+    return 1;
+}
+
+static int handle_command(
+    UnitLabMmsServerRuntime* server_runtime,
+    int data_client_fd,
+    const char* command,
+    uint8_t* frame,
+    size_t frame_length,
+    size_t* encoded_length,
+    UnitLabIedModelLoadResult* result)
+{
+    if (strncmp(command, "emit-report", 11U) == 0) {
+        UnitLabMmsDiagnostic diagnostic;
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        if (!build_empty_information_report_frame(server_runtime, frame, frame_length, encoded_length, &diagnostic)) {
+            set_result(result, "NATIVE_WIRE_SERVER_REPORT_BUILD_FAILED", diagnostic.message);
+            return -1;
+        }
+        if (!send_all(data_client_fd, frame, *encoded_length)) {
+            set_result(result, "NATIVE_WIRE_SERVER_SEND_FAILED", "Native wire server could not send report frame.");
+            return -1;
+        }
+        printf("native-wire-server: emitted-report bytes=%zu\n", *encoded_length);
+        fflush(stdout);
+        return 1;
+    }
+    if (strncmp(command, "quit", 4U) == 0 || strncmp(command, "exit", 4U) == 0) {
+        printf("native-wire-server: shutdown requested\n");
+        fflush(stdout);
+        return 2;
+    }
+    return 0;
+}
+
+int unitlab_run_native_wire_server(
+    UnitLabMmsServerRuntime* server_runtime,
+    const UnitLabIedServerConfig* config,
+    UnitLabIedModelLoadResult* result,
+    UnitLabIedServerStopRequested stop_requested,
+    void* stop_context)
+{
+    int data_listen_fd = -1;
+    int control_listen_fd = -1;
+    int data_client_fd = -1;
+    int control_client_fd = -1;
+    uint8_t frame[2048U];
+    size_t frame_length = 0U;
+
+    if (result != NULL) {
+        memset(result, 0, sizeof(*result));
+    }
+    if (server_runtime == NULL || config == NULL || result == NULL) {
+        set_result(result, "NATIVE_WIRE_SERVER_INVALID_ARGUMENT", "Native wire server requires runtime, config, and result.");
+        return 0;
+    }
+    if (server_runtime->state != UNITLAB_MMS_SERVER_RUNTIME_RUNNING) {
+        set_result(result, "NATIVE_WIRE_SERVER_BAD_STATE", "Native wire server requires a running server runtime.");
         return 0;
     }
 
+    data_listen_fd = bind_listen(config->bind_address, config->port);
+    if (data_listen_fd < 0) {
+        set_result(result, "NATIVE_WIRE_SERVER_LISTEN_FAILED", "Native wire server could not bind/listen on the requested data endpoint.");
+        goto fail;
+    }
+    if (config->control_port > 0 && config->control_port != config->port) {
+        control_listen_fd = bind_listen(config->bind_address, config->control_port);
+        if (control_listen_fd < 0) {
+            set_result(result, "NATIVE_WIRE_SERVER_CONTROL_LISTEN_FAILED", "Native wire server could not bind/listen on the requested control endpoint.");
+            goto fail;
+        }
+    }
+
     set_result(result, "NATIVE_WIRE_SERVER_READY", "Native wire server is ready.");
-    printf("native-wire-server: ready endpoint=%s:%d\n", config->bind_address, config->port);
+    printf("native-wire-server: ready endpoint=%s:%d control=%d\n", config->bind_address, config->port, config->control_port);
     fflush(stdout);
 
     while (stop_requested == NULL || !stop_requested(stop_context)) {
-        struct pollfd server_poll;
+        struct pollfd poll_fds[4];
+        nfds_t poll_count = 0U;
         int poll_rc;
 
-        server_poll.fd = listen_fd;
-        server_poll.events = POLLIN;
-        server_poll.revents = 0;
-        poll_rc = poll(&server_poll, 1, 250);
+        if (data_client_fd < 0) {
+            poll_fds[poll_count].fd = data_listen_fd;
+            poll_fds[poll_count].events = POLLIN;
+            poll_fds[poll_count].revents = 0;
+            poll_count++;
+        }
+        if (control_client_fd < 0 && control_listen_fd >= 0) {
+            poll_fds[poll_count].fd = control_listen_fd;
+            poll_fds[poll_count].events = POLLIN;
+            poll_fds[poll_count].revents = 0;
+            poll_count++;
+        }
+        if (data_client_fd >= 0) {
+            poll_fds[poll_count].fd = data_client_fd;
+            poll_fds[poll_count].events = POLLIN;
+            poll_fds[poll_count].revents = 0;
+            poll_count++;
+        }
+        if (control_client_fd >= 0) {
+            poll_fds[poll_count].fd = control_client_fd;
+            poll_fds[poll_count].events = POLLIN;
+            poll_fds[poll_count].revents = 0;
+            poll_count++;
+        }
+        poll_fds[poll_count].fd = STDIN_FILENO;
+        poll_fds[poll_count].events = POLLIN;
+        poll_fds[poll_count].revents = 0;
+        poll_count++;
+
+        poll_rc = poll(poll_fds, poll_count, 250);
         if (poll_rc < 0) {
             if (errno == EINTR) {
                 continue;
             }
             set_result(result, "NATIVE_WIRE_SERVER_POLL_FAILED", "Native wire server poll failed.");
-            close(listen_fd);
-            return 0;
+            goto fail;
         }
         if (poll_rc == 0) {
             continue;
         }
-        client_fd = accept(listen_fd, NULL, NULL);
-        if (client_fd < 0) {
-            if (errno == EINTR) {
+
+        for (nfds_t index = 0U; index < poll_count; index++) {
+            if (!(poll_fds[index].revents & POLLIN)) {
                 continue;
             }
-            set_result(result, "NATIVE_WIRE_SERVER_ACCEPT_FAILED", "Native wire server accept failed.");
-            close(listen_fd);
-            return 0;
-        }
-        printf("native-wire-server: client-connected\n");
-        fflush(stdout);
-        break;
-    }
-
-    if (client_fd < 0) {
-        close(listen_fd);
-        return 1;
-    }
-
-    while (stop_requested == NULL || !stop_requested(stop_context)) {
-        struct pollfd poll_fds[2];
-        char command[128U];
-        int poll_rc;
-
-        poll_fds[0].fd = client_fd;
-        poll_fds[0].events = POLLIN;
-        poll_fds[0].revents = 0;
-        poll_fds[1].fd = STDIN_FILENO;
-        poll_fds[1].events = POLLIN;
-        poll_fds[1].revents = 0;
-        poll_rc = poll(poll_fds, 2, 250);
-        if (poll_rc < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            set_result(result, "NATIVE_WIRE_SERVER_POLL_FAILED", "Native wire server client poll failed.");
-            close(client_fd);
-            close(listen_fd);
-            return 0;
-        }
-        if (poll_fds[1].revents & POLLIN) {
-            if (fgets(command, sizeof(command), stdin) != NULL) {
-                if (strncmp(command, "emit-report", 11U) == 0) {
-                    UnitLabMmsDiagnostic diagnostic;
-                    unitlab_mms_diagnostic_clear(&diagnostic);
-                    if (build_empty_information_report_frame(server_runtime, frame, sizeof(frame), &frame_length, &diagnostic)) {
-                        if (send_all(client_fd, frame, frame_length)) {
-                            printf("native-wire-server: emitted-report bytes=%zu\n", frame_length);
-                            fflush(stdout);
-                        } else {
-                            set_result(result, "NATIVE_WIRE_SERVER_SEND_FAILED", "Native wire server could not send report frame.");
-                            close(client_fd);
-                            close(listen_fd);
-                            return 0;
-                        }
-                    } else {
-                        set_result(result, "NATIVE_WIRE_SERVER_REPORT_BUILD_FAILED", diagnostic.message);
-                        close(client_fd);
-                        close(listen_fd);
-                        return 0;
-                    }
+            if (data_client_fd < 0 && poll_fds[index].fd == data_listen_fd) {
+                int accepted = accept_connection(data_listen_fd);
+                if (accepted == -2) {
+                    continue;
                 }
-                else if (strncmp(command, "quit", 4U) == 0 || strncmp(command, "exit", 4U) == 0) {
-                    printf("native-wire-server: shutdown requested\n");
-                    fflush(stdout);
-                    break;
+                if (accepted < 0) {
+                    set_result(result, "NATIVE_WIRE_SERVER_ACCEPT_FAILED", "Native wire server data accept failed.");
+                    goto fail;
                 }
-            }
-        }
-        if (poll_fds[0].revents & POLLIN) {
-            uint8_t incoming[4096U];
-            ssize_t received = recv(client_fd, incoming, sizeof(incoming), 0);
-            if (received <= 0) {
-                printf("native-wire-server: client-disconnected\n");
+                data_client_fd = accepted;
+                printf("native-wire-server: data-client-connected\n");
                 fflush(stdout);
-                break;
+                continue;
             }
-            printf("native-wire-server: received-bytes=%zd\n", received);
-            fflush(stdout);
+            if (control_client_fd < 0 && control_listen_fd >= 0 && poll_fds[index].fd == control_listen_fd) {
+                int accepted = accept_connection(control_listen_fd);
+                if (accepted == -2) {
+                    continue;
+                }
+                if (accepted < 0) {
+                    set_result(result, "NATIVE_WIRE_SERVER_CONTROL_ACCEPT_FAILED", "Native wire server control accept failed.");
+                    goto fail;
+                }
+                control_client_fd = accepted;
+                printf("native-wire-server: control-client-connected\n");
+                fflush(stdout);
+                continue;
+            }
+            if (data_client_fd >= 0 && poll_fds[index].fd == data_client_fd) {
+                uint8_t incoming[4096U];
+                ssize_t received = recv(data_client_fd, incoming, sizeof(incoming), 0);
+                if (received <= 0) {
+                    printf("native-wire-server: data-client-disconnected\n");
+                    fflush(stdout);
+                    close_fd(&data_client_fd);
+                    close_fd(&control_client_fd);
+                }
+                else {
+                    printf("native-wire-server: received-bytes=%zd\n", received);
+                    fflush(stdout);
+                }
+                continue;
+            }
+            if (control_client_fd >= 0 && poll_fds[index].fd == control_client_fd) {
+                char command[128U];
+                if (!read_command_from_socket(control_client_fd, command, sizeof(command))) {
+                    printf("native-wire-server: control-client-disconnected\n");
+                    fflush(stdout);
+                    close_fd(&control_client_fd);
+                    continue;
+                }
+                int outcome = handle_command(server_runtime, data_client_fd, command, frame, sizeof(frame), &frame_length, result);
+                if (outcome < 0) {
+                    goto fail;
+                }
+                if (outcome == 2) {
+                    goto stop;
+                }
+                continue;
+            }
+            if (poll_fds[index].fd == STDIN_FILENO) {
+                char command[128U];
+                if (fgets(command, sizeof(command), stdin) == NULL) {
+                    continue;
+                }
+                int outcome = handle_command(server_runtime, data_client_fd, command, frame, sizeof(frame), &frame_length, result);
+                if (outcome < 0) {
+                    goto fail;
+                }
+                if (outcome == 2) {
+                    goto stop;
+                }
+            }
         }
     }
 
-    close(client_fd);
-    close(listen_fd);
+stop:
+    close_fd(&control_client_fd);
+    close_fd(&data_client_fd);
+    close_fd(&control_listen_fd);
+    close_fd(&data_listen_fd);
     set_result(result, "NATIVE_WIRE_SERVER_STOPPED", "Native wire server stopped.");
     return 1;
+
+fail:
+    close_fd(&control_client_fd);
+    close_fd(&data_client_fd);
+    close_fd(&control_listen_fd);
+    close_fd(&data_listen_fd);
+    return 0;
 }

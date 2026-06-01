@@ -11,6 +11,23 @@ services:
     command: sleep infinity
     networks:
       - net
+
+  iec61850-ied:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+      tags:
+        - unitlab-dev:latest
+    container_name: unitlab-iec61850-ied-dev
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    command: >
+      bash -lc "cmake -S /workspace/simulator/iec61850_ied -B /tmp/unitlab-iec61850-ied-build &&
+      cmake --build /tmp/unitlab-iec61850-ied-build --target unitlab-iec61850-ied-sim &&
+      exec /tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim --fixture /workspace/simulator/iec61850_ied/examples/single-report.fixture.json --ied IED1 --bind 0.0.0.0 --port 12347 --native-wire-start"
+    networks:
+      - net
   db:
     image: postgres:16
     container_name: unitlab-db-dev

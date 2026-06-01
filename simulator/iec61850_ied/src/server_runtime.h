@@ -4,6 +4,7 @@
 typedef struct UnitLabIedServerConfig {
     const char* bind_address;
     int port;
+    int control_port;
 } UnitLabIedServerConfig;
 
 typedef struct UnitLabIedModelLoadResult {
