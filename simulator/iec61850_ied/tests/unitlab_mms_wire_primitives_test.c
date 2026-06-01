@@ -602,7 +602,7 @@ static void test_wire_frame_builder_aarq_association_roundtrip(void)
         0x06U, 0x02U, 0x52U, 0x01U,
         0x02U, 0x01U, 0x03U,
         0xA0U, 0x28U,
-        0xA8U, 0x26U,
+        0xA9U, 0x26U,
         0x80U, 0x03U, 0x00U, 0xFAU, 0x00U,
         0x81U, 0x01U, 0x0AU,
         0x82U, 0x01U, 0x0AU,
@@ -691,11 +691,11 @@ static void test_wire_frame_builder_aarq_association_roundtrip(void)
     assert(external_element.value_bytes[6] == 0x03U);
     assert(external_element.value_bytes[7] == 0xA0U);
     assert(external_element.value_bytes[8] == 0x28U);
-    assert(external_element.value_bytes[9] == 0xA8U);
+    assert(external_element.value_bytes[9] == 0xA9U);
     assert(external_element.value_bytes[10] == 0x26U);
 
     assert(memcmp(&external_element.value_bytes[9], (uint8_t[]){
-        0xA8U, 0x26U,
+        0xA9U, 0x26U,
         0x80U, 0x03U, 0x00U, 0xFAU, 0x00U,
         0x81U, 0x01U, 0x0AU,
         0x82U, 0x01U, 0x0AU,
@@ -783,29 +783,29 @@ static void test_association_response_frame_smoke(void)
         &frame_length,
         &diagnostic) == 1);
 
-    assert(frame_length == 29U);
+    assert(frame_length == 143U);
 
     /* TPKT */
     assert(frame[0] == 0x03U);
     assert(frame[1] == 0x00U);
+    assert(frame[2] == 0x00U);
+    assert(frame[3] == 0x8FU);
 
-    /* COTP DT */
+    /* COTP DT carrying the reference association accept payload. */
     assert(frame[4] == 0x02U);
     assert(frame[5] == 0xF0U);
     assert(frame[6] == 0x80U);
 
-    /* Association response is the captured reference AARE path. */
-    assert(frame[7] == 0x01U);
-    assert(frame[8] == 0x00U);
-    assert(frame[9] == 0x01U);
-    assert(frame[10] == 0x00U);
-    assert(frame[11] == 0x61U);
-    assert(frame[12] == 0x10U);
+    /* Session accept and AARE boundary from the reference capture. */
+    assert(frame[7] == 0x0EU);
+    assert(frame[8] == 0x86U);
+    assert(frame[62] == 0x61U);
+    assert(frame[63] == 0x4FU);
 
     /* AARE bytes must be present in the association response. */
     int found_aare = 0;
     for (size_t i = 0U; i + 1U < frame_length; i++) {
-        if (frame[i] == 0x61U && frame[i + 1U] == 0x10U) {
+        if (frame[i] == 0x61U && frame[i + 1U] == 0x4FU) {
             found_aare = 1;
             break;
         }
