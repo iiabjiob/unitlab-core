@@ -5,6 +5,7 @@ import { useVirtualTreeviewController, type TreeviewNode, type VirtualTreeviewRo
 
 import UiButton from "@/components/ui/UiButton.vue"
 import UiModal from "@/components/ui/UiModal.vue"
+import Iec61850DiagnosticsGrid from "@/pages/debug61850/Iec61850DiagnosticsGrid.vue"
 import { useSignalSheetStore } from "@/stores/signalSheetStore"
 import { useToastStore } from "@/stores/toastStore"
 import {
@@ -1228,26 +1229,13 @@ onUnmounted(() => {
           {{ diagnosticSummary.error }} errors · {{ diagnosticSummary.warning }} warnings · {{ diagnosticSummary.info }} info
         </span>
       </div>
-      <div v-if="!diagnostics.length" class="iec61850-debug-page__diagnostics-empty">
+      <Iec61850DiagnosticsGrid
+        v-if="diagnostics.length"
+        :diagnostics="diagnostics"
+      />
+      <div v-else class="iec61850-debug-page__diagnostics-empty">
         No parser diagnostics.
       </div>
-      <template v-else>
-        <div v-if="diagnosticSummary.omitted > 0" class="iec61850-debug-page__diagnostics-empty">
-          Showing {{ diagnosticSummary.rendered }} of {{ diagnosticSummary.total }} diagnostics.
-        </div>
-        <div class="iec61850-debug-page__diagnostics-list">
-          <div
-            v-for="diagnostic in diagnostics"
-            :key="`${diagnostic.stage}:${diagnostic.code}:${diagnostic.sourcePath ?? ''}:${diagnostic.message}`"
-            class="iec61850-debug-page__diagnostic"
-            :class="`is-${diagnostic.severity}`"
-          >
-            <span class="iec61850-debug-page__diagnostic-code">{{ diagnostic.stage }}.{{ diagnostic.code }}</span>
-            <span class="iec61850-debug-page__diagnostic-message">{{ diagnostic.message }}</span>
-            <span v-if="diagnostic.sourcePath" class="iec61850-debug-page__diagnostic-path">{{ diagnostic.sourcePath }}</span>
-          </div>
-        </div>
-      </template>
     </section>
 
     <UiModal
@@ -2248,6 +2236,8 @@ onUnmounted(() => {
   flex: 0 0 auto;
   height: clamp(24rem, calc(100vh - 8rem), 44rem);
   min-height: 0;
+  min-width: 0;
+  width: 100%;
 }
 
 .iec61850-debug-page__diagnostic {

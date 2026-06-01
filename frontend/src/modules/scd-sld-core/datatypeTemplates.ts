@@ -23,9 +23,10 @@ const KNOWN_B_TYPES = new Set([
   "INT8", "INT8U", "INT16", "INT16U", "INT32", "INT32U", "INT64", "INT64U",
   "FLOAT32", "FLOAT64",
   "Enum",
-  "VisString255", "Unicode255", "ObjRef",
+  "VisString32", "VisString64", "VisString65", "VisString129", "VisString255", "Unicode255", "ObjRef",
   "Quality", "Timestamp", "EntryTime",
   "Dbpos", "Check", "Octet64", "Currency",
+  "Tcmd",
   "Struct",
 ])
 
@@ -228,9 +229,10 @@ function resolveDatasetMember(
     return { datasetRef, memberRef: member.reference, leaves: [], sourceKind, diagnostics }
   }
 
-  const doTemplate = lNodeType.dos.find(item => item.name === member.doName)
+  const resolvedMemberPath = splitMemberObjectPath(member.doName, member.daName)
+  const doTemplate = lNodeType.dos.find(item => item.name === resolvedMemberPath.doName)
   if (!doTemplate) {
-    pushMemberDiagnostic(diagnostics, member, "datatype-templates.missing-do", `Missing DO: ${member.doName}`, context)
+    pushMemberDiagnostic(diagnostics, member, "datatype-templates.missing-do", `Missing DO: ${resolvedMemberPath.doName}`, context)
     return { datasetRef, memberRef: member.reference, leaves: [], sourceKind, diagnostics }
   }
 
@@ -239,23 +241,44 @@ function resolveDatasetMember(
     return { datasetRef, memberRef: member.reference, leaves: [], sourceKind, diagnostics }
   }
 
-  const pathFilter = member.daName?.trim() ? member.daName.trim().split(".").filter(Boolean) : []
+  const pathFilter = resolvedMemberPath.pathSegments
   const leaves: NormalizedDataLeaf[] = []
-  const fcMismatchState = { reported: false }
+  const requestedFc = member.fc?.trim() || null
   const ok = expandDoType({
     model,
     logicalNode,
     dataSet,
     member,
-    doName: doTemplate.name,
+    rootDoName: doTemplate.name,
     doType,
-    requestedFc: member.fc?.trim() || null,
+    requestedFc,
     pathFilter,
     pathPrefix: [],
     leaves,
     diagnostics,
-    fcMismatchState,
   })
+
+  const exactFcLeaves = requestedFc ? leaves.filter(leaf => leaf.fc === requestedFc) : leaves
+  if (!ok && pathFilter.length > 0 && leaves.length === 0) {
+    pushMemberDiagnostic(
+      diagnostics,
+      member,
+      "datatype-templates.unresolved-subpath",
+      `Resolved DO ${resolvedMemberPath.doName}, but unresolved subpath ${pathFilter.join(".")} for ${member.reference}.`,
+      context,
+    )
+  } else if (requestedFc && leaves.length > 0 && exactFcLeaves.length === 0) {
+    const selectedLeaf = selectPreferredLeaf(leaves, requestedFc)
+    diagnostics.push({
+      severity: "warning",
+      stage: "normalizer",
+      code: "datatype-templates.incompatible-fc",
+      message: formatIncompatibleFcMessage(member, requestedFc, selectedLeaf, leaves),
+      sourcePath: member.sourcePath,
+      sourceLocation: member.sourceLocation,
+      context,
+    })
+  }
 
   const hasError = diagnostics.some(diagnostic => diagnostic.severity === "error")
   if (hasError) {
@@ -276,14 +299,13 @@ type ExpandInput = {
   logicalNode: SclLogicalNode
   dataSet: SclDataSet
   member: SclDataSetMember
-  doName: string
+  rootDoName: string
   doType: SclDoType
   requestedFc: string | null
   pathPrefix: string[]
   pathFilter: string[]
   leaves: NormalizedDataLeaf[]
   diagnostics: ScdDiagnostic[]
-  fcMismatchState: { reported: boolean }
 }
 
 function expandDoType(input: ExpandInput): boolean {
@@ -304,10 +326,8 @@ function expandDoType(input: ExpandInput): boolean {
     }
     matched = expandDoType({
       ...input,
-      doName: `${input.doName}.${sdo.name}`,
       doType: nestedDoType,
-      pathPrefix: input.pathPrefix,
-      fcMismatchState: input.fcMismatchState,
+      pathPrefix: [...input.pathPrefix, sdo.name],
     }) || matched
   }
 
@@ -319,7 +339,7 @@ function expandAttribute(input: {
   logicalNode: SclLogicalNode
   dataSet: SclDataSet
   member: SclDataSetMember
-  doName: string
+  rootDoName: string
   attribute: SclDa | SclBda
   requestedFc: string | null
   pathPrefix: string[]
@@ -327,7 +347,6 @@ function expandAttribute(input: {
   inheritedFc: string | null
   leaves: NormalizedDataLeaf[]
   diagnostics: ScdDiagnostic[]
-  fcMismatchState: { reported: boolean }
 }): boolean {
   const { attribute, pathPrefix, pathFilter, requestedFc, inheritedFc, diagnostics, member, dataSet } = input
   const currentPath = [...pathPrefix, attribute.name]
@@ -364,8 +383,7 @@ function expandAttribute(input: {
         attribute: child,
         pathPrefix: currentPath,
         inheritedFc: effectiveFc,
-        fcMismatchState: input.fcMismatchState,
-      }) || matched
+        }) || matched
     }
     return matched
   }
@@ -378,7 +396,6 @@ function expandAttribute(input: {
         attribute: child,
         pathPrefix: currentPath,
         inheritedFc: effectiveFc,
-        fcMismatchState: input.fcMismatchState,
       }) || matched
     }
     return matched
@@ -393,26 +410,12 @@ function expandAttribute(input: {
     pushMemberDiagnostic(diagnostics, member, "datatype-templates.missing-fc", `Missing fc for ${member.reference}.`, context)
     return false
   }
-  if (requestedFc && effectiveFc !== requestedFc) {
-    if (!input.fcMismatchState.reported) {
-      diagnostics.push({
-        severity: "warning",
-        stage: "normalizer",
-        code: "datatype-templates.incompatible-fc",
-        message: `Incompatible fc ${requestedFc} for ${member.reference}; resolved leaf fc is ${effectiveFc}.`,
-        sourcePath: member.sourcePath,
-        sourceLocation: member.sourceLocation,
-        context,
-      })
-      input.fcMismatchState.reported = true
-    }
-  }
-
   if (pathFilter.length > 0 && !isPathPrefix(pathFilter, currentPath)) {
     return false
   }
 
   let enumType: SclEnumType | null = null
+  let enumTypeId: string | null = null
   if (bType === "Enum") {
     if (!attribute.type) {
       pushMemberDiagnostic(diagnostics, member, "datatype-templates.missing-enumtype", `Enum attribute ${member.reference} is missing type.`, context)
@@ -422,23 +425,26 @@ function expandAttribute(input: {
     if (!enumType) {
       return false
     }
+    enumTypeId = enumType.id
+  } else if (bType === "Tcmd") {
+    enumTypeId = attribute.type?.trim() || null
   }
 
   input.leaves.push({
-    reference: buildLeafReference(input.logicalNode, input.doName, currentPath, effectiveFc),
+    reference: buildLeafReference(input.logicalNode, input.rootDoName, currentPath, effectiveFc),
     iedName: input.logicalNode.iedName,
     ldInst: input.logicalNode.logicalDeviceInst,
     prefix: input.logicalNode.prefix ?? undefined,
     lnClass: input.logicalNode.lnClass,
     lnInst: input.logicalNode.lnInst ?? undefined,
     lnType: input.logicalNode.lnType ?? "",
-    doName: input.doName,
+    doName: input.rootDoName,
     daPath: currentPath,
     fc: effectiveFc,
     cdc: undefined,
     bType,
     type: attribute.type ?? undefined,
-    enumType: enumType?.id,
+    enumType: enumType?.id ?? enumTypeId ?? undefined,
     isReportable: true,
     source: {
       datasetName: input.dataSet.name,
@@ -650,6 +656,23 @@ function formatDataSetReference(dataSet: SclDataSet): string {
   return `${dataSet.iedName}/${dataSet.accessPointName}/${dataSet.logicalDeviceInst}/${dataSet.logicalNodeName}.${dataSet.name}`
 }
 
+function splitMemberObjectPath(doName: string | null, daName: string | null): { doName: string; pathSegments: string[] } {
+  const segments = [doName, daName]
+    .map(part => part?.trim() ?? "")
+    .filter(Boolean)
+    .flatMap(part => part.split(".").map(segment => segment.trim()).filter(Boolean))
+
+  if (!segments.length) {
+    return { doName: "", pathSegments: [] }
+  }
+
+  const [rootDoName, ...pathSegments] = segments
+  return {
+    doName: rootDoName,
+    pathSegments,
+  }
+}
+
 function isPathPrefix(prefix: string[], path: string[]): boolean {
   if (prefix.length > path.length) {
     return false
@@ -659,6 +682,77 @@ function isPathPrefix(prefix: string[], path: string[]): boolean {
 
 function matchesPathFilter(currentPath: string[], pathFilter: string[]): boolean {
   return isPathPrefix(currentPath, pathFilter) || isPathPrefix(pathFilter, currentPath)
+}
+
+function selectPreferredLeaf(leaves: NormalizedDataLeaf[], requestedFc: string): NormalizedDataLeaf | null {
+  if (!leaves.length) {
+    return null
+  }
+
+  const scored = leaves
+    .map(leaf => ({ leaf, score: scoreLeafCandidate(leaf, requestedFc) }))
+    .sort((left, right) => right.score - left.score || left.leaf.reference.localeCompare(right.leaf.reference))
+
+  return scored[0]?.leaf ?? null
+}
+
+function scoreLeafCandidate(leaf: NormalizedDataLeaf, requestedFc: string): number {
+  const path = leaf.daPath.join(".")
+  let score = leaf.fc === requestedFc ? 100 : 0
+
+  if (requestedFc === "ST") {
+    if (path.endsWith(".stVal") || path === "stVal") score += 60
+    if (path.endsWith(".q") || path === "q") score += 40
+    if (path.endsWith(".t") || path === "t") score += 30
+  } else if (requestedFc === "MX") {
+    if (path.endsWith(".mag.f") || path === "mag.f") score += 60
+    if (path.endsWith(".cVal.mag.f") || path === "cVal.mag.f") score += 50
+    if (path.endsWith(".instMag.f") || path === "instMag.f") score += 50
+    if (path.endsWith(".mag.i") || path === "mag.i") score += 45
+  } else if (requestedFc === "CO") {
+    if (path.endsWith(".Oper.ctlVal") || path === "Oper.ctlVal") score += 60
+    if (path.endsWith(".SBOw.ctlVal") || path === "SBOw.ctlVal") score += 55
+    if (path.endsWith(".ctlVal") || path === "ctlVal") score += 40
+    if (path.includes(".Oper.") || path.includes(".SBOw.")) score += 20
+  } else if (requestedFc === "OR") {
+    if (path.endsWith(".origin") || path === "origin") score += 60
+    if (path.endsWith(".orCat") || path === "orCat") score += 45
+    if (path.endsWith(".orIdent") || path === "orIdent") score += 45
+  } else if (requestedFc === "CF") {
+    if (path.endsWith(".ctlModel") || path === "ctlModel") score += 60
+    if (path.endsWith(".db") || path === "db") score += 45
+    if (path.endsWith(".rangeC") || path === "rangeC") score += 40
+    if (path.endsWith(".units") || path === "units") score += 40
+  }
+
+  return score
+}
+
+function formatIncompatibleFcMessage(
+  member: SclDataSetMember,
+  requestedFc: string,
+  selectedLeaf: NormalizedDataLeaf | null,
+  leaves: NormalizedDataLeaf[],
+): string {
+  const available = formatLeafCandidatesByFc(leaves)
+  const selected = selectedLeaf
+    ? ` Selected candidate: ${selectedLeaf.reference} [${selectedLeaf.fc}].`
+    : ""
+  return `Incompatible fc ${requestedFc} for ${member.reference}.${selected} Available candidates: ${available}.`
+}
+
+function formatLeafCandidatesByFc(leaves: NormalizedDataLeaf[]): string {
+  const grouped = new Map<string, string[]>()
+  for (const leaf of leaves) {
+    const bucket = grouped.get(leaf.fc) ?? []
+    bucket.push(leaf.reference)
+    grouped.set(leaf.fc, bucket)
+  }
+
+  return [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([fc, refs]) => `${fc}: ${refs.slice(0, 4).join(", ")}${refs.length > 4 ? ` …(+${refs.length - 4})` : ""}`)
+    .join("; ")
 }
 
 function lastFrame<T extends TemplateFrame["kind"]>(stack: TemplateFrame[], ...kinds: T[]): Extract<TemplateFrame, { kind: T }> | null {

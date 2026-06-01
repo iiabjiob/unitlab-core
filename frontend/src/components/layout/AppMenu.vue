@@ -148,9 +148,9 @@ const baseSections: MenuSection[] = [
         to: "/61850-debug",
         label: "61850 Debug",
         icon: "iec61850",
-        children: [
-          { to: "/61850-debug/templates", label: "Bay Templates", icon: "iec61850" },
-        ],
+        // children: [
+        //   { to: "/61850-debug/templates", label: "Bay Templates", icon: "iec61850" },
+        // ],
       },
     ],
   },

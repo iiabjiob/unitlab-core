@@ -39,7 +39,7 @@ const worker = self as DedicatedWorkerGlobalScope
 const DEBUG_TREE_SIGNAL_ROW_LIMIT = 10_000
 const DEBUG_TREE_TOTAL_SIGNAL_ROW_LIMIT = 50_000
 const DEBUG_DETAIL_ROW_LIMIT = 10_000
-const DEBUG_DIAGNOSTIC_ROW_LIMIT = 500
+const DEBUG_DIAGNOSTIC_ROW_LIMIT = Number.POSITIVE_INFINITY
 
 worker.onmessage = (event: MessageEvent<Iec61850DebugWorkerRequest>) => {
   const message = event.data

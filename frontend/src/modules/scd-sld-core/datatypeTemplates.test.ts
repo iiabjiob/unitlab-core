@@ -187,6 +187,158 @@ describe("IEC 61850 DataTypeTemplates normalization", () => {
     expect(entry.leaves[0]?.bType).toBe("Enum")
   })
 
+  it("resolves dotted DO references as DO plus internal path", () => {
+    const fixture = `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <DataTypeTemplates>
+    <LNodeType id="LT1" lnClass="MMXU">
+      <DO name="PhV" type="PhV_DO"/>
+    </LNodeType>
+    <DOType id="PhV_DO" cdc="CMV">
+      <SDO name="phsC" type="Phase_DO"/>
+    </DOType>
+    <DOType id="Phase_DO" cdc="CMV">
+      <DA name="cVal" bType="Struct" type="CValType" fc="MX"/>
+    </DOType>
+    <DAType id="CValType">
+      <BDA name="mag" bType="Struct" type="Magnitude" fc="MX"/>
+    </DAType>
+    <DAType id="Magnitude">
+      <BDA name="f" bType="FLOAT32" fc="MX"/>
+    </DAType>
+  </DataTypeTemplates>
+  <IED name="IED1" type="TestIED">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="LD1">
+          <LN lnClass="MMXU" inst="1" lnType="LT1">
+            <DataSet name="AllSignals">
+              <FCDA ldInst="LD1" lnClass="MMXU" lnInst="1" doName="PhV.phsC" fc="MX"/>
+            </DataSet>
+            <ReportControl name="BRCB1" datSet="AllSignals" rptID="rpt1" buffered="true" confRev="1"/>
+          </LN>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>`
+    const subscription = getSubscription(buildModel(fixture))
+    const entry = getEntry(subscription, "PhV.phsC[MX]")
+    expect(entry.leaves).toHaveLength(1)
+    expect(entry.leaves[0]?.doName).toBe("PhV")
+    expect(entry.leaves[0]?.reference).toBe("LD1/MMXU1.PhV.phsC.cVal.mag.f[MX]")
+    expect(entry.leaves[0]?.daPath.join(".")).toBe("phsC.cVal.mag.f")
+    expect(entry.diagnostics.some(diagnostic => diagnostic.code === "datatype-templates.missing-do")).toBe(false)
+  })
+
+  it("resolves multiple dotted DO references as DO plus internal paths", () => {
+    const fixture = `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <DataTypeTemplates>
+    <LNodeType id="LT1" lnClass="MMXU">
+      <DO name="PhV" type="PHASE_DO"/>
+      <DO name="A" type="PHASE_DO"/>
+      <DO name="PPV" type="PAIR_DO"/>
+    </LNodeType>
+    <DOType id="PHASE_DO" cdc="CMV">
+      <SDO name="phsA" type="PHASE_VALUE_DO"/>
+      <SDO name="phsB" type="PHASE_VALUE_DO"/>
+      <SDO name="phsC" type="PHASE_VALUE_DO"/>
+    </DOType>
+    <DOType id="PAIR_DO" cdc="CMV">
+      <SDO name="phsAB" type="PHASE_VALUE_DO"/>
+      <SDO name="phsBC" type="PHASE_VALUE_DO"/>
+      <SDO name="phsCA" type="PHASE_VALUE_DO"/>
+    </DOType>
+    <DOType id="PHASE_VALUE_DO" cdc="MV">
+      <DA name="cVal" bType="Struct" type="CValType" fc="MX"/>
+    </DOType>
+    <DAType id="CValType">
+      <BDA name="mag" bType="Struct" type="Magnitude" fc="MX"/>
+    </DAType>
+    <DAType id="Magnitude">
+      <BDA name="f" bType="FLOAT32" fc="MX"/>
+    </DAType>
+  </DataTypeTemplates>
+  <IED name="IED1" type="TestIED">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="LD1">
+          <LN lnClass="MMXU" inst="1" lnType="LT1">
+            <DataSet name="AllSignals">
+              <FCDA ldInst="LD1" lnClass="MMXU" lnInst="1" doName="PhV.phsA" fc="MX"/>
+              <FCDA ldInst="LD1" lnClass="MMXU" lnInst="1" doName="PhV.phsB" fc="MX"/>
+              <FCDA ldInst="LD1" lnClass="MMXU" lnInst="1" doName="PhV.phsC" fc="MX"/>
+              <FCDA ldInst="LD1" lnClass="MMXU" lnInst="1" doName="A.phsB" fc="MX"/>
+              <FCDA ldInst="LD1" lnClass="MMXU" lnInst="1" doName="PPV.phsAB" fc="MX"/>
+            </DataSet>
+            <ReportControl name="BRCB1" datSet="AllSignals" rptID="rpt1" buffered="true" confRev="1"/>
+          </LN>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>`
+    const subscription = getSubscription(buildModel(fixture))
+    for (const [fragment, reference] of [
+      ["PhV.phsA[MX]", "LD1/MMXU1.PhV.phsA.cVal.mag.f[MX]"],
+      ["PhV.phsB[MX]", "LD1/MMXU1.PhV.phsB.cVal.mag.f[MX]"],
+      ["PhV.phsC[MX]", "LD1/MMXU1.PhV.phsC.cVal.mag.f[MX]"],
+      ["A.phsB[MX]", "LD1/MMXU1.A.phsB.cVal.mag.f[MX]"],
+      ["PPV.phsAB[MX]", "LD1/MMXU1.PPV.phsAB.cVal.mag.f[MX]"],
+    ] as const) {
+      const entry = getEntry(subscription, fragment)
+      expect(entry.leaves).toHaveLength(1)
+      expect(entry.leaves[0]?.reference).toBe(reference)
+      expect(entry.leaves[0]?.doName).toBe(fragment.split(".")[0])
+      expect(entry.diagnostics.some(diagnostic => diagnostic.code === "datatype-templates.missing-do")).toBe(false)
+    }
+  })
+
+  it("resolves VisString and Unicode primitive string bTypes", () => {
+    const fixture = `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <DataTypeTemplates>
+    <LNodeType id="LT1" lnClass="LLN0">
+      <DO name="Note" type="NOTE_DO"/>
+    </LNodeType>
+    <DOType id="NOTE_DO" cdc="ENC">
+      <DA name="d" bType="VisString32" fc="ST"/>
+      <DA name="longText" bType="VisString64" fc="ST"/>
+      <DA name="label" bType="VisString65" fc="ST"/>
+      <DA name="description" bType="VisString129" fc="ST"/>
+      <DA name="vendor" bType="VisString255" fc="ST"/>
+      <DA name="unicode" bType="Unicode255" fc="ST"/>
+    </DOType>
+  </DataTypeTemplates>
+  <IED name="IED1" type="TestIED">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="LD1">
+          <LN0 lnType="LT1">
+            <DataSet name="AllSignals">
+              <FCDA ldInst="LD1" lnClass="LLN0" doName="Note" fc="ST"/>
+            </DataSet>
+            <ReportControl name="BRCB1" datSet="AllSignals" rptID="rpt1" buffered="true" confRev="1"/>
+          </LN0>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>`
+    const subscription = getSubscription(buildModel(fixture))
+    const entry = getEntry(subscription, "Note[ST]")
+    expect(entry.leaves.map(leaf => leaf.bType).sort()).toEqual([
+      "Unicode255",
+      "VisString129",
+      "VisString255",
+      "VisString32",
+      "VisString64",
+      "VisString65",
+    ])
+    expect(entry.diagnostics.some(diagnostic => diagnostic.code === "datatype-templates.unknown-btype")).toBe(false)
+  })
+
   it("inherits fc for nested BDA leaves when the child has no own fc", () => {
     const inheritedFixture = buildBaseFixture().replace('<BDA name="f" bType="FLOAT32" fc="MX"/>', '<BDA name="f" bType="FLOAT32"/>')
     const subscription = getSubscription(buildModel(inheritedFixture))
@@ -203,6 +355,50 @@ describe("IEC 61850 DataTypeTemplates normalization", () => {
     const entry = getEntry(subscription, "A.mag.f[ST]")
     expect(entry.leaves).toHaveLength(1)
     expect(entry.leaves[0]?.fc).toBe("ST")
+  })
+
+  it("treats Tcmd as an enum-like control leaf", () => {
+    const fixture = `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <DataTypeTemplates>
+    <LNodeType id="LT1" lnClass="LLN0">
+      <DO name="Tap" type="TAP_DO"/>
+    </LNodeType>
+    <DOType id="TAP_DO" cdc="ENC">
+      <DA name="tapCtl" bType="Struct" type="TapCtlType" fc="ST"/>
+    </DOType>
+    <DAType id="TapCtlType">
+      <BDA name="ctlVal" bType="Tcmd" type="Enum" fc="ST"/>
+      <BDA name="origin" bType="Struct" type="OriginType" fc="ST"/>
+    </DAType>
+    <DAType id="OriginType">
+      <BDA name="orCat" bType="Enum" type="OriginatorCategoryKind" fc="ST"/>
+    </DAType>
+    <EnumType id="OriginatorCategoryKind">
+      <EnumVal ord="0" desc="unknown"/>
+    </EnumType>
+  </DataTypeTemplates>
+  <IED name="IED1" type="TestIED">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="LD1">
+          <LN0 lnType="LT1">
+            <DataSet name="AllSignals">
+              <FCDA ldInst="LD1" lnClass="LLN0" doName="Tap" fc="ST"/>
+            </DataSet>
+            <ReportControl name="BRCB1" datSet="AllSignals" rptID="rpt1" buffered="true" confRev="1"/>
+          </LN0>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>`
+    const subscription = getSubscription(buildModel(fixture))
+    const entry = getEntry(subscription, "Tap[ST]")
+    const tcmdLeaf = entry.leaves.find(leaf => leaf.bType === "Tcmd")
+    expect(tcmdLeaf).toBeTruthy()
+    expect(tcmdLeaf?.enumType).toBe("Enum")
+    expect(entry.diagnostics.some(diagnostic => diagnostic.code === "datatype-templates.unknown-btype")).toBe(false)
   })
 
   it("fails closed when enum type is unknown", () => {
