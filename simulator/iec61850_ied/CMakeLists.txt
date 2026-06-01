@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.16)
 
 project(unitlab_iec61850_ied_sim C)
 
+find_package(Threads REQUIRED)
+
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
@@ -155,6 +157,19 @@ unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-foundation-test)
 add_test(
   NAME unitlab-iec61850-wire-foundation
   COMMAND unitlab-iec61850-wire-foundation-test
+)
+
+add_executable(unitlab-iec61850-native-wire-server-test
+  src/native_wire_server.c
+  tests/native_wire_server_smoke_test.c
+)
+target_include_directories(unitlab-iec61850-native-wire-server-test PRIVATE src)
+target_link_libraries(unitlab-iec61850-native-wire-server-test PRIVATE unitlab-iec61850-mms Threads::Threads)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-native-wire-server-test)
+
+add_test(
+  NAME unitlab-iec61850-native-wire-server
+  COMMAND unitlab-iec61850-native-wire-server-test
 )
 
 add_executable(unitlab-iec61850-mms-public-api-test
