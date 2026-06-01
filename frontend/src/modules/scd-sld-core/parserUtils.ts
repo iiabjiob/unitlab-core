@@ -1,8 +1,80 @@
-import type { ScdDiagnostic } from "./types"
+import type { ScdDiagnostic, ScdSourceLocation } from "./types"
 import { readXmlAttribute, type XmlElementEvent } from "./xmlScanner"
 
 export function readRequiredName(event: XmlElementEvent): string {
   return readXmlAttribute(event.attributes, "name")?.trim() || "unnamed"
+}
+
+export type DuplicateScopedIdTracker = {
+  record(input: {
+    entityKind: string
+    baseId: string
+    generatedId: string
+    sourcePath: string
+    sourceLocation?: ScdSourceLocation
+  }): void
+  flush(diagnostics: ScdDiagnostic[]): void
+}
+
+export function createDuplicateScopedIdTracker(): DuplicateScopedIdTracker {
+  const groups = new Map<string, DuplicateScopedIdGroup>()
+
+  return {
+    record(input) {
+      const key = `${input.entityKind}\u0000${input.baseId}`
+      const existing = groups.get(key)
+      if (existing) {
+        existing.occurrences.push({
+          generatedId: input.generatedId,
+          sourcePath: input.sourcePath,
+          sourceLocation: input.sourceLocation,
+        })
+        return
+      }
+
+      groups.set(key, {
+        entityKind: input.entityKind,
+        baseId: input.baseId,
+        parentScope: deriveParentScope(input.baseId),
+        name: deriveScopedName(input.baseId),
+        occurrences: [{
+          generatedId: input.generatedId,
+          sourcePath: input.sourcePath,
+          sourceLocation: input.sourceLocation,
+        }],
+      })
+    },
+    flush(diagnostics) {
+      for (const group of groups.values()) {
+        if (group.occurrences.length <= 1) {
+          continue
+        }
+
+        const firstOccurrence = group.occurrences[0]
+        if (!firstOccurrence) {
+          continue
+        }
+
+        const generatedIds = group.occurrences.map(occurrence => occurrence.generatedId)
+        diagnostics.push({
+          severity: "warning",
+          stage: "normalizer",
+          code: "normalizer.duplicate-normalized-id",
+          message: `${group.entityKind} "${group.name}" under ${group.parentScope} appears ${group.occurrences.length} times; generated stable ids ${formatGeneratedIds(generatedIds)}.`,
+          sourcePath: firstOccurrence.sourcePath,
+          sourceId: generatedIds[generatedIds.length - 1] ?? group.baseId,
+          sourceLocation: firstOccurrence.sourceLocation,
+          context: {
+            entityKind: group.entityKind,
+            parentScope: group.parentScope,
+            normalizedId: group.baseId,
+            duplicateCount: group.occurrences.length,
+            generatedIds,
+          },
+        })
+      }
+    },
+  }
 }
 
 export function makeUniqueScopedId(input: {
@@ -11,9 +83,19 @@ export function makeUniqueScopedId(input: {
   diagnostics: ScdDiagnostic[]
   event: XmlElementEvent
   entityKind: string
+  duplicateTracker?: DuplicateScopedIdTracker
 }): string {
   const existingIds = new Set(input.existingIds)
   if (!existingIds.has(input.baseId)) {
+    if (input.duplicateTracker) {
+      input.duplicateTracker.record({
+        entityKind: input.entityKind,
+        baseId: input.baseId,
+        generatedId: input.baseId,
+        sourcePath: input.event.sourcePath,
+        sourceLocation: input.event.sourceLocation,
+      })
+    }
     return input.baseId
   }
 
@@ -22,6 +104,17 @@ export function makeUniqueScopedId(input: {
   while (existingIds.has(id)) {
     suffix += 1
     id = `${input.baseId}__${suffix}`
+  }
+
+  if (input.duplicateTracker) {
+    input.duplicateTracker.record({
+      entityKind: input.entityKind,
+      baseId: input.baseId,
+      generatedId: id,
+      sourcePath: input.event.sourcePath,
+      sourceLocation: input.event.sourceLocation,
+    })
+    return id
   }
 
   input.diagnostics.push({
@@ -139,6 +232,43 @@ export function mergeUniqueDiagnostics(target: ScdDiagnostic[], source: ScdDiagn
     seen.add(key)
     target.push(diagnostic)
   }
+}
+export function flushDuplicateIdDiagnostics(tracker: DuplicateScopedIdTracker, diagnostics: ScdDiagnostic[]) {
+  tracker.flush(diagnostics)
+}
+
+type DuplicateScopedIdGroup = {
+  entityKind: string
+  baseId: string
+  parentScope: string
+  name: string
+  occurrences: Array<{
+    generatedId: string
+    sourcePath: string
+    sourceLocation?: ScdSourceLocation
+  }>
+}
+
+function deriveScopedName(baseId: string): string {
+  const parts = baseId.split("/").filter(Boolean)
+  return parts[parts.length - 1] ?? baseId
+}
+
+function deriveParentScope(baseId: string): string {
+  const parts = baseId.split("/").filter(Boolean)
+  if (parts.length <= 2) {
+    return parts.slice(0, -1).join("/") || baseId
+  }
+  return parts.slice(0, -2).join("/") || baseId
+}
+
+function formatGeneratedIds(ids: string[]): string {
+  const labels = ids.map(deriveScopedName)
+  if (labels.length <= 4) {
+    return labels.join(", ")
+  }
+
+  return `${labels[0]}, ${labels[1]}, ..., ${labels[labels.length - 1]}`
 }
 
 function diagnosticFingerprint(diagnostic: ScdDiagnostic): string {

@@ -21,6 +21,8 @@ import {
 import {
   buildChildId,
   buildStableId,
+  createDuplicateScopedIdTracker,
+  flushDuplicateIdDiagnostics,
   last,
   makeUniqueScopedId,
   normalizeConnectivityNodePath,
@@ -46,6 +48,7 @@ export function parseSclTopology(xmlText: string, diagnostics: ScdDiagnostic[]):
     },
     substations: [],
   }
+  const duplicateIdTracker = createDuplicateScopedIdTracker()
 
   const substationStack: SclSubstation[] = []
   const voltageLevelStack: SclVoltageLevel[] = []
@@ -69,28 +72,28 @@ export function parseSclTopology(xmlText: string, diagnostics: ScdDiagnostic[]):
         result.scl.revision = readXmlAttribute(event.attributes, "revision")
         break
       case "Substation":
-        openSubstation(result.substations, diagnostics, substationStack, event)
+        openSubstation(result.substations, diagnostics, substationStack, event, duplicateIdTracker)
         break
       case "VoltageLevel":
-        openVoltageLevel(diagnostics, substationStack, voltageLevelStack, event)
+        openVoltageLevel(diagnostics, substationStack, voltageLevelStack, event, duplicateIdTracker)
         break
       case "Voltage":
         appendVoltage(diagnostics, voltageLevelStack, event)
         break
       case "Bay":
-        openBay(diagnostics, substationStack, voltageLevelStack, bayStack, event)
+        openBay(diagnostics, substationStack, voltageLevelStack, bayStack, event, duplicateIdTracker)
         break
       case "ConductingEquipment":
-        openConductingEquipment(diagnostics, substationStack, voltageLevelStack, bayStack, equipmentStack, event)
+        openConductingEquipment(diagnostics, substationStack, voltageLevelStack, bayStack, equipmentStack, event, duplicateIdTracker)
         break
       case "PowerTransformer":
-        openPowerTransformer(diagnostics, substationStack, equipmentStack, event)
+        openPowerTransformer(diagnostics, substationStack, equipmentStack, event, duplicateIdTracker)
         break
       case "Terminal":
         appendTerminal(diagnostics, equipmentStack, event)
         break
       case "ConnectivityNode":
-        appendConnectivityNode(diagnostics, substationStack, voltageLevelStack, bayStack, event)
+        appendConnectivityNode(diagnostics, substationStack, voltageLevelStack, bayStack, event, duplicateIdTracker)
         break
       case "LNode":
         appendLogicalNode(substationStack, voltageLevelStack, bayStack, equipmentStack, event)
@@ -104,6 +107,7 @@ export function parseSclTopology(xmlText: string, diagnostics: ScdDiagnostic[]):
     }
   }
 
+  flushDuplicateIdDiagnostics(duplicateIdTracker, diagnostics)
   return result
 }
 
@@ -150,6 +154,7 @@ function openSubstation(
   diagnostics: ScdDiagnostic[],
   substationStack: SclSubstation[],
   event: XmlElementEvent,
+  duplicateTracker: ReturnType<typeof createDuplicateScopedIdTracker>,
 ) {
   const name = readRequiredName(event)
   const id = makeUniqueScopedId({
@@ -158,6 +163,7 @@ function openSubstation(
     diagnostics,
     event,
     entityKind: "Substation",
+    duplicateTracker,
   })
   const substation: SclSubstation = {
     id,
@@ -180,6 +186,7 @@ function openVoltageLevel(
   substationStack: SclSubstation[],
   voltageLevelStack: SclVoltageLevel[],
   event: XmlElementEvent,
+  duplicateTracker: ReturnType<typeof createDuplicateScopedIdTracker>,
 ) {
   const substation = last(substationStack)
   if (!substation) {
@@ -194,6 +201,7 @@ function openVoltageLevel(
     diagnostics,
     event,
     entityKind: "VoltageLevel",
+    duplicateTracker,
   })
   const voltageLevel: SclVoltageLevel = {
     id,
@@ -244,6 +252,7 @@ function openBay(
   voltageLevelStack: SclVoltageLevel[],
   bayStack: SclBay[],
   event: XmlElementEvent,
+  duplicateTracker: ReturnType<typeof createDuplicateScopedIdTracker>,
 ) {
   const substation = last(substationStack)
   const voltageLevel = last(voltageLevelStack)
@@ -259,6 +268,7 @@ function openBay(
     diagnostics,
     event,
     entityKind: "Bay",
+    duplicateTracker,
   })
   const bay: SclBay = {
     id,
@@ -284,6 +294,7 @@ function openConductingEquipment(
   bayStack: SclBay[],
   equipmentStack: SclEquipment[],
   event: XmlElementEvent,
+  duplicateTracker: ReturnType<typeof createDuplicateScopedIdTracker>,
 ) {
   const substation = last(substationStack)
   const voltageLevel = last(voltageLevelStack)
@@ -304,6 +315,7 @@ function openConductingEquipment(
     substationName: substation.name,
     voltageLevelName: voltageLevel.name,
     bayName: bay.name,
+    duplicateTracker,
   })
   bay.equipments.push(equipment)
   equipmentStack.push(equipment)
@@ -314,6 +326,7 @@ function openPowerTransformer(
   substationStack: SclSubstation[],
   equipmentStack: SclEquipment[],
   event: XmlElementEvent,
+  duplicateTracker: ReturnType<typeof createDuplicateScopedIdTracker>,
 ) {
   const substation = last(substationStack)
   if (!substation) {
@@ -332,6 +345,7 @@ function openPowerTransformer(
     substationName: substation.name,
     voltageLevelName: null,
     bayName: null,
+    duplicateTracker,
   })
   substation.powerTransformers.push(equipment)
   equipmentStack.push(equipment)
@@ -373,6 +387,7 @@ function appendConnectivityNode(
   voltageLevelStack: SclVoltageLevel[],
   bayStack: SclBay[],
   event: XmlElementEvent,
+  duplicateTracker: ReturnType<typeof createDuplicateScopedIdTracker>,
 ) {
   const substation = last(substationStack)
   if (!substation) {
@@ -394,6 +409,7 @@ function appendConnectivityNode(
     diagnostics,
     event,
     entityKind: "ConnectivityNode",
+    duplicateTracker,
   })
   const node: SclConnectivityNode = {
     id,
@@ -478,6 +494,7 @@ function createEquipment(input: {
   substationName: string | null
   voltageLevelName: string | null
   bayName: string | null
+  duplicateTracker: ReturnType<typeof createDuplicateScopedIdTracker>
 }): SclEquipment {
   const name = readRequiredName(input.event)
   const type = readXmlAttribute(input.event.attributes, "type") ?? input.typeFallback
@@ -487,6 +504,7 @@ function createEquipment(input: {
     diagnostics: input.diagnostics,
     event: input.event,
     entityKind: input.tagName,
+    duplicateTracker: input.duplicateTracker,
   })
 
   return {

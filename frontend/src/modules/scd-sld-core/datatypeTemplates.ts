@@ -259,6 +259,7 @@ function resolveDatasetMember(
   })
 
   const exactFcLeaves = requestedFc ? leaves.filter(leaf => leaf.fc === requestedFc) : leaves
+  let incompatibleFc = false
   if (!ok && pathFilter.length > 0 && leaves.length === 0) {
     pushMemberDiagnostic(
       diagnostics,
@@ -268,16 +269,17 @@ function resolveDatasetMember(
       context,
     )
   } else if (requestedFc && leaves.length > 0 && exactFcLeaves.length === 0) {
-    const selectedLeaf = selectPreferredLeaf(leaves, requestedFc)
     diagnostics.push({
       severity: "warning",
       stage: "normalizer",
       code: "datatype-templates.incompatible-fc",
-      message: formatIncompatibleFcMessage(member, requestedFc, selectedLeaf, leaves),
+      message: formatIncompatibleFcMessage(member, requestedFc, null, leaves),
       sourcePath: member.sourcePath,
       sourceLocation: member.sourceLocation,
       context,
     })
+    leaves.length = 0
+    incompatibleFc = true
   }
 
   const hasError = diagnostics.some(diagnostic => diagnostic.severity === "error")
@@ -286,7 +288,7 @@ function resolveDatasetMember(
   }
 
   if (!ok || leaves.length === 0) {
-    if (!hasError) {
+    if (!hasError && !incompatibleFc) {
       pushMemberDiagnostic(diagnostics, member, "datatype-templates.empty-normalized-leaves", `No normalized reportable leaves were resolved for ${member.reference}.`, context)
     }
   }
@@ -684,50 +686,6 @@ function matchesPathFilter(currentPath: string[], pathFilter: string[]): boolean
   return isPathPrefix(currentPath, pathFilter) || isPathPrefix(pathFilter, currentPath)
 }
 
-function selectPreferredLeaf(leaves: NormalizedDataLeaf[], requestedFc: string): NormalizedDataLeaf | null {
-  if (!leaves.length) {
-    return null
-  }
-
-  const scored = leaves
-    .map(leaf => ({ leaf, score: scoreLeafCandidate(leaf, requestedFc) }))
-    .sort((left, right) => right.score - left.score || left.leaf.reference.localeCompare(right.leaf.reference))
-
-  return scored[0]?.leaf ?? null
-}
-
-function scoreLeafCandidate(leaf: NormalizedDataLeaf, requestedFc: string): number {
-  const path = leaf.daPath.join(".")
-  let score = leaf.fc === requestedFc ? 100 : 0
-
-  if (requestedFc === "ST") {
-    if (path.endsWith(".stVal") || path === "stVal") score += 60
-    if (path.endsWith(".q") || path === "q") score += 40
-    if (path.endsWith(".t") || path === "t") score += 30
-  } else if (requestedFc === "MX") {
-    if (path.endsWith(".mag.f") || path === "mag.f") score += 60
-    if (path.endsWith(".cVal.mag.f") || path === "cVal.mag.f") score += 50
-    if (path.endsWith(".instMag.f") || path === "instMag.f") score += 50
-    if (path.endsWith(".mag.i") || path === "mag.i") score += 45
-  } else if (requestedFc === "CO") {
-    if (path.endsWith(".Oper.ctlVal") || path === "Oper.ctlVal") score += 60
-    if (path.endsWith(".SBOw.ctlVal") || path === "SBOw.ctlVal") score += 55
-    if (path.endsWith(".ctlVal") || path === "ctlVal") score += 40
-    if (path.includes(".Oper.") || path.includes(".SBOw.")) score += 20
-  } else if (requestedFc === "OR") {
-    if (path.endsWith(".origin") || path === "origin") score += 60
-    if (path.endsWith(".orCat") || path === "orCat") score += 45
-    if (path.endsWith(".orIdent") || path === "orIdent") score += 45
-  } else if (requestedFc === "CF") {
-    if (path.endsWith(".ctlModel") || path === "ctlModel") score += 60
-    if (path.endsWith(".db") || path === "db") score += 45
-    if (path.endsWith(".rangeC") || path === "rangeC") score += 40
-    if (path.endsWith(".units") || path === "units") score += 40
-  }
-
-  return score
-}
-
 function formatIncompatibleFcMessage(
   member: SclDataSetMember,
   requestedFc: string,
@@ -735,10 +693,10 @@ function formatIncompatibleFcMessage(
   leaves: NormalizedDataLeaf[],
 ): string {
   const available = formatLeafCandidatesByFc(leaves)
-  const selected = selectedLeaf
-    ? ` Selected candidate: ${selectedLeaf.reference} [${selectedLeaf.fc}].`
-    : ""
-  return `Incompatible fc ${requestedFc} for ${member.reference}.${selected} Available candidates: ${available}.`
+  if (selectedLeaf) {
+    return `Incompatible fc ${requestedFc} for ${member.reference}. Selected candidate: ${selectedLeaf.reference} [${selectedLeaf.fc}]. Available candidates: ${available}.`
+  }
+  return `Incompatible fc ${requestedFc} for ${member.reference}; no reachable leaf with FC=${requestedFc}. Available candidates: ${available}.`
 }
 
 function formatLeafCandidatesByFc(leaves: NormalizedDataLeaf[]): string {

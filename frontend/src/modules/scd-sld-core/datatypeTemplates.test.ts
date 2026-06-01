@@ -434,13 +434,79 @@ describe("IEC 61850 DataTypeTemplates normalization", () => {
     expect(entry.diagnostics.some(diagnostic => diagnostic.code === "datatype-templates.missing-datype")).toBe(true)
   })
 
-  it("warns when fc is incompatible", () => {
+  it("marks incompatible fc members as unresolved when no exact leaf exists", () => {
     const model = buildModel(buildBaseFixture({ ctlFc: "CF", ctlMemberFc: "MX" }))
     const subscription = getSubscription(model)
     const entry = getEntry(subscription, "CtlModel.ctlModel")
-    expect(entry.leaves).toHaveLength(1)
-    expect(entry.leaves[0]?.fc).toBe("CF")
-    expect(entry.diagnostics.some(diagnostic => diagnostic.code === "datatype-templates.incompatible-fc")).toBe(true)
+    expect(entry.leaves).toHaveLength(0)
+    const diagnostic = entry.diagnostics.find(item => item.code === "datatype-templates.incompatible-fc")
+    expect(diagnostic).toBeTruthy()
+    expect(diagnostic?.message).toContain("no reachable leaf with FC=MX")
+    expect(diagnostic?.message).not.toContain("Selected candidate:")
+  })
+
+  it("does not pick a non-ST fallback candidate for ODDBSw[ST]", () => {
+    const fixture = `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <DataTypeTemplates>
+    <LNodeType id="LT1" lnClass="LDBI">
+      <DO name="ODDBSw" type="ODDBSw_DO"/>
+    </LNodeType>
+    <DOType id="ODDBSw_DO" cdc="ENC">
+      <DA name="ctlModel" bType="Enum" type="CtlModelKind" fc="CF"/>
+      <DA name="Oper" bType="Struct" type="OperType" fc="CO"/>
+      <DA name="cdcName" bType="VisString64" fc="EX"/>
+      <DA name="dataNs" bType="VisString255" fc="EX"/>
+      <DA name="opRcvd" bType="BOOLEAN" fc="OR"/>
+    </DOType>
+    <DAType id="OperType">
+      <BDA name="ctlVal" bType="Enum" type="CtlValKind" fc="CO"/>
+      <BDA name="origin" bType="Struct" type="OriginType" fc="CO"/>
+      <BDA name="ctlNum" bType="INT8U" fc="CO"/>
+      <BDA name="T" bType="Timestamp" fc="CO"/>
+    </DAType>
+    <DAType id="OriginType">
+      <BDA name="orCat" bType="Enum" type="OriginatorCategoryKind" fc="CO"/>
+      <BDA name="orIdent" bType="VisString64" fc="CO"/>
+    </DAType>
+    <EnumType id="CtlModelKind">
+      <EnumVal ord="0" desc="status-only"/>
+      <EnumVal ord="1" desc="direct-with-normal-security"/>
+    </EnumType>
+    <EnumType id="CtlValKind">
+      <EnumVal ord="0" desc="off"/>
+      <EnumVal ord="1" desc="on"/>
+    </EnumType>
+    <EnumType id="OriginatorCategoryKind">
+      <EnumVal ord="0" desc="unknown"/>
+    </EnumType>
+  </DataTypeTemplates>
+  <IED name="IED1" type="TestIED">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="LD0">
+          <LN lnClass="LDBI" inst="1" lnType="LT1">
+            <DataSet name="AllSignals">
+              <FCDA ldInst="LD0" lnClass="LDBI" lnInst="1" doName="ODDBSw" fc="ST"/>
+            </DataSet>
+            <ReportControl name="BRCB1" datSet="AllSignals" rptID="rpt1" buffered="true" confRev="1"/>
+          </LN>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>`
+    const subscription = getSubscription(buildModel(fixture))
+    const entry = getEntry(subscription, "ODDBSw[ST]")
+    expect(entry.leaves).toHaveLength(0)
+    const diagnostic = entry.diagnostics.find(item => item.code === "datatype-templates.incompatible-fc")
+    expect(diagnostic).toBeTruthy()
+    expect(diagnostic?.message).toContain("no reachable leaf with FC=ST")
+    expect(diagnostic?.message).toContain("CF: LD0/LDBI1.ODDBSw.ctlModel[CF]")
+    expect(diagnostic?.message).toContain("CO: LD0/LDBI1.ODDBSw.Oper.ctlVal[CO]")
+    expect(diagnostic?.message).toContain("EX: LD0/LDBI1.ODDBSw.cdcName[EX]")
+    expect(diagnostic?.message).toContain("OR: LD0/LDBI1.ODDBSw.opRcvd[OR]")
+    expect(diagnostic?.message).not.toContain("Selected candidate:")
   })
 
   it("fails closed when count > 1 is encountered", () => {

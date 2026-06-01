@@ -119,6 +119,11 @@ export type ScdDiagnosticContext = {
   templateId?: string | null
   bType?: string | null
   count?: number | null
+  entityKind?: string
+  parentScope?: string | null
+  normalizedId?: string | null
+  duplicateCount?: number
+  generatedIds?: string[]
 }
 
 export type ScdDiagnostic = {

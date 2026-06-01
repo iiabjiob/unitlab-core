@@ -1137,7 +1137,7 @@ describe("scd-sld-core", () => {
     }))
   })
 
-  it("disambiguates duplicate normalized ids within the same parent scope", () => {
+  it("aggregates duplicate normalized ids within the same parent scope", () => {
     const result = generateSldFromScd({
       fileName: "duplicate-ids.scd",
       contentHash: "duplicate-ids",
@@ -1168,18 +1168,113 @@ describe("scd-sld-core", () => {
       "substation/SS1/voltageLevel/VL1/bay/B1/equipment/Q01",
       "substation/SS1/voltageLevel/VL1/bay/B1/equipment/Q01__2",
     ])
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+    const duplicateDiagnostics = result.diagnostics.filter(diagnostic => diagnostic.code === "normalizer.duplicate-normalized-id")
+    expect(duplicateDiagnostics).toHaveLength(2)
+    expect(duplicateDiagnostics).toContainEqual(expect.objectContaining({
       severity: "warning",
       stage: "normalizer",
       code: "normalizer.duplicate-normalized-id",
-      sourceId: "substation/SS1/voltageLevel/VL1/bay/B1/equipment/Q01__2",
+      context: expect.objectContaining({
+        entityKind: "ConductingEquipment",
+        duplicateCount: 2,
+      }),
     }))
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+    expect(duplicateDiagnostics).toContainEqual(expect.objectContaining({
       severity: "warning",
       stage: "normalizer",
       code: "normalizer.duplicate-normalized-id",
-      sourceId: "substation/SS1/voltageLevel/VL1/bay/B1__2",
+      context: expect.objectContaining({
+        entityKind: "Bay",
+        duplicateCount: 2,
+      }),
     }))
+  })
+
+  it("aggregates repeated PowerTransformer duplicates into one warning group", () => {
+    const transformers = Array.from({ length: 15 }, () => '<PowerTransformer name="Transformer" type="PTR"/>').join("\n")
+    const result = generateSldFromScd({
+      fileName: "duplicate-transformers.scd",
+      contentHash: "duplicate-transformers",
+      xmlText: `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <Substation name="KINTORE">
+    ${transformers}
+  </Substation>
+</SCL>`,
+    })
+
+    const substation = result.model.substations[0]
+    expect(substation?.powerTransformers.map(item => item.id)).toEqual([
+      "substation/KINTORE/powerTransformer/Transformer",
+      "substation/KINTORE/powerTransformer/Transformer__2",
+      "substation/KINTORE/powerTransformer/Transformer__3",
+      "substation/KINTORE/powerTransformer/Transformer__4",
+      "substation/KINTORE/powerTransformer/Transformer__5",
+      "substation/KINTORE/powerTransformer/Transformer__6",
+      "substation/KINTORE/powerTransformer/Transformer__7",
+      "substation/KINTORE/powerTransformer/Transformer__8",
+      "substation/KINTORE/powerTransformer/Transformer__9",
+      "substation/KINTORE/powerTransformer/Transformer__10",
+      "substation/KINTORE/powerTransformer/Transformer__11",
+      "substation/KINTORE/powerTransformer/Transformer__12",
+      "substation/KINTORE/powerTransformer/Transformer__13",
+      "substation/KINTORE/powerTransformer/Transformer__14",
+      "substation/KINTORE/powerTransformer/Transformer__15",
+    ])
+    const duplicateDiagnostics = result.diagnostics.filter(diagnostic => diagnostic.code === "normalizer.duplicate-normalized-id")
+    expect(duplicateDiagnostics).toHaveLength(1)
+    expect(duplicateDiagnostics[0]).toMatchObject({
+      severity: "warning",
+      stage: "normalizer",
+      code: "normalizer.duplicate-normalized-id",
+      context: expect.objectContaining({
+        entityKind: "PowerTransformer",
+        parentScope: "substation/KINTORE",
+        duplicateCount: 15,
+        generatedIds: [
+          "substation/KINTORE/powerTransformer/Transformer",
+          "substation/KINTORE/powerTransformer/Transformer__2",
+          "substation/KINTORE/powerTransformer/Transformer__3",
+          "substation/KINTORE/powerTransformer/Transformer__4",
+          "substation/KINTORE/powerTransformer/Transformer__5",
+          "substation/KINTORE/powerTransformer/Transformer__6",
+          "substation/KINTORE/powerTransformer/Transformer__7",
+          "substation/KINTORE/powerTransformer/Transformer__8",
+          "substation/KINTORE/powerTransformer/Transformer__9",
+          "substation/KINTORE/powerTransformer/Transformer__10",
+          "substation/KINTORE/powerTransformer/Transformer__11",
+          "substation/KINTORE/powerTransformer/Transformer__12",
+          "substation/KINTORE/powerTransformer/Transformer__13",
+          "substation/KINTORE/powerTransformer/Transformer__14",
+          "substation/KINTORE/powerTransformer/Transformer__15",
+        ],
+      }),
+    })
+    expect(duplicateDiagnostics[0]?.message).toContain('appears 15 times')
+    expect(duplicateDiagnostics[0]?.message).toContain('Transformer__15')
+  })
+
+  it("does not warn when the same Bay name exists under different parent scopes", () => {
+    const result = generateSldFromScd({
+      fileName: "distinct-bays.scd",
+      contentHash: "distinct-bays",
+      xmlText: `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL">
+  <Substation name="KINTORE">
+    <VoltageLevel name="E">
+      <Bay name="10_DAR"/>
+    </VoltageLevel>
+    <VoltageLevel name="W">
+      <Bay name="10_DAR"/>
+    </VoltageLevel>
+  </Substation>
+</SCL>`,
+    })
+
+    const substations = result.model.substations
+    expect(substations[0]?.voltageLevels[0]?.bays[0]?.id).toBe("substation/KINTORE/voltageLevel/E/bay/10_DAR")
+    expect(substations[0]?.voltageLevels[1]?.bays[0]?.id).toBe("substation/KINTORE/voltageLevel/W/bay/10_DAR")
+    expect(result.diagnostics.filter(diagnostic => diagnostic.code === "normalizer.duplicate-normalized-id")).toHaveLength(0)
   })
 
   it("keeps the first standard Voltage element and reports duplicates", () => {
