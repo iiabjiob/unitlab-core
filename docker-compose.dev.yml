@@ -22,15 +22,11 @@ services:
         - unitlab-dev:latest
     container_name: unitlab-iec61850-ied-dev
     working_dir: /workspace
-    ports:
-      - "12347:12347"
-      - "12348:12348"
+    network_mode: host
     command: >
       bash -lc "cmake -S /workspace/simulator/iec61850_ied -B /tmp/unitlab-iec61850-ied-build &&
       cmake --build /tmp/unitlab-iec61850-ied-build --target unitlab-iec61850-ied-sim &&
-      exec /tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim --fixture /workspace/simulator/iec61850_ied/examples/single-report.fixture.json --ied IED1 --bind 0.0.0.0 --port 12347 --native-wire-start"
-    networks:
-      - net
+      exec /tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim --fixture /workspace/simulator/iec61850_ied/examples/single-report.fixture.json --ied IED1 --bind 0.0.0.0 --port 12447 --native-wire-start"
   db:
     image: postgres:16
     container_name: unitlab-db-dev

@@ -24,12 +24,12 @@ Current C-owned helpers include:
 
 Use the host-debug wire path for wire-debug runs:
 
-- backend/client connects to `host.docker.internal:12347` and `host.docker.internal:12348` so the host can capture MMS/RFC1006/COTP/ACSE traffic in Wireshark;
-- port `12347` is used instead of `102` to avoid privileged-port friction in the dev loop;
+- backend/client connects to `host.docker.internal:12447` and `host.docker.internal:12448` so the host can capture MMS/RFC1006/COTP/ACSE traffic in Wireshark;
+- port `12447` is used instead of `102` to avoid privileged-port friction in the dev loop;
 - do not use `localhost` from the dev container for the IED endpoint because it resolves to the backend container itself, not the virtual IED service;
-- Wireshark capture filter: `tcp.port == 12347 || tcp.port == 12348`.
+- Wireshark capture filter: `tcp.port == 12447 || tcp.port == 12448`.
 
-The `iec61850-ied` service in `docker-compose.dev.yml` starts the native wire server on port `12347` and publishes both `12347` and `12348` for host-side debugging.
+The `iec61850-ied` service in `docker-compose.dev.yml` starts the native wire server on port `12447` and uses `12447` and `12448` for host-side debugging.
 
 ## Build
 

@@ -139,7 +139,7 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
         assert state.live_wire_mode == "process"
         assert started_specs
         assert started_specs[0].binary_path == "/bin/true"
-        assert sockets == [("127.0.0.1", 12347)]
+        assert sockets == [("127.0.0.1", 12447)]
     finally:
         get_settings.cache_clear()
 
@@ -314,8 +314,8 @@ def test_client_control_service_can_drive_a_live_wire_service_smoke(monkeypatch:
     state = service.start_live_wire_transport(mode="host")
     assert state.live_wire_open is True
     assert state.live_wire_mode == "host"
-    assert sockets[0].address == ("host.docker.internal", 12347)
-    assert sockets[1].address == ("host.docker.internal", 12348)
+    assert sockets[0].address == ("host.docker.internal", 12447)
+    assert sockets[1].address == ("host.docker.internal", 12448)
 
     state = service.emit_live_wire_report()
     assert state.live_wire_last_frame_length == len(fake_frame)
@@ -365,8 +365,8 @@ def test_client_control_service_can_drive_a_live_wire_host_debug_smoke(monkeypat
 
     state = service.start_live_wire_transport(mode="host")
     assert state.live_wire_mode == "host"
-    assert sockets[0].address == ("host.docker.internal", 12347)
-    assert sockets[1].address == ("host.docker.internal", 12348)
+    assert sockets[0].address == ("host.docker.internal", 12447)
+    assert sockets[1].address == ("host.docker.internal", 12448)
 
     state = service.stop_live_wire_transport()
     assert state.live_wire_open is False
