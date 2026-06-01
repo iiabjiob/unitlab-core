@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     cmake \
     libpq-dev \
     build-essential \
+    tcpdump \
     iputils-ping \
     netcat-openbsd \
     && apt-get clean

@@ -31,6 +31,26 @@ Use the host-debug wire path for wire-debug runs:
 
 The `iec61850-ied` service in `docker-compose.dev.yml` starts the native wire server on port `12447` and uses `12447` and `12448` for host-side debugging.
 
+## Capture Pcap
+
+The devcontainer image includes `tcpdump`, so you can record a wire trace without installing anything after startup.
+
+Start a capture in one terminal:
+
+```bash
+sudo tcpdump -i any -s 0 -w /workspace/iec61850-wire.pcap 'tcp port 12447 or tcp port 12448'
+```
+
+Then in another terminal run `Start wire` and `Emit wire report` in the debug page. Stop the capture with `Ctrl+C` after the test.
+
+Open `/workspace/iec61850-wire.pcap` in Wireshark on your host. If Wireshark does not decode the payload as MMS automatically, use `Analyze -> Decode As...` and map TCP ports `12447` and `12448` to the ISO-on-TCP / TPKT stack.
+
+For a quick terminal check without writing a file, use:
+
+```bash
+sudo tcpdump -i any -nn -vv 'tcp port 12447 or tcp port 12448'
+```
+
 ## Build
 
 Dry-run scaffold build without libIEC61850:
