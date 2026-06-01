@@ -460,6 +460,8 @@ int unitlab_run_native_wire_server(
                             set_result(result, "NATIVE_WIRE_SERVER_COTP_CC_BUILD_FAILED", response_diagnostic.message);
                             goto fail;
                         }
+                        printf("native-wire-server: received-aarq bytes=%zd\n", received);
+                        fflush(stdout);
                         if (!send_all(data_client_fd, response_frame, response_length)) {
                             set_result(result, "NATIVE_WIRE_SERVER_COTP_CC_SEND_FAILED", "Native wire server could not send COTP connect response frame.");
                             goto fail;

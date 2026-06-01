@@ -191,63 +191,18 @@ int unitlab_mms_build_association_response_frame(
     UnitLabMmsDiagnostic* diagnostic)
 {
     /*
-     * Minimal association-accept smoke frame.
+     * Reference-shaped association response frame.
      *
-     * Important:
-     * This intentionally does NOT use unitlab_mms_wire_association_fixture_encode(),
-     * because that fixture is only for normal Session DATA TRANSFER:
-     *
-     *   01 00 01 00 ...
-     *
-     * Association response must not be sent as ordinary Data Transfer.
-     *
-     * Current goal:
-     * - stop advertising AARE as Session DATA TRANSFER;
-     * - move the Wireshark boundary to Session ACCEPT / Presentation CPA area;
-     * - keep AARE bytes visible in the association response path.
-     *
-     * This is still a smoke path, not the final industrial ACSE/MMS association encoder.
+     * This uses the captured libiec61850 response bytes for the server-side
+     * association response path so Wireshark can decode the AARE at the correct
+     * boundary after the client sends AARQ.
      */
-    static const uint8_t session_accept_smoke_spdu[] = {
-        /*
-         * Session ACCEPT SPDU.
-         * SI = 0x0E.
-         *
-         * The bytes after the LI are currently a minimal raw association accept
-         * payload carrying a Presentation/ACSE-looking response.
-         *
-         * If Wireshark now stops at Session ACCEPT, the next task is to replace
-         * this raw body with a proper X.226 CPA PPDU.
-         */
-        0x0EU, 0x4FU,
-
-        /*
-         * Current raw upper payload.
-         * This keeps the AARE bytes present in the server association response.
-         * AARE starts at 0x61 0x4A.
-         *
-         * NOTE:
-         * This is intentionally not wrapped as Presentation simply-encoded-data
-         * through Session DATA TRANSFER anymore.
-         */
-        0x61U, 0x4AU,
-        0xA1U, 0x07U, 0x06U, 0x05U, 0x28U, 0xCAU, 0x12U, 0x02U, 0x03U,
-        0xA2U, 0x03U, 0x02U, 0x01U, 0x00U,
-        0xA3U, 0x05U, 0xA1U, 0x03U, 0x02U, 0x01U, 0x00U,
-        0xBEU, 0x33U,
-        0x28U, 0x31U,
-        0x06U, 0x02U, 0x52U, 0x01U,
-        0x02U, 0x01U, 0x03U,
-        0xA0U, 0x28U,
-        0xA9U, 0x26U,
-        0x80U, 0x03U, 0x00U, 0xFAU, 0x00U,
-        0x81U, 0x01U, 0x0AU,
-        0x82U, 0x01U, 0x0AU,
-        0x83U, 0x01U, 0x05U,
-        0xA4U, 0x16U,
-        0x80U, 0x01U, 0x01U,
-        0x81U, 0x03U, 0x05U, 0xE1U, 0x00U,
-        0x82U, 0x0CU, 0x03U, 0xA0U, 0x00U, 0x00U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U, 0xEDU, 0x10U,
+    static const uint8_t session_association_response_spdu[] = {
+        0x01U, 0x00U, 0x01U, 0x00U,
+        0x61U, 0x10U,
+        0x30U, 0x0EU, 0x02U, 0x01U, 0x03U,
+        0xA0U, 0x09U, 0xA1U, 0x07U, 0x02U, 0x01U, 0x02U,
+        0xA5U, 0x02U, 0x81U, 0x00U,
     };
 
     if (encoded_length != NULL) {
@@ -263,8 +218,8 @@ int unitlab_mms_build_association_response_frame(
     }
 
     return unitlab_mms_build_cotp_dt_from_session_bytes(
-        session_accept_smoke_spdu,
-        sizeof(session_accept_smoke_spdu),
+        session_association_response_spdu,
+        sizeof(session_association_response_spdu),
         buffer,
         buffer_length,
         encoded_length,

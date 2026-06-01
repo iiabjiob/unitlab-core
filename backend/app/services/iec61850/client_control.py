@@ -493,6 +493,8 @@ class Iec61850ClientControlService:
     def _associate_live_wire_session(self, wire_socket: socket.socket) -> None:
         wire_socket.sendall(self._build_live_wire_cotp_connect_request_frame())
         self._read_tpkt_frame(wire_socket, "COTP connect response")
+        wire_socket.sendall(self._build_live_wire_association_request_frame())
+        self._read_tpkt_frame(wire_socket, "association response")
         if self._live_wire_endpoint is None:
             raise Iec61850ReportRuntimeError(
                 "LIVE_WIRE_SESSION_NOT_OPEN",
@@ -508,6 +510,15 @@ class Iec61850ClientControlService:
 
     def _build_live_wire_cotp_connect_request_frame(self) -> bytes:
         return bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001")
+
+    def _build_live_wire_association_request_frame(self) -> bytes:
+        return bytes.fromhex(
+            "030000bb02f0800db20506130100160102140200023302000134020001"
+            "c19c318199a003800101a28191810400000001820400000001a423300f020101060452010001300406025101"
+            "3010020103060528ca220201300406025101615e305c020101a0576055a107060528ca220203a20706052901876701"
+            "a30302010ca606060429018767a70302010cbe2f282d020103a028a826800300fde881010582010583010aa416800101"
+            "810305f100820c03ee1c00000408000079ef18"
+        )
 
     def _read_tpkt_frame(self, wire_socket: socket.socket, frame_label: str) -> bytes:
         try:

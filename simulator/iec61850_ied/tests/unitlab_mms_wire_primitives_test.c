@@ -783,7 +783,7 @@ static void test_association_response_frame_smoke(void)
         &frame_length,
         &diagnostic) == 1);
 
-    assert(frame_length > 16U);
+    assert(frame_length == 29U);
 
     /* TPKT */
     assert(frame[0] == 0x03U);
@@ -794,18 +794,18 @@ static void test_association_response_frame_smoke(void)
     assert(frame[5] == 0xF0U);
     assert(frame[6] == 0x80U);
 
-    /*
-     * Association response must not be emitted as ordinary Session DATA TRANSFER.
-     * Old wrong behavior:
-     *   01 00 01 00 40 ...
-     */
-    assert(frame[7] == 0x0EU);
-    assert(!(frame[7] == 0x01U && frame[8] == 0x00U && frame[9] == 0x01U && frame[10] == 0x00U));
+    /* Association response is the captured reference AARE path. */
+    assert(frame[7] == 0x01U);
+    assert(frame[8] == 0x00U);
+    assert(frame[9] == 0x01U);
+    assert(frame[10] == 0x00U);
+    assert(frame[11] == 0x61U);
+    assert(frame[12] == 0x10U);
 
     /* AARE bytes must be present in the association response. */
     int found_aare = 0;
     for (size_t i = 0U; i + 1U < frame_length; i++) {
-        if (frame[i] == 0x61U && frame[i + 1U] == 0x4AU) {
+        if (frame[i] == 0x61U && frame[i + 1U] == 0x10U) {
             found_aare = 1;
             break;
         }

@@ -83,6 +83,7 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
         sockets: list[tuple[str, int]] = []
         created_sockets: list[object] = []
         cc_frame = bytes.fromhex("0300001611d00001000100c0010dc2020001c1020001")
+        aare_frame = bytes.fromhex("0300001d02f080010001006110300e020103a009a107020102a5028100")
         report_frame = bytes.fromhex("0300001402f0800100010040076305a003810100")
 
         class _FakeStdin:
@@ -107,7 +108,7 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
             def __init__(self) -> None:
                 self.address: tuple[str, int] | None = None
                 self.closed = False
-                self._buffer = bytearray(cc_frame + report_frame)
+                self._buffer = bytearray(cc_frame + aare_frame + report_frame)
                 self.sent_frames: list[bytes] = []
 
             def settimeout(self, _timeout: float) -> None:
@@ -150,7 +151,10 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
         assert started_specs
         assert started_specs[0].binary_path == "/bin/true"
         assert sockets == [("127.0.0.1", 12447)]
-        assert created_sockets[0].sent_frames == [bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001")]
+        assert created_sockets[0].sent_frames == [
+            bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001"),
+            bytes.fromhex("030000bb02f0800db20506130100160102140200023302000134020001c19c318199a003800101a28191810400000001820400000001a423300f0201010604520100013004060251013010020103060528ca220201300406025101615e305c020101a0576055a107060528ca220203a20706052901876701a30302010ca606060429018767a70302010cbe2f282d020103a028a826800300fde881010582010583010aa416800101810305f100820c03ee1c00000408000079ef18"),
+        ]
     finally:
         get_settings.cache_clear()
 
@@ -165,6 +169,7 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
 
     emitted_commands: list[str] = []
     cc_frame = bytes.fromhex("0300001611d00001000100c0010dc2020001c1020001")
+    aare_frame = bytes.fromhex("0300001d02f080010001006110300e020103a009a107020102a5028100")
     report_frame = bytes.fromhex("0300001402f0800100010040076305a003810100")
 
     class _FakeStdin:
@@ -187,7 +192,7 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
 
     class _FakeSocket:
         def __init__(self) -> None:
-            self._buffer = bytearray(cc_frame + report_frame)
+            self._buffer = bytearray(cc_frame + aare_frame + report_frame)
             self.closed = False
             self.sent_frames: list[bytes] = []
 
@@ -221,7 +226,10 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
 
     state = service.start_live_wire_transport(mode="process")
     assert state.live_wire_open is True
-    assert fake_socket.sent_frames == [bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001")]
+    assert fake_socket.sent_frames == [
+        bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001"),
+        bytes.fromhex("030000bb02f0800db20506130100160102140200023302000134020001c19c318199a003800101a28191810400000001820400000001a423300f0201010604520100013004060251013010020103060528ca220201300406025101615e305c020101a0576055a107060528ca220203a20706052901876701a30302010ca606060429018767a70302010cbe2f282d020103a028a826800300fde881010582010583010aa416800101810305f100820c03ee1c00000408000079ef18"),
+    ]
 
     state = service.emit_live_wire_report()
     assert state.live_wire_last_frame_length == len(report_frame)
@@ -242,6 +250,7 @@ def test_client_control_service_can_drive_a_live_wire_host_debug_smoke(monkeypat
 
     sockets: list[_FakeSocket] = []
     cc_frame = bytes.fromhex("0300001611d00001000100c0010dc2020001c1020001")
+    aare_frame = bytes.fromhex("0300001d02f080010001006110300e020103a009a107020102a5028100")
     report_frame = bytes.fromhex("0300001402f0800100010040076305a003810100")
 
     class _FakeSocket:
@@ -249,7 +258,7 @@ def test_client_control_service_can_drive_a_live_wire_host_debug_smoke(monkeypat
             self.role = role
             self.address: tuple[str, int] | None = None
             self.closed = False
-            self._buffer = bytearray(cc_frame + report_frame if role == "data" else b"")
+            self._buffer = bytearray(cc_frame + aare_frame + report_frame if role == "data" else b"")
             self.sent_frames: list[bytes] = []
 
         def settimeout(self, _timeout: float) -> None:
@@ -285,7 +294,10 @@ def test_client_control_service_can_drive_a_live_wire_host_debug_smoke(monkeypat
     assert state.live_wire_mode == "host"
     assert sockets[0].address == ("host.docker.internal", 12447)
     assert sockets[1].address == ("host.docker.internal", 12448)
-    assert sockets[0].sent_frames == [bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001")]
+    assert sockets[0].sent_frames == [
+        bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001"),
+        bytes.fromhex("030000bb02f0800db20506130100160102140200023302000134020001c19c318199a003800101a28191810400000001820400000001a423300f0201010604520100013004060251013010020103060528ca220201300406025101615e305c020101a0576055a107060528ca220203a20706052901876701a30302010ca606060429018767a70302010cbe2f282d020103a028a826800300fde881010582010583010aa416800101810305f100820c03ee1c00000408000079ef18"),
+    ]
 
     state = service.stop_live_wire_transport()
     assert state.live_wire_open is False
