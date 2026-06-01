@@ -25,6 +25,18 @@ int unitlab_mms_build_confirmed_response_frame(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic);
 
+int unitlab_mms_build_cotp_connect_request_frame(
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic);
+
+int unitlab_mms_build_cotp_connect_response_frame(
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic);
+
 int unitlab_mms_build_association_response_frame(
     uint8_t* buffer,
     size_t buffer_length,

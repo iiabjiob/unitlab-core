@@ -34,8 +34,9 @@ fi
 if [[ -n "${LIBIEC61850_CLIENT_ARGS:-}" ]]; then
     # shellcheck disable=SC2206
     client_args=(${LIBIEC61850_CLIENT_ARGS})
-    exec "${client_bin}" "${client_args[@]}"
+else
+    client_args=(localhost 12449)
 fi
 
-exec "${client_bin}"
+exec "${client_bin}" "${client_args[@]}"
 

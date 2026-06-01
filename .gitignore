@@ -23,6 +23,10 @@ coverage
 /cypress/videos/
 /cypress/screenshots/
 
+# IEC 61850 reference capture workflow
+external/libiec61850/
+tools/iec61850_reference/captures/
+
 # Editor directories and files
 .vscode
 # !.vscode/extensions.json

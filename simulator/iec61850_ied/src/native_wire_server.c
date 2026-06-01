@@ -1,6 +1,5 @@
 #define _POSIX_C_SOURCE 200112L
 #include "native_wire_server.h"
-
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netdb.h>
@@ -13,11 +12,10 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-
 #include "wire/ber/unitlab_mms_ber.h"
 #include "wire/mms/unitlab_mms_pdu.h"
+#include "wire/transport/unitlab_mms_transport_frame.h"
 #include "wire/orchestration/unitlab_mms_wire_builder.h"
-
 static void set_result(UnitLabIedModelLoadResult* result, const char* code, const char* message)
 {
     if (result == NULL) {
@@ -27,7 +25,6 @@ static void set_result(UnitLabIedModelLoadResult* result, const char* code, cons
     snprintf(result->code, sizeof(result->code), "%s", code);
     snprintf(result->message, sizeof(result->message), "%s", message);
 }
-
 static void close_fd(int* fd)
 {
     if (fd == NULL || *fd < 0) {
@@ -36,7 +33,6 @@ static void close_fd(int* fd)
     close(*fd);
     *fd = -1;
 }
-
 static int send_all(int fd, const uint8_t* buffer, size_t length)
 {
     size_t offset = 0U;
@@ -55,18 +51,15 @@ static int send_all(int fd, const uint8_t* buffer, size_t length)
     }
     return 1;
 }
-
 static uint64_t native_wire_now_ms(void)
 {
     return (uint64_t)time(NULL) * 1000ULL;
 }
-
 static size_t encode_ber_uint32_value(uint32_t value, uint8_t* buffer, size_t buffer_length)
 {
     uint8_t encoded[5U];
     size_t encoded_length = 0U;
     size_t start = 0U;
-
     if (buffer == NULL || buffer_length == 0U) {
         return 0U;
     }
@@ -75,7 +68,6 @@ static size_t encode_ber_uint32_value(uint32_t value, uint8_t* buffer, size_t bu
         encoded_length++;
         value >>= 8U;
     } while (value != 0U && encoded_length < sizeof(encoded));
-
     start = sizeof(encoded) - encoded_length;
     if (encoded[start] & 0x80U) {
         if (start == 0U) {
@@ -91,7 +83,6 @@ static size_t encode_ber_uint32_value(uint32_t value, uint8_t* buffer, size_t bu
     memcpy(buffer, &encoded[start], encoded_length);
     return encoded_length;
 }
-
 static int build_native_confirmed_response_payload(
     const UnitLabMmsServerRuntime* server_runtime,
     uint8_t* buffer,
@@ -105,7 +96,6 @@ static int build_native_confirmed_response_payload(
     size_t invoke_id_length = 0U;
     size_t invoke_id_encoded_length = 0U;
     size_t service_encoded_length = 0U;
-
     if (encoded_length != NULL) {
         *encoded_length = 0U;
     }
@@ -130,7 +120,6 @@ static int build_native_confirmed_response_payload(
         }
         return 0;
     }
-
     invoke_id_length = encode_ber_uint32_value(server_runtime->pending_request.invoke_id, invoke_id_bytes, sizeof(invoke_id_bytes));
     if (invoke_id_length == 0U) {
         if (diagnostic != NULL) {
@@ -139,7 +128,6 @@ static int build_native_confirmed_response_payload(
         }
         return 0;
     }
-
     unitlab_mms_ber_element_init(&invoke_id_element);
     invoke_id_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
     invoke_id_element.tag.constructed = 0;
@@ -149,7 +137,6 @@ static int build_native_confirmed_response_payload(
     if (!unitlab_mms_ber_write(&invoke_id_element, buffer, buffer_length, &invoke_id_encoded_length, diagnostic)) {
         return 0;
     }
-
     unitlab_mms_ber_element_init(&service_element);
     service_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
     service_element.tag.constructed = 0;
@@ -159,11 +146,9 @@ static int build_native_confirmed_response_payload(
     if (!unitlab_mms_ber_write(&service_element, &buffer[invoke_id_encoded_length], buffer_length - invoke_id_encoded_length, &service_encoded_length, diagnostic)) {
         return 0;
     }
-
     *encoded_length = invoke_id_encoded_length + service_encoded_length;
     return 1;
 }
-
 static int build_native_association_response_frame(
     UnitLabMmsServerRuntime* server_runtime,
     uint8_t* buffer,
@@ -174,7 +159,6 @@ static int build_native_association_response_frame(
     (void)server_runtime;
     return unitlab_mms_build_association_response_frame(buffer, buffer_length, encoded_length, diagnostic);
 }
-
 static int build_native_information_report_frame(
     UnitLabMmsServerRuntime* server_runtime,
     uint8_t* buffer,
@@ -185,7 +169,6 @@ static int build_native_information_report_frame(
     UnitLabMmsPdu report_pdu;
     uint8_t scratch[256U];
     static const uint8_t report_payload[] = { 0xA0U, 0x03U, 0x81U, 0x01U, 0x00U };
-
     (void)server_runtime;
     unitlab_mms_pdu_init(&report_pdu);
     report_pdu.kind = UNITLAB_MMS_PDU_UNCONFIRMED;
@@ -195,13 +178,11 @@ static int build_native_information_report_frame(
     report_pdu.pdu_length = sizeof(report_payload);
     return unitlab_mms_build_wire_frame_from_pdu(&report_pdu, scratch, sizeof(scratch), buffer, buffer_length, encoded_length, diagnostic);
 }
-
 static int resolve_listener(const char* bind_address, int port, struct addrinfo** out_info)
 {
     struct addrinfo hints;
     char port_text[16U];
     int status;
-
     if (out_info == NULL) {
         return 0;
     }
@@ -214,16 +195,13 @@ static int resolve_listener(const char* bind_address, int port, struct addrinfo*
     status = getaddrinfo(bind_address, port_text, &hints, out_info);
     return status == 0;
 }
-
 static int bind_listen(const char* bind_address, int port)
 {
     struct addrinfo* listener_info = NULL;
     int listen_fd = -1;
-
     if (!resolve_listener(bind_address, port, &listener_info)) {
         return -1;
     }
-
     for (struct addrinfo* current = listener_info; current != NULL; current = current->ai_next) {
         listen_fd = socket(current->ai_family, current->ai_socktype, current->ai_protocol);
         if (listen_fd < 0) {
@@ -237,11 +215,9 @@ static int bind_listen(const char* bind_address, int port)
         close(listen_fd);
         listen_fd = -1;
     }
-
     freeaddrinfo(listener_info);
     return listen_fd;
 }
-
 static int accept_connection(int listen_fd)
 {
     int client_fd = accept(listen_fd, NULL, NULL);
@@ -253,7 +229,6 @@ static int accept_connection(int listen_fd)
     }
     return client_fd;
 }
-
 static int read_command_from_socket(int fd, char* command, size_t command_length)
 {
     ssize_t received = recv(fd, command, command_length - 1U, 0);
@@ -267,7 +242,6 @@ static int read_command_from_socket(int fd, char* command, size_t command_length
     }
     return 1;
 }
-
 static int handle_command(
     UnitLabMmsServerRuntime* server_runtime,
     int* data_client_fd,
@@ -331,7 +305,6 @@ static int handle_command(
     }
     return 0;
 }
-
 int unitlab_run_native_wire_server(
     UnitLabMmsServerRuntime* server_runtime,
     const UnitLabIedServerConfig* config,
@@ -345,7 +318,6 @@ int unitlab_run_native_wire_server(
     int control_client_fd = -1;
     uint8_t frame[2048U];
     size_t frame_length = 0U;
-
     if (result != NULL) {
         memset(result, 0, sizeof(*result));
     }
@@ -357,7 +329,6 @@ int unitlab_run_native_wire_server(
         set_result(result, "NATIVE_WIRE_SERVER_BAD_STATE", "Native wire server requires a running server runtime.");
         return 0;
     }
-
     data_listen_fd = bind_listen(config->bind_address, config->port);
     if (data_listen_fd < 0) {
         set_result(result, "NATIVE_WIRE_SERVER_LISTEN_FAILED", "Native wire server could not bind/listen on the requested data endpoint.");
@@ -370,16 +341,13 @@ int unitlab_run_native_wire_server(
             goto fail;
         }
     }
-
     set_result(result, "NATIVE_WIRE_SERVER_READY", "Native wire server is ready.");
     printf("native-wire-server: ready endpoint=%s:%d control=%d\n", config->bind_address, config->port, config->control_port);
     fflush(stdout);
-
     while (stop_requested == NULL || !stop_requested(stop_context)) {
         struct pollfd poll_fds[4];
         nfds_t poll_count = 0U;
         int poll_rc;
-
         if (data_client_fd < 0) {
             poll_fds[poll_count].fd = data_listen_fd;
             poll_fds[poll_count].events = POLLIN;
@@ -408,7 +376,6 @@ int unitlab_run_native_wire_server(
         poll_fds[poll_count].events = POLLIN;
         poll_fds[poll_count].revents = 0;
         poll_count++;
-
         poll_rc = poll(poll_fds, poll_count, 250);
         if (poll_rc < 0) {
             if (errno == EINTR) {
@@ -420,7 +387,6 @@ int unitlab_run_native_wire_server(
         if (poll_rc == 0) {
             continue;
         }
-
         for (nfds_t index = 0U; index < poll_count; index++) {
             if (!(poll_fds[index].revents & POLLIN)) {
                 continue;
@@ -484,8 +450,25 @@ int unitlab_run_native_wire_server(
                     uint8_t response_frame[2048U];
                     size_t consumed_length = 0U;
                     size_t response_length = 0U;
-
+                    UnitLabMmsTransportFrame incoming_transport;
                     unitlab_mms_operation_result_init(&incoming_result);
+                    unitlab_mms_diagnostic_clear(&response_diagnostic);
+                    unitlab_mms_transport_frame_init(&incoming_transport);
+                    if (unitlab_mms_transport_frame_decode(&incoming_transport, incoming, (size_t)received, &consumed_length, &response_diagnostic)
+                        && incoming_transport.cotp.kind == UNITLAB_MMS_COTP_TPDU_CR) {
+                        if (!unitlab_mms_build_cotp_connect_response_frame(response_frame, sizeof(response_frame), &response_length, &response_diagnostic)) {
+                            set_result(result, "NATIVE_WIRE_SERVER_COTP_CC_BUILD_FAILED", response_diagnostic.message);
+                            goto fail;
+                        }
+                        if (!send_all(data_client_fd, response_frame, response_length)) {
+                            set_result(result, "NATIVE_WIRE_SERVER_COTP_CC_SEND_FAILED", "Native wire server could not send COTP connect response frame.");
+                            goto fail;
+                        }
+                        printf("native-wire-server: received-cotp-cr bytes=%zd\n", received);
+                        printf("native-wire-server: sent-cotp-cc bytes=%zu\n", response_length);
+                        fflush(stdout);
+                        continue;
+                    }
                     unitlab_mms_diagnostic_clear(&response_diagnostic);
                     if (server_runtime->session.state == UNITLAB_MMS_SESSION_DISCONNECTED
                         && unitlab_mms_server_runtime_apply_association_request_bytes(server_runtime, incoming, (size_t)received, &consumed_length, &incoming_result)) {
@@ -574,7 +557,6 @@ int unitlab_run_native_wire_server(
             }
         }
     }
-
 stop:
     close_fd(&control_client_fd);
     close_fd(&data_client_fd);
@@ -582,7 +564,6 @@ stop:
     close_fd(&data_listen_fd);
     set_result(result, "NATIVE_WIRE_SERVER_STOPPED", "Native wire server stopped.");
     return 1;
-
 fail:
     close_fd(&control_client_fd);
     close_fd(&data_client_fd);

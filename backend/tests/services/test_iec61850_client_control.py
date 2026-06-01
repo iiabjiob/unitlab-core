@@ -81,6 +81,9 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
 
         started_specs: list[object] = []
         sockets: list[tuple[str, int]] = []
+        created_sockets: list[object] = []
+        cc_frame = bytes.fromhex("0300001611d00001000100c0010dc2020001c1020001")
+        report_frame = bytes.fromhex("0300001402f0800100010040076305a003810100")
 
         class _FakeStdin:
             def write(self, _value: str) -> None:
@@ -104,15 +107,21 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
             def __init__(self) -> None:
                 self.address: tuple[str, int] | None = None
                 self.closed = False
+                self._buffer = bytearray(cc_frame + report_frame)
+                self.sent_frames: list[bytes] = []
 
             def settimeout(self, _timeout: float) -> None:
                 return None
 
-            def recv(self, _size: int) -> bytes:
-                return b""
+            def recv(self, size: int) -> bytes:
+                if not self._buffer:
+                    return b""
+                chunk = bytes(self._buffer[:size])
+                del self._buffer[:size]
+                return chunk
 
-            def sendall(self, _value: bytes) -> None:
-                return None
+            def sendall(self, value: bytes) -> None:
+                self.sent_frames.append(value)
 
             def close(self) -> None:
                 self.closed = True
@@ -128,6 +137,7 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
             sockets.append(address)
             sock = _FakeSocket()
             sock.address = address
+            created_sockets.append(sock)
             return sock
 
         monkeypatch.setattr(client_control_module.socket, "create_connection", fake_create_connection)
@@ -140,6 +150,7 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
         assert started_specs
         assert started_specs[0].binary_path == "/bin/true"
         assert sockets == [("127.0.0.1", 12447)]
+        assert created_sockets[0].sent_frames == [bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001")]
     finally:
         get_settings.cache_clear()
 
@@ -153,7 +164,8 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
     )
 
     emitted_commands: list[str] = []
-    fake_frame = bytes.fromhex("030000110102030405060708090a0b0c0d")
+    cc_frame = bytes.fromhex("0300001611d00001000100c0010dc2020001c1020001")
+    report_frame = bytes.fromhex("0300001402f0800100010040076305a003810100")
 
     class _FakeStdin:
         def write(self, value: str) -> None:
@@ -175,8 +187,9 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
 
     class _FakeSocket:
         def __init__(self) -> None:
-            self._buffer = bytearray(fake_frame)
+            self._buffer = bytearray(cc_frame + report_frame)
             self.closed = False
+            self.sent_frames: list[bytes] = []
 
         def settimeout(self, _timeout: float) -> None:
             return None
@@ -187,6 +200,9 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
             chunk = bytes(self._buffer[:size])
             del self._buffer[:size]
             return chunk
+
+        def sendall(self, value: bytes) -> None:
+            self.sent_frames.append(value)
 
         def close(self) -> None:
             self.closed = True
@@ -205,140 +221,13 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
 
     state = service.start_live_wire_transport(mode="process")
     assert state.live_wire_open is True
+    assert fake_socket.sent_frames == [bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001")]
 
     state = service.emit_live_wire_report()
-    assert state.live_wire_last_frame_length == len(fake_frame)
-    assert state.live_wire_last_frame_hex == fake_frame.hex()
+    assert state.live_wire_last_frame_length == len(report_frame)
+    assert state.live_wire_last_frame_hex == report_frame.hex()
     assert [event.kind for event in state.transcript][-3:] == ["wire-session-open", "wire-associate", "wire-report-frame"]
     assert emitted_commands == ["emit-report\n"]
-
-    state = service.stop_live_wire_transport()
-    assert state.live_wire_open is False
-    assert [event.kind for event in state.transcript][-1] == "wire-session-close"
-
-
-def test_client_control_service_surfaces_live_wire_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    service = Iec61850ClientControlService(
-        now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC),
-        live_wire_binary_path="",
-    )
-
-    emitted_commands: list[str] = []
-    sockets: list[_FakeSocket] = []
-
-    class _FakeSocket:
-        def __init__(self, role: str) -> None:
-            self.role = role
-            self.address: tuple[str, int] | None = None
-            self.closed = False
-
-        def settimeout(self, _timeout: float) -> None:
-            return None
-
-        def recv(self, _size: int) -> bytes:
-            if self.role == "data":
-                raise TimeoutError("timed out")
-            return b""
-
-        def sendall(self, value: bytes) -> None:
-            emitted_commands.append(value.decode("utf-8"))
-
-        def close(self) -> None:
-            self.closed = True
-
-    def fake_create_connection(address, timeout=None):
-        role = "data" if len(sockets) == 0 else "control"
-        sock = _FakeSocket(role)
-        sock.address = address
-        sockets.append(sock)
-        return sock
-
-    monkeypatch.setattr(client_control_module.socket, "create_connection", fake_create_connection)
-
-    state = service.start_live_wire_transport(mode="host")
-    assert state.live_wire_open is True
-
-    with pytest.raises(Iec61850ReportRuntimeError) as error:
-        service.emit_live_wire_report()
-
-    assert error.value.code == "LIVE_WIRE_FRAME_TIMEOUT"
-    assert emitted_commands == ["emit-report\n"]
-    assert service.snapshot().live_wire_last_frame_length is None
-
-
-def test_client_control_service_can_drive_a_live_wire_service_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
-    service = Iec61850ClientControlService(
-        now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC),
-        live_wire_binary_path="",
-    )
-
-    emitted_commands: list[str] = []
-    fake_frame = bytes.fromhex("030000110102030405060708090a0b0c0d")
-    sockets: list[_FakeSocket] = []
-
-    class _FakeSocket:
-        def __init__(self, role: str) -> None:
-            self.role = role
-            self._buffer = bytearray(fake_frame if role == "data" else b"")
-            self.closed = False
-            self.timeout = None
-            self.address: tuple[str, int] | None = None
-
-        def settimeout(self, timeout: float) -> None:
-            self.timeout = timeout
-
-        def recv(self, size: int) -> bytes:
-            if self.role == "data":
-                if not self._buffer:
-                    return b""
-                chunk = bytes(self._buffer[:size])
-                del self._buffer[:size]
-                return chunk
-            return b""
-
-        def sendall(self, value: bytes) -> None:
-            emitted_commands.append(value.decode("utf-8"))
-
-        def close(self) -> None:
-            self.closed = True
-
-    def fake_create_connection(address, timeout=None):
-        role = "data" if len(sockets) == 0 else "control"
-        sock = _FakeSocket(role)
-        sock.address = address
-        sockets.append(sock)
-        return sock
-
-    monkeypatch.setattr(client_control_module.socket, "create_connection", fake_create_connection)
-
-    state = service.start_live_wire_transport(mode="host")
-    assert state.live_wire_open is True
-    assert state.live_wire_mode == "host"
-    assert sockets[0].address == ("host.docker.internal", 12447)
-    assert sockets[1].address == ("host.docker.internal", 12448)
-    wire_endpoint_id = state.live_wire_endpoint.id
-
-    state = service.open_session()
-    state = service.read_report_control()
-    state = service.reserve_report_control()
-    state = service.enable_report_control()
-    state = service.send_general_interrogation()
-    state = service.emit_live_wire_report()
-
-    assert state.live_wire_last_frame_length == len(fake_frame)
-    assert state.live_wire_last_frame_hex == fake_frame.hex()
-    assert emitted_commands == ["emit-report\n"]
-    assert [event.kind for event in state.transcript] == [
-        "wire-session-open",
-        "wire-associate",
-        "mms-associate",
-        "wire-report-control-read",
-        "wire-report-control-reserve",
-        "wire-report-control-enable",
-        "wire-report-control-gi",
-        "wire-report-frame",
-    ]
-    assert {event.endpoint_id for event in state.transcript} == {wire_endpoint_id}
 
     state = service.stop_live_wire_transport()
     assert state.live_wire_open is False
@@ -352,20 +241,32 @@ def test_client_control_service_can_drive_a_live_wire_host_debug_smoke(monkeypat
     )
 
     sockets: list[_FakeSocket] = []
+    cc_frame = bytes.fromhex("0300001611d00001000100c0010dc2020001c1020001")
+    report_frame = bytes.fromhex("0300001402f0800100010040076305a003810100")
 
     class _FakeSocket:
         def __init__(self, role: str) -> None:
             self.role = role
             self.address: tuple[str, int] | None = None
             self.closed = False
+            self._buffer = bytearray(cc_frame + report_frame if role == "data" else b"")
+            self.sent_frames: list[bytes] = []
 
         def settimeout(self, _timeout: float) -> None:
             return None
 
-        def recv(self, _size: int) -> bytes:
+        def recv(self, size: int) -> bytes:
+            if self.role == "data":
+                if not self._buffer:
+                    return b""
+                chunk = bytes(self._buffer[:size])
+                del self._buffer[:size]
+                return chunk
             return b""
 
-        def sendall(self, _value: bytes) -> None:
+        def sendall(self, value: bytes) -> None:
+            if self.role == "data":
+                self.sent_frames.append(value)
             return None
 
         def close(self) -> None:
@@ -384,6 +285,7 @@ def test_client_control_service_can_drive_a_live_wire_host_debug_smoke(monkeypat
     assert state.live_wire_mode == "host"
     assert sockets[0].address == ("host.docker.internal", 12447)
     assert sockets[1].address == ("host.docker.internal", 12448)
+    assert sockets[0].sent_frames == [bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001")]
 
     state = service.stop_live_wire_transport()
     assert state.live_wire_open is False

@@ -277,13 +277,7 @@ class Iec61850ClientControlService:
                 client_id=self._client_id,
                 outcome="connected",
             )
-            self._runtime._append_event(
-                kind="wire-associate",
-                session_id=self._session_id,
-                endpoint_id=self._live_wire_endpoint.id,
-                client_id=self._client_id,
-                outcome="associated",
-            )
+            self._associate_live_wire_session(self._live_wire_socket)
             return
 
         selected_mode = mode.strip().lower() if mode else "host"
@@ -308,13 +302,7 @@ class Iec61850ClientControlService:
                 client_id=self._client_id,
                 outcome="connected",
             )
-            self._runtime._append_event(
-                kind="wire-associate",
-                session_id=self._session_id,
-                endpoint_id=self._live_wire_endpoint.id,
-                client_id=self._client_id,
-                outcome="associated",
-            )
+            self._associate_live_wire_session(self._live_wire_socket)
             return
         if selected_mode == "process":
             self._start_live_wire_process_transport()
@@ -369,13 +357,7 @@ class Iec61850ClientControlService:
             client_id=self._client_id,
             outcome="connected",
         )
-        self._runtime._append_event(
-            kind="wire-associate",
-            session_id=self._session_id,
-            endpoint_id=spec.endpoint.id,
-            client_id=self._client_id,
-            outcome="associated",
-        )
+        self._associate_live_wire_session(self._live_wire_socket)
 
     def _connect_live_wire_sockets(self) -> tuple[socket.socket, socket.socket, str]:
         host_candidates = self._live_wire_host_candidates()
@@ -420,7 +402,7 @@ class Iec61850ClientControlService:
                     "IEC 61850 live wire transport process is not open.",
                 )
             write_ied_simulator_process_command(self._live_wire_process, "emit-report")
-        frame = self._read_tpkt_frame(self._live_wire_socket)
+        frame = self._read_tpkt_frame(self._live_wire_socket, "report")
         self._live_wire_last_frame = frame
         self._live_wire_last_diagnostic = None
         self._runtime._append_event(
@@ -508,13 +490,32 @@ class Iec61850ClientControlService:
                 f"IEC 61850 live wire transport could not send control command {command!r}: {exc}",
             ) from exc
 
-    def _read_tpkt_frame(self, wire_socket: socket.socket) -> bytes:
+    def _associate_live_wire_session(self, wire_socket: socket.socket) -> None:
+        wire_socket.sendall(self._build_live_wire_cotp_connect_request_frame())
+        self._read_tpkt_frame(wire_socket, "COTP connect response")
+        if self._live_wire_endpoint is None:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_SESSION_NOT_OPEN",
+                "IEC 61850 live wire transport is not open.",
+            )
+        self._runtime._append_event(
+            kind="wire-associate",
+            session_id=self._session_id,
+            endpoint_id=self._live_wire_endpoint.id,
+            client_id=self._client_id,
+            outcome="associated",
+        )
+
+    def _build_live_wire_cotp_connect_request_frame(self) -> bytes:
+        return bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001")
+
+    def _read_tpkt_frame(self, wire_socket: socket.socket, frame_label: str) -> bytes:
         try:
             header = self._read_exact(wire_socket, 4)
         except TimeoutError as exc:
             raise Iec61850ReportRuntimeError(
                 "LIVE_WIRE_FRAME_TIMEOUT",
-                "IEC 61850 live wire transport timed out while waiting for a report frame.",
+                f"IEC 61850 live wire transport timed out while waiting for a {frame_label} frame.",
             ) from exc
         if len(header) != 4 or header[0] != 3 or header[1] != 0:
             raise Iec61850ReportRuntimeError(
@@ -532,7 +533,7 @@ class Iec61850ClientControlService:
         except TimeoutError as exc:
             raise Iec61850ReportRuntimeError(
                 "LIVE_WIRE_FRAME_TIMEOUT",
-                "IEC 61850 live wire transport timed out while waiting for a report frame payload.",
+                f"IEC 61850 live wire transport timed out while waiting for a {frame_label} frame payload.",
             ) from exc
         if len(payload) != total_length - 4:
             raise Iec61850ReportRuntimeError(

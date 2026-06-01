@@ -34,8 +34,9 @@ fi
 if [[ -n "${LIBIEC61850_SERVER_ARGS:-}" ]]; then
     # shellcheck disable=SC2206
     server_args=(${LIBIEC61850_SERVER_ARGS})
-    exec "${server_bin}" "${server_args[@]}"
+else
+    server_args=(12449)
 fi
 
-exec "${server_bin}"
+exec "${server_bin}" "${server_args[@]}"
 

@@ -49,7 +49,7 @@ Typical lookup commands for a built external checkout:
 
 ```bash
 export LIBIEC61850_SERVER_BIN="$(find /workspace/external/libiec61850 -type f -perm -111 -name 'server_example_basic_io' | head -n 1)"
-export LIBIEC61850_CLIENT_BIN="$(find /workspace/external/libiec61850 -type f -perm -111 -name 'client_example_basic_io' | head -n 1)"
+export LIBIEC61850_CLIENT_BIN="$(find /workspace/external/libiec61850 -type f -perm -111 -name 'iec61850_client_example1' | head -n 1)"
 ```
 
 If the reference example you are using is hard-coded to the standard MMS port, keep that change outside the UnitLab tree and expose it on `12449` from the reference checkout or wrapper. This workflow intentionally keeps UnitLab code untouched.
@@ -148,6 +148,29 @@ Compare these points first:
 - whether MMS InitiateResponse is decoded;
 - whether UnitLab is still sending AARE inside ordinary Session DATA TRANSFER;
 - where the first byte-level divergence starts.
+
+## Comparison checklist
+
+Use the same ordering for both captures. Stop at the first layer that diverges.
+
+1. TCP handshake
+2. COTP CR from client
+3. COTP CC from server
+4. Session connect / accept
+5. Presentation CP / CPA
+6. ACSE AARQ from client
+7. ACSE AARE from server
+8. MMS InitiateRequest
+9. MMS InitiateResponse
+10. First confirmed MMS request/response pair
+11. First report-control exchange, if present
+
+Per packet notes to record:
+- source/destination port
+- first 32 payload bytes
+- first layer Wireshark decodes cleanly
+- first layer Wireshark stops at
+- whether the payload is on the association path or the operational MMS path
 
 ## Analysis template
 
