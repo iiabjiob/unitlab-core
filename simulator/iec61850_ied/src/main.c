@@ -292,6 +292,7 @@ static int build_native_information_report_association_bytes(uint8_t* buffer, si
     fixture.presentation.payload_bytes = pdu_bytes;
     fixture.presentation.payload_length = pdu_length;
     fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
+    fixture.transport.cotp.eot = 1;
     if (!unitlab_mms_wire_association_fixture_encode(&fixture, buffer, buffer_length, encoded_length, diagnostic)) {
         return 0;
     }

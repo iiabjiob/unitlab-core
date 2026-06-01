@@ -75,7 +75,11 @@ int unitlab_mms_cotp_encode(const UnitLabMmsCotpTpdu* tpdu, uint8_t* buffer, siz
                 memcpy(&buffer[index], tpdu->user_data, tpdu->user_data_length);
                 index += tpdu->user_data_length;
             }
-            break;
+            tpdu_length = index - 1U;
+            buffer[li_index] = (uint8_t)tpdu_length;
+            *encoded_length = index;
+            cotp_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+            return 1;
         case UNITLAB_MMS_COTP_TPDU_DR:
             if (buffer_length < index + 5U) {
                 cotp_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "COTP buffer is too small.");
@@ -87,9 +91,13 @@ int unitlab_mms_cotp_encode(const UnitLabMmsCotpTpdu* tpdu, uint8_t* buffer, siz
             cotp_write_u16(&buffer[index], tpdu->source_reference);
             index += 2U;
             buffer[index++] = tpdu->reason;
-            break;
+            tpdu_length = index - 1U;
+            buffer[li_index] = (uint8_t)tpdu_length;
+            *encoded_length = index;
+            cotp_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+            return 1;
         case UNITLAB_MMS_COTP_TPDU_DT:
-            if (buffer_length < index + 2U + tpdu->user_data_length) {
+            if (buffer_length < index + 3U + tpdu->user_data_length) {
                 cotp_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "COTP buffer is too small.");
                 return 0;
             }
@@ -99,14 +107,14 @@ int unitlab_mms_cotp_encode(const UnitLabMmsCotpTpdu* tpdu, uint8_t* buffer, siz
                 memcpy(&buffer[index], tpdu->user_data, tpdu->user_data_length);
                 index += tpdu->user_data_length;
             }
-            break;
+            buffer[li_index] = 2U;
+            *encoded_length = index;
+            cotp_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+            return 1;
         default:
             cotp_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "unsupported COTP TPDU kind.");
             return 0;
     }
-    tpdu_length = index - 1U;
-    buffer[li_index] = (uint8_t)tpdu_length;
-    *encoded_length = index;
     cotp_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
@@ -130,18 +138,14 @@ int unitlab_mms_cotp_decode(UnitLabMmsCotpTpdu* tpdu, const uint8_t* buffer, siz
         return 0;
     }
     tpdu_length = buffer[index++];
-    total_length = tpdu_length + 1U;
-    if (tpdu_length < 1U || total_length > buffer_length) {
-        cotp_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "COTP length indicator is invalid.");
-        return 0;
-    }
     code = buffer[index++];
     unitlab_mms_cotp_tpdu_init(tpdu);
     tpdu->payload_bytes = &buffer[1];
-    tpdu->payload_length = total_length - 1U;
+    tpdu->payload_length = buffer_length - 1U;
     switch (code) {
         case 0xE0U:
-            if (total_length < index + 5U) {
+            total_length = tpdu_length + 1U;
+            if (tpdu_length < 6U || total_length > buffer_length) {
                 cotp_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "COTP CR TPDU is truncated.");
                 return 0;
             }
@@ -153,7 +157,8 @@ int unitlab_mms_cotp_decode(UnitLabMmsCotpTpdu* tpdu, const uint8_t* buffer, siz
             tpdu->tpdu_class = buffer[index++];
             break;
         case 0xD0U:
-            if (total_length < index + 5U) {
+            total_length = tpdu_length + 1U;
+            if (tpdu_length < 6U || total_length > buffer_length) {
                 cotp_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "COTP CC TPDU is truncated.");
                 return 0;
             }
@@ -165,7 +170,8 @@ int unitlab_mms_cotp_decode(UnitLabMmsCotpTpdu* tpdu, const uint8_t* buffer, siz
             tpdu->tpdu_class = buffer[index++];
             break;
         case 0x80U:
-            if (total_length < index + 5U) {
+            total_length = tpdu_length + 1U;
+            if (tpdu_length < 5U || total_length > buffer_length) {
                 cotp_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "COTP DR TPDU is truncated.");
                 return 0;
             }
@@ -177,12 +183,15 @@ int unitlab_mms_cotp_decode(UnitLabMmsCotpTpdu* tpdu, const uint8_t* buffer, siz
             tpdu->reason = buffer[index++];
             break;
         case 0xF0U:
-            if (total_length < index + 1U) {
+            total_length = buffer_length;
+            if (tpdu_length != 2U || buffer_length < 3U) {
                 cotp_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "COTP DT TPDU is truncated.");
                 return 0;
             }
             tpdu->kind = UNITLAB_MMS_COTP_TPDU_DT;
             tpdu->eot = (buffer[index++] & 0x80U) != 0U;
+            tpdu->user_data = &buffer[index];
+            tpdu->user_data_length = buffer_length - index;
             break;
         default:
             cotp_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "unsupported COTP TPDU kind.");

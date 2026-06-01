@@ -52,6 +52,7 @@ int unitlab_mms_build_wire_frame_from_pdu(
     fixture.presentation.payload_bytes = scratch;
     fixture.presentation.payload_length = payload_length;
     fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
+    fixture.transport.cotp.eot = 1;
     if (!unitlab_mms_wire_association_fixture_encode(&fixture, buffer, buffer_length, &frame_length, diagnostic)) {
         return 0;
     }
