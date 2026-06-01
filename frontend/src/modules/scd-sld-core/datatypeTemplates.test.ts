@@ -238,11 +238,12 @@ describe("IEC 61850 DataTypeTemplates normalization", () => {
     expect(entry.diagnostics.some(diagnostic => diagnostic.code === "datatype-templates.missing-datype")).toBe(true)
   })
 
-  it("fails closed when fc is incompatible", () => {
+  it("warns when fc is incompatible", () => {
     const model = buildModel(buildBaseFixture({ ctlFc: "CF", ctlMemberFc: "MX" }))
     const subscription = getSubscription(model)
     const entry = getEntry(subscription, "CtlModel.ctlModel")
-    expect(entry.leaves).toHaveLength(0)
+    expect(entry.leaves).toHaveLength(1)
+    expect(entry.leaves[0]?.fc).toBe("CF")
     expect(entry.diagnostics.some(diagnostic => diagnostic.code === "datatype-templates.incompatible-fc")).toBe(true)
   })
 

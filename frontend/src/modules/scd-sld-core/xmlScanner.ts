@@ -36,12 +36,16 @@ type StackFrame = {
   sourceLocation: ScdSourceLocation
 }
 
-const XML_TAG_PATTERN = /<[^>]+>/g
 const XML_ATTRIBUTE_PATTERN = /([^\s"'=<>`]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g
+const XML_DECLARATION_PREFIX = "<?"
+const XML_COMMENT_PREFIX = "<!--"
+const XML_CDATA_PREFIX = "<![CDATA["
+const XML_DOCTYPE_PREFIX = "<!DOCTYPE"
 
 // Lightweight SCL scanner boundary, not a generic XML parser. It is designed
-// for standard SCD element/attribute traversal in this core slice and does not
-// attempt DTD/CDATA processing, namespace URI resolution, or full XML recovery.
+// for standard SCD element/attribute traversal in this core slice and skips
+// comments, CDATA and processing instructions without attempting full XML
+// recovery.
 export function* scanXmlElements(
   xmlText: string,
   diagnostics: ScdDiagnostic[] = [],
@@ -50,92 +54,107 @@ export function* scanXmlElements(
   const stack: StackFrame[] = []
   const locationTracker = createLineTracker(xmlText, options)
   const sourcePathPrefix = options.sourcePathPrefix ?? []
-  let match: RegExpExecArray | null
-  XML_TAG_PATTERN.lastIndex = 0
+  let cursor = 0
 
-  try {
-    while ((match = XML_TAG_PATTERN.exec(xmlText)) !== null) {
-      const rawTag = match[0]
-      const parsed = parseRawTag(rawTag)
-      if (!parsed) {
-        continue
-      }
-      locationTracker.advanceTo(match.index)
-      const sourceLocation = locationTracker.locationAt(match.index)
+  while (cursor < xmlText.length) {
+    const tagStart = xmlText.indexOf("<", cursor)
+    if (tagStart === -1) {
+      break
+    }
 
-      if (parsed.kind === "close") {
-        const frame = stack[stack.length - 1]
-        const sourcePath = [...sourcePathPrefix, ...stack.map(item => item.segment)].join("/")
-        if (!frame || frame.localName !== parsed.localName) {
-          diagnostics.push({
-            severity: "warning",
-            stage: "xml",
-            code: "xml.mismatched-close-tag",
-            message: `Unexpected closing tag </${parsed.name}>.`,
-            sourcePath: sourcePath || parsed.localName,
-            sourceLocation,
-          })
-        } else {
-          stack.pop()
-        }
+    const tag = readXmlTag(xmlText, tagStart)
+    if (!tag) {
+      cursor = tagStart + 1
+      continue
+    }
 
-        yield {
-          kind: "close",
-          name: parsed.name,
-          localName: parsed.localName,
-          attributes: {},
-          selfClosing: false,
-          textContent: null,
+    locationTracker.advanceTo(tagStart)
+    const sourceLocation = locationTracker.locationAt(tagStart)
+
+    if (tag.kind === "skip") {
+      cursor = tag.endOffset
+      continue
+    }
+
+    const parsed = parseRawTag(tag.rawTag)
+    if (!parsed) {
+      cursor = tag.endOffset
+      continue
+    }
+
+    if (parsed.kind === "close") {
+      const frame = stack[stack.length - 1]
+      const sourcePath = [...sourcePathPrefix, ...stack.map(item => item.segment)].join("/")
+      if (!frame || frame.localName !== parsed.localName) {
+        diagnostics.push({
+          severity: "warning",
+          stage: "xml",
+          code: "xml.mismatched-close-tag",
+          message: `Unexpected closing tag </${parsed.name}>.`,
           sourcePath: sourcePath || parsed.localName,
           sourceLocation,
-          depth: sourcePathPrefix.length + stack.length,
-        }
-        continue
+        })
+      } else {
+        stack.pop()
       }
 
-      const parent = stack[stack.length - 1] ?? null
-      const occurrence = nextChildOccurrence(parent, parsed.localName)
-      const segment = buildSourcePathSegment(parsed.localName, parsed.attributes, occurrence)
-      const sourcePath = [...sourcePathPrefix, ...stack.map(item => item.segment), segment].join("/")
-
       yield {
-        kind: "open",
+        kind: "close",
         name: parsed.name,
         localName: parsed.localName,
-        attributes: parsed.attributes,
-        selfClosing: parsed.selfClosing,
-        textContent: parsed.selfClosing ? null : readImmediateTextContent(xmlText, XML_TAG_PATTERN.lastIndex),
-        sourcePath,
+        attributes: {},
+        selfClosing: false,
+        textContent: null,
+        sourcePath: sourcePath || parsed.localName,
         sourceLocation,
         depth: sourcePathPrefix.length + stack.length,
       }
-
-      if (!parsed.selfClosing) {
-        stack.push({
-          localName: parsed.localName,
-          segment,
-          childCounts: {},
-          sourceLocation,
-        })
-      }
+      cursor = tag.endOffset
+      continue
     }
 
-    for (let index = stack.length - 1; index >= 0; index -= 1) {
-      const frame = stack[index]
-      if (!frame) {
-        continue
-      }
-      diagnostics.push({
-        severity: "warning",
-        stage: "xml",
-        code: "xml.unclosed-tag",
-        message: `Unclosed tag <${frame.localName}>.`,
-        sourcePath: [...sourcePathPrefix, ...stack.slice(0, index + 1).map(item => item.segment)].join("/"),
-        sourceLocation: frame.sourceLocation,
+    const parent = stack[stack.length - 1] ?? null
+    const occurrence = nextChildOccurrence(parent, parsed.localName)
+    const segment = buildSourcePathSegment(parsed.localName, parsed.attributes, occurrence)
+    const sourcePath = [...sourcePathPrefix, ...stack.map(item => item.segment), segment].join("/")
+
+    yield {
+      kind: "open",
+      name: parsed.name,
+      localName: parsed.localName,
+      attributes: parsed.attributes,
+      selfClosing: parsed.selfClosing,
+      textContent: parsed.selfClosing ? null : readImmediateTextContent(xmlText, tag.endOffset),
+      sourcePath,
+      sourceLocation,
+      depth: sourcePathPrefix.length + stack.length,
+    }
+
+    if (!parsed.selfClosing) {
+      stack.push({
+        localName: parsed.localName,
+        segment,
+        childCounts: {},
+        sourceLocation,
       })
     }
-  } finally {
-    XML_TAG_PATTERN.lastIndex = 0
+
+    cursor = tag.endOffset
+  }
+
+  for (let index = stack.length - 1; index >= 0; index -= 1) {
+    const frame = stack[index]
+    if (!frame) {
+      continue
+    }
+    diagnostics.push({
+      severity: "warning",
+      stage: "xml",
+      code: "xml.unclosed-tag",
+      message: `Unclosed tag <${frame.localName}>.`,
+      sourcePath: [...sourcePathPrefix, ...stack.slice(0, index + 1).map(item => item.segment)].join("/"),
+      sourceLocation: frame.sourceLocation,
+    })
   }
 }
 
@@ -153,74 +172,97 @@ export function findXmlElementRanges(
     sourceLocation: ScdSourceLocation
   }> = []
   const locationTracker = createLineTracker(xmlText)
-  let match: RegExpExecArray | null
-  XML_TAG_PATTERN.lastIndex = 0
+  let cursor = 0
 
-  try {
-    while ((match = XML_TAG_PATTERN.exec(xmlText)) !== null) {
-      const parsed = parseRawTagName(match[0])
-      if (!parsed) {
+  while (cursor < xmlText.length) {
+    const tagStart = xmlText.indexOf("<", cursor)
+    if (tagStart === -1) {
+      break
+    }
+
+    const tag = readXmlTag(xmlText, tagStart)
+    if (!tag) {
+      cursor = tagStart + 1
+      continue
+    }
+
+    locationTracker.advanceTo(tagStart)
+    const sourceLocation = locationTracker.locationAt(tagStart)
+
+    if (tag.kind === "skip") {
+      cursor = tag.endOffset
+      continue
+    }
+
+    const parsed = parseRawTagName(tag.rawTag)
+    if (!parsed) {
+      cursor = tag.endOffset
+      continue
+    }
+
+    if (parsed.kind === "open") {
+      if (!targetNames.has(parsed.localName)) {
+        cursor = tag.endOffset
         continue
       }
-      locationTracker.advanceTo(match.index)
-      const sourceLocation = locationTracker.locationAt(match.index)
 
-      if (parsed.kind === "open") {
-        if (!targetNames.has(parsed.localName)) {
-          continue
-        }
-
-        if (parsed.selfClosing) {
-          ranges.push({
-            name: parsed.name,
-            localName: parsed.localName,
-            text: match[0],
-            startOffset: match.index,
-            sourceLocation,
-          })
-          continue
-        }
-
-        openTargets.push({
+      if (parsed.selfClosing) {
+        ranges.push({
           name: parsed.name,
           localName: parsed.localName,
-          startOffset: match.index,
+          text: tag.rawTag,
+          startOffset: tagStart,
           sourceLocation,
         })
+        cursor = tag.endOffset
         continue
       }
 
-      const active = openTargets[openTargets.length - 1]
-      if (!active || active.name !== parsed.name) {
-        continue
-      }
-
-      openTargets.pop()
-      ranges.push({
-        name: active.name,
-        localName: active.localName,
-        text: xmlText.slice(active.startOffset, XML_TAG_PATTERN.lastIndex),
-        startOffset: active.startOffset,
-        sourceLocation: active.sourceLocation,
+      openTargets.push({
+        name: parsed.name,
+        localName: parsed.localName,
+        startOffset: tagStart,
+        sourceLocation,
       })
+      cursor = tag.endOffset
+      continue
     }
 
-    for (const active of openTargets) {
-      diagnostics.push({
-        severity: "warning",
-        stage: "xml",
-        code: "xml.unclosed-tag",
-        message: `Unclosed tag <${active.name}>.`,
-        sourcePath: active.localName,
-        sourceLocation: active.sourceLocation,
-      })
+    const active = openTargets[openTargets.length - 1]
+    if (!active || active.name !== parsed.name) {
+      cursor = tag.endOffset
+      continue
     }
-  } finally {
-    XML_TAG_PATTERN.lastIndex = 0
+
+    openTargets.pop()
+    ranges.push({
+      name: active.name,
+      localName: active.localName,
+      text: xmlText.slice(active.startOffset, tag.endOffset),
+      startOffset: active.startOffset,
+      sourceLocation: active.sourceLocation,
+    })
+    cursor = tag.endOffset
+  }
+
+  for (const active of openTargets) {
+    diagnostics.push({
+      severity: "warning",
+      stage: "xml",
+      code: "xml.unclosed-tag",
+      message: `Unclosed tag <${active.name}>.`,
+      sourcePath: active.localName,
+      sourceLocation: active.sourceLocation,
+    })
   }
 
   return ranges
 }
+
+type XmlTag =
+  | { kind: "open"; rawTag: string; endOffset: number }
+  | { kind: "close"; rawTag: string; endOffset: number }
+  | { kind: "skip"; endOffset: number }
 
 function createLineTracker(xmlText: string, options: XmlScannerOptions = {}) {
   const baseOffset = options.baseOffset ?? 0
@@ -249,6 +291,66 @@ function createLineTracker(xmlText: string, options: XmlScannerOptions = {}) {
       }
     },
   }
+}
+
+function readXmlTag(xmlText: string, startOffset: number): XmlTag | null {
+  if (xmlText[startOffset] !== "<") {
+    return null
+  }
+
+  if (xmlText.startsWith(XML_COMMENT_PREFIX, startOffset)) {
+    const endOffset = xmlText.indexOf("-->", startOffset + XML_COMMENT_PREFIX.length)
+    return { kind: "skip", endOffset: endOffset === -1 ? xmlText.length : endOffset + 3 }
+  }
+
+  if (xmlText.startsWith(XML_CDATA_PREFIX, startOffset)) {
+    const endOffset = xmlText.indexOf("]]>", startOffset + XML_CDATA_PREFIX.length)
+    return { kind: "skip", endOffset: endOffset === -1 ? xmlText.length : endOffset + 3 }
+  }
+
+  if (xmlText.startsWith(XML_DECLARATION_PREFIX, startOffset)) {
+    const endOffset = xmlText.indexOf("?>", startOffset + XML_DECLARATION_PREFIX.length)
+    return { kind: "skip", endOffset: endOffset === -1 ? xmlText.length : endOffset + 2 }
+  }
+
+  if (xmlText.startsWith(XML_DOCTYPE_PREFIX, startOffset) || xmlText.startsWith("<!doctype", startOffset)) {
+    const endOffset = findTagEnd(xmlText, startOffset)
+    return { kind: "skip", endOffset: endOffset === -1 ? xmlText.length : endOffset + 1 }
+  }
+
+  const endOffset = findTagEnd(xmlText, startOffset)
+  if (endOffset === -1) {
+    return null
+  }
+
+  const rawTag = xmlText.slice(startOffset, endOffset + 1)
+  return {
+    kind: rawTag.startsWith("</") ? "close" : "open",
+    rawTag,
+    endOffset: endOffset + 1,
+  }
+}
+
+function findTagEnd(xmlText: string, startOffset: number): number {
+  let inSingleQuote = false
+  let inDoubleQuote = false
+
+  for (let index = startOffset + 1; index < xmlText.length; index += 1) {
+    const char = xmlText[index]
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote
+      continue
+    }
+    if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote
+      continue
+    }
+    if (char === ">" && !inSingleQuote && !inDoubleQuote) {
+      return index
+    }
+  }
+
+  return -1
 }
 
 function parseRawTag(rawTag: string):
@@ -373,7 +475,7 @@ function sanitizePathPart(value: string): string {
 
 function decodeXmlEntities(value: string): string {
   return value
-    .replace(/&quot;/g, "\"")
+    .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")

@@ -340,6 +340,33 @@ describe("scd-sld-core", () => {
       },
     })
   })
+  it("skips XML comments, CDATA, and processing instructions without false diagnostics", () => {
+    const diagnostics: ScdDiagnostic[] = []
+    const xmlText = `<?xml version="1.0"?>
+<SCL>
+  <?unitlab debug?>
+  <Substation name="SS1" desc="A > B">
+    <!-- comment with <fake> tags -->
+    <VoltageLevel name="VL1"><![CDATA[<ignored>]]><Voltage multiplier="k" unit="V">110</Voltage></VoltageLevel>
+  </Substation>
+</SCL>`
+
+    const events = [...scanXmlElements(xmlText, diagnostics)]
+    const openEvents = events.filter(event => event.kind === "open")
+
+    expect(diagnostics).toEqual([])
+    expect(openEvents.map(event => event.localName)).toEqual(["SCL", "Substation", "VoltageLevel", "Voltage"])
+    expect(events.find(event => event.localName === "Substation")).toMatchObject({
+      attributes: {
+        name: "SS1",
+        desc: "A > B",
+      },
+    })
+    expect(events.find(event => event.localName === "Voltage")).toMatchObject({
+      textContent: "110",
+    })
+  })
+
 
   it("keeps topology extraction isolated from IED communication inventory parsing", () => {
     const diagnostics: ScdDiagnostic[] = []

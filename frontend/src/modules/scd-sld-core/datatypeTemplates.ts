@@ -241,6 +241,7 @@ function resolveDatasetMember(
 
   const pathFilter = member.daName?.trim() ? member.daName.trim().split(".").filter(Boolean) : []
   const leaves: NormalizedDataLeaf[] = []
+  const fcMismatchState = { reported: false }
   const ok = expandDoType({
     model,
     logicalNode,
@@ -253,6 +254,7 @@ function resolveDatasetMember(
     pathPrefix: [],
     leaves,
     diagnostics,
+    fcMismatchState,
   })
 
   const hasError = diagnostics.some(diagnostic => diagnostic.severity === "error")
@@ -281,6 +283,7 @@ type ExpandInput = {
   pathFilter: string[]
   leaves: NormalizedDataLeaf[]
   diagnostics: ScdDiagnostic[]
+  fcMismatchState: { reported: boolean }
 }
 
 function expandDoType(input: ExpandInput): boolean {
@@ -304,6 +307,7 @@ function expandDoType(input: ExpandInput): boolean {
       doName: `${input.doName}.${sdo.name}`,
       doType: nestedDoType,
       pathPrefix: input.pathPrefix,
+      fcMismatchState: input.fcMismatchState,
     }) || matched
   }
 
@@ -323,6 +327,7 @@ function expandAttribute(input: {
   inheritedFc: string | null
   leaves: NormalizedDataLeaf[]
   diagnostics: ScdDiagnostic[]
+  fcMismatchState: { reported: boolean }
 }): boolean {
   const { attribute, pathPrefix, pathFilter, requestedFc, inheritedFc, diagnostics, member, dataSet } = input
   const currentPath = [...pathPrefix, attribute.name]
@@ -359,6 +364,7 @@ function expandAttribute(input: {
         attribute: child,
         pathPrefix: currentPath,
         inheritedFc: effectiveFc,
+        fcMismatchState: input.fcMismatchState,
       }) || matched
     }
     return matched
@@ -372,6 +378,7 @@ function expandAttribute(input: {
         attribute: child,
         pathPrefix: currentPath,
         inheritedFc: effectiveFc,
+        fcMismatchState: input.fcMismatchState,
       }) || matched
     }
     return matched
@@ -387,8 +394,18 @@ function expandAttribute(input: {
     return false
   }
   if (requestedFc && effectiveFc !== requestedFc) {
-    pushMemberDiagnostic(diagnostics, member, "datatype-templates.incompatible-fc", `Incompatible fc ${requestedFc} for ${member.reference}; resolved leaf fc is ${effectiveFc}.`, context)
-    return false
+    if (!input.fcMismatchState.reported) {
+      diagnostics.push({
+        severity: "warning",
+        stage: "normalizer",
+        code: "datatype-templates.incompatible-fc",
+        message: `Incompatible fc ${requestedFc} for ${member.reference}; resolved leaf fc is ${effectiveFc}.`,
+        sourcePath: member.sourcePath,
+        sourceLocation: member.sourceLocation,
+        context,
+      })
+      input.fcMismatchState.reported = true
+    }
   }
 
   if (pathFilter.length > 0 && !isPathPrefix(pathFilter, currentPath)) {
