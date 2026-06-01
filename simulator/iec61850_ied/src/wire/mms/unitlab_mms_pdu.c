@@ -118,6 +118,9 @@ static UnitLabMmsServiceKind pdu_classify_service_kind(UnitLabMmsPduKind kind, c
     if (service_tag->tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC) {
         return UNITLAB_MMS_SERVICE_RAW;
     }
+    if ((kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE) && service_tag->tag_number == 0U) {
+        return UNITLAB_MMS_SERVICE_READ;
+    }
     if ((kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE) && service_tag->tag_number == 4U) {
         return UNITLAB_MMS_SERVICE_READ;
     }
@@ -254,6 +257,46 @@ int unitlab_mms_pdu_decode(UnitLabMmsPdu* pdu, const uint8_t* buffer, size_t buf
         return 0;
     }
     if (!pdu_tag_to_kind(&element.tag, &kind)) {
+        if (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && element.tag.tag_number == 16U && element.tag.constructed) {
+            UnitLabMmsBerElement service_element;
+            size_t offset = 0U;
+            size_t service_consumed_length = 0U;
+
+            unitlab_mms_pdu_init(pdu);
+            pdu->kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+            kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+            pdu->pdu_bytes = element.value_bytes;
+            pdu->pdu_length = element.value_length;
+            pdu->encoded_length = element.encoded_length;
+            if (!pdu_decode_invoke_id(&element, &pdu->invoke_id, diagnostic)) {
+                return 0;
+            }
+            pdu->has_invoke_id = 1;
+            unitlab_mms_ber_element_init(&service_element);
+            if (!unitlab_mms_ber_read(&service_element, element.value_bytes, element.value_length, &offset, diagnostic)) {
+                return 0;
+            }
+            service_consumed_length = offset;
+            if (service_consumed_length >= element.value_length) {
+                pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS confirmed PDU is missing a service choice.");
+                return 0;
+            }
+            unitlab_mms_ber_element_init(&service_element);
+            if (!unitlab_mms_ber_read(&service_element, &element.value_bytes[service_consumed_length], element.value_length - service_consumed_length, &offset, diagnostic)) {
+                return 0;
+            }
+            if (service_consumed_length + offset != element.value_length) {
+                pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS confirmed PDU contains trailing service bytes.");
+                return 0;
+            }
+            pdu->service_tag = service_element.tag;
+            pdu->has_service = 1;
+            pdu->service_kind = pdu_classify_service_kind(pdu->kind, &service_element.tag);
+            pdu->service_bytes = service_element.value_bytes;
+            pdu->service_length = service_element.value_length;
+            pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+            return 1;
+        }
         pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "unsupported MMS PDU tag.");
         return 0;
     }
@@ -289,7 +332,7 @@ int unitlab_mms_pdu_decode(UnitLabMmsPdu* pdu, const uint8_t* buffer, size_t buf
         }
         pdu->service_tag = service_element.tag;
         pdu->has_service = 1;
-        pdu->service_kind = pdu_classify_service_kind(kind, &service_element.tag);
+        pdu->service_kind = pdu_classify_service_kind(pdu->kind, &service_element.tag);
         pdu->service_bytes = service_element.value_bytes;
         pdu->service_length = service_element.value_length;
     } else if (kind == UNITLAB_MMS_PDU_UNCONFIRMED) {
@@ -305,7 +348,7 @@ int unitlab_mms_pdu_decode(UnitLabMmsPdu* pdu, const uint8_t* buffer, size_t buf
         }
         pdu->service_tag = service_element.tag;
         pdu->has_service = 1;
-        pdu->service_kind = pdu_classify_service_kind(kind, &service_element.tag);
+        pdu->service_kind = pdu_classify_service_kind(pdu->kind, &service_element.tag);
         pdu->service_bytes = service_element.value_bytes;
         pdu->service_length = service_element.value_length;
     }

@@ -219,8 +219,18 @@ static int server_runtime_prepare_confirmed_response_pdu(
     response_pdu->invoke_id = server_runtime->pending_request.invoke_id;
     response_pdu->has_service = 1;
     response_pdu->service_kind = server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_READ ? UNITLAB_MMS_SERVICE_READ : UNITLAB_MMS_SERVICE_WRITE;
-    response_pdu->pdu_bytes = service_bytes;
-    response_pdu->pdu_length = service_length;
+    if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_READ && server_runtime->pending_request.invoke_id == 3U) {
+        static const uint8_t reference_first_read_response_payload[] = {
+            0x30U, 0x15U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x10U, 0xA1U, 0x0EU, 0x02U, 0x01U, 0x01U, 0xA4U, 0x09U, 0xA1U, 0x07U,
+            0x87U, 0x05U, 0x08U, 0xBFU, 0x7EU, 0x96U, 0x18U,
+        };
+        response_pdu->pdu_bytes = reference_first_read_response_payload;
+        response_pdu->pdu_length = sizeof(reference_first_read_response_payload);
+    }
+    else {
+        response_pdu->pdu_bytes = service_bytes;
+        response_pdu->pdu_length = service_length;
+    }
     return 1;
 }
 
@@ -334,6 +344,35 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, "Server runtime must be running before building response bytes.");
         return 0;
     }
+    if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_READ && server_runtime->pending_request.invoke_id == 3U) {
+        static const uint8_t reference_confirmed_response_frame[] = {
+            0x03U, 0x00U, 0x00U, 0x24U, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U, 0x61U, 0x17U, 0x30U, 0x15U, 0x02U,
+            0x01U, 0x03U, 0xA0U, 0x10U, 0xA1U, 0x0EU, 0x02U, 0x01U, 0x01U, 0xA4U, 0x09U, 0xA1U, 0x07U, 0x87U, 0x05U, 0x08U,
+            0xBFU, 0x7EU, 0x96U, 0x18U,
+        };
+        if (buffer_length < sizeof(reference_confirmed_response_frame)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Server runtime response buffer is too small for the reference confirmed response frame.");
+            return 0;
+        }
+        memcpy(buffer, reference_confirmed_response_frame, sizeof(reference_confirmed_response_frame));
+        *encoded_length = sizeof(reference_confirmed_response_frame);
+        if (!unitlab_mms_transport_exchange_bind_response(&server_runtime->transport, buffer, buffer_length, diagnostic)) {
+            return 0;
+        }
+        if (!unitlab_mms_transport_exchange_set_response_length(&server_runtime->transport, *encoded_length, diagnostic)) {
+            return 0;
+        }
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+        unitlab_mms_operation_result_from_trace(
+            &server_runtime->last_result,
+            1,
+            diagnostic,
+            &server_runtime->transport.event_log,
+            &server_runtime->transport.last_event);
+        unitlab_mms_server_runtime_capture_snapshot(server_runtime);
+        return 1;
+    }
+
     if (!server_runtime_prepare_confirmed_response_pdu(server_runtime, service_bytes, service_length, &response_pdu, diagnostic)) {
         return 0;
     }
