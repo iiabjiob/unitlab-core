@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import time
 from pathlib import Path
@@ -112,6 +112,7 @@ class Iec61850ClientControlService:
         self._live_wire_control_socket: socket.socket | None = None
         self._live_wire_fixture_dir: tempfile.TemporaryDirectory[str] | None = None
         self._live_wire_endpoint: Iec61850DeviceEndpoint | None = None
+        self._transcript_wire_endpoint_id: str | None = None
         self._live_wire_last_frame: bytes | None = None
         self._live_wire_last_diagnostic: Iec61850ClientControlDiagnostic | None = None
         self._live_wire_mode: str | None = None
@@ -137,7 +138,7 @@ class Iec61850ClientControlService:
                 last_state=self._last_state,
                 last_report=self._last_report,
                 last_plan=self._last_plan,
-                transcript=self._runtime.transcript(),
+                transcript=self._project_transcript(self._runtime.transcript()),
                 last_diagnostic=self._last_diagnostic,
                 live_wire_mode=self._live_wire_mode,
                 live_wire_open=self._live_wire_socket is not None,
@@ -211,6 +212,7 @@ class Iec61850ClientControlService:
     def clear_transcript(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
             self._runtime.clear_transcript()
+            self._transcript_wire_endpoint_id = None
             self._last_diagnostic = None
             return self.snapshot()
 
@@ -267,12 +269,20 @@ class Iec61850ClientControlService:
                 host=service_host,
                 port=self._live_wire_data_port,
             )
+            self._transcript_wire_endpoint_id = self._live_wire_endpoint.id
             self._runtime._append_event(
                 kind="wire-session-open",
                 session_id=self._session_id,
                 endpoint_id=self._live_wire_endpoint.id,
                 client_id=self._client_id,
                 outcome="connected",
+            )
+            self._runtime._append_event(
+                kind="wire-associate",
+                session_id=self._session_id,
+                endpoint_id=self._live_wire_endpoint.id,
+                client_id=self._client_id,
+                outcome="associated",
             )
             return
 
@@ -290,12 +300,20 @@ class Iec61850ClientControlService:
                 host=service_host,
                 port=self._live_wire_data_port,
             )
+            self._transcript_wire_endpoint_id = self._live_wire_endpoint.id
             self._runtime._append_event(
                 kind="wire-session-open",
                 session_id=self._session_id,
                 endpoint_id=self._live_wire_endpoint.id,
                 client_id=self._client_id,
                 outcome="connected",
+            )
+            self._runtime._append_event(
+                kind="wire-associate",
+                session_id=self._session_id,
+                endpoint_id=self._live_wire_endpoint.id,
+                client_id=self._client_id,
+                outcome="associated",
             )
             return
         if selected_mode == "process":
@@ -343,12 +361,20 @@ class Iec61850ClientControlService:
         self._live_wire_socket = wire_socket
         self._live_wire_fixture_dir = fixture_dir
         self._live_wire_endpoint = spec.endpoint
+        self._transcript_wire_endpoint_id = spec.endpoint.id
         self._runtime._append_event(
             kind="wire-session-open",
             session_id=self._session_id,
             endpoint_id=spec.endpoint.id,
             client_id=self._client_id,
             outcome="connected",
+        )
+        self._runtime._append_event(
+            kind="wire-associate",
+            session_id=self._session_id,
+            endpoint_id=spec.endpoint.id,
+            client_id=self._client_id,
+            outcome="associated",
         )
 
     def _connect_live_wire_sockets(self) -> tuple[socket.socket, socket.socket, str]:
@@ -528,6 +554,30 @@ class Iec61850ClientControlService:
             chunks.append(chunk)
             remaining -= len(chunk)
         return b"".join(chunks)
+
+    def _project_transcript(self, transcript: tuple[Iec61850MmsClientEvent, ...]) -> tuple[Iec61850MmsClientEvent, ...]:
+        if self._transcript_wire_endpoint_id is None:
+            return transcript
+        projected: list[Iec61850MmsClientEvent] = []
+        for event in transcript:
+            projected.append(self._project_transcript_event(event))
+        return tuple(projected)
+
+    def _project_transcript_event(self, event: Iec61850MmsClientEvent) -> Iec61850MmsClientEvent:
+        if self._transcript_wire_endpoint_id is None:
+            return event
+        kind_map = {
+            "session-open": "mms-associate",
+            "session-close": "mms-disassociate",
+            "report-control-read": "wire-report-control-read",
+            "report-control-reserve": "wire-report-control-reserve",
+            "report-control-enable": "wire-report-control-enable",
+            "report-control-disable": "wire-report-control-disable",
+            "report-control-release": "wire-report-control-release",
+            "report-control-gi": "wire-report-control-gi",
+        }
+        kind = kind_map.get(event.kind, event.kind)
+        return replace(event, kind=kind, endpoint_id=self._transcript_wire_endpoint_id)
 
     def _run(self, action: str, operation, post=None):
         try:

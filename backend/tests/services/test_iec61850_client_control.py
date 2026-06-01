@@ -209,7 +209,7 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
     state = service.emit_live_wire_report()
     assert state.live_wire_last_frame_length == len(fake_frame)
     assert state.live_wire_last_frame_hex == fake_frame.hex()
-    assert [event.kind for event in state.transcript][-2:] == ["wire-session-open", "wire-report-frame"]
+    assert [event.kind for event in state.transcript][-3:] == ["wire-session-open", "wire-associate", "wire-report-frame"]
     assert emitted_commands == ["emit-report\n"]
 
     state = service.stop_live_wire_transport()
@@ -316,16 +316,33 @@ def test_client_control_service_can_drive_a_live_wire_service_smoke(monkeypatch:
     assert state.live_wire_mode == "host"
     assert sockets[0].address == ("host.docker.internal", 12447)
     assert sockets[1].address == ("host.docker.internal", 12448)
+    wire_endpoint_id = state.live_wire_endpoint.id
 
+    state = service.open_session()
+    state = service.read_report_control()
+    state = service.reserve_report_control()
+    state = service.enable_report_control()
+    state = service.send_general_interrogation()
     state = service.emit_live_wire_report()
+
     assert state.live_wire_last_frame_length == len(fake_frame)
     assert state.live_wire_last_frame_hex == fake_frame.hex()
     assert emitted_commands == ["emit-report\n"]
+    assert [event.kind for event in state.transcript] == [
+        "wire-session-open",
+        "wire-associate",
+        "mms-associate",
+        "wire-report-control-read",
+        "wire-report-control-reserve",
+        "wire-report-control-enable",
+        "wire-report-control-gi",
+        "wire-report-frame",
+    ]
+    assert {event.endpoint_id for event in state.transcript} == {wire_endpoint_id}
 
     state = service.stop_live_wire_transport()
     assert state.live_wire_open is False
-    assert sockets[0].closed is True
-    assert sockets[1].closed is True
+    assert [event.kind for event in state.transcript][-1] == "wire-session-close"
 
 
 def test_client_control_service_can_drive_a_live_wire_host_debug_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
