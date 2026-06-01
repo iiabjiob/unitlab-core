@@ -175,6 +175,27 @@ static int build_native_association_response_frame(
     return unitlab_mms_build_association_response_frame(buffer, buffer_length, encoded_length, diagnostic);
 }
 
+static int build_native_information_report_frame(
+    UnitLabMmsServerRuntime* server_runtime,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsPdu report_pdu;
+    uint8_t scratch[256U];
+    static const uint8_t report_payload[] = { 0xA0U, 0x03U, 0x81U, 0x01U, 0x00U };
+
+    (void)server_runtime;
+    unitlab_mms_pdu_init(&report_pdu);
+    report_pdu.kind = UNITLAB_MMS_PDU_UNCONFIRMED;
+    report_pdu.has_service = 1;
+    report_pdu.service_kind = UNITLAB_MMS_SERVICE_INFORMATION_REPORT;
+    report_pdu.pdu_bytes = report_payload;
+    report_pdu.pdu_length = sizeof(report_payload);
+    return unitlab_mms_build_wire_frame_from_pdu(&report_pdu, scratch, sizeof(scratch), buffer, buffer_length, encoded_length, diagnostic);
+}
+
 static int resolve_listener(const char* bind_address, int port, struct addrinfo** out_info)
 {
     struct addrinfo hints;
@@ -291,7 +312,7 @@ static int handle_command(
             printf("native-wire-server: data-client-connected\n");
             fflush(stdout);
         }
-        if (!build_native_association_response_frame(server_runtime, frame, frame_length, encoded_length, &diagnostic)) {
+        if (!build_native_information_report_frame(server_runtime, frame, frame_length, encoded_length, &diagnostic)) {
             set_result(result, "NATIVE_WIRE_SERVER_REPORT_BUILD_FAILED", diagnostic.message);
             return -1;
         }
@@ -468,7 +489,7 @@ int unitlab_run_native_wire_server(
                     unitlab_mms_diagnostic_clear(&response_diagnostic);
                     if (server_runtime->session.state == UNITLAB_MMS_SESSION_DISCONNECTED
                         && unitlab_mms_server_runtime_apply_association_request_bytes(server_runtime, incoming, (size_t)received, &consumed_length, &incoming_result)) {
-                        if (!unitlab_mms_build_association_response_frame(response_frame, sizeof(response_frame), &response_length, &response_diagnostic)) {
+                        if (!build_native_association_response_frame(server_runtime, response_frame, sizeof(response_frame), &response_length, &response_diagnostic)) {
                             set_result(result, "NATIVE_WIRE_SERVER_ASSOCIATION_RESPONSE_BUILD_FAILED", response_diagnostic.message);
                             goto fail;
                         }
