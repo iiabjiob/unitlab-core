@@ -126,7 +126,8 @@ function resolveInitialLeftAsideWidth() {
 
 .desktop-layout__body {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0%;
+  width: 100%;
   min-height: 0;
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--runtime-accent) 4%, transparent) 1px, transparent 1px),
@@ -150,7 +151,8 @@ function resolveInitialLeftAsideWidth() {
 
 .desktop-layout__main {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0%;
+  width: 100%;
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
@@ -214,10 +216,19 @@ function resolveInitialLeftAsideWidth() {
 
 .desktop-layout__content {
   display: flex;
-  flex: 1 1 auto;
+  flex: 1 1 0%;
+  width: 100%;
   min-height: 0;
   min-width: 0;
+  align-self: stretch;
   overflow: auto;
+  box-sizing: border-box;
+}
+
+.desktop-layout__content > * {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 :global(.dark .desktop-layout) {
