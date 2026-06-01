@@ -381,8 +381,31 @@ int unitlab_run_native_wire_server(
                     close_fd(&control_client_fd);
                 }
                 else {
-                    printf("native-wire-server: received-bytes=%zd\n", received);
-                    fflush(stdout);
+                    UnitLabMmsOperationResult incoming_result;
+                    UnitLabMmsDiagnostic response_diagnostic;
+                    uint8_t response_frame[2048U];
+                    size_t consumed_length = 0U;
+                    size_t response_length = 0U;
+
+                    unitlab_mms_operation_result_init(&incoming_result);
+                    unitlab_mms_diagnostic_clear(&response_diagnostic);
+                    if (server_runtime->session.state == UNITLAB_MMS_SESSION_DISCONNECTED
+                        && unitlab_mms_server_runtime_apply_association_request_bytes(server_runtime, incoming, (size_t)received, &consumed_length, &incoming_result)) {
+                        if (!unitlab_mms_build_association_response_frame(response_frame, sizeof(response_frame), &response_length, &response_diagnostic)) {
+                            set_result(result, "NATIVE_WIRE_SERVER_ASSOCIATION_RESPONSE_BUILD_FAILED", response_diagnostic.message);
+                            goto fail;
+                        }
+                        if (!send_all(data_client_fd, response_frame, response_length)) {
+                            set_result(result, "NATIVE_WIRE_SERVER_ASSOCIATION_RESPONSE_SEND_FAILED", "Native wire server could not send association response frame.");
+                            goto fail;
+                        }
+                        printf("native-wire-server: association-response-sent bytes=%zu\n", response_length);
+                        fflush(stdout);
+                    }
+                    else {
+                        printf("native-wire-server: received-bytes=%zd\n", received);
+                        fflush(stdout);
+                    }
                 }
                 continue;
             }

@@ -661,6 +661,49 @@ static void test_wire_frame_builder_aarq_association_roundtrip(void)
     }, 40U) == 0);
 }
 
+static void test_association_response_frame_roundtrip(void)
+{
+    uint8_t frame[256];
+    UnitLabMmsWireAssociationFixture decoded_fixture;
+    UnitLabMmsAcseApdu acse_apdu;
+    size_t frame_length = 0U;
+    size_t consumed_length = 0U;
+    size_t acse_consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_build_association_response_frame(frame, sizeof(frame), &frame_length, &diagnostic) == 1);
+    assert(frame_length > 0U);
+    assert(frame[0] == 0x03U);
+    assert(frame[1] == 0x00U);
+    assert(frame[4] == 0x02U);
+    assert(frame[5] == 0xF0U);
+    assert(frame[6] == 0x80U);
+    assert(frame[7] == 0x01U);
+    assert(frame[8] == 0x00U);
+    assert(frame[9] == 0x01U);
+    assert(frame[10] == 0x00U);
+
+    unitlab_mms_wire_association_fixture_init(&decoded_fixture);
+    assert(unitlab_mms_wire_association_fixture_decode(&decoded_fixture, frame, frame_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == frame_length);
+    assert(decoded_fixture.session.kind == UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER);
+    assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED);
+    assert(decoded_fixture.presentation.payload_length > 0U);
+    assert(decoded_fixture.presentation.payload_bytes[0] == 0x61U);
+
+    unitlab_mms_acse_apdu_init(&acse_apdu);
+    assert(unitlab_mms_acse_decode(&acse_apdu, decoded_fixture.presentation.payload_bytes, decoded_fixture.presentation.payload_length, &acse_consumed_length, &diagnostic) == 1);
+    assert(acse_consumed_length == decoded_fixture.presentation.payload_length);
+    assert(acse_apdu.kind == UNITLAB_MMS_ACSE_APDU_AARE);
+    assert(acse_apdu.field_count == 4U);
+    assert(acse_apdu.fields[0].tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(acse_apdu.fields[0].tag.tag_number == 1U);
+    assert(acse_apdu.fields[1].tag.tag_number == 2U);
+    assert(acse_apdu.fields[2].tag.tag_number == 3U);
+    assert(acse_apdu.fields[3].tag.tag_number == 30U);
+}
+
 static void test_acse_top_level_roundtrips(void)
 {
     struct {
@@ -1269,6 +1312,7 @@ int main(void)
     test_wire_association_fixture_encode_roundtrip();
     test_wire_association_fixture_fully_encoded_roundtrip();
     test_wire_frame_builder_aarq_association_roundtrip();
+    test_association_response_frame_roundtrip();
     test_acse_top_level_roundtrips();
     test_acse_decode_stops_at_indicated_length();
     test_acse_raw_field_view();
