@@ -9,6 +9,8 @@ services:
     volumes:
       - .:/workspace
     command: sleep infinity
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - net
 
@@ -20,8 +22,9 @@ services:
         - unitlab-dev:latest
     container_name: unitlab-iec61850-ied-dev
     working_dir: /workspace
-    volumes:
-      - .:/workspace
+    ports:
+      - "12347:12347"
+      - "12348:12348"
     command: >
       bash -lc "cmake -S /workspace/simulator/iec61850_ied -B /tmp/unitlab-iec61850-ied-build &&
       cmake --build /tmp/unitlab-iec61850-ied-build --target unitlab-iec61850-ied-sim &&

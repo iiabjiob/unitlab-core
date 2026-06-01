@@ -20,6 +20,17 @@ Current C-owned helpers include:
 - Let UnitLab backend connect to the simulator through the same `Iec61850ClientAdapter` contract used for real IEDs.
 - Keep Signal List matching, FAT evidence, diagnostics, and report planning owned by UnitLab.
 
+## Docker Dev Topology
+
+Use the host-debug wire path for wire-debug runs:
+
+- backend/client connects to `host.docker.internal:12347` and `host.docker.internal:12348` so the host can capture MMS/RFC1006/COTP/ACSE traffic in Wireshark;
+- port `12347` is used instead of `102` to avoid privileged-port friction in the dev loop;
+- do not use `localhost` from the dev container for the IED endpoint because it resolves to the backend container itself, not the virtual IED service;
+- Wireshark capture filter: `tcp.port == 12347 || tcp.port == 12348`.
+
+The `iec61850-ied` service in `docker-compose.dev.yml` starts the native wire server on port `12347` and publishes both `12347` and `12348` for host-side debugging.
+
 ## Build
 
 Dry-run scaffold build without libIEC61850:

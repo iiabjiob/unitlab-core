@@ -96,7 +96,7 @@ function formatJson(value: unknown): string {
           {{ busyAction === 'subscription' ? 'Running...' : 'Run subscription' }}
         </UiButton>
         <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('wire-start', Iec61850ClientAPI.startWireTransport)">
-          {{ busyAction === 'wire-start' ? 'Starting wire...' : 'Start wire transport' }}
+          {{ busyAction === 'wire-start' ? 'Starting wire...' : 'Start wire' }}
         </UiButton>
         <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('wire-emit', Iec61850ClientAPI.emitWireReport)">
           {{ busyAction === 'wire-emit' ? 'Emitting report...' : 'Emit wire report' }}

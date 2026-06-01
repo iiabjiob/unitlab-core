@@ -95,6 +95,13 @@ class Settings(BaseSettings):
     # ---- Signal Import ----
     signal_import_max_rows: int = 20000
 
+    # ---- IEC 61850 debug/live wire ----
+    iec61850_ied_live_wire_host: str = "iec61850-ied"
+    iec61850_ied_live_wire_port: int = 12347
+    iec61850_ied_live_wire_control_port: int = 12348
+    iec61850_ied_wire_bind_address: str = "127.0.0.1"
+    iec61850_ied_live_wire_binary_path: str | None = None
+
     # ---- Database URL ----
     @property
     def database_url(self) -> str:
