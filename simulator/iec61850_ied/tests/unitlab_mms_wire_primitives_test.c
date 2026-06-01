@@ -86,15 +86,15 @@ static void test_cotp_cr_roundtrip(void)
     tpdu.user_data = user_data;
     tpdu.user_data_length = sizeof(user_data);
     assert(unitlab_mms_cotp_encode(&tpdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
-    assert(encoded_length == 11U);
-    assert(buffer[0] == 10U);
+    assert(encoded_length == 10U);
+    assert(buffer[0] == 9U);
     unitlab_mms_cotp_tpdu_init(&decoded_tpdu);
     assert(unitlab_mms_cotp_decode(&decoded_tpdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == encoded_length);
     assert(decoded_tpdu.kind == UNITLAB_MMS_COTP_TPDU_CR);
     assert(decoded_tpdu.source_reference == 0x1234U);
-    assert(decoded_tpdu.payload_bytes == &buffer[2]);
-    assert(decoded_tpdu.payload_length == encoded_length - 2U);
+    assert(decoded_tpdu.payload_bytes == &buffer[1]);
+    assert(decoded_tpdu.payload_length == encoded_length - 1U);
     assert(decoded_tpdu.user_data_length == sizeof(user_data));
     assert(memcmp(decoded_tpdu.user_data, user_data, sizeof(user_data)) == 0);
 }
@@ -125,8 +125,8 @@ static void test_cotp_decode_stops_at_indicated_length(void)
     assert(consumed_length == encoded_length);
     assert(decoded_tpdu.kind == UNITLAB_MMS_COTP_TPDU_DT);
     assert(decoded_tpdu.eot == 1);
-    assert(decoded_tpdu.payload_length == encoded_length - 2U);
-    assert(memcmp(decoded_tpdu.payload_bytes, &buffer[2], decoded_tpdu.payload_length) == 0);
+    assert(decoded_tpdu.payload_length == encoded_length - 1U);
+    assert(memcmp(decoded_tpdu.payload_bytes, &buffer[1], decoded_tpdu.payload_length) == 0);
 }
 
 static void test_cotp_dt_roundtrip(void)
@@ -146,14 +146,14 @@ static void test_cotp_dt_roundtrip(void)
     tpdu.user_data = user_data;
     tpdu.user_data_length = sizeof(user_data);
     assert(unitlab_mms_cotp_encode(&tpdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
-    assert(buffer[0] == 5U);
+    assert(buffer[0] == 4U);
     unitlab_mms_cotp_tpdu_init(&decoded_tpdu);
     assert(unitlab_mms_cotp_decode(&decoded_tpdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == encoded_length);
     assert(decoded_tpdu.kind == UNITLAB_MMS_COTP_TPDU_DT);
     assert(decoded_tpdu.eot == 1);
-    assert(decoded_tpdu.payload_bytes == &buffer[2]);
-    assert(decoded_tpdu.payload_length == encoded_length - 2U);
+    assert(decoded_tpdu.payload_bytes == &buffer[1]);
+    assert(decoded_tpdu.payload_length == encoded_length - 1U);
     assert(decoded_tpdu.user_data_length == sizeof(user_data));
     assert(memcmp(decoded_tpdu.user_data, user_data, sizeof(user_data)) == 0);
 }
