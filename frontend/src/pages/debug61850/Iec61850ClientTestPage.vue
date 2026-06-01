@@ -145,14 +145,14 @@ function formatJson(value: unknown): string {
     </section>
 
     <main class="iec61850-client-page__workspace">
-      <section class="iec61850-client-page__panel">
+      <section class="iec61850-client-page__panel iec61850-client-page__panel--state">
         <div class="iec61850-client-page__panel-header">
           <h2>Current state</h2>
         </div>
         <pre class="iec61850-client-page__json">{{ state ? formatJson(state) : 'No state loaded' }}</pre>
       </section>
 
-      <section class="iec61850-client-page__panel">
+      <section class="iec61850-client-page__panel iec61850-client-page__panel--transcript">
         <div class="iec61850-client-page__panel-header">
           <h2>Transcript</h2>
         </div>
@@ -183,20 +183,25 @@ function formatJson(value: unknown): string {
 </template>
 
 <style scoped>
+
 .iec61850-client-page {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  padding: 1.5rem;
+  gap: 1rem;
+  height: 100%;
+  min-height: 0;
+  padding: 1rem;
+  overflow: hidden;
+  color: var(--color-neutral-900);
 }
 
 .iec61850-client-page__header,
 .iec61850-client-page__summary,
 .iec61850-client-page__panel {
-  background: linear-gradient(180deg, rgba(20, 25, 33, 0.94), rgba(12, 16, 22, 0.94));
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: var(--color-white);
+  border: 1px solid var(--color-neutral-200);
   border-radius: 18px;
-  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.18);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
 }
 
 .iec61850-client-page__header {
@@ -224,7 +229,7 @@ function formatJson(value: unknown): string {
 .iec61850-client-page__eyebrow,
 .iec61850-client-page__status {
   margin: 0;
-  color: rgba(148, 163, 184, 0.9);
+  color: var(--color-neutral-500);
 }
 
 .iec61850-client-page__title {
@@ -245,17 +250,22 @@ function formatJson(value: unknown): string {
   justify-content: center;
   padding: 0.62rem 0.95rem;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  color: inherit;
+  border: 1px solid var(--color-neutral-200);
+  background: var(--color-neutral-50);
+  color: var(--color-neutral-800);
   text-decoration: none;
+}
+
+.iec61850-client-page__nav-link:hover {
+  background: var(--color-neutral-100);
 }
 
 .iec61850-client-page__alert {
   border-radius: 14px;
   padding: 0.9rem 1rem;
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  background: rgba(127, 29, 29, 0.18);
-  color: #fecaca;
+  border: 1px solid var(--color-red-200);
+  background: var(--color-red-50);
+  color: var(--color-red-800);
 }
 
 .iec61850-client-page__summary {
@@ -270,8 +280,8 @@ function formatJson(value: unknown): string {
   gap: 0.25rem;
   padding: 0.9rem 1rem;
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.66);
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
 }
 
 .iec61850-client-page__metric--wide {
@@ -279,7 +289,7 @@ function formatJson(value: unknown): string {
 }
 
 .iec61850-client-page__metric-label {
-  color: rgba(148, 163, 184, 0.82);
+  color: var(--color-neutral-500);
   font-size: 0.8rem;
 }
 
@@ -294,7 +304,7 @@ function formatJson(value: unknown): string {
   font-size: 0.72rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: rgba(148, 163, 184, 0.82);
+  color: var(--color-neutral-500);
 }
 
 .iec61850-client-page__metric-value {
@@ -306,11 +316,17 @@ function formatJson(value: unknown): string {
 .iec61850-client-page__workspace {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 1rem;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .iec61850-client-page__panel {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
   padding: 1rem;
 }
 
@@ -318,7 +334,7 @@ function formatJson(value: unknown): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: rgba(148, 163, 184, 0.84);
+  color: var(--color-neutral-500);
   margin-bottom: 0.75rem;
 }
 
@@ -327,14 +343,34 @@ function formatJson(value: unknown): string {
   font-size: 0.9rem;
 }
 
+.iec61850-client-page__panel--state .iec61850-client-page__json,
+.iec61850-client-page__panel--transcript .iec61850-client-page__json {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.iec61850-client-page__panel--transcript {
+  overflow: hidden;
+}
+
+.iec61850-client-page__panel--transcript .iec61850-client-page__wire-frame {
+  flex: 0 0 auto;
+}
+
+.iec61850-client-page__panel--transcript .iec61850-client-page__transcript-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
 .iec61850-client-page__json {
   margin: 0;
-  max-height: 42rem;
-  overflow: auto;
   padding: 1rem;
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.82);
-  color: rgba(226, 232, 240, 0.96);
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  color: var(--color-neutral-900);
   font-size: 0.85rem;
   line-height: 1.5;
 }
@@ -342,13 +378,15 @@ function formatJson(value: unknown): string {
 .iec61850-client-page__transcript-list {
   display: grid;
   gap: 0.75rem;
+  min-height: 0;
 }
 
 .iec61850-client-page__transcript-item {
+  min-width: 0;
   padding: 0.85rem 0.95rem;
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.82);
-  border: 1px solid rgba(148, 163, 184, 0.12);
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
 }
 
 .iec61850-client-page__transcript-head,
@@ -368,7 +406,7 @@ function formatJson(value: unknown): string {
 .iec61850-client-page__transcript-meta,
 .iec61850-client-page__transcript-message,
 .iec61850-client-page__empty {
-  color: rgba(226, 232, 240, 0.84);
+  color: var(--color-neutral-700);
   font-size: 0.86rem;
 }
 
@@ -378,8 +416,76 @@ function formatJson(value: unknown): string {
 }
 
 @media (max-width: 960px) {
+  .iec61850-client-page {
+    height: auto;
+    overflow: visible;
+  }
+
   .iec61850-client-page__workspace {
     grid-template-columns: 1fr;
+    flex: 0 0 auto;
+  }
+
+  .iec61850-client-page__panel--state .iec61850-client-page__json,
+  .iec61850-client-page__panel--transcript .iec61850-client-page__json,
+  .iec61850-client-page__panel--transcript .iec61850-client-page__transcript-list {
+    overflow: visible;
   }
 }
+
+:global(.dark .iec61850-client-page) {
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .iec61850-client-page__header),
+:global(.dark .iec61850-client-page__summary),
+:global(.dark .iec61850-client-page__panel) {
+  background: var(--color-neutral-900);
+  border-color: var(--color-neutral-800);
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.28);
+}
+
+:global(.dark .iec61850-client-page__eyebrow),
+:global(.dark .iec61850-client-page__status),
+:global(.dark .iec61850-client-page__panel-header),
+:global(.dark .iec61850-client-page__metric-label),
+:global(.dark .iec61850-client-page__wire-frame-label) {
+  color: var(--color-neutral-400);
+}
+
+:global(.dark .iec61850-client-page__nav-link) {
+  background: var(--color-neutral-800);
+  border-color: var(--color-neutral-700);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .iec61850-client-page__nav-link:hover) {
+  background: var(--color-neutral-700);
+}
+
+:global(.dark .iec61850-client-page__alert) {
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(127, 29, 29, 0.28);
+  color: #fecaca;
+}
+
+:global(.dark .iec61850-client-page__metric) {
+  background: var(--color-neutral-950);
+  border-color: var(--color-neutral-800);
+}
+
+:global(.dark .iec61850-client-page__json),
+:global(.dark .iec61850-client-page__transcript-item) {
+  background: var(--color-neutral-950);
+  border-color: var(--color-neutral-800);
+  color: var(--color-neutral-100);
+}
+
+:global(.dark .iec61850-client-page__transcript-head span),
+:global(.dark .iec61850-client-page__transcript-meta),
+:global(.dark .iec61850-client-page__transcript-message),
+:global(.dark .iec61850-client-page__empty) {
+  color: var(--color-neutral-300);
+}
+
 </style>
