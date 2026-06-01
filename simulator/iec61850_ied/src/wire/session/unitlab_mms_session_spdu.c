@@ -159,8 +159,6 @@ int unitlab_mms_session_spdu_encode(const UnitLabMmsSessionSpdu* spdu, uint8_t* 
     size_t parameter_length = 0U;
     size_t expected_length = 0U;
 
-    /* Raw SPDU copy: validate the declared kind and the SI/LI length indicator, then preserve the encoded bytes unchanged. */
-
     if (encoded_length != NULL) {
         *encoded_length = 0U;
     }
@@ -168,16 +166,37 @@ int unitlab_mms_session_spdu_encode(const UnitLabMmsSessionSpdu* spdu, uint8_t* 
         session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session SPDU encode requires spdu, buffer, and encoded_length.");
         return 0;
     }
-    if (spdu->spdu_length != 0U && spdu->spdu_bytes == NULL) {
-        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session SPDU bytes are required when length is non-zero.");
+    if (!session_kind_to_code(spdu->kind, &expected_code)) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "unsupported session SPDU kind.");
         return 0;
     }
+    if (spdu->kind == UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER) {
+        if (spdu->spdu_length != 0U && spdu->spdu_bytes == NULL) {
+            session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session SPDU payload bytes are required when length is non-zero.");
+            return 0;
+        }
+        if (buffer_length < 4U + spdu->spdu_length) {
+            session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "session SPDU buffer is too small.");
+            return 0;
+        }
+        buffer[0U] = expected_code;
+        buffer[1U] = 0U;
+        buffer[2U] = expected_code;
+        buffer[3U] = 0U;
+        if (spdu->spdu_length != 0U) {
+            memcpy(&buffer[4U], spdu->spdu_bytes, spdu->spdu_length);
+        }
+        *encoded_length = 4U + spdu->spdu_length;
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+        return 1;
+    }
+    /* Raw SPDU copy: validate the declared kind and the SI/LI length indicator, then preserve the encoded bytes unchanged. */
     if (spdu->spdu_length < 2U) {
         session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session SPDU length is too small.");
         return 0;
     }
-    if (!session_kind_to_code(spdu->kind, &expected_code)) {
-        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "unsupported session SPDU kind.");
+    if (spdu->spdu_bytes == NULL) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session SPDU bytes are required when length is non-zero.");
         return 0;
     }
     if (spdu->spdu_bytes[0] != expected_code) {
@@ -224,6 +243,23 @@ int unitlab_mms_session_spdu_decode(UnitLabMmsSessionSpdu* spdu, const uint8_t* 
     if (!session_code_to_kind(buffer[0], &kind)) {
         session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "unsupported session SPDU code.");
         return 0;
+    }
+    if (kind == UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER) {
+        if (buffer_length < 4U || buffer[1U] != 0U || buffer[2U] != buffer[0] || buffer[3U] != 0U) {
+            session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "session data transfer SPDU is truncated or invalid.");
+            return 0;
+        }
+        total_length = buffer_length;
+        unitlab_mms_session_spdu_init(spdu);
+        spdu->kind = kind;
+        spdu->spdu_bytes = buffer;
+        spdu->spdu_length = total_length;
+        spdu->encoded_length = total_length;
+        spdu->raw_parameter_bytes = &buffer[4U];
+        spdu->raw_parameter_length = buffer_length - 4U;
+        *consumed_length = total_length;
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+        return 1;
     }
     if (!session_read_length_indicator(buffer, buffer_length, &li_length, &parameter_length)) {
         session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "session SPDU length indicator is invalid or truncated.");

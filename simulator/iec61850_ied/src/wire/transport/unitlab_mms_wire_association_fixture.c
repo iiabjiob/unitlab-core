@@ -36,7 +36,6 @@ int unitlab_mms_wire_association_fixture_encode(const UnitLabMmsWireAssociationF
     UnitLabMmsSessionSpdu session_apdu;
     UnitLabMmsTransportFrame transport_frame;
     size_t presentation_length = 0U;
-    size_t session_raw_length = 0U;
     size_t session_length = 0U;
     size_t transport_length = 0U;
 
@@ -83,41 +82,18 @@ int unitlab_mms_wire_association_fixture_encode(const UnitLabMmsWireAssociationF
         return 0;
     }
 
-    if (presentation_length > 65535U - 3U) {
+    if (fixture->session.kind != UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER) {
         free(presentation_scratch);
         free(session_scratch);
-        wire_association_fixture_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "association fixture presentation payload is too large for a session SPDU.");
+        wire_association_fixture_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "association fixture requires a data transfer session SPDU.");
         return 0;
-    }
-    {
-        size_t session_index = 0U;
-        uint8_t session_code = 0U;
-        size_t parameter_length = presentation_length;
-        if (fixture->session.kind == UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER) {
-            session_code = 1U;
-        } else {
-            free(presentation_scratch);
-            free(session_scratch);
-            wire_association_fixture_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "association fixture requires a data transfer session SPDU.");
-            return 0;
-        }
-        session_scratch[session_index++] = session_code;
-        if (parameter_length <= 254U) {
-            session_scratch[session_index++] = (uint8_t)parameter_length;
-        } else {
-            session_scratch[session_index++] = 0xFFU;
-            session_scratch[session_index++] = (uint8_t)((parameter_length >> 8U) & 0xFFU);
-            session_scratch[session_index++] = (uint8_t)(parameter_length & 0xFFU);
-        }
-        memcpy(&session_scratch[session_index], presentation_scratch, presentation_length);
-        session_raw_length = session_index + presentation_length;
     }
 
     unitlab_mms_session_spdu_init(&session_apdu);
     session_apdu.kind = fixture->session.kind;
-    session_apdu.spdu_bytes = session_scratch;
-    session_apdu.spdu_length = session_raw_length;
-    if (!unitlab_mms_session_spdu_encode(&session_apdu, presentation_scratch, buffer_length, &session_length, diagnostic)) {
+    session_apdu.spdu_bytes = presentation_scratch;
+    session_apdu.spdu_length = presentation_length;
+    if (!unitlab_mms_session_spdu_encode(&session_apdu, session_scratch, buffer_length, &session_length, diagnostic)) {
         free(presentation_scratch);
         free(session_scratch);
         return 0;
@@ -125,7 +101,7 @@ int unitlab_mms_wire_association_fixture_encode(const UnitLabMmsWireAssociationF
 
     unitlab_mms_transport_frame_init(&transport_frame);
     transport_frame.cotp = fixture->transport.cotp;
-    transport_frame.cotp.user_data = presentation_scratch;
+    transport_frame.cotp.user_data = session_scratch;
     transport_frame.cotp.user_data_length = session_length;
     if (!unitlab_mms_transport_frame_encode(&transport_frame, buffer, buffer_length, &transport_length, diagnostic)) {
         free(presentation_scratch);
