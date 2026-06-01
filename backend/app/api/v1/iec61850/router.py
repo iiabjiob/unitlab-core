@@ -70,6 +70,21 @@ async def run_subscription_plan() -> dict:
     return _run_action("run-subscription-plan", get_iec61850_client_control_service().run_subscription_plan)
 
 
+@router.post("/wire/start")
+async def start_wire_transport() -> dict:
+    return _run_action("wire-start", get_iec61850_client_control_service().start_live_wire_transport)
+
+
+@router.post("/wire/emit-report")
+async def emit_wire_report() -> dict:
+    return _run_action("wire-emit-report", get_iec61850_client_control_service().emit_live_wire_report)
+
+
+@router.post("/wire/stop")
+async def stop_wire_transport() -> dict:
+    return _run_action("wire-stop", get_iec61850_client_control_service().stop_live_wire_transport)
+
+
 def _run_action(action: str, operation) -> dict:
     try:
         snapshot = operation()

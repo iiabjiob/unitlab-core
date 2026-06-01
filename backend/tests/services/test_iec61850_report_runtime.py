@@ -716,6 +716,27 @@ def test_backend_runtime_rejects_invalid_external_ied_simulator_process_config(t
     assert missing_device.value.code == "SIMULATOR_DEVICE_NOT_IN_FIXTURE"
 
 
+def test_backend_runtime_builds_native_wire_simulator_process_command(tmp_path) -> None:
+    fixture = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(_candidate()))
+    fixture_path = write_ied_simulator_fixture_file(fixture, tmp_path / "ied1.fixture.json")
+    binary_path = tmp_path / "unitlab-iec61850-ied-sim"
+    binary_path.write_text("", encoding="utf-8")
+
+    spec = build_ied_simulator_process_spec(
+        fixture=fixture,
+        binary_path=binary_path,
+        fixture_path=fixture_path,
+        ied_name="IED1",
+        bind_address="127.0.0.1",
+        port=12346,
+        native_wire_start=True,
+    )
+
+    assert spec.command[-1] == "--native-wire-start"
+    assert spec.metadata_probe_command[-1] == "--metadata-probe"
+    assert spec.gi_probe_command[-1] == "--gi-probe"
+
+
 def test_backend_runtime_external_ied_simulator_startup_check_uses_safe_process_invocation(tmp_path) -> None:
     fixture = build_ied_simulator_fixture_from_subscription_plan(_subscription_plan(_candidate()))
     fixture_path = tmp_path / "ied1.fixture.json"
@@ -970,6 +991,7 @@ def test_backend_runtime_starts_and_stops_external_ied_simulator_process(tmp_pat
         assert command == spec.command
         assert command[-1] != "--dry-run"
         assert kwargs == {
+            "stdin": subprocess.PIPE,
             "stdout": subprocess.PIPE,
             "stderr": subprocess.PIPE,
             "text": True,

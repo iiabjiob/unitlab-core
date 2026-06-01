@@ -54,6 +54,18 @@ export type Iec61850ClientState = {
   last_plan: Record<string, unknown> | null
   transcript: Iec61850ClientEvent[]
   last_diagnostic: Iec61850ClientDiagnostic | null
+  live_wire_open: boolean
+  live_wire_endpoint: {
+    id: string
+    mode: string
+    ied_name: string
+    access_point_name: string
+    host: string | null
+    port: number
+  } | null
+  live_wire_last_frame_length: number | null
+  live_wire_last_frame_hex: string | null
+  live_wire_last_diagnostic: Iec61850ClientDiagnostic | null
 }
 
 export const Iec61850ClientAPI = {
@@ -103,5 +115,17 @@ export const Iec61850ClientAPI = {
 
   runSubscriptionPlan() {
     return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/subscription/run`)
+  },
+
+  startWireTransport() {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/wire/start`)
+  },
+
+  emitWireReport() {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/wire/emit-report`)
+  },
+
+  stopWireTransport() {
+    return httpData.post<Iec61850ClientState>(`${API_V1}/iec61850/client/wire/stop`)
   },
 }

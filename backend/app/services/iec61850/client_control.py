@@ -2,10 +2,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from threading import RLock
 from typing import Callable
+import socket
+import tempfile
+
+from app.core.config import get_settings
 
 from .client_runtime import Iec61850MmsClientEvent, Iec61850MmsClientRuntime
+from .ied_simulator_fixture import build_ied_simulator_fixture_from_subscription_plan, ied_simulator_fixture_to_payload
+from .ied_simulator_process import (
+    Iec61850IedSimulatorProcessHandle,
+    build_ied_simulator_process_spec,
+    start_ied_simulator_process,
+    stop_ied_simulator_process,
+    write_ied_simulator_fixture_file,
+    write_ied_simulator_process_command,
+)
 from .report_runtime import (
     Iec61850DataSetMember,
     Iec61850DeviceEndpoint,
@@ -47,6 +61,11 @@ class Iec61850ClientControlSnapshot:
     last_plan: Iec61850ReportSubscriptionPlan | None
     transcript: tuple[Iec61850MmsClientEvent, ...]
     last_diagnostic: Iec61850ClientControlDiagnostic | None
+    live_wire_open: bool
+    live_wire_endpoint: Iec61850DeviceEndpoint | None
+    live_wire_last_frame_length: int | None
+    live_wire_last_frame_hex: str | None
+    live_wire_last_diagnostic: Iec61850ClientControlDiagnostic | None
 
 
 class Iec61850ClientControlService:
@@ -58,8 +77,12 @@ class Iec61850ClientControlService:
         client_id: str = "unitlab-test-client",
         endpoint: Iec61850DeviceEndpoint | None = None,
         candidate: Iec61850ReportControlCandidate | None = None,
+        live_wire_binary_path: str | None = None,
+        live_wire_bind_address: str | None = None,
+        live_wire_port: int | None = None,
     ) -> None:
         adapter = create_iec61850_simulator_adapter(now=now or _utc_now)
+        settings = get_settings()
         self._runtime = Iec61850MmsClientRuntime(adapter)
         self._session_id = session_id
         self._client_id = client_id
@@ -71,6 +94,19 @@ class Iec61850ClientControlService:
         self._last_plan: Iec61850ReportSubscriptionPlan | None = None
         self._last_diagnostic: Iec61850ClientControlDiagnostic | None = None
         self._session_open = False
+        configured_binary_path = live_wire_binary_path or getattr(settings, "iec61850_ied_binary_path", "") or None
+        if configured_binary_path is None:
+            fallback_binary = Path("/tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim")
+            configured_binary_path = str(fallback_binary) if fallback_binary.is_file() else None
+        self._live_wire_binary_path = configured_binary_path
+        self._live_wire_bind_address = live_wire_bind_address or getattr(settings, "iec61850_ied_wire_bind_address", "127.0.0.1")
+        self._live_wire_port = live_wire_port or getattr(settings, "iec61850_ied_wire_port", 12346)
+        self._live_wire_process: Iec61850IedSimulatorProcessHandle | None = None
+        self._live_wire_socket: socket.socket | None = None
+        self._live_wire_fixture_dir: tempfile.TemporaryDirectory[str] | None = None
+        self._live_wire_endpoint: Iec61850DeviceEndpoint | None = None
+        self._live_wire_last_frame: bytes | None = None
+        self._live_wire_last_diagnostic: Iec61850ClientControlDiagnostic | None = None
         self._lock = RLock()
 
     @property
@@ -95,6 +131,11 @@ class Iec61850ClientControlService:
                 last_plan=self._last_plan,
                 transcript=self._runtime.transcript(),
                 last_diagnostic=self._last_diagnostic,
+                live_wire_open=self._live_wire_process is not None,
+                live_wire_endpoint=self._live_wire_endpoint,
+                live_wire_last_frame_length=len(self._live_wire_last_frame) if self._live_wire_last_frame is not None else None,
+                live_wire_last_frame_hex=self._live_wire_last_frame.hex() if self._live_wire_last_frame is not None else None,
+                live_wire_last_diagnostic=self._live_wire_last_diagnostic,
             )
 
     def open_session(self) -> Iec61850ClientControlSnapshot:
@@ -170,6 +211,161 @@ class Iec61850ClientControlService:
                 lambda: self._runtime.run_simulator_report_subscription_plan(plan=_build_subscription_plan(self._candidate), client_id=self._client_id),
                 post=self._capture_subscription_run,
             )
+
+    def start_live_wire_transport(self) -> Iec61850ClientControlSnapshot:
+        with self._lock:
+            return self._run("wire-start", self._start_live_wire_transport)
+
+    def emit_live_wire_report(self) -> Iec61850ClientControlSnapshot:
+        with self._lock:
+            return self._run("wire-emit-report", self._emit_live_wire_report)
+
+    def stop_live_wire_transport(self) -> Iec61850ClientControlSnapshot:
+        with self._lock:
+            return self._run("wire-stop", self._stop_live_wire_transport)
+
+    def _start_live_wire_transport(self) -> None:
+        if self._live_wire_process is not None:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_SESSION_EXISTS",
+                "IEC 61850 live wire transport is already running.",
+            )
+        if not self._live_wire_binary_path:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_BINARY_PATH_NOT_CONFIGURED",
+                "IEC 61850 live wire transport requires a configured simulator binary path.",
+            )
+
+        subscription_plan = _build_subscription_plan(self._candidate)
+        fixture = build_ied_simulator_fixture_from_subscription_plan(subscription_plan)
+        fixture_dir: tempfile.TemporaryDirectory[str] | None = None
+        fixture_path = Path("/workspace/simulator/iec61850_ied/examples/single-report.fixture.json")
+        if not fixture_path.is_file():
+            fixture_dir = tempfile.TemporaryDirectory(prefix="unitlab-iec61850-wire-")
+            fixture_path = Path(fixture_dir.name) / "wire-fixture.json"
+            write_ied_simulator_fixture_file(fixture, fixture_path)
+        spec = build_ied_simulator_process_spec(
+            fixture=fixture,
+            binary_path=self._live_wire_binary_path,
+            fixture_path=fixture_path,
+            ied_name=self._candidate.ied_name,
+            bind_address=self._live_wire_bind_address,
+            port=self._live_wire_port,
+            native_wire_start=True,
+        )
+        process_handle: Iec61850IedSimulatorProcessHandle | None = None
+        try:
+            process_handle = start_ied_simulator_process(spec)
+            wire_socket = socket.create_connection((spec.bind_address, spec.port), timeout=5.0)
+            wire_socket.settimeout(5.0)
+        except Exception:
+            try:
+                if process_handle is not None:
+                    stop_ied_simulator_process(process_handle)
+            finally:
+                if fixture_dir is not None:
+                    fixture_dir.cleanup()
+            raise
+
+        self._live_wire_process = process_handle
+        self._live_wire_socket = wire_socket
+        self._live_wire_fixture_dir = fixture_dir
+        self._live_wire_endpoint = spec.endpoint
+        self._live_wire_last_frame = None
+        self._live_wire_last_diagnostic = None
+        self._runtime._append_event(
+            kind="wire-session-open",
+            session_id=self._session_id,
+            endpoint_id=spec.endpoint.id,
+            client_id=self._client_id,
+            outcome="connected",
+        )
+
+    def _emit_live_wire_report(self) -> None:
+        if self._live_wire_process is None or self._live_wire_socket is None or self._live_wire_endpoint is None:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_SESSION_NOT_OPEN",
+                "IEC 61850 live wire transport is not open.",
+            )
+        write_ied_simulator_process_command(self._live_wire_process, "emit-report")
+        frame = self._read_tpkt_frame(self._live_wire_socket)
+        self._live_wire_last_frame = frame
+        self._live_wire_last_diagnostic = None
+        self._runtime._append_event(
+            kind="wire-report-frame",
+            session_id=self._session_id,
+            endpoint_id=self._live_wire_endpoint.id,
+            client_id=self._client_id,
+            outcome="received",
+            code=str(len(frame)),
+            message=frame.hex(),
+        )
+
+    def _stop_live_wire_transport(self) -> None:
+        if self._live_wire_process is None:
+            return
+        process_handle = self._live_wire_process
+        wire_socket = self._live_wire_socket
+        fixture_dir = self._live_wire_fixture_dir
+        self._live_wire_process = None
+        self._live_wire_socket = None
+        self._live_wire_fixture_dir = None
+        self._live_wire_endpoint = None
+        try:
+            if process_handle.process.stdin is not None:
+                try:
+                    write_ied_simulator_process_command(process_handle, "exit")
+                except Iec61850ReportRuntimeError:
+                    pass
+            if wire_socket is not None:
+                wire_socket.close()
+        finally:
+            stop_ied_simulator_process(process_handle)
+            if fixture_dir is not None:
+                fixture_dir.cleanup()
+        self._live_wire_last_diagnostic = None
+        self._runtime._append_event(
+            kind="wire-session-close",
+            session_id=self._session_id,
+            endpoint_id=process_handle.endpoint.id,
+            client_id=self._client_id,
+            outcome="closed",
+        )
+
+    def _read_tpkt_frame(self, wire_socket: socket.socket) -> bytes:
+        header = self._read_exact(wire_socket, 4)
+        if len(header) != 4 or header[0] != 3 or header[1] != 0:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_FRAME_INVALID",
+                "IEC 61850 live wire transport received an invalid TPKT header.",
+            )
+        total_length = int.from_bytes(header[2:4], byteorder="big", signed=False)
+        if total_length < 4:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_FRAME_INVALID",
+                "IEC 61850 live wire transport received a truncated TPKT length.",
+            )
+        payload = self._read_exact(wire_socket, total_length - 4)
+        if len(payload) != total_length - 4:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_FRAME_TRUNCATED",
+                "IEC 61850 live wire transport received a truncated frame payload.",
+            )
+        return header + payload
+
+    def _read_exact(self, wire_socket: socket.socket, length: int) -> bytes:
+        chunks: list[bytes] = []
+        remaining = length
+        while remaining > 0:
+            chunk = wire_socket.recv(remaining)
+            if not chunk:
+                raise Iec61850ReportRuntimeError(
+                    "LIVE_WIRE_SOCKET_CLOSED",
+                    "IEC 61850 live wire transport socket closed before the expected frame was received.",
+                )
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        return b"".join(chunks)
 
     def _run(self, action: str, operation, post=None):
         try:

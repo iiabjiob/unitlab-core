@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import pytest
 
 from app.services.iec61850.client_control import Iec61850ClientControlService
+import app.services.iec61850.client_control as client_control_module
 from app.services.iec61850.report_runtime import Iec61850ReportReason, Iec61850ReportRuntimeError, Iec61850RuntimeStatus
 
 
@@ -67,3 +68,77 @@ def test_client_control_service_surfaces_last_diagnostic_on_duplicate_open() -> 
     assert error.value.code == "SESSION_EXISTS"
     assert service.snapshot().last_diagnostic is not None
     assert service.snapshot().last_diagnostic.code == "SESSION_EXISTS"
+
+
+
+def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = Iec61850ClientControlService(
+        now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC),
+        live_wire_binary_path="/bin/true",
+        live_wire_bind_address="127.0.0.1",
+        live_wire_port=12346,
+    )
+
+    emitted_commands: list[str] = []
+    fake_frame = bytes.fromhex("030000110102030405060708090a0b0c0d")
+
+    class _FakeStdin:
+        def write(self, value: str) -> None:
+            emitted_commands.append(value)
+
+        def flush(self) -> None:
+            return None
+
+    class _FakeProcess:
+        def __init__(self) -> None:
+            self.stdin = _FakeStdin()
+
+    class _FakeHandle:
+        def __init__(self) -> None:
+            self.endpoint = service.snapshot().endpoint
+            self.process = _FakeProcess()
+            self.pid = 4242
+            self.spec = None
+
+    class _FakeSocket:
+        def __init__(self) -> None:
+            self._buffer = bytearray(fake_frame)
+            self.closed = False
+
+        def settimeout(self, _timeout: float) -> None:
+            return None
+
+        def recv(self, size: int) -> bytes:
+            if not self._buffer:
+                return b""
+            chunk = bytes(self._buffer[:size])
+            del self._buffer[:size]
+            return chunk
+
+        def close(self) -> None:
+            self.closed = True
+
+    fake_socket = _FakeSocket()
+
+    def fake_start_process(spec, **_kwargs):
+        handle = _FakeHandle()
+        handle.spec = spec
+        handle.endpoint = spec.endpoint
+        return handle
+
+    monkeypatch.setattr(client_control_module, "start_ied_simulator_process", fake_start_process)
+    monkeypatch.setattr(client_control_module.socket, "create_connection", lambda address, timeout=None: fake_socket)
+    monkeypatch.setattr(client_control_module, "stop_ied_simulator_process", lambda handle: None)
+
+    state = service.start_live_wire_transport()
+    assert state.live_wire_open is True
+
+    state = service.emit_live_wire_report()
+    assert state.live_wire_last_frame_length == len(fake_frame)
+    assert state.live_wire_last_frame_hex == fake_frame.hex()
+    assert [event.kind for event in state.transcript][-2:] == ["wire-session-open", "wire-report-frame"]
+    assert emitted_commands == ["emit-report\n"]
+
+    state = service.stop_live_wire_transport()
+    assert state.live_wire_open is False
+    assert [event.kind for event in state.transcript][-1] == "wire-session-close"

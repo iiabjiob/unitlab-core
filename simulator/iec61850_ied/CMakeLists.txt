@@ -47,6 +47,7 @@ add_executable(unitlab-iec61850-ied-sim
   src/fixture_parser.c
   src/libiec61850_model_builder.c
   src/main.c
+  src/native_wire_server.c
   src/model_loader.c
   src/model_plan.c
 )

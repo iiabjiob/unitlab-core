@@ -14,7 +14,9 @@ const errorMessage = ref<string | null>(null)
 const transcript = computed(() => state.value?.transcript ?? [])
 const lastDiagnostic = computed(() => state.value?.last_diagnostic ?? null)
 const sessionStatus = computed(() => state.value?.session_open ? "Connected" : "Disconnected")
+const liveWireStatus = computed(() => state.value?.live_wire_open ? "Wire connected" : "Wire closed")
 const reportStatus = computed(() => state.value?.last_report ? "Report received" : "Waiting for report")
+const wireFrameStatus = computed(() => state.value?.live_wire_last_frame_length ? `${state.value.live_wire_last_frame_length} bytes` : "No frame yet")
 const stateSummary = computed(() => {
   if (!state.value) return "No client session loaded"
   return `${state.value.endpoint.ied_name}/${state.value.endpoint.access_point_name} · ${state.value.candidate.report_control_name}`
@@ -93,6 +95,15 @@ function formatJson(value: unknown): string {
         <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('subscription', Iec61850ClientAPI.runSubscriptionPlan)">
           {{ busyAction === 'subscription' ? 'Running...' : 'Run subscription' }}
         </UiButton>
+        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('wire-start', Iec61850ClientAPI.startWireTransport)">
+          {{ busyAction === 'wire-start' ? 'Starting wire...' : 'Start wire transport' }}
+        </UiButton>
+        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('wire-emit', Iec61850ClientAPI.emitWireReport)">
+          {{ busyAction === 'wire-emit' ? 'Emitting report...' : 'Emit wire report' }}
+        </UiButton>
+        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('wire-stop', Iec61850ClientAPI.stopWireTransport)">
+          {{ busyAction === 'wire-stop' ? 'Stopping wire...' : 'Stop wire transport' }}
+        </UiButton>
         <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('close', Iec61850ClientAPI.closeSession)">
           {{ busyAction === 'close' ? 'Closing...' : 'Close session' }}
         </UiButton>
@@ -119,6 +130,14 @@ function formatJson(value: unknown): string {
         <span class="iec61850-client-page__metric-label">Last report</span>
         <span class="iec61850-client-page__metric-value">{{ reportStatus }}</span>
       </div>
+      <div class="iec61850-client-page__metric">
+        <span class="iec61850-client-page__metric-label">Live wire</span>
+        <span class="iec61850-client-page__metric-value">{{ liveWireStatus }}</span>
+      </div>
+      <div class="iec61850-client-page__metric">
+        <span class="iec61850-client-page__metric-label">Last wire frame</span>
+        <span class="iec61850-client-page__metric-value">{{ wireFrameStatus }}</span>
+      </div>
       <div class="iec61850-client-page__metric iec61850-client-page__metric--wide">
         <span class="iec61850-client-page__metric-label">Last diagnostic</span>
         <span class="iec61850-client-page__metric-value">{{ lastDiagnostic ? `${lastDiagnostic.action}: ${lastDiagnostic.code}` : 'None' }}</span>
@@ -136,6 +155,10 @@ function formatJson(value: unknown): string {
       <section class="iec61850-client-page__panel">
         <div class="iec61850-client-page__panel-header">
           <h2>Transcript</h2>
+        </div>
+        <div v-if="state?.live_wire_last_frame_hex" class="iec61850-client-page__wire-frame">
+          <p class="iec61850-client-page__wire-frame-label">Last wire frame hex</p>
+          <pre class="iec61850-client-page__json">{{ state.live_wire_last_frame_hex }}</pre>
         </div>
         <div v-if="transcript.length" class="iec61850-client-page__transcript-list">
           <article v-for="event in transcript" :key="event.id" class="iec61850-client-page__transcript-item">
@@ -258,6 +281,20 @@ function formatJson(value: unknown): string {
 .iec61850-client-page__metric-label {
   color: rgba(148, 163, 184, 0.82);
   font-size: 0.8rem;
+}
+
+.iec61850-client-page__wire-frame {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.iec61850-client-page__wire-frame-label {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.82);
 }
 
 .iec61850-client-page__metric-value {
