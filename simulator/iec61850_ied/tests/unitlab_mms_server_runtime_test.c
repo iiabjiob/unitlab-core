@@ -20,7 +20,7 @@ static int build_information_report_association_bytes(uint8_t* buffer, size_t bu
 {
     UnitLabMmsWireAssociationFixture fixture;
     UnitLabMmsPdu pdu;
-    uint8_t pdu_raw_payload[2];
+    uint8_t pdu_raw_payload[5] = { 0xA0U, 0x03U, 0x81U, 0x01U, 0x00U };
     uint8_t pdu_encoded[16];
     size_t pdu_length = 0U;
     size_t payload_length = 0U;
@@ -29,8 +29,6 @@ static int build_information_report_association_bytes(uint8_t* buffer, size_t bu
     pdu.kind = UNITLAB_MMS_PDU_UNCONFIRMED;
     pdu.has_service = 1;
     pdu.service_kind = UNITLAB_MMS_SERVICE_INFORMATION_REPORT;
-    pdu_raw_payload[0] = 0x80U;
-    pdu_raw_payload[1] = 0x00U;
     pdu.pdu_bytes = pdu_raw_payload;
     pdu.pdu_length = sizeof(pdu_raw_payload);
 

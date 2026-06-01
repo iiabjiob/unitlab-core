@@ -248,15 +248,28 @@ static const char* optional_bool_label(UnitLabIedFixtureOptionalBool field)
     return field.value ? "true" : "false";
 }
 
-static int build_native_information_report_association_bytes(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+static int build_native_association_request_bytes(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsWireAssociationFixture fixture;
-    UnitLabMmsPdu pdu;
-    UnitLabMmsBerElement service_element;
-    uint8_t service_bytes[8];
-    uint8_t pdu_bytes[32];
-    size_t service_length = 0U;
-    size_t pdu_length = 0U;
+    uint8_t aarq_payload[67U] = {
+        0x60U, 0x41U,
+        0x80U, 0x01U, 0x00U,
+        0xA1U, 0x07U, 0x06U, 0x05U, 0x28U, 0xCAU, 0x12U, 0x02U, 0x03U,
+        0xBEU, 0x33U,
+        0x28U, 0x31U,
+        0x06U, 0x02U, 0x52U, 0x01U,
+        0x02U, 0x01U, 0x03U,
+        0xA0U, 0x28U,
+        0xA8U, 0x26U,
+        0x80U, 0x03U, 0x00U, 0xFAU, 0x00U,
+        0x81U, 0x01U, 0x0AU,
+        0x82U, 0x01U, 0x0AU,
+        0x83U, 0x01U, 0x05U,
+        0xA4U, 0x16U,
+        0x80U, 0x01U, 0x01U,
+        0x81U, 0x03U, 0x05U, 0xE1U, 0x00U,
+        0x82U, 0x0CU, 0x03U, 0xA0U, 0x00U, 0x00U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U, 0xEDU, 0x10U,
+    };
 
     if (buffer == NULL || encoded_length == NULL) {
         if (diagnostic != NULL) {
@@ -266,31 +279,11 @@ static int build_native_information_report_association_bytes(uint8_t* buffer, si
         return 0;
     }
 
-    unitlab_mms_ber_element_init(&service_element);
-    service_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
-    service_element.tag.constructed = 1;
-    service_element.tag.tag_number = 0U;
-    service_element.value_bytes = NULL;
-    service_element.value_length = 0U;
-    if (!unitlab_mms_ber_write(&service_element, service_bytes, sizeof(service_bytes), &service_length, diagnostic)) {
-        return 0;
-    }
-
-    unitlab_mms_pdu_init(&pdu);
-    pdu.kind = UNITLAB_MMS_PDU_UNCONFIRMED;
-    pdu.has_service = 1;
-    pdu.service_kind = UNITLAB_MMS_SERVICE_INFORMATION_REPORT;
-    pdu.pdu_bytes = service_bytes;
-    pdu.pdu_length = service_length;
-    if (!unitlab_mms_pdu_encode(&pdu, pdu_bytes, sizeof(pdu_bytes), &pdu_length, diagnostic)) {
-        return 0;
-    }
-
     unitlab_mms_wire_association_fixture_init(&fixture);
     fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
     fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
-    fixture.presentation.payload_bytes = pdu_bytes;
-    fixture.presentation.payload_length = pdu_length;
+    fixture.presentation.payload_bytes = aarq_payload;
+    fixture.presentation.payload_length = sizeof(aarq_payload);
     fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
     fixture.transport.cotp.eot = 1;
     if (!unitlab_mms_wire_association_fixture_encode(&fixture, buffer, buffer_length, encoded_length, diagnostic)) {
@@ -513,7 +506,7 @@ int main(int argc, char** argv)
             unitlab_free_ied_fixture_model(&fixture_model);
             return 69;
         }
-        if (!build_native_information_report_association_bytes(association_bytes, sizeof(association_bytes), &association_length, &server_diagnostic)) {
+        if (!build_native_association_request_bytes(association_bytes, sizeof(association_bytes), &association_length, &server_diagnostic)) {
             fprintf(stderr, "%s: %s\n", "NATIVE_SERVER_ASSOCIATION_BUILD_FAILED", server_diagnostic.message);
             unitlab_free_ied_model_plan(&model_plan);
             unitlab_free_ied_fixture_model(&fixture_model);

@@ -15,6 +15,7 @@
 
 #include "wire/ber/unitlab_mms_ber.h"
 #include "wire/mms/unitlab_mms_pdu.h"
+#include "wire/transport/unitlab_mms_wire_association_fixture.h"
 #include "wire/orchestration/unitlab_mms_wire_builder.h"
 
 static void set_result(UnitLabIedModelLoadResult* result, const char* code, const char* message)
@@ -55,43 +56,46 @@ static int send_all(int fd, const uint8_t* buffer, size_t length)
     return 1;
 }
 
-static int build_empty_information_report_frame(
+static int build_native_association_request_frame(
     UnitLabMmsServerRuntime* server_runtime,
     uint8_t* buffer,
     size_t buffer_length,
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    UnitLabMmsBerElement report_element;
-    UnitLabMmsPdu report_pdu;
-    uint8_t service_bytes[16U];
-    size_t service_length = 0U;
+    UnitLabMmsWireAssociationFixture fixture;
+    uint8_t aarq_payload[67U] = {
+        0x60U, 0x41U,
+        0x80U, 0x01U, 0x00U,
+        0xA1U, 0x07U, 0x06U, 0x05U, 0x28U, 0xCAU, 0x12U, 0x02U, 0x03U,
+        0xBEU, 0x33U,
+        0x28U, 0x31U,
+        0x06U, 0x02U, 0x52U, 0x01U,
+        0x02U, 0x01U, 0x03U,
+        0xA0U, 0x28U,
+        0xA8U, 0x26U,
+        0x80U, 0x03U, 0x00U, 0xFAU, 0x00U,
+        0x81U, 0x01U, 0x0AU,
+        0x82U, 0x01U, 0x0AU,
+        0x83U, 0x01U, 0x05U,
+        0xA4U, 0x16U,
+        0x80U, 0x01U, 0x01U,
+        0x81U, 0x03U, 0x05U, 0xE1U, 0x00U,
+        0x82U, 0x0CU, 0x03U, 0xA0U, 0x00U, 0x00U, 0x00U, 0x00U, 0x02U, 0x00U, 0x00U, 0x00U, 0xEDU, 0x10U,
+    };
 
-    unitlab_mms_ber_element_init(&report_element);
-    unitlab_mms_ber_tag_init(&report_element.tag);
-    report_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
-    report_element.tag.constructed = 1;
-    report_element.tag.tag_number = 0U;
-    report_element.value_bytes = NULL;
-    report_element.value_length = 0U;
-    if (!unitlab_mms_ber_write(&report_element, service_bytes, sizeof(service_bytes), &service_length, diagnostic)) {
+    unitlab_mms_wire_association_fixture_init(&fixture);
+    fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
+    fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
+    fixture.presentation.payload_bytes = aarq_payload;
+    fixture.presentation.payload_length = sizeof(aarq_payload);
+    fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
+    fixture.transport.cotp.eot = 1;
+    if (!unitlab_mms_wire_association_fixture_encode(&fixture, buffer, buffer_length, encoded_length, diagnostic)) {
         return 0;
     }
-
-    unitlab_mms_pdu_init(&report_pdu);
-    report_pdu.kind = UNITLAB_MMS_PDU_UNCONFIRMED;
-    report_pdu.has_service = 1;
-    report_pdu.service_kind = UNITLAB_MMS_SERVICE_INFORMATION_REPORT;
-    report_pdu.pdu_bytes = service_bytes;
-    report_pdu.pdu_length = service_length;
-    return unitlab_mms_build_wire_frame_from_pdu(
-        &report_pdu,
-        server_runtime->wire_scratch,
-        sizeof(server_runtime->wire_scratch),
-        buffer,
-        buffer_length,
-        encoded_length,
-        diagnostic);
+    (void)server_runtime;
+    return 1;
 }
 
 static int resolve_listener(const char* bind_address, int port, struct addrinfo** out_info)
@@ -210,7 +214,7 @@ static int handle_command(
             printf("native-wire-server: data-client-connected\n");
             fflush(stdout);
         }
-        if (!build_empty_information_report_frame(server_runtime, frame, frame_length, encoded_length, &diagnostic)) {
+        if (!build_native_association_request_frame(server_runtime, frame, frame_length, encoded_length, &diagnostic)) {
             set_result(result, "NATIVE_WIRE_SERVER_REPORT_BUILD_FAILED", diagnostic.message);
             return -1;
         }
