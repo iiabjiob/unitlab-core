@@ -106,6 +106,9 @@ static void test_server_runtime_apply_association_request_bytes_accepts_initiate
     assert(consumed_length == wire_length);
     assert(server_runtime.transport.request_bytes == wire_bytes);
     assert(server_runtime.transport.request_length == wire_length);
+    assert(server_runtime.session.state == UNITLAB_MMS_SESSION_ASSOCIATING);
+    assert(server_runtime.session.active_invoke_id == 1U);
+    assert(server_runtime.last_result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_ASSOCIATION);
 }
 
 static void test_server_runtime_apply_association_request_bytes_rejects_non_initiate_request(void)

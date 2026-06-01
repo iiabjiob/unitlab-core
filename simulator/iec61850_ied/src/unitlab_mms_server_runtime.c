@@ -460,14 +460,15 @@ int unitlab_mms_server_runtime_apply_association_request_bytes(UnitLabMmsServerR
         server_runtime_fail_and_capture(server_runtime, operation_result);
         return 0;
     }
-    server_runtime_set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-    operation_result->ok = 1;
-    unitlab_mms_operation_result_from_trace(
-        operation_result,
-        1,
-        &operation_result->diagnostic,
-        &server_runtime->transport.event_log,
-        &server_runtime->transport.last_event);
+    if (!unitlab_mms_runtime_apply_wire_pdu_with_report_control(
+            &server_runtime->session,
+            &server_runtime->pending_request,
+            &server_runtime->report_control,
+            &wire_pdu,
+            operation_result)) {
+        server_runtime_fail_and_capture(server_runtime, operation_result);
+        return 0;
+    }
     server_runtime->last_result = *operation_result;
     unitlab_mms_server_runtime_capture_snapshot(server_runtime);
     *consumed_length = transport_consumed_length;

@@ -4,6 +4,37 @@
 #include <assert.h>
 #include <string.h>
 
+static void test_wire_associate_request_and_response_bridge(void)
+{
+    UnitLabMmsSession session;
+    UnitLabMmsOperationResult result;
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_session_init(&session);
+    unitlab_mms_operation_result_init(&result);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    wire_pdu.kind = UNITLAB_MMS_PDU_INITIATE_REQUEST;
+
+    assert(unitlab_mms_runtime_apply_wire_pdu(&session, NULL, &wire_pdu, &result) == 1);
+    assert(result.ok == 1);
+    assert(result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATING);
+    assert(result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_ASSOCIATION);
+
+    unitlab_mms_operation_result_init(&result);
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    wire_pdu.kind = UNITLAB_MMS_PDU_INITIATE_RESPONSE;
+
+    assert(unitlab_mms_runtime_apply_wire_pdu(&session, NULL, &wire_pdu, &result) == 1);
+    assert(result.ok == 1);
+    assert(result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATED);
+    assert(result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_COMPLETE_ASSOCIATION);
+}
+
 static void test_wire_read_request_starts_pending_request(void)
 {
     UnitLabMmsSession session;
@@ -154,6 +185,7 @@ static void test_wire_reject_projection(void)
 
 int main(void)
 {
+    test_wire_associate_request_and_response_bridge();
     test_wire_read_request_starts_pending_request();
     test_wire_read_response_applies_to_runtime();
     test_wire_information_report_applies_to_runtime();

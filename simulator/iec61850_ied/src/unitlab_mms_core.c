@@ -441,7 +441,20 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
                 operation_result->ok = 0;
                 return 0;
             }
-            operation_result->ok = unitlab_mms_session_complete_association(session, semantic_result->pdu.invoke_id, &operation_result->diagnostic);
+            uint32_t association_invoke_id = semantic_result->pdu.invoke_id;
+            if (association_invoke_id == 0U) {
+                association_invoke_id = session->active_invoke_id;
+            }
+            operation_result->ok = unitlab_mms_session_complete_association(session, association_invoke_id, &operation_result->diagnostic);
+            operation_result_project_from_runtime(operation_result, operation_result->ok, &operation_result->diagnostic, &session->event_log, &session->last_event);
+            return operation_result->ok;
+        case UNITLAB_MMS_DECODED_PDU_ASSOCIATE_REQUEST:
+            if (session == NULL) {
+                set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session is required to apply associate request.");
+                operation_result->ok = 0;
+                return 0;
+            }
+            operation_result->ok = unitlab_mms_session_begin_association(session, &operation_result->diagnostic);
             operation_result_project_from_runtime(operation_result, operation_result->ok, &operation_result->diagnostic, &session->event_log, &session->last_event);
             return operation_result->ok;
         case UNITLAB_MMS_DECODED_PDU_RELEASE_RESPONSE:

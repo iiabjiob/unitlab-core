@@ -18,6 +18,14 @@ static int bridge_map_pdu_kind(const UnitLabMmsPdu* wire_pdu, UnitLabMmsDecodedP
     decoded_pdu->value_length = wire_pdu->service_length;
 
     switch (wire_pdu->kind) {
+        case UNITLAB_MMS_PDU_INITIATE_REQUEST:
+            decoded_pdu->kind = UNITLAB_MMS_DECODED_PDU_ASSOCIATE_REQUEST;
+            *outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
+            return 1;
+        case UNITLAB_MMS_PDU_INITIATE_RESPONSE:
+            decoded_pdu->kind = UNITLAB_MMS_DECODED_PDU_ASSOCIATE_RESPONSE;
+            *outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
+            return 1;
         case UNITLAB_MMS_PDU_CONFIRMED_REQUEST:
             if (!wire_pdu->has_invoke_id || !wire_pdu->has_service) {
                 bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "confirmed MMS request is missing invokeID or service choice.", "confirmed MMS request is missing invokeID or service choice.");

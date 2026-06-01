@@ -354,11 +354,22 @@ static void test_runtime_apply_semantic_result(void)
     unitlab_mms_operation_result_init(&operation_result);
     unitlab_mms_diagnostic_clear(&diagnostic);
 
-    assert(unitlab_mms_session_begin_association(&session, &diagnostic) == 1);
+    semantic_result.ok = 1;
+    semantic_result.outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
+    semantic_result.pdu.kind = UNITLAB_MMS_DECODED_PDU_ASSOCIATE_REQUEST;
+
+    assert(unitlab_mms_runtime_apply_semantic_result(&session, NULL, &semantic_result, &operation_result) == 1);
+    assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATING);
+    assert(operation_result.ok == 1);
+    assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(operation_result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_BEGIN_ASSOCIATION);
+    assert(unitlab_mms_runtime_event_log_count(&operation_result.trace) == 1U);
+
+    unitlab_mms_semantic_result_init(&semantic_result);
+    unitlab_mms_operation_result_init(&operation_result);
     semantic_result.ok = 1;
     semantic_result.outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
     semantic_result.pdu.kind = UNITLAB_MMS_DECODED_PDU_ASSOCIATE_RESPONSE;
-    semantic_result.pdu.invoke_id = session.active_invoke_id;
 
     assert(unitlab_mms_runtime_apply_semantic_result(&session, NULL, &semantic_result, &operation_result) == 1);
     assert(session.state == UNITLAB_MMS_SESSION_ASSOCIATED);
