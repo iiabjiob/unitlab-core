@@ -98,6 +98,7 @@ const pendingDefaultExpansion = ref(false)
 const showReportCandidatesOnlyWithSignals = ref(false)
 const treeSearchQuery = ref("")
 const treeViewportRef = ref<HTMLElement | null>(null)
+const treeSearchInputRef = ref<HTMLInputElement | null>(null)
 let treeViewportResizeObserver: ResizeObserver | null = null
 let loadRequestId = 0
 let simulatorRequestId = 0
@@ -278,6 +279,7 @@ watch(
   () => tree.state.value.active,
   async (active) => {
     if (!active) return
+    if (isTreeSearchFocused()) return
     await nextTick()
     if (focusNodeElement(active)) return
     tree.scrollToValue(active)
@@ -672,6 +674,10 @@ function focusNodeElement(value: NodeValue): boolean {
   return true
 }
 
+function isTreeSearchFocused(): boolean {
+  return document.activeElement === treeSearchInputRef.value
+}
+
 function syncTreeViewportScrollTop() {
   const viewport = treeViewportRef.value
   if (!viewport) return
@@ -961,6 +967,7 @@ onUnmounted(() => {
         <template v-else>
           <div class="iec61850-debug-page__tree-toolbar">
             <input
+              ref="treeSearchInputRef"
               v-model="treeSearchQuery"
               type="search"
               class="iec61850-debug-page__tree-search"
