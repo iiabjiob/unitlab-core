@@ -65,49 +65,49 @@ function formatJson(value: unknown): string {
         <p class="iec61850-client-page__status">{{ stateSummary }}</p>
       </div>
       <div class="iec61850-client-page__actions">
-        <RouterLink class="iec61850-client-page__nav-link" to="/61850-debug">
+        <RouterLink class="iec61850-client-page__nav-link iec61850-client-page__action" to="/61850-debug">
           Back to Debug
         </RouterLink>
-        <UiButton variant="secondary" size="sm" :disabled="loading" @click="refreshState">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="loading" @click="refreshState">
           Refresh state
         </UiButton>
-        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('open', Iec61850ClientAPI.openSession)">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('open', Iec61850ClientAPI.openSession)">
           {{ busyAction === 'open' ? 'Opening...' : 'Open session' }}
         </UiButton>
-        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('read', Iec61850ClientAPI.readReportControl)">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('read', Iec61850ClientAPI.readReportControl)">
           {{ busyAction === 'read' ? 'Reading...' : 'Read RCB' }}
         </UiButton>
-        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('reserve', Iec61850ClientAPI.reserveReportControl)">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('reserve', Iec61850ClientAPI.reserveReportControl)">
           {{ busyAction === 'reserve' ? 'Reserving...' : 'Reserve' }}
         </UiButton>
-        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('enable', Iec61850ClientAPI.enableReportControl)">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('enable', Iec61850ClientAPI.enableReportControl)">
           {{ busyAction === 'enable' ? 'Enabling...' : 'Enable' }}
         </UiButton>
-        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('gi', Iec61850ClientAPI.sendGeneralInterrogation)">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('gi', Iec61850ClientAPI.sendGeneralInterrogation)">
           {{ busyAction === 'gi' ? 'Requesting GI...' : 'Request GI' }}
         </UiButton>
-        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('disable', Iec61850ClientAPI.disableReportControl)">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('disable', Iec61850ClientAPI.disableReportControl)">
           {{ busyAction === 'disable' ? 'Disabling...' : 'Disable' }}
         </UiButton>
-        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('release', Iec61850ClientAPI.releaseReportControl)">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('release', Iec61850ClientAPI.releaseReportControl)">
           {{ busyAction === 'release' ? 'Releasing...' : 'Release' }}
         </UiButton>
-        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('subscription', Iec61850ClientAPI.runSubscriptionPlan)">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('subscription', Iec61850ClientAPI.runSubscriptionPlan)">
           {{ busyAction === 'subscription' ? 'Running...' : 'Run subscription' }}
         </UiButton>
-        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('wire-start', Iec61850ClientAPI.startWireTransport)">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('wire-start', Iec61850ClientAPI.startWireTransport)">
           {{ busyAction === 'wire-start' ? 'Starting wire...' : 'Start wire' }}
         </UiButton>
-        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('wire-emit', Iec61850ClientAPI.emitWireReport)">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('wire-emit', Iec61850ClientAPI.emitWireReport)">
           {{ busyAction === 'wire-emit' ? 'Emitting report...' : 'Emit wire report' }}
         </UiButton>
-        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('wire-stop', Iec61850ClientAPI.stopWireTransport)">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('wire-stop', Iec61850ClientAPI.stopWireTransport)">
           {{ busyAction === 'wire-stop' ? 'Stopping wire...' : 'Stop wire transport' }}
         </UiButton>
-        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('close', Iec61850ClientAPI.closeSession)">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('close', Iec61850ClientAPI.closeSession)">
           {{ busyAction === 'close' ? 'Closing...' : 'Close session' }}
         </UiButton>
-        <UiButton variant="secondary" size="sm" :disabled="busyAction !== null" @click="runAction('clear', Iec61850ClientAPI.clearTranscript)">
+        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('clear', Iec61850ClientAPI.clearTranscript)">
           {{ busyAction === 'clear' ? 'Clearing...' : 'Clear transcript' }}
         </UiButton>
       </div>
@@ -149,34 +149,38 @@ function formatJson(value: unknown): string {
         <div class="iec61850-client-page__panel-header">
           <h2>Current state</h2>
         </div>
-        <pre class="iec61850-client-page__json">{{ state ? formatJson(state) : 'No state loaded' }}</pre>
+        <div class="iec61850-client-page__panel-body">
+          <pre class="iec61850-client-page__json">{{ state ? formatJson(state) : 'No state loaded' }}</pre>
+        </div>
       </section>
 
       <section class="iec61850-client-page__panel iec61850-client-page__panel--transcript">
         <div class="iec61850-client-page__panel-header">
           <h2>Transcript</h2>
         </div>
-        <div v-if="state?.live_wire_last_frame_hex" class="iec61850-client-page__wire-frame">
-          <p class="iec61850-client-page__wire-frame-label">Last wire frame hex</p>
-          <pre class="iec61850-client-page__json">{{ state.live_wire_last_frame_hex }}</pre>
+        <div class="iec61850-client-page__panel-body iec61850-client-page__panel-body--scroll">
+          <div v-if="state?.live_wire_last_frame_hex" class="iec61850-client-page__wire-frame">
+            <p class="iec61850-client-page__wire-frame-label">Last wire frame hex</p>
+            <pre class="iec61850-client-page__json">{{ state.live_wire_last_frame_hex }}</pre>
+          </div>
+          <div v-if="transcript.length" class="iec61850-client-page__transcript-list">
+            <article v-for="event in transcript" :key="event.id" class="iec61850-client-page__transcript-item">
+              <div class="iec61850-client-page__transcript-head">
+                <strong>{{ event.kind }}</strong>
+                <span>{{ event.at }}</span>
+              </div>
+              <div class="iec61850-client-page__transcript-meta">
+                <span>{{ event.session_id }}</span>
+                <span>{{ event.endpoint_id }}</span>
+                <span v-if="event.client_id">client {{ event.client_id }}</span>
+                <span v-if="event.outcome">outcome {{ event.outcome }}</span>
+                <span v-if="event.code">{{ event.code }}</span>
+              </div>
+              <p v-if="event.message" class="iec61850-client-page__transcript-message">{{ event.message }}</p>
+            </article>
+          </div>
+          <p v-else class="iec61850-client-page__empty">No transcript events yet.</p>
         </div>
-        <div v-if="transcript.length" class="iec61850-client-page__transcript-list">
-          <article v-for="event in transcript" :key="event.id" class="iec61850-client-page__transcript-item">
-            <div class="iec61850-client-page__transcript-head">
-              <strong>{{ event.kind }}</strong>
-              <span>{{ event.at }}</span>
-            </div>
-            <div class="iec61850-client-page__transcript-meta">
-              <span>{{ event.session_id }}</span>
-              <span>{{ event.endpoint_id }}</span>
-              <span v-if="event.client_id">client {{ event.client_id }}</span>
-              <span v-if="event.outcome">outcome {{ event.outcome }}</span>
-              <span v-if="event.code">{{ event.code }}</span>
-            </div>
-            <p v-if="event.message" class="iec61850-client-page__transcript-message">{{ event.message }}</p>
-          </article>
-        </div>
-        <p v-else class="iec61850-client-page__empty">No transcript events yet.</p>
       </section>
     </main>
   </div>
@@ -187,10 +191,10 @@ function formatJson(value: unknown): string {
 .iec61850-client-page {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
   height: 100%;
   min-height: 0;
-  padding: 1rem;
+  padding: 0.75rem;
   overflow: hidden;
   color: var(--color-neutral-900);
 }
@@ -200,30 +204,31 @@ function formatJson(value: unknown): string {
 .iec61850-client-page__panel {
   background: var(--color-white);
   border: 1px solid var(--color-neutral-200);
-  border-radius: 18px;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+  border-radius: 16px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
 }
 
 .iec61850-client-page__header {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 1.25rem 1.5rem;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
 }
 
 .iec61850-client-page__title-block {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.2rem;
+  min-width: 0;
 }
 
 .iec61850-client-page__eyebrow,
 .iec61850-client-page__status,
 .iec61850-client-page__panel-header {
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  font-size: 0.68rem;
 }
 
 .iec61850-client-page__eyebrow,
@@ -234,30 +239,29 @@ function formatJson(value: unknown): string {
 
 .iec61850-client-page__title {
   margin: 0;
-  font-size: clamp(1.7rem, 3vw, 2.4rem);
+  font-size: clamp(1.35rem, 2.2vw, 1.85rem);
+  line-height: 1.1;
 }
 
 .iec61850-client-page__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.35rem;
   justify-content: flex-end;
+  max-width: min(100%, 68rem);
 }
 
 .iec61850-client-page__nav-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.62rem 0.95rem;
-  border-radius: 999px;
-  border: 1px solid var(--color-neutral-200);
-  background: var(--color-neutral-50);
-  color: var(--color-neutral-800);
   text-decoration: none;
 }
 
+.iec61850-client-page__action {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .iec61850-client-page__nav-link:hover {
-  background: var(--color-neutral-100);
+  text-decoration: none;
 }
 
 .iec61850-client-page__alert {
@@ -270,18 +274,19 @@ function formatJson(value: unknown): string {
 
 .iec61850-client-page__summary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.75rem;
-  padding: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.5rem;
+  padding: 0.75rem;
 }
 
 .iec61850-client-page__metric {
   display: grid;
-  gap: 0.25rem;
-  padding: 0.9rem 1rem;
-  border-radius: 14px;
+  gap: 0.15rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
   background: var(--color-neutral-50);
   border: 1px solid var(--color-neutral-200);
+  min-width: 0;
 }
 
 .iec61850-client-page__metric--wide {
@@ -290,7 +295,9 @@ function formatJson(value: unknown): string {
 
 .iec61850-client-page__metric-label {
   color: var(--color-neutral-500);
-  font-size: 0.8rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .iec61850-client-page__wire-frame {
@@ -308,7 +315,7 @@ function formatJson(value: unknown): string {
 }
 
 .iec61850-client-page__metric-value {
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -327,7 +334,19 @@ function formatJson(value: unknown): string {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  padding: 1rem;
+  padding: 0.9rem;
+}
+
+.iec61850-client-page__panel-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.iec61850-client-page__panel-body--scroll {
+  flex: 1 1 auto;
+  overflow: auto;
 }
 
 .iec61850-client-page__panel-header {
@@ -335,17 +354,18 @@ function formatJson(value: unknown): string {
   align-items: center;
   justify-content: space-between;
   color: var(--color-neutral-500);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 }
 
 .iec61850-client-page__panel-header h2 {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .iec61850-client-page__panel--state .iec61850-client-page__json,
 .iec61850-client-page__panel--transcript .iec61850-client-page__json {
-  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
 }
@@ -359,47 +379,54 @@ function formatJson(value: unknown): string {
 }
 
 .iec61850-client-page__panel--transcript .iec61850-client-page__transcript-list {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
-  overflow: auto;
 }
 
 .iec61850-client-page__json {
   margin: 0;
-  padding: 1rem;
-  border-radius: 14px;
+  padding: 0.85rem;
+  border-radius: 12px;
   background: var(--color-neutral-50);
   border: 1px solid var(--color-neutral-200);
   color: var(--color-neutral-900);
-  font-size: 0.85rem;
-  line-height: 1.5;
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
 
 .iec61850-client-page__transcript-list {
-  display: grid;
-  gap: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
   min-height: 0;
 }
 
 .iec61850-client-page__transcript-item {
   min-width: 0;
-  padding: 0.85rem 0.95rem;
-  border-radius: 14px;
+  max-width: 100%;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
   background: var(--color-neutral-50);
   border: 1px solid var(--color-neutral-200);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  flex: 0 0 auto;
 }
 
 .iec61850-client-page__transcript-head,
 .iec61850-client-page__transcript-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.55rem 0.85rem;
+  gap: 0.4rem 0.65rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .iec61850-client-page__transcript-head {
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.55rem;
+  margin-bottom: 0.35rem;
 }
 
 .iec61850-client-page__transcript-head span,
@@ -407,12 +434,24 @@ function formatJson(value: unknown): string {
 .iec61850-client-page__transcript-message,
 .iec61850-client-page__empty {
   color: var(--color-neutral-700);
-  font-size: 0.86rem;
+  font-size: 0.8rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .iec61850-client-page__transcript-message,
 .iec61850-client-page__empty {
-  margin: 0.55rem 0 0;
+  margin: 0.4rem 0 0;
+}
+
+.iec61850-client-page__transcript-head strong,
+.iec61850-client-page__transcript-head span {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 @media (max-width: 960px) {
@@ -428,7 +467,8 @@ function formatJson(value: unknown): string {
 
   .iec61850-client-page__panel--state .iec61850-client-page__json,
   .iec61850-client-page__panel--transcript .iec61850-client-page__json,
-  .iec61850-client-page__panel--transcript .iec61850-client-page__transcript-list {
+  .iec61850-client-page__panel--transcript .iec61850-client-page__transcript-list,
+  .iec61850-client-page__panel-body--scroll {
     overflow: visible;
   }
 }
