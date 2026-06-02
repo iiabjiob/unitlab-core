@@ -185,21 +185,10 @@ static void test_native_wire_server_speaks_reference_handshake(void)
     uint8_t response_frame[256U];
     uint8_t association_request[128U];
     UnitLabMmsAssociationFrame decoded_fixture;
-    UnitLabMmsAcseApdu acse_apdu;
-    UnitLabMmsBerElement external_element;
-    UnitLabMmsBerElement external_indirect_element;
-    UnitLabMmsBerElement external_choice_element;
-    UnitLabMmsBerElement initiate_response_element;
-    UnitLabMmsPdu initiate_response_pdu;
     size_t client_frame_length = 0U;
     size_t association_request_length = 0U;
     size_t association_response_length = 0U;
     size_t consumed_length = 0U;
-    size_t external_consumed_length = 0U;
-    size_t external_indirect_consumed_length = 0U;
-    size_t external_choice_consumed_length = 0U;
-    size_t initiate_response_consumed_length = 0U;
-    size_t acse_consumed_length = 0U;
     int client_fd;
     const uint8_t expected_cotp_cc[] = {
         0x03U, 0x00U, 0x00U, 0x16U, 0x11U, 0xD0U, 0x00U, 0x01U, 0x00U, 0x01U, 0x00U,
