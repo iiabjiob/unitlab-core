@@ -100,6 +100,50 @@ int unitlab_build_ied_model_plan(
     char* error,
     size_t error_size);
 
+typedef enum UnitLabIedModelReportControlKind {
+    UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_BUFFERED = 0,
+    UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_UNBUFFERED = 1
+} UnitLabIedModelReportControlKind;
+
+int unitlab_collect_ied_model_logical_devices(
+    const UnitLabIedModelPlan* plan,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size);
+
+int unitlab_collect_ied_model_logical_node_data_sets(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size);
+
+int unitlab_collect_ied_model_logical_node_reports(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    UnitLabIedModelReportControlKind kind,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size);
+
+const UnitLabIedModelReportControl* unitlab_find_ied_model_report_control(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    const char* report_name);
+
+const UnitLabIedModelDataSet* unitlab_find_ied_model_data_set(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    const char* data_set_name);
+
+void unitlab_free_ied_model_name_list(char** names, size_t count);
 void unitlab_free_ied_model_plan(UnitLabIedModelPlan* plan);
 
 #endif

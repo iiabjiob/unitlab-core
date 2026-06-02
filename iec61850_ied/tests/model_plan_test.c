@@ -25,6 +25,21 @@ static int starts_with(const char* value, const char* prefix)
     return strncmp(value, prefix, strlen(prefix)) == 0;
 }
 
+static int expect_list_matches(char** names, size_t count, const char* const* expected, size_t expected_count, const char* message)
+{
+    if (count != expected_count) {
+        fprintf(stderr, "FAIL: %s\n", message);
+        return 0;
+    }
+    for (size_t index = 0U; index < expected_count; index++) {
+        if (strcmp(names[index], expected[index]) != 0) {
+            fprintf(stderr, "FAIL: %s\n", message);
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static UnitLabIedFixtureReport report_for_data_set(const char* data_set_ref)
 {
     UnitLabIedFixtureReport report = {
@@ -396,6 +411,91 @@ static int test_unknown_initial_value_kind_fails(void)
         && expect_true(starts_with(error, "MODEL_PLAN_SIGNAL_VALUE_KIND_UNKNOWN"), "unknown value kind error code");
 }
 
+
+static int test_metadata_catalog(void)
+{
+    UnitLabIedFixtureSignal signals[3];
+    UnitLabIedFixtureDataSet data_sets[2];
+    UnitLabIedFixtureReport reports[2];
+    UnitLabIedFixtureModel fixture = fixture_for(data_sets, 2U, reports, 1U, 2U);
+    UnitLabIedModelPlan plan;
+    char error[256];
+    char** names = NULL;
+    size_t count = 0U;
+    int passed = 1;
+
+    signals[0] = (UnitLabIedFixtureSignal){
+        .data_set_index = 0U,
+        .reference = "LD0/XCBR1.Pos.stVal[ST]",
+        .kind = "FCDA",
+        .component = "phaseA",
+        .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+        .initial_value = "0",
+    };
+    signals[1] = (UnitLabIedFixtureSignal){
+        .data_set_index = 0U,
+        .reference = "LD0/PGGIO1.Ind1[ST]",
+        .kind = "FCD",
+        .fc = "ST",
+        .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+        .initial_value = "1",
+    };
+    data_sets[0] = (UnitLabIedFixtureDataSet){
+        .reference = "IED1/AP1/LD0/LLN0.dsEvents",
+        .signal_count = 1U,
+        .signals = &signals[0],
+    };
+    data_sets[1] = (UnitLabIedFixtureDataSet){
+        .reference = "IED1/AP1/LD0/LLN0.dsUpdates",
+        .signal_count = 1U,
+        .signals = &signals[1],
+    };
+
+    reports[0] = report_for_data_set("IED1/AP1/LD0/LLN0.dsEvents");
+
+    if (!unitlab_build_ied_model_plan(&fixture, &plan, error, sizeof(error))) {
+        fprintf(stderr, "FAIL: model plan should build: %s\n", error);
+        return 0;
+    }
+
+    int ok = unitlab_collect_ied_model_logical_devices(&plan, &names, &count, error, sizeof(error));
+    passed &= ok;
+    if (ok) {
+        passed &= expect_list_matches(names, count, (const char*[]){ "LD0" }, 1U, "logical device metadata");
+    }
+    unitlab_free_ied_model_name_list(names, count);
+    names = NULL;
+    count = 0U;
+
+    ok = unitlab_collect_ied_model_logical_node_data_sets(&plan, "LD0", "LLN0", &names, &count, error, sizeof(error));
+    passed &= ok;
+    if (ok) {
+        passed &= expect_list_matches(names, count, (const char*[]){ "dsEvents", "dsUpdates" }, 2U, "logical node data sets");
+    }
+    unitlab_free_ied_model_name_list(names, count);
+    names = NULL;
+    count = 0U;
+
+    ok = unitlab_collect_ied_model_logical_node_reports(
+        &plan,
+        "LD0",
+        "LLN0",
+        UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_BUFFERED,
+        &names,
+        &count,
+        error,
+        sizeof(error));
+    passed &= ok;
+    if (ok) {
+        passed &= expect_list_matches(names, count, (const char*[]){ "brcbEvents" }, 1U, "logical node buffered reports");
+    }
+    unitlab_free_ied_model_name_list(names, count);
+
+    unitlab_free_ied_model_plan(&plan);
+    return passed;
+}
+
 static int test_dataset_context_mismatch_fails(void)
 {
     UnitLabIedFixtureSignal signals[1] = {
@@ -439,5 +539,6 @@ int main(void)
     passed &= test_invalid_report_conf_rev_fails();
     passed &= test_unknown_initial_value_kind_fails();
     passed &= test_dataset_context_mismatch_fails();
+    passed &= test_metadata_catalog();
     return passed ? 0 : 1;
 }

@@ -676,3 +676,193 @@ void unitlab_free_ied_model_plan(UnitLabIedModelPlan* plan)
     free(plan->signals);
     memset(plan, 0, sizeof(*plan));
 }
+
+static int append_metadata_name(char*** names, size_t* count, const char* name)
+{
+    char** next;
+    char* copy;
+    size_t length;
+
+    if (names == NULL || count == NULL || name == NULL) {
+        return 0;
+    }
+    length = strlen(name);
+    next = (char**)realloc(*names, (*count + 1U) * sizeof(char*));
+    if (next == NULL) {
+        return 0;
+    }
+    copy = (char*)malloc(length + 1U);
+    if (copy == NULL) {
+        free(next);
+        return 0;
+    }
+    if (!copy_string(copy, length + 1U, name)) {
+        free(copy);
+        free(next);
+        return 0;
+    }
+    next[*count] = copy;
+    *names = next;
+    *count += 1U;
+    return 1;
+}
+
+int unitlab_collect_ied_model_logical_devices(
+    const UnitLabIedModelPlan* plan,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size)
+{
+    if (names != NULL) {
+        *names = NULL;
+    }
+    if (count != NULL) {
+        *count = 0U;
+    }
+    if (plan == NULL || names == NULL || count == NULL) {
+        set_error(error, error_size, "INVALID_ARGUMENT: plan, names, and count are required.");
+        return 0;
+    }
+    for (size_t index = 0U; index < plan->logical_device_count; index++) {
+        if (!append_metadata_name(names, count, plan->logical_devices[index].inst)) {
+            unitlab_free_ied_model_name_list(*names, *count);
+            *names = NULL;
+            *count = 0U;
+            set_error(error, error_size, "OUT_OF_MEMORY: cannot collect logical devices.");
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int unitlab_collect_ied_model_logical_node_data_sets(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size)
+{
+    if (names != NULL) {
+        *names = NULL;
+    }
+    if (count != NULL) {
+        *count = 0U;
+    }
+    if (plan == NULL || logical_device_inst == NULL || logical_node_name == NULL || names == NULL || count == NULL) {
+        set_error(error, error_size, "INVALID_ARGUMENT: plan, logical device, logical node, names, and count are required.");
+        return 0;
+    }
+    for (size_t index = 0U; index < plan->data_set_count; index++) {
+        const UnitLabIedModelDataSet* data_set = &plan->data_sets[index];
+        if (strcmp(data_set->logical_device_inst, logical_device_inst) != 0 || strcmp(data_set->logical_node_name, logical_node_name) != 0) {
+            continue;
+        }
+        if (!append_metadata_name(names, count, data_set->name)) {
+            unitlab_free_ied_model_name_list(*names, *count);
+            *names = NULL;
+            *count = 0U;
+            set_error(error, error_size, "OUT_OF_MEMORY: cannot collect DataSets.");
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int unitlab_collect_ied_model_logical_node_reports(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    UnitLabIedModelReportControlKind kind,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size)
+{
+    if (names != NULL) {
+        *names = NULL;
+    }
+    if (count != NULL) {
+        *count = 0U;
+    }
+    if (plan == NULL || logical_device_inst == NULL || logical_node_name == NULL || names == NULL || count == NULL) {
+        set_error(error, error_size, "INVALID_ARGUMENT: plan, logical device, logical node, names, and count are required.");
+        return 0;
+    }
+    for (size_t index = 0U; index < plan->report_count; index++) {
+        const UnitLabIedModelReportControl* report = &plan->reports[index];
+        if (strcmp(report->logical_device_inst, logical_device_inst) != 0 || strcmp(report->logical_node_name, logical_node_name) != 0) {
+            continue;
+        }
+        if ((kind == UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_BUFFERED && !report->is_buffered)
+            || (kind == UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_UNBUFFERED && report->is_buffered)) {
+            continue;
+        }
+        if (!append_metadata_name(names, count, report->name)) {
+            unitlab_free_ied_model_name_list(*names, *count);
+            *names = NULL;
+            *count = 0U;
+            set_error(error, error_size, "OUT_OF_MEMORY: cannot collect ReportControl names.");
+            return 0;
+        }
+    }
+    return 1;
+}
+
+const UnitLabIedModelReportControl* unitlab_find_ied_model_report_control(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    const char* report_name)
+{
+    if (plan == NULL || logical_device_inst == NULL || logical_node_name == NULL || report_name == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < plan->report_count; index++) {
+        const UnitLabIedModelReportControl* report = &plan->reports[index];
+        if (
+            strcmp(report->logical_device_inst, logical_device_inst) == 0
+            && strcmp(report->logical_node_name, logical_node_name) == 0
+            && strcmp(report->name, report_name) == 0
+        ) {
+            return report;
+        }
+    }
+    return NULL;
+}
+
+const UnitLabIedModelDataSet* unitlab_find_ied_model_data_set(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    const char* data_set_name)
+{
+    if (plan == NULL || logical_device_inst == NULL || logical_node_name == NULL || data_set_name == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < plan->data_set_count; index++) {
+        const UnitLabIedModelDataSet* data_set = &plan->data_sets[index];
+        if (
+            strcmp(data_set->logical_device_inst, logical_device_inst) == 0
+            && strcmp(data_set->logical_node_name, logical_node_name) == 0
+            && strcmp(data_set->name, data_set_name) == 0
+        ) {
+            return data_set;
+        }
+    }
+    return NULL;
+}
+
+void unitlab_free_ied_model_name_list(char** names, size_t count)
+{
+    if (names == NULL) {
+        return;
+    }
+    for (size_t index = 0U; index < count; index++) {
+        free(names[index]);
+    }
+    free(names);
+}
+
