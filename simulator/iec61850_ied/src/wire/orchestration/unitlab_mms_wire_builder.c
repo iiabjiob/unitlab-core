@@ -703,12 +703,18 @@ static int wire_builder_build_association_response_frame_structured(
     UnitLabMmsDiagnostic* diagnostic)
 {
     uint8_t acse_bytes[512U];
-    uint8_t presentation_bytes[512U];
+    uint8_t presentation_a0_bytes[16U];
+    uint8_t presentation_a2_inner_bytes[256U];
+    uint8_t presentation_a2_bytes[256U];
+    uint8_t presentation_set_bytes[512U];
     uint8_t session_bytes[512U];
-    UnitLabMmsPresentationApdu presentation_apdu;
+    uint8_t presentation_content_selector_a5[] = { 0x30U, 0x07U, 0x80U, 0x01U, 0x00U, 0x81U, 0x02U, 0x51U, 0x01U, 0x30U, 0x07U, 0x80U, 0x01U, 0x00U, 0x81U, 0x02U, 0x51U, 0x01U };
     UnitLabMmsTransportFrame transport_frame;
     size_t acse_length = 0U;
-    size_t presentation_length = 0U;
+    size_t presentation_a0_length = 0U;
+    size_t presentation_a2_inner_length = 0U;
+    size_t presentation_a2_length = 0U;
+    size_t presentation_set_length = 0U;
     size_t session_length = 0U;
     size_t frame_length = 0U;
 
@@ -727,14 +733,52 @@ static int wire_builder_build_association_response_frame_structured(
     if (!wire_builder_build_association_response_acse(acse_bytes, sizeof(acse_bytes), &acse_length, diagnostic)) {
         return 0;
     }
-    unitlab_mms_presentation_apdu_init(&presentation_apdu);
-    presentation_apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
-    presentation_apdu.payload_bytes = acse_bytes;
-    presentation_apdu.payload_length = acse_length;
-    if (!unitlab_mms_presentation_encode(&presentation_apdu, presentation_bytes, sizeof(presentation_bytes), &presentation_length, diagnostic)) {
+    {
+        uint8_t presentation_a0_value[] = { 0x80U, 0x01U, 0x01U };
+        if (!wire_builder_encode_nested_element(
+                UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                1,
+                0U,
+                presentation_a0_value,
+                sizeof(presentation_a0_value),
+                presentation_a0_bytes,
+                sizeof(presentation_a0_bytes),
+                &presentation_a0_length,
+                diagnostic)) {
+            return 0;
+        }
+    }
+    {
+        uint8_t presentation_context_selector_bytes[] = { 0x83U, 0x04U, 0x00U, 0x00U, 0x00U, 0x01U };
+        if (!wire_builder_append_bytes(presentation_a2_inner_bytes, sizeof(presentation_a2_inner_bytes), &presentation_a2_inner_length, presentation_context_selector_bytes, sizeof(presentation_context_selector_bytes), diagnostic)) {
+            return 0;
+        }
+    }
+    if (!wire_builder_append_bytes(presentation_a2_inner_bytes, sizeof(presentation_a2_inner_bytes), &presentation_a2_inner_length, presentation_content_selector_a5, sizeof(presentation_content_selector_a5), diagnostic)) {
         return 0;
     }
-    if (!wire_builder_build_association_response_session(presentation_bytes, presentation_length, session_bytes, sizeof(session_bytes), &session_length, diagnostic)) {
+    if (!wire_builder_append_bytes(presentation_a2_inner_bytes, sizeof(presentation_a2_inner_bytes), &presentation_a2_inner_length, acse_bytes, acse_length, diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_encode_nested_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            2U,
+            presentation_a2_inner_bytes,
+            presentation_a2_inner_length,
+            presentation_a2_bytes,
+            sizeof(presentation_a2_bytes),
+            &presentation_a2_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_append_bytes(presentation_set_bytes, sizeof(presentation_set_bytes), &presentation_set_length, presentation_a0_bytes, presentation_a0_length, diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_append_bytes(presentation_set_bytes, sizeof(presentation_set_bytes), &presentation_set_length, presentation_a2_bytes, presentation_a2_length, diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_build_association_response_session(presentation_set_bytes, presentation_set_length, session_bytes, sizeof(session_bytes), &session_length, diagnostic)) {
         return 0;
     }
 

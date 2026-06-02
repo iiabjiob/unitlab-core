@@ -310,7 +310,48 @@ int unitlab_mms_pdu_decode(UnitLabMmsPdu* pdu, const uint8_t* buffer, size_t buf
         size_t service_consumed_length = 0U;
         size_t offset = 0U;
         if (!pdu_decode_invoke_id(&element, &pdu->invoke_id, diagnostic)) {
-            return 0;
+            UnitLabMmsBerElement sequence_element;
+            size_t sequence_consumed_length = 0U;
+            size_t nested_offset = 0U;
+
+            unitlab_mms_ber_element_init(&sequence_element);
+            if (!unitlab_mms_ber_read(&sequence_element, element.value_bytes, element.value_length, &sequence_consumed_length, diagnostic)) {
+                return 0;
+            }
+            if (sequence_consumed_length != element.value_length || sequence_element.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL || sequence_element.tag.tag_number != 16U || !sequence_element.tag.constructed) {
+                return 0;
+            }
+            pdu->pdu_bytes = sequence_element.value_bytes;
+            pdu->pdu_length = sequence_element.value_length;
+            pdu->encoded_length = sequence_element.encoded_length;
+            if (!pdu_decode_invoke_id(&sequence_element, &pdu->invoke_id, diagnostic)) {
+                return 0;
+            }
+            pdu->has_invoke_id = 1;
+            unitlab_mms_ber_element_init(&service_element);
+            if (!unitlab_mms_ber_read(&service_element, sequence_element.value_bytes, sequence_element.value_length, &nested_offset, diagnostic)) {
+                return 0;
+            }
+            service_consumed_length = nested_offset;
+            if (service_consumed_length >= sequence_element.value_length) {
+                pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS confirmed PDU is missing a service choice.");
+                return 0;
+            }
+            unitlab_mms_ber_element_init(&service_element);
+            if (!unitlab_mms_ber_read(&service_element, &sequence_element.value_bytes[service_consumed_length], sequence_element.value_length - service_consumed_length, &nested_offset, diagnostic)) {
+                return 0;
+            }
+            if (service_consumed_length + nested_offset != sequence_element.value_length) {
+                pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS confirmed PDU contains trailing service bytes.");
+                return 0;
+            }
+            pdu->service_tag = service_element.tag;
+            pdu->has_service = 1;
+            pdu->service_kind = pdu_classify_service_kind(pdu->kind, &service_element.tag);
+            pdu->service_bytes = service_element.value_bytes;
+            pdu->service_length = service_element.value_length;
+            pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+            return 1;
         }
         pdu->has_invoke_id = 1;
         unitlab_mms_ber_element_init(&service_element);
