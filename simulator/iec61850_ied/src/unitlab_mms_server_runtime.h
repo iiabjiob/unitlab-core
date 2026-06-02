@@ -4,6 +4,7 @@
 #include "server_runtime.h"
 #include "unitlab_mms_core.h"
 #include "wire/mms/unitlab_mms_pdu.h"
+#include "wire/orchestration/unitlab_mms_wire_builder.h"
 
 /*
  * Server-side ownership aggregate for the UnitLab-owned MMS lower layer.
@@ -27,6 +28,7 @@ typedef struct UnitLabMmsServerRuntime {
     UnitLabIedServerConfig config;
     UnitLabMmsSession session;
     UnitLabMmsPendingRequest pending_request;
+    UnitLabMmsInitiateResponseProfile initiate_response_profile;
     UnitLabIec61850ReportControl report_control;
     UnitLabMmsTransportExchange transport;
     UnitLabMmsOperationResult last_result;

@@ -201,10 +201,21 @@ int unitlab_mms_build_wire_frame_from_pdu(
 
 
 static int wire_builder_build_association_response_frame_structured(
+    const UnitLabMmsInitiateResponseProfile* profile,
     uint8_t* buffer,
     size_t buffer_length,
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic);
+
+int unitlab_mms_build_association_response_frame_with_profile(
+    const UnitLabMmsInitiateResponseProfile* profile,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    return wire_builder_build_association_response_frame_structured(profile, buffer, buffer_length, encoded_length, diagnostic);
+}
 
 int unitlab_mms_build_association_response_frame(
     uint8_t* buffer,
@@ -212,7 +223,7 @@ int unitlab_mms_build_association_response_frame(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    return wire_builder_build_association_response_frame_structured(buffer, buffer_length, encoded_length, diagnostic);
+    return wire_builder_build_association_response_frame_structured(NULL, buffer, buffer_length, encoded_length, diagnostic);
 }
 
 static int wire_builder_encode_nested_element(
@@ -283,7 +294,36 @@ static int wire_builder_append_short_tlv(
     return wire_builder_append_bytes(buffer, buffer_length, offset, value_bytes, value_length, diagnostic);
 }
 
-static int wire_builder_build_initiate_response_detail(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+void unitlab_mms_initiate_response_profile_init(UnitLabMmsInitiateResponseProfile* profile)
+{
+    if (profile == NULL) {
+        return;
+    }
+    profile->local_detail_called = 65000U;
+    profile->max_serv_outstanding_calling = 5U;
+    profile->max_serv_outstanding_called = 5U;
+    profile->data_structure_nesting_level = 10U;
+    profile->negotiated_version_number = 1U;
+    profile->parameter_cbb[0] = 0x05U;
+    profile->parameter_cbb[1] = 0xF1U;
+    profile->parameter_cbb[2] = 0x00U;
+    profile->parameter_cbb_length = UNITLAB_MMS_INITIATE_RESPONSE_PROFILE_PARAMETER_CBB_LENGTH;
+    profile->services_supported_called[0] = 0x03U;
+    profile->services_supported_called[1] = 0xEEU;
+    profile->services_supported_called[2] = 0x1CU;
+    profile->services_supported_called[3] = 0x00U;
+    profile->services_supported_called[4] = 0x00U;
+    profile->services_supported_called[5] = 0x00U;
+    profile->services_supported_called[6] = 0x00U;
+    profile->services_supported_called[7] = 0x00U;
+    profile->services_supported_called[8] = 0x00U;
+    profile->services_supported_called[9] = 0x00U;
+    profile->services_supported_called[10] = 0x01U;
+    profile->services_supported_called[11] = 0x18U;
+    profile->services_supported_called_length = UNITLAB_MMS_INITIATE_RESPONSE_PROFILE_SERVICES_SUPPORTED_LENGTH;
+}
+
+static int wire_builder_build_initiate_response_detail(const UnitLabMmsInitiateResponseProfile* profile, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     uint8_t max_pdu_size_field[16U];
     uint8_t max_serv_out_calling_field[16U];
@@ -304,11 +344,7 @@ static int wire_builder_build_initiate_response_detail(uint8_t* buffer, size_t b
     size_t detail_fields_length = 0U;
     size_t detail_wrapper_length = 0U;
     const uint8_t max_pdu_size_value[] = { 0x00U, 0xFDU, 0xE8U };
-    const uint8_t max_serv_outstanding_value[] = { 0x05U };
-    const uint8_t data_structure_nesting_value[] = { 0x0AU };
     const uint8_t protocol_version_value[] = { 0x01U };
-    const uint8_t parameter_cbb_value[] = { 0x05U, 0xF1U, 0x00U };
-    const uint8_t services_supported_value[] = { 0x03U, 0xEEU, 0x1CU, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x01U, 0x18U };
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -334,8 +370,8 @@ static int wire_builder_build_initiate_response_detail(uint8_t* buffer, size_t b
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             0,
             1U,
-            max_serv_outstanding_value,
-            sizeof(max_serv_outstanding_value),
+            profile->max_serv_outstanding_calling <= 0xFFU ? (const uint8_t[]){ (uint8_t)profile->max_serv_outstanding_calling } : (const uint8_t[]){ 0x05U },
+            1U,
             max_serv_out_calling_field,
             sizeof(max_serv_out_calling_field),
             &max_serv_out_calling_length,
@@ -346,8 +382,8 @@ static int wire_builder_build_initiate_response_detail(uint8_t* buffer, size_t b
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             0,
             2U,
-            max_serv_outstanding_value,
-            sizeof(max_serv_outstanding_value),
+            profile->max_serv_outstanding_calling <= 0xFFU ? (const uint8_t[]){ (uint8_t)profile->max_serv_outstanding_calling } : (const uint8_t[]){ 0x05U },
+            1U,
             max_serv_out_called_field,
             sizeof(max_serv_out_called_field),
             &max_serv_out_called_length,
@@ -358,8 +394,8 @@ static int wire_builder_build_initiate_response_detail(uint8_t* buffer, size_t b
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             0,
             3U,
-            data_structure_nesting_value,
-            sizeof(data_structure_nesting_value),
+            profile->data_structure_nesting_level <= 0xFFU ? (const uint8_t[]){ (uint8_t)profile->data_structure_nesting_level } : (const uint8_t[]){ 0x0AU },
+            1U,
             data_structure_nesting_field,
             sizeof(data_structure_nesting_field),
             &data_structure_nesting_length,
@@ -370,8 +406,8 @@ static int wire_builder_build_initiate_response_detail(uint8_t* buffer, size_t b
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             0,
             0U,
-            protocol_version_value,
-            sizeof(protocol_version_value),
+            (const uint8_t[]){ profile->negotiated_version_number },
+            1U,
             protocol_version_field,
             sizeof(protocol_version_field),
             &protocol_version_length,
@@ -382,8 +418,8 @@ static int wire_builder_build_initiate_response_detail(uint8_t* buffer, size_t b
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             0,
             1U,
-            parameter_cbb_value,
-            sizeof(parameter_cbb_value),
+            profile->parameter_cbb,
+            profile->parameter_cbb_length,
             parameter_cbb_field,
             sizeof(parameter_cbb_field),
             &parameter_cbb_length,
@@ -394,8 +430,8 @@ static int wire_builder_build_initiate_response_detail(uint8_t* buffer, size_t b
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             0,
             2U,
-            services_supported_value,
-            sizeof(services_supported_value),
+            profile->services_supported_called,
+            profile->services_supported_called_length,
             services_supported_field,
             sizeof(services_supported_field),
             &services_supported_length,
@@ -450,7 +486,7 @@ static int wire_builder_build_initiate_response_detail(uint8_t* buffer, size_t b
     return 1;
 }
 
-static int wire_builder_build_initiate_response_pdu(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+static int wire_builder_build_initiate_response_pdu(const UnitLabMmsInitiateResponseProfile* profile, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     uint8_t detail_bytes[192U];
     size_t detail_length = 0U;
@@ -463,7 +499,16 @@ static int wire_builder_build_initiate_response_pdu(uint8_t* buffer, size_t buff
         wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association response PDU requires buffer and encoded_length.");
         return 0;
     }
-    if (!wire_builder_build_initiate_response_detail(detail_bytes, sizeof(detail_bytes), &detail_length, diagnostic)) {
+    if (profile == NULL) {
+        static UnitLabMmsInitiateResponseProfile default_profile;
+        static int profile_initialized = 0;
+        if (!profile_initialized) {
+            unitlab_mms_initiate_response_profile_init(&default_profile);
+            profile_initialized = 1;
+        }
+        profile = &default_profile;
+    }
+    if (!wire_builder_build_initiate_response_detail(profile, detail_bytes, sizeof(detail_bytes), &detail_length, diagnostic)) {
         return 0;
     }
     unitlab_mms_pdu_init(&pdu);
@@ -473,7 +518,7 @@ static int wire_builder_build_initiate_response_pdu(uint8_t* buffer, size_t buff
     return unitlab_mms_pdu_encode(&pdu, buffer, buffer_length, encoded_length, diagnostic);
 }
 
-static int wire_builder_build_association_response_acse(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+static int wire_builder_build_association_response_acse(const UnitLabMmsInitiateResponseProfile* profile, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     uint8_t initiate_response_bytes[256U];
     uint8_t external_choice_bytes[288U];
@@ -526,6 +571,7 @@ static int wire_builder_build_association_response_acse(uint8_t* buffer, size_t 
     }
 
     if (!wire_builder_build_initiate_response_pdu(
+            profile,
             initiate_response_bytes,
             sizeof(initiate_response_bytes),
             &initiate_response_length,
@@ -812,6 +858,7 @@ static int wire_builder_build_association_response_session(
 }
 
 static int wire_builder_build_association_response_frame_structured(
+    const UnitLabMmsInitiateResponseProfile* profile,
     uint8_t* buffer,
     size_t buffer_length,
     size_t* encoded_length,
@@ -849,7 +896,16 @@ static int wire_builder_build_association_response_frame_structured(
         return 0;
     }
 
-    if (!wire_builder_build_association_response_acse(acse_bytes, sizeof(acse_bytes), &acse_length, diagnostic)) {
+    if (profile == NULL) {
+        static UnitLabMmsInitiateResponseProfile default_profile;
+        static int profile_initialized = 0;
+        if (!profile_initialized) {
+            unitlab_mms_initiate_response_profile_init(&default_profile);
+            profile_initialized = 1;
+        }
+        profile = &default_profile;
+    }
+    if (!wire_builder_build_association_response_acse(profile, acse_bytes, sizeof(acse_bytes), &acse_length, diagnostic)) {
         return 0;
     }
     {

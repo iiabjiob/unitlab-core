@@ -61,8 +61,7 @@ static int build_native_association_response_frame(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    (void)server_runtime;
-    return unitlab_mms_build_association_response_frame(buffer, buffer_length, encoded_length, diagnostic);
+    return unitlab_mms_build_association_response_frame_with_profile(&server_runtime->initiate_response_profile, buffer, buffer_length, encoded_length, diagnostic);
 }
 static int build_native_information_report_frame(
     UnitLabMmsServerRuntime* server_runtime,

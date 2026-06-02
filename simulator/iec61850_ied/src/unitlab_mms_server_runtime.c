@@ -383,6 +383,7 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     server_runtime->state = UNITLAB_MMS_SERVER_RUNTIME_IDLE;
     unitlab_mms_session_init(&server_runtime->session);
     unitlab_mms_pending_request_init(&server_runtime->pending_request);
+    unitlab_mms_initiate_response_profile_init(&server_runtime->initiate_response_profile);
     unitlab_iec61850_report_control_init(&server_runtime->report_control);
     unitlab_mms_transport_exchange_init(&server_runtime->transport);
     unitlab_mms_operation_result_init(&server_runtime->last_result);
