@@ -23,7 +23,8 @@ typedef enum UnitLabMmsRequestKind {
     UNITLAB_MMS_REQUEST_RCB_ENABLE = 6,
     UNITLAB_MMS_REQUEST_RCB_DISABLE = 7,
     UNITLAB_MMS_REQUEST_RCB_RELEASE = 8,
-    UNITLAB_MMS_REQUEST_GI = 9
+    UNITLAB_MMS_REQUEST_GI = 9,
+    UNITLAB_MMS_REQUEST_GET_NAME_LIST = 10
 } UnitLabMmsRequestKind;
 
 typedef enum UnitLabMmsPendingRequestState {
@@ -44,6 +45,10 @@ typedef struct UnitLabMmsPendingRequest {
     int completed;
     char object_reference[128];
     char attribute_reference[64];
+    uint32_t browse_object_class;
+    uint32_t browse_object_scope;
+    char browse_domain_id[128];
+    char browse_continue_after[128];
     UnitLabMmsRuntimeEvent last_event;
     UnitLabMmsRuntimeEventLog event_log;
 } UnitLabMmsPendingRequest;

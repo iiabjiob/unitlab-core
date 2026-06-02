@@ -26,6 +26,7 @@ add_library(unitlab-iec61850-mms STATIC
   src/server/unitlab_mms_server_runtime.c
   src/protocols/mms/unitlab_mms_core.c
   src/report/unitlab_iec61850_report_runtime.c
+  src/model/model_plan.c
   src/wire/ber/unitlab_mms_ber_tag.c
   src/wire/ber/unitlab_mms_ber_length.c
   src/wire/ber/unitlab_mms_ber_reader.c
@@ -51,7 +52,6 @@ add_executable(unitlab-iec61850-ied-sim
   src/app/main.c
   src/server/native_wire_server.c
   src/model/model_loader.c
-  src/model/model_plan.c
 )
 target_link_libraries(unitlab-iec61850-ied-sim PRIVATE unitlab-iec61850-mms)
 unitlab_iec61850_sim_warnings(unitlab-iec61850-ied-sim)

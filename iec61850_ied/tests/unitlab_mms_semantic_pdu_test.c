@@ -195,6 +195,92 @@ static void test_wire_pdu_bridge_rejects_unsupported_service(void)
     assert(diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_UNSUPPORTED_SEMANTIC);
 }
 
+static void test_wire_pdu_bridge_get_name_list_request(void)
+{
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsSemanticResult result;
+    UnitLabMmsDecodeDiagnostic diagnostic;
+    const uint8_t payload[] = {
+        0x30U, 0x09U,
+        0xA0U, 0x03U, 0x02U, 0x01U, 0x09U,
+        0xA1U, 0x02U, 0x80U, 0x00U
+    };
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    unitlab_mms_semantic_result_init(&result);
+    unitlab_mms_decode_diagnostic_init(&diagnostic);
+    wire_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+    wire_pdu.has_invoke_id = 1;
+    wire_pdu.invoke_id = 17U;
+    wire_pdu.has_service = 1;
+    wire_pdu.service_kind = UNITLAB_MMS_SERVICE_GET_NAME_LIST;
+    wire_pdu.service_bytes = payload;
+    wire_pdu.service_length = sizeof(payload);
+
+    assert(unitlab_mms_semantic_result_from_wire_pdu(&result, &wire_pdu, &diagnostic) == 1);
+    assert(result.ok == 1);
+    assert(result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS);
+    assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_REQUEST);
+    assert(result.pdu.object_class == 9U);
+    assert(result.pdu.object_scope == 0U);
+    assert(result.pdu.domain_id[0] == '\0');
+    assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
+}
+
+static void test_wire_pdu_bridge_get_name_list_domain_request(void)
+{
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsSemanticResult result;
+    UnitLabMmsDecodeDiagnostic diagnostic;
+    const uint8_t payload[] = {
+        0x30U, 0x0CU,
+        0xA0U, 0x03U, 0x02U, 0x01U, 0x02U,
+        0xA1U, 0x05U, 0x81U, 0x03U, 'L', 'D', '0'
+    };
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    unitlab_mms_semantic_result_init(&result);
+    unitlab_mms_decode_diagnostic_init(&diagnostic);
+    wire_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+    wire_pdu.has_invoke_id = 1;
+    wire_pdu.invoke_id = 18U;
+    wire_pdu.has_service = 1;
+    wire_pdu.service_kind = UNITLAB_MMS_SERVICE_GET_NAME_LIST;
+    wire_pdu.service_bytes = payload;
+    wire_pdu.service_length = sizeof(payload);
+
+    assert(unitlab_mms_semantic_result_from_wire_pdu(&result, &wire_pdu, &diagnostic) == 1);
+    assert(result.ok == 1);
+    assert(result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS);
+    assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_REQUEST);
+    assert(result.pdu.object_class == 2U);
+    assert(result.pdu.object_scope == 1U);
+    assert(strcmp(result.pdu.domain_id, "LD0") == 0);
+    assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
+}
+
+static void test_wire_pdu_bridge_get_name_list_response(void)
+{
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsSemanticResult result;
+    UnitLabMmsDecodeDiagnostic diagnostic;
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    unitlab_mms_semantic_result_init(&result);
+    unitlab_mms_decode_diagnostic_init(&diagnostic);
+    wire_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_RESPONSE;
+    wire_pdu.has_invoke_id = 1;
+    wire_pdu.invoke_id = 17U;
+    wire_pdu.has_service = 1;
+    wire_pdu.service_kind = UNITLAB_MMS_SERVICE_GET_NAME_LIST;
+
+    assert(unitlab_mms_semantic_result_from_wire_pdu(&result, &wire_pdu, &diagnostic) == 1);
+    assert(result.ok == 1);
+    assert(result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS);
+    assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_RESPONSE);
+    assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
+}
+
 int main(void)
 {
     test_defaults();
@@ -204,6 +290,9 @@ int main(void)
     test_wire_pdu_bridge_read_request();
     test_wire_pdu_bridge_information_report();
     test_wire_pdu_bridge_reject();
+    test_wire_pdu_bridge_get_name_list_request();
+    test_wire_pdu_bridge_get_name_list_domain_request();
+    test_wire_pdu_bridge_get_name_list_response();
     test_wire_pdu_bridge_rejects_unsupported_service();
     return 0;
 }

@@ -121,6 +121,9 @@ static UnitLabMmsServiceKind pdu_classify_service_kind(UnitLabMmsPduKind kind, c
     if ((kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE) && service_tag->tag_number == 0U) {
         return UNITLAB_MMS_SERVICE_READ;
     }
+    if ((kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE) && service_tag->tag_number == 1U) {
+        return UNITLAB_MMS_SERVICE_GET_NAME_LIST;
+    }
     if ((kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE) && service_tag->tag_number == 4U) {
         return UNITLAB_MMS_SERVICE_READ;
     }

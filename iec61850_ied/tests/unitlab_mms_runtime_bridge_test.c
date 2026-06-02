@@ -183,6 +183,72 @@ static void test_wire_reject_projection(void)
     assert(result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR || result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED);
 }
 
+static void test_wire_get_name_list_request_starts_pending_request(void)
+{
+    UnitLabMmsSession session;
+    UnitLabMmsPendingRequest request;
+    UnitLabMmsOperationResult result;
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[] = {
+        0x30U, 0x0CU,
+        0xA0U, 0x03U, 0x02U, 0x01U, 0x02U,
+        0xA1U, 0x05U, 0x81U, 0x03U, 'L', 'D', '0'
+    };
+
+    unitlab_mms_session_init(&session);
+    unitlab_mms_pending_request_init(&request);
+    unitlab_mms_operation_result_init(&result);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    wire_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+    wire_pdu.has_invoke_id = 1;
+    wire_pdu.invoke_id = 61U;
+    wire_pdu.has_service = 1;
+    wire_pdu.service_kind = UNITLAB_MMS_SERVICE_GET_NAME_LIST;
+    wire_pdu.service_bytes = payload;
+    wire_pdu.service_length = sizeof(payload);
+
+    assert(unitlab_mms_runtime_apply_wire_pdu(&session, &request, &wire_pdu, &result) == 1);
+    assert(result.ok == 1);
+    assert(result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE);
+    assert(request.kind == UNITLAB_MMS_REQUEST_GET_NAME_LIST);
+    assert(request.invoke_id == 61U);
+    assert(request.browse_object_class == 2U);
+    assert(request.browse_object_scope == 1U);
+    assert(strcmp(request.browse_domain_id, "LD0") == 0);
+}
+
+static void test_wire_get_name_list_response_applies_to_runtime(void)
+{
+    UnitLabMmsSession session;
+    UnitLabMmsPendingRequest request;
+    UnitLabMmsOperationResult result;
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_session_init(&session);
+    unitlab_mms_pending_request_init(&request);
+    unitlab_mms_operation_result_init(&result);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    assert(unitlab_mms_pending_request_start(&request, UNITLAB_MMS_REQUEST_GET_NAME_LIST, 61U, 7U, 1000U, 100U, &diagnostic) == 1);
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    wire_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_RESPONSE;
+    wire_pdu.has_invoke_id = 1;
+    wire_pdu.invoke_id = 61U;
+    wire_pdu.has_service = 1;
+    wire_pdu.service_kind = UNITLAB_MMS_SERVICE_GET_NAME_LIST;
+
+    assert(unitlab_mms_runtime_apply_wire_pdu(&session, &request, &wire_pdu, &result) == 1);
+    assert(result.ok == 1);
+    assert(result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(request.state == UNITLAB_MMS_PENDING_REQUEST_COMPLETED);
+    assert(result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_COMPLETED);
+}
+
 int main(void)
 {
     test_wire_associate_request_and_response_bridge();
@@ -191,6 +257,8 @@ int main(void)
     test_wire_information_report_applies_to_runtime();
     test_wire_information_report_applies_to_report_control();
     test_wire_correlation_mismatch_fails_closed();
+    test_wire_get_name_list_request_starts_pending_request();
+    test_wire_get_name_list_response_applies_to_runtime();
     test_wire_reject_projection();
     return 0;
 }

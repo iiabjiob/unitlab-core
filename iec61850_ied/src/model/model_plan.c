@@ -771,6 +771,62 @@ int unitlab_collect_ied_model_logical_node_data_sets(
     return 1;
 }
 
+int unitlab_collect_ied_model_logical_device_data_sets(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size)
+{
+    if (names != NULL) {
+        *names = NULL;
+    }
+    if (count != NULL) {
+        *count = 0U;
+    }
+    if (plan == NULL || logical_device_inst == NULL || logical_device_inst[0] == '\0' || names == NULL || count == NULL) {
+        set_error(error, error_size, "INVALID_ARGUMENT: plan, logical device, names, and count are required.");
+        return 0;
+    }
+    for (size_t node_index = 0U; node_index < plan->logical_node_count; node_index++) {
+        const UnitLabIedModelLogicalNode* logical_node = &plan->logical_nodes[node_index];
+
+        if (strcmp(logical_node->logical_device_inst, logical_device_inst) != 0) {
+            continue;
+        }
+
+        for (size_t data_set_index = 0U; data_set_index < plan->data_set_count; data_set_index++) {
+            const UnitLabIedModelDataSet* data_set = &plan->data_sets[data_set_index];
+            size_t qualified_length;
+            char* qualified_name;
+
+            if (strcmp(data_set->logical_device_inst, logical_device_inst) != 0 || strcmp(data_set->logical_node_name, logical_node->name) != 0) {
+                continue;
+            }
+            qualified_length = strlen(logical_node->name) + 1U + strlen(data_set->name) + 1U;
+            qualified_name = (char*)calloc(qualified_length, sizeof(char));
+            if (qualified_name == NULL) {
+                unitlab_free_ied_model_name_list(*names, *count);
+                *names = NULL;
+                *count = 0U;
+                set_error(error, error_size, "OUT_OF_MEMORY: cannot collect logical-device DataSets.");
+                return 0;
+            }
+            snprintf(qualified_name, qualified_length, "%s$%s", logical_node->name, data_set->name);
+            if (!append_metadata_name(names, count, qualified_name)) {
+                free(qualified_name);
+                unitlab_free_ied_model_name_list(*names, *count);
+                *names = NULL;
+                *count = 0U;
+                set_error(error, error_size, "OUT_OF_MEMORY: cannot collect logical-device DataSets.");
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
 int unitlab_collect_ied_model_logical_node_reports(
     const UnitLabIedModelPlan* plan,
     const char* logical_device_inst,

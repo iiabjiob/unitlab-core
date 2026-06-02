@@ -477,6 +477,15 @@ static int test_metadata_catalog(void)
     names = NULL;
     count = 0U;
 
+    ok = unitlab_collect_ied_model_logical_device_data_sets(&plan, "LD0", &names, &count, error, sizeof(error));
+    passed &= ok;
+    if (ok) {
+        passed &= expect_list_matches(names, count, (const char*[]){ "LLN0$dsEvents", "LLN0$dsUpdates" }, 2U, "logical device data sets");
+    }
+    unitlab_free_ied_model_name_list(names, count);
+    names = NULL;
+    count = 0U;
+
     ok = unitlab_collect_ied_model_logical_node_reports(
         &plan,
         "LD0",

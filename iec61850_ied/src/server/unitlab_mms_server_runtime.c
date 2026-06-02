@@ -11,6 +11,7 @@
 #include "wire/session/unitlab_mms_session_spdu.h"
 #include "wire/transport/unitlab_mms_transport_frame.h"
 #include "protocols/mms/unitlab_mms_runtime_bridge.h"
+#include "model/model_plan.h"
 
 static void server_runtime_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, const char* message)
 {
@@ -276,6 +277,177 @@ static int server_runtime_resolve_read_response_value(UnitLabMmsServerRuntime* s
     return 1;
 }
 
+
+static int server_runtime_collect_get_name_list_names(const UnitLabMmsServerRuntime* server_runtime, char*** names, size_t* count, UnitLabMmsDiagnostic* diagnostic)
+{
+    char model_error[256U];
+
+    if (names != NULL) {
+        *names = NULL;
+    }
+    if (count != NULL) {
+        *count = 0U;
+    }
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || names == NULL || count == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime, model plan, names, and count are required.");
+        return 0;
+    }
+    if (server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_GET_NAME_LIST) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Browse response can only be built for GetNameList requests.");
+        return 0;
+    }
+    model_error[0] = '\0';
+    if (server_runtime->pending_request.browse_object_class == 9U && server_runtime->pending_request.browse_object_scope == 0U) {
+        if (!unitlab_collect_ied_model_logical_devices(server_runtime->model_plan, names, count, model_error, sizeof(model_error))) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList logical device browse failed.");
+            return 0;
+        }
+        return 1;
+    }
+    if (server_runtime->pending_request.browse_object_class == 2U && server_runtime->pending_request.browse_object_scope == 1U) {
+        if (server_runtime->pending_request.browse_domain_id[0] == '\0') {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList domain-specific browse requires a domain identifier.");
+            return 0;
+        }
+        if (!unitlab_collect_ied_model_logical_device_data_sets(
+                server_runtime->model_plan,
+                server_runtime->pending_request.browse_domain_id,
+                names,
+                count,
+                model_error,
+                sizeof(model_error))) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList data set browse failed.");
+            return 0;
+        }
+        return 1;
+    }
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "GetNameList browse class or scope is unsupported.");
+    return 0;
+}
+
+static int server_runtime_build_get_name_list_response_service(
+    const UnitLabMmsServerRuntime* server_runtime,
+    uint32_t invoke_id,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    char** names = NULL;
+    size_t name_count = 0U;
+    uint8_t visible_strings_bytes[512U];
+    uint8_t list_of_identifier_bytes[544U];
+    uint8_t get_name_list_body_bytes[576U];
+    uint8_t service_payload_bytes[640U];
+    uint8_t service_bytes[672U];
+    size_t visible_strings_length = 0U;
+    size_t list_of_identifier_length = 0U;
+    size_t get_name_list_body_length = 0U;
+    size_t service_payload_length = 0U;
+    size_t invoke_id_length = 0U;
+    size_t total_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList response buffer and encoded_length are required.");
+        return 0;
+    }
+    if (!server_runtime_collect_get_name_list_names(server_runtime, &names, &name_count, diagnostic)) {
+        return 0;
+    }
+    for (size_t index = 0U; index < name_count; index++) {
+        size_t encoded_name_length = 0U;
+
+        if (!server_runtime_encode_ber_element(
+                UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+                0,
+                26U,
+                (const uint8_t*)names[index],
+                strlen(names[index]),
+                &visible_strings_bytes[visible_strings_length],
+                sizeof(visible_strings_bytes) - visible_strings_length,
+                &encoded_name_length,
+                diagnostic)) {
+            unitlab_free_ied_model_name_list(names, name_count);
+            return 0;
+        }
+        visible_strings_length += encoded_name_length;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            0U,
+            visible_strings_bytes,
+            visible_strings_length,
+            list_of_identifier_bytes,
+            sizeof(list_of_identifier_bytes),
+            &list_of_identifier_length,
+            diagnostic)) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        return 0;
+    }
+    memcpy(get_name_list_body_bytes, list_of_identifier_bytes, list_of_identifier_length);
+    {
+        uint8_t more_follows_bytes[1U] = { 0x00U };
+        size_t more_follows_length = 0U;
+
+        if (!server_runtime_encode_ber_element(
+                UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                0,
+                1U,
+                more_follows_bytes,
+                sizeof(more_follows_bytes),
+                &get_name_list_body_bytes[list_of_identifier_length],
+                sizeof(get_name_list_body_bytes) - list_of_identifier_length,
+                &more_follows_length,
+                diagnostic)) {
+            unitlab_free_ied_model_name_list(names, name_count);
+            return 0;
+        }
+        get_name_list_body_length = list_of_identifier_length + more_follows_length;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            1U,
+            get_name_list_body_bytes,
+            get_name_list_body_length,
+            service_payload_bytes,
+            sizeof(service_payload_bytes),
+            &service_payload_length,
+            diagnostic)) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        return 0;
+    }
+    if (!server_runtime_encode_invoke_id_element(
+            invoke_id,
+            service_bytes,
+            sizeof(service_bytes),
+            &invoke_id_length,
+            diagnostic)) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        return 0;
+    }
+    if (invoke_id_length + service_payload_length > sizeof(service_bytes)) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GetNameList response output buffer is too small.");
+        return 0;
+    }
+    memcpy(&service_bytes[invoke_id_length], service_payload_bytes, service_payload_length);
+    total_length = invoke_id_length + service_payload_length;
+    if (total_length > buffer_length) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GetNameList response output buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, service_bytes, total_length);
+    *encoded_length = total_length;
+    unitlab_free_ied_model_name_list(names, name_count);
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
 
 int unitlab_mms_server_runtime_apply_model_plan(UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelPlan* plan)
 {
@@ -621,8 +793,8 @@ static int server_runtime_prepare_confirmed_response_pdu(
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, "Pending request must be active before building a response.");
         return 0;
     }
-    if (server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_READ && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_WRITE) {
-        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Only first-slice READ/WRITE responses are supported.");
+    if (server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_READ && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_WRITE && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_GET_NAME_LIST) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Only first-slice READ/WRITE/GetNameList responses are supported.");
         return 0;
     }
     unitlab_mms_pdu_init(response_pdu);
@@ -630,7 +802,13 @@ static int server_runtime_prepare_confirmed_response_pdu(
     response_pdu->has_invoke_id = 1;
     response_pdu->invoke_id = server_runtime->pending_request.invoke_id;
     response_pdu->has_service = 1;
-    response_pdu->service_kind = server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_READ ? UNITLAB_MMS_SERVICE_READ : UNITLAB_MMS_SERVICE_WRITE;
+    if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_READ) {
+        response_pdu->service_kind = UNITLAB_MMS_SERVICE_READ;
+    } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_WRITE) {
+        response_pdu->service_kind = UNITLAB_MMS_SERVICE_WRITE;
+    } else {
+        response_pdu->service_kind = UNITLAB_MMS_SERVICE_GET_NAME_LIST;
+    }
     response_pdu->pdu_bytes = service_bytes;
     response_pdu->pdu_length = service_length;
     return 1;
@@ -751,6 +929,18 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
     if (service_length == 0U) {
         if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_READ) {
             if (!server_runtime_build_read_response_service(
+                    server_runtime,
+                    server_runtime->pending_request.invoke_id,
+                    synthesized_service_bytes,
+                    sizeof(synthesized_service_bytes),
+                    &synthesized_service_length,
+                    diagnostic)) {
+                return 0;
+            }
+            service_bytes = synthesized_service_bytes;
+            service_length = synthesized_service_length;
+        } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAME_LIST) {
+            if (!server_runtime_build_get_name_list_response_service(
                     server_runtime,
                     server_runtime->pending_request.invoke_id,
                     synthesized_service_bytes,

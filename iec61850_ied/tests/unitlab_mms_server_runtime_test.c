@@ -647,6 +647,170 @@ static void test_server_runtime_apply_write_request_and_build_response_roundtrip
     assert(memcmp(fixture.presentation.payload_bytes, response_payload, sizeof(response_payload)) == 0);
 }
 
+static int build_get_name_list_request_association_bytes(const uint8_t* request_body_bytes, size_t request_body_length, uint32_t invoke_id, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsAssociationFrame fixture;
+    UnitLabMmsPdu pdu;
+    UnitLabMmsBerElement service_element;
+    UnitLabMmsBerElement invoke_id_element;
+    uint8_t service_bytes[128U];
+    uint8_t request_payload[192U];
+    uint8_t request_encoded[224U];
+    size_t service_length = 0U;
+    size_t invoke_id_length = 0U;
+    size_t request_length = 0U;
+    size_t frame_length = 0U;
+
+    unitlab_mms_ber_element_init(&service_element);
+    service_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    service_element.tag.constructed = 1;
+    service_element.tag.tag_number = 1U;
+    service_element.value_bytes = request_body_bytes;
+    service_element.value_length = request_body_length;
+    if (!unitlab_mms_ber_write(&service_element, service_bytes, sizeof(service_bytes), &service_length, diagnostic)) {
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&invoke_id_element);
+    invoke_id_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+    invoke_id_element.tag.constructed = 0;
+    invoke_id_element.tag.tag_number = 2U;
+    {
+        uint8_t invoke_id_raw[5U];
+        size_t invoke_id_raw_length = 0U;
+        uint32_t value = invoke_id;
+
+        do {
+            invoke_id_raw[sizeof(invoke_id_raw) - 1U - invoke_id_raw_length] = (uint8_t)(value & 0xFFU);
+            invoke_id_raw_length++;
+            value >>= 8U;
+        } while (value != 0U && invoke_id_raw_length < sizeof(invoke_id_raw));
+        if (invoke_id_raw[sizeof(invoke_id_raw) - invoke_id_raw_length] & 0x80U) {
+            if (sizeof(invoke_id_raw) == invoke_id_raw_length) {
+                if (diagnostic != NULL) {
+                    diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
+                }
+                return 0;
+            }
+            invoke_id_raw[sizeof(invoke_id_raw) - invoke_id_raw_length - 1U] = 0x00U;
+            invoke_id_raw_length++;
+        }
+        invoke_id_element.value_bytes = &invoke_id_raw[sizeof(invoke_id_raw) - invoke_id_raw_length];
+        invoke_id_element.value_length = invoke_id_raw_length;
+        if (!unitlab_mms_ber_write(&invoke_id_element, request_payload, sizeof(request_payload), &invoke_id_length, diagnostic)) {
+            return 0;
+        }
+    }
+
+    if (invoke_id_length + service_length > sizeof(request_payload)) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
+        }
+        return 0;
+    }
+    memcpy(request_payload + invoke_id_length, service_bytes, service_length);
+    request_length = invoke_id_length + service_length;
+
+    unitlab_mms_pdu_init(&pdu);
+    pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+    pdu.pdu_bytes = request_payload;
+    pdu.pdu_length = request_length;
+    if (!unitlab_mms_pdu_encode(&pdu, request_encoded, sizeof(request_encoded), &request_length, diagnostic)) {
+        return 0;
+    }
+
+    unitlab_mms_association_frame_init(&fixture);
+    fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
+    fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
+    fixture.presentation.payload_bytes = request_encoded;
+    fixture.presentation.payload_length = request_length;
+    fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
+    fixture.transport.cotp.eot = 1;
+
+    if (!unitlab_mms_association_frame_encode(&fixture, buffer, buffer_length, &frame_length, diagnostic)) {
+        return 0;
+    }
+    *encoded_length = frame_length;
+    return 1;
+}
+
+static void test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLogicalDevice logical_devices[1U];
+    UnitLabIedModelLogicalNode logical_nodes[1U];
+    UnitLabIedModelDataSet data_sets[2U];
+    uint8_t wire_bytes[256U];
+    uint8_t response_bytes[256U];
+    const uint8_t request_payload[] = {
+        0x30U, 0x0CU,
+        0xA0U, 0x03U, 0x02U, 0x01U, 0x02U,
+        0xA1U, 0x05U, 0x81U, 0x03U, 'L', 'D', '0'
+    };
+    size_t wire_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+    size_t response_consumed_length = 0U;
+
+    memset(&plan, 0, sizeof(plan));
+    memset(logical_devices, 0, sizeof(logical_devices));
+    memset(logical_nodes, 0, sizeof(logical_nodes));
+    memset(data_sets, 0, sizeof(data_sets));
+    snprintf(logical_devices[0].inst, sizeof(logical_devices[0].inst), "%s", "LD0");
+    snprintf(logical_nodes[0].logical_device_inst, sizeof(logical_nodes[0].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[0].name, sizeof(logical_nodes[0].name), "%s", "LLN0");
+    snprintf(data_sets[0].logical_device_inst, sizeof(data_sets[0].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[0].logical_node_name, sizeof(data_sets[0].logical_node_name), "%s", "LLN0");
+    snprintf(data_sets[0].name, sizeof(data_sets[0].name), "%s", "dsEvents");
+    snprintf(data_sets[1].logical_device_inst, sizeof(data_sets[1].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[1].logical_node_name, sizeof(data_sets[1].logical_node_name), "%s", "LLN0");
+    snprintf(data_sets[1].name, sizeof(data_sets[1].name), "%s", "dsUpdates");
+    plan.logical_device_count = 1U;
+    plan.logical_devices = logical_devices;
+    plan.logical_node_count = 1U;
+    plan.logical_nodes = logical_nodes;
+    plan.data_set_count = 2U;
+    plan.data_sets = data_sets;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+
+    assert(build_get_name_list_request_association_bytes(request_payload, sizeof(request_payload), 61U, wire_bytes, sizeof(wire_bytes), &wire_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, wire_bytes, wire_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(consumed_length == wire_length);
+    assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAME_LIST);
+    assert(server_runtime.pending_request.browse_object_class == 2U);
+    assert(server_runtime.pending_request.browse_object_scope == 1U);
+    assert(strcmp(server_runtime.pending_request.browse_domain_id, "LD0") == 0);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+
+    {
+        UnitLabMmsAssociationFrame fixture;
+
+        unitlab_mms_association_frame_init(&fixture);
+        assert(unitlab_mms_association_frame_decode(&fixture, response_bytes, response_length, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == response_length);
+        assert(fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"LLN0$dsEvents", strlen("LLN0$dsEvents")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"LLN0$dsUpdates", strlen("LLN0$dsUpdates")) == 1);
+    }
+}
+
 int main(void)
 {
     test_server_runtime_init_captures_default_snapshot();
@@ -657,6 +821,7 @@ int main(void)
     test_wire_builder_builds_confirmed_response_frame_roundtrips();
     test_server_runtime_build_confirmed_response_bytes_roundtrips();
     test_server_runtime_apply_reference_confirmed_request_and_build_response_roundtrips();
+    test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips();
     test_server_runtime_apply_confirmed_request_and_build_response_roundtrips();
     test_server_runtime_apply_write_request_and_build_response_roundtrips();
     test_server_runtime_apply_wire_pdu_requires_running_state();
