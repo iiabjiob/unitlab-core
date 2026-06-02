@@ -49,16 +49,14 @@ int unitlab_mms_transport_frame_encode(const UnitLabMmsTransportFrame* frame, ui
     if (!unitlab_mms_cotp_encode(&frame->cotp, &buffer[4], buffer_length - 4U, &cotp_length, diagnostic)) {
         return 0;
     }
-    /* TPKT header is written inline to avoid an extra payload copy. Keep in sync with unitlab_mms_tpkt_wrap(). */
     total_length = cotp_length + 4U;
     if (total_length > UINT16_MAX) {
         transport_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "transport frame is too large.");
         return 0;
     }
-    buffer[0] = 3U;
-    buffer[1] = 0U;
-    buffer[2] = (uint8_t)(((uint16_t)total_length >> 8U) & 0xFFU);
-    buffer[3] = (uint8_t)((uint16_t)total_length & 0xFFU);
+    if (!unitlab_mms_tpkt_write_header(buffer, buffer_length, (uint16_t)total_length, diagnostic)) {
+        return 0;
+    }
     *encoded_length = total_length;
     transport_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;

@@ -25,6 +25,29 @@ void unitlab_mms_tpkt_header_init(UnitLabMmsTpktHeader* header)
     header->version = 3U;
 }
 
+int unitlab_mms_tpkt_write_header(uint8_t* frame_bytes, size_t frame_capacity, uint16_t total_length, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (frame_bytes == NULL) {
+        tpkt_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "TPKT header write requires frame bytes.");
+        return 0;
+    }
+    if (frame_capacity < 4U) {
+        tpkt_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "TPKT frame buffer is too small.");
+        return 0;
+    }
+    if (total_length < 4U) {
+        tpkt_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "TPKT length is invalid.");
+        return 0;
+    }
+
+    frame_bytes[0] = 3U;
+    frame_bytes[1] = 0U;
+    frame_bytes[2] = (uint8_t)((total_length >> 8U) & 0xFFU);
+    frame_bytes[3] = (uint8_t)(total_length & 0xFFU);
+    tpkt_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
 int unitlab_mms_tpkt_wrap(const uint8_t* payload_bytes, size_t payload_length, uint8_t* frame_bytes, size_t frame_capacity, size_t* frame_length, UnitLabMmsDiagnostic* diagnostic)
 {
     uint16_t total_length;
@@ -49,10 +72,9 @@ int unitlab_mms_tpkt_wrap(const uint8_t* payload_bytes, size_t payload_length, u
         tpkt_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "TPKT frame buffer is too small.");
         return 0;
     }
-    frame_bytes[0] = 3U;
-    frame_bytes[1] = 0U;
-    frame_bytes[2] = (uint8_t)((total_length >> 8U) & 0xFFU);
-    frame_bytes[3] = (uint8_t)(total_length & 0xFFU);
+    if (!unitlab_mms_tpkt_write_header(frame_bytes, frame_capacity, total_length, diagnostic)) {
+        return 0;
+    }
     if (payload_length != 0U && payload_bytes != NULL) {
         memcpy(&frame_bytes[4], payload_bytes, payload_length);
     }
