@@ -22,37 +22,8 @@ static UnitLabMmsPdu make_information_report_pdu(void)
 
 static int build_information_report_association_bytes(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
-    UnitLabMmsWireAssociationFixture fixture;
-    UnitLabMmsPdu pdu;
-    uint8_t pdu_raw_payload[5] = { 0xA0U, 0x03U, 0x81U, 0x01U, 0x00U };
-    uint8_t pdu_encoded[16];
-    size_t pdu_length = 0U;
-    size_t payload_length = 0U;
-
-    unitlab_mms_pdu_init(&pdu);
-    pdu.kind = UNITLAB_MMS_PDU_UNCONFIRMED;
-    pdu.has_service = 1;
-    pdu.service_kind = UNITLAB_MMS_SERVICE_INFORMATION_REPORT;
-    pdu.pdu_bytes = pdu_raw_payload;
-    pdu.pdu_length = sizeof(pdu_raw_payload);
-
-    if (!unitlab_mms_pdu_encode(&pdu, pdu_encoded, sizeof(pdu_encoded), &pdu_length, diagnostic)) {
-        return 0;
-    }
-
-    unitlab_mms_wire_association_fixture_init(&fixture);
-    fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
-    fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
-    fixture.presentation.payload_bytes = pdu_encoded;
-    fixture.presentation.payload_length = pdu_length;
-    fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
-
-    payload_length = 0U;
-    if (!unitlab_mms_wire_association_fixture_encode(&fixture, buffer, buffer_length, &payload_length, diagnostic)) {
-        return 0;
-    }
-    *encoded_length = payload_length;
-    return 1;
+    uint8_t scratch[256U];
+    return unitlab_mms_build_information_report_frame("RPT", 0U, scratch, sizeof(scratch), buffer, buffer_length, encoded_length, diagnostic);
 }
 static int build_initiate_request_association_bytes(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
@@ -462,9 +433,9 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
     assert(response_pdu.invoke_id == 3U);
     assert(response_pdu.has_service == 1);
     assert(response_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
-    assert(response_pdu.service_length == 0U);
+    assert(response_pdu.service_length == 16U);
     assert(response_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
-    assert(response_pdu.service_tag.tag_number == 4U);
+    assert(response_pdu.service_tag.tag_number == 0U);
 }
 
 static void test_server_runtime_apply_confirmed_request_and_build_response_roundtrips(void)

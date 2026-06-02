@@ -71,17 +71,9 @@ static int build_native_information_report_frame(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    UnitLabMmsPdu report_pdu;
     uint8_t scratch[256U];
-    static const uint8_t report_payload[] = { 0xA0U, 0x03U, 0x81U, 0x01U, 0x00U };
     (void)server_runtime;
-    unitlab_mms_pdu_init(&report_pdu);
-    report_pdu.kind = UNITLAB_MMS_PDU_UNCONFIRMED;
-    report_pdu.has_service = 1;
-    report_pdu.service_kind = UNITLAB_MMS_SERVICE_INFORMATION_REPORT;
-    report_pdu.pdu_bytes = report_payload;
-    report_pdu.pdu_length = sizeof(report_payload);
-    return unitlab_mms_build_wire_frame_from_pdu(&report_pdu, scratch, sizeof(scratch), buffer, buffer_length, encoded_length, diagnostic);
+    return unitlab_mms_build_information_report_frame("RPT", 0U, scratch, sizeof(scratch), buffer, buffer_length, encoded_length, diagnostic);
 }
 
 static void reset_native_wire_runtime_state(UnitLabMmsServerRuntime* server_runtime)

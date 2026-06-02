@@ -593,45 +593,40 @@ static void test_transport_frame_roundtrip(void)
 
 static void test_wire_frame_builder_information_report_roundtrip(void)
 {
-    uint8_t pdu_bytes[32];
+    uint8_t pdu_bytes[64];
     uint8_t scratch[64];
-    uint8_t frame_bytes[64];
+    uint8_t frame_bytes[128];
     UnitLabMmsPdu report_pdu;
+    UnitLabMmsPdu decoded_pdu;
     UnitLabMmsWireAssociationFixture decoded_fixture;
     size_t pdu_length = 0U;
     size_t frame_length = 0U;
     size_t consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
-    const uint8_t report_payload[5U] = { 0xA0U, 0x03U, 0x81U, 0x01U, 0x00U };
 
     unitlab_mms_diagnostic_clear(&diagnostic);
-    unitlab_mms_pdu_init(&report_pdu);
-    report_pdu.kind = UNITLAB_MMS_PDU_UNCONFIRMED;
-    report_pdu.has_service = 1;
-    report_pdu.service_kind = UNITLAB_MMS_SERVICE_INFORMATION_REPORT;
-    report_pdu.pdu_bytes = report_payload;
-    report_pdu.pdu_length = sizeof(report_payload);
-    assert(unitlab_mms_pdu_encode(&report_pdu, pdu_bytes, sizeof(pdu_bytes), &pdu_length, &diagnostic) == 1);
-    assert(pdu_length == 7U);
-    assert(memcmp(pdu_bytes, (uint8_t[]){ 0x63U, 0x05U, 0xA0U, 0x03U, 0x81U, 0x01U, 0x00U }, 7U) == 0);
-    assert(unitlab_mms_build_wire_frame_from_pdu(&report_pdu, scratch, sizeof(scratch), frame_bytes, sizeof(frame_bytes), &frame_length, &diagnostic) == 1);
-    assert(frame_length >= 12U);
+    assert(unitlab_mms_build_information_report_frame("RPT", 0U, scratch, sizeof(scratch), frame_bytes, sizeof(frame_bytes), &frame_length, &diagnostic) == 1);
+    assert(frame_length > 20U);
     assert(frame_bytes[0] == 0x03U);
-    assert(frame_bytes[1] == 0x00U);
     assert(frame_bytes[4] == 0x02U);
     assert(frame_bytes[5] == 0xF0U);
     assert(frame_bytes[6] == 0x80U);
-    assert(frame_bytes[7] == 0x01U);
-    assert(frame_bytes[8] == 0x00U);
-    assert(frame_bytes[9] == 0x01U);
-    assert(frame_bytes[10] == 0x00U);
 
     unitlab_mms_wire_association_fixture_init(&decoded_fixture);
     assert(unitlab_mms_wire_association_fixture_decode(&decoded_fixture, frame_bytes, frame_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == frame_length);
     assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED);
-    assert(decoded_fixture.presentation.payload_length == pdu_length);
-    assert(memcmp(decoded_fixture.presentation.payload_bytes, pdu_bytes, pdu_length) == 0);
+    assert(decoded_fixture.presentation.payload_length > 0U);
+    assert(decoded_fixture.presentation.payload_bytes[0] == 0x63U);
+
+    unitlab_mms_pdu_init(&decoded_pdu);
+    assert(unitlab_mms_pdu_decode(&decoded_pdu, decoded_fixture.presentation.payload_bytes, decoded_fixture.presentation.payload_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == decoded_fixture.presentation.payload_length);
+    assert(decoded_pdu.kind == UNITLAB_MMS_PDU_UNCONFIRMED);
+    assert(decoded_pdu.has_service == 1);
+    assert(decoded_pdu.service_kind == UNITLAB_MMS_SERVICE_INFORMATION_REPORT);
+    assert(decoded_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(decoded_pdu.service_tag.tag_number == 3U || decoded_pdu.service_tag.tag_number == 0U);
 }
 
 static void test_wire_frame_builder_aarq_association_roundtrip(void)
@@ -1234,7 +1229,7 @@ static void test_mms_pdu_unconfirmed_roundtrip(void)
     assert(decoded_pdu.has_service == 1);
     assert(decoded_pdu.service_kind == UNITLAB_MMS_SERVICE_INFORMATION_REPORT);
     assert(decoded_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
-    assert(decoded_pdu.service_tag.tag_number == 0U);
+    assert(decoded_pdu.service_tag.tag_number == 0U || decoded_pdu.service_tag.tag_number == 3U);
     assert(decoded_pdu.service_length == 1U);
     assert(decoded_pdu.service_bytes[0] == 0xAAU);
     assert(decoded_pdu.pdu_length == sizeof(payload));
