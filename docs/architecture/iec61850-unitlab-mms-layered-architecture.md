@@ -155,11 +155,11 @@ Initial implemented wire foundation:
 - presentation User-data boundary with exact X.226 simply-encoded-data and fully-encoded-data mapping
 - RFC1006/TPKT + COTP transport frame composition helper
 - association-fixture encode/decode helper across TPKT/COTP/exact Presentation User-data wrappers
-- wire/orchestration confirmed-response frame builder that owns the nesting construction and accepts caller-provided scratch
+- wire/orchestration confirmed-response frame builder that delegates ACSE association-accept nesting to the ACSE layer and accepts caller-provided scratch
 - MMS MMSpdu top-level classify/wrap/unwrap
 - narrow service classification for confirmed Read/Write responses and unconfirmed InformationReport choices
 
-Presentation is intentionally exact-only at this boundary. The association fixture helper is decode-safe and encode-safe for staged Presentation User-data payloads, but it does not interpret ACSE or MMS semantics. The MMS PDU wrapper currently peels the top-level `invokeID` and the next service TLV for confirmed request/response/error PDUs, validates `invokeID` as a minimal Unsigned32 BER integer, and leaves full service field decode pending. The wire/orchestration builder owns confirmed-response nesting construction and accepts caller-provided scratch so server orchestration stays above the wire boundary.
+Presentation is intentionally exact-only at this boundary. The association fixture helper is decode-safe and encode-safe for staged Presentation User-data payloads, but it does not interpret ACSE or MMS semantics. The MMS PDU wrapper currently peels the top-level `invokeID` and the next service TLV for confirmed request/response/error PDUs, validates `invokeID` as a minimal Unsigned32 BER integer, and leaves full service field decode pending. The ACSE layer now owns association-accept nesting, while the wire/orchestration builder delegates the lower-layer wrapping and accepts caller-provided scratch so server orchestration stays above the wire boundary.
 
 ## Evolution Path
 

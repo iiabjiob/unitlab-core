@@ -5,6 +5,8 @@
 #include "protocols/mms/unitlab_mms_semantic_pdu.h"
 #include "report/unitlab_iec61850_report_runtime.h"
 
+typedef struct UnitLabIedModelPlan UnitLabIedModelPlan;
+
 typedef enum UnitLabMmsSessionState {
     UNITLAB_MMS_SESSION_DISCONNECTED = 0,
     UNITLAB_MMS_SESSION_ASSOCIATING = 1,
@@ -133,6 +135,7 @@ void unitlab_mms_pending_request_init(UnitLabMmsPendingRequest* request);
 int unitlab_mms_pending_request_start(UnitLabMmsPendingRequest* request, UnitLabMmsRequestKind kind, uint32_t invoke_id, uint32_t correlation_id, uint64_t deadline_ms, uint64_t timestamp_ms, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_pending_request_complete(UnitLabMmsPendingRequest* request, uint64_t completed_at_ms, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_pending_request_mark_timed_out(UnitLabMmsPendingRequest* request, uint64_t timed_out_at_ms, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_pending_request_collect_get_name_list_names(const UnitLabMmsPendingRequest* request, const UnitLabIedModelPlan* plan, char*** names, size_t* count, UnitLabMmsDiagnostic* diagnostic);
 void unitlab_mms_associate_request_init(UnitLabMmsAssociateRequest* request);
 void unitlab_mms_read_request_init(UnitLabMmsReadRequest* request);
 void unitlab_mms_write_request_init(UnitLabMmsWriteRequest* request);

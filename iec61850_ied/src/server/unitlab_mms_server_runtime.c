@@ -278,53 +278,6 @@ static int server_runtime_resolve_read_response_value(UnitLabMmsServerRuntime* s
 }
 
 
-static int server_runtime_collect_get_name_list_names(const UnitLabMmsServerRuntime* server_runtime, char*** names, size_t* count, UnitLabMmsDiagnostic* diagnostic)
-{
-    char model_error[256U];
-
-    if (names != NULL) {
-        *names = NULL;
-    }
-    if (count != NULL) {
-        *count = 0U;
-    }
-    if (server_runtime == NULL || server_runtime->model_plan == NULL || names == NULL || count == NULL) {
-        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime, model plan, names, and count are required.");
-        return 0;
-    }
-    if (server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_GET_NAME_LIST) {
-        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Browse response can only be built for GetNameList requests.");
-        return 0;
-    }
-    model_error[0] = '\0';
-    if (server_runtime->pending_request.browse_object_class == 9U && server_runtime->pending_request.browse_object_scope == 0U) {
-        if (!unitlab_collect_ied_model_logical_devices(server_runtime->model_plan, names, count, model_error, sizeof(model_error))) {
-            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList logical device browse failed.");
-            return 0;
-        }
-        return 1;
-    }
-    if (server_runtime->pending_request.browse_object_class == 2U && server_runtime->pending_request.browse_object_scope == 1U) {
-        if (server_runtime->pending_request.browse_domain_id[0] == '\0') {
-            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList domain-specific browse requires a domain identifier.");
-            return 0;
-        }
-        if (!unitlab_collect_ied_model_logical_device_data_sets(
-                server_runtime->model_plan,
-                server_runtime->pending_request.browse_domain_id,
-                names,
-                count,
-                model_error,
-                sizeof(model_error))) {
-            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList data set browse failed.");
-            return 0;
-        }
-        return 1;
-    }
-    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "GetNameList browse class or scope is unsupported.");
-    return 0;
-}
-
 static int server_runtime_build_get_name_list_response_service(
     const UnitLabMmsServerRuntime* server_runtime,
     uint32_t invoke_id,
@@ -354,7 +307,7 @@ static int server_runtime_build_get_name_list_response_service(
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList response buffer and encoded_length are required.");
         return 0;
     }
-    if (!server_runtime_collect_get_name_list_names(server_runtime, &names, &name_count, diagnostic)) {
+    if (!unitlab_mms_pending_request_collect_get_name_list_names(&server_runtime->pending_request, server_runtime->model_plan, &names, &name_count, diagnostic)) {
         return 0;
     }
     for (size_t index = 0U; index < name_count; index++) {

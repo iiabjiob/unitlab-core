@@ -26,6 +26,7 @@ typedef struct UnitLabMmsAcseApdu {
 
 void unitlab_mms_acse_apdu_init(UnitLabMmsAcseApdu* apdu);
 int unitlab_mms_acse_encode(const UnitLabMmsAcseApdu* apdu, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
+/* Wraps an InitiateResponse PDU into the ACSE AARE payload; the caller still owns presentation, session, and transport framing. */
 int unitlab_mms_acse_build_association_accept_frame(const uint8_t* initiate_response_bytes, size_t initiate_response_length, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_acse_decode(UnitLabMmsAcseApdu* apdu, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsDiagnostic* diagnostic);
 
