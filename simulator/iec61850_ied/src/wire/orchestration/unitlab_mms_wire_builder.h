@@ -2,6 +2,7 @@
 #define UNITLAB_IEC61850_IED_UNITLAB_MMS_WIRE_BUILDER_H
 
 #include "wire/mms/unitlab_mms_pdu.h"
+#include "model_plan.h"
 
 
 #define UNITLAB_MMS_INITIATE_RESPONSE_PROFILE_PARAMETER_CBB_LENGTH 3U
@@ -20,6 +21,7 @@ typedef struct UnitLabMmsInitiateResponseProfile {
 } UnitLabMmsInitiateResponseProfile;
 
 void unitlab_mms_initiate_response_profile_init(UnitLabMmsInitiateResponseProfile* profile);
+void unitlab_mms_initiate_response_profile_apply_model_plan(UnitLabMmsInitiateResponseProfile* profile, const UnitLabIedModelPlan* plan);
 
 /* Builds a wire frame by owning the nesting construction.
  * The caller provides a semantic MMS PDU, and this helper wraps it through the

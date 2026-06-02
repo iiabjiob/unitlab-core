@@ -6,6 +6,7 @@
 #include "wire/acse/unitlab_mms_acse.h"
 #include "wire/ber/unitlab_mms_ber.h"
 #include "wire/transport/unitlab_mms_wire_association_fixture.h"
+#include "model_plan.h"
 
 static void wire_builder_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, const char* message)
 {
@@ -18,6 +19,86 @@ static void wire_builder_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLa
         return;
     }
     snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", message);
+}
+
+static int wire_builder_encode_unsigned_integer(uint32_t value, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t bytes[5U];
+    size_t length = 0U;
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    do {
+        bytes[sizeof(bytes) - 1U - length] = (uint8_t)(value & 0xFFU);
+        length++;
+        value >>= 8U;
+    } while (value != 0U && length < sizeof(bytes));
+    if (value != 0U) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Integer encoding is too large.");
+        return 0;
+    }
+    if (bytes[sizeof(bytes) - length] & 0x80U) {
+        if (length == sizeof(bytes)) {
+            wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Integer encoding is too large.");
+            return 0;
+        }
+        bytes[sizeof(bytes) - length - 1U] = 0x00U;
+        length++;
+    }
+    if (buffer_length < length) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Integer encoding buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, &bytes[sizeof(bytes) - length], length);
+    *encoded_length = length;
+    return 1;
+}
+
+static size_t wire_builder_count_path_depth(const char* reference)
+{
+    size_t depth = 0U;
+    int in_segment = 0;
+
+    if (reference == NULL || reference[0] == '\0') {
+        return 0U;
+    }
+
+    for (const char* cursor = reference; *cursor != '\0'; cursor++) {
+        if (*cursor == '.') {
+            if (in_segment) {
+                depth++;
+                in_segment = 0;
+            }
+            continue;
+        }
+        if (!in_segment) {
+            in_segment = 1;
+        }
+    }
+    if (in_segment) {
+        depth++;
+    }
+    return depth;
+}
+
+static size_t wire_builder_calculate_model_nesting_level(const UnitLabIedModelPlan* plan)
+{
+    size_t max_depth = 0U;
+
+    if (plan == NULL || plan->signal_count == 0U || plan->signals == NULL) {
+        return 5U;
+    }
+    for (size_t index = 0U; index < plan->signal_count; index++) {
+        size_t depth = wire_builder_count_path_depth(plan->signals[index].object_reference);
+        if (depth > max_depth) {
+            max_depth = depth;
+        }
+    }
+    if (max_depth == 0U) {
+        return 5U;
+    }
+    max_depth += 2U;
+    return max_depth < 5U ? 5U : max_depth;
 }
 
 static int wire_builder_encode_ber_element(
@@ -299,10 +380,10 @@ void unitlab_mms_initiate_response_profile_init(UnitLabMmsInitiateResponseProfil
     if (profile == NULL) {
         return;
     }
-    profile->local_detail_called = 65000U;
-    profile->max_serv_outstanding_calling = 5U;
-    profile->max_serv_outstanding_called = 5U;
-    profile->data_structure_nesting_level = 10U;
+    profile->local_detail_called = 8000U;
+    profile->max_serv_outstanding_calling = 1U;
+    profile->max_serv_outstanding_called = 1U;
+    profile->data_structure_nesting_level = 5U;
     profile->negotiated_version_number = 1U;
     profile->parameter_cbb[0] = 0x05U;
     profile->parameter_cbb[1] = 0xF1U;
@@ -323,6 +404,18 @@ void unitlab_mms_initiate_response_profile_init(UnitLabMmsInitiateResponseProfil
     profile->services_supported_called_length = UNITLAB_MMS_INITIATE_RESPONSE_PROFILE_SERVICES_SUPPORTED_LENGTH;
 }
 
+void unitlab_mms_initiate_response_profile_apply_model_plan(UnitLabMmsInitiateResponseProfile* profile, const UnitLabIedModelPlan* plan)
+{
+    if (profile == NULL || plan == NULL) {
+        return;
+    }
+    profile->local_detail_called = (plan->logical_device_count > 1U || plan->data_set_count > 4U || plan->report_count > 4U || plan->signal_count > 16U) ? 65000U : 8000U;
+    profile->max_serv_outstanding_calling = 1U;
+    profile->max_serv_outstanding_called = 1U;
+    profile->data_structure_nesting_level = wire_builder_calculate_model_nesting_level(plan);
+    profile->negotiated_version_number = 1U;
+}
+
 static int wire_builder_build_initiate_response_detail(const UnitLabMmsInitiateResponseProfile* profile, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     uint8_t max_pdu_size_field[16U];
@@ -334,6 +427,7 @@ static int wire_builder_build_initiate_response_detail(const UnitLabMmsInitiateR
     uint8_t services_supported_field[32U];
     uint8_t detail_fields[128U];
     uint8_t detail_wrapper[160U];
+    uint8_t max_pdu_size_value[5U];
     size_t max_pdu_size_length = 0U;
     size_t max_serv_out_calling_length = 0U;
     size_t max_serv_out_called_length = 0U;
@@ -343,8 +437,7 @@ static int wire_builder_build_initiate_response_detail(const UnitLabMmsInitiateR
     size_t services_supported_length = 0U;
     size_t detail_fields_length = 0U;
     size_t detail_wrapper_length = 0U;
-    const uint8_t max_pdu_size_value[] = { 0x00U, 0xFDU, 0xE8U };
-    const uint8_t protocol_version_value[] = { 0x01U };
+
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -354,12 +447,15 @@ static int wire_builder_build_initiate_response_detail(const UnitLabMmsInitiateR
         return 0;
     }
 
+    if (!wire_builder_encode_unsigned_integer(profile->local_detail_called, max_pdu_size_value, sizeof(max_pdu_size_value), &max_pdu_size_length, diagnostic)) {
+        return 0;
+    }
     if (!wire_builder_encode_nested_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             0,
             0U,
             max_pdu_size_value,
-            sizeof(max_pdu_size_value),
+            max_pdu_size_length,
             max_pdu_size_field,
             sizeof(max_pdu_size_field),
             &max_pdu_size_length,
@@ -402,17 +498,20 @@ static int wire_builder_build_initiate_response_detail(const UnitLabMmsInitiateR
             diagnostic)) {
         return 0;
     }
-    if (!wire_builder_encode_nested_element(
-            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
-            0,
-            0U,
-            (const uint8_t[]){ profile->negotiated_version_number },
-            1U,
-            protocol_version_field,
-            sizeof(protocol_version_field),
-            &protocol_version_length,
-            diagnostic)) {
-        return 0;
+    {
+        uint8_t protocol_version_value[] = { profile->negotiated_version_number };
+        if (!wire_builder_encode_nested_element(
+                UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                0,
+                0U,
+                protocol_version_value,
+                sizeof(protocol_version_value),
+                protocol_version_field,
+                sizeof(protocol_version_field),
+                &protocol_version_length,
+                diagnostic)) {
+            return 0;
+        }
     }
     if (!wire_builder_encode_nested_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,

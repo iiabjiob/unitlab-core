@@ -815,6 +815,33 @@ static void test_wire_frame_builder_aarq_association_roundtrip(void)
 //     assert(acse_apdu.fields[3].tag.tag_number == 30U);
 // }
 
+static void test_initiate_response_profile_uses_model_plan(void)
+{
+    UnitLabMmsInitiateResponseProfile profile;
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelSignal signals[2U];
+
+    memset(&profile, 0, sizeof(profile));
+    memset(&plan, 0, sizeof(plan));
+    memset(signals, 0, sizeof(signals));
+
+    strcpy(signals[0].object_reference, "XCBR1.Pos.stVal");
+    strcpy(signals[1].object_reference, "MMXU1.A.phsA.cVal.mag.f");
+    plan.logical_device_count = 1U;
+    plan.data_set_count = 1U;
+    plan.report_count = 1U;
+    plan.signal_count = 2U;
+    plan.signals = signals;
+
+    unitlab_mms_initiate_response_profile_init(&profile);
+    unitlab_mms_initiate_response_profile_apply_model_plan(&profile, &plan);
+
+    assert(profile.local_detail_called == 8000U);
+    assert(profile.max_serv_outstanding_calling == 1U);
+    assert(profile.max_serv_outstanding_called == 1U);
+    assert(profile.data_structure_nesting_level == 8U);
+}
+
 static void test_association_response_frame_smoke(void)
 {
     uint8_t frame[512];
@@ -1499,6 +1526,7 @@ int main(void)
     test_presentation_rejects_truncated_ber();
     test_mms_pdu_confirmed_request_roundtrip();
     test_mms_pdu_confirmed_response_roundtrip();
+    test_initiate_response_profile_uses_model_plan();
     test_mms_pdu_decode_stops_at_indicated_length();
     test_mms_pdu_unconfirmed_roundtrip();
     test_mms_pdu_confirmed_request_roundtrip_with_wide_invoke_id();
