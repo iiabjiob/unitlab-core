@@ -486,12 +486,11 @@ function findLogicalNodeForMember(
   diagnostics: ScdDiagnostic[],
 ): SclLogicalNode | null {
   const context = buildMemberContext(dataSet, member)
-  const logicalNodeName = member.lnClass ? formatLogicalNodeName(member.prefix, member.lnClass, member.lnInst) : dataSet.logicalNodeName
-  const ldInst = member.ldInst?.trim() || dataSet.logicalDeviceInst
+  const scope = resolveMemberScope(dataSet, member)
   const matches = collectLogicalNodes(model).filter(node =>
     node.iedName === dataSet.iedName
-    && node.logicalDeviceInst === ldInst
-    && node.logicalNodeName === logicalNodeName,
+    && node.logicalDeviceInst === scope.ldInst
+    && node.logicalNodeName === scope.logicalNodeName,
   )
 
   if (matches.length === 1) {
@@ -502,7 +501,12 @@ function findLogicalNodeForMember(
     return null
   }
 
-  pushMemberDiagnostic(diagnostics, member, "datatype-templates.missing-logical-node", `Missing logical node: ${member.reference}.`, context)
+  if (scope.hasInheritedDatasetContext) {
+    pushMemberDiagnostic(diagnostics, member, "datatype-templates.missing-logical-node", `Missing logical node: ${member.reference}.`, context)
+    return null
+  }
+
+  pushMemberDiagnostic(diagnostics, member, "datatype-templates.unsupported-relative-fcda-context", `Unsupported relative FCDA context: ${member.reference}.`, context)
   return null
 }
 
@@ -533,17 +537,37 @@ function buildMemberContext(
   member: SclDataSetMember,
   extras: Partial<NonNullable<ScdDiagnostic["context"]>> = {},
 ): NonNullable<ScdDiagnostic["context"]> {
+  const scope = resolveMemberScope(dataSet, member)
   return {
     datasetRef: formatDataSetReference(dataSet),
     memberRef: member.reference,
     iedName: dataSet.iedName,
-    ldInst: member.ldInst?.trim() || dataSet.logicalDeviceInst,
+    ldInst: scope.ldInst,
     lnClass: member.lnClass,
     lnInst: member.lnInst,
     doName: member.doName,
     daName: member.daName,
     fc: member.fc,
+    parentScope: member.ldInst?.trim() || member.lnClass?.trim() || member.lnInst?.trim() ? null : dataSet.logicalNodeName,
     ...extras,
+  }
+}
+
+function resolveMemberScope(
+  dataSet: SclDataSet,
+  member: SclDataSetMember,
+): {
+  ldInst: string
+  logicalNodeName: string
+  hasInheritedDatasetContext: boolean
+} {
+  const hasExplicitScope = Boolean(member.ldInst?.trim() || member.lnClass?.trim() || member.lnInst?.trim())
+  return {
+    ldInst: member.ldInst?.trim() || dataSet.logicalDeviceInst,
+    logicalNodeName: member.lnClass?.trim()
+      ? formatLogicalNodeName(member.prefix, member.lnClass, member.lnInst)
+      : dataSet.logicalNodeName,
+    hasInheritedDatasetContext: !hasExplicitScope,
   }
 }
 

@@ -295,6 +295,48 @@ describe("IEC 61850 DataTypeTemplates normalization", () => {
     }
   })
 
+  it("resolves relative FCDA members from the parent LN context", () => {
+    const doNames = ["PhV", "PPV", "DifVClc", "DifHzClc", "DifAngClc"] as const
+    const fixture = `<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <DataTypeTemplates>
+    <LNodeType id="MMXU_TYPE" lnClass="MMXU">
+${doNames.map(name => `      <DO name="${name}" type="MEAS_DO"/>`).join("\n")}
+    </LNodeType>
+    <DOType id="MEAS_DO" cdc="CMV">
+      <DA name="mag" bType="Struct" type="Magnitude" fc="MX"/>
+    </DOType>
+    <DAType id="Magnitude">
+      <BDA name="f" bType="FLOAT32" fc="MX"/>
+    </DAType>
+  </DataTypeTemplates>
+  <IED name="IED1" type="TestIED">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="LD1">
+          <LN lnClass="MMXU" inst="1" lnType="MMXU_TYPE">
+            <DataSet name="MEAS_RCB1">
+${doNames.map(name => `              <FCDA doName="${name}" fc="MX"/>`).join("\n")}
+            </DataSet>
+            <ReportControl name="BRCB1" datSet="MEAS_RCB1" rptID="rpt1" buffered="true" confRev="1"/>
+          </LN>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>`
+    const subscription = getSubscription(buildModel(fixture))
+
+    for (const doName of doNames) {
+      const entry = getEntry(subscription, `${doName}[MX]`)
+      expect(entry.leaves).toHaveLength(1)
+      expect(entry.leaves[0]?.doName).toBe(doName)
+      expect(entry.leaves[0]?.reference).toBe(`LD1/MMXU1.${doName}.mag.f[MX]`)
+      expect(entry.diagnostics.some(diagnostic => diagnostic.code === "datatype-templates.missing-do")).toBe(false)
+      expect(entry.diagnostics.some(diagnostic => diagnostic.code === "datatype-templates.unsupported-relative-fcda-context")).toBe(false)
+    }
+  })
+
   it("resolves VisString and Unicode primitive string bTypes", () => {
     const fixture = `<?xml version="1.0" encoding="UTF-8"?>
 <SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
