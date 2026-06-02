@@ -32,6 +32,17 @@ static void test_tpkt_roundtrip(void)
     assert(memcmp(decoded_payload, payload, sizeof(payload)) == 0);
 }
 
+static void test_tpkt_write_header(void)
+{
+    uint8_t frame[4];
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_tpkt_write_header(frame, sizeof(frame), 0x0010U, &diagnostic) == 1);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(memcmp(frame, (const uint8_t[]){ 0x03U, 0x00U, 0x00U, 0x10U }, sizeof(frame)) == 0);
+}
+
 static void test_tpkt_unwrap_ignores_trailing_bytes(void)
 {
     uint8_t frame[16];
@@ -842,6 +853,33 @@ static void test_initiate_response_profile_uses_model_plan(void)
     assert(profile.data_structure_nesting_level == 8U);
 }
 
+static void test_initiate_response_profile_scales_with_larger_model(void)
+{
+    UnitLabMmsInitiateResponseProfile profile;
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelSignal signals[17U];
+
+    memset(&profile, 0, sizeof(profile));
+    memset(&plan, 0, sizeof(plan));
+    memset(signals, 0, sizeof(signals));
+
+    strcpy(signals[0].object_reference, "XCBR1.Pos.stVal");
+    strcpy(signals[16].object_reference, "MMXU1.A.phsA.cVal.mag.f");
+    plan.logical_device_count = 2U;
+    plan.data_set_count = 3U;
+    plan.report_count = 5U;
+    plan.signal_count = 17U;
+    plan.signals = signals;
+
+    unitlab_mms_initiate_response_profile_init(&profile);
+    unitlab_mms_initiate_response_profile_apply_model_plan(&profile, &plan);
+
+    assert(profile.local_detail_called == 10560U);
+    assert(profile.max_serv_outstanding_calling == 3U);
+    assert(profile.max_serv_outstanding_called == 3U);
+    assert(profile.data_structure_nesting_level == 8U);
+}
+
 static void test_association_response_frame_smoke(void)
 {
     uint8_t frame[512];
@@ -1493,6 +1531,7 @@ static void test_ber_element_rejects_missing_value_bytes(void)
 
 int main(void)
 {
+    test_tpkt_write_header();
     test_tpkt_roundtrip();
     test_tpkt_unwrap_ignores_trailing_bytes();
     test_tpkt_rejects_invalid_version();
@@ -1527,6 +1566,7 @@ int main(void)
     test_mms_pdu_confirmed_request_roundtrip();
     test_mms_pdu_confirmed_response_roundtrip();
     test_initiate_response_profile_uses_model_plan();
+    test_initiate_response_profile_scales_with_larger_model();
     test_mms_pdu_decode_stops_at_indicated_length();
     test_mms_pdu_unconfirmed_roundtrip();
     test_mms_pdu_confirmed_request_roundtrip_with_wide_invoke_id();

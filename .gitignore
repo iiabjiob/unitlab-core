@@ -46,6 +46,8 @@ __pycache__/
 # Host agents (host-services) build artifacts
 host-services/**/build/
 host-services/**/build/**
+simulator/iec61850_ied/build/
+simulator/iec61850_ied/build/**
 host-services/**/dist/
 host-services/**/dist/**
 host-services/**/*.egg-info/

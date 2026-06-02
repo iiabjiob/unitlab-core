@@ -101,6 +101,17 @@ static size_t wire_builder_calculate_model_nesting_level(const UnitLabIedModelPl
     return max_depth < 5U ? 5U : max_depth;
 }
 
+static uint32_t wire_builder_clamp_uint32(uint32_t value, uint32_t minimum, uint32_t maximum)
+{
+    if (value < minimum) {
+        return minimum;
+    }
+    if (value > maximum) {
+        return maximum;
+    }
+    return value;
+}
+
 static int wire_builder_encode_ber_element(
     UnitLabMmsBerTagClass tag_class,
     int constructed,
@@ -406,12 +417,39 @@ void unitlab_mms_initiate_response_profile_init(UnitLabMmsInitiateResponseProfil
 
 void unitlab_mms_initiate_response_profile_apply_model_plan(UnitLabMmsInitiateResponseProfile* profile, const UnitLabIedModelPlan* plan)
 {
+    uint32_t local_detail_called = 8000U;
+    uint32_t max_serv_outstanding_calling = 1U;
+    uint32_t max_serv_outstanding_called = 1U;
+
     if (profile == NULL || plan == NULL) {
         return;
     }
-    profile->local_detail_called = (plan->logical_device_count > 1U || plan->data_set_count > 4U || plan->report_count > 4U || plan->signal_count > 16U) ? 65000U : 8000U;
-    profile->max_serv_outstanding_calling = 1U;
-    profile->max_serv_outstanding_called = 1U;
+
+    if (plan->logical_device_count > 1U) {
+        local_detail_called += 1024U;
+    }
+    if (plan->data_set_count > 1U) {
+        local_detail_called += 512U;
+    }
+    if (plan->report_count > 1U) {
+        local_detail_called += 512U;
+    }
+    if (plan->signal_count > 8U) {
+        local_detail_called += 256U;
+    }
+    if (plan->signal_count > 16U) {
+        local_detail_called += 256U;
+    }
+    profile->local_detail_called = wire_builder_clamp_uint32(local_detail_called, 8000U, 65000U);
+
+    max_serv_outstanding_calling += (plan->report_count > 1U) ? 1U : 0U;
+    max_serv_outstanding_calling += (plan->report_count > 4U) ? 1U : 0U;
+    profile->max_serv_outstanding_calling = wire_builder_clamp_uint32(max_serv_outstanding_calling, 1U, 5U);
+
+    max_serv_outstanding_called += (plan->data_set_count > 2U) ? 1U : 0U;
+    max_serv_outstanding_called += (plan->signal_count > 16U) ? 1U : 0U;
+    profile->max_serv_outstanding_called = wire_builder_clamp_uint32(max_serv_outstanding_called, 1U, 5U);
+
     profile->data_structure_nesting_level = wire_builder_calculate_model_nesting_level(plan);
     profile->negotiated_version_number = 1U;
 }
