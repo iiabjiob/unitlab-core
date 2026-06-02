@@ -450,18 +450,19 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
     unitlab_mms_wire_association_fixture_init(&fixture);
     assert(unitlab_mms_wire_association_fixture_decode(&fixture, response_bytes, response_length, &consumed_length, &diagnostic));
     assert(consumed_length == response_length);
-    assert(fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
+    assert(fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED);
 
     unitlab_mms_pdu_init(&response_pdu);
     assert(unitlab_mms_pdu_decode(&response_pdu, fixture.presentation.payload_bytes, fixture.presentation.payload_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == fixture.presentation.payload_length);
-    assert(response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST);
+    assert(response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
     assert(response_pdu.has_invoke_id == 1);
     assert(response_pdu.invoke_id == 3U);
     assert(response_pdu.has_service == 1);
     assert(response_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
+    assert(response_pdu.service_length == 0U);
     assert(response_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
-    assert(response_pdu.service_tag.tag_number == 0U);
+    assert(response_pdu.service_tag.tag_number == 4U);
 }
 
 static void test_server_runtime_apply_confirmed_request_and_build_response_roundtrips(void)

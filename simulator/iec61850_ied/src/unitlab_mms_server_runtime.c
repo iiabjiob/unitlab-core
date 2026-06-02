@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "wire/orchestration/unitlab_mms_wire_builder.h"
+#include "wire/ber/unitlab_mms_ber.h"
 #include "wire/presentation/unitlab_mms_presentation.h"
 #include "wire/session/unitlab_mms_session_spdu.h"
 #include "wire/transport/unitlab_mms_transport_frame.h"
@@ -321,6 +322,12 @@ int unitlab_mms_server_runtime_release_report_control(UnitLabMmsServerRuntime* s
 int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRuntime* server_runtime, const uint8_t* service_bytes, size_t service_length, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsPdu response_pdu;
+    uint8_t synthesized_service_bytes[16U];
+    UnitLabMmsBerElement invoke_id_element;
+    UnitLabMmsBerElement service_element;
+    size_t synthesized_service_length = 0U;
+    size_t invoke_id_length = 0U;
+    size_t service_encoded_length = 0U;
     size_t response_length = 0U;
 
     if (encoded_length != NULL) {
@@ -334,32 +341,49 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, "Server runtime must be running before building response bytes.");
         return 0;
     }
-    if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_READ && server_runtime->pending_request.invoke_id == 3U) {
-        if (!unitlab_mms_build_reference_first_read_response_frame(
-                buffer,
-                buffer_length,
-                &response_length,
-                diagnostic)) {
-            return 0;
-        }
-        if (!unitlab_mms_transport_exchange_bind_response(&server_runtime->transport, buffer, buffer_length, diagnostic)) {
-            return 0;
-        }
-        if (!unitlab_mms_transport_exchange_set_response_length(&server_runtime->transport, response_length, diagnostic)) {
-            return 0;
-        }
-        *encoded_length = response_length;
-        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-        unitlab_mms_operation_result_from_trace(
-            &server_runtime->last_result,
-            1,
-            diagnostic,
-            &server_runtime->transport.event_log,
-            &server_runtime->transport.last_event);
-        unitlab_mms_server_runtime_capture_snapshot(server_runtime);
-        return 1;
-    }
+    if (service_length == 0U) {
+        uint8_t invoke_id_bytes[5U];
+        size_t invoke_id_length_bytes = 0U;
 
+        invoke_id_length_bytes = 0U;
+        {
+            uint32_t value = server_runtime->pending_request.invoke_id;
+            do {
+                invoke_id_bytes[sizeof(invoke_id_bytes) - 1U - invoke_id_length_bytes] = (uint8_t)(value & 0xFFU);
+                invoke_id_length_bytes++;
+                value >>= 8U;
+            } while (value != 0U && invoke_id_length_bytes < sizeof(invoke_id_bytes));
+            if (invoke_id_bytes[sizeof(invoke_id_bytes) - invoke_id_length_bytes] & 0x80U) {
+                if (sizeof(invoke_id_bytes) == invoke_id_length_bytes) {
+                    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Confirmed response invokeID encoding failed.");
+                    return 0;
+                }
+                invoke_id_bytes[sizeof(invoke_id_bytes) - invoke_id_length_bytes - 1U] = 0x00U;
+                invoke_id_length_bytes++;
+            }
+        }
+        unitlab_mms_ber_element_init(&invoke_id_element);
+        invoke_id_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        invoke_id_element.tag.constructed = 0;
+        invoke_id_element.tag.tag_number = 2U;
+        invoke_id_element.value_bytes = &invoke_id_bytes[sizeof(invoke_id_bytes) - invoke_id_length_bytes];
+        invoke_id_element.value_length = invoke_id_length_bytes;
+        if (!unitlab_mms_ber_write(&invoke_id_element, synthesized_service_bytes, sizeof(synthesized_service_bytes), &invoke_id_length, diagnostic)) {
+            return 0;
+        }
+        unitlab_mms_ber_element_init(&service_element);
+        service_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+        service_element.tag.constructed = 0;
+        service_element.tag.tag_number = server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_READ ? 4U : 5U;
+        service_element.value_bytes = NULL;
+        service_element.value_length = 0U;
+        if (!unitlab_mms_ber_write(&service_element, &synthesized_service_bytes[invoke_id_length], sizeof(synthesized_service_bytes) - invoke_id_length, &service_encoded_length, diagnostic)) {
+            return 0;
+        }
+        synthesized_service_length = invoke_id_length + service_encoded_length;
+        service_bytes = synthesized_service_bytes;
+        service_length = synthesized_service_length;
+    }
     if (!server_runtime_prepare_confirmed_response_pdu(server_runtime, service_bytes, service_length, &response_pdu, diagnostic)) {
         return 0;
     }
