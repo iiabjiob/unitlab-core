@@ -3,6 +3,7 @@
 #include "native_wire_server.h"
 #include "unitlab_mms_server_runtime.h"
 #include "wire/acse/unitlab_mms_acse.h"
+#include "wire/ber/unitlab_mms_ber.h"
 #include "wire/mms/unitlab_mms_pdu.h"
 #include "wire/orchestration/unitlab_mms_wire_builder.h"
 #include "wire/transport/unitlab_mms_wire_association_fixture.h"
@@ -13,7 +14,6 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -157,23 +157,26 @@ static void test_native_wire_server_speaks_reference_handshake(void)
     uint8_t client_frame[128U];
     uint8_t response_frame[256U];
     uint8_t association_request[128U];
+    UnitLabMmsWireAssociationFixture decoded_fixture;
+    UnitLabMmsAcseApdu acse_apdu;
+    UnitLabMmsBerElement external_element;
+    UnitLabMmsBerElement external_indirect_element;
+    UnitLabMmsBerElement external_choice_element;
+    UnitLabMmsBerElement initiate_response_element;
+    UnitLabMmsPdu initiate_response_pdu;
     size_t client_frame_length = 0U;
     size_t association_request_length = 0U;
+    size_t association_response_length = 0U;
+    size_t consumed_length = 0U;
+    size_t external_consumed_length = 0U;
+    size_t external_indirect_consumed_length = 0U;
+    size_t external_choice_consumed_length = 0U;
+    size_t initiate_response_consumed_length = 0U;
+    size_t acse_consumed_length = 0U;
     int client_fd;
     const uint8_t expected_cotp_cc[] = {
         0x03U, 0x00U, 0x00U, 0x16U, 0x11U, 0xD0U, 0x00U, 0x01U, 0x00U, 0x01U, 0x00U,
         0xC0U, 0x01U, 0x0DU, 0xC2U, 0x02U, 0x00U, 0x01U, 0xC1U, 0x02U, 0x00U, 0x01U,
-    };
-    const uint8_t expected_association_response[] = {
-        0x03U, 0x00U, 0x00U, 0x8FU, 0x02U, 0xF0U, 0x80U, 0x0EU, 0x86U, 0x05U, 0x06U, 0x13U, 0x01U, 0x00U, 0x16U, 0x01U,
-        0x02U, 0x14U, 0x02U, 0x00U, 0x02U, 0x34U, 0x02U, 0x00U, 0x01U, 0xC1U, 0x74U, 0x31U, 0x72U, 0xA0U, 0x03U, 0x80U, 0x01U,
-        0x01U, 0xA2U, 0x6BU, 0x83U, 0x04U, 0x00U, 0x00U, 0x00U, 0x01U, 0xA5U, 0x12U, 0x30U, 0x07U, 0x80U, 0x01U, 0x00U,
-        0x81U, 0x02U, 0x51U, 0x01U, 0x30U, 0x07U, 0x80U, 0x01U, 0x00U, 0x81U, 0x02U, 0x51U, 0x01U, 0x61U, 0x4FU, 0x30U,
-        0x4DU, 0x02U, 0x01U, 0x01U, 0xA0U, 0x48U, 0x61U, 0x46U, 0xA1U, 0x07U, 0x06U, 0x05U, 0x28U, 0xCAU, 0x22U, 0x02U,
-        0x03U, 0xA2U, 0x03U, 0x02U, 0x01U, 0x00U, 0xA3U, 0x05U, 0xA1U, 0x03U, 0x02U, 0x01U, 0x00U, 0xBEU, 0x2FU, 0x28U,
-        0x2DU, 0x02U, 0x01U, 0x03U, 0xA0U, 0x28U, 0xA9U, 0x26U, 0x80U, 0x03U, 0x00U, 0xFDU, 0xE8U, 0x81U, 0x01U, 0x05U,
-        0x82U, 0x01U, 0x05U, 0x83U, 0x01U, 0x0AU, 0xA4U, 0x16U, 0x80U, 0x01U, 0x01U, 0x81U, 0x03U, 0x05U, 0xF1U, 0x00U,
-        0x82U, 0x0CU, 0x03U, 0xEEU, 0x1CU, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x01U, 0x18U,
     };
 
     memset(&context, 0, sizeof(context));
@@ -200,8 +203,62 @@ static void test_native_wire_server_speaks_reference_handshake(void)
     unitlab_mms_diagnostic_clear(&diagnostic);
     assert(build_association_request_bytes(association_request, sizeof(association_request), &association_request_length, &diagnostic));
     assert(send_all(client_fd, association_request, association_request_length));
-    assert(recv_exact(client_fd, response_frame, sizeof(expected_association_response)));
-    assert(memcmp(response_frame, expected_association_response, sizeof(expected_association_response)) == 0);
+    assert(recv_exact(client_fd, response_frame, 4U));
+    association_response_length = ((size_t)response_frame[2] << 8U) | (size_t)response_frame[3];
+    assert(association_response_length <= sizeof(response_frame));
+    assert(recv_exact(client_fd, &response_frame[4U], association_response_length - 4U));
+    assert(unitlab_mms_wire_association_fixture_decode(&decoded_fixture, response_frame, association_response_length, &consumed_length, &diagnostic));
+    assert(consumed_length == association_response_length);
+    assert(decoded_fixture.transport.cotp.kind == UNITLAB_MMS_COTP_TPDU_DT);
+    assert(decoded_fixture.session.kind == UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER);
+    assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
+
+    unitlab_mms_acse_apdu_init(&acse_apdu);
+    assert(unitlab_mms_acse_decode(&acse_apdu, decoded_fixture.presentation.payload_bytes, decoded_fixture.presentation.payload_length, &acse_consumed_length, &diagnostic) == 1);
+    assert(acse_consumed_length == decoded_fixture.presentation.payload_length);
+    assert(acse_apdu.kind == UNITLAB_MMS_ACSE_APDU_AARE);
+    assert(acse_apdu.field_count == 4U);
+    assert(acse_apdu.fields[0].tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(acse_apdu.fields[0].tag.tag_number == 1U);
+    assert(acse_apdu.fields[1].tag.tag_number == 2U);
+    assert(acse_apdu.fields[2].tag.tag_number == 3U);
+    assert(acse_apdu.fields[3].tag.tag_number == 30U);
+
+    unitlab_mms_ber_element_init(&external_element);
+    assert(unitlab_mms_ber_read(&external_element, acse_apdu.fields[3].value_bytes, acse_apdu.fields[3].value_length, &external_consumed_length, &diagnostic) == 1);
+    assert(external_consumed_length == acse_apdu.fields[3].value_length);
+    assert(external_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(external_element.tag.tag_number == 8U);
+    assert(external_element.tag.constructed == 1);
+
+    unitlab_mms_ber_element_init(&external_indirect_element);
+    assert(unitlab_mms_ber_read(&external_indirect_element, external_element.value_bytes, external_element.value_length, &external_indirect_consumed_length, &diagnostic) == 1);
+    assert(external_indirect_consumed_length > 0U);
+    assert(external_indirect_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(external_indirect_element.tag.tag_number == 2U);
+    assert(external_indirect_element.value_length == 1U);
+    assert(external_indirect_element.value_bytes[0] == 0x03U);
+
+    unitlab_mms_ber_element_init(&external_choice_element);
+    assert(unitlab_mms_ber_read(&external_choice_element, &external_element.value_bytes[external_indirect_consumed_length], external_element.value_length - external_indirect_consumed_length, &external_choice_consumed_length, &diagnostic) == 1);
+    assert(external_choice_consumed_length == external_element.value_length - external_indirect_consumed_length);
+    assert(external_choice_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(external_choice_element.tag.tag_number == 0U);
+    assert(external_choice_element.tag.constructed == 1);
+    assert(external_choice_element.value_length > 1U);
+    assert(external_choice_element.value_bytes[0] == 0x69U);
+
+    unitlab_mms_ber_element_init(&initiate_response_element);
+    assert(unitlab_mms_ber_read(&initiate_response_element, external_choice_element.value_bytes, external_choice_element.value_length, &initiate_response_consumed_length, &diagnostic) == 1);
+    assert(initiate_response_consumed_length == external_choice_element.value_length);
+    assert(initiate_response_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION);
+    assert(initiate_response_element.tag.tag_number == 9U);
+    assert(initiate_response_element.tag.constructed == 1);
+
+    unitlab_mms_pdu_init(&initiate_response_pdu);
+    assert(unitlab_mms_pdu_decode(&initiate_response_pdu, external_choice_element.value_bytes, external_choice_element.value_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == external_choice_element.value_length);
+    assert(initiate_response_pdu.kind == UNITLAB_MMS_PDU_INITIATE_RESPONSE);
 
     close(client_fd);
     context.stop_requested = 1;

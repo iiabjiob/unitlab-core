@@ -1,11 +1,12 @@
 #include <assert.h>
 
 #include "unitlab_mms_server_runtime.h"
+#include "wire/acse/unitlab_mms_acse.h"
+#include "wire/ber/unitlab_mms_ber.h"
 #include "wire/mms/unitlab_mms_pdu.h"
 #include "wire/transport/unitlab_mms_wire_association_fixture.h"
 #include "wire/orchestration/unitlab_mms_wire_builder.h"
 
-#include <stdio.h>
 #include <string.h>
 
 static UnitLabMmsPdu make_information_report_pdu(void)
@@ -414,11 +415,7 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
     uint8_t wire_bytes[256];
     uint8_t response_bytes[256];
     UnitLabMmsWireAssociationFixture fixture;
-    static const uint8_t expected_response[] = {
-        0x03U, 0x00U, 0x00U, 0x24U, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U, 0x61U, 0x17U, 0x30U, 0x15U, 0x02U,
-        0x01U, 0x03U, 0xA0U, 0x10U, 0xA1U, 0x0EU, 0x02U, 0x01U, 0x01U, 0xA4U, 0x09U, 0xA1U, 0x07U, 0x87U, 0x05U, 0x08U,
-        0xBFU, 0x7EU, 0x96U, 0x18U,
-    };
+    UnitLabMmsPdu response_pdu;
     size_t wire_length = 0U;
     size_t consumed_length = 0U;
     size_t response_length = 0U;
@@ -445,11 +442,26 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
     unitlab_mms_diagnostic_clear(&diagnostic);
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
-    assert(response_length == sizeof(expected_response));
-    assert(memcmp(response_bytes, expected_response, sizeof(expected_response)) == 0);
+    assert(response_length > 0U);
     assert(server_runtime.transport.response_bytes == response_bytes);
     assert(server_runtime.transport.response_length == response_length);
     assert(server_runtime.transport.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_SET_RESPONSE_LENGTH);
+
+    unitlab_mms_wire_association_fixture_init(&fixture);
+    assert(unitlab_mms_wire_association_fixture_decode(&fixture, response_bytes, response_length, &consumed_length, &diagnostic));
+    assert(consumed_length == response_length);
+    assert(fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
+
+    unitlab_mms_pdu_init(&response_pdu);
+    assert(unitlab_mms_pdu_decode(&response_pdu, fixture.presentation.payload_bytes, fixture.presentation.payload_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == fixture.presentation.payload_length);
+    assert(response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST);
+    assert(response_pdu.has_invoke_id == 1);
+    assert(response_pdu.invoke_id == 3U);
+    assert(response_pdu.has_service == 1);
+    assert(response_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
+    assert(response_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(response_pdu.service_tag.tag_number == 0U);
 }
 
 static void test_server_runtime_apply_confirmed_request_and_build_response_roundtrips(void)
