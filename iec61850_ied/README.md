@@ -4,7 +4,17 @@ Status: internal test-tool scaffold. It validates the UnitLab fixture/model-plan
 
 This directory is the boundary for the future libIEC61850-based IED simulator. It is intentionally separate from UnitLab backend/core runtime so GPL/native code cannot leak into production logic by accident.
 
-The C-owned seam starts in `src/mms/unitlab_mms_core.c` and `src/mms/unitlab_mms_core.h`. That module owns the UnitLab transport/session boundary plus the IEC 61850 report-control semantics that the future wire-level implementation will fill in. libIEC61850 stays in the simulator as a reference backend and interoperability oracle.
+## Architecture Map
+
+Use this as the navigation guide for both humans and Codex:
+
+- `src/app/main.c` is the CLI entrypoint. It parses the mode flags and routes into dry-run, smoke, native-wire, metadata-probe, and GI-probe flows.
+- `src/model/model_loader.c` and `src/model/model_plan.c` turn the JSON fixture into the model plan that drives the simulator.
+- `src/server/unitlab_mms_server_runtime.c` owns runtime state, request correlation, read-response assembly, and report-control behavior.
+- `src/server/native_wire_server.c` owns the native socket listener, association handshake, request dispatch, and live-wire report emission.
+- `src/wire/` holds the transport/framing helpers for TPKT, COTP, ACSE, presentation, and MMS.
+- `libIEC61850` is a reference backend for parity and interoperability checks only. It is not the product-owned runtime model.
+- Deeper boundary notes live in [UnitLab IEC 61850 MMS Core Boundary](/workspace/docs/architecture/iec61850-unitlab-mms-core-boundary.md) and [UnitLab MMS Layered Architecture](/workspace/docs/architecture/iec61850-unitlab-mms-layered-architecture.md).
 
 Current C-owned helpers include:
 
@@ -152,7 +162,7 @@ It intentionally excludes:
 - Operator decisions.
 - Runtime evidence.
 
-Runtime evidence is captured separately by the C-owned runtime kernel through typed event records, pending-request correlation/timeout DTOs with per-request traces, semantic PDU structs, operation results, and a copy-safe runtime snapshot DTO for replay/debug capture. Report-control evidence is owned by `unitlab_iec61850_report_runtime.c`; session/request/transport evidence is owned by `unitlab_mms_core.c`. Report acceptance is modeled as `GI_PENDING -> REPORTING` before disable/release returns the control to `DISABLED`.
+Runtime evidence is captured separately by the C-owned runtime kernel through typed event records, pending-request correlation/timeout DTOs with per-request traces, semantic PDU structs, operation results, and a copy-safe runtime snapshot DTO for replay/debug capture. Report-control evidence is owned by `unitlab_iec61850_report_runtime.c`; session/request/transport evidence is owned by `src/server/unitlab_mms_server_runtime.c` and `src/server/native_wire_server.c`. Report acceptance is modeled as `GI_PENDING -> REPORTING` before disable/release returns the control to `DISABLED`.
 
 ## Smoke Start
 
@@ -240,7 +250,7 @@ Expected result:
 unitlab-iec61850-ied-sim: metadata probe accepted
 ied=IED1
 endpoint=127.0.0.1:1102
-dataSets=1
+dataSets=2
 reports=1
 libiec61850=linked
 ```
