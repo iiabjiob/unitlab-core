@@ -178,64 +178,6 @@ static int build_initiate_request_association_bytes(uint8_t* buffer, size_t buff
     return 1;
 }
 
-static int build_confirmed_request_association_bytes(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
-{
-    UnitLabMmsAssociationFrame fixture;
-    UnitLabMmsPdu pdu;
-    uint8_t pdu_payload[6] = { 0x02U, 0x01U, 0x05U, 0xA4U, 0x01U, 0xAAU };
-    uint8_t pdu_encoded[16];
-    size_t pdu_length = 0U;
-    size_t payload_length = 0U;
-
-    unitlab_mms_pdu_init(&pdu);
-    pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
-    pdu.pdu_bytes = pdu_payload;
-    pdu.pdu_length = sizeof(pdu_payload);
-
-    if (!unitlab_mms_pdu_encode(&pdu, pdu_encoded, sizeof(pdu_encoded), &pdu_length, diagnostic)) {
-        return 0;
-    }
-
-    unitlab_mms_association_frame_init(&fixture);
-    fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
-    fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
-    fixture.presentation.payload_bytes = pdu_encoded;
-    fixture.presentation.payload_length = pdu_length;
-    fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
-
-    payload_length = 0U;
-    if (!unitlab_mms_association_frame_encode(&fixture, buffer, buffer_length, &payload_length, diagnostic)) {
-        return 0;
-    }
-    *encoded_length = payload_length;
-    return 1;
-}
-static int build_reference_confirmed_request_bytes(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
-{
-    static const uint8_t reference_confirmed_request[] = {
-        0x03U, 0x00U, 0x00U, 0x4EU, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U, 0x61U, 0x41U, 0x30U, 0x3FU, 0x02U,
-        0x01U, 0x03U, 0xA0U, 0x3AU, 0xA0U, 0x38U, 0x02U, 0x01U, 0x01U, 0xA4U, 0x33U, 0xA1U, 0x31U, 0xA0U, 0x2FU, 0x30U,
-        0x2DU, 0xA0U, 0x2BU, 0xA1U, 0x29U, 0x1AU, 0x11U, 0x73U, 0x69U, 0x6DU, 0x70U, 0x6CU, 0x65U, 0x49U, 0x4FU, 0x47U,
-        0x65U, 0x6EU, 0x65U, 0x72U, 0x69U, 0x63U, 0x49U, 0x4FU, 0x1AU, 0x14U, 0x47U, 0x47U, 0x49U, 0x4FU, 0x31U, 0x24U,
-        0x4DU, 0x58U, 0x24U, 0x41U, 0x6EU, 0x49U, 0x6EU, 0x31U, 0x24U, 0x6DU, 0x61U, 0x67U, 0x24U, 0x66U,
-    };
-
-    if (buffer_length < sizeof(reference_confirmed_request)) {
-        if (diagnostic != NULL) {
-            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
-            diagnostic->message[0] = '\0';
-        }
-        return 0;
-    }
-    memcpy(buffer, reference_confirmed_request, sizeof(reference_confirmed_request));
-    *encoded_length = sizeof(reference_confirmed_request);
-    if (diagnostic != NULL) {
-        diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_OK;
-        diagnostic->message[0] = '\0';
-    }
-    return 1;
-}
-
 
 static void test_server_runtime_apply_association_request_bytes_accepts_acse_aarq(void)
 {
@@ -382,9 +324,7 @@ static void test_wire_builder_builds_confirmed_response_frame_roundtrips(void)
     UnitLabMmsDiagnostic diagnostic;
     uint8_t response_bytes[256];
     uint8_t response_payload[6] = { 0x02U, 0x01U, 0x29U, 0xA4U, 0x01U, 0xAAU };
-    UnitLabMmsAssociationFrame fixture;
     size_t encoded_length = 0U;
-    size_t consumed_length = 0U;
 
     unitlab_mms_pdu_init(&response_pdu);
     response_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_RESPONSE;
@@ -404,11 +344,9 @@ static void test_wire_builder_builds_confirmed_response_frame_roundtrips(void)
         UnitLabMmsTransportFrame transport_frame;
         UnitLabMmsSessionSpdu session_spdu;
         UnitLabMmsPresentationApdu presentation_apdu;
-        UnitLabMmsPdu decoded_response;
         size_t transport_consumed_length = 0U;
         size_t session_consumed_length = 0U;
         size_t presentation_consumed_length = 0U;
-        size_t response_consumed_length = 0U;
 
         unitlab_mms_transport_frame_init(&transport_frame);
         assert(unitlab_mms_transport_frame_decode(&transport_frame, response_bytes, encoded_length, &transport_consumed_length, &diagnostic));
@@ -422,6 +360,8 @@ static void test_wire_builder_builds_confirmed_response_frame_roundtrips(void)
         assert(presentation_apdu.payload_length == sizeof(response_payload));
         assert(memcmp(presentation_apdu.payload_bytes, response_payload, sizeof(response_payload)) == 0);
     }
+    (void)response_pdu;
+    (void)encoded_length;
 }
 
 static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
@@ -478,7 +418,11 @@ static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
 
     assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 1234U, &diagnostic));
     assert(server_runtime.pending_request.state == UNITLAB_MMS_PENDING_REQUEST_COMPLETED);
+
+    (void)fixture;
+    (void)consumed_length;
 }
+
 
 static void test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_tail(void)
 {
@@ -625,7 +569,14 @@ static void test_server_runtime_apply_confirmed_request_and_build_response_round
 
     assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 1234U, &diagnostic));
     assert(server_runtime.pending_request.state == UNITLAB_MMS_PENDING_REQUEST_COMPLETED);
+
+    (void)wire_bytes;
+    (void)wire_length;
+    (void)consumed_length;
+    (void)operation_result;
+    (void)response_consumed_length;
 }
+
 
 static void test_server_runtime_apply_write_request_and_build_response_roundtrips(void)
 {
