@@ -46,8 +46,8 @@ __pycache__/
 # Host agents (host-services) build artifacts
 host-services/**/build/
 host-services/**/build/**
-simulator/iec61850_ied/build/
-simulator/iec61850_ied/build/**
+iec61850_ied/build/
+iec61850_ied/build/**
 host-services/**/dist/
 host-services/**/dist/**
 host-services/**/*.egg-info/
@@ -65,3 +65,4 @@ host-services/**/.mypy_cache/
 dist-release/
 .IEC61850
 .ISO9506
+iec61850-wire.pcap

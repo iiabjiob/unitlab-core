@@ -299,7 +299,7 @@ Validation:
 
 Implemented in this slice:
 
-- Added `simulator/iec61850_ied` as the isolated home for the future libIEC61850-based IED simulator process.
+- Added `iec61850_ied` as the isolated home for the future libIEC61850-based IED simulator process.
 - Added a C/CMake CLI scaffold that accepts `--fixture`, `--ied`, `--bind`, `--port`, and `--dry-run`.
 - The scaffold validates the UnitLab fixture schema and selected IED name in dry-run mode.
 - Non-dry-run execution fails closed with `MMS_SERVER_NOT_IMPLEMENTED`; it does not pretend to expose MMS.

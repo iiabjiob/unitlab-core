@@ -107,7 +107,7 @@ Notes:
 
 ## Semantic PDU Contract
 
-The first transport-independent semantic PDU layer now exists in `simulator/iec61850_ied/src/unitlab_mms_semantic_pdu.{h,c}`. Before BER exists, the codebase must define transport-independent semantic structures for:
+The first transport-independent semantic PDU layer now exists in `iec61850_ied/src/mms/unitlab_mms_semantic_pdu.{h,c}`. Before BER exists, the codebase must define transport-independent semantic structures for:
 
 - association request/response/reject;
 - read request/response/reject;

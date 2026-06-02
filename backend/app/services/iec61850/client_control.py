@@ -319,7 +319,7 @@ class Iec61850ClientControlService:
         subscription_plan = _build_subscription_plan(self._candidate)
         fixture = build_ied_simulator_fixture_from_subscription_plan(subscription_plan)
         fixture_dir: tempfile.TemporaryDirectory[str] | None = None
-        fixture_path = Path("/workspace/simulator/iec61850_ied/examples/single-report.fixture.json")
+        fixture_path = Path("/workspace/iec61850_ied/examples/single-report.fixture.json")
         if not fixture_path.is_file():
             fixture_dir = tempfile.TemporaryDirectory(prefix="unitlab-iec61850-wire-")
             fixture_path = Path(fixture_dir.name) / "wire-fixture.json"
