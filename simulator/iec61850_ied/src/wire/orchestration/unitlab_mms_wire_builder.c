@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "wire/ber/unitlab_mms_ber.h"
 #include "wire/transport/unitlab_mms_wire_association_fixture.h"
 
 static void wire_builder_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, const char* message)
@@ -18,16 +19,52 @@ static void wire_builder_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLa
     snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", message);
 }
 
+static int wire_builder_encode_ber_element(
+    UnitLabMmsBerTagClass tag_class,
+    int constructed,
+    uint32_t tag_number,
+    const uint8_t* value_bytes,
+    size_t value_length,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement element;
+
+    unitlab_mms_ber_element_init(&element);
+    element.tag.tag_class = tag_class;
+    element.tag.constructed = constructed;
+    element.tag.tag_number = tag_number;
+    element.value_bytes = value_bytes;
+    element.value_length = value_length;
+    return unitlab_mms_ber_write(&element, buffer, buffer_length, encoded_length, diagnostic);
+}
+
 int unitlab_mms_build_reference_first_read_response_payload(
     uint8_t* buffer,
     size_t buffer_length,
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    static const uint8_t reference_first_read_response_payload[] = {
-        0x61U, 0x17U, 0x30U, 0x15U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x10U, 0xA1U, 0x0EU, 0x02U, 0x01U, 0x01U, 0xA4U, 0x09U,
-        0xA1U, 0x07U, 0x87U, 0x05U, 0x08U, 0xBFU, 0x7EU, 0x96U, 0x18U,
-    };
+    uint8_t leaf_tlv[16U];
+    uint8_t a7_tlv[16U];
+    uint8_t a1_tlv[32U];
+    uint8_t a4_tlv[32U];
+    uint8_t a1_inner_tlv[48U];
+    uint8_t a0_tlv[64U];
+    uint8_t sequence_tlv[80U];
+    uint8_t integer_tlv[8U];
+    size_t leaf_length = 0U;
+    size_t a7_length = 0U;
+    size_t a1_length = 0U;
+    size_t a4_length = 0U;
+    size_t a1_inner_length = 0U;
+    size_t a0_length = 0U;
+    size_t sequence_length = 0U;
+    size_t integer_length = 0U;
+    size_t apdu_length = 0U;
+    const uint8_t leaf_value[] = { 0x08U, 0xBFU, 0x7EU, 0x96U, 0x18U };
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -36,12 +73,58 @@ int unitlab_mms_build_reference_first_read_response_payload(
         wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Reference first read response payload requires buffer and encoded_length.");
         return 0;
     }
-    if (buffer_length < sizeof(reference_first_read_response_payload)) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Reference first read response payload buffer is too small.");
+
+    if (!wire_builder_encode_ber_element(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 7U, leaf_value, sizeof(leaf_value), leaf_tlv, sizeof(leaf_tlv), &leaf_length, diagnostic)) {
         return 0;
     }
-    memcpy(buffer, reference_first_read_response_payload, sizeof(reference_first_read_response_payload));
-    *encoded_length = sizeof(reference_first_read_response_payload);
+    if (!wire_builder_encode_ber_element(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U, leaf_tlv, leaf_length, a7_tlv, sizeof(a7_tlv), &a7_length, diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_encode_ber_element(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 4U, a7_tlv, a7_length, a4_tlv, sizeof(a4_tlv), &a4_length, diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_encode_ber_element(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U, a4_tlv, a4_length, a1_tlv, sizeof(a1_tlv), &a1_length, diagnostic)) {
+        return 0;
+    }
+    {
+        const uint8_t integer_one[] = { 0x01U };
+        if (!wire_builder_encode_ber_element(UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 0, 2U, integer_one, sizeof(integer_one), integer_tlv, sizeof(integer_tlv), &integer_length, diagnostic)) {
+            return 0;
+        }
+    }
+    {
+        uint8_t inner_value[64U];
+        memcpy(inner_value, integer_tlv, integer_length);
+        memcpy(&inner_value[integer_length], a1_tlv, a1_length);
+        if (!wire_builder_encode_ber_element(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U, inner_value, integer_length + a1_length, a1_inner_tlv, sizeof(a1_inner_tlv), &a1_inner_length, diagnostic)) {
+            return 0;
+        }
+    }
+    {
+        uint8_t outer_value[80U];
+        memcpy(outer_value, a1_inner_tlv, a1_inner_length);
+        if (!wire_builder_encode_ber_element(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 0U, outer_value, a1_inner_length, a0_tlv, sizeof(a0_tlv), &a0_length, diagnostic)) {
+            return 0;
+        }
+    }
+    {
+        const uint8_t integer_three[] = { 0x03U };
+        if (!wire_builder_encode_ber_element(UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 0, 2U, integer_three, sizeof(integer_three), integer_tlv, sizeof(integer_tlv), &integer_length, diagnostic)) {
+            return 0;
+        }
+    }
+    {
+        uint8_t sequence_value[96U];
+        memcpy(sequence_value, integer_tlv, integer_length);
+        memcpy(&sequence_value[integer_length], a0_tlv, a0_length);
+        if (!wire_builder_encode_ber_element(UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 1, 16U, sequence_value, integer_length + a0_length, sequence_tlv, sizeof(sequence_tlv), &sequence_length, diagnostic)) {
+            return 0;
+        }
+    }
+    if (!wire_builder_encode_ber_element(UNITLAB_MMS_BER_TAG_CLASS_APPLICATION, 1, 1U, sequence_tlv, sequence_length, buffer, buffer_length, &apdu_length, diagnostic)) {
+        return 0;
+    }
+    *encoded_length = apdu_length;
     wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
