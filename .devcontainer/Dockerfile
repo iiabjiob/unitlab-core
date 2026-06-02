@@ -27,9 +27,9 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
 # Python virtual environment inside container
 ENV UV_SYSTEM_PYTHON=1
 
-# Bake the IEC 61850 simulator source into the image so the compose-service IED
+# Bake the IEC 61850 source into the image so the compose-service IED
 # can build and start without depending on a host bind mount.
-COPY simulator/iec61850_ied /workspace/simulator/iec61850_ied
+COPY iec61850_ied /workspace/iec61850_ied
 
 # Set working directory
 WORKDIR /workspace
