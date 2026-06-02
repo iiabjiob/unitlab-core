@@ -278,6 +278,7 @@ class Iec61850ClientControlService:
                 outcome="connected",
             )
             self._associate_live_wire_session(self._live_wire_socket)
+            self._exchange_live_wire_first_confirmed_read(self._live_wire_socket)
             return
 
         selected_mode = mode.strip().lower() if mode else "host"
@@ -303,6 +304,7 @@ class Iec61850ClientControlService:
                 outcome="connected",
             )
             self._associate_live_wire_session(self._live_wire_socket)
+            self._exchange_live_wire_first_confirmed_read(self._live_wire_socket)
             return
         if selected_mode == "process":
             self._start_live_wire_process_transport()
@@ -358,6 +360,7 @@ class Iec61850ClientControlService:
             outcome="connected",
         )
         self._associate_live_wire_session(self._live_wire_socket)
+        self._exchange_live_wire_first_confirmed_read(self._live_wire_socket)
 
     def _connect_live_wire_sockets(self) -> tuple[socket.socket, socket.socket, str]:
         host_candidates = self._live_wire_host_candidates()
@@ -508,6 +511,26 @@ class Iec61850ClientControlService:
             outcome="associated",
         )
 
+    def _exchange_live_wire_first_confirmed_read(self, wire_socket: socket.socket) -> None:
+        wire_socket.sendall(self._build_live_wire_confirmed_read_request_frame())
+        frame = self._read_tpkt_frame(wire_socket, "confirmed read response")
+        self._live_wire_last_frame = frame
+        self._live_wire_last_diagnostic = None
+        if self._live_wire_endpoint is None:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_SESSION_NOT_OPEN",
+                "IEC 61850 live wire transport is not open.",
+            )
+        self._runtime._append_event(
+            kind="wire-confirmed-read-frame",
+            session_id=self._session_id,
+            endpoint_id=self._live_wire_endpoint.id,
+            client_id=self._client_id,
+            outcome="received",
+            code=str(len(frame)),
+            message=frame.hex(),
+        )
+
     def _build_live_wire_cotp_connect_request_frame(self) -> bytes:
         return bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001")
 
@@ -518,6 +541,11 @@ class Iec61850ClientControlService:
             "3010020103060528ca220201300406025101615e305c020101a0576055a107060528ca220203a20706052901876701"
             "a30302010ca606060429018767a70302010cbe2f282d020103a028a826800300fde881010582010583010aa416800101"
             "810305f100820c03ee1c00000408000079ef18"
+        )
+
+    def _build_live_wire_confirmed_read_request_frame(self) -> bytes:
+        return bytes.fromhex(
+            "0300004e02f080010001006141303f020103a03aa038020101a433a131a02f302da02ba1291a1173696d706c65494f47656e65726963494f1a144747494f31244d5824416e496e31246d61672466"
         )
 
     def _read_tpkt_frame(self, wire_socket: socket.socket, frame_label: str) -> bytes:
