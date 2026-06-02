@@ -138,8 +138,11 @@ int unitlab_mms_build_wire_frame_from_pdu(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    UnitLabMmsWireAssociationFixture fixture;
+    UnitLabMmsSessionSpdu session_spdu;
+    UnitLabMmsTransportFrame transport_frame;
+    uint8_t session_bytes[512U];
     size_t payload_length = 0U;
+    size_t session_length = 0U;
     size_t frame_length = 0U;
 
     if (encoded_length != NULL) {
@@ -158,14 +161,20 @@ int unitlab_mms_build_wire_frame_from_pdu(
         return 0;
     }
 
-    unitlab_mms_wire_association_fixture_init(&fixture);
-    fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
-    fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
-    fixture.presentation.payload_bytes = scratch;
-    fixture.presentation.payload_length = payload_length;
-    fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
-    fixture.transport.cotp.eot = 1;
-    if (!unitlab_mms_wire_association_fixture_encode(&fixture, buffer, buffer_length, &frame_length, diagnostic)) {
+    unitlab_mms_session_spdu_init(&session_spdu);
+    session_spdu.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
+    session_spdu.spdu_bytes = scratch;
+    session_spdu.spdu_length = payload_length;
+    if (!unitlab_mms_session_spdu_encode(&session_spdu, session_bytes, sizeof(session_bytes), &session_length, diagnostic)) {
+        return 0;
+    }
+
+    unitlab_mms_transport_frame_init(&transport_frame);
+    transport_frame.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
+    transport_frame.cotp.eot = 1;
+    transport_frame.cotp.user_data = session_bytes;
+    transport_frame.cotp.user_data_length = session_length;
+    if (!unitlab_mms_transport_frame_encode(&transport_frame, buffer, buffer_length, &frame_length, diagnostic)) {
         return 0;
     }
 

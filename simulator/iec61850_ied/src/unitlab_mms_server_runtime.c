@@ -116,18 +116,20 @@ static int server_runtime_build_reference_read_response_service(
     UnitLabMmsDiagnostic* diagnostic)
 {
     static const uint8_t read_response_value_bytes[] = { 0x08U, 0xBFU, 0x7EU, 0x96U, 0x18U };
-    uint8_t value_element[16U];
+    uint8_t read_value_element[16U];
     uint8_t read_result_element[16U];
     uint8_t access_result_element[32U];
-    uint8_t service_choice_element[48U];
-    uint8_t top_level_element[64U];
-    uint8_t outer_element[80U];
-    size_t value_element_length = 0U;
+    uint8_t read_a1_wrapper_bytes[80U];
+    uint8_t read_a0_inner_bytes[96U];
+    uint8_t read_a0_wrapper_bytes[112U];
+    uint8_t read_service_sequence_bytes[128U];
+    size_t read_value_element_length = 0U;
     size_t read_result_element_length = 0U;
     size_t access_result_element_length = 0U;
-    size_t service_choice_element_length = 0U;
-    size_t top_level_element_length = 0U;
-    size_t outer_element_length = 0U;
+    size_t read_a1_wrapper_length = 0U;
+    size_t read_a0_inner_length = 0U;
+    size_t read_a0_wrapper_length = 0U;
+    size_t read_service_sequence_length = 0U;
     size_t invoke_id_length = 0U;
 
     if (encoded_length != NULL) {
@@ -138,7 +140,7 @@ static int server_runtime_build_reference_read_response_service(
         return 0;
     }
 
-    if (!server_runtime_encode_invoke_id_element(invoke_id, buffer, buffer_length, &invoke_id_length, diagnostic)) {
+    if (!server_runtime_encode_invoke_id_element(invoke_id, read_service_sequence_bytes, sizeof(read_service_sequence_bytes), &invoke_id_length, diagnostic)) {
         return 0;
     }
     if (!server_runtime_encode_ber_element(
@@ -147,9 +149,9 @@ static int server_runtime_build_reference_read_response_service(
             7U,
             read_response_value_bytes,
             sizeof(read_response_value_bytes),
-            value_element,
-            sizeof(value_element),
-            &value_element_length,
+            read_value_element,
+            sizeof(read_value_element),
+            &read_value_element_length,
             diagnostic)) {
         return 0;
     }
@@ -157,8 +159,8 @@ static int server_runtime_build_reference_read_response_service(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
             1U,
-            value_element,
-            value_element_length,
+            read_value_element,
+            read_value_element_length,
             read_result_element,
             sizeof(read_result_element),
             &read_result_element_length,
@@ -194,23 +196,23 @@ static int server_runtime_build_reference_read_response_service(
                 diagnostic)) {
             return 0;
         }
-        if (integer_element_length + access_result_element_length > sizeof(service_choice_element)) {
+        if (integer_element_length + access_result_element_length > sizeof(read_a1_wrapper_bytes)) {
             server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Read response service buffer is too small.");
             return 0;
         }
-        memcpy(service_choice_element, integer_element, integer_element_length);
-        memcpy(&service_choice_element[integer_element_length], access_result_element, access_result_element_length);
-        service_choice_element_length = integer_element_length + access_result_element_length;
+        memcpy(read_a1_wrapper_bytes, integer_element, integer_element_length);
+        memcpy(read_a1_wrapper_bytes + integer_element_length, access_result_element, access_result_element_length);
+        read_a1_wrapper_length = integer_element_length + access_result_element_length;
     }
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
             1U,
-            service_choice_element,
-            service_choice_element_length,
-            top_level_element,
-            sizeof(top_level_element),
-            &top_level_element_length,
+            read_a1_wrapper_bytes,
+            read_a1_wrapper_length,
+            read_a0_inner_bytes,
+            sizeof(read_a0_inner_bytes),
+            &read_a0_inner_length,
             diagnostic)) {
         return 0;
     }
@@ -218,20 +220,33 @@ static int server_runtime_build_reference_read_response_service(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
             0U,
-            top_level_element,
-            top_level_element_length,
-            outer_element,
-            sizeof(outer_element),
-            &outer_element_length,
+            read_a0_inner_bytes,
+            read_a0_inner_length,
+            read_a0_wrapper_bytes,
+            sizeof(read_a0_wrapper_bytes),
+            &read_a0_wrapper_length,
             diagnostic)) {
         return 0;
     }
-    if (invoke_id_length + outer_element_length > buffer_length) {
+    if (invoke_id_length + read_a0_wrapper_length > sizeof(read_service_sequence_bytes)) {
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Read response service buffer is too small.");
         return 0;
     }
-    memcpy(&buffer[invoke_id_length], outer_element, outer_element_length);
-    *encoded_length = invoke_id_length + outer_element_length;
+    memcpy(read_service_sequence_bytes, &read_service_sequence_bytes[0U], invoke_id_length);
+    memcpy(read_service_sequence_bytes + invoke_id_length, read_a0_wrapper_bytes, read_a0_wrapper_length);
+    read_service_sequence_length = invoke_id_length + read_a0_wrapper_length;
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            1,
+            16U,
+            read_service_sequence_bytes,
+            read_service_sequence_length,
+            buffer,
+            buffer_length,
+            encoded_length,
+            diagnostic)) {
+        return 0;
+    }
     return 1;
 }
 
@@ -276,6 +291,16 @@ static int server_runtime_decode_transport_to_wire_pdu(
     }
     presentation_bytes = session_spdu.raw_parameter_bytes;
     presentation_length = session_spdu.raw_parameter_length;
+    unitlab_mms_pdu_init(wire_pdu);
+    if (unitlab_mms_pdu_decode(wire_pdu, presentation_bytes, presentation_length, &pdu_consumed_length, &operation_result->diagnostic)) {
+        if (pdu_consumed_length != presentation_length) {
+            operation_result->diagnostic.code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+            snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Incoming bytes contain trailing MMS bytes.");
+            return 0;
+        }
+        *consumed_length = transport_consumed_length;
+        return 1;
+    }
     unitlab_mms_presentation_apdu_init(&presentation_apdu);
     if (!unitlab_mms_presentation_decode(&presentation_apdu, presentation_bytes, presentation_length, &presentation_consumed_length, &operation_result->diagnostic)) {
         return 0;
