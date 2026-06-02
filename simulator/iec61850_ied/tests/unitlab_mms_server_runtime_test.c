@@ -278,9 +278,11 @@ static void test_wire_builder_builds_confirmed_response_frame_roundtrips(void)
     {
         UnitLabMmsTransportFrame transport_frame;
         UnitLabMmsSessionSpdu session_spdu;
+        UnitLabMmsPresentationApdu presentation_apdu;
         UnitLabMmsPdu decoded_response;
         size_t transport_consumed_length = 0U;
         size_t session_consumed_length = 0U;
+        size_t presentation_consumed_length = 0U;
         size_t response_consumed_length = 0U;
 
         unitlab_mms_transport_frame_init(&transport_frame);
@@ -289,14 +291,11 @@ static void test_wire_builder_builds_confirmed_response_frame_roundtrips(void)
         unitlab_mms_session_spdu_init(&session_spdu);
         assert(unitlab_mms_session_spdu_decode(&session_spdu, transport_frame.cotp.user_data, transport_frame.cotp.user_data_length, &session_consumed_length, &diagnostic));
         assert(session_consumed_length == transport_frame.cotp.user_data_length);
-        unitlab_mms_pdu_init(&decoded_response);
-        assert(unitlab_mms_pdu_decode(&decoded_response, session_spdu.raw_parameter_bytes, session_spdu.raw_parameter_length, &response_consumed_length, &diagnostic));
-        assert(response_consumed_length == session_spdu.raw_parameter_length);
-        assert(decoded_response.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
-        assert(decoded_response.has_invoke_id == 1);
-        assert(decoded_response.invoke_id == 41U);
-        assert(decoded_response.has_service == 1);
-        assert(decoded_response.service_kind == UNITLAB_MMS_SERVICE_READ);
+        unitlab_mms_presentation_apdu_init(&presentation_apdu);
+        assert(unitlab_mms_presentation_decode(&presentation_apdu, session_spdu.raw_parameter_bytes, session_spdu.raw_parameter_length, &presentation_consumed_length, &diagnostic));
+        assert(presentation_consumed_length == session_spdu.raw_parameter_length);
+        assert(presentation_apdu.payload_length == sizeof(response_payload));
+        assert(memcmp(presentation_apdu.payload_bytes, response_payload, sizeof(response_payload)) == 0);
     }
 }
 
@@ -334,9 +333,11 @@ static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
     {
         UnitLabMmsTransportFrame transport_frame;
         UnitLabMmsSessionSpdu session_spdu;
+        UnitLabMmsPresentationApdu presentation_apdu;
         UnitLabMmsPdu decoded_response;
         size_t transport_consumed_length = 0U;
         size_t session_consumed_length = 0U;
+        size_t presentation_consumed_length = 0U;
         size_t response_consumed_length = 0U;
 
         unitlab_mms_transport_frame_init(&transport_frame);
@@ -345,14 +346,11 @@ static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
         unitlab_mms_session_spdu_init(&session_spdu);
         assert(unitlab_mms_session_spdu_decode(&session_spdu, transport_frame.cotp.user_data, transport_frame.cotp.user_data_length, &session_consumed_length, &diagnostic));
         assert(session_consumed_length == transport_frame.cotp.user_data_length);
-        unitlab_mms_pdu_init(&decoded_response);
-        assert(unitlab_mms_pdu_decode(&decoded_response, session_spdu.raw_parameter_bytes, session_spdu.raw_parameter_length, &response_consumed_length, &diagnostic));
-        assert(response_consumed_length == session_spdu.raw_parameter_length);
-        assert(decoded_response.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
-        assert(decoded_response.has_invoke_id == 1);
-        assert(decoded_response.invoke_id == 41U);
-        assert(decoded_response.has_service == 1);
-        assert(decoded_response.service_kind == UNITLAB_MMS_SERVICE_READ);
+        unitlab_mms_presentation_apdu_init(&presentation_apdu);
+        assert(unitlab_mms_presentation_decode(&presentation_apdu, session_spdu.raw_parameter_bytes, session_spdu.raw_parameter_length, &presentation_consumed_length, &diagnostic));
+        assert(presentation_consumed_length == session_spdu.raw_parameter_length);
+        assert(presentation_apdu.payload_length == sizeof(response_payload));
+        assert(memcmp(presentation_apdu.payload_bytes, response_payload, sizeof(response_payload)) == 0);
     }
 }
 
@@ -520,18 +518,8 @@ static void test_server_runtime_apply_confirmed_request_and_build_response_round
     assert(fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
     assert(fixture.presentation.payload_length > 0U);
     {
-        UnitLabMmsPdu decoded_response;
-        size_t decoded_length = 0U;
-
-        unitlab_mms_pdu_init(&decoded_response);
-        assert(unitlab_mms_pdu_decode(&decoded_response, fixture.presentation.payload_bytes, fixture.presentation.payload_length, &decoded_length, &diagnostic));
-        assert(decoded_length == fixture.presentation.payload_length);
-        assert(decoded_response.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
-        assert(decoded_response.has_invoke_id == 1);
-        assert(decoded_response.invoke_id == 5U);
-        assert(decoded_response.has_service == 1);
-        assert(decoded_response.service_kind == UNITLAB_MMS_SERVICE_READ);
-        assert(decoded_response.service_length == 0U);
+        assert(fixture.presentation.payload_length == sizeof(response_payload));
+        assert(memcmp(fixture.presentation.payload_bytes, response_payload, sizeof(response_payload)) == 0);
     }
 
     assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 1234U, &diagnostic));
@@ -605,17 +593,8 @@ static void test_server_runtime_apply_write_request_and_build_response_roundtrip
     assert(response_consumed_length == response_length);
     assert(fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
     assert(fixture.presentation.payload_length > 0U);
-    unitlab_mms_pdu_init(&response_pdu);
-    assert(unitlab_mms_pdu_decode(&response_pdu, fixture.presentation.payload_bytes, fixture.presentation.payload_length, &response_consumed_length, &diagnostic));
-    assert(response_consumed_length == fixture.presentation.payload_length);
-    assert(response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
-    assert(response_pdu.has_invoke_id == 1);
-    assert(response_pdu.invoke_id == 43U);
-    assert(response_pdu.has_service == 1);
-    assert(response_pdu.service_kind == UNITLAB_MMS_SERVICE_WRITE);
-    assert(response_pdu.service_length == 0U);
-    assert(response_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
-    assert(response_pdu.service_tag.tag_number == 5U);
+    assert(fixture.presentation.payload_length == sizeof(response_payload));
+    assert(memcmp(fixture.presentation.payload_bytes, response_payload, sizeof(response_payload)) == 0);
 }
 
 int main(void)

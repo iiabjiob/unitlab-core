@@ -319,6 +319,9 @@ int unitlab_mms_pdu_decode(UnitLabMmsPdu* pdu, const uint8_t* buffer, size_t buf
                 return 0;
             }
             if (sequence_consumed_length != element.value_length || sequence_element.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL || sequence_element.tag.tag_number != 16U || !sequence_element.tag.constructed) {
+                if (diagnostic != NULL && diagnostic->code == UNITLAB_MMS_DIAGNOSTIC_OK) {
+                    pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID element is malformed.");
+                }
                 return 0;
             }
             pdu->pdu_bytes = sequence_element.value_bytes;

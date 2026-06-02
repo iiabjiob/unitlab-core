@@ -251,9 +251,9 @@ static void test_presentation_fully_encoded_roundtrip(void)
     assert(unitlab_mms_presentation_decode(&decoded_apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == encoded_length);
     assert(decoded_apdu.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
-    assert(decoded_apdu.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(decoded_apdu.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION);
     assert(decoded_apdu.tag.constructed == 1);
-    assert(decoded_apdu.tag.tag_number == 17U);
+    assert(decoded_apdu.tag.tag_number == 1U);
     assert(decoded_apdu.payload_length == sizeof(payload));
     assert(memcmp(decoded_apdu.payload_bytes, payload, sizeof(payload)) == 0);
 }
@@ -494,9 +494,9 @@ static void test_wire_association_fixture_fully_encoded_roundtrip(void)
     assert(decoded_fixture.session.raw_parameter_length == presentation_length);
     assert(memcmp(decoded_fixture.session.raw_parameter_bytes, presentation_buffer, presentation_length) == 0);
     assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
-    assert(decoded_fixture.presentation.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(decoded_fixture.presentation.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION);
     assert(decoded_fixture.presentation.tag.constructed == 1);
-    assert(decoded_fixture.presentation.tag.tag_number == 17U);
+    assert(decoded_fixture.presentation.tag.tag_number == 1U);
     assert(decoded_fixture.presentation.payload_length == sizeof(fully_encoded_payload));
     assert(memcmp(decoded_fixture.presentation.payload_bytes, fully_encoded_payload, sizeof(fully_encoded_payload)) == 0);
 }
