@@ -1,6 +1,7 @@
 #include "unitlab_mms_wire_builder.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include "wire/transport/unitlab_mms_wire_association_fixture.h"
 
@@ -15,6 +16,78 @@ static void wire_builder_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLa
         return;
     }
     snprintf(diagnostic->message, sizeof(diagnostic->message), "%s", message);
+}
+
+int unitlab_mms_build_reference_first_read_response_payload(
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    static const uint8_t reference_first_read_response_payload[] = {
+        0x61U, 0x17U, 0x30U, 0x15U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x10U, 0xA1U, 0x0EU, 0x02U, 0x01U, 0x01U, 0xA4U, 0x09U,
+        0xA1U, 0x07U, 0x87U, 0x05U, 0x08U, 0xBFU, 0x7EU, 0x96U, 0x18U,
+    };
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Reference first read response payload requires buffer and encoded_length.");
+        return 0;
+    }
+    if (buffer_length < sizeof(reference_first_read_response_payload)) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Reference first read response payload buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, reference_first_read_response_payload, sizeof(reference_first_read_response_payload));
+    *encoded_length = sizeof(reference_first_read_response_payload);
+    wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
+int unitlab_mms_build_reference_first_read_response_frame(
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t aare_apdu[64U];
+    uint8_t session_payload[96U];
+    UnitLabMmsSessionSpdu session_apdu;
+    UnitLabMmsTransportFrame transport_frame;
+    size_t aare_apdu_length = 0U;
+    size_t session_payload_length = 0U;
+    size_t frame_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Reference first read response frame requires buffer and encoded_length.");
+        return 0;
+    }
+    if (!unitlab_mms_build_reference_first_read_response_payload(aare_apdu, sizeof(aare_apdu), &aare_apdu_length, diagnostic)) {
+        return 0;
+    }
+    unitlab_mms_session_spdu_init(&session_apdu);
+    session_apdu.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
+    session_apdu.spdu_bytes = aare_apdu;
+    session_apdu.spdu_length = aare_apdu_length;
+    if (!unitlab_mms_session_spdu_encode(&session_apdu, session_payload, sizeof(session_payload), &session_payload_length, diagnostic)) {
+        return 0;
+    }
+    unitlab_mms_transport_frame_init(&transport_frame);
+    transport_frame.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
+    transport_frame.cotp.eot = 1;
+    transport_frame.cotp.user_data = session_payload;
+    transport_frame.cotp.user_data_length = session_payload_length;
+    if (!unitlab_mms_transport_frame_encode(&transport_frame, buffer, buffer_length, &frame_length, diagnostic)) {
+        return 0;
+    }
+    *encoded_length = frame_length;
+    wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
 }
 
 static int unitlab_mms_build_cotp_dt_from_session_bytes(

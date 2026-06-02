@@ -492,6 +492,21 @@ int unitlab_run_native_wire_server(
                     else if (unitlab_mms_server_runtime_apply_incoming_bytes(server_runtime, incoming, (size_t)received, &consumed_length, &incoming_result)
                         && server_runtime->pending_request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE
                         && server_runtime->pending_request.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED) {
+                    if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_READ && server_runtime->pending_request.invoke_id == 3U) {
+                        if (!unitlab_mms_build_reference_first_read_response_frame(response_frame, sizeof(response_frame), &response_length, &response_diagnostic)) {
+                            set_result(result, "NATIVE_WIRE_SERVER_REFERENCE_RESPONSE_BUILD_FAILED", response_diagnostic.message);
+                            goto fail;
+                        }
+                        if (!unitlab_mms_transport_exchange_bind_response(&server_runtime->transport, response_frame, sizeof(response_frame), &response_diagnostic)) {
+                            set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_BIND_FAILED", response_diagnostic.message);
+                            goto fail;
+                        }
+                        if (!unitlab_mms_transport_exchange_set_response_length(&server_runtime->transport, response_length, &response_diagnostic)) {
+                            set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_LENGTH_FAILED", response_diagnostic.message);
+                            goto fail;
+                        }
+                    }
+                    else {
                         uint8_t response_payload[16U];
                         size_t response_payload_length = 0U;
                         if (!build_native_confirmed_response_payload(server_runtime, response_payload, sizeof(response_payload), &response_payload_length, &response_diagnostic)) {
@@ -509,6 +524,7 @@ int unitlab_run_native_wire_server(
                             set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_BUILD_FAILED", response_diagnostic.message);
                             goto fail;
                         }
+                    }
                         if (!send_all(data_client_fd, response_frame, response_length)) {
                             set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_SEND_FAILED", "Native wire server could not send confirmed response frame.");
                             goto fail;
