@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "wire/acse/unitlab_mms_acse.h"
+#include "wire/presentation/unitlab_mms_presentation.h"
 #include "wire/ber/unitlab_mms_ber.h"
 #include "wire/orchestration/unitlab_mms_association_frame.h"
 #include "model/model_plan.h"
@@ -292,7 +293,7 @@ int unitlab_mms_build_wire_frame_from_pdu(
 }
 
 
-static int wire_builder_build_association_response_frame_structured(
+static int wire_builder_build_association_accept_frame_structured(
     const UnitLabMmsInitiateResponseProfile* profile,
     uint8_t* buffer,
     size_t buffer_length,
@@ -306,7 +307,7 @@ int unitlab_mms_build_association_response_frame_with_profile(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    return wire_builder_build_association_response_frame_structured(profile, buffer, buffer_length, encoded_length, diagnostic);
+    return wire_builder_build_association_accept_frame_structured(profile, buffer, buffer_length, encoded_length, diagnostic);
 }
 
 int unitlab_mms_build_association_response_frame(
@@ -315,7 +316,7 @@ int unitlab_mms_build_association_response_frame(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    return wire_builder_build_association_response_frame_structured(NULL, buffer, buffer_length, encoded_length, diagnostic);
+    return wire_builder_build_association_accept_frame_structured(NULL, buffer, buffer_length, encoded_length, diagnostic);
 }
 
 static int wire_builder_encode_nested_element(
@@ -357,33 +358,6 @@ static int wire_builder_append_bytes(
     }
     *offset += bytes_length;
     return 1;
-}
-
-static int wire_builder_append_short_tlv(
-    uint8_t tag,
-    const uint8_t* value_bytes,
-    size_t value_length,
-    uint8_t* buffer,
-    size_t buffer_length,
-    size_t* offset,
-    UnitLabMmsDiagnostic* diagnostic)
-{
-    if (value_length > 0xFFU) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association response builder TLV is too large.");
-        return 0;
-    }
-    if (buffer == NULL || offset == NULL) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association response builder requires valid output buffers.");
-        return 0;
-    }
-    if (*offset > buffer_length || (size_t)2U + value_length > buffer_length - *offset) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association response builder buffer is too small.");
-        return 0;
-    }
-    buffer[*offset] = tag;
-    buffer[*offset + 1U] = (uint8_t)value_length;
-    *offset += 2U;
-    return wire_builder_append_bytes(buffer, buffer_length, offset, value_bytes, value_length, diagnostic);
 }
 
 void unitlab_mms_initiate_response_profile_init(UnitLabMmsInitiateResponseProfile* profile)
@@ -655,7 +629,7 @@ static int wire_builder_build_initiate_response_pdu(const UnitLabMmsInitiateResp
     return unitlab_mms_pdu_encode(&pdu, buffer, buffer_length, encoded_length, diagnostic);
 }
 
-static int wire_builder_build_association_response_acse(const UnitLabMmsInitiateResponseProfile* profile, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+static int wire_builder_build_association_accept_acse(const UnitLabMmsInitiateResponseProfile* profile, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     uint8_t initiate_response_bytes[256U];
     uint8_t external_choice_bytes[288U];
@@ -703,7 +677,7 @@ static int wire_builder_build_association_response_acse(const UnitLabMmsInitiate
         *encoded_length = 0U;
     }
     if (buffer == NULL || encoded_length == NULL) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association response ACSE requires buffer and encoded_length.");
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association accept ACSE requires buffer and encoded_length.");
         return 0;
     }
 
@@ -882,7 +856,7 @@ static int wire_builder_build_association_response_acse(const UnitLabMmsInitiate
         return 0;
     }
     if (a1_oid_length + a2_length + a3_length + user_information_length > sizeof(app_inner_bytes)) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association response ACSE application payload is too large.");
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association accept ACSE application payload is too large.");
         return 0;
     }
     memcpy(app_inner_bytes, a1_oid_bytes, a1_oid_length);
@@ -915,7 +889,7 @@ static int wire_builder_build_association_response_acse(const UnitLabMmsInitiate
         return 0;
     }
     if (outer_result_length + a0_wrapper_length > sizeof(outer_sequence_bytes)) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association response ACSE outer sequence is too large.");
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association accept ACSE outer sequence is too large.");
         return 0;
     }
     memcpy(outer_sequence_bytes, outer_result_bytes, outer_result_length);
@@ -941,7 +915,36 @@ static int wire_builder_build_association_response_acse(const UnitLabMmsInitiate
     return unitlab_mms_acse_encode(&acse_apdu, buffer, buffer_length, encoded_length, diagnostic);
 }
 
-static int wire_builder_build_association_response_session(
+static int wire_builder_build_association_accept_presentation(
+    const uint8_t* acse_bytes,
+    size_t acse_length,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsPresentationApdu presentation_apdu;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association accept presentation requires buffer and encoded_length.");
+        return 0;
+    }
+    if (acse_length != 0U && acse_bytes == NULL) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association accept presentation requires ACSE bytes when length is non-zero.");
+        return 0;
+    }
+
+    unitlab_mms_presentation_apdu_init(&presentation_apdu);
+    presentation_apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
+    presentation_apdu.payload_bytes = acse_bytes;
+    presentation_apdu.payload_length = acse_length;
+    return unitlab_mms_presentation_encode(&presentation_apdu, buffer, buffer_length, encoded_length, diagnostic);
+}
+
+static int wire_builder_build_association_accept_session(
     const uint8_t* presentation_bytes,
     size_t presentation_length,
     uint8_t* buffer,
@@ -949,172 +952,47 @@ static int wire_builder_build_association_response_session(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    size_t offset = 0U;
-    uint8_t session_accept_item[] = { 0x13U, 0x01U, 0x00U, 0x16U, 0x01U, 0x02U };
-    uint8_t session_requirement[] = { 0x00U, 0x02U };
-    uint8_t session_selector[] = { 0x00U, 0x01U };
+    UnitLabMmsSessionSpdu session_spdu;
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
     }
     if (buffer == NULL || encoded_length == NULL) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association response session requires buffer and encoded_length.");
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association accept session requires buffer and encoded_length.");
         return 0;
     }
     if (presentation_length != 0U && presentation_bytes == NULL) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association response session requires presentation bytes when length is non-zero.");
-        return 0;
-    }
-    if (buffer_length < 2U) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association response session buffer is too small.");
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association accept session requires presentation bytes when length is non-zero.");
         return 0;
     }
 
-    buffer[offset++] = 0x0EU;
-    buffer[offset++] = 0x00U;
-    if (!wire_builder_append_short_tlv(0x05U, session_accept_item, sizeof(session_accept_item), buffer, buffer_length, &offset, diagnostic)) {
-        return 0;
-    }
-    if (!wire_builder_append_short_tlv(0x14U, session_requirement, sizeof(session_requirement), buffer, buffer_length, &offset, diagnostic)) {
-        return 0;
-    }
-    if (!wire_builder_append_short_tlv(0x34U, session_selector, sizeof(session_selector), buffer, buffer_length, &offset, diagnostic)) {
-        return 0;
-    }
-    if (!wire_builder_append_short_tlv(0xC1U, presentation_bytes, presentation_length, buffer, buffer_length, &offset, diagnostic)) {
-        return 0;
-    }
-    if (offset < 2U || offset - 2U > 0xFFU) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association response session length is too large.");
-        return 0;
-    }
-    buffer[1U] = (uint8_t)(offset - 2U);
-    *encoded_length = offset;
-    wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-    return 1;
+    unitlab_mms_session_spdu_init(&session_spdu);
+    session_spdu.kind = UNITLAB_MMS_SESSION_SPDU_ACCEPT;
+    session_spdu.spdu_bytes = presentation_bytes;
+    session_spdu.spdu_length = presentation_length;
+    return unitlab_mms_session_spdu_encode(&session_spdu, buffer, buffer_length, encoded_length, diagnostic);
 }
 
-static int wire_builder_build_association_response_frame_structured(
-    const UnitLabMmsInitiateResponseProfile* profile,
+static int wire_builder_build_association_accept_transport(
+    const uint8_t* session_bytes,
+    size_t session_length,
     uint8_t* buffer,
     size_t buffer_length,
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    uint8_t acse_bytes[512U];
-    uint8_t presentation_a0_bytes[16U];
-    uint8_t presentation_a2_inner_bytes[256U];
-    uint8_t presentation_a2_bytes[256U];
-    uint8_t presentation_set_bytes[512U];
-    uint8_t session_bytes[512U];
-    uint8_t presentation_content_selector_a5[] = { 0x30U, 0x07U, 0x80U, 0x01U, 0x00U, 0x81U, 0x02U, 0x51U, 0x01U, 0x30U, 0x07U, 0x80U, 0x01U, 0x00U, 0x81U, 0x02U, 0x51U, 0x01U };
     UnitLabMmsTransportFrame transport_frame;
-    size_t acse_length = 0U;
-    size_t presentation_a0_length = 0U;
-    size_t presentation_a2_inner_length = 0U;
-    size_t presentation_a2_length = 0U;
-    size_t presentation_set_length = 0U;
-    uint8_t presentation_a5_bytes[64U];
-    size_t presentation_a5_length = 0U;
-    uint8_t presentation_set_value_bytes[512U];
-    size_t presentation_set_value_length = 0U;
-    size_t session_length = 0U;
     size_t frame_length = 0U;
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
     }
     if (buffer == NULL || encoded_length == NULL) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association response frame requires buffer and encoded_length.");
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association accept transport requires buffer and encoded_length.");
         return 0;
     }
-    if (buffer_length == 0U) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association response frame buffer must be non-zero.");
-        return 0;
-    }
-
-    if (profile == NULL) {
-        static UnitLabMmsInitiateResponseProfile default_profile;
-        static int profile_initialized = 0;
-        if (!profile_initialized) {
-            unitlab_mms_initiate_response_profile_init(&default_profile);
-            profile_initialized = 1;
-        }
-        profile = &default_profile;
-    }
-    if (!wire_builder_build_association_response_acse(profile, acse_bytes, sizeof(acse_bytes), &acse_length, diagnostic)) {
-        return 0;
-    }
-    {
-        uint8_t presentation_a0_value[] = { 0x80U, 0x01U, 0x01U };
-        if (!wire_builder_encode_nested_element(
-                UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
-                1,
-                0U,
-                presentation_a0_value,
-                sizeof(presentation_a0_value),
-                presentation_a0_bytes,
-                sizeof(presentation_a0_bytes),
-                &presentation_a0_length,
-                diagnostic)) {
-            return 0;
-        }
-    }
-    {
-        uint8_t presentation_context_selector_bytes[] = { 0x83U, 0x04U, 0x00U, 0x00U, 0x00U, 0x01U };
-        if (!wire_builder_append_bytes(presentation_a2_inner_bytes, sizeof(presentation_a2_inner_bytes), &presentation_a2_inner_length, presentation_context_selector_bytes, sizeof(presentation_context_selector_bytes), diagnostic)) {
-            return 0;
-        }
-    }
-    if (!wire_builder_encode_nested_element(
-            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
-            1,
-            5U,
-            presentation_content_selector_a5,
-            sizeof(presentation_content_selector_a5),
-            presentation_a5_bytes,
-            sizeof(presentation_a5_bytes),
-            &presentation_a5_length,
-            diagnostic)) {
-        return 0;
-    }
-    if (!wire_builder_append_bytes(presentation_a2_inner_bytes, sizeof(presentation_a2_inner_bytes), &presentation_a2_inner_length, presentation_a5_bytes, presentation_a5_length, diagnostic)) {
-        return 0;
-    }
-    if (!wire_builder_append_bytes(presentation_a2_inner_bytes, sizeof(presentation_a2_inner_bytes), &presentation_a2_inner_length, acse_bytes, acse_length, diagnostic)) {
-        return 0;
-    }
-    if (!wire_builder_encode_nested_element(
-            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
-            1,
-            2U,
-            presentation_a2_inner_bytes,
-            presentation_a2_inner_length,
-            presentation_a2_bytes,
-            sizeof(presentation_a2_bytes),
-            &presentation_a2_length,
-            diagnostic)) {
-        return 0;
-    }
-    if (!wire_builder_append_bytes(presentation_set_value_bytes, sizeof(presentation_set_value_bytes), &presentation_set_value_length, presentation_a0_bytes, presentation_a0_length, diagnostic)) {
-        return 0;
-    }
-    if (!wire_builder_append_bytes(presentation_set_value_bytes, sizeof(presentation_set_value_bytes), &presentation_set_value_length, presentation_a2_bytes, presentation_a2_length, diagnostic)) {
-        return 0;
-    }
-    if (!wire_builder_encode_nested_element(
-            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
-            1,
-            17U,
-            presentation_set_value_bytes,
-            presentation_set_value_length,
-            presentation_set_bytes,
-            sizeof(presentation_set_bytes),
-            &presentation_set_length,
-            diagnostic)) {
-        return 0;
-    }
-    if (!wire_builder_build_association_response_session(presentation_set_bytes, presentation_set_length, session_bytes, sizeof(session_bytes), &session_length, diagnostic)) {
+    if (session_length != 0U && session_bytes == NULL) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association accept transport requires session bytes when length is non-zero.");
         return 0;
     }
 
@@ -1128,6 +1006,56 @@ static int wire_builder_build_association_response_frame_structured(
     }
     *encoded_length = frame_length;
     wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
+static int wire_builder_build_association_accept_frame_structured(
+    const UnitLabMmsInitiateResponseProfile* profile,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t acse_bytes[512U];
+    uint8_t presentation_bytes[512U];
+    uint8_t session_bytes[512U];
+    size_t acse_length = 0U;
+    size_t presentation_length = 0U;
+    size_t session_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Association accept frame requires buffer and encoded_length.");
+        return 0;
+    }
+    if (buffer_length == 0U) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association accept frame buffer must be non-zero.");
+        return 0;
+    }
+
+    if (profile == NULL) {
+        static UnitLabMmsInitiateResponseProfile default_profile;
+        static int profile_initialized = 0;
+        if (!profile_initialized) {
+            unitlab_mms_initiate_response_profile_init(&default_profile);
+            profile_initialized = 1;
+        }
+        profile = &default_profile;
+    }
+    if (!wire_builder_build_association_accept_acse(profile, acse_bytes, sizeof(acse_bytes), &acse_length, diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_build_association_accept_presentation(acse_bytes, acse_length, presentation_bytes, sizeof(presentation_bytes), &presentation_length, diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_build_association_accept_session(presentation_bytes, presentation_length, session_bytes, sizeof(session_bytes), &session_length, diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_build_association_accept_transport(session_bytes, session_length, buffer, buffer_length, encoded_length, diagnostic)) {
+        return 0;
+    }
     return 1;
 }
 

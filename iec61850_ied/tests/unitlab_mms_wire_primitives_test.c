@@ -604,13 +604,10 @@ static void test_transport_frame_roundtrip(void)
 
 static void test_wire_frame_builder_information_report_roundtrip(void)
 {
-    uint8_t pdu_bytes[64];
     uint8_t scratch[64];
     uint8_t frame_bytes[128];
-    UnitLabMmsPdu report_pdu;
     UnitLabMmsPdu decoded_pdu;
     UnitLabMmsAssociationFrame decoded_fixture;
-    size_t pdu_length = 0U;
     size_t frame_length = 0U;
     size_t consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
@@ -887,18 +884,11 @@ static void test_association_response_frame_smoke(void)
     UnitLabMmsSessionSpdu session_spdu;
     UnitLabMmsPresentationApdu presentation_apdu;
     UnitLabMmsAcseApdu acse_apdu;
-    UnitLabMmsBerElement external_element;
-    UnitLabMmsBerElement external_indirect_element;
-    UnitLabMmsBerElement external_choice_element;
-    UnitLabMmsBerElement initiate_response_element;
-    UnitLabMmsPdu initiate_response_pdu;
+    UnitLabMmsBerElement application_element;
     size_t frame_length = 0U;
     size_t consumed_length = 0U;
-    size_t external_consumed_length = 0U;
-    size_t external_indirect_consumed_length = 0U;
-    size_t external_choice_consumed_length = 0U;
-    size_t initiate_response_consumed_length = 0U;
     size_t acse_consumed_length = 0U;
+    size_t application_consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
 
     memset(&diagnostic, 0, sizeof(diagnostic));
@@ -926,8 +916,29 @@ static void test_association_response_frame_smoke(void)
     assert(consumed_length == session_spdu.raw_parameter_length);
     assert(presentation_apdu.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
     assert(presentation_apdu.payload_length > 0U);
+    assert(presentation_apdu.payload_bytes[0] == 0x61U);
 
-    assert(presentation_apdu.payload_length > 0U);
+    unitlab_mms_acse_apdu_init(&acse_apdu);
+    assert(unitlab_mms_acse_decode(&acse_apdu, presentation_apdu.payload_bytes, presentation_apdu.payload_length, &acse_consumed_length, &diagnostic) == 1);
+    assert(acse_consumed_length == presentation_apdu.payload_length);
+    assert(acse_apdu.kind == UNITLAB_MMS_ACSE_APDU_AARE);
+    assert(acse_apdu.field_count == 1U);
+    assert(acse_apdu.fields[0].tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(acse_apdu.fields[0].tag.tag_number == 16U);
+    assert(acse_apdu.fields[0].tag.constructed == 1);
+    assert(acse_apdu.fields[0].value_length > 0U);
+    assert(acse_apdu.fields[0].value_bytes[0] == 0x02U);
+    assert(acse_apdu.fields[0].value_bytes[1] == 0x01U);
+    assert(acse_apdu.fields[0].value_bytes[2] == 0x01U);
+    assert(acse_apdu.fields[0].value_bytes[3] == 0xA0U);
+
+    unitlab_mms_ber_element_init(&application_element);
+    assert(unitlab_mms_ber_read(&application_element, acse_apdu.fields[0].value_bytes, acse_apdu.fields[0].value_length, &application_consumed_length, &diagnostic) == 1);
+    assert(application_consumed_length == 3U);
+    assert(application_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(application_element.tag.tag_number == 2U);
+    assert(application_element.value_length == 1U);
+    assert(application_element.value_bytes[0] == 0x01U);
 }
 
 static void test_acse_top_level_roundtrips(void)
@@ -1035,7 +1046,7 @@ static void test_session_spdu_roundtrips(void)
         { UNITLAB_MMS_SESSION_SPDU_CONNECT, 13U, { 13U, 3U, 0xC1U, 1U, 0xA0U }, 5U },
         { UNITLAB_MMS_SESSION_SPDU_CONNECT_DATA_OVERFLOW, 15U, { 15U, 3U, 0xAAU, 0xBBU, 0xCCU }, 5U },
         { UNITLAB_MMS_SESSION_SPDU_OVERFLOW_ACCEPT, 16U, { 16U, 3U, 0x11U, 0x22U, 0x33U }, 5U },
-        { UNITLAB_MMS_SESSION_SPDU_ACCEPT, 14U, { 14U, 3U, 0xC1U, 1U, 0xB0U }, 5U },
+        { UNITLAB_MMS_SESSION_SPDU_ACCEPT, 14U, { 0xA1U, 0xB2U, 0xC3U, 0xD4U, 0xE5U }, 5U },
         { UNITLAB_MMS_SESSION_SPDU_REFUSE, 12U, { 12U, 3U, 0x77U, 0x88U, 0x99U }, 5U },
         { UNITLAB_MMS_SESSION_SPDU_FINISH, 9U, { 9U, 3U, 0x10U, 0x20U, 0x30U }, 5U },
         { UNITLAB_MMS_SESSION_SPDU_DISCONNECT, 10U, { 10U, 3U, 0x40U, 0x50U, 0x60U }, 5U },
@@ -1047,7 +1058,7 @@ static void test_session_spdu_roundtrips(void)
         { UNITLAB_MMS_SESSION_SPDU_CAPABILITY_DATA, 61U, { 61U, 3U, 0x08U, 0x09U, 0x0AU }, 5U },
         { UNITLAB_MMS_SESSION_SPDU_CAPABILITY_DATA_ACK, 62U, { 62U, 3U, 0x0BU, 0x0CU, 0x0DU }, 5U },
     };
-    uint8_t buffer[16];
+    uint8_t buffer[64];
     UnitLabMmsSessionSpdu spdu;
     UnitLabMmsSessionSpdu decoded_spdu;
     size_t encoded_length = 0U;
@@ -1067,6 +1078,14 @@ static void test_session_spdu_roundtrips(void)
             assert(buffer[1] == 0U);
             assert(buffer[2] == cases[i].code);
             assert(buffer[3] == 0U);
+        } else if (cases[i].kind == UNITLAB_MMS_SESSION_SPDU_ACCEPT) {
+            assert(encoded_length == cases[i].payload_length + 20U);
+            assert(buffer[0] == cases[i].code);
+            assert(buffer[1] == (uint8_t)(18U + cases[i].payload_length));
+            assert(buffer[2] == 0x05U);
+            assert(buffer[10] == 0x14U);
+            assert(buffer[14] == 0x34U);
+            assert(buffer[18] == 0xC1U);
         } else {
             assert(encoded_length == cases[i].payload_length);
             assert(buffer[0] == cases[i].code);
@@ -1080,7 +1099,11 @@ static void test_session_spdu_roundtrips(void)
             assert(decoded_spdu.raw_parameter_length == cases[i].payload_length);
             assert(decoded_spdu.raw_parameter_bytes == &decoded_spdu.spdu_bytes[4]);
             assert(memcmp(decoded_spdu.raw_parameter_bytes, cases[i].payload, cases[i].payload_length) == 0);
-        } else if (cases[i].kind == UNITLAB_MMS_SESSION_SPDU_CONNECT || cases[i].kind == UNITLAB_MMS_SESSION_SPDU_ACCEPT) {
+        } else if (cases[i].kind == UNITLAB_MMS_SESSION_SPDU_ACCEPT) {
+            assert(decoded_spdu.spdu_length == encoded_length);
+            assert(decoded_spdu.raw_parameter_length == cases[i].payload_length);
+            assert(memcmp(decoded_spdu.raw_parameter_bytes, cases[i].payload, cases[i].payload_length) == 0);
+        } else if (cases[i].kind == UNITLAB_MMS_SESSION_SPDU_CONNECT) {
             assert(decoded_spdu.spdu_length == cases[i].payload_length);
             assert(decoded_spdu.raw_parameter_length == 1U);
             assert(decoded_spdu.raw_parameter_bytes == &decoded_spdu.spdu_bytes[4]);
@@ -1104,7 +1127,7 @@ static void test_session_spdu_rejects_mismatched_declared_kind_and_code(void)
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     unitlab_mms_session_spdu_init(&spdu);
-    spdu.kind = UNITLAB_MMS_SESSION_SPDU_ACCEPT;
+    spdu.kind = UNITLAB_MMS_SESSION_SPDU_REFUSE;
     spdu.spdu_bytes = payload;
     spdu.spdu_length = sizeof(payload);
     assert(unitlab_mms_session_spdu_encode(&spdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 0);

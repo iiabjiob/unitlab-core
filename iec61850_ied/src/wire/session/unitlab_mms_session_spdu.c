@@ -143,6 +143,88 @@ static int session_read_length_indicator(const uint8_t* buffer, size_t buffer_le
     return 1;
 }
 
+static int session_append_bytes(uint8_t* buffer, size_t buffer_length, size_t* offset, const uint8_t* bytes, size_t bytes_length, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (buffer == NULL || offset == NULL) {
+        return 0;
+    }
+    if (bytes_length != 0U && bytes == NULL) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session SPDU bytes are required when length is non-zero.");
+        return 0;
+    }
+    if (*offset + bytes_length > buffer_length) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "session SPDU buffer is too small.");
+        return 0;
+    }
+    if (bytes_length != 0U) {
+        memcpy(&buffer[*offset], bytes, bytes_length);
+        *offset += bytes_length;
+    }
+    return 1;
+}
+
+static int session_append_short_tlv(uint8_t tag, const uint8_t* value_bytes, size_t value_length, uint8_t* buffer, size_t buffer_length, size_t* offset, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (buffer == NULL || offset == NULL) {
+        return 0;
+    }
+    if (*offset + 2U + value_length > buffer_length) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "session SPDU buffer is too small.");
+        return 0;
+    }
+    buffer[(*offset)++] = tag;
+    buffer[(*offset)++] = (uint8_t)value_length;
+    return session_append_bytes(buffer, buffer_length, offset, value_bytes, value_length, diagnostic);
+}
+
+static int session_encode_accept(const UnitLabMmsSessionSpdu* spdu, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+{
+    size_t offset = 0U;
+    const uint8_t session_accept_item[] = { 0x13U, 0x01U, 0x00U, 0x16U, 0x01U, 0x02U };
+    const uint8_t session_requirement[] = { 0x00U, 0x02U };
+    const uint8_t session_selector[] = { 0x00U, 0x01U };
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (spdu == NULL || buffer == NULL || encoded_length == NULL) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session ACCEPT encode requires spdu, buffer, and encoded_length.");
+        return 0;
+    }
+    if (spdu->spdu_length != 0U && spdu->spdu_bytes == NULL) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session ACCEPT user data is required when length is non-zero.");
+        return 0;
+    }
+    if (buffer_length < 2U + 8U + 4U + 4U + 2U + spdu->spdu_length) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "session ACCEPT buffer is too small.");
+        return 0;
+    }
+
+    buffer[offset++] = 0x0EU;
+    buffer[offset++] = 0x00U;
+    if (!session_append_short_tlv(0x05U, session_accept_item, sizeof(session_accept_item), buffer, buffer_length, &offset, diagnostic)) {
+        return 0;
+    }
+    if (!session_append_short_tlv(0x14U, session_requirement, sizeof(session_requirement), buffer, buffer_length, &offset, diagnostic)) {
+        return 0;
+    }
+    if (!session_append_short_tlv(0x34U, session_selector, sizeof(session_selector), buffer, buffer_length, &offset, diagnostic)) {
+        return 0;
+    }
+    if (!session_append_short_tlv(0xC1U, spdu->spdu_bytes, spdu->spdu_length, buffer, buffer_length, &offset, diagnostic)) {
+        return 0;
+    }
+    if (offset < 2U || offset - 2U > 0xFFU) {
+        session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "session ACCEPT length is too large.");
+        return 0;
+    }
+
+    buffer[1U] = (uint8_t)(offset - 2U);
+    *encoded_length = offset;
+    session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
 void unitlab_mms_session_spdu_init(UnitLabMmsSessionSpdu* spdu)
 {
     if (spdu == NULL) {
@@ -169,6 +251,9 @@ int unitlab_mms_session_spdu_encode(const UnitLabMmsSessionSpdu* spdu, uint8_t* 
     if (!session_kind_to_code(spdu->kind, &expected_code)) {
         session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "unsupported session SPDU kind.");
         return 0;
+    }
+    if (spdu->kind == UNITLAB_MMS_SESSION_SPDU_ACCEPT) {
+        return session_encode_accept(spdu, buffer, buffer_length, encoded_length, diagnostic);
     }
     if (spdu->kind == UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER) {
         if (spdu->spdu_length != 0U && spdu->spdu_bytes == NULL) {
