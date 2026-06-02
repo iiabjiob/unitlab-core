@@ -23,6 +23,18 @@
               "initialValue": 1
             }
           ]
+        },
+        {
+          "reference": "IED1/AP1/LD0/GGIO1.dsWire",
+          "members": [
+            {
+              "dataSetIndex": 0,
+              "reference": "LD0/GGIO1.AnIn1.mag.f[MX]",
+              "kind": "FCDA",
+              "fc": "MX",
+              "initialValue": 0
+            }
+          ]
         }
       ],
       "reports": [

@@ -108,19 +108,47 @@ static int server_runtime_encode_invoke_id_element(
     return unitlab_mms_ber_write(&invoke_id_element, buffer, buffer_length, encoded_length, diagnostic);
 }
 
-static void server_runtime_set_read_response_value(UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelPlan* plan)
+static const UnitLabIedModelSignal* server_runtime_find_signal_by_object_reference(const UnitLabMmsServerRuntime* server_runtime, const char* object_reference)
 {
-    const char* value = "0";
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || object_reference == NULL || object_reference[0] == '\0') {
+        return NULL;
+    }
+    if (server_runtime->model_plan->signals == NULL || server_runtime->model_plan->signal_count == 0U) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < server_runtime->model_plan->signal_count; index++) {
+        const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[index];
+        if (strcmp(signal->object_reference, object_reference) == 0) {
+            return signal;
+        }
+    }
+    return NULL;
+}
+
+static int server_runtime_resolve_read_response_value(UnitLabMmsServerRuntime* server_runtime, const char* object_reference, UnitLabMmsDiagnostic* diagnostic)
+{
+    const UnitLabIedModelSignal* signal = NULL;
+    const char* value = NULL;
 
     if (server_runtime == NULL) {
-        return;
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime is required.");
+        return 0;
     }
-    if (plan != NULL && plan->signal_count > 0U && plan->signals != NULL && plan->signals[0].initial_value[0] != '\0') {
-        value = plan->signals[0].initial_value;
+    signal = server_runtime_find_signal_by_object_reference(server_runtime, object_reference);
+    if (signal == NULL) {
+        if (server_runtime->read_response_value_length > 0U && server_runtime->read_response_value[0] != '\0') {
+            value = server_runtime->read_response_value;
+        } else {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Requested object reference is not present in the loaded model plan.");
+            return 0;
+        }
+    } else {
+        value = signal->initial_value;
     }
-    snprintf(server_runtime->read_response_value, sizeof(server_runtime->read_response_value), "%s", value);
+    snprintf(server_runtime->read_response_value, sizeof(server_runtime->read_response_value), "%s", value == NULL ? "0" : value);
     server_runtime->read_response_value_length = strlen(server_runtime->read_response_value);
     server_runtime->has_read_response_value = 1;
+    return 1;
 }
 
 int unitlab_mms_server_runtime_apply_model_plan(UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelPlan* plan)
@@ -128,14 +156,17 @@ int unitlab_mms_server_runtime_apply_model_plan(UnitLabMmsServerRuntime* server_
     if (server_runtime == NULL) {
         return 0;
     }
+    server_runtime->model_plan = plan;
     unitlab_mms_initiate_response_profile_apply_model_plan(&server_runtime->initiate_response_profile, plan);
-    server_runtime_set_read_response_value(server_runtime, plan);
+    server_runtime->read_response_value[0] = '\0';
+    server_runtime->read_response_value_length = 0U;
+    server_runtime->has_read_response_value = 0;
     unitlab_mms_server_runtime_capture_snapshot(server_runtime);
     return 1;
 }
 
 static int server_runtime_build_read_response_service(
-    const UnitLabMmsServerRuntime* server_runtime,
+    UnitLabMmsServerRuntime* server_runtime,
     uint32_t invoke_id,
     uint8_t* buffer,
     size_t buffer_length,
@@ -168,6 +199,11 @@ static int server_runtime_build_read_response_service(
         return 0;
     }
 
+    if (server_runtime != NULL && server_runtime->pending_request.object_reference[0] != '\0') {
+        if (!server_runtime_resolve_read_response_value(server_runtime, server_runtime->pending_request.object_reference, diagnostic)) {
+            return 0;
+        }
+    }
     if (server_runtime != NULL && server_runtime->has_read_response_value && server_runtime->read_response_value_length > 0U) {
         value_length = server_runtime->read_response_value_length;
         if (value_length > sizeof(read_response_value_bytes)) {
@@ -175,8 +211,8 @@ static int server_runtime_build_read_response_service(
         }
         memcpy(read_response_value_bytes, server_runtime->read_response_value, value_length);
     } else {
-        read_response_value_bytes[0] = '0';
-        value_length = 1U;
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Read response requires a resolved object reference.");
+        return 0;
     }
 
     if (!server_runtime_encode_invoke_id_element(invoke_id, read_service_sequence_bytes, sizeof(read_service_sequence_bytes), &invoke_id_length, diagnostic)) {
@@ -419,6 +455,7 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     }
     memset(&server_runtime->config, 0, sizeof(server_runtime->config));
     server_runtime->state = UNITLAB_MMS_SERVER_RUNTIME_IDLE;
+    server_runtime->model_plan = NULL;
     unitlab_mms_session_init(&server_runtime->session);
     unitlab_mms_pending_request_init(&server_runtime->pending_request);
     unitlab_mms_initiate_response_profile_init(&server_runtime->initiate_response_profile);

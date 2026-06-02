@@ -22,6 +22,6 @@
 #include "wire/acse/unitlab_mms_acse.h"
 #include "wire/mms/unitlab_mms_pdu.h"
 #include "wire/transport/unitlab_mms_transport_frame.h"
-#include "wire/transport/unitlab_mms_wire_association_fixture.h"
+#include "wire/orchestration/unitlab_mms_association_frame.h"
 
 #endif /* UNITLAB_IEC61850_MMS_H */

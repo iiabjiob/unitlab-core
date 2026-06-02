@@ -1,6 +1,7 @@
 #include "unitlab_mms_core.h"
 
 #include <string.h>
+#include <stdio.h>
 
 static int set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, const char* message)
 {
@@ -481,6 +482,10 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
                 semantic_result->pdu.deadline_ms,
                 semantic_result->pdu.timestamp_ms,
                 &operation_result->diagnostic);
+            if (operation_result->ok) {
+                snprintf(pending_request->object_reference, sizeof(pending_request->object_reference), "%s", semantic_result->pdu.object_reference);
+                snprintf(pending_request->attribute_reference, sizeof(pending_request->attribute_reference), "%s", semantic_result->pdu.attribute_reference);
+            }
             operation_result_project_from_runtime(operation_result, operation_result->ok, &operation_result->diagnostic, &pending_request->event_log, &pending_request->last_event);
             return operation_result->ok;
         case UNITLAB_MMS_DECODED_PDU_READ_RESPONSE:

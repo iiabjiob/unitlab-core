@@ -6,7 +6,7 @@
 #include "wire/ber/unitlab_mms_ber.h"
 #include "wire/mms/unitlab_mms_pdu.h"
 #include "wire/orchestration/unitlab_mms_wire_builder.h"
-#include "wire/transport/unitlab_mms_wire_association_fixture.h"
+#include "wire/orchestration/unitlab_mms_association_frame.h"
 
 #include <assert.h>
 #include <arpa/inet.h>
@@ -121,7 +121,7 @@ static int connect_with_retry(int port)
 static int build_association_request_bytes(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsPdu pdu;
-    UnitLabMmsWireAssociationFixture fixture;
+    UnitLabMmsAssociationFrame fixture;
     uint8_t pdu_bytes[32U];
     size_t pdu_length = 0U;
     size_t frame_length = 0U;
@@ -135,7 +135,7 @@ static int build_association_request_bytes(uint8_t* buffer, size_t buffer_length
         return 0;
     }
 
-    unitlab_mms_wire_association_fixture_init(&fixture);
+    unitlab_mms_association_frame_init(&fixture);
     {
         uint8_t presentation_bytes[64U];
         uint8_t session_bytes[128U];
@@ -184,7 +184,7 @@ static void test_native_wire_server_speaks_reference_handshake(void)
     uint8_t client_frame[128U];
     uint8_t response_frame[256U];
     uint8_t association_request[128U];
-    UnitLabMmsWireAssociationFixture decoded_fixture;
+    UnitLabMmsAssociationFrame decoded_fixture;
     UnitLabMmsAcseApdu acse_apdu;
     UnitLabMmsBerElement external_element;
     UnitLabMmsBerElement external_indirect_element;
@@ -234,7 +234,7 @@ static void test_native_wire_server_speaks_reference_handshake(void)
     association_response_length = ((size_t)response_frame[2] << 8U) | (size_t)response_frame[3];
     assert(association_response_length <= sizeof(response_frame));
     assert(recv_exact(client_fd, &response_frame[4U], association_response_length - 4U));
-    assert(unitlab_mms_wire_association_fixture_decode(&decoded_fixture, response_frame, association_response_length, &consumed_length, &diagnostic));
+    assert(unitlab_mms_association_frame_decode(&decoded_fixture, response_frame, association_response_length, &consumed_length, &diagnostic));
     assert(consumed_length == association_response_length);
     assert(decoded_fixture.transport.cotp.kind == UNITLAB_MMS_COTP_TPDU_DT);
     assert(decoded_fixture.session.kind == UNITLAB_MMS_SESSION_SPDU_ACCEPT);

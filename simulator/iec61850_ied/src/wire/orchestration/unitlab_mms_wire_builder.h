@@ -25,7 +25,7 @@ void unitlab_mms_initiate_response_profile_apply_model_plan(UnitLabMmsInitiateRe
 
 /* Builds a wire frame by owning the nesting construction.
  * The caller provides a semantic MMS PDU, and this helper wraps it through the
- * wire association fixture into TPKT + COTP + X.225 session + exact X.226 Presentation.
+ * association frame into TPKT + COTP + X.225 session + exact X.226 Presentation.
  */
 int unitlab_mms_build_wire_frame_from_pdu(
     const UnitLabMmsPdu* pdu,

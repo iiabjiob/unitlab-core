@@ -13,7 +13,7 @@
 #include "unitlab_mms_server_runtime.h"
 #include "wire/ber/unitlab_mms_ber.h"
 #include "wire/mms/unitlab_mms_pdu.h"
-#include "wire/transport/unitlab_mms_wire_association_fixture.h"
+#include "wire/orchestration/unitlab_mms_association_frame.h"
 
 typedef struct SimulatorOptions {
     const char* fixture_path;
@@ -250,7 +250,7 @@ static const char* optional_bool_label(UnitLabIedFixtureOptionalBool field)
 
 static int build_native_association_request_bytes(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
-    UnitLabMmsWireAssociationFixture fixture;
+    UnitLabMmsAssociationFrame fixture;
     UnitLabMmsBerElement element;
     uint8_t protocol_version_bytes[8U];
     uint8_t application_context_bytes[24U];
@@ -312,14 +312,14 @@ static int build_native_association_request_bytes(uint8_t* buffer, size_t buffer
         return 0;
     }
 
-    unitlab_mms_wire_association_fixture_init(&fixture);
+    unitlab_mms_association_frame_init(&fixture);
     fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
     fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
     fixture.presentation.payload_bytes = aarq_payload;
     fixture.presentation.payload_length = aarq_payload_length;
     fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
     fixture.transport.cotp.eot = 1;
-    if (!unitlab_mms_wire_association_fixture_encode(&fixture, buffer, buffer_length, encoded_length, diagnostic)) {
+    if (!unitlab_mms_association_frame_encode(&fixture, buffer, buffer_length, encoded_length, diagnostic)) {
         return 0;
     }
     return 1;

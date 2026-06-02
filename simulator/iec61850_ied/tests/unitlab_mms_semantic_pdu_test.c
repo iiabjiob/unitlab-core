@@ -104,7 +104,11 @@ static void test_wire_pdu_bridge_read_request(void)
     UnitLabMmsPdu wire_pdu;
     UnitLabMmsSemanticResult result;
     UnitLabMmsDecodeDiagnostic diagnostic;
-    const uint8_t payload[2] = { 0xA4U, 0x01U };
+    const uint8_t payload[] = {
+        0x30U, 0x14U,
+        0x1AU, 0x12U,
+        'X', 'C', 'B', 'R', '1', '$', 'S', 'T', '$', 'P', 'o', 's', '$', 's', 't', 'V', 'a', 'l'
+    };
 
     memset(&wire_pdu, 0, sizeof(wire_pdu));
     unitlab_mms_semantic_result_init(&result);
@@ -122,6 +126,8 @@ static void test_wire_pdu_bridge_read_request(void)
     assert(result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS);
     assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_READ_REQUEST);
     assert(result.pdu.invoke_id == 17U);
+    assert(strcmp(result.pdu.object_reference, "Pos.stVal") == 0);
+    assert(strcmp(result.pdu.attribute_reference, "stVal") == 0);
     assert(result.pdu.value_length == sizeof(payload));
     assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
 }

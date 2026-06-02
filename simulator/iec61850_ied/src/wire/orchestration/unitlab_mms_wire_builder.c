@@ -5,7 +5,7 @@
 
 #include "wire/acse/unitlab_mms_acse.h"
 #include "wire/ber/unitlab_mms_ber.h"
-#include "wire/transport/unitlab_mms_wire_association_fixture.h"
+#include "wire/orchestration/unitlab_mms_association_frame.h"
 #include "model_plan.h"
 
 static void wire_builder_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, const char* message)

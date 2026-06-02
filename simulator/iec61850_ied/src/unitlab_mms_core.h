@@ -42,6 +42,8 @@ typedef struct UnitLabMmsPendingRequest {
     uint64_t timestamp_ms;
     int timed_out;
     int completed;
+    char object_reference[128];
+    char attribute_reference[64];
     UnitLabMmsRuntimeEvent last_event;
     UnitLabMmsRuntimeEventLog event_log;
 } UnitLabMmsPendingRequest;

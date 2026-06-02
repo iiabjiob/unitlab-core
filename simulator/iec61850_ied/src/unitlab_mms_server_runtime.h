@@ -28,6 +28,7 @@ typedef struct UnitLabMmsServerRuntime {
     UnitLabIedServerConfig config;
     UnitLabMmsSession session;
     UnitLabMmsPendingRequest pending_request;
+    const UnitLabIedModelPlan* model_plan;
     UnitLabMmsInitiateResponseProfile initiate_response_profile;
     char read_response_value[128];
     size_t read_response_value_length;
