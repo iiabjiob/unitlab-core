@@ -29,6 +29,9 @@ typedef struct UnitLabMmsServerRuntime {
     UnitLabMmsSession session;
     UnitLabMmsPendingRequest pending_request;
     UnitLabMmsInitiateResponseProfile initiate_response_profile;
+    char read_response_value[128];
+    size_t read_response_value_length;
+    int has_read_response_value;
     UnitLabIec61850ReportControl report_control;
     UnitLabMmsTransportExchange transport;
     UnitLabMmsOperationResult last_result;
@@ -39,6 +42,7 @@ typedef struct UnitLabMmsServerRuntime {
 void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime);
 int unitlab_mms_server_runtime_prepare(UnitLabMmsServerRuntime* server_runtime, const UnitLabIedServerConfig* config, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_server_runtime_start(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_server_runtime_apply_model_plan(UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelPlan* plan);
 int unitlab_mms_server_runtime_stop(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_server_runtime_reserve_report_control(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_server_runtime_enable_report_control(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic);

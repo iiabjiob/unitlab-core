@@ -517,7 +517,7 @@ int main(int argc, char** argv)
         size_t consumed_length = 0U;
 
         unitlab_mms_server_runtime_init(&server_runtime);
-        unitlab_mms_initiate_response_profile_apply_model_plan(&server_runtime.initiate_response_profile, &model_plan);
+        unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &model_plan);
         unitlab_mms_diagnostic_clear(&server_diagnostic);
         unitlab_mms_operation_result_init(&operation_result);
         if (!unitlab_mms_server_runtime_prepare(&server_runtime, &server_config, &server_diagnostic)) {
@@ -575,7 +575,7 @@ int main(int argc, char** argv)
         UnitLabIedModelLoadResult wire_result;
 
         unitlab_mms_server_runtime_init(&server_runtime);
-        unitlab_mms_initiate_response_profile_apply_model_plan(&server_runtime.initiate_response_profile, &model_plan);
+        unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &model_plan);
         unitlab_mms_diagnostic_clear(&server_diagnostic);
         if (!unitlab_mms_server_runtime_prepare(&server_runtime, &server_config, &server_diagnostic)) {
             fprintf(stderr, "%s: %s\n", "NATIVE_WIRE_SERVER_PREPARE_FAILED", server_diagnostic.message);

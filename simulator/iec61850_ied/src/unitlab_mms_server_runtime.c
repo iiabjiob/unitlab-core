@@ -108,14 +108,40 @@ static int server_runtime_encode_invoke_id_element(
     return unitlab_mms_ber_write(&invoke_id_element, buffer, buffer_length, encoded_length, diagnostic);
 }
 
-static int server_runtime_build_reference_read_response_service(
+static void server_runtime_set_read_response_value(UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelPlan* plan)
+{
+    const char* value = "0";
+
+    if (server_runtime == NULL) {
+        return;
+    }
+    if (plan != NULL && plan->signal_count > 0U && plan->signals != NULL && plan->signals[0].initial_value[0] != '\0') {
+        value = plan->signals[0].initial_value;
+    }
+    snprintf(server_runtime->read_response_value, sizeof(server_runtime->read_response_value), "%s", value);
+    server_runtime->read_response_value_length = strlen(server_runtime->read_response_value);
+    server_runtime->has_read_response_value = 1;
+}
+
+int unitlab_mms_server_runtime_apply_model_plan(UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelPlan* plan)
+{
+    if (server_runtime == NULL) {
+        return 0;
+    }
+    unitlab_mms_initiate_response_profile_apply_model_plan(&server_runtime->initiate_response_profile, plan);
+    server_runtime_set_read_response_value(server_runtime, plan);
+    unitlab_mms_server_runtime_capture_snapshot(server_runtime);
+    return 1;
+}
+
+static int server_runtime_build_read_response_service(
+    const UnitLabMmsServerRuntime* server_runtime,
     uint32_t invoke_id,
     uint8_t* buffer,
     size_t buffer_length,
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    static const uint8_t read_response_value_bytes[] = { 0x08U, 0xBFU, 0x7EU, 0x96U, 0x18U };
     uint8_t read_value_element[16U];
     uint8_t read_result_element[16U];
     uint8_t access_result_element[32U];
@@ -123,6 +149,7 @@ static int server_runtime_build_reference_read_response_service(
     uint8_t read_a0_inner_bytes[96U];
     uint8_t read_a0_wrapper_bytes[112U];
     uint8_t read_service_sequence_bytes[128U];
+    uint8_t read_response_value_bytes[128U];
     size_t read_value_element_length = 0U;
     size_t read_result_element_length = 0U;
     size_t access_result_element_length = 0U;
@@ -131,6 +158,7 @@ static int server_runtime_build_reference_read_response_service(
     size_t read_a0_wrapper_length = 0U;
     size_t read_service_sequence_length = 0U;
     size_t invoke_id_length = 0U;
+    size_t value_length = 0U;
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -138,6 +166,17 @@ static int server_runtime_build_reference_read_response_service(
     if (buffer == NULL || encoded_length == NULL) {
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Read response service buffer and encoded_length are required.");
         return 0;
+    }
+
+    if (server_runtime != NULL && server_runtime->has_read_response_value && server_runtime->read_response_value_length > 0U) {
+        value_length = server_runtime->read_response_value_length;
+        if (value_length > sizeof(read_response_value_bytes)) {
+            value_length = sizeof(read_response_value_bytes);
+        }
+        memcpy(read_response_value_bytes, server_runtime->read_response_value, value_length);
+    } else {
+        read_response_value_bytes[0] = '0';
+        value_length = 1U;
     }
 
     if (!server_runtime_encode_invoke_id_element(invoke_id, read_service_sequence_bytes, sizeof(read_service_sequence_bytes), &invoke_id_length, diagnostic)) {
@@ -148,7 +187,7 @@ static int server_runtime_build_reference_read_response_service(
             0,
             7U,
             read_response_value_bytes,
-            sizeof(read_response_value_bytes),
+            value_length,
             read_value_element,
             sizeof(read_value_element),
             &read_value_element_length,
@@ -232,7 +271,6 @@ static int server_runtime_build_reference_read_response_service(
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Read response service buffer is too small.");
         return 0;
     }
-    memcpy(read_service_sequence_bytes, &read_service_sequence_bytes[0U], invoke_id_length);
     memcpy(read_service_sequence_bytes + invoke_id_length, read_a0_wrapper_bytes, read_a0_wrapper_length);
     read_service_sequence_length = invoke_id_length + read_a0_wrapper_length;
     if (!server_runtime_encode_ber_element(
@@ -384,6 +422,9 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     unitlab_mms_session_init(&server_runtime->session);
     unitlab_mms_pending_request_init(&server_runtime->pending_request);
     unitlab_mms_initiate_response_profile_init(&server_runtime->initiate_response_profile);
+    server_runtime->read_response_value[0] = '\0';
+    server_runtime->read_response_value_length = 0U;
+    server_runtime->has_read_response_value = 0;
     unitlab_iec61850_report_control_init(&server_runtime->report_control);
     unitlab_mms_transport_exchange_init(&server_runtime->transport);
     unitlab_mms_operation_result_init(&server_runtime->last_result);
@@ -601,7 +642,8 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
     }
     if (service_length == 0U) {
         if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_READ) {
-            if (!server_runtime_build_reference_read_response_service(
+            if (!server_runtime_build_read_response_service(
+                    server_runtime,
                     server_runtime->pending_request.invoke_id,
                     synthesized_service_bytes,
                     sizeof(synthesized_service_bytes),

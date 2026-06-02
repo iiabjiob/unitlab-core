@@ -12,12 +12,6 @@
 #include <string.h>
 #include <stdio.h>
 
-static const uint8_t reference_confirmed_response_bytes[] = {
-    0x03U, 0x00U, 0x00U, 0x24U, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U, 0x61U, 0x17U, 0x30U, 0x15U, 0x02U,
-    0x01U, 0x03U, 0xA0U, 0x10U, 0xA1U, 0x0EU, 0x02U, 0x01U, 0x01U, 0xA4U, 0x09U, 0xA1U, 0x07U, 0x87U, 0x05U, 0x08U,
-    0xBFU, 0x7EU, 0x96U, 0x18U,
-};
-
 static UnitLabMmsPdu make_information_report_pdu(void)
 {
     UnitLabMmsPdu pdu;
@@ -34,6 +28,20 @@ static int build_information_report_association_bytes(uint8_t* buffer, size_t bu
     uint8_t scratch[256U];
     return unitlab_mms_build_information_report_frame("RPT", 0U, scratch, sizeof(scratch), buffer, buffer_length, encoded_length, diagnostic);
 }
+
+static int contains_bytes(const uint8_t* haystack, size_t haystack_length, const uint8_t* needle, size_t needle_length)
+{
+    if (haystack == NULL || needle == NULL || needle_length == 0U || haystack_length < needle_length) {
+        return 0;
+    }
+    for (size_t index = 0U; index + needle_length <= haystack_length; index++) {
+        if (memcmp(&haystack[index], needle, needle_length) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int build_initiate_request_association_bytes(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsWireAssociationFixture fixture;
@@ -179,6 +187,27 @@ static void test_server_runtime_apply_association_request_bytes_rejects_non_init
     assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED);
 }
 
+
+static void test_server_runtime_apply_model_plan_sets_read_response_value(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelSignal signals[1U];
+
+    memset(&server_runtime, 0, sizeof(server_runtime));
+    memset(&plan, 0, sizeof(plan));
+    memset(signals, 0, sizeof(signals));
+
+    strcpy(signals[0].initial_value, "model-read");
+    plan.signal_count = 1U;
+    plan.signals = signals;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(server_runtime.has_read_response_value == 1);
+    assert(server_runtime.read_response_value_length == strlen("model-read"));
+    assert(strcmp(server_runtime.read_response_value, "model-read") == 0);
+}
 
 static void test_server_runtime_init_captures_default_snapshot(void)
 {
@@ -429,18 +458,14 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
     assert(server_runtime.pending_request.invoke_id == 3U);
     assert(server_runtime.pending_request.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED);
 
+    snprintf(server_runtime.read_response_value, sizeof(server_runtime.read_response_value), "%s", "model-read");
+    server_runtime.read_response_value_length = strlen(server_runtime.read_response_value);
+    server_runtime.has_read_response_value = 1;
+
     unitlab_mms_diagnostic_clear(&diagnostic);
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
-    fprintf(stderr, "runtime confirmed-response length=%zu\n", response_length);
-    fprintf(stderr, "runtime confirmed-response bytes:");
-    for (size_t i = 0U; i < response_length; i++) {
-        fprintf(stderr, " %02X", response_bytes[i]);
-    }
-    fprintf(stderr, "\n");
-    assert(response_length == sizeof(reference_confirmed_response_bytes));
-    assert(memcmp(response_bytes, reference_confirmed_response_bytes, sizeof(reference_confirmed_response_bytes)) == 0);
     assert(server_runtime.transport.response_bytes == response_bytes);
     assert(server_runtime.transport.response_length == response_length);
     assert(server_runtime.transport.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_SET_RESPONSE_LENGTH);
@@ -467,9 +492,10 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
         assert(response_pdu.invoke_id == 3U);
         assert(response_pdu.has_service == 1);
         assert(response_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
-        assert(response_pdu.service_length == 16U);
+        assert(response_pdu.service_length > 0U);
         assert(response_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
         assert(response_pdu.service_tag.tag_number == 0U);
+        assert(contains_bytes(response_pdu.service_bytes, response_pdu.service_length, (const uint8_t*)"model-read", strlen("model-read")) == 1);
     }
 }
 
@@ -600,6 +626,7 @@ static void test_server_runtime_apply_write_request_and_build_response_roundtrip
 int main(void)
 {
     test_server_runtime_init_captures_default_snapshot();
+    test_server_runtime_apply_model_plan_sets_read_response_value();
     test_server_runtime_prepare_start_stop();
     test_server_runtime_apply_association_request_bytes_accepts_acse_aarq();
     test_server_runtime_apply_association_request_bytes_rejects_non_initiate_request();
