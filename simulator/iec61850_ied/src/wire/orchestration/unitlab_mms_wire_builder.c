@@ -478,33 +478,45 @@ static int wire_builder_build_association_response_acse(uint8_t* buffer, size_t 
     uint8_t initiate_response_bytes[256U];
     uint8_t external_choice_bytes[288U];
     uint8_t external_bytes[320U];
+    uint8_t user_data_integer_bytes[16U];
     uint8_t user_information_bytes[352U];
+    uint8_t oid_value_bytes[16U];
     uint8_t a1_oid_bytes[32U];
     uint8_t a2_integer_bytes[16U];
+    uint8_t a2_bytes[32U];
+    uint8_t a3_inner_integer_bytes[16U];
     uint8_t a3_inner_bytes[16U];
     uint8_t a3_bytes[32U];
     uint8_t app_inner_bytes[352U];
     uint8_t app_wrapper_bytes[384U];
     uint8_t a0_wrapper_bytes[416U];
     uint8_t outer_sequence_bytes[448U];
-    uint8_t integer_three_bytes[16U];
+    uint8_t outer_sequence_wrapped[512U];
+    uint8_t outer_result_bytes[16U];
     size_t initiate_response_length = 0U;
     size_t external_choice_length = 0U;
     size_t external_length = 0U;
+    size_t user_data_integer_length = 0U;
     size_t user_information_length = 0U;
+    size_t oid_value_length = 0U;
     size_t a1_oid_length = 0U;
     size_t a2_integer_length = 0U;
+    size_t a2_length = 0U;
+    size_t a3_inner_integer_length = 0U;
     size_t a3_inner_length = 0U;
     size_t a3_length = 0U;
     size_t app_inner_length = 0U;
     size_t app_wrapper_length = 0U;
     size_t a0_wrapper_length = 0U;
     size_t outer_sequence_length = 0U;
-    size_t integer_three_length = 0U;
+    size_t outer_sequence_wrapped_length = 0U;
+    size_t outer_result_length = 0U;
     UnitLabMmsAcseApdu acse_apdu;
-    const uint8_t integer_three_value[] = { 0x03U };
+    const uint8_t outer_result_value[] = { 0x01U };
     const uint8_t oid_value[] = { 0x28U, 0xCAU, 0x22U, 0x02U, 0x03U };
     const uint8_t integer_zero_value[] = { 0x00U };
+    const uint8_t user_data_integer_value[] = { 0x03U };
+
     if (encoded_length != NULL) {
         *encoded_length = 0U;
     }
@@ -524,11 +536,11 @@ static int wire_builder_build_association_response_acse(uint8_t* buffer, size_t 
             UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
             0,
             2U,
-            integer_three_value,
-            sizeof(integer_three_value),
-            integer_three_bytes,
-            sizeof(integer_three_bytes),
-            &integer_three_length,
+            outer_result_value,
+            sizeof(outer_result_value),
+            outer_result_bytes,
+            sizeof(outer_result_bytes),
+            &outer_result_length,
             diagnostic)) {
         return 0;
     }
@@ -544,13 +556,52 @@ static int wire_builder_build_association_response_acse(uint8_t* buffer, size_t 
             diagnostic)) {
         return 0;
     }
-    if (integer_three_length + external_choice_length > sizeof(external_bytes)) {
-        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association response ACSE external wrapper is too large.");
+    if (!wire_builder_encode_nested_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            0,
+            2U,
+            user_data_integer_value,
+            sizeof(user_data_integer_value),
+            user_data_integer_bytes,
+            sizeof(user_data_integer_bytes),
+            &user_data_integer_length,
+            diagnostic)) {
         return 0;
     }
-    memcpy(external_bytes, integer_three_bytes, integer_three_length);
-    memcpy(external_bytes + integer_three_length, external_choice_bytes, external_choice_length);
-    external_length = integer_three_length + external_choice_length;
+    {
+        uint8_t external_value_bytes[320U];
+        size_t external_value_length = 0U;
+        if (!wire_builder_append_bytes(
+                external_value_bytes,
+                sizeof(external_value_bytes),
+                &external_value_length,
+                user_data_integer_bytes,
+                user_data_integer_length,
+                diagnostic)) {
+            return 0;
+        }
+        if (!wire_builder_append_bytes(
+                external_value_bytes,
+                sizeof(external_value_bytes),
+                &external_value_length,
+                external_choice_bytes,
+                external_choice_length,
+                diagnostic)) {
+            return 0;
+        }
+        if (!wire_builder_encode_nested_element(
+                UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+                1,
+                8U,
+                external_value_bytes,
+                external_value_length,
+                external_bytes,
+                sizeof(external_bytes),
+                &external_length,
+                diagnostic)) {
+            return 0;
+        }
+    }
     if (!wire_builder_encode_nested_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
@@ -564,11 +615,23 @@ static int wire_builder_build_association_response_acse(uint8_t* buffer, size_t 
         return 0;
     }
     if (!wire_builder_encode_nested_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            0,
+            6U,
+            oid_value,
+            sizeof(oid_value),
+            oid_value_bytes,
+            sizeof(oid_value_bytes),
+            &oid_value_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_encode_nested_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
             1U,
-            oid_value,
-            sizeof(oid_value),
+            oid_value_bytes,
+            oid_value_length,
             a1_oid_bytes,
             sizeof(a1_oid_bytes),
             &a1_oid_length,
@@ -590,9 +653,33 @@ static int wire_builder_build_association_response_acse(uint8_t* buffer, size_t 
     if (!wire_builder_encode_nested_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
-            1U,
+            2U,
+            a2_integer_bytes,
+            a2_integer_length,
+            a2_bytes,
+            sizeof(a2_bytes),
+            &a2_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_encode_nested_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            0,
+            2U,
             integer_zero_value,
             sizeof(integer_zero_value),
+            a3_inner_integer_bytes,
+            sizeof(a3_inner_integer_bytes),
+            &a3_inner_integer_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_encode_nested_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            1U,
+            a3_inner_integer_bytes,
+            a3_inner_integer_length,
             a3_inner_bytes,
             sizeof(a3_inner_bytes),
             &a3_inner_length,
@@ -611,15 +698,15 @@ static int wire_builder_build_association_response_acse(uint8_t* buffer, size_t 
             diagnostic)) {
         return 0;
     }
-    if (a1_oid_length + a2_integer_length + a3_length + user_information_length > sizeof(app_inner_bytes)) {
+    if (a1_oid_length + a2_length + a3_length + user_information_length > sizeof(app_inner_bytes)) {
         wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association response ACSE application payload is too large.");
         return 0;
     }
     memcpy(app_inner_bytes, a1_oid_bytes, a1_oid_length);
-    memcpy(app_inner_bytes + a1_oid_length, a2_integer_bytes, a2_integer_length);
-    memcpy(app_inner_bytes + a1_oid_length + a2_integer_length, a3_bytes, a3_length);
-    memcpy(app_inner_bytes + a1_oid_length + a2_integer_length + a3_length, user_information_bytes, user_information_length);
-    app_inner_length = a1_oid_length + a2_integer_length + a3_length + user_information_length;
+    memcpy(app_inner_bytes + a1_oid_length, a2_bytes, a2_length);
+    memcpy(app_inner_bytes + a1_oid_length + a2_length, a3_bytes, a3_length);
+    memcpy(app_inner_bytes + a1_oid_length + a2_length + a3_length, user_information_bytes, user_information_length);
+    app_inner_length = a1_oid_length + a2_length + a3_length + user_information_length;
     if (!wire_builder_encode_nested_element(
             UNITLAB_MMS_BER_TAG_CLASS_APPLICATION,
             1,
@@ -644,15 +731,13 @@ static int wire_builder_build_association_response_acse(uint8_t* buffer, size_t 
             diagnostic)) {
         return 0;
     }
-    if (integer_three_length + a0_wrapper_length > sizeof(outer_sequence_bytes)) {
+    if (outer_result_length + a0_wrapper_length > sizeof(outer_sequence_bytes)) {
         wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association response ACSE outer sequence is too large.");
         return 0;
     }
-    memcpy(outer_sequence_bytes, integer_three_bytes, integer_three_length);
-    memcpy(outer_sequence_bytes + integer_three_length, a0_wrapper_bytes, a0_wrapper_length);
-    outer_sequence_length = integer_three_length + a0_wrapper_length;
-    uint8_t outer_sequence_wrapped[512U];
-    size_t outer_sequence_wrapped_length = 0U;
+    memcpy(outer_sequence_bytes, outer_result_bytes, outer_result_length);
+    memcpy(outer_sequence_bytes + outer_result_length, a0_wrapper_bytes, a0_wrapper_length);
+    outer_sequence_length = outer_result_length + a0_wrapper_length;
     if (!wire_builder_encode_nested_element(
             UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
             1,
@@ -665,13 +750,11 @@ static int wire_builder_build_association_response_acse(uint8_t* buffer, size_t 
             diagnostic)) {
         return 0;
     }
-    memcpy(outer_sequence_bytes, outer_sequence_wrapped, outer_sequence_wrapped_length);
-    outer_sequence_length = outer_sequence_wrapped_length;
 
     unitlab_mms_acse_apdu_init(&acse_apdu);
     acse_apdu.kind = UNITLAB_MMS_ACSE_APDU_AARE;
-    acse_apdu.apdu_bytes = outer_sequence_bytes;
-    acse_apdu.apdu_length = outer_sequence_length;
+    acse_apdu.apdu_bytes = outer_sequence_wrapped;
+    acse_apdu.apdu_length = outer_sequence_wrapped_length;
     return unitlab_mms_acse_encode(&acse_apdu, buffer, buffer_length, encoded_length, diagnostic);
 }
 
