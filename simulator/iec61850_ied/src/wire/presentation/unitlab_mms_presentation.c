@@ -1,6 +1,7 @@
 #include "unitlab_mms_presentation.h"
 
 #include <string.h>
+#include <stdio.h>
 
 static void presentation_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, const char* message)
 {
@@ -51,9 +52,9 @@ int unitlab_mms_presentation_encode(const UnitLabMmsPresentationApdu* apdu, uint
         element.tag.constructed = 0;
         element.tag.tag_number = 0U;
     } else {
-        element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_APPLICATION;
+        element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
         element.tag.constructed = 1;
-        element.tag.tag_number = 1U;
+        element.tag.tag_number = 17U;
     }
     element.value_bytes = apdu->payload_bytes;
     element.value_length = apdu->payload_length;
@@ -79,18 +80,17 @@ int unitlab_mms_presentation_decode(UnitLabMmsPresentationApdu* apdu, const uint
     if (!unitlab_mms_ber_read(&element, buffer, buffer_length, consumed_length, diagnostic)) {
         return 0;
     }
-    if (element.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_APPLICATION) {
-        presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "presentation user-data tag is unsupported.");
-        return 0;
-    }
-    if (element.tag.tag_number == 0U && element.tag.constructed == 0) {
+    if (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION && element.tag.tag_number == 0U && element.tag.constructed == 0) {
         unitlab_mms_presentation_apdu_init(apdu);
         apdu->kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
-    } else if (element.tag.tag_number == 1U && element.tag.constructed == 1) {
+    } else if ((element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && element.tag.tag_number == 16U && element.tag.constructed == 1) || (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && element.tag.tag_number == 17U && element.tag.constructed == 1) || (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION && element.tag.tag_number == 1U && element.tag.constructed == 1)) {
         unitlab_mms_presentation_apdu_init(apdu);
         apdu->kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
     } else {
-        presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "presentation user-data tag is unsupported.");
+        if (diagnostic != NULL) {
+            snprintf(diagnostic->message, sizeof(diagnostic->message), "presentation user-data tag is unsupported (class=%u constructed=%u tag=%u)", (unsigned)element.tag.tag_class, (unsigned)element.tag.constructed, (unsigned)element.tag.tag_number);
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED;
+        }
         return 0;
     }
     apdu->tag = element.tag;

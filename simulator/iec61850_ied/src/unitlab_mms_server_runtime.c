@@ -5,6 +5,7 @@
 
 #include "wire/orchestration/unitlab_mms_wire_builder.h"
 #include "wire/ber/unitlab_mms_ber.h"
+#include "wire/acse/unitlab_mms_acse.h"
 #include "wire/presentation/unitlab_mms_presentation.h"
 #include "wire/session/unitlab_mms_session_spdu.h"
 #include "wire/transport/unitlab_mms_transport_frame.h"
@@ -59,6 +60,8 @@ static int server_runtime_decode_transport_to_wire_pdu(
     UnitLabMmsTransportFrame transport_frame;
     UnitLabMmsSessionSpdu session_spdu;
     UnitLabMmsPresentationApdu presentation_apdu;
+    const uint8_t* presentation_bytes = NULL;
+    size_t presentation_length = 0U;
     size_t transport_consumed_length = 0U;
     size_t session_consumed_length = 0U;
     size_t presentation_consumed_length = 0U;
@@ -86,11 +89,13 @@ static int server_runtime_decode_transport_to_wire_pdu(
         snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Session SPDU is missing presentation bytes.");
         return 0;
     }
+    presentation_bytes = session_spdu.raw_parameter_bytes;
+    presentation_length = session_spdu.raw_parameter_length;
     unitlab_mms_presentation_apdu_init(&presentation_apdu);
-    if (!unitlab_mms_presentation_decode(&presentation_apdu, session_spdu.raw_parameter_bytes, session_spdu.raw_parameter_length, &presentation_consumed_length, &operation_result->diagnostic)) {
+    if (!unitlab_mms_presentation_decode(&presentation_apdu, presentation_bytes, presentation_length, &presentation_consumed_length, &operation_result->diagnostic)) {
         return 0;
     }
-    if (presentation_consumed_length != session_spdu.raw_parameter_length) {
+    if (presentation_consumed_length != presentation_length) {
         operation_result->diagnostic.code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
         snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Incoming bytes contain trailing presentation bytes.");
         return 0;
@@ -101,16 +106,39 @@ static int server_runtime_decode_transport_to_wire_pdu(
         return 0;
     }
     unitlab_mms_pdu_init(wire_pdu);
-    if (!unitlab_mms_pdu_decode(wire_pdu, presentation_apdu.payload_bytes, presentation_apdu.payload_length, &pdu_consumed_length, &operation_result->diagnostic)) {
-        return 0;
+    if (unitlab_mms_pdu_decode(wire_pdu, presentation_apdu.payload_bytes, presentation_apdu.payload_length, &pdu_consumed_length, &operation_result->diagnostic)) {
+        if (pdu_consumed_length != presentation_apdu.payload_length) {
+            operation_result->diagnostic.code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+            snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Incoming bytes contain trailing MMS bytes.");
+            return 0;
+        }
+        *consumed_length = transport_consumed_length;
+        return 1;
     }
-    if (pdu_consumed_length != presentation_apdu.payload_length) {
-        operation_result->diagnostic.code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
-        snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Incoming bytes contain trailing MMS bytes.");
-        return 0;
+
+    {
+        UnitLabMmsAcseApdu acse_apdu;
+        size_t acse_consumed_length = 0U;
+
+        unitlab_mms_acse_apdu_init(&acse_apdu);
+        if (!unitlab_mms_acse_decode(&acse_apdu, presentation_apdu.payload_bytes, presentation_apdu.payload_length, &acse_consumed_length, &operation_result->diagnostic)) {
+            return 0;
+        }
+        if (acse_consumed_length != presentation_apdu.payload_length) {
+            operation_result->diagnostic.code = UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR;
+            snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Incoming bytes contain trailing ACSE bytes.");
+            return 0;
+        }
+        if (acse_apdu.kind != UNITLAB_MMS_ACSE_APDU_AARQ) {
+            operation_result->diagnostic.code = UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED;
+            snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Association request bytes must carry an ACSE AARQ or MMS initiate request.");
+            return 0;
+        }
+        unitlab_mms_pdu_init(wire_pdu);
+        wire_pdu->kind = UNITLAB_MMS_PDU_INITIATE_REQUEST;
+        *consumed_length = transport_consumed_length;
+        return 1;
     }
-    *consumed_length = transport_consumed_length;
-    return 1;
 }
 
 void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
@@ -434,6 +462,12 @@ int unitlab_mms_server_runtime_apply_incoming_bytes(UnitLabMmsServerRuntime* ser
         return 0;
     }
 
+    if (server_runtime->session.state != UNITLAB_MMS_SESSION_DISCONNECTED) {
+        unitlab_mms_session_init(&server_runtime->session);
+        unitlab_mms_pending_request_init(&server_runtime->pending_request);
+        unitlab_mms_transport_exchange_init(&server_runtime->transport);
+    }
+
     unitlab_mms_operation_result_init(operation_result);
     unitlab_mms_pdu_init(&wire_pdu);
     if (!server_runtime_decode_transport_to_wire_pdu(buffer, buffer_length, &transport_consumed_length, &wire_pdu, operation_result)) {
@@ -487,6 +521,12 @@ int unitlab_mms_server_runtime_apply_association_request_bytes(UnitLabMmsServerR
         snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Server runtime must be running before applying association request bytes.");
         server_runtime_fail_and_capture(server_runtime, operation_result);
         return 0;
+    }
+
+    if (server_runtime->session.state != UNITLAB_MMS_SESSION_DISCONNECTED) {
+        unitlab_mms_session_init(&server_runtime->session);
+        unitlab_mms_pending_request_init(&server_runtime->pending_request);
+        unitlab_mms_transport_exchange_init(&server_runtime->transport);
     }
 
     unitlab_mms_operation_result_init(operation_result);

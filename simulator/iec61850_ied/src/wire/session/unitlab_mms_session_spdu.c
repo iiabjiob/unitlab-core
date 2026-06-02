@@ -277,6 +277,28 @@ int unitlab_mms_session_spdu_decode(UnitLabMmsSessionSpdu* spdu, const uint8_t* 
     spdu->encoded_length = total_length;
     spdu->raw_parameter_bytes = &buffer[1U + li_length];
     spdu->raw_parameter_length = parameter_length;
+    if (kind == UNITLAB_MMS_SESSION_SPDU_CONNECT || kind == UNITLAB_MMS_SESSION_SPDU_ACCEPT) {
+        size_t offset = 0U;
+        while (offset + 2U <= spdu->raw_parameter_length) {
+            uint8_t parameter_tag = spdu->raw_parameter_bytes[offset];
+            size_t parameter_length_bytes = (size_t)spdu->raw_parameter_bytes[offset + 1U];
+            size_t parameter_total_length = 2U + parameter_length_bytes;
+            if (offset + parameter_total_length > spdu->raw_parameter_length) {
+                session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "session SPDU parameter list is truncated.");
+                return 0;
+            }
+            if (parameter_tag == 0xC1U) {
+                spdu->raw_parameter_bytes = &spdu->raw_parameter_bytes[offset + 2U];
+                spdu->raw_parameter_length = parameter_length_bytes;
+                break;
+            }
+            offset += parameter_total_length;
+        }
+        if (spdu->raw_parameter_bytes == &buffer[1U + li_length] || spdu->raw_parameter_length == 0U) {
+            session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "session SPDU is missing user data bytes.");
+            return 0;
+        }
+    }
     *consumed_length = total_length;
     session_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;

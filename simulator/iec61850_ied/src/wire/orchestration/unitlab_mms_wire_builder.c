@@ -237,7 +237,6 @@ int unitlab_mms_build_association_response_frame(
     uint8_t session_payload[256U];
     UnitLabMmsAcseApdu acse_apdu;
     UnitLabMmsPresentationApdu presentation_apdu;
-    UnitLabMmsSessionSpdu session_apdu;
     UnitLabMmsTransportFrame transport_frame;
     size_t presentation_payload_length = 0U;
     size_t session_payload_length = 0U;
@@ -360,12 +359,22 @@ int unitlab_mms_build_association_response_frame(
         return 0;
     }
 
-    unitlab_mms_session_spdu_init(&session_apdu);
-    session_apdu.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
-    session_apdu.spdu_bytes = presentation_payload;
-    session_apdu.spdu_length = presentation_payload_length;
-    if (!unitlab_mms_session_spdu_encode(&session_apdu, session_payload, sizeof(session_payload), &session_payload_length, diagnostic)) {
-        return 0;
+    {
+        static const uint8_t session_parameters_prefix[] = {
+            0x05U, 0x06U, 0x13U, 0x01U, 0x00U, 0x16U, 0x01U, 0x02U, 0x14U, 0x02U, 0x00U, 0x02U, 0x34U, 0x02U, 0x00U, 0x01U,
+        };
+        size_t session_parameters_length = sizeof(session_parameters_prefix) + 2U + presentation_payload_length;
+        if (session_parameters_length > 0xFFU || session_parameters_length + 2U > sizeof(session_payload)) {
+            wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association response session payload is too large.");
+            return 0;
+        }
+        session_payload[0U] = 0x0EU;
+        session_payload[1U] = (uint8_t)session_parameters_length;
+        memcpy(&session_payload[2U], session_parameters_prefix, sizeof(session_parameters_prefix));
+        session_payload[2U + sizeof(session_parameters_prefix)] = 0xC1U;
+        session_payload[3U + sizeof(session_parameters_prefix)] = (uint8_t)presentation_payload_length;
+        memcpy(&session_payload[4U + sizeof(session_parameters_prefix)], presentation_payload, presentation_payload_length);
+        session_payload_length = 2U + session_parameters_length;
     }
     unitlab_mms_transport_frame_init(&transport_frame);
     transport_frame.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;

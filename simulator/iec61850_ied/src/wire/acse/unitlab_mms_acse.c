@@ -159,8 +159,29 @@ int unitlab_mms_acse_decode(UnitLabMmsAcseApdu* apdu, const uint8_t* buffer, siz
         return 0;
     }
     if (!acse_tag_to_kind(&element.tag, &kind)) {
-        acse_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "unsupported ACSE APDU tag.");
-        return 0;
+        UnitLabMmsBerElement first_field;
+        size_t first_field_consumed_length = 0U;
+
+        unitlab_mms_ber_element_init(&first_field);
+        if (!unitlab_mms_ber_read(&first_field, buffer, buffer_length, &first_field_consumed_length, diagnostic)) {
+            return 0;
+        }
+        if (first_field.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC || !first_field.tag.constructed) {
+            acse_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "unsupported ACSE APDU tag.");
+            return 0;
+        }
+        kind = UNITLAB_MMS_ACSE_APDU_AARQ;
+        unitlab_mms_acse_apdu_init(apdu);
+        apdu->kind = kind;
+        apdu->apdu_bytes = buffer;
+        apdu->apdu_length = buffer_length;
+        apdu->encoded_length = buffer_length;
+        if (!acse_parse_raw_fields(buffer, buffer_length, apdu, diagnostic)) {
+            return 0;
+        }
+        *consumed_length = buffer_length;
+        acse_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+        return 1;
     }
     unitlab_mms_acse_apdu_init(apdu);
     apdu->kind = kind;

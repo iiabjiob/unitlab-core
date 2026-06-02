@@ -104,7 +104,7 @@ class Iec61850ClientControlService:
         else:
             self._live_wire_binary_path = getattr(settings, "iec61850_ied_live_wire_binary_path", None) or None
         self._live_wire_service_host = live_wire_service_host or getattr(settings, "iec61850_ied_live_wire_host", "iec61850-ied")
-        self._live_wire_data_port = live_wire_data_port if live_wire_data_port is not None else int(getattr(settings, "iec61850_ied_live_wire_port", 12347))
+        self._live_wire_data_port = live_wire_data_port if live_wire_data_port is not None else int(getattr(settings, "iec61850_ied_live_wire_port", 12447))
         self._live_wire_control_port = live_wire_control_port if live_wire_control_port is not None else int(getattr(settings, "iec61850_ied_live_wire_control_port", self._live_wire_data_port + 1))
         self._live_wire_bind_address = live_wire_bind_address or getattr(settings, "iec61850_ied_wire_bind_address", "127.0.0.1")
         self._live_wire_process: Iec61850IedSimulatorProcessHandle | None = None

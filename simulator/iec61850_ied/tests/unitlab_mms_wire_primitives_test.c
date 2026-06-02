@@ -251,11 +251,63 @@ static void test_presentation_fully_encoded_roundtrip(void)
     assert(unitlab_mms_presentation_decode(&decoded_apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == encoded_length);
     assert(decoded_apdu.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
-    assert(decoded_apdu.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION);
+    assert(decoded_apdu.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
     assert(decoded_apdu.tag.constructed == 1);
-    assert(decoded_apdu.tag.tag_number == 1U);
+    assert(decoded_apdu.tag.tag_number == 17U);
     assert(decoded_apdu.payload_length == sizeof(payload));
     assert(memcmp(decoded_apdu.payload_bytes, payload, sizeof(payload)) == 0);
+}
+
+static void test_presentation_decode_accepts_universal_sequence_wrapper(void)
+{
+    uint8_t buffer[32];
+    UnitLabMmsBerElement element;
+    UnitLabMmsPresentationApdu decoded_apdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[4] = { 0x30U, 0x02U, 0x01U, 0x01U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_element_init(&element);
+    element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+    element.tag.constructed = 1;
+    element.tag.tag_number = 17U;
+    element.value_bytes = payload;
+    element.value_length = sizeof(payload);
+    assert(unitlab_mms_ber_write(&element, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    unitlab_mms_presentation_apdu_init(&decoded_apdu);
+    assert(unitlab_mms_presentation_decode(&decoded_apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_apdu.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
+    assert(decoded_apdu.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(decoded_apdu.tag.constructed == 1);
+    assert(decoded_apdu.tag.tag_number == 17U);
+    assert(decoded_apdu.payload_length == sizeof(payload));
+    assert(memcmp(decoded_apdu.payload_bytes, payload, sizeof(payload)) == 0);
+}
+
+static void test_acse_decode_accepts_raw_aarq_fields(void)
+{
+    uint8_t buffer[64];
+    UnitLabMmsAcseApdu apdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[] = {
+        0xA0U, 0x03U, 0x80U, 0x01U, 0x01U,
+        0xA2U, 0x03U, 0x80U, 0x01U, 0x01U,
+    };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_ber_write(&(UnitLabMmsBerElement){ .tag = { UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 0U }, .value_bytes = payload, .value_length = sizeof(payload) }, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    unitlab_mms_acse_apdu_init(&apdu);
+    assert(unitlab_mms_acse_decode(&apdu, payload, sizeof(payload), &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == sizeof(payload));
+    assert(apdu.kind == UNITLAB_MMS_ACSE_APDU_AARQ);
+    assert(apdu.field_count >= 2U);
+    assert(apdu.fields[0].tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(apdu.fields[0].tag.tag_number == 0U);
 }
 
 static void test_presentation_decode_rejects_unsupported_outer_tag(void)
@@ -442,9 +494,9 @@ static void test_wire_association_fixture_fully_encoded_roundtrip(void)
     assert(decoded_fixture.session.raw_parameter_length == presentation_length);
     assert(memcmp(decoded_fixture.session.raw_parameter_bytes, presentation_buffer, presentation_length) == 0);
     assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
-    assert(decoded_fixture.presentation.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION);
+    assert(decoded_fixture.presentation.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
     assert(decoded_fixture.presentation.tag.constructed == 1);
-    assert(decoded_fixture.presentation.tag.tag_number == 1U);
+    assert(decoded_fixture.presentation.tag.tag_number == 17U);
     assert(decoded_fixture.presentation.payload_length == sizeof(fully_encoded_payload));
     assert(memcmp(decoded_fixture.presentation.payload_bytes, fully_encoded_payload, sizeof(fully_encoded_payload)) == 0);
 }
@@ -806,7 +858,7 @@ static void test_association_response_frame_smoke(void)
     unitlab_mms_session_spdu_init(&session_spdu);
     assert(unitlab_mms_session_spdu_decode(&session_spdu, decoded_frame.cotp.user_data, decoded_frame.cotp.user_data_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == decoded_frame.cotp.user_data_length);
-    assert(session_spdu.kind == UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER);
+    assert(session_spdu.kind == UNITLAB_MMS_SESSION_SPDU_ACCEPT);
     assert(session_spdu.raw_parameter_length > 0U);
 
     unitlab_mms_presentation_apdu_init(&presentation_apdu);
@@ -965,10 +1017,10 @@ static void test_session_spdu_roundtrips(void)
         const uint8_t payload[5];
         size_t payload_length;
     } cases[] = {
-        { UNITLAB_MMS_SESSION_SPDU_CONNECT, 13U, { 13U, 3U, 0x01U, 0x02U, 0x03U }, 5U },
+        { UNITLAB_MMS_SESSION_SPDU_CONNECT, 13U, { 13U, 3U, 0xC1U, 1U, 0xA0U }, 5U },
         { UNITLAB_MMS_SESSION_SPDU_CONNECT_DATA_OVERFLOW, 15U, { 15U, 3U, 0xAAU, 0xBBU, 0xCCU }, 5U },
         { UNITLAB_MMS_SESSION_SPDU_OVERFLOW_ACCEPT, 16U, { 16U, 3U, 0x11U, 0x22U, 0x33U }, 5U },
-        { UNITLAB_MMS_SESSION_SPDU_ACCEPT, 14U, { 14U, 3U, 0x44U, 0x55U, 0x66U }, 5U },
+        { UNITLAB_MMS_SESSION_SPDU_ACCEPT, 14U, { 14U, 3U, 0xC1U, 1U, 0xB0U }, 5U },
         { UNITLAB_MMS_SESSION_SPDU_REFUSE, 12U, { 12U, 3U, 0x77U, 0x88U, 0x99U }, 5U },
         { UNITLAB_MMS_SESSION_SPDU_FINISH, 9U, { 9U, 3U, 0x10U, 0x20U, 0x30U }, 5U },
         { UNITLAB_MMS_SESSION_SPDU_DISCONNECT, 10U, { 10U, 3U, 0x40U, 0x50U, 0x60U }, 5U },
@@ -1013,6 +1065,11 @@ static void test_session_spdu_roundtrips(void)
             assert(decoded_spdu.raw_parameter_length == cases[i].payload_length);
             assert(decoded_spdu.raw_parameter_bytes == &decoded_spdu.spdu_bytes[4]);
             assert(memcmp(decoded_spdu.raw_parameter_bytes, cases[i].payload, cases[i].payload_length) == 0);
+        } else if (cases[i].kind == UNITLAB_MMS_SESSION_SPDU_CONNECT || cases[i].kind == UNITLAB_MMS_SESSION_SPDU_ACCEPT) {
+            assert(decoded_spdu.spdu_length == cases[i].payload_length);
+            assert(decoded_spdu.raw_parameter_length == 1U);
+            assert(decoded_spdu.raw_parameter_bytes == &decoded_spdu.spdu_bytes[4]);
+            assert(decoded_spdu.raw_parameter_bytes[0] == cases[i].payload[4]);
         } else {
             assert(decoded_spdu.spdu_length == cases[i].payload_length);
             assert(decoded_spdu.raw_parameter_length == cases[i].payload_length - 2U);
@@ -1484,6 +1541,8 @@ int main(void)
     test_session_spdu_rejects_mismatched_declared_kind_and_code();
     test_presentation_simply_encoded_roundtrip();
     test_presentation_fully_encoded_roundtrip();
+    test_acse_decode_accepts_raw_aarq_fields();
+    test_presentation_decode_accepts_universal_sequence_wrapper();
     test_presentation_decode_rejects_unsupported_outer_tag();
     test_presentation_encode_rejects_non_supported_kind();
     test_presentation_encode_rejects_null_payload_bytes();

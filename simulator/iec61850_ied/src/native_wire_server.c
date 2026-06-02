@@ -83,6 +83,19 @@ static int build_native_information_report_frame(
     report_pdu.pdu_length = sizeof(report_payload);
     return unitlab_mms_build_wire_frame_from_pdu(&report_pdu, scratch, sizeof(scratch), buffer, buffer_length, encoded_length, diagnostic);
 }
+
+static void reset_native_wire_runtime_state(UnitLabMmsServerRuntime* server_runtime)
+{
+    if (server_runtime == NULL) {
+        return;
+    }
+    unitlab_mms_session_init(&server_runtime->session);
+    unitlab_mms_pending_request_init(&server_runtime->pending_request);
+    unitlab_mms_transport_exchange_init(&server_runtime->transport);
+    unitlab_mms_server_runtime_capture_snapshot(server_runtime);
+    printf("native-wire-server: runtime-reset session-state=%u pending-state=%u transport-invoke=%u\n", (unsigned)server_runtime->session.state, (unsigned)server_runtime->pending_request.state, (unsigned)server_runtime->transport.invoke_id);
+    fflush(stdout);
+}
 static int resolve_listener(const char* bind_address, int port, struct addrinfo** out_info)
 {
     struct addrinfo hints;
@@ -306,7 +319,8 @@ int unitlab_run_native_wire_server(
                     goto fail;
                 }
                 data_client_fd = accepted;
-                printf("native-wire-server: data-client-connected\n");
+                reset_native_wire_runtime_state(server_runtime);
+                printf("native-wire-server: data-client-connected session-state=%u\n", (unsigned)server_runtime->session.state);
                 fflush(stdout);
                 continue;
             }
@@ -348,6 +362,7 @@ int unitlab_run_native_wire_server(
                     fflush(stdout);
                     close_fd(&data_client_fd);
                     close_fd(&control_client_fd);
+                    reset_native_wire_runtime_state(server_runtime);
                 }
                 else {
                     UnitLabMmsOperationResult incoming_result;
@@ -358,6 +373,8 @@ int unitlab_run_native_wire_server(
                     UnitLabMmsTransportFrame incoming_transport;
                     unitlab_mms_operation_result_init(&incoming_result);
                     unitlab_mms_diagnostic_clear(&response_diagnostic);
+                    printf("native-wire-server: pre-association session-state=%u incoming-bytes=%zd\n", (unsigned)server_runtime->session.state, received);
+                    fflush(stdout);
                     unitlab_mms_transport_frame_init(&incoming_transport);
                     if (unitlab_mms_transport_frame_decode(&incoming_transport, incoming, (size_t)received, &consumed_length, &response_diagnostic)
                         && incoming_transport.cotp.kind == UNITLAB_MMS_COTP_TPDU_CR) {
@@ -377,7 +394,7 @@ int unitlab_run_native_wire_server(
                         continue;
                     }
                     unitlab_mms_diagnostic_clear(&response_diagnostic);
-                    if (server_runtime->session.state == UNITLAB_MMS_SESSION_DISCONNECTED
+                    if (server_runtime->session.state != UNITLAB_MMS_SESSION_ASSOCIATED
                         && unitlab_mms_server_runtime_apply_association_request_bytes(server_runtime, incoming, (size_t)received, &consumed_length, &incoming_result)) {
                         if (!build_native_association_response_frame(server_runtime, response_frame, sizeof(response_frame), &response_length, &response_diagnostic)) {
                             set_result(result, "NATIVE_WIRE_SERVER_ASSOCIATION_RESPONSE_BUILD_FAILED", response_diagnostic.message);
@@ -392,6 +409,13 @@ int unitlab_run_native_wire_server(
                             goto fail;
                         }
                         printf("native-wire-server: association-response-sent bytes=%zu\n", response_length);
+                        fflush(stdout);
+                    }
+                    else if (incoming_result.diagnostic.code != UNITLAB_MMS_DIAGNOSTIC_OK) {
+                        printf(
+                            "native-wire-server: association-request-rejected code=%d message=%s\n",
+                            (int)incoming_result.diagnostic.code,
+                            incoming_result.diagnostic.message);
                         fflush(stdout);
                     }
                     else if (unitlab_mms_server_runtime_apply_incoming_bytes(server_runtime, incoming, (size_t)received, &consumed_length, &incoming_result)
@@ -432,6 +456,8 @@ int unitlab_run_native_wire_server(
                     printf("native-wire-server: control-client-disconnected\n");
                     fflush(stdout);
                     close_fd(&control_client_fd);
+                    close_fd(&data_client_fd);
+                    reset_native_wire_runtime_state(server_runtime);
                     continue;
                 }
                 int outcome = handle_command(server_runtime, &data_client_fd, data_listen_fd, command, frame, sizeof(frame), &frame_length, result);
