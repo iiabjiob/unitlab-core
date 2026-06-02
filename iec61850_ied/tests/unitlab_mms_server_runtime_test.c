@@ -443,6 +443,7 @@ static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
     memset(&plan, 0, sizeof(plan));
     memset(signals, 0, sizeof(signals));
     strcpy(signals[0].object_reference, "Pos.stVal");
+    signals[0].initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
     strcpy(signals[0].initial_value, "model-read");
     plan.signal_count = 1U;
     plan.signals = signals;
@@ -539,6 +540,7 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
     memset(&plan, 0, sizeof(plan));
     memset(signals, 0, sizeof(signals));
     strcpy(signals[0].object_reference, "Pos.stVal");
+    signals[0].initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
     strcpy(signals[0].initial_value, "model-read");
     plan.signal_count = 1U;
     plan.signals = signals;
