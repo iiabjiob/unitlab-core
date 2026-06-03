@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+import os
 import time
 from pathlib import Path
 import select
@@ -277,16 +278,16 @@ class Iec61850ClientControlService:
                 client_id=self._client_id,
                 outcome="associated",
             )
-            self._live_wire_last_frame = self._read_live_wire_process_frame_response("confirmed read response")
+            self._live_wire_last_frame = None
             self._live_wire_last_diagnostic = None
             self._runtime._append_event(
-                kind="wire-confirmed-read-frame",
+                kind="wire-client-ready",
                 session_id=self._session_id,
                 endpoint_id=spec.endpoint.id,
                 client_id=self._client_id,
-                outcome="received",
-                code=str(len(self._live_wire_last_frame)),
-                message=self._live_wire_last_frame.hex(),
+                outcome="ready",
+                code=None,
+                message=None,
             )
         except Exception:
             if process_handle is not None:
@@ -310,6 +311,7 @@ class Iec61850ClientControlService:
                 "LIVE_WIRE_PROCESS_NOT_OPEN",
                 "IEC 61850 live wire transport process is not open.",
             )
+        self._drain_live_wire_process_stdout()
         write_ied_simulator_process_command(self._live_wire_process, "emit-report")
         frame = self._read_live_wire_process_frame_response("report")
         self._live_wire_last_frame = frame
@@ -323,6 +325,16 @@ class Iec61850ClientControlService:
             code=str(len(frame)),
             message=frame.hex(),
         )
+
+    def _drain_live_wire_process_stdout(self) -> None:
+        if self._live_wire_process is None:
+            return
+        deadline = time.monotonic()
+        line_buffer = bytearray()
+        while True:
+            line = _read_process_stdout_line(self._live_wire_process.process, timeout_deadline=deadline, line_buffer=line_buffer)
+            if line is None:
+                return
 
     def _stop_live_wire_transport(self) -> None:
         if self._live_wire_process is None:
@@ -352,27 +364,24 @@ class Iec61850ClientControlService:
             outcome="closed",
         )
 
-    def _read_live_wire_process_frame_response(self, frame_kind: str) -> bytes:
+    def _read_live_wire_process_frame_response(self, frame_kind: str, timeout_seconds: float = 5.0) -> bytes:
         if self._live_wire_process is None or self._live_wire_process.process.stdout is None:
             raise Iec61850ReportRuntimeError(
                 "LIVE_WIRE_PROCESS_NOT_OPEN",
                 "IEC 61850 live wire transport process is not open.",
             )
-        deadline = time.monotonic() + 5.0
+        deadline = time.monotonic() + max(timeout_seconds, 0.0)
+        line_buffer = bytearray()
         while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
+            line = _read_process_stdout_line(self._live_wire_process.process, timeout_deadline=deadline, line_buffer=line_buffer)
+            if line is None:
                 raise Iec61850ReportRuntimeError(
                     "LIVE_WIRE_FRAME_TIMEOUT",
                     f"IEC 61850 live wire transport timed out while waiting for a {frame_kind} frame response.",
                 )
-            readable, _, _ = select.select([self._live_wire_process.process.stdout], [], [], min(1.0, remaining))
-            if not readable:
-                continue
-            line = self._live_wire_process.process.stdout.readline()
+            line = line.strip()
             if not line:
                 continue
-            line = line.strip()
             if line.startswith("wire-frame="):
                 return self._decode_live_wire_frame_response(line, frame_kind)
 
@@ -438,6 +447,51 @@ class Iec61850ClientControlService:
 
 def get_iec61850_client_control_service() -> Iec61850ClientControlService:
     return _CLIENT_CONTROL_SERVICE
+
+def _read_process_stdout_line(process, *, timeout_deadline: float, line_buffer: bytearray) -> str | None:
+    stdout = process.stdout
+    if stdout is None:
+        return None
+
+    raw_fd = None
+    raw_stream = getattr(getattr(stdout, "buffer", None), "raw", None)
+    if raw_stream is not None:
+        fileno = getattr(raw_stream, "fileno", None)
+        if callable(fileno):
+            raw_fd = fileno()
+
+    if raw_fd is None:
+        line = stdout.readline()
+        return line or None
+
+    while True:
+        newline_index = line_buffer.find(b"\n")
+        if newline_index >= 0:
+            line = bytes(line_buffer[: newline_index + 1])
+            del line_buffer[: newline_index + 1]
+            return line.decode("utf-8", errors="replace")
+
+        remaining = timeout_deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+
+        readable, _, _ = select.select([raw_fd], [], [], min(remaining, 1.0))
+        if not readable:
+            continue
+
+        try:
+            chunk = os.read(raw_fd, 4096)
+        except BlockingIOError:
+            continue
+        if not chunk:
+            if line_buffer:
+                line = bytes(line_buffer)
+                line_buffer.clear()
+                return line.decode("utf-8", errors="replace")
+            return None
+        line_buffer.extend(chunk)
+
+
 
 
 def _utc_now() -> datetime:

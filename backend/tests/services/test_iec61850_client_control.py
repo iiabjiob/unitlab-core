@@ -171,9 +171,9 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
         assert started_specs[0].bind_address == "wire-host"
         assert state.live_wire_open is True
         assert process_commands == []
-        assert state.live_wire_last_frame_length == len(READ_RESPONSE_FRAME)
-        assert state.live_wire_last_frame_hex == READ_RESPONSE_FRAME.hex()
-        assert [event.kind for event in state.transcript][-3:] == ["wire-session-open", "wire-associate", "wire-confirmed-read-frame"]
+        assert state.live_wire_last_frame_length is None
+        assert state.live_wire_last_frame_hex is None
+        assert [event.kind for event in state.transcript][-3:] == ["wire-session-open", "wire-associate", "wire-client-ready"]
 
         state = service.emit_live_wire_report()
         assert process_commands == ["emit-report"]
@@ -230,15 +230,15 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
     state = service.start_live_wire_transport()
     assert state.live_wire_open is True
     assert process_commands == []
-    assert state.live_wire_last_frame_length == len(READ_RESPONSE_FRAME)
-    assert state.live_wire_last_frame_hex == READ_RESPONSE_FRAME.hex()
+    assert state.live_wire_last_frame_length is None
+    assert state.live_wire_last_frame_hex is None
     assert state.live_wire_endpoint is not None
     assert state.live_wire_endpoint.host == "wire-host"
 
     state = service.emit_live_wire_report()
     assert state.live_wire_last_frame_length == len(REPORT_FRAME)
     assert state.live_wire_last_frame_hex == REPORT_FRAME.hex()
-    assert [event.kind for event in state.transcript][-4:] == ["wire-session-open", "wire-associate", "wire-confirmed-read-frame", "wire-report-frame"]
+    assert [event.kind for event in state.transcript][-4:] == ["wire-session-open", "wire-associate", "wire-client-ready", "wire-report-frame"]
     assert process_commands == ["emit-report"]
 
     state = service.stop_live_wire_transport()

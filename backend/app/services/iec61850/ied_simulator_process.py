@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import select
 import socket
 import subprocess
@@ -571,6 +572,57 @@ def wait_ied_simulator_process_ready(
         sleep(min(retry_interval_seconds, remaining))
 
 
+def _read_process_stdout_line(process: subprocess.Popen[str], *, timeout_deadline: float, line_buffer: bytearray) -> str | None:
+    stdout = process.stdout
+    if stdout is None:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_NATIVE_WIRE_STDOUT_UNAVAILABLE",
+            "IEC 61850 native wire client readiness requires process stdout.",
+        )
+
+    raw_fd = None
+    raw_stream = getattr(getattr(stdout, "buffer", None), "raw", None)
+    if raw_stream is not None:
+        fileno = getattr(raw_stream, "fileno", None)
+        if callable(fileno):
+            raw_fd = fileno()
+
+    if raw_fd is None:
+        expected_prefix = "native-wire-client: state=associated"
+        while True:
+            line = stdout.readline()
+            if not line:
+                return None
+            return line
+
+    while True:
+        newline_index = line_buffer.find(b"\n")
+        if newline_index >= 0:
+            line = bytes(line_buffer[: newline_index + 1])
+            del line_buffer[: newline_index + 1]
+            return line.decode("utf-8", errors="replace")
+
+        remaining = timeout_deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+
+        readable, _, _ = select.select([raw_fd], [], [], min(remaining, 1.0))
+        if not readable:
+            continue
+
+        try:
+            chunk = os.read(raw_fd, 4096)
+        except BlockingIOError:
+            continue
+        if not chunk:
+            if line_buffer:
+                line = bytes(line_buffer)
+                line_buffer.clear()
+                return line.decode("utf-8", errors="replace")
+            return None
+        line_buffer.extend(chunk)
+
+
 def wait_ied_native_wire_client_ready(
     process: subprocess.Popen[str],
     *,
@@ -583,7 +635,8 @@ def wait_ied_native_wire_client_ready(
         )
 
     deadline = time.monotonic() + max(timeout_seconds, 0.0)
-    expected_prefix = "native-wire-client: ready"
+    expected_prefix = "native-wire-client: state=associated"
+    line_buffer = bytearray()
     while True:
         return_code = process.poll()
         if return_code is not None:
@@ -594,21 +647,13 @@ def wait_ied_native_wire_client_ready(
                 f"IEC 61850 native wire client exited before readiness with code {return_code}: {details}",
             )
 
-        remaining = max(deadline - time.monotonic(), 0.0)
-        if remaining <= 0:
+        line = _read_process_stdout_line(process, timeout_deadline=deadline, line_buffer=line_buffer)
+        if line is None:
             raise Iec61850ReportRuntimeError(
                 "SIMULATOR_NATIVE_WIRE_READY_TIMEOUT",
                 f"IEC 61850 native wire client did not print its ready banner within {timeout_seconds:g}s.",
             )
-
-        readable, _, _ = select.select([process.stdout], [], [], min(remaining, 1.0))
-        if not readable:
-            continue
-
-        line = process.stdout.readline()
-        if not line:
-            continue
-        if expected_prefix in line or "native-wire-client: state=ready" in line:
+        if expected_prefix in line or "native-wire-client: state=ready" in line or "native-wire-client: ready" in line:
             return
 
 
@@ -685,6 +730,7 @@ def start_ied_simulator_process(
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            bufsize=1,
         )
     except OSError as exc:
         raise Iec61850ReportRuntimeError(
