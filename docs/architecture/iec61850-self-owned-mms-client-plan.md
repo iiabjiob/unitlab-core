@@ -49,13 +49,13 @@ These are already present in the repository and are the first source of truth fo
 
 | Document | Local path | Use |
 | --- | --- | --- |
-| IEC 61850-6:2024 | `/workspace/docs/.IEC61850/IEC 61850-6-2024.pdf` | SCL, IED, Communication, DataSet, ReportControl extraction |
-| IEC 61850-7-2:2020 | `/workspace/docs/.IEC61850/IEC 61850-7-2-2020.pdf` | ACSI services, reports, DataSet, RCB attributes, GI, trigger options, optional fields |
-| IEC 61850-8-1:2020 | `/workspace/docs/.IEC61850/IEC 61850-8-1-2020.pdf` | MMS mapping for IEC 61850 client/server communication |
-| IEC 61850-7-3:2020 | `/workspace/docs/.IEC61850/IEC 61850-7-3-2020.pdf` | Common data classes and value shape interpretation |
-| IEC 61850-7-4:2020 | `/workspace/docs/.IEC61850/IEC 61850-7-4-2020.pdf` | Logical nodes and data object definitions |
-| IEC TR 61850-7-5:2021 | `/workspace/docs/.IEC61850/IEC TR 61850-7-5-2021.pdf` | Practical ACSI/report usage guidance |
-| IEC TR 61850-7-500:2017 | `/workspace/docs/.IEC61850/IEC TR 61850-7-500-2017.pdf` | Object modeling and usage examples |
+| IEC 61850-6:2024 | `/workspace/docs/STANDARTS/.IEC61850/IEC 61850-6-2024.pdf` | SCL, IED, Communication, DataSet, ReportControl extraction |
+| IEC 61850-7-2:2020 | `/workspace/docs/STANDARTS/.IEC61850/IEC 61850-7-2-2020.pdf` | ACSI services, reports, DataSet, RCB attributes, GI, trigger options, optional fields |
+| IEC 61850-8-1:2020 | `/workspace/docs/STANDARTS/.IEC61850/IEC 61850-8-1-2020.pdf` | MMS mapping for IEC 61850 client/server communication |
+| IEC 61850-7-3:2020 | `/workspace/docs/STANDARTS/.IEC61850/IEC 61850-7-3-2020.pdf` | Common data classes and value shape interpretation |
+| IEC 61850-7-4:2020 | `/workspace/docs/STANDARTS/.IEC61850/IEC 61850-7-4-2020.pdf` | Logical nodes and data object definitions |
+| IEC TR 61850-7-5:2021 | `/workspace/docs/STANDARTS/.IEC61850/IEC TR 61850-7-5-2021.pdf` | Practical ACSI/report usage guidance |
+| IEC TR 61850-7-500:2017 | `/workspace/docs/STANDARTS/.IEC61850/IEC TR 61850-7-500-2017.pdf` | Object modeling and usage examples |
 
 ## Public Standards And References
 

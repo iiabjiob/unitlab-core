@@ -24,17 +24,17 @@ export const IEC61850_REPORT_STANDARD_DOCUMENTS: readonly {
 }[] = [
   {
     id: "IEC_61850_6_2024",
-    path: "/workspace/docs/.IEC61850/IEC 61850-6-2024.pdf",
+    path: "/workspace/docs/STANDARTS/.IEC61850/IEC 61850-6-2024.pdf",
     role: "SCL/SCD source model: IED, AccessPoint, Server, LDevice, LN0/LN, DataSet, ReportControl, TrgOps, OptFields, RptEnabled.",
   },
   {
     id: "IEC_61850_7_2_2020",
-    path: "/workspace/docs/.IEC61850/IEC 61850-7-2-2020.pdf",
+    path: "/workspace/docs/STANDARTS/.IEC61850/IEC 61850-7-2-2020.pdf",
     role: "ACSI report semantics: DataSet, BRCB/URCB, trigger options, optional fields, reservation, enable, GI, report payload fields.",
   },
   {
     id: "IEC_61850_8_1_2020",
-    path: "/workspace/docs/.IEC61850/IEC 61850-8-1-2020.pdf",
+    path: "/workspace/docs/STANDARTS/.IEC61850/IEC 61850-8-1-2020.pdf",
     role: "MMS mapping for future real adapter object references and report service payloads.",
   },
 ] as const

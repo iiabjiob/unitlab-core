@@ -3,9 +3,9 @@
 Status: initial core slice implemented in `frontend/src/modules/scd-sld-core`.
 
 Reference standards:
-- `docs/.IEC61850/IEC 61850-6-2024.pdf` for SCL structure.
-- `docs/.IEC61850/IEC 61850-7-2-2020.pdf` for DataSet and report control semantics.
-- `docs/.IEC61850/IEC 61850-8-1-2020.pdf` for future MMS report mapping.
+- `docs/STANDARTS/.IEC61850/IEC 61850-6-2024.pdf` for SCL structure.
+- `docs/STANDARTS/.IEC61850/IEC 61850-7-2-2020.pdf` for DataSet and report control semantics.
+- `docs/STANDARTS/.IEC61850/IEC 61850-8-1-2020.pdf` for future MMS report mapping.
 
 ## Implemented Behavior
 

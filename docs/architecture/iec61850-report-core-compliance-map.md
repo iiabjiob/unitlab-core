@@ -3,9 +3,9 @@
 Status: simulator-only core alignment map. This document is a guardrail for the future C# port and for the later backend MMS adapter. It does not claim hardware validation.
 
 Normative local references:
-- `/workspace/docs/.IEC61850/IEC 61850-6-2024.pdf`
-- `/workspace/docs/.IEC61850/IEC 61850-7-2-2020.pdf`
-- `/workspace/docs/.IEC61850/IEC 61850-8-1-2020.pdf`
+- `/workspace/docs/STANDARTS/.IEC61850/IEC 61850-6-2024.pdf`
+- `/workspace/docs/STANDARTS/.IEC61850/IEC 61850-7-2-2020.pdf`
+- `/workspace/docs/STANDARTS/.IEC61850/IEC 61850-8-1-2020.pdf`
 
 ## Boundary Rules
 

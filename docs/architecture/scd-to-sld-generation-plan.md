@@ -22,7 +22,7 @@ SCD behavior should be derived from the IEC 61850-6 SCL standard, not from a sin
 
 Current local normative reference:
 
-- `docs/.IEC61850/IEC 61850-6-2024.pdf`
+- `docs/STANDARTS/.IEC61850/IEC 61850-6-2024.pdf`
 
 Real SCD files are compatibility inputs only:
 
