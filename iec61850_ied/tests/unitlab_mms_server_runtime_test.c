@@ -501,6 +501,7 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
     assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, wire_bytes, wire_length, &consumed_length, &operation_result));
     assert(operation_result.ok == 1);
     assert(consumed_length == wire_length);
+    assert(server_runtime.transport.invoke_id == 3U);
     assert(server_runtime.pending_request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE);
     assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_READ);
     assert(server_runtime.pending_request.invoke_id == 3U);

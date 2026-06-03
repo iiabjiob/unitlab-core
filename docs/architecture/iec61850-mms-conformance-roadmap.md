@@ -65,6 +65,7 @@ Progress:
 - conclude error now projects into runtime abort handling so the lifecycle has an explicit error exit;
 - initiate request/response now round-trip through the wire and semantic layers with association identity preserved;
 - invoke-ID allocation is exercised through the session allocator and preserved through an outgoing confirmed-request wire-frame roundtrip;
+- confirmed-request handling now preserves the transport-layer invoke ID through the server-runtime correlation path;
 - runtime bridge tests cover association, release, and conclude-error abort transitions;
 - wire codec tests cover `INITIATE_*` and `CONCLUDE_*` PDU round-trips.
 
