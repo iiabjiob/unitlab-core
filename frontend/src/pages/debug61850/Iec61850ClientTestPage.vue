@@ -65,51 +65,63 @@ function formatJson(value: unknown): string {
         <p class="iec61850-client-page__status">{{ stateSummary }}</p>
       </div>
       <div class="iec61850-client-page__actions">
-        <RouterLink class="iec61850-client-page__nav-link iec61850-client-page__action" to="/61850-debug">
-          Back to Debug
-        </RouterLink>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="loading" @click="refreshState">
-          Refresh state
-        </UiButton>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('open', Iec61850ClientAPI.openSession)">
-          {{ busyAction === 'open' ? 'Opening...' : 'Open session' }}
-        </UiButton>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('read', Iec61850ClientAPI.readReportControl)">
-          {{ busyAction === 'read' ? 'Reading...' : 'Read RCB' }}
-        </UiButton>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('reserve', Iec61850ClientAPI.reserveReportControl)">
-          {{ busyAction === 'reserve' ? 'Reserving...' : 'Reserve' }}
-        </UiButton>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('enable', Iec61850ClientAPI.enableReportControl)">
-          {{ busyAction === 'enable' ? 'Enabling...' : 'Enable' }}
-        </UiButton>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('gi', Iec61850ClientAPI.sendGeneralInterrogation)">
-          {{ busyAction === 'gi' ? 'Requesting GI...' : 'Request GI' }}
-        </UiButton>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('disable', Iec61850ClientAPI.disableReportControl)">
-          {{ busyAction === 'disable' ? 'Disabling...' : 'Disable' }}
-        </UiButton>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('release', Iec61850ClientAPI.releaseReportControl)">
-          {{ busyAction === 'release' ? 'Releasing...' : 'Release' }}
-        </UiButton>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('subscription', Iec61850ClientAPI.runSubscriptionPlan)">
-          {{ busyAction === 'subscription' ? 'Running...' : 'Run subscription' }}
-        </UiButton>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('wire-start', Iec61850ClientAPI.startWireTransport)">
-          {{ busyAction === 'wire-start' ? 'Starting wire...' : 'Start wire' }}
-        </UiButton>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('wire-emit', Iec61850ClientAPI.emitWireReport)">
-          {{ busyAction === 'wire-emit' ? 'Emitting report...' : 'Emit wire report' }}
-        </UiButton>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('wire-stop', Iec61850ClientAPI.stopWireTransport)">
-          {{ busyAction === 'wire-stop' ? 'Stopping wire...' : 'Stop wire transport' }}
-        </UiButton>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('close', Iec61850ClientAPI.closeSession)">
-          {{ busyAction === 'close' ? 'Closing...' : 'Close session' }}
-        </UiButton>
-        <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('clear', Iec61850ClientAPI.clearTranscript)">
-          {{ busyAction === 'clear' ? 'Clearing...' : 'Clear transcript' }}
-        </UiButton>
+        <div class="iec61850-client-page__action-group">
+          <RouterLink class="iec61850-client-page__nav-link iec61850-client-page__action" to="/61850-debug">
+            Back to Debug
+          </RouterLink>
+        </div>
+        <div class="iec61850-client-page__action-group">
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="loading" @click="refreshState">
+            Refresh state
+          </UiButton>
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('open', Iec61850ClientAPI.openSession)">
+            {{ busyAction === 'open' ? 'Opening...' : 'Open session' }}
+          </UiButton>
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('close', Iec61850ClientAPI.closeSession)">
+            {{ busyAction === 'close' ? 'Closing...' : 'Close session' }}
+          </UiButton>
+        </div>
+        <div class="iec61850-client-page__action-group">
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('read', Iec61850ClientAPI.readReportControl)">
+            {{ busyAction === 'read' ? 'Reading...' : 'Read RCB' }}
+          </UiButton>
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('reserve', Iec61850ClientAPI.reserveReportControl)">
+            {{ busyAction === 'reserve' ? 'Reserving...' : 'Reserve' }}
+          </UiButton>
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('enable', Iec61850ClientAPI.enableReportControl)">
+            {{ busyAction === 'enable' ? 'Enabling...' : 'Enable' }}
+          </UiButton>
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('disable', Iec61850ClientAPI.disableReportControl)">
+            {{ busyAction === 'disable' ? 'Disabling...' : 'Disable' }}
+          </UiButton>
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('release', Iec61850ClientAPI.releaseReportControl)">
+            {{ busyAction === 'release' ? 'Releasing...' : 'Release' }}
+          </UiButton>
+        </div>
+        <div class="iec61850-client-page__action-group">
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('gi', Iec61850ClientAPI.sendGeneralInterrogation)">
+            {{ busyAction === 'gi' ? 'Requesting GI...' : 'Request GI' }}
+          </UiButton>
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('subscription', Iec61850ClientAPI.runSubscriptionPlan)">
+            {{ busyAction === 'subscription' ? 'Running...' : 'Run subscription' }}
+          </UiButton>
+        </div>
+        <div class="iec61850-client-page__action-group">
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('wire-start', Iec61850ClientAPI.startWireTransport)">
+            {{ busyAction === 'wire-start' ? 'Starting wire...' : 'Start wire' }}
+          </UiButton>
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('wire-emit', Iec61850ClientAPI.emitWireReport)">
+            {{ busyAction === 'wire-emit' ? 'Emitting report...' : 'Emit wire report' }}
+          </UiButton>
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('wire-stop', Iec61850ClientAPI.stopWireTransport)">
+            {{ busyAction === 'wire-stop' ? 'Stopping wire...' : 'Stop wire transport' }}
+          </UiButton>
+        </div>
+        <div class="iec61850-client-page__action-group">
+          <UiButton variant="toolbar" size="xs" class="iec61850-client-page__action" :disabled="busyAction !== null" @click="runAction('clear', Iec61850ClientAPI.clearTranscript)">
+            {{ busyAction === 'clear' ? 'Clearing...' : 'Clear transcript' }}
+          </UiButton>
+        </div>
       </div>
     </header>
 
@@ -246,9 +258,17 @@ function formatJson(value: unknown): string {
 .iec61850-client-page__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.5rem;
   justify-content: flex-end;
   max-width: min(100%, 68rem);
+}
+
+.iec61850-client-page__action-group {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  align-items: center;
+  min-width: 0;
 }
 
 .iec61850-client-page__nav-link {
