@@ -173,7 +173,8 @@ int unitlab_mms_acse_build_association_accept_frame(const uint8_t* initiate_resp
     uint8_t result_source_bytes[32U];
     uint8_t external_choice_bytes[288U];
     uint8_t external_bytes[320U];
-    uint8_t user_information_bytes[352U];
+    uint8_t user_information_set_bytes[352U];
+    uint8_t user_information_bytes[384U];
     uint8_t sequence_bytes[512U];
     size_t protocol_version_length = 0U;
     size_t application_context_name_length = 0U;
@@ -182,6 +183,7 @@ int unitlab_mms_acse_build_association_accept_frame(const uint8_t* initiate_resp
     size_t result_source_length = 0U;
     size_t external_choice_length = 0U;
     size_t external_length = 0U;
+    size_t user_information_set_length = 0U;
     size_t user_information_length = 0U;
     size_t sequence_length = 0U;
     UnitLabMmsAcseApdu acse_apdu;
@@ -287,11 +289,23 @@ int unitlab_mms_acse_build_association_accept_frame(const uint8_t* initiate_resp
         return 0;
     }
     if (!acse_encode_nested_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            1,
+            17U,
+            external_bytes,
+            external_length,
+            user_information_set_bytes,
+            sizeof(user_information_set_bytes),
+            &user_information_set_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!acse_encode_nested_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
             30U,
-            external_bytes,
-            external_length,
+            user_information_set_bytes,
+            user_information_set_length,
             user_information_bytes,
             sizeof(user_information_bytes),
             &user_information_length,
