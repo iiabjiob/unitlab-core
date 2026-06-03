@@ -506,6 +506,47 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
     }
 }
 
+static void test_server_runtime_build_confirmed_response_bytes_matches_fixture_style_object_reference(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelSignal signals[1U];
+    uint8_t wire_bytes[256];
+    uint8_t response_bytes[256];
+    size_t wire_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+
+    memset(&plan, 0, sizeof(plan));
+    memset(signals, 0, sizeof(signals));
+    strcpy(signals[0].object_reference, "Pos.stVal");
+    signals[0].initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER;
+    strcpy(signals[0].initial_value, "0");
+    plan.signal_count = 1U;
+    plan.signals = signals;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+
+    assert(build_model_read_request_association_bytes("XCBR1$ST$Pos$stVal", 3U, wire_bytes, sizeof(wire_bytes), &wire_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, wire_bytes, wire_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(consumed_length == wire_length);
+    assert(strcmp(server_runtime.pending_request.object_reference, "XCBR1.ST.Pos.stVal") == 0);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+}
+
 static void test_server_runtime_apply_confirmed_request_and_build_response_roundtrips(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -892,6 +933,7 @@ int main(void)
     test_server_runtime_confirmed_response_fails_after_timeout();
     test_server_runtime_apply_reference_confirmed_request_and_build_response_roundtrips();
     test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips();
+    test_server_runtime_build_confirmed_response_bytes_matches_fixture_style_object_reference();
     test_server_runtime_apply_confirmed_request_and_build_response_roundtrips();
     test_server_runtime_rejects_mismatched_confirmed_response_invoke_id();
     test_server_runtime_apply_write_request_and_build_response_roundtrips();

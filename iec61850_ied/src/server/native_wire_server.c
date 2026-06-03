@@ -410,34 +410,54 @@ int unitlab_run_native_wire_server(
                             incoming_result.diagnostic.message);
                         fflush(stdout);
                     }
-                    else if (unitlab_mms_server_runtime_apply_incoming_bytes(server_runtime, incoming, (size_t)received, &consumed_length, &incoming_result)
-                        && server_runtime->pending_request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE
-                        && server_runtime->pending_request.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED) {
-                        if (!unitlab_mms_server_runtime_build_confirmed_response_bytes(
-                                server_runtime,
-                                NULL,
-                                0U,
-                                response_frame,
-                                sizeof(response_frame),
-                                &response_length,
-                                &response_diagnostic)) {
-                            set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_BUILD_FAILED", response_diagnostic.message);
-                            goto fail;
-                        }
-                        if (!send_all(data_client_fd, response_frame, response_length)) {
-                            set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_SEND_FAILED", "Native wire server could not send confirmed response frame.");
-                            goto fail;
-                        }
-                        if (!unitlab_mms_pending_request_complete(&server_runtime->pending_request, native_wire_now_ms(), &response_diagnostic)) {
-                            set_result(result, "NATIVE_WIRE_SERVER_REQUEST_COMPLETE_FAILED", response_diagnostic.message);
-                            goto fail;
-                        }
-                        printf("native-wire-server: confirmed-response-sent bytes=%zu\n", response_length);
-                        fflush(stdout);
-                    }
                     else {
-                        printf("native-wire-server: received-bytes=%zd\n", received);
-                        fflush(stdout);
+                        int apply_ok = unitlab_mms_server_runtime_apply_incoming_bytes(server_runtime, incoming, (size_t)received, &consumed_length, &incoming_result);
+                        if (apply_ok
+                            && server_runtime->pending_request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE
+                            && server_runtime->pending_request.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED) {
+                            if (!unitlab_mms_server_runtime_build_confirmed_response_bytes(
+                                    server_runtime,
+                                    NULL,
+                                    0U,
+                                    response_frame,
+                                    sizeof(response_frame),
+                                    &response_length,
+                                    &response_diagnostic)) {
+                                printf(
+                                    "native-wire-server: response-build-failed code=%d message=%s pending-state=%u pending-kind=%u invoke=%u consumed=%zu\n",
+                                    (int)response_diagnostic.code,
+                                    response_diagnostic.message,
+                                    (unsigned)server_runtime->pending_request.state,
+                                    (unsigned)server_runtime->pending_request.kind,
+                                    (unsigned)server_runtime->pending_request.invoke_id,
+                                    consumed_length);
+                                fflush(stdout);
+                                set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_BUILD_FAILED", response_diagnostic.message);
+                                goto fail;
+                            }
+                            if (!send_all(data_client_fd, response_frame, response_length)) {
+                                set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_SEND_FAILED", "Native wire server could not send confirmed response frame.");
+                                goto fail;
+                            }
+                            if (!unitlab_mms_pending_request_complete(&server_runtime->pending_request, native_wire_now_ms(), &response_diagnostic)) {
+                                set_result(result, "NATIVE_WIRE_SERVER_REQUEST_COMPLETE_FAILED", response_diagnostic.message);
+                                goto fail;
+                            }
+                            printf("native-wire-server: confirmed-response-sent bytes=%zu\n", response_length);
+                            fflush(stdout);
+                        }
+                        else {
+                            printf(
+                                "native-wire-server: received-bytes=%zd apply-ok=%d pending-state=%u pending-kind=%u last-event=%u diag=%d %s\n",
+                                received,
+                                apply_ok,
+                                (unsigned)server_runtime->pending_request.state,
+                                (unsigned)server_runtime->pending_request.kind,
+                                (unsigned)server_runtime->pending_request.last_event.kind,
+                                (int)incoming_result.diagnostic.code,
+                                incoming_result.diagnostic.message);
+                            fflush(stdout);
+                        }
                     }
                 }
                 continue;

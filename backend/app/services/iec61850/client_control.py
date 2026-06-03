@@ -545,7 +545,7 @@ class Iec61850ClientControlService:
 
     def _build_live_wire_confirmed_read_request_frame(self) -> bytes:
         return bytes.fromhex(
-            "0300004e02f080010001006141303f020103a03aa038020101a433a131a02f302da02ba1291a1173696d706c65494f47656e65726963494f1a144747494f31244d5824416e496e31246d61672466"
+            "0300003502f0800100010061286026020103a421301fa11da01b3019a017a1151a0558434252311a0c535424506f7324737456616c"
         )
 
     def _read_tpkt_frame(self, wire_socket: socket.socket, frame_label: str) -> bytes:

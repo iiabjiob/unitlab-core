@@ -110,8 +110,29 @@ static int server_runtime_encode_invoke_id_element(
     return unitlab_mms_ber_write(&invoke_id_element, buffer, buffer_length, encoded_length, diagnostic);
 }
 
+static const char* server_runtime_object_reference_suffix(const char* object_reference)
+{
+    const char* first_dot = NULL;
+    const char* second_dot = NULL;
+
+    if (object_reference == NULL || object_reference[0] == '\0') {
+        return object_reference;
+    }
+    first_dot = strchr(object_reference, '.');
+    if (first_dot == NULL) {
+        return object_reference;
+    }
+    second_dot = strchr(first_dot + 1, '.');
+    if (second_dot == NULL) {
+        return first_dot + 1;
+    }
+    return second_dot + 1;
+}
+
 static const UnitLabIedModelSignal* server_runtime_find_signal_by_object_reference(const UnitLabMmsServerRuntime* server_runtime, const char* object_reference)
 {
+    const char* suffix = server_runtime_object_reference_suffix(object_reference);
+
     if (server_runtime == NULL || server_runtime->model_plan == NULL || object_reference == NULL || object_reference[0] == '\0') {
         return NULL;
     }
@@ -120,7 +141,7 @@ static const UnitLabIedModelSignal* server_runtime_find_signal_by_object_referen
     }
     for (size_t index = 0U; index < server_runtime->model_plan->signal_count; index++) {
         const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[index];
-        if (strcmp(signal->object_reference, object_reference) == 0) {
+        if (strcmp(signal->object_reference, object_reference) == 0 || strcmp(signal->object_reference, suffix) == 0) {
             return signal;
         }
     }
