@@ -157,6 +157,46 @@ static void test_wire_pdu_bridge_information_report(void)
     assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
 }
 
+static void test_wire_pdu_bridge_initiate_request(void)
+{
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsSemanticResult result;
+    UnitLabMmsDecodeDiagnostic diagnostic;
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    unitlab_mms_semantic_result_init(&result);
+    unitlab_mms_decode_diagnostic_init(&diagnostic);
+    wire_pdu.kind = UNITLAB_MMS_PDU_INITIATE_REQUEST;
+    wire_pdu.invoke_id = 1U;
+
+    assert(unitlab_mms_semantic_result_from_wire_pdu(&result, &wire_pdu, &diagnostic) == 1);
+    assert(result.ok == 1);
+    assert(result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS);
+    assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_ASSOCIATE_REQUEST);
+    assert(result.pdu.invoke_id == 1U);
+    assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
+}
+
+static void test_wire_pdu_bridge_initiate_response(void)
+{
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsSemanticResult result;
+    UnitLabMmsDecodeDiagnostic diagnostic;
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    unitlab_mms_semantic_result_init(&result);
+    unitlab_mms_decode_diagnostic_init(&diagnostic);
+    wire_pdu.kind = UNITLAB_MMS_PDU_INITIATE_RESPONSE;
+    wire_pdu.invoke_id = 1U;
+
+    assert(unitlab_mms_semantic_result_from_wire_pdu(&result, &wire_pdu, &diagnostic) == 1);
+    assert(result.ok == 1);
+    assert(result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS);
+    assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_ASSOCIATE_RESPONSE);
+    assert(result.pdu.invoke_id == 1U);
+    assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
+}
+
 static void test_wire_pdu_bridge_reject(void)
 {
     UnitLabMmsPdu wire_pdu;
@@ -307,6 +347,8 @@ int main(void)
     test_reject_projection();
     test_wire_pdu_bridge_read_request();
     test_wire_pdu_bridge_information_report();
+    test_wire_pdu_bridge_initiate_request();
+    test_wire_pdu_bridge_initiate_response();
     test_wire_pdu_bridge_reject();
     test_wire_pdu_bridge_conclude_error();
     test_wire_pdu_bridge_get_name_list_request();

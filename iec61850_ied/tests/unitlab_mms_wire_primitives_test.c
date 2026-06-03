@@ -988,6 +988,41 @@ static void test_acse_association_accept_frame_roundtrip(void)
     assert(wrapped_element.value_length > 0U);
 }
 
+static void test_mms_pdu_initiate_roundtrip(void)
+{
+    struct {
+        UnitLabMmsPduKind kind;
+        uint8_t tag;
+    } cases[] = {
+        { UNITLAB_MMS_PDU_INITIATE_REQUEST, 0x68U },
+        { UNITLAB_MMS_PDU_INITIATE_RESPONSE, 0x69U },
+        { UNITLAB_MMS_PDU_INITIATE_ERROR, 0x6AU },
+    };
+    uint8_t buffer[32];
+    UnitLabMmsPdu pdu;
+    UnitLabMmsPdu decoded_pdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[4] = { 0x80U, 0x01U, 0x00U, 0x00U };
+
+    for (size_t i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        unitlab_mms_pdu_init(&pdu);
+        pdu.kind = cases[i].kind;
+        pdu.pdu_bytes = payload;
+        pdu.pdu_length = sizeof(payload);
+        assert(unitlab_mms_pdu_encode(&pdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+        assert(buffer[0] == cases[i].tag);
+        unitlab_mms_pdu_init(&decoded_pdu);
+        assert(unitlab_mms_pdu_decode(&decoded_pdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+        assert(consumed_length == encoded_length);
+        assert(decoded_pdu.kind == cases[i].kind);
+        assert(decoded_pdu.pdu_length == sizeof(payload));
+        assert(memcmp(decoded_pdu.pdu_bytes, payload, sizeof(payload)) == 0);
+    }
+}
+
 static void test_acse_top_level_roundtrips(void)
 {
     struct {
@@ -1653,6 +1688,7 @@ int main(void)
     test_wire_frame_builder_aarq_association_roundtrip();
     // test_association_response_frame_roundtrip();
     test_association_response_frame_smoke();
+    test_mms_pdu_initiate_roundtrip();
     test_acse_association_accept_frame_roundtrip();
     test_acse_top_level_roundtrips();
     test_acse_decode_stops_at_indicated_length();

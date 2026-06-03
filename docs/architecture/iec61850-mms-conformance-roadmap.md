@@ -63,8 +63,9 @@ Implement association, release, abort, and reject handling end to end.
 Progress:
 - release request/response now maps through the wire-semantic bridge into the runtime session state machine;
 - conclude error now projects into runtime abort handling so the lifecycle has an explicit error exit;
+- initiate request/response now round-trip through the wire and semantic layers with association identity preserved;
 - runtime bridge tests cover association, release, and conclude-error abort transitions;
-- wire codec tests cover `CONCLUDE_*` PDU round-trips.
+- wire codec tests cover `INITIATE_*` and `CONCLUDE_*` PDU round-trips.
 
 Deliverables:
 - association request/accept/reject framing;
