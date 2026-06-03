@@ -420,6 +420,7 @@ static void test_association_frame_decode_roundtrip(void)
     presentation_apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
     presentation_apdu.payload_bytes = acse_buffer;
     presentation_apdu.payload_length = acse_length;
+    presentation_apdu.context_identifier = 3U;
     assert(unitlab_mms_presentation_encode(&presentation_apdu, presentation_buffer, sizeof(presentation_buffer), &presentation_length, &diagnostic) == 1);
 
     unitlab_mms_association_frame_init(&fixture);
@@ -503,6 +504,7 @@ static void test_association_frame_fully_encoded_roundtrip(void)
     assert(decoded_fixture.session.raw_parameter_length == presentation_length);
     assert(memcmp(decoded_fixture.session.raw_parameter_bytes, presentation_buffer, presentation_length) == 0);
     assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
+    assert(decoded_fixture.presentation.context_identifier == 1U);
     assert(decoded_fixture.presentation.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION);
     assert(decoded_fixture.presentation.tag.constructed == 1);
     assert(decoded_fixture.presentation.tag.tag_number == 1U);
@@ -917,6 +919,7 @@ static void test_association_response_frame_smoke(void)
     assert(unitlab_mms_presentation_decode(&presentation_apdu, session_spdu.raw_parameter_bytes, session_spdu.raw_parameter_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == session_spdu.raw_parameter_length);
     assert(presentation_apdu.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
+    assert(presentation_apdu.context_identifier == 1U);
     assert(presentation_apdu.payload_length > 0U);
     assert(presentation_apdu.payload_bytes[0] == 0x61U);
 

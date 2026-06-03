@@ -141,6 +141,7 @@ int unitlab_mms_build_wire_frame_from_pdu(
             return 0;
         }
         presentation_apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
+        presentation_apdu.context_identifier = 1U;
         presentation_apdu.payload_bytes = scratch;
         presentation_apdu.payload_length = payload_length;
     } else {
@@ -148,6 +149,7 @@ int unitlab_mms_build_wire_frame_from_pdu(
             return 0;
         }
         presentation_apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
+        presentation_apdu.context_identifier = 3U;
         presentation_apdu.payload_bytes = scratch;
         presentation_apdu.payload_length = payload_length;
     }

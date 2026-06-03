@@ -336,6 +336,7 @@ static int wire_builder_build_association_accept_presentation(
 
     unitlab_mms_presentation_apdu_init(&presentation_apdu);
     presentation_apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
+    presentation_apdu.context_identifier = 1U;
     presentation_apdu.payload_bytes = acse_bytes;
     presentation_apdu.payload_length = acse_length;
     return unitlab_mms_presentation_encode(&presentation_apdu, buffer, buffer_length, encoded_length, diagnostic);

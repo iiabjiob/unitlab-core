@@ -18,6 +18,7 @@ static void presentation_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLa
 }
 
 static int presentation_encode_fully_encoded_data(
+    uint8_t context_identifier,
     const uint8_t* payload_bytes,
     size_t payload_length,
     uint8_t* buffer,
@@ -27,7 +28,7 @@ static int presentation_encode_fully_encoded_data(
 {
     uint8_t pdv_list_content[1024U];
     uint8_t pdv_list_bytes[1024U];
-    const uint8_t presentation_context_identifier[] = { 0x01U };
+    uint8_t presentation_context_identifier[] = { 0x00U };
     size_t pdv_list_content_length = 0U;
     size_t context_identifier_length = 0U;
     size_t payload_wrapper_length = 0U;
@@ -36,6 +37,10 @@ static int presentation_encode_fully_encoded_data(
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
+    }
+    if (context_identifier == 0U) {
+        presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "presentation context identifier must be non-zero.");
+        return 0;
     }
     if (payload_length != 0U && payload_bytes == NULL) {
         presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "presentation payload bytes are required when payload length is non-zero.");
@@ -50,6 +55,7 @@ static int presentation_encode_fully_encoded_data(
     element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
     element.tag.constructed = 0;
     element.tag.tag_number = 2U;
+    presentation_context_identifier[0] = context_identifier;
     element.value_bytes = presentation_context_identifier;
     element.value_length = sizeof(presentation_context_identifier);
     if (!unitlab_mms_ber_write(&element, pdv_list_content, sizeof(pdv_list_content), &context_identifier_length, diagnostic)) {
@@ -149,6 +155,10 @@ static int presentation_decode_fully_encoded_data(
         presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "presentation PDV-list is missing a presentation-context-identifier INTEGER.");
         return 0;
     }
+    if (next_element.value_length != 1U || next_element.value_bytes == NULL) {
+        presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "presentation context identifier must fit in one octet.");
+        return 0;
+    }
     offset += next_consumed_length;
     if (offset >= pdv_list_element.value_length) {
         presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "presentation PDV-list is missing presentation-data-values.");
@@ -171,6 +181,7 @@ static int presentation_decode_fully_encoded_data(
     unitlab_mms_presentation_apdu_init(apdu);
     apdu->kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
     apdu->tag = outer_element->tag;
+    apdu->context_identifier = next_element.value_bytes[0];
     apdu->payload_bytes = data_element.value_bytes;
     apdu->payload_length = data_element.value_length;
     apdu->encoded_length = outer_element->encoded_length;
@@ -185,6 +196,7 @@ void unitlab_mms_presentation_apdu_init(UnitLabMmsPresentationApdu* apdu)
     }
     memset(apdu, 0, sizeof(*apdu));
     unitlab_mms_ber_tag_init(&apdu->tag);
+    apdu->context_identifier = 1U;
     apdu->kind = UNITLAB_MMS_PRESENTATION_APDU_NONE;
 }
 
@@ -222,7 +234,7 @@ int unitlab_mms_presentation_encode(const UnitLabMmsPresentationApdu* apdu, uint
         return 1;
     }
 
-    if (!presentation_encode_fully_encoded_data(apdu->payload_bytes, apdu->payload_length, buffer, buffer_length, encoded_length, diagnostic)) {
+    if (!presentation_encode_fully_encoded_data(apdu->context_identifier, apdu->payload_bytes, apdu->payload_length, buffer, buffer_length, encoded_length, diagnostic)) {
         return 0;
     }
     return 1;
@@ -247,6 +259,7 @@ int unitlab_mms_presentation_decode(UnitLabMmsPresentationApdu* apdu, const uint
         unitlab_mms_presentation_apdu_init(apdu);
         apdu->kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
         apdu->tag = element.tag;
+        apdu->context_identifier = 1U;
         apdu->payload_bytes = element.value_bytes;
         apdu->payload_length = element.value_length;
         apdu->encoded_length = element.encoded_length;

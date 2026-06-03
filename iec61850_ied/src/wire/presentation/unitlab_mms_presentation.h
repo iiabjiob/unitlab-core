@@ -13,6 +13,7 @@ typedef enum UnitLabMmsPresentationApduKind {
 typedef struct UnitLabMmsPresentationApdu {
     UnitLabMmsPresentationApduKind kind;
     UnitLabMmsBerTag tag; /* Decoded outer Presentation BER element tag. */
+    uint8_t context_identifier; /* Presentation-context-identifier used by fully-encoded data. */
     const uint8_t* payload_bytes; /* Caller-owned decode buffer; valid only while that buffer lives. */
     size_t payload_length;
     size_t encoded_length;
@@ -24,6 +25,8 @@ typedef struct UnitLabMmsPresentationApdu {
  * fully-encoded-data maps to [APPLICATION 1] IMPLICIT SEQUENCE OF PDV-list,
  * where each PDV-list carries a presentation-context-identifier and a
  * single-ASN1-type wrapper around the ACSE/MMS payload.
+ * The context identifier must be selected by the caller so ACSE and MMS can
+ * negotiate different presentation contexts on the same connection.
  * Do not guess additional Presentation PDU mappings here.
  * No runtime state transition is performed by this layer.
  */

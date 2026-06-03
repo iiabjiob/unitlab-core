@@ -74,6 +74,7 @@ int unitlab_mms_association_frame_encode(const UnitLabMmsAssociationFrame* frame
 
     unitlab_mms_presentation_apdu_init(&presentation_apdu);
     presentation_apdu.kind = frame->presentation.kind;
+    presentation_apdu.context_identifier = frame->presentation.context_identifier;
     presentation_apdu.payload_bytes = frame->presentation.payload_bytes;
     presentation_apdu.payload_length = frame->presentation.payload_length;
     if (!unitlab_mms_presentation_encode(&presentation_apdu, presentation_scratch, buffer_length, &presentation_length, diagnostic)) {
