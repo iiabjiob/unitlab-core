@@ -246,13 +246,14 @@ static void test_presentation_simply_encoded_roundtrip(void)
 
 static void test_presentation_fully_encoded_roundtrip(void)
 {
-    uint8_t buffer[32];
+    uint8_t buffer[64];
     UnitLabMmsPresentationApdu apdu;
     UnitLabMmsPresentationApdu decoded_apdu;
     size_t encoded_length = 0U;
     size_t consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
     const uint8_t payload[4] = { 0x30U, 0x02U, 0x01U, 0x01U };
+    const uint8_t expected_encoding[] = { 0x61U, 0x0BU, 0x30U, 0x09U, 0x02U, 0x01U, 0x01U, 0xA0U, 0x04U, 0x30U, 0x02U, 0x01U, 0x01U };
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     unitlab_mms_presentation_apdu_init(&apdu);
@@ -260,6 +261,8 @@ static void test_presentation_fully_encoded_roundtrip(void)
     apdu.payload_bytes = payload;
     apdu.payload_length = sizeof(payload);
     assert(unitlab_mms_presentation_encode(&apdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(encoded_length == sizeof(expected_encoding));
+    assert(memcmp(buffer, expected_encoding, sizeof(expected_encoding)) == 0);
     unitlab_mms_presentation_apdu_init(&decoded_apdu);
     assert(unitlab_mms_presentation_decode(&decoded_apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == encoded_length);
@@ -271,27 +274,20 @@ static void test_presentation_fully_encoded_roundtrip(void)
     assert(memcmp(decoded_apdu.payload_bytes, payload, sizeof(payload)) == 0);
 }
 
-static void test_presentation_decode_accepts_application_encoded_wrapper(void)
+static void test_presentation_decode_accepts_pdv_list_wrapper(void)
 {
-    uint8_t buffer[32];
-    UnitLabMmsBerElement element;
+    uint8_t buffer[64];
     UnitLabMmsPresentationApdu decoded_apdu;
-    size_t encoded_length = 0U;
     size_t consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
     const uint8_t payload[4] = { 0x30U, 0x02U, 0x01U, 0x01U };
+    const uint8_t expected_encoding[] = { 0x61U, 0x0BU, 0x30U, 0x09U, 0x02U, 0x01U, 0x01U, 0xA0U, 0x04U, 0x30U, 0x02U, 0x01U, 0x01U };
 
     unitlab_mms_diagnostic_clear(&diagnostic);
-    unitlab_mms_ber_element_init(&element);
-    element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_APPLICATION;
-    element.tag.constructed = 1;
-    element.tag.tag_number = 1U;
-    element.value_bytes = payload;
-    element.value_length = sizeof(payload);
-    assert(unitlab_mms_ber_write(&element, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    memcpy(buffer, expected_encoding, sizeof(expected_encoding));
     unitlab_mms_presentation_apdu_init(&decoded_apdu);
-    assert(unitlab_mms_presentation_decode(&decoded_apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
-    assert(consumed_length == encoded_length);
+    assert(unitlab_mms_presentation_decode(&decoded_apdu, buffer, sizeof(expected_encoding), &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == sizeof(expected_encoding));
     assert(decoded_apdu.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
     assert(decoded_apdu.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION);
     assert(decoded_apdu.tag.constructed == 1);
@@ -2109,7 +2105,7 @@ int main(void)
     test_presentation_simply_encoded_roundtrip();
     test_presentation_fully_encoded_roundtrip();
     test_acse_decode_accepts_raw_aarq_fields();
-    test_presentation_decode_accepts_application_encoded_wrapper();
+    test_presentation_decode_accepts_pdv_list_wrapper();
     test_presentation_decode_rejects_unsupported_outer_tag();
     test_presentation_encode_rejects_non_supported_kind();
     test_presentation_encode_rejects_null_payload_bytes();

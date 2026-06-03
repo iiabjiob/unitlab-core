@@ -21,7 +21,9 @@ typedef struct UnitLabMmsPresentationApdu {
 /*
  * Exact X.226 Presentation User-data boundary.
  * simply-encoded-data maps to [APPLICATION 0] IMPLICIT OCTET STRING.
- * fully-encoded-data maps to [APPLICATION 1] IMPLICIT Fully-encoded-data carrying the ACSE/MMS payload.
+ * fully-encoded-data maps to [APPLICATION 1] IMPLICIT SEQUENCE OF PDV-list,
+ * where each PDV-list carries a presentation-context-identifier and a
+ * single-ASN1-type wrapper around the ACSE/MMS payload.
  * Do not guess additional Presentation PDU mappings here.
  * No runtime state transition is performed by this layer.
  */
