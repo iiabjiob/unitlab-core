@@ -83,6 +83,11 @@ Exit criteria:
 
 Implement MMS initiate and the request-correlation layer that all confirmed services share.
 
+Progress:
+- outgoing confirmed-request wire frames preserve the allocated invoke-ID through encode/decode;
+- server-runtime correlation now rejects mismatched confirmed-response invoke-IDs with an explicit diagnostic;
+- confirmed-response timeout handling remains fail-closed in the runtime builder.
+
 Deliverables:
 - initiate request/response encoding and decoding;
 - invoke-ID allocation and correlation;

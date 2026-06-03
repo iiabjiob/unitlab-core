@@ -578,6 +578,41 @@ static void test_server_runtime_apply_confirmed_request_and_build_response_round
     (void)response_consumed_length;
 }
 
+static void test_server_runtime_rejects_mismatched_confirmed_response_invoke_id(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+
+    unitlab_mms_pending_request_init(&server_runtime.pending_request);
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 5U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "Pos.stVal");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "stVal");
+
+    unitlab_mms_pdu_init(&wire_pdu);
+    wire_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_RESPONSE;
+    wire_pdu.has_invoke_id = 1;
+    wire_pdu.invoke_id = 7U;
+    wire_pdu.has_service = 1;
+    wire_pdu.service_kind = UNITLAB_MMS_SERVICE_READ;
+
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_wire_pdu(&server_runtime, &wire_pdu, &operation_result) == 0);
+    assert(operation_result.ok == 0);
+    assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_INVOKE_ID_MISMATCH);
+    assert(operation_result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_CORRELATION_MISMATCH);
+    assert(server_runtime.pending_request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE);
+}
+
 static void test_server_runtime_confirmed_response_fails_after_timeout(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -853,6 +888,7 @@ int main(void)
     test_server_runtime_apply_reference_confirmed_request_and_build_response_roundtrips();
     test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips();
     test_server_runtime_apply_confirmed_request_and_build_response_roundtrips();
+    test_server_runtime_rejects_mismatched_confirmed_response_invoke_id();
     test_server_runtime_apply_write_request_and_build_response_roundtrips();
     test_server_runtime_apply_wire_pdu_requires_running_state();
     test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_tail();
