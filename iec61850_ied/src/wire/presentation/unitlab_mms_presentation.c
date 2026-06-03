@@ -52,9 +52,9 @@ int unitlab_mms_presentation_encode(const UnitLabMmsPresentationApdu* apdu, uint
         element.tag.constructed = 0;
         element.tag.tag_number = 0U;
     } else {
-        element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_APPLICATION;
         element.tag.constructed = 1;
-        element.tag.tag_number = 17U;
+        element.tag.tag_number = 1U;
     }
     element.value_bytes = apdu->payload_bytes;
     element.value_length = apdu->payload_length;
@@ -83,7 +83,7 @@ int unitlab_mms_presentation_decode(UnitLabMmsPresentationApdu* apdu, const uint
     if (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION && element.tag.tag_number == 0U && element.tag.constructed == 0) {
         unitlab_mms_presentation_apdu_init(apdu);
         apdu->kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
-    } else if ((element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && element.tag.tag_number == 16U && element.tag.constructed == 1) || (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && element.tag.tag_number == 17U && element.tag.constructed == 1) || (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION && element.tag.tag_number == 1U && element.tag.constructed == 1)) {
+    } else if ((element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && element.tag.tag_number == 16U && element.tag.constructed == 1) || (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION && element.tag.tag_number == 1U && element.tag.constructed == 1)) {
         unitlab_mms_presentation_apdu_init(apdu);
         apdu->kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
     } else {
