@@ -69,6 +69,30 @@ static void test_wire_release_request_and_response_bridge(void)
     assert(result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_RELEASED);
 }
 
+static void test_wire_conclude_error_aborts_session(void)
+{
+    UnitLabMmsSession session;
+    UnitLabMmsOperationResult result;
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_session_init(&session);
+    unitlab_mms_operation_result_init(&result);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    assert(unitlab_mms_session_begin_association(&session, &diagnostic) == 1);
+    assert(unitlab_mms_session_complete_association(&session, 1U, &diagnostic) == 1);
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    wire_pdu.kind = UNITLAB_MMS_PDU_CONCLUDE_ERROR;
+
+    assert(unitlab_mms_runtime_apply_wire_pdu(&session, NULL, &wire_pdu, &result) == 1);
+    assert(result.ok == 1);
+    assert(result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(session.state == UNITLAB_MMS_SESSION_ABORTED);
+    assert(result.event.kind == UNITLAB_MMS_RUNTIME_EVENT_SESSION_ABORT);
+}
+
 static void test_wire_read_request_starts_pending_request(void)
 {
     UnitLabMmsSession session;
@@ -287,6 +311,7 @@ int main(void)
 {
     test_wire_associate_request_and_response_bridge();
     test_wire_release_request_and_response_bridge();
+    test_wire_conclude_error_aborts_session();
     test_wire_read_request_starts_pending_request();
     test_wire_read_response_applies_to_runtime();
     test_wire_information_report_applies_to_runtime();

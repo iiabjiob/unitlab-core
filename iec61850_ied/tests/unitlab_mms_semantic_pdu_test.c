@@ -175,6 +175,24 @@ static void test_wire_pdu_bridge_reject(void)
     assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
 }
 
+static void test_wire_pdu_bridge_conclude_error(void)
+{
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsSemanticResult result;
+    UnitLabMmsDecodeDiagnostic diagnostic;
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    unitlab_mms_semantic_result_init(&result);
+    unitlab_mms_decode_diagnostic_init(&diagnostic);
+    wire_pdu.kind = UNITLAB_MMS_PDU_CONCLUDE_ERROR;
+
+    assert(unitlab_mms_semantic_result_from_wire_pdu(&result, &wire_pdu, &diagnostic) == 1);
+    assert(result.ok == 1);
+    assert(result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_ERROR);
+    assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_ABORT);
+    assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
+}
+
 static void test_wire_pdu_bridge_rejects_unsupported_service(void)
 {
     UnitLabMmsPdu wire_pdu;
@@ -290,6 +308,7 @@ int main(void)
     test_wire_pdu_bridge_read_request();
     test_wire_pdu_bridge_information_report();
     test_wire_pdu_bridge_reject();
+    test_wire_pdu_bridge_conclude_error();
     test_wire_pdu_bridge_get_name_list_request();
     test_wire_pdu_bridge_get_name_list_domain_request();
     test_wire_pdu_bridge_get_name_list_response();
