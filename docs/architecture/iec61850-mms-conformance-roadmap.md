@@ -1,6 +1,6 @@
 # IEC 61850 MMS Conformance Roadmap
 
-Status: implementation roadmap. This roadmap tracks the MMS-only slice plan for UnitLab-owned IEC 61850 protocol work.
+Status: rebaselined implementation roadmap. This tracks the MMS-first slice order for UnitLab-owned IEC 61850 protocol work.
 
 See also:
 - [UnitLab IEC 61850 MMS Core Boundary](./iec61850-unitlab-mms-core-boundary.md)
@@ -13,12 +13,19 @@ See also:
 This roadmap is intentionally MMS-only.
 
 In scope:
-- Association, release, abort, and reject handling.
-- Initiate, confirmed request/response correlation, and service classification.
-- Basic data access: read, write, and browsing/name-list discovery.
-- Dataset and report-control metadata access.
-- Report reception, GI, and report evidence routing.
-- Runtime diagnostics, request correlation, and negative-path handling.
+- TCP connection to MMS on port 102.
+- RFC 1006 / TPKT.
+- COTP connection request / confirm.
+- ISO Session / Presentation.
+- ACSE AARQ / AARE.
+- MMS InitiateRequest / InitiateResponse.
+- Optional Identify discovery.
+- GetNameList discovery for domains, variables, and named variable lists.
+- GetVariableAccessAttributes.
+- Read for data, RCBs, and dataset members.
+- Reporting setup and report reception.
+- Write for ordinary attributes, RCB attributes, and control model fields.
+- Control semantics for direct operate and SBO paths.
 
 Out of scope for this roadmap:
 - GOOSE.
@@ -32,7 +39,7 @@ Out of scope for this roadmap:
 
 The implementation is not considered complete for a slice until all of the following are true:
 - the focused UnitLab tests pass;
-- a golden frame or pcap comparison exists for the slice;
+- a golden frame, pcap, or Wireshark-captured dump exists for the slice;
 - the observed behavior matches the reference oracle for the supported path;
 - any divergence is documented as either a deliberate UnitLab choice or an unresolved gap.
 
@@ -40,148 +47,133 @@ Reference comparison does not mean copying implementation details. It means matc
 
 ## Slice Plan
 
-### Slice 0 - Protocol Boundary Freeze
+### Slice 0 - Transport And Association Bring-Up
 
-Status: closed.
-
-Lock the lower-layer ownership split before expanding the service surface.
+Implement the minimum vertical path from TCP connect through MMS initiate.
 
 Deliverables:
-- stable `BER`, `TPKT`, `COTP`, `session`, `presentation`, `ACSE`, and `MMS PDU` boundaries;
-- explicit semantic-result and diagnostic mapping;
-- golden fixtures for encode/decode round-trips and malformed frames;
-- a `libiec61850`-captured golden association-accept frame asserted by the native smoke test.
+- TCP connect to port 102;
+- RFC 1006 / TPKT framing;
+- COTP connection request / confirm;
+- ISO Session / Presentation framing;
+- ACSE AARQ / AARE;
+- MMS InitiateRequest / InitiateResponse;
+- golden transport and handshake captures for the supported path.
 
 Exit criteria:
-- no wire-layer code mutates runtime state directly;
-- the handshake path is covered by a native smoke test and a `libiec61850`-derived golden accept frame.
+- a reference endpoint can complete the full connection and initiate exchange;
+- the slice has focused tests plus a Wireshark-visible capture or pcap.
 
-### Slice 1 - Association Lifecycle
+### Slice 1 - Discovery And Basic Read
 
-Implement association, release, abort, and reject handling end to end.
-
-Progress:
-- release request/response now maps through the wire-semantic bridge into the runtime session state machine;
-- conclude error now projects into runtime abort handling so the lifecycle has an explicit error exit;
-- initiate request/response now round-trip through the wire and semantic layers with association identity preserved;
-- invoke-ID allocation is exercised through the session allocator and preserved through an outgoing confirmed-request wire-frame roundtrip;
-- confirmed-request handling now preserves the transport-layer invoke ID through the server-runtime correlation path;
-- runtime bridge tests cover association, release, and conclude-error abort transitions;
-- wire codec tests cover `INITIATE_*` and `CONCLUDE_*` PDU round-trips.
+Implement the first useful MMS discovery and read surface.
 
 Deliverables:
-- association request/accept/reject framing;
-- release and abort flows;
-- timeout and malformed-handshake diagnostics;
-- parity tests against `libiec61850` for the association lifecycle.
+- optional Identify discovery;
+- GetNameList for domains, variables, and named variable lists;
+- GetVariableAccessAttributes;
+- Read for data objects, RCBs, and dataset members;
+- service-kind classification for these requests and responses.
 
 Exit criteria:
-- the stack can establish and tear down a session against a reference endpoint;
-- failures are explicit and traceable.
+- known MMS objects can be discovered and read through the supported path;
+- unsupported object shapes return typed diagnostics instead of generic failure;
+- the slice has a reference capture and focused UnitLab tests.
 
-### Slice 2 - Initiate And Correlation
+### Slice 2 - Reporting Setup
 
-Implement MMS initiate and the request-correlation layer that all confirmed services share.
-
-Progress:
-- outgoing confirmed-request wire frames preserve the allocated invoke-ID through encode/decode;
-- server-runtime correlation now rejects mismatched confirmed-response invoke-IDs with an explicit diagnostic;
-- confirmed-response timeout handling remains fail-closed in the runtime builder.
+Implement the report-control setup path that real MMS workflows depend on.
 
 Deliverables:
-- initiate request/response encoding and decoding;
-- invoke-ID allocation and correlation;
-- pending-request lifecycle handling;
-- confirmed request/response classification and error mapping.
+- Read RCB;
+- Write Resv / ResvTms or Owner, depending on BRCB or URCB usage;
+- Write TrgOps / OptFlds / IntgPd / DatSet when required;
+- Write GI = true when general interrogation is needed;
+- Write RptEna = true;
+- explicit metadata validation for supported report-control fields.
 
 Exit criteria:
-- a confirmed request can be matched to the correct response or timeout;
-- the slice has a pcap or frame comparison against `libiec61850`.
+- the runtime can configure a report-control path end to end;
+- setup failures are explicit and traceable;
+- the slice has a reference capture and focused UnitLab tests.
 
-### Slice 3 - Basic Data Access
+### Slice 3 - Reports
 
-Implement the minimum useful data-access surface for real MMS work.
-
-Deliverables:
-- named variable read;
-- named variable write;
-- browsing/name-list discovery;
-- basic object-reference normalization and service-kind classification.
-
-Exit criteria:
-- a known object can be read and written through the supported path;
-- unsupported object shapes return typed diagnostics instead of generic failure.
-
-### Slice 4 - Dataset And Report-Control Metadata
-
-Implement the metadata surface that report/runtime workflows depend on.
+Implement incoming report reception and normalization.
 
 Deliverables:
-- dataset discovery and member enumeration;
-- RCB metadata read;
-- reserve/enable/disable/release transitions;
-- GI preconditions and metadata validation.
-
-Exit criteria:
-- the runtime can inspect a report-control path end to end;
-- live metadata matches the reference oracle for the supported subset.
-
-### Slice 5 - Report Reception And Evidence
-
-Implement incoming report normalization and evidence capture.
-
-Deliverables:
-- `InformationReport` decode;
+- InformationReport / unconfirmed server PDU decode;
 - report acceptance and rejection handling;
-- expected-vs-actual value capture;
+- expected-vs-actual capture for report evidence;
 - evidence-friendly runtime events and timestamps.
 
 Exit criteria:
 - an incoming report can be normalized into a UnitLab evidence record;
-- malformed or unexpected report payloads fail closed.
+- malformed or unexpected report payloads fail closed;
+- the slice has a reference capture and focused UnitLab tests.
 
-### Slice 6 - Control Semantics
+### Slice 4 - Write Path
+
+Implement the write surface for ordinary attributes and MMS-managed control data.
+
+Deliverables:
+- ordinary writable attributes;
+- RCB attribute writes;
+- control model field writes;
+- explicit write diagnostics for unsupported attributes and types.
+
+Exit criteria:
+- supported writes are explicit and testable;
+- unsupported writes fail with typed diagnostics;
+- the slice has a reference capture and focused UnitLab tests.
+
+### Slice 5 - Control Semantics
 
 Implement control-model semantics only if the product scope requires them for MMS completeness.
 
 Deliverables:
 - direct operate;
 - select-before-operate;
-- cancel;
+- select-with-value where needed;
+- cancel if needed;
 - control failure diagnostics;
-- reference comparison for control request/response paths.
+- reference comparison for control request and response paths.
 
 Exit criteria:
 - supported control flows are explicit and testable;
-- unsupported control semantics remain documented and blocked.
+- unsupported control semantics remain documented and blocked;
+- the slice has a reference capture and focused UnitLab tests.
 
-### Slice 7 - Interoperability Hardening
+### Slice 6 - Interoperability Hardening
 
 Close the gaps that only show up under real interoperability pressure.
 
 Deliverables:
 - malformed and truncated frame matrix;
 - duplicate, stale, out-of-order, and timeout cases;
-- second-endpoint reference comparison where available;
-- supported-profile documentation that names the exact implemented MMS surface.
+- supported-profile documentation that names the exact implemented MMS surface;
+- second-endpoint comparison where available.
 
 Exit criteria:
 - the supported profile is reproducible from tests and docs;
-- every known unsupported edge is explicitly documented.
+- every known unsupported edge is explicitly documented;
+- the slice has a reference capture and focused UnitLab tests.
 
 ## Slice Closure Rules
 
 Each slice closes only when all of these are true:
 - focused package tests pass;
 - a reference comparison against `libiec61850` is recorded for the supported path;
+- a Wireshark-readable capture or pcap exists for the supported path;
 - any new diagnostic or behavioral gap is documented;
 - the roadmap is updated with the slice result and remaining work.
 
 ## Validation Expectations
 
-- Unit tests for encode/decode, correlation, diagnostics, and runtime transitions.
+- Unit tests for encode/decode, discovery, read, write, report setup, reports, correlation, diagnostics, and runtime transitions.
 - Golden pcap or byte-level frame comparison for every supported protocol path.
 - Reference comparison against `libiec61850` for supported service behavior, plus captured golden frames for any slice that closes before a live parity harness exists.
+- Wireshark verification of the handshake and service frames for each slice.
 - Malformed-input tests for truncated frames, unsupported tags, invalid lengths, and rejected negotiation.
 
 ## Risks
