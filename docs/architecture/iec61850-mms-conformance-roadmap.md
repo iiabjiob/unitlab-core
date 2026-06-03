@@ -63,6 +63,10 @@ Deliverables:
 - exact-byte golden transport and handshake captures for the supported path;
 - reference-capture handshake bytes from `mms Areva746.pcap` as the current compatibility oracle.
 
+Current implementation status:
+- ACSE AARE assembly now uses a standards-shaped field sequence with explicit protocol version, application context, result, result-source-diagnostic, and user-information EXTERNAL wrapping the InitiateResponse.
+- Wire-foundation and native-wire smoke currently pass on the updated handshake path.
+
 Exit criteria:
 - a reference endpoint can complete the full connection and initiate exchange;
 - the slice has focused tests plus a Wireshark-visible capture or pcap;
