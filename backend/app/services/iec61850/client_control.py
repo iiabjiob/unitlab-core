@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import time
 from pathlib import Path
+import select
 from threading import RLock
 from typing import Callable, Sequence
 import socket
@@ -532,17 +533,140 @@ class Iec61850ClientControlService:
         )
 
     def _build_live_wire_cotp_connect_request_frame(self) -> bytes:
-        return bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001")
+        return self._request_live_wire_frame("cotp-connect-request")
 
     def _build_live_wire_association_request_frame(self) -> bytes:
-        return bytes.fromhex(
-            "030000b002f080010001006181a230819f020103a08199a18196020103ac8190800100a1818a302ba029a1271a144d793734366965644d6561737572656d656e74731a0f4262704d44494631245354244d6f64302ba029a1271a144d793734366965644d6561737572656d656e74731a0f4262704d4449463124535424426568302ea02ca12a1a144d793734366965644d6561737572656d656e74731a124262704d44494631245354244865616c7468"
-        )
+        return self._request_live_wire_frame("association-request")
 
     def _build_live_wire_confirmed_read_request_frame(self) -> bytes:
-        return bytes.fromhex(
-            "0300003502f0800100010061286026020103a421301fa11da01b3019a017a1151a0558434252311a0c535424506f7324737456616c"
+        return self._request_live_wire_frame(
+            "confirmed-read-request",
+            domain_id="XCBR1",
+            item_id="ST$Pos$stVal",
+            invoke_id=3,
         )
+
+    def _request_live_wire_frame(
+        self,
+        frame_kind: str,
+        *,
+        domain_id: str | None = None,
+        item_id: str | None = None,
+        invoke_id: int | None = None,
+    ) -> bytes:
+        if self._live_wire_mode == "process":
+            if self._live_wire_process is None or self._live_wire_process.process.stdin is None or self._live_wire_process.process.stdout is None:
+                raise Iec61850ReportRuntimeError(
+                    "LIVE_WIRE_PROCESS_NOT_OPEN",
+                    "IEC 61850 live wire transport process is not open.",
+                )
+            command = self._build_live_wire_frame_command(frame_kind, domain_id=domain_id, item_id=item_id, invoke_id=invoke_id)
+            write_ied_simulator_process_command(self._live_wire_process, command)
+            return self._read_live_wire_process_frame_response(frame_kind)
+        if self._live_wire_control_socket is None:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_CONTROL_SOCKET_NOT_OPEN",
+                "IEC 61850 live wire transport control socket is not open.",
+            )
+        command = self._build_live_wire_frame_command(frame_kind, domain_id=domain_id, item_id=item_id, invoke_id=invoke_id)
+        self._write_live_wire_command(self._live_wire_control_socket, command)
+        return self._read_live_wire_socket_frame_response(frame_kind)
+
+    def _build_live_wire_frame_command(
+        self,
+        frame_kind: str,
+        *,
+        domain_id: str | None = None,
+        item_id: str | None = None,
+        invoke_id: int | None = None,
+    ) -> str:
+        command = ["emit-wire-frame", frame_kind]
+        if frame_kind == "confirmed-read-request":
+            if not domain_id or not item_id or invoke_id is None:
+                raise Iec61850ReportRuntimeError(
+                    "LIVE_WIRE_FRAME_ARGS_INVALID",
+                    "IEC 61850 live wire confirmed-read-request requires domain, item, and invoke-id.",
+                )
+            command.extend([domain_id, item_id, str(invoke_id)])
+        return " ".join(command)
+
+    def _read_live_wire_socket_frame_response(self, frame_kind: str) -> bytes:
+        if self._live_wire_control_socket is None:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_CONTROL_SOCKET_NOT_OPEN",
+                "IEC 61850 live wire transport control socket is not open.",
+            )
+        response = self._read_live_wire_socket_line(self._live_wire_control_socket, frame_kind)
+        return self._decode_live_wire_frame_response(response, frame_kind)
+
+    def _read_live_wire_process_frame_response(self, frame_kind: str) -> bytes:
+        if self._live_wire_process is None or self._live_wire_process.process.stdout is None:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_PROCESS_NOT_OPEN",
+                "IEC 61850 live wire transport process is not open.",
+            )
+        deadline = time.monotonic() + 5.0
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Iec61850ReportRuntimeError(
+                    "LIVE_WIRE_FRAME_TIMEOUT",
+                    f"IEC 61850 live wire transport timed out while waiting for a {frame_kind} frame response.",
+                )
+            readable, _, _ = select.select([self._live_wire_process.process.stdout], [], [], min(1.0, remaining))
+            if not readable:
+                continue
+            line = self._live_wire_process.process.stdout.readline()
+            if not line:
+                continue
+            line = line.strip()
+            if line.startswith("wire-frame="):
+                return self._decode_live_wire_frame_response(line, frame_kind)
+
+    def _read_live_wire_socket_line(self, control_socket: socket.socket, frame_kind: str) -> str:
+        deadline = time.monotonic() + 5.0
+        chunks: list[bytes] = []
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Iec61850ReportRuntimeError(
+                    "LIVE_WIRE_FRAME_TIMEOUT",
+                    f"IEC 61850 live wire transport timed out while waiting for a {frame_kind} frame response.",
+                )
+            readable, _, _ = select.select([control_socket], [], [], min(1.0, remaining))
+            if not readable:
+                continue
+            chunk = control_socket.recv(1)
+            if not chunk:
+                raise Iec61850ReportRuntimeError(
+                    "LIVE_WIRE_SOCKET_CLOSED",
+                    "IEC 61850 live wire transport control socket closed before the expected frame response was received.",
+                )
+            if chunk == b"\n":
+                break
+            chunks.append(chunk)
+        try:
+            return b"".join(chunks).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_FRAME_INVALID",
+                "IEC 61850 live wire transport received a non-UTF8 wire frame response.",
+            ) from exc
+
+    def _decode_live_wire_frame_response(self, response: str, frame_kind: str) -> bytes:
+        if not response.startswith("wire-frame="):
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_FRAME_INVALID",
+                f"IEC 61850 live wire transport received an invalid {frame_kind} response.",
+            )
+        hex_payload = response[len("wire-frame="):].strip()
+        try:
+            return bytes.fromhex(hex_payload)
+        except ValueError as exc:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_FRAME_INVALID",
+                f"IEC 61850 live wire transport received a malformed {frame_kind} response.",
+            ) from exc
 
     def _read_tpkt_frame(self, wire_socket: socket.socket, frame_label: str) -> bytes:
         try:

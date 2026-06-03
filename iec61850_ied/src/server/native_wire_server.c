@@ -15,6 +15,7 @@
 #include "model/model_loader.h"
 #include "wire/mms/unitlab_mms_pdu.h"
 #include "wire/transport/unitlab_mms_transport_frame.h"
+#include "wire/orchestration/unitlab_mms_live_wire_probe.h"
 #include "wire/orchestration/unitlab_mms_wire_builder.h"
 static void set_result(UnitLabIedModelLoadResult* result, const char* code, const char* message)
 {
@@ -51,6 +52,39 @@ static int send_all(int fd, const uint8_t* buffer, size_t length)
     }
     return 1;
 }
+static int emit_text_response(int response_fd, const char* text)
+{
+    size_t length = strlen(text);
+    if (response_fd >= 0) {
+        return send_all(response_fd, (const uint8_t*)text, length) && send_all(response_fd, (const uint8_t*)"\n", 1U);
+    }
+    printf("%s\n", text);
+    fflush(stdout);
+    return 1;
+}
+
+static int format_hex_response(const uint8_t* frame, size_t frame_length, char* response, size_t response_length)
+{
+    static const char hex_digits[] = "0123456789abcdef";
+    size_t required_length = 11U + (frame_length * 2U) + 1U;
+    size_t offset = 0U;
+
+    if (response == NULL || response_length == 0U) {
+        return 0;
+    }
+    if (response_length < required_length) {
+        return 0;
+    }
+    memcpy(response, "wire-frame=", 11U);
+    offset = 11U;
+    for (size_t index = 0U; index < frame_length; index++) {
+        response[offset++] = hex_digits[(frame[index] >> 4) & 0x0FU];
+        response[offset++] = hex_digits[frame[index] & 0x0FU];
+    }
+    response[offset] = '\0';
+    return 1;
+}
+
 static uint64_t native_wire_now_ms(void)
 {
     return (uint64_t)time(NULL) * 1000ULL;
@@ -156,6 +190,7 @@ static int handle_command(
     UnitLabMmsServerRuntime* server_runtime,
     int* data_client_fd,
     int data_listen_fd,
+    int response_fd,
     const char* command,
     uint8_t* frame,
     size_t frame_length,
@@ -208,6 +243,79 @@ static int handle_command(
         fflush(stdout);
         return 1;
     }
+    if (strncmp(command, "emit-wire-frame", 15U) == 0) {
+        UnitLabMmsDiagnostic diagnostic;
+        char command_copy[128U];
+        char response[8192U];
+        char* token = NULL;
+        char* context = NULL;
+        char* frame_kind = NULL;
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        if (frame == NULL || encoded_length == NULL) {
+            set_result(result, "NATIVE_WIRE_SERVER_INVALID_ARGUMENT", "Native wire server requires frame output buffers for wire frame emission.");
+            return -1;
+        }
+        if (strlen(command) >= sizeof(command_copy)) {
+            set_result(result, "NATIVE_WIRE_SERVER_COMMAND_TOO_LONG", "Native wire server wire frame command is too long.");
+            return -1;
+        }
+        memcpy(command_copy, command, strlen(command) + 1U);
+        token = strtok_r(command_copy, " ", &context);
+        token = strtok_r(NULL, " ", &context);
+        frame_kind = token;
+        if (frame_kind == NULL) {
+            set_result(result, "NATIVE_WIRE_SERVER_FRAME_KIND_REQUIRED", "Native wire server wire frame command requires a frame kind.");
+            return -1;
+        }
+        if (strcmp(frame_kind, "cotp-connect-request") == 0) {
+            if (!unitlab_mms_build_cotp_connect_request_frame(frame, frame_length, encoded_length, &diagnostic)) {
+                set_result(result, "NATIVE_WIRE_SERVER_FRAME_BUILD_FAILED", diagnostic.message);
+                return -1;
+            }
+        }
+        else if (strcmp(frame_kind, "association-request") == 0) {
+            if (!unitlab_mms_build_live_wire_association_request_frame(frame, frame_length, encoded_length, &diagnostic)) {
+                set_result(result, "NATIVE_WIRE_SERVER_FRAME_BUILD_FAILED", diagnostic.message);
+                return -1;
+            }
+        }
+        else if (strcmp(frame_kind, "confirmed-read-request") == 0) {
+            char* domain_id = strtok_r(NULL, " ", &context);
+            char* item_id = strtok_r(NULL, " ", &context);
+            char* invoke_id_text = strtok_r(NULL, " ", &context);
+            char* end = NULL;
+            unsigned long invoke_id_value;
+            uint8_t scratch[1024U];
+            if (domain_id == NULL || item_id == NULL || invoke_id_text == NULL) {
+                set_result(result, "NATIVE_WIRE_SERVER_FRAME_ARGS_REQUIRED", "Native wire server confirmed-read-request requires domain, item, and invoke-id arguments.");
+                return -1;
+            }
+            invoke_id_value = strtoul(invoke_id_text, &end, 10);
+            if (end == invoke_id_text || end == NULL || *end != '\0' || invoke_id_value > 0xFFFFFFFFUL) {
+                set_result(result, "NATIVE_WIRE_SERVER_FRAME_INVOKE_ID_INVALID", "Native wire server confirmed-read-request requires a valid invoke-id.");
+                return -1;
+            }
+            if (!unitlab_mms_build_read_request_frame(domain_id, item_id, (uint32_t)invoke_id_value, scratch, sizeof(scratch), frame, frame_length, encoded_length, &diagnostic)) {
+                set_result(result, "NATIVE_WIRE_SERVER_FRAME_BUILD_FAILED", diagnostic.message);
+                return -1;
+            }
+        }
+        else {
+            set_result(result, "NATIVE_WIRE_SERVER_FRAME_KIND_INVALID", "Native wire server wire frame command received an unsupported frame kind.");
+            return -1;
+        }
+        if (!format_hex_response(frame, *encoded_length, response, sizeof(response))) {
+            set_result(result, "NATIVE_WIRE_SERVER_FRAME_RESPONSE_FAILED", "Native wire server could not format wire frame response.");
+            return -1;
+        }
+        if (!emit_text_response(response_fd, response)) {
+            set_result(result, "NATIVE_WIRE_SERVER_FRAME_RESPONSE_FAILED", "Native wire server could not send wire frame response.");
+            return -1;
+        }
+        printf("native-wire-server: emitted-wire-frame kind=%s bytes=%zu\n", frame_kind, *encoded_length);
+        fflush(stdout);
+        return 1;
+    }
     if (strncmp(command, "quit", 4U) == 0 || strncmp(command, "exit", 4U) == 0) {
         printf("native-wire-server: shutdown requested\n");
         fflush(stdout);
@@ -215,6 +323,7 @@ static int handle_command(
     }
     return 0;
 }
+
 int unitlab_run_native_wire_server(
     UnitLabMmsServerRuntime* server_runtime,
     const UnitLabIedServerConfig* config,
@@ -472,7 +581,7 @@ int unitlab_run_native_wire_server(
                     reset_native_wire_runtime_state(server_runtime);
                     continue;
                 }
-                int outcome = handle_command(server_runtime, &data_client_fd, data_listen_fd, command, frame, sizeof(frame), &frame_length, result);
+                int outcome = handle_command(server_runtime, &data_client_fd, data_listen_fd, control_client_fd, command, frame, sizeof(frame), &frame_length, result);
                 if (outcome < 0) {
                     goto fail;
                 }
@@ -486,7 +595,7 @@ int unitlab_run_native_wire_server(
                 if (fgets(command, sizeof(command), stdin) == NULL) {
                     continue;
                 }
-                int outcome = handle_command(server_runtime, &data_client_fd, data_listen_fd, command, frame, sizeof(frame), &frame_length, result);
+                int outcome = handle_command(server_runtime, &data_client_fd, data_listen_fd, -1, command, frame, sizeof(frame), &frame_length, result);
                 if (outcome < 0) {
                     goto fail;
                 }

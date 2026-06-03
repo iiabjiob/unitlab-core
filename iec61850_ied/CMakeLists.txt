@@ -40,6 +40,7 @@ add_library(unitlab-iec61850-mms STATIC
   src/wire/orchestration/unitlab_mms_association_builder.c
   src/wire/orchestration/unitlab_mms_data_access_builder.c
   src/wire/orchestration/unitlab_mms_report_builder.c
+  src/wire/orchestration/unitlab_mms_live_wire_probe.c
   src/wire/orchestration/unitlab_mms_wire_builder.c
   src/wire/mms/unitlab_mms_pdu.c
   src/wire/iso/unitlab_mms_cotp.c
