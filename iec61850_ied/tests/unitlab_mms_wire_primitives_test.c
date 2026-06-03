@@ -9,6 +9,7 @@
 #include "../src/wire/iso/unitlab_mms_cotp.h"
 #include "../src/wire/iso/unitlab_mms_tpkt.h"
 #include "protocols/mms/unitlab_mms_core.h"
+#include "protocols/mms/unitlab_mms_wire_semantic_bridge.h"
 
 #include <assert.h>
 #include <string.h>
@@ -1492,6 +1493,117 @@ static void test_mms_confirmed_request_roundtrip_with_allocated_invoke_id(void)
     assert(service_element.tag.constructed == 1);
 }
 
+static void test_mms_read_request_wire_frame_builder_roundtrip(void)
+{
+    uint8_t scratch[256];
+    uint8_t frame[256];
+    UnitLabMmsAssociationFrame association_frame;
+    UnitLabMmsBerElement invoke_id_element;
+    UnitLabMmsBerElement service_element;
+    UnitLabMmsPdu decoded_pdu;
+    UnitLabMmsSemanticResult semantic_result;
+    UnitLabMmsDecodeDiagnostic bridge_diagnostic;
+    UnitLabMmsDiagnostic diagnostic;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    size_t invoke_consumed_length = 0U;
+    size_t service_consumed_length = 0U;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_decode_diagnostic_init(&bridge_diagnostic);
+    unitlab_mms_semantic_result_init(&semantic_result);
+    unitlab_mms_pdu_init(&decoded_pdu);
+    unitlab_mms_association_frame_init(&association_frame);
+
+    assert(unitlab_mms_build_read_request_frame("XCBR1$ST$Pos$stVal", 3U, scratch, sizeof(scratch), frame, sizeof(frame), &encoded_length, &diagnostic) == 1);
+    assert(encoded_length > 0U);
+    assert(unitlab_mms_association_frame_decode(&association_frame, frame, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+
+    unitlab_mms_ber_element_init(&invoke_id_element);
+    assert(unitlab_mms_ber_read(&invoke_id_element, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &invoke_consumed_length, &diagnostic) == 1);
+    assert(invoke_id_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(invoke_id_element.tag.tag_number == 2U);
+    assert(invoke_id_element.value_length == 1U);
+    assert(invoke_id_element.value_bytes[0] == 3U);
+
+    unitlab_mms_ber_element_init(&service_element);
+    assert(unitlab_mms_ber_read(&service_element, association_frame.presentation.payload_bytes + invoke_consumed_length, association_frame.presentation.payload_length - invoke_consumed_length, &service_consumed_length, &diagnostic) == 1);
+    assert(service_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(service_element.tag.tag_number == 0U);
+    assert(service_element.tag.constructed == 1);
+
+    unitlab_mms_pdu_init(&decoded_pdu);
+    decoded_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+    decoded_pdu.has_invoke_id = 1;
+    decoded_pdu.invoke_id = 3U;
+    decoded_pdu.has_service = 1;
+    decoded_pdu.service_kind = UNITLAB_MMS_SERVICE_READ;
+    decoded_pdu.service_bytes = service_element.value_bytes;
+    decoded_pdu.service_length = service_element.value_length;
+    assert(unitlab_mms_semantic_result_from_wire_pdu(&semantic_result, &decoded_pdu, &bridge_diagnostic) == 1);
+    assert(semantic_result.ok == 1);
+    assert(semantic_result.pdu.kind == UNITLAB_MMS_DECODED_PDU_READ_REQUEST);
+    assert(strcmp(semantic_result.pdu.object_reference, "Pos.stVal") == 0);
+    assert(strcmp(semantic_result.pdu.attribute_reference, "stVal") == 0);
+}
+
+static void test_mms_get_name_list_request_wire_frame_builder_roundtrip(void)
+{
+    uint8_t scratch[256];
+    uint8_t frame[256];
+    UnitLabMmsAssociationFrame association_frame;
+    UnitLabMmsBerElement invoke_id_element;
+    UnitLabMmsBerElement service_element;
+    UnitLabMmsPdu decoded_pdu;
+    UnitLabMmsSemanticResult semantic_result;
+    UnitLabMmsDecodeDiagnostic bridge_diagnostic;
+    UnitLabMmsDiagnostic diagnostic;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    size_t invoke_consumed_length = 0U;
+    size_t service_consumed_length = 0U;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_decode_diagnostic_init(&bridge_diagnostic);
+    unitlab_mms_semantic_result_init(&semantic_result);
+    unitlab_mms_pdu_init(&decoded_pdu);
+    unitlab_mms_association_frame_init(&association_frame);
+
+    assert(unitlab_mms_build_get_name_list_request_frame(2U, 1U, "LD0", NULL, 61U, scratch, sizeof(scratch), frame, sizeof(frame), &encoded_length, &diagnostic) == 1);
+    assert(encoded_length > 0U);
+    assert(unitlab_mms_association_frame_decode(&association_frame, frame, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+
+    unitlab_mms_ber_element_init(&invoke_id_element);
+    assert(unitlab_mms_ber_read(&invoke_id_element, association_frame.presentation.payload_bytes, association_frame.presentation.payload_length, &invoke_consumed_length, &diagnostic) == 1);
+    assert(invoke_id_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(invoke_id_element.tag.tag_number == 2U);
+    assert(invoke_id_element.value_length == 1U);
+    assert(invoke_id_element.value_bytes[0] == 61U);
+
+    unitlab_mms_ber_element_init(&service_element);
+    assert(unitlab_mms_ber_read(&service_element, association_frame.presentation.payload_bytes + invoke_consumed_length, association_frame.presentation.payload_length - invoke_consumed_length, &service_consumed_length, &diagnostic) == 1);
+    assert(service_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(service_element.tag.tag_number == 1U);
+    assert(service_element.tag.constructed == 1);
+
+    unitlab_mms_pdu_init(&decoded_pdu);
+    decoded_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+    decoded_pdu.has_invoke_id = 1;
+    decoded_pdu.invoke_id = 61U;
+    decoded_pdu.has_service = 1;
+    decoded_pdu.service_kind = UNITLAB_MMS_SERVICE_GET_NAME_LIST;
+    decoded_pdu.service_bytes = service_element.value_bytes;
+    decoded_pdu.service_length = service_element.value_length;
+    assert(unitlab_mms_semantic_result_from_wire_pdu(&semantic_result, &decoded_pdu, &bridge_diagnostic) == 1);
+    assert(semantic_result.ok == 1);
+    assert(semantic_result.pdu.kind == UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_REQUEST);
+    assert(semantic_result.pdu.object_class == 2U);
+    assert(semantic_result.pdu.object_scope == 1U);
+    assert(strcmp(semantic_result.pdu.domain_id, "LD0") == 0);
+}
+
 static void test_mms_pdu_conclude_roundtrip(void)
 {
     struct {
@@ -1766,6 +1878,8 @@ int main(void)
     test_mms_pdu_unconfirmed_roundtrip();
     test_mms_pdu_confirmed_request_roundtrip_with_wide_invoke_id();
     test_mms_confirmed_request_roundtrip_with_allocated_invoke_id();
+    test_mms_read_request_wire_frame_builder_roundtrip();
+    test_mms_get_name_list_request_wire_frame_builder_roundtrip();
     test_mms_pdu_conclude_roundtrip();
     test_mms_pdu_rejects_non_minimal_invoke_id();
     test_ber_length_roundtrip();
