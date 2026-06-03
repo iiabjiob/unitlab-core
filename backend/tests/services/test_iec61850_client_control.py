@@ -50,6 +50,8 @@ class _CommandDrivenProcessStdin:
             self._stdout.enqueue(ASSOCIATION_REQUEST_FRAME)
         elif command == "emit-wire-frame confirmed-read-request XCBR1 ST$Pos$stVal 3":
             self._stdout.enqueue(CONFIRMED_READ_REQUEST_FRAME)
+        elif command == "emit-report":
+            self._stdout.enqueue(REPORT_FRAME)
 
     def flush(self) -> None:
         return None
@@ -192,12 +194,16 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
     try:
         service = Iec61850ClientControlService(
             now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC),
+            live_wire_service_host="wire-host",
         )
 
         started_specs: list[object] = []
-        sockets: list[object] = []
         process_commands: list[str] = []
         stdout = _QueuedStdout()
+        stdout.lines.extend([
+            "native-wire-client: ready\n",
+            _wire_frame_response_line(READ_RESPONSE_FRAME).decode("utf-8"),
+        ])
 
         class _FakeProcess:
             def __init__(self) -> None:
@@ -215,35 +221,26 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
             started_specs.append(spec)
             return _FakeHandle(spec)
 
-        def fake_stop_process(_handle):
-            return None
-
-        def fake_create_connection(address, timeout=None):
-            sockets.append(address)
-            sock = _CommandDrivenDataSocket(COTP_CONNECT_RESPONSE_FRAME + AARE_FRAME + READ_RESPONSE_FRAME + REPORT_FRAME)
-            sock.address = address
-            return sock
-
         monkeypatch.setattr(client_control_module, "select", _CommandDrivenSelect)
-        monkeypatch.setattr(client_control_module.socket, "create_connection", fake_create_connection)
         monkeypatch.setattr(client_control_module, "start_ied_simulator_process", fake_start_process)
-        monkeypatch.setattr(client_control_module, "stop_ied_simulator_process", fake_stop_process)
-        monkeypatch.setattr(client_control_module, "write_ied_simulator_process_command", lambda handle, command: handle.process.stdin.write(command))
+        monkeypatch.setattr(client_control_module, "stop_ied_simulator_process", lambda handle: None)
 
         state = service.start_live_wire_transport(mode="process")
 
         assert state.live_wire_mode == "process"
         assert started_specs
         assert started_specs[0].binary_path == "/bin/true"
-        assert sockets == [("127.0.0.1", 12447)]
-        assert process_commands == [
-            "emit-wire-frame cotp-connect-request",
-            "emit-wire-frame association-request",
-            "emit-wire-frame confirmed-read-request XCBR1 ST$Pos$stVal 3",
-        ]
+        assert started_specs[0].native_wire_client_start is True
+        assert started_specs[0].bind_address == "wire-host"
+        assert process_commands == []
         assert state.live_wire_last_frame_length == len(READ_RESPONSE_FRAME)
         assert state.live_wire_last_frame_hex == READ_RESPONSE_FRAME.hex()
         assert [event.kind for event in state.transcript][-3:] == ["wire-session-open", "wire-associate", "wire-confirmed-read-frame"]
+
+        state = service.emit_live_wire_report()
+        assert process_commands == ["emit-report"]
+        assert state.live_wire_last_frame_length == len(REPORT_FRAME)
+        assert state.live_wire_last_frame_hex == REPORT_FRAME.hex()
     finally:
         get_settings.cache_clear()
 
@@ -251,12 +248,16 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
     service = Iec61850ClientControlService(
         now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC),
         live_wire_binary_path="/bin/true",
-        live_wire_bind_address="127.0.0.1",
+        live_wire_service_host="wire-host",
         live_wire_data_port=12346,
     )
 
     process_commands: list[str] = []
     stdout = _QueuedStdout()
+    stdout.lines.extend([
+        "native-wire-client: ready\n",
+        _wire_frame_response_line(READ_RESPONSE_FRAME).decode("utf-8"),
+    ])
 
     class _FakeProcess:
         def __init__(self) -> None:
@@ -265,10 +266,10 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
 
     class _FakeHandle:
         def __init__(self) -> None:
-            self.endpoint = service.snapshot().endpoint
             self.process = _FakeProcess()
             self.pid = 4242
             self.spec = None
+            self.endpoint = service.snapshot().endpoint
 
     def fake_start_process(spec, **_kwargs):
         handle = _FakeHandle()
@@ -278,23 +279,20 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
 
     monkeypatch.setattr(client_control_module, "select", _CommandDrivenSelect)
     monkeypatch.setattr(client_control_module, "start_ied_simulator_process", fake_start_process)
-    monkeypatch.setattr(client_control_module.socket, "create_connection", lambda address, timeout=None: _CommandDrivenDataSocket(COTP_CONNECT_RESPONSE_FRAME + AARE_FRAME + READ_RESPONSE_FRAME + REPORT_FRAME))
     monkeypatch.setattr(client_control_module, "stop_ied_simulator_process", lambda handle: None)
-    monkeypatch.setattr(client_control_module, "write_ied_simulator_process_command", lambda handle, command: handle.process.stdin.write(command))
 
-    state = service.start_live_wire_transport(mode="process")
+    state = service.start_live_wire_transport(mode="host")
+    assert state.live_wire_mode == "host"
     assert state.live_wire_open is True
-    assert process_commands == [
-        "emit-wire-frame cotp-connect-request",
-        "emit-wire-frame association-request",
-        "emit-wire-frame confirmed-read-request XCBR1 ST$Pos$stVal 3",
-    ]
+    assert process_commands == []
+    assert state.live_wire_last_frame_length == len(READ_RESPONSE_FRAME)
+    assert state.live_wire_last_frame_hex == READ_RESPONSE_FRAME.hex()
 
     state = service.emit_live_wire_report()
     assert state.live_wire_last_frame_length == len(REPORT_FRAME)
     assert state.live_wire_last_frame_hex == REPORT_FRAME.hex()
     assert [event.kind for event in state.transcript][-4:] == ["wire-session-open", "wire-associate", "wire-confirmed-read-frame", "wire-report-frame"]
-    assert process_commands[-1] == "emit-report"
+    assert process_commands == ["emit-report"]
 
     state = service.stop_live_wire_transport()
     assert state.live_wire_open is False
@@ -303,45 +301,47 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
 def test_client_control_service_can_drive_a_live_wire_host_debug_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
     service = Iec61850ClientControlService(
         now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC),
-        live_wire_binary_path="",
+        live_wire_binary_path="/bin/true",
+        live_wire_service_host="wire-host",
+        live_wire_data_port=12347,
     )
 
-    sockets: list[object] = []
-    data_socket = _CommandDrivenDataSocket(COTP_CONNECT_RESPONSE_FRAME + AARE_FRAME + READ_RESPONSE_FRAME + REPORT_FRAME)
-    control_socket = _CommandDrivenControlSocket(
-        {
-            "cotp-connect-request": COTP_CONNECT_REQUEST_FRAME,
-            "association-request": ASSOCIATION_REQUEST_FRAME,
-            "confirmed-read-request": CONFIRMED_READ_REQUEST_FRAME,
-        }
-    )
+    process_commands: list[str] = []
+    stdout = _QueuedStdout()
+    stdout.lines.extend([
+        "native-wire-client: ready\n",
+        _wire_frame_response_line(READ_RESPONSE_FRAME).decode("utf-8"),
+    ])
 
-    def fake_create_connection(address, timeout=None):
-        role = len(sockets)
-        sock = data_socket if role == 0 else control_socket
-        sock.address = address
-        sockets.append(sock)
-        return sock
+    class _FakeProcess:
+        def __init__(self) -> None:
+            self.stdin = _CommandDrivenProcessStdin(process_commands, stdout)
+            self.stdout = stdout
+
+    class _FakeHandle:
+        def __init__(self) -> None:
+            self.process = _FakeProcess()
+            self.pid = 4242
+            self.spec = None
+            self.endpoint = service.snapshot().endpoint
+
+    def fake_start_process(spec, **_kwargs):
+        handle = _FakeHandle()
+        handle.spec = spec
+        handle.endpoint = spec.endpoint
+        return handle
 
     monkeypatch.setattr(client_control_module, "select", _CommandDrivenSelect)
-    monkeypatch.setattr(client_control_module.socket, "create_connection", fake_create_connection)
+    monkeypatch.setattr(client_control_module, "start_ied_simulator_process", fake_start_process)
+    monkeypatch.setattr(client_control_module, "stop_ied_simulator_process", lambda handle: None)
 
     state = service.start_live_wire_transport(mode="host")
     assert state.live_wire_mode == "host"
     assert state.live_wire_last_frame_length == len(READ_RESPONSE_FRAME)
     assert state.live_wire_last_frame_hex == READ_RESPONSE_FRAME.hex()
-    assert sockets[0].address == ("host.docker.internal", 12447)
-    assert sockets[1].address == ("host.docker.internal", 12448)
-    assert data_socket.sent_frames == [
-        COTP_CONNECT_REQUEST_FRAME,
-        ASSOCIATION_REQUEST_FRAME,
-        CONFIRMED_READ_REQUEST_FRAME,
-    ]
-    assert control_socket.sent_commands == [
-        "emit-wire-frame cotp-connect-request",
-        "emit-wire-frame association-request",
-        "emit-wire-frame confirmed-read-request XCBR1 ST$Pos$stVal 3",
-    ]
+    assert state.live_wire_endpoint is not None
+    assert state.live_wire_endpoint.host == "wire-host"
+    assert process_commands == []
 
     state = service.stop_live_wire_transport()
     assert state.live_wire_open is False

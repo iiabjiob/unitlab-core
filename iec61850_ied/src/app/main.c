@@ -9,6 +9,7 @@
 #include "fixture/fixture_parser.h"
 #include "model/model_loader.h"
 #include "model/model_plan.h"
+#include "server/native_wire_client.h"
 #include "server/native_wire_server.h"
 #include "server/unitlab_mms_server_runtime.h"
 #include "wire/ber/unitlab_mms_ber.h"
@@ -25,6 +26,7 @@ typedef struct SimulatorOptions {
     int smoke_start;
     int native_smoke_start;
     int native_wire_start;
+    int native_wire_client_start;
     int metadata_probe;
     int gi_probe;
     const char* report_key;
@@ -52,7 +54,7 @@ static int immediate_stop_requested(void* context)
 
 static void print_usage(const char* program_name)
 {
-    printf("Usage: %s --fixture PATH --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--native-smoke-start] [--native-wire-start] [--metadata-probe] [--gi-probe] [--report-key KEY]\n", program_name);
+    printf("Usage: %s --fixture PATH --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--native-smoke-start] [--native-wire-start] [--native-wire-client-start] [--metadata-probe] [--gi-probe] [--report-key KEY]\n", program_name);
     printf("\n");
     printf("Options:\n");
     printf("  --fixture PATH   UnitLab IEC 61850 IED simulator fixture JSON.\n");
@@ -63,6 +65,7 @@ static void print_usage(const char* program_name)
     printf("  --smoke-start    Start and stop the linked MMS server once, then exit.\n");
     printf("  --native-smoke-start Exercise the native server-runtime boundary once, then exit.\n");
     printf("  --native-wire-start  Start a native wire server that can emit live reports over TCP.\n");
+    printf("  --native-wire-client-start  Start a native wire client that connects and emits wire frames.\n");
     printf("  --metadata-probe Connect to the endpoint and verify DataSet/BRCB metadata, then exit.\n");
     printf("  --gi-probe       Connect to the endpoint, enable report(s), request GI, verify fixture values, then exit.\n");
     printf("  --report-key KEY Limit --gi-probe validation to one fixture ReportControl key.\n");
@@ -93,6 +96,7 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
     options->smoke_start = 0;
     options->native_smoke_start = 0;
     options->native_wire_start = 0;
+    options->native_wire_client_start = 0;
     options->metadata_probe = 0;
     options->gi_probe = 0;
     options->report_key = NULL;
@@ -117,6 +121,10 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         }
         if (strcmp(arg, "--native-wire-start") == 0) {
             options->native_wire_start = 1;
+            continue;
+        }
+        if (strcmp(arg, "--native-wire-client-start") == 0) {
+            options->native_wire_client_start = 1;
             continue;
         }
         if (strcmp(arg, "--metadata-probe") == 0) {
@@ -166,8 +174,8 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         fprintf(stderr, "BIND_REQUIRED: --bind ADDRESS cannot be empty.\n");
         return -1;
     }
-    if ((options->dry_run ? 1 : 0) + (options->smoke_start ? 1 : 0) + (options->native_smoke_start ? 1 : 0) + (options->native_wire_start ? 1 : 0) + (options->metadata_probe ? 1 : 0) + (options->gi_probe ? 1 : 0) > 1) {
-        fprintf(stderr, "INVALID_ARGUMENT: --dry-run, --smoke-start, --native-smoke-start, --native-wire-start, --metadata-probe, and --gi-probe are mutually exclusive.\n");
+    if ((options->dry_run ? 1 : 0) + (options->smoke_start ? 1 : 0) + (options->native_smoke_start ? 1 : 0) + (options->native_wire_start ? 1 : 0) + (options->native_wire_client_start ? 1 : 0) + (options->metadata_probe ? 1 : 0) + (options->gi_probe ? 1 : 0) > 1) {
+        fprintf(stderr, "INVALID_ARGUMENT: --dry-run, --smoke-start, --native-smoke-start, --native-wire-start, --native-wire-client-start, --metadata-probe, and --gi-probe are mutually exclusive.\n");
         return -1;
     }
     if (options->report_key != NULL && options->report_key[0] == '\0') {
@@ -493,6 +501,26 @@ int main(int argc, char** argv)
         printf("port=%d\n", options.port);
         printf("runtime=%d\n", server_runtime.state);
         printf("reportControl=%d\n", server_runtime.report_control.state);
+        unitlab_free_ied_model_plan(&model_plan);
+        unitlab_free_ied_fixture_model(&fixture_model);
+        return 0;
+    }
+
+    if (options.native_wire_client_start) {
+        UnitLabMmsDiagnostic wire_diagnostic;
+        UnitLabIedModelLoadResult wire_result;
+
+        unitlab_mms_diagnostic_clear(&wire_diagnostic);
+        if (!unitlab_run_native_wire_client(&server_config, &wire_result, signal_stop_requested, NULL)) {
+            fprintf(stderr, "%s: %s\n", wire_result.code, wire_result.message);
+            unitlab_free_ied_model_plan(&model_plan);
+            unitlab_free_ied_fixture_model(&fixture_model);
+            return 69;
+        }
+        printf("unitlab-iec61850-ied-sim: native wire client stopped\n");
+        printf("ied=%s\n", fixture_model.ied_name);
+        printf("bind=%s\n", options.bind_address);
+        printf("port=%d\n", options.port);
         unitlab_free_ied_model_plan(&model_plan);
         unitlab_free_ied_fixture_model(&fixture_model);
         return 0;

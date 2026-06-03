@@ -39,6 +39,7 @@ class Iec61850IedSimulatorProcessSpec:
     port: int
     dry_run: bool = False
     native_wire_start: bool = False
+    native_wire_client_start: bool = False
 
     @property
     def base_command(self) -> tuple[str, ...]:
@@ -59,6 +60,8 @@ class Iec61850IedSimulatorProcessSpec:
         command = self.base_command
         if self.dry_run:
             return (*command, "--dry-run")
+        if self.native_wire_client_start:
+            return (*command, "--native-wire-client-start")
         if self.native_wire_start:
             return (*command, "--native-wire-start")
         return command
@@ -205,6 +208,7 @@ def build_ied_simulator_process_spec(
     port: int = 1102,
     dry_run: bool = False,
     native_wire_start: bool = False,
+    native_wire_client_start: bool = False,
 ) -> Iec61850IedSimulatorProcessSpec:
     binary_text = str(binary_path).strip()
     if not binary_text:
@@ -249,6 +253,7 @@ def build_ied_simulator_process_spec(
         port=port,
         dry_run=dry_run,
         native_wire_start=native_wire_start,
+        native_wire_client_start=native_wire_client_start,
     )
 
 
@@ -323,7 +328,7 @@ def run_ied_simulator_startup_check(
     timeout_seconds: float = 5.0,
     runner: ProcessRunner = subprocess.run,
 ) -> Iec61850IedSimulatorProcessResult:
-    check_spec = spec if spec.dry_run else replace(spec, dry_run=True, native_wire_start=False)
+    check_spec = spec if spec.dry_run else replace(spec, dry_run=True, native_wire_start=False, native_wire_client_start=False)
     try:
         completed = runner(
             check_spec.command,
@@ -566,6 +571,47 @@ def wait_ied_simulator_process_ready(
         sleep(min(retry_interval_seconds, remaining))
 
 
+def wait_ied_native_wire_client_ready(
+    process: subprocess.Popen[str],
+    *,
+    timeout_seconds: float = 5.0,
+) -> None:
+    if process.stdout is None:
+        raise Iec61850ReportRuntimeError(
+            "SIMULATOR_NATIVE_WIRE_STDOUT_UNAVAILABLE",
+            "IEC 61850 native wire client readiness requires process stdout.",
+        )
+
+    deadline = time.monotonic() + max(timeout_seconds, 0.0)
+    expected_prefix = "native-wire-client: ready"
+    while True:
+        return_code = process.poll()
+        if return_code is not None:
+            stdout, stderr = _communicate_finished_process(process)
+            details = (stderr or stdout).strip()
+            raise Iec61850ReportRuntimeError(
+                "SIMULATOR_PROCESS_EXITED",
+                f"IEC 61850 native wire client exited before readiness with code {return_code}: {details}",
+            )
+
+        remaining = max(deadline - time.monotonic(), 0.0)
+        if remaining <= 0:
+            raise Iec61850ReportRuntimeError(
+                "SIMULATOR_NATIVE_WIRE_READY_TIMEOUT",
+                f"IEC 61850 native wire client did not print its ready banner within {timeout_seconds:g}s.",
+            )
+
+        readable, _, _ = select.select([process.stdout], [], [], min(remaining, 1.0))
+        if not readable:
+            continue
+
+        line = process.stdout.readline()
+        if not line:
+            continue
+        if expected_prefix in line:
+            return
+
+
 def wait_ied_native_wire_server_ready(
     spec: Iec61850IedSimulatorProcessSpec,
     process: subprocess.Popen[str],
@@ -664,7 +710,12 @@ def start_ied_simulator_process(
         process=process,
     )
     try:
-        if spec.native_wire_start:
+        if spec.native_wire_client_start:
+            wait_ied_native_wire_client_ready(
+                process,
+                timeout_seconds=readiness_timeout_seconds,
+            )
+        elif spec.native_wire_start:
             wait_ied_native_wire_server_ready(
                 spec,
                 process,
