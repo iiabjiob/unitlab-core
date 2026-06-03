@@ -45,6 +45,8 @@ The implementation is not considered complete for a slice until all of the follo
 
 Reference comparison does not mean copying implementation details. It means matching behavior at the service, frame, and diagnostic level for the supported MMS surface.
 
+For slice 0, the current golden source is the reference terminal capture at `/workspace/tools/iec61850_reference/captures/mms Areva746.pcap`, with `libiec61850` used to cross-check the same layer boundaries when a capture is ambiguous.
+
 ## Slice Plan
 
 ### Slice 0 - Transport And Association Bring-Up
@@ -58,11 +60,13 @@ Deliverables:
 - ISO Session / Presentation framing;
 - ACSE AARQ / AARE;
 - MMS InitiateRequest / InitiateResponse;
-- golden transport and handshake captures for the supported path.
+- exact-byte golden transport and handshake captures for the supported path;
+- reference-capture handshake bytes from `mms Areva746.pcap` as the current compatibility oracle.
 
 Exit criteria:
 - a reference endpoint can complete the full connection and initiate exchange;
-- the slice has focused tests plus a Wireshark-visible capture or pcap.
+- the slice has focused tests plus a Wireshark-visible capture or pcap;
+- the supported handshake bytes are compared against a recorded golden frame, not reconstructed ad hoc.
 
 ### Slice 1 - Discovery And Basic Read
 
@@ -178,6 +182,7 @@ Each slice closes only when all of these are true:
 - Unit tests for encode/decode, discovery, read, write, report setup, reports, correlation, diagnostics, and runtime transitions.
 - Golden pcap or byte-level frame comparison for every supported protocol path.
 - Reference comparison against `libiec61850` for supported service behavior, plus captured golden frames for any slice that closes before a live parity harness exists.
+- For slice 0, prefer reference-capture handshake bytes as the first golden source and keep the captured frame hex under version control.
 - Wireshark verification of the handshake and service frames for each slice.
 - Malformed-input tests for truncated frames, unsupported tags, invalid lengths, and rejected negotiation.
 
