@@ -577,6 +577,34 @@ static void test_server_runtime_apply_confirmed_request_and_build_response_round
     (void)response_consumed_length;
 }
 
+static void test_server_runtime_confirmed_response_fails_after_timeout(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    uint8_t response_bytes[128U];
+    uint8_t response_payload[5U] = { 0x02U, 0x01U, 0x05U, 0xA4U, 0x00U };
+    size_t response_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+
+    unitlab_mms_pending_request_init(&server_runtime.pending_request);
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 11U, 7U, 1000U, 100U, &diagnostic) == 1);
+    assert(unitlab_mms_pending_request_mark_timed_out(&server_runtime.pending_request, 1100U, &diagnostic) == 1);
+    assert(server_runtime.pending_request.state == UNITLAB_MMS_PENDING_REQUEST_TIMED_OUT);
+    assert(server_runtime.pending_request.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_TIMED_OUT);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, response_payload, sizeof(response_payload), response_bytes, sizeof(response_bytes), &response_length, &diagnostic) == 0);
+    assert(response_length == 0U);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_BAD_STATE);
+}
+
 
 static void test_server_runtime_apply_write_request_and_build_response_roundtrips(void)
 {
@@ -820,6 +848,7 @@ int main(void)
     test_server_runtime_apply_association_request_bytes_rejects_non_initiate_request();
     test_wire_builder_builds_confirmed_response_frame_roundtrips();
     test_server_runtime_build_confirmed_response_bytes_roundtrips();
+    test_server_runtime_confirmed_response_fails_after_timeout();
     test_server_runtime_apply_reference_confirmed_request_and_build_response_roundtrips();
     test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips();
     test_server_runtime_apply_confirmed_request_and_build_response_roundtrips();
