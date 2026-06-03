@@ -81,6 +81,18 @@ int unitlab_mms_build_read_request_frame(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic);
 
+int unitlab_mms_build_write_request_frame(
+    const char* domain_id,
+    const char* item_id,
+    const UnitLabMmsBerElement* data_element,
+    uint32_t invoke_id,
+    uint8_t* scratch,
+    size_t scratch_length,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic);
+
 int unitlab_mms_build_get_variable_access_attributes_request_frame(
     const char* domain_id,
     const char* item_id,

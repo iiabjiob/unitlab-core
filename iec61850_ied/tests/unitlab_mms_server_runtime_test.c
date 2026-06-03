@@ -43,115 +43,14 @@ static int contains_bytes(const uint8_t* haystack, size_t haystack_length, const
 }
 
 
-static int build_model_read_request_association_bytes(const char* raw_object_reference, uint32_t invoke_id, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
-{
-    UnitLabMmsAssociationFrame fixture;
-    UnitLabMmsPdu pdu;
-    UnitLabMmsBerElement visible_string_element;
-    UnitLabMmsBerElement service_element;
-    UnitLabMmsBerElement invoke_id_element;
-    uint8_t visible_string_bytes[64U];
-    uint8_t service_bytes[96U];
-    uint8_t request_payload[128U];
-    uint8_t request_encoded[160U];
-    size_t visible_string_length = 0U;
-    size_t service_length = 0U;
-    size_t invoke_id_length = 0U;
-    size_t request_length = 0U;
-    size_t frame_length = 0U;
-
-    unitlab_mms_ber_element_init(&visible_string_element);
-    visible_string_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-    visible_string_element.tag.constructed = 0;
-    visible_string_element.tag.tag_number = 26U;
-    visible_string_element.value_bytes = (const uint8_t*)raw_object_reference;
-    visible_string_element.value_length = strlen(raw_object_reference);
-    if (!unitlab_mms_ber_write(&visible_string_element, visible_string_bytes, sizeof(visible_string_bytes), &visible_string_length, diagnostic)) {
-        return 0;
-    }
-
-    unitlab_mms_ber_element_init(&service_element);
-    service_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
-    service_element.tag.constructed = 1;
-    service_element.tag.tag_number = 0U;
-    service_element.value_bytes = visible_string_bytes;
-    service_element.value_length = visible_string_length;
-    if (!unitlab_mms_ber_write(&service_element, service_bytes, sizeof(service_bytes), &service_length, diagnostic)) {
-        return 0;
-    }
-
-    unitlab_mms_ber_element_init(&invoke_id_element);
-    invoke_id_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-    invoke_id_element.tag.constructed = 0;
-    invoke_id_element.tag.tag_number = 2U;
-    invoke_id_element.value_bytes = (const uint8_t*)&invoke_id;
-    invoke_id_element.value_length = 0U;
-    {
-        uint8_t invoke_id_raw[5U];
-        size_t invoke_id_raw_length = 0U;
-        uint32_t value = invoke_id;
-        do {
-            invoke_id_raw[sizeof(invoke_id_raw) - 1U - invoke_id_raw_length] = (uint8_t)(value & 0xFFU);
-            invoke_id_raw_length++;
-            value >>= 8U;
-        } while (value != 0U && invoke_id_raw_length < sizeof(invoke_id_raw));
-        if (invoke_id_raw[sizeof(invoke_id_raw) - invoke_id_raw_length] & 0x80U) {
-            if (sizeof(invoke_id_raw) == invoke_id_raw_length) {
-                if (diagnostic != NULL) {
-                    diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
-                }
-                return 0;
-            }
-            invoke_id_raw[sizeof(invoke_id_raw) - invoke_id_raw_length - 1U] = 0x00U;
-            invoke_id_raw_length++;
-        }
-        invoke_id_element.value_bytes = &invoke_id_raw[sizeof(invoke_id_raw) - invoke_id_raw_length];
-        invoke_id_element.value_length = invoke_id_raw_length;
-        if (!unitlab_mms_ber_write(&invoke_id_element, request_payload, sizeof(request_payload), &invoke_id_length, diagnostic)) {
-            return 0;
-        }
-    }
-
-    if (invoke_id_length + service_length > sizeof(request_payload)) {
-        if (diagnostic != NULL) {
-            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
-        }
-        return 0;
-    }
-    memcpy(request_payload + invoke_id_length, service_bytes, service_length);
-    request_length = invoke_id_length + service_length;
-
-    unitlab_mms_pdu_init(&pdu);
-    pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
-    pdu.pdu_bytes = request_payload;
-    pdu.pdu_length = request_length;
-    if (!unitlab_mms_pdu_encode(&pdu, request_encoded, sizeof(request_encoded), &request_length, diagnostic)) {
-        return 0;
-    }
-
-    unitlab_mms_association_frame_init(&fixture);
-    fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
-    fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
-    fixture.presentation.payload_bytes = request_encoded;
-    fixture.presentation.payload_length = request_length;
-    fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
-    fixture.transport.cotp.eot = 1;
-
-    if (!unitlab_mms_association_frame_encode(&fixture, buffer, buffer_length, &frame_length, diagnostic)) {
-        return 0;
-    }
-    *encoded_length = frame_length;
-    return 1;
-}
-
 static int build_initiate_request_association_bytes(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsAssociationFrame fixture;
     UnitLabMmsAcseApdu acse_apdu;
     uint8_t acse_payload[3U] = { 0x80U, 0x01U, 0x01U };
-    uint8_t acse_encoded[16];
+    uint8_t acse_encoded[16U];
     size_t acse_length = 0U;
-    size_t payload_length = 0U;
+    size_t frame_length = 0U;
 
     unitlab_mms_acse_apdu_init(&acse_apdu);
     acse_apdu.kind = UNITLAB_MMS_ACSE_APDU_AARQ;
@@ -170,14 +69,56 @@ static int build_initiate_request_association_bytes(uint8_t* buffer, size_t buff
     fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
     fixture.transport.cotp.eot = 1;
 
-    payload_length = 0U;
-    if (!unitlab_mms_association_frame_encode(&fixture, buffer, buffer_length, &payload_length, diagnostic)) {
+    if (!unitlab_mms_association_frame_encode(&fixture, buffer, buffer_length, &frame_length, diagnostic)) {
         return 0;
     }
-    *encoded_length = payload_length;
+    *encoded_length = frame_length;
     return 1;
 }
 
+static int build_model_read_request_association_bytes(const char* raw_object_reference, uint32_t invoke_id, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+{
+    char domain_id[128U];
+    char item_id[128U];
+    const char* separator = NULL;
+    size_t domain_length = 0U;
+    uint8_t scratch[256U];
+
+    if (raw_object_reference == NULL || buffer == NULL || encoded_length == NULL) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT;
+        }
+        return 0;
+    }
+
+    separator = strchr(raw_object_reference, '$');
+    if (separator == NULL || separator == raw_object_reference) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT;
+        }
+        return 0;
+    }
+
+    domain_length = (size_t)(separator - raw_object_reference);
+    if (domain_length >= sizeof(domain_id)) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
+        }
+        return 0;
+    }
+    memcpy(domain_id, raw_object_reference, domain_length);
+    domain_id[domain_length] = '\0';
+
+    if (strlen(separator + 1U) >= sizeof(item_id)) {
+        if (diagnostic != NULL) {
+            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
+        }
+        return 0;
+    }
+    snprintf(item_id, sizeof(item_id), "%s", separator + 1U);
+
+    return unitlab_mms_build_read_request_frame(domain_id, item_id, invoke_id, scratch, sizeof(scratch), buffer, buffer_length, encoded_length, diagnostic);
+}
 
 static void test_server_runtime_apply_association_request_bytes_accepts_acse_aarq(void)
 {
@@ -382,7 +323,7 @@ static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
 
     memset(&plan, 0, sizeof(plan));
     memset(signals, 0, sizeof(signals));
-    strcpy(signals[0].object_reference, "Pos.stVal");
+    strcpy(signals[0].object_reference, "XCBR1.ST.Pos.stVal");
     signals[0].initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
     strcpy(signals[0].initial_value, "model-read");
     plan.signal_count = 1U;
@@ -398,7 +339,7 @@ static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
 
     unitlab_mms_pending_request_init(&server_runtime.pending_request);
     assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 41U, 7U, 1000U, 100U, &diagnostic) == 1);
-    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "Pos.stVal");
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "XCBR1.ST.Pos.stVal");
     snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "stVal");
 
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &encoded_length, &diagnostic));
@@ -483,7 +424,7 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
 
     memset(&plan, 0, sizeof(plan));
     memset(signals, 0, sizeof(signals));
-    strcpy(signals[0].object_reference, "Pos.stVal");
+    strcpy(signals[0].object_reference, "XCBR1.ST.Pos.stVal");
     signals[0].initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
     strcpy(signals[0].initial_value, "model-read");
     plan.signal_count = 1U;
@@ -498,14 +439,21 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
 
     assert(build_model_read_request_association_bytes("XCBR1$ST$Pos$stVal", 3U, wire_bytes, sizeof(wire_bytes), &wire_length, &diagnostic));
     unitlab_mms_operation_result_init(&operation_result);
-    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, wire_bytes, wire_length, &consumed_length, &operation_result));
+    {
+        int incoming_ok = unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, wire_bytes, wire_length, &consumed_length, &operation_result);
+        if (!incoming_ok) {
+            fprintf(stderr, "runtime diag: %d %s\n", operation_result.diagnostic.code, operation_result.diagnostic.message);
+            fflush(stderr);
+        }
+        assert(incoming_ok);
+    }
     assert(operation_result.ok == 1);
     assert(consumed_length == wire_length);
     assert(server_runtime.transport.invoke_id == 3U);
     assert(server_runtime.pending_request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE);
     assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_READ);
     assert(server_runtime.pending_request.invoke_id == 3U);
-    assert(strcmp(server_runtime.pending_request.object_reference, "Pos.stVal") == 0);
+    assert(strcmp(server_runtime.pending_request.object_reference, "XCBR1.ST.Pos.stVal") == 0);
     assert(strcmp(server_runtime.pending_request.attribute_reference, "stVal") == 0);
     assert(server_runtime.pending_request.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED);
 
@@ -553,7 +501,7 @@ static void test_server_runtime_apply_confirmed_request_and_build_response_round
 
     unitlab_mms_pending_request_init(&server_runtime.pending_request);
     assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 5U, 7U, 1000U, 100U, &diagnostic) == 1);
-    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "Pos.stVal");
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "XCBR1.ST.Pos.stVal");
     snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "stVal");
 
     unitlab_mms_diagnostic_clear(&diagnostic);
@@ -595,7 +543,7 @@ static void test_server_runtime_rejects_mismatched_confirmed_response_invoke_id(
 
     unitlab_mms_pending_request_init(&server_runtime.pending_request);
     assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 5U, 7U, 1000U, 100U, &diagnostic) == 1);
-    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "Pos.stVal");
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "XCBR1.ST.Pos.stVal");
     snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "stVal");
 
     unitlab_mms_pdu_init(&wire_pdu);
@@ -654,7 +602,7 @@ static void test_server_runtime_apply_write_request_and_build_response_roundtrip
     uint8_t wire_bytes[256];
     UnitLabMmsAssociationFrame fixture;
     uint8_t response_bytes[256];
-    uint8_t response_payload[5U] = { 0x02U, 0x01U, 0x2BU, 0xA5U, 0x00U };
+    uint8_t response_payload[9U] = { 0x02U, 0x01U, 0x2BU, 0xA5U, 0x04U, 0x30U, 0x02U, 0x81U, 0x00U };
     size_t wire_length = 0U;
     size_t consumed_length = 0U;
     size_t response_length = 0U;
@@ -669,7 +617,7 @@ static void test_server_runtime_apply_write_request_and_build_response_roundtrip
     {
         UnitLabMmsAssociationFrame request_fixture;
         UnitLabMmsPdu request_pdu;
-        uint8_t request_payload[5U] = { 0x02U, 0x01U, 0x2BU, 0xA5U, 0x00U };
+        uint8_t request_payload[] = { 0x02U, 0x01U, 0x2BU, 0xA5U, 0x24U, 0x30U, 0x22U, 0xA0U, 0x1BU, 0x30U, 0x19U, 0xA0U, 0x17U, 0xA1U, 0x15U, 0x1AU, 0x05U, 'X', 'C', 'B', 'R', '1', 0x1AU, 0x0CU, 'S', 'T', '$', 'P', 'o', 's', '$', 's', 't', 'V', 'a', 'l', 0xA0U, 0x03U, 0x83U, 0x01U, 0xFFU };
         uint8_t request_encoded[16U];
         size_t request_length = 0U;
         size_t request_frame_length = 0U;

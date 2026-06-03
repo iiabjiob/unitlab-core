@@ -416,6 +416,98 @@ int unitlab_mms_server_runtime_apply_model_plan(UnitLabMmsServerRuntime* server_
     return 1;
 }
 
+static int server_runtime_build_write_response_service(
+    const UnitLabMmsServerRuntime* server_runtime,
+    uint32_t invoke_id,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t member_bytes[16U];
+    uint8_t response_sequence_bytes[32U];
+    uint8_t service_bytes[48U];
+    uint8_t invoke_id_element_bytes[16U];
+    size_t member_length = 0U;
+    size_t response_sequence_length = 0U;
+    size_t service_length = 0U;
+    size_t invoke_id_length = 0U;
+    size_t total_length = 0U;
+    UnitLabMmsBerElement member_element;
+    UnitLabMmsBerElement response_sequence_element;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Write response service buffer and encoded_length are required.");
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&member_element);
+    member_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    member_element.tag.constructed = 0;
+    member_element.tag.tag_number = 1U;
+    member_element.value_bytes = NULL;
+    member_element.value_length = 0U;
+    if (!server_runtime_encode_ber_element(
+            member_element.tag.tag_class,
+            member_element.tag.constructed,
+            member_element.tag.tag_number,
+            member_element.value_bytes,
+            member_element.value_length,
+            member_bytes,
+            sizeof(member_bytes),
+            &member_length,
+            diagnostic)) {
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&response_sequence_element);
+    response_sequence_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+    response_sequence_element.tag.constructed = 1;
+    response_sequence_element.tag.tag_number = 16U;
+    response_sequence_element.value_bytes = member_bytes;
+    response_sequence_element.value_length = member_length;
+    if (!server_runtime_encode_ber_element(
+            response_sequence_element.tag.tag_class,
+            response_sequence_element.tag.constructed,
+            response_sequence_element.tag.tag_number,
+            response_sequence_element.value_bytes,
+            response_sequence_element.value_length,
+            response_sequence_bytes,
+            sizeof(response_sequence_bytes),
+            &response_sequence_length,
+            diagnostic)) {
+        return 0;
+    }
+
+    if (!server_runtime_encode_invoke_id_element(
+            invoke_id,
+            invoke_id_element_bytes,
+            sizeof(invoke_id_element_bytes),
+            &invoke_id_length,
+            diagnostic)) {
+        return 0;
+    }
+
+    if (invoke_id_length + response_sequence_length > sizeof(service_bytes)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Write response service buffer is too small.");
+        return 0;
+    }
+    memcpy(service_bytes, invoke_id_element_bytes, invoke_id_length);
+    memcpy(service_bytes + invoke_id_length, response_sequence_bytes, response_sequence_length);
+    total_length = invoke_id_length + response_sequence_length;
+    if (total_length > buffer_length) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Write response output buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, service_bytes, total_length);
+    *encoded_length = total_length;
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
 static int server_runtime_build_read_response_service(
     UnitLabMmsServerRuntime* server_runtime,
     uint32_t invoke_id,
@@ -894,6 +986,18 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
             service_length = synthesized_service_length;
         } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAME_LIST) {
             if (!server_runtime_build_get_name_list_response_service(
+                    server_runtime,
+                    server_runtime->pending_request.invoke_id,
+                    synthesized_service_bytes,
+                    sizeof(synthesized_service_bytes),
+                    &synthesized_service_length,
+                    diagnostic)) {
+                return 0;
+            }
+            service_bytes = synthesized_service_bytes;
+            service_length = synthesized_service_length;
+        } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_WRITE) {
+            if (!server_runtime_build_write_response_service(
                     server_runtime,
                     server_runtime->pending_request.invoke_id,
                     synthesized_service_bytes,
