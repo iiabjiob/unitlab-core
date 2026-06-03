@@ -608,7 +608,7 @@ def wait_ied_native_wire_client_ready(
         line = process.stdout.readline()
         if not line:
             continue
-        if expected_prefix in line:
+        if expected_prefix in line or "native-wire-client: state=ready" in line:
             return
 
 
