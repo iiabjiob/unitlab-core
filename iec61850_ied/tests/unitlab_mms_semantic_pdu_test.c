@@ -105,9 +105,14 @@ static void test_wire_pdu_bridge_read_request(void)
     UnitLabMmsSemanticResult result;
     UnitLabMmsDecodeDiagnostic diagnostic;
     const uint8_t payload[] = {
-        0x30U, 0x14U,
-        0x1AU, 0x12U,
-        'X', 'C', 'B', 'R', '1', '$', 'S', 'T', '$', 'P', 'o', 's', '$', 's', 't', 'V', 'a', 'l'
+        0x30U, 0x1FU,
+        0xA1U, 0x1DU,
+        0xA0U, 0x1BU,
+        0x30U, 0x19U,
+        0xA0U, 0x17U,
+        0xA1U, 0x15U,
+        0x1AU, 0x05U, 'X', 'C', 'B', 'R', '1',
+        0x1AU, 0x0CU, 'S', 'T', '$', 'P', 'o', 's', '$', 's', 't', 'V', 'a', 'l'
     };
 
     memset(&wire_pdu, 0, sizeof(wire_pdu));
@@ -126,7 +131,9 @@ static void test_wire_pdu_bridge_read_request(void)
     assert(result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS);
     assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_READ_REQUEST);
     assert(result.pdu.invoke_id == 17U);
-    assert(strcmp(result.pdu.object_reference, "Pos.stVal") == 0);
+    assert(strcmp(result.pdu.domain_id, "XCBR1") == 0);
+    assert(strcmp(result.pdu.item_id, "ST$Pos$stVal") == 0);
+    assert(strcmp(result.pdu.object_reference, "XCBR1.ST.Pos.stVal") == 0);
     assert(strcmp(result.pdu.attribute_reference, "stVal") == 0);
     assert(result.pdu.value_length == sizeof(payload));
     assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
@@ -253,6 +260,40 @@ static void test_wire_pdu_bridge_rejects_unsupported_service(void)
     assert(diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_UNSUPPORTED_SEMANTIC);
 }
 
+static void test_wire_pdu_bridge_get_variable_access_attributes_request(void)
+{
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsSemanticResult result;
+    UnitLabMmsDecodeDiagnostic diagnostic;
+    const uint8_t payload[] = {
+        0xA0U, 0x17U,
+        0xA1U, 0x15U,
+        0x1AU, 0x05U, 'X', 'C', 'B', 'R', '1',
+        0x1AU, 0x0CU, 'S', 'T', '$', 'P', 'o', 's', '$', 's', 't', 'V', 'a', 'l'
+    };
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    unitlab_mms_semantic_result_init(&result);
+    unitlab_mms_decode_diagnostic_init(&diagnostic);
+    wire_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+    wire_pdu.has_invoke_id = 1;
+    wire_pdu.invoke_id = 19U;
+    wire_pdu.has_service = 1;
+    wire_pdu.service_kind = UNITLAB_MMS_SERVICE_GET_VARIABLE_ACCESS_ATTRIBUTES;
+    wire_pdu.service_bytes = payload;
+    wire_pdu.service_length = sizeof(payload);
+
+    assert(unitlab_mms_semantic_result_from_wire_pdu(&result, &wire_pdu, &diagnostic) == 1);
+    assert(result.ok == 1);
+    assert(result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS);
+    assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_GET_VARIABLE_ACCESS_ATTRIBUTES_REQUEST);
+    assert(strcmp(result.pdu.domain_id, "XCBR1") == 0);
+    assert(strcmp(result.pdu.item_id, "ST$Pos$stVal") == 0);
+    assert(strcmp(result.pdu.object_reference, "XCBR1.ST.Pos.stVal") == 0);
+    assert(strcmp(result.pdu.attribute_reference, "stVal") == 0);
+    assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
+}
+
 static void test_wire_pdu_bridge_get_name_list_request(void)
 {
     UnitLabMmsPdu wire_pdu;
@@ -317,6 +358,28 @@ static void test_wire_pdu_bridge_get_name_list_domain_request(void)
     assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
 }
 
+static void test_wire_pdu_bridge_get_variable_access_attributes_response(void)
+{
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsSemanticResult result;
+    UnitLabMmsDecodeDiagnostic diagnostic;
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    unitlab_mms_semantic_result_init(&result);
+    unitlab_mms_decode_diagnostic_init(&diagnostic);
+    wire_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_RESPONSE;
+    wire_pdu.has_invoke_id = 1;
+    wire_pdu.invoke_id = 19U;
+    wire_pdu.has_service = 1;
+    wire_pdu.service_kind = UNITLAB_MMS_SERVICE_GET_VARIABLE_ACCESS_ATTRIBUTES;
+
+    assert(unitlab_mms_semantic_result_from_wire_pdu(&result, &wire_pdu, &diagnostic) == 1);
+    assert(result.ok == 1);
+    assert(result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS);
+    assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_GET_VARIABLE_ACCESS_ATTRIBUTES_RESPONSE);
+    assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
+}
+
 static void test_wire_pdu_bridge_get_name_list_response(void)
 {
     UnitLabMmsPdu wire_pdu;
@@ -346,6 +409,8 @@ int main(void)
     test_result_projection();
     test_reject_projection();
     test_wire_pdu_bridge_read_request();
+    test_wire_pdu_bridge_get_variable_access_attributes_request();
+    test_wire_pdu_bridge_get_variable_access_attributes_response();
     test_wire_pdu_bridge_information_report();
     test_wire_pdu_bridge_initiate_request();
     test_wire_pdu_bridge_initiate_response();

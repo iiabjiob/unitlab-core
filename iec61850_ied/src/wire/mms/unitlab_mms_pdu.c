@@ -118,9 +118,6 @@ static UnitLabMmsServiceKind pdu_classify_service_kind(UnitLabMmsPduKind kind, c
     if (service_tag->tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC) {
         return UNITLAB_MMS_SERVICE_RAW;
     }
-    if ((kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE) && service_tag->tag_number == 0U) {
-        return UNITLAB_MMS_SERVICE_READ;
-    }
     if ((kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE) && service_tag->tag_number == 1U) {
         return UNITLAB_MMS_SERVICE_GET_NAME_LIST;
     }
@@ -129,6 +126,9 @@ static UnitLabMmsServiceKind pdu_classify_service_kind(UnitLabMmsPduKind kind, c
     }
     if ((kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE) && service_tag->tag_number == 5U) {
         return UNITLAB_MMS_SERVICE_WRITE;
+    }
+    if ((kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE) && service_tag->tag_number == 6U) {
+        return UNITLAB_MMS_SERVICE_GET_VARIABLE_ACCESS_ATTRIBUTES;
     }
     if (kind == UNITLAB_MMS_PDU_UNCONFIRMED && (service_tag->tag_number == 0U || service_tag->tag_number == 3U)) {
         return UNITLAB_MMS_SERVICE_INFORMATION_REPORT;

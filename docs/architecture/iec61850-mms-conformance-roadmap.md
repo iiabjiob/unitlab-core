@@ -76,9 +76,9 @@ Deliverables:
 - service-kind classification for these requests and responses.
 
 Current implementation status:
-- Read request framing is wired through the wire layer and semantic bridge.
+- Read request framing now uses the standard `ReadRequest -> variableAccessSpecification -> listOfVariable -> ObjectName` shape through the wire layer and semantic bridge.
 - GetNameList domain discovery request framing is wired through the wire layer and semantic bridge.
-- GetVariableAccessAttributes remains pending.
+- GetVariableAccessAttributes request framing is wired through the wire layer and semantic bridge.
 
 Exit criteria:
 - known MMS objects can be discovered and read through the supported path;

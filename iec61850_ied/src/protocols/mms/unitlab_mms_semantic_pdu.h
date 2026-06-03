@@ -33,7 +33,9 @@ typedef enum UnitLabMmsDecodedPduKind {
     UNITLAB_MMS_DECODED_PDU_ABORT = 10,
     UNITLAB_MMS_DECODED_PDU_REJECT = 11,
     UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_REQUEST = 12,
-    UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_RESPONSE = 13
+    UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_RESPONSE = 13,
+    UNITLAB_MMS_DECODED_PDU_GET_VARIABLE_ACCESS_ATTRIBUTES_REQUEST = 14,
+    UNITLAB_MMS_DECODED_PDU_GET_VARIABLE_ACCESS_ATTRIBUTES_RESPONSE = 15
 } UnitLabMmsDecodedPduKind;
 
 typedef struct UnitLabMmsDecodedPdu {
@@ -50,6 +52,7 @@ typedef struct UnitLabMmsDecodedPdu {
     uint32_t object_scope;
     char domain_id[128];
     char continue_after[128];
+    char item_id[128];
     const uint8_t* value_bytes; /* Caller-owned decode buffer; valid only while the buffer lives. */
     size_t value_length;
     int buffered;
