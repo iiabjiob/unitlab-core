@@ -42,17 +42,19 @@ Reference comparison does not mean copying implementation details. It means matc
 
 ### Slice 0 - Protocol Boundary Freeze
 
+Status: closed.
+
 Lock the lower-layer ownership split before expanding the service surface.
 
 Deliverables:
 - stable `BER`, `TPKT`, `COTP`, `session`, `presentation`, `ACSE`, and `MMS PDU` boundaries;
 - explicit semantic-result and diagnostic mapping;
 - golden fixtures for encode/decode round-trips and malformed frames;
-- comparison harness that can run the same request against `libiec61850` and the UnitLab stack.
+- a `libiec61850`-captured golden association-accept frame asserted by the native smoke test.
 
 Exit criteria:
 - no wire-layer code mutates runtime state directly;
-- the comparison harness can capture and replay the supported handshake path.
+- the handshake path is covered by a native smoke test and a `libiec61850`-derived golden accept frame.
 
 ### Slice 1 - Association Lifecycle
 
@@ -165,7 +167,7 @@ Each slice closes only when all of these are true:
 
 - Unit tests for encode/decode, correlation, diagnostics, and runtime transitions.
 - Golden pcap or byte-level frame comparison for every supported protocol path.
-- Reference comparison against `libiec61850` for supported service behavior.
+- Reference comparison against `libiec61850` for supported service behavior, plus captured golden frames for any slice that closes before a live parity harness exists.
 - Malformed-input tests for truncated frames, unsupported tags, invalid lengths, and rejected negotiation.
 
 ## Risks

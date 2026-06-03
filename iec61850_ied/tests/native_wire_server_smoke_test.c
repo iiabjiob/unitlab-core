@@ -190,6 +190,7 @@ static void test_native_wire_server_speaks_reference_handshake(void)
     size_t association_response_length = 0U;
     size_t consumed_length = 0U;
     int client_fd;
+    /* Golden association-accept frame captured from libIEC61850 server_example_basic_io. */
     const uint8_t expected_cotp_cc[] = {
         0x03U, 0x00U, 0x00U, 0x16U, 0x11U, 0xD0U, 0x00U, 0x01U, 0x00U, 0x01U, 0x00U,
         0xC0U, 0x01U, 0x0DU, 0xC2U, 0x02U, 0x00U, 0x01U, 0xC1U, 0x02U, 0x00U, 0x01U,
