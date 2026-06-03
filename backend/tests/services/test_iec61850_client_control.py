@@ -4,17 +4,12 @@ from datetime import UTC, datetime
 
 import pytest
 
+import app.services.iec61850.client_control as client_control_module
 from app.core.config import get_settings
 from app.services.iec61850.client_control import Iec61850ClientControlService
-import app.services.iec61850.client_control as client_control_module
 from app.services.iec61850.report_runtime import Iec61850ReportReason, Iec61850ReportRuntimeError, Iec61850RuntimeStatus
 
 
-COTP_CONNECT_REQUEST_FRAME = bytes.fromhex("0300001611e00000000100c0010dc2020001c1020001")
-ASSOCIATION_REQUEST_FRAME = bytes.fromhex("030000b002f080010001006181a230819f020103a08199a18196020103ac8190800100a1818a302ba029a1271a144d793734366965644d6561737572656d656e74731a0f4262704d44494631245354244d6f64302ba029a1271a144d793734366965644d6561737572656d656e74731a0f4262704d4449463124535424426568302ea02ca12a1a144d793734366965644d6561737572656d656e74731a124262704d44494631245354244865616c7468")
-CONFIRMED_READ_REQUEST_FRAME = bytes.fromhex("0300003502f0800100010061286026020103a421301fa11da01b3019a017a1151a0558434252311a0c535424506f7324737456616c")
-COTP_CONNECT_RESPONSE_FRAME = bytes.fromhex("0300001611d00001000100c0010dc2020001c1020001")
-AARE_FRAME = bytes.fromhex("0300001d02f080010001006110300e020103a009a107020102a5028100")
 READ_RESPONSE_FRAME = bytes.fromhex("0300001d02f080010001006110610e300c020103a407a105a0030201ff")
 REPORT_FRAME = bytes.fromhex("0300001402f0800100010040076305a003810100")
 
@@ -44,75 +39,13 @@ class _CommandDrivenProcessStdin:
     def write(self, value: str) -> None:
         command = value.rstrip("\n")
         self._commands.append(command)
-        if command == "emit-wire-frame cotp-connect-request":
-            self._stdout.enqueue(COTP_CONNECT_REQUEST_FRAME)
-        elif command == "emit-wire-frame association-request":
-            self._stdout.enqueue(ASSOCIATION_REQUEST_FRAME)
-        elif command == "emit-wire-frame confirmed-read-request XCBR1 ST$Pos$stVal 3":
-            self._stdout.enqueue(CONFIRMED_READ_REQUEST_FRAME)
-        elif command == "emit-report":
+        if command == "emit-report":
+            self._stdout.lines.append("native-wire-client: state=report-requested\n")
             self._stdout.enqueue(REPORT_FRAME)
+            self._stdout.lines.append("native-wire-client: state=ready\n")
 
     def flush(self) -> None:
         return None
-
-
-class _CommandDrivenControlSocket:
-    def __init__(self, responses: dict[str, bytes]) -> None:
-        self.responses = responses
-        self.sent_commands: list[str] = []
-        self.sent_frames: list[bytes] = []
-        self._buffer = bytearray()
-        self.address: tuple[str, int] | None = None
-        self.closed = False
-
-    def sendall(self, value: bytes) -> None:
-        self.sent_frames.append(value)
-        command = value.decode("utf-8").strip()
-        self.sent_commands.append(command)
-        if command.startswith("emit-wire-frame "):
-            frame_kind = command.split(" ", 2)[1]
-            frame = self.responses.get(frame_kind)
-            if frame is None:
-                raise AssertionError(f"unexpected wire frame request: {command}")
-            self._buffer.extend(_wire_frame_response_line(frame))
-
-    def recv(self, size: int) -> bytes:
-        if not self._buffer:
-            return b""
-        chunk = bytes(self._buffer[:size])
-        del self._buffer[:size]
-        return chunk
-
-    def settimeout(self, _timeout: float) -> None:
-        return None
-
-    def close(self) -> None:
-        self.closed = True
-
-
-class _CommandDrivenDataSocket:
-    def __init__(self, frames: bytes) -> None:
-        self.address: tuple[str, int] | None = None
-        self.closed = False
-        self._buffer = bytearray(frames)
-        self.sent_frames: list[bytes] = []
-
-    def sendall(self, value: bytes) -> None:
-        self.sent_frames.append(value)
-
-    def recv(self, size: int) -> bytes:
-        if not self._buffer:
-            return b""
-        chunk = bytes(self._buffer[:size])
-        del self._buffer[:size]
-        return chunk
-
-    def settimeout(self, _timeout: float) -> None:
-        return None
-
-    def close(self) -> None:
-        self.closed = True
 
 
 class _CommandDrivenSelect:
@@ -120,9 +53,7 @@ class _CommandDrivenSelect:
     def select(readable, writable, exceptional, timeout=None):
         ready = []
         for item in readable:
-            if hasattr(item, "_buffer") and len(getattr(item, "_buffer")) > 0:
-                ready.append(item)
-            elif hasattr(item, "lines") and getattr(item, "lines"):
+            if hasattr(item, "lines") and getattr(item, "lines"):
                 ready.append(item)
         return ready, [], []
 
@@ -201,6 +132,13 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
         process_commands: list[str] = []
         stdout = _QueuedStdout()
         stdout.lines.extend([
+            "native-wire-client: state=init\n",
+            "native-wire-client: state=data-connected\n",
+            "native-wire-client: state=control-connected\n",
+            "native-wire-client: state=cotp-connected\n",
+            "native-wire-client: state=associating\n",
+            "native-wire-client: state=associated\n",
+            "native-wire-client: state=ready\n",
             "native-wire-client: ready\n",
             _wire_frame_response_line(READ_RESPONSE_FRAME).decode("utf-8"),
         ])
@@ -225,13 +163,13 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
         monkeypatch.setattr(client_control_module, "start_ied_simulator_process", fake_start_process)
         monkeypatch.setattr(client_control_module, "stop_ied_simulator_process", lambda handle: None)
 
-        state = service.start_live_wire_transport(mode="process")
+        state = service.start_live_wire_transport()
 
-        assert state.live_wire_mode == "process"
         assert started_specs
         assert started_specs[0].binary_path == "/bin/true"
         assert started_specs[0].native_wire_client_start is True
         assert started_specs[0].bind_address == "wire-host"
+        assert state.live_wire_open is True
         assert process_commands == []
         assert state.live_wire_last_frame_length == len(READ_RESPONSE_FRAME)
         assert state.live_wire_last_frame_hex == READ_RESPONSE_FRAME.hex()
@@ -244,6 +182,7 @@ def test_client_control_service_uses_env_live_wire_binary_path(monkeypatch: pyte
     finally:
         get_settings.cache_clear()
 
+
 def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
     service = Iec61850ClientControlService(
         now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC),
@@ -255,6 +194,13 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
     process_commands: list[str] = []
     stdout = _QueuedStdout()
     stdout.lines.extend([
+        "native-wire-client: state=init\n",
+        "native-wire-client: state=data-connected\n",
+        "native-wire-client: state=control-connected\n",
+        "native-wire-client: state=cotp-connected\n",
+        "native-wire-client: state=associating\n",
+        "native-wire-client: state=associated\n",
+        "native-wire-client: state=ready\n",
         "native-wire-client: ready\n",
         _wire_frame_response_line(READ_RESPONSE_FRAME).decode("utf-8"),
     ])
@@ -281,12 +227,13 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
     monkeypatch.setattr(client_control_module, "start_ied_simulator_process", fake_start_process)
     monkeypatch.setattr(client_control_module, "stop_ied_simulator_process", lambda handle: None)
 
-    state = service.start_live_wire_transport(mode="host")
-    assert state.live_wire_mode == "host"
+    state = service.start_live_wire_transport()
     assert state.live_wire_open is True
     assert process_commands == []
     assert state.live_wire_last_frame_length == len(READ_RESPONSE_FRAME)
     assert state.live_wire_last_frame_hex == READ_RESPONSE_FRAME.hex()
+    assert state.live_wire_endpoint is not None
+    assert state.live_wire_endpoint.host == "wire-host"
 
     state = service.emit_live_wire_report()
     assert state.live_wire_last_frame_length == len(REPORT_FRAME)
@@ -297,52 +244,3 @@ def test_client_control_service_can_drive_a_live_wire_transport_smoke(monkeypatc
     state = service.stop_live_wire_transport()
     assert state.live_wire_open is False
     assert [event.kind for event in state.transcript][-1] == "wire-session-close"
-
-def test_client_control_service_can_drive_a_live_wire_host_debug_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
-    service = Iec61850ClientControlService(
-        now=lambda: datetime(2026, 5, 29, 12, 0, tzinfo=UTC),
-        live_wire_binary_path="/bin/true",
-        live_wire_service_host="wire-host",
-        live_wire_data_port=12347,
-    )
-
-    process_commands: list[str] = []
-    stdout = _QueuedStdout()
-    stdout.lines.extend([
-        "native-wire-client: ready\n",
-        _wire_frame_response_line(READ_RESPONSE_FRAME).decode("utf-8"),
-    ])
-
-    class _FakeProcess:
-        def __init__(self) -> None:
-            self.stdin = _CommandDrivenProcessStdin(process_commands, stdout)
-            self.stdout = stdout
-
-    class _FakeHandle:
-        def __init__(self) -> None:
-            self.process = _FakeProcess()
-            self.pid = 4242
-            self.spec = None
-            self.endpoint = service.snapshot().endpoint
-
-    def fake_start_process(spec, **_kwargs):
-        handle = _FakeHandle()
-        handle.spec = spec
-        handle.endpoint = spec.endpoint
-        return handle
-
-    monkeypatch.setattr(client_control_module, "select", _CommandDrivenSelect)
-    monkeypatch.setattr(client_control_module, "start_ied_simulator_process", fake_start_process)
-    monkeypatch.setattr(client_control_module, "stop_ied_simulator_process", lambda handle: None)
-
-    state = service.start_live_wire_transport(mode="host")
-    assert state.live_wire_mode == "host"
-    assert state.live_wire_last_frame_length == len(READ_RESPONSE_FRAME)
-    assert state.live_wire_last_frame_hex == READ_RESPONSE_FRAME.hex()
-    assert state.live_wire_endpoint is not None
-    assert state.live_wire_endpoint.host == "wire-host"
-    assert process_commands == []
-
-    state = service.stop_live_wire_transport()
-    assert state.live_wire_open is False
-

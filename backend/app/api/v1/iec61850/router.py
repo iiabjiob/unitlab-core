@@ -72,7 +72,7 @@ async def run_subscription_plan() -> dict:
 
 @router.post("/wire/start")
 async def start_wire_transport() -> dict:
-    return _run_action("wire-start", lambda: get_iec61850_client_control_service().start_live_wire_transport(mode="host"))
+    return _run_action("wire-start", get_iec61850_client_control_service().start_live_wire_transport)
 
 
 @router.post("/wire/emit-report")

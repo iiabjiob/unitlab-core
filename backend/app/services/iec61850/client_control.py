@@ -7,7 +7,6 @@ from pathlib import Path
 import select
 from threading import RLock
 from typing import Callable, Sequence
-import socket
 import tempfile
 
 from app.core.config import get_settings
@@ -63,7 +62,6 @@ class Iec61850ClientControlSnapshot:
     last_plan: Iec61850ReportSubscriptionPlan | None
     transcript: tuple[Iec61850MmsClientEvent, ...]
     last_diagnostic: Iec61850ClientControlDiagnostic | None
-    live_wire_mode: str | None
     live_wire_open: bool
     live_wire_control_open: bool
     live_wire_endpoint: Iec61850DeviceEndpoint | None
@@ -84,8 +82,6 @@ class Iec61850ClientControlService:
         live_wire_binary_path: str | None = None,
         live_wire_service_host: str | None = None,
         live_wire_data_port: int | None = None,
-        live_wire_control_port: int | None = None,
-        live_wire_bind_address: str | None = None,
     ) -> None:
         adapter = create_iec61850_simulator_adapter(now=now or _utc_now)
         settings = get_settings()
@@ -106,17 +102,12 @@ class Iec61850ClientControlService:
             self._live_wire_binary_path = getattr(settings, "iec61850_ied_live_wire_binary_path", None) or None
         self._live_wire_service_host = live_wire_service_host or getattr(settings, "iec61850_ied_live_wire_host", "iec61850-ied")
         self._live_wire_data_port = live_wire_data_port if live_wire_data_port is not None else int(getattr(settings, "iec61850_ied_live_wire_port", 12447))
-        self._live_wire_control_port = live_wire_control_port if live_wire_control_port is not None else int(getattr(settings, "iec61850_ied_live_wire_control_port", self._live_wire_data_port + 1))
-        self._live_wire_bind_address = live_wire_bind_address or getattr(settings, "iec61850_ied_wire_bind_address", "127.0.0.1")
         self._live_wire_process: Iec61850IedSimulatorProcessHandle | None = None
-        self._live_wire_socket: socket.socket | None = None
-        self._live_wire_control_socket: socket.socket | None = None
         self._live_wire_fixture_dir: tempfile.TemporaryDirectory[str] | None = None
         self._live_wire_endpoint: Iec61850DeviceEndpoint | None = None
         self._transcript_wire_endpoint_id: str | None = None
         self._live_wire_last_frame: bytes | None = None
         self._live_wire_last_diagnostic: Iec61850ClientControlDiagnostic | None = None
-        self._live_wire_mode: str | None = None
         self._lock = RLock()
 
     @property
@@ -141,12 +132,8 @@ class Iec61850ClientControlService:
                 last_plan=self._last_plan,
                 transcript=self._project_transcript(self._runtime.transcript()),
                 last_diagnostic=self._last_diagnostic,
-                live_wire_mode=self._live_wire_mode,
-                live_wire_open=self._live_wire_process is not None or self._live_wire_socket is not None,
-                live_wire_control_open=(
-                    (self._live_wire_process is not None and self._live_wire_process.process.stdin is not None)
-                    or self._live_wire_control_socket is not None
-                ),
+                live_wire_open=self._live_wire_process is not None,
+                live_wire_control_open=(self._live_wire_process is not None and self._live_wire_process.process.stdin is not None),
                 live_wire_endpoint=self._live_wire_endpoint,
                 live_wire_last_frame_length=len(self._live_wire_last_frame) if self._live_wire_last_frame is not None else None,
                 live_wire_last_frame_hex=self._live_wire_last_frame.hex() if self._live_wire_last_frame is not None else None,
@@ -228,9 +215,9 @@ class Iec61850ClientControlService:
                 post=self._capture_subscription_run,
             )
 
-    def start_live_wire_transport(self, mode: str = "host") -> Iec61850ClientControlSnapshot:
+    def start_live_wire_transport(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
-            return self._run("wire-start", lambda: self._start_live_wire_transport(mode))
+            return self._run("wire-start", self._start_live_wire_transport)
 
     def emit_live_wire_report(self) -> Iec61850ClientControlSnapshot:
         with self._lock:
@@ -240,8 +227,8 @@ class Iec61850ClientControlService:
         with self._lock:
             return self._run("wire-stop", self._stop_live_wire_transport)
 
-    def _start_live_wire_transport(self, mode: str = "host") -> None:
-        if self._live_wire_process is not None or self._live_wire_socket is not None or self._live_wire_control_socket is not None:
+    def _start_live_wire_transport(self) -> None:
+        if self._live_wire_process is not None:
             raise Iec61850ReportRuntimeError(
                 "LIVE_WIRE_SESSION_EXISTS",
                 "IEC 61850 live wire transport is already running.",
@@ -249,46 +236,6 @@ class Iec61850ClientControlService:
 
         self._live_wire_last_frame = None
         self._live_wire_last_diagnostic = None
-
-        selected_mode = mode.strip().lower() if mode else "host"
-        if selected_mode not in ("host", "process"):
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_MODE_INVALID",
-                f"IEC 61850 live wire transport mode {mode!r} is invalid.",
-            )
-
-        if self._live_wire_binary_path is not None:
-            self._live_wire_mode = selected_mode
-            self._start_live_wire_process_transport()
-            return
-
-        if selected_mode == "host":
-            self._live_wire_mode = selected_mode
-            data_socket, control_socket, service_host = self._connect_live_wire_sockets()
-
-            self._live_wire_socket = data_socket
-            self._live_wire_control_socket = control_socket
-            self._live_wire_endpoint = Iec61850DeviceEndpoint(
-                id=f"mms-live-wire:{self._candidate.ied_name}/{self._candidate.access_point_name}@{service_host}:{self._live_wire_data_port}",
-                mode=Iec61850RuntimeMode.MMS,
-                ied_name=self._candidate.ied_name,
-                access_point_name=self._candidate.access_point_name,
-                host=service_host,
-                port=self._live_wire_data_port,
-            )
-            self._transcript_wire_endpoint_id = self._live_wire_endpoint.id
-            self._runtime._append_event(
-                kind="wire-session-open",
-                session_id=self._session_id,
-                endpoint_id=self._live_wire_endpoint.id,
-                client_id=self._client_id,
-                outcome="connected",
-            )
-            self._associate_live_wire_session(self._live_wire_socket)
-            self._exchange_live_wire_first_confirmed_read(self._live_wire_socket)
-            return
-
-        self._live_wire_mode = selected_mode
         self._start_live_wire_process_transport()
 
     def _start_live_wire_process_transport(self) -> None:
@@ -312,18 +259,10 @@ class Iec61850ClientControlService:
         process_handle: Iec61850IedSimulatorProcessHandle | None = None
         try:
             process_handle = start_ied_simulator_process(spec)
-        except Exception:
-            if fixture_dir is not None:
-                fixture_dir.cleanup()
-            raise
-
-        self._live_wire_process = process_handle
-        self._live_wire_socket = None
-        self._live_wire_control_socket = None
-        self._live_wire_fixture_dir = fixture_dir
-        self._live_wire_endpoint = spec.endpoint
-        self._transcript_wire_endpoint_id = spec.endpoint.id
-        try:
+            self._live_wire_process = process_handle
+            self._live_wire_fixture_dir = fixture_dir
+            self._live_wire_endpoint = spec.endpoint
+            self._transcript_wire_endpoint_id = spec.endpoint.id
             self._runtime._append_event(
                 kind="wire-session-open",
                 session_id=self._session_id,
@@ -355,35 +294,10 @@ class Iec61850ClientControlService:
             if fixture_dir is not None:
                 fixture_dir.cleanup()
             self._live_wire_process = None
-            self._live_wire_socket = None
-            self._live_wire_control_socket = None
             self._live_wire_fixture_dir = None
             self._live_wire_endpoint = None
             self._transcript_wire_endpoint_id = None
             raise
-
-    def _connect_live_wire_sockets(self) -> tuple[socket.socket, socket.socket, str]:
-        host_candidates = self._live_wire_host_candidates()
-        last_error: Iec61850ReportRuntimeError | None = None
-        for host in host_candidates:
-            data_socket: socket.socket | None = None
-            try:
-                data_socket = self._connect_live_wire_socket(host, self._live_wire_data_port)
-                control_socket = self._connect_live_wire_socket(host, self._live_wire_control_port)
-                return data_socket, control_socket, host
-            except Iec61850ReportRuntimeError as exc:
-                last_error = exc
-                if data_socket is not None:
-                    data_socket.close()
-        attempted_hosts = ", ".join(f"{host}:{self._live_wire_data_port}/{self._live_wire_control_port}" for host in host_candidates)
-        raise Iec61850ReportRuntimeError(
-            "LIVE_WIRE_CONNECT_FAILED",
-            "IEC 61850 live wire transport could not connect to the configured host. "
-            f"Attempted {attempted_hosts}. Last error: {last_error}",
-        ) from last_error
-
-    def _live_wire_host_candidates(self) -> tuple[str, ...]:
-        return ("host.docker.internal",)
 
     def _emit_live_wire_report(self) -> None:
         if self._live_wire_endpoint is None:
@@ -391,22 +305,13 @@ class Iec61850ClientControlService:
                 "LIVE_WIRE_SESSION_NOT_OPEN",
                 "IEC 61850 live wire transport is not open.",
             )
-        if self._live_wire_process is not None:
-            if self._live_wire_process.process.stdin is None:
-                raise Iec61850ReportRuntimeError(
-                    "LIVE_WIRE_PROCESS_NOT_OPEN",
-                    "IEC 61850 live wire transport process stdin is not open.",
-                )
-            write_ied_simulator_process_command(self._live_wire_process, "emit-report")
-            frame = self._read_live_wire_process_frame_response("report")
-        else:
-            if self._live_wire_control_socket is None or self._live_wire_socket is None:
-                raise Iec61850ReportRuntimeError(
-                    "LIVE_WIRE_CONTROL_SOCKET_NOT_OPEN",
-                    "IEC 61850 live wire transport control socket is not open.",
-                )
-            self._write_live_wire_command(self._live_wire_control_socket, "emit-report")
-            frame = self._read_tpkt_frame(self._live_wire_socket, "report")
+        if self._live_wire_process is None or self._live_wire_process.process.stdin is None:
+            raise Iec61850ReportRuntimeError(
+                "LIVE_WIRE_PROCESS_NOT_OPEN",
+                "IEC 61850 live wire transport process is not open.",
+            )
+        write_ied_simulator_process_command(self._live_wire_process, "emit-report")
+        frame = self._read_live_wire_process_frame_response("report")
         self._live_wire_last_frame = frame
         self._live_wire_last_diagnostic = None
         self._runtime._append_event(
@@ -420,32 +325,22 @@ class Iec61850ClientControlService:
         )
 
     def _stop_live_wire_transport(self) -> None:
-        if self._live_wire_socket is None and self._live_wire_control_socket is None and self._live_wire_process is None:
+        if self._live_wire_process is None:
             return
         process_handle = self._live_wire_process
-        wire_socket = self._live_wire_socket
-        control_socket = self._live_wire_control_socket
         fixture_dir = self._live_wire_fixture_dir
         endpoint_id = self._live_wire_endpoint.id if self._live_wire_endpoint is not None else self._session_id
         self._live_wire_process = None
-        self._live_wire_socket = None
-        self._live_wire_control_socket = None
         self._live_wire_fixture_dir = None
         self._live_wire_endpoint = None
-        self._live_wire_mode = None
         try:
-            if process_handle is not None and process_handle.process.stdin is not None:
+            if process_handle.process.stdin is not None:
                 try:
                     write_ied_simulator_process_command(process_handle, "exit")
                 except Iec61850ReportRuntimeError:
                     pass
-            if control_socket is not None:
-                control_socket.close()
-            if wire_socket is not None:
-                wire_socket.close()
         finally:
-            if process_handle is not None:
-                stop_ied_simulator_process(process_handle)
+            stop_ied_simulator_process(process_handle)
             if fixture_dir is not None:
                 fixture_dir.cleanup()
         self._live_wire_last_diagnostic = None
@@ -456,148 +351,6 @@ class Iec61850ClientControlService:
             client_id=self._client_id,
             outcome="closed",
         )
-
-    def _connect_live_wire_socket(self, host: str, port: int, *, timeout_seconds: float = 5.0) -> socket.socket:
-        if not host:
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_HOST_NOT_CONFIGURED",
-                "IEC 61850 live wire transport requires a configured host.",
-            )
-        if port <= 0 or port > 65535:
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_PORT_INVALID",
-                f"IEC 61850 live wire transport port {port} is invalid.",
-            )
-        deadline = time.monotonic() + max(timeout_seconds, 0.0)
-        last_error: OSError | None = None
-        while True:
-            try:
-                connection = socket.create_connection((host, port), timeout=min(1.0, max(deadline - time.monotonic(), 0.1)))
-                connection.settimeout(5.0)
-                return connection
-            except OSError as exc:
-                last_error = exc
-                if time.monotonic() >= deadline:
-                    raise Iec61850ReportRuntimeError(
-                        "LIVE_WIRE_CONNECT_FAILED",
-                        f"IEC 61850 live wire transport could not connect to {host}:{port}: {last_error}",
-                    ) from exc
-                time.sleep(0.05)
-
-    def _write_live_wire_command(self, control_socket: socket.socket, command: str) -> None:
-        payload = command.rstrip("\n") + "\n"
-        try:
-            control_socket.sendall(payload.encode("utf-8"))
-        except OSError as exc:
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_CONTROL_WRITE_FAILED",
-                f"IEC 61850 live wire transport could not send control command {command!r}: {exc}",
-            ) from exc
-
-    def _associate_live_wire_session(self, wire_socket: socket.socket) -> None:
-        wire_socket.sendall(self._build_live_wire_cotp_connect_request_frame())
-        self._read_tpkt_frame(wire_socket, "COTP connect response")
-        wire_socket.sendall(self._build_live_wire_association_request_frame())
-        self._read_tpkt_frame(wire_socket, "association response")
-        if self._live_wire_endpoint is None:
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_SESSION_NOT_OPEN",
-                "IEC 61850 live wire transport is not open.",
-            )
-        self._runtime._append_event(
-            kind="wire-associate",
-            session_id=self._session_id,
-            endpoint_id=self._live_wire_endpoint.id,
-            client_id=self._client_id,
-            outcome="associated",
-        )
-
-    def _exchange_live_wire_first_confirmed_read(self, wire_socket: socket.socket) -> None:
-        wire_socket.sendall(self._build_live_wire_confirmed_read_request_frame())
-        frame = self._read_tpkt_frame(wire_socket, "confirmed read response")
-        self._live_wire_last_frame = frame
-        self._live_wire_last_diagnostic = None
-        if self._live_wire_endpoint is None:
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_SESSION_NOT_OPEN",
-                "IEC 61850 live wire transport is not open.",
-            )
-        self._runtime._append_event(
-            kind="wire-confirmed-read-frame",
-            session_id=self._session_id,
-            endpoint_id=self._live_wire_endpoint.id,
-            client_id=self._client_id,
-            outcome="received",
-            code=str(len(frame)),
-            message=frame.hex(),
-        )
-
-    def _build_live_wire_cotp_connect_request_frame(self) -> bytes:
-        return self._request_live_wire_frame("cotp-connect-request")
-
-    def _build_live_wire_association_request_frame(self) -> bytes:
-        return self._request_live_wire_frame("association-request")
-
-    def _build_live_wire_confirmed_read_request_frame(self) -> bytes:
-        return self._request_live_wire_frame(
-            "confirmed-read-request",
-            domain_id="XCBR1",
-            item_id="ST$Pos$stVal",
-            invoke_id=3,
-        )
-
-    def _request_live_wire_frame(
-        self,
-        frame_kind: str,
-        *,
-        domain_id: str | None = None,
-        item_id: str | None = None,
-        invoke_id: int | None = None,
-    ) -> bytes:
-        if self._live_wire_mode == "process":
-            if self._live_wire_process is None or self._live_wire_process.process.stdin is None or self._live_wire_process.process.stdout is None:
-                raise Iec61850ReportRuntimeError(
-                    "LIVE_WIRE_PROCESS_NOT_OPEN",
-                    "IEC 61850 live wire transport process is not open.",
-                )
-            command = self._build_live_wire_frame_command(frame_kind, domain_id=domain_id, item_id=item_id, invoke_id=invoke_id)
-            write_ied_simulator_process_command(self._live_wire_process, command)
-            return self._read_live_wire_process_frame_response(frame_kind)
-        if self._live_wire_control_socket is None:
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_CONTROL_SOCKET_NOT_OPEN",
-                "IEC 61850 live wire transport control socket is not open.",
-            )
-        command = self._build_live_wire_frame_command(frame_kind, domain_id=domain_id, item_id=item_id, invoke_id=invoke_id)
-        self._write_live_wire_command(self._live_wire_control_socket, command)
-        return self._read_live_wire_socket_frame_response(frame_kind)
-
-    def _build_live_wire_frame_command(
-        self,
-        frame_kind: str,
-        *,
-        domain_id: str | None = None,
-        item_id: str | None = None,
-        invoke_id: int | None = None,
-    ) -> str:
-        command = ["emit-wire-frame", frame_kind]
-        if frame_kind == "confirmed-read-request":
-            if not domain_id or not item_id or invoke_id is None:
-                raise Iec61850ReportRuntimeError(
-                    "LIVE_WIRE_FRAME_ARGS_INVALID",
-                    "IEC 61850 live wire confirmed-read-request requires domain, item, and invoke-id.",
-                )
-            command.extend([domain_id, item_id, str(invoke_id)])
-        return " ".join(command)
-
-    def _read_live_wire_socket_frame_response(self, frame_kind: str) -> bytes:
-        if self._live_wire_control_socket is None:
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_CONTROL_SOCKET_NOT_OPEN",
-                "IEC 61850 live wire transport control socket is not open.",
-            )
-        response = self._read_live_wire_socket_line(self._live_wire_control_socket, frame_kind)
-        return self._decode_live_wire_frame_response(response, frame_kind)
 
     def _read_live_wire_process_frame_response(self, frame_kind: str) -> bytes:
         if self._live_wire_process is None or self._live_wire_process.process.stdout is None:
@@ -623,36 +376,6 @@ class Iec61850ClientControlService:
             if line.startswith("wire-frame="):
                 return self._decode_live_wire_frame_response(line, frame_kind)
 
-    def _read_live_wire_socket_line(self, control_socket: socket.socket, frame_kind: str) -> str:
-        deadline = time.monotonic() + 5.0
-        chunks: list[bytes] = []
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise Iec61850ReportRuntimeError(
-                    "LIVE_WIRE_FRAME_TIMEOUT",
-                    f"IEC 61850 live wire transport timed out while waiting for a {frame_kind} frame response.",
-                )
-            readable, _, _ = select.select([control_socket], [], [], min(1.0, remaining))
-            if not readable:
-                continue
-            chunk = control_socket.recv(1)
-            if not chunk:
-                raise Iec61850ReportRuntimeError(
-                    "LIVE_WIRE_SOCKET_CLOSED",
-                    "IEC 61850 live wire transport control socket closed before the expected frame response was received.",
-                )
-            if chunk == b"\n":
-                break
-            chunks.append(chunk)
-        try:
-            return b"".join(chunks).decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_FRAME_INVALID",
-                "IEC 61850 live wire transport received a non-UTF8 wire frame response.",
-            ) from exc
-
     def _decode_live_wire_frame_response(self, response: str, frame_kind: str) -> bytes:
         if not response.startswith("wire-frame="):
             raise Iec61850ReportRuntimeError(
@@ -667,53 +390,6 @@ class Iec61850ClientControlService:
                 "LIVE_WIRE_FRAME_INVALID",
                 f"IEC 61850 live wire transport received a malformed {frame_kind} response.",
             ) from exc
-
-    def _read_tpkt_frame(self, wire_socket: socket.socket, frame_label: str) -> bytes:
-        try:
-            header = self._read_exact(wire_socket, 4)
-        except TimeoutError as exc:
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_FRAME_TIMEOUT",
-                f"IEC 61850 live wire transport timed out while waiting for a {frame_label} frame.",
-            ) from exc
-        if len(header) != 4 or header[0] != 3 or header[1] != 0:
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_FRAME_INVALID",
-                "IEC 61850 live wire transport received an invalid TPKT header.",
-            )
-        total_length = int.from_bytes(header[2:4], byteorder="big", signed=False)
-        if total_length < 4:
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_FRAME_INVALID",
-                "IEC 61850 live wire transport received a truncated TPKT length.",
-            )
-        try:
-            payload = self._read_exact(wire_socket, total_length - 4)
-        except TimeoutError as exc:
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_FRAME_TIMEOUT",
-                f"IEC 61850 live wire transport timed out while waiting for a {frame_label} frame payload.",
-            ) from exc
-        if len(payload) != total_length - 4:
-            raise Iec61850ReportRuntimeError(
-                "LIVE_WIRE_FRAME_TRUNCATED",
-                "IEC 61850 live wire transport received a truncated frame payload.",
-            )
-        return header + payload
-
-    def _read_exact(self, wire_socket: socket.socket, length: int) -> bytes:
-        chunks: list[bytes] = []
-        remaining = length
-        while remaining > 0:
-            chunk = wire_socket.recv(remaining)
-            if not chunk:
-                raise Iec61850ReportRuntimeError(
-                    "LIVE_WIRE_SOCKET_CLOSED",
-                    "IEC 61850 live wire transport socket closed before the expected frame was received.",
-                )
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        return b"".join(chunks)
 
     def _project_transcript(self, transcript: tuple[Iec61850MmsClientEvent, ...]) -> tuple[Iec61850MmsClientEvent, ...]:
         if self._transcript_wire_endpoint_id is None:
