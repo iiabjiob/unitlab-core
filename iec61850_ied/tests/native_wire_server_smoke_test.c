@@ -183,7 +183,7 @@ static void test_native_wire_server_speaks_reference_handshake(void)
     UnitLabMmsDiagnostic diagnostic;
     uint8_t client_frame[128U];
     uint8_t response_frame[256U];
-    uint8_t association_request[128U];
+    uint8_t association_request[256U];
     UnitLabMmsAssociationFrame decoded_fixture;
     size_t client_frame_length = 0U;
     size_t association_request_length = 0U;
