@@ -60,6 +60,11 @@ Exit criteria:
 
 Implement association, release, abort, and reject handling end to end.
 
+Progress:
+- release request/response now maps through the wire-semantic bridge into the runtime session state machine;
+- runtime bridge tests cover association and release request/response transitions;
+- wire codec tests cover `CONCLUDE_*` PDU round-trips.
+
 Deliverables:
 - association request/accept/reject framing;
 - release and abort flows;

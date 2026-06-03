@@ -331,6 +331,14 @@ static int bridge_map_pdu_kind(const UnitLabMmsPdu* wire_pdu, UnitLabMmsDecodedP
             decoded_pdu->kind = UNITLAB_MMS_DECODED_PDU_INFORMATION_REPORT;
             *outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
             return 1;
+        case UNITLAB_MMS_PDU_CONCLUDE_REQUEST:
+            decoded_pdu->kind = UNITLAB_MMS_DECODED_PDU_RELEASE_REQUEST;
+            *outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
+            return 1;
+        case UNITLAB_MMS_PDU_CONCLUDE_RESPONSE:
+            decoded_pdu->kind = UNITLAB_MMS_DECODED_PDU_RELEASE_RESPONSE;
+            *outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
+            return 1;
         case UNITLAB_MMS_PDU_REJECT:
             decoded_pdu->kind = UNITLAB_MMS_DECODED_PDU_REJECT;
             *outcome = UNITLAB_MMS_SERVICE_OUTCOME_REJECT;

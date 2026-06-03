@@ -1404,6 +1404,41 @@ static void test_mms_pdu_confirmed_request_roundtrip_with_wide_invoke_id(void)
     assert(memcmp(decoded_pdu.pdu_bytes, payload, sizeof(payload)) == 0);
 }
 
+static void test_mms_pdu_conclude_roundtrip(void)
+{
+    struct {
+        UnitLabMmsPduKind kind;
+        uint8_t tag;
+    } cases[] = {
+        { UNITLAB_MMS_PDU_CONCLUDE_REQUEST, 0x6BU },
+        { UNITLAB_MMS_PDU_CONCLUDE_RESPONSE, 0x6CU },
+        { UNITLAB_MMS_PDU_CONCLUDE_ERROR, 0x6DU },
+    };
+    uint8_t buffer[32];
+    UnitLabMmsPdu pdu;
+    UnitLabMmsPdu decoded_pdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[4] = { 0x80U, 0x01U, 0x00U, 0x00U };
+
+    for (size_t i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        unitlab_mms_pdu_init(&pdu);
+        pdu.kind = cases[i].kind;
+        pdu.pdu_bytes = payload;
+        pdu.pdu_length = sizeof(payload);
+        assert(unitlab_mms_pdu_encode(&pdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+        assert(buffer[0] == cases[i].tag);
+        unitlab_mms_pdu_init(&decoded_pdu);
+        assert(unitlab_mms_pdu_decode(&decoded_pdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+        assert(consumed_length == encoded_length);
+        assert(decoded_pdu.kind == cases[i].kind);
+        assert(decoded_pdu.pdu_length == sizeof(payload));
+        assert(memcmp(decoded_pdu.pdu_bytes, payload, sizeof(payload)) == 0);
+    }
+}
+
 static void test_mms_pdu_rejects_non_minimal_invoke_id(void)
 {
     const uint8_t buffer[6] = { 0x60U, 0x04U, 0x02U, 0x02U, 0x00U, 0x01U };
@@ -1641,6 +1676,7 @@ int main(void)
     test_mms_pdu_decode_stops_at_indicated_length();
     test_mms_pdu_unconfirmed_roundtrip();
     test_mms_pdu_confirmed_request_roundtrip_with_wide_invoke_id();
+    test_mms_pdu_conclude_roundtrip();
     test_mms_pdu_rejects_non_minimal_invoke_id();
     test_ber_length_roundtrip();
     test_ber_tag_roundtrip();

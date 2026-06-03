@@ -586,6 +586,15 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
             operation_result->ok = unitlab_mms_session_begin_association(session, &operation_result->diagnostic);
             operation_result_project_from_runtime(operation_result, operation_result->ok, &operation_result->diagnostic, &session->event_log, &session->last_event);
             return operation_result->ok;
+        case UNITLAB_MMS_DECODED_PDU_RELEASE_REQUEST:
+            if (session == NULL) {
+                set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session is required to apply release request.");
+                operation_result->ok = 0;
+                return 0;
+            }
+            operation_result->ok = unitlab_mms_session_begin_release(session, &operation_result->diagnostic);
+            operation_result_project_from_runtime(operation_result, operation_result->ok, &operation_result->diagnostic, &session->event_log, &session->last_event);
+            return operation_result->ok;
         case UNITLAB_MMS_DECODED_PDU_RELEASE_RESPONSE:
             if (session == NULL) {
                 set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "session is required to apply release response.");
