@@ -438,7 +438,6 @@ int unitlab_mms_server_runtime_apply_model_plan(UnitLabMmsServerRuntime* server_
 }
 
 static int server_runtime_build_write_response_service(
-    const UnitLabMmsServerRuntime* server_runtime,
     uint32_t invoke_id,
     uint8_t* buffer,
     size_t buffer_length,
@@ -451,7 +450,6 @@ static int server_runtime_build_write_response_service(
     uint8_t invoke_id_element_bytes[16U];
     size_t member_length = 0U;
     size_t response_sequence_length = 0U;
-    size_t service_length = 0U;
     size_t invoke_id_length = 0U;
     size_t total_length = 0U;
     UnitLabMmsBerElement member_element;
@@ -1019,7 +1017,6 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
             service_length = synthesized_service_length;
         } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_WRITE) {
             if (!server_runtime_build_write_response_service(
-                    server_runtime,
                     server_runtime->pending_request.invoke_id,
                     synthesized_service_bytes,
                     sizeof(synthesized_service_bytes),
