@@ -52,9 +52,9 @@ int unitlab_mms_presentation_encode(const UnitLabMmsPresentationApdu* apdu, uint
         element.tag.constructed = 0;
         element.tag.tag_number = 0U;
     } else {
-        element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_APPLICATION;
+        element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
         element.tag.constructed = 1;
-        element.tag.tag_number = 1U;
+        element.tag.tag_number = 17U;
     }
     element.value_bytes = apdu->payload_bytes;
     element.value_length = apdu->payload_length;

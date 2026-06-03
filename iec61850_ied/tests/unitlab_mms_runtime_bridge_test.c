@@ -106,12 +106,25 @@ static void test_wire_read_request_starts_pending_request(void)
     unitlab_mms_operation_result_init(&result);
     unitlab_mms_diagnostic_clear(&diagnostic);
 
+    static const uint8_t read_service[] = {
+        0x30U, 0x1FU,
+        0xA1U, 0x1DU,
+        0xA0U, 0x1BU,
+        0x30U, 0x19U,
+        0xA0U, 0x17U,
+        0xA1U, 0x15U,
+        0x1AU, 0x05U, 'X', 'C', 'B', 'R', '1',
+        0x1AU, 0x0CU, 'S', 'T', '$', 'P', 'o', 's', '$', 's', 't', 'V', 'a', 'l'
+    };
+
     memset(&wire_pdu, 0, sizeof(wire_pdu));
     wire_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
     wire_pdu.has_invoke_id = 1;
     wire_pdu.invoke_id = 52U;
     wire_pdu.has_service = 1;
     wire_pdu.service_kind = UNITLAB_MMS_SERVICE_READ;
+    wire_pdu.service_bytes = read_service;
+    wire_pdu.service_length = sizeof(read_service);
 
     assert(unitlab_mms_runtime_apply_wire_pdu(&session, &request, &wire_pdu, &result) == 1);
     assert(result.ok == 1);
