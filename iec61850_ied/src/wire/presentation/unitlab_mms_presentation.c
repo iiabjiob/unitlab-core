@@ -178,6 +178,55 @@ static int presentation_decode_fully_encoded_data(
     return 1;
 }
 
+static int presentation_find_wrapped_user_data(
+    const UnitLabMmsBerElement* outer_element,
+    UnitLabMmsBerElement* user_data_element,
+    UnitLabMmsDiagnostic* diagnostic,
+    unsigned depth)
+{
+    size_t offset = 0U;
+
+    if (outer_element == NULL || user_data_element == NULL) {
+        return 0;
+    }
+    if (outer_element->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION
+        && (outer_element->tag.tag_number == 0U || outer_element->tag.tag_number == 1U)) {
+        *user_data_element = *outer_element;
+        return 1;
+    }
+    if (!outer_element->tag.constructed || outer_element->value_bytes == NULL || outer_element->value_length == 0U) {
+        return 0;
+    }
+    if (depth >= 6U) {
+        presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "presentation CP-type wrapper nesting is too deep.");
+        return 0;
+    }
+
+    while (offset < outer_element->value_length) {
+        UnitLabMmsBerElement child_element;
+        size_t child_consumed_length = 0U;
+
+        unitlab_mms_ber_element_init(&child_element);
+        if (!unitlab_mms_ber_read(&child_element, outer_element->value_bytes + offset, outer_element->value_length - offset, &child_consumed_length, diagnostic)) {
+            return 0;
+        }
+        if (child_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION
+            && (child_element.tag.tag_number == 0U || child_element.tag.tag_number == 1U)) {
+            *user_data_element = child_element;
+            return 1;
+        }
+        if (child_element.tag.constructed && child_element.value_bytes != NULL && child_element.value_length != 0U) {
+            if (presentation_find_wrapped_user_data(&child_element, user_data_element, diagnostic, depth + 1U)) {
+                return 1;
+            }
+        }
+        offset += child_consumed_length;
+    }
+
+    presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "presentation CP-type wrapper does not contain supported user-data.");
+    return 0;
+}
+
 void unitlab_mms_presentation_apdu_init(UnitLabMmsPresentationApdu* apdu)
 {
     if (apdu == NULL) {
@@ -263,6 +312,37 @@ int unitlab_mms_presentation_decode(UnitLabMmsPresentationApdu* apdu, const uint
         }
         *consumed_length = element_consumed_length;
         return 1;
+    }
+    if (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL
+        && element.tag.constructed
+        && (element.tag.tag_number == 16U || element.tag.tag_number == 17U)) {
+        UnitLabMmsBerElement user_data_element;
+
+        unitlab_mms_ber_element_init(&user_data_element);
+        if (!presentation_find_wrapped_user_data(&element, &user_data_element, diagnostic, 0U)) {
+            return 0;
+        }
+        if (user_data_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION && user_data_element.tag.tag_number == 0U && user_data_element.tag.constructed == 0) {
+            apdu->kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
+            apdu->tag = user_data_element.tag;
+            apdu->context_identifier = 1U;
+            apdu->payload_bytes = user_data_element.value_bytes;
+            apdu->payload_length = user_data_element.value_length;
+            apdu->encoded_length = element_consumed_length;
+            *consumed_length = element_consumed_length;
+            presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+            return 1;
+        }
+        if (user_data_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION && user_data_element.tag.tag_number == 1U && user_data_element.tag.constructed == 1) {
+            if (!presentation_decode_fully_encoded_data(apdu, &user_data_element, diagnostic)) {
+                return 0;
+            }
+            *consumed_length = element_consumed_length;
+            return 1;
+        }
+
+        presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "presentation CP-type wrapper contains unsupported user-data.");
+        return 0;
     }
 
     if (diagnostic != NULL) {
