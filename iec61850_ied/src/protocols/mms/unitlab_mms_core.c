@@ -210,6 +210,8 @@ int unitlab_mms_pending_request_collect_get_name_list_names(const UnitLabMmsPend
     }
 
     model_error[0] = '\0';
+    int apply_continue_after_filter = 1;
+
     if (request->browse_object_class == 9U && request->browse_object_scope == 0U) {
         if (!unitlab_collect_ied_model_logical_devices(plan, names, count, model_error, sizeof(model_error))) {
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList logical device browse failed.");
@@ -245,12 +247,65 @@ int unitlab_mms_pending_request_collect_get_name_list_names(const UnitLabMmsPend
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList data set browse failed.");
             return 0;
         }
+    } else if (request->browse_object_class == 3U && request->browse_object_scope == 1U) {
+        if (request->browse_domain_id[0] == '\0' || request->browse_continue_after[0] == '\0') {
+            set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList logical-node browse requires a domain and logical node identifier.");
+            return 0;
+        }
+        if (!unitlab_collect_ied_model_logical_node_variables(
+                plan,
+                request->browse_domain_id,
+                request->browse_continue_after,
+                names,
+                count,
+                model_error,
+                sizeof(model_error))) {
+            set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList logical-node browse failed.");
+            return 0;
+        }
+        apply_continue_after_filter = 0;
+    } else if (request->browse_object_class == 4U && request->browse_object_scope == 1U) {
+        if (request->browse_domain_id[0] == '\0' || request->browse_continue_after[0] == '\0') {
+            set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList buffered report browse requires a domain and logical node identifier.");
+            return 0;
+        }
+        if (!unitlab_collect_ied_model_logical_node_reports(
+                plan,
+                request->browse_domain_id,
+                request->browse_continue_after,
+                UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_BUFFERED,
+                names,
+                count,
+                model_error,
+                sizeof(model_error))) {
+            set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList buffered report browse failed.");
+            return 0;
+        }
+        apply_continue_after_filter = 0;
+    } else if (request->browse_object_class == 5U && request->browse_object_scope == 1U) {
+        if (request->browse_domain_id[0] == '\0' || request->browse_continue_after[0] == '\0') {
+            set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList unbuffered report browse requires a domain and logical node identifier.");
+            return 0;
+        }
+        if (!unitlab_collect_ied_model_logical_node_reports(
+                plan,
+                request->browse_domain_id,
+                request->browse_continue_after,
+                UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_UNBUFFERED,
+                names,
+                count,
+                model_error,
+                sizeof(model_error))) {
+            set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList unbuffered report browse failed.");
+            return 0;
+        }
+        apply_continue_after_filter = 0;
     } else {
         set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "GetNameList browse class or scope is unsupported.");
         return 0;
     }
 
-    if (!unitlab_mms_filter_browse_continue_after(names, count, request->browse_continue_after, diagnostic)) {
+    if (apply_continue_after_filter && !unitlab_mms_filter_browse_continue_after(names, count, request->browse_continue_after, diagnostic)) {
         return 0;
     }
     return 1;

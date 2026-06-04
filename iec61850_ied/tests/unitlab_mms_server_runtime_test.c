@@ -1127,6 +1127,82 @@ static void test_server_runtime_apply_iedscout_get_name_list_request_matches_gol
     assert(memcmp(response_bytes, expected_response, sizeof(expected_response)) == 0);
 }
 
+static void test_server_runtime_apply_iedscout_logical_node_directory_request_builds_response(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLogicalDevice logical_devices[1U];
+    UnitLabIedModelLogicalNode logical_nodes[1U];
+    uint8_t wire_bytes[512U];
+    uint8_t response_bytes[2048U];
+    const uint8_t request_payload[] = {
+        0x30U, 0x1BU,
+        0x02U, 0x01U, 0x03U,
+        0xA0U, 0x16U,
+        0xA0U, 0x14U,
+        0x02U, 0x01U, 0x03U,
+        0xA6U, 0x0FU,
+        0xA0U, 0x0DU,
+        0xA1U, 0x0BU,
+        0x1AU, 0x03U, 'L', 'D', '0',
+        0x1AU, 0x04U, 'L', 'L', 'N', '0'
+    };
+    size_t wire_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+    size_t response_consumed_length = 0U;
+
+    memset(&plan, 0, sizeof(plan));
+    memset(logical_devices, 0, sizeof(logical_devices));
+    memset(logical_nodes, 0, sizeof(logical_nodes));
+    snprintf(logical_devices[0].inst, sizeof(logical_devices[0].inst), "%s", "LD0");
+    snprintf(logical_nodes[0].logical_device_inst, sizeof(logical_nodes[0].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[0].name, sizeof(logical_nodes[0].name), "%s", "LLN0");
+    plan.logical_device_count = 1U;
+    plan.logical_devices = logical_devices;
+    plan.logical_node_count = 1U;
+    plan.logical_nodes = logical_nodes;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+
+    assert(build_get_name_list_request_association_bytes(request_payload, sizeof(request_payload), 3U, wire_bytes, sizeof(wire_bytes), &wire_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, wire_bytes, wire_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(consumed_length == wire_length);
+    assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAME_LIST);
+    assert(server_runtime.pending_request.browse_object_class == 3U);
+    assert(server_runtime.pending_request.browse_object_scope == 1U);
+    assert(strcmp(server_runtime.pending_request.browse_domain_id, "LD0") == 0);
+    assert(strcmp(server_runtime.pending_request.browse_continue_after, "LLN0") == 0);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+
+    {
+        UnitLabMmsAssociationFrame fixture;
+
+        unitlab_mms_association_frame_init(&fixture);
+        assert(unitlab_mms_association_frame_decode(&fixture, response_bytes, response_length, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == response_length);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Mod", strlen("Mod")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Beh", strlen("Beh")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Health", strlen("Health")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"NamPlt", strlen("NamPlt")) == 1);
+    }
+}
+
 int main(void)
 {
     test_server_runtime_init_captures_default_snapshot();
@@ -1144,6 +1220,7 @@ int main(void)
     test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips();
     test_server_runtime_build_get_name_list_response_handles_large_directory();
     test_server_runtime_apply_iedscout_get_name_list_request_matches_golden_capture();
+    test_server_runtime_apply_iedscout_logical_node_directory_request_builds_response();
     test_server_runtime_build_confirmed_response_bytes_matches_fixture_style_object_reference();
     test_server_runtime_apply_confirmed_request_and_build_response_roundtrips();
     test_server_runtime_rejects_mismatched_confirmed_response_invoke_id();

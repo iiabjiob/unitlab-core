@@ -137,6 +137,15 @@ int unitlab_collect_ied_model_logical_device_variables(
     char* error,
     size_t error_size);
 
+int unitlab_collect_ied_model_logical_node_variables(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size);
+
 int unitlab_collect_ied_model_logical_node_reports(
     const UnitLabIedModelPlan* plan,
     const char* logical_device_inst,

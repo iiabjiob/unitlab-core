@@ -910,6 +910,60 @@ int unitlab_collect_ied_model_logical_device_variables(
     return 1;
 }
 
+int unitlab_collect_ied_model_logical_node_variables(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size)
+{
+    static const char* const lln0_common_variables[] = { "Mod", "Beh", "Health", "CF", "DC", "BR", "NamPlt" };
+
+    if (names != NULL) {
+        *names = NULL;
+    }
+    if (count != NULL) {
+        *count = 0U;
+    }
+    if (plan == NULL || logical_device_inst == NULL || logical_node_name == NULL || logical_node_name[0] == '\0' || names == NULL || count == NULL) {
+        set_error(error, error_size, "INVALID_ARGUMENT: plan, logical device, logical node, names, and count are required.");
+        return 0;
+    }
+
+    if (strcmp(logical_node_name, "LLN0") == 0) {
+        for (size_t index = 0U; index < sizeof(lln0_common_variables) / sizeof(lln0_common_variables[0]); index++) {
+            if (!append_unique_metadata_name(names, count, lln0_common_variables[index])) {
+                unitlab_free_ied_model_name_list(*names, *count);
+                *names = NULL;
+                *count = 0U;
+                set_error(error, error_size, "OUT_OF_MEMORY: cannot collect logical-node variables.");
+                return 0;
+            }
+        }
+    }
+
+    for (size_t signal_index = 0U; signal_index < plan->signal_count; signal_index++) {
+        const UnitLabIedModelSignal* signal = &plan->signals[signal_index];
+
+        if (strcmp(signal->logical_device_inst, logical_device_inst) != 0 || strcmp(signal->logical_node_name, logical_node_name) != 0) {
+            continue;
+        }
+        if (signal->data_object_name[0] == '\0') {
+            continue;
+        }
+        if (!append_unique_metadata_name(names, count, signal->data_object_name)) {
+            unitlab_free_ied_model_name_list(*names, *count);
+            *names = NULL;
+            *count = 0U;
+            set_error(error, error_size, "OUT_OF_MEMORY: cannot collect logical-node variables.");
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int unitlab_collect_ied_model_logical_node_reports(
     const UnitLabIedModelPlan* plan,
     const char* logical_device_inst,

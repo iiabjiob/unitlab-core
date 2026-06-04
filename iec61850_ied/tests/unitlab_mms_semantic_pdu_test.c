@@ -401,6 +401,46 @@ static void test_wire_pdu_bridge_get_name_list_domain_request(void)
     assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
 }
 
+static void test_wire_pdu_bridge_get_name_list_logical_node_directory_request(void)
+{
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsSemanticResult result;
+    UnitLabMmsDecodeDiagnostic diagnostic;
+    const uint8_t payload[] = {
+        0x30U, 0x1BU,
+        0x02U, 0x01U, 0x03U,
+        0xA0U, 0x16U,
+        0xA0U, 0x14U,
+        0x02U, 0x01U, 0x03U,
+        0xA6U, 0x0FU,
+        0xA0U, 0x0DU,
+        0xA1U, 0x0BU,
+        0x1AU, 0x03U, 'L', 'D', '0',
+        0x1AU, 0x04U, 'L', 'L', 'N', '0'
+    };
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    unitlab_mms_semantic_result_init(&result);
+    unitlab_mms_decode_diagnostic_init(&diagnostic);
+    wire_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+    wire_pdu.has_invoke_id = 1;
+    wire_pdu.invoke_id = 3U;
+    wire_pdu.has_service = 1;
+    wire_pdu.service_kind = UNITLAB_MMS_SERVICE_GET_NAME_LIST;
+    wire_pdu.service_bytes = payload;
+    wire_pdu.service_length = sizeof(payload);
+
+    assert(unitlab_mms_semantic_result_from_wire_pdu(&result, &wire_pdu, &diagnostic) == 1);
+    assert(result.ok == 1);
+    assert(result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS);
+    assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_REQUEST);
+    assert(result.pdu.object_class == 3U);
+    assert(result.pdu.object_scope == 1U);
+    assert(strcmp(result.pdu.domain_id, "LD0") == 0);
+    assert(strcmp(result.pdu.continue_after, "LLN0") == 0);
+    assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
+}
+
 static void test_wire_pdu_bridge_get_variable_access_attributes_response(void)
 {
     UnitLabMmsPdu wire_pdu;
@@ -462,6 +502,7 @@ int main(void)
     test_wire_pdu_bridge_conclude_error();
     test_wire_pdu_bridge_get_name_list_request();
     test_wire_pdu_bridge_get_name_list_domain_request();
+    test_wire_pdu_bridge_get_name_list_logical_node_directory_request();
     test_wire_pdu_bridge_get_name_list_response();
     test_wire_pdu_bridge_rejects_unsupported_service();
     return 0;

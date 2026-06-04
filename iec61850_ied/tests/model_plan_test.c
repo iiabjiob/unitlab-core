@@ -256,6 +256,65 @@ static int test_collects_named_variables_for_domain_browse(void)
     return passed;
 }
 
+static int test_collects_logical_node_variables_for_directory_browse(void)
+{
+    UnitLabIedModelLogicalDevice logical_devices[1] = {
+        { .inst = "LD0" },
+    };
+    UnitLabIedModelLogicalNode logical_nodes[2] = {
+        { .logical_device_inst = "LD0", .name = "LLN0" },
+        { .logical_device_inst = "LD0", .name = "XCBR1" },
+    };
+    UnitLabIedModelSignal signals[2] = {
+        {
+            .logical_device_inst = "LD0",
+            .logical_node_name = "XCBR1",
+            .data_object_name = "Pos",
+        },
+        {
+            .logical_device_inst = "LD0",
+            .logical_node_name = "XCBR1",
+            .data_object_name = "Loc",
+        },
+    };
+    UnitLabIedModelPlan plan = {
+        .logical_device_count = 1U,
+        .logical_devices = logical_devices,
+        .logical_node_count = 2U,
+        .logical_nodes = logical_nodes,
+        .signal_count = 2U,
+        .signals = signals,
+    };
+    char error[256];
+    char** names = NULL;
+    size_t count = 0U;
+    int passed = 1;
+
+    passed &= expect_true(
+        unitlab_collect_ied_model_logical_node_variables(&plan, "LD0", "LLN0", &names, &count, error, sizeof(error)) == 1,
+        "logical-node browse should collect common variables");
+    if (passed) {
+        passed &= expect_list_matches(
+            names,
+            count,
+            (const char*[]){ "Mod", "Beh", "Health", "CF", "DC", "BR", "NamPlt" },
+            7U,
+            "LLN0 should expose standard common variables");
+    }
+    unitlab_free_ied_model_name_list(names, count);
+    names = NULL;
+    count = 0U;
+
+    passed &= expect_true(
+        unitlab_collect_ied_model_logical_node_variables(&plan, "LD0", "XCBR1", &names, &count, error, sizeof(error)) == 1,
+        "logical-node browse should collect data-object names");
+    if (passed) {
+        passed &= expect_list_matches(names, count, (const char*[]){ "Pos", "Loc" }, 2U, "XCBR1 should expose signal data objects");
+    }
+    unitlab_free_ied_model_name_list(names, count);
+    return passed;
+}
+
 static int test_missing_report_dataset_fails(void)
 {
     UnitLabIedFixtureSignal signals[1] = {
@@ -605,6 +664,7 @@ int main(void)
     int passed = 1;
     passed &= test_model_plan_builds_blueprint();
     passed &= test_collects_named_variables_for_domain_browse();
+    passed &= test_collects_logical_node_variables_for_directory_browse();
     passed &= test_missing_report_dataset_fails();
     passed &= test_invalid_signal_reference_fails();
     passed &= test_signal_fc_mismatch_fails();

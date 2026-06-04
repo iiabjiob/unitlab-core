@@ -469,7 +469,7 @@ static int bridge_collect_get_name_list_object_class(const UnitLabMmsBerElement*
     return 1;
 }
 
-static int bridge_collect_get_name_list_object_scope(const UnitLabMmsBerElement* element, uint32_t* object_scope, int* has_object_scope, char* domain_id, size_t domain_id_size, UnitLabMmsDecodeDiagnostic* diagnostic)
+static int bridge_collect_get_name_list_object_scope(const UnitLabMmsBerElement* element, uint32_t* object_scope, int* has_object_scope, char* domain_id, size_t domain_id_size, char* continue_after, size_t continue_after_size, UnitLabMmsDecodeDiagnostic* diagnostic)
 {
     UnitLabMmsBerElement child;
     size_t offset = 0U;
@@ -497,6 +497,23 @@ static int bridge_collect_get_name_list_object_scope(const UnitLabMmsBerElement*
                 *object_scope = 2U;
                 *has_object_scope = 1;
             }
+        } else if (element->tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && element->tag.tag_number == 26U) {
+            if (domain_id == NULL || domain_id_size == 0U) {
+                return 0;
+            }
+            if (domain_id[0] == '\0') {
+                if (!bridge_copy_bytes_as_string(element->value_bytes, element->value_length, domain_id, domain_id_size)) {
+                    bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNameList domain identifier is too long.", "getNameList domain identifier is too long.");
+                    return 0;
+                }
+            } else if (continue_after != NULL && continue_after[0] == '\0') {
+                if (!bridge_copy_bytes_as_string(element->value_bytes, element->value_length, continue_after, continue_after_size)) {
+                    bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNameList continueAfter is too long.", "getNameList continueAfter is too long.");
+                    return 0;
+                }
+            }
+            *object_scope = 1U;
+            *has_object_scope = 1;
         }
         return 1;
     }
@@ -512,7 +529,7 @@ static int bridge_collect_get_name_list_object_scope(const UnitLabMmsBerElement*
             bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNameList request contains a truncated field.", "getNameList request contains a truncated field.");
             return 0;
         }
-        if (!bridge_collect_get_name_list_object_scope(&child, object_scope, has_object_scope, domain_id, domain_id_size, diagnostic)) {
+        if (!bridge_collect_get_name_list_object_scope(&child, object_scope, has_object_scope, domain_id, domain_id_size, continue_after, continue_after_size, diagnostic)) {
             return 0;
         }
         offset += child_consumed_length;
@@ -599,7 +616,7 @@ static int bridge_parse_get_name_list_request(const uint8_t* service_bytes, size
         if (!bridge_collect_get_name_list_object_class(&child, &decoded_pdu->object_class, &has_object_class, diagnostic)) {
             return 0;
         }
-        if (!bridge_collect_get_name_list_object_scope(&child, &decoded_pdu->object_scope, &has_object_scope, decoded_pdu->domain_id, sizeof(decoded_pdu->domain_id), diagnostic)) {
+        if (!bridge_collect_get_name_list_object_scope(&child, &decoded_pdu->object_scope, &has_object_scope, decoded_pdu->domain_id, sizeof(decoded_pdu->domain_id), decoded_pdu->continue_after, sizeof(decoded_pdu->continue_after), diagnostic)) {
             return 0;
         }
         if (!bridge_collect_get_name_list_continue_after(&child, decoded_pdu->continue_after, sizeof(decoded_pdu->continue_after), diagnostic)) {
