@@ -29,7 +29,7 @@ static void test_mms_pdu_confirmed_request_roundtrip(void)
     pdu.pdu_bytes = payload;
     pdu.pdu_length = sizeof(payload);
     assert(unitlab_mms_pdu_encode(&pdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
-    assert(buffer[0] == 0x60U);
+    assert(buffer[0] == 0xA0U);
     unitlab_mms_pdu_init(&decoded_pdu);
     assert(unitlab_mms_pdu_decode(&decoded_pdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == encoded_length);
@@ -60,7 +60,7 @@ static void test_mms_pdu_confirmed_response_roundtrip(void)
     pdu.pdu_bytes = payload;
     pdu.pdu_length = sizeof(payload);
     assert(unitlab_mms_pdu_encode(&pdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
-    assert(buffer[0] == 0x61U);
+    assert(buffer[0] == 0xA1U);
     unitlab_mms_pdu_init(&decoded_pdu);
     assert(unitlab_mms_pdu_decode(&decoded_pdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == encoded_length);
@@ -83,8 +83,8 @@ static void test_mms_pdu_supported_other_roundtrips(void)
         const uint8_t payload[6];
         size_t payload_length;
     } cases[] = {
-        { UNITLAB_MMS_PDU_CONFIRMED_ERROR, 0x62U, { 0x02U, 0x01U, 0x07U, 0xA0U, 0x01U, 0x00U }, 6U },
-        { UNITLAB_MMS_PDU_REJECT, 0x64U, { 0x80U, 0x01U, 0x01U, 0x00U, 0x00U, 0x00U }, 3U },
+        { UNITLAB_MMS_PDU_CONFIRMED_ERROR, 0xA2U, { 0x02U, 0x01U, 0x07U, 0xA0U, 0x01U, 0x00U }, 6U },
+        { UNITLAB_MMS_PDU_REJECT, 0xA4U, { 0x80U, 0x01U, 0x01U, 0x00U, 0x00U, 0x00U }, 3U },
     };
     uint8_t buffer[32];
     UnitLabMmsPdu pdu;
@@ -202,7 +202,7 @@ static void test_mms_pdu_encode_rejects_null_pdu_bytes(void)
 }
 static void test_mms_pdu_decode_rejects_missing_invoke_id(void)
 {
-    const uint8_t buffer[2] = { 0x60U, 0x00U };
+    const uint8_t buffer[2] = { 0xA0U, 0x00U };
     UnitLabMmsPdu decoded_pdu;
     size_t consumed_length = 123U;
     UnitLabMmsDiagnostic diagnostic;
@@ -232,7 +232,7 @@ static void test_mms_pdu_decode_rejects_missing_invoke_id(void)
 }
 static void test_mms_pdu_decode_rejects_wrong_invoke_id_tag(void)
 {
-    const uint8_t buffer[8] = { 0x60U, 0x06U, 0xA0U, 0x03U, 0x80U, 0x01U, 0x00U, 0xA4U };
+    const uint8_t buffer[8] = { 0xA0U, 0x06U, 0xA0U, 0x03U, 0x80U, 0x01U, 0x00U, 0xA4U };
     UnitLabMmsPdu decoded_pdu;
     size_t consumed_length = 123U;
     UnitLabMmsDiagnostic diagnostic;
@@ -262,7 +262,7 @@ static void test_mms_pdu_decode_rejects_wrong_invoke_id_tag(void)
 }
 static void test_mms_pdu_decode_rejects_non_minimal_invoke_id(void)
 {
-    const uint8_t buffer[9] = { 0x60U, 0x07U, 0x02U, 0x02U, 0x00U, 0x01U, 0xA4U, 0x01U, 0xAAU };
+    const uint8_t buffer[9] = { 0xA0U, 0x07U, 0x02U, 0x02U, 0x00U, 0x01U, 0xA4U, 0x01U, 0xAAU };
     UnitLabMmsPdu decoded_pdu;
     size_t consumed_length = 123U;
     UnitLabMmsDiagnostic diagnostic;
@@ -292,7 +292,7 @@ static void test_mms_pdu_decode_rejects_non_minimal_invoke_id(void)
 }
 static void test_mms_pdu_decode_rejects_invoke_id_overflow(void)
 {
-    const uint8_t buffer[9] = { 0x60U, 0x07U, 0x02U, 0x05U, 0x01U, 0x00U, 0x00U, 0x00U, 0x00U };
+    const uint8_t buffer[9] = { 0xA0U, 0x07U, 0x02U, 0x05U, 0x01U, 0x00U, 0x00U, 0x00U, 0x00U };
     UnitLabMmsPdu decoded_pdu;
     size_t consumed_length = 123U;
     UnitLabMmsDiagnostic diagnostic;
@@ -336,7 +336,7 @@ static void test_mms_pdu_unconfirmed_roundtrip(void)
     pdu.pdu_bytes = payload;
     pdu.pdu_length = sizeof(payload);
     assert(unitlab_mms_pdu_encode(&pdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
-    assert(buffer[0] == 0x63U);
+    assert(buffer[0] == 0xA3U);
     unitlab_mms_pdu_init(&decoded_pdu);
     assert(unitlab_mms_pdu_decode(&decoded_pdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == encoded_length);
@@ -366,7 +366,7 @@ static void test_mms_pdu_confirmed_request_roundtrip_with_wide_invoke_id(void)
     pdu.pdu_bytes = payload;
     pdu.pdu_length = sizeof(payload);
     assert(unitlab_mms_pdu_encode(&pdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
-    assert(buffer[0] == 0x60U);
+    assert(buffer[0] == 0xA0U);
     unitlab_mms_pdu_init(&decoded_pdu);
     assert(unitlab_mms_pdu_decode(&decoded_pdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == encoded_length);
@@ -387,9 +387,9 @@ static void test_mms_pdu_conclude_roundtrip(void)
         UnitLabMmsPduKind kind;
         uint8_t tag;
     } cases[] = {
-        { UNITLAB_MMS_PDU_CONCLUDE_REQUEST, 0x6BU },
-        { UNITLAB_MMS_PDU_CONCLUDE_RESPONSE, 0x6CU },
-        { UNITLAB_MMS_PDU_CONCLUDE_ERROR, 0x6DU },
+        { UNITLAB_MMS_PDU_CONCLUDE_REQUEST, 0x8BU },
+        { UNITLAB_MMS_PDU_CONCLUDE_RESPONSE, 0x8CU },
+        { UNITLAB_MMS_PDU_CONCLUDE_ERROR, 0x8DU },
     };
     uint8_t buffer[32];
     UnitLabMmsPdu pdu;
@@ -416,7 +416,7 @@ static void test_mms_pdu_conclude_roundtrip(void)
 }
 static void test_mms_pdu_rejects_non_minimal_invoke_id(void)
 {
-    const uint8_t buffer[6] = { 0x60U, 0x04U, 0x02U, 0x02U, 0x00U, 0x01U };
+    const uint8_t buffer[6] = { 0xA0U, 0x04U, 0x02U, 0x02U, 0x00U, 0x01U };
     UnitLabMmsPdu decoded_pdu;
     size_t consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;

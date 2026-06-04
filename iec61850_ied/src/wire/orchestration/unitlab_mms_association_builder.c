@@ -12,9 +12,9 @@ void unitlab_mms_initiate_response_profile_init(UnitLabMmsInitiateResponseProfil
     if (profile == NULL) {
         return;
     }
-    profile->local_detail_called = 8000U;
-    profile->max_serv_outstanding_calling = 1U;
-    profile->max_serv_outstanding_called = 1U;
+    profile->local_detail_called = 65000U;
+    profile->max_serv_outstanding_calling = 5U;
+    profile->max_serv_outstanding_called = 5U;
     profile->data_structure_nesting_level = 5U;
     profile->negotiated_version_number = 1U;
     profile->parameter_cbb[0] = 0x05U;
@@ -27,11 +27,11 @@ void unitlab_mms_initiate_response_profile_init(UnitLabMmsInitiateResponseProfil
     profile->services_supported_called[3] = 0x00U;
     profile->services_supported_called[4] = 0x00U;
     profile->services_supported_called[5] = 0x00U;
-    profile->services_supported_called[6] = 0x00U;
+    profile->services_supported_called[6] = 0x02U;
     profile->services_supported_called[7] = 0x00U;
     profile->services_supported_called[8] = 0x00U;
-    profile->services_supported_called[9] = 0x00U;
-    profile->services_supported_called[10] = 0x01U;
+    profile->services_supported_called[9] = 0x40U;
+    profile->services_supported_called[10] = 0xEDU;
     profile->services_supported_called[11] = 0x18U;
     profile->services_supported_called_length = UNITLAB_MMS_INITIATE_RESPONSE_PROFILE_SERVICES_SUPPORTED_LENGTH;
 }
@@ -208,7 +208,7 @@ static int wire_builder_build_initiate_response_detail(const UnitLabMmsInitiateR
     if (!wire_builder_encode_nested_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
-            9U,
+            4U,
             detail_fields,
             detail_fields_length,
             detail_wrapper,
@@ -312,6 +312,115 @@ static int wire_builder_build_association_accept_acse(
         diagnostic);
 }
 
+static int wire_builder_build_presentation_context_result_item(
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t result_bytes[16U];
+    uint8_t transfer_syntax_bytes[16U];
+    uint8_t sequence_bytes[32U];
+    size_t result_length = 0U;
+    size_t transfer_syntax_length = 0U;
+    size_t sequence_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Presentation context result item requires buffer and encoded_length.");
+        return 0;
+    }
+
+    if (!wire_builder_encode_nested_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            0,
+            0U,
+            (const uint8_t[]){ 0x00U },
+            1U,
+            result_bytes,
+            sizeof(result_bytes),
+            &result_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_encode_nested_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            0,
+            1U,
+            (const uint8_t[]){ 0x51U, 0x01U },
+            2U,
+            transfer_syntax_bytes,
+            sizeof(transfer_syntax_bytes),
+            &transfer_syntax_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (result_length + transfer_syntax_length > sizeof(sequence_bytes)) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Presentation context result item buffer is too small.");
+        return 0;
+    }
+    memcpy(sequence_bytes, result_bytes, result_length);
+    memcpy(sequence_bytes + result_length, transfer_syntax_bytes, transfer_syntax_length);
+    sequence_length = result_length + transfer_syntax_length;
+    return wire_builder_encode_nested_element(
+        UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+        1,
+        16U,
+        sequence_bytes,
+        sequence_length,
+        buffer,
+        buffer_length,
+        encoded_length,
+        diagnostic);
+}
+
+static int wire_builder_build_presentation_context_result_list(
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t item_bytes[64U];
+    uint8_t list_content[96U];
+    size_t item_length = 0U;
+    size_t list_content_length = 0U;
+    size_t second_item_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Presentation context result list requires buffer and encoded_length.");
+        return 0;
+    }
+
+    if (!wire_builder_build_presentation_context_result_item(item_bytes, sizeof(item_bytes), &item_length, diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_build_presentation_context_result_item(item_bytes + item_length, sizeof(item_bytes) - item_length, &second_item_length, diagnostic)) {
+        return 0;
+    }
+    if (item_length + second_item_length > sizeof(list_content)) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Presentation context result list buffer is too small.");
+        return 0;
+    }
+    memcpy(list_content, item_bytes, item_length);
+    memcpy(list_content + item_length, item_bytes + item_length, second_item_length);
+    list_content_length = item_length + second_item_length;
+    return wire_builder_encode_nested_element(
+        UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+        1,
+        5U,
+        list_content,
+        list_content_length,
+        buffer,
+        buffer_length,
+        encoded_length,
+        diagnostic);
+}
+
 static int wire_builder_build_association_accept_presentation(
     const uint8_t* acse_bytes,
     size_t acse_length,
@@ -321,6 +430,23 @@ static int wire_builder_build_association_accept_presentation(
     UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsPresentationApdu presentation_apdu;
+    uint8_t user_data_bytes[512U];
+    uint8_t normal_mode_value_bytes[16U];
+    uint8_t normal_mode_selector_bytes[16U];
+    uint8_t responding_selector_bytes[16U];
+    uint8_t result_list_bytes[96U];
+    uint8_t normal_mode_parameters_content[768U];
+    uint8_t normal_mode_parameters_bytes[896U];
+    uint8_t presentation_bytes[1024U];
+    size_t user_data_length = 0U;
+    size_t normal_mode_value_length = 0U;
+    size_t normal_mode_selector_length = 0U;
+    size_t responding_selector_length = 0U;
+    size_t result_list_length = 0U;
+    size_t normal_mode_parameters_content_length = 0U;
+    size_t normal_mode_parameters_length = 0U;
+    size_t presentation_length = 0U;
+    size_t offset = 0U;
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -339,7 +465,89 @@ static int wire_builder_build_association_accept_presentation(
     presentation_apdu.context_identifier = 1U;
     presentation_apdu.payload_bytes = acse_bytes;
     presentation_apdu.payload_length = acse_length;
-    return unitlab_mms_presentation_encode(&presentation_apdu, buffer, buffer_length, encoded_length, diagnostic);
+    if (!unitlab_mms_presentation_encode(&presentation_apdu, user_data_bytes, sizeof(user_data_bytes), &user_data_length, diagnostic)) {
+        return 0;
+    }
+
+    if (!wire_builder_encode_nested_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            0,
+            0U,
+            (const uint8_t[]){ 0x01U },
+            1U,
+            normal_mode_value_bytes,
+            sizeof(normal_mode_value_bytes),
+            &normal_mode_value_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_encode_nested_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            0U,
+            normal_mode_value_bytes,
+            normal_mode_value_length,
+            normal_mode_selector_bytes,
+            sizeof(normal_mode_selector_bytes),
+            &normal_mode_selector_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_encode_nested_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            0,
+            3U,
+            (const uint8_t[]){ 0x00U, 0x00U, 0x00U, 0x01U },
+            4U,
+            responding_selector_bytes,
+            sizeof(responding_selector_bytes),
+            &responding_selector_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!wire_builder_build_presentation_context_result_list(result_list_bytes, sizeof(result_list_bytes), &result_list_length, diagnostic)) {
+        return 0;
+    }
+    if (responding_selector_length + result_list_length + user_data_length > sizeof(normal_mode_parameters_content)) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association accept presentation buffer is too small.");
+        return 0;
+    }
+    memcpy(normal_mode_parameters_content, responding_selector_bytes, responding_selector_length);
+    memcpy(normal_mode_parameters_content + responding_selector_length, result_list_bytes, result_list_length);
+    memcpy(normal_mode_parameters_content + responding_selector_length + result_list_length, user_data_bytes, user_data_length);
+    normal_mode_parameters_content_length = responding_selector_length + result_list_length + user_data_length;
+
+    if (!wire_builder_encode_nested_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            2U,
+            normal_mode_parameters_content,
+            normal_mode_parameters_content_length,
+            normal_mode_parameters_bytes,
+            sizeof(normal_mode_parameters_bytes),
+            &normal_mode_parameters_length,
+            diagnostic)) {
+        return 0;
+    }
+
+    if (normal_mode_selector_length + normal_mode_parameters_length > sizeof(presentation_bytes)) {
+        wire_builder_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Association accept presentation buffer is too small.");
+        return 0;
+    }
+    memcpy(presentation_bytes, normal_mode_selector_bytes, normal_mode_selector_length);
+    memcpy(presentation_bytes + normal_mode_selector_length, normal_mode_parameters_bytes, normal_mode_parameters_length);
+    presentation_length = normal_mode_selector_length + normal_mode_parameters_length;
+
+    return wire_builder_encode_nested_element(
+        UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+        1,
+        17U,
+        presentation_bytes,
+        presentation_length,
+        buffer,
+        buffer_length,
+        encoded_length,
+        diagnostic);
 }
 
 static int wire_builder_build_association_accept_session(

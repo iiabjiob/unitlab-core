@@ -22,40 +22,50 @@ static int pdu_kind_to_tag(UnitLabMmsPduKind kind, UnitLabMmsBerTag* tag)
         return 0;
     }
     unitlab_mms_ber_tag_init(tag);
-    tag->tag_class = UNITLAB_MMS_BER_TAG_CLASS_APPLICATION;
-    tag->constructed = 1;
+    tag->tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
     switch (kind) {
         case UNITLAB_MMS_PDU_CONFIRMED_REQUEST:
+            tag->constructed = 1;
             tag->tag_number = 0U;
             return 1;
         case UNITLAB_MMS_PDU_CONFIRMED_RESPONSE:
+            tag->constructed = 1;
             tag->tag_number = 1U;
             return 1;
         case UNITLAB_MMS_PDU_CONFIRMED_ERROR:
+            tag->constructed = 1;
             tag->tag_number = 2U;
             return 1;
         case UNITLAB_MMS_PDU_UNCONFIRMED:
+            tag->constructed = 1;
             tag->tag_number = 3U;
             return 1;
         case UNITLAB_MMS_PDU_REJECT:
+            tag->constructed = 1;
             tag->tag_number = 4U;
             return 1;
         case UNITLAB_MMS_PDU_INITIATE_REQUEST:
+            tag->constructed = 1;
             tag->tag_number = 8U;
             return 1;
         case UNITLAB_MMS_PDU_INITIATE_RESPONSE:
+            tag->constructed = 1;
             tag->tag_number = 9U;
             return 1;
         case UNITLAB_MMS_PDU_INITIATE_ERROR:
+            tag->constructed = 1;
             tag->tag_number = 10U;
             return 1;
         case UNITLAB_MMS_PDU_CONCLUDE_REQUEST:
+            tag->constructed = 0;
             tag->tag_number = 11U;
             return 1;
         case UNITLAB_MMS_PDU_CONCLUDE_RESPONSE:
+            tag->constructed = 0;
             tag->tag_number = 12U;
             return 1;
         case UNITLAB_MMS_PDU_CONCLUDE_ERROR:
+            tag->constructed = 0;
             tag->tag_number = 13U;
             return 1;
         default:
@@ -68,43 +78,43 @@ static int pdu_tag_to_kind(const UnitLabMmsBerTag* tag, UnitLabMmsPduKind* kind)
     if (tag == NULL || kind == NULL) {
         return 0;
     }
-    if (tag->tag_class != UNITLAB_MMS_BER_TAG_CLASS_APPLICATION || !tag->constructed) {
+    if (tag->tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC) {
         return 0;
     }
     switch (tag->tag_number) {
         case 0U:
-            *kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
-            return 1;
+            if (tag->constructed) { *kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST; return 1; }
+            return 0;
         case 1U:
-            *kind = UNITLAB_MMS_PDU_CONFIRMED_RESPONSE;
-            return 1;
+            if (tag->constructed) { *kind = UNITLAB_MMS_PDU_CONFIRMED_RESPONSE; return 1; }
+            return 0;
         case 2U:
-            *kind = UNITLAB_MMS_PDU_CONFIRMED_ERROR;
-            return 1;
+            if (tag->constructed) { *kind = UNITLAB_MMS_PDU_CONFIRMED_ERROR; return 1; }
+            return 0;
         case 3U:
-            *kind = UNITLAB_MMS_PDU_UNCONFIRMED;
-            return 1;
+            if (tag->constructed) { *kind = UNITLAB_MMS_PDU_UNCONFIRMED; return 1; }
+            return 0;
         case 4U:
-            *kind = UNITLAB_MMS_PDU_REJECT;
-            return 1;
+            if (tag->constructed) { *kind = UNITLAB_MMS_PDU_REJECT; return 1; }
+            return 0;
         case 8U:
-            *kind = UNITLAB_MMS_PDU_INITIATE_REQUEST;
-            return 1;
+            if (tag->constructed) { *kind = UNITLAB_MMS_PDU_INITIATE_REQUEST; return 1; }
+            return 0;
         case 9U:
-            *kind = UNITLAB_MMS_PDU_INITIATE_RESPONSE;
-            return 1;
+            if (tag->constructed) { *kind = UNITLAB_MMS_PDU_INITIATE_RESPONSE; return 1; }
+            return 0;
         case 10U:
-            *kind = UNITLAB_MMS_PDU_INITIATE_ERROR;
-            return 1;
+            if (tag->constructed) { *kind = UNITLAB_MMS_PDU_INITIATE_ERROR; return 1; }
+            return 0;
         case 11U:
-            *kind = UNITLAB_MMS_PDU_CONCLUDE_REQUEST;
-            return 1;
+            if (!tag->constructed) { *kind = UNITLAB_MMS_PDU_CONCLUDE_REQUEST; return 1; }
+            return 0;
         case 12U:
-            *kind = UNITLAB_MMS_PDU_CONCLUDE_RESPONSE;
-            return 1;
+            if (!tag->constructed) { *kind = UNITLAB_MMS_PDU_CONCLUDE_RESPONSE; return 1; }
+            return 0;
         case 13U:
-            *kind = UNITLAB_MMS_PDU_CONCLUDE_ERROR;
-            return 1;
+            if (!tag->constructed) { *kind = UNITLAB_MMS_PDU_CONCLUDE_ERROR; return 1; }
+            return 0;
         default:
             return 0;
     }

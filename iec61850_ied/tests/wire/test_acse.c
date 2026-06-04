@@ -257,8 +257,6 @@ static void test_acse_association_accept_frame_roundtrip(void)
     size_t inner_consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
     const uint8_t expected_oid[] = { 0x28U, 0xCAU, 0x22U, 0x02U, 0x03U };
-    const uint8_t expected_version[] = { 0x07U, 0x80U };
-
     unitlab_mms_diagnostic_clear(&diagnostic);
     unitlab_mms_pdu_init(&initiate_response_pdu);
     initiate_response_pdu.kind = UNITLAB_MMS_PDU_INITIATE_RESPONSE;
@@ -271,47 +269,73 @@ static void test_acse_association_accept_frame_roundtrip(void)
     assert(unitlab_mms_acse_decode(&acse_apdu, acse_bytes, acse_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == acse_length);
     assert(acse_apdu.kind == UNITLAB_MMS_ACSE_APDU_AARE);
-    assert(acse_apdu.field_count == 5U);
+    assert(acse_apdu.field_count == 4U);
 
     assert(acse_apdu.fields[0].tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
-    assert(acse_apdu.fields[0].tag.tag_number == 0U);
-    assert(acse_apdu.fields[0].tag.constructed == 0);
-    assert(acse_apdu.fields[0].value_length == sizeof(expected_version));
-    assert(memcmp(acse_apdu.fields[0].value_bytes, expected_version, sizeof(expected_version)) == 0);
+    assert(acse_apdu.fields[0].tag.tag_number == 1U);
+    assert(acse_apdu.fields[0].tag.constructed == 1);
+    unitlab_mms_ber_element_init(&field_element);
+    assert(unitlab_mms_ber_read(&field_element, acse_apdu.fields[0].value_bytes, acse_apdu.fields[0].value_length, &field_consumed_length, &diagnostic) == 1);
+    assert(field_consumed_length == acse_apdu.fields[0].value_length);
+    assert(field_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(field_element.tag.tag_number == 6U);
+    assert(field_element.value_length == sizeof(expected_oid));
+    assert(memcmp(field_element.value_bytes, expected_oid, sizeof(expected_oid)) == 0);
 
     assert(acse_apdu.fields[1].tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
-    assert(acse_apdu.fields[1].tag.tag_number == 1U);
-    assert(acse_apdu.fields[1].tag.constructed == 0);
-    assert(acse_apdu.fields[1].value_length == sizeof(expected_oid));
-    assert(memcmp(acse_apdu.fields[1].value_bytes, expected_oid, sizeof(expected_oid)) == 0);
+    assert(acse_apdu.fields[1].tag.tag_number == 2U);
+    assert(acse_apdu.fields[1].tag.constructed == 1);
+    unitlab_mms_ber_element_init(&field_element);
+    assert(unitlab_mms_ber_read(&field_element, acse_apdu.fields[1].value_bytes, acse_apdu.fields[1].value_length, &field_consumed_length, &diagnostic) == 1);
+    assert(field_consumed_length == acse_apdu.fields[1].value_length);
+    assert(field_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(field_element.tag.tag_number == 2U);
+    assert(field_element.value_length == 1U);
+    assert(field_element.value_bytes[0] == 0x00U);
 
     assert(acse_apdu.fields[2].tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
-    assert(acse_apdu.fields[2].tag.tag_number == 2U);
-    assert(acse_apdu.fields[2].tag.constructed == 0);
-    assert(acse_apdu.fields[2].value_length == 1U);
-    assert(acse_apdu.fields[2].value_bytes[0] == 0x00U);
-
-    assert(acse_apdu.fields[3].tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
-    assert(acse_apdu.fields[3].tag.tag_number == 3U);
-    assert(acse_apdu.fields[3].tag.constructed == 1);
+    assert(acse_apdu.fields[2].tag.tag_number == 3U);
+    assert(acse_apdu.fields[2].tag.constructed == 1);
     unitlab_mms_ber_element_init(&inner_element);
-    assert(unitlab_mms_ber_read(&inner_element, acse_apdu.fields[3].value_bytes, acse_apdu.fields[3].value_length, &inner_consumed_length, &diagnostic) == 1);
-    assert(inner_consumed_length == acse_apdu.fields[3].value_length);
+    assert(unitlab_mms_ber_read(&inner_element, acse_apdu.fields[2].value_bytes, acse_apdu.fields[2].value_length, &inner_consumed_length, &diagnostic) == 1);
+    assert(inner_consumed_length == acse_apdu.fields[2].value_length);
     assert(inner_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
     assert(inner_element.tag.tag_number == 1U);
-    assert(inner_element.value_length == 1U);
-    assert(inner_element.value_bytes[0] == 0x00U);
-
-    assert(acse_apdu.fields[4].tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
-    assert(acse_apdu.fields[4].tag.tag_number == 30U);
-    assert(acse_apdu.fields[4].tag.constructed == 1);
+    assert(inner_element.tag.constructed == 1);
     unitlab_mms_ber_element_init(&field_element);
-    assert(unitlab_mms_ber_read(&field_element, acse_apdu.fields[4].value_bytes, acse_apdu.fields[4].value_length, &field_consumed_length, &diagnostic) == 1);
-    assert(field_consumed_length == acse_apdu.fields[4].value_length);
+    assert(unitlab_mms_ber_read(&field_element, inner_element.value_bytes, inner_element.value_length, &inner_consumed_length, &diagnostic) == 1);
+    assert(inner_consumed_length == inner_element.value_length);
+    assert(field_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(field_element.tag.tag_number == 2U);
+    assert(field_element.value_length == 1U);
+    assert(field_element.value_bytes[0] == 0x00U);
+
+    assert(acse_apdu.fields[3].tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(acse_apdu.fields[3].tag.tag_number == 30U);
+    assert(acse_apdu.fields[3].tag.constructed == 1);
+    unitlab_mms_ber_element_init(&field_element);
+    assert(unitlab_mms_ber_read(&field_element, acse_apdu.fields[3].value_bytes, acse_apdu.fields[3].value_length, &field_consumed_length, &diagnostic) == 1);
+    assert(field_consumed_length == acse_apdu.fields[3].value_length);
     assert(field_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
     assert(field_element.tag.tag_number == 8U);
     assert(field_element.tag.constructed == 1);
-    assert(field_element.value_length > 0U);
+    unitlab_mms_ber_element_init(&inner_element);
+    assert(unitlab_mms_ber_read(&inner_element, field_element.value_bytes, field_element.value_length, &inner_consumed_length, &diagnostic) == 1);
+    assert(inner_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL);
+    assert(inner_element.tag.tag_number == 2U);
+    assert(inner_element.value_length == 1U);
+    assert(inner_element.value_bytes[0] == 0x03U);
+    {
+        const uint8_t* association_data_bytes = field_element.value_bytes;
+        size_t association_data_length = field_element.value_length;
+        size_t association_data_offset = inner_consumed_length;
+
+        unitlab_mms_ber_element_init(&field_element);
+        assert(unitlab_mms_ber_read(&field_element, association_data_bytes + association_data_offset, association_data_length - association_data_offset, &field_consumed_length, &diagnostic) == 1);
+        assert(field_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+        assert(field_element.tag.tag_number == 0U);
+        assert(field_element.tag.constructed == 1);
+    }
 }
 int main(void)
 {
