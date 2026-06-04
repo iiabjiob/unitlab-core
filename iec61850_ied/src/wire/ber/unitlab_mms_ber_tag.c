@@ -116,16 +116,24 @@ int unitlab_mms_ber_tag_decode(UnitLabMmsBerTag* tag, const uint8_t* buffer, siz
         return 1;
     }
     do {
+        uint8_t octet;
+        uint32_t low_bits;
+
         if (index >= buffer_length) {
-            ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "BER tag uses truncated long-form tag number.");
+            ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "BER tag uses truncated high-tag-number encoding.");
             return 0;
         }
-        uint8_t octet = buffer[index++];
-        if (tag_number > (UINT32_MAX >> 7U)) {
+        octet = buffer[index++];
+        low_bits = (uint32_t)(octet & 0x7FU);
+        if (buffer_length > 2U && buffer[1U] == 0x80U) {
+            ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "BER high-tag-number uses a non-minimal leading zero.");
+            return 0;
+        }
+        if (tag_number > ((UINT32_MAX - low_bits) >> 7U)) {
             ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "BER tag number overflow.");
             return 0;
         }
-        tag_number = (tag_number << 7U) | (uint32_t)(octet & 0x7FU);
+        tag_number = (tag_number << 7U) | low_bits;
         if ((octet & 0x80U) == 0U) {
             break;
         }

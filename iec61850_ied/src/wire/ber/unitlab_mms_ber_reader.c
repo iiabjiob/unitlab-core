@@ -2,6 +2,20 @@
 
 #include <string.h>
 
+static void ber_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, const char* message)
+{
+    if (diagnostic == NULL) {
+        return;
+    }
+    diagnostic->code = code;
+    if (message == NULL) {
+        diagnostic->message[0] = '\0';
+        return;
+    }
+    strncpy(diagnostic->message, message, sizeof(diagnostic->message) - 1U);
+    diagnostic->message[sizeof(diagnostic->message) - 1U] = '\0';
+}
+
 void unitlab_mms_ber_element_init(UnitLabMmsBerElement* element)
 {
     if (element == NULL) {
@@ -19,14 +33,14 @@ int unitlab_mms_ber_read(UnitLabMmsBerElement* element, const uint8_t* buffer, s
     size_t value_length = 0U;
     size_t offset = 0U;
 
+    if (element != NULL) {
+        unitlab_mms_ber_element_init(element);
+    }
     if (consumed_length != NULL) {
         *consumed_length = 0U;
     }
     if (element == NULL || buffer == NULL || consumed_length == NULL) {
-        if (diagnostic != NULL) {
-            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT;
-            diagnostic->message[0] = '\0';
-        }
+        ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "BER element read requires element, buffer, and consumed_length.");
         return 0;
     }
     unitlab_mms_ber_tag_init(&tag);
@@ -38,11 +52,8 @@ int unitlab_mms_ber_read(UnitLabMmsBerElement* element, const uint8_t* buffer, s
         return 0;
     }
     offset += length_length;
-    if (buffer_length < offset + value_length) {
-        if (diagnostic != NULL) {
-            diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL;
-            diagnostic->message[0] = '\0';
-        }
+    if (offset > buffer_length || value_length > buffer_length - offset) {
+        ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "BER element value exceeds the available buffer.");
         return 0;
     }
     element->tag = tag;
@@ -50,9 +61,6 @@ int unitlab_mms_ber_read(UnitLabMmsBerElement* element, const uint8_t* buffer, s
     element->value_length = value_length;
     element->encoded_length = offset + value_length;
     *consumed_length = element->encoded_length;
-    if (diagnostic != NULL) {
-        diagnostic->code = UNITLAB_MMS_DIAGNOSTIC_OK;
-        diagnostic->message[0] = '\0';
-    }
+    ber_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }
