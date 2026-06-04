@@ -30,6 +30,7 @@ ENV UV_SYSTEM_PYTHON=1
 # Bake the IEC 61850 source into the image so the compose-service IED
 # can build and start without depending on a host bind mount.
 COPY iec61850_ied /workspace/iec61850_ied
+COPY external/libiec61850 /workspace/external/libiec61850
 
 # Set working directory
 WORKDIR /workspace
