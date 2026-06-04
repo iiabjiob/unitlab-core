@@ -247,7 +247,7 @@ int unitlab_mms_pending_request_collect_get_name_list_names(const UnitLabMmsPend
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList data set browse failed.");
             return 0;
         }
-    } else if (request->browse_object_class == 3U && request->browse_object_scope == 1U) {
+    } else if ((request->browse_object_class == 1U || request->browse_object_class == 3U) && request->browse_object_scope == 1U) {
         if (request->browse_domain_id[0] == '\0' || request->browse_continue_after[0] == '\0') {
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList logical-node browse requires a domain and logical node identifier.");
             return 0;

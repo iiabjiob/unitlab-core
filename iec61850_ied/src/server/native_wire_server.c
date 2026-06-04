@@ -603,12 +603,16 @@ int unitlab_run_native_wire_server(
                                     &response_length,
                                     &response_diagnostic)) {
                                 printf(
-                                    "native-wire-server: response-build-failed code=%d message=%s pending-state=%u pending-kind=%u invoke=%u consumed=%zu\n",
+                                    "native-wire-server: response-build-failed code=%d message=%s pending-state=%u pending-kind=%u invoke=%u browse-class=%u browse-scope=%u domain=%s continue-after=%s consumed=%zu\n",
                                     (int)response_diagnostic.code,
                                     response_diagnostic.message,
                                     (unsigned)server_runtime->pending_request.state,
                                     (unsigned)server_runtime->pending_request.kind,
                                     (unsigned)server_runtime->pending_request.invoke_id,
+                                    (unsigned)server_runtime->pending_request.browse_object_class,
+                                    (unsigned)server_runtime->pending_request.browse_object_scope,
+                                    server_runtime->pending_request.browse_domain_id[0] != '\0' ? server_runtime->pending_request.browse_domain_id : "<none>",
+                                    server_runtime->pending_request.browse_continue_after[0] != '\0' ? server_runtime->pending_request.browse_continue_after : "<none>",
                                     consumed_length);
                                 fflush(stdout);
                                 set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_BUILD_FAILED", response_diagnostic.message);

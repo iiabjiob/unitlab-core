@@ -445,6 +445,63 @@ static void test_get_name_list_browse_collection_filters_continue_after(void)
     unitlab_free_ied_model_name_list(names, count);
 }
 
+static void test_collects_logical_node_variables_for_directory_browse_class_one(void)
+{
+    UnitLabMmsPendingRequest request;
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLogicalDevice logical_devices[1U];
+    UnitLabIedModelLogicalNode logical_nodes[2U];
+    UnitLabIedModelSignal signals[2U];
+    UnitLabMmsDiagnostic diagnostic;
+    char** names = NULL;
+    size_t count = 0U;
+
+    memset(&plan, 0, sizeof(plan));
+    memset(logical_devices, 0, sizeof(logical_devices));
+    memset(logical_nodes, 0, sizeof(logical_nodes));
+    memset(signals, 0, sizeof(signals));
+
+    snprintf(logical_devices[0].inst, sizeof(logical_devices[0].inst), "%s", "LD0");
+    snprintf(logical_nodes[0].logical_device_inst, sizeof(logical_nodes[0].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[0].name, sizeof(logical_nodes[0].name), "%s", "LLN0");
+    snprintf(logical_nodes[1].logical_device_inst, sizeof(logical_nodes[1].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[1].name, sizeof(logical_nodes[1].name), "%s", "XCBR1");
+    snprintf(signals[0].logical_device_inst, sizeof(signals[0].logical_device_inst), "%s", "LD0");
+    snprintf(signals[0].logical_node_name, sizeof(signals[0].logical_node_name), "%s", "XCBR1");
+    snprintf(signals[0].data_object_name, sizeof(signals[0].data_object_name), "%s", "Pos");
+    snprintf(signals[1].logical_device_inst, sizeof(signals[1].logical_device_inst), "%s", "LD0");
+    snprintf(signals[1].logical_node_name, sizeof(signals[1].logical_node_name), "%s", "XCBR1");
+    snprintf(signals[1].data_object_name, sizeof(signals[1].data_object_name), "%s", "Loc");
+
+    plan.logical_device_count = 1U;
+    plan.logical_devices = logical_devices;
+    plan.logical_node_count = 2U;
+    plan.logical_nodes = logical_nodes;
+    plan.signal_count = 2U;
+    plan.signals = signals;
+
+    unitlab_mms_pending_request_init(&request);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_pending_request_start(&request, UNITLAB_MMS_REQUEST_GET_NAME_LIST, 7U, 1U, 1000U, 100U, &diagnostic) == 1);
+    request.browse_object_class = 1U;
+    request.browse_object_scope = 1U;
+    snprintf(request.browse_domain_id, sizeof(request.browse_domain_id), "%s", "LD0");
+    snprintf(request.browse_continue_after, sizeof(request.browse_continue_after), "%s", "LLN0");
+
+    assert(unitlab_mms_pending_request_collect_get_name_list_names(&request, &plan, &names, &count, &diagnostic) == 1);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(count >= 7U);
+    assert(strcmp(names[0], "Mod") == 0);
+    assert(strcmp(names[1], "Beh") == 0);
+    assert(strcmp(names[2], "Health") == 0);
+    assert(strcmp(names[3], "CF") == 0);
+    assert(strcmp(names[4], "DC") == 0);
+    assert(strcmp(names[5], "BR") == 0);
+    assert(strcmp(names[6], "NamPlt") == 0);
+
+    unitlab_free_ied_model_name_list(names, count);
+}
+
 static void test_runtime_apply_semantic_decode_failure(void)
 {
     UnitLabMmsSession session;
@@ -544,6 +601,7 @@ int main(void)
     test_runtime_apply_semantic_reject();
     test_runtime_apply_semantic_correlation_mismatch();
     test_get_name_list_browse_collection_filters_continue_after();
+    test_collects_logical_node_variables_for_directory_browse_class_one();
     test_runtime_apply_semantic_decode_failure();
     printf("unitlab-mms-core: ok\n");
     return 0;
