@@ -44,6 +44,20 @@ services:
       -DLIBIEC61850_LIBRARY='/workspace/external/libiec61850/build/src/libiec61850.a;/workspace/external/libiec61850/build/hal/libhal.a' &&
       cmake --build /tmp/unitlab-iec61850-ied-linked-build --target unitlab-iec61850-ied-sim &&
       exec /tmp/unitlab-iec61850-ied-linked-build/unitlab-iec61850-ied-sim --fixture /workspace/iec61850_ied/examples/single-report.fixture.json --ied IED1 --bind 0.0.0.0 --port 102 --native-wire-start"
+
+  libiec61850-example:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+      tags:
+        - unitlab-dev:latest
+    container_name: unitlab-libiec61850-example-dev
+    working_dir: /workspace
+    network_mode: host
+    command: >
+      bash -lc "cmake -S /workspace/external/libiec61850 -B /tmp/libiec61850-example-build &&
+      cmake --build /tmp/libiec61850-example-build --target server_example_simple &&
+      exec /tmp/libiec61850-example-build/examples/server_example_simple/server_example_simple 102"
   db:
     image: postgres:16
     container_name: unitlab-db-dev
