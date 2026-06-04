@@ -46,7 +46,7 @@ static int presentation_encode_fully_encoded_data(
         presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "presentation payload bytes are required when payload length is non-zero.");
         return 0;
     }
-    if (payload_length + 32U > sizeof(pdv_list_content) || payload_length + 48U > sizeof(pdv_list_bytes)) {
+    if (payload_length > sizeof(pdv_list_content) - 32U || payload_length > sizeof(pdv_list_bytes) - 48U) {
         presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "presentation fully-encoded-data scratch buffer is too small.");
         return 0;
     }
@@ -138,17 +138,6 @@ static int presentation_decode_fully_encoded_data(
     unitlab_mms_ber_element_init(&next_element);
     if (!unitlab_mms_ber_read(&next_element, pdv_list_element.value_bytes, pdv_list_element.value_length, &next_consumed_length, diagnostic)) {
         return 0;
-    }
-    if (next_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && next_element.tag.tag_number == 6U) {
-        offset += next_consumed_length;
-        if (offset >= pdv_list_element.value_length) {
-            presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "presentation PDV-list is missing a context identifier.");
-            return 0;
-        }
-        unitlab_mms_ber_element_init(&next_element);
-        if (!unitlab_mms_ber_read(&next_element, pdv_list_element.value_bytes + offset, pdv_list_element.value_length - offset, &next_consumed_length, diagnostic)) {
-            return 0;
-        }
     }
 
     if (next_element.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL || next_element.tag.tag_number != 2U || next_element.tag.constructed != 0) {
@@ -243,6 +232,7 @@ int unitlab_mms_presentation_encode(const UnitLabMmsPresentationApdu* apdu, uint
 int unitlab_mms_presentation_decode(UnitLabMmsPresentationApdu* apdu, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsBerElement element;
+    size_t element_consumed_length = 0U;
 
     if (consumed_length != NULL) {
         *consumed_length = 0U;
@@ -251,23 +241,28 @@ int unitlab_mms_presentation_decode(UnitLabMmsPresentationApdu* apdu, const uint
         presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "presentation decode requires apdu, buffer, and consumed_length.");
         return 0;
     }
+    unitlab_mms_presentation_apdu_init(apdu);
     unitlab_mms_ber_element_init(&element);
-    if (!unitlab_mms_ber_read(&element, buffer, buffer_length, consumed_length, diagnostic)) {
+    if (!unitlab_mms_ber_read(&element, buffer, buffer_length, &element_consumed_length, diagnostic)) {
         return 0;
     }
     if (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION && element.tag.tag_number == 0U && element.tag.constructed == 0) {
-        unitlab_mms_presentation_apdu_init(apdu);
         apdu->kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
         apdu->tag = element.tag;
         apdu->context_identifier = 1U;
         apdu->payload_bytes = element.value_bytes;
         apdu->payload_length = element.value_length;
         apdu->encoded_length = element.encoded_length;
+        *consumed_length = element_consumed_length;
         presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
         return 1;
     }
     if (element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_APPLICATION && element.tag.tag_number == 1U && element.tag.constructed == 1) {
-        return presentation_decode_fully_encoded_data(apdu, &element, diagnostic);
+        if (!presentation_decode_fully_encoded_data(apdu, &element, diagnostic)) {
+            return 0;
+        }
+        *consumed_length = element_consumed_length;
+        return 1;
     }
 
     if (diagnostic != NULL) {
