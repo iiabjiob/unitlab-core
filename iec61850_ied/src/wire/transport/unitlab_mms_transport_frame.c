@@ -80,6 +80,10 @@ int unitlab_mms_transport_frame_decode(UnitLabMmsTransportFrame* frame, const ui
     if (!unitlab_mms_tpkt_unwrap(buffer, buffer_length, &payload_bytes, &payload_length, &frame_length, diagnostic)) {
         return 0;
     }
+    if (frame_length != buffer_length) {
+        transport_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "transport frame contains trailing bytes.");
+        return 0;
+    }
     if (payload_length == 0U) {
         transport_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "transport frame payload is empty.");
         return 0;
