@@ -42,6 +42,8 @@ static int contains_bytes(const uint8_t* haystack, size_t haystack_length, const
     return 0;
 }
 
+static int build_get_name_list_request_association_bytes(const uint8_t* request_body_bytes, size_t request_body_length, uint32_t invoke_id, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
+
 
 static int build_initiate_request_association_bytes(uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
@@ -204,6 +206,50 @@ static void test_server_runtime_build_association_response_matches_reference_cap
     assert(unitlab_mms_build_association_response_frame_with_profile(&server_runtime.initiate_response_profile, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(response_length == sizeof(expected_response));
     assert(memcmp(response_bytes, expected_response, sizeof(expected_response)) == 0);
+}
+
+static void test_server_runtime_apply_association_then_confirmed_request_keeps_session_associated(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    uint8_t association_bytes[256U];
+    uint8_t request_bytes[256U];
+    size_t association_length = 0U;
+    size_t request_length = 0U;
+    size_t consumed_length = 0U;
+    const uint8_t request_payload[] = {
+        0x30U, 0x0CU,
+        0xA0U, 0x03U, 0x02U, 0x01U, 0x02U,
+        0xA1U, 0x05U, 0x81U, 0x03U, 'L', 'D', '0'
+    };
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+
+    assert(build_initiate_request_association_bytes(association_bytes, sizeof(association_bytes), &association_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_association_request_bytes(&server_runtime, association_bytes, association_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(consumed_length == association_length);
+    assert(server_runtime.session.state == UNITLAB_MMS_SESSION_ASSOCIATING);
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, server_runtime.session.active_invoke_id, &diagnostic));
+    assert(server_runtime.session.state == UNITLAB_MMS_SESSION_ASSOCIATED);
+
+    assert(build_get_name_list_request_association_bytes(request_payload, sizeof(request_payload), 61U, request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(consumed_length == request_length);
+    assert(server_runtime.session.state == UNITLAB_MMS_SESSION_ASSOCIATED);
+    assert(server_runtime.pending_request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE);
+    assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAME_LIST);
+    assert(server_runtime.pending_request.invoke_id == 61U);
 }
 
 static void test_server_runtime_apply_association_request_bytes_rejects_non_initiate_request(void)
@@ -1026,6 +1072,7 @@ int main(void)
     test_server_runtime_prepare_start_stop();
     test_server_runtime_apply_association_request_bytes_accepts_acse_aarq();
     test_server_runtime_build_association_response_matches_reference_capture();
+    test_server_runtime_apply_association_then_confirmed_request_keeps_session_associated();
     test_server_runtime_apply_association_request_bytes_accepts_captured_iedscout_aarq();
     test_server_runtime_apply_association_request_bytes_rejects_non_initiate_request();
     test_wire_builder_builds_confirmed_response_frame_roundtrips();

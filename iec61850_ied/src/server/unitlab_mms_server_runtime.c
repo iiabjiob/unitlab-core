@@ -1093,12 +1093,6 @@ int unitlab_mms_server_runtime_apply_incoming_bytes(UnitLabMmsServerRuntime* ser
         return 0;
     }
 
-    if (server_runtime->session.state != UNITLAB_MMS_SESSION_DISCONNECTED) {
-        unitlab_mms_session_init(&server_runtime->session);
-        unitlab_mms_pending_request_init(&server_runtime->pending_request);
-        unitlab_mms_transport_exchange_init(&server_runtime->transport);
-    }
-
     unitlab_mms_operation_result_init(operation_result);
     unitlab_mms_pdu_init(&wire_pdu);
     if (!server_runtime_decode_transport_to_wire_pdu(buffer, buffer_length, &transport_consumed_length, &wire_pdu, operation_result)) {
@@ -1152,12 +1146,6 @@ int unitlab_mms_server_runtime_apply_association_request_bytes(UnitLabMmsServerR
         snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Server runtime must be running before applying association request bytes.");
         server_runtime_fail_and_capture(server_runtime, operation_result);
         return 0;
-    }
-
-    if (server_runtime->session.state != UNITLAB_MMS_SESSION_DISCONNECTED) {
-        unitlab_mms_session_init(&server_runtime->session);
-        unitlab_mms_pending_request_init(&server_runtime->pending_request);
-        unitlab_mms_transport_exchange_init(&server_runtime->transport);
     }
 
     unitlab_mms_operation_result_init(operation_result);
