@@ -973,6 +973,52 @@ static void test_server_runtime_apply_get_name_list_request_and_build_response_r
     }
 }
 
+static void test_server_runtime_apply_iedscout_get_name_list_request_matches_golden_capture(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLogicalDevice logical_devices[1U];
+    uint8_t response_bytes[256U];
+    size_t response_length = 0U;
+    size_t consumed_length = 0U;
+    static const uint8_t request_bytes[] = {
+        0x03U, 0x00U, 0x00U, 0x24U, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U, 0x61U, 0x17U, 0x30U, 0x15U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x10U, 0xA0U, 0x0EU, 0x02U, 0x01U, 0x01U, 0xA1U, 0x09U, 0xA0U, 0x03U, 0x80U, 0x01U, 0x09U, 0xA1U, 0x02U, 0x80U, 0x00U
+    };
+    static const uint8_t expected_response[] = {
+        0x03U, 0x00U, 0x00U, 0x32U, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U, 0x61U, 0x25U, 0x30U, 0x23U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x1EU, 0xA1U, 0x1CU, 0x02U, 0x01U, 0x01U, 0xA1U, 0x17U, 0xA0U, 0x12U, 0x1AU, 0x10U, 0x53U, 0x61U, 0x6DU, 0x70U, 0x6CU, 0x65U, 0x49U, 0x45U, 0x44U, 0x44U, 0x65U, 0x76U, 0x69U, 0x63U, 0x65U, 0x31U, 0x81U, 0x01U, 0x00U
+    };
+
+    memset(&plan, 0, sizeof(plan));
+    memset(logical_devices, 0, sizeof(logical_devices));
+    snprintf(logical_devices[0].inst, sizeof(logical_devices[0].inst), "%s", "SampleIEDDevice1");
+    plan.logical_device_count = 1U;
+    plan.logical_devices = logical_devices;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, sizeof(request_bytes), &consumed_length, &operation_result));
+    assert(consumed_length == sizeof(request_bytes));
+    assert(operation_result.ok == 1);
+    assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAME_LIST);
+    assert(server_runtime.pending_request.browse_object_class == 9U);
+    assert(server_runtime.pending_request.browse_object_scope == 0U);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(response_length == sizeof(expected_response));
+    assert(memcmp(response_bytes, expected_response, sizeof(expected_response)) == 0);
+}
+
 int main(void)
 {
     test_server_runtime_init_captures_default_snapshot();
@@ -987,6 +1033,7 @@ int main(void)
     test_server_runtime_confirmed_response_fails_after_timeout();
     test_server_runtime_apply_reference_confirmed_request_and_build_response_roundtrips();
     test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips();
+    test_server_runtime_apply_iedscout_get_name_list_request_matches_golden_capture();
     test_server_runtime_build_confirmed_response_bytes_matches_fixture_style_object_reference();
     test_server_runtime_apply_confirmed_request_and_build_response_roundtrips();
     test_server_runtime_rejects_mismatched_confirmed_response_invoke_id();
