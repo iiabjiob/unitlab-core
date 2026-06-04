@@ -146,7 +146,7 @@ static UnitLabMmsServiceKind pdu_classify_service_kind(UnitLabMmsPduKind kind, c
     return UNITLAB_MMS_SERVICE_RAW;
 }
 
-static int pdu_decode_invoke_id(const UnitLabMmsBerElement* element, uint32_t* invoke_id, UnitLabMmsDiagnostic* diagnostic)
+static int pdu_decode_invoke_id(const UnitLabMmsBerElement* element, UnitLabMmsBerTagClass expected_tag_class, uint32_t expected_tag_number, uint32_t* invoke_id, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsBerElement child;
     size_t consumed_length = 0U;
@@ -167,7 +167,11 @@ static int pdu_decode_invoke_id(const UnitLabMmsBerElement* element, uint32_t* i
         pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID element is truncated.");
         return 0;
     }
-    if (child.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL || child.tag.tag_number != 2U || child.tag.constructed != 0) {
+    if (child.tag.tag_class != expected_tag_class || child.tag.tag_number != expected_tag_number) {
+        pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID element has an unexpected tag.");
+        return 0;
+    }
+    if (expected_tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && child.tag.constructed != 0) {
         pdu_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "MMS invokeID element is not an INTEGER.");
         return 0;
     }
@@ -284,7 +288,7 @@ int unitlab_mms_pdu_decode(UnitLabMmsPdu* pdu, const uint8_t* buffer, size_t buf
         size_t service_consumed_length = 0U;
         size_t offset = 0U;
 
-        if (!pdu_decode_invoke_id(&element, &pdu->invoke_id, diagnostic)) {
+        if (!pdu_decode_invoke_id(&element, kind == UNITLAB_MMS_PDU_CONFIRMED_ERROR ? UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC : UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, kind == UNITLAB_MMS_PDU_CONFIRMED_ERROR ? 0U : 2U, &pdu->invoke_id, diagnostic)) {
             unitlab_mms_pdu_init(pdu);
             return 0;
         }

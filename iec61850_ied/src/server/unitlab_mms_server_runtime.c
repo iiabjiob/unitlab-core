@@ -110,6 +110,42 @@ static int server_runtime_encode_invoke_id_element(
     return unitlab_mms_ber_write(&invoke_id_element, buffer, buffer_length, encoded_length, diagnostic);
 }
 
+static int server_runtime_encode_confirmed_error_invoke_id_element(
+    uint32_t invoke_id,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t invoke_id_bytes[5U];
+    size_t invoke_id_length_bytes = 0U;
+    uint32_t value = invoke_id;
+    UnitLabMmsBerElement invoke_id_element;
+
+    do {
+        invoke_id_bytes[sizeof(invoke_id_bytes) - 1U - invoke_id_length_bytes] = (uint8_t)(value & 0xFFU);
+        invoke_id_length_bytes++;
+        value >>= 8U;
+    } while (value != 0U && invoke_id_length_bytes < sizeof(invoke_id_bytes));
+
+    if (invoke_id_bytes[sizeof(invoke_id_bytes) - invoke_id_length_bytes] & 0x80U) {
+        if (sizeof(invoke_id_bytes) == invoke_id_length_bytes) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Confirmed error invokeID encoding failed.");
+            return 0;
+        }
+        invoke_id_bytes[sizeof(invoke_id_bytes) - invoke_id_length_bytes - 1U] = 0x00U;
+        invoke_id_length_bytes++;
+    }
+
+    unitlab_mms_ber_element_init(&invoke_id_element);
+    invoke_id_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    invoke_id_element.tag.constructed = 0;
+    invoke_id_element.tag.tag_number = 0U;
+    invoke_id_element.value_bytes = &invoke_id_bytes[sizeof(invoke_id_bytes) - invoke_id_length_bytes];
+    invoke_id_element.value_length = invoke_id_length_bytes;
+    return unitlab_mms_ber_write(&invoke_id_element, buffer, buffer_length, encoded_length, diagnostic);
+}
+
 static const char* server_runtime_object_reference_suffix(const char* object_reference)
 {
     const char* first_dot = NULL;
@@ -949,7 +985,7 @@ int unitlab_mms_server_runtime_build_confirmed_error_bytes(UnitLabMmsServerRunti
 {
     UnitLabMmsPdu response_pdu;
     uint8_t synthesized_service_bytes[32U];
-    uint8_t service_error_value[1U] = { 0x00U };
+    uint8_t service_error_value[5U] = { 0xA0U, 0x03U, 0x84U, 0x01U, 0x00U };
     size_t invoke_id_length = 0U;
     size_t service_error_length = 0U;
     size_t total_length = 0U;
@@ -967,7 +1003,7 @@ int unitlab_mms_server_runtime_build_confirmed_error_bytes(UnitLabMmsServerRunti
         return 0;
     }
 
-    if (!server_runtime_encode_invoke_id_element(
+    if (!server_runtime_encode_confirmed_error_invoke_id_element(
             invoke_id,
             synthesized_service_bytes,
             sizeof(synthesized_service_bytes),
@@ -978,7 +1014,7 @@ int unitlab_mms_server_runtime_build_confirmed_error_bytes(UnitLabMmsServerRunti
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
-            0U,
+            2U,
             service_error_value,
             sizeof(service_error_value),
             &synthesized_service_bytes[invoke_id_length],

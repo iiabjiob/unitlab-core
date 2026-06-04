@@ -1180,6 +1180,17 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
         assert(decoded_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_ERROR);
         assert(decoded_pdu.has_invoke_id == 1);
         assert(decoded_pdu.invoke_id == 3U);
+        assert(decoded_pdu.pdu_length >= 10U);
+        assert(decoded_pdu.pdu_bytes[0] == 0x80U);
+        assert(decoded_pdu.pdu_bytes[1] == 0x01U);
+        assert(decoded_pdu.pdu_bytes[2] == 0x03U);
+        assert(decoded_pdu.pdu_bytes[3] == 0xA2U);
+        assert(decoded_pdu.pdu_bytes[4] == 0x05U);
+        assert(decoded_pdu.pdu_bytes[5] == 0xA0U);
+        assert(decoded_pdu.pdu_bytes[6] == 0x03U);
+        assert(decoded_pdu.pdu_bytes[7] == 0x84U);
+        assert(decoded_pdu.pdu_bytes[8] == 0x01U);
+        assert(decoded_pdu.pdu_bytes[9] == 0x00U);
     }
 }
 
