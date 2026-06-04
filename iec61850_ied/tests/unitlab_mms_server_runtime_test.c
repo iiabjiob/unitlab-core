@@ -604,6 +604,68 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
     }
 }
 
+static void test_server_runtime_build_get_name_list_response_handles_large_directory(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLogicalDevice logical_devices[24U];
+    uint8_t request_bytes[512U];
+    uint8_t response_bytes[4096U];
+    const uint8_t request_payload[] = {
+        0x30U, 0x09U,
+        0xA0U, 0x03U, 0x02U, 0x01U, 0x09U,
+        0xA1U, 0x02U, 0x80U, 0x00U
+    };
+    size_t request_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+    size_t response_consumed_length = 0U;
+
+    memset(&plan, 0, sizeof(plan));
+    memset(logical_devices, 0, sizeof(logical_devices));
+    for (size_t index = 0U; index < sizeof(logical_devices) / sizeof(logical_devices[0]); index++) {
+        snprintf(logical_devices[index].inst, sizeof(logical_devices[index].inst), "LD%02u", (unsigned)index);
+    }
+    plan.logical_device_count = sizeof(logical_devices) / sizeof(logical_devices[0]);
+    plan.logical_devices = logical_devices;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+
+    assert(build_get_name_list_request_association_bytes(request_payload, sizeof(request_payload), 61U, request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(consumed_length == request_length);
+    assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAME_LIST);
+    assert(server_runtime.pending_request.browse_object_class == 9U);
+    assert(server_runtime.pending_request.browse_object_scope == 0U);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 64U);
+
+    {
+        UnitLabMmsAssociationFrame fixture;
+
+        unitlab_mms_association_frame_init(&fixture);
+        assert(unitlab_mms_association_frame_decode(&fixture, response_bytes, response_length, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == response_length);
+        assert(fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"LD00", strlen("LD00")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"LD23", strlen("LD23")) == 1);
+    }
+}
+
 static void test_server_runtime_build_confirmed_response_bytes_matches_fixture_style_object_reference(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -1080,6 +1142,7 @@ int main(void)
     test_server_runtime_confirmed_response_fails_after_timeout();
     test_server_runtime_apply_reference_confirmed_request_and_build_response_roundtrips();
     test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips();
+    test_server_runtime_build_get_name_list_response_handles_large_directory();
     test_server_runtime_apply_iedscout_get_name_list_request_matches_golden_capture();
     test_server_runtime_build_confirmed_response_bytes_matches_fixture_style_object_reference();
     test_server_runtime_apply_confirmed_request_and_build_response_roundtrips();

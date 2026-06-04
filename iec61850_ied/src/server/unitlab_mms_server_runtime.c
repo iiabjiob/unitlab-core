@@ -309,11 +309,11 @@ static int server_runtime_build_get_name_list_response_service(
 {
     char** names = NULL;
     size_t name_count = 0U;
-    uint8_t visible_strings_bytes[512U];
-    uint8_t list_of_identifier_bytes[544U];
-    uint8_t get_name_list_body_bytes[576U];
-    uint8_t service_payload_bytes[640U];
-    uint8_t service_bytes[672U];
+    uint8_t visible_strings_bytes[2048U];
+    uint8_t list_of_identifier_bytes[2048U];
+    uint8_t get_name_list_body_bytes[2048U];
+    uint8_t service_payload_bytes[2048U];
+    uint8_t service_bytes[2048U];
     size_t visible_strings_length = 0U;
     size_t list_of_identifier_length = 0U;
     size_t get_name_list_body_length = 0U;
@@ -947,7 +947,7 @@ int unitlab_mms_server_runtime_release_report_control(UnitLabMmsServerRuntime* s
 int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRuntime* server_runtime, const uint8_t* service_bytes, size_t service_length, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsPdu response_pdu;
-    uint8_t synthesized_service_bytes[64U];
+    uint8_t synthesized_service_bytes[2048U];
     size_t synthesized_service_length = 0U;
     size_t response_length = 0U;
 
