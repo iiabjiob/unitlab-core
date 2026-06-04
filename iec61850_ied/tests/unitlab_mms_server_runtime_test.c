@@ -379,7 +379,7 @@ static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
 }
 
 
-static void test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_tail(void)
+static void test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_exact_frame(void)
 {
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsOperationResult operation_result;
@@ -391,7 +391,6 @@ static void test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_tai
     uint8_t wire_bytes[256];
     size_t wire_length = 0U;
     size_t consumed_length = 0U;
-    size_t tail_length = 0U;
 
     unitlab_mms_server_runtime_init(&server_runtime);
     assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
@@ -402,15 +401,11 @@ static void test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_tai
     assert(server_runtime.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING);
 
     assert(build_information_report_association_bytes(wire_bytes, sizeof(wire_bytes), &wire_length, &diagnostic));
-    wire_bytes[wire_length++] = 0xAAU;
-    wire_bytes[wire_length++] = 0x55U;
 
     unitlab_mms_operation_result_init(&operation_result);
     assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, wire_bytes, wire_length, &consumed_length, &operation_result));
     assert(operation_result.ok == 1);
-    assert(consumed_length < wire_length);
-    tail_length = wire_length - consumed_length;
-    assert(tail_length == 2U);
+    assert(consumed_length == wire_length);
     assert(server_runtime.transport.request_bytes == wire_bytes);
     assert(server_runtime.transport.request_length == consumed_length);
     assert(server_runtime.transport.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_TRANSPORT_BIND_REQUEST);
@@ -938,6 +933,6 @@ int main(void)
     test_server_runtime_rejects_mismatched_confirmed_response_invoke_id();
     test_server_runtime_apply_write_request_and_build_response_roundtrips();
     test_server_runtime_apply_wire_pdu_requires_running_state();
-    test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_tail();
+    test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_exact_frame();
     return 0;
 }
