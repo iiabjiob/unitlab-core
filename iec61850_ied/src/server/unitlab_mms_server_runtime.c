@@ -745,6 +745,7 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     unitlab_mms_transport_exchange_init(&server_runtime->transport);
     unitlab_mms_operation_result_init(&server_runtime->last_result);
     unitlab_mms_runtime_snapshot_init(&server_runtime->snapshot);
+    unitlab_mms_pdu_init(&server_runtime->last_wire_pdu);
     unitlab_mms_runtime_snapshot_capture(
         &server_runtime->snapshot,
         &server_runtime->session,
@@ -944,6 +945,90 @@ int unitlab_mms_server_runtime_release_report_control(UnitLabMmsServerRuntime* s
     return 1;
 }
 
+int unitlab_mms_server_runtime_build_confirmed_error_bytes(UnitLabMmsServerRuntime* server_runtime, uint32_t invoke_id, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsPdu response_pdu;
+    uint8_t synthesized_service_bytes[32U];
+    uint8_t service_error_value[1U] = { 0x00U };
+    size_t invoke_id_length = 0U;
+    size_t service_error_length = 0U;
+    size_t total_length = 0U;
+    size_t response_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (server_runtime == NULL || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime, buffer, and encoded_length are required.");
+        return 0;
+    }
+    if (server_runtime->state != UNITLAB_MMS_SERVER_RUNTIME_RUNNING) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, "Server runtime must be running before building confirmed error bytes.");
+        return 0;
+    }
+
+    if (!server_runtime_encode_invoke_id_element(
+            invoke_id,
+            synthesized_service_bytes,
+            sizeof(synthesized_service_bytes),
+            &invoke_id_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            0U,
+            service_error_value,
+            sizeof(service_error_value),
+            &synthesized_service_bytes[invoke_id_length],
+            sizeof(synthesized_service_bytes) - invoke_id_length,
+            &service_error_length,
+            diagnostic)) {
+        return 0;
+    }
+    total_length = invoke_id_length + service_error_length;
+    if (total_length > sizeof(synthesized_service_bytes)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Confirmed error service buffer is too small.");
+        return 0;
+    }
+
+    unitlab_mms_pdu_init(&response_pdu);
+    response_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_ERROR;
+    response_pdu.has_invoke_id = 1;
+    response_pdu.invoke_id = invoke_id;
+    response_pdu.has_service = 1;
+    response_pdu.service_kind = UNITLAB_MMS_SERVICE_RAW;
+    response_pdu.pdu_bytes = synthesized_service_bytes;
+    response_pdu.pdu_length = total_length;
+    if (!unitlab_mms_build_wire_frame_from_pdu(
+            &response_pdu,
+            server_runtime->wire_scratch,
+            sizeof(server_runtime->wire_scratch),
+            buffer,
+            buffer_length,
+            &response_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!unitlab_mms_transport_exchange_bind_response(&server_runtime->transport, buffer, buffer_length, diagnostic)) {
+        return 0;
+    }
+    if (!unitlab_mms_transport_exchange_set_response_length(&server_runtime->transport, response_length, diagnostic)) {
+        return 0;
+    }
+    *encoded_length = response_length;
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    unitlab_mms_operation_result_from_trace(
+        &server_runtime->last_result,
+        1,
+        diagnostic,
+        &server_runtime->transport.event_log,
+        &server_runtime->transport.last_event);
+    unitlab_mms_server_runtime_capture_snapshot(server_runtime);
+    return 1;
+}
+
 int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRuntime* server_runtime, const uint8_t* service_bytes, size_t service_length, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsPdu response_pdu;
@@ -1099,6 +1184,7 @@ int unitlab_mms_server_runtime_apply_incoming_bytes(UnitLabMmsServerRuntime* ser
         server_runtime_fail_and_capture(server_runtime, operation_result);
         return 0;
     }
+    server_runtime->last_wire_pdu = wire_pdu;
     if (!unitlab_mms_transport_exchange_bind_request(
             &server_runtime->transport,
             buffer,
@@ -1154,6 +1240,7 @@ int unitlab_mms_server_runtime_apply_association_request_bytes(UnitLabMmsServerR
         server_runtime_fail_and_capture(server_runtime, operation_result);
         return 0;
     }
+    server_runtime->last_wire_pdu = wire_pdu;
     if (wire_pdu.kind != UNITLAB_MMS_PDU_INITIATE_REQUEST) {
         operation_result->diagnostic.code = UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED;
         snprintf(operation_result->diagnostic.message, sizeof(operation_result->diagnostic.message), "%s", "Association request bytes must carry an MMS initiate request.");

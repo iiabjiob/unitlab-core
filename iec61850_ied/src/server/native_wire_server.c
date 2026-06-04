@@ -17,6 +17,7 @@
 #include "wire/transport/unitlab_mms_transport_frame.h"
 #include "wire/orchestration/unitlab_mms_live_wire_probe.h"
 #include "wire/orchestration/unitlab_mms_wire_builder.h"
+#include "protocols/mms/unitlab_mms_wire_semantic_bridge.h"
 static void set_result(UnitLabIedModelLoadResult* result, const char* code, const char* message)
 {
     if (result == NULL) {
@@ -85,6 +86,74 @@ static int format_hex_response(const uint8_t* frame, size_t frame_length, char* 
     return 1;
 }
 
+static void log_hex_bytes(const char* label, const uint8_t* bytes, size_t length)
+{
+    if (label == NULL) {
+        return;
+    }
+    printf("native-wire-server: %s=", label);
+    if (bytes == NULL || length == 0U) {
+        printf("<empty>\n");
+        fflush(stdout);
+        return;
+    }
+    for (size_t index = 0U; index < length; index++) {
+        printf("%02x", bytes[index]);
+    }
+    printf("\n");
+    fflush(stdout);
+}
+
+
+static void log_unsupported_mms_request(UnitLabMmsServerRuntime* server_runtime, const uint8_t* incoming, size_t received, const UnitLabMmsOperationResult* incoming_result)
+{
+    UnitLabMmsSemanticResult semantic_result;
+    UnitLabMmsDecodeDiagnostic bridge_diagnostic;
+    const UnitLabMmsPdu* wire_pdu = NULL;
+
+    if (server_runtime == NULL || incoming_result == NULL) {
+        return;
+    }
+    wire_pdu = &server_runtime->last_wire_pdu;
+    unitlab_mms_semantic_result_init(&semantic_result);
+    unitlab_mms_decode_diagnostic_init(&bridge_diagnostic);
+    if (unitlab_mms_semantic_result_from_wire_pdu(&semantic_result, wire_pdu, &bridge_diagnostic)) {
+        printf(
+            "native-wire-server: unsupported-mms-request invoke=%u service-kind=%u service-tag=%u/%u constructed=%d object-class=%u scope=%u domain=%s continue-after=%s\n",
+            (unsigned)(semantic_result.pdu.invoke_id),
+            (unsigned)wire_pdu->service_kind,
+            (unsigned)wire_pdu->service_tag.tag_class,
+            (unsigned)wire_pdu->service_tag.tag_number,
+            wire_pdu->service_tag.constructed,
+            (unsigned)semantic_result.pdu.object_class,
+            (unsigned)semantic_result.pdu.object_scope,
+            semantic_result.pdu.domain_id[0] != '\0' ? semantic_result.pdu.domain_id : "<none>",
+            semantic_result.pdu.continue_after[0] != '\0' ? semantic_result.pdu.continue_after : "<none>");
+    } else {
+        printf(
+            "native-wire-server: unsupported-mms-request invoke=%u service-kind=%u service-tag=%u/%u constructed=%d diag=%d %s\n",
+            (unsigned)(wire_pdu != NULL && wire_pdu->has_invoke_id ? wire_pdu->invoke_id : 0U),
+            (unsigned)(wire_pdu != NULL ? wire_pdu->service_kind : 0U),
+            (unsigned)(wire_pdu != NULL ? wire_pdu->service_tag.tag_class : 0U),
+            (unsigned)(wire_pdu != NULL ? wire_pdu->service_tag.tag_number : 0U),
+            wire_pdu != NULL ? wire_pdu->service_tag.constructed : 0,
+            (int)bridge_diagnostic.diagnostic.code,
+            bridge_diagnostic.diagnostic.message);
+    }
+    log_hex_bytes("incoming-wire-hex", incoming, received);
+    if (wire_pdu != NULL) {
+        log_hex_bytes("mms-pdu-hex", wire_pdu->pdu_bytes, wire_pdu->pdu_length);
+    }
+    printf(
+        "native-wire-server: unsupported-result code=%d message=%s pending-state=%u pending-kind=%u last-event=%u\n",
+        (int)incoming_result->diagnostic.code,
+        incoming_result->diagnostic.message,
+        (unsigned)server_runtime->pending_request.state,
+        (unsigned)server_runtime->pending_request.kind,
+        (unsigned)server_runtime->pending_request.last_event.kind);
+    fflush(stdout);
+}
+
 static uint64_t native_wire_now_ms(void)
 {
     return (uint64_t)time(NULL) * 1000ULL;
@@ -118,6 +187,7 @@ static void reset_native_wire_runtime_state(UnitLabMmsServerRuntime* server_runt
     unitlab_mms_session_init(&server_runtime->session);
     unitlab_mms_pending_request_init(&server_runtime->pending_request);
     unitlab_mms_transport_exchange_init(&server_runtime->transport);
+    unitlab_mms_pdu_init(&server_runtime->last_wire_pdu);
     unitlab_mms_server_runtime_capture_snapshot(server_runtime);
     printf("native-wire-server: runtime-reset session-state=%u pending-state=%u transport-invoke=%u\n", (unsigned)server_runtime->session.state, (unsigned)server_runtime->pending_request.state, (unsigned)server_runtime->transport.invoke_id);
     fflush(stdout);
@@ -556,6 +626,33 @@ int unitlab_run_native_wire_server(
                             fflush(stdout);
                         }
                         else {
+                            if (incoming_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED
+                                && server_runtime->last_wire_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST
+                                && server_runtime->last_wire_pdu.has_invoke_id) {
+                                log_unsupported_mms_request(server_runtime, incoming, (size_t)received, &incoming_result);
+                                if (unitlab_mms_server_runtime_build_confirmed_error_bytes(
+                                        server_runtime,
+                                        server_runtime->last_wire_pdu.invoke_id,
+                                        response_frame,
+                                        sizeof(response_frame),
+                                        &response_length,
+                                        &response_diagnostic)) {
+                                    if (send_all(data_client_fd, response_frame, response_length)) {
+                                        printf("native-wire-server: confirmed-error-sent invoke=%u bytes=%zu\n", (unsigned)server_runtime->last_wire_pdu.invoke_id, response_length);
+                                        fflush(stdout);
+                                    } else {
+                                        set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_SEND_FAILED", "Native wire server could not send confirmed error frame.");
+                                        goto fail;
+                                    }
+                                } else {
+                                    printf(
+                                        "native-wire-server: confirmed-error-build-failed code=%d message=%s invoke=%u\n",
+                                        (int)response_diagnostic.code,
+                                        response_diagnostic.message,
+                                        (unsigned)server_runtime->last_wire_pdu.invoke_id);
+                                    fflush(stdout);
+                                }
+                            }
                             printf(
                                 "native-wire-server: received-bytes=%zd apply-ok=%d pending-state=%u pending-kind=%u last-event=%u diag=%d %s\n",
                                 received,
