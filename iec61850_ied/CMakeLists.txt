@@ -154,12 +154,6 @@ add_test(
   COMMAND unitlab-iec61850-mms-runtime-bridge-test
 )
 
-add_executable(unitlab-iec61850-wire-foundation-test
-  tests/unitlab_mms_wire_primitives_test.c
-)
-target_link_libraries(unitlab-iec61850-wire-foundation-test PRIVATE unitlab-iec61850-mms)
-unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-foundation-test)
-
 add_executable(unitlab-iec61850-wire-ber-test
   tests/wire/test_ber.c
 )
