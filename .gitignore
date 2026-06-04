@@ -66,3 +66,4 @@ dist-release/
 .IEC61850
 .ISO9506
 iec61850_ied/build-libiec61850
+iec61850_ied/artifacts
