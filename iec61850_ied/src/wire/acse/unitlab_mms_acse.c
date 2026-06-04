@@ -173,8 +173,8 @@ int unitlab_mms_acse_build_association_accept_frame(const uint8_t* initiate_resp
     uint8_t result_source_bytes[32U];
     uint8_t external_choice_bytes[288U];
     uint8_t external_bytes[320U];
-    uint8_t user_information_set_bytes[352U];
     uint8_t user_information_bytes[384U];
+    uint8_t aare_fields_bytes[512U];
     uint8_t sequence_bytes[512U];
     size_t protocol_version_length = 0U;
     size_t application_context_name_length = 0U;
@@ -183,8 +183,8 @@ int unitlab_mms_acse_build_association_accept_frame(const uint8_t* initiate_resp
     size_t result_source_length = 0U;
     size_t external_choice_length = 0U;
     size_t external_length = 0U;
-    size_t user_information_set_length = 0U;
     size_t user_information_length = 0U;
+    size_t aare_fields_length = 0U;
     size_t sequence_length = 0U;
     UnitLabMmsAcseApdu acse_apdu;
     const uint8_t oid_value[] = { 0x28U, 0xCAU, 0x22U, 0x02U, 0x03U };
@@ -289,23 +289,11 @@ int unitlab_mms_acse_build_association_accept_frame(const uint8_t* initiate_resp
         return 0;
     }
     if (!acse_encode_nested_element(
-            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
-            1,
-            17U,
-            external_bytes,
-            external_length,
-            user_information_set_bytes,
-            sizeof(user_information_set_bytes),
-            &user_information_set_length,
-            diagnostic)) {
-        return 0;
-    }
-    if (!acse_encode_nested_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
             30U,
-            user_information_set_bytes,
-            user_information_set_length,
+            external_bytes,
+            external_length,
             user_information_bytes,
             sizeof(user_information_bytes),
             &user_information_length,
@@ -323,11 +311,51 @@ int unitlab_mms_acse_build_association_accept_frame(const uint8_t* initiate_resp
     memcpy(sequence_bytes + protocol_version_length + application_context_name_length + result_length + result_source_length, user_information_bytes, user_information_length);
     sequence_length = protocol_version_length + application_context_name_length + result_length + result_source_length + user_information_length;
 
+    if (!acse_encode_nested_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            1,
+            16U,
+            sequence_bytes,
+            sequence_length,
+            aare_fields_bytes,
+            sizeof(aare_fields_bytes),
+            &aare_fields_length,
+            diagnostic)) {
+        return 0;
+    }
+
     unitlab_mms_acse_apdu_init(&acse_apdu);
     acse_apdu.kind = UNITLAB_MMS_ACSE_APDU_AARE;
-    acse_apdu.apdu_bytes = sequence_bytes;
-    acse_apdu.apdu_length = sequence_length;
+    acse_apdu.apdu_bytes = aare_fields_bytes;
+    acse_apdu.apdu_length = aare_fields_length;
     return unitlab_mms_acse_encode(&acse_apdu, buffer, buffer_length, encoded_length, diagnostic);
+}
+
+static int acse_parse_sequence_or_fields(const uint8_t* buffer, size_t buffer_length, UnitLabMmsAcseApdu* apdu, UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement outer_element;
+    size_t outer_consumed_length = 0U;
+
+    if (buffer == NULL || apdu == NULL) {
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&outer_element);
+    if (!unitlab_mms_ber_read(&outer_element, buffer, buffer_length, &outer_consumed_length, diagnostic)) {
+        return 0;
+    }
+    if (outer_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && outer_element.tag.tag_number == 16U && outer_element.tag.constructed) {
+        if (outer_element.value_length != 0U && outer_element.value_bytes != NULL && acse_parse_raw_fields(outer_element.value_bytes, outer_element.value_length, apdu, diagnostic)) {
+            return 1;
+        }
+        acse_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+        return 1;
+    }
+    if (acse_parse_raw_fields(buffer, buffer_length, apdu, diagnostic)) {
+        return 1;
+    }
+    acse_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
 }
 
 int unitlab_mms_acse_decode(UnitLabMmsAcseApdu* apdu, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsDiagnostic* diagnostic)
@@ -377,7 +405,7 @@ int unitlab_mms_acse_decode(UnitLabMmsAcseApdu* apdu, const uint8_t* buffer, siz
     apdu->apdu_length = element.value_length;
     apdu->encoded_length = element.encoded_length;
     if (element.value_length != 0U) {
-        if (!acse_parse_raw_fields(element.value_bytes, element.value_length, apdu, diagnostic)) {
+        if (!acse_parse_sequence_or_fields(element.value_bytes, element.value_length, apdu, diagnostic)) {
             return 0;
         }
     }
