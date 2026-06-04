@@ -54,8 +54,8 @@ int unitlab_mms_association_frame_encode(const UnitLabMmsAssociationFrame* frame
         association_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "association frame requires exact X.226 Presentation User-data.");
         return 0;
     }
-    if (frame->session.kind != UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER) {
-        association_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "association frame requires a data transfer session SPDU.");
+    if (frame->session.kind != UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER && frame->session.kind != UNITLAB_MMS_SESSION_SPDU_ACCEPT) {
+        association_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "association frame requires a data transfer or accept session SPDU.");
         return 0;
     }
     if (frame->presentation.payload_length != 0U && frame->presentation.payload_bytes == NULL) {
@@ -83,13 +83,6 @@ int unitlab_mms_association_frame_encode(const UnitLabMmsAssociationFrame* frame
         return 0;
     }
 
-    if (frame->session.kind != UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER) {
-        free(presentation_scratch);
-        free(session_scratch);
-        association_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "association frame requires a data transfer session SPDU.");
-        return 0;
-    }
-
     unitlab_mms_session_spdu_init(&session_apdu);
     session_apdu.kind = frame->session.kind;
     session_apdu.spdu_bytes = presentation_scratch;
@@ -101,7 +94,8 @@ int unitlab_mms_association_frame_encode(const UnitLabMmsAssociationFrame* frame
     }
 
     unitlab_mms_transport_frame_init(&transport_frame);
-    transport_frame.cotp = frame->transport.cotp;
+    transport_frame.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
+    transport_frame.cotp.eot = 1;
     transport_frame.cotp.user_data = session_scratch;
     transport_frame.cotp.user_data_length = session_length;
     if (!unitlab_mms_transport_frame_encode(&transport_frame, buffer, buffer_length, &transport_length, diagnostic)) {
@@ -132,28 +126,40 @@ int unitlab_mms_association_frame_decode(UnitLabMmsAssociationFrame* frame, cons
     }
     unitlab_mms_association_frame_init(frame);
     if (!unitlab_mms_transport_frame_decode(&frame->transport, buffer, buffer_length, &transport_consumed_length, diagnostic)) {
+        unitlab_mms_association_frame_init(frame);
+        return 0;
+    }
+    if (frame->transport.cotp.kind != UNITLAB_MMS_COTP_TPDU_DT) {
+        association_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "association frame requires a COTP DT transport payload.");
+        unitlab_mms_association_frame_init(frame);
         return 0;
     }
     if (frame->transport.cotp.user_data_length == 0U || frame->transport.cotp.user_data == NULL) {
         association_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "association frame is missing session bytes.");
+        unitlab_mms_association_frame_init(frame);
         return 0;
     }
     if (!unitlab_mms_session_spdu_decode(&frame->session, frame->transport.cotp.user_data, frame->transport.cotp.user_data_length, &session_consumed_length, diagnostic)) {
+        unitlab_mms_association_frame_init(frame);
         return 0;
     }
     if (session_consumed_length != frame->transport.cotp.user_data_length) {
         association_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "association frame contains trailing session bytes.");
+        unitlab_mms_association_frame_init(frame);
         return 0;
     }
     if (frame->session.raw_parameter_length == 0U || frame->session.raw_parameter_bytes == NULL) {
         association_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "association frame is missing presentation bytes.");
+        unitlab_mms_association_frame_init(frame);
         return 0;
     }
     if (!unitlab_mms_presentation_decode(&frame->presentation, frame->session.raw_parameter_bytes, frame->session.raw_parameter_length, &presentation_consumed_length, diagnostic)) {
+        unitlab_mms_association_frame_init(frame);
         return 0;
     }
     if (presentation_consumed_length != frame->session.raw_parameter_length) {
         association_frame_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "association frame contains trailing presentation bytes.");
+        unitlab_mms_association_frame_init(frame);
         return 0;
     }
     frame->encoded_length = transport_consumed_length;
