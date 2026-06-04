@@ -362,6 +362,43 @@ static int verify_logical_devices(
     return passed;
 }
 
+static int verify_data_objects(
+    IedConnection connection,
+    const UnitLabIedFixtureModel* fixture,
+    const UnitLabIedModelPlan* plan,
+    UnitLabIedModelLoadResult* result)
+{
+    for (size_t index = 0U; index < plan->signal_count; index++) {
+        const UnitLabIedModelSignal* signal = &plan->signals[index];
+        char logical_node_ref[256];
+        if (!format_ref(
+                logical_node_ref,
+                sizeof(logical_node_ref),
+                result,
+                "IEC61850_METADATA_PROBE_LN_REF_OVERFLOW",
+                "%s%s/%s",
+                fixture->ied_name,
+                signal->logical_device_inst,
+                signal->logical_node_name)) {
+            return 0;
+        }
+
+        IedClientError error = IED_ERROR_OK;
+        LinkedList data_objects = IedConnection_getLogicalNodeDirectory(connection, &error, logical_node_ref, ACSI_CLASS_DATA_OBJECT);
+        if (error != IED_ERROR_OK || data_objects == NULL) {
+            set_probe_result(result, 0, "IEC61850_METADATA_PROBE_DATA_OBJECT_DIRECTORY_FAILED", "IEC 61850 metadata probe failed to read data object directory.");
+            return 0;
+        }
+        if (!list_contains(data_objects, signal->data_object_name)) {
+            set_probe_result(result, 0, "IEC61850_METADATA_PROBE_DATA_OBJECT_MISSING", "IEC 61850 metadata probe did not find an expected data object.");
+            LinkedList_destroy(data_objects);
+            return 0;
+        }
+        LinkedList_destroy(data_objects);
+    }
+    return 1;
+}
+
 static int verify_data_sets(
     IedConnection connection,
     const UnitLabIedFixtureModel* fixture,
@@ -590,6 +627,7 @@ int unitlab_probe_ied_server_metadata(
     }
 
     int passed = verify_logical_devices(connection, fixture, plan, result)
+        && verify_data_objects(connection, fixture, plan, result)
         && verify_data_sets(connection, fixture, plan, result)
         && verify_reports(connection, fixture, plan, result);
 
@@ -599,7 +637,7 @@ int unitlab_probe_ied_server_metadata(
         return 0;
     }
 
-    set_probe_result(result, 1, "IEC61850_METADATA_PROBE_OK", "IEC 61850 metadata probe read DataSet and ReportControl metadata successfully.");
+    set_probe_result(result, 1, "IEC61850_METADATA_PROBE_OK", "IEC 61850 metadata probe read data-object, DataSet, and ReportControl metadata successfully.");
     return 1;
 }
 

@@ -192,6 +192,70 @@ static int test_model_plan_builds_blueprint(void)
     return passed;
 }
 
+static int test_collects_named_variables_for_domain_browse(void)
+{
+    UnitLabIedModelLogicalDevice logical_devices[1] = {
+        { .inst = "LD0" },
+    };
+    UnitLabIedModelLogicalNode logical_nodes[3] = {
+        { .logical_device_inst = "LD0", .name = "LLN0" },
+        { .logical_device_inst = "LD0", .name = "XCBR1" },
+        { .logical_device_inst = "LD0", .name = "PGGIO1" },
+    };
+    UnitLabIedModelSignal signals[2] = {
+        {
+            .logical_device_inst = "LD0",
+            .logical_node_name = "XCBR1",
+            .data_set_entry_variable = "LD0/XCBR1$ST$Pos$stVal",
+        },
+        {
+            .logical_device_inst = "LD0",
+            .logical_node_name = "PGGIO1",
+            .data_set_entry_variable = "LD0/PGGIO1$ST$Ind1",
+        },
+    };
+    UnitLabIedModelPlan plan = {
+        .logical_device_count = 1U,
+        .logical_devices = logical_devices,
+        .logical_node_count = 3U,
+        .logical_nodes = logical_nodes,
+        .signal_count = 2U,
+        .signals = signals,
+    };
+    char error[256];
+    char** names = NULL;
+    size_t count = 0U;
+    int passed = 1;
+
+    passed &= expect_true(
+        unitlab_collect_ied_model_logical_device_variables(&plan, "LD0", &names, &count, error, sizeof(error)) == 1,
+        "domain browse should collect named variables");
+    if (passed) {
+        int saw_lln0 = 0;
+        int saw_xcbr1 = 0;
+        int saw_pggio1 = 0;
+
+        for (size_t index = 0U; index < count; index++) {
+            if (strcmp(names[index], "LLN0") == 0) {
+                saw_lln0 = 1;
+            }
+            if (strcmp(names[index], "XCBR1$ST$Pos$stVal") == 0) {
+                saw_xcbr1 = 1;
+            }
+            if (strcmp(names[index], "PGGIO1$ST$Ind1") == 0) {
+                saw_pggio1 = 1;
+            }
+        }
+        passed &= expect_true(count >= 3U, "domain browse should collect logical nodes and variables");
+        passed &= expect_true(saw_lln0, "domain browse should include LLN0");
+        passed &= expect_true(saw_xcbr1, "domain browse should include XCBR1 named variable");
+        passed &= expect_true(saw_pggio1, "domain browse should include PGGIO1 named variable");
+    }
+
+    unitlab_free_ied_model_name_list(names, count);
+    return passed;
+}
+
 static int test_missing_report_dataset_fails(void)
 {
     UnitLabIedFixtureSignal signals[1] = {
@@ -540,6 +604,7 @@ int main(void)
 {
     int passed = 1;
     passed &= test_model_plan_builds_blueprint();
+    passed &= test_collects_named_variables_for_domain_browse();
     passed &= test_missing_report_dataset_fails();
     passed &= test_invalid_signal_reference_fails();
     passed &= test_signal_fc_mismatch_fails();

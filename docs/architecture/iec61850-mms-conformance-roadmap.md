@@ -85,8 +85,10 @@ Deliverables:
 
 Current implementation status:
 - Read request framing now uses the standard `ReadRequest -> variableAccessSpecification -> listOfVariable -> ObjectName` shape through the wire layer and semantic bridge.
-- GetNameList domain discovery request framing is wired through the wire layer and semantic bridge.
+- GetNameList domain discovery now supports `NamedVariable` domain browse in addition to logical-device and data-set browsing.
 - GetVariableAccessAttributes request framing is wired through the wire layer and semantic bridge.
+- Focused unit tests cover the new `NamedVariable` browse collector and the server-runtime response path.
+- Live metadata-probe capture for the new browse path is still gated behind `UNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON`; the current workspace build is not linked against libIEC61850.
 
 Exit criteria:
 - known MMS objects can be discovered and read through the supported path;

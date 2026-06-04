@@ -707,6 +707,33 @@ static int append_metadata_name(char*** names, size_t* count, const char* name)
     return 1;
 }
 
+static int append_unique_metadata_name(char*** names, size_t* count, const char* name)
+{
+    if (names == NULL || count == NULL || name == NULL) {
+        return 0;
+    }
+    for (size_t index = 0U; index < *count; index++) {
+        if (strcmp((*names)[index], name) == 0) {
+            return 1;
+        }
+    }
+    return append_metadata_name(names, count, name);
+}
+
+static const char* strip_domain_prefix(const char* name)
+{
+    const char* slash;
+
+    if (name == NULL) {
+        return NULL;
+    }
+    slash = strchr(name, '/');
+    if (slash == NULL || slash[1] == '\0') {
+        return name;
+    }
+    return slash + 1U;
+}
+
 int unitlab_collect_ied_model_logical_devices(
     const UnitLabIedModelPlan* plan,
     char*** names,
@@ -822,6 +849,62 @@ int unitlab_collect_ied_model_logical_device_data_sets(
                 set_error(error, error_size, "OUT_OF_MEMORY: cannot collect logical-device DataSets.");
                 return 0;
             }
+        }
+    }
+    return 1;
+}
+
+int unitlab_collect_ied_model_logical_device_variables(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size)
+{
+    if (names != NULL) {
+        *names = NULL;
+    }
+    if (count != NULL) {
+        *count = 0U;
+    }
+    if (plan == NULL || logical_device_inst == NULL || logical_device_inst[0] == '\0' || names == NULL || count == NULL) {
+        set_error(error, error_size, "INVALID_ARGUMENT: plan, logical device, names, and count are required.");
+        return 0;
+    }
+
+    for (size_t node_index = 0U; node_index < plan->logical_node_count; node_index++) {
+        const UnitLabIedModelLogicalNode* logical_node = &plan->logical_nodes[node_index];
+
+        if (strcmp(logical_node->logical_device_inst, logical_device_inst) != 0) {
+            continue;
+        }
+        if (!append_unique_metadata_name(names, count, logical_node->name)) {
+            unitlab_free_ied_model_name_list(*names, *count);
+            *names = NULL;
+            *count = 0U;
+            set_error(error, error_size, "OUT_OF_MEMORY: cannot collect NamedVariables.");
+            return 0;
+        }
+    }
+
+    for (size_t signal_index = 0U; signal_index < plan->signal_count; signal_index++) {
+        const UnitLabIedModelSignal* signal = &plan->signals[signal_index];
+        const char* browse_name;
+
+        if (strcmp(signal->logical_device_inst, logical_device_inst) != 0) {
+            continue;
+        }
+        browse_name = strip_domain_prefix(signal->data_set_entry_variable);
+        if (browse_name == NULL || browse_name[0] == '\0') {
+            continue;
+        }
+        if (!append_unique_metadata_name(names, count, browse_name)) {
+            unitlab_free_ied_model_name_list(*names, *count);
+            *names = NULL;
+            *count = 0U;
+            set_error(error, error_size, "OUT_OF_MEMORY: cannot collect NamedVariables.");
+            return 0;
         }
     }
     return 1;
