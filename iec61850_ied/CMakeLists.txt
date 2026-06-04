@@ -160,10 +160,75 @@ add_executable(unitlab-iec61850-wire-foundation-test
 target_link_libraries(unitlab-iec61850-wire-foundation-test PRIVATE unitlab-iec61850-mms)
 unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-foundation-test)
 
-add_test(
-  NAME unitlab-iec61850-wire-foundation
-  COMMAND unitlab-iec61850-wire-foundation-test
+add_executable(unitlab-iec61850-wire-ber-test
+  tests/wire/test_ber.c
 )
+target_link_libraries(unitlab-iec61850-wire-ber-test PRIVATE unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-ber-test)
+add_test(NAME unitlab-iec61850-wire-ber COMMAND unitlab-iec61850-wire-ber-test)
+
+add_executable(unitlab-iec61850-wire-tpkt-test
+  tests/wire/test_tpkt.c
+)
+target_link_libraries(unitlab-iec61850-wire-tpkt-test PRIVATE unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-tpkt-test)
+add_test(NAME unitlab-iec61850-wire-tpkt COMMAND unitlab-iec61850-wire-tpkt-test)
+
+add_executable(unitlab-iec61850-wire-cotp-test
+  tests/wire/test_cotp.c
+)
+target_link_libraries(unitlab-iec61850-wire-cotp-test PRIVATE unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-cotp-test)
+add_test(NAME unitlab-iec61850-wire-cotp COMMAND unitlab-iec61850-wire-cotp-test)
+
+add_executable(unitlab-iec61850-wire-transport-frame-test
+  tests/wire/test_transport_frame.c
+)
+target_link_libraries(unitlab-iec61850-wire-transport-frame-test PRIVATE unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-transport-frame-test)
+add_test(NAME unitlab-iec61850-wire-transport-frame COMMAND unitlab-iec61850-wire-transport-frame-test)
+
+add_executable(unitlab-iec61850-wire-session-test
+  tests/wire/test_session_spdu.c
+)
+target_link_libraries(unitlab-iec61850-wire-session-test PRIVATE unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-session-test)
+add_test(NAME unitlab-iec61850-wire-session COMMAND unitlab-iec61850-wire-session-test)
+
+add_executable(unitlab-iec61850-wire-presentation-test
+  tests/wire/test_presentation.c
+)
+target_link_libraries(unitlab-iec61850-wire-presentation-test PRIVATE unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-presentation-test)
+add_test(NAME unitlab-iec61850-wire-presentation COMMAND unitlab-iec61850-wire-presentation-test)
+
+add_executable(unitlab-iec61850-wire-acse-test
+  tests/wire/test_acse.c
+)
+target_link_libraries(unitlab-iec61850-wire-acse-test PRIVATE unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-acse-test)
+add_test(NAME unitlab-iec61850-wire-acse COMMAND unitlab-iec61850-wire-acse-test)
+
+add_executable(unitlab-iec61850-wire-mms-pdu-test
+  tests/wire/test_mms_pdu.c
+)
+target_link_libraries(unitlab-iec61850-wire-mms-pdu-test PRIVATE unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-mms-pdu-test)
+add_test(NAME unitlab-iec61850-wire-mms-pdu COMMAND unitlab-iec61850-wire-mms-pdu-test)
+
+add_executable(unitlab-iec61850-wire-association-frame-test
+  tests/wire/test_association_frame.c
+)
+target_link_libraries(unitlab-iec61850-wire-association-frame-test PRIVATE unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-association-frame-test)
+add_test(NAME unitlab-iec61850-wire-association-frame COMMAND unitlab-iec61850-wire-association-frame-test)
+
+add_executable(unitlab-iec61850-wire-builder-test
+  tests/wire/test_wire_builder.c
+)
+target_link_libraries(unitlab-iec61850-wire-builder-test PRIVATE unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-builder-test)
+add_test(NAME unitlab-iec61850-wire-builder COMMAND unitlab-iec61850-wire-builder-test)
 
 add_executable(unitlab-iec61850-wire-stack-ladder-test
   tests/wire/test_stack_ladder.c
