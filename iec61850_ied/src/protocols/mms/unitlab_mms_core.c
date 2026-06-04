@@ -232,7 +232,7 @@ int unitlab_mms_pending_request_collect_get_name_list_names(const UnitLabMmsPend
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList named variable browse failed.");
             return 0;
         }
-    } else if (request->browse_object_class == 2U && request->browse_object_scope == 1U) {
+    } else if (request->browse_object_class == 2U && (request->browse_object_scope == 0U || request->browse_object_scope == 1U)) {
         if (request->browse_domain_id[0] == '\0') {
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList domain-specific browse requires a domain identifier.");
             return 0;

@@ -125,8 +125,8 @@ static int build_model_read_request_association_bytes(const char* raw_object_ref
 static void test_server_runtime_apply_association_request_bytes_accepts_acse_aarq(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -154,8 +154,8 @@ static void test_server_runtime_apply_association_request_bytes_accepts_acse_aar
 static void test_server_runtime_apply_association_request_bytes_accepts_captured_iedscout_aarq(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -181,8 +181,8 @@ static void test_server_runtime_apply_association_request_bytes_accepts_captured
 static void test_server_runtime_build_association_response_matches_reference_capture(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -211,8 +211,8 @@ static void test_server_runtime_build_association_response_matches_reference_cap
 static void test_server_runtime_apply_association_then_confirmed_request_keeps_session_associated(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -255,8 +255,8 @@ static void test_server_runtime_apply_association_then_confirmed_request_keeps_s
 static void test_server_runtime_apply_association_request_bytes_rejects_non_initiate_request(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -308,6 +308,7 @@ static void test_server_runtime_prepare_start_stop(void)
 {
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -331,20 +332,19 @@ static void test_server_runtime_prepare_start_stop(void)
 static void test_server_runtime_apply_wire_pdu_requires_running_state(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsPdu wire_pdu = make_information_report_pdu();
+    UnitLabMmsOperationResult operation_result;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
 
     unitlab_mms_server_runtime_init(&server_runtime);
     unitlab_mms_operation_result_init(&operation_result);
 
     assert(!unitlab_mms_server_runtime_apply_wire_pdu(&server_runtime, &wire_pdu, &operation_result));
     assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_BAD_STATE);
-
-    UnitLabMmsDiagnostic diagnostic;
-    UnitLabIedServerConfig config = {
-        .bind_address = "127.0.0.1",
-        .port = 102,
-    };
 
     assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
     assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
@@ -366,6 +366,7 @@ static void test_wire_builder_builds_confirmed_response_frame_roundtrips(void)
 {
     UnitLabMmsPdu response_pdu;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     uint8_t response_bytes[256];
     uint8_t response_payload[6] = { 0x02U, 0x01U, 0x29U, 0xA4U, 0x01U, 0xAAU };
     size_t encoded_length = 0U;
@@ -426,6 +427,7 @@ static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
 {
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -485,8 +487,8 @@ static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
 static void test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_exact_frame(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -519,8 +521,8 @@ static void test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_exa
 static void test_server_runtime_apply_reference_confirmed_request_and_build_response_roundtrips(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -572,8 +574,7 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
         int incoming_ok = unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, wire_bytes, wire_length, &consumed_length, &operation_result);
         if (!incoming_ok) {
             fprintf(stderr, "runtime diag: %d %s\n", operation_result.diagnostic.code, operation_result.diagnostic.message);
-            fflush(stderr);
-        }
+            }
         assert(incoming_ok);
     }
     assert(operation_result.ok == 1);
@@ -587,7 +588,9 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
     assert(server_runtime.pending_request.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED);
 
     unitlab_mms_diagnostic_clear(&diagnostic);
-    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    if (!unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic)) {
+        assert(0);
+    }
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
 
@@ -607,8 +610,8 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
 static void test_server_runtime_build_get_name_list_response_handles_large_directory(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -650,7 +653,9 @@ static void test_server_runtime_build_get_name_list_response_handles_large_direc
     assert(server_runtime.pending_request.browse_object_scope == 0U);
 
     unitlab_mms_diagnostic_clear(&diagnostic);
-    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    if (!unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic)) {
+        assert(0);
+    }
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 64U);
 
@@ -669,8 +674,8 @@ static void test_server_runtime_build_get_name_list_response_handles_large_direc
 static void test_server_runtime_build_confirmed_response_bytes_matches_fixture_style_object_reference(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -710,8 +715,8 @@ static void test_server_runtime_build_confirmed_response_bytes_matches_fixture_s
 static void test_server_runtime_apply_confirmed_request_and_build_response_roundtrips(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -774,9 +779,9 @@ static void test_server_runtime_apply_confirmed_request_and_build_response_round
 static void test_server_runtime_rejects_mismatched_confirmed_response_invoke_id(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsPdu wire_pdu;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -810,6 +815,7 @@ static void test_server_runtime_confirmed_response_fails_after_timeout(void)
 {
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -838,8 +844,8 @@ static void test_server_runtime_confirmed_response_fails_after_timeout(void)
 static void test_server_runtime_apply_write_request_and_build_response_roundtrips(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -1007,8 +1013,8 @@ static int build_get_name_list_request_association_bytes(const uint8_t* request_
 static void test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -1084,8 +1090,8 @@ static void test_server_runtime_apply_get_name_list_request_and_build_response_r
 static void test_server_runtime_apply_iedscout_get_name_list_request_matches_golden_capture(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -1131,8 +1137,8 @@ static void test_server_runtime_apply_iedscout_get_name_list_request_matches_gol
 static void test_server_runtime_apply_iedscout_logical_node_directory_request_class_one_builds_response(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -1206,8 +1212,8 @@ static void test_server_runtime_apply_iedscout_logical_node_directory_request_cl
 static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -1270,11 +1276,91 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
     }
 }
 
+
+static void test_server_runtime_apply_iedscout_logical_node_directory_request_scope_zero_builds_response(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLogicalDevice logical_devices[1U];
+    UnitLabIedModelLogicalNode logical_nodes[4U];
+    UnitLabIedModelDataSet data_sets[4U];
+    uint8_t response_bytes[2048U];
+    size_t response_length = 0U;
+    size_t response_consumed_length = 0U;
+
+    memset(&plan, 0, sizeof(plan));
+    memset(logical_devices, 0, sizeof(logical_devices));
+    memset(logical_nodes, 0, sizeof(logical_nodes));
+    memset(data_sets, 0, sizeof(data_sets));
+    snprintf(logical_devices[0].inst, sizeof(logical_devices[0].inst), "%s", "LD0");
+    snprintf(logical_nodes[0].logical_device_inst, sizeof(logical_nodes[0].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[0].name, sizeof(logical_nodes[0].name), "%s", "LLN0");
+    snprintf(logical_nodes[1].logical_device_inst, sizeof(logical_nodes[1].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[1].name, sizeof(logical_nodes[1].name), "%s", "XCBR1");
+    snprintf(logical_nodes[2].logical_device_inst, sizeof(logical_nodes[2].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[2].name, sizeof(logical_nodes[2].name), "%s", "PGGIO1");
+    snprintf(logical_nodes[3].logical_device_inst, sizeof(logical_nodes[3].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[3].name, sizeof(logical_nodes[3].name), "%s", "GGIO1");
+    snprintf(data_sets[0].logical_device_inst, sizeof(data_sets[0].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[0].logical_node_name, sizeof(data_sets[0].logical_node_name), "%s", "LLN0");
+    snprintf(data_sets[0].name, sizeof(data_sets[0].name), "%s", "dsEvents");
+    snprintf(data_sets[1].logical_device_inst, sizeof(data_sets[1].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[1].logical_node_name, sizeof(data_sets[1].logical_node_name), "%s", "XCBR1");
+    snprintf(data_sets[1].name, sizeof(data_sets[1].name), "%s", "dsEvents");
+    snprintf(data_sets[2].logical_device_inst, sizeof(data_sets[2].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[2].logical_node_name, sizeof(data_sets[2].logical_node_name), "%s", "PGGIO1");
+    snprintf(data_sets[2].name, sizeof(data_sets[2].name), "%s", "dsEvents");
+    snprintf(data_sets[3].logical_device_inst, sizeof(data_sets[3].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[3].logical_node_name, sizeof(data_sets[3].logical_node_name), "%s", "GGIO1");
+    snprintf(data_sets[3].name, sizeof(data_sets[3].name), "%s", "dsWire");
+    plan.logical_device_count = 1U;
+    plan.logical_devices = logical_devices;
+    plan.logical_node_count = 4U;
+    plan.logical_nodes = logical_nodes;
+    plan.data_set_count = 4U;
+    plan.data_sets = data_sets;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+
+    unitlab_mms_pending_request_init(&server_runtime.pending_request);
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_GET_NAME_LIST, 7U, 1U, 1000U, 100U, &diagnostic) == 1);
+    server_runtime.pending_request.browse_object_class = 2U;
+    server_runtime.pending_request.browse_object_scope = 0U;
+    snprintf(server_runtime.pending_request.browse_domain_id, sizeof(server_runtime.pending_request.browse_domain_id), "%s", "LD0");
+    snprintf(server_runtime.pending_request.browse_continue_after, sizeof(server_runtime.pending_request.browse_continue_after), "%s", "");
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+
+    {
+        UnitLabMmsAssociationFrame fixture;
+
+        unitlab_mms_association_frame_init(&fixture);
+        assert(unitlab_mms_association_frame_decode(&fixture, response_bytes, response_length, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == response_length);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"LLN0$dsEvents", strlen("LLN0$dsEvents")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"XCBR1$dsEvents", strlen("XCBR1$dsEvents")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"PGGIO1$dsEvents", strlen("PGGIO1$dsEvents")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"GGIO1$dsWire", strlen("GGIO1$dsWire")) == 1);
+    }
+}
+
 static void test_server_runtime_apply_iedscout_logical_node_directory_request_builds_response(void)
 {
     UnitLabMmsServerRuntime server_runtime;
-    UnitLabMmsOperationResult operation_result;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -1364,6 +1450,7 @@ int main(void)
     test_server_runtime_build_get_name_list_response_handles_large_directory();
     test_server_runtime_apply_iedscout_get_name_list_request_matches_golden_capture();
     test_server_runtime_apply_iedscout_logical_node_directory_request_class_one_builds_response();
+    test_server_runtime_apply_iedscout_logical_node_directory_request_scope_zero_builds_response();
     test_server_runtime_build_confirmed_error_bytes_roundtrips();
     test_server_runtime_apply_iedscout_logical_node_directory_request_builds_response();
     test_server_runtime_build_confirmed_response_bytes_matches_fixture_style_object_reference();
