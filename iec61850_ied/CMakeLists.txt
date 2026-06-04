@@ -165,6 +165,17 @@ add_test(
   COMMAND unitlab-iec61850-wire-foundation-test
 )
 
+add_executable(unitlab-iec61850-wire-stack-ladder-test
+  tests/wire/test_stack_ladder.c
+)
+target_link_libraries(unitlab-iec61850-wire-stack-ladder-test PRIVATE unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-wire-stack-ladder-test)
+
+add_test(
+  NAME unitlab-iec61850-wire-stack-ladder
+  COMMAND unitlab-iec61850-wire-stack-ladder-test
+)
+
 add_executable(unitlab-iec61850-native-wire-server-test
   src/server/native_wire_server.c
   tests/native_wire_server_smoke_test.c
