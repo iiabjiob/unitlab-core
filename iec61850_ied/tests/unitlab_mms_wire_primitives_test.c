@@ -1423,6 +1423,123 @@ static void test_session_spdu_decode_stops_at_indicated_length(void)
     assert(memcmp(spdu.raw_parameter_bytes, payload, sizeof(payload)) == 0);
 }
 
+static void test_session_spdu_rejects_truncated_data_transfer(void)
+{
+    const uint8_t buffer[3] = { 0x01U, 0x00U, 0x01U };
+    UnitLabMmsSessionSpdu spdu;
+    size_t consumed_length = 123U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_session_spdu_init(&spdu);
+    assert(unitlab_mms_session_spdu_decode(&spdu, buffer, sizeof(buffer), &consumed_length, &diagnostic) == 0);
+    assert(consumed_length == 0U);
+    assert(spdu.kind == UNITLAB_MMS_SESSION_SPDU_NONE);
+    assert(spdu.spdu_length == 0U);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+    assert(diagnostic.message[0] != '\0');
+}
+
+static void test_session_spdu_rejects_invalid_data_transfer_header(void)
+{
+    const uint8_t buffer[4] = { 0x01U, 0x01U, 0x01U, 0x00U };
+    UnitLabMmsSessionSpdu spdu;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_session_spdu_init(&spdu);
+    assert(unitlab_mms_session_spdu_decode(&spdu, buffer, sizeof(buffer), &consumed_length, &diagnostic) == 0);
+    assert(consumed_length == 0U);
+    assert(spdu.kind == UNITLAB_MMS_SESSION_SPDU_NONE);
+    assert(spdu.spdu_length == 0U);
+    assert(spdu.raw_parameter_length == 0U);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+    assert(diagnostic.message[0] != '\0');
+}
+
+static void test_session_spdu_rejects_unsupported_kind(void)
+{
+    uint8_t buffer[8];
+    UnitLabMmsSessionSpdu spdu;
+    size_t encoded_length = 123U;
+    size_t consumed_length = 123U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_session_spdu_init(&spdu);
+    spdu.kind = UNITLAB_MMS_SESSION_SPDU_NONE;
+    spdu.spdu_bytes = buffer;
+    spdu.spdu_length = 1U;
+    assert(unitlab_mms_session_spdu_encode(&spdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 0);
+    assert(encoded_length == 0U);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED);
+    assert(diagnostic.message[0] != '\0');
+
+    unitlab_mms_session_spdu_init(&spdu);
+    buffer[0] = 0xFFU;
+    buffer[1] = 0x00U;
+    assert(unitlab_mms_session_spdu_decode(&spdu, buffer, 2U, &consumed_length, &diagnostic) == 0);
+    assert(consumed_length == 0U);
+    assert(spdu.kind == UNITLAB_MMS_SESSION_SPDU_NONE);
+    assert(spdu.spdu_length == 0U);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED);
+    assert(diagnostic.message[0] != '\0');
+}
+
+static void test_session_spdu_decode_reports_consumed_length_with_trailing_bytes(void)
+{
+    uint8_t buffer[32];
+    UnitLabMmsSessionSpdu spdu;
+    UnitLabMmsSessionSpdu decoded_spdu;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[5] = { 0xA1U, 0xB2U, 0xC3U, 0xD4U, 0xE5U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_session_spdu_init(&spdu);
+    spdu.kind = UNITLAB_MMS_SESSION_SPDU_ACCEPT;
+    spdu.spdu_bytes = payload;
+    spdu.spdu_length = sizeof(payload);
+    assert(unitlab_mms_session_spdu_encode(&spdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    buffer[encoded_length + 0U] = 0xDEU;
+    buffer[encoded_length + 1U] = 0xADU;
+    unitlab_mms_session_spdu_init(&decoded_spdu);
+    assert(unitlab_mms_session_spdu_decode(&decoded_spdu, buffer, encoded_length + 2U, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_spdu.spdu_length == encoded_length);
+    assert(decoded_spdu.raw_parameter_length == sizeof(payload));
+    assert(memcmp(decoded_spdu.raw_parameter_bytes, payload, sizeof(payload)) == 0);
+}
+
+static void test_session_spdu_decode_resets_output_on_failure(void)
+{
+    const uint8_t buffer[2] = { 0xFFU, 0x00U };
+    UnitLabMmsSessionSpdu spdu;
+    size_t consumed_length = 123U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_session_spdu_init(&spdu);
+    spdu.kind = UNITLAB_MMS_SESSION_SPDU_ACCEPT;
+    spdu.spdu_bytes = (const uint8_t*)0x1;
+    spdu.spdu_length = 99U;
+    spdu.raw_parameter_bytes = (const uint8_t*)0x2;
+    spdu.raw_parameter_length = 88U;
+    spdu.encoded_length = 77U;
+    assert(unitlab_mms_session_spdu_decode(&spdu, buffer, sizeof(buffer), &consumed_length, &diagnostic) == 0);
+    assert(consumed_length == 0U);
+    assert(spdu.kind == UNITLAB_MMS_SESSION_SPDU_NONE);
+    assert(spdu.spdu_bytes == NULL);
+    assert(spdu.spdu_length == 0U);
+    assert(spdu.raw_parameter_bytes == NULL);
+    assert(spdu.raw_parameter_length == 0U);
+    assert(spdu.encoded_length == 0U);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED);
+    assert(diagnostic.message[0] != '\0');
+}
+
 static void test_session_spdu_roundtrips(void)
 {
     struct {
@@ -2419,7 +2536,12 @@ int main(void)
     test_acse_decode_stops_at_indicated_length();
     test_acse_raw_field_view();
     test_session_spdu_roundtrip_long_payload();
+    test_session_spdu_rejects_truncated_data_transfer();
+    test_session_spdu_rejects_invalid_data_transfer_header();
+    test_session_spdu_rejects_unsupported_kind();
     test_session_spdu_decode_stops_at_indicated_length();
+    test_session_spdu_decode_reports_consumed_length_with_trailing_bytes();
+    test_session_spdu_decode_resets_output_on_failure();
     test_session_spdu_roundtrips();
     test_session_spdu_rejects_mismatched_declared_kind_and_code();
     test_presentation_simply_encoded_roundtrip();
