@@ -101,7 +101,7 @@ int unitlab_mms_tpkt_unwrap(const uint8_t* frame_bytes, size_t frame_length, con
         return 0;
     }
     if (frame_length < 4U) {
-        tpkt_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "TPKT frame is too small.");
+        tpkt_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "TPKT frame is too small.");
         return 0;
     }
     if (frame_bytes[0] != 3U || frame_bytes[1] != 0U) {

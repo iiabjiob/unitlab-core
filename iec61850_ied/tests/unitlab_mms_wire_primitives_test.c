@@ -674,6 +674,122 @@ static void test_acse_decode_accepts_raw_aarq_fields(void)
     assert(apdu.fields[0].tag.tag_number == 0U);
 }
 
+static void test_acse_decode_rejects_unsupported_top_level_tag(void)
+{
+    uint8_t buffer[32];
+    UnitLabMmsAcseApdu apdu;
+    UnitLabMmsBerElement element;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 123U;
+    UnitLabMmsDiagnostic diagnostic;
+    const uint8_t payload[2] = { 0x80U, 0x00U };
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_ber_element_init(&element);
+    element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_APPLICATION;
+    element.tag.constructed = 1;
+    element.tag.tag_number = 99U;
+    element.value_bytes = payload;
+    element.value_length = sizeof(payload);
+    assert(unitlab_mms_ber_write(&element, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+
+    unitlab_mms_acse_apdu_init(&apdu);
+    apdu.kind = UNITLAB_MMS_ACSE_APDU_AARE;
+    apdu.apdu_bytes = (const uint8_t*)0x1;
+    apdu.apdu_length = 11U;
+    apdu.field_count = 7U;
+    apdu.encoded_length = 22U;
+    assert(unitlab_mms_acse_decode(&apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 0);
+    assert(consumed_length == 0U);
+    assert(apdu.kind == UNITLAB_MMS_ACSE_APDU_NONE);
+    assert(apdu.apdu_bytes == NULL);
+    assert(apdu.apdu_length == 0U);
+    assert(apdu.field_count == 0U);
+    assert(apdu.encoded_length == 0U);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED);
+    assert(diagnostic.message[0] != '\0');
+}
+
+static void test_acse_decode_rejects_malformed_raw_field_list(void)
+{
+    const uint8_t buffer[] = {
+        0xA0U, 0x03U, 0x80U, 0x01U, 0x00U,
+        0xA2U, 0x03U, 0x81U, 0x01U,
+    };
+    UnitLabMmsAcseApdu apdu;
+    size_t consumed_length = 123U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_acse_apdu_init(&apdu);
+    apdu.kind = UNITLAB_MMS_ACSE_APDU_AARQ;
+    apdu.apdu_bytes = (const uint8_t*)0x1;
+    apdu.apdu_length = 9U;
+    apdu.field_count = 5U;
+    apdu.encoded_length = 10U;
+    assert(unitlab_mms_acse_decode(&apdu, buffer, sizeof(buffer), &consumed_length, &diagnostic) == 0);
+    assert(consumed_length == 0U);
+    assert(apdu.kind == UNITLAB_MMS_ACSE_APDU_NONE);
+    assert(apdu.apdu_bytes == NULL);
+    assert(apdu.apdu_length == 0U);
+    assert(apdu.field_count == 0U);
+    assert(apdu.encoded_length == 0U);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL || diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR);
+    assert(diagnostic.message[0] != '\0');
+}
+
+static void test_acse_decode_rejects_too_many_fields(void)
+{
+    uint8_t buffer[50];
+    UnitLabMmsAcseApdu apdu;
+    size_t consumed_length = 123U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    buffer[0] = 0xA0U;
+    buffer[1] = 0x00U;
+    for (size_t i = 0U; i < 16U; i++) {
+        size_t offset = 2U + (i * 3U);
+        buffer[offset + 0U] = 0x80U;
+        buffer[offset + 1U] = 0x01U;
+        buffer[offset + 2U] = (uint8_t)i;
+    }
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_acse_apdu_init(&apdu);
+    apdu.kind = UNITLAB_MMS_ACSE_APDU_AARE;
+    apdu.apdu_bytes = (const uint8_t*)0x1;
+    apdu.apdu_length = 11U;
+    apdu.field_count = 8U;
+    apdu.encoded_length = 13U;
+    assert(unitlab_mms_acse_decode(&apdu, buffer, sizeof(buffer), &consumed_length, &diagnostic) == 0);
+    assert(consumed_length == 0U);
+    assert(apdu.kind == UNITLAB_MMS_ACSE_APDU_NONE);
+    assert(apdu.apdu_bytes == NULL);
+    assert(apdu.apdu_length == 0U);
+    assert(apdu.field_count == 0U);
+    assert(apdu.encoded_length == 0U);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED);
+    assert(diagnostic.message[0] != '\0');
+}
+
+static void test_acse_encode_rejects_null_apdu_bytes(void)
+{
+    uint8_t buffer[16];
+    UnitLabMmsAcseApdu apdu;
+    size_t encoded_length = 123U;
+    UnitLabMmsDiagnostic diagnostic;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_acse_apdu_init(&apdu);
+    apdu.kind = UNITLAB_MMS_ACSE_APDU_AARQ;
+    apdu.apdu_bytes = NULL;
+    apdu.apdu_length = 1U;
+    assert(unitlab_mms_acse_encode(&apdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 0);
+    assert(encoded_length == 0U);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT);
+    assert(diagnostic.message[0] != '\0');
+}
+
 static void test_presentation_decode_rejects_unsupported_outer_tag(void)
 {
     uint8_t buffer[32];
@@ -1453,7 +1569,7 @@ static void test_acse_top_level_roundtrips(void)
     size_t encoded_length = 0U;
     size_t consumed_length = 0U;
     UnitLabMmsDiagnostic diagnostic;
-    const uint8_t payload[4] = { 0x30U, 0x02U, 0x01U, 0x01U };
+    const uint8_t payload[8] = { 0x80U, 0x01U, 0x00U, 0x81U, 0x01U, 0x2AU, 0x82U, 0x00U };
 
     for (size_t i = 0U; i < sizeof(cases) / sizeof(cases[0]); i++) {
         unitlab_mms_diagnostic_clear(&diagnostic);
@@ -2641,6 +2757,10 @@ int main(void)
     test_acse_top_level_roundtrips();
     test_acse_decode_stops_at_indicated_length();
     test_acse_raw_field_view();
+    test_acse_decode_rejects_unsupported_top_level_tag();
+    test_acse_decode_rejects_malformed_raw_field_list();
+    test_acse_decode_rejects_too_many_fields();
+    test_acse_encode_rejects_null_apdu_bytes();
     test_session_spdu_roundtrip_long_payload();
     test_session_spdu_rejects_truncated_data_transfer();
     test_session_spdu_rejects_invalid_data_transfer_header();
