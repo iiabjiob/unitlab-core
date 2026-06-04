@@ -165,6 +165,41 @@ static const char* server_runtime_object_reference_suffix(const char* object_ref
     return second_dot + 1;
 }
 
+static int server_runtime_parse_object_reference(const char* object_reference, char* domain_id, size_t domain_id_size, char* item_id, size_t item_id_size)
+{
+    const char* first_dot = NULL;
+    const char* item = NULL;
+    size_t domain_length = 0U;
+    size_t item_length = 0U;
+
+    if (domain_id == NULL || item_id == NULL || domain_id_size == 0U || item_id_size == 0U) {
+        return 0;
+    }
+    domain_id[0] = '\0';
+    item_id[0] = '\0';
+    if (object_reference == NULL || object_reference[0] == '\0') {
+        return 0;
+    }
+    first_dot = strchr(object_reference, '.');
+    if (first_dot == NULL) {
+        item = object_reference;
+    } else {
+        domain_length = (size_t)(first_dot - object_reference);
+        if (domain_length == 0U || domain_length >= domain_id_size) {
+            return 0;
+        }
+        memcpy(domain_id, object_reference, domain_length);
+        domain_id[domain_length] = '\0';
+        item = first_dot + 1;
+    }
+    item_length = strlen(item);
+    if (item_length == 0U || item_length >= item_id_size) {
+        return 0;
+    }
+    memcpy(item_id, item, item_length + 1U);
+    return 1;
+}
+
 static const UnitLabIedModelSignal* server_runtime_find_signal_by_object_reference(const UnitLabMmsServerRuntime* server_runtime, const char* object_reference)
 {
     const char* suffix = server_runtime_object_reference_suffix(object_reference);
@@ -450,6 +485,307 @@ static int server_runtime_build_get_name_list_response_service(
     if (total_length > buffer_length) {
         unitlab_free_ied_model_name_list(names, name_count);
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GetNameList response output buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, service_bytes, total_length);
+    *encoded_length = total_length;
+    unitlab_free_ied_model_name_list(names, name_count);
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
+
+static int server_runtime_encode_gva_component(
+    const char* component_name,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t component_name_bytes[256U];
+    uint8_t component_type_bytes[16U];
+    uint8_t component_type_wrapper_bytes[32U];
+    uint8_t component_content_bytes[320U];
+    uint8_t component_bytes[384U];
+    size_t component_name_length = 0U;
+    size_t component_type_length = 0U;
+    size_t component_type_wrapper_length = 0U;
+    size_t component_content_length = 0U;
+    size_t component_length = 0U;
+    UnitLabMmsBerElement type_element;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (component_name == NULL || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GVA component encoding requires a component name, buffer, and encoded_length.");
+        return 0;
+    }
+
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            0,
+            0U,
+            (const uint8_t*)component_name,
+            strlen(component_name),
+            component_name_bytes,
+            sizeof(component_name_bytes),
+            &component_name_length,
+            diagnostic)) {
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&type_element);
+    type_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    type_element.tag.constructed = 0;
+    type_element.tag.tag_number = 3U;
+    type_element.value_bytes = NULL;
+    type_element.value_length = 0U;
+    if (!unitlab_mms_ber_write(&type_element, component_type_bytes, sizeof(component_type_bytes), &component_type_length, diagnostic)) {
+        return 0;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            1U,
+            component_type_bytes,
+            component_type_length,
+            component_type_wrapper_bytes,
+            sizeof(component_type_wrapper_bytes),
+            &component_type_wrapper_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (component_name_length + component_type_wrapper_length > sizeof(component_content_bytes)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GVA component encoding buffer is too small.");
+        return 0;
+    }
+    memcpy(component_content_bytes, component_name_bytes, component_name_length);
+    memcpy(&component_content_bytes[component_name_length], component_type_wrapper_bytes, component_type_wrapper_length);
+    component_content_length = component_name_length + component_type_wrapper_length;
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            1,
+            16U,
+            component_content_bytes,
+            component_content_length,
+            component_bytes,
+            sizeof(component_bytes),
+            &component_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (component_length > buffer_length) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GVA component output buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, component_bytes, component_length);
+    *encoded_length = component_length;
+    return 1;
+}
+
+static int server_runtime_build_get_variable_access_attributes_response_service(
+    const UnitLabMmsServerRuntime* server_runtime,
+    uint32_t invoke_id,
+    const char* object_reference,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    char domain_id[128U];
+    char item_id[128U];
+    char model_error[256U];
+    char** names = NULL;
+    size_t name_count = 0U;
+    uint8_t component_bytes[4096U];
+    uint8_t component_list_bytes[4096U];
+    uint8_t components_wrapper_bytes[4096U];
+    uint8_t type_spec_bytes[4096U];
+    uint8_t type_spec_wrapper_bytes[4096U];
+    uint8_t response_payload_bytes[8192U];
+    uint8_t service_payload_bytes[8192U];
+    uint8_t service_bytes[8192U];
+    size_t component_bytes_length = 0U;
+    size_t component_list_length = 0U;
+    size_t components_wrapper_length = 0U;
+    size_t type_spec_length = 0U;
+    size_t type_spec_wrapper_length = 0U;
+    size_t response_payload_length = 0U;
+    size_t service_payload_length = 0U;
+    size_t invoke_id_length = 0U;
+    size_t total_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (server_runtime == NULL || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GVA response buffer and encoded_length are required.");
+        return 0;
+    }
+    if (object_reference == NULL || object_reference[0] == '\0') {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GVA response requires an object reference.");
+        return 0;
+    }
+    if (!server_runtime_parse_object_reference(object_reference, domain_id, sizeof(domain_id), item_id, sizeof(item_id))) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "GVA response object reference is malformed.");
+        return 0;
+    }
+
+    model_error[0] = '\0';
+    if (domain_id[0] != '\0') {
+        if (!unitlab_collect_ied_model_logical_node_variables(
+                server_runtime->model_plan,
+                domain_id,
+                item_id,
+                &names,
+                &name_count,
+                model_error,
+                sizeof(model_error))) {
+            unitlab_free_ied_model_name_list(names, name_count);
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GVA response lookup failed.");
+            return 0;
+        }
+    } else {
+        if (!unitlab_collect_ied_model_vmd_named_variable_lists(
+                server_runtime->model_plan,
+                &names,
+                &name_count,
+                model_error,
+                sizeof(model_error))) {
+            unitlab_free_ied_model_name_list(names, name_count);
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GVA response lookup failed.");
+            return 0;
+        }
+    }
+
+    for (size_t index = 0U; index < name_count; index++) {
+        size_t component_length = 0U;
+
+        if (!server_runtime_encode_gva_component(
+                names[index],
+                &component_bytes[component_bytes_length],
+                sizeof(component_bytes) - component_bytes_length,
+                &component_length,
+                diagnostic)) {
+            unitlab_free_ied_model_name_list(names, name_count);
+            return 0;
+        }
+        component_bytes_length += component_length;
+    }
+
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            1,
+            16U,
+            component_bytes,
+            component_bytes_length,
+            component_list_bytes,
+            sizeof(component_list_bytes),
+            &component_list_length,
+            diagnostic)) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        return 0;
+    }
+
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            1U,
+            component_list_bytes,
+            component_list_length,
+            components_wrapper_bytes,
+            sizeof(components_wrapper_bytes),
+            &components_wrapper_length,
+            diagnostic)) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        return 0;
+    }
+
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            2U,
+            components_wrapper_bytes,
+            components_wrapper_length,
+            type_spec_bytes,
+            sizeof(type_spec_bytes),
+            &type_spec_length,
+            diagnostic)) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        return 0;
+    }
+
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            2U,
+            type_spec_bytes,
+            type_spec_length,
+            type_spec_wrapper_bytes,
+            sizeof(type_spec_wrapper_bytes),
+            &type_spec_wrapper_length,
+            diagnostic)) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        return 0;
+    }
+
+    {
+        uint8_t false_byte[1U] = { 0x00U };
+
+        if (!server_runtime_encode_ber_element(
+                UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                0,
+                0U,
+                false_byte,
+                sizeof(false_byte),
+                response_payload_bytes,
+                sizeof(response_payload_bytes),
+                &response_payload_length,
+                diagnostic)) {
+            unitlab_free_ied_model_name_list(names, name_count);
+            return 0;
+        }
+    }
+    if (response_payload_length + type_spec_wrapper_length > sizeof(response_payload_bytes)) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GVA response output buffer is too small.");
+        return 0;
+    }
+    memcpy(&response_payload_bytes[response_payload_length], type_spec_wrapper_bytes, type_spec_wrapper_length);
+    response_payload_length += type_spec_wrapper_length;
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            1,
+            16U,
+            response_payload_bytes,
+            response_payload_length,
+            service_payload_bytes,
+            sizeof(service_payload_bytes),
+            &service_payload_length,
+            diagnostic)) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        return 0;
+    }
+    if (!server_runtime_encode_invoke_id_element(
+            invoke_id,
+            service_bytes,
+            sizeof(service_bytes),
+            &invoke_id_length,
+            diagnostic)) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        return 0;
+    }
+    if (invoke_id_length + service_payload_length > sizeof(service_bytes)) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GVA response output buffer is too small.");
+        return 0;
+    }
+    memcpy(&service_bytes[invoke_id_length], service_payload_bytes, service_payload_length);
+    total_length = invoke_id_length + service_payload_length;
+    if (total_length > buffer_length) {
+        unitlab_free_ied_model_name_list(names, name_count);
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GVA response output buffer is too small.");
         return 0;
     }
     memcpy(buffer, service_bytes, total_length);
@@ -866,8 +1202,8 @@ static int server_runtime_prepare_confirmed_response_pdu(
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, "Pending request must be active before building a response.");
         return 0;
     }
-    if (server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_READ && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_WRITE && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_GET_NAME_LIST) {
-        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Only first-slice READ/WRITE/GetNameList responses are supported.");
+    if (server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_READ && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_WRITE && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_GET_NAME_LIST && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Only first-slice READ/WRITE/GetNameList/GetVariableAccessAttributes responses are supported.");
         return 0;
     }
     unitlab_mms_pdu_init(response_pdu);
@@ -879,8 +1215,10 @@ static int server_runtime_prepare_confirmed_response_pdu(
         response_pdu->service_kind = UNITLAB_MMS_SERVICE_READ;
     } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_WRITE) {
         response_pdu->service_kind = UNITLAB_MMS_SERVICE_WRITE;
-    } else {
+    } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAME_LIST) {
         response_pdu->service_kind = UNITLAB_MMS_SERVICE_GET_NAME_LIST;
+    } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES) {
+        response_pdu->service_kind = UNITLAB_MMS_SERVICE_GET_VARIABLE_ACCESS_ATTRIBUTES;
     }
     response_pdu->pdu_bytes = service_bytes;
     response_pdu->pdu_length = service_length;
@@ -1100,6 +1438,19 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
             if (!server_runtime_build_get_name_list_response_service(
                     server_runtime,
                     server_runtime->pending_request.invoke_id,
+                    synthesized_service_bytes,
+                    sizeof(synthesized_service_bytes),
+                    &synthesized_service_length,
+                    diagnostic)) {
+                return 0;
+            }
+            service_bytes = synthesized_service_bytes;
+            service_length = synthesized_service_length;
+        } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES) {
+            if (!server_runtime_build_get_variable_access_attributes_response_service(
+                    server_runtime,
+                    server_runtime->pending_request.invoke_id,
+                    server_runtime->pending_request.object_reference,
                     synthesized_service_bytes,
                     sizeof(synthesized_service_bytes),
                     &synthesized_service_length,

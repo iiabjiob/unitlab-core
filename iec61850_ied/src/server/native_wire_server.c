@@ -104,6 +104,50 @@ static void log_hex_bytes(const char* label, const uint8_t* bytes, size_t length
     fflush(stdout);
 }
 
+static const char* get_name_list_scope_label(uint32_t browse_object_scope)
+{
+    switch (browse_object_scope) {
+        case 0U:
+            return "VMD-SPECIFIC";
+        case 1U:
+            return "DOMAIN-SPECIFIC";
+        case 2U:
+            return "AA-SPECIFIC";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+static void log_get_name_list_context(const char* prefix, const UnitLabMmsPendingRequest* request)
+{
+    if (prefix == NULL || request == NULL) {
+        return;
+    }
+    printf(
+        "native-wire-server: %s GetNameList(%s) invoke=%u browse-class=%u browse-scope=%u domain=%s continue-after=%s\n",
+        prefix,
+        get_name_list_scope_label(request->browse_object_scope),
+        (unsigned)request->invoke_id,
+        (unsigned)request->browse_object_class,
+        (unsigned)request->browse_object_scope,
+        request->browse_domain_id[0] != '\0' ? request->browse_domain_id : "<none>",
+        request->browse_continue_after[0] != '\0' ? request->browse_continue_after : "<none>");
+    fflush(stdout);
+}
+
+static void log_get_variable_access_attributes_context(const char* prefix, const UnitLabMmsPendingRequest* request)
+{
+    if (prefix == NULL || request == NULL) {
+        return;
+    }
+    printf(
+        "native-wire-server: %s GetVariableAccessAttributes invoke=%u object=%s attribute=%s\n",
+        prefix,
+        (unsigned)request->invoke_id,
+        request->object_reference[0] != '\0' ? request->object_reference : "<none>",
+        request->attribute_reference[0] != '\0' ? request->attribute_reference : "<none>");
+    fflush(stdout);
+}
 
 static void log_unsupported_mms_request(UnitLabMmsServerRuntime* server_runtime, const uint8_t* incoming, size_t received, const UnitLabMmsOperationResult* incoming_result)
 {
@@ -118,18 +162,32 @@ static void log_unsupported_mms_request(UnitLabMmsServerRuntime* server_runtime,
     unitlab_mms_semantic_result_init(&semantic_result);
     unitlab_mms_decode_diagnostic_init(&bridge_diagnostic);
     if (unitlab_mms_semantic_result_from_wire_pdu(&semantic_result, wire_pdu, &bridge_diagnostic)) {
-        printf(
-            "native-wire-server: unsupported-mms-request invoke=%u service-kind=%u service-tag=%u/%u constructed=%d object-class=%u scope=%u domain=%s continue-after=%s\n",
-            (unsigned)(semantic_result.pdu.invoke_id),
-            (unsigned)wire_pdu->service_kind,
-            (unsigned)wire_pdu->service_tag.tag_class,
-            (unsigned)wire_pdu->service_tag.tag_number,
-            wire_pdu->service_tag.constructed,
-            (unsigned)semantic_result.pdu.object_class,
-            (unsigned)semantic_result.pdu.object_scope,
-            semantic_result.pdu.domain_id[0] != '\0' ? semantic_result.pdu.domain_id : "<none>",
-            semantic_result.pdu.continue_after[0] != '\0' ? semantic_result.pdu.continue_after : "<none>");
-    } else {
+        if (wire_pdu->service_kind == UNITLAB_MMS_SERVICE_GET_VARIABLE_ACCESS_ATTRIBUTES) {
+            printf(
+                "native-wire-server: unsupported-mms-request invoke=%u service-kind=%u service-tag=%u/%u constructed=%d object-reference=%s attribute=%s\n",
+                (unsigned)(semantic_result.pdu.invoke_id),
+                (unsigned)wire_pdu->service_kind,
+                (unsigned)wire_pdu->service_tag.tag_class,
+                (unsigned)wire_pdu->service_tag.tag_number,
+                wire_pdu->service_tag.constructed,
+                semantic_result.pdu.object_reference[0] != '\0' ? semantic_result.pdu.object_reference : "<none>",
+                semantic_result.pdu.attribute_reference[0] != '\0' ? semantic_result.pdu.attribute_reference : "<none>");
+        }
+        else {
+            printf(
+                "native-wire-server: unsupported-mms-request invoke=%u service-kind=%u service-tag=%u/%u constructed=%d object-class=%u scope=%u domain=%s continue-after=%s\n",
+                (unsigned)(semantic_result.pdu.invoke_id),
+                (unsigned)wire_pdu->service_kind,
+                (unsigned)wire_pdu->service_tag.tag_class,
+                (unsigned)wire_pdu->service_tag.tag_number,
+                wire_pdu->service_tag.constructed,
+                (unsigned)semantic_result.pdu.object_class,
+                (unsigned)semantic_result.pdu.object_scope,
+                semantic_result.pdu.domain_id[0] != '\0' ? semantic_result.pdu.domain_id : "<none>",
+                semantic_result.pdu.continue_after[0] != '\0' ? semantic_result.pdu.continue_after : "<none>");
+        }
+    }
+    else {
         printf(
             "native-wire-server: unsupported-mms-request invoke=%u service-kind=%u service-tag=%u/%u constructed=%d diag=%d %s\n",
             (unsigned)(wire_pdu != NULL && wire_pdu->has_invoke_id ? wire_pdu->invoke_id : 0U),
@@ -602,6 +660,11 @@ int unitlab_run_native_wire_server(
                                     sizeof(response_frame),
                                     &response_length,
                                     &response_diagnostic)) {
+                                if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAME_LIST) {
+                                    log_get_name_list_context("response-build-failed", &server_runtime->pending_request);
+                                } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES) {
+                                    log_get_variable_access_attributes_context("response-build-failed", &server_runtime->pending_request);
+                                }
                                 printf(
                                     "native-wire-server: response-build-failed code=%d message=%s pending-state=%u pending-kind=%u invoke=%u browse-class=%u browse-scope=%u domain=%s continue-after=%s consumed=%zu\n",
                                     (int)response_diagnostic.code,
@@ -633,6 +696,11 @@ int unitlab_run_native_wire_server(
                             if (incoming_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED
                                 && server_runtime->last_wire_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST
                                 && server_runtime->last_wire_pdu.has_invoke_id) {
+                                if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAME_LIST) {
+                                    log_get_name_list_context("unsupported", &server_runtime->pending_request);
+                                } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES) {
+                                    log_get_variable_access_attributes_context("unsupported", &server_runtime->pending_request);
+                                }
                                 log_unsupported_mms_request(server_runtime, incoming, (size_t)received, &incoming_result);
                                 if (unitlab_mms_server_runtime_build_confirmed_error_bytes(
                                         server_runtime,

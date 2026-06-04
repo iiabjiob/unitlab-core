@@ -129,6 +129,13 @@ int unitlab_collect_ied_model_logical_device_data_sets(
     char* error,
     size_t error_size);
 
+int unitlab_collect_ied_model_vmd_named_variable_lists(
+    const UnitLabIedModelPlan* plan,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size);
+
 int unitlab_collect_ied_model_logical_device_variables(
     const UnitLabIedModelPlan* plan,
     const char* logical_device_inst,

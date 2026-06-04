@@ -854,6 +854,41 @@ int unitlab_collect_ied_model_logical_device_data_sets(
     return 1;
 }
 
+int unitlab_collect_ied_model_vmd_named_variable_lists(
+    const UnitLabIedModelPlan* plan,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size)
+{
+    if (names != NULL) {
+        *names = NULL;
+    }
+    if (count != NULL) {
+        *count = 0U;
+    }
+    if (plan == NULL || names == NULL || count == NULL) {
+        set_error(error, error_size, "INVALID_ARGUMENT: plan, names, and count are required.");
+        return 0;
+    }
+
+    for (size_t index = 0U; index < plan->data_set_count; index++) {
+        const UnitLabIedModelDataSet* data_set = &plan->data_sets[index];
+
+        if (data_set->name[0] == '\0') {
+            continue;
+        }
+        if (!append_unique_metadata_name(names, count, data_set->name)) {
+            unitlab_free_ied_model_name_list(*names, *count);
+            *names = NULL;
+            *count = 0U;
+            set_error(error, error_size, "OUT_OF_MEMORY: cannot collect VMD-specific NamedVariableLists.");
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int unitlab_collect_ied_model_logical_device_variables(
     const UnitLabIedModelPlan* plan,
     const char* logical_device_inst,

@@ -166,7 +166,6 @@ static void test_server_runtime_apply_association_request_bytes_accepts_captured
     unitlab_mms_server_runtime_init(&server_runtime);
     assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
     assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
-
     unitlab_mms_operation_result_init(&operation_result);
     assert(unitlab_mms_server_runtime_apply_association_request_bytes(&server_runtime, wire_bytes, sizeof(wire_bytes), &consumed_length, &operation_result));
     assert(operation_result.ok == 1);
@@ -1071,7 +1070,13 @@ static void test_server_runtime_apply_get_name_list_request_and_build_response_r
     assert(strcmp(server_runtime.pending_request.browse_domain_id, "LD0") == 0);
 
     unitlab_mms_diagnostic_clear(&diagnostic);
-    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    {
+        int build_ok = unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic);
+        if (!build_ok) {
+            fprintf(stderr, "GVA build failed: code=%d message=%s\n", (int)diagnostic.code, diagnostic.message);
+        }
+        assert(build_ok);
+    }
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
 
@@ -1194,7 +1199,13 @@ static void test_server_runtime_apply_iedscout_logical_node_directory_request_cl
     assert(strcmp(server_runtime.pending_request.browse_continue_after, "LLN0") == 0);
 
     unitlab_mms_diagnostic_clear(&diagnostic);
-    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    {
+        int build_ok = unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic);
+        if (!build_ok) {
+            fprintf(stderr, "GVA build failed: code=%d message=%s\n", (int)diagnostic.code, diagnostic.message);
+        }
+        assert(build_ok);
+    }
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
 
@@ -1218,6 +1229,10 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
         .bind_address = "127.0.0.1",
         .port = 102,
     };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLogicalDevice logical_devices[1U];
+    UnitLabIedModelLogicalNode logical_nodes[4U];
+    UnitLabIedModelDataSet data_sets[4U];
     uint8_t request_bytes[] = {
         0x03U, 0x00U, 0x00U, 0x2AU, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U,
         0x61U, 0x1DU, 0x30U, 0x1BU, 0x02U, 0x01U, 0x03U, 0xA0U, 0x16U, 0xA0U, 0x14U,
@@ -1229,20 +1244,53 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
     size_t consumed_length = 0U;
     size_t response_length = 0U;
 
+    memset(&plan, 0, sizeof(plan));
+    memset(logical_devices, 0, sizeof(logical_devices));
+    memset(logical_nodes, 0, sizeof(logical_nodes));
+    memset(data_sets, 0, sizeof(data_sets));
+    snprintf(logical_devices[0].inst, sizeof(logical_devices[0].inst), "%s", "LD0");
+    snprintf(logical_nodes[0].logical_device_inst, sizeof(logical_nodes[0].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[0].name, sizeof(logical_nodes[0].name), "%s", "LLN0");
+    snprintf(logical_nodes[1].logical_device_inst, sizeof(logical_nodes[1].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[1].name, sizeof(logical_nodes[1].name), "%s", "XCBR1");
+    snprintf(logical_nodes[2].logical_device_inst, sizeof(logical_nodes[2].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[2].name, sizeof(logical_nodes[2].name), "%s", "PGGIO1");
+    snprintf(logical_nodes[3].logical_device_inst, sizeof(logical_nodes[3].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[3].name, sizeof(logical_nodes[3].name), "%s", "GGIO1");
+    snprintf(data_sets[0].logical_device_inst, sizeof(data_sets[0].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[0].logical_node_name, sizeof(data_sets[0].logical_node_name), "%s", "LLN0");
+    snprintf(data_sets[0].name, sizeof(data_sets[0].name), "%s", "dsEvents");
+    snprintf(data_sets[1].logical_device_inst, sizeof(data_sets[1].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[1].logical_node_name, sizeof(data_sets[1].logical_node_name), "%s", "XCBR1");
+    snprintf(data_sets[1].name, sizeof(data_sets[1].name), "%s", "dsEvents");
+    snprintf(data_sets[2].logical_device_inst, sizeof(data_sets[2].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[2].logical_node_name, sizeof(data_sets[2].logical_node_name), "%s", "PGGIO1");
+    snprintf(data_sets[2].name, sizeof(data_sets[2].name), "%s", "dsEvents");
+    snprintf(data_sets[3].logical_device_inst, sizeof(data_sets[3].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[3].logical_node_name, sizeof(data_sets[3].logical_node_name), "%s", "GGIO1");
+    snprintf(data_sets[3].name, sizeof(data_sets[3].name), "%s", "dsWire");
+    plan.logical_device_count = 1U;
+    plan.logical_devices = logical_devices;
+    plan.logical_node_count = 4U;
+    plan.logical_nodes = logical_nodes;
+    plan.data_set_count = 4U;
+    plan.data_sets = data_sets;
+
     unitlab_mms_server_runtime_init(&server_runtime);
     assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
     assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
 
     unitlab_mms_operation_result_init(&operation_result);
-    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result) == 0);
-    assert(consumed_length == 0U);
-    assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED);
-    assert(server_runtime.last_wire_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST);
-    assert(server_runtime.last_wire_pdu.has_invoke_id == 1);
-    assert(server_runtime.last_wire_pdu.invoke_id == 3U);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(consumed_length == request_length);
+    assert(operation_result.ok == 1);
+    assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES);
+    assert(strcmp(server_runtime.pending_request.object_reference, "LD0.LLN0") == 0);
+    assert(strcmp(server_runtime.pending_request.attribute_reference, "LLN0") == 0);
 
     unitlab_mms_diagnostic_clear(&diagnostic);
-    assert(unitlab_mms_server_runtime_build_confirmed_error_bytes(&server_runtime, server_runtime.last_wire_pdu.invoke_id, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
 
@@ -1259,25 +1307,18 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
         unitlab_mms_pdu_init(&decoded_pdu);
         assert(unitlab_mms_pdu_decode(&decoded_pdu, fixture.presentation.payload_bytes, fixture.presentation.payload_length, &pdu_consumed_length, &diagnostic));
         assert(pdu_consumed_length == fixture.presentation.payload_length);
-        assert(decoded_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_ERROR);
+        assert(decoded_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
         assert(decoded_pdu.has_invoke_id == 1);
         assert(decoded_pdu.invoke_id == 3U);
-        assert(decoded_pdu.pdu_length >= 10U);
-        assert(decoded_pdu.pdu_bytes[0] == 0x80U);
-        assert(decoded_pdu.pdu_bytes[1] == 0x01U);
-        assert(decoded_pdu.pdu_bytes[2] == 0x03U);
-        assert(decoded_pdu.pdu_bytes[3] == 0xA2U);
-        assert(decoded_pdu.pdu_bytes[4] == 0x05U);
-        assert(decoded_pdu.pdu_bytes[5] == 0xA0U);
-        assert(decoded_pdu.pdu_bytes[6] == 0x03U);
-        assert(decoded_pdu.pdu_bytes[7] == 0x84U);
-        assert(decoded_pdu.pdu_bytes[8] == 0x01U);
-        assert(decoded_pdu.pdu_bytes[9] == 0x00U);
+        assert(contains_bytes(decoded_pdu.pdu_bytes, decoded_pdu.pdu_length, (const uint8_t*)"Mod", strlen("Mod")) == 1);
+        assert(contains_bytes(decoded_pdu.pdu_bytes, decoded_pdu.pdu_length, (const uint8_t*)"Beh", strlen("Beh")) == 1);
+        assert(contains_bytes(decoded_pdu.pdu_bytes, decoded_pdu.pdu_length, (const uint8_t*)"Health", strlen("Health")) == 1);
+        assert(contains_bytes(decoded_pdu.pdu_bytes, decoded_pdu.pdu_length, (const uint8_t*)"NamPlt", strlen("NamPlt")) == 1);
     }
 }
 
 
-static void test_server_runtime_apply_iedscout_logical_node_directory_request_scope_zero_builds_response(void)
+static void test_server_runtime_apply_iedscout_vmd_directory_request_scope_zero_builds_response(void)
 {
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
@@ -1335,11 +1376,17 @@ static void test_server_runtime_apply_iedscout_logical_node_directory_request_sc
     assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_GET_NAME_LIST, 7U, 1U, 1000U, 100U, &diagnostic) == 1);
     server_runtime.pending_request.browse_object_class = 2U;
     server_runtime.pending_request.browse_object_scope = 0U;
-    snprintf(server_runtime.pending_request.browse_domain_id, sizeof(server_runtime.pending_request.browse_domain_id), "%s", "LD0");
-    snprintf(server_runtime.pending_request.browse_continue_after, sizeof(server_runtime.pending_request.browse_continue_after), "%s", "");
+    server_runtime.pending_request.browse_domain_id[0] = '\0';
+    server_runtime.pending_request.browse_continue_after[0] = '\0';
 
     unitlab_mms_diagnostic_clear(&diagnostic);
-    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    {
+        int build_ok = unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic);
+        if (!build_ok) {
+            fprintf(stderr, "GVA build failed: code=%d message=%s\n", (int)diagnostic.code, diagnostic.message);
+        }
+        assert(build_ok);
+    }
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
 
@@ -1349,10 +1396,103 @@ static void test_server_runtime_apply_iedscout_logical_node_directory_request_sc
         unitlab_mms_association_frame_init(&fixture);
         assert(unitlab_mms_association_frame_decode(&fixture, response_bytes, response_length, &response_consumed_length, &diagnostic));
         assert(response_consumed_length == response_length);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"LLN0$dsEvents", strlen("LLN0$dsEvents")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"XCBR1$dsEvents", strlen("XCBR1$dsEvents")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"PGGIO1$dsEvents", strlen("PGGIO1$dsEvents")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"GGIO1$dsWire", strlen("GGIO1$dsWire")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"dsEvents", strlen("dsEvents")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"dsWire", strlen("dsWire")) == 1);
+    }
+}
+
+static void test_server_runtime_apply_iedscout_vmd_get_variable_access_attributes_request_builds_response(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLogicalDevice logical_devices[1U];
+    UnitLabIedModelLogicalNode logical_nodes[4U];
+    UnitLabIedModelDataSet data_sets[4U];
+    uint8_t response_bytes[2048U];
+    const uint8_t request_bytes[] = {
+        0x03U, 0x00U, 0x00U, 0x2AU, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U,
+        0x61U, 0x1DU, 0x30U, 0x1BU, 0x02U, 0x01U, 0x03U, 0xA0U, 0x16U, 0xA0U, 0x14U,
+        0x02U, 0x01U, 0x03U, 0xA6U, 0x0FU, 0xA0U, 0x0DU, 0xA1U, 0x0BU, 0x1AU, 0x03U,
+        'L', 'D', '0', 0x1AU, 0x04U, 'L', 'L', 'N', '0'
+    };
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+    size_t response_consumed_length = 0U;
+
+    memset(&plan, 0, sizeof(plan));
+    memset(logical_devices, 0, sizeof(logical_devices));
+    memset(logical_nodes, 0, sizeof(logical_nodes));
+    memset(data_sets, 0, sizeof(data_sets));
+    snprintf(logical_devices[0].inst, sizeof(logical_devices[0].inst), "%s", "LD0");
+    snprintf(logical_nodes[0].logical_device_inst, sizeof(logical_nodes[0].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[0].name, sizeof(logical_nodes[0].name), "%s", "LLN0");
+    snprintf(logical_nodes[1].logical_device_inst, sizeof(logical_nodes[1].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[1].name, sizeof(logical_nodes[1].name), "%s", "XCBR1");
+    snprintf(logical_nodes[2].logical_device_inst, sizeof(logical_nodes[2].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[2].name, sizeof(logical_nodes[2].name), "%s", "PGGIO1");
+    snprintf(logical_nodes[3].logical_device_inst, sizeof(logical_nodes[3].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[3].name, sizeof(logical_nodes[3].name), "%s", "GGIO1");
+    snprintf(data_sets[0].logical_device_inst, sizeof(data_sets[0].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[0].logical_node_name, sizeof(data_sets[0].logical_node_name), "%s", "LLN0");
+    snprintf(data_sets[0].name, sizeof(data_sets[0].name), "%s", "dsEvents");
+    snprintf(data_sets[1].logical_device_inst, sizeof(data_sets[1].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[1].logical_node_name, sizeof(data_sets[1].logical_node_name), "%s", "XCBR1");
+    snprintf(data_sets[1].name, sizeof(data_sets[1].name), "%s", "dsEvents");
+    snprintf(data_sets[2].logical_device_inst, sizeof(data_sets[2].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[2].logical_node_name, sizeof(data_sets[2].logical_node_name), "%s", "PGGIO1");
+    snprintf(data_sets[2].name, sizeof(data_sets[2].name), "%s", "dsEvents");
+    snprintf(data_sets[3].logical_device_inst, sizeof(data_sets[3].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[3].logical_node_name, sizeof(data_sets[3].logical_node_name), "%s", "GGIO1");
+    snprintf(data_sets[3].name, sizeof(data_sets[3].name), "%s", "dsWire");
+    plan.logical_device_count = 1U;
+    plan.logical_devices = logical_devices;
+    plan.logical_node_count = 4U;
+    plan.logical_nodes = logical_nodes;
+    plan.data_set_count = 4U;
+    plan.data_sets = data_sets;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, sizeof(request_bytes), &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(consumed_length == sizeof(request_bytes));
+    assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES);
+    assert(strcmp(server_runtime.pending_request.object_reference, "LD0.LLN0") == 0);
+    assert(strcmp(server_runtime.pending_request.attribute_reference, "LLN0") == 0);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    {
+        int build_ok = unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic);
+        if (!build_ok) {
+            fprintf(stderr, "GVA build failed: code=%d message=%s\n", (int)diagnostic.code, diagnostic.message);
+        }
+        assert(build_ok);
+    }
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+
+    {
+        UnitLabMmsAssociationFrame fixture;
+
+        unitlab_mms_association_frame_init(&fixture);
+        assert(unitlab_mms_association_frame_decode(&fixture, response_bytes, response_length, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == response_length);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Mod", strlen("Mod")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Beh", strlen("Beh")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Health", strlen("Health")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"NamPlt", strlen("NamPlt")) == 1);
     }
 }
 
@@ -1415,7 +1555,13 @@ static void test_server_runtime_apply_iedscout_logical_node_directory_request_bu
     assert(strcmp(server_runtime.pending_request.browse_continue_after, "LLN0") == 0);
 
     unitlab_mms_diagnostic_clear(&diagnostic);
-    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    {
+        int build_ok = unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic);
+        if (!build_ok) {
+            fprintf(stderr, "GVA build failed: code=%d message=%s\n", (int)diagnostic.code, diagnostic.message);
+        }
+        assert(build_ok);
+    }
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
 
@@ -1450,7 +1596,8 @@ int main(void)
     test_server_runtime_build_get_name_list_response_handles_large_directory();
     test_server_runtime_apply_iedscout_get_name_list_request_matches_golden_capture();
     test_server_runtime_apply_iedscout_logical_node_directory_request_class_one_builds_response();
-    test_server_runtime_apply_iedscout_logical_node_directory_request_scope_zero_builds_response();
+    test_server_runtime_apply_iedscout_vmd_directory_request_scope_zero_builds_response();
+    test_server_runtime_apply_iedscout_vmd_get_variable_access_attributes_request_builds_response();
     test_server_runtime_build_confirmed_error_bytes_roundtrips();
     test_server_runtime_apply_iedscout_logical_node_directory_request_builds_response();
     test_server_runtime_build_confirmed_response_bytes_matches_fixture_style_object_reference();

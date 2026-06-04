@@ -232,7 +232,17 @@ int unitlab_mms_pending_request_collect_get_name_list_names(const UnitLabMmsPend
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList named variable browse failed.");
             return 0;
         }
-    } else if (request->browse_object_class == 2U && (request->browse_object_scope == 0U || request->browse_object_scope == 1U)) {
+    } else if (request->browse_object_class == 2U && request->browse_object_scope == 0U) {
+        if (!unitlab_collect_ied_model_vmd_named_variable_lists(
+                plan,
+                names,
+                count,
+                model_error,
+                sizeof(model_error))) {
+            set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "GetNameList VMD-specific named variable list browse failed.");
+            return 0;
+        }
+    } else if (request->browse_object_class == 2U && request->browse_object_scope == 1U) {
         if (request->browse_domain_id[0] == '\0') {
             set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNameList domain-specific browse requires a domain identifier.");
             return 0;
@@ -677,6 +687,7 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
         case UNITLAB_MMS_DECODED_PDU_READ_REQUEST:
         case UNITLAB_MMS_DECODED_PDU_WRITE_REQUEST:
         case UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_REQUEST:
+        case UNITLAB_MMS_DECODED_PDU_GET_VARIABLE_ACCESS_ATTRIBUTES_REQUEST:
             if (pending_request == NULL) {
                 set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "pending request is required to apply confirmed requests.");
                 operation_result->ok = 0;
@@ -688,7 +699,9 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
                     ? UNITLAB_MMS_REQUEST_READ
                     : semantic_result->pdu.kind == UNITLAB_MMS_DECODED_PDU_WRITE_REQUEST
                         ? UNITLAB_MMS_REQUEST_WRITE
-                        : UNITLAB_MMS_REQUEST_GET_NAME_LIST,
+                        : semantic_result->pdu.kind == UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_REQUEST
+                            ? UNITLAB_MMS_REQUEST_GET_NAME_LIST
+                            : UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES,
                 semantic_result->pdu.invoke_id,
                 semantic_result->pdu.correlation_id,
                 semantic_result->pdu.deadline_ms,
@@ -707,6 +720,7 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
         case UNITLAB_MMS_DECODED_PDU_READ_RESPONSE:
         case UNITLAB_MMS_DECODED_PDU_WRITE_RESPONSE:
         case UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_RESPONSE:
+        case UNITLAB_MMS_DECODED_PDU_GET_VARIABLE_ACCESS_ATTRIBUTES_RESPONSE:
             if (pending_request == NULL) {
                 set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "pending request is required to apply confirmed responses.");
                 operation_result->ok = 0;
