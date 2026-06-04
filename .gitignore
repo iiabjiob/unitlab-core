@@ -65,4 +65,4 @@ host-services/**/.mypy_cache/
 dist-release/
 .IEC61850
 .ISO9506
-iec61850-wire.pcap
+iec61850_ied/build-libiec61850
