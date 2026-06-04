@@ -27,6 +27,25 @@ services:
       bash -lc "cmake -S /workspace/iec61850_ied -B /tmp/unitlab-iec61850-ied-build &&
       cmake --build /tmp/unitlab-iec61850-ied-build --target unitlab-iec61850-ied-sim &&
       exec /tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim --fixture /workspace/iec61850_ied/examples/single-report.fixture.json --ied IED1 --bind 0.0.0.0 --port 12447 --native-wire-start"
+
+  iec61850-ied-lib:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+      tags:
+        - unitlab-dev:latest
+    container_name: unitlab-iec61850-ied-lib-dev
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    network_mode: host
+    command: >
+      bash -lc "cmake -S /workspace/iec61850_ied -B /tmp/unitlab-iec61850-ied-linked-build
+      -DUNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON
+      -DLIBIEC61850_INCLUDE_DIR='/workspace/external/libiec61850/src/iec61850/inc;/workspace/external/libiec61850/src/common/inc;/workspace/external/libiec61850/hal/inc;/workspace/external/libiec61850/src/mms/inc;/workspace/external/libiec61850/src/logging'
+      -DLIBIEC61850_LIBRARY='/workspace/external/libiec61850/build/src/libiec61850.a;/workspace/external/libiec61850/build/hal/libhal.a' &&
+      cmake --build /tmp/unitlab-iec61850-ied-linked-build --target unitlab-iec61850-ied-sim &&
+      exec /tmp/unitlab-iec61850-ied-linked-build/unitlab-iec61850-ied-sim --fixture /workspace/iec61850_ied/examples/single-report.fixture.json --ied IED1 --bind 0.0.0.0 --port 102 --native-wire-start"
   db:
     image: postgres:16
     container_name: unitlab-db-dev
