@@ -538,6 +538,36 @@ static void test_collects_vmd_named_variable_lists_for_browse_class_two_scope_ze
     unitlab_free_ied_model_name_list(names, count);
 }
 
+static void test_collects_aa_specific_get_name_list_as_empty_list(void)
+{
+    UnitLabMmsPendingRequest request;
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelDataSet data_sets[2U];
+    UnitLabMmsDiagnostic diagnostic;
+    char** names = NULL;
+    size_t count = 0U;
+
+    memset(&plan, 0, sizeof(plan));
+    memset(data_sets, 0, sizeof(data_sets));
+
+    snprintf(data_sets[0].name, sizeof(data_sets[0].name), "%s", "dsEvents");
+    snprintf(data_sets[1].name, sizeof(data_sets[1].name), "%s", "dsWire");
+
+    plan.data_set_count = 2U;
+    plan.data_sets = data_sets;
+
+    unitlab_mms_pending_request_init(&request);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_pending_request_start(&request, UNITLAB_MMS_REQUEST_GET_NAME_LIST, 63U, 8U, 1000U, 100U, &diagnostic) == 1);
+    request.browse_object_class = 2U;
+    request.browse_object_scope = 2U;
+
+    assert(unitlab_mms_pending_request_collect_get_name_list_names(&request, &plan, &names, &count, &diagnostic) == 1);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(count == 0U);
+    assert(names == NULL);
+}
+
 static void test_runtime_apply_semantic_decode_failure(void)
 {
     UnitLabMmsSession session;
@@ -638,6 +668,7 @@ int main(void)
     test_runtime_apply_semantic_correlation_mismatch();
     test_get_name_list_browse_collection_filters_continue_after();
     test_collects_vmd_named_variable_lists_for_browse_class_two_scope_zero();
+    test_collects_aa_specific_get_name_list_as_empty_list();
     test_collects_logical_node_variables_for_directory_browse_class_one();
     test_runtime_apply_semantic_decode_failure();
     printf("unitlab-mms-core: ok\n");

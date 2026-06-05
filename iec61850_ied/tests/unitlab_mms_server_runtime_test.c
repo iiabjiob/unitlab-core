@@ -1477,6 +1477,72 @@ static void test_server_runtime_apply_iedscout_vmd_directory_request_scope_zero_
     }
 }
 
+static void test_server_runtime_apply_iedscout_aa_specific_directory_request_scope_two_builds_response(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLogicalDevice logical_devices[1U];
+    UnitLabIedModelDataSet data_sets[2U];
+    uint8_t response_bytes[2048U];
+    size_t response_length = 0U;
+    size_t response_consumed_length = 0U;
+
+    memset(&plan, 0, sizeof(plan));
+    memset(logical_devices, 0, sizeof(logical_devices));
+    memset(data_sets, 0, sizeof(data_sets));
+    snprintf(logical_devices[0].inst, sizeof(logical_devices[0].inst), "%s", "LD0");
+    snprintf(data_sets[0].name, sizeof(data_sets[0].name), "%s", "dsEvents");
+    snprintf(data_sets[1].name, sizeof(data_sets[1].name), "%s", "dsWire");
+    plan.logical_device_count = 1U;
+    plan.logical_devices = logical_devices;
+    plan.data_set_count = 2U;
+    plan.data_sets = data_sets;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+
+    unitlab_mms_pending_request_init(&server_runtime.pending_request);
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_GET_NAME_LIST, 8U, 1U, 1000U, 100U, &diagnostic) == 1);
+    server_runtime.pending_request.browse_object_class = 2U;
+    server_runtime.pending_request.browse_object_scope = 2U;
+    server_runtime.pending_request.browse_domain_id[0] = '\0';
+    server_runtime.pending_request.browse_continue_after[0] = '\0';
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+
+    {
+        UnitLabMmsAssociationFrame fixture;
+        UnitLabMmsPdu decoded_pdu;
+        size_t response_frame_consumed_length = 0U;
+        size_t response_pdu_consumed_length = 0U;
+
+        unitlab_mms_association_frame_init(&fixture);
+        assert(unitlab_mms_association_frame_decode(&fixture, response_bytes, response_length, &response_frame_consumed_length, &diagnostic));
+        assert(response_frame_consumed_length == response_length);
+        unitlab_mms_pdu_init(&decoded_pdu);
+        assert(unitlab_mms_pdu_decode(&decoded_pdu, fixture.presentation.payload_bytes, fixture.presentation.payload_length, &response_pdu_consumed_length, &diagnostic));
+        assert(response_pdu_consumed_length == fixture.presentation.payload_length);
+        assert(decoded_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
+        assert(decoded_pdu.has_invoke_id == 1);
+        assert(decoded_pdu.invoke_id == 8U);
+        assert(decoded_pdu.service_kind == UNITLAB_MMS_SERVICE_GET_NAME_LIST);
+        assert(decoded_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+        assert(decoded_pdu.service_tag.constructed == 1);
+        assert(decoded_pdu.service_tag.tag_number == 1U);
+    }
+}
+
 static void test_server_runtime_apply_iedscout_vmd_get_variable_access_attributes_request_builds_response(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -1671,6 +1737,7 @@ int main(void)
     test_server_runtime_apply_iedscout_get_name_list_request_matches_golden_capture();
     test_server_runtime_apply_iedscout_logical_node_directory_request_class_one_builds_response();
     test_server_runtime_apply_iedscout_vmd_directory_request_scope_zero_builds_response();
+    test_server_runtime_apply_iedscout_aa_specific_directory_request_scope_two_builds_response();
     test_server_runtime_apply_iedscout_vmd_get_variable_access_attributes_request_builds_response();
     test_server_runtime_build_confirmed_error_bytes_roundtrips();
     test_server_runtime_apply_iedscout_logical_node_directory_request_builds_response();

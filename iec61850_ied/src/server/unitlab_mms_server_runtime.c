@@ -402,9 +402,30 @@ static int server_runtime_build_get_name_list_response_service(
     if (!unitlab_mms_pending_request_collect_get_name_list_names(&server_runtime->pending_request, server_runtime->model_plan, &names, &name_count, diagnostic)) {
         return 0;
     }
+    const char* browse_semantics = "GetNameList(UNSUPPORTED)";
+
+    if (server_runtime->pending_request.browse_object_class == 9U && server_runtime->pending_request.browse_object_scope == 0U) {
+        browse_semantics = "GetNameList(VMD-SPECIFIC)";
+    } else if (server_runtime->pending_request.browse_object_class == 0U && server_runtime->pending_request.browse_object_scope == 1U) {
+        browse_semantics = "GetNameList(DOMAIN-SPECIFIC)";
+    } else if (server_runtime->pending_request.browse_object_class == 2U && server_runtime->pending_request.browse_object_scope == 0U) {
+        browse_semantics = "GetNameList(VMD-NVL)";
+    } else if (server_runtime->pending_request.browse_object_class == 2U && server_runtime->pending_request.browse_object_scope == 1U) {
+        browse_semantics = "GetNameList(DATASET-SPECIFIC)";
+    } else if (server_runtime->pending_request.browse_object_class == 2U && server_runtime->pending_request.browse_object_scope == 2U) {
+        browse_semantics = "GetNameList(AA-SPECIFIC)";
+    } else if ((server_runtime->pending_request.browse_object_class == 1U || server_runtime->pending_request.browse_object_class == 3U) && server_runtime->pending_request.browse_object_scope == 1U) {
+        browse_semantics = "GetNameList(LOGICAL-NODE-SPECIFIC)";
+    } else if (server_runtime->pending_request.browse_object_class == 4U && server_runtime->pending_request.browse_object_scope == 1U) {
+        browse_semantics = "GetNameList(BUFFERED-REPORT)";
+    } else if (server_runtime->pending_request.browse_object_class == 5U && server_runtime->pending_request.browse_object_scope == 1U) {
+        browse_semantics = "GetNameList(UNBUFFERED-REPORT)";
+    }
+
     printf(
-        "native-wire-server: confirmed-response invoke=%u service=GetNameList browse-class=%u browse-scope=%u domain=%s continue-after=%s identifiers=%zu moreFollows=false\n",
+        "native-wire-server: confirmed-response invoke=%u service=GetNameList semantic=%s browse-class=%u browse-scope=%u domain=%s continue-after=%s identifiers=%zu moreFollows=false\n",
         (unsigned)invoke_id,
+        browse_semantics,
         (unsigned)server_runtime->pending_request.browse_object_class,
         (unsigned)server_runtime->pending_request.browse_object_scope,
         server_runtime->pending_request.browse_domain_id[0] != '\0' ? server_runtime->pending_request.browse_domain_id : "<none>",
