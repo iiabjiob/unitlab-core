@@ -1369,7 +1369,7 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
 
             unitlab_mms_ber_element_init(&component_element);
             assert(unitlab_mms_ber_read(&component_element, &component_list_element.value_bytes[component_offset], component_list_element.value_length - component_offset, &component_consumed_length, &diagnostic));
-            assert_ber_tag(&component_element, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 1, 16U);
+            assert_ber_tag(&component_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
             component_offset += component_consumed_length;
             component_count++;
 

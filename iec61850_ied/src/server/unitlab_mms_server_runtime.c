@@ -776,9 +776,9 @@ static int server_runtime_encode_gva_component_tree(
     memcpy(&component_content_bytes[component_name_length], component_type_wrapper_bytes, component_type_wrapper_length);
     component_content_length = component_name_length + component_type_wrapper_length;
     if (!server_runtime_encode_ber_element(
-            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
-            16U,
+            1U,
             component_content_bytes,
             component_content_length,
             component_bytes,
