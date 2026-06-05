@@ -1303,7 +1303,6 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
         UnitLabMmsBerElement type_spec_outer_element;
         UnitLabMmsBerElement type_spec_inner_element;
         UnitLabMmsBerElement components_wrapper_element;
-        UnitLabMmsBerElement component_list_element;
         UnitLabMmsBerElement component_element;
         UnitLabMmsBerElement component_name_element;
         UnitLabMmsBerElement component_type_element;
@@ -1360,23 +1359,19 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
 
         assert(components_wrapper_element.value_bytes[0] == 0x30U);
 
-        unitlab_mms_ber_element_init(&component_list_element);
-        assert(unitlab_mms_ber_read(&component_list_element, components_wrapper_element.value_bytes, components_wrapper_element.value_length, &element_consumed_length, &diagnostic));
-        assert_ber_tag(&component_list_element, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 1, 16U);
-
-        for (component_offset = 0U; component_offset < component_list_element.value_length; ) {
+        for (component_offset = 0U; component_offset < components_wrapper_element.value_length; ) {
             size_t component_consumed_length = 0U;
             size_t component_inner_offset = 0U;
 
             unitlab_mms_ber_element_init(&component_element);
-            assert(unitlab_mms_ber_read(&component_element, &component_list_element.value_bytes[component_offset], component_list_element.value_length - component_offset, &component_consumed_length, &diagnostic));
+            assert(unitlab_mms_ber_read(&component_element, &components_wrapper_element.value_bytes[component_offset], components_wrapper_element.value_length - component_offset, &component_consumed_length, &diagnostic));
             assert_ber_tag(&component_element, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 1, 16U);
-            assert(component_list_element.value_bytes[component_offset] == 0x30U);
+            assert(components_wrapper_element.value_bytes[component_offset] == 0x30U);
             if (component_count == 0U) {
-                assert(component_list_element.value_bytes[component_offset + 1U] == 0x1eU);
+                assert(components_wrapper_element.value_bytes[component_offset + 1U] == 0x1eU);
             }
             else if (component_count == 1U) {
-                assert(component_list_element.value_bytes[component_offset + 1U] == 0x2cU);
+                assert(components_wrapper_element.value_bytes[component_offset + 1U] == 0x2cU);
             }
             assert(component_element.value_bytes[0] == 0x81U);
 
@@ -1396,7 +1391,7 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
             component_count++;
         }
         assert(component_count == 7U);
-        assert(component_offset == component_list_element.value_length);
+        assert(component_offset == components_wrapper_element.value_length);
     }
 }
 

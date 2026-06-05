@@ -954,7 +954,6 @@ static int server_runtime_build_get_variable_access_attributes_response_service(
     char** names = NULL;
     size_t name_count = 0U;
     uint8_t component_bytes[4096U];
-    uint8_t component_list_bytes[4096U];
     uint8_t components_wrapper_bytes[4096U];
     uint8_t type_spec_bytes[4096U];
     uint8_t type_spec_wrapper_bytes[4096U];
@@ -962,7 +961,6 @@ static int server_runtime_build_get_variable_access_attributes_response_service(
     uint8_t service_payload_bytes[8192U];
     uint8_t service_bytes[8192U];
     size_t component_bytes_length = 0U;
-    size_t component_list_length = 0U;
     size_t components_wrapper_length = 0U;
     size_t type_spec_length = 0U;
     size_t type_spec_wrapper_length = 0U;
@@ -1042,25 +1040,11 @@ static int server_runtime_build_get_variable_access_attributes_response_service(
     }
 
     if (!server_runtime_encode_ber_element(
-            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
-            1,
-            16U,
-            component_bytes,
-            component_bytes_length,
-            component_list_bytes,
-            sizeof(component_list_bytes),
-            &component_list_length,
-            diagnostic)) {
-        unitlab_free_ied_model_name_list(names, name_count);
-        return 0;
-    }
-
-    if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
             1U,
-            component_list_bytes,
-            component_list_length,
+            component_bytes,
+            component_bytes_length,
             components_wrapper_bytes,
             sizeof(components_wrapper_bytes),
             &components_wrapper_length,
