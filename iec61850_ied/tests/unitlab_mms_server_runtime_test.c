@@ -1114,7 +1114,7 @@ static void test_server_runtime_apply_iedscout_get_name_list_request_matches_gol
         0x03U, 0x00U, 0x00U, 0x24U, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U, 0x61U, 0x17U, 0x30U, 0x15U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x10U, 0xA0U, 0x0EU, 0x02U, 0x01U, 0x01U, 0xA1U, 0x09U, 0xA0U, 0x03U, 0x80U, 0x01U, 0x09U, 0xA1U, 0x02U, 0x80U, 0x00U
     };
     static const uint8_t expected_response[] = {
-        0x03U, 0x00U, 0x00U, 0x32U, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U, 0x61U, 0x25U, 0x30U, 0x23U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x1EU, 0xA1U, 0x1CU, 0x02U, 0x01U, 0x01U, 0xA1U, 0x17U, 0xA0U, 0x12U, 0x1AU, 0x10U, 0x53U, 0x61U, 0x6DU, 0x70U, 0x6CU, 0x65U, 0x49U, 0x45U, 0x44U, 0x44U, 0x65U, 0x76U, 0x69U, 0x63U, 0x65U, 0x31U, 0x81U, 0x01U, 0x00U
+        0x03U, 0x00U, 0x00U, 0x32U, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U, 0x61U, 0x25U, 0x30U, 0x23U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x1EU, 0xA1U, 0x1CU, 0x02U, 0x01U, 0x01U, 0xA2U, 0x17U, 0xA0U, 0x12U, 0x1AU, 0x10U, 0x53U, 0x61U, 0x6DU, 0x70U, 0x6CU, 0x65U, 0x49U, 0x45U, 0x44U, 0x44U, 0x65U, 0x76U, 0x69U, 0x63U, 0x65U, 0x31U, 0x81U, 0x01U, 0x00U
     };
 
     memset(&plan, 0, sizeof(plan));
@@ -1307,9 +1307,6 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
         UnitLabMmsBerElement component_element;
         UnitLabMmsBerElement component_name_element;
         UnitLabMmsBerElement component_type_element;
-        UnitLabMmsBerElement component_type_structure_element;
-        UnitLabMmsBerElement component_type_components_element;
-        UnitLabMmsBerElement component_children_list_element;
         UnitLabMmsPdu decoded_pdu;
         size_t frame_consumed_length = 0U;
         size_t pdu_consumed_length = 0U;
@@ -1317,6 +1314,8 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
         size_t service_offset = 0U;
         size_t component_offset = 0U;
         size_t component_count = 0U;
+        size_t component_name_consumed_length = 0U;
+        size_t component_type_consumed_length = 0U;
 
         unitlab_mms_association_frame_init(&fixture);
         assert(unitlab_mms_association_frame_decode(&fixture, response_bytes, response_length, &frame_consumed_length, &diagnostic));
@@ -1365,13 +1364,27 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
 
         for (component_offset = 0U; component_offset < component_list_element.value_length; ) {
             size_t component_consumed_length = 0U;
+            size_t component_inner_offset = 0U;
 
             unitlab_mms_ber_element_init(&component_element);
             assert(unitlab_mms_ber_read(&component_element, &component_list_element.value_bytes[component_offset], component_list_element.value_length - component_offset, &component_consumed_length, &diagnostic));
             assert_ber_tag(&component_element, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 1, 16U);
+
+            unitlab_mms_ber_element_init(&component_name_element);
+            assert(unitlab_mms_ber_read(&component_name_element, component_element.value_bytes, component_element.value_length, &component_name_consumed_length, &diagnostic));
+            assert(component_element.value_bytes[0] == 0x81U);
+            assert_ber_tag(&component_name_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 1U);
+
+            component_inner_offset += component_name_consumed_length;
+            unitlab_mms_ber_element_init(&component_type_element);
+            assert(unitlab_mms_ber_read(&component_type_element, &component_element.value_bytes[component_inner_offset], component_element.value_length - component_inner_offset, &component_type_consumed_length, &diagnostic));
+            assert(component_element.value_bytes[component_name_consumed_length] == 0xA2U);
+            assert_ber_tag(&component_type_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 2U);
+            component_inner_offset += component_type_consumed_length;
+            assert(component_inner_offset == component_element.value_length);
+
             component_offset += component_consumed_length;
             component_count++;
-
         }
         assert(component_count == 7U);
         assert(component_offset == component_list_element.value_length);
@@ -1545,15 +1558,10 @@ static void test_server_runtime_apply_iedscout_vmd_get_variable_access_attribute
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Mod", strlen("Mod")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Beh", strlen("Beh")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Health", strlen("Health")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"CF", strlen("CF")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"DC", strlen("DC")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"BR", strlen("BR")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"EX", strlen("EX")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"EX", strlen("EX")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"EX", strlen("EX")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"EX", strlen("EX")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"EX", strlen("EX")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"ldNs", strlen("ldNs")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"ldNs", strlen("ldNs")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"ldNs", strlen("ldNs")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"ldNs", strlen("ldNs")) == 1);
     }
 }
 
@@ -1631,6 +1639,9 @@ static void test_server_runtime_apply_iedscout_logical_node_directory_request_bu
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Mod", strlen("Mod")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Beh", strlen("Beh")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Health", strlen("Health")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"CF", strlen("CF")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"DC", strlen("DC")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"BR", strlen("BR")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"EX", strlen("EX")) == 1);
     }
 }
