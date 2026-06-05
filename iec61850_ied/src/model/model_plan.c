@@ -954,7 +954,7 @@ int unitlab_collect_ied_model_logical_node_variables(
     char* error,
     size_t error_size)
 {
-    static const char* const lln0_common_variables[] = { "Mod", "Beh", "Health", "CF", "DC", "BR", "NamPlt" };
+    static const char* const lln0_common_variables[] = { "Mod", "Beh", "Health", "CF", "DC", "BR", "EX" };
 
     if (names != NULL) {
         *names = NULL;

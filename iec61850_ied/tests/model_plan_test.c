@@ -297,7 +297,7 @@ static int test_collects_logical_node_variables_for_directory_browse(void)
         passed &= expect_list_matches(
             names,
             count,
-            (const char*[]){ "Mod", "Beh", "Health", "CF", "DC", "BR", "NamPlt" },
+            (const char*[]){ "Mod", "Beh", "Health", "CF", "DC", "BR", "EX" },
             7U,
             "LLN0 should expose standard common variables");
     }

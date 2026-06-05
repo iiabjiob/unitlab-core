@@ -497,7 +497,7 @@ static void test_collects_logical_node_variables_for_directory_browse_class_one(
     assert(strcmp(names[3], "CF") == 0);
     assert(strcmp(names[4], "DC") == 0);
     assert(strcmp(names[5], "BR") == 0);
-    assert(strcmp(names[6], "NamPlt") == 0);
+    assert(strcmp(names[6], "EX") == 0);
 
     unitlab_free_ied_model_name_list(names, count);
 }
