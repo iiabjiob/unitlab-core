@@ -657,13 +657,17 @@ static int server_runtime_encode_gva_component_tree(
 {
     uint8_t component_name_bytes[256U];
     uint8_t component_type_bytes[8192U];
-    uint8_t component_type_wrapper_bytes[12288U];
+    uint8_t component_components_wrapper_bytes[12288U];
+    uint8_t component_structure_bytes[16384U];
+    uint8_t component_type_wrapper_bytes[20480U];
     uint8_t component_content_bytes[16384U];
     uint8_t component_bytes[32768U];
     const char* const* child_names = NULL;
     size_t child_count = 0U;
     size_t component_name_length = 0U;
     size_t component_type_length = 0U;
+    size_t component_components_wrapper_length = 0U;
+    size_t component_structure_length = 0U;
     size_t component_type_wrapper_length = 0U;
     size_t component_content_length = 0U;
     size_t component_length = 0U;
@@ -708,18 +712,38 @@ static int server_runtime_encode_gva_component_tree(
             }
             child_component_bytes_length += child_length;
         }
+        if (child_component_bytes_length > sizeof(component_type_bytes)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GVA component type buffer is too small.");
+            return 0;
+        }
+        memcpy(component_type_bytes, component_content_bytes, child_component_bytes_length);
+        component_type_length = child_component_bytes_length;
         if (!server_runtime_encode_ber_element(
-                UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+                UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
                 1,
-                16U,
-                component_content_bytes,
-                child_component_bytes_length,
+                1U,
                 component_type_bytes,
-                sizeof(component_type_bytes),
-                &component_type_length,
+                component_type_length,
+                component_components_wrapper_bytes,
+                sizeof(component_components_wrapper_bytes),
+                &component_components_wrapper_length,
                 diagnostic)) {
             return 0;
         }
+        if (!server_runtime_encode_ber_element(
+                UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                1,
+                2U,
+                component_components_wrapper_bytes,
+                component_components_wrapper_length,
+                component_structure_bytes,
+                sizeof(component_structure_bytes),
+                &component_structure_length,
+                diagnostic)) {
+            return 0;
+        }
+        memcpy(component_type_bytes, component_structure_bytes, component_structure_length);
+        component_type_length = component_structure_length;
     } else {
         unitlab_mms_ber_element_init(&type_element);
         type_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;

@@ -42,6 +42,14 @@ static int contains_bytes(const uint8_t* haystack, size_t haystack_length, const
     return 0;
 }
 
+static void assert_ber_tag(const UnitLabMmsBerElement* element, UnitLabMmsBerTagClass tag_class, int constructed, uint32_t tag_number)
+{
+    assert(element != NULL);
+    assert(element->tag.tag_class == tag_class);
+    assert(element->tag.constructed == constructed);
+    assert(element->tag.tag_number == tag_number);
+}
+
 static int build_get_name_list_request_association_bytes(const uint8_t* request_body_bytes, size_t request_body_length, uint32_t invoke_id, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 
 
@@ -1290,9 +1298,26 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
 
     {
         UnitLabMmsAssociationFrame fixture;
+        UnitLabMmsBerElement invoke_element;
+        UnitLabMmsBerElement service_element;
+        UnitLabMmsBerElement service_field_element;
+        UnitLabMmsBerElement type_spec_outer_element;
+        UnitLabMmsBerElement type_spec_inner_element;
+        UnitLabMmsBerElement components_wrapper_element;
+        UnitLabMmsBerElement component_list_element;
+        UnitLabMmsBerElement component_element;
+        UnitLabMmsBerElement component_name_element;
+        UnitLabMmsBerElement component_type_element;
+        UnitLabMmsBerElement component_type_structure_element;
+        UnitLabMmsBerElement component_type_components_element;
+        UnitLabMmsBerElement component_children_list_element;
         UnitLabMmsPdu decoded_pdu;
         size_t frame_consumed_length = 0U;
         size_t pdu_consumed_length = 0U;
+        size_t element_consumed_length = 0U;
+        size_t service_offset = 0U;
+        size_t component_offset = 0U;
+        size_t component_count = 0U;
 
         unitlab_mms_association_frame_init(&fixture);
         assert(unitlab_mms_association_frame_decode(&fixture, response_bytes, response_length, &frame_consumed_length, &diagnostic));
@@ -1308,10 +1333,73 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
         assert(decoded_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
         assert(decoded_pdu.service_tag.constructed == 1);
         assert(decoded_pdu.service_tag.tag_number == 6U);
-        assert(contains_bytes(decoded_pdu.pdu_bytes, decoded_pdu.pdu_length, (const uint8_t*)"Mod", strlen("Mod")) == 1);
-        assert(contains_bytes(decoded_pdu.pdu_bytes, decoded_pdu.pdu_length, (const uint8_t*)"Beh", strlen("Beh")) == 1);
-        assert(contains_bytes(decoded_pdu.pdu_bytes, decoded_pdu.pdu_length, (const uint8_t*)"Health", strlen("Health")) == 1);
-        assert(contains_bytes(decoded_pdu.pdu_bytes, decoded_pdu.pdu_length, (const uint8_t*)"NamPlt", strlen("NamPlt")) == 1);
+
+        unitlab_mms_ber_element_init(&invoke_element);
+        assert(unitlab_mms_ber_read(&invoke_element, decoded_pdu.pdu_bytes, decoded_pdu.pdu_length, &element_consumed_length, &diagnostic));
+        assert_ber_tag(&invoke_element, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 0, 2U);
+
+        unitlab_mms_ber_element_init(&service_element);
+        assert(unitlab_mms_ber_read(&service_element, &decoded_pdu.pdu_bytes[element_consumed_length], decoded_pdu.pdu_length - element_consumed_length, &service_offset, &diagnostic));
+        assert_ber_tag(&service_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 6U);
+
+        unitlab_mms_ber_element_init(&service_field_element);
+        assert(unitlab_mms_ber_read(&service_field_element, service_element.value_bytes, service_element.value_length, &element_consumed_length, &diagnostic));
+        assert_ber_tag(&service_field_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 0U);
+        assert(service_field_element.value_length == 1U);
+        assert(service_field_element.value_bytes[0] == 0x00U);
+
+        unitlab_mms_ber_element_init(&type_spec_outer_element);
+        assert(unitlab_mms_ber_read(&type_spec_outer_element, &service_element.value_bytes[element_consumed_length], service_element.value_length - element_consumed_length, &service_offset, &diagnostic));
+        assert_ber_tag(&type_spec_outer_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 2U);
+
+        unitlab_mms_ber_element_init(&type_spec_inner_element);
+        assert(unitlab_mms_ber_read(&type_spec_inner_element, type_spec_outer_element.value_bytes, type_spec_outer_element.value_length, &element_consumed_length, &diagnostic));
+        assert_ber_tag(&type_spec_inner_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 2U);
+
+        unitlab_mms_ber_element_init(&components_wrapper_element);
+        assert(unitlab_mms_ber_read(&components_wrapper_element, type_spec_inner_element.value_bytes, type_spec_inner_element.value_length, &element_consumed_length, &diagnostic));
+        assert_ber_tag(&components_wrapper_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
+
+        unitlab_mms_ber_element_init(&component_list_element);
+        assert(unitlab_mms_ber_read(&component_list_element, components_wrapper_element.value_bytes, components_wrapper_element.value_length, &element_consumed_length, &diagnostic));
+        assert_ber_tag(&component_list_element, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 1, 16U);
+
+        for (component_offset = 0U; component_offset < component_list_element.value_length; ) {
+            size_t component_consumed_length = 0U;
+
+            unitlab_mms_ber_element_init(&component_element);
+            assert(unitlab_mms_ber_read(&component_element, &component_list_element.value_bytes[component_offset], component_list_element.value_length - component_offset, &component_consumed_length, &diagnostic));
+            assert_ber_tag(&component_element, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 1, 16U);
+            component_offset += component_consumed_length;
+            component_count++;
+
+            if (component_count == 1U) {
+                size_t component_field_consumed = 0U;
+
+                unitlab_mms_ber_element_init(&component_name_element);
+                assert(unitlab_mms_ber_read(&component_name_element, component_element.value_bytes, component_element.value_length, &component_field_consumed, &diagnostic));
+                assert_ber_tag(&component_name_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 0U);
+                assert(contains_bytes(component_name_element.value_bytes, component_name_element.value_length, (const uint8_t*)"Mod", strlen("Mod")) == 1);
+
+                unitlab_mms_ber_element_init(&component_type_element);
+                assert(unitlab_mms_ber_read(&component_type_element, &component_element.value_bytes[component_field_consumed], component_element.value_length - component_field_consumed, &component_field_consumed, &diagnostic));
+                assert_ber_tag(&component_type_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
+
+                unitlab_mms_ber_element_init(&component_type_structure_element);
+                assert(unitlab_mms_ber_read(&component_type_structure_element, component_type_element.value_bytes, component_type_element.value_length, &component_field_consumed, &diagnostic));
+                assert_ber_tag(&component_type_structure_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 2U);
+
+                unitlab_mms_ber_element_init(&component_type_components_element);
+                assert(unitlab_mms_ber_read(&component_type_components_element, component_type_structure_element.value_bytes, component_type_structure_element.value_length, &component_field_consumed, &diagnostic));
+                assert_ber_tag(&component_type_components_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
+
+                unitlab_mms_ber_element_init(&component_children_list_element);
+                assert(unitlab_mms_ber_read(&component_children_list_element, component_type_components_element.value_bytes, component_type_components_element.value_length, &component_field_consumed, &diagnostic));
+                assert_ber_tag(&component_children_list_element, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 1, 16U);
+            }
+        }
+        assert(component_count == 7U);
+        assert(component_offset == component_list_element.value_length);
     }
 }
 
