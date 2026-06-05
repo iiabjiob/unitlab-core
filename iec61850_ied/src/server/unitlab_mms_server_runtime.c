@@ -848,11 +848,14 @@ static int server_runtime_build_get_variable_access_attributes_response_service(
     }
 
     printf(
-        "native-wire-server: confirmed-response invoke=%u service=GetVariableAccessAttributes object=%s attribute=%s type-spec=LLN0-nested top-level=%zu\n",
+        "native-wire-server: confirmed-response invoke=%u service=GetVariableAccessAttributes object=%s attribute=%s type-kind=structure components=%zu\n",
         (unsigned)invoke_id,
         object_reference,
         item_id,
         name_count);
+    for (size_t index = 0U; index < name_count; index++) {
+        printf("native-wire-server: gva-component[%zu]=%s\n", index, names[index]);
+    }
     fflush(stdout);
     for (size_t index = 0U; index < name_count; index++) {
         size_t component_length = 0U;
@@ -951,9 +954,9 @@ static int server_runtime_build_get_variable_access_attributes_response_service(
     memcpy(&response_payload_bytes[response_payload_length], type_spec_wrapper_bytes, type_spec_wrapper_length);
     response_payload_length += type_spec_wrapper_length;
     if (!server_runtime_encode_ber_element(
-            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
-            16U,
+            6U,
             response_payload_bytes,
             response_payload_length,
             service_payload_bytes,

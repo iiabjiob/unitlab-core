@@ -1304,6 +1304,10 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
         assert(decoded_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
         assert(decoded_pdu.has_invoke_id == 1);
         assert(decoded_pdu.invoke_id == 3U);
+        assert(decoded_pdu.service_kind == UNITLAB_MMS_SERVICE_GET_VARIABLE_ACCESS_ATTRIBUTES);
+        assert(decoded_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+        assert(decoded_pdu.service_tag.constructed == 1);
+        assert(decoded_pdu.service_tag.tag_number == 6U);
         assert(contains_bytes(decoded_pdu.pdu_bytes, decoded_pdu.pdu_length, (const uint8_t*)"Mod", strlen("Mod")) == 1);
         assert(contains_bytes(decoded_pdu.pdu_bytes, decoded_pdu.pdu_length, (const uint8_t*)"Beh", strlen("Beh")) == 1);
         assert(contains_bytes(decoded_pdu.pdu_bytes, decoded_pdu.pdu_length, (const uint8_t*)"Health", strlen("Health")) == 1);
