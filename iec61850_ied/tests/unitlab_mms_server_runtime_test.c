@@ -1358,6 +1358,8 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
         assert(unitlab_mms_ber_read(&components_wrapper_element, type_spec_inner_element.value_bytes, type_spec_inner_element.value_length, &element_consumed_length, &diagnostic));
         assert_ber_tag(&components_wrapper_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
 
+        assert(components_wrapper_element.value_bytes[0] == 0x30U);
+
         unitlab_mms_ber_element_init(&component_list_element);
         assert(unitlab_mms_ber_read(&component_list_element, components_wrapper_element.value_bytes, components_wrapper_element.value_length, &element_consumed_length, &diagnostic));
         assert_ber_tag(&component_list_element, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 1, 16U);
@@ -1369,10 +1371,17 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
             unitlab_mms_ber_element_init(&component_element);
             assert(unitlab_mms_ber_read(&component_element, &component_list_element.value_bytes[component_offset], component_list_element.value_length - component_offset, &component_consumed_length, &diagnostic));
             assert_ber_tag(&component_element, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 1, 16U);
+            assert(component_list_element.value_bytes[component_offset] == 0x30U);
+            if (component_count == 0U) {
+                assert(component_list_element.value_bytes[component_offset + 1U] == 0x1eU);
+            }
+            else if (component_count == 1U) {
+                assert(component_list_element.value_bytes[component_offset + 1U] == 0x2cU);
+            }
+            assert(component_element.value_bytes[0] == 0x81U);
 
             unitlab_mms_ber_element_init(&component_name_element);
             assert(unitlab_mms_ber_read(&component_name_element, component_element.value_bytes, component_element.value_length, &component_name_consumed_length, &diagnostic));
-            assert(component_element.value_bytes[0] == 0x81U);
             assert_ber_tag(&component_name_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 1U);
 
             component_inner_offset += component_name_consumed_length;
