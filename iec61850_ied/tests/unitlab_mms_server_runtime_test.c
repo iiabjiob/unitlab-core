@@ -1373,17 +1373,19 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
             else if (component_count == 1U) {
                 assert(components_wrapper_element.value_bytes[component_offset + 1U] == 0x2cU);
             }
-            assert(component_element.value_bytes[0] == 0x81U);
+            assert(component_element.value_bytes[0] == 0x80U);
 
             unitlab_mms_ber_element_init(&component_name_element);
             assert(unitlab_mms_ber_read(&component_name_element, component_element.value_bytes, component_element.value_length, &component_name_consumed_length, &diagnostic));
-            assert_ber_tag(&component_name_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 1U);
+            assert_ber_tag(&component_name_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 0U);
 
             component_inner_offset += component_name_consumed_length;
             unitlab_mms_ber_element_init(&component_type_element);
             assert(unitlab_mms_ber_read(&component_type_element, &component_element.value_bytes[component_inner_offset], component_element.value_length - component_inner_offset, &component_type_consumed_length, &diagnostic));
-            assert(component_element.value_bytes[component_name_consumed_length] == 0xA2U);
-            assert_ber_tag(&component_type_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 2U);
+            assert(component_element.value_bytes[component_name_consumed_length] == 0xA1U);
+            assert_ber_tag(&component_type_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
+            assert(component_type_element.value_length > 0U);
+            assert(component_type_element.value_bytes[0] == 0xA2U);
             component_inner_offset += component_type_consumed_length;
             assert(component_inner_offset == component_element.value_length);
 

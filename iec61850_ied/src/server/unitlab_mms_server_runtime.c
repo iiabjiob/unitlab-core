@@ -534,7 +534,7 @@ static int server_runtime_encode_gva_component(
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             0,
-            1U,
+            0U,
             (const uint8_t*)component_name,
             strlen(component_name),
             component_name_bytes,
@@ -556,7 +556,7 @@ static int server_runtime_encode_gva_component(
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
-            2U,
+            1U,
             component_type_bytes,
             component_type_length,
             component_type_wrapper_bytes,
@@ -814,8 +814,6 @@ static int server_runtime_encode_gva_component_tree(
     size_t component_type_wrapper_length = 0U;
     size_t component_content_length = 0U;
     size_t component_length = 0U;
-    UnitLabMmsBerElement type_element;
-
     if (encoded_length != NULL) {
         *encoded_length = 0U;
     }
@@ -827,7 +825,7 @@ static int server_runtime_encode_gva_component_tree(
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             0,
-            1U,
+            0U,
             (const uint8_t*)component_name,
             strlen(component_name),
             component_name_bytes,
@@ -902,7 +900,7 @@ static int server_runtime_encode_gva_component_tree(
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
-            2U,
+            1U,
             component_type_bytes,
             component_type_length,
             component_type_wrapper_bytes,
