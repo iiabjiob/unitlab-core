@@ -465,7 +465,7 @@ static int server_runtime_build_get_name_list_response_service(
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
-            2U,
+            1U,
             get_name_list_body_bytes,
             get_name_list_body_length,
             service_payload_bytes,
