@@ -596,13 +596,131 @@ static int server_runtime_encode_gva_component(
 static const char* const lln0_mod_children[] = { "q", "t" };
 static const char* const lln0_beh_children[] = { "stVal", "q", "t" };
 static const char* const lln0_health_children[] = { "stVal", "q", "t" };
-static const char* const lln0_cf_children[] = { "ctlModel" };
-static const char* const lln0_dc_children[] = { "d", "vendor", "swRev", "configRev" };
+static const char* const lln0_cf_children[] = { "Mod" };
+static const char* const lln0_cf_mod_children[] = { "ctlModel" };
+static const char* const lln0_dc_children[] = { "NamPlt" };
 static const char* const lln0_br_children[] = { "LLN0_Events_BuffRep01" };
+static const char* const lln0_br_report_children[] = { "RptID", "RptEna", "DatSet", "ConfRev", "OptFlds", "BufTm", "SqNum", "TrgOps", "IntgPd", "GI", "PurgeBuf", "EntryID", "TimeofEntry", "ResvTms" };
 static const char* const lln0_namplt_children[] = { "vendor", "swRev", "d", "configRev" };
+
+
+static int server_runtime_encode_gva_leaf_type_spec(
+    const char* component_name,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement type_element;
+    const uint8_t* value_bytes = NULL;
+    size_t value_length = 0U;
+    uint8_t value_q_or_bool[1U];
+    uint8_t value_visible_2[2U];
+    uint8_t value_single[1U];
+    uint8_t tag_number = 3U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (component_name == NULL || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GVA leaf type encoding requires a component name, buffer, and encoded_length.");
+        return 0;
+    }
+
+    if (strcmp(component_name, "q") == 0) {
+        value_q_or_bool[0] = 0xF3U;
+        tag_number = 4U;
+        value_bytes = value_q_or_bool;
+        value_length = sizeof(value_q_or_bool);
+    }
+    else if (strcmp(component_name, "t") == 0) {
+        tag_number = 17U;
+        value_bytes = NULL;
+        value_length = 0U;
+    }
+    else if (strcmp(component_name, "stVal") == 0) {
+        value_single[0] = 0x20U;
+        tag_number = 5U;
+        value_bytes = value_single;
+        value_length = sizeof(value_single);
+    }
+    else if (strcmp(component_name, "ctlModel") == 0) {
+        value_single[0] = 0x08U;
+        tag_number = 5U;
+        value_bytes = value_single;
+        value_length = sizeof(value_single);
+    }
+    else if (strcmp(component_name, "d") == 0 || strcmp(component_name, "vendor") == 0 || strcmp(component_name, "swRev") == 0 || strcmp(component_name, "configRev") == 0) {
+        value_visible_2[0] = 0xFFU;
+        value_visible_2[1] = 0x01U;
+        tag_number = 10U;
+        value_bytes = value_visible_2;
+        value_length = sizeof(value_visible_2);
+    }
+    else if (strcmp(component_name, "RptID") == 0 || strcmp(component_name, "DatSet") == 0) {
+        value_visible_2[0] = 0xFFU;
+        value_visible_2[1] = 0x7FU;
+        tag_number = 10U;
+        value_bytes = value_visible_2;
+        value_length = sizeof(value_visible_2);
+    }
+    else if (strcmp(component_name, "ConfRev") == 0 || strcmp(component_name, "BufTm") == 0 || strcmp(component_name, "IntgPd") == 0) {
+        value_single[0] = 0x20U;
+        tag_number = 6U;
+        value_bytes = value_single;
+        value_length = sizeof(value_single);
+    }
+    else if (strcmp(component_name, "SqNum") == 0 || strcmp(component_name, "ResvTms") == 0) {
+        value_single[0] = 0x10U;
+        tag_number = 6U;
+        value_bytes = value_single;
+        value_length = sizeof(value_single);
+    }
+    else if (strcmp(component_name, "OptFlds") == 0) {
+        value_single[0] = 0xF6U;
+        tag_number = 4U;
+        value_bytes = value_single;
+        value_length = sizeof(value_single);
+    }
+    else if (strcmp(component_name, "TrgOps") == 0) {
+        value_single[0] = 0xFAU;
+        tag_number = 4U;
+        value_bytes = value_single;
+        value_length = sizeof(value_single);
+    }
+    else if (strcmp(component_name, "GI") == 0 || strcmp(component_name, "RptEna") == 0 || strcmp(component_name, "PurgeBuf") == 0) {
+        tag_number = 3U;
+        value_bytes = NULL;
+        value_length = 0U;
+    }
+    else if (strcmp(component_name, "EntryID") == 0) {
+        value_single[0] = 0x08U;
+        tag_number = 9U;
+        value_bytes = value_single;
+        value_length = sizeof(value_single);
+    }
+    else if (strcmp(component_name, "TimeofEntry") == 0) {
+        value_single[0] = 0x01U;
+        tag_number = 12U;
+        value_bytes = value_single;
+        value_length = sizeof(value_single);
+    }
+
+    unitlab_mms_ber_element_init(&type_element);
+    type_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    type_element.tag.constructed = 0;
+    type_element.tag.tag_number = tag_number;
+    type_element.value_bytes = value_bytes;
+    type_element.value_length = value_length;
+    if (!unitlab_mms_ber_write(&type_element, buffer, buffer_length, encoded_length, diagnostic)) {
+        return 0;
+    }
+    return 1;
+}
 
 static const char* const* server_runtime_lookup_gva_children(
     const char* logical_node_name,
+    const char* parent_component_name,
     const char* component_name,
     size_t* child_count)
 {
@@ -616,39 +734,54 @@ static const char* const* server_runtime_lookup_gva_children(
     if (strcmp(logical_node_name, "LLN0") != 0) {
         return NULL;
     }
-    if (strcmp(component_name, "Mod") == 0) {
-        *child_count = sizeof(lln0_mod_children) / sizeof(lln0_mod_children[0]);
-        return lln0_mod_children;
+    if (parent_component_name == NULL) {
+        if (strcmp(component_name, "Mod") == 0) {
+            *child_count = sizeof(lln0_mod_children) / sizeof(lln0_mod_children[0]);
+            return lln0_mod_children;
+        }
+        if (strcmp(component_name, "Beh") == 0) {
+            *child_count = sizeof(lln0_beh_children) / sizeof(lln0_beh_children[0]);
+            return lln0_beh_children;
+        }
+        if (strcmp(component_name, "Health") == 0) {
+            *child_count = sizeof(lln0_health_children) / sizeof(lln0_health_children[0]);
+            return lln0_health_children;
+        }
+        if (strcmp(component_name, "CF") == 0) {
+            *child_count = sizeof(lln0_cf_children) / sizeof(lln0_cf_children[0]);
+            return lln0_cf_children;
+        }
+        if (strcmp(component_name, "DC") == 0) {
+            *child_count = sizeof(lln0_dc_children) / sizeof(lln0_dc_children[0]);
+            return lln0_dc_children;
+        }
+        if (strcmp(component_name, "BR") == 0) {
+            *child_count = sizeof(lln0_br_children) / sizeof(lln0_br_children[0]);
+            return lln0_br_children;
+        }
+        if (strcmp(component_name, "NamPlt") == 0) {
+            *child_count = sizeof(lln0_namplt_children) / sizeof(lln0_namplt_children[0]);
+            return lln0_namplt_children;
+        }
     }
-    if (strcmp(component_name, "Beh") == 0) {
-        *child_count = sizeof(lln0_beh_children) / sizeof(lln0_beh_children[0]);
-        return lln0_beh_children;
+    else if (strcmp(parent_component_name, "CF") == 0 && strcmp(component_name, "Mod") == 0) {
+        *child_count = sizeof(lln0_cf_mod_children) / sizeof(lln0_cf_mod_children[0]);
+        return lln0_cf_mod_children;
     }
-    if (strcmp(component_name, "Health") == 0) {
-        *child_count = sizeof(lln0_health_children) / sizeof(lln0_health_children[0]);
-        return lln0_health_children;
-    }
-    if (strcmp(component_name, "CF") == 0) {
-        *child_count = sizeof(lln0_cf_children) / sizeof(lln0_cf_children[0]);
-        return lln0_cf_children;
-    }
-    if (strcmp(component_name, "DC") == 0) {
-        *child_count = sizeof(lln0_dc_children) / sizeof(lln0_dc_children[0]);
-        return lln0_dc_children;
-    }
-    if (strcmp(component_name, "BR") == 0) {
-        *child_count = sizeof(lln0_br_children) / sizeof(lln0_br_children[0]);
-        return lln0_br_children;
-    }
-    if (strcmp(component_name, "NamPlt") == 0) {
+    else if (strcmp(parent_component_name, "DC") == 0 && strcmp(component_name, "NamPlt") == 0) {
         *child_count = sizeof(lln0_namplt_children) / sizeof(lln0_namplt_children[0]);
         return lln0_namplt_children;
+    }
+    else if (strcmp(parent_component_name, "BR") == 0 && strcmp(component_name, "LLN0_Events_BuffRep01") == 0) {
+        *child_count = sizeof(lln0_br_report_children) / sizeof(lln0_br_report_children[0]);
+        return lln0_br_report_children;
     }
     return NULL;
 }
 
 static int server_runtime_encode_gva_component_tree(
     const char* logical_node_name,
+    const char* parent_component_name,
     const char* component_name,
     uint8_t* buffer,
     size_t buffer_length,
@@ -694,7 +827,7 @@ static int server_runtime_encode_gva_component_tree(
         return 0;
     }
 
-    child_names = server_runtime_lookup_gva_children(logical_node_name, component_name, &child_count);
+    child_names = server_runtime_lookup_gva_children(logical_node_name, parent_component_name, component_name, &child_count);
     if (child_names != NULL && child_count > 0U) {
         size_t child_component_bytes_length = 0U;
 
@@ -703,6 +836,7 @@ static int server_runtime_encode_gva_component_tree(
 
             if (!server_runtime_encode_gva_component_tree(
                     logical_node_name,
+                    component_name,
                     child_names[child_index],
                     &component_content_bytes[child_component_bytes_length],
                     sizeof(component_content_bytes) - child_component_bytes_length,
@@ -745,13 +879,12 @@ static int server_runtime_encode_gva_component_tree(
         memcpy(component_type_bytes, component_structure_bytes, component_structure_length);
         component_type_length = component_structure_length;
     } else {
-        unitlab_mms_ber_element_init(&type_element);
-        type_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
-        type_element.tag.constructed = 0;
-        type_element.tag.tag_number = 3U;
-        type_element.value_bytes = NULL;
-        type_element.value_length = 0U;
-        if (!unitlab_mms_ber_write(&type_element, component_type_bytes, sizeof(component_type_bytes), &component_type_length, diagnostic)) {
+        if (!server_runtime_encode_gva_leaf_type_spec(
+                component_name,
+                component_type_bytes,
+                sizeof(component_type_bytes),
+                &component_type_length,
+                diagnostic)) {
             return 0;
         }
     }
@@ -886,6 +1019,7 @@ static int server_runtime_build_get_variable_access_attributes_response_service(
 
         if (!server_runtime_encode_gva_component_tree(
                 item_id,
+                NULL,
                 names[index],
                 &component_bytes[component_bytes_length],
                 sizeof(component_bytes) - component_bytes_length,
