@@ -1165,6 +1165,410 @@ static int server_runtime_build_get_variable_access_attributes_response_service(
     return 1;
 }
 
+
+
+static int server_runtime_parse_named_variable_list_reference(
+    const char* request_reference,
+    char* logical_device_inst,
+    size_t logical_device_inst_size,
+    char* logical_node_name,
+    size_t logical_node_name_size,
+    char* list_name,
+    size_t list_name_size)
+{
+    const char* slash = NULL;
+    const char* dollar = NULL;
+    size_t logical_device_length = 0U;
+    size_t logical_node_length = 0U;
+    size_t list_name_length = 0U;
+
+    if (logical_device_inst == NULL || logical_device_inst_size == 0U || logical_node_name == NULL || logical_node_name_size == 0U || list_name == NULL || list_name_size == 0U) {
+        return 0;
+    }
+    logical_device_inst[0] = '\0';
+    logical_node_name[0] = '\0';
+    list_name[0] = '\0';
+    if (request_reference == NULL || request_reference[0] == '\0') {
+        return 0;
+    }
+
+    slash = strchr(request_reference, '/');
+    if (slash == NULL) {
+        list_name_length = strlen(request_reference);
+        if (list_name_length == 0U || list_name_length >= list_name_size) {
+            return 0;
+        }
+        memcpy(list_name, request_reference, list_name_length + 1U);
+        return 1;
+    }
+
+    logical_device_length = (size_t)(slash - request_reference);
+    if (logical_device_length == 0U || logical_device_length >= logical_device_inst_size) {
+        return 0;
+    }
+    memcpy(logical_device_inst, request_reference, logical_device_length);
+    logical_device_inst[logical_device_length] = '\0';
+
+    dollar = strchr(slash + 1, '$');
+    if (dollar == NULL || dollar == slash + 1) {
+        return 0;
+    }
+    logical_node_length = (size_t)(dollar - (slash + 1));
+    if (logical_node_length == 0U || logical_node_length >= logical_node_name_size) {
+        return 0;
+    }
+    memcpy(logical_node_name, slash + 1, logical_node_length);
+    logical_node_name[logical_node_length] = '\0';
+
+    list_name_length = strlen(dollar + 1);
+    if (list_name_length == 0U || list_name_length >= list_name_size) {
+        return 0;
+    }
+    memcpy(list_name, dollar + 1, list_name_length + 1U);
+    return 1;
+}
+
+static const UnitLabIedModelDataSet* server_runtime_find_named_variable_list_data_set(
+    const UnitLabMmsServerRuntime* server_runtime,
+    const char* request_reference,
+    char* logical_device_inst,
+    size_t logical_device_inst_size,
+    char* logical_node_name,
+    size_t logical_node_name_size,
+    char* list_name,
+    size_t list_name_size)
+{
+    if (server_runtime == NULL || server_runtime->model_plan == NULL) {
+        return NULL;
+    }
+    if (!server_runtime_parse_named_variable_list_reference(
+            request_reference,
+            logical_device_inst,
+            logical_device_inst_size,
+            logical_node_name,
+            logical_node_name_size,
+            list_name,
+            list_name_size)) {
+        return NULL;
+    }
+
+    if (logical_device_inst[0] == '\0') {
+        for (size_t index = 0U; index < server_runtime->model_plan->data_set_count; index++) {
+            const UnitLabIedModelDataSet* data_set = &server_runtime->model_plan->data_sets[index];
+            if (strcmp(data_set->name, list_name) == 0) {
+                snprintf(logical_device_inst, logical_device_inst_size, "%s", data_set->logical_device_inst);
+                snprintf(logical_node_name, logical_node_name_size, "%s", data_set->logical_node_name);
+                return data_set;
+            }
+        }
+        return NULL;
+    }
+
+    return unitlab_find_ied_model_data_set(server_runtime->model_plan, logical_device_inst, logical_node_name, list_name);
+}
+
+static int server_runtime_encode_named_variable_list_object_name(
+    const char* domain_id,
+    const char* item_id,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t domain_bytes[256U];
+    uint8_t item_bytes[512U];
+    uint8_t domainspecific_bytes[1024U];
+    uint8_t object_name_bytes[1200U];
+    size_t domain_length = 0U;
+    size_t item_length = 0U;
+    size_t object_name_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (domain_id == NULL || item_id == NULL || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Named variable list object name encoding requires domain, item, buffer, and encoded_length.");
+        return 0;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            0,
+            26U,
+            (const uint8_t*)domain_id,
+            strlen(domain_id),
+            domain_bytes,
+            sizeof(domain_bytes),
+            &domain_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            0,
+            26U,
+            (const uint8_t*)item_id,
+            strlen(item_id),
+            item_bytes,
+            sizeof(item_bytes),
+            &item_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (domain_length + item_length > sizeof(domainspecific_bytes)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Named variable list object name buffer is too small.");
+        return 0;
+    }
+    memcpy(domainspecific_bytes, domain_bytes, domain_length);
+    memcpy(&domainspecific_bytes[domain_length], item_bytes, item_length);
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            1U,
+            domainspecific_bytes,
+            domain_length + item_length,
+            object_name_bytes,
+            sizeof(object_name_bytes),
+            &object_name_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (object_name_length > buffer_length) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Named variable list object name output buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, object_name_bytes, object_name_length);
+    *encoded_length = object_name_length;
+    return 1;
+}
+
+static int server_runtime_encode_named_variable_list_member(
+    const char* domain_id,
+    const char* item_id,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t object_name_bytes[1300U];
+    uint8_t variable_spec_bytes[1600U];
+    uint8_t member_bytes[1800U];
+    size_t object_name_length = 0U;
+    size_t variable_spec_length = 0U;
+    size_t member_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (domain_id == NULL || item_id == NULL || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Named variable list member encoding requires domain, item, buffer, and encoded_length.");
+        return 0;
+    }
+    if (!server_runtime_encode_named_variable_list_object_name(
+            domain_id,
+            item_id,
+            object_name_bytes,
+            sizeof(object_name_bytes),
+            &object_name_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            0U,
+            object_name_bytes,
+            object_name_length,
+            variable_spec_bytes,
+            sizeof(variable_spec_bytes),
+            &variable_spec_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            1,
+            16U,
+            variable_spec_bytes,
+            variable_spec_length,
+            member_bytes,
+            sizeof(member_bytes),
+            &member_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (member_length > buffer_length) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Named variable list member output buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, member_bytes, member_length);
+    *encoded_length = member_length;
+    return 1;
+}
+
+static int server_runtime_build_get_named_variable_list_attributes_response_service(
+    const UnitLabMmsServerRuntime* server_runtime,
+    uint32_t invoke_id,
+    const char* object_reference,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    char logical_device_inst[128U];
+    char logical_node_name[128U];
+    char list_name[128U];
+    const UnitLabIedModelDataSet* data_set = NULL;
+    uint8_t member_bytes[8192U];
+    uint8_t list_of_variable_bytes[9000U];
+    uint8_t response_payload_bytes[9500U];
+    uint8_t service_payload_bytes[9600U];
+    uint8_t service_bytes[9700U];
+    size_t member_bytes_length = 0U;
+    size_t list_of_variable_length = 0U;
+    size_t response_payload_length = 0U;
+    size_t service_payload_length = 0U;
+    size_t invoke_id_length = 0U;
+    size_t total_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (server_runtime == NULL || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNamedVariableListAttributes response buffer and encoded_length are required.");
+        return 0;
+    }
+    if (object_reference == NULL || object_reference[0] == '\0') {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GetNamedVariableListAttributes response requires a list reference.");
+        return 0;
+    }
+    data_set = server_runtime_find_named_variable_list_data_set(
+        server_runtime,
+        object_reference,
+        logical_device_inst,
+        sizeof(logical_device_inst),
+        logical_node_name,
+        sizeof(logical_node_name),
+        list_name,
+        sizeof(list_name));
+    if (data_set == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "GetNamedVariableListAttributes list lookup failed.");
+        return 0;
+    }
+
+    printf(
+        "native-wire-server: confirmed-response invoke=%u service=GetNamedVariableListAttributes list=%s domain=%s node=%s members=%zu deletable=false\n",
+        (unsigned)invoke_id,
+        list_name,
+        logical_device_inst,
+        logical_node_name,
+        data_set->member_count);
+    fflush(stdout);
+
+    for (size_t member_index = 0U; member_index < data_set->member_count; member_index++) {
+        const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[data_set->first_signal_index + member_index];
+        const char* slash = strchr(signal->data_set_entry_variable, '/');
+        const char* member_domain = signal->logical_device_inst;
+        const char* member_item = signal->data_set_entry_variable;
+        size_t member_length = 0U;
+        char domain_copy[128U];
+
+        if (slash != NULL && slash[1] != '\0') {
+            size_t domain_length = (size_t)(slash - signal->data_set_entry_variable);
+
+            if (domain_length == 0U || domain_length >= sizeof(domain_copy)) {
+                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GetNamedVariableListAttributes member domain is too long.");
+                return 0;
+            }
+            memcpy(domain_copy, signal->data_set_entry_variable, domain_length);
+            domain_copy[domain_length] = '\0';
+            member_domain = domain_copy;
+            member_item = slash + 1;
+        }
+        if (!server_runtime_encode_named_variable_list_member(
+                member_domain,
+                member_item,
+                &member_bytes[member_bytes_length],
+                sizeof(member_bytes) - member_bytes_length,
+                &member_length,
+                diagnostic)) {
+            return 0;
+        }
+        member_bytes_length += member_length;
+        printf("native-wire-server: nvl-attribute-member[%zu]=%s\n", member_index, signal->data_set_entry_variable);
+    }
+
+    {
+        uint8_t false_byte[1U] = { 0x00U };
+        size_t mms_deletable_length = 0U;
+
+        if (!server_runtime_encode_ber_element(
+                UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                0,
+                0U,
+                false_byte,
+                sizeof(false_byte),
+                response_payload_bytes,
+                sizeof(response_payload_bytes),
+                &mms_deletable_length,
+                diagnostic)) {
+            return 0;
+        }
+        response_payload_length = mms_deletable_length;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            1U,
+            member_bytes,
+            member_bytes_length,
+            list_of_variable_bytes,
+            sizeof(list_of_variable_bytes),
+            &list_of_variable_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (response_payload_length + list_of_variable_length > sizeof(response_payload_bytes)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GetNamedVariableListAttributes response output buffer is too small.");
+        return 0;
+    }
+    memcpy(&response_payload_bytes[response_payload_length], list_of_variable_bytes, list_of_variable_length);
+    response_payload_length += list_of_variable_length;
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            12U,
+            response_payload_bytes,
+            response_payload_length,
+            service_payload_bytes,
+            sizeof(service_payload_bytes),
+            &service_payload_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!server_runtime_encode_invoke_id_element(
+            invoke_id,
+            service_bytes,
+            sizeof(service_bytes),
+            &invoke_id_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (invoke_id_length + service_payload_length > sizeof(service_bytes)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GetNamedVariableListAttributes response output buffer is too small.");
+        return 0;
+    }
+    memcpy(&service_bytes[invoke_id_length], service_payload_bytes, service_payload_length);
+    total_length = invoke_id_length + service_payload_length;
+    if (total_length > buffer_length) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GetNamedVariableListAttributes response output buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, service_bytes, total_length);
+    *encoded_length = total_length;
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
 int unitlab_mms_server_runtime_apply_model_plan(UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelPlan* plan)
 {
     if (server_runtime == NULL) {
@@ -1572,8 +1976,8 @@ static int server_runtime_prepare_confirmed_response_pdu(
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, "Pending request must be active before building a response.");
         return 0;
     }
-    if (server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_READ && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_WRITE && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_GET_NAME_LIST && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES) {
-        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Only first-slice READ/WRITE/GetNameList/GetVariableAccessAttributes responses are supported.");
+    if (server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_READ && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_WRITE && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_GET_NAME_LIST && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES && server_runtime->pending_request.kind != UNITLAB_MMS_REQUEST_GET_NAMED_VARIABLE_LIST_ATTRIBUTES) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Only first-slice READ/WRITE/GetNameList/GetVariableAccessAttributes/GetNamedVariableListAttributes responses are supported.");
         return 0;
     }
     unitlab_mms_pdu_init(response_pdu);
@@ -1589,6 +1993,8 @@ static int server_runtime_prepare_confirmed_response_pdu(
         response_pdu->service_kind = UNITLAB_MMS_SERVICE_GET_NAME_LIST;
     } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES) {
         response_pdu->service_kind = UNITLAB_MMS_SERVICE_GET_VARIABLE_ACCESS_ATTRIBUTES;
+    } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAMED_VARIABLE_LIST_ATTRIBUTES) {
+        response_pdu->service_kind = UNITLAB_MMS_SERVICE_GET_NAMED_VARIABLE_LIST_ATTRIBUTES;
     }
     response_pdu->pdu_bytes = service_bytes;
     response_pdu->pdu_length = service_length;
@@ -1818,6 +2224,19 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
             service_length = synthesized_service_length;
         } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES) {
             if (!server_runtime_build_get_variable_access_attributes_response_service(
+                    server_runtime,
+                    server_runtime->pending_request.invoke_id,
+                    server_runtime->pending_request.object_reference,
+                    synthesized_service_bytes,
+                    sizeof(synthesized_service_bytes),
+                    &synthesized_service_length,
+                    diagnostic)) {
+                return 0;
+            }
+            service_bytes = synthesized_service_bytes;
+            service_length = synthesized_service_length;
+        } else if (server_runtime->pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAMED_VARIABLE_LIST_ATTRIBUTES) {
+            if (!server_runtime_build_get_named_variable_list_attributes_response_service(
                     server_runtime,
                     server_runtime->pending_request.invoke_id,
                     server_runtime->pending_request.object_reference,

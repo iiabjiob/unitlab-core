@@ -140,6 +140,9 @@ static UnitLabMmsServiceKind pdu_classify_service_kind(UnitLabMmsPduKind kind, c
     if ((kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE) && service_tag->tag_number == 6U) {
         return UNITLAB_MMS_SERVICE_GET_VARIABLE_ACCESS_ATTRIBUTES;
     }
+    if ((kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST || kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE) && service_tag->tag_number == 12U) {
+        return UNITLAB_MMS_SERVICE_GET_NAMED_VARIABLE_LIST_ATTRIBUTES;
+    }
     if (kind == UNITLAB_MMS_PDU_UNCONFIRMED && (service_tag->tag_number == 0U || service_tag->tag_number == 3U)) {
         return UNITLAB_MMS_SERVICE_INFORMATION_REPORT;
     }

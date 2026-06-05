@@ -386,6 +386,97 @@ static int bridge_parse_get_variable_access_attributes_request(const uint8_t* se
     return 1;
 }
 
+static int bridge_parse_get_named_variable_list_attributes_request(const uint8_t* service_bytes, size_t service_length, UnitLabMmsDecodedPdu* decoded_pdu, UnitLabMmsDecodeDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement object_name_element;
+    UnitLabMmsBerElement child;
+    size_t object_name_consumed_length = 0U;
+    size_t child_consumed_length = 0U;
+    size_t offset = 0U;
+
+    if (decoded_pdu == NULL) {
+        return 0;
+    }
+    decoded_pdu->domain_id[0] = '\0';
+    decoded_pdu->item_id[0] = '\0';
+    decoded_pdu->object_reference[0] = '\0';
+    decoded_pdu->attribute_reference[0] = '\0';
+    unitlab_mms_ber_element_init(&object_name_element);
+    if (!unitlab_mms_ber_read(&object_name_element, service_bytes, service_length, &object_name_consumed_length, &diagnostic->diagnostic)) {
+        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes request BER decode failed.", "getNamedVariableListAttributes request BER decode failed.");
+        return 0;
+    }
+    if (object_name_consumed_length != service_length || object_name_element.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC) {
+        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes request name is malformed.", "getNamedVariableListAttributes request name is malformed.");
+        return 0;
+    }
+    if (object_name_element.tag.tag_number == 0U && !object_name_element.tag.constructed) {
+        if (!bridge_copy_bytes_as_string(object_name_element.value_bytes, object_name_element.value_length, decoded_pdu->item_id, sizeof(decoded_pdu->item_id))) {
+            bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes list name is too long.", "getNamedVariableListAttributes list name is too long.");
+            return 0;
+        }
+        if (!bridge_copy_bytes_as_string(object_name_element.value_bytes, object_name_element.value_length, decoded_pdu->object_reference, sizeof(decoded_pdu->object_reference))) {
+            bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes list reference is too long.", "getNamedVariableListAttributes list reference is too long.");
+            return 0;
+        }
+        if (!bridge_copy_bytes_as_string(object_name_element.value_bytes, object_name_element.value_length, decoded_pdu->attribute_reference, sizeof(decoded_pdu->attribute_reference))) {
+            bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes attribute reference is too long.", "getNamedVariableListAttributes attribute reference is too long.");
+            return 0;
+        }
+        decoded_pdu->kind = UNITLAB_MMS_DECODED_PDU_GET_NAMED_VARIABLE_LIST_ATTRIBUTES_REQUEST;
+        return 1;
+    }
+    if (object_name_element.tag.tag_number != 1U || !object_name_element.tag.constructed) {
+        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_UNSUPPORTED_SEMANTIC, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "getNamedVariableListAttributes request name choice is unsupported.", "getNamedVariableListAttributes request name choice is unsupported.");
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&child);
+    if (!unitlab_mms_ber_read(&child, object_name_element.value_bytes, object_name_element.value_length, &child_consumed_length, &diagnostic->diagnostic)) {
+        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes domainId BER decode failed.", "getNamedVariableListAttributes domainId BER decode failed.");
+        return 0;
+    }
+    if (child_consumed_length == 0U || child.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL || child.tag.tag_number != 26U || child.tag.constructed) {
+        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes domainId is malformed.", "getNamedVariableListAttributes domainId is malformed.");
+        return 0;
+    }
+    if (!bridge_copy_bytes_as_string(child.value_bytes, child.value_length, decoded_pdu->domain_id, sizeof(decoded_pdu->domain_id))) {
+        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes domainId is too long.", "getNamedVariableListAttributes domainId is too long.");
+        return 0;
+    }
+    offset += child_consumed_length;
+
+    unitlab_mms_ber_element_init(&child);
+    if (!unitlab_mms_ber_read(&child, &object_name_element.value_bytes[offset], object_name_element.value_length - offset, &child_consumed_length, &diagnostic->diagnostic)) {
+        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes itemId BER decode failed.", "getNamedVariableListAttributes itemId BER decode failed.");
+        return 0;
+    }
+    if (child_consumed_length == 0U || child.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL || child.tag.tag_number != 26U || child.tag.constructed) {
+        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes itemId is malformed.", "getNamedVariableListAttributes itemId is malformed.");
+        return 0;
+    }
+    if (!bridge_copy_bytes_as_string(child.value_bytes, child.value_length, decoded_pdu->item_id, sizeof(decoded_pdu->item_id))) {
+        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes itemId is too long.", "getNamedVariableListAttributes itemId is too long.");
+        return 0;
+    }
+    offset += child_consumed_length;
+    if (offset != object_name_element.value_length) {
+        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes request contains trailing bytes.", "getNamedVariableListAttributes request contains trailing bytes.");
+        return 0;
+    }
+    if (snprintf(decoded_pdu->object_reference, sizeof(decoded_pdu->object_reference), "%s/%s", decoded_pdu->domain_id, decoded_pdu->item_id) >= (int)sizeof(decoded_pdu->object_reference)) {
+        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes request reference is too long.", "getNamedVariableListAttributes request reference is too long.");
+        return 0;
+    }
+    if (!bridge_copy_bytes_as_string((const uint8_t*)decoded_pdu->item_id, strlen(decoded_pdu->item_id), decoded_pdu->attribute_reference, sizeof(decoded_pdu->attribute_reference))) {
+        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "getNamedVariableListAttributes attribute reference is too long.", "getNamedVariableListAttributes attribute reference is too long.");
+        return 0;
+    }
+    decoded_pdu->kind = UNITLAB_MMS_DECODED_PDU_GET_NAMED_VARIABLE_LIST_ATTRIBUTES_REQUEST;
+    return 1;
+}
+
+
 static int bridge_copy_bytes_as_string(const uint8_t* bytes, size_t length, char* output, size_t output_size)
 {
     if (output == NULL || output_size == 0U) {
@@ -686,6 +777,13 @@ static int bridge_map_pdu_kind(const UnitLabMmsPdu* wire_pdu, UnitLabMmsDecodedP
                 *outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
                 return 1;
             }
+            if (wire_pdu->service_kind == UNITLAB_MMS_SERVICE_GET_NAMED_VARIABLE_LIST_ATTRIBUTES) {
+                if (!bridge_parse_get_named_variable_list_attributes_request(wire_pdu->service_bytes, wire_pdu->service_length, decoded_pdu, diagnostic)) {
+                    return 0;
+                }
+                *outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
+                return 1;
+            }
             bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_UNSUPPORTED_SEMANTIC, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "confirmed MMS request service is unsupported.", "confirmed MMS request service is unsupported.");
             return 0;
         case UNITLAB_MMS_PDU_CONFIRMED_RESPONSE:
@@ -710,6 +808,11 @@ static int bridge_map_pdu_kind(const UnitLabMmsPdu* wire_pdu, UnitLabMmsDecodedP
             }
             if (wire_pdu->service_kind == UNITLAB_MMS_SERVICE_GET_VARIABLE_ACCESS_ATTRIBUTES) {
                 decoded_pdu->kind = UNITLAB_MMS_DECODED_PDU_GET_VARIABLE_ACCESS_ATTRIBUTES_RESPONSE;
+                *outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
+                return 1;
+            }
+            if (wire_pdu->service_kind == UNITLAB_MMS_SERVICE_GET_NAMED_VARIABLE_LIST_ATTRIBUTES) {
+                decoded_pdu->kind = UNITLAB_MMS_DECODED_PDU_GET_NAMED_VARIABLE_LIST_ATTRIBUTES_RESPONSE;
                 *outcome = UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS;
                 return 1;
             }

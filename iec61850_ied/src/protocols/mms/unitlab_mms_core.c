@@ -691,6 +691,7 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
         case UNITLAB_MMS_DECODED_PDU_WRITE_REQUEST:
         case UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_REQUEST:
         case UNITLAB_MMS_DECODED_PDU_GET_VARIABLE_ACCESS_ATTRIBUTES_REQUEST:
+        case UNITLAB_MMS_DECODED_PDU_GET_NAMED_VARIABLE_LIST_ATTRIBUTES_REQUEST:
             if (pending_request == NULL) {
                 set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "pending request is required to apply confirmed requests.");
                 operation_result->ok = 0;
@@ -704,7 +705,9 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
                         ? UNITLAB_MMS_REQUEST_WRITE
                         : semantic_result->pdu.kind == UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_REQUEST
                             ? UNITLAB_MMS_REQUEST_GET_NAME_LIST
-                            : UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES,
+                            : semantic_result->pdu.kind == UNITLAB_MMS_DECODED_PDU_GET_VARIABLE_ACCESS_ATTRIBUTES_REQUEST
+                                ? UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES
+                                : UNITLAB_MMS_REQUEST_GET_NAMED_VARIABLE_LIST_ATTRIBUTES,
                 semantic_result->pdu.invoke_id,
                 semantic_result->pdu.correlation_id,
                 semantic_result->pdu.deadline_ms,
@@ -724,6 +727,7 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
         case UNITLAB_MMS_DECODED_PDU_WRITE_RESPONSE:
         case UNITLAB_MMS_DECODED_PDU_GET_NAME_LIST_RESPONSE:
         case UNITLAB_MMS_DECODED_PDU_GET_VARIABLE_ACCESS_ATTRIBUTES_RESPONSE:
+        case UNITLAB_MMS_DECODED_PDU_GET_NAMED_VARIABLE_LIST_ATTRIBUTES_RESPONSE:
             if (pending_request == NULL) {
                 set_diagnostic(&operation_result->diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "pending request is required to apply confirmed responses.");
                 operation_result->ok = 0;
