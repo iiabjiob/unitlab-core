@@ -1378,7 +1378,7 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
 
                 unitlab_mms_ber_element_init(&component_name_element);
                 assert(unitlab_mms_ber_read(&component_name_element, component_element.value_bytes, component_element.value_length, &component_field_consumed, &diagnostic));
-                assert_ber_tag(&component_name_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 1U);
+                assert_ber_tag(&component_name_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 0U);
                 assert(contains_bytes(component_name_element.value_bytes, component_name_element.value_length, (const uint8_t*)"Mod", strlen("Mod")) == 1);
 
                 unitlab_mms_ber_element_init(&component_type_element);

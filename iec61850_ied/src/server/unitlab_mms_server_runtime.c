@@ -534,7 +534,7 @@ static int server_runtime_encode_gva_component(
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             0,
-            1U,
+            0U,
             (const uint8_t*)component_name,
             strlen(component_name),
             component_name_bytes,
@@ -684,7 +684,7 @@ static int server_runtime_encode_gva_component_tree(
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             0,
-            1U,
+            0U,
             (const uint8_t*)component_name,
             strlen(component_name),
             component_name_bytes,
