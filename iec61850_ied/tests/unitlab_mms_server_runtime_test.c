@@ -1023,7 +1023,7 @@ static void test_server_runtime_apply_get_name_list_request_and_build_response_r
     UnitLabIedModelLogicalNode logical_nodes[1U];
     UnitLabIedModelDataSet data_sets[2U];
     uint8_t wire_bytes[256U];
-    uint8_t response_bytes[256U];
+    uint8_t response_bytes[4096U];
     const uint8_t request_payload[] = {
         0x30U, 0x0CU,
         0xA0U, 0x03U, 0x02U, 0x01U, 0x02U,
@@ -1071,11 +1071,7 @@ static void test_server_runtime_apply_get_name_list_request_and_build_response_r
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     {
-        int build_ok = unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic);
-        if (!build_ok) {
-            fprintf(stderr, "GVA build failed: code=%d message=%s\n", (int)diagnostic.code, diagnostic.message);
-        }
-        assert(build_ok);
+        assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     }
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
@@ -1103,7 +1099,7 @@ static void test_server_runtime_apply_iedscout_get_name_list_request_matches_gol
     };
     UnitLabIedModelPlan plan;
     UnitLabIedModelLogicalDevice logical_devices[1U];
-    uint8_t response_bytes[256U];
+    uint8_t response_bytes[4096U];
     size_t response_length = 0U;
     size_t consumed_length = 0U;
     static const uint8_t request_bytes[] = {
@@ -1200,11 +1196,7 @@ static void test_server_runtime_apply_iedscout_logical_node_directory_request_cl
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     {
-        int build_ok = unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic);
-        if (!build_ok) {
-            fprintf(stderr, "GVA build failed: code=%d message=%s\n", (int)diagnostic.code, diagnostic.message);
-        }
-        assert(build_ok);
+        assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     }
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
@@ -1239,7 +1231,7 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
         0x02U, 0x01U, 0x03U, 0xA6U, 0x0FU, 0xA0U, 0x0DU, 0xA1U, 0x0BU, 0x1AU, 0x03U,
         'L', 'D', '0', 0x1AU, 0x04U, 'L', 'L', 'N', '0'
     };
-    uint8_t response_bytes[256U];
+    uint8_t response_bytes[4096U];
     size_t request_length = sizeof(request_bytes);
     size_t consumed_length = 0U;
     size_t response_length = 0U;
@@ -1290,7 +1282,9 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
     assert(strcmp(server_runtime.pending_request.attribute_reference, "LLN0") == 0);
 
     unitlab_mms_diagnostic_clear(&diagnostic);
-    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    {
+        assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    }
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
 
@@ -1381,11 +1375,7 @@ static void test_server_runtime_apply_iedscout_vmd_directory_request_scope_zero_
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     {
-        int build_ok = unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic);
-        if (!build_ok) {
-            fprintf(stderr, "GVA build failed: code=%d message=%s\n", (int)diagnostic.code, diagnostic.message);
-        }
-        assert(build_ok);
+        assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     }
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
@@ -1474,11 +1464,7 @@ static void test_server_runtime_apply_iedscout_vmd_get_variable_access_attribute
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     {
-        int build_ok = unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic);
-        if (!build_ok) {
-            fprintf(stderr, "GVA build failed: code=%d message=%s\n", (int)diagnostic.code, diagnostic.message);
-        }
-        assert(build_ok);
+        assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     }
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
@@ -1556,11 +1542,7 @@ static void test_server_runtime_apply_iedscout_logical_node_directory_request_bu
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     {
-        int build_ok = unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic);
-        if (!build_ok) {
-            fprintf(stderr, "GVA build failed: code=%d message=%s\n", (int)diagnostic.code, diagnostic.message);
-        }
-        assert(build_ok);
+        assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     }
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);

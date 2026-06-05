@@ -116,8 +116,8 @@ int unitlab_mms_build_wire_frame_from_pdu(
     UnitLabMmsPresentationApdu presentation_apdu;
     UnitLabMmsSessionSpdu session_spdu;
     UnitLabMmsTransportFrame transport_frame;
-    uint8_t presentation_bytes[512U];
-    uint8_t session_bytes[512U];
+    uint8_t presentation_bytes[2048U];
+    uint8_t session_bytes[2048U];
     size_t payload_length = 0U;
     size_t presentation_length = 0U;
     size_t session_length = 0U;

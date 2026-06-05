@@ -402,6 +402,15 @@ static int server_runtime_build_get_name_list_response_service(
     if (!unitlab_mms_pending_request_collect_get_name_list_names(&server_runtime->pending_request, server_runtime->model_plan, &names, &name_count, diagnostic)) {
         return 0;
     }
+    printf(
+        "native-wire-server: confirmed-response invoke=%u service=GetNameList browse-class=%u browse-scope=%u domain=%s continue-after=%s identifiers=%zu moreFollows=false\n",
+        (unsigned)invoke_id,
+        (unsigned)server_runtime->pending_request.browse_object_class,
+        (unsigned)server_runtime->pending_request.browse_object_scope,
+        server_runtime->pending_request.browse_domain_id[0] != '\0' ? server_runtime->pending_request.browse_domain_id : "<none>",
+        server_runtime->pending_request.browse_continue_after[0] != '\0' ? server_runtime->pending_request.browse_continue_after : "<none>",
+        name_count);
+    fflush(stdout);
     for (size_t index = 0U; index < name_count; index++) {
         size_t encoded_name_length = 0U;
 
@@ -584,6 +593,185 @@ static int server_runtime_encode_gva_component(
     return 1;
 }
 
+static const char* const lln0_mod_children[] = { "q", "t" };
+static const char* const lln0_beh_children[] = { "stVal", "q", "t" };
+static const char* const lln0_health_children[] = { "stVal", "q", "t" };
+static const char* const lln0_cf_children[] = { "ctlModel" };
+static const char* const lln0_dc_children[] = { "d", "vendor", "swRev", "configRev" };
+static const char* const lln0_br_children[] = { "LLN0_Events_BuffRep01" };
+static const char* const lln0_namplt_children[] = { "vendor", "swRev", "d", "configRev" };
+
+static const char* const* server_runtime_lookup_gva_children(
+    const char* logical_node_name,
+    const char* component_name,
+    size_t* child_count)
+{
+    if (child_count != NULL) {
+        *child_count = 0U;
+    }
+    if (logical_node_name == NULL || component_name == NULL || child_count == NULL) {
+        return NULL;
+    }
+
+    if (strcmp(logical_node_name, "LLN0") != 0) {
+        return NULL;
+    }
+    if (strcmp(component_name, "Mod") == 0) {
+        *child_count = sizeof(lln0_mod_children) / sizeof(lln0_mod_children[0]);
+        return lln0_mod_children;
+    }
+    if (strcmp(component_name, "Beh") == 0) {
+        *child_count = sizeof(lln0_beh_children) / sizeof(lln0_beh_children[0]);
+        return lln0_beh_children;
+    }
+    if (strcmp(component_name, "Health") == 0) {
+        *child_count = sizeof(lln0_health_children) / sizeof(lln0_health_children[0]);
+        return lln0_health_children;
+    }
+    if (strcmp(component_name, "CF") == 0) {
+        *child_count = sizeof(lln0_cf_children) / sizeof(lln0_cf_children[0]);
+        return lln0_cf_children;
+    }
+    if (strcmp(component_name, "DC") == 0) {
+        *child_count = sizeof(lln0_dc_children) / sizeof(lln0_dc_children[0]);
+        return lln0_dc_children;
+    }
+    if (strcmp(component_name, "BR") == 0) {
+        *child_count = sizeof(lln0_br_children) / sizeof(lln0_br_children[0]);
+        return lln0_br_children;
+    }
+    if (strcmp(component_name, "NamPlt") == 0) {
+        *child_count = sizeof(lln0_namplt_children) / sizeof(lln0_namplt_children[0]);
+        return lln0_namplt_children;
+    }
+    return NULL;
+}
+
+static int server_runtime_encode_gva_component_tree(
+    const char* logical_node_name,
+    const char* component_name,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t component_name_bytes[256U];
+    uint8_t component_type_bytes[8192U];
+    uint8_t component_type_wrapper_bytes[12288U];
+    uint8_t component_content_bytes[16384U];
+    uint8_t component_bytes[32768U];
+    const char* const* child_names = NULL;
+    size_t child_count = 0U;
+    size_t component_name_length = 0U;
+    size_t component_type_length = 0U;
+    size_t component_type_wrapper_length = 0U;
+    size_t component_content_length = 0U;
+    size_t component_length = 0U;
+    UnitLabMmsBerElement type_element;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (component_name == NULL || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GVA component encoding requires a component name, buffer, and encoded_length.");
+        return 0;
+    }
+
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            0,
+            0U,
+            (const uint8_t*)component_name,
+            strlen(component_name),
+            component_name_bytes,
+            sizeof(component_name_bytes),
+            &component_name_length,
+            diagnostic)) {
+        return 0;
+    }
+
+    child_names = server_runtime_lookup_gva_children(logical_node_name, component_name, &child_count);
+    if (child_names != NULL && child_count > 0U) {
+        size_t child_component_bytes_length = 0U;
+
+        for (size_t child_index = 0U; child_index < child_count; child_index++) {
+            size_t child_length = 0U;
+
+            if (!server_runtime_encode_gva_component_tree(
+                    logical_node_name,
+                    child_names[child_index],
+                    &component_content_bytes[child_component_bytes_length],
+                    sizeof(component_content_bytes) - child_component_bytes_length,
+                    &child_length,
+                    diagnostic)) {
+                return 0;
+            }
+            child_component_bytes_length += child_length;
+        }
+        if (!server_runtime_encode_ber_element(
+                UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+                1,
+                16U,
+                component_content_bytes,
+                child_component_bytes_length,
+                component_type_bytes,
+                sizeof(component_type_bytes),
+                &component_type_length,
+                diagnostic)) {
+            return 0;
+        }
+    } else {
+        unitlab_mms_ber_element_init(&type_element);
+        type_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+        type_element.tag.constructed = 0;
+        type_element.tag.tag_number = 3U;
+        type_element.value_bytes = NULL;
+        type_element.value_length = 0U;
+        if (!unitlab_mms_ber_write(&type_element, component_type_bytes, sizeof(component_type_bytes), &component_type_length, diagnostic)) {
+            return 0;
+        }
+    }
+
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            1U,
+            component_type_bytes,
+            component_type_length,
+            component_type_wrapper_bytes,
+            sizeof(component_type_wrapper_bytes),
+            &component_type_wrapper_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (component_name_length + component_type_wrapper_length > sizeof(component_content_bytes)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GVA component encoding buffer is too small.");
+        return 0;
+    }
+    memcpy(component_content_bytes, component_name_bytes, component_name_length);
+    memcpy(&component_content_bytes[component_name_length], component_type_wrapper_bytes, component_type_wrapper_length);
+    component_content_length = component_name_length + component_type_wrapper_length;
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            1,
+            16U,
+            component_content_bytes,
+            component_content_length,
+            component_bytes,
+            sizeof(component_bytes),
+            &component_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (component_length > buffer_length) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GVA component output buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, component_bytes, component_length);
+    *encoded_length = component_length;
+    return 1;
+}
+
 static int server_runtime_build_get_variable_access_attributes_response_service(
     const UnitLabMmsServerRuntime* server_runtime,
     uint32_t invoke_id,
@@ -659,10 +847,18 @@ static int server_runtime_build_get_variable_access_attributes_response_service(
         }
     }
 
+    printf(
+        "native-wire-server: confirmed-response invoke=%u service=GetVariableAccessAttributes object=%s attribute=%s type-spec=LLN0-nested top-level=%zu\n",
+        (unsigned)invoke_id,
+        object_reference,
+        item_id,
+        name_count);
+    fflush(stdout);
     for (size_t index = 0U; index < name_count; index++) {
         size_t component_length = 0U;
 
-        if (!server_runtime_encode_gva_component(
+        if (!server_runtime_encode_gva_component_tree(
+                item_id,
                 names[index],
                 &component_bytes[component_bytes_length],
                 sizeof(component_bytes) - component_bytes_length,

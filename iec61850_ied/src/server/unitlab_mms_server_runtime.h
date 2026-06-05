@@ -21,7 +21,7 @@ typedef enum UnitLabMmsServerRuntimeState {
     UNITLAB_MMS_SERVER_RUNTIME_FAILED = 4
 } UnitLabMmsServerRuntimeState;
 
-#define UNITLAB_MMS_SERVER_RUNTIME_WIRE_SCRATCH_LENGTH 1024U
+#define UNITLAB_MMS_SERVER_RUNTIME_WIRE_SCRATCH_LENGTH 4096U
 
 typedef struct UnitLabMmsServerRuntime {
     UnitLabMmsServerRuntimeState state;
