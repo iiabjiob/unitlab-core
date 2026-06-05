@@ -202,8 +202,6 @@ static int server_runtime_parse_object_reference(const char* object_reference, c
 
 static const UnitLabIedModelSignal* server_runtime_find_signal_by_object_reference(const UnitLabMmsServerRuntime* server_runtime, const char* object_reference)
 {
-    const char* suffix = server_runtime_object_reference_suffix(object_reference);
-
     if (server_runtime == NULL || server_runtime->model_plan == NULL || object_reference == NULL || object_reference[0] == '\0') {
         return NULL;
     }
@@ -212,8 +210,16 @@ static const UnitLabIedModelSignal* server_runtime_find_signal_by_object_referen
     }
     for (size_t index = 0U; index < server_runtime->model_plan->signal_count; index++) {
         const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[index];
-        if (strcmp(signal->object_reference, object_reference) == 0 || strcmp(signal->object_reference, suffix) == 0) {
-            return signal;
+        const char* suffix = object_reference;
+
+        while (suffix != NULL && suffix[0] != '\0') {
+            if (strcmp(signal->object_reference, object_reference) == 0 || strcmp(signal->object_reference, suffix) == 0) {
+                return signal;
+            }
+            suffix = strchr(suffix, '.');
+            if (suffix != NULL) {
+                suffix++;
+            }
         }
     }
     return NULL;
@@ -1673,6 +1679,233 @@ static int server_runtime_build_write_response_service(
     return 1;
 }
 
+static int server_runtime_object_reference_has_suffix(const char* object_reference, const char* suffix)
+{
+    size_t object_length = 0U;
+    size_t suffix_length = 0U;
+
+    if (object_reference == NULL || suffix == NULL) {
+        return 0;
+    }
+    object_length = strlen(object_reference);
+    suffix_length = strlen(suffix);
+    if (suffix_length == 0U || object_length < suffix_length) {
+        return 0;
+    }
+    return strcmp(object_reference + (object_length - suffix_length), suffix) == 0;
+}
+
+static int server_runtime_build_read_response_value(
+    UnitLabMmsServerRuntime* server_runtime,
+    const char* object_reference,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    int* value_supported,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement value_element;
+    UnitLabIedModelSignal synthetic_signal;
+    const UnitLabIedModelSignal* signal = NULL;
+    const char* domain_id = NULL;
+    int32_t integer_value = 0;
+    uint8_t integer_bytes[5U];
+    size_t integer_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (value_supported != NULL) {
+        *value_supported = 0;
+    }
+    if (server_runtime == NULL || object_reference == NULL || buffer == NULL || encoded_length == NULL || value_supported == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Read response value encoding requires a server runtime, object reference, buffer, and encoded_length.");
+        return 0;
+    }
+
+    signal = server_runtime_find_signal_by_object_reference(server_runtime, object_reference);
+    if (signal != NULL) {
+        if (server_runtime_encode_mms_data_value(signal, buffer, buffer_length, encoded_length, diagnostic)) {
+            *value_supported = 1;
+            return 1;
+        }
+        if (diagnostic != NULL && diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED) {
+            return 0;
+        }
+    }
+
+
+    unitlab_mms_ber_element_init(&value_element);
+    memset(&synthetic_signal, 0, sizeof(synthetic_signal));
+
+    if (server_runtime_object_reference_has_suffix(object_reference, ".EX.NamPlt.ldNs")) {
+        char parsed_domain[128U];
+        char parsed_item[128U];
+
+        parsed_domain[0] = '\0';
+        parsed_item[0] = '\0';
+        if (server_runtime_parse_object_reference(object_reference, parsed_domain, sizeof(parsed_domain), parsed_item, sizeof(parsed_item))) {
+            domain_id = parsed_domain;
+        }
+        if (domain_id == NULL || domain_id[0] == '\0') {
+            domain_id = "LD0";
+        }
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", domain_id);
+        if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".DC.NamPlt.vendor")) {
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "UnitLab");
+        if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".DC.NamPlt.swRev")) {
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "1.0");
+        if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".DC.NamPlt.d")) {
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "LD0");
+        if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".DC.NamPlt.configRev")) {
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "1");
+        if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.RptID")) {
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "IED1LD0/LLN0.BR.Events");
+        if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.DatSet")) {
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "IED1/AP1/LD0/LLN0.dsEvents");
+        if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.ConfRev")) {
+        integer_value = 7;
+        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
+            return 0;
+        }
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 2U;
+        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
+        value_element.value_length = integer_length;
+        if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.BufTm")) {
+        integer_value = 100;
+        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
+            return 0;
+        }
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 2U;
+        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
+        value_element.value_length = integer_length;
+        if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.IntgPd")) {
+        integer_value = 1000;
+        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
+            return 0;
+        }
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 2U;
+        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
+        value_element.value_length = integer_length;
+        if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.SqNum")
+        || server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.ResvTms")) {
+        integer_value = 0;
+        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
+            return 0;
+        }
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 2U;
+        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
+        value_element.value_length = integer_length;
+        if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.GI")
+        || server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.PurgeBuf")
+        || server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.RptEna")) {
+        uint8_t boolean_value = 0x00U;
+
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 1U;
+        value_element.value_bytes = &boolean_value;
+        value_element.value_length = 1U;
+        if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+
+    value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    value_element.tag.constructed = 0;
+    value_element.tag.tag_number = 10U;
+    value_element.value_bytes = NULL;
+    value_element.value_length = 0U;
+    if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
+        return 0;
+    }
+    *value_supported = 0;
+    return 1;
+}
+
 static int server_runtime_build_read_response_service(
     UnitLabMmsServerRuntime* server_runtime,
     uint32_t invoke_id,
@@ -1687,13 +1920,16 @@ static int server_runtime_build_read_response_service(
     uint8_t read_response_body_bytes[224U];
     uint8_t read_response_sequence_bytes[256U];
     uint8_t invoke_id_element_bytes[16U];
+    char domain_id[128U];
+    char item_id[128U];
     size_t value_length = 0U;
     size_t access_result_value_length = 0U;
     size_t list_of_access_result_length = 0U;
     size_t read_response_body_length = 0U;
     size_t read_response_sequence_length = 0U;
     size_t invoke_id_length = 0U;
-    const UnitLabIedModelSignal* signal = NULL;
+    const char* read_target = NULL;
+    int value_supported = 0;
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -1703,23 +1939,56 @@ static int server_runtime_build_read_response_service(
         return 0;
     }
 
-    if (!server_runtime_resolve_read_response_value(server_runtime, server_runtime->pending_request.object_reference, &signal, diagnostic)) {
-        return 0;
+    domain_id[0] = '\0';
+    item_id[0] = '\0';
+    if (!server_runtime_parse_object_reference(server_runtime->pending_request.object_reference, domain_id, sizeof(domain_id), item_id, sizeof(item_id))) {
+        domain_id[0] = '\0';
+        item_id[0] = '\0';
     }
-    if (!server_runtime_encode_mms_data_value(signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
-        return 0;
-    }
-    if (!server_runtime_encode_ber_element(
-            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
-            1,
-            0U,
+    read_target = server_runtime->pending_request.attribute_reference[0] != '\0'
+        ? server_runtime->pending_request.attribute_reference
+        : server_runtime->pending_request.object_reference;
+    printf(
+        "native-wire-server: confirmed-response invoke=%u service=Read object=%s domain=%s item=%s target=%s\n",
+        (unsigned)invoke_id,
+        server_runtime->pending_request.object_reference[0] != '\0' ? server_runtime->pending_request.object_reference : "<none>",
+        domain_id[0] != '\0' ? domain_id : "<none>",
+        item_id[0] != '\0' ? item_id : "<none>",
+        read_target != NULL && read_target[0] != '\0' ? read_target : "<none>");
+    fflush(stdout);
+
+    if (!server_runtime_build_read_response_value(
+            server_runtime,
+            server_runtime->pending_request.object_reference,
             value_bytes,
-            value_length,
-            access_result_value_bytes,
-            sizeof(access_result_value_bytes),
-            &access_result_value_length,
+            sizeof(value_bytes),
+            &value_length,
+            &value_supported,
             diagnostic)) {
         return 0;
+    }
+    if (!value_supported) {
+        printf(
+            "native-wire-server: read target unsupported invoke=%u object=%s target=%s\n",
+            (unsigned)invoke_id,
+            server_runtime->pending_request.object_reference[0] != '\0' ? server_runtime->pending_request.object_reference : "<none>",
+            read_target != NULL && read_target[0] != '\0' ? read_target : "<none>");
+        fflush(stdout);
+        access_result_value_length = value_length;
+        memcpy(access_result_value_bytes, value_bytes, value_length);
+    } else {
+        if (!server_runtime_encode_ber_element(
+                UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                1,
+                0U,
+                value_bytes,
+                value_length,
+                access_result_value_bytes,
+                sizeof(access_result_value_bytes),
+                &access_result_value_length,
+                diagnostic)) {
+            return 0;
+        }
     }
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,

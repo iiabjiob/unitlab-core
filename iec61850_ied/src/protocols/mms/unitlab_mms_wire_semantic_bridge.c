@@ -161,6 +161,8 @@ static int bridge_parse_read_request(const uint8_t* service_bytes, size_t servic
     UnitLabMmsBerElement child;
     UnitLabMmsBerElement variable_access_element;
     UnitLabMmsBerElement list_element;
+    const uint8_t* fields_bytes = service_bytes;
+    size_t fields_length = service_length;
     size_t read_request_consumed_length = 0U;
     size_t child_consumed_length = 0U;
     size_t variable_access_consumed_length = 0U;
@@ -180,13 +182,16 @@ static int bridge_parse_read_request(const uint8_t* service_bytes, size_t servic
         bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "read request BER decode failed.", "read request BER decode failed.");
         return 0;
     }
-    if (read_request_consumed_length != service_length || read_request_element.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL || read_request_element.tag.tag_number != 16U || !read_request_element.tag.constructed) {
-        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "read request must be encoded as a SEQUENCE.", "read request must be encoded as a SEQUENCE.");
-        return 0;
+    if (read_request_consumed_length == service_length
+        && read_request_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL
+        && read_request_element.tag.tag_number == 16U
+        && read_request_element.tag.constructed) {
+        fields_bytes = read_request_element.value_bytes;
+        fields_length = read_request_element.value_length;
     }
-    while (offset < read_request_element.value_length) {
+    while (offset < fields_length) {
         unitlab_mms_ber_element_init(&child);
-        if (!unitlab_mms_ber_read(&child, &read_request_element.value_bytes[offset], read_request_element.value_length - offset, &child_consumed_length, &diagnostic->diagnostic)) {
+        if (!unitlab_mms_ber_read(&child, &fields_bytes[offset], fields_length - offset, &child_consumed_length, &diagnostic->diagnostic)) {
             bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "read request top-level field BER decode failed.", "read request top-level field BER decode failed.");
             return 0;
         }
@@ -237,8 +242,7 @@ static int bridge_parse_read_request(const uint8_t* service_bytes, size_t servic
             found_variable_access = 1;
             offset += top_level_field_length;
             continue;
-        }
-        else if (child.tag.tag_number != 0U) {
+        } else if (child.tag.tag_number != 0U) {
             bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_UNSUPPORTED_SEMANTIC, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "read request field is unsupported.", "read request field is unsupported.");
             return 0;
         }

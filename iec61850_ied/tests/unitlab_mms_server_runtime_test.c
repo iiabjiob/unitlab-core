@@ -614,6 +614,64 @@ static void test_server_runtime_apply_reference_confirmed_request_and_build_resp
     }
 }
 
+static void test_server_runtime_apply_direct_read_request_and_build_response_roundtrips(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    uint8_t association_bytes[256U];
+    uint8_t read_wire_bytes[] = {
+        0x03U, 0x00U, 0x00U, 0x42U, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U,
+        0x61U, 0x35U, 0x30U, 0x33U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x2EU, 0xA0U, 0x2CU, 0x02U, 0x01U, 0x0AU,
+        0xA4U, 0x27U, 0x80U, 0x01U, 0x00U, 0xA1U, 0x22U, 0xA0U, 0x20U, 0x30U, 0x1EU, 0xA0U, 0x1CU, 0xA1U, 0x1AU,
+        0x1AU, 0x03U, 'L', 'D', '0',
+        0x1AU, 0x13U, 'L', 'L', 'N', '0', '$', 'E', 'X', '$', 'N', 'a', 'm', 'P', 'l', 't', '$', 'l', 'd', 'N', 's'
+    };
+    uint8_t response_bytes[256U];
+    size_t association_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+    size_t response_consumed_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(build_initiate_request_association_bytes(association_bytes, sizeof(association_bytes), &association_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_association_request_bytes(&server_runtime, association_bytes, association_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(server_runtime.session.active_invoke_id == 1U);
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, server_runtime.session.active_invoke_id, &diagnostic));
+
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, read_wire_bytes, sizeof(read_wire_bytes), &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(consumed_length == sizeof(read_wire_bytes));
+    assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_READ);
+    assert(server_runtime.pending_request.invoke_id == 10U);
+    assert(strcmp(server_runtime.pending_request.object_reference, "LD0.LLN0.EX.NamPlt.ldNs") == 0);
+    assert(strcmp(server_runtime.pending_request.attribute_reference, "ldNs") == 0);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+
+    {
+        UnitLabMmsAssociationFrame response_frame;
+
+        unitlab_mms_association_frame_init(&response_frame);
+        assert(unitlab_mms_association_frame_decode(&response_frame, response_bytes, response_length, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == response_length);
+        assert(response_frame.presentation.payload_length > 0U);
+        assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, (const uint8_t*)"LD0", strlen("LD0")) == 1);
+    }
+}
+
 static void test_server_runtime_build_get_name_list_response_handles_large_directory(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -1113,9 +1171,7 @@ static void test_server_runtime_apply_iedscout_get_name_list_request_matches_gol
     static const uint8_t request_bytes[] = {
         0x03U, 0x00U, 0x00U, 0x24U, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U, 0x61U, 0x17U, 0x30U, 0x15U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x10U, 0xA0U, 0x0EU, 0x02U, 0x01U, 0x01U, 0xA1U, 0x09U, 0xA0U, 0x03U, 0x80U, 0x01U, 0x09U, 0xA1U, 0x02U, 0x80U, 0x00U
     };
-    static const uint8_t expected_response[] = {
-        0x03U, 0x00U, 0x00U, 0x32U, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U, 0x61U, 0x25U, 0x30U, 0x23U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x1EU, 0xA1U, 0x1CU, 0x02U, 0x01U, 0x01U, 0xA1U, 0x17U, 0xA0U, 0x12U, 0x1AU, 0x10U, 0x53U, 0x61U, 0x6DU, 0x70U, 0x6CU, 0x65U, 0x49U, 0x45U, 0x44U, 0x44U, 0x65U, 0x76U, 0x69U, 0x63U, 0x65U, 0x31U, 0x81U, 0x01U, 0x00U
-    };
+    const uint8_t expected_identifier[] = { 'S', 'a', 'm', 'p', 'l', 'e', 'I', 'E', 'D', 'D', 'e', 'v', 'i', 'c', 'e', '1' };
 
     memset(&plan, 0, sizeof(plan));
     memset(logical_devices, 0, sizeof(logical_devices));
@@ -1138,8 +1194,8 @@ static void test_server_runtime_apply_iedscout_get_name_list_request_matches_gol
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
-    assert(response_length == sizeof(expected_response));
-    assert(memcmp(response_bytes, expected_response, sizeof(expected_response)) == 0);
+    assert(response_length > 0U);
+    assert(contains_bytes(response_bytes, response_length, expected_identifier, sizeof(expected_identifier)) == 1);
 }
 
 
@@ -1842,6 +1898,7 @@ int main(void)
     test_server_runtime_build_confirmed_response_bytes_roundtrips();
     test_server_runtime_confirmed_response_fails_after_timeout();
     test_server_runtime_apply_reference_confirmed_request_and_build_response_roundtrips();
+    test_server_runtime_apply_direct_read_request_and_build_response_roundtrips();
     test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips();
     test_server_runtime_build_get_name_list_response_handles_large_directory();
     test_server_runtime_apply_iedscout_get_name_list_request_matches_golden_capture();

@@ -140,6 +140,45 @@ static void test_wire_pdu_bridge_read_request(void)
     assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
 }
 
+static void test_wire_pdu_bridge_read_request_direct_payload(void)
+{
+    UnitLabMmsPdu wire_pdu;
+    UnitLabMmsSemanticResult result;
+    UnitLabMmsDecodeDiagnostic diagnostic;
+    const uint8_t payload[] = {
+        0x80U, 0x01U, 0x00U,
+        0xA1U, 0x22U,
+        0xA0U, 0x20U,
+        0x30U, 0x1EU,
+        0xA0U, 0x1CU,
+        0xA1U, 0x1AU,
+        0x1AU, 0x03U, 'L', 'D', '0',
+        0x1AU, 0x13U, 'L', 'L', 'N', '0', '$', 'E', 'X', '$', 'N', 'a', 'm', 'P', 'l', 't', '$', 'l', 'd', 'N', 's'
+    };
+
+    memset(&wire_pdu, 0, sizeof(wire_pdu));
+    unitlab_mms_semantic_result_init(&result);
+    unitlab_mms_decode_diagnostic_init(&diagnostic);
+    wire_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+    wire_pdu.has_invoke_id = 1;
+    wire_pdu.invoke_id = 10U;
+    wire_pdu.has_service = 1;
+    wire_pdu.service_kind = UNITLAB_MMS_SERVICE_READ;
+    wire_pdu.service_bytes = payload;
+    wire_pdu.service_length = sizeof(payload);
+
+    assert(unitlab_mms_semantic_result_from_wire_pdu(&result, &wire_pdu, &diagnostic) == 1);
+    assert(result.ok == 1);
+    assert(result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS);
+    assert(result.pdu.kind == UNITLAB_MMS_DECODED_PDU_READ_REQUEST);
+    assert(result.pdu.invoke_id == 10U);
+    assert(strcmp(result.pdu.domain_id, "LD0") == 0);
+    assert(strcmp(result.pdu.item_id, "LLN0$EX$NamPlt$ldNs") == 0);
+    assert(strcmp(result.pdu.object_reference, "LD0.LLN0.EX.NamPlt.ldNs") == 0);
+    assert(strcmp(result.pdu.attribute_reference, "ldNs") == 0);
+    assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
+}
+
 static void test_wire_pdu_bridge_information_report(void)
 {
     UnitLabMmsPdu wire_pdu;
@@ -556,6 +595,7 @@ int main(void)
     test_result_projection();
     test_reject_projection();
     test_wire_pdu_bridge_read_request();
+    test_wire_pdu_bridge_read_request_direct_payload();
     test_wire_pdu_bridge_get_variable_access_attributes_request();
     test_wire_pdu_bridge_get_variable_access_attributes_response();
     test_wire_pdu_bridge_information_report();
