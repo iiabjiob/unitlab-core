@@ -2201,6 +2201,7 @@ static int server_runtime_build_read_response_value(
     const UnitLabIedModelSignal* signal = NULL;
     int32_t integer_value = 0;
     uint8_t integer_bytes[5U];
+    uint8_t value_single[1U];
     size_t integer_length = 0U;
 
     if (encoded_length != NULL) {
@@ -2401,11 +2402,12 @@ static int server_runtime_build_read_response_value(
         return 1;
     }
 
-    value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    value_single[0] = 0x09U;
+    value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
     value_element.tag.constructed = 0;
     value_element.tag.tag_number = 10U;
-    value_element.value_bytes = NULL;
-    value_element.value_length = 0U;
+    value_element.value_bytes = value_single;
+    value_element.value_length = 1U;
     if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
         return 0;
     }
@@ -2427,6 +2429,7 @@ static int server_runtime_build_read_response_service(
     uint8_t read_response_body_bytes[224U];
     uint8_t service_bytes[256U];
     uint8_t invoke_id_element_bytes[16U];
+    uint8_t value_single[1U];
     char domain_id[128U];
     char item_id[128U];
     size_t value_length = 0U;
@@ -2488,21 +2491,21 @@ static int server_runtime_build_read_response_service(
             server_runtime->pending_request.object_reference[0] != '\0' ? server_runtime->pending_request.object_reference : "<none>",
             read_target != NULL && read_target[0] != '\0' ? read_target : "<none>");
         fflush(stdout);
-        access_result_value_length = value_length;
-        memcpy(access_result_value_bytes, value_bytes, value_length);
-    } else {
         if (!server_runtime_encode_ber_element(
                 UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
-                1,
+                0,
                 0U,
-                value_bytes,
-                value_length,
+                value_single,
+                1U,
                 access_result_value_bytes,
                 sizeof(access_result_value_bytes),
                 &access_result_value_length,
                 diagnostic)) {
             return 0;
         }
+    } else {
+        access_result_value_length = value_length;
+        memcpy(access_result_value_bytes, value_bytes, value_length);
     }
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
