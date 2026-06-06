@@ -7,7 +7,7 @@ services:
         - unitlab-dev:latest
     container_name: unitlab-dev-container
     volumes:
-      - /workspace:/workspace
+      - .:/workspace
     command: sleep infinity
     extra_hosts:
       - "host.docker.internal:host-gateway"

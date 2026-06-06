@@ -22,7 +22,5 @@
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
   },
 
-  "postCreateCommand": "bash -lc \"cmake -S /workspace/iec61850_ied -B /tmp/unitlab-iec61850-ied-build && cmake --build /tmp/unitlab-iec61850-ied-build --target unitlab-iec61850-ied-sim\"",
-
   "shutdownAction": "stopCompose"
 }
