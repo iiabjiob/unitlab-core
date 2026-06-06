@@ -50,6 +50,24 @@ static void log_native_wire_disconnect(const UnitLabMmsServerRuntime* server_run
     fflush(stdout);
 }
 
+static void log_native_wire_data_recv_disconnect(const UnitLabMmsServerRuntime* server_runtime, ssize_t received)
+{
+    if (received == 0) {
+        printf("native-wire-server: data-client-recv-return=0 peer-eof client-closed\n");
+    } else if (received < 0) {
+        printf(
+            "native-wire-server: data-client-recv-return=%zd errno=%d strerror=%s\n",
+            received,
+            errno,
+            strerror(errno));
+    } else {
+        printf("native-wire-server: data-client-recv-return=%zd\n", received);
+    }
+    fflush(stdout);
+    log_native_wire_disconnect(server_runtime, "data-client-disconnected");
+}
+
+
 static int send_all(int fd, const uint8_t* buffer, size_t length)
 {
     size_t offset = 0U;
@@ -774,7 +792,7 @@ int unitlab_run_native_wire_server(
                 }
                 received = recv(data_client_fd, data_rx_buffer + data_rx_length, sizeof(data_rx_buffer) - data_rx_length, 0);
                 if (received <= 0) {
-                    log_native_wire_disconnect(server_runtime, "data-client-disconnected");
+                    log_native_wire_data_recv_disconnect(server_runtime, received);
                     close_fd(&data_client_fd);
                     close_fd(&control_client_fd);
                     data_rx_length = 0U;
@@ -812,7 +830,7 @@ int unitlab_run_native_wire_server(
             if (control_client_fd >= 0 && poll_fds[index].fd == control_client_fd) {
                 char command[128U];
                 if (!read_command_from_socket(control_client_fd, command, sizeof(command))) {
-                    log_native_wire_disconnect(server_runtime, "control-client-disconnected");
+                    log_native_wire_disconnect(server_runtime, "control-client-disconnected; closing data socket due to control disconnect");
                     close_fd(&control_client_fd);
                     close_fd(&data_client_fd);
                     data_rx_length = 0U;
@@ -844,6 +862,9 @@ int unitlab_run_native_wire_server(
         }
     }
 stop:
+    if (data_client_fd >= 0) {
+        log_native_wire_disconnect(server_runtime, "external-stop; closing data socket");
+    }
     close_fd(&control_client_fd);
     close_fd(&data_client_fd);
     close_fd(&control_listen_fd);

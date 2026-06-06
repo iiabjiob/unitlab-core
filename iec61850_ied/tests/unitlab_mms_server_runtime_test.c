@@ -753,11 +753,12 @@ static void test_server_runtime_apply_direct_read_request_and_build_response_rou
         assert(response_consumed_length == response_length);
         assert(response_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
         assert(response_frame.presentation.payload_length > 0U);
-        assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, (const uint8_t*)"LD0", strlen("LD0")) == 1);
+        assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, (const uint8_t*)"IEC 61850-7-4:2007", strlen("IEC 61850-7-4:2007")) == 1);
 
         {
             static const uint8_t expected_payload_bytes[] = {
-                0x02U, 0x01U, 0x0AU, 0xA4U, 0x09U, 0xA1U, 0x07U, 0xA0U, 0x05U, 0x8AU, 0x03U, 'L', 'D', '0'
+                0x02U, 0x01U, 0x0AU, 0xA4U, 0x18U, 0xA1U, 0x16U, 0xA0U, 0x14U, 0x8AU, 0x12U,
+                'I', 'E', 'C', ' ', '6', '1', '8', '5', '0', '-', '7', '-', '4', ':', '2', '0', '0', '7'
             };
 
             assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, expected_payload_bytes, sizeof(expected_payload_bytes)) == 1);
@@ -774,6 +775,73 @@ static void test_server_runtime_apply_direct_read_request_and_build_response_rou
         assert(decoded_response_pdu.pdu_length > 0U);
         assert(decoded_response_pdu.pdu_bytes[0] == 0x02U);
         assert(decoded_response_pdu.pdu_bytes[3] == 0xA4U);
+        assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 1234U, &diagnostic));
+    }
+
+    {
+        uint8_t namespace_read_request[256U];
+        uint8_t namespace_read_request_2[256U];
+        uint8_t namespace_read_request_3[256U];
+        uint8_t scratch[1024U];
+        uint8_t response_bytes_a[256U];
+        uint8_t response_bytes_b[256U];
+        uint8_t response_bytes_c[256U];
+        UnitLabMmsAssociationFrame response_frame;
+        UnitLabMmsPdu response_pdu;
+        size_t namespace_read_request_length = 0U;
+        size_t namespace_read_request_2_length = 0U;
+        size_t namespace_read_request_3_length = 0U;
+        size_t response_length_a = 0U;
+        size_t response_length_b = 0U;
+        size_t response_length_c = 0U;
+        size_t response_consumed_length = 0U;
+        size_t response_pdu_consumed_length = 0U;
+
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        assert(unitlab_mms_build_read_request_frame("LD0", "LLN0$EX$NamPlt$lnNs", 14U, scratch, sizeof(scratch), namespace_read_request, sizeof(namespace_read_request), &namespace_read_request_length, &diagnostic));
+        assert(unitlab_mms_build_read_request_frame("LD0", "LLN0$EX$NamPlt$cdcNs", 15U, scratch, sizeof(scratch), namespace_read_request_2, sizeof(namespace_read_request_2), &namespace_read_request_2_length, &diagnostic));
+        assert(unitlab_mms_build_read_request_frame("LD0", "GGIO1$MX$AnIn1$mag$f$dataNs", 16U, scratch, sizeof(scratch), namespace_read_request_3, sizeof(namespace_read_request_3), &namespace_read_request_3_length, &diagnostic));
+
+        assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, namespace_read_request, namespace_read_request_length, &consumed_length, &operation_result));
+        assert(operation_result.ok == 1);
+        assert(consumed_length == namespace_read_request_length);
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes_a, sizeof(response_bytes_a), &response_length_a, &diagnostic));
+        unitlab_mms_association_frame_init(&response_frame);
+        assert(unitlab_mms_association_frame_decode(&response_frame, response_bytes_a, response_length_a, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == response_length_a);
+        assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, (const uint8_t*)"IEC 61850-7-4:2007", strlen("IEC 61850-7-4:2007")) == 1);
+        assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 1235U, &diagnostic));
+
+        unitlab_mms_operation_result_init(&operation_result);
+        assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, namespace_read_request_2, namespace_read_request_2_length, &consumed_length, &operation_result));
+        assert(operation_result.ok == 1);
+        assert(consumed_length == namespace_read_request_2_length);
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes_b, sizeof(response_bytes_b), &response_length_b, &diagnostic));
+        unitlab_mms_association_frame_init(&response_frame);
+        assert(unitlab_mms_association_frame_decode(&response_frame, response_bytes_b, response_length_b, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == response_length_b);
+        assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, (const uint8_t*)"IEC 61850-7-3:2010", strlen("IEC 61850-7-3:2010")) == 1);
+        assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 1236U, &diagnostic));
+
+        unitlab_mms_operation_result_init(&operation_result);
+        assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, namespace_read_request_3, namespace_read_request_3_length, &consumed_length, &operation_result));
+        assert(operation_result.ok == 1);
+        assert(consumed_length == namespace_read_request_3_length);
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes_c, sizeof(response_bytes_c), &response_length_c, &diagnostic));
+        unitlab_mms_association_frame_init(&response_frame);
+        assert(unitlab_mms_association_frame_decode(&response_frame, response_bytes_c, response_length_c, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == response_length_c);
+        assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, (const uint8_t*)"EXT:2015", strlen("EXT:2015")) == 1);
+        assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 1237U, &diagnostic));
+
+        unitlab_mms_pdu_init(&response_pdu);
+        assert(unitlab_mms_pdu_decode(&response_pdu, response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, &response_pdu_consumed_length, &diagnostic));
+        assert(response_pdu_consumed_length == response_frame.presentation.payload_length);
+        assert(response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
+        assert(response_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
     }
 }
 

@@ -2192,7 +2192,6 @@ static int server_runtime_build_read_response_value(
     UnitLabMmsBerElement value_element;
     UnitLabIedModelSignal synthetic_signal;
     const UnitLabIedModelSignal* signal = NULL;
-    const char* domain_id = NULL;
     int32_t integer_value = 0;
     uint8_t integer_bytes[5U];
     size_t integer_length = 0U;
@@ -2224,19 +2223,35 @@ static int server_runtime_build_read_response_value(
     memset(&synthetic_signal, 0, sizeof(synthetic_signal));
 
     if (server_runtime_object_reference_has_suffix(object_reference, ".EX.NamPlt.ldNs")) {
-        char parsed_domain[128U];
-        char parsed_item[128U];
-
-        parsed_domain[0] = '\0';
-        parsed_item[0] = '\0';
-        if (server_runtime_parse_object_reference(object_reference, parsed_domain, sizeof(parsed_domain), parsed_item, sizeof(parsed_item))) {
-            domain_id = parsed_domain;
-        }
-        if (domain_id == NULL || domain_id[0] == '\0') {
-            domain_id = "LD0";
-        }
         synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
-        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", domain_id);
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "IEC 61850-7-4:2007");
+        if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".EX.NamPlt.lnNs")) {
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "IEC 61850-7-4:2007");
+        if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".cdcNs")) {
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "IEC 61850-7-3:2010");
+        if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".dataNs")) {
+        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "EXT:2015");
         if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
             return 0;
         }
@@ -2440,6 +2455,13 @@ static int server_runtime_build_read_response_service(
         domain_id[0] != '\0' ? domain_id : "<none>",
         item_id[0] != '\0' ? item_id : "<none>",
         read_target != NULL && read_target[0] != '\0' ? read_target : "<none>");
+    if (strstr(server_runtime->pending_request.object_reference, "NamPlt") != NULL) {
+        printf(
+            "native-wire-server: read-namespace-request invoke=%u object=%s attribute=%s\n",
+            (unsigned)invoke_id,
+            server_runtime->pending_request.object_reference[0] != '\0' ? server_runtime->pending_request.object_reference : "<none>",
+            server_runtime->pending_request.attribute_reference[0] != '\0' ? server_runtime->pending_request.attribute_reference : "<none>");
+    }
     fflush(stdout);
 
     if (!server_runtime_build_read_response_value(
