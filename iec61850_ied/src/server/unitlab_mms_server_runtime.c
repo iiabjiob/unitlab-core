@@ -1509,6 +1509,82 @@ static int server_runtime_encode_named_variable_list_object_name(
     return 1;
 }
 
+static int server_runtime_encode_named_variable_list_member_item(
+    const UnitLabIedModelSignal* signal,
+    char* domain_id,
+    size_t domain_id_size,
+    char* item_id,
+    size_t item_id_size,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    const char* entry = NULL;
+    const char* slash = NULL;
+    size_t domain_length = 0U;
+    size_t item_length = 0U;
+    int written;
+
+    if (domain_id != NULL && domain_id_size > 0U) {
+        domain_id[0] = '\0';
+    }
+    if (item_id != NULL && item_id_size > 0U) {
+        item_id[0] = '\0';
+    }
+    if (signal == NULL || domain_id == NULL || domain_id_size == 0U || item_id == NULL || item_id_size == 0U) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Named variable list member item encoding requires a signal, output buffers, and output lengths.");
+        return 0;
+    }
+
+    entry = signal->data_set_entry_variable;
+    if (entry != NULL && entry[0] != '\0') {
+        slash = strchr(entry, '/');
+        if (slash != NULL) {
+            domain_length = (size_t)(slash - entry);
+            if (domain_length == 0U || domain_length >= domain_id_size) {
+                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Named variable list member domain output buffer is too small.");
+                return 0;
+            }
+            memcpy(domain_id, entry, domain_length);
+            domain_id[domain_length] = '\0';
+            entry = slash + 1;
+        }
+    }
+    if (domain_id[0] == '\0' && signal->logical_device_inst[0] != '\0') {
+        written = snprintf(domain_id, domain_id_size, "%s", signal->logical_device_inst);
+        if (written <= 0 || (size_t)written >= domain_id_size) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Named variable list member domain output buffer is too small.");
+            return 0;
+        }
+    }
+    if (entry == NULL || entry[0] == '\0') {
+        if (signal->logical_node_name[0] == '\0' || signal->fc[0] == '\0' || signal->object_reference[0] == '\0') {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Named variable list member item encoding requires a dataset entry variable or logical node, functional constraint, and object reference.");
+            return 0;
+        }
+
+        written = snprintf(item_id, item_id_size, "%s$%s$", signal->logical_node_name, signal->fc);
+        if (written <= 0 || (size_t)written >= item_id_size) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Named variable list member item output buffer is too small.");
+            return 0;
+        }
+        item_length = (size_t)written;
+        for (const char* cursor = signal->object_reference; *cursor != '\0'; cursor++) {
+            if (item_length + 1U >= item_id_size) {
+                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Named variable list member item output buffer is too small.");
+                return 0;
+            }
+            item_id[item_length++] = (*cursor == '.') ? '$' : *cursor;
+        }
+        item_id[item_length] = '\0';
+        return 1;
+    }
+    written = snprintf(item_id, item_id_size, "%s", entry);
+    if (written <= 0 || (size_t)written >= item_id_size) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Named variable list member item output buffer is too small.");
+        return 0;
+    }
+    return 1;
+}
+
 static int server_runtime_encode_named_variable_list_member(
     const char* domain_id,
     const char* item_id,
@@ -1634,26 +1710,20 @@ static int server_runtime_build_get_named_variable_list_attributes_response_serv
 
     for (size_t member_index = 0U; member_index < data_set->member_count; member_index++) {
         const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[data_set->first_signal_index + member_index];
-        const char* slash = strchr(signal->data_set_entry_variable, '/');
-        const char* member_domain = signal->logical_device_inst;
-        const char* member_item = signal->data_set_entry_variable;
+        char member_item[256U];
         size_t member_length = 0U;
-        char domain_copy[128U];
 
-        if (slash != NULL && slash[1] != '\0') {
-            size_t domain_length = (size_t)(slash - signal->data_set_entry_variable);
-
-            if (domain_length == 0U || domain_length >= sizeof(domain_copy)) {
-                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GetNamedVariableListAttributes member domain is too long.");
-                return 0;
-            }
-            memcpy(domain_copy, signal->data_set_entry_variable, domain_length);
-            domain_copy[domain_length] = '\0';
-            member_domain = domain_copy;
-            member_item = slash + 1;
+        if (!server_runtime_encode_named_variable_list_member_item(
+                signal,
+                logical_device_inst,
+                sizeof(logical_device_inst),
+                member_item,
+                sizeof(member_item),
+                diagnostic)) {
+            return 0;
         }
         if (!server_runtime_encode_named_variable_list_member(
-                member_domain,
+                logical_device_inst,
                 member_item,
                 &member_bytes[member_bytes_length],
                 sizeof(member_bytes) - member_bytes_length,
@@ -1662,7 +1732,7 @@ static int server_runtime_build_get_named_variable_list_attributes_response_serv
             return 0;
         }
         member_bytes_length += member_length;
-        printf("native-wire-server: nvl-attribute-member[%zu]=%s\n", member_index, signal->data_set_entry_variable);
+        printf("native-wire-server: nvl-attribute-member[%zu]=%s/%s\n", member_index, logical_device_inst, member_item);
     }
 
     {
