@@ -1411,15 +1411,25 @@ static const UnitLabIedModelDataSet* server_runtime_find_named_variable_list_dat
     }
 
     if (logical_device_inst[0] == '\0') {
+        const UnitLabIedModelDataSet* matched_data_set = NULL;
+
         for (size_t index = 0U; index < server_runtime->model_plan->data_set_count; index++) {
             const UnitLabIedModelDataSet* data_set = &server_runtime->model_plan->data_sets[index];
-            if (strcmp(data_set->name, list_name) == 0) {
-                snprintf(logical_device_inst, logical_device_inst_size, "%s", data_set->logical_device_inst);
-                snprintf(logical_node_name, logical_node_name_size, "%s", data_set->logical_node_name);
-                return data_set;
+
+            if (strcmp(data_set->name, list_name) != 0) {
+                continue;
             }
+            if (matched_data_set != NULL) {
+                return NULL;
+            }
+            matched_data_set = data_set;
         }
-        return NULL;
+        if (matched_data_set == NULL) {
+            return NULL;
+        }
+        snprintf(logical_device_inst, logical_device_inst_size, "%s", matched_data_set->logical_device_inst);
+        snprintf(logical_node_name, logical_node_name_size, "%s", matched_data_set->logical_node_name);
+        return matched_data_set;
     }
 
     return unitlab_find_ied_model_data_set(server_runtime->model_plan, logical_device_inst, logical_node_name, list_name);
