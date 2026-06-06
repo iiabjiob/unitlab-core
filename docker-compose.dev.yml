@@ -11,53 +11,12 @@ services:
     command: sleep infinity
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    ports:
+      - "12447:12447"
+      - "12448:12448"
     networks:
       - net
 
-  iec61850-ied:
-    build:
-      context: .
-      dockerfile: .devcontainer/Dockerfile
-      tags:
-        - unitlab-dev:latest
-    container_name: unitlab-iec61850-ied-dev
-    working_dir: /workspace
-    network_mode: host
-    command: >
-      bash -lc "cmake -S /workspace/iec61850_ied -B /tmp/unitlab-iec61850-ied-build &&
-      cmake --build /tmp/unitlab-iec61850-ied-build --target unitlab-iec61850-ied-sim &&
-      exec /tmp/unitlab-iec61850-ied-build/unitlab-iec61850-ied-sim --fixture /workspace/iec61850_ied/examples/single-report.fixture.json --ied IED1 --bind 0.0.0.0 --port 12447 --native-wire-start"
-
-  iec61850-ied-lib:
-    build:
-      context: .
-      dockerfile: .devcontainer/Dockerfile
-      tags:
-        - unitlab-dev:latest
-    container_name: unitlab-iec61850-ied-lib-dev
-    working_dir: /workspace
-    network_mode: host
-    command: >
-      bash -lc "cmake -S /workspace/iec61850_ied -B /tmp/unitlab-iec61850-ied-linked-build
-      -DUNITLAB_IEC61850_SIM_WITH_LIBIEC61850=ON
-      -DLIBIEC61850_INCLUDE_DIR='/workspace/external/libiec61850/src/iec61850/inc;/workspace/external/libiec61850/src/common/inc;/workspace/external/libiec61850/hal/inc;/workspace/external/libiec61850/src/mms/inc;/workspace/external/libiec61850/src/logging'
-      -DLIBIEC61850_LIBRARY='/workspace/external/libiec61850/build/src/libiec61850.a;/workspace/external/libiec61850/build/hal/libhal.a' &&
-      cmake --build /tmp/unitlab-iec61850-ied-linked-build --target unitlab-iec61850-ied-sim &&
-      exec /tmp/unitlab-iec61850-ied-linked-build/unitlab-iec61850-ied-sim --fixture /workspace/iec61850_ied/examples/single-report.fixture.json --ied IED1 --bind 0.0.0.0 --port 102 --native-wire-start"
-
-  libiec61850-example:
-    build:
-      context: .
-      dockerfile: .devcontainer/Dockerfile
-      tags:
-        - unitlab-dev:latest
-    container_name: unitlab-libiec61850-example-dev
-    working_dir: /workspace
-    network_mode: host
-    command: >
-      bash -lc "cmake -S /workspace/external/libiec61850 -B /tmp/libiec61850-example-build &&
-      cmake --build /tmp/libiec61850-example-build --target server_example_simple &&
-      exec /tmp/libiec61850-example-build/examples/server_example_simple/server_example_simple 102"
   db:
     image: postgres:16
     container_name: unitlab-db-dev
