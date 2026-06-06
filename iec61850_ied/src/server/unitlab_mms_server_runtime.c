@@ -1585,6 +1585,213 @@ static int server_runtime_encode_named_variable_list_member_item(
     return 1;
 }
 
+static const char* server_runtime_ber_tag_class_label(UnitLabMmsBerTagClass tag_class)
+{
+    switch (tag_class) {
+        case UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL:
+            return "UNIVERSAL";
+        case UNITLAB_MMS_BER_TAG_CLASS_APPLICATION:
+            return "APPLICATION";
+        case UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC:
+            return "CONTEXT-SPECIFIC";
+        case UNITLAB_MMS_BER_TAG_CLASS_PRIVATE:
+            return "PRIVATE";
+        default:
+            return "UNKNOWN";
+    }
+}
+
+static void server_runtime_log_ber_element_line(const char* prefix, const UnitLabMmsBerElement* element)
+{
+    if (prefix == NULL || element == NULL) {
+        return;
+    }
+    printf(
+        "%s tag=%s constructed=%u number=%u length=%zu\n",
+        prefix,
+        server_runtime_ber_tag_class_label(element->tag.tag_class),
+        (unsigned)element->tag.constructed,
+        (unsigned)element->tag.tag_number,
+        element->value_length);
+}
+
+static void server_runtime_log_get_named_variable_list_attributes_member_tree(
+    size_t member_index,
+    const uint8_t* member_bytes,
+    size_t member_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement member;
+    UnitLabMmsBerElement variable_spec;
+    UnitLabMmsBerElement object_name;
+    UnitLabMmsBerElement child;
+    size_t consumed_length = 0U;
+    size_t child_consumed_length = 0U;
+    size_t offset = 0U;
+    char domain_id[128U];
+    char item_id[256U];
+
+    if (member_bytes == NULL || member_length == 0U) {
+        return;
+    }
+
+    domain_id[0] = '\0';
+    item_id[0] = '\0';
+    unitlab_mms_ber_element_init(&member);
+    if (!unitlab_mms_ber_read(&member, member_bytes, member_length, &consumed_length, diagnostic)) {
+        printf("native-wire-server: gnvla-ber member[%zu] decode-failed\n", member_index);
+        fflush(stdout);
+        return;
+    }
+    server_runtime_log_ber_element_line("native-wire-server: gnvla-ber member", &member);
+
+    unitlab_mms_ber_element_init(&variable_spec);
+    if (!unitlab_mms_ber_read(&variable_spec, member.value_bytes, member.value_length, &consumed_length, diagnostic)) {
+        printf("native-wire-server: gnvla-ber member[%zu] variable-spec decode-failed\n", member_index);
+        fflush(stdout);
+        return;
+    }
+    printf(
+        "native-wire-server: gnvla-ber member[%zu] VariableSpecification choice tag=%s constructed=%u number=%u length=%zu\n",
+        member_index,
+        server_runtime_ber_tag_class_label(variable_spec.tag.tag_class),
+        (unsigned)variable_spec.tag.constructed,
+        (unsigned)variable_spec.tag.tag_number,
+        variable_spec.value_length);
+
+    unitlab_mms_ber_element_init(&object_name);
+    if (!unitlab_mms_ber_read(&object_name, variable_spec.value_bytes, variable_spec.value_length, &consumed_length, diagnostic)) {
+        printf("native-wire-server: gnvla-ber member[%zu] object-name decode-failed\n", member_index);
+        fflush(stdout);
+        return;
+    }
+    printf(
+        "native-wire-server: gnvla-ber member[%zu] ObjectName choice tag=%s constructed=%u number=%u length=%zu\n",
+        member_index,
+        server_runtime_ber_tag_class_label(object_name.tag.tag_class),
+        (unsigned)object_name.tag.constructed,
+        (unsigned)object_name.tag.tag_number,
+        object_name.value_length);
+
+    unitlab_mms_ber_element_init(&child);
+    if (!unitlab_mms_ber_read(&child, object_name.value_bytes, object_name.value_length, &child_consumed_length, diagnostic)) {
+        printf("native-wire-server: gnvla-ber member[%zu] domain-id decode-failed\n", member_index);
+        fflush(stdout);
+        return;
+    }
+    if (child.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && child.tag.tag_number == 26U && !child.tag.constructed) {
+        size_t copy_length = child.value_length < sizeof(domain_id) - 1U ? child.value_length : sizeof(domain_id) - 1U;
+        memcpy(domain_id, child.value_bytes, copy_length);
+        domain_id[copy_length] = '\0';
+    }
+    printf(
+        "native-wire-server: gnvla-ber member[%zu] ObjectName.domainId tag=%s constructed=%u number=%u value=\"%s\"\n",
+        member_index,
+        server_runtime_ber_tag_class_label(child.tag.tag_class),
+        (unsigned)child.tag.constructed,
+        (unsigned)child.tag.tag_number,
+        domain_id);
+    offset += child_consumed_length;
+
+    unitlab_mms_ber_element_init(&child);
+    if (offset < object_name.value_length && unitlab_mms_ber_read(&child, &object_name.value_bytes[offset], object_name.value_length - offset, &child_consumed_length, diagnostic)) {
+        if (child.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && child.tag.tag_number == 26U && !child.tag.constructed) {
+            size_t copy_length = child.value_length < sizeof(item_id) - 1U ? child.value_length : sizeof(item_id) - 1U;
+            memcpy(item_id, child.value_bytes, copy_length);
+            item_id[copy_length] = '\0';
+        }
+        printf(
+            "native-wire-server: gnvla-ber member[%zu] ObjectName.itemId tag=%s constructed=%u number=%u value=\"%s\"\n",
+            member_index,
+            server_runtime_ber_tag_class_label(child.tag.tag_class),
+            (unsigned)child.tag.constructed,
+            (unsigned)child.tag.tag_number,
+            item_id);
+    }
+    fflush(stdout);
+}
+
+static void server_runtime_log_get_named_variable_list_attributes_response_tree(
+    uint32_t invoke_id,
+    const uint8_t* service_bytes,
+    size_t service_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement invoke_id_element;
+    UnitLabMmsBerElement service_element;
+    UnitLabMmsBerElement deletable_element;
+    UnitLabMmsBerElement list_of_variable_element;
+    UnitLabMmsBerElement member;
+    size_t consumed_length = 0U;
+    size_t response_consumed_length = 0U;
+    size_t member_consumed_length = 0U;
+    size_t offset = 0U;
+    size_t member_index = 0U;
+
+    if (service_bytes == NULL || service_length == 0U) {
+        return;
+    }
+    unitlab_mms_ber_element_init(&invoke_id_element);
+    if (!unitlab_mms_ber_read(&invoke_id_element, service_bytes, service_length, &consumed_length, diagnostic)) {
+        printf("native-wire-server: gnvla-ber invoke=%u decode-failed-at-invoke\n", (unsigned)invoke_id);
+        fflush(stdout);
+        return;
+    }
+    server_runtime_log_ber_element_line("native-wire-server: gnvla-ber invoke-id", &invoke_id_element);
+
+    unitlab_mms_ber_element_init(&service_element);
+    if (!unitlab_mms_ber_read(&service_element, &service_bytes[consumed_length], service_length - consumed_length, &response_consumed_length, diagnostic)) {
+        printf("native-wire-server: gnvla-ber invoke=%u decode-failed-at-response\n", (unsigned)invoke_id);
+        fflush(stdout);
+        return;
+    }
+    server_runtime_log_ber_element_line("native-wire-server: gnvla-ber response", &service_element);
+
+    unitlab_mms_ber_element_init(&deletable_element);
+    if (!unitlab_mms_ber_read(&deletable_element, service_element.value_bytes, service_element.value_length, &consumed_length, diagnostic)) {
+        printf("native-wire-server: gnvla-ber invoke=%u decode-failed-at-deletable\n", (unsigned)invoke_id);
+        fflush(stdout);
+        return;
+    }
+    printf(
+        "native-wire-server: gnvla-ber invoke=%u deletable tag=%s constructed=%u number=%u value=%u\n",
+        (unsigned)invoke_id,
+        server_runtime_ber_tag_class_label(deletable_element.tag.tag_class),
+        (unsigned)deletable_element.tag.constructed,
+        (unsigned)deletable_element.tag.tag_number,
+        deletable_element.value_length > 0U && deletable_element.value_bytes[0] != 0U ? 1U : 0U);
+
+    unitlab_mms_ber_element_init(&list_of_variable_element);
+    if (!unitlab_mms_ber_read(&list_of_variable_element, &service_element.value_bytes[consumed_length], service_element.value_length - consumed_length, &response_consumed_length, diagnostic)) {
+        printf("native-wire-server: gnvla-ber invoke=%u decode-failed-at-listOfVariable\n", (unsigned)invoke_id);
+        fflush(stdout);
+        return;
+    }
+    printf(
+        "native-wire-server: gnvla-ber invoke=%u listOfVariable tag=%s constructed=%u number=%u length=%zu\n",
+        (unsigned)invoke_id,
+        server_runtime_ber_tag_class_label(list_of_variable_element.tag.tag_class),
+        (unsigned)list_of_variable_element.tag.constructed,
+        (unsigned)list_of_variable_element.tag.tag_number,
+        list_of_variable_element.value_length);
+
+    while (offset < list_of_variable_element.value_length) {
+        unitlab_mms_ber_element_init(&member);
+        if (!unitlab_mms_ber_read(&member, &list_of_variable_element.value_bytes[offset], list_of_variable_element.value_length - offset, &member_consumed_length, diagnostic)) {
+            printf("native-wire-server: gnvla-ber invoke=%u member[%zu] decode-failed\n", (unsigned)invoke_id, member_index);
+            fflush(stdout);
+            return;
+        }
+        server_runtime_log_get_named_variable_list_attributes_member_tree(
+            member_index,
+            &list_of_variable_element.value_bytes[offset],
+            member_consumed_length,
+            diagnostic);
+        offset += member_consumed_length;
+        member_index++;
+    }
+}
+
 static int server_runtime_encode_named_variable_list_member(
     const char* domain_id,
     const char* item_id,
@@ -1803,6 +2010,7 @@ static int server_runtime_build_get_named_variable_list_attributes_response_serv
     }
     memcpy(buffer, service_bytes, total_length);
     *encoded_length = total_length;
+    server_runtime_log_get_named_variable_list_attributes_response_tree(invoke_id, service_bytes, total_length, diagnostic);
     {
         char summary[512U];
         size_t offset = 0U;
