@@ -123,9 +123,9 @@ static void test_cotp_connect_response_frame_smoke(void)
     UnitLabMmsDiagnostic diagnostic;
 
     unitlab_mms_diagnostic_clear(&diagnostic);
-    assert(unitlab_mms_build_cotp_connect_response_frame(frame, sizeof(frame), &frame_length, &diagnostic) == 1);
+    assert(unitlab_mms_build_cotp_connect_response_frame((const uint8_t[]){ 0xC0U, 0x01U, 0x0DU, 0xC2U, 0x02U, 0x00U, 0x01U, 0xC1U, 0x02U, 0x00U, 0x01U }, 11U, frame, sizeof(frame), &frame_length, &diagnostic) == 1);
     assert(frame_length == 22U);
-    assert(memcmp(frame, (const uint8_t[]){ 0x03U, 0x00U, 0x00U, 0x16U, 0x11U, 0xD0U, 0x00U, 0x01U, 0x00U, 0x01U, 0x00U, 0xC0U, 0x01U, 0x0DU, 0xC2U, 0x02U, 0x00U, 0x01U, 0xC1U, 0x02U, 0x00U, 0x01U }, frame_length) == 0);
+    assert(memcmp(frame, (const uint8_t[]){ 0x03U, 0x00U, 0x00U, 0x16U, 0x11U, 0xD0U, 0x00U, 0x01U, 0x00U, 0x01U, 0x00U, 0xC0U, 0x01U, 0x0AU, 0xC2U, 0x02U, 0x00U, 0x01U, 0xC1U, 0x02U, 0x00U, 0x01U }, frame_length) == 0);
     unitlab_mms_transport_frame_init(&decoded_frame);
     assert(unitlab_mms_transport_frame_decode(&decoded_frame, frame, frame_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == frame_length);
@@ -134,7 +134,7 @@ static void test_cotp_connect_response_frame_smoke(void)
     assert(decoded_frame.cotp.source_reference == 1U);
     assert(decoded_frame.cotp.tpdu_class == 0U);
     assert(decoded_frame.cotp.user_data_length == 11U);
-    assert(memcmp(decoded_frame.cotp.user_data, (const uint8_t[]){ 0xC0U, 0x01U, 0x0DU, 0xC2U, 0x02U, 0x00U, 0x01U, 0xC1U, 0x02U, 0x00U, 0x01U }, 11U) == 0);
+    assert(memcmp(decoded_frame.cotp.user_data, (const uint8_t[]){ 0xC0U, 0x01U, 0x0AU, 0xC2U, 0x02U, 0x00U, 0x01U, 0xC1U, 0x02U, 0x00U, 0x01U }, 11U) == 0);
 }
 static void test_transport_frame_roundtrip(void)
 {

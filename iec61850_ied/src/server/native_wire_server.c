@@ -626,7 +626,7 @@ int unitlab_run_native_wire_server(
                     unitlab_mms_transport_frame_init(&incoming_transport);
                     if (unitlab_mms_transport_frame_decode(&incoming_transport, incoming, (size_t)received, &consumed_length, &response_diagnostic)
                         && incoming_transport.cotp.kind == UNITLAB_MMS_COTP_TPDU_CR) {
-                        if (!unitlab_mms_build_cotp_connect_response_frame(response_frame, sizeof(response_frame), &response_length, &response_diagnostic)) {
+                        if (!unitlab_mms_build_cotp_connect_response_frame(incoming_transport.cotp.user_data, incoming_transport.cotp.user_data_length, response_frame, sizeof(response_frame), &response_length, &response_diagnostic)) {
                             set_result(result, "NATIVE_WIRE_SERVER_COTP_CC_BUILD_FAILED", response_diagnostic.message);
                             goto fail;
                         }

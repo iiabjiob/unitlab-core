@@ -52,6 +52,8 @@ int unitlab_mms_build_cotp_connect_request_frame(
     UnitLabMmsDiagnostic* diagnostic);
 
 int unitlab_mms_build_cotp_connect_response_frame(
+    const uint8_t* request_parameters,
+    size_t request_parameters_length,
     uint8_t* buffer,
     size_t buffer_length,
     size_t* encoded_length,
