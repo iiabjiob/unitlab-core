@@ -33,6 +33,11 @@ typedef struct UnitLabMmsServerRuntime {
     char read_response_value[128];
     size_t read_response_value_length;
     int has_read_response_value;
+    uint32_t last_incoming_invoke_id;
+    char last_incoming_service[64];
+    uint32_t last_outgoing_invoke_id;
+    char last_outgoing_service[64];
+    char last_outgoing_summary[512];
     UnitLabIec61850ReportControl report_control;
     UnitLabMmsTransportExchange transport;
     UnitLabMmsOperationResult last_result;

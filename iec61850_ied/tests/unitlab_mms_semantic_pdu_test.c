@@ -3,6 +3,7 @@
 #include "wire/mms/unitlab_mms_pdu.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
 static void test_defaults(void)
@@ -563,8 +564,24 @@ static void test_wire_pdu_bridge_get_named_variable_list_attributes_requests(voi
         assert(strcmp(result.pdu.object_reference, cases[index].object_reference) == 0);
         assert(strcmp(result.pdu.attribute_reference, cases[index].attribute_reference) == 0);
         assert(result.diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
+
+        printf(
+            "GET_NAMED_VARIABLE_LIST_ATTRIBUTES invokeId=%u serviceTag=0x%02X objectName=%s rawMmsPduHex=",
+            (unsigned)result.pdu.invoke_id,
+            0xACU,
+            result.pdu.object_reference);
+        for (size_t byte_index = 0U; byte_index < cases[index].length; byte_index++) {
+            printf("%02X", cases[index].bytes[byte_index]);
+        }
+        printf(
+            " hierarchy=[INTEGER invokeId=%u][CONTEXT-SPECIFIC 0xAC GetNamedVariableListAttributes][%s][domain=%s][item=%s]\n",
+            (unsigned)result.pdu.invoke_id,
+            cases[index].domain_id[0] == '\0' ? "VMD-specific [0]" : "domain-specific [1]",
+            cases[index].domain_id[0] == '\0' ? "<none>" : cases[index].domain_id,
+            cases[index].item_id);
     }
 }
+
 
 static void test_wire_pdu_bridge_get_name_list_response(void)
 {

@@ -35,6 +35,21 @@ static void close_fd(int* fd)
     close(*fd);
     *fd = -1;
 }
+static void log_native_wire_disconnect(const UnitLabMmsServerRuntime* server_runtime, const char* reason)
+{
+    if (server_runtime == NULL) {
+        return;
+    }
+    printf(
+        "native-wire-server: %s last-invoke=%u last-incoming-service=%s last-outgoing-service=%s last-outgoing-summary=%s\n",
+        reason != NULL && reason[0] != '\0' ? reason : "client-disconnected",
+        (unsigned)server_runtime->last_incoming_invoke_id,
+        server_runtime->last_incoming_service[0] != '\0' ? server_runtime->last_incoming_service : "<none>",
+        server_runtime->last_outgoing_service[0] != '\0' ? server_runtime->last_outgoing_service : "<none>",
+        server_runtime->last_outgoing_summary[0] != '\0' ? server_runtime->last_outgoing_summary : "<none>");
+    fflush(stdout);
+}
+
 static int send_all(int fd, const uint8_t* buffer, size_t length)
 {
     size_t offset = 0U;
@@ -246,6 +261,11 @@ static void reset_native_wire_runtime_state(UnitLabMmsServerRuntime* server_runt
     unitlab_mms_pending_request_init(&server_runtime->pending_request);
     unitlab_mms_transport_exchange_init(&server_runtime->transport);
     unitlab_mms_pdu_init(&server_runtime->last_wire_pdu);
+    server_runtime->last_incoming_invoke_id = 0U;
+    server_runtime->last_incoming_service[0] = '\0';
+    server_runtime->last_outgoing_invoke_id = 0U;
+    server_runtime->last_outgoing_service[0] = '\0';
+    server_runtime->last_outgoing_summary[0] = '\0';
     unitlab_mms_server_runtime_capture_snapshot(server_runtime);
     printf("native-wire-server: runtime-reset session-state=%u pending-state=%u transport-invoke=%u\n", (unsigned)server_runtime->session.state, (unsigned)server_runtime->pending_request.state, (unsigned)server_runtime->transport.invoke_id);
     fflush(stdout);
@@ -587,8 +607,7 @@ int unitlab_run_native_wire_server(
                 uint8_t incoming[4096U];
                 ssize_t received = recv(data_client_fd, incoming, sizeof(incoming), 0);
                 if (received <= 0) {
-                    printf("native-wire-server: data-client-disconnected\n");
-                    fflush(stdout);
+                    log_native_wire_disconnect(server_runtime, "data-client-disconnected");
                     close_fd(&data_client_fd);
                     close_fd(&control_client_fd);
                     reset_native_wire_runtime_state(server_runtime);
@@ -743,8 +762,7 @@ int unitlab_run_native_wire_server(
             if (control_client_fd >= 0 && poll_fds[index].fd == control_client_fd) {
                 char command[128U];
                 if (!read_command_from_socket(control_client_fd, command, sizeof(command))) {
-                    printf("native-wire-server: control-client-disconnected\n");
-                    fflush(stdout);
+                    log_native_wire_disconnect(server_runtime, "control-client-disconnected");
                     close_fd(&control_client_fd);
                     close_fd(&data_client_fd);
                     reset_native_wire_runtime_state(server_runtime);

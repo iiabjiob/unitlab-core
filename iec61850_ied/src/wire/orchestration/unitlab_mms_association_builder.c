@@ -223,6 +223,7 @@ static int wire_builder_build_initiate_response_detail(const UnitLabMmsInitiateR
     }
     {
         size_t offset = 0U;
+
         if (!wire_builder_append_bytes(buffer, buffer_length, &offset, max_pdu_size_field, max_pdu_size_length, diagnostic)) {
             return 0;
         }
@@ -446,8 +447,6 @@ static int wire_builder_build_association_accept_presentation(
     size_t normal_mode_parameters_content_length = 0U;
     size_t normal_mode_parameters_length = 0U;
     size_t presentation_length = 0U;
-    size_t offset = 0U;
-
     if (encoded_length != NULL) {
         *encoded_length = 0U;
     }

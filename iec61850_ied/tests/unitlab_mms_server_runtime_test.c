@@ -8,6 +8,8 @@
 #include "wire/transport/unitlab_mms_transport_frame.h"
 #include "wire/session/unitlab_mms_session_spdu.h"
 #include "wire/orchestration/unitlab_mms_wire_builder.h"
+#include "protocols/mms/unitlab_mms_semantic_pdu.h"
+#include "protocols/mms/unitlab_mms_wire_semantic_bridge.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -48,6 +50,86 @@ static void assert_ber_tag(const UnitLabMmsBerElement* element, UnitLabMmsBerTag
     assert(element->tag.tag_class == tag_class);
     assert(element->tag.constructed == constructed);
     assert(element->tag.tag_number == tag_number);
+}
+
+static void assert_named_variable_list_attributes_member(const UnitLabMmsBerElement* member, const char* expected_domain, const char* expected_item)
+{
+    UnitLabMmsBerElement variable_spec;
+    UnitLabMmsBerElement object_name;
+    UnitLabMmsBerElement child;
+    UnitLabMmsDiagnostic diagnostic;
+    size_t consumed_length = 0U;
+    size_t child_consumed_length = 0U;
+    size_t offset = 0U;
+
+    assert(member != NULL);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert_ber_tag(member, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 1, 16U);
+
+    unitlab_mms_ber_element_init(&variable_spec);
+    assert(unitlab_mms_ber_read(&variable_spec, member->value_bytes, member->value_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == member->value_length);
+    assert_ber_tag(&variable_spec, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 0U);
+
+    unitlab_mms_ber_element_init(&object_name);
+    assert(unitlab_mms_ber_read(&object_name, variable_spec.value_bytes, variable_spec.value_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == variable_spec.value_length);
+    assert_ber_tag(&object_name, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
+
+    unitlab_mms_ber_element_init(&child);
+    assert(unitlab_mms_ber_read(&child, object_name.value_bytes, object_name.value_length, &child_consumed_length, &diagnostic) == 1);
+    assert_ber_tag(&child, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 0, 26U);
+    assert(child.value_length >= strlen(expected_domain));
+    assert(contains_bytes(child.value_bytes, child.value_length, (const uint8_t*)expected_domain, strlen(expected_domain)) == 1);
+    offset += child_consumed_length;
+
+    unitlab_mms_ber_element_init(&child);
+    assert(unitlab_mms_ber_read(&child, &object_name.value_bytes[offset], object_name.value_length - offset, &child_consumed_length, &diagnostic) == 1);
+    assert_ber_tag(&child, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 0, 26U);
+    assert(child.value_length >= strlen(expected_item));
+    assert(contains_bytes(child.value_bytes, child.value_length, (const uint8_t*)expected_item, strlen(expected_item)) == 1);
+    offset += child_consumed_length;
+    assert(offset == object_name.value_length);
+}
+
+static void assert_named_variable_list_attributes_response_shape(const UnitLabMmsPdu* response_pdu, const char* expected_member_token_0, const char* expected_member_token_1, size_t expected_member_token_count)
+{
+    UnitLabMmsBerElement deletable_element;
+    UnitLabMmsBerElement list_of_variable_element;
+    UnitLabMmsBerElement member;
+    UnitLabMmsDiagnostic diagnostic;
+    size_t consumed_length = 0U;
+    size_t member_consumed_length = 0U;
+    size_t offset = 0U;
+
+    assert(response_pdu != NULL);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    unitlab_mms_ber_element_init(&deletable_element);
+    assert(unitlab_mms_ber_read(&deletable_element, response_pdu->service_bytes, response_pdu->service_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length <= response_pdu->service_length);
+    assert_ber_tag(&deletable_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 0U);
+    assert(deletable_element.value_length == 1U);
+    assert(deletable_element.value_bytes[0] == 0x00U);
+
+    unitlab_mms_ber_element_init(&list_of_variable_element);
+    assert(unitlab_mms_ber_read(&list_of_variable_element, &response_pdu->service_bytes[consumed_length], response_pdu->service_length - consumed_length, &consumed_length, &diagnostic) == 1);
+    assert_ber_tag(&list_of_variable_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
+
+    unitlab_mms_ber_element_init(&member);
+    assert(unitlab_mms_ber_read(&member, list_of_variable_element.value_bytes, list_of_variable_element.value_length, &member_consumed_length, &diagnostic) == 1);
+    assert(member_consumed_length > 0U);
+    assert_named_variable_list_attributes_member(&member, "LD0", expected_member_token_0);
+    offset += member_consumed_length;
+
+    if (expected_member_token_count > 1U) {
+        unitlab_mms_ber_element_init(&member);
+        assert(unitlab_mms_ber_read(&member, &list_of_variable_element.value_bytes[offset], list_of_variable_element.value_length - offset, &member_consumed_length, &diagnostic) == 1);
+        assert(member_consumed_length > 0U);
+        assert_named_variable_list_attributes_member(&member, "LD0", expected_member_token_1);
+        offset += member_consumed_length;
+    }
+    assert(offset == list_of_variable_element.value_length);
 }
 
 static int build_get_name_list_request_association_bytes(const uint8_t* request_body_bytes, size_t request_body_length, uint32_t invoke_id, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
@@ -663,12 +745,35 @@ static void test_server_runtime_apply_direct_read_request_and_build_response_rou
 
     {
         UnitLabMmsAssociationFrame response_frame;
+        UnitLabMmsPdu decoded_response_pdu;
+        size_t response_pdu_consumed_length = 0U;
 
         unitlab_mms_association_frame_init(&response_frame);
         assert(unitlab_mms_association_frame_decode(&response_frame, response_bytes, response_length, &response_consumed_length, &diagnostic));
         assert(response_consumed_length == response_length);
+        assert(response_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
         assert(response_frame.presentation.payload_length > 0U);
         assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, (const uint8_t*)"LD0", strlen("LD0")) == 1);
+
+        {
+            static const uint8_t expected_payload_bytes[] = {
+                0x02U, 0x01U, 0x0AU, 0xA4U, 0x09U, 0xA1U, 0x07U, 0xA0U, 0x05U, 0x8AU, 0x03U, 'L', 'D', '0'
+            };
+
+            assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, expected_payload_bytes, sizeof(expected_payload_bytes)) == 1);
+        }
+
+        unitlab_mms_pdu_init(&decoded_response_pdu);
+        assert(unitlab_mms_pdu_decode(&decoded_response_pdu, response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, &response_pdu_consumed_length, &diagnostic));
+        assert(response_pdu_consumed_length == response_frame.presentation.payload_length);
+        assert(decoded_response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
+        assert(decoded_response_pdu.has_invoke_id == 1);
+        assert(decoded_response_pdu.invoke_id == 10U);
+        assert(decoded_response_pdu.has_service == 1);
+        assert(decoded_response_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
+        assert(decoded_response_pdu.pdu_length > 0U);
+        assert(decoded_response_pdu.pdu_bytes[0] == 0x02U);
+        assert(decoded_response_pdu.pdu_bytes[3] == 0xA4U);
     }
 }
 
@@ -1876,6 +1981,27 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
         assert(response_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
         assert(response_pdu.service_tag.constructed == 1);
         assert(response_pdu.service_tag.tag_number == 12U);
+        assert(response_pdu.service_length > 0U);
+
+        {
+            UnitLabMmsSemanticResult semantic_result;
+            UnitLabMmsDecodeDiagnostic bridge_diagnostic;
+
+            unitlab_mms_semantic_result_init(&semantic_result);
+            unitlab_mms_decode_diagnostic_init(&bridge_diagnostic);
+            assert(unitlab_mms_semantic_result_from_wire_pdu(&semantic_result, &response_pdu, &bridge_diagnostic) == 1);
+            assert(semantic_result.ok == 1);
+            assert(semantic_result.outcome == UNITLAB_MMS_SERVICE_OUTCOME_SUCCESS);
+            assert(semantic_result.pdu.kind == UNITLAB_MMS_DECODED_PDU_GET_NAMED_VARIABLE_LIST_ATTRIBUTES_RESPONSE);
+            assert(semantic_result.pdu.invoke_id == cases[index].invoke_id);
+            assert(bridge_diagnostic.classification == UNITLAB_MMS_DECODE_CLASSIFICATION_NONE);
+        }
+
+        assert_named_variable_list_attributes_response_shape(
+            &response_pdu,
+            cases[index].expected_member_token_0,
+            cases[index].expected_member_token_1,
+            cases[index].expected_member_token_count);
         assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)cases[index].expected_member_token_0, strlen(cases[index].expected_member_token_0)) == 1);
         if (cases[index].expected_member_token_count > 1U) {
             assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)cases[index].expected_member_token_1, strlen(cases[index].expected_member_token_1)) == 1);
