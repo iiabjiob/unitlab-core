@@ -720,20 +720,6 @@ static int append_unique_metadata_name(char*** names, size_t* count, const char*
     return append_metadata_name(names, count, name);
 }
 
-static const char* strip_domain_prefix(const char* name)
-{
-    const char* slash;
-
-    if (name == NULL) {
-        return NULL;
-    }
-    slash = strchr(name, '/');
-    if (slash == NULL || slash[1] == '\0') {
-        return name;
-    }
-    return slash + 1U;
-}
-
 int unitlab_collect_ied_model_logical_devices(
     const UnitLabIedModelPlan* plan,
     char*** names,
@@ -923,25 +909,6 @@ int unitlab_collect_ied_model_logical_device_variables(
         }
     }
 
-    for (size_t signal_index = 0U; signal_index < plan->signal_count; signal_index++) {
-        const UnitLabIedModelSignal* signal = &plan->signals[signal_index];
-        const char* browse_name;
-
-        if (strcmp(signal->logical_device_inst, logical_device_inst) != 0) {
-            continue;
-        }
-        browse_name = strip_domain_prefix(signal->data_set_entry_variable);
-        if (browse_name == NULL || browse_name[0] == '\0') {
-            continue;
-        }
-        if (!append_unique_metadata_name(names, count, browse_name)) {
-            unitlab_free_ied_model_name_list(*names, *count);
-            *names = NULL;
-            *count = 0U;
-            set_error(error, error_size, "OUT_OF_MEMORY: cannot collect NamedVariables.");
-            return 0;
-        }
-    }
     return 1;
 }
 

@@ -231,25 +231,12 @@ static int test_collects_named_variables_for_domain_browse(void)
         unitlab_collect_ied_model_logical_device_variables(&plan, "LD0", &names, &count, error, sizeof(error)) == 1,
         "domain browse should collect named variables");
     if (passed) {
-        int saw_lln0 = 0;
-        int saw_xcbr1 = 0;
-        int saw_pggio1 = 0;
-
-        for (size_t index = 0U; index < count; index++) {
-            if (strcmp(names[index], "LLN0") == 0) {
-                saw_lln0 = 1;
-            }
-            if (strcmp(names[index], "XCBR1$ST$Pos$stVal") == 0) {
-                saw_xcbr1 = 1;
-            }
-            if (strcmp(names[index], "PGGIO1$ST$Ind1") == 0) {
-                saw_pggio1 = 1;
-            }
-        }
-        passed &= expect_true(count >= 3U, "domain browse should collect logical nodes and variables");
-        passed &= expect_true(saw_lln0, "domain browse should include LLN0");
-        passed &= expect_true(saw_xcbr1, "domain browse should include XCBR1 named variable");
-        passed &= expect_true(saw_pggio1, "domain browse should include PGGIO1 named variable");
+        passed &= expect_list_matches(
+            names,
+            count,
+            (const char*[]){ "LLN0", "XCBR1", "PGGIO1" },
+            3U,
+            "domain browse should collect only top-level logical nodes");
     }
 
     unitlab_free_ied_model_name_list(names, count);
