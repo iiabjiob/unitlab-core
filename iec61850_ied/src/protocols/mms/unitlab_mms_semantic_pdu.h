@@ -19,6 +19,8 @@ typedef enum UnitLabMmsServiceOutcome {
     UNITLAB_MMS_SERVICE_OUTCOME_ERROR = 3
 } UnitLabMmsServiceOutcome;
 
+enum { UNITLAB_MMS_MAX_READ_VARIABLES = 16 };
+
 typedef enum UnitLabMmsDecodedPduKind {
     UNITLAB_MMS_DECODED_PDU_NONE = 0,
     UNITLAB_MMS_DECODED_PDU_ASSOCIATE_REQUEST = 1,
@@ -48,6 +50,9 @@ typedef struct UnitLabMmsDecodedPdu {
     uint64_t deadline_ms;
     char object_reference[128];
     char attribute_reference[64];
+    char read_object_references[UNITLAB_MMS_MAX_READ_VARIABLES][128];
+    char read_attribute_references[UNITLAB_MMS_MAX_READ_VARIABLES][64];
+    size_t read_object_reference_count;
     char report_control_reference[128];
     char data_set_reference[128];
     uint32_t object_class;

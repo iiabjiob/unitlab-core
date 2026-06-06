@@ -49,6 +49,9 @@ typedef struct UnitLabMmsPendingRequest {
     int completed;
     char object_reference[128];
     char attribute_reference[64];
+    char read_object_references[UNITLAB_MMS_MAX_READ_VARIABLES][128];
+    char read_attribute_references[UNITLAB_MMS_MAX_READ_VARIABLES][64];
+    size_t read_object_reference_count;
     uint32_t browse_object_class;
     uint32_t browse_object_scope;
     char browse_domain_id[128];

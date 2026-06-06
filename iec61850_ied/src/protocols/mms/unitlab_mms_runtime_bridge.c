@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "protocols/mms/unitlab_mms_runtime_bridge.h"
 
 int unitlab_mms_runtime_apply_wire_pdu_with_report_control(UnitLabMmsSession* session, UnitLabMmsPendingRequest* pending_request, UnitLabIec61850ReportControl* report_control, const UnitLabMmsPdu* wire_pdu, UnitLabMmsOperationResult* operation_result)
@@ -31,6 +32,16 @@ int unitlab_mms_runtime_apply_wire_pdu_with_report_control(UnitLabMmsSession* se
 
     if (!unitlab_mms_runtime_apply_semantic_result(session, pending_request, &semantic_result, operation_result)) {
         return 0;
+    }
+    if (operation_result != NULL && operation_result->ok && pending_request != NULL && semantic_result.pdu.kind == UNITLAB_MMS_DECODED_PDU_READ_REQUEST) {
+        pending_request->read_object_reference_count = semantic_result.pdu.read_object_reference_count;
+        if (pending_request->read_object_reference_count > UNITLAB_MMS_MAX_READ_VARIABLES) {
+            pending_request->read_object_reference_count = UNITLAB_MMS_MAX_READ_VARIABLES;
+        }
+        for (size_t index = 0U; index < pending_request->read_object_reference_count; index++) {
+            snprintf(pending_request->read_object_references[index], sizeof(pending_request->read_object_references[index]), "%s", semantic_result.pdu.read_object_references[index]);
+            snprintf(pending_request->read_attribute_references[index], sizeof(pending_request->read_attribute_references[index]), "%s", semantic_result.pdu.read_attribute_references[index]);
+        }
     }
     return 1;
 }

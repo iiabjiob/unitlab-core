@@ -2402,15 +2402,13 @@ static int server_runtime_build_read_response_value(
         return 1;
     }
 
-    value_single[0] = 0x09U;
-    value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-    value_element.tag.constructed = 0;
-    value_element.tag.tag_number = 10U;
-    value_element.value_bytes = value_single;
-    value_element.value_length = 1U;
-    if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
+    if (buffer_length < 1U) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "DataAccessError encoding buffer is too small.");
         return 0;
     }
+    value_single[0] = 0x09U;
+    buffer[0] = value_single[0];
+    *encoded_length = 1U;
     *value_supported = 0;
     return 1;
 }
@@ -2429,7 +2427,6 @@ static int server_runtime_build_read_response_service(
     uint8_t read_response_body_bytes[224U];
     uint8_t service_bytes[256U];
     uint8_t invoke_id_element_bytes[16U];
-    uint8_t value_single[1U];
     char domain_id[128U];
     char item_id[128U];
     size_t value_length = 0U;
@@ -2474,50 +2471,61 @@ static int server_runtime_build_read_response_service(
     }
     fflush(stdout);
 
-    if (!server_runtime_build_read_response_value(
-            server_runtime,
-            server_runtime->pending_request.object_reference,
-            value_bytes,
-            sizeof(value_bytes),
-            &value_length,
-            &value_supported,
-            diagnostic)) {
-        return 0;
+    size_t read_object_reference_count = server_runtime->pending_request.read_object_reference_count;
+
+    if (read_object_reference_count == 0U) {
+        read_object_reference_count = 1U;
     }
-    if (!value_supported) {
-        printf(
-            "native-wire-server: read target unsupported invoke=%u object=%s target=%s\n",
-            (unsigned)invoke_id,
-            server_runtime->pending_request.object_reference[0] != '\0' ? server_runtime->pending_request.object_reference : "<none>",
-            read_target != NULL && read_target[0] != '\0' ? read_target : "<none>");
-        fflush(stdout);
-        if (!server_runtime_encode_ber_element(
-                UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
-                0,
-                0U,
-                value_single,
-                1U,
-                access_result_value_bytes,
-                sizeof(access_result_value_bytes),
-                &access_result_value_length,
+    for (size_t index = 0U; index < read_object_reference_count; index++) {
+        const char* current_object_reference = index < server_runtime->pending_request.read_object_reference_count && server_runtime->pending_request.read_object_references[index][0] != '\0'
+            ? server_runtime->pending_request.read_object_references[index]
+            : server_runtime->pending_request.object_reference;
+        const char* current_attribute_reference = index < server_runtime->pending_request.read_object_reference_count && server_runtime->pending_request.read_attribute_references[index][0] != '\0'
+            ? server_runtime->pending_request.read_attribute_references[index]
+            : server_runtime->pending_request.attribute_reference;
+
+        if (!server_runtime_build_read_response_value(
+                server_runtime,
+                current_object_reference,
+                value_bytes,
+                sizeof(value_bytes),
+                &value_length,
+                &value_supported,
                 diagnostic)) {
             return 0;
         }
-    } else {
-        access_result_value_length = value_length;
-        memcpy(access_result_value_bytes, value_bytes, value_length);
-    }
-    if (!server_runtime_encode_ber_element(
-            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
-            1,
-            1U,
-            access_result_value_bytes,
-            access_result_value_length,
-            list_of_access_result_bytes,
-            sizeof(list_of_access_result_bytes),
-            &list_of_access_result_length,
-            diagnostic)) {
-        return 0;
+        if (index == 0U) {
+            server_runtime_store_read_summary(server_runtime, invoke_id, value_supported, value_bytes, value_length);
+        }
+        if (!value_supported) {
+            printf(
+                "native-wire-server: read target unsupported invoke=%u object=%s target=%s\n",
+                (unsigned)invoke_id,
+                current_object_reference[0] != '\0' ? current_object_reference : "<none>",
+                current_attribute_reference != NULL && current_attribute_reference[0] != '\0' ? current_attribute_reference : "<none>");
+            fflush(stdout);
+            if (!server_runtime_encode_ber_element(
+                    UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                    0,
+                    0U,
+                    value_bytes,
+                    value_length,
+                    access_result_value_bytes,
+                    sizeof(access_result_value_bytes),
+                    &access_result_value_length,
+                    diagnostic)) {
+                return 0;
+            }
+        } else {
+            access_result_value_length = value_length;
+            memcpy(access_result_value_bytes, value_bytes, value_length);
+        }
+        if (list_of_access_result_length + access_result_value_length > sizeof(list_of_access_result_bytes)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Read response accessResult list is too small.");
+            return 0;
+        }
+        memcpy(&list_of_access_result_bytes[list_of_access_result_length], access_result_value_bytes, access_result_value_length);
+        list_of_access_result_length += access_result_value_length;
     }
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
@@ -2531,7 +2539,6 @@ static int server_runtime_build_read_response_service(
             diagnostic)) {
         return 0;
     }
-
     if (!server_runtime_encode_invoke_id_element(
             invoke_id,
             invoke_id_element_bytes,
