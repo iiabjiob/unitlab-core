@@ -778,7 +778,7 @@ static const char* const lln0_cf_mod_children[] = { "ctlModel" };
 static const char* const lln0_dc_children[] = { "NamPlt" };
 static const char* const lln0_br_children[] = { "LLN0_Events_BuffRep01" };
 static const char* const lln0_ex_children[] = { "NamPlt" };
-static const char* const lln0_ex_namplt_children[] = { "ldNs" };
+static const char* const lln0_ex_namplt_children[] = { "ldNs", "lnNs", "cdcNs", "dataNs" };
 static const char* const lln0_namplt_children[] = { "vendor", "swRev", "d", "configRev" };
 
 
@@ -2231,7 +2231,7 @@ static int server_runtime_build_read_response_value(
 
     if (server_runtime_object_reference_has_suffix(object_reference, ".EX.NamPlt.ldNs")) {
         synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
-        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "IEC 61850-7-4:2007");
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "LD0");
         if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
             return 0;
         }

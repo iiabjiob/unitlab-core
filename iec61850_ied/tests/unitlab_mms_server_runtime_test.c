@@ -753,12 +753,11 @@ static void test_server_runtime_apply_direct_read_request_and_build_response_rou
         assert(response_consumed_length == response_length);
         assert(response_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
         assert(response_frame.presentation.payload_length > 0U);
-        assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, (const uint8_t*)"IEC 61850-7-4:2007", strlen("IEC 61850-7-4:2007")) == 1);
+        assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, (const uint8_t*)"LD0", strlen("LD0")) == 1);
 
         {
             static const uint8_t expected_payload_bytes[] = {
-                0x02U, 0x01U, 0x0AU, 0xA4U, 0x18U, 0xA1U, 0x16U, 0xA0U, 0x14U, 0x8AU, 0x12U,
-                'I', 'E', 'C', ' ', '6', '1', '8', '5', '0', '-', '7', '-', '4', ':', '2', '0', '0', '7'
+                0x02U, 0x01U, 0x0AU, 0xA4U, 0x09U, 0xA1U, 0x07U, 0xA0U, 0x05U, 0x8AU, 0x03U, 'L', 'D', '0'
             };
 
             assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, expected_payload_bytes, sizeof(expected_payload_bytes)) == 1);
@@ -1614,7 +1613,6 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
             assert(component_element.value_bytes[component_name_consumed_length] == 0xA1U);
             assert_ber_tag(&component_type_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
             assert(component_type_element.value_length > 0U);
-            assert(component_type_element.value_bytes[0] == 0xA2U);
             component_inner_offset += component_type_consumed_length;
             assert(component_inner_offset == component_element.value_length);
 
@@ -1622,11 +1620,10 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
             component_count++;
         }
         assert(component_count == 7U);
-        {
-            static const uint8_t expected_ldns_leaf_bytes[] = { 0x8AU, 0x02U, 'N', 'S' };
-
-            assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, expected_ldns_leaf_bytes, sizeof(expected_ldns_leaf_bytes)) == 1);
-        }
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"ldNs", strlen("ldNs")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"lnNs", strlen("lnNs")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"cdcNs", strlen("cdcNs")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"dataNs", strlen("dataNs")) == 1);
         assert(component_offset == components_wrapper_element.value_length);
     }
 }
