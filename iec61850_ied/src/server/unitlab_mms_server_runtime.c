@@ -777,7 +777,6 @@ static const char* const lln0_cf_children[] = { "Mod" };
 static const char* const lln0_cf_mod_children[] = { "ctlModel" };
 static const char* const lln0_dc_children[] = { "NamPlt" };
 static const char* const lln0_br_children[] = { "LLN0_Events_BuffRep01" };
-static const char* const lln0_br_report_children[] = { "RptID", "RptEna", "DatSet", "ConfRev", "OptFlds", "BufTm", "SqNum", "TrgOps", "IntgPd", "GI", "PurgeBuf", "EntryID", "TimeofEntry", "ResvTms" };
 static const char* const lln0_ex_children[] = { "NamPlt" };
 static const char* const lln0_ex_namplt_children[] = { "ldNs" };
 static const char* const lln0_namplt_children[] = { "vendor", "swRev", "d", "configRev" };
@@ -934,10 +933,6 @@ static const char* const* server_runtime_lookup_gva_children(
             *child_count = sizeof(lln0_dc_children) / sizeof(lln0_dc_children[0]);
             return lln0_dc_children;
         }
-        if (strcmp(component_name, "BR") == 0) {
-            *child_count = sizeof(lln0_br_children) / sizeof(lln0_br_children[0]);
-            return lln0_br_children;
-        }
         if (strcmp(component_name, "NamPlt") == 0) {
             *child_count = sizeof(lln0_namplt_children) / sizeof(lln0_namplt_children[0]);
             return lln0_namplt_children;
@@ -956,8 +951,8 @@ static const char* const* server_runtime_lookup_gva_children(
         return lln0_namplt_children;
     }
     else if (strcmp(parent_component_name, "BR") == 0 && strcmp(component_name, "LLN0_Events_BuffRep01") == 0) {
-        *child_count = sizeof(lln0_br_report_children) / sizeof(lln0_br_report_children[0]);
-        return lln0_br_report_children;
+        *child_count = sizeof(lln0_br_children) / sizeof(lln0_br_children[0]);
+        return lln0_br_children;
     }
     else if (strcmp(parent_component_name, "EX") == 0 && strcmp(component_name, "NamPlt") == 0) {
         *child_count = sizeof(lln0_ex_namplt_children) / sizeof(lln0_ex_namplt_children[0]);
