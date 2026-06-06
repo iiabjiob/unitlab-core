@@ -94,6 +94,19 @@ static int recv_exact(int fd, uint8_t* buffer, size_t length)
     return 1;
 }
 
+static int contains_bytes(const uint8_t* haystack, size_t haystack_length, const uint8_t* needle, size_t needle_length)
+{
+    if (haystack == NULL || needle == NULL || needle_length == 0U || haystack_length < needle_length) {
+        return 0;
+    }
+    for (size_t index = 0U; index + needle_length <= haystack_length; index++) {
+        if (memcmp(&haystack[index], needle, needle_length) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static int connect_with_retry(int port)
 {
     struct sockaddr_in address;
@@ -231,6 +244,59 @@ static void test_native_wire_server_speaks_reference_handshake(void)
     assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
 
     assert(decoded_fixture.presentation.payload_length > 0U);
+
+    {
+        uint8_t read_request[256U];
+        uint8_t read_request_2[256U];
+        uint8_t scratch[1024U];
+        uint8_t coalesced_requests[512U];
+        uint8_t response_a[1024U];
+        uint8_t response_b[1024U];
+        UnitLabMmsAssociationFrame response_fixture;
+        UnitLabMmsPdu decoded_response_pdu;
+        size_t read_request_length = 0U;
+        size_t read_request_2_length = 0U;
+        size_t coalesced_request_length = 0U;
+        size_t response_a_length = 0U;
+        size_t response_b_length = 0U;
+        size_t response_pdu_consumed_length = 0U;
+        size_t response_frame_consumed_length = 0U;
+
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        assert(unitlab_mms_build_read_request_frame("LD0", "LLN0$EX$NamPlt$ldNs", 10U, scratch, sizeof(scratch), read_request, sizeof(read_request), &read_request_length, &diagnostic));
+        assert(unitlab_mms_build_read_request_frame("LD0", "LLN0$DC$NamPlt$vendor", 11U, scratch, sizeof(scratch), read_request_2, sizeof(read_request_2), &read_request_2_length, &diagnostic));
+        assert(read_request_length + read_request_2_length <= sizeof(coalesced_requests));
+        memcpy(coalesced_requests, read_request, read_request_length);
+        memcpy(coalesced_requests + read_request_length, read_request_2, read_request_2_length);
+        coalesced_request_length = read_request_length + read_request_2_length;
+        assert(send_all(client_fd, coalesced_requests, coalesced_request_length));
+
+        assert(recv_exact(client_fd, response_a, 4U));
+        response_a_length = ((size_t)response_a[2] << 8U) | (size_t)response_a[3];
+        assert(response_a_length <= sizeof(response_a));
+        assert(recv_exact(client_fd, &response_a[4U], response_a_length - 4U));
+        assert(unitlab_mms_association_frame_decode(&response_fixture, response_a, response_a_length, &response_frame_consumed_length, &diagnostic));
+        assert(response_frame_consumed_length == response_a_length);
+        assert(unitlab_mms_pdu_decode(&decoded_response_pdu, response_fixture.presentation.payload_bytes, response_fixture.presentation.payload_length, &response_pdu_consumed_length, &diagnostic));
+        assert(response_pdu_consumed_length == response_fixture.presentation.payload_length);
+        assert(decoded_response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
+        assert(decoded_response_pdu.invoke_id == 10U);
+        assert(decoded_response_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
+
+        assert(recv_exact(client_fd, response_b, 4U));
+        response_b_length = ((size_t)response_b[2] << 8U) | (size_t)response_b[3];
+        assert(response_b_length <= sizeof(response_b));
+        assert(recv_exact(client_fd, &response_b[4U], response_b_length - 4U));
+        assert(unitlab_mms_association_frame_decode(&response_fixture, response_b, response_b_length, &response_frame_consumed_length, &diagnostic));
+        assert(response_frame_consumed_length == response_b_length);
+        assert(unitlab_mms_pdu_decode(&decoded_response_pdu, response_fixture.presentation.payload_bytes, response_fixture.presentation.payload_length, &response_pdu_consumed_length, &diagnostic));
+        assert(response_pdu_consumed_length == response_fixture.presentation.payload_length);
+        assert(decoded_response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
+        assert(decoded_response_pdu.invoke_id == 11U);
+        assert(decoded_response_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
+        assert(response_fixture.presentation.payload_length > 0U);
+        assert(contains_bytes(response_fixture.presentation.payload_bytes, response_fixture.presentation.payload_length, (const uint8_t*)"UnitLab", strlen("UnitLab")) == 1);
+    }
 
     close(client_fd);
     context.stop_requested = 1;
