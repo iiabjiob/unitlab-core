@@ -1622,6 +1622,11 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
             component_count++;
         }
         assert(component_count == 7U);
+        {
+            static const uint8_t expected_ldns_leaf_bytes[] = { 0x8AU, 0x02U, 'N', 'S' };
+
+            assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, expected_ldns_leaf_bytes, sizeof(expected_ldns_leaf_bytes)) == 1);
+        }
         assert(component_offset == components_wrapper_element.value_length);
     }
 }

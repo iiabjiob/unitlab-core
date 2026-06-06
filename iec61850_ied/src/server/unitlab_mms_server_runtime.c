@@ -835,6 +835,13 @@ static int server_runtime_encode_gva_leaf_type_spec(
         value_bytes = value_visible_2;
         value_length = sizeof(value_visible_2);
     }
+    else if (strcmp(component_name, "ldNs") == 0 || strcmp(component_name, "lnNs") == 0 || strcmp(component_name, "cdcNs") == 0 || strcmp(component_name, "dataNs") == 0) {
+        value_visible_2[0] = 0x4EU;
+        value_visible_2[1] = 0x53U;
+        tag_number = 10U;
+        value_bytes = value_visible_2;
+        value_length = sizeof(value_visible_2);
+    }
     else if (strcmp(component_name, "RptID") == 0 || strcmp(component_name, "DatSet") == 0) {
         value_visible_2[0] = 0xFFU;
         value_visible_2[1] = 0x7FU;
