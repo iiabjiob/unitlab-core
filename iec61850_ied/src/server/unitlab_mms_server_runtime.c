@@ -1203,6 +1203,48 @@ static int server_runtime_encode_report_control_block_value(
     uint8_t* buffer,
     size_t buffer_length,
     size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic);
+
+static int server_runtime_encode_report_control_block_container_value(
+    const char* data_set_reference,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t rcb_value_bytes[2048U];
+    size_t rcb_value_length = 0U;
+    UnitLabMmsBerElement structure_element;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Report control block container encoding requires a buffer and encoded_length.");
+        return 0;
+    }
+
+    if (!server_runtime_encode_report_control_block_value(data_set_reference, rcb_value_bytes, sizeof(rcb_value_bytes), &rcb_value_length, diagnostic)) {
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&structure_element);
+    structure_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    structure_element.tag.constructed = 1;
+    structure_element.tag.tag_number = 2U;
+    structure_element.value_bytes = rcb_value_bytes;
+    structure_element.value_length = rcb_value_length;
+    if (!unitlab_mms_ber_write(&structure_element, buffer, buffer_length, encoded_length, diagnostic)) {
+        return 0;
+    }
+    return 1;
+}
+
+static int server_runtime_encode_report_control_block_value(
+    const char* data_set_reference,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
     static const char* const report_control_block_fields[] = {
@@ -2921,6 +2963,13 @@ static int server_runtime_build_read_response_value(
     }
     if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents", ".BR.LLN0_Events_BuffRep01" }, 2U)) {
         if (!server_runtime_encode_report_control_block_value(rcb_data_set_reference, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".BR")) {
+        if (!server_runtime_encode_report_control_block_container_value(rcb_data_set_reference, buffer, buffer_length, encoded_length, diagnostic)) {
             return 0;
         }
         *value_supported = 1;

@@ -177,6 +177,56 @@ static void assert_read_response_success_rcb_structure(
     assert(contains_bytes(access_result_element.value_bytes, access_result_element.value_length, (const uint8_t*)"Owner", strlen("Owner")) == 0);
 }
 
+static void assert_read_response_success_br_container(
+    const uint8_t* response_bytes,
+    size_t response_length,
+    uint32_t expected_invoke_id)
+{
+    UnitLabMmsAssociationFrame response_frame;
+    UnitLabMmsPdu decoded_response_pdu;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement list_of_access_result_element;
+    UnitLabMmsBerElement access_result_element;
+    UnitLabMmsBerElement rcb_element;
+    size_t response_consumed_length = 0U;
+    size_t response_pdu_consumed_length = 0U;
+    size_t consumed_length = 0U;
+
+    assert(response_bytes != NULL);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+
+    unitlab_mms_association_frame_init(&response_frame);
+    assert(unitlab_mms_association_frame_decode(&response_frame, response_bytes, response_length, &response_consumed_length, &diagnostic) == 1);
+    assert(response_consumed_length == response_length);
+    assert(response_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
+
+    unitlab_mms_pdu_init(&decoded_response_pdu);
+    assert(unitlab_mms_pdu_decode(&decoded_response_pdu, response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, &response_pdu_consumed_length, &diagnostic) == 1);
+    assert(response_pdu_consumed_length == response_frame.presentation.payload_length);
+    assert(decoded_response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
+    assert(decoded_response_pdu.has_invoke_id == 1);
+    assert(decoded_response_pdu.invoke_id == expected_invoke_id);
+    assert(decoded_response_pdu.has_service == 1);
+    assert(decoded_response_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
+
+    unitlab_mms_ber_element_init(&list_of_access_result_element);
+    assert(unitlab_mms_ber_read(&list_of_access_result_element, decoded_response_pdu.service_bytes, decoded_response_pdu.service_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == decoded_response_pdu.service_length);
+    assert_ber_tag(&list_of_access_result_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
+
+    unitlab_mms_ber_element_init(&access_result_element);
+    assert(unitlab_mms_ber_read(&access_result_element, list_of_access_result_element.value_bytes, list_of_access_result_element.value_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == list_of_access_result_element.value_length);
+    assert_ber_tag(&access_result_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 2U);
+
+    unitlab_mms_ber_element_init(&rcb_element);
+    assert(unitlab_mms_ber_read(&rcb_element, access_result_element.value_bytes, access_result_element.value_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == access_result_element.value_length);
+    assert_ber_tag(&rcb_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 2U);
+    assert(contains_bytes(rcb_element.value_bytes, rcb_element.value_length, (const uint8_t*)"IED1LD0/LLN0.BR.Events", strlen("IED1LD0/LLN0.BR.Events")) == 1);
+    assert(contains_bytes(rcb_element.value_bytes, rcb_element.value_length, (const uint8_t*)"IED1LD0/LLN0$dsEvents", strlen("IED1LD0/LLN0$dsEvents")) == 1);
+}
+
 static void assert_read_response_list_of_access_results_count(const uint8_t* response_bytes, size_t response_length, uint32_t expected_invoke_id, size_t expected_result_count, const char* const* expected_values)
 {
     UnitLabMmsAssociationFrame response_frame;
@@ -1217,6 +1267,57 @@ static void test_server_runtime_apply_iedscout_buffered_report_control_block_rea
 }
 
 
+
+static void test_server_runtime_apply_iedscout_buffered_report_control_block_container_read_builds_response(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    UnitLabIedModelLogicalDevice logical_device;
+    UnitLabIedModelPlan model_plan;
+    uint8_t association_bytes[256U];
+    uint8_t read_wire_bytes[256U];
+    uint8_t response_bytes[1024U];
+    size_t association_length = 0U;
+    size_t read_wire_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+
+    memset(&logical_device, 0, sizeof(logical_device));
+    memset(&model_plan, 0, sizeof(model_plan));
+    snprintf(logical_device.inst, sizeof(logical_device.inst), "%s", "IED1LD0");
+    model_plan.logical_device_count = 1U;
+    model_plan.logical_devices = &logical_device;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &model_plan) == 1);
+    assert(build_initiate_request_association_bytes(association_bytes, sizeof(association_bytes), &association_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_association_request_bytes(&server_runtime, association_bytes, association_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, server_runtime.session.active_invoke_id, &diagnostic));
+
+    assert(build_model_read_request_association_bytes("LD0$LLN0$BR", 15U, read_wire_bytes, sizeof(read_wire_bytes), &read_wire_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, read_wire_bytes, read_wire_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(consumed_length == read_wire_length);
+    assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_READ);
+    assert(server_runtime.pending_request.invoke_id == 15U);
+    assert(strcmp(server_runtime.pending_request.object_reference, "LD0.LLN0.BR") == 0);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+    assert_read_response_success_br_container(response_bytes, response_length, 15U);
+}
 
 static void test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results(void)
 {
@@ -2716,6 +2817,7 @@ int main(void)
     test_server_runtime_apply_direct_read_request_and_build_response_roundtrips();
     test_server_runtime_apply_iedscout_namespace_multi_read_builds_response();
     test_server_runtime_apply_iedscout_buffered_report_control_block_read_builds_response();
+    test_server_runtime_apply_iedscout_buffered_report_control_block_container_read_builds_response();
     test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results();
     test_server_runtime_build_read_failure_uses_data_access_error_access_result();
     test_server_runtime_build_brcb_gva_response_exposes_fields();
