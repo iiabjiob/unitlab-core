@@ -109,21 +109,22 @@ static void assert_read_response_success_visible_string(const uint8_t* response_
     assert(contains_bytes(data_element.value_bytes, data_element.value_length, (const uint8_t*)expected_value, strlen(expected_value)) == 1);
 }
 
-static void assert_read_response_success_structure_prefix(
+static void assert_read_response_success_rcb_structure(
     const uint8_t* response_bytes,
     size_t response_length,
-    uint32_t expected_invoke_id,
-    const char* expected_value_0,
-    const char* expected_value_2,
-    size_t expected_member_count)
+    uint32_t expected_invoke_id)
 {
+    static const uint32_t expected_tags[] = { 10U, 3U, 10U, 6U, 4U, 6U, 6U, 4U, 6U, 3U, 3U, 9U, 12U, 5U };
     UnitLabMmsAssociationFrame response_frame;
     UnitLabMmsPdu decoded_response_pdu;
     UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement access_result_element;
+    UnitLabMmsBerElement child_element;
     size_t response_consumed_length = 0U;
     size_t response_pdu_consumed_length = 0U;
-
-    (void)expected_member_count;
+    size_t consumed_length = 0U;
+    size_t child_offset = 0U;
+    size_t child_count = 0U;
 
     assert(response_bytes != NULL);
     unitlab_mms_diagnostic_clear(&diagnostic);
@@ -142,8 +143,26 @@ static void assert_read_response_success_structure_prefix(
     assert(decoded_response_pdu.has_service == 1);
     assert(decoded_response_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
 
-    assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, (const uint8_t*)expected_value_0, strlen(expected_value_0)) == 1);
-    assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, (const uint8_t*)expected_value_2, strlen(expected_value_2)) == 1);
+    unitlab_mms_ber_element_init(&access_result_element);
+    assert(unitlab_mms_ber_read(&access_result_element, decoded_response_pdu.service_bytes, decoded_response_pdu.service_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == decoded_response_pdu.service_length);
+    assert_ber_tag(&access_result_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 2U);
+    assert(access_result_element.value_bytes[0] != 0x30U);
+
+    while (child_offset < access_result_element.value_length) {
+        size_t child_consumed_length = 0U;
+
+        unitlab_mms_ber_element_init(&child_element);
+        assert(unitlab_mms_ber_read(&child_element, &access_result_element.value_bytes[child_offset], access_result_element.value_length - child_offset, &child_consumed_length, &diagnostic) == 1);
+        assert(child_count < sizeof(expected_tags) / sizeof(expected_tags[0]));
+        assert_ber_tag(&child_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, expected_tags[child_count]);
+        child_offset += child_consumed_length;
+        child_count++;
+    }
+    assert(child_count == sizeof(expected_tags) / sizeof(expected_tags[0]));
+    assert(contains_bytes(access_result_element.value_bytes, access_result_element.value_length, (const uint8_t*)"IED1LD0/LLN0.BR.Events", strlen("IED1LD0/LLN0.BR.Events")) == 1);
+    assert(contains_bytes(access_result_element.value_bytes, access_result_element.value_length, (const uint8_t*)"LD0/LLN0$dsEvents", strlen("LD0/LLN0$dsEvents")) == 1);
+    assert(contains_bytes(access_result_element.value_bytes, access_result_element.value_length, (const uint8_t*)"Owner", strlen("Owner")) == 0);
 }
 
 static void assert_read_response_list_of_access_results_count(const uint8_t* response_bytes, size_t response_length, uint32_t expected_invoke_id, size_t expected_result_count, const char* const* expected_values)
@@ -1089,13 +1108,7 @@ static void test_server_runtime_apply_iedscout_buffered_report_control_block_rea
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
-    assert_read_response_success_structure_prefix(
-        response_bytes,
-        response_length,
-        14U,
-        "IED1LD0/LLN0.BR.Events",
-        "LD0/LLN0$dsEvents",
-        3U);
+    assert_read_response_success_rcb_structure(response_bytes, response_length, 14U);
 }
 
 
