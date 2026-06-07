@@ -34,7 +34,7 @@ static void test_wire_frame_builder_information_report_roundtrip(void)
     unitlab_mms_association_frame_init(&decoded_fixture);
     assert(unitlab_mms_association_frame_decode(&decoded_fixture, frame_bytes, frame_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == frame_length);
-    assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED);
+    assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
     assert(decoded_fixture.presentation.payload_length > 0U);
     assert(decoded_fixture.presentation.payload_bytes[0] == 0x63U);
 
@@ -178,7 +178,7 @@ static void test_wire_frame_builder_aarq_association_roundtrip(void)
     fixture.transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
     fixture.transport.cotp.eot = 1;
     fixture.session.kind = UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER;
-    fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
+    fixture.presentation.kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
     fixture.presentation.payload_bytes = aarq_payload;
     fixture.presentation.payload_length = sizeof(aarq_payload);
     assert(unitlab_mms_association_frame_encode(&fixture, frame_bytes, sizeof(frame_bytes), &frame_length, &diagnostic) == 1);
@@ -214,7 +214,7 @@ static void test_wire_frame_builder_aarq_association_roundtrip(void)
     unitlab_mms_association_frame_init(&decoded_fixture);
     assert(unitlab_mms_association_frame_decode(&decoded_fixture, frame_bytes, frame_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == frame_length);
-    assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED);
+    assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
     assert(decoded_fixture.presentation.payload_length == sizeof(aarq_payload));
     assert(memcmp(decoded_fixture.presentation.payload_bytes, aarq_payload, sizeof(aarq_payload)) == 0);
 
@@ -312,7 +312,7 @@ static void test_wire_frame_builder_aarq_association_roundtrip(void)
 //     assert(unitlab_mms_association_frame_decode(&decoded_fixture, frame, frame_length, &consumed_length, &diagnostic) == 1);
 //     assert(consumed_length == frame_length);
 //     assert(decoded_fixture.session.kind == UNITLAB_MMS_SESSION_SPDU_DATA_TRANSFER);
-//     assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED);
+//     assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
 //     assert(decoded_fixture.presentation.payload_length > 0U);
 //     assert(decoded_fixture.presentation.payload_bytes[0] == 0x61U);
 

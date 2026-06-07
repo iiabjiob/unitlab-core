@@ -544,7 +544,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     size_t service_content_length = 0U;
     size_t service_length = 0U;
     const uint8_t opt_flds[3U] = { 0x06U, 0x7FU, 0x80U };
-    const uint8_t bool_false[1U] = { 0x00U };
+    const uint8_t bool_true[1U] = { 0x01U };
     const uint8_t st_zero[1U] = { 0x00U };
     const uint8_t st_one[1U] = { 0x01U };
     const uint8_t reason_gi[2U] = { 0x02U, 0x04U };
@@ -553,6 +553,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     const UnitLabIedModelReportControl* report = NULL;
     const UnitLabIedModelDataSet* data_set = NULL;
     size_t member_count = 0U;
+    uint32_t report_sequence_number = 0U;
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -567,11 +568,23 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     data_set = server_runtime_report_data_set(server_runtime, report);
     server_runtime_format_report_id_reference(server_runtime, report, report_id_reference, sizeof(report_id_reference));
     server_runtime_format_dataset_reference(server_runtime, report, data_set, dataset_reference, sizeof(dataset_reference));
-    snprintf(data_ref_1, sizeof(data_ref_1), "%s/XCBR1$ST$Pos$stVal", domain_name);
-    snprintf(data_ref_2, sizeof(data_ref_2), "%s/PGGIO1$ST$Ind1$stVal", domain_name);
+    {
+        const char* data_ref_domain = domain_name;
+        const char* slash = strchr(dataset_reference, '/');
+        if (slash != NULL && slash != dataset_reference) {
+            size_t prefix_length = (size_t)(slash - dataset_reference);
+            snprintf(data_ref_1, sizeof(data_ref_1), "%.*s/XCBR1$ST$Pos$stVal", (int)prefix_length, dataset_reference);
+            snprintf(data_ref_2, sizeof(data_ref_2), "%.*s/PGGIO1$ST$Ind1$stVal", (int)prefix_length, dataset_reference);
+        }
+        else {
+            snprintf(data_ref_1, sizeof(data_ref_1), "%s/XCBR1$ST$Pos$stVal", data_ref_domain);
+            snprintf(data_ref_2, sizeof(data_ref_2), "%s/PGGIO1$ST$Ind1$stVal", data_ref_domain);
+        }
+    }
     member_count = data_set != NULL ? data_set->member_count : 2U;
 
     server_runtime_update_report_sequence(server_runtime);
+    report_sequence_number = server_runtime->brcb_sq_num == 0U ? 0U : server_runtime->brcb_sq_num - 1U;
 
     if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 0U, (const uint8_t*)"RPT", 3U, variable_list_name, sizeof(variable_list_name), &variable_list_name_length, diagnostic)) {
         return 0;
@@ -580,13 +593,13 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         return 0;
     }
 
-    if (!server_runtime_encode_unsigned_value(server_runtime->brcb_sq_num, unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)
+    if (!server_runtime_encode_unsigned_value(report_sequence_number, unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)
         || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U, (const uint8_t*)report_id_reference, strlen(report_id_reference), report_values, sizeof(report_values), &report_values_length, diagnostic)
         || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 4U, opt_flds, sizeof(opt_flds), report_values, sizeof(report_values), &report_values_length, diagnostic)
         || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 6U, unsigned_value, unsigned_value_length, report_values, sizeof(report_values), &report_values_length, diagnostic)
         || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 12U, server_runtime->brcb_time_of_entry, sizeof(server_runtime->brcb_time_of_entry), report_values, sizeof(report_values), &report_values_length, diagnostic)
         || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U, (const uint8_t*)dataset_reference, strlen(dataset_reference), report_values, sizeof(report_values), &report_values_length, diagnostic)
-        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 3U, bool_false, sizeof(bool_false), report_values, sizeof(report_values), &report_values_length, diagnostic)
+        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 3U, bool_true, sizeof(bool_true), report_values, sizeof(report_values), &report_values_length, diagnostic)
         || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 9U, server_runtime->brcb_entry_id, sizeof(server_runtime->brcb_entry_id), report_values, sizeof(report_values), &report_values_length, diagnostic)) {
         return 0;
     }

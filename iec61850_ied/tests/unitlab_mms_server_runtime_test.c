@@ -628,7 +628,7 @@ static void test_server_runtime_gi_write_queues_information_report(void)
     unitlab_mms_association_frame_init(&report_frame);
     assert(unitlab_mms_association_frame_decode(&report_frame, report_bytes, report_length, &consumed_length, &diagnostic));
     assert(consumed_length == report_length);
-    assert(report_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED);
+    assert(report_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
     unitlab_mms_pdu_init(&report_pdu);
     assert(unitlab_mms_pdu_decode(&report_pdu, report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, &consumed_length, &diagnostic));
     assert(consumed_length == report_frame.presentation.payload_length);

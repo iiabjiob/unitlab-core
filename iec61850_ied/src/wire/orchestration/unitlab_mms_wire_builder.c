@@ -179,23 +179,13 @@ int unitlab_mms_build_wire_frame_from_pdu(
     }
 
     unitlab_mms_presentation_apdu_init(&presentation_apdu);
-    if (pdu->kind == UNITLAB_MMS_PDU_UNCONFIRMED) {
-        if (!unitlab_mms_pdu_encode(pdu, scratch, scratch_length, &payload_length, diagnostic)) {
-            return 0;
-        }
-        presentation_apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_SIMPLY_ENCODED;
-        presentation_apdu.context_identifier = 1U;
-        presentation_apdu.payload_bytes = scratch;
-        presentation_apdu.payload_length = payload_length;
-    } else {
-        if (!unitlab_mms_pdu_encode(pdu, scratch, scratch_length, &payload_length, diagnostic)) {
-            return 0;
-        }
-        presentation_apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
-        presentation_apdu.context_identifier = 3U;
-        presentation_apdu.payload_bytes = scratch;
-        presentation_apdu.payload_length = payload_length;
+    if (!unitlab_mms_pdu_encode(pdu, scratch, scratch_length, &payload_length, diagnostic)) {
+        return 0;
     }
+    presentation_apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
+    presentation_apdu.context_identifier = 3U;
+    presentation_apdu.payload_bytes = scratch;
+    presentation_apdu.payload_length = payload_length;
     if (!unitlab_mms_presentation_encode(&presentation_apdu, presentation_bytes, sizeof(presentation_bytes), &presentation_length, diagnostic)) {
         return 0;
     }
