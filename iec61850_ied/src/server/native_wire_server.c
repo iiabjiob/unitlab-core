@@ -381,8 +381,7 @@ static int native_wire_process_received_tpkt_frame(
         return 2;
     }
     if (apply_ok
-        && server_runtime->pending_request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE
-        && server_runtime->pending_request.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED) {
+        && server_runtime->pending_request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE) {
         if (!unitlab_mms_server_runtime_build_confirmed_response_bytes(
                 server_runtime,
                 NULL,

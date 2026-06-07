@@ -320,6 +320,8 @@ static int bridge_parse_write_request(const uint8_t* service_bytes, size_t servi
     size_t data_consumed_length = 0U;
     size_t list_consumed_length = 0U;
     size_t offset = 0U;
+    const uint8_t* fields_bytes = NULL;
+    size_t fields_length = 0U;
     UnitLabMmsBerElement list_element;
     int found_variable_access = 0;
     int found_data = 0;
@@ -338,13 +340,17 @@ static int bridge_parse_write_request(const uint8_t* service_bytes, size_t servi
         bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "write request BER decode failed.", "write request BER decode failed.");
         return 0;
     }
-    if (write_request_consumed_length != service_length || write_request_element.tag.tag_class != UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL || write_request_element.tag.tag_number != 16U || !write_request_element.tag.constructed) {
-        bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "write request must be encoded as a SEQUENCE.", "write request must be encoded as a SEQUENCE.");
-        return 0;
+    if (write_request_consumed_length == service_length && write_request_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL && write_request_element.tag.tag_number == 16U && write_request_element.tag.constructed) {
+        fields_bytes = write_request_element.value_bytes;
+        fields_length = write_request_element.value_length;
     }
-    while (offset < write_request_element.value_length) {
+    else {
+        fields_bytes = service_bytes;
+        fields_length = service_length;
+    }
+    while (offset < fields_length) {
         unitlab_mms_ber_element_init(&child);
-        if (!unitlab_mms_ber_read(&child, &write_request_element.value_bytes[offset], write_request_element.value_length - offset, &child_consumed_length, &diagnostic->diagnostic)) {
+        if (!unitlab_mms_ber_read(&child, &fields_bytes[offset], fields_length - offset, &child_consumed_length, &diagnostic->diagnostic)) {
             bridge_set_diagnostic(diagnostic, UNITLAB_MMS_DECODE_CLASSIFICATION_SEMANTIC_INVALID, UNITLAB_MMS_DIAGNOSTIC_PROTOCOL_ERROR, "write request top-level field BER decode failed.", "write request top-level field BER decode failed.");
             return 0;
         }
