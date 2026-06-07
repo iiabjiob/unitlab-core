@@ -667,6 +667,26 @@ int server_runtime_object_reference_has_suffix_any(
     return 0;
 }
 
+int server_runtime_object_reference_matches_report_control_field(const char* object_reference, const char* field_name)
+{
+    char br_suffix[128U];
+    char legacy_br_suffix[160U];
+    char no_br_suffix[128U];
+    char legacy_no_br_suffix[160U];
+
+    if (object_reference == NULL || field_name == NULL || field_name[0] == '\0') {
+        return 0;
+    }
+    snprintf(br_suffix, sizeof(br_suffix), ".BR.brcbEvents.%s", field_name);
+    snprintf(legacy_br_suffix, sizeof(legacy_br_suffix), ".BR.LLN0_Events_BuffRep01.%s", field_name);
+    snprintf(no_br_suffix, sizeof(no_br_suffix), ".brcbEvents.%s", field_name);
+    snprintf(legacy_no_br_suffix, sizeof(legacy_no_br_suffix), ".LLN0_Events_BuffRep01.%s", field_name);
+    return server_runtime_object_reference_has_suffix_any(
+        object_reference,
+        (const char* const[]){ br_suffix, legacy_br_suffix, no_br_suffix, legacy_no_br_suffix },
+        4U);
+}
+
 const char* server_runtime_advertised_domain_name(const UnitLabMmsServerRuntime* server_runtime)
 {
     if (server_runtime != NULL

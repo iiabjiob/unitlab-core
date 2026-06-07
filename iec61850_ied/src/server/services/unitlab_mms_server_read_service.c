@@ -386,8 +386,9 @@ static int server_runtime_build_read_response_value(
 
             snprintf(brcb_suffix, sizeof(brcb_suffix), ".BR.brcbEvents.%s", rcb_fields[rcb_field_index]);
             snprintf(legacy_suffix, sizeof(legacy_suffix), ".BR.LLN0_Events_BuffRep01.%s", rcb_fields[rcb_field_index]);
-            if (server_runtime_object_reference_has_suffix(object_reference, brcb_suffix)
-                || server_runtime_object_reference_has_suffix(object_reference, legacy_suffix)) {
+            (void)brcb_suffix;
+            (void)legacy_suffix;
+            if (server_runtime_object_reference_matches_report_control_field(object_reference, rcb_fields[rcb_field_index])) {
                 if (!server_runtime_encode_report_control_block_field_value(
                         server_runtime,
                         rcb_fields[rcb_field_index],

@@ -32,6 +32,7 @@ int server_runtime_encode_signed_integer(int32_t value, uint8_t* buffer, size_t 
 int server_runtime_encode_mms_data_value(const UnitLabIedModelSignal* signal, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int server_runtime_object_reference_has_suffix(const char* object_reference, const char* suffix);
 int server_runtime_object_reference_has_suffix_any(const char* object_reference, const char* const* suffixes, size_t suffix_count);
+int server_runtime_object_reference_matches_report_control_field(const char* object_reference, const char* field_name);
 const char* server_runtime_advertised_domain_name(const UnitLabMmsServerRuntime* server_runtime);
 
 /* Browse service handles discovery, GVA, and named variable list attributes. */

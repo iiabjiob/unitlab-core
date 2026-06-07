@@ -17,12 +17,12 @@ static uint32_t server_runtime_decode_write_unsigned_value(const UnitLabMmsPendi
     return value;
 }
 
-static int server_runtime_write_target_has_suffix(const UnitLabMmsPendingRequest* request, const char* suffix)
+static int server_runtime_write_target_matches_report_control_field(const UnitLabMmsPendingRequest* request, const char* field_name)
 {
-    if (request == NULL || suffix == NULL) {
+    if (request == NULL || field_name == NULL) {
         return 0;
     }
-    return server_runtime_object_reference_has_suffix(request->object_reference, suffix);
+    return server_runtime_object_reference_matches_report_control_field(request->object_reference, field_name);
 }
 
 static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic)
@@ -39,8 +39,7 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
     }
 
     value = server_runtime_decode_write_unsigned_value(&server_runtime->pending_request);
-    if (server_runtime_write_target_has_suffix(&server_runtime->pending_request, ".BR.brcbEvents.ResvTms")
-        || server_runtime_write_target_has_suffix(&server_runtime->pending_request, ".BR.LLN0_Events_BuffRep01.ResvTms")) {
+    if (server_runtime_write_target_matches_report_control_field(&server_runtime->pending_request, "ResvTms")) {
         server_runtime->brcb_resv_tms = value;
         if (value != 0U && server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED) {
             UnitLabMmsDiagnostic reserve_diagnostic;
@@ -54,8 +53,7 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
         return 1;
     }
-    if (server_runtime_write_target_has_suffix(&server_runtime->pending_request, ".BR.brcbEvents.RptEna")
-        || server_runtime_write_target_has_suffix(&server_runtime->pending_request, ".BR.LLN0_Events_BuffRep01.RptEna")) {
+    if (server_runtime_write_target_matches_report_control_field(&server_runtime->pending_request, "RptEna")) {
         server_runtime->brcb_rpt_ena = value != 0U ? 1U : 0U;
         if (server_runtime->brcb_rpt_ena != 0U) {
             UnitLabMmsDiagnostic state_diagnostic;
@@ -76,8 +74,7 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
         return 1;
     }
-    if (server_runtime_write_target_has_suffix(&server_runtime->pending_request, ".BR.brcbEvents.GI")
-        || server_runtime_write_target_has_suffix(&server_runtime->pending_request, ".BR.LLN0_Events_BuffRep01.GI")) {
+    if (server_runtime_write_target_matches_report_control_field(&server_runtime->pending_request, "GI")) {
         if (value != 0U) {
             UnitLabMmsDiagnostic gi_diagnostic;
             unitlab_mms_diagnostic_clear(&gi_diagnostic);
@@ -90,8 +87,7 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
         return 1;
     }
 
-    if (server_runtime_write_target_has_suffix(&server_runtime->pending_request, ".BR.brcbEvents.PurgeBuf")
-        || server_runtime_write_target_has_suffix(&server_runtime->pending_request, ".BR.LLN0_Events_BuffRep01.PurgeBuf")) {
+    if (server_runtime_write_target_matches_report_control_field(&server_runtime->pending_request, "PurgeBuf")) {
         if (value != 0U) {
             server_runtime->brcb_sq_num = 0U;
             server_runtime->brcb_entry_id_counter = 0U;
