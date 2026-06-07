@@ -2246,13 +2246,17 @@ static void server_runtime_log_read_response_tree(
 {
     UnitLabMmsBerElement invoke_id_element;
     UnitLabMmsBerElement service_element;
+    UnitLabMmsBerElement list_of_access_result_element;
     UnitLabMmsBerElement access_result_element;
     UnitLabMmsBerElement data_element;
     char data_tag_hex[32U];
     size_t consumed_length = 0U;
     size_t response_consumed_length = 0U;
+    size_t list_of_access_result_consumed_length = 0U;
     size_t access_result_consumed_length = 0U;
     size_t data_consumed_length = 0U;
+    const uint8_t* access_result_list_bytes = NULL;
+    size_t access_result_list_length = 0U;
     size_t offset = 0U;
     size_t access_result_count = 0U;
     int access_result_success = 0;
@@ -2277,9 +2281,21 @@ static void server_runtime_log_read_response_tree(
     }
     server_runtime_log_ber_element_line("native-wire-server: read-ber response", &service_element);
 
-    while (offset < service_element.value_length) {
+    access_result_list_bytes = service_element.value_bytes;
+    access_result_list_length = service_element.value_length;
+    unitlab_mms_ber_element_init(&list_of_access_result_element);
+    if (unitlab_mms_ber_read(&list_of_access_result_element, service_element.value_bytes, service_element.value_length, &list_of_access_result_consumed_length, diagnostic)
+        && list_of_access_result_consumed_length == service_element.value_length
+        && list_of_access_result_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+        && list_of_access_result_element.tag.tag_number == 1U) {
+        server_runtime_log_ber_element_line("native-wire-server: read-ber listOfAccessResult", &list_of_access_result_element);
+        access_result_list_bytes = list_of_access_result_element.value_bytes;
+        access_result_list_length = list_of_access_result_element.value_length;
+    }
+
+    while (offset < access_result_list_length) {
         unitlab_mms_ber_element_init(&access_result_element);
-        if (!unitlab_mms_ber_read(&access_result_element, &service_element.value_bytes[offset], service_element.value_length - offset, &access_result_consumed_length, diagnostic)) {
+        if (!unitlab_mms_ber_read(&access_result_element, &access_result_list_bytes[offset], access_result_list_length - offset, &access_result_consumed_length, diagnostic)) {
             printf("native-wire-server: read-ber invoke=%u accessResult[%zu] decode-failed\n", (unsigned)invoke_id, access_result_count);
             fflush(stdout);
             return;
@@ -3016,14 +3032,16 @@ static int server_runtime_build_read_response_service(
     uint8_t value_bytes[128U];
     uint8_t access_result_value_bytes[160U];
     uint8_t list_of_access_result_bytes[256U];
-    uint8_t read_response_body_bytes[288U];
-    uint8_t service_bytes[320U];
+    uint8_t list_of_access_result_wrapper_bytes[288U];
+    uint8_t read_response_body_bytes[320U];
+    uint8_t service_bytes[360U];
     uint8_t invoke_id_element_bytes[16U];
     char domain_id[128U];
     char item_id[128U];
     size_t value_length = 0U;
     size_t access_result_value_length = 0U;
     size_t list_of_access_result_length = 0U;
+    size_t list_of_access_result_wrapper_length = 0U;
     size_t read_response_body_length = 0U;
     size_t invoke_id_length = 0U;
     size_t total_length = 0U;
@@ -3179,9 +3197,21 @@ static int server_runtime_build_read_response_service(
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
-            4U,
+            1U,
             list_of_access_result_bytes,
             list_of_access_result_length,
+            list_of_access_result_wrapper_bytes,
+            sizeof(list_of_access_result_wrapper_bytes),
+            &list_of_access_result_wrapper_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            4U,
+            list_of_access_result_wrapper_bytes,
+            list_of_access_result_wrapper_length,
             read_response_body_bytes,
             sizeof(read_response_body_bytes),
             &read_response_body_length,
