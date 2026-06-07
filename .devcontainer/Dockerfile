@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     build-essential \
     tcpdump \
+    tshark \
     iputils-ping \
     netcat-openbsd \
     && apt-get clean

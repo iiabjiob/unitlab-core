@@ -485,6 +485,63 @@ static int add_node_reference(UnitLabIedModelPlan* plan, const char* logical_dev
         && add_logical_node(plan, logical_device_inst, logical_node_name);
 }
 
+static int has_namespace_attribute(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    const char* name)
+{
+    for (size_t index = 0U; index < plan->namespace_attribute_count; index++) {
+        const UnitLabIedModelNamespaceAttribute* attribute = &plan->namespace_attributes[index];
+        if (
+            strcmp(attribute->logical_device_inst, logical_device_inst) == 0
+            && strcmp(attribute->logical_node_name, logical_node_name) == 0
+            && strcmp(attribute->name, name) == 0
+        ) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int add_namespace_attribute(
+    UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    const char* data_object_name,
+    const char* name,
+    UnitLabIedFixtureValueKind initial_value_kind,
+    const char* initial_value)
+{
+    UnitLabIedModelNamespaceAttribute* attribute = NULL;
+
+    if (has_namespace_attribute(plan, logical_device_inst, logical_node_name, name)) {
+        return 1;
+    }
+    attribute = &plan->namespace_attributes[plan->namespace_attribute_count];
+    if (!copy_string(attribute->logical_device_inst, sizeof(attribute->logical_device_inst), logical_device_inst)) {
+        return 0;
+    }
+    if (!copy_string(attribute->logical_node_name, sizeof(attribute->logical_node_name), logical_node_name)) {
+        return 0;
+    }
+    if (!copy_string(attribute->data_object_name, sizeof(attribute->data_object_name), data_object_name)) {
+        return 0;
+    }
+    if (!copy_string(attribute->name, sizeof(attribute->name), name)) {
+        return 0;
+    }
+    if (snprintf(attribute->object_reference, sizeof(attribute->object_reference), "%s.%s.EX.%s.%s", logical_device_inst, logical_node_name, data_object_name, name) >= (int)sizeof(attribute->object_reference)) {
+        return 0;
+    }
+    attribute->initial_value_kind = initial_value_kind;
+    if (!copy_string(attribute->initial_value, sizeof(attribute->initial_value), initial_value)) {
+        return 0;
+    }
+    plan->namespace_attribute_count++;
+    return 1;
+}
+
 static int find_data_set_index(const UnitLabIedFixtureModel* fixture, const char* data_set_ref, size_t* data_set_index)
 {
     for (size_t index = 0U; index < fixture->data_set_count; index++) {
@@ -500,6 +557,7 @@ static int allocate_plan(const UnitLabIedFixtureModel* fixture, UnitLabIedModelP
 {
     size_t max_logical_devices = fixture->signal_count + fixture->report_count;
     size_t max_logical_nodes = fixture->signal_count + fixture->report_count;
+    size_t max_namespace_attributes = max_logical_nodes * 4U;
     if (max_logical_devices == 0U || max_logical_nodes == 0U) {
         set_error(error, error_size, "MODEL_PLAN_EMPTY: fixture has no signals or reports.");
         return 0;
@@ -510,12 +568,14 @@ static int allocate_plan(const UnitLabIedFixtureModel* fixture, UnitLabIedModelP
     plan->data_sets = (UnitLabIedModelDataSet*)calloc(fixture->data_set_count, sizeof(UnitLabIedModelDataSet));
     plan->reports = (UnitLabIedModelReportControl*)calloc(fixture->report_count, sizeof(UnitLabIedModelReportControl));
     plan->signals = (UnitLabIedModelSignal*)calloc(fixture->signal_count, sizeof(UnitLabIedModelSignal));
+    plan->namespace_attributes = (UnitLabIedModelNamespaceAttribute*)calloc(max_namespace_attributes, sizeof(UnitLabIedModelNamespaceAttribute));
     if (
         plan->logical_devices == NULL
         || plan->logical_nodes == NULL
         || plan->data_sets == NULL
         || plan->reports == NULL
         || plan->signals == NULL
+        || plan->namespace_attributes == NULL
     ) {
         set_error(error, error_size, "OUT_OF_MEMORY: cannot allocate IEC 61850 model plan.");
         return 0;
@@ -661,6 +721,33 @@ int unitlab_build_ied_model_plan(
         plan->report_count++;
     }
 
+    for (size_t node_index = 0U; node_index < plan->logical_node_count; node_index++) {
+        const UnitLabIedModelLogicalNode* node = &plan->logical_nodes[node_index];
+        if (strcmp(node->name, "LLN0") != 0) {
+            continue;
+        }
+        if (!add_namespace_attribute(plan, node->logical_device_inst, node->name, "NamPlt", "ldNs", UNITLAB_IED_FIXTURE_VALUE_STRING, "LD0")) {
+            set_error(error, error_size, "MODEL_PLAN_NAMESPACE_ATTRIBUTE_TOO_LONG: %s/%s/ldNs", node->logical_device_inst, node->name);
+            unitlab_free_ied_model_plan(plan);
+            return 0;
+        }
+        if (!add_namespace_attribute(plan, node->logical_device_inst, node->name, "NamPlt", "lnNs", UNITLAB_IED_FIXTURE_VALUE_STRING, "IEC 61850-7-4:2007")) {
+            set_error(error, error_size, "MODEL_PLAN_NAMESPACE_ATTRIBUTE_TOO_LONG: %s/%s/lnNs", node->logical_device_inst, node->name);
+            unitlab_free_ied_model_plan(plan);
+            return 0;
+        }
+        if (!add_namespace_attribute(plan, node->logical_device_inst, node->name, "NamPlt", "cdcNs", UNITLAB_IED_FIXTURE_VALUE_STRING, "IEC 61850-7-3:2010")) {
+            set_error(error, error_size, "MODEL_PLAN_NAMESPACE_ATTRIBUTE_TOO_LONG: %s/%s/cdcNs", node->logical_device_inst, node->name);
+            unitlab_free_ied_model_plan(plan);
+            return 0;
+        }
+        if (!add_namespace_attribute(plan, node->logical_device_inst, node->name, "NamPlt", "dataNs", UNITLAB_IED_FIXTURE_VALUE_STRING, "EXT:2015")) {
+            set_error(error, error_size, "MODEL_PLAN_NAMESPACE_ATTRIBUTE_TOO_LONG: %s/%s/dataNs", node->logical_device_inst, node->name);
+            unitlab_free_ied_model_plan(plan);
+            return 0;
+        }
+    }
+
     return 1;
 }
 
@@ -674,6 +761,7 @@ void unitlab_free_ied_model_plan(UnitLabIedModelPlan* plan)
     free(plan->data_sets);
     free(plan->reports);
     free(plan->signals);
+    free(plan->namespace_attributes);
     memset(plan, 0, sizeof(*plan));
 }
 
@@ -966,6 +1054,41 @@ int unitlab_collect_ied_model_logical_node_variables(
     return 1;
 }
 
+int unitlab_collect_ied_model_logical_node_namespace_attributes(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size)
+{
+    if (names != NULL) {
+        *names = NULL;
+    }
+    if (count != NULL) {
+        *count = 0U;
+    }
+    if (plan == NULL || logical_device_inst == NULL || logical_node_name == NULL || names == NULL || count == NULL) {
+        set_error(error, error_size, "INVALID_ARGUMENT: plan, logical device, logical node, names, and count are required.");
+        return 0;
+    }
+    for (size_t index = 0U; index < plan->namespace_attribute_count; index++) {
+        const UnitLabIedModelNamespaceAttribute* attribute = &plan->namespace_attributes[index];
+        if (strcmp(attribute->logical_device_inst, logical_device_inst) != 0 || strcmp(attribute->logical_node_name, logical_node_name) != 0) {
+            continue;
+        }
+        if (!append_unique_metadata_name(names, count, attribute->name)) {
+            unitlab_free_ied_model_name_list(*names, *count);
+            *names = NULL;
+            *count = 0U;
+            set_error(error, error_size, "OUT_OF_MEMORY: cannot collect logical-node namespace attributes.");
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int unitlab_collect_ied_model_logical_node_reports(
     const UnitLabIedModelPlan* plan,
     const char* logical_device_inst,
@@ -1045,6 +1168,22 @@ const UnitLabIedModelDataSet* unitlab_find_ied_model_data_set(
             && strcmp(data_set->name, data_set_name) == 0
         ) {
             return data_set;
+        }
+    }
+    return NULL;
+}
+
+const UnitLabIedModelNamespaceAttribute* unitlab_find_ied_model_namespace_attribute(
+    const UnitLabIedModelPlan* plan,
+    const char* object_reference)
+{
+    if (plan == NULL || object_reference == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < plan->namespace_attribute_count; index++) {
+        const UnitLabIedModelNamespaceAttribute* attribute = &plan->namespace_attributes[index];
+        if (strcmp(attribute->object_reference, object_reference) == 0) {
+            return attribute;
         }
     }
     return NULL;

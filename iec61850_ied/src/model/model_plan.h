@@ -81,6 +81,16 @@ typedef struct UnitLabIedModelSignal {
     char initial_value[128];
 } UnitLabIedModelSignal;
 
+typedef struct UnitLabIedModelNamespaceAttribute {
+    char logical_device_inst[128];
+    char logical_node_name[128];
+    char data_object_name[128];
+    char name[32];
+    char object_reference[192];
+    UnitLabIedFixtureValueKind initial_value_kind;
+    char initial_value[128];
+} UnitLabIedModelNamespaceAttribute;
+
 typedef struct UnitLabIedModelPlan {
     size_t logical_device_count;
     UnitLabIedModelLogicalDevice* logical_devices;
@@ -92,6 +102,8 @@ typedef struct UnitLabIedModelPlan {
     UnitLabIedModelReportControl* reports;
     size_t signal_count;
     UnitLabIedModelSignal* signals;
+    size_t namespace_attribute_count;
+    UnitLabIedModelNamespaceAttribute* namespace_attributes;
 } UnitLabIedModelPlan;
 
 int unitlab_build_ied_model_plan(
@@ -153,6 +165,15 @@ int unitlab_collect_ied_model_logical_node_variables(
     char* error,
     size_t error_size);
 
+int unitlab_collect_ied_model_logical_node_namespace_attributes(
+    const UnitLabIedModelPlan* plan,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    char*** names,
+    size_t* count,
+    char* error,
+    size_t error_size);
+
 int unitlab_collect_ied_model_logical_node_reports(
     const UnitLabIedModelPlan* plan,
     const char* logical_device_inst,
@@ -174,6 +195,10 @@ const UnitLabIedModelDataSet* unitlab_find_ied_model_data_set(
     const char* logical_device_inst,
     const char* logical_node_name,
     const char* data_set_name);
+
+const UnitLabIedModelNamespaceAttribute* unitlab_find_ied_model_namespace_attribute(
+    const UnitLabIedModelPlan* plan,
+    const char* object_reference);
 
 void unitlab_free_ied_model_name_list(char** names, size_t count);
 void unitlab_free_ied_model_plan(UnitLabIedModelPlan* plan);

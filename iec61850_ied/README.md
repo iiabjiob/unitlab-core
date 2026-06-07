@@ -61,6 +61,31 @@ For a quick terminal check without writing a file, use:
 sudo tcpdump -i any -nn -vv 'tcp port 12447 or tcp port 12448'
 ```
 
+## Apples-to-Apples Capture
+
+Use the same fixture for both backends:
+
+- `examples/single-report.fixture.json`
+- IED name: `IED1`
+- logical device: `LD0`
+- logical nodes: `LLN0`, `XCBR1`, `PGGIO1`, `GGIO1`
+- datasets: `LLN0.dsEvents`, `GGIO1.dsWire`
+- report control: `brcbEvents`
+
+Run the native server on port `12447`:
+
+```bash
+./scripts/run-native-wire-dev.sh
+```
+
+Run the libIEC61850-backed server on port `12448`:
+
+```bash
+./scripts/run-lib-wire-dev.sh
+```
+
+Capture each run separately, then diff the pcaps only after confirming the same browse tree, datasets, report-control names, and NamPlt namespace fields are present on both wires.
+
 ## Build
 
 Dry-run scaffold build without libIEC61850:

@@ -777,6 +777,22 @@ static const char* const lln0_cf_children[] = { "Mod" };
 static const char* const lln0_cf_mod_children[] = { "ctlModel" };
 static const char* const lln0_dc_children[] = { "NamPlt" };
 static const char* const lln0_br_children[] = { "LLN0_Events_BuffRep01" };
+static const char* const lln0_br_rcb_children[] = {
+    "RptID",
+    "RptEna",
+    "DatSet",
+    "ConfRev",
+    "OptFlds",
+    "BufTm",
+    "SqNum",
+    "TrgOps",
+    "IntgPd",
+    "GI",
+    "PurgeBuf",
+    "EntryID",
+    "TimeOfEntry",
+    "Owner"
+};
 static const char* const lln0_ex_children[] = { "NamPlt" };
 static const char* const lln0_ex_namplt_children[] = { "ldNs", "lnNs", "cdcNs", "dataNs" };
 static const char* const lln0_namplt_children[] = { "vendor", "swRev", "d", "configRev" };
@@ -884,11 +900,18 @@ static int server_runtime_encode_gva_leaf_type_spec(
         value_bytes = value_single;
         value_length = sizeof(value_single);
     }
-    else if (strcmp(component_name, "TimeofEntry") == 0) {
+    else if (strcmp(component_name, "TimeOfEntry") == 0 || strcmp(component_name, "TimeofEntry") == 0) {
         value_single[0] = 0x01U;
         tag_number = 12U;
         value_bytes = value_single;
         value_length = sizeof(value_single);
+    }
+    else if (strcmp(component_name, "Owner") == 0) {
+        value_visible_2[0] = 0x4FU;
+        value_visible_2[1] = 0x57U;
+        tag_number = 10U;
+        value_bytes = value_visible_2;
+        value_length = sizeof(value_visible_2);
     }
 
     unitlab_mms_ber_element_init(&type_element);
@@ -948,6 +971,10 @@ static const char* const* server_runtime_lookup_gva_children(
             *child_count = sizeof(lln0_ex_children) / sizeof(lln0_ex_children[0]);
             return lln0_ex_children;
         }
+        if (strcmp(component_name, "BR") == 0) {
+            *child_count = sizeof(lln0_br_children) / sizeof(lln0_br_children[0]);
+            return lln0_br_children;
+        }
     }
     else if (strcmp(parent_component_name, "CF") == 0 && strcmp(component_name, "Mod") == 0) {
         *child_count = sizeof(lln0_cf_mod_children) / sizeof(lln0_cf_mod_children[0]);
@@ -958,8 +985,8 @@ static const char* const* server_runtime_lookup_gva_children(
         return lln0_namplt_children;
     }
     else if (strcmp(parent_component_name, "BR") == 0 && strcmp(component_name, "LLN0_Events_BuffRep01") == 0) {
-        *child_count = sizeof(lln0_br_children) / sizeof(lln0_br_children[0]);
-        return lln0_br_children;
+        *child_count = sizeof(lln0_br_rcb_children) / sizeof(lln0_br_rcb_children[0]);
+        return lln0_br_rcb_children;
     }
     else if (strcmp(parent_component_name, "EX") == 0 && strcmp(component_name, "NamPlt") == 0) {
         *child_count = sizeof(lln0_ex_namplt_children) / sizeof(lln0_ex_namplt_children[0]);
@@ -968,6 +995,216 @@ static const char* const* server_runtime_lookup_gva_children(
     return NULL;
 }
 
+
+static int server_runtime_encode_report_control_block_field_value(
+    const char* field_name,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement value_element;
+    uint8_t integer_bytes[5U];
+    uint8_t value_bool_byte[1U];
+    uint8_t value_octet_byte[1U];
+    int32_t integer_value = 0;
+    size_t integer_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (field_name == NULL || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Report control block field encoding requires a field name, buffer, and encoded_length.");
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&value_element);
+
+    if (strcmp(field_name, "RptID") == 0) {
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 10U;
+        value_element.value_bytes = (const uint8_t*)"IED1LD0/LLN0.BR.Events";
+        value_element.value_length = strlen((const char*)value_element.value_bytes);
+    }
+    else if (strcmp(field_name, "RptEna") == 0 || strcmp(field_name, "GI") == 0 || strcmp(field_name, "PurgeBuf") == 0) {
+        value_bool_byte[0] = 0x00U;
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 1U;
+        value_element.value_bytes = value_bool_byte;
+        value_element.value_length = sizeof(value_bool_byte);
+    }
+    else if (strcmp(field_name, "DatSet") == 0) {
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 10U;
+        value_element.value_bytes = (const uint8_t*)"IED1/AP1/LD0/LLN0.dsEvents";
+        value_element.value_length = strlen((const char*)value_element.value_bytes);
+    }
+    else if (strcmp(field_name, "ConfRev") == 0) {
+        integer_value = 7;
+        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
+            return 0;
+        }
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 2U;
+        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
+        value_element.value_length = integer_length;
+    }
+    else if (strcmp(field_name, "OptFlds") == 0) {
+        value_octet_byte[0] = 0xF6U;
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 4U;
+        value_element.value_bytes = value_octet_byte;
+        value_element.value_length = sizeof(value_octet_byte);
+    }
+    else if (strcmp(field_name, "BufTm") == 0) {
+        integer_value = 100;
+        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
+            return 0;
+        }
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 2U;
+        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
+        value_element.value_length = integer_length;
+    }
+    else if (strcmp(field_name, "SqNum") == 0) {
+        integer_value = 0;
+        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
+            return 0;
+        }
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 2U;
+        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
+        value_element.value_length = integer_length;
+    }
+    else if (strcmp(field_name, "TrgOps") == 0) {
+        value_octet_byte[0] = 0xFAU;
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 4U;
+        value_element.value_bytes = value_octet_byte;
+        value_element.value_length = sizeof(value_octet_byte);
+    }
+    else if (strcmp(field_name, "IntgPd") == 0) {
+        integer_value = 1000;
+        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
+            return 0;
+        }
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 2U;
+        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
+        value_element.value_length = integer_length;
+    }
+    else if (strcmp(field_name, "EntryID") == 0) {
+        value_octet_byte[0] = 0x08U;
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 9U;
+        value_element.value_bytes = value_octet_byte;
+        value_element.value_length = sizeof(value_octet_byte);
+    }
+    else if (strcmp(field_name, "TimeOfEntry") == 0) {
+        value_octet_byte[0] = 0x01U;
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 12U;
+        value_element.value_bytes = value_octet_byte;
+        value_element.value_length = sizeof(value_octet_byte);
+    }
+    else if (strcmp(field_name, "Owner") == 0) {
+        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+        value_element.tag.constructed = 0;
+        value_element.tag.tag_number = 10U;
+        value_element.value_bytes = (const uint8_t*)"";
+        value_element.value_length = 0U;
+    }
+    else {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Unsupported report control block field.");
+        return 0;
+    }
+
+    if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
+        return 0;
+    }
+    return 1;
+}
+
+static int server_runtime_encode_report_control_block_value(
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    static const char* const report_control_block_fields[] = {
+        "RptID",
+        "RptEna",
+        "DatSet",
+        "ConfRev",
+        "OptFlds",
+        "BufTm",
+        "SqNum",
+        "TrgOps",
+        "IntgPd",
+        "GI",
+        "PurgeBuf",
+        "EntryID",
+        "TimeOfEntry",
+        "Owner"
+    };
+    uint8_t structure_bytes[2048U];
+    size_t structure_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Report control block value encoding requires a buffer and encoded_length.");
+        return 0;
+    }
+
+    for (size_t index = 0U; index < sizeof(report_control_block_fields) / sizeof(report_control_block_fields[0]); index++) {
+        uint8_t field_bytes[128U];
+        size_t field_length = 0U;
+
+        if (!server_runtime_encode_report_control_block_field_value(
+                report_control_block_fields[index],
+                field_bytes,
+                sizeof(field_bytes),
+                &field_length,
+                diagnostic)) {
+            return 0;
+        }
+        if (structure_length + field_length > sizeof(structure_bytes)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Report control block structure buffer is too small.");
+            return 0;
+        }
+        memcpy(&structure_bytes[structure_length], field_bytes, field_length);
+        structure_length += field_length;
+    }
+
+    {
+        UnitLabMmsBerElement structure_element;
+
+        unitlab_mms_ber_element_init(&structure_element);
+        structure_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+        structure_element.tag.constructed = 1;
+        structure_element.tag.tag_number = 16U;
+        structure_element.value_bytes = structure_bytes;
+        structure_element.value_length = structure_length;
+        if (!unitlab_mms_ber_write(&structure_element, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
 
 static int server_runtime_encode_gva_component_tree(
     const char* logical_node_name,
@@ -1794,7 +2031,102 @@ static void server_runtime_log_get_named_variable_list_attributes_response_tree(
     }
 }
 
+static void server_runtime_log_read_response_tree(
+    uint32_t invoke_id,
+    const uint8_t* service_bytes,
+    size_t service_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement invoke_id_element;
+    UnitLabMmsBerElement service_element;
+    UnitLabMmsBerElement access_result_element;
+    UnitLabMmsBerElement data_element;
+    char data_tag_hex[32U];
+    size_t consumed_length = 0U;
+    size_t response_consumed_length = 0U;
+    size_t access_result_consumed_length = 0U;
+    size_t data_consumed_length = 0U;
+    size_t offset = 0U;
+    size_t access_result_count = 0U;
+
+    if (service_bytes == NULL || service_length == 0U) {
+        return;
+    }
+
+    unitlab_mms_ber_element_init(&invoke_id_element);
+    if (!unitlab_mms_ber_read(&invoke_id_element, service_bytes, service_length, &consumed_length, diagnostic)) {
+        printf("native-wire-server: read-ber invoke=%u decode-failed-at-invoke\n", (unsigned)invoke_id);
+        fflush(stdout);
+        return;
+    }
+    server_runtime_log_ber_element_line("native-wire-server: read-ber invoke-id", &invoke_id_element);
+
+    unitlab_mms_ber_element_init(&service_element);
+    if (!unitlab_mms_ber_read(&service_element, &service_bytes[consumed_length], service_length - consumed_length, &response_consumed_length, diagnostic)) {
+        printf("native-wire-server: read-ber invoke=%u decode-failed-at-response\n", (unsigned)invoke_id);
+        fflush(stdout);
+        return;
+    }
+    server_runtime_log_ber_element_line("native-wire-server: read-ber response", &service_element);
+
+    while (offset < service_element.value_length) {
+        unitlab_mms_ber_element_init(&access_result_element);
+        if (!unitlab_mms_ber_read(&access_result_element, &service_element.value_bytes[offset], service_element.value_length - offset, &access_result_consumed_length, diagnostic)) {
+            printf("native-wire-server: read-ber invoke=%u accessResult[%zu] decode-failed\n", (unsigned)invoke_id, access_result_count);
+            fflush(stdout);
+            return;
+        }
+        printf(
+            "native-wire-server: read-ber invoke=%u accessResult[%zu] choice tag=%s constructed=%u number=%u length=%zu\n",
+            (unsigned)invoke_id,
+            access_result_count,
+            server_runtime_ber_tag_class_label(access_result_element.tag.tag_class),
+            (unsigned)access_result_element.tag.constructed,
+            (unsigned)access_result_element.tag.tag_number,
+            access_result_element.value_length);
+
+        unitlab_mms_ber_element_init(&data_element);
+        data_tag_hex[0] = '\0';
+        if (unitlab_mms_ber_read(&data_element, access_result_element.value_bytes, access_result_element.value_length, &data_consumed_length, diagnostic)) {
+            (void)server_runtime_tag_to_hex(&data_element.tag, data_tag_hex, sizeof(data_tag_hex));
+            if (server_runtime_bytes_are_printable_ascii(data_element.value_bytes, data_element.value_length)) {
+                char printable_value[128U];
+                size_t printable_length = data_element.value_length < sizeof(printable_value) - 1U ? data_element.value_length : sizeof(printable_value) - 1U;
+                memcpy(printable_value, data_element.value_bytes, printable_length);
+                printable_value[printable_length] = '\0';
+                printf(
+                    "native-wire-server: read-ber invoke=%u accessResult[%zu] status=%s data-tag=%s value-length=%zu value-string=\"%s\"\n",
+                    (unsigned)invoke_id,
+                    access_result_count,
+                    access_result_element.tag.tag_number == 0U ? "success" : "failure",
+                    data_tag_hex[0] != '\0' ? data_tag_hex : "<invalid>",
+                    data_element.value_length,
+                    printable_value);
+            } else {
+                printf(
+                    "native-wire-server: read-ber invoke=%u accessResult[%zu] status=%s data-tag=%s value-length=%zu\n",
+                    (unsigned)invoke_id,
+                    access_result_count,
+                    access_result_element.tag.tag_number == 0U ? "success" : "failure",
+                    data_tag_hex[0] != '\0' ? data_tag_hex : "<invalid>",
+                    data_element.value_length);
+            }
+        } else {
+            printf(
+                "native-wire-server: read-ber invoke=%u accessResult[%zu] status=%s data-decode-failed\n",
+                (unsigned)invoke_id,
+                access_result_count,
+                access_result_element.tag.tag_number == 0U ? "success" : "failure");
+        }
+        fflush(stdout);
+        offset += access_result_consumed_length;
+        access_result_count++;
+    }
+    printf("native-wire-server: read-ber invoke=%u accessResult-count=%zu\n", (unsigned)invoke_id, access_result_count);
+    fflush(stdout);
+}
 static int server_runtime_encode_named_variable_list_member(
+
     const char* domain_id,
     const char* item_id,
     uint8_t* buffer,
@@ -2230,6 +2562,19 @@ static int server_runtime_build_read_response_value(
     unitlab_mms_ber_element_init(&value_element);
     memset(&synthetic_signal, 0, sizeof(synthetic_signal));
 
+    {
+        const UnitLabIedModelNamespaceAttribute* namespace_attribute = unitlab_find_ied_model_namespace_attribute(server_runtime->model_plan, object_reference);
+        if (namespace_attribute != NULL) {
+            synthetic_signal.initial_value_kind = namespace_attribute->initial_value_kind;
+            snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", namespace_attribute->initial_value);
+            if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
+                return 0;
+            }
+            *value_supported = 1;
+            return 1;
+        }
+    }
+
     if (server_runtime_object_reference_has_suffix(object_reference, ".EX.NamPlt.ldNs")) {
         synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
         snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "LD0");
@@ -2401,6 +2746,13 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01")) {
+        if (!server_runtime_encode_report_control_block_value(buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
 
     if (buffer_length < 1U) {
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "DataAccessError encoding buffer is too small.");
@@ -2423,9 +2775,9 @@ static int server_runtime_build_read_response_service(
 {
     uint8_t value_bytes[128U];
     uint8_t access_result_value_bytes[160U];
-    uint8_t list_of_access_result_bytes[192U];
-    uint8_t read_response_body_bytes[224U];
-    uint8_t service_bytes[256U];
+    uint8_t list_of_access_result_bytes[256U];
+    uint8_t read_response_body_bytes[288U];
+    uint8_t service_bytes[320U];
     uint8_t invoke_id_element_bytes[16U];
     char domain_id[128U];
     char item_id[128U];
@@ -2473,6 +2825,11 @@ static int server_runtime_build_read_response_service(
 
     size_t read_object_reference_count = server_runtime->pending_request.read_object_reference_count;
 
+    printf(
+        "native-wire-server: confirmed-response invoke=%u service=Read read_object_reference_count=%zu\n",
+        (unsigned)invoke_id,
+        read_object_reference_count);
+    fflush(stdout);
     if (read_object_reference_count == 0U) {
         read_object_reference_count = 1U;
     }
@@ -2497,6 +2854,64 @@ static int server_runtime_build_read_response_service(
         if (index == 0U) {
             server_runtime_store_read_summary(server_runtime, invoke_id, value_supported, value_bytes, value_length);
         }
+        if (!server_runtime_encode_ber_element(
+                UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                1,
+                value_supported ? 0U : 1U,
+                value_bytes,
+                value_length,
+                access_result_value_bytes,
+                sizeof(access_result_value_bytes),
+                &access_result_value_length,
+                diagnostic)) {
+            return 0;
+        }
+        {
+            UnitLabMmsBerElement logged_value_element;
+            char value_tag_hex[32U];
+            char printable_value[128U];
+            size_t logged_consumed_length = 0U;
+
+            value_tag_hex[0] = '\0';
+            printable_value[0] = '\0';
+            unitlab_mms_ber_element_init(&logged_value_element);
+            if (value_supported && unitlab_mms_ber_read(&logged_value_element, value_bytes, value_length, &logged_consumed_length, diagnostic)) {
+                (void)server_runtime_tag_to_hex(&logged_value_element.tag, value_tag_hex, sizeof(value_tag_hex));
+                if (server_runtime_bytes_are_printable_ascii(logged_value_element.value_bytes, logged_value_element.value_length)) {
+                    size_t printable_length = logged_value_element.value_length < sizeof(printable_value) - 1U ? logged_value_element.value_length : sizeof(printable_value) - 1U;
+                    memcpy(printable_value, logged_value_element.value_bytes, printable_length);
+                    printable_value[printable_length] = '\0';
+                }
+                if (printable_value[0] != '\0') {
+                    printf(
+                        "native-wire-server: read-result invoke=%u index=%zu object=%s target=%s status=success value-tag=%s value-length=%zu value-string=\"%s\"\n",
+                        (unsigned)invoke_id,
+                        index,
+                        current_object_reference[0] != '\0' ? current_object_reference : "<none>",
+                        current_attribute_reference != NULL && current_attribute_reference[0] != '\0' ? current_attribute_reference : "<none>",
+                        value_tag_hex[0] != '\0' ? value_tag_hex : "<invalid>",
+                        logged_value_element.value_length,
+                        printable_value);
+                } else {
+                    printf(
+                        "native-wire-server: read-result invoke=%u index=%zu object=%s target=%s status=success value-tag=%s value-length=%zu\n",
+                        (unsigned)invoke_id,
+                        index,
+                        current_object_reference[0] != '\0' ? current_object_reference : "<none>",
+                        current_attribute_reference != NULL && current_attribute_reference[0] != '\0' ? current_attribute_reference : "<none>",
+                        value_tag_hex[0] != '\0' ? value_tag_hex : "<invalid>",
+                        logged_value_element.value_length);
+                }
+            } else {
+                printf(
+                    "native-wire-server: read-result invoke=%u index=%zu object=%s target=%s status=failure\n",
+                    (unsigned)invoke_id,
+                    index,
+                    current_object_reference[0] != '\0' ? current_object_reference : "<none>",
+                    current_attribute_reference != NULL && current_attribute_reference[0] != '\0' ? current_attribute_reference : "<none>");
+            }
+            fflush(stdout);
+        }
         if (!value_supported) {
             printf(
                 "native-wire-server: read target unsupported invoke=%u object=%s target=%s\n",
@@ -2504,21 +2919,6 @@ static int server_runtime_build_read_response_service(
                 current_object_reference[0] != '\0' ? current_object_reference : "<none>",
                 current_attribute_reference != NULL && current_attribute_reference[0] != '\0' ? current_attribute_reference : "<none>");
             fflush(stdout);
-            if (!server_runtime_encode_ber_element(
-                    UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
-                    0,
-                    0U,
-                    value_bytes,
-                    value_length,
-                    access_result_value_bytes,
-                    sizeof(access_result_value_bytes),
-                    &access_result_value_length,
-                    diagnostic)) {
-                return 0;
-            }
-        } else {
-            access_result_value_length = value_length;
-            memcpy(access_result_value_bytes, value_bytes, value_length);
         }
         if (list_of_access_result_length + access_result_value_length > sizeof(list_of_access_result_bytes)) {
             server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Read response accessResult list is too small.");
@@ -2561,6 +2961,7 @@ static int server_runtime_build_read_response_service(
     }
     memcpy(buffer, service_bytes, total_length);
     *encoded_length = total_length;
+    server_runtime_log_read_response_tree(invoke_id, service_bytes, total_length, diagnostic);
     server_runtime_store_read_summary(server_runtime, invoke_id, value_supported, value_bytes, value_length);
     return 1;
 }

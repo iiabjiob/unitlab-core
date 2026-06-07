@@ -137,6 +137,17 @@ static int test_model_plan_builds_blueprint(void)
         passed &= expect_true(plan.data_set_count == 1U, "one DataSet");
         passed &= expect_true(plan.report_count == 1U, "one ReportControl");
         passed &= expect_true(plan.signal_count == 2U, "two signals");
+        passed &= expect_true(plan.namespace_attribute_count == 4U, "four namespace attributes");
+        if (plan.namespace_attribute_count == 4U) {
+            passed &= expect_string(plan.namespace_attributes[0].object_reference, "LD0.LLN0.EX.NamPlt.ldNs", "namespace ldNs object reference");
+            passed &= expect_string(plan.namespace_attributes[0].initial_value, "LD0", "namespace ldNs value");
+            passed &= expect_string(plan.namespace_attributes[1].object_reference, "LD0.LLN0.EX.NamPlt.lnNs", "namespace lnNs object reference");
+            passed &= expect_string(plan.namespace_attributes[1].initial_value, "IEC 61850-7-4:2007", "namespace lnNs value");
+            passed &= expect_string(plan.namespace_attributes[2].object_reference, "LD0.LLN0.EX.NamPlt.cdcNs", "namespace cdcNs object reference");
+            passed &= expect_string(plan.namespace_attributes[2].initial_value, "IEC 61850-7-3:2010", "namespace cdcNs value");
+            passed &= expect_string(plan.namespace_attributes[3].object_reference, "LD0.LLN0.EX.NamPlt.dataNs", "namespace dataNs object reference");
+            passed &= expect_string(plan.namespace_attributes[3].initial_value, "EXT:2015", "namespace dataNs value");
+        }
         passed &= expect_string(plan.data_sets[0].logical_device_inst, "LD0", "DataSet LD");
         passed &= expect_string(plan.data_sets[0].logical_node_name, "LLN0", "DataSet LN");
         passed &= expect_string(plan.data_sets[0].name, "dsEvents", "DataSet name");
@@ -240,6 +251,49 @@ static int test_collects_named_variables_for_domain_browse(void)
     }
 
     unitlab_free_ied_model_name_list(names, count);
+    return passed;
+}
+
+static int test_collects_logical_node_namespace_attributes(void)
+{
+    UnitLabIedFixtureSignal signals[1] = {
+        {
+            .data_set_index = 0U,
+            .reference = "LD0/XCBR1.Pos.stVal[ST]",
+            .kind = "FCDA",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+            .initial_value = "0",
+        },
+    };
+    UnitLabIedFixtureDataSet data_sets[1] = {
+        {
+            .reference = "IED1/AP1/LD0/LLN0.dsEvents",
+            .signal_count = 1U,
+            .signals = signals,
+        },
+    };
+    UnitLabIedFixtureReport reports[1] = {
+        report_for_data_set("IED1/AP1/LD0/LLN0.dsEvents"),
+    };
+    UnitLabIedFixtureModel fixture = fixture_for(data_sets, 1U, reports, 1U, 1U);
+    UnitLabIedModelPlan plan;
+    char error[256];
+    char** names = NULL;
+    size_t count = 0U;
+    int passed = 1;
+
+    passed &= expect_true(unitlab_build_ied_model_plan(&fixture, &plan, error, sizeof(error)) == 1, "namespace model plan should build");
+    if (passed) {
+        passed &= expect_true(
+            unitlab_collect_ied_model_logical_node_namespace_attributes(&plan, "LD0", "LLN0", &names, &count, error, sizeof(error)) == 1,
+            "namespace browse should collect namespace attributes");
+        if (passed) {
+            passed &= expect_list_matches(names, count, (const char*[]){ "ldNs", "lnNs", "cdcNs", "dataNs" }, 4U, "LLN0 should expose namespace attributes");
+        }
+    }
+    unitlab_free_ied_model_name_list(names, count);
+    unitlab_free_ied_model_plan(&plan);
     return passed;
 }
 
@@ -651,6 +705,7 @@ int main(void)
     int passed = 1;
     passed &= test_model_plan_builds_blueprint();
     passed &= test_collects_named_variables_for_domain_browse();
+    passed &= test_collects_logical_node_namespace_attributes();
     passed &= test_collects_logical_node_variables_for_directory_browse();
     passed &= test_missing_report_dataset_fails();
     passed &= test_invalid_signal_reference_fails();
