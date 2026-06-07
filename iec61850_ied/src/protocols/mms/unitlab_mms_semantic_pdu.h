@@ -53,6 +53,11 @@ typedef struct UnitLabMmsDecodedPdu {
     char read_object_references[UNITLAB_MMS_MAX_READ_VARIABLES][128];
     char read_attribute_references[UNITLAB_MMS_MAX_READ_VARIABLES][64];
     size_t read_object_reference_count;
+    char write_object_references[UNITLAB_MMS_MAX_READ_VARIABLES][128];
+    char write_attribute_references[UNITLAB_MMS_MAX_READ_VARIABLES][64];
+    uint8_t write_values[UNITLAB_MMS_MAX_READ_VARIABLES][32];
+    size_t write_value_lengths[UNITLAB_MMS_MAX_READ_VARIABLES];
+    size_t write_object_reference_count;
     char report_control_reference[128];
     char data_set_reference[128];
     uint32_t object_class;

@@ -393,6 +393,9 @@ int unitlab_mms_pending_request_start(UnitLabMmsPendingRequest* request, UnitLab
     request->object_reference[0] = '\0';
     request->attribute_reference[0] = '\0';
     request->read_object_reference_count = 0U;
+    request->write_object_reference_count = 0U;
+    memset(request->write_values, 0, sizeof(request->write_values));
+    memset(request->write_value_lengths, 0, sizeof(request->write_value_lengths));
     request->browse_object_class = 0U;
     request->browse_object_scope = 0U;
     request->browse_domain_id[0] = '\0';
@@ -722,9 +725,27 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
                 snprintf(pending_request->browse_domain_id, sizeof(pending_request->browse_domain_id), "%s", semantic_result->pdu.domain_id);
                 snprintf(pending_request->browse_continue_after, sizeof(pending_request->browse_continue_after), "%s", semantic_result->pdu.continue_after);
                 pending_request->write_value_length = 0U;
-                if (semantic_result->pdu.kind == UNITLAB_MMS_DECODED_PDU_WRITE_REQUEST && semantic_result->pdu.value_bytes != NULL && semantic_result->pdu.value_length <= sizeof(pending_request->write_value)) {
-                    memcpy(pending_request->write_value, semantic_result->pdu.value_bytes, semantic_result->pdu.value_length);
-                    pending_request->write_value_length = semantic_result->pdu.value_length;
+                pending_request->write_object_reference_count = 0U;
+                memset(pending_request->write_values, 0, sizeof(pending_request->write_values));
+                memset(pending_request->write_value_lengths, 0, sizeof(pending_request->write_value_lengths));
+                if (semantic_result->pdu.kind == UNITLAB_MMS_DECODED_PDU_WRITE_REQUEST) {
+                    if (semantic_result->pdu.value_bytes != NULL && semantic_result->pdu.value_length <= sizeof(pending_request->write_value)) {
+                        memcpy(pending_request->write_value, semantic_result->pdu.value_bytes, semantic_result->pdu.value_length);
+                        pending_request->write_value_length = semantic_result->pdu.value_length;
+                    }
+                    pending_request->write_object_reference_count = semantic_result->pdu.write_object_reference_count;
+                    if (pending_request->write_object_reference_count > UNITLAB_MMS_MAX_READ_VARIABLES) {
+                        pending_request->write_object_reference_count = UNITLAB_MMS_MAX_READ_VARIABLES;
+                    }
+                    for (size_t index = 0U; index < pending_request->write_object_reference_count; index++) {
+                        snprintf(pending_request->write_object_references[index], sizeof(pending_request->write_object_references[index]), "%s", semantic_result->pdu.write_object_references[index]);
+                        snprintf(pending_request->write_attribute_references[index], sizeof(pending_request->write_attribute_references[index]), "%s", semantic_result->pdu.write_attribute_references[index]);
+                        pending_request->write_value_lengths[index] = semantic_result->pdu.write_value_lengths[index];
+                        if (pending_request->write_value_lengths[index] > sizeof(pending_request->write_values[index])) {
+                            pending_request->write_value_lengths[index] = sizeof(pending_request->write_values[index]);
+                        }
+                        memcpy(pending_request->write_values[index], semantic_result->pdu.write_values[index], pending_request->write_value_lengths[index]);
+                    }
                 }
                 if (semantic_result->pdu.kind == UNITLAB_MMS_DECODED_PDU_READ_REQUEST) {
                     pending_request->read_object_reference_count = semantic_result->pdu.read_object_reference_count;
