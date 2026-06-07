@@ -798,6 +798,16 @@ static const char* const lln0_br_rcb_children[] = {
 static const char* const lln0_ex_children[] = { "NamPlt" };
 static const char* const lln0_ex_namplt_children[] = { "ldNs", "lnNs", "cdcNs", "dataNs" };
 static const char* const lln0_namplt_children[] = { "vendor", "swRev", "d", "configRev" };
+static const char* const xcbr1_gva_children[] = { "ST" };
+static const char* const xcbr1_st_children[] = { "Pos" };
+static const char* const xcbr1_st_pos_children[] = { "stVal" };
+static const char* const pggio1_gva_children[] = { "ST" };
+static const char* const pggio1_st_children[] = { "Ind1" };
+static const char* const pggio1_st_ind1_children[] = { "stVal" };
+static const char* const ggio1_gva_children[] = { "MX" };
+static const char* const ggio1_mx_children[] = { "AnIn1" };
+static const char* const ggio1_mx_anin1_children[] = { "mag" };
+static const char* const ggio1_mx_anin1_mag_children[] = { "f" };
 
 static int server_runtime_object_reference_has_suffix(const char* object_reference, const char* suffix);
 
@@ -959,6 +969,43 @@ static const char* const* server_runtime_lookup_gva_children(
         return NULL;
     }
 
+    if (strcmp(logical_node_name, "XCBR1") == 0) {
+        if (parent_component_name == NULL && strcmp(component_name, "ST") == 0) {
+            *child_count = sizeof(xcbr1_st_children) / sizeof(xcbr1_st_children[0]);
+            return xcbr1_st_children;
+        }
+        if (parent_component_name != NULL && strcmp(parent_component_name, "ST") == 0 && strcmp(component_name, "Pos") == 0) {
+            *child_count = sizeof(xcbr1_st_pos_children) / sizeof(xcbr1_st_pos_children[0]);
+            return xcbr1_st_pos_children;
+        }
+        return NULL;
+    }
+    if (strcmp(logical_node_name, "PGGIO1") == 0) {
+        if (parent_component_name == NULL && strcmp(component_name, "ST") == 0) {
+            *child_count = sizeof(pggio1_st_children) / sizeof(pggio1_st_children[0]);
+            return pggio1_st_children;
+        }
+        if (parent_component_name != NULL && strcmp(parent_component_name, "ST") == 0 && strcmp(component_name, "Ind1") == 0) {
+            *child_count = sizeof(pggio1_st_ind1_children) / sizeof(pggio1_st_ind1_children[0]);
+            return pggio1_st_ind1_children;
+        }
+        return NULL;
+    }
+    if (strcmp(logical_node_name, "GGIO1") == 0) {
+        if (parent_component_name == NULL && strcmp(component_name, "MX") == 0) {
+            *child_count = sizeof(ggio1_mx_children) / sizeof(ggio1_mx_children[0]);
+            return ggio1_mx_children;
+        }
+        if (parent_component_name != NULL && strcmp(parent_component_name, "MX") == 0 && strcmp(component_name, "AnIn1") == 0) {
+            *child_count = sizeof(ggio1_mx_anin1_children) / sizeof(ggio1_mx_anin1_children[0]);
+            return ggio1_mx_anin1_children;
+        }
+        if (parent_component_name != NULL && strcmp(parent_component_name, "AnIn1") == 0 && strcmp(component_name, "mag") == 0) {
+            *child_count = sizeof(ggio1_mx_anin1_mag_children) / sizeof(ggio1_mx_anin1_mag_children[0]);
+            return ggio1_mx_anin1_mag_children;
+        }
+        return NULL;
+    }
     if (strcmp(logical_node_name, "LLN0") != 0) {
         return NULL;
     }
@@ -1571,6 +1618,24 @@ static int server_runtime_build_get_variable_access_attributes_response_service(
     else if (strcmp(item_id, "LLN0$BR$brcbEvents") == 0 || strcmp(item_id, "LLN0.BR.brcbEvents") == 0) {
         snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", "LLN0");
         if (!server_runtime_copy_static_names(lln0_br_rcb_children, sizeof(lln0_br_rcb_children) / sizeof(lln0_br_rcb_children[0]), &names, &name_count, diagnostic)) {
+            return 0;
+        }
+    }
+    else if (strcmp(item_id, "XCBR1") == 0) {
+        snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", "XCBR1");
+        if (!server_runtime_copy_static_names(xcbr1_gva_children, sizeof(xcbr1_gva_children) / sizeof(xcbr1_gva_children[0]), &names, &name_count, diagnostic)) {
+            return 0;
+        }
+    }
+    else if (strcmp(item_id, "PGGIO1") == 0) {
+        snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", "PGGIO1");
+        if (!server_runtime_copy_static_names(pggio1_gva_children, sizeof(pggio1_gva_children) / sizeof(pggio1_gva_children[0]), &names, &name_count, diagnostic)) {
+            return 0;
+        }
+    }
+    else if (strcmp(item_id, "GGIO1") == 0) {
+        snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", "GGIO1");
+        if (!server_runtime_copy_static_names(ggio1_gva_children, sizeof(ggio1_gva_children) / sizeof(ggio1_gva_children[0]), &names, &name_count, diagnostic)) {
             return 0;
         }
     }
@@ -2720,6 +2785,71 @@ static int server_runtime_object_reference_has_suffix(const char* object_referen
     return strcmp(object_reference + (object_length - suffix_length), suffix) == 0;
 }
 
+static int server_runtime_encode_nested_integer_structure_value(
+    int32_t value,
+    size_t nested_structure_count,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t integer_storage[5U];
+    uint8_t current_storage[256U];
+    uint8_t next_storage[256U];
+    UnitLabMmsBerElement element;
+    size_t integer_length = 0U;
+    size_t current_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL || nested_structure_count == 0U) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Nested integer structure encoding requires output pointers and at least one structure.");
+        return 0;
+    }
+    if (!server_runtime_encode_signed_integer(value, integer_storage, sizeof(integer_storage), &integer_length, diagnostic)) {
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&element);
+    element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    element.tag.constructed = 0;
+    element.tag.tag_number = 5U;
+    element.value_bytes = integer_storage;
+    element.value_length = integer_length;
+    if (!unitlab_mms_ber_write(&element, current_storage, sizeof(current_storage), &current_length, diagnostic)) {
+        return 0;
+    }
+
+    for (size_t index = 0U; index < nested_structure_count; index++) {
+        size_t next_length = 0U;
+
+        unitlab_mms_ber_element_init(&element);
+        element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+        element.tag.constructed = 1;
+        element.tag.tag_number = 2U;
+        element.value_bytes = current_storage;
+        element.value_length = current_length;
+        if (!unitlab_mms_ber_write(&element, next_storage, sizeof(next_storage), &next_length, diagnostic)) {
+            return 0;
+        }
+        if (next_length > sizeof(current_storage)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Nested integer structure buffer is too small.");
+            return 0;
+        }
+        memcpy(current_storage, next_storage, next_length);
+        current_length = next_length;
+    }
+
+    if (current_length > buffer_length) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Nested integer structure output buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, current_storage, current_length);
+    *encoded_length = current_length;
+    return 1;
+}
+
 static int server_runtime_build_read_response_value(
     UnitLabMmsServerRuntime* server_runtime,
     const char* object_reference,
@@ -2751,6 +2881,28 @@ static int server_runtime_build_read_response_value(
     }
     snprintf(rcb_report_id_reference, sizeof(rcb_report_id_reference), "%s/LLN0.BR.Events", server_runtime_advertised_domain_name(server_runtime));
     snprintf(rcb_data_set_reference, sizeof(rcb_data_set_reference), "%s/LLN0$dsEvents", server_runtime_advertised_domain_name(server_runtime));
+
+    if (server_runtime_object_reference_has_suffix(object_reference, ".PGGIO1.ST")) {
+        if (!server_runtime_encode_nested_integer_structure_value(1, 2U, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".GGIO1.MX")) {
+        if (!server_runtime_encode_nested_integer_structure_value(0, 3U, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
+    if (server_runtime_object_reference_has_suffix(object_reference, ".XCBR1.ST")) {
+        if (!server_runtime_encode_nested_integer_structure_value(0, 2U, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
 
     signal = server_runtime_find_signal_by_object_reference(server_runtime, object_reference);
     if (signal != NULL) {

@@ -1428,6 +1428,98 @@ static void test_server_runtime_build_read_failure_uses_data_access_error_access
 }
 
 
+static void test_server_runtime_build_ordinary_ln_gva_response_exposes_fc_roots(void)
+{
+    static const struct {
+        const char* object_reference;
+        const char* attribute_reference;
+        const char* fc;
+        const char* child_a;
+        const char* child_b;
+        const char* child_c;
+    } cases[] = {
+        { "LD0.XCBR1", "XCBR1", "ST", "Pos", "stVal", NULL },
+        { "LD0.PGGIO1", "PGGIO1", "ST", "Ind1", "stVal", NULL },
+        { "LD0.GGIO1", "GGIO1", "MX", "AnIn1", "mag", "f" }
+    };
+
+    for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); index++) {
+        UnitLabMmsServerRuntime server_runtime;
+        UnitLabMmsDiagnostic diagnostic;
+        UnitLabIedServerConfig config = {
+            .bind_address = "127.0.0.1",
+            .port = 102,
+        };
+        uint8_t response_bytes[4096U];
+        size_t response_length = 0U;
+        size_t response_consumed_length = 0U;
+        UnitLabMmsAssociationFrame frame;
+
+        unitlab_mms_server_runtime_init(&server_runtime);
+        assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+        assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+        assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES, (uint32_t)(30U + index), 7U, 1000U, 100U, &diagnostic) == 1);
+        snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", cases[index].object_reference);
+        snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", cases[index].attribute_reference);
+
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+        assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+        assert(response_length > 0U);
+
+        unitlab_mms_association_frame_init(&frame);
+        assert(unitlab_mms_association_frame_decode(&frame, response_bytes, response_length, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == response_length);
+        assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)cases[index].fc, strlen(cases[index].fc)) == 1);
+        assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)cases[index].child_a, strlen(cases[index].child_a)) == 1);
+        assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)cases[index].child_b, strlen(cases[index].child_b)) == 1);
+        if (cases[index].child_c != NULL) {
+            assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)cases[index].child_c, strlen(cases[index].child_c)) == 1);
+        }
+    }
+}
+
+static void test_server_runtime_build_fc_root_reads_match_lib_shape(void)
+{
+    static const uint8_t ggio1_mx_expected[] = { 0xA2U, 0x07U, 0xA2U, 0x05U, 0xA2U, 0x03U, 0x85U, 0x01U, 0x00U };
+    static const uint8_t pggio1_st_expected[] = { 0xA2U, 0x05U, 0xA2U, 0x03U, 0x85U, 0x01U, 0x01U };
+    static const uint8_t xcbr1_st_expected[] = { 0xA2U, 0x05U, 0xA2U, 0x03U, 0x85U, 0x01U, 0x00U };
+    static const struct {
+        const char* object_reference;
+        const char* attribute_reference;
+        const uint8_t* expected_bytes;
+        size_t expected_length;
+    } cases[] = {
+        { "LD0.GGIO1.MX", "MX", ggio1_mx_expected, sizeof(ggio1_mx_expected) },
+        { "LD0.PGGIO1.ST", "ST", pggio1_st_expected, sizeof(pggio1_st_expected) },
+        { "LD0.XCBR1.ST", "ST", xcbr1_st_expected, sizeof(xcbr1_st_expected) }
+    };
+
+    for (size_t index = 0U; index < sizeof(cases) / sizeof(cases[0]); index++) {
+        UnitLabMmsServerRuntime server_runtime;
+        UnitLabMmsDiagnostic diagnostic;
+        UnitLabIedServerConfig config = {
+            .bind_address = "127.0.0.1",
+            .port = 102,
+        };
+        uint8_t response_bytes[512U];
+        size_t response_length = 0U;
+
+        unitlab_mms_server_runtime_init(&server_runtime);
+        assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+        assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+        assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, (uint32_t)(40U + index), 7U, 1000U, 100U, &diagnostic) == 1);
+        snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", cases[index].object_reference);
+        snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", cases[index].attribute_reference);
+
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+        assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+        assert(response_length > 0U);
+        assert(contains_bytes(response_bytes, response_length, cases[index].expected_bytes, cases[index].expected_length) == 1);
+    }
+}
+
 static void test_server_runtime_build_brcb_gva_response_exposes_fields(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -2848,6 +2940,8 @@ int main(void)
     test_server_runtime_build_brcb_read_uses_default_advertised_domain();
     test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results();
     test_server_runtime_build_read_failure_uses_data_access_error_access_result();
+    test_server_runtime_build_ordinary_ln_gva_response_exposes_fc_roots();
+    test_server_runtime_build_fc_root_reads_match_lib_shape();
     test_server_runtime_build_brcb_gva_response_exposes_fields();
     test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips();
     test_server_runtime_build_get_name_list_response_handles_large_directory();
