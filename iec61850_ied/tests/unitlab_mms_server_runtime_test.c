@@ -1974,6 +1974,51 @@ static int build_get_name_list_request_association_bytes(const uint8_t* request_
     return 1;
 }
 
+static void test_server_runtime_apply_release_request_builds_lib_shape_response(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    static const uint8_t release_request_bytes[] = {
+        0x03U, 0x00U, 0x00U, 0x16U, 0x02U, 0xF0U, 0x80U, 0x01U,
+        0x00U, 0x01U, 0x00U, 0x61U, 0x09U, 0x30U, 0x07U, 0x02U,
+        0x01U, 0x03U, 0xA0U, 0x02U, 0x8BU, 0x00U,
+    };
+    static const uint8_t expected_release_response_bytes[] = {
+        0x03U, 0x00U, 0x00U, 0x16U, 0x02U, 0xF0U, 0x80U, 0x01U,
+        0x00U, 0x01U, 0x00U, 0x61U, 0x09U, 0x30U, 0x07U, 0x02U,
+        0x01U, 0x03U, 0xA0U, 0x02U, 0x8CU, 0x00U,
+    };
+    uint8_t response_bytes[256U];
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, server_runtime.session.active_invoke_id, &diagnostic));
+
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, release_request_bytes, sizeof(release_request_bytes), &consumed_length, &operation_result) == 1);
+    assert(consumed_length == sizeof(release_request_bytes));
+    assert(operation_result.ok == 1);
+    assert(server_runtime.last_wire_pdu.kind == UNITLAB_MMS_PDU_CONCLUDE_REQUEST);
+    assert(server_runtime.session.state == UNITLAB_MMS_SESSION_RELEASING);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_release_response_bytes(&server_runtime, response_bytes, sizeof(response_bytes), &response_length, &diagnostic) == 1);
+    assert(response_length == sizeof(expected_release_response_bytes));
+    assert(memcmp(response_bytes, expected_release_response_bytes, sizeof(expected_release_response_bytes)) == 0);
+    assert(unitlab_mms_session_complete_release(&server_runtime.session, &diagnostic) == 1);
+    assert(server_runtime.session.state == UNITLAB_MMS_SESSION_DISCONNECTED);
+}
+
 static void test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -3040,6 +3085,7 @@ int main(void)
     test_server_runtime_build_ordinary_ln_gva_response_exposes_fc_roots();
     test_server_runtime_build_fc_root_reads_match_lib_shape();
     test_server_runtime_build_brcb_gva_response_exposes_fields();
+    test_server_runtime_apply_release_request_builds_lib_shape_response();
     test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips();
     test_server_runtime_build_get_name_list_response_handles_large_directory();
     test_server_runtime_apply_iedscout_get_name_list_request_matches_golden_capture();

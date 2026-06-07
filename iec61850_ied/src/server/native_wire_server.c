@@ -357,6 +357,30 @@ static int native_wire_process_received_tpkt_frame(
     }
     apply_ok = unitlab_mms_server_runtime_apply_incoming_bytes(server_runtime, incoming, received, &consumed_length, &incoming_result);
     if (apply_ok
+        && server_runtime->last_wire_pdu.kind == UNITLAB_MMS_PDU_CONCLUDE_REQUEST
+        && server_runtime->session.state == UNITLAB_MMS_SESSION_RELEASING) {
+        if (!unitlab_mms_server_runtime_build_release_response_bytes(
+                server_runtime,
+                response_frame,
+                sizeof(response_frame),
+                &response_length,
+                &response_diagnostic)) {
+            set_result(result, "NATIVE_WIRE_SERVER_RELEASE_RESPONSE_BUILD_FAILED", response_diagnostic.message);
+            return -1;
+        }
+        if (!send_all(data_client_fd, response_frame, response_length)) {
+            set_result(result, "NATIVE_WIRE_SERVER_RELEASE_RESPONSE_SEND_FAILED", "Native wire server could not send MMS release response frame.");
+            return -1;
+        }
+        if (!unitlab_mms_session_complete_release(&server_runtime->session, &response_diagnostic)) {
+            set_result(result, "NATIVE_WIRE_SERVER_RELEASE_COMPLETE_FAILED", response_diagnostic.message);
+            return -1;
+        }
+        printf("native-wire-server: release-response-sent bytes=%zu closing-data-socket=true\n", response_length);
+        fflush(stdout);
+        return 2;
+    }
+    if (apply_ok
         && server_runtime->pending_request.state == UNITLAB_MMS_PENDING_REQUEST_ACTIVE
         && server_runtime->pending_request.last_event.kind == UNITLAB_MMS_RUNTIME_EVENT_REQUEST_STARTED) {
         if (!unitlab_mms_server_runtime_build_confirmed_response_bytes(
@@ -816,13 +840,24 @@ int unitlab_run_native_wire_server(
                         if (data_rx_length < frame_length_bytes) {
                             break;
                         }
-                        if (native_wire_process_received_tpkt_frame(server_runtime, data_client_fd, data_rx_buffer, frame_length_bytes, result) < 0) {
-                            goto fail;
+                        {
+                            int frame_outcome = native_wire_process_received_tpkt_frame(server_runtime, data_client_fd, data_rx_buffer, frame_length_bytes, result);
+                            if (frame_outcome < 0) {
+                                goto fail;
+                            }
+                            if (data_rx_length > frame_length_bytes) {
+                                memmove(data_rx_buffer, data_rx_buffer + frame_length_bytes, data_rx_length - frame_length_bytes);
+                            }
+                            data_rx_length -= frame_length_bytes;
+                            if (frame_outcome == 2) {
+                                log_native_wire_disconnect(server_runtime, "mms-release-complete; closing data socket");
+                                close_fd(&data_client_fd);
+                                close_fd(&control_client_fd);
+                                data_rx_length = 0U;
+                                reset_native_wire_runtime_state(server_runtime);
+                                break;
+                            }
                         }
-                        if (data_rx_length > frame_length_bytes) {
-                            memmove(data_rx_buffer, data_rx_buffer + frame_length_bytes, data_rx_length - frame_length_bytes);
-                        }
-                        data_rx_length -= frame_length_bytes;
                     }
                 }
                 continue;

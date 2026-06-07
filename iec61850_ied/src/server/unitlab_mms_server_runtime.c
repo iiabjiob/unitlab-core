@@ -3944,6 +3944,58 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
     return 1;
 }
 
+int unitlab_mms_server_runtime_build_release_response_bytes(UnitLabMmsServerRuntime* server_runtime, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsPdu response_pdu;
+    size_t response_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (server_runtime == NULL || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime, buffer, and encoded_length are required.");
+        return 0;
+    }
+    if (server_runtime->state != UNITLAB_MMS_SERVER_RUNTIME_RUNNING) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, "Server runtime must be running before building release response bytes.");
+        return 0;
+    }
+    if (server_runtime->session.state != UNITLAB_MMS_SESSION_RELEASING) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BAD_STATE, "Release response requires a releasing session.");
+        return 0;
+    }
+
+    unitlab_mms_pdu_init(&response_pdu);
+    response_pdu.kind = UNITLAB_MMS_PDU_CONCLUDE_RESPONSE;
+    if (!unitlab_mms_build_wire_frame_from_pdu(
+            &response_pdu,
+            server_runtime->wire_scratch,
+            sizeof(server_runtime->wire_scratch),
+            buffer,
+            buffer_length,
+            &response_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!unitlab_mms_transport_exchange_bind_response(&server_runtime->transport, buffer, buffer_length, diagnostic)) {
+        return 0;
+    }
+    if (!unitlab_mms_transport_exchange_set_response_length(&server_runtime->transport, response_length, diagnostic)) {
+        return 0;
+    }
+    server_runtime_store_outgoing_context(server_runtime, 0U, "Conclude", "status=success release-response");
+    *encoded_length = response_length;
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    unitlab_mms_operation_result_from_trace(
+        &server_runtime->last_result,
+        1,
+        diagnostic,
+        &server_runtime->transport.event_log,
+        &server_runtime->transport.last_event);
+    unitlab_mms_server_runtime_capture_snapshot(server_runtime);
+    return 1;
+}
+
 int unitlab_mms_server_runtime_apply_incoming_bytes(UnitLabMmsServerRuntime* server_runtime, const uint8_t* buffer, size_t buffer_length, size_t* consumed_length, UnitLabMmsOperationResult* operation_result)
 {
     UnitLabMmsPdu wire_pdu;
