@@ -1319,6 +1319,33 @@ static void test_server_runtime_apply_iedscout_buffered_report_control_block_con
     assert_read_response_success_br_container(response_bytes, response_length, 15U);
 }
 
+static void test_server_runtime_build_brcb_read_uses_default_advertised_domain(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    uint8_t response_bytes[1024U];
+    size_t response_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 18U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "LD0.LLN0.BR.brcbEvents");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "brcbEvents");
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"LD0/LLN0.BR.Events", strlen("LD0/LLN0.BR.Events")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"LD0/LLN0$dsEvents", strlen("LD0/LLN0$dsEvents")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"IED1LD0/LLN0.BR.Events", strlen("IED1LD0/LLN0.BR.Events")) == 0);
+}
+
 static void test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results(void)
 {
     static const char* const fields[] = {
@@ -2818,6 +2845,7 @@ int main(void)
     test_server_runtime_apply_iedscout_namespace_multi_read_builds_response();
     test_server_runtime_apply_iedscout_buffered_report_control_block_read_builds_response();
     test_server_runtime_apply_iedscout_buffered_report_control_block_container_read_builds_response();
+    test_server_runtime_build_brcb_read_uses_default_advertised_domain();
     test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results();
     test_server_runtime_build_read_failure_uses_data_access_error_access_result();
     test_server_runtime_build_brcb_gva_response_exposes_fields();
