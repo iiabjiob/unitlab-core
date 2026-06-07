@@ -1065,14 +1065,14 @@ static void test_server_runtime_apply_iedscout_buffered_report_control_block_rea
     assert(operation_result.ok == 1);
     assert(unitlab_mms_session_complete_association(&server_runtime.session, server_runtime.session.active_invoke_id, &diagnostic));
 
-    assert(build_model_read_request_association_bytes("LD0$LLN0$BR$LLN0_Events_BuffRep01", 14U, read_wire_bytes, sizeof(read_wire_bytes), &read_wire_length, &diagnostic));
+    assert(build_model_read_request_association_bytes("LD0$LLN0$BR$brcbEvents", 14U, read_wire_bytes, sizeof(read_wire_bytes), &read_wire_length, &diagnostic));
     unitlab_mms_operation_result_init(&operation_result);
     assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, read_wire_bytes, read_wire_length, &consumed_length, &operation_result));
     assert(operation_result.ok == 1);
     assert(consumed_length == read_wire_length);
     assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_READ);
     assert(server_runtime.pending_request.invoke_id == 14U);
-    assert(strcmp(server_runtime.pending_request.object_reference, "LD0.LLN0.BR.LLN0_Events_BuffRep01") == 0);
+    assert(strcmp(server_runtime.pending_request.object_reference, "LD0.LLN0.BR.brcbEvents") == 0);
 
     unitlab_mms_diagnostic_clear(&diagnostic);
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
@@ -1869,7 +1869,7 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"lnNs", strlen("lnNs")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"cdcNs", strlen("cdcNs")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"dataNs", strlen("dataNs")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"LLN0_Events_BuffRep01", strlen("LLN0_Events_BuffRep01")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"brcbEvents", strlen("brcbEvents")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"RptID", strlen("RptID")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"DatSet", strlen("DatSet")) == 1);
         assert(component_offset == components_wrapper_element.value_length);

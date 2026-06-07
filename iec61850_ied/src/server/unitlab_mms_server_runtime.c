@@ -776,7 +776,7 @@ static const char* const lln0_health_children[] = { "stVal", "q", "t" };
 static const char* const lln0_cf_children[] = { "Mod" };
 static const char* const lln0_cf_mod_children[] = { "ctlModel" };
 static const char* const lln0_dc_children[] = { "NamPlt" };
-static const char* const lln0_br_children[] = { "LLN0_Events_BuffRep01" };
+static const char* const lln0_br_children[] = { "brcbEvents" };
 static const char* const lln0_br_rcb_children[] = {
     "RptID",
     "RptEna",
@@ -796,6 +796,24 @@ static const char* const lln0_br_rcb_children[] = {
 static const char* const lln0_ex_children[] = { "NamPlt" };
 static const char* const lln0_ex_namplt_children[] = { "ldNs", "lnNs", "cdcNs", "dataNs" };
 static const char* const lln0_namplt_children[] = { "vendor", "swRev", "d", "configRev" };
+
+static int server_runtime_object_reference_has_suffix(const char* object_reference, const char* suffix);
+
+static int server_runtime_object_reference_has_suffix_any(
+    const char* object_reference,
+    const char* const* suffixes,
+    size_t suffix_count)
+{
+    if (object_reference == NULL || suffixes == NULL || suffix_count == 0U) {
+        return 0;
+    }
+    for (size_t index = 0U; index < suffix_count; index++) {
+        if (server_runtime_object_reference_has_suffix(object_reference, suffixes[index])) {
+            return 1;
+        }
+    }
+    return 0;
+}
 
 
 static int server_runtime_encode_gva_leaf_type_spec(
@@ -984,7 +1002,7 @@ static const char* const* server_runtime_lookup_gva_children(
         *child_count = sizeof(lln0_namplt_children) / sizeof(lln0_namplt_children[0]);
         return lln0_namplt_children;
     }
-    else if (strcmp(parent_component_name, "BR") == 0 && strcmp(component_name, "LLN0_Events_BuffRep01") == 0) {
+    else if (strcmp(parent_component_name, "BR") == 0 && strcmp(component_name, "brcbEvents") == 0) {
         *child_count = sizeof(lln0_br_rcb_children) / sizeof(lln0_br_rcb_children[0]);
         return lln0_br_rcb_children;
     }
@@ -2647,7 +2665,7 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
-    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.RptID")) {
+    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.RptID", ".BR.LLN0_Events_BuffRep01.RptID" }, 2U)) {
         synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
         snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "IED1LD0/LLN0.BR.Events");
         if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
@@ -2656,7 +2674,7 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
-    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.DatSet")) {
+    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.DatSet", ".BR.LLN0_Events_BuffRep01.DatSet" }, 2U)) {
         synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
         snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "IED1/AP1/LD0/LLN0.dsEvents");
         if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
@@ -2665,7 +2683,7 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
-    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.ConfRev")) {
+    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.ConfRev", ".BR.LLN0_Events_BuffRep01.ConfRev" }, 2U)) {
         integer_value = 7;
         if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
             return 0;
@@ -2681,7 +2699,7 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
-    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.BufTm")) {
+    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.BufTm", ".BR.LLN0_Events_BuffRep01.BufTm" }, 2U)) {
         integer_value = 100;
         if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
             return 0;
@@ -2697,7 +2715,7 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
-    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.IntgPd")) {
+    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.IntgPd", ".BR.LLN0_Events_BuffRep01.IntgPd" }, 2U)) {
         integer_value = 1000;
         if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
             return 0;
@@ -2713,8 +2731,8 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
-    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.SqNum")
-        || server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.ResvTms")) {
+    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.SqNum", ".BR.LLN0_Events_BuffRep01.SqNum" }, 2U)
+        || server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.ResvTms", ".BR.LLN0_Events_BuffRep01.ResvTms" }, 2U)) {
         integer_value = 0;
         if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
             return 0;
@@ -2730,9 +2748,9 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
-    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.GI")
-        || server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.PurgeBuf")
-        || server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01.RptEna")) {
+    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.GI", ".BR.LLN0_Events_BuffRep01.GI" }, 2U)
+        || server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.PurgeBuf", ".BR.LLN0_Events_BuffRep01.PurgeBuf" }, 2U)
+        || server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.RptEna", ".BR.LLN0_Events_BuffRep01.RptEna" }, 2U)) {
         uint8_t boolean_value = 0x00U;
 
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
@@ -2746,7 +2764,7 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
-    if (server_runtime_object_reference_has_suffix(object_reference, ".BR.LLN0_Events_BuffRep01")) {
+    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents", ".BR.LLN0_Events_BuffRep01" }, 2U)) {
         if (!server_runtime_encode_report_control_block_value(buffer, buffer_length, encoded_length, diagnostic)) {
             return 0;
         }
