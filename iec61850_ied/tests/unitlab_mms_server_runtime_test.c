@@ -574,6 +574,171 @@ static void test_server_runtime_gi_write_queues_information_report(void)
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x02\x04", 4U) == 1);
 }
 
+
+static void test_server_runtime_gi_report_uses_model_dataset_members(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedFixtureSignal signals[3U] = {
+        {
+            .data_set_index = 0U,
+            .reference = "LD0/XCBR1.Pos.stVal[ST]",
+            .kind = "FCDA",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+            .initial_value = "1",
+        },
+        {
+            .data_set_index = 1U,
+            .reference = "LD0/PGGIO1.Ind1.stVal[ST]",
+            .kind = "FCDA",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+            .initial_value = "2",
+        },
+        {
+            .data_set_index = 2U,
+            .reference = "LD0/GGIO1.Ind2.stVal[ST]",
+            .kind = "FCDA",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+            .initial_value = "3",
+        },
+    };
+    UnitLabIedFixtureDataSet data_sets[1U] = {
+        {
+            .reference = "IED1/AP1/LD0/LLN0.dsEvents",
+            .signal_count = 3U,
+            .signals = signals,
+        },
+    };
+    UnitLabIedFixtureReport reports[1U] = {
+        {
+            .key = "IED1/AP1/LD0/LLN0/brcbEvents/buffered",
+            .logical_device_inst = "LD0",
+            .logical_node_name = "LLN0",
+            .report_control_name = "brcbEvents",
+            .report_kind = "buffered",
+            .rpt_id = "IED1LD0/LLN0.BR.Events",
+            .data_set_ref = "IED1/AP1/LD0/LLN0.dsEvents",
+            .conf_rev = "11",
+            .indexed_known = 1,
+            .indexed = 0,
+            .buffer_time_ms_known = 1,
+            .buffer_time_ms = 100,
+            .integrity_period_ms_known = 1,
+            .integrity_period_ms = 1000,
+        },
+    };
+    UnitLabIedFixtureModel fixture = {
+        .device_count = 1U,
+        .ied_name = "IED1",
+        .access_point_name = "AP1",
+        .data_set_count = 1U,
+        .data_sets = data_sets,
+        .report_count = 1U,
+        .reports = reports,
+        .signal_count = 3U,
+    };
+    UnitLabIedModelPlan plan;
+    char error[256U];
+    uint8_t scratch[512U];
+    uint8_t request_bytes[512U];
+    uint8_t response_bytes[1024U];
+    uint8_t report_bytes[4096U];
+    uint8_t value_byte = 0x01U;
+    UnitLabMmsBerElement data_element;
+    UnitLabMmsAssociationFrame report_frame;
+    size_t request_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+    size_t report_length = 0U;
+
+    assert(unitlab_build_ied_model_plan(&fixture, &plan, error, sizeof(error)) == 1);
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+
+    unitlab_mms_ber_element_init(&data_element);
+    data_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    data_element.tag.constructed = 0;
+    data_element.tag.tag_number = 3U;
+    data_element.value_bytes = &value_byte;
+    data_element.value_length = 1U;
+    assert(unitlab_mms_build_write_request_frame("IED1LD0", "LLN0$BR$brcbEvents$GI", &data_element, 24U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
+    assert(server_runtime.brcb_sq_num == 1U);
+    assert(server_runtime.brcb_entry_id_counter == 1U);
+    assert(server_runtime.brcb_entry_id[7] == 1U);
+
+    unitlab_mms_association_frame_init(&report_frame);
+    assert(unitlab_mms_association_frame_decode(&report_frame, report_bytes, report_length, &consumed_length, &diagnostic));
+    assert(consumed_length == report_length);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1LD0/GGIO1$ST$Ind2$stVal", strlen("IED1LD0/GGIO1$ST$Ind2$stVal")) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x86\x01\x0B", 3U) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x85\x01\x03", 3U) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x89\x08\x00\x00\x00\x00\x00\x00\x00\x01", 10U) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x8C\x06", 2U) == 1);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
+static void test_server_runtime_purgebuf_write_resets_brcb_runtime_state(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    uint8_t scratch[512U];
+    uint8_t request_bytes[512U];
+    uint8_t response_bytes[1024U];
+    uint8_t value_byte = 0x01U;
+    UnitLabMmsBerElement data_element;
+    size_t request_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    server_runtime.brcb_sq_num = 12U;
+    server_runtime.brcb_entry_id_counter = 12U;
+    memset(server_runtime.brcb_entry_id, 0xAA, sizeof(server_runtime.brcb_entry_id));
+    memset(server_runtime.brcb_time_of_entry, 0xBB, sizeof(server_runtime.brcb_time_of_entry));
+    server_runtime.pending_gi_report = 1U;
+
+    unitlab_mms_ber_element_init(&data_element);
+    data_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    data_element.tag.constructed = 0;
+    data_element.tag.tag_number = 3U;
+    data_element.value_bytes = &value_byte;
+    data_element.value_length = 1U;
+    assert(unitlab_mms_build_write_request_frame("IED1LD0", "LLN0$BR$brcbEvents$PurgeBuf", &data_element, 25U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(server_runtime.brcb_sq_num == 0U);
+    assert(server_runtime.brcb_entry_id_counter == 0U);
+    assert(server_runtime.pending_gi_report == 0U);
+    assert(contains_bytes(server_runtime.brcb_entry_id, sizeof(server_runtime.brcb_entry_id), (const uint8_t*)"\xAA", 1U) == 0);
+    assert(contains_bytes(server_runtime.brcb_time_of_entry, sizeof(server_runtime.brcb_time_of_entry), (const uint8_t*)"\xBB", 1U) == 0);
+}
+
 static int build_get_name_list_request_association_bytes(const uint8_t* request_body_bytes, size_t request_body_length, uint32_t invoke_id, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 
 
@@ -2273,26 +2438,6 @@ static void test_server_runtime_apply_iedscout_get_name_list_request_matches_gol
 }
 
 
-static UnitLabIedFixtureReport runtime_report_for_data_set(const char* data_set_ref)
-{
-    UnitLabIedFixtureReport report = {
-        .key = "IED1/AP1/LD0/LLN0/brcbEvents/buffered",
-        .logical_device_inst = "LD0",
-        .logical_node_name = "LLN0",
-        .report_control_name = "brcbEvents",
-        .report_kind = "buffered",
-        .rpt_id = "IED1LD0/LLN0.BR.Events",
-        .conf_rev = "7",
-        .indexed_known = 1,
-        .indexed = 0,
-        .buffer_time_ms_known = 1,
-        .buffer_time_ms = 100,
-        .integrity_period_ms_known = 1,
-        .integrity_period_ms = 1000,
-    };
-    snprintf(report.data_set_ref, sizeof(report.data_set_ref), "%s", data_set_ref);
-    return report;
-}
 
 static void test_server_runtime_fixture_domain_get_name_list_uses_mms_domain(void)
 {
@@ -2321,7 +2466,22 @@ static void test_server_runtime_fixture_domain_get_name_list_uses_mms_domain(voi
         },
     };
     UnitLabIedFixtureReport reports[1U] = {
-        runtime_report_for_data_set("IED1/AP1/LD0/LLN0.dsEvents"),
+        {
+            .key = "IED1/AP1/LD0/LLN0/brcbEvents/buffered",
+            .logical_device_inst = "LD0",
+            .logical_node_name = "LLN0",
+            .report_control_name = "brcbEvents",
+            .report_kind = "buffered",
+            .rpt_id = "IED1LD0/LLN0.BR.Events",
+            .data_set_ref = "IED1/AP1/LD0/LLN0.dsEvents",
+            .conf_rev = "11",
+            .indexed_known = 1,
+            .indexed = 0,
+            .buffer_time_ms_known = 1,
+            .buffer_time_ms = 100,
+            .integrity_period_ms_known = 1,
+            .integrity_period_ms = 1000,
+        },
     };
     UnitLabIedFixtureModel fixture = {
         .device_count = 1U,
@@ -3227,6 +3387,8 @@ int main(void)
     test_server_runtime_apply_write_request_and_build_response_roundtrips();
     test_server_runtime_rptena_write_updates_brcb_read_state();
     test_server_runtime_gi_write_queues_information_report();
+    test_server_runtime_gi_report_uses_model_dataset_members();
+    test_server_runtime_purgebuf_write_resets_brcb_runtime_state();
     test_server_runtime_apply_wire_pdu_requires_running_state();
     test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_exact_frame();
     return 0;

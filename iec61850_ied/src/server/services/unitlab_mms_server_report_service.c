@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 /* Report service owns BRCB value encoding and unconfirmed InformationReport construction. */
 
@@ -27,6 +28,135 @@ static int server_runtime_encode_report_control_block_structure_field_value(
     size_t buffer_length,
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic);
+
+static const UnitLabIedModelReportControl* server_runtime_active_report_control(const UnitLabMmsServerRuntime* server_runtime)
+{
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || server_runtime->model_plan->report_count == 0U || server_runtime->model_plan->reports == NULL) {
+        return NULL;
+    }
+    return &server_runtime->model_plan->reports[0];
+}
+
+static const UnitLabIedModelDataSet* server_runtime_report_data_set(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report)
+{
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || report == NULL || server_runtime->model_plan->data_sets == NULL) {
+        return NULL;
+    }
+    if (report->data_set_index >= server_runtime->model_plan->data_set_count) {
+        return NULL;
+    }
+    return &server_runtime->model_plan->data_sets[report->data_set_index];
+}
+
+static uint32_t server_runtime_report_conf_rev(const UnitLabIedModelReportControl* report)
+{
+    return report != NULL && report->conf_rev_known ? report->conf_rev : 7U;
+}
+
+static uint32_t server_runtime_report_buffer_time_ms(const UnitLabIedModelReportControl* report)
+{
+    return report != NULL && report->buffer_time_ms_known ? report->buffer_time_ms : 100U;
+}
+
+static uint32_t server_runtime_report_integrity_period_ms(const UnitLabIedModelReportControl* report)
+{
+    return report != NULL && report->integrity_period_ms_known ? report->integrity_period_ms : 1000U;
+}
+
+static void server_runtime_format_report_id_reference(
+    const UnitLabMmsServerRuntime* server_runtime,
+    const UnitLabIedModelReportControl* report,
+    char* buffer,
+    size_t buffer_length)
+{
+    const char* domain_name = server_runtime_advertised_domain_name(server_runtime);
+
+    if (buffer == NULL || buffer_length == 0U) {
+        return;
+    }
+    if (report != NULL && report->rpt_id[0] != '\0') {
+        snprintf(buffer, buffer_length, "%s", report->rpt_id);
+        return;
+    }
+    snprintf(buffer, buffer_length, "%s/LLN0.BR.Events", domain_name);
+}
+
+static void server_runtime_format_dataset_reference(
+    const UnitLabMmsServerRuntime* server_runtime,
+    const UnitLabIedModelDataSet* data_set,
+    char* buffer,
+    size_t buffer_length)
+{
+    const char* domain_name = server_runtime_advertised_domain_name(server_runtime);
+
+    if (buffer == NULL || buffer_length == 0U) {
+        return;
+    }
+    if (data_set != NULL && data_set->logical_device_inst[0] != '\0' && data_set->logical_node_name[0] != '\0' && data_set->name[0] != '\0') {
+        snprintf(buffer, buffer_length, "%s/%s$%s", data_set->logical_device_inst, data_set->logical_node_name, data_set->name);
+        return;
+    }
+    snprintf(buffer, buffer_length, "%s/LLN0$dsEvents", domain_name);
+}
+
+static int server_runtime_encode_unsigned_value(uint32_t value, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t value_bytes[4U];
+    size_t start = 0U;
+    size_t length = sizeof(value_bytes);
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Unsigned value encoding requires a buffer and encoded_length.");
+        return 0;
+    }
+
+    value_bytes[0] = (uint8_t)((value >> 24U) & 0xFFU);
+    value_bytes[1] = (uint8_t)((value >> 16U) & 0xFFU);
+    value_bytes[2] = (uint8_t)((value >> 8U) & 0xFFU);
+    value_bytes[3] = (uint8_t)(value & 0xFFU);
+    while (start + 1U < sizeof(value_bytes) && value_bytes[start] == 0U) {
+        start++;
+        length--;
+    }
+    if (length > buffer_length) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Unsigned value encoding buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, &value_bytes[start], length);
+    *encoded_length = length;
+    return 1;
+}
+
+static void server_runtime_update_report_sequence(UnitLabMmsServerRuntime* server_runtime)
+{
+    uint64_t timestamp_ms = 0U;
+    time_t now;
+
+    if (server_runtime == NULL) {
+        return;
+    }
+
+    server_runtime->brcb_sq_num++;
+    server_runtime->brcb_entry_id_counter++;
+    for (size_t index = 0U; index < sizeof(server_runtime->brcb_entry_id); index++) {
+        unsigned int shift = (unsigned int)((sizeof(server_runtime->brcb_entry_id) - index - 1U) * 8U);
+        server_runtime->brcb_entry_id[index] = (uint8_t)((server_runtime->brcb_entry_id_counter >> shift) & 0xFFU);
+    }
+
+    now = time(NULL);
+    if (now > (time_t)0) {
+        timestamp_ms = (uint64_t)now * 1000U;
+    }
+    server_runtime->brcb_time_of_entry[0] = (uint8_t)((timestamp_ms >> 24U) & 0xFFU);
+    server_runtime->brcb_time_of_entry[1] = (uint8_t)((timestamp_ms >> 16U) & 0xFFU);
+    server_runtime->brcb_time_of_entry[2] = (uint8_t)((timestamp_ms >> 8U) & 0xFFU);
+    server_runtime->brcb_time_of_entry[3] = (uint8_t)(timestamp_ms & 0xFFU);
+    server_runtime->brcb_time_of_entry[4] = 0U;
+    server_runtime->brcb_time_of_entry[5] = 0U;
+}
 
 int server_runtime_encode_report_control_block_field_value(
     const UnitLabMmsServerRuntime* server_runtime,
@@ -76,12 +206,11 @@ static int server_runtime_encode_report_control_block_structure_field_value(
 {
     UnitLabMmsBerElement value_element;
     uint8_t bool_value[1U] = { 0x00U };
-    uint8_t unsigned_one[1U];
-    uint8_t unsigned_two[2U];
+    uint8_t unsigned_value[4U];
+    size_t unsigned_value_length = 0U;
     uint8_t opt_flds[3U] = { 0x06U, 0x7FU, 0x80U };
     uint8_t trg_ops[2U] = { 0x02U, 0x64U };
-    uint8_t entry_id[8U] = { 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U };
-    uint8_t binary_time[6U] = { 0U, 0U, 0U, 0U, 0U, 0U };
+    const UnitLabIedModelReportControl* report = server_runtime_active_report_control(server_runtime);
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -118,12 +247,14 @@ static int server_runtime_encode_report_control_block_structure_field_value(
         value_element.value_length = strlen((const char*)value_element.value_bytes);
     }
     else if (strcmp(field_name, "ConfRev") == 0) {
-        unsigned_one[0] = 0x07U;
+        if (!server_runtime_encode_unsigned_value(server_runtime_report_conf_rev(report), unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)) {
+            return 0;
+        }
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
         value_element.tag.constructed = 0;
         value_element.tag.tag_number = 6U;
-        value_element.value_bytes = unsigned_one;
-        value_element.value_length = sizeof(unsigned_one);
+        value_element.value_bytes = unsigned_value;
+        value_element.value_length = unsigned_value_length;
     }
     else if (strcmp(field_name, "OptFlds") == 0) {
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
@@ -133,20 +264,24 @@ static int server_runtime_encode_report_control_block_structure_field_value(
         value_element.value_length = sizeof(opt_flds);
     }
     else if (strcmp(field_name, "BufTm") == 0) {
-        unsigned_one[0] = 0x64U;
+        if (!server_runtime_encode_unsigned_value(server_runtime_report_buffer_time_ms(report), unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)) {
+            return 0;
+        }
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
         value_element.tag.constructed = 0;
         value_element.tag.tag_number = 6U;
-        value_element.value_bytes = unsigned_one;
-        value_element.value_length = sizeof(unsigned_one);
+        value_element.value_bytes = unsigned_value;
+        value_element.value_length = unsigned_value_length;
     }
     else if (strcmp(field_name, "SqNum") == 0) {
-        unsigned_one[0] = 0x00U;
+        if (!server_runtime_encode_unsigned_value(server_runtime != NULL ? server_runtime->brcb_sq_num : 0U, unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)) {
+            return 0;
+        }
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
         value_element.tag.constructed = 0;
         value_element.tag.tag_number = 6U;
-        value_element.value_bytes = unsigned_one;
-        value_element.value_length = sizeof(unsigned_one);
+        value_element.value_bytes = unsigned_value;
+        value_element.value_length = unsigned_value_length;
     }
     else if (strcmp(field_name, "TrgOps") == 0) {
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
@@ -156,35 +291,40 @@ static int server_runtime_encode_report_control_block_structure_field_value(
         value_element.value_length = sizeof(trg_ops);
     }
     else if (strcmp(field_name, "IntgPd") == 0) {
-        unsigned_two[0] = 0x03U;
-        unsigned_two[1] = 0xE8U;
+        if (!server_runtime_encode_unsigned_value(server_runtime_report_integrity_period_ms(report), unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)) {
+            return 0;
+        }
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
         value_element.tag.constructed = 0;
         value_element.tag.tag_number = 6U;
-        value_element.value_bytes = unsigned_two;
-        value_element.value_length = sizeof(unsigned_two);
+        value_element.value_bytes = unsigned_value;
+        value_element.value_length = unsigned_value_length;
     }
     else if (strcmp(field_name, "EntryID") == 0) {
+        static const uint8_t empty_entry_id[8U] = { 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U };
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
         value_element.tag.constructed = 0;
         value_element.tag.tag_number = 9U;
-        value_element.value_bytes = entry_id;
-        value_element.value_length = sizeof(entry_id);
+        value_element.value_bytes = server_runtime != NULL ? server_runtime->brcb_entry_id : empty_entry_id;
+        value_element.value_length = server_runtime != NULL ? sizeof(server_runtime->brcb_entry_id) : sizeof(empty_entry_id);
     }
     else if (strcmp(field_name, "TimeOfEntry") == 0) {
+        static const uint8_t empty_binary_time[6U] = { 0U, 0U, 0U, 0U, 0U, 0U };
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
         value_element.tag.constructed = 0;
         value_element.tag.tag_number = 12U;
-        value_element.value_bytes = binary_time;
-        value_element.value_length = sizeof(binary_time);
+        value_element.value_bytes = server_runtime != NULL ? server_runtime->brcb_time_of_entry : empty_binary_time;
+        value_element.value_length = server_runtime != NULL ? sizeof(server_runtime->brcb_time_of_entry) : sizeof(empty_binary_time);
     }
     else if (strcmp(field_name, "ResvTms") == 0) {
-        unsigned_one[0] = (uint8_t)((server_runtime != NULL && server_runtime->brcb_resv_tms <= 0xFFU) ? server_runtime->brcb_resv_tms : 0U);
+        if (!server_runtime_encode_unsigned_value(server_runtime != NULL ? server_runtime->brcb_resv_tms : 0U, unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)) {
+            return 0;
+        }
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
         value_element.tag.constructed = 0;
         value_element.tag.tag_number = 5U;
-        value_element.value_bytes = unsigned_one;
-        value_element.value_length = sizeof(unsigned_one);
+        value_element.value_bytes = unsigned_value;
+        value_element.value_length = unsigned_value_length;
     }
     else {
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Unsupported report control block structure field.");
@@ -354,26 +494,27 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     char dataset_reference[160U];
     char data_ref_1[192U];
     char data_ref_2[192U];
-    uint8_t service_content[512U];
+    uint8_t service_content[4096U];
     uint8_t variable_list_name[32U];
-    uint8_t report_values[512U];
-    uint8_t service_bytes[640U];
-    uint8_t scratch[1024U];
+    uint8_t report_values[4096U];
+    uint8_t service_bytes[4608U];
+    uint8_t scratch[8192U];
+    uint8_t unsigned_value[4U];
+    size_t unsigned_value_length = 0U;
     size_t variable_list_name_length = 0U;
     size_t report_values_length = 0U;
     size_t service_content_length = 0U;
     size_t service_length = 0U;
     const uint8_t opt_flds[3U] = { 0x06U, 0x7FU, 0x80U };
-    const uint8_t binary_time[6U] = { 0U, 0U, 0U, 0U, 0U, 0U };
-    const uint8_t entry_id[8U] = { 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U };
     const uint8_t bool_false[1U] = { 0x00U };
-    const uint8_t sq_num[1U] = { 0x00U };
-    const uint8_t conf_rev[1U] = { 0x07U };
     const uint8_t st_zero[1U] = { 0x00U };
     const uint8_t st_one[1U] = { 0x01U };
     const uint8_t reason_gi[2U] = { 0x02U, 0x04U };
     UnitLabMmsPdu report_pdu;
     const char* domain_name = NULL;
+    const UnitLabIedModelReportControl* report = NULL;
+    const UnitLabIedModelDataSet* data_set = NULL;
+    size_t member_count = 0U;
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -382,11 +523,17 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime, buffer, and encoded_length are required for GI report.");
         return 0;
     }
+
     domain_name = server_runtime_advertised_domain_name(server_runtime);
-    snprintf(report_id_reference, sizeof(report_id_reference), "%s/LLN0.BR.Events", domain_name);
-    snprintf(dataset_reference, sizeof(dataset_reference), "%s/LLN0$dsEvents", domain_name);
+    report = server_runtime_active_report_control(server_runtime);
+    data_set = server_runtime_report_data_set(server_runtime, report);
+    server_runtime_format_report_id_reference(server_runtime, report, report_id_reference, sizeof(report_id_reference));
+    server_runtime_format_dataset_reference(server_runtime, data_set, dataset_reference, sizeof(dataset_reference));
     snprintf(data_ref_1, sizeof(data_ref_1), "%s/XCBR1$ST$Pos$stVal", domain_name);
     snprintf(data_ref_2, sizeof(data_ref_2), "%s/PGGIO1$ST$Ind1$stVal", domain_name);
+    member_count = data_set != NULL ? data_set->member_count : 2U;
+
+    server_runtime_update_report_sequence(server_runtime);
 
     if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 0U, (const uint8_t*)"RPT", 3U, variable_list_name, sizeof(variable_list_name), &variable_list_name_length, diagnostic)) {
         return 0;
@@ -395,22 +542,68 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         return 0;
     }
 
-    if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U, (const uint8_t*)report_id_reference, strlen(report_id_reference), report_values, sizeof(report_values), &report_values_length, diagnostic)
+    if (!server_runtime_encode_unsigned_value(server_runtime->brcb_sq_num, unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)
+        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U, (const uint8_t*)report_id_reference, strlen(report_id_reference), report_values, sizeof(report_values), &report_values_length, diagnostic)
         || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 4U, opt_flds, sizeof(opt_flds), report_values, sizeof(report_values), &report_values_length, diagnostic)
-        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 6U, sq_num, sizeof(sq_num), report_values, sizeof(report_values), &report_values_length, diagnostic)
-        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 12U, binary_time, sizeof(binary_time), report_values, sizeof(report_values), &report_values_length, diagnostic)
+        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 6U, unsigned_value, unsigned_value_length, report_values, sizeof(report_values), &report_values_length, diagnostic)
+        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 12U, server_runtime->brcb_time_of_entry, sizeof(server_runtime->brcb_time_of_entry), report_values, sizeof(report_values), &report_values_length, diagnostic)
         || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U, (const uint8_t*)dataset_reference, strlen(dataset_reference), report_values, sizeof(report_values), &report_values_length, diagnostic)
         || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 3U, bool_false, sizeof(bool_false), report_values, sizeof(report_values), &report_values_length, diagnostic)
-        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 9U, entry_id, sizeof(entry_id), report_values, sizeof(report_values), &report_values_length, diagnostic)
-        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 6U, conf_rev, sizeof(conf_rev), report_values, sizeof(report_values), &report_values_length, diagnostic)
-        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U, (const uint8_t*)data_ref_1, strlen(data_ref_1), report_values, sizeof(report_values), &report_values_length, diagnostic)
-        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U, (const uint8_t*)data_ref_2, strlen(data_ref_2), report_values, sizeof(report_values), &report_values_length, diagnostic)
-        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 5U, st_zero, sizeof(st_zero), report_values, sizeof(report_values), &report_values_length, diagnostic)
-        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 5U, st_one, sizeof(st_one), report_values, sizeof(report_values), &report_values_length, diagnostic)
-        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 4U, reason_gi, sizeof(reason_gi), report_values, sizeof(report_values), &report_values_length, diagnostic)
-        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 4U, reason_gi, sizeof(reason_gi), report_values, sizeof(report_values), &report_values_length, diagnostic)) {
+        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 9U, server_runtime->brcb_entry_id, sizeof(server_runtime->brcb_entry_id), report_values, sizeof(report_values), &report_values_length, diagnostic)) {
         return 0;
     }
+    if (!server_runtime_encode_unsigned_value(server_runtime_report_conf_rev(report), unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)
+        || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 6U, unsigned_value, unsigned_value_length, report_values, sizeof(report_values), &report_values_length, diagnostic)) {
+        return 0;
+    }
+
+    for (size_t index = 0U; index < member_count; index++) {
+        const char* data_ref = NULL;
+        if (data_set != NULL && server_runtime->model_plan != NULL && data_set->first_signal_index + index < server_runtime->model_plan->signal_count) {
+            const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[data_set->first_signal_index + index];
+            data_ref = signal->data_set_entry_variable[0] != '\0' ? signal->data_set_entry_variable : signal->object_reference;
+        }
+        else {
+            data_ref = index == 0U ? data_ref_1 : data_ref_2;
+        }
+        if (data_ref == NULL || data_ref[0] == '\0') {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "GI report DataSet member is missing a data reference.");
+            return 0;
+        }
+        if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U, (const uint8_t*)data_ref, strlen(data_ref), report_values, sizeof(report_values), &report_values_length, diagnostic)) {
+            return 0;
+        }
+    }
+
+    for (size_t index = 0U; index < member_count; index++) {
+        if (data_set != NULL && server_runtime->model_plan != NULL && data_set->first_signal_index + index < server_runtime->model_plan->signal_count) {
+            uint8_t value_bytes[512U];
+            size_t value_length = 0U;
+            const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[data_set->first_signal_index + index];
+            if (!server_runtime_encode_mms_data_value(signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+                return 0;
+            }
+            if (report_values_length + value_length > sizeof(report_values)) {
+                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GI report value buffer is too small.");
+                return 0;
+            }
+            memcpy(&report_values[report_values_length], value_bytes, value_length);
+            report_values_length += value_length;
+        }
+        else {
+            const uint8_t* fallback_value = index == 0U ? st_zero : st_one;
+            if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 5U, fallback_value, sizeof(st_zero), report_values, sizeof(report_values), &report_values_length, diagnostic)) {
+                return 0;
+            }
+        }
+    }
+
+    for (size_t index = 0U; index < member_count; index++) {
+        if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 4U, reason_gi, sizeof(reason_gi), report_values, sizeof(report_values), &report_values_length, diagnostic)) {
+            return 0;
+        }
+    }
+
     if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 0U, report_values, report_values_length, service_content, sizeof(service_content), &service_content_length, diagnostic)) {
         return 0;
     }
@@ -431,7 +624,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     if (server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING) {
         UnitLabMmsDiagnostic report_diagnostic;
         unitlab_mms_diagnostic_clear(&report_diagnostic);
-        (void)unitlab_iec61850_report_control_accept_report(&server_runtime->report_control, 0U, &report_diagnostic);
+        (void)unitlab_iec61850_report_control_accept_report(&server_runtime->report_control, server_runtime->brcb_sq_num, &report_diagnostic);
     }
     server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;

@@ -90,6 +90,19 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
         return 1;
     }
 
+    if (server_runtime_write_target_has_suffix(&server_runtime->pending_request, ".BR.brcbEvents.PurgeBuf")
+        || server_runtime_write_target_has_suffix(&server_runtime->pending_request, ".BR.LLN0_Events_BuffRep01.PurgeBuf")) {
+        if (value != 0U) {
+            server_runtime->brcb_sq_num = 0U;
+            server_runtime->brcb_entry_id_counter = 0U;
+            memset(server_runtime->brcb_entry_id, 0, sizeof(server_runtime->brcb_entry_id));
+            memset(server_runtime->brcb_time_of_entry, 0, sizeof(server_runtime->brcb_time_of_entry));
+            server_runtime->pending_gi_report = 0U;
+        }
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+        return 1;
+    }
+
     server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }

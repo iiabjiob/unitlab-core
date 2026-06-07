@@ -322,7 +322,7 @@ That test starts the simulator on `127.0.0.1`, connects with libIEC61850's `IedC
 
 This remains an internal simulator validation path. It does not make UnitLab production runtime depend on libIEC61850.
 
-The native MMS stack now also supports `GetNameList` browse for logical devices and domain-scoped DataSet catalogs, which is the first step toward replacing the linked metadata path.
+The native MMS stack now also supports `GetNameList` browse for logical devices and domain-scoped DataSet catalogs, plus minimal fixture-shaped BRCB `RptEna`/`GI`/`PurgeBuf` handling with GI InformationReport payloads sourced from the active model-plan DataSet. This is still a simulator runtime path, not full IEC 61850 report buffering or multi-client ownership.
 
 ## Next Slice
 

@@ -41,6 +41,10 @@ typedef struct UnitLabMmsServerRuntime {
     UnitLabIec61850ReportControl report_control;
     uint8_t brcb_rpt_ena;
     uint32_t brcb_resv_tms;
+    uint32_t brcb_sq_num;
+    uint64_t brcb_entry_id_counter;
+    uint8_t brcb_entry_id[8];
+    uint8_t brcb_time_of_entry[6];
     uint8_t pending_gi_report;
     UnitLabMmsTransportExchange transport;
     UnitLabMmsOperationResult last_result;

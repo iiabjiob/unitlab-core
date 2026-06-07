@@ -792,6 +792,10 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     unitlab_iec61850_report_control_init(&server_runtime->report_control);
     server_runtime->brcb_rpt_ena = 0U;
     server_runtime->brcb_resv_tms = 0U;
+    server_runtime->brcb_sq_num = 0U;
+    server_runtime->brcb_entry_id_counter = 0U;
+    memset(server_runtime->brcb_entry_id, 0, sizeof(server_runtime->brcb_entry_id));
+    memset(server_runtime->brcb_time_of_entry, 0, sizeof(server_runtime->brcb_time_of_entry));
     server_runtime->pending_gi_report = 0U;
     unitlab_mms_transport_exchange_init(&server_runtime->transport);
     unitlab_mms_operation_result_init(&server_runtime->last_result);
