@@ -1341,9 +1341,8 @@ static void test_server_runtime_build_brcb_read_uses_default_advertised_domain(v
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
-    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"LD0/LLN0.BR.Events", strlen("LD0/LLN0.BR.Events")) == 1);
-    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"LD0/LLN0$dsEvents", strlen("LD0/LLN0$dsEvents")) == 1);
-    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"IED1LD0/LLN0.BR.Events", strlen("IED1LD0/LLN0.BR.Events")) == 0);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"IED1LD0/LLN0.BR.Events", strlen("IED1LD0/LLN0.BR.Events")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"IED1LD0/LLN0$dsEvents", strlen("IED1LD0/LLN0$dsEvents")) == 1);
 }
 
 static void test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results(void)

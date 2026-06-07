@@ -1072,7 +1072,7 @@ static const char* server_runtime_advertised_domain_name(const UnitLabMmsServerR
         && server_runtime->model_plan->logical_devices[0].inst[0] != '\0') {
         return server_runtime->model_plan->logical_devices[0].inst;
     }
-    return "LD0";
+    return "IED1LD0";
 }
 
 static int server_runtime_encode_report_control_block_structure_field_value(
