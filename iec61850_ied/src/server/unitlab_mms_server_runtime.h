@@ -39,6 +39,9 @@ typedef struct UnitLabMmsServerRuntime {
     char last_outgoing_service[64];
     char last_outgoing_summary[512];
     UnitLabIec61850ReportControl report_control;
+    uint8_t brcb_rpt_ena;
+    uint32_t brcb_resv_tms;
+    uint8_t pending_gi_report;
     UnitLabMmsTransportExchange transport;
     UnitLabMmsOperationResult last_result;
     UnitLabMmsRuntimeSnapshot snapshot;
@@ -62,6 +65,8 @@ int unitlab_mms_server_runtime_apply_association_bytes(UnitLabMmsServerRuntime* 
 int unitlab_mms_server_runtime_build_confirmed_error_bytes(UnitLabMmsServerRuntime* server_runtime, uint32_t invoke_id, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRuntime* server_runtime, const uint8_t* service_bytes, size_t service_length, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_server_runtime_build_release_response_bytes(UnitLabMmsServerRuntime* server_runtime, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_server_runtime_has_pending_gi_report(const UnitLabMmsServerRuntime* server_runtime);
+int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRuntime* server_runtime, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_server_runtime_apply_wire_pdu(UnitLabMmsServerRuntime* server_runtime, const UnitLabMmsPdu* wire_pdu, UnitLabMmsOperationResult* operation_result);
 void unitlab_mms_server_runtime_capture_snapshot(UnitLabMmsServerRuntime* server_runtime);
 

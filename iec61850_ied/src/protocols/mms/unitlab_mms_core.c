@@ -721,6 +721,11 @@ int unitlab_mms_runtime_apply_semantic_result(UnitLabMmsSession* session, UnitLa
                 pending_request->browse_object_scope = semantic_result->pdu.object_scope;
                 snprintf(pending_request->browse_domain_id, sizeof(pending_request->browse_domain_id), "%s", semantic_result->pdu.domain_id);
                 snprintf(pending_request->browse_continue_after, sizeof(pending_request->browse_continue_after), "%s", semantic_result->pdu.continue_after);
+                pending_request->write_value_length = 0U;
+                if (semantic_result->pdu.kind == UNITLAB_MMS_DECODED_PDU_WRITE_REQUEST && semantic_result->pdu.value_bytes != NULL && semantic_result->pdu.value_length <= sizeof(pending_request->write_value)) {
+                    memcpy(pending_request->write_value, semantic_result->pdu.value_bytes, semantic_result->pdu.value_length);
+                    pending_request->write_value_length = semantic_result->pdu.value_length;
+                }
                 if (semantic_result->pdu.kind == UNITLAB_MMS_DECODED_PDU_READ_REQUEST) {
                     pending_request->read_object_reference_count = semantic_result->pdu.read_object_reference_count;
                     if (pending_request->read_object_reference_count > UNITLAB_MMS_MAX_READ_VARIABLES) {

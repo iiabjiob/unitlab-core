@@ -422,6 +422,23 @@ static int native_wire_process_received_tpkt_frame(
         }
         printf("native-wire-server: confirmed-response-sent bytes=%zu\n", response_length);
         fflush(stdout);
+        if (unitlab_mms_server_runtime_has_pending_gi_report(server_runtime)) {
+            if (!unitlab_mms_server_runtime_build_pending_gi_report_bytes(
+                    server_runtime,
+                    response_frame,
+                    sizeof(response_frame),
+                    &response_length,
+                    &response_diagnostic)) {
+                set_result(result, "NATIVE_WIRE_SERVER_GI_REPORT_BUILD_FAILED", response_diagnostic.message);
+                return -1;
+            }
+            if (!send_all(data_client_fd, response_frame, response_length)) {
+                set_result(result, "NATIVE_WIRE_SERVER_GI_REPORT_SEND_FAILED", "Native wire server could not send GI information report frame.");
+                return -1;
+            }
+            printf("native-wire-server: gi-information-report-sent bytes=%zu\n", response_length);
+            fflush(stdout);
+        }
     }
     else {
         if (incoming_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED
