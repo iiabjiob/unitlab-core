@@ -1016,6 +1016,13 @@ static const char* const* server_runtime_lookup_gva_children(
 }
 
 
+static int server_runtime_encode_report_control_block_structure_field_value(
+    const char* field_name,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic);
+
 static int server_runtime_encode_report_control_block_field_value(
     const char* field_name,
     uint8_t* buffer,
@@ -1024,11 +1031,6 @@ static int server_runtime_encode_report_control_block_field_value(
     UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsBerElement value_element;
-    uint8_t integer_bytes[5U];
-    uint8_t value_bool_byte[1U];
-    uint8_t value_octet_byte[1U];
-    int32_t integer_value = 0;
-    size_t integer_length = 0U;
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -1038,118 +1040,16 @@ static int server_runtime_encode_report_control_block_field_value(
         return 0;
     }
 
+    if (strcmp(field_name, "Owner") != 0) {
+        return server_runtime_encode_report_control_block_structure_field_value(field_name, buffer, buffer_length, encoded_length, diagnostic);
+    }
+
     unitlab_mms_ber_element_init(&value_element);
-
-    if (strcmp(field_name, "RptID") == 0) {
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 10U;
-        value_element.value_bytes = (const uint8_t*)"IED1LD0/LLN0.BR.Events";
-        value_element.value_length = strlen((const char*)value_element.value_bytes);
-    }
-    else if (strcmp(field_name, "RptEna") == 0 || strcmp(field_name, "GI") == 0 || strcmp(field_name, "PurgeBuf") == 0) {
-        value_bool_byte[0] = 0x00U;
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 1U;
-        value_element.value_bytes = value_bool_byte;
-        value_element.value_length = sizeof(value_bool_byte);
-    }
-    else if (strcmp(field_name, "DatSet") == 0) {
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 10U;
-        value_element.value_bytes = (const uint8_t*)"LD0/LLN0$dsEvents";
-        value_element.value_length = strlen((const char*)value_element.value_bytes);
-    }
-    else if (strcmp(field_name, "ConfRev") == 0) {
-        integer_value = 7;
-        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
-            return 0;
-        }
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 2U;
-        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
-        value_element.value_length = integer_length;
-    }
-    else if (strcmp(field_name, "OptFlds") == 0) {
-        value_octet_byte[0] = 0xF6U;
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 4U;
-        value_element.value_bytes = value_octet_byte;
-        value_element.value_length = sizeof(value_octet_byte);
-    }
-    else if (strcmp(field_name, "BufTm") == 0) {
-        integer_value = 100;
-        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
-            return 0;
-        }
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 2U;
-        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
-        value_element.value_length = integer_length;
-    }
-    else if (strcmp(field_name, "SqNum") == 0 || strcmp(field_name, "ResvTms") == 0) {
-        integer_value = 0;
-        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
-            return 0;
-        }
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 2U;
-        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
-        value_element.value_length = integer_length;
-    }
-    else if (strcmp(field_name, "TrgOps") == 0) {
-        value_octet_byte[0] = 0xFAU;
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 4U;
-        value_element.value_bytes = value_octet_byte;
-        value_element.value_length = sizeof(value_octet_byte);
-    }
-    else if (strcmp(field_name, "IntgPd") == 0) {
-        integer_value = 1000;
-        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
-            return 0;
-        }
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 2U;
-        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
-        value_element.value_length = integer_length;
-    }
-    else if (strcmp(field_name, "EntryID") == 0) {
-        value_octet_byte[0] = 0x08U;
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 9U;
-        value_element.value_bytes = value_octet_byte;
-        value_element.value_length = sizeof(value_octet_byte);
-    }
-    else if (strcmp(field_name, "TimeOfEntry") == 0) {
-        value_octet_byte[0] = 0x01U;
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 12U;
-        value_element.value_bytes = value_octet_byte;
-        value_element.value_length = sizeof(value_octet_byte);
-    }
-    else if (strcmp(field_name, "Owner") == 0) {
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 10U;
-        value_element.value_bytes = (const uint8_t*)"";
-        value_element.value_length = 0U;
-    }
-    else {
-        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Unsupported report control block field.");
-        return 0;
-    }
-
+    value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    value_element.tag.constructed = 0;
+    value_element.tag.tag_number = 10U;
+    value_element.value_bytes = (const uint8_t*)"";
+    value_element.value_length = 0U;
     if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
         return 0;
     }
@@ -2311,10 +2211,9 @@ static void server_runtime_log_read_response_tree(
 
         unitlab_mms_ber_element_init(&data_element);
         data_tag_hex[0] = '\0';
-        access_result_success = access_result_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
-            && (access_result_element.tag.tag_number == 0U || access_result_element.tag.tag_number == 2U);
-        if (access_result_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
-            && access_result_element.tag.tag_number == 2U) {
+        access_result_success = !(access_result_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC
+            && access_result_element.tag.tag_number == 0U);
+        if (access_result_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC) {
             data_element = access_result_element;
             data_consumed_length = access_result_consumed_length;
         }
@@ -3112,8 +3011,7 @@ static int server_runtime_build_read_response_service(
         if (index == 0U) {
             server_runtime_store_read_summary(server_runtime, invoke_id, value_supported, value_bytes, value_length);
         }
-        if (value_supported
-            && server_runtime_object_reference_has_suffix_any(current_object_reference, (const char* const[]){ ".BR.brcbEvents", ".BR.LLN0_Events_BuffRep01" }, 2U)) {
+        if (value_supported) {
             if (value_length > sizeof(access_result_value_bytes)) {
                 server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Read response accessResult value is too small.");
                 return 0;
@@ -3123,8 +3021,8 @@ static int server_runtime_build_read_response_service(
         }
         else if (!server_runtime_encode_ber_element(
                 UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
-                1,
-                value_supported ? 0U : 1U,
+                0,
+                0U,
                 value_bytes,
                 value_length,
                 access_result_value_bytes,

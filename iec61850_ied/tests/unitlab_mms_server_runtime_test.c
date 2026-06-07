@@ -109,11 +109,10 @@ static void assert_read_response_success_visible_string(const uint8_t* response_
     unitlab_mms_ber_element_init(&access_result_element);
     assert(unitlab_mms_ber_read(&access_result_element, list_of_access_result_element.value_bytes, list_of_access_result_element.value_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == list_of_access_result_element.value_length);
-    unitlab_mms_ber_element_init(&data_element);
-    assert(unitlab_mms_ber_read(&data_element, access_result_element.value_bytes, access_result_element.value_length, &data_consumed_length, &diagnostic) == 1);
-    assert(data_consumed_length == access_result_element.value_length);
-    assert_ber_tag(&data_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U);
-    assert(contains_bytes(data_element.value_bytes, data_element.value_length, (const uint8_t*)expected_value, strlen(expected_value)) == 1);
+    (void)data_element;
+    (void)data_consumed_length;
+    assert_ber_tag(&access_result_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U);
+    assert(contains_bytes(access_result_element.value_bytes, access_result_element.value_length, (const uint8_t*)expected_value, strlen(expected_value)) == 1);
 }
 
 static void assert_read_response_success_rcb_structure(
@@ -229,18 +228,96 @@ static void assert_read_response_list_of_access_results_count(const uint8_t* res
         unitlab_mms_ber_element_init(&access_result_element);
         assert(unitlab_mms_ber_read(&access_result_element, &list_of_access_result_element.value_bytes[service_offset], list_of_access_result_element.value_length - service_offset, &access_result_consumed_length, &diagnostic) == 1);
         assert(access_result_consumed_length > 0U);
-        unitlab_mms_ber_element_init(&data_element);
-        assert(unitlab_mms_ber_read(&data_element, access_result_element.value_bytes, access_result_element.value_length, &data_consumed_length, &diagnostic) == 1);
-        assert(data_consumed_length == access_result_element.value_length);
-        assert(data_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
-        assert(data_element.tag.tag_number == 10U);
+        (void)data_element;
+        (void)data_consumed_length;
+        assert(access_result_element.tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+        assert(access_result_element.tag.tag_number == 10U);
         assert(expected_values[actual_result_count] != NULL);
-        assert(contains_bytes(data_element.value_bytes, data_element.value_length, (const uint8_t*)expected_values[actual_result_count], strlen(expected_values[actual_result_count])) == 1);
+        assert(contains_bytes(access_result_element.value_bytes, access_result_element.value_length, (const uint8_t*)expected_values[actual_result_count], strlen(expected_values[actual_result_count])) == 1);
         service_offset += access_result_consumed_length;
         actual_result_count++;
     }
     assert(service_offset == list_of_access_result_element.value_length);
     assert(actual_result_count == expected_result_count);
+}
+
+static void assert_read_response_access_result_tags(
+    const uint8_t* response_bytes,
+    size_t response_length,
+    uint32_t expected_invoke_id,
+    const uint32_t* expected_tags,
+    size_t expected_tag_count)
+{
+    UnitLabMmsAssociationFrame response_frame;
+    UnitLabMmsPdu decoded_response_pdu;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement list_of_access_result_element;
+    UnitLabMmsBerElement access_result_element;
+    size_t response_consumed_length = 0U;
+    size_t response_pdu_consumed_length = 0U;
+    size_t consumed_length = 0U;
+    size_t offset = 0U;
+    size_t index = 0U;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_association_frame_init(&response_frame);
+    assert(unitlab_mms_association_frame_decode(&response_frame, response_bytes, response_length, &response_consumed_length, &diagnostic) == 1);
+    assert(response_consumed_length == response_length);
+    unitlab_mms_pdu_init(&decoded_response_pdu);
+    assert(unitlab_mms_pdu_decode(&decoded_response_pdu, response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, &response_pdu_consumed_length, &diagnostic) == 1);
+    assert(response_pdu_consumed_length == response_frame.presentation.payload_length);
+    assert(decoded_response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
+    assert(decoded_response_pdu.invoke_id == expected_invoke_id);
+    assert(decoded_response_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
+
+    unitlab_mms_ber_element_init(&list_of_access_result_element);
+    assert(unitlab_mms_ber_read(&list_of_access_result_element, decoded_response_pdu.service_bytes, decoded_response_pdu.service_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == decoded_response_pdu.service_length);
+    assert_ber_tag(&list_of_access_result_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
+
+    while (offset < list_of_access_result_element.value_length) {
+        size_t access_result_consumed_length = 0U;
+
+        unitlab_mms_ber_element_init(&access_result_element);
+        assert(unitlab_mms_ber_read(&access_result_element, &list_of_access_result_element.value_bytes[offset], list_of_access_result_element.value_length - offset, &access_result_consumed_length, &diagnostic) == 1);
+        assert(index < expected_tag_count);
+        assert_ber_tag(&access_result_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, expected_tags[index] == 2U ? 1 : 0, expected_tags[index]);
+        assert(access_result_element.tag.tag_number != 0U);
+        offset += access_result_consumed_length;
+        index++;
+    }
+    assert(offset == list_of_access_result_element.value_length);
+    assert(index == expected_tag_count);
+}
+
+static void assert_read_response_failure_access_result(const uint8_t* response_bytes, size_t response_length, uint32_t expected_invoke_id)
+{
+    static const uint32_t expected_failure_tag[] = { 0U };
+    UnitLabMmsAssociationFrame response_frame;
+    UnitLabMmsPdu decoded_response_pdu;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsBerElement list_of_access_result_element;
+    UnitLabMmsBerElement access_result_element;
+    size_t response_consumed_length = 0U;
+    size_t response_pdu_consumed_length = 0U;
+    size_t consumed_length = 0U;
+
+    (void)expected_failure_tag;
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_association_frame_init(&response_frame);
+    assert(unitlab_mms_association_frame_decode(&response_frame, response_bytes, response_length, &response_consumed_length, &diagnostic) == 1);
+    unitlab_mms_pdu_init(&decoded_response_pdu);
+    assert(unitlab_mms_pdu_decode(&decoded_response_pdu, response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, &response_pdu_consumed_length, &diagnostic) == 1);
+    assert(decoded_response_pdu.invoke_id == expected_invoke_id);
+    assert(decoded_response_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
+    unitlab_mms_ber_element_init(&list_of_access_result_element);
+    assert(unitlab_mms_ber_read(&list_of_access_result_element, decoded_response_pdu.service_bytes, decoded_response_pdu.service_length, &consumed_length, &diagnostic) == 1);
+    assert_ber_tag(&list_of_access_result_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
+    unitlab_mms_ber_element_init(&access_result_element);
+    assert(unitlab_mms_ber_read(&access_result_element, list_of_access_result_element.value_bytes, list_of_access_result_element.value_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == list_of_access_result_element.value_length);
+    assert_ber_tag(&access_result_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 0U);
+    assert(access_result_element.value_length == 1U);
 }
 
 static void assert_named_variable_list_attributes_member(const UnitLabMmsBerElement* member, const char* expected_domain, const char* expected_item)
@@ -948,7 +1025,7 @@ static void test_server_runtime_apply_direct_read_request_and_build_response_rou
 
         {
             static const uint8_t expected_payload_bytes[] = {
-                0x02U, 0x01U, 0x0AU, 0xA4U, 0x09U, 0xA1U, 0x07U, 0xA0U, 0x05U, 0x8AU, 0x03U, 'L', 'D', '0'
+                0x02U, 0x01U, 0x0AU, 0xA4U, 0x07U, 0xA1U, 0x05U, 0x8AU, 0x03U, 'L', 'D', '0'
             };
 
             assert(contains_bytes(response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, expected_payload_bytes, sizeof(expected_payload_bytes)) == 1);
@@ -1130,6 +1207,78 @@ static void test_server_runtime_apply_iedscout_buffered_report_control_block_rea
     assert_read_response_success_rcb_structure(response_bytes, response_length, 14U);
 }
 
+
+
+static void test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results(void)
+{
+    static const char* const fields[] = {
+        "RptID",
+        "RptEna",
+        "DatSet",
+        "ConfRev",
+        "OptFlds",
+        "BufTm",
+        "SqNum",
+        "TrgOps",
+        "IntgPd",
+        "GI",
+        "PurgeBuf",
+        "EntryID",
+        "TimeOfEntry",
+        "ResvTms",
+        "Owner"
+    };
+    static const uint32_t expected_tags[] = { 10U, 3U, 10U, 6U, 4U, 6U, 6U, 4U, 6U, 3U, 3U, 9U, 12U, 5U, 10U };
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    uint8_t response_bytes[1024U];
+    size_t response_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 16U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "LD0.LLN0.BR.brcbEvents.RptID");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "RptID");
+    server_runtime.pending_request.read_object_reference_count = sizeof(fields) / sizeof(fields[0]);
+    for (size_t index = 0U; index < sizeof(fields) / sizeof(fields[0]); index++) {
+        snprintf(server_runtime.pending_request.read_object_references[index], sizeof(server_runtime.pending_request.read_object_references[index]), "LD0.LLN0.BR.brcbEvents.%s", fields[index]);
+        snprintf(server_runtime.pending_request.read_attribute_references[index], sizeof(server_runtime.pending_request.read_attribute_references[index]), "%s", fields[index]);
+    }
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert_read_response_access_result_tags(response_bytes, response_length, 16U, expected_tags, sizeof(expected_tags) / sizeof(expected_tags[0]));
+}
+
+static void test_server_runtime_build_read_failure_uses_data_access_error_access_result(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    uint8_t response_bytes[256U];
+    size_t response_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 17U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "LD0.LLN0.BR.brcbEvents.Unknown");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "Unknown");
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert_read_response_failure_access_result(response_bytes, response_length, 17U);
+}
 
 
 static void test_server_runtime_build_brcb_gva_response_exposes_fields(void)
@@ -2548,6 +2697,8 @@ int main(void)
     test_server_runtime_apply_direct_read_request_and_build_response_roundtrips();
     test_server_runtime_apply_iedscout_namespace_multi_read_builds_response();
     test_server_runtime_apply_iedscout_buffered_report_control_block_read_builds_response();
+    test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results();
+    test_server_runtime_build_read_failure_uses_data_access_error_access_result();
     test_server_runtime_build_brcb_gva_response_exposes_fields();
     test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips();
     test_server_runtime_build_get_name_list_response_handles_large_directory();
