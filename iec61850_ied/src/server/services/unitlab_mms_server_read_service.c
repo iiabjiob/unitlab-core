@@ -252,8 +252,12 @@ static int server_runtime_build_read_response_value(
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Read response value encoding requires a server runtime, object reference, buffer, and encoded_length.");
         return 0;
     }
-    snprintf(rcb_report_id_reference, sizeof(rcb_report_id_reference), "%s/LLN0.BR.Events", server_runtime_advertised_domain_name(server_runtime));
-    snprintf(rcb_data_set_reference, sizeof(rcb_data_set_reference), "%s/LLN0$dsEvents", server_runtime_advertised_domain_name(server_runtime));
+    server_runtime_format_report_control_references(
+        server_runtime,
+        rcb_report_id_reference,
+        sizeof(rcb_report_id_reference),
+        rcb_data_set_reference,
+        sizeof(rcb_data_set_reference));
 
     if (server_runtime_object_reference_has_suffix(object_reference, ".PGGIO1.ST")) {
         if (!server_runtime_encode_nested_integer_structure_value(1, 2U, buffer, buffer_length, encoded_length, diagnostic)) {

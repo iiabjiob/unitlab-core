@@ -1757,6 +1757,77 @@ static void test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_ac
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"IED1LD0/LLN0$dsEvents", strlen("IED1LD0/LLN0$dsEvents")) == 1);
 }
 
+
+static void test_server_runtime_brcb_read_uses_model_report_dataset_reference(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    UnitLabIedFixtureDataSet data_sets[1U] = {
+        {
+            .reference = "IED1/AP1/LD0/LLN0.dsEvents",
+            .signal_count = 0U,
+            .signals = NULL,
+        },
+    };
+    UnitLabIedFixtureReport reports[1U] = {
+        {
+            .key = "IED1/AP1/LD0/LLN0/brcbEvents/buffered",
+            .logical_device_inst = "LD0",
+            .logical_node_name = "LLN0",
+            .report_control_name = "brcbEvents",
+            .report_kind = "buffered",
+            .rpt_id = "IED1LD0/LLN0.BR.Events",
+            .data_set_ref = "IED1/AP1/LD0/LLN0.dsEvents",
+            .conf_rev = "7",
+            .indexed_known = 1,
+            .indexed = 0,
+            .buffer_time_ms_known = 1,
+            .buffer_time_ms = 100,
+            .integrity_period_ms_known = 1,
+            .integrity_period_ms = 1000,
+        },
+    };
+    UnitLabIedFixtureModel fixture = {
+        .device_count = 1U,
+        .ied_name = "IED1",
+        .access_point_name = "AP1",
+        .data_set_count = 1U,
+        .data_sets = data_sets,
+        .report_count = 1U,
+        .reports = reports,
+        .signal_count = 0U,
+    };
+    UnitLabIedModelPlan plan;
+    char error[256U];
+    uint8_t response_bytes[1024U];
+    size_t response_length = 0U;
+
+    assert(unitlab_build_ied_model_plan(&fixture, &plan, error, sizeof(error)) == 1);
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 22U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "IED1LD0.LLN0.BR.brcbEvents");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "brcbEvents");
+    server_runtime.pending_request.read_object_reference_count = 1U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "IED1LD0.LLN0.BR.brcbEvents");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "brcbEvents");
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"IED1LD0/LLN0.BR.Events", strlen("IED1LD0/LLN0.BR.Events")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"IED1IED1LD0/LLN0$dsEvents", strlen("IED1IED1LD0/LLN0$dsEvents")) == 1);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
 static void test_server_runtime_build_read_failure_uses_data_access_error_access_result(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -3430,6 +3501,7 @@ int main(void)
     test_server_runtime_apply_iedscout_buffered_report_control_block_container_read_builds_response();
     test_server_runtime_build_brcb_read_uses_default_advertised_domain();
     test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results();
+    test_server_runtime_brcb_read_uses_model_report_dataset_reference();
     test_server_runtime_build_read_failure_uses_data_access_error_access_result();
     test_server_runtime_build_ordinary_ln_gva_response_exposes_fc_roots();
     test_server_runtime_build_fc_root_reads_match_lib_shape();

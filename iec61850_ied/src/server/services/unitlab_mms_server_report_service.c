@@ -83,6 +83,7 @@ static void server_runtime_format_report_id_reference(
 
 static void server_runtime_format_dataset_reference(
     const UnitLabMmsServerRuntime* server_runtime,
+    const UnitLabIedModelReportControl* report,
     const UnitLabIedModelDataSet* data_set,
     char* buffer,
     size_t buffer_length)
@@ -92,11 +93,48 @@ static void server_runtime_format_dataset_reference(
     if (buffer == NULL || buffer_length == 0U) {
         return;
     }
+    if (
+        report != NULL
+        && report->data_set_ref[0] != '\0'
+        && data_set != NULL
+        && data_set->logical_device_inst[0] != '\0'
+        && data_set->logical_node_name[0] != '\0'
+        && data_set->name[0] != '\0'
+    ) {
+        const char* first_slash = strchr(report->data_set_ref, '/');
+        if (first_slash != NULL && first_slash != report->data_set_ref) {
+            size_t ied_name_length = (size_t)(first_slash - report->data_set_ref);
+            snprintf(
+                buffer,
+                buffer_length,
+                "%.*s%s/%s$%s",
+                (int)ied_name_length,
+                report->data_set_ref,
+                data_set->logical_device_inst,
+                data_set->logical_node_name,
+                data_set->name);
+            return;
+        }
+    }
     if (data_set != NULL && data_set->logical_device_inst[0] != '\0' && data_set->logical_node_name[0] != '\0' && data_set->name[0] != '\0') {
         snprintf(buffer, buffer_length, "%s/%s$%s", data_set->logical_device_inst, data_set->logical_node_name, data_set->name);
         return;
     }
     snprintf(buffer, buffer_length, "%s/LLN0$dsEvents", domain_name);
+}
+
+void server_runtime_format_report_control_references(
+    const UnitLabMmsServerRuntime* server_runtime,
+    char* report_id_reference,
+    size_t report_id_reference_size,
+    char* data_set_reference,
+    size_t data_set_reference_size)
+{
+    const UnitLabIedModelReportControl* report = server_runtime_active_report_control(server_runtime);
+    const UnitLabIedModelDataSet* data_set = server_runtime_report_data_set(server_runtime, report);
+
+    server_runtime_format_report_id_reference(server_runtime, report, report_id_reference, report_id_reference_size);
+    server_runtime_format_dataset_reference(server_runtime, report, data_set, data_set_reference, data_set_reference_size);
 }
 
 static int server_runtime_encode_unsigned_value(uint32_t value, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
@@ -528,7 +566,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     report = server_runtime_active_report_control(server_runtime);
     data_set = server_runtime_report_data_set(server_runtime, report);
     server_runtime_format_report_id_reference(server_runtime, report, report_id_reference, sizeof(report_id_reference));
-    server_runtime_format_dataset_reference(server_runtime, data_set, dataset_reference, sizeof(dataset_reference));
+    server_runtime_format_dataset_reference(server_runtime, report, data_set, dataset_reference, sizeof(dataset_reference));
     snprintf(data_ref_1, sizeof(data_ref_1), "%s/XCBR1$ST$Pos$stVal", domain_name);
     snprintf(data_ref_2, sizeof(data_ref_2), "%s/PGGIO1$ST$Ind1$stVal", domain_name);
     member_count = data_set != NULL ? data_set->member_count : 2U;

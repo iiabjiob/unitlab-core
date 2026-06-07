@@ -49,6 +49,7 @@ int server_runtime_build_write_response_service(UnitLabMmsServerRuntime* server_
 
 /* Report service handles BRCB state values and InformationReport encoding. */
 const char* const* server_runtime_report_control_block_fields(size_t* field_count);
+void server_runtime_format_report_control_references(const UnitLabMmsServerRuntime* server_runtime, char* report_id_reference, size_t report_id_reference_size, char* data_set_reference, size_t data_set_reference_size);
 int server_runtime_encode_report_control_block_field_value(const UnitLabMmsServerRuntime* server_runtime, const char* field_name, const char* report_id_reference, const char* data_set_reference, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int server_runtime_encode_report_control_block_value(const UnitLabMmsServerRuntime* server_runtime, const char* report_id_reference, const char* data_set_reference, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int server_runtime_encode_report_control_block_container_value(const UnitLabMmsServerRuntime* server_runtime, const char* report_id_reference, const char* data_set_reference, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
