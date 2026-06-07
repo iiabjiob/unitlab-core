@@ -538,6 +538,15 @@ static void test_server_runtime_resvtms_no_br_alias_read_write_roundtrips(void)
     assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
     assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
 
+    assert(unitlab_mms_build_read_request_frame("IED1LD0", "LLN0.brcbEvents", 29U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(strcmp(server_runtime.pending_request.object_reference, "IED1LD0.LLN0.brcbEvents") == 0);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert_read_response_success_rcb_structure(response_bytes, response_length, 29U);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
     assert(unitlab_mms_build_read_request_frame("IED1LD0", "LLN0.brcbEvents.ResvTms", 26U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
     unitlab_mms_operation_result_init(&operation_result);
     assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));

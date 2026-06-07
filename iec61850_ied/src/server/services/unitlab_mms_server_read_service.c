@@ -502,7 +502,7 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
-    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents", ".BR.LLN0_Events_BuffRep01" }, 2U)) {
+    if (server_runtime_object_reference_matches_report_control_object(object_reference)) {
         if (!server_runtime_encode_report_control_block_value(server_runtime, rcb_report_id_reference, rcb_data_set_reference, buffer, buffer_length, encoded_length, diagnostic)) {
             return 0;
         }

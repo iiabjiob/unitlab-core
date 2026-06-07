@@ -687,6 +687,17 @@ int server_runtime_object_reference_matches_report_control_field(const char* obj
         4U);
 }
 
+int server_runtime_object_reference_matches_report_control_object(const char* object_reference)
+{
+    if (object_reference == NULL) {
+        return 0;
+    }
+    return server_runtime_object_reference_has_suffix_any(
+        object_reference,
+        (const char* const[]){ ".BR.brcbEvents", ".BR.LLN0_Events_BuffRep01", ".brcbEvents", ".LLN0_Events_BuffRep01" },
+        4U);
+}
+
 const char* server_runtime_advertised_domain_name(const UnitLabMmsServerRuntime* server_runtime)
 {
     if (server_runtime != NULL
