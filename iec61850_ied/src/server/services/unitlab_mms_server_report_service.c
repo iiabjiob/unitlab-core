@@ -8,7 +8,7 @@
 
 static const char* const report_control_block_fields[] = {
     "RptID", "RptEna", "DatSet", "ConfRev", "OptFlds", "BufTm", "SqNum",
-    "TrgOps", "IntgPd", "GI", "PurgeBuf", "EntryID", "TimeOfEntry", "ResvTms", "Owner"
+    "TrgOps", "IntgPd", "GI", "PurgeBuf", "EntryID", "TimeOfEntry", "ResvTms"
 };
 
 const char* const* server_runtime_report_control_block_fields(size_t* field_count)

@@ -184,8 +184,7 @@ static const char* const lln0_br_rcb_children[] = {
     "PurgeBuf",
     "EntryID",
     "TimeOfEntry",
-    "ResvTms",
-    "Owner"
+    "ResvTms"
 };
 static const char* const lln0_ex_children[] = { "NamPlt" };
 static const char* const lln0_ex_namplt_children[] = { "ldNs", "lnNs", "cdcNs", "dataNs" };
