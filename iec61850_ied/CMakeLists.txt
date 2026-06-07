@@ -24,6 +24,10 @@ add_library(unitlab-iec61850-mms STATIC
   src/protocols/mms/unitlab_mms_wire_semantic_bridge.c
   src/protocols/mms/unitlab_mms_runtime_bridge.c
   src/server/unitlab_mms_server_runtime.c
+  src/server/services/unitlab_mms_server_browse_service.c
+  src/server/services/unitlab_mms_server_read_service.c
+  src/server/services/unitlab_mms_server_report_service.c
+  src/server/services/unitlab_mms_server_write_service.c
   src/protocols/mms/unitlab_mms_core.c
   src/report/unitlab_iec61850_report_runtime.c
   src/model/model_plan.c
