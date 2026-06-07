@@ -32,17 +32,28 @@ static int build_information_report_association_bytes(uint8_t* buffer, size_t bu
     return unitlab_mms_build_information_report_frame("RPT", 0U, scratch, sizeof(scratch), buffer, buffer_length, encoded_length, diagnostic);
 }
 
-static int contains_bytes(const uint8_t* haystack, size_t haystack_length, const uint8_t* needle, size_t needle_length)
+static int find_bytes_offset(const uint8_t* haystack, size_t haystack_length, const uint8_t* needle, size_t needle_length, size_t* offset)
 {
+    if (offset != NULL) {
+        *offset = 0U;
+    }
     if (haystack == NULL || needle == NULL || needle_length == 0U || haystack_length < needle_length) {
         return 0;
     }
     for (size_t index = 0U; index + needle_length <= haystack_length; index++) {
         if (memcmp(&haystack[index], needle, needle_length) == 0) {
+            if (offset != NULL) {
+                *offset = index;
+            }
             return 1;
         }
     }
     return 0;
+}
+
+static int contains_bytes(const uint8_t* haystack, size_t haystack_length, const uint8_t* needle, size_t needle_length)
+{
+    return find_bytes_offset(haystack, haystack_length, needle, needle_length, NULL);
 }
 
 static void assert_ber_tag(const UnitLabMmsBerElement* element, UnitLabMmsBerTagClass tag_class, int constructed, uint32_t tag_number)
@@ -1551,7 +1562,7 @@ static void test_server_runtime_apply_get_name_list_request_and_build_response_r
     };
     UnitLabIedModelPlan plan;
     UnitLabIedModelLogicalDevice logical_devices[1U];
-    UnitLabIedModelLogicalNode logical_nodes[1U];
+    UnitLabIedModelLogicalNode logical_nodes[2U];
     UnitLabIedModelDataSet data_sets[2U];
     uint8_t wire_bytes[256U];
     uint8_t response_bytes[4096U];
@@ -1572,15 +1583,17 @@ static void test_server_runtime_apply_get_name_list_request_and_build_response_r
     snprintf(logical_devices[0].inst, sizeof(logical_devices[0].inst), "%s", "LD0");
     snprintf(logical_nodes[0].logical_device_inst, sizeof(logical_nodes[0].logical_device_inst), "%s", "LD0");
     snprintf(logical_nodes[0].name, sizeof(logical_nodes[0].name), "%s", "LLN0");
+    snprintf(logical_nodes[1].logical_device_inst, sizeof(logical_nodes[1].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[1].name, sizeof(logical_nodes[1].name), "%s", "GGIO1");
     snprintf(data_sets[0].logical_device_inst, sizeof(data_sets[0].logical_device_inst), "%s", "LD0");
     snprintf(data_sets[0].logical_node_name, sizeof(data_sets[0].logical_node_name), "%s", "LLN0");
     snprintf(data_sets[0].name, sizeof(data_sets[0].name), "%s", "dsEvents");
     snprintf(data_sets[1].logical_device_inst, sizeof(data_sets[1].logical_device_inst), "%s", "LD0");
-    snprintf(data_sets[1].logical_node_name, sizeof(data_sets[1].logical_node_name), "%s", "LLN0");
-    snprintf(data_sets[1].name, sizeof(data_sets[1].name), "%s", "dsUpdates");
+    snprintf(data_sets[1].logical_node_name, sizeof(data_sets[1].logical_node_name), "%s", "GGIO1");
+    snprintf(data_sets[1].name, sizeof(data_sets[1].name), "%s", "dsWire");
     plan.logical_device_count = 1U;
     plan.logical_devices = logical_devices;
-    plan.logical_node_count = 1U;
+    plan.logical_node_count = 2U;
     plan.logical_nodes = logical_nodes;
     plan.data_set_count = 2U;
     plan.data_sets = data_sets;
@@ -1614,8 +1627,13 @@ static void test_server_runtime_apply_get_name_list_request_and_build_response_r
         assert(unitlab_mms_association_frame_decode(&fixture, response_bytes, response_length, &response_consumed_length, &diagnostic));
         assert(response_consumed_length == response_length);
         assert(fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"LLN0$dsEvents", strlen("LLN0$dsEvents")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"LLN0$dsUpdates", strlen("LLN0$dsUpdates")) == 1);
+        size_t ds_wire_offset = 0U;
+        size_t ds_events_offset = 0U;
+
+        assert(find_bytes_offset(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"GGIO1$dsWire", strlen("GGIO1$dsWire"), &ds_wire_offset) == 1);
+        assert(find_bytes_offset(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"LLN0$dsEvents", strlen("LLN0$dsEvents"), &ds_events_offset) == 1);
+        assert(ds_wire_offset < ds_events_offset);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"LLN0$dsUpdates", strlen("LLN0$dsUpdates")) == 0);
     }
 }
 
@@ -2000,8 +2018,8 @@ static void test_server_runtime_apply_iedscout_vmd_directory_request_scope_zero_
         unitlab_mms_association_frame_init(&fixture);
         assert(unitlab_mms_association_frame_decode(&fixture, response_bytes, response_length, &response_consumed_length, &diagnostic));
         assert(response_consumed_length == response_length);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"dsEvents", strlen("dsEvents")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"dsWire", strlen("dsWire")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"dsEvents", strlen("dsEvents")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"dsWire", strlen("dsWire")) == 0);
     }
 }
 
@@ -2068,6 +2086,8 @@ static void test_server_runtime_apply_iedscout_aa_specific_directory_request_sco
         assert(decoded_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
         assert(decoded_pdu.service_tag.constructed == 1);
         assert(decoded_pdu.service_tag.tag_number == 1U);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"dsEvents", strlen("dsEvents")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"dsWire", strlen("dsWire")) == 0);
     }
 }
 

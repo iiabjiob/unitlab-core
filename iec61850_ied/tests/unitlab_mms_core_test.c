@@ -531,9 +531,8 @@ static void test_collects_vmd_named_variable_lists_for_browse_class_two_scope_ze
 
     assert(unitlab_mms_pending_request_collect_get_name_list_names(&request, &plan, &names, &count, &diagnostic) == 1);
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
-    assert(count == 2U);
-    assert(strcmp(names[0], "dsEvents") == 0);
-    assert(strcmp(names[1], "dsWire") == 0);
+    assert(count == 0U);
+    assert(names == NULL);
 
     unitlab_free_ied_model_name_list(names, count);
 }

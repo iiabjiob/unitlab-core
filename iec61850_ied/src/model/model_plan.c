@@ -808,6 +808,22 @@ static int append_unique_metadata_name(char*** names, size_t* count, const char*
     return append_metadata_name(names, count, name);
 }
 
+static void sort_metadata_names(char** names, size_t count)
+{
+    if (names == NULL || count < 2U) {
+        return;
+    }
+    for (size_t index = 1U; index < count; index++) {
+        size_t position = index;
+        while (position > 0U && strcmp(names[position - 1U], names[position]) > 0) {
+            char* swap = names[position - 1U];
+            names[position - 1U] = names[position];
+            names[position] = swap;
+            position--;
+        }
+    }
+}
+
 int unitlab_collect_ied_model_logical_devices(
     const UnitLabIedModelPlan* plan,
     char*** names,
@@ -925,6 +941,7 @@ int unitlab_collect_ied_model_logical_device_data_sets(
             }
         }
     }
+    sort_metadata_names(*names, *count);
     return 1;
 }
 
@@ -946,20 +963,6 @@ int unitlab_collect_ied_model_vmd_named_variable_lists(
         return 0;
     }
 
-    for (size_t index = 0U; index < plan->data_set_count; index++) {
-        const UnitLabIedModelDataSet* data_set = &plan->data_sets[index];
-
-        if (data_set->name[0] == '\0') {
-            continue;
-        }
-        if (!append_unique_metadata_name(names, count, data_set->name)) {
-            unitlab_free_ied_model_name_list(*names, *count);
-            *names = NULL;
-            *count = 0U;
-            set_error(error, error_size, "OUT_OF_MEMORY: cannot collect VMD-specific NamedVariableLists.");
-            return 0;
-        }
-    }
     return 1;
 }
 
