@@ -791,6 +791,7 @@ static const char* const lln0_br_rcb_children[] = {
     "PurgeBuf",
     "EntryID",
     "TimeOfEntry",
+    "ResvTms",
     "Owner"
 };
 static const char* const lln0_ex_children[] = { "NamPlt" };
@@ -1057,7 +1058,7 @@ static int server_runtime_encode_report_control_block_field_value(
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
         value_element.tag.constructed = 0;
         value_element.tag.tag_number = 10U;
-        value_element.value_bytes = (const uint8_t*)"IED1/AP1/LD0/LLN0.dsEvents";
+        value_element.value_bytes = (const uint8_t*)"LD0/LLN0$dsEvents";
         value_element.value_length = strlen((const char*)value_element.value_bytes);
     }
     else if (strcmp(field_name, "ConfRev") == 0) {
@@ -1090,7 +1091,7 @@ static int server_runtime_encode_report_control_block_field_value(
         value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
         value_element.value_length = integer_length;
     }
-    else if (strcmp(field_name, "SqNum") == 0) {
+    else if (strcmp(field_name, "SqNum") == 0 || strcmp(field_name, "ResvTms") == 0) {
         integer_value = 0;
         if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
             return 0;
@@ -1174,6 +1175,7 @@ static int server_runtime_encode_report_control_block_value(
         "PurgeBuf",
         "EntryID",
         "TimeOfEntry",
+        "ResvTms",
         "Owner"
     };
     uint8_t structure_bytes[2048U];
@@ -1221,6 +1223,44 @@ static int server_runtime_encode_report_control_block_value(
         }
     }
 
+    return 1;
+}
+
+static int server_runtime_copy_static_names(
+    const char* const* source_names,
+    size_t source_count,
+    char*** names,
+    size_t* count,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    if (names == NULL || count == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Static GVA name copy requires output pointers.");
+        return 0;
+    }
+    *names = NULL;
+    *count = 0U;
+    if (source_count == 0U) {
+        return 1;
+    }
+    *names = (char**)calloc(source_count, sizeof(char*));
+    if (*names == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Cannot allocate static GVA names.");
+        return 0;
+    }
+    for (size_t index = 0U; index < source_count; index++) {
+        size_t length = strlen(source_names[index]);
+
+        (*names)[index] = (char*)calloc(length + 1U, sizeof(char));
+        if ((*names)[index] == NULL) {
+            unitlab_free_ied_model_name_list(*names, index);
+            *names = NULL;
+            *count = 0U;
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Cannot allocate static GVA name.");
+            return 0;
+        }
+        memcpy((*names)[index], source_names[index], length + 1U);
+        *count = index + 1U;
+    }
     return 1;
 }
 
@@ -1384,6 +1424,8 @@ static int server_runtime_build_get_variable_access_attributes_response_service(
     char domain_id[128U];
     char item_id[128U];
     char model_error[256U];
+    char logical_node_for_gva[128U];
+    const char* root_parent_component_name = NULL;
     char** names = NULL;
     size_t name_count = 0U;
     uint8_t component_bytes[4096U];
@@ -1419,7 +1461,21 @@ static int server_runtime_build_get_variable_access_attributes_response_service(
     }
 
     model_error[0] = '\0';
-    if (domain_id[0] != '\0') {
+    snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", item_id);
+    if (strcmp(item_id, "LLN0$BR") == 0 || strcmp(item_id, "LLN0.BR") == 0) {
+        snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", "LLN0");
+        root_parent_component_name = "BR";
+        if (!server_runtime_copy_static_names(lln0_br_children, sizeof(lln0_br_children) / sizeof(lln0_br_children[0]), &names, &name_count, diagnostic)) {
+            return 0;
+        }
+    }
+    else if (strcmp(item_id, "LLN0$BR$brcbEvents") == 0 || strcmp(item_id, "LLN0.BR.brcbEvents") == 0) {
+        snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", "LLN0");
+        if (!server_runtime_copy_static_names(lln0_br_rcb_children, sizeof(lln0_br_rcb_children) / sizeof(lln0_br_rcb_children[0]), &names, &name_count, diagnostic)) {
+            return 0;
+        }
+    }
+    else if (domain_id[0] != '\0') {
         if (!unitlab_collect_ied_model_logical_node_variables(
                 server_runtime->model_plan,
                 domain_id,
@@ -1459,8 +1515,8 @@ static int server_runtime_build_get_variable_access_attributes_response_service(
         size_t component_length = 0U;
 
         if (!server_runtime_encode_gva_component_tree(
-                item_id,
-                NULL,
+                logical_node_for_gva,
+                root_parent_component_name,
                 names[index],
                 &component_bytes[component_bytes_length],
                 sizeof(component_bytes) - component_bytes_length,
@@ -2665,6 +2721,26 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
+    for (size_t rcb_field_index = 0U; rcb_field_index < sizeof(lln0_br_rcb_children) / sizeof(lln0_br_rcb_children[0]); rcb_field_index++) {
+        char brcb_suffix[128U];
+        char legacy_suffix[160U];
+
+        snprintf(brcb_suffix, sizeof(brcb_suffix), ".BR.brcbEvents.%s", lln0_br_rcb_children[rcb_field_index]);
+        snprintf(legacy_suffix, sizeof(legacy_suffix), ".BR.LLN0_Events_BuffRep01.%s", lln0_br_rcb_children[rcb_field_index]);
+        if (server_runtime_object_reference_has_suffix(object_reference, brcb_suffix)
+            || server_runtime_object_reference_has_suffix(object_reference, legacy_suffix)) {
+            if (!server_runtime_encode_report_control_block_field_value(
+                    lln0_br_rcb_children[rcb_field_index],
+                    buffer,
+                    buffer_length,
+                    encoded_length,
+                    diagnostic)) {
+                return 0;
+            }
+            *value_supported = 1;
+            return 1;
+        }
+    }
     if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.RptID", ".BR.LLN0_Events_BuffRep01.RptID" }, 2U)) {
         synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
         snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "IED1LD0/LLN0.BR.Events");
@@ -2676,7 +2752,7 @@ static int server_runtime_build_read_response_value(
     }
     if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.DatSet", ".BR.LLN0_Events_BuffRep01.DatSet" }, 2U)) {
         synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
-        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "IED1/AP1/LD0/LLN0.dsEvents");
+        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "LD0/LLN0$dsEvents");
         if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
             return 0;
         }
