@@ -173,7 +173,7 @@ static void assert_read_response_success_rcb_structure(
     }
     assert(child_count == sizeof(expected_tags) / sizeof(expected_tags[0]));
     assert(contains_bytes(access_result_element.value_bytes, access_result_element.value_length, (const uint8_t*)"IED1LD0/LLN0.BR.Events", strlen("IED1LD0/LLN0.BR.Events")) == 1);
-    assert(contains_bytes(access_result_element.value_bytes, access_result_element.value_length, (const uint8_t*)"LD0/LLN0$dsEvents", strlen("LD0/LLN0$dsEvents")) == 1);
+    assert(contains_bytes(access_result_element.value_bytes, access_result_element.value_length, (const uint8_t*)"IED1LD0/LLN0$dsEvents", strlen("IED1LD0/LLN0$dsEvents")) == 1);
     assert(contains_bytes(access_result_element.value_bytes, access_result_element.value_length, (const uint8_t*)"Owner", strlen("Owner")) == 0);
 }
 
@@ -1174,6 +1174,8 @@ static void test_server_runtime_apply_iedscout_buffered_report_control_block_rea
         .bind_address = "127.0.0.1",
         .port = 102,
     };
+    UnitLabIedModelLogicalDevice logical_device;
+    UnitLabIedModelPlan model_plan;
     uint8_t association_bytes[256U];
     uint8_t read_wire_bytes[256U];
     uint8_t response_bytes[1024U];
@@ -1182,9 +1184,16 @@ static void test_server_runtime_apply_iedscout_buffered_report_control_block_rea
     size_t consumed_length = 0U;
     size_t response_length = 0U;
 
+    memset(&logical_device, 0, sizeof(logical_device));
+    memset(&model_plan, 0, sizeof(model_plan));
+    snprintf(logical_device.inst, sizeof(logical_device.inst), "%s", "IED1LD0");
+    model_plan.logical_device_count = 1U;
+    model_plan.logical_devices = &logical_device;
+
     unitlab_mms_server_runtime_init(&server_runtime);
     assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
     assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &model_plan) == 1);
     assert(build_initiate_request_association_bytes(association_bytes, sizeof(association_bytes), &association_length, &diagnostic));
     unitlab_mms_operation_result_init(&operation_result);
     assert(unitlab_mms_server_runtime_apply_association_request_bytes(&server_runtime, association_bytes, association_length, &consumed_length, &operation_result));
@@ -1235,12 +1244,21 @@ static void test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_ac
         .bind_address = "127.0.0.1",
         .port = 102,
     };
+    UnitLabIedModelLogicalDevice logical_device;
+    UnitLabIedModelPlan model_plan;
     uint8_t response_bytes[1024U];
     size_t response_length = 0U;
+
+    memset(&logical_device, 0, sizeof(logical_device));
+    memset(&model_plan, 0, sizeof(model_plan));
+    snprintf(logical_device.inst, sizeof(logical_device.inst), "%s", "IED1LD0");
+    model_plan.logical_device_count = 1U;
+    model_plan.logical_devices = &logical_device;
 
     unitlab_mms_server_runtime_init(&server_runtime);
     assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
     assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &model_plan) == 1);
     assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 16U, 7U, 1000U, 100U, &diagnostic) == 1);
     snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "LD0.LLN0.BR.brcbEvents.RptID");
     snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "RptID");
@@ -1254,6 +1272,7 @@ static void test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_ac
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert_read_response_access_result_tags(response_bytes, response_length, 16U, expected_tags, sizeof(expected_tags) / sizeof(expected_tags[0]));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"IED1LD0/LLN0$dsEvents", strlen("IED1LD0/LLN0$dsEvents")) == 1);
 }
 
 static void test_server_runtime_build_read_failure_uses_data_access_error_access_result(void)
