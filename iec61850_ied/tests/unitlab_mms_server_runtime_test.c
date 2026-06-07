@@ -2273,7 +2273,7 @@ static void test_server_runtime_apply_pcap_resvtms_write_builds_response(void)
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
     assert(server_runtime.brcb_resv_tms == 42U);
-    assert(contains_bytes(response_bytes, response_length, (const uint8_t[]){ 0x02U, 0x01U, 0x13U, 0xA5U, 0x04U, 0x30U, 0x02U, 0x81U, 0x00U }, 9U) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t[]){ 0x02U, 0x01U, 0x13U, 0xA5U, 0x02U, 0x81U, 0x00U }, 7U) == 1);
 }
 
 static void test_server_runtime_apply_write_request_and_build_response_roundtrips(void)
@@ -2288,7 +2288,7 @@ static void test_server_runtime_apply_write_request_and_build_response_roundtrip
     uint8_t wire_bytes[256];
     UnitLabMmsAssociationFrame fixture;
     uint8_t response_bytes[256];
-    uint8_t response_payload[9U] = { 0x02U, 0x01U, 0x2BU, 0xA5U, 0x04U, 0x30U, 0x02U, 0x81U, 0x00U };
+    uint8_t response_payload[7U] = { 0x02U, 0x01U, 0x2BU, 0xA5U, 0x02U, 0x81U, 0x00U };
     size_t wire_length = 0U;
     size_t consumed_length = 0U;
     size_t response_length = 0U;

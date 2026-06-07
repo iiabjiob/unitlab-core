@@ -112,17 +112,14 @@ int server_runtime_build_write_response_service(
     UnitLabMmsDiagnostic* diagnostic)
 {
     uint8_t member_bytes[16U];
-    uint8_t response_sequence_bytes[32U];
     uint8_t response_payload_bytes[48U];
     uint8_t service_bytes[64U];
     uint8_t invoke_id_element_bytes[16U];
     size_t member_length = 0U;
-    size_t response_sequence_length = 0U;
     size_t response_payload_length = 0U;
     size_t invoke_id_length = 0U;
     size_t total_length = 0U;
     UnitLabMmsBerElement member_element;
-    UnitLabMmsBerElement response_sequence_element;
     UnitLabMmsBerElement response_payload_element;
 
     if (encoded_length != NULL) {
@@ -155,31 +152,12 @@ int server_runtime_build_write_response_service(
         return 0;
     }
 
-    unitlab_mms_ber_element_init(&response_sequence_element);
-    response_sequence_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-    response_sequence_element.tag.constructed = 1;
-    response_sequence_element.tag.tag_number = 16U;
-    response_sequence_element.value_bytes = member_bytes;
-    response_sequence_element.value_length = member_length;
-    if (!server_runtime_encode_ber_element(
-            response_sequence_element.tag.tag_class,
-            response_sequence_element.tag.constructed,
-            response_sequence_element.tag.tag_number,
-            response_sequence_element.value_bytes,
-            response_sequence_element.value_length,
-            response_sequence_bytes,
-            sizeof(response_sequence_bytes),
-            &response_sequence_length,
-            diagnostic)) {
-        return 0;
-    }
-
     unitlab_mms_ber_element_init(&response_payload_element);
     response_payload_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
     response_payload_element.tag.constructed = 1;
     response_payload_element.tag.tag_number = 5U;
-    response_payload_element.value_bytes = response_sequence_bytes;
-    response_payload_element.value_length = response_sequence_length;
+    response_payload_element.value_bytes = member_bytes;
+    response_payload_element.value_length = member_length;
     if (!server_runtime_encode_ber_element(
             response_payload_element.tag.tag_class,
             response_payload_element.tag.constructed,
