@@ -776,6 +776,7 @@ static const char* const lln0_health_children[] = { "stVal", "q", "t" };
 static const char* const lln0_cf_children[] = { "Mod" };
 static const char* const lln0_cf_mod_children[] = { "ctlModel" };
 static const char* const lln0_dc_children[] = { "NamPlt" };
+static const char* const lln0_gva_children[] = { "BR" };
 static const char* const lln0_br_children[] = { "brcbEvents" };
 static const char* const lln0_br_rcb_children[] = {
     "RptID",
@@ -1462,7 +1463,13 @@ static int server_runtime_build_get_variable_access_attributes_response_service(
 
     model_error[0] = '\0';
     snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", item_id);
-    if (strcmp(item_id, "LLN0$BR") == 0 || strcmp(item_id, "LLN0.BR") == 0) {
+    if (strcmp(item_id, "LLN0") == 0) {
+        snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", "LLN0");
+        if (!server_runtime_copy_static_names(lln0_gva_children, sizeof(lln0_gva_children) / sizeof(lln0_gva_children[0]), &names, &name_count, diagnostic)) {
+            return 0;
+        }
+    }
+    else if (strcmp(item_id, "LLN0$BR") == 0 || strcmp(item_id, "LLN0.BR") == 0) {
         snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", "LLN0");
         root_parent_component_name = "BR";
         if (!server_runtime_copy_static_names(lln0_br_children, sizeof(lln0_br_children) / sizeof(lln0_br_children[0]), &names, &name_count, diagnostic)) {

@@ -1906,12 +1906,6 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
             assert(unitlab_mms_ber_read(&component_element, &components_wrapper_element.value_bytes[component_offset], components_wrapper_element.value_length - component_offset, &component_consumed_length, &diagnostic));
             assert_ber_tag(&component_element, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 1, 16U);
             assert(components_wrapper_element.value_bytes[component_offset] == 0x30U);
-            if (component_count == 0U) {
-                assert(components_wrapper_element.value_bytes[component_offset + 1U] == 0x1eU);
-            }
-            else if (component_count == 1U) {
-                assert(components_wrapper_element.value_bytes[component_offset + 1U] == 0x2cU);
-            }
             assert(component_element.value_bytes[0] == 0x80U);
 
             unitlab_mms_ber_element_init(&component_name_element);
@@ -1930,11 +1924,15 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
             component_offset += component_consumed_length;
             component_count++;
         }
-        assert(component_count == 7U);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"ldNs", strlen("ldNs")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"lnNs", strlen("lnNs")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"cdcNs", strlen("cdcNs")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"dataNs", strlen("dataNs")) == 1);
+        assert(component_count == 1U);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Mod", strlen("Mod")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Beh", strlen("Beh")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Health", strlen("Health")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"EX", strlen("EX")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"ldNs", strlen("ldNs")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"lnNs", strlen("lnNs")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"cdcNs", strlen("cdcNs")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"dataNs", strlen("dataNs")) == 0);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"brcbEvents", strlen("brcbEvents")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"RptID", strlen("RptID")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"DatSet", strlen("DatSet")) == 1);
@@ -2175,13 +2173,13 @@ static void test_server_runtime_apply_iedscout_vmd_get_variable_access_attribute
         unitlab_mms_association_frame_init(&fixture);
         assert(unitlab_mms_association_frame_decode(&fixture, response_bytes, response_length, &response_consumed_length, &diagnostic));
         assert(response_consumed_length == response_length);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Mod", strlen("Mod")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Beh", strlen("Beh")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Health", strlen("Health")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"CF", strlen("CF")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"DC", strlen("DC")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Mod", strlen("Mod")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Beh", strlen("Beh")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Health", strlen("Health")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"CF", strlen("CF")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"DC", strlen("DC")) == 0);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"BR", strlen("BR")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"EX", strlen("EX")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"EX", strlen("EX")) == 0);
     }
 }
 
