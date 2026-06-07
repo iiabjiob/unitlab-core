@@ -1990,6 +1990,7 @@ static void test_server_runtime_build_brcb_gva_response_exposes_fields(void)
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"EntryID", strlen("EntryID")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"TimeOfEntry", strlen("TimeOfEntry")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"ResvTms", strlen("ResvTms")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t[]){ 0x80U, 0x07U, 'R', 'e', 's', 'v', 'T', 'm', 's', 0xA1U, 0x03U, 0x85U, 0x01U, 0x10U }, 14U) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Owner", strlen("Owner")) == 0);
     }
 }

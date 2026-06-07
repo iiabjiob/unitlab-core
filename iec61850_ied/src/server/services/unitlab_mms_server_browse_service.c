@@ -273,9 +273,15 @@ static int server_runtime_encode_gva_leaf_type_spec(
         value_bytes = value_single;
         value_length = sizeof(value_single);
     }
-    else if (strcmp(component_name, "SqNum") == 0 || strcmp(component_name, "ResvTms") == 0) {
+    else if (strcmp(component_name, "SqNum") == 0) {
         value_single[0] = 0x10U;
         tag_number = 6U;
+        value_bytes = value_single;
+        value_length = sizeof(value_single);
+    }
+    else if (strcmp(component_name, "ResvTms") == 0) {
+        value_single[0] = 0x10U;
+        tag_number = 5U;
         value_bytes = value_single;
         value_length = sizeof(value_single);
     }
