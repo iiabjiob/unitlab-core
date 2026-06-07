@@ -49,6 +49,42 @@ static int normalize_object_reference(
     return 1;
 }
 
+static int format_mms_logical_device_inst(
+    const UnitLabIedFixtureModel* fixture,
+    const char* logical_device_inst,
+    size_t logical_device_inst_length,
+    char* destination,
+    size_t destination_size)
+{
+    if (
+        fixture == NULL
+        || logical_device_inst == NULL
+        || logical_device_inst_length == 0U
+        || destination == NULL
+        || destination_size == 0U
+    ) {
+        return 0;
+    }
+    if (fixture->ied_name[0] == '\0'
+        || (strncmp(logical_device_inst, fixture->ied_name, strlen(fixture->ied_name)) == 0)) {
+        if (logical_device_inst_length >= destination_size) {
+            return 0;
+        }
+        memcpy(destination, logical_device_inst, logical_device_inst_length);
+        destination[logical_device_inst_length] = '\0';
+        return 1;
+    }
+
+    int written = snprintf(
+        destination,
+        destination_size,
+        "%s%.*s",
+        fixture->ied_name,
+        (int)logical_device_inst_length,
+        logical_device_inst);
+    return written > 0 && (size_t)written < destination_size;
+}
+
 static int format_data_set_entry_variable(
     const char* logical_device_inst,
     const char* logical_node_name,
@@ -254,6 +290,7 @@ static int parse_fc_suffix(
 }
 
 static int parse_signal_reference(
+    const UnitLabIedFixtureModel* fixture,
     const UnitLabIedFixtureSignal* signal,
     UnitLabIedModelSignal* model_signal,
     char* error,
@@ -292,8 +329,7 @@ static int parse_signal_reference(
     const char* object_start = node_end + 1;
     size_t object_length = (size_t)(reference_body_end - object_start);
     if (
-        logical_device_length >= sizeof(model_signal->logical_device_inst)
-        || logical_node_length >= sizeof(model_signal->logical_node_name)
+        logical_node_length >= sizeof(model_signal->logical_node_name)
         || object_length == 0U
     ) {
         set_error(error, error_size, "MODEL_PLAN_SIGNAL_REFERENCE_INVALID: %s", reference);
@@ -308,8 +344,15 @@ static int parse_signal_reference(
         set_error(error, error_size, "MODEL_PLAN_SIGNAL_KIND_TOO_LONG: %s", reference);
         return 0;
     }
-    memcpy(model_signal->logical_device_inst, reference, logical_device_length);
-    model_signal->logical_device_inst[logical_device_length] = '\0';
+    if (!format_mms_logical_device_inst(
+            fixture,
+            reference,
+            logical_device_length,
+            model_signal->logical_device_inst,
+            sizeof(model_signal->logical_device_inst))) {
+        set_error(error, error_size, "MODEL_PLAN_SIGNAL_LD_TOO_LONG: %s", reference);
+        return 0;
+    }
     memcpy(model_signal->logical_node_name, node_start, logical_node_length);
     model_signal->logical_node_name[logical_node_length] = '\0';
     if (!normalize_object_reference(object_start, object_length, model_signal->object_reference, sizeof(model_signal->object_reference))) {
@@ -404,8 +447,7 @@ static int parse_data_set_reference(
     size_t logical_node_length = (size_t)(dot - third_slash - 1);
     const char* data_set_name = dot + 1;
     if (
-        logical_device_length >= sizeof(data_set->logical_device_inst)
-        || logical_node_length >= sizeof(data_set->logical_node_name)
+        logical_node_length >= sizeof(data_set->logical_node_name)
         || strlen(data_set_name) >= sizeof(data_set->name)
     ) {
         set_error(error, error_size, "MODEL_PLAN_DATASET_REFERENCE_TOO_LONG: %s", reference);
@@ -416,8 +458,15 @@ static int parse_data_set_reference(
         set_error(error, error_size, "MODEL_PLAN_DATASET_REFERENCE_TOO_LONG: %s", reference);
         return 0;
     }
-    memcpy(data_set->logical_device_inst, second_slash + 1, logical_device_length);
-    data_set->logical_device_inst[logical_device_length] = '\0';
+    if (!format_mms_logical_device_inst(
+            fixture,
+            second_slash + 1,
+            logical_device_length,
+            data_set->logical_device_inst,
+            sizeof(data_set->logical_device_inst))) {
+        set_error(error, error_size, "MODEL_PLAN_DATASET_LD_TOO_LONG: %s", reference);
+        return 0;
+    }
     memcpy(data_set->logical_node_name, third_slash + 1, logical_node_length);
     data_set->logical_node_name[logical_node_length] = '\0';
     if (!copy_string(data_set->name, sizeof(data_set->name), data_set_name)) {
@@ -624,7 +673,7 @@ int unitlab_build_ied_model_plan(
                 unitlab_free_ied_model_plan(plan);
                 return 0;
             }
-            if (!parse_signal_reference(signal, model_signal, error, error_size)) {
+            if (!parse_signal_reference(fixture, signal, model_signal, error, error_size)) {
                 unitlab_free_ied_model_plan(plan);
                 return 0;
             }
@@ -643,13 +692,24 @@ int unitlab_build_ied_model_plan(
         const UnitLabIedFixtureReport* report = &fixture->reports[report_index];
         UnitLabIedModelReportControl* model_report = &plan->reports[report_index];
         size_t data_set_index = 0U;
+        char report_logical_device_inst[128U];
         if (!find_data_set_index(fixture, report->data_set_ref, &data_set_index)) {
             set_error(error, error_size, "MODEL_PLAN_REPORT_DATASET_NOT_FOUND: %s", report->data_set_ref);
             unitlab_free_ied_model_plan(plan);
             return 0;
         }
-        if (!add_node_reference(plan, report->logical_device_inst, report->logical_node_name)) {
-            set_error(error, error_size, "MODEL_PLAN_REPORT_NODE_TOO_LONG: %s/%s", report->logical_device_inst, report->logical_node_name);
+        if (!format_mms_logical_device_inst(
+                fixture,
+                report->logical_device_inst,
+                strlen(report->logical_device_inst),
+                report_logical_device_inst,
+                sizeof(report_logical_device_inst))) {
+            set_error(error, error_size, "MODEL_PLAN_REPORT_LD_TOO_LONG: %s", report->logical_device_inst);
+            unitlab_free_ied_model_plan(plan);
+            return 0;
+        }
+        if (!add_node_reference(plan, report_logical_device_inst, report->logical_node_name)) {
+            set_error(error, error_size, "MODEL_PLAN_REPORT_NODE_TOO_LONG: %s/%s", report_logical_device_inst, report->logical_node_name);
             unitlab_free_ied_model_plan(plan);
             return 0;
         }
@@ -658,7 +718,7 @@ int unitlab_build_ied_model_plan(
             unitlab_free_ied_model_plan(plan);
             return 0;
         }
-        if (!copy_string(model_report->logical_device_inst, sizeof(model_report->logical_device_inst), report->logical_device_inst)) {
+        if (!copy_string(model_report->logical_device_inst, sizeof(model_report->logical_device_inst), report_logical_device_inst)) {
             set_error(error, error_size, "MODEL_PLAN_REPORT_LD_TOO_LONG: %s", report->logical_device_inst);
             unitlab_free_ied_model_plan(plan);
             return 0;

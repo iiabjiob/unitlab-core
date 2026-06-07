@@ -139,18 +139,20 @@ static int test_model_plan_builds_blueprint(void)
         passed &= expect_true(plan.signal_count == 2U, "two signals");
         passed &= expect_true(plan.namespace_attribute_count == 4U, "four namespace attributes");
         if (plan.namespace_attribute_count == 4U) {
-            passed &= expect_string(plan.namespace_attributes[0].object_reference, "LD0.LLN0.EX.NamPlt.ldNs", "namespace ldNs object reference");
+            passed &= expect_string(plan.namespace_attributes[0].object_reference, "IED1LD0.LLN0.EX.NamPlt.ldNs", "namespace ldNs object reference");
             passed &= expect_string(plan.namespace_attributes[0].initial_value, "LD0", "namespace ldNs value");
-            passed &= expect_string(plan.namespace_attributes[1].object_reference, "LD0.LLN0.EX.NamPlt.lnNs", "namespace lnNs object reference");
+            passed &= expect_string(plan.namespace_attributes[1].object_reference, "IED1LD0.LLN0.EX.NamPlt.lnNs", "namespace lnNs object reference");
             passed &= expect_string(plan.namespace_attributes[1].initial_value, "IEC 61850-7-4:2007", "namespace lnNs value");
-            passed &= expect_string(plan.namespace_attributes[2].object_reference, "LD0.LLN0.EX.NamPlt.cdcNs", "namespace cdcNs object reference");
+            passed &= expect_string(plan.namespace_attributes[2].object_reference, "IED1LD0.LLN0.EX.NamPlt.cdcNs", "namespace cdcNs object reference");
             passed &= expect_string(plan.namespace_attributes[2].initial_value, "IEC 61850-7-3:2010", "namespace cdcNs value");
-            passed &= expect_string(plan.namespace_attributes[3].object_reference, "LD0.LLN0.EX.NamPlt.dataNs", "namespace dataNs object reference");
+            passed &= expect_string(plan.namespace_attributes[3].object_reference, "IED1LD0.LLN0.EX.NamPlt.dataNs", "namespace dataNs object reference");
             passed &= expect_string(plan.namespace_attributes[3].initial_value, "EXT:2015", "namespace dataNs value");
         }
-        passed &= expect_string(plan.data_sets[0].logical_device_inst, "LD0", "DataSet LD");
+        passed &= expect_string(plan.logical_devices[0].inst, "IED1LD0", "logical device MMS domain");
+        passed &= expect_string(plan.data_sets[0].logical_device_inst, "IED1LD0", "DataSet LD");
         passed &= expect_string(plan.data_sets[0].logical_node_name, "LLN0", "DataSet LN");
         passed &= expect_string(plan.data_sets[0].name, "dsEvents", "DataSet name");
+        passed &= expect_string(plan.reports[0].logical_device_inst, "IED1LD0", "ReportControl LD");
         passed &= expect_string(plan.reports[0].name, "brcbEvents", "ReportControl name");
         passed &= expect_string(plan.reports[0].report_kind, "buffered", "ReportControl kind");
         passed &= expect_true(plan.reports[0].is_buffered == 1, "ReportControl buffered flag");
@@ -175,6 +177,7 @@ static int test_model_plan_builds_blueprint(void)
             plan.reports[0].optional_fields_mask
                 == (UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM | UNITLAB_IED_MODEL_RPT_OPT_DATA_REFERENCE),
             "ReportControl OptFlds mask");
+        passed &= expect_string(plan.signals[0].logical_device_inst, "IED1LD0", "first signal LD");
         passed &= expect_string(plan.signals[0].logical_node_name, "XCBR1", "first signal LN");
         passed &= expect_string(plan.signals[0].kind, "FCDA", "first signal kind");
         passed &= expect_string(plan.signals[0].object_reference, "Pos.stVal", "first signal object reference");
@@ -182,7 +185,7 @@ static int test_model_plan_builds_blueprint(void)
         passed &= expect_string(plan.signals[0].data_attribute_path, "stVal", "first signal data attribute");
         passed &= expect_string(
             plan.signals[0].data_set_entry_variable,
-            "LD0/XCBR1$ST$Pos$stVal",
+            "IED1LD0/XCBR1$ST$Pos$stVal",
             "first signal DataSetEntry variable");
         passed &= expect_true(plan.signals[0].data_set_entry_component_known == 1, "first signal DataSetEntry component known");
         passed &= expect_string(plan.signals[0].data_set_entry_component, "phaseA", "first signal DataSetEntry component");
@@ -195,7 +198,7 @@ static int test_model_plan_builds_blueprint(void)
         passed &= expect_string(plan.signals[1].data_attribute_path, "", "second signal data attribute");
         passed &= expect_string(
             plan.signals[1].data_set_entry_variable,
-            "LD0/PGGIO1$ST$Ind1",
+            "IED1LD0/PGGIO1$ST$Ind1",
             "second signal DataSetEntry variable");
         passed &= expect_true(plan.signals[1].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "second signal value kind");
     }
@@ -286,7 +289,7 @@ static int test_collects_logical_node_namespace_attributes(void)
     passed &= expect_true(unitlab_build_ied_model_plan(&fixture, &plan, error, sizeof(error)) == 1, "namespace model plan should build");
     if (passed) {
         passed &= expect_true(
-            unitlab_collect_ied_model_logical_node_namespace_attributes(&plan, "LD0", "LLN0", &names, &count, error, sizeof(error)) == 1,
+            unitlab_collect_ied_model_logical_node_namespace_attributes(&plan, "IED1LD0", "LLN0", &names, &count, error, sizeof(error)) == 1,
             "namespace browse should collect namespace attributes");
         if (passed) {
             passed &= expect_list_matches(names, count, (const char*[]){ "ldNs", "lnNs", "cdcNs", "dataNs" }, 4U, "LLN0 should expose namespace attributes");
@@ -626,13 +629,13 @@ static int test_metadata_catalog(void)
     int ok = unitlab_collect_ied_model_logical_devices(&plan, &names, &count, error, sizeof(error));
     passed &= ok;
     if (ok) {
-        passed &= expect_list_matches(names, count, (const char*[]){ "LD0" }, 1U, "logical device metadata");
+        passed &= expect_list_matches(names, count, (const char*[]){ "IED1LD0" }, 1U, "logical device metadata");
     }
     unitlab_free_ied_model_name_list(names, count);
     names = NULL;
     count = 0U;
 
-    ok = unitlab_collect_ied_model_logical_node_data_sets(&plan, "LD0", "LLN0", &names, &count, error, sizeof(error));
+    ok = unitlab_collect_ied_model_logical_node_data_sets(&plan, "IED1LD0", "LLN0", &names, &count, error, sizeof(error));
     passed &= ok;
     if (ok) {
         passed &= expect_list_matches(names, count, (const char*[]){ "dsEvents", "dsUpdates" }, 2U, "logical node data sets");
@@ -641,7 +644,7 @@ static int test_metadata_catalog(void)
     names = NULL;
     count = 0U;
 
-    ok = unitlab_collect_ied_model_logical_device_data_sets(&plan, "LD0", &names, &count, error, sizeof(error));
+    ok = unitlab_collect_ied_model_logical_device_data_sets(&plan, "IED1LD0", &names, &count, error, sizeof(error));
     passed &= ok;
     if (ok) {
         passed &= expect_list_matches(names, count, (const char*[]){ "LLN0$dsEvents", "LLN0$dsUpdates" }, 2U, "logical device data sets");
@@ -652,7 +655,7 @@ static int test_metadata_catalog(void)
 
     ok = unitlab_collect_ied_model_logical_node_reports(
         &plan,
-        "LD0",
+        "IED1LD0",
         "LLN0",
         UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_BUFFERED,
         &names,

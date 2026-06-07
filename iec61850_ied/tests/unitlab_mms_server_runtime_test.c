@@ -1,6 +1,7 @@
 #include <assert.h>
 
 #include "server/unitlab_mms_server_runtime.h"
+#include "model/model_plan.h"
 #include "wire/acse/unitlab_mms_acse.h"
 #include "wire/ber/unitlab_mms_ber.h"
 #include "wire/mms/unitlab_mms_pdu.h"
@@ -2104,6 +2105,100 @@ static void test_server_runtime_apply_iedscout_get_name_list_request_matches_gol
 }
 
 
+static UnitLabIedFixtureReport runtime_report_for_data_set(const char* data_set_ref)
+{
+    UnitLabIedFixtureReport report = {
+        .key = "IED1/AP1/LD0/LLN0/brcbEvents/buffered",
+        .logical_device_inst = "LD0",
+        .logical_node_name = "LLN0",
+        .report_control_name = "brcbEvents",
+        .report_kind = "buffered",
+        .rpt_id = "IED1LD0/LLN0.BR.Events",
+        .conf_rev = "7",
+        .indexed_known = 1,
+        .indexed = 0,
+        .buffer_time_ms_known = 1,
+        .buffer_time_ms = 100,
+        .integrity_period_ms_known = 1,
+        .integrity_period_ms = 1000,
+    };
+    snprintf(report.data_set_ref, sizeof(report.data_set_ref), "%s", data_set_ref);
+    return report;
+}
+
+static void test_server_runtime_fixture_domain_get_name_list_uses_mms_domain(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    UnitLabIedFixtureSignal signals[1U] = {
+        {
+            .data_set_index = 0U,
+            .reference = "LD0/XCBR1.Pos.stVal[ST]",
+            .kind = "FCDA",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+            .initial_value = "0",
+        },
+    };
+    UnitLabIedFixtureDataSet data_sets[1U] = {
+        {
+            .reference = "IED1/AP1/LD0/LLN0.dsEvents",
+            .signal_count = 1U,
+            .signals = signals,
+        },
+    };
+    UnitLabIedFixtureReport reports[1U] = {
+        runtime_report_for_data_set("IED1/AP1/LD0/LLN0.dsEvents"),
+    };
+    UnitLabIedFixtureModel fixture = {
+        .device_count = 1U,
+        .ied_name = "IED1",
+        .access_point_name = "AP1",
+        .data_set_count = 1U,
+        .data_sets = data_sets,
+        .report_count = 1U,
+        .reports = reports,
+        .signal_count = 1U,
+    };
+    UnitLabIedModelPlan plan;
+    char error[256U];
+    uint8_t response_bytes[4096U];
+    size_t response_length = 0U;
+    size_t consumed_length = 0U;
+    static const uint8_t request_bytes[] = {
+        0x03U, 0x00U, 0x00U, 0x24U, 0x02U, 0xF0U, 0x80U, 0x01U, 0x00U, 0x01U, 0x00U, 0x61U, 0x17U, 0x30U, 0x15U, 0x02U, 0x01U, 0x03U, 0xA0U, 0x10U, 0xA0U, 0x0EU, 0x02U, 0x01U, 0x01U, 0xA1U, 0x09U, 0xA0U, 0x03U, 0x80U, 0x01U, 0x09U, 0xA1U, 0x02U, 0x80U, 0x00U
+    };
+    const uint8_t expected_identifier[] = { 'I', 'E', 'D', '1', 'L', 'D', '0' };
+
+    assert(unitlab_build_ied_model_plan(&fixture, &plan, error, sizeof(error)) == 1);
+    assert(strcmp(plan.logical_devices[0].inst, "IED1LD0") == 0);
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, sizeof(request_bytes), &consumed_length, &operation_result));
+    assert(consumed_length == sizeof(request_bytes));
+    assert(operation_result.ok == 1);
+    assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_GET_NAME_LIST);
+    assert(server_runtime.pending_request.browse_object_class == 9U);
+    assert(server_runtime.pending_request.browse_object_scope == 0U);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(response_length > 0U);
+    assert(contains_bytes(response_bytes, response_length, expected_identifier, sizeof(expected_identifier)) == 1);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
 static void test_server_runtime_apply_iedscout_logical_node_directory_request_class_one_builds_response(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -2948,6 +3043,7 @@ int main(void)
     test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips();
     test_server_runtime_build_get_name_list_response_handles_large_directory();
     test_server_runtime_apply_iedscout_get_name_list_request_matches_golden_capture();
+    test_server_runtime_fixture_domain_get_name_list_uses_mms_domain();
     test_server_runtime_apply_iedscout_logical_node_directory_request_class_one_builds_response();
     test_server_runtime_apply_iedscout_vmd_directory_request_scope_zero_builds_response();
     test_server_runtime_apply_named_variable_list_attributes_request_and_build_response_roundtrips();
