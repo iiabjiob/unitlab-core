@@ -569,9 +569,9 @@ static int server_runtime_encode_mms_data_value(
                 server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Boolean read response value is invalid.");
                 return 0;
             }
-            element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+            element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
             element.tag.constructed = 0;
-            element.tag.tag_number = 1U;
+            element.tag.tag_number = 3U;
             element.value_bytes = &boolean_value;
             element.value_length = 1U;
             return unitlab_mms_ber_write(&element, buffer, buffer_length, encoded_length, diagnostic);
@@ -584,10 +584,10 @@ static int server_runtime_encode_mms_data_value(
             if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
                 return 0;
             }
-            element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
+            element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
             element.tag.constructed = 0;
-            element.tag.tag_number = 2U;
-            element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
+            element.tag.tag_number = 5U;
+            element.value_bytes = integer_bytes;
             element.value_length = integer_length;
             return unitlab_mms_ber_write(&element, buffer, buffer_length, encoded_length, diagnostic);
         case UNITLAB_IED_FIXTURE_VALUE_STRING:
@@ -862,7 +862,7 @@ static int server_runtime_encode_gva_leaf_type_spec(
         value_bytes = NULL;
         value_length = 0U;
     }
-    else if (strcmp(component_name, "stVal") == 0) {
+    else if (strcmp(component_name, "stVal") == 0 || strcmp(component_name, "f") == 0) {
         value_single[0] = 0x20U;
         tag_number = 5U;
         value_bytes = value_single;

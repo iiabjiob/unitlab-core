@@ -1475,6 +1475,7 @@ static void test_server_runtime_build_ordinary_ln_gva_response_exposes_fc_roots(
         assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)cases[index].child_b, strlen(cases[index].child_b)) == 1);
         if (cases[index].child_c != NULL) {
             assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)cases[index].child_c, strlen(cases[index].child_c)) == 1);
+            assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x80U, 0x01U, 0x66U, 0xA1U, 0x03U, 0x85U, 0x01U, 0x20U }, 8U) == 1);
         }
     }
 }
@@ -1671,6 +1672,8 @@ static void test_server_runtime_build_confirmed_response_bytes_matches_fixture_s
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t[]){ 0x85U, 0x01U, 0x00U }, 3U) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t[]){ 0x02U, 0x01U, 0x00U }, 3U) == 0);
 }
 
 static void test_server_runtime_apply_confirmed_request_and_build_response_roundtrips(void)
