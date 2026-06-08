@@ -782,10 +782,15 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
                 included_member_indices[included_member_count++] = changed_index;
                 (void)server_runtime_report_inclusion_bit_set(inclusion_bitstring, member_count, changed_index);
             }
-            changed_signal = &server_runtime->model_plan->signals[data_set->first_signal_index + changed_index];
+            changed_signal = server_runtime_data_set_member_signal(server_runtime, data_set, changed_index);
+            if (changed_signal == NULL) {
+                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "InformationReport changed DataSet member is outside the model signal range.");
+                return 0;
+            }
             for (size_t member_index = 0U; member_index < member_count; member_index++) {
-                const UnitLabIedModelSignal* candidate_signal = &server_runtime->model_plan->signals[data_set->first_signal_index + member_index];
+                const UnitLabIedModelSignal* candidate_signal = server_runtime_data_set_member_signal(server_runtime, data_set, member_index);
                 if (!server_runtime_report_member_already_included(included_member_indices, included_member_count, member_index)
+                    && candidate_signal != NULL
                     && server_runtime_report_signal_references_same_value_leaf(candidate_signal, changed_signal)) {
                     included_member_indices[included_member_count++] = member_index;
                     (void)server_runtime_report_inclusion_bit_set(inclusion_bitstring, member_count, member_index);
@@ -866,15 +871,13 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
             size_t index = included_member_indices[included_index];
             const char* data_ref = NULL;
             char normalized_data_ref[192U];
-            if (data_set->first_signal_index + index >= server_runtime->model_plan->signal_count) {
+            const UnitLabIedModelSignal* signal = server_runtime_data_set_member_signal(server_runtime, data_set, index);
+            if (signal == NULL) {
                 server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "InformationReport DataSet member is outside the model signal range.");
                 return 0;
             }
-            {
-                const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[data_set->first_signal_index + index];
-                data_ref = signal->data_set_entry_variable[0] != '\0' ? signal->data_set_entry_variable : signal->object_reference;
-                data_ref = server_runtime_report_data_ref_with_dataset_prefix(data_ref, dataset_reference, normalized_data_ref, sizeof(normalized_data_ref));
-            }
+            data_ref = signal->data_set_entry_variable[0] != '\0' ? signal->data_set_entry_variable : signal->object_reference;
+            data_ref = server_runtime_report_data_ref_with_dataset_prefix(data_ref, dataset_reference, normalized_data_ref, sizeof(normalized_data_ref));
             if (data_ref == NULL || data_ref[0] == '\0') {
                 server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "GI report DataSet member is missing a data reference.");
                 return 0;
@@ -890,11 +893,11 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         uint8_t value_bytes[512U];
         size_t value_length = 0U;
         const UnitLabIedModelSignal* signal = NULL;
-        if (data_set->first_signal_index + index >= server_runtime->model_plan->signal_count) {
+        signal = server_runtime_data_set_member_signal(server_runtime, data_set, index);
+        if (signal == NULL) {
             server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "InformationReport DataSet member is outside the model signal range.");
             return 0;
         }
-        signal = &server_runtime->model_plan->signals[data_set->first_signal_index + index];
         if (index < UNITLAB_MMS_SERVER_RUNTIME_MAX_REPORT_MEMBERS
             && server_runtime->pending_report_value_lengths[index] != 0U
             && (server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE

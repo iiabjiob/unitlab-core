@@ -557,6 +557,20 @@ const UnitLabMmsServerRuntimeSignalValue* server_runtime_find_signal_value(const
     return NULL;
 }
 
+const UnitLabIedModelSignal* server_runtime_data_set_member_signal(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelDataSet* data_set, size_t member_index)
+{
+    size_t signal_index = 0U;
+
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || server_runtime->model_plan->signals == NULL || data_set == NULL || member_index >= data_set->member_count) {
+        return NULL;
+    }
+    signal_index = data_set->first_signal_index + member_index;
+    if (signal_index >= server_runtime->model_plan->signal_count) {
+        return NULL;
+    }
+    return &server_runtime->model_plan->signals[signal_index];
+}
+
 int server_runtime_parse_int32_value(const char* source, int32_t* value)
 {
     char* end = NULL;
@@ -1271,11 +1285,11 @@ int unitlab_mms_server_runtime_update_signal_value(
         }
         if (data_set != NULL && server_runtime->model_plan->signals != NULL) {
             for (size_t index = 0U; index < data_set->member_count; index++) {
-                size_t signal_index = data_set->first_signal_index + index;
-                if (signal_index >= server_runtime->model_plan->signal_count) {
+                const UnitLabIedModelSignal* member_signal = server_runtime_data_set_member_signal(server_runtime, data_set, index);
+                if (member_signal == NULL) {
                     break;
                 }
-                if (server_runtime_reference_matches_signal(object_reference, &server_runtime->model_plan->signals[signal_index])) {
+                if (server_runtime_reference_matches_signal(object_reference, member_signal)) {
                     member_index = index;
                     report_member = 1;
                     break;

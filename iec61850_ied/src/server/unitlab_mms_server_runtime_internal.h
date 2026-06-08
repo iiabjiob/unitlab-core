@@ -29,6 +29,7 @@ int server_runtime_parse_object_reference(const char* object_reference, char* do
 const UnitLabIedModelSignal* server_runtime_find_signal_by_object_reference(const UnitLabMmsServerRuntime* server_runtime, const char* object_reference);
 int server_runtime_reference_matches_signal(const char* object_reference, const UnitLabIedModelSignal* signal);
 const UnitLabMmsServerRuntimeSignalValue* server_runtime_find_signal_value(const UnitLabMmsServerRuntime* server_runtime, const char* object_reference);
+const UnitLabIedModelSignal* server_runtime_data_set_member_signal(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelDataSet* data_set, size_t member_index);
 int server_runtime_encode_current_signal_value(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelSignal* signal, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int server_runtime_encode_current_signal_quality(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelSignal* signal, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int server_runtime_encode_current_signal_timestamp(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelSignal* signal, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
