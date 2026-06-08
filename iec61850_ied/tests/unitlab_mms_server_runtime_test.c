@@ -4214,6 +4214,62 @@ static void test_server_runtime_apply_pcap_multi_rptena_write_builds_response(vo
     assert(contains_bytes(response_bytes, response_length, (const uint8_t[]){ 0x02U, 0x01U, 0x14U, 0xA5U, 0x04U, 0x81U, 0x00U, 0x81U, 0x00U }, 9U) == 1);
 }
 
+static void test_server_runtime_apply_pcap_multi_write_preserves_partial_failures(void)
+{
+    static const uint8_t wire_bytes[] = {
+        0x03U, 0x00U, 0x00U, 0x8EU, 0x02U, 0xF0U, 0x80U, 0x01U,
+        0x00U, 0x01U, 0x00U, 0x61U, 0x81U, 0x80U, 0x30U, 0x7EU,
+        0x02U, 0x01U, 0x03U, 0xA0U, 0x79U, 0xA0U, 0x77U, 0x02U,
+        0x01U, 0x14U, 0xA5U, 0x72U, 0xA0U, 0x54U, 0x30U, 0x28U,
+        0xA0U, 0x26U, 0xA1U, 0x24U, 0x1AU, 0x07U, 0x49U, 0x45U,
+        0x44U, 0x31U, 0x4CU, 0x44U, 0x30U, 0x1AU, 0x19U, 0x4CU,
+        0x4CU, 0x4EU, 0x30U, 0x24U, 0x42U, 0x52U, 0x24U, 0x62U,
+        0x72U, 0x63U, 0x62U, 0x45U, 0x76U, 0x65U, 0x6EU, 0x74U,
+        0x73U, 0x24U, 0x44U, 0x61U, 0x74U, 0x53U, 0x65U, 0x74U,
+        0x30U, 0x28U, 0xA0U, 0x26U, 0xA1U, 0x24U, 0x1AU, 0x07U,
+        0x49U, 0x45U, 0x44U, 0x31U, 0x4CU, 0x44U, 0x30U, 0x1AU,
+        0x19U, 0x4CU, 0x4CU, 0x4EU, 0x30U, 0x24U, 0x42U, 0x52U,
+        0x24U, 0x62U, 0x72U, 0x63U, 0x62U, 0x45U, 0x76U, 0x65U,
+        0x6EU, 0x74U, 0x73U, 0x24U, 0x52U, 0x70U, 0x74U, 0x45U,
+        0x6EU, 0x61U, 0xA0U, 0x1AU, 0x8AU, 0x15U, 0x49U, 0x45U,
+        0x44U, 0x31U, 0x4CU, 0x44U, 0x30U, 0x2FU, 0x4CU, 0x4CU,
+        0x4EU, 0x30U, 0x24U, 0x64U, 0x73U, 0x45U, 0x76U, 0x65U,
+        0x6EU, 0x74U, 0x73U, 0x83U, 0x01U, 0x01U
+    };
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    uint8_t response_bytes[256U];
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, wire_bytes, sizeof(wire_bytes), &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(consumed_length == sizeof(wire_bytes));
+    assert(server_runtime.pending_request.write_object_reference_count == 2U);
+    assert(strcmp(server_runtime.pending_request.write_object_references[0], "IED1LD0.LLN0.BR.brcbEvents.DatSet") == 0);
+    assert(strcmp(server_runtime.pending_request.write_object_references[1], "IED1LD0.LLN0.BR.brcbEvents.RptEna") == 0);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+    assert(server_runtime.brcb_rpt_ena == 1U);
+    assert(server_runtime.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_ENABLED);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t[]){ 0x02U, 0x01U, 0x14U, 0xA5U, 0x05U, 0x80U, 0x01U, 0x09U, 0x81U, 0x00U }, 10U) == 1);
+}
+
 static void test_server_runtime_apply_write_request_and_build_response_roundtrips(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -5568,6 +5624,7 @@ int main(void)
     test_server_runtime_apply_pcap_resvtms_write_builds_response();
     test_server_runtime_apply_pcap_resvtms_write_rejects_when_enabled();
     test_server_runtime_apply_pcap_multi_rptena_write_builds_response();
+    test_server_runtime_apply_pcap_multi_write_preserves_partial_failures();
     test_server_runtime_apply_write_request_and_build_response_roundtrips();
     test_server_runtime_rptena_write_updates_brcb_read_state();
     test_server_runtime_resvtms_owner_tracks_reservation_lifecycle();
