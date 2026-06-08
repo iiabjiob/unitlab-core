@@ -399,8 +399,8 @@ int server_runtime_encode_report_control_block_field_value(
     value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
     value_element.tag.constructed = 0;
     value_element.tag.tag_number = 10U;
-    value_element.value_bytes = (const uint8_t*)"";
-    value_element.value_length = 0U;
+    value_element.value_bytes = (const uint8_t*)(server_runtime != NULL && server_runtime->brcb_owner[0] != 0 ? server_runtime->brcb_owner : "");
+    value_element.value_length = strlen((const char*)value_element.value_bytes);
     if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
         return 0;
     }

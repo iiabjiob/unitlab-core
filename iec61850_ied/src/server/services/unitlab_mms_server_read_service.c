@@ -670,6 +670,21 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
+    if (server_runtime_object_reference_matches_report_control_field(object_reference, "Owner")) {
+        if (!server_runtime_encode_report_control_block_field_value(
+                server_runtime,
+                "Owner",
+                rcb_report_id_reference,
+                rcb_data_set_reference,
+                buffer,
+                buffer_length,
+                encoded_length,
+                diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
     {
         size_t rcb_field_count = 0U;
         const char* const* rcb_fields = server_runtime_report_control_block_fields(&rcb_field_count);

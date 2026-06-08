@@ -523,6 +523,80 @@ static void test_server_runtime_rptena_write_updates_brcb_read_state(void)
 }
 
 
+static void test_server_runtime_resvtms_owner_tracks_reservation_lifecycle(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    uint8_t scratch[512U];
+    uint8_t request_bytes[512U];
+    uint8_t response_bytes[1024U];
+    uint8_t value_byte = 0x2AU;
+    UnitLabMmsBerElement data_element;
+    size_t request_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+
+    unitlab_mms_ber_element_init(&data_element);
+    data_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    data_element.tag.constructed = 0;
+    data_element.tag.tag_number = 5U;
+    data_element.value_bytes = &value_byte;
+    data_element.value_length = 1U;
+    assert(unitlab_mms_build_write_request_frame("IED1LD0", "LLN0$BR$brcbEvents$ResvTms", &data_element, 36U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(server_runtime.brcb_resv_tms == 42U);
+    assert(server_runtime.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_RESERVED);
+    assert(strcmp(server_runtime.brcb_owner, "local-client") == 0);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 37U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "IED1LD0.LLN0.BR.brcbEvents.Owner");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "Owner");
+    server_runtime.pending_request.read_object_reference_count = 1U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "IED1LD0.LLN0.BR.brcbEvents.Owner");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "Owner");
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x8A\x0Clocal-client", 14U) == 1);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    value_byte = 0x00U;
+    unitlab_mms_ber_element_init(&data_element);
+    data_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    data_element.tag.constructed = 0;
+    data_element.tag.tag_number = 5U;
+    data_element.value_bytes = &value_byte;
+    data_element.value_length = 1U;
+    assert(unitlab_mms_build_write_request_frame("IED1LD0", "LLN0$BR$brcbEvents$ResvTms", &data_element, 38U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(server_runtime.brcb_resv_tms == 0U);
+    assert(server_runtime.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
+    assert(server_runtime.brcb_owner[0] == '\0');
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 39U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "IED1LD0.LLN0.BR.brcbEvents.Owner");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "Owner");
+    server_runtime.pending_request.read_object_reference_count = 1U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "IED1LD0.LLN0.BR.brcbEvents.Owner");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "Owner");
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x8A\x00", 2U) == 1);
+}
+
 static void test_server_runtime_resvtms_no_br_alias_read_write_roundtrips(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -5127,6 +5201,7 @@ int main(void)
     test_server_runtime_apply_pcap_multi_rptena_write_builds_response();
     test_server_runtime_apply_write_request_and_build_response_roundtrips();
     test_server_runtime_rptena_write_updates_brcb_read_state();
+    test_server_runtime_resvtms_owner_tracks_reservation_lifecycle();
     test_server_runtime_resvtms_no_br_alias_read_write_roundtrips();
     test_server_runtime_gi_write_queues_information_report();
     test_server_runtime_gi_report_uses_model_dataset_members();

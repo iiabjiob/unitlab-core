@@ -192,11 +192,11 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                     if (value != 0U && server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED) {
                         UnitLabMmsDiagnostic reserve_diagnostic;
                         unitlab_mms_diagnostic_clear(&reserve_diagnostic);
+                        snprintf(server_runtime->brcb_owner, sizeof(server_runtime->brcb_owner), "%s", "local-client");
                         (void)unitlab_iec61850_report_control_reserve(&server_runtime->report_control, &reserve_diagnostic);
                     } else if (value == 0U && server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_RESERVED) {
-                        UnitLabMmsDiagnostic release_diagnostic;
-                        unitlab_mms_diagnostic_clear(&release_diagnostic);
-                        (void)unitlab_iec61850_report_control_release(&server_runtime->report_control, &release_diagnostic);
+                        server_runtime->report_control.state = UNITLAB_IEC61850_REPORT_CONTROL_DISABLED;
+                        server_runtime->brcb_owner[0] = 0;
                     }
                     continue;
                 }
@@ -206,6 +206,7 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                         UnitLabMmsDiagnostic state_diagnostic;
                         unitlab_mms_diagnostic_clear(&state_diagnostic);
                         if (server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED) {
+                            snprintf(server_runtime->brcb_owner, sizeof(server_runtime->brcb_owner), "%s", "local-client");
                             (void)unitlab_iec61850_report_control_reserve(&server_runtime->report_control, &state_diagnostic);
                         }
                         if (server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_RESERVED) {
@@ -218,6 +219,9 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                         unitlab_mms_diagnostic_clear(&disable_diagnostic);
                         server_runtime_clear_pending_reports(server_runtime);
                         (void)unitlab_iec61850_report_control_disable(&server_runtime->report_control, &disable_diagnostic);
+                        if (server_runtime->brcb_resv_tms == 0U) {
+                            server_runtime->brcb_owner[0] = 0;
+                        }
                     }
                     continue;
                 }
