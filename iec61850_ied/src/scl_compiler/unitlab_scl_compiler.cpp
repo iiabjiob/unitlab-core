@@ -70,6 +70,7 @@ struct SclDoTemplate {
 struct SclDaTemplate {
     std::string name;
     std::string b_type;
+    std::string type;
 };
 
 struct SclLNodeTypeTemplate {
@@ -82,9 +83,15 @@ struct SclDoTypeTemplate {
     std::vector<SclDaTemplate> data_attributes;
 };
 
+struct SclDaTypeTemplate {
+    std::string id;
+    std::vector<SclDaTemplate> basic_data_attributes;
+};
+
 struct SclDataTypeTemplates {
     std::vector<SclLNodeTypeTemplate> lnode_types;
     std::vector<SclDoTypeTemplate> do_types;
+    std::vector<SclDaTypeTemplate> da_types;
 };
 
 struct SclLogicalDevice {
@@ -644,6 +651,33 @@ std::vector<SclDaTemplate> parse_do_type_das(const std::string& body)
         SclDaTemplate data_attribute;
         data_attribute.name = extract_attr(element, "name");
         data_attribute.b_type = extract_attr(element, "bType");
+        data_attribute.type = extract_attr(element, "type");
+        if (!data_attribute.name.empty()) {
+            data_attributes.push_back(data_attribute);
+        }
+        const size_t close = body.find('>', start);
+        if (close == std::string::npos) {
+            break;
+        }
+        pos = close + 1U;
+    }
+    return data_attributes;
+}
+
+std::vector<SclDaTemplate> parse_da_type_bdas(const std::string& body)
+{
+    std::vector<SclDaTemplate> data_attributes;
+    size_t pos = 0U;
+    while (true) {
+        const size_t start = find_start_tag(body, "BDA", pos);
+        if (start == std::string::npos) {
+            break;
+        }
+        const std::string element = start_element_text(body, start);
+        SclDaTemplate data_attribute;
+        data_attribute.name = extract_attr(element, "name");
+        data_attribute.b_type = extract_attr(element, "bType");
+        data_attribute.type = extract_attr(element, "type");
         if (!data_attribute.name.empty()) {
             data_attributes.push_back(data_attribute);
         }
@@ -707,6 +741,25 @@ SclDataTypeTemplates parse_data_type_templates(const std::string& source)
         pos = type_end;
     }
 
+    pos = 0U;
+    while (true) {
+        const size_t type_start = find_start_tag(body, "DAType", pos);
+        if (type_start == std::string::npos) {
+            break;
+        }
+        const size_t type_end = find_matching_end(body, "DAType", type_start);
+        if (type_end == std::string::npos) {
+            break;
+        }
+        SclDaTypeTemplate type;
+        type.id = extract_attr(start_element_text(body, type_start), "id");
+        type.basic_data_attributes = parse_da_type_bdas(element_body(body, type_start, type_end));
+        if (!type.id.empty()) {
+            templates.da_types.push_back(type);
+        }
+        pos = type_end;
+    }
+
     return templates;
 }
 
@@ -739,10 +792,30 @@ const SclDoTypeTemplate* find_do_type(const SclDataTypeTemplates& templates, con
     return found == templates.do_types.end() ? nullptr : &(*found);
 }
 
-std::string first_path_part(const std::string& path)
+const SclDaTypeTemplate* find_da_type(const SclDataTypeTemplates& templates, const std::string& id)
 {
-    const size_t dot = path.find('.');
-    return dot == std::string::npos ? path : path.substr(0U, dot);
+    const auto found = std::find_if(templates.da_types.begin(), templates.da_types.end(), [&](const SclDaTypeTemplate& item) {
+        return item.id == id;
+    });
+    return found == templates.da_types.end() ? nullptr : &(*found);
+}
+
+std::vector<std::string> split_path(const std::string& path)
+{
+    std::vector<std::string> parts;
+    size_t pos = 0U;
+    while (pos <= path.size()) {
+        const size_t dot = path.find('.', pos);
+        const size_t end = dot == std::string::npos ? path.size() : dot;
+        if (end > pos) {
+            parts.push_back(path.substr(pos, end - pos));
+        }
+        if (dot == std::string::npos) {
+            break;
+        }
+        pos = dot + 1U;
+    }
+    return parts;
 }
 
 std::string resolve_member_b_type(const SclDataTypeTemplates& templates, const SclLogicalDevice& device, const SclMember& member)
@@ -768,11 +841,34 @@ std::string resolve_member_b_type(const SclDataTypeTemplates& templates, const S
     if (do_type == nullptr) {
         return {};
     }
-    const std::string da_name = first_path_part(member.da_name);
+    const std::vector<std::string> path = split_path(member.da_name);
+    if (path.empty()) {
+        return {};
+    }
     const auto da_found = std::find_if(do_type->data_attributes.begin(), do_type->data_attributes.end(), [&](const SclDaTemplate& item) {
-        return item.name == da_name;
+        return item.name == path.front();
     });
-    return da_found == do_type->data_attributes.end() ? std::string{} : da_found->b_type;
+    if (da_found == do_type->data_attributes.end()) {
+        return {};
+    }
+    if (path.size() == 1U || da_found->type.empty()) {
+        return da_found->b_type;
+    }
+
+    const SclDaTypeTemplate* da_type = find_da_type(templates, da_found->type);
+    for (size_t index = 1U; da_type != nullptr && index < path.size(); index++) {
+        const auto bda_found = std::find_if(da_type->basic_data_attributes.begin(), da_type->basic_data_attributes.end(), [&](const SclDaTemplate& item) {
+            return item.name == path[index];
+        });
+        if (bda_found == da_type->basic_data_attributes.end()) {
+            return {};
+        }
+        if (index + 1U == path.size()) {
+            return bda_found->b_type;
+        }
+        da_type = bda_found->type.empty() ? nullptr : find_da_type(templates, bda_found->type);
+    }
+    return {};
 }
 
 UnitLabIedFixtureValueKind value_kind_for_b_type(const std::string& b_type)
