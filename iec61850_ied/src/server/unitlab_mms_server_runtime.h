@@ -23,6 +23,12 @@ typedef enum UnitLabMmsServerRuntimeState {
 
 #define UNITLAB_MMS_SERVER_RUNTIME_WIRE_SCRATCH_LENGTH 4096U
 
+typedef enum UnitLabMmsServerPendingReportKind {
+    UNITLAB_MMS_SERVER_PENDING_REPORT_NONE = 0,
+    UNITLAB_MMS_SERVER_PENDING_REPORT_GI = 1,
+    UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE = 2
+} UnitLabMmsServerPendingReportKind;
+
 typedef struct UnitLabMmsServerRuntime {
     UnitLabMmsServerRuntimeState state;
     UnitLabIedServerConfig config;
@@ -46,6 +52,10 @@ typedef struct UnitLabMmsServerRuntime {
     uint8_t brcb_entry_id[8];
     uint8_t brcb_time_of_entry[6];
     uint8_t pending_gi_report;
+    UnitLabMmsServerPendingReportKind pending_report_kind;
+    size_t pending_report_member_index;
+    uint8_t pending_report_value[128];
+    size_t pending_report_value_length;
     UnitLabMmsTransportExchange transport;
     UnitLabMmsOperationResult last_result;
     UnitLabMmsRuntimeSnapshot snapshot;

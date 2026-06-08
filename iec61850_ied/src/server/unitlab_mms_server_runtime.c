@@ -828,6 +828,10 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     memset(server_runtime->brcb_entry_id, 0, sizeof(server_runtime->brcb_entry_id));
     memset(server_runtime->brcb_time_of_entry, 0, sizeof(server_runtime->brcb_time_of_entry));
     server_runtime->pending_gi_report = 0U;
+    server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_NONE;
+    server_runtime->pending_report_member_index = 0U;
+    memset(server_runtime->pending_report_value, 0, sizeof(server_runtime->pending_report_value));
+    server_runtime->pending_report_value_length = 0U;
     unitlab_mms_transport_exchange_init(&server_runtime->transport);
     unitlab_mms_operation_result_init(&server_runtime->last_result);
     unitlab_mms_runtime_snapshot_init(&server_runtime->snapshot);
