@@ -18,6 +18,15 @@ static uint32_t server_runtime_decode_write_unsigned_bytes(const uint8_t* value_
     return value;
 }
 
+static int server_runtime_decode_write_boolean(const uint8_t* value_bytes, size_t value_length, uint8_t* value)
+{
+    if (value_bytes == NULL || value == NULL || value_length != 1U || value_bytes[0] > 1U) {
+        return 0;
+    }
+    *value = value_bytes[0];
+    return 1;
+}
+
 static int server_runtime_decode_optional_fields_mask(const uint8_t* value_bytes, size_t value_length, uint8_t* mask)
 {
     if (value_bytes == NULL || mask == NULL || value_length != 3U || value_bytes[0] != 0x06U) {
@@ -241,7 +250,12 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                     continue;
                 }
                 if (strcmp(rcb_field_name, "RptEna") == 0) {
-                    server_runtime->brcb_rpt_ena = value != 0U ? 1U : 0U;
+                    uint8_t boolean_value = 0U;
+                    if (!server_runtime_decode_write_boolean(value_bytes, value_length, &boolean_value)) {
+                        server_runtime_mark_write_failure(server_runtime, index, UNITLAB_MMS_WRITE_DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED);
+                        continue;
+                    }
+                    server_runtime->brcb_rpt_ena = boolean_value;
                     if (server_runtime->brcb_rpt_ena != 0U) {
                         UnitLabMmsDiagnostic state_diagnostic;
                         unitlab_mms_diagnostic_clear(&state_diagnostic);
@@ -266,6 +280,12 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                     continue;
                 }
                 if (strcmp(rcb_field_name, "GI") == 0) {
+                    uint8_t boolean_value = 0U;
+                    if (!server_runtime_decode_write_boolean(value_bytes, value_length, &boolean_value)) {
+                        server_runtime_mark_write_failure(server_runtime, index, UNITLAB_MMS_WRITE_DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED);
+                        continue;
+                    }
+                    value = boolean_value;
                     if (value != 0U && server_runtime->brcb_rpt_ena != 0U) {
                         UnitLabMmsDiagnostic gi_diagnostic;
                         unitlab_mms_diagnostic_clear(&gi_diagnostic);
@@ -281,6 +301,12 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                     continue;
                 }
                 if (strcmp(rcb_field_name, "PurgeBuf") == 0) {
+                    uint8_t boolean_value = 0U;
+                    if (!server_runtime_decode_write_boolean(value_bytes, value_length, &boolean_value)) {
+                        server_runtime_mark_write_failure(server_runtime, index, UNITLAB_MMS_WRITE_DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED);
+                        continue;
+                    }
+                    value = boolean_value;
                     if (value != 0U && server_runtime->brcb_rpt_ena != 0U) {
                         server_runtime_mark_write_failure(server_runtime, index, UNITLAB_MMS_WRITE_DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED);
                         continue;
