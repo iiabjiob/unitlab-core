@@ -230,6 +230,17 @@ std::vector<SclDaTemplate> parse_do_type_das(pugi::xml_node do_type)
     return attributes;
 }
 
+std::vector<SclSdoTemplate> parse_do_type_sdos(pugi::xml_node do_type)
+{
+    std::vector<SclSdoTemplate> objects;
+    for (pugi::xml_node child : do_type.children()) {
+        if (!is_node(child, "SDO")) continue;
+        SclSdoTemplate object{attr(child, "name"), attr(child, "type")};
+        if (!object.name.empty()) objects.push_back(object);
+    }
+    return objects;
+}
+
 std::vector<SclDaTemplate> parse_da_type_bdas(pugi::xml_node da_type)
 {
     std::vector<SclDaTemplate> attributes;
@@ -267,6 +278,7 @@ SclDataTypeTemplates parse_data_type_templates(pugi::xml_node root)
             SclDoTypeTemplate type;
             type.id = attr(child, "id");
             type.data_attributes = parse_do_type_das(child);
+            type.sub_data_objects = parse_do_type_sdos(child);
             if (!type.id.empty()) templates.do_types.push_back(type);
         } else if (is_node(child, "DAType")) {
             SclDaTypeTemplate type;

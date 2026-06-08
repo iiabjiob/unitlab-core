@@ -151,19 +151,9 @@ std::vector<std::string> split_path(const std::string& path)
     return parts;
 }
 
-SclResolvedValueType resolve_member_value_type(const SclDataTypeTemplates& templates, const SclLogicalDevice& device, const SclMember& member)
+SclResolvedValueType resolve_attribute_value_type(const SclDataTypeTemplates& templates, const SclDoTypeTemplate* do_type, const std::vector<std::string>& path)
 {
-    if (member.kind != "FCDA" || member.da_name.empty()) return {};
-    const SclLogicalNode* node = find_logical_node(device, member, device.inst);
-    if (node == nullptr || node->ln_type.empty()) return {};
-    const SclLNodeTypeTemplate* lnode_type = find_lnode_type(templates, node->ln_type);
-    if (lnode_type == nullptr) return {};
-    const auto do_found = std::find_if(lnode_type->data_objects.begin(), lnode_type->data_objects.end(), [&](const SclDoTemplate& item) { return item.name == member.do_name; });
-    if (do_found == lnode_type->data_objects.end() || do_found->type.empty()) return {};
-    const SclDoTypeTemplate* do_type = find_do_type(templates, do_found->type);
-    if (do_type == nullptr) return {};
-    const std::vector<std::string> path = split_path(member.da_name);
-    if (path.empty()) return {};
+    if (do_type == nullptr || path.empty()) return {};
     const auto da_found = std::find_if(do_type->data_attributes.begin(), do_type->data_attributes.end(), [&](const SclDaTemplate& item) { return item.name == path.front(); });
     if (da_found == do_type->data_attributes.end()) return {};
     if (path.size() == 1U || da_found->type.empty()) return {da_found->b_type, da_found->type};
@@ -175,6 +165,32 @@ SclResolvedValueType resolve_member_value_type(const SclDataTypeTemplates& templ
         da_type = bda_found->type.empty() ? nullptr : find_da_type(templates, bda_found->type);
     }
     return {};
+}
+
+const SclDoTypeTemplate* resolve_member_do_type(const SclDataTypeTemplates& templates, const SclLNodeTypeTemplate& lnode_type, const std::vector<std::string>& do_path)
+{
+    if (do_path.empty()) return nullptr;
+    const auto do_found = std::find_if(lnode_type.data_objects.begin(), lnode_type.data_objects.end(), [&](const SclDoTemplate& item) { return item.name == do_path.front(); });
+    if (do_found == lnode_type.data_objects.end() || do_found->type.empty()) return nullptr;
+    const SclDoTypeTemplate* do_type = find_do_type(templates, do_found->type);
+    for (size_t index = 1U; do_type != nullptr && index < do_path.size(); index++) {
+        const auto sdo_found = std::find_if(do_type->sub_data_objects.begin(), do_type->sub_data_objects.end(), [&](const SclSdoTemplate& item) { return item.name == do_path[index]; });
+        if (sdo_found == do_type->sub_data_objects.end() || sdo_found->type.empty()) return nullptr;
+        do_type = find_do_type(templates, sdo_found->type);
+    }
+    return do_type;
+}
+
+SclResolvedValueType resolve_member_value_type(const SclDataTypeTemplates& templates, const SclLogicalDevice& device, const SclMember& member)
+{
+    if (member.kind != "FCDA" || member.da_name.empty()) return {};
+    const SclLogicalNode* node = find_logical_node(device, member, device.inst);
+    if (node == nullptr || node->ln_type.empty()) return {};
+    const SclLNodeTypeTemplate* lnode_type = find_lnode_type(templates, node->ln_type);
+    if (lnode_type == nullptr) return {};
+    const SclDoTypeTemplate* do_type = resolve_member_do_type(templates, *lnode_type, split_path(member.do_name));
+    if (do_type == nullptr) return {};
+    return resolve_attribute_value_type(templates, do_type, split_path(member.da_name));
 }
 
 UnitLabIedFixtureValueKind value_kind_for_b_type(const std::string& b_type)
@@ -287,6 +303,12 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied, const SclDa
                         const std::string member_ln = ln_name(member.prefix, member.ln_class, member.ln_inst);
                         append_logical_node_once(result, member_domain, member_ln);
 
+                        const SclResolvedValueType resolved_type = resolve_member_value_type(templates, device, member);
+                        if (member.kind == "FCDA" && member.do_name.find('.') != std::string::npos && resolved_type.b_type.empty()) {
+                            result.diagnostics.push_back(contextual_diagnostic("error", "SCL_DATASET_MEMBER_SDO_UNRESOLVED", "DataSet FCDA member references an unresolved SDO path.", ied.name.c_str(), access_point.name.c_str(), device.inst.c_str(), node.name.c_str(), data_set.name.c_str(), "", signal_ref(member, device.inst).c_str()));
+                            continue;
+                        }
+
                         UnitLabIedModelSignal signal{};
                         copy_string(signal.reference, sizeof(signal.reference), signal_ref(member, device.inst).c_str());
                         copy_string(signal.kind, sizeof(signal.kind), member.kind.c_str());
@@ -302,7 +324,6 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied, const SclDa
                         signal.data_set_entry_component_known = !member.da_name.empty() ? 1 : 0;
                         copy_string(signal.data_set_entry_component, sizeof(signal.data_set_entry_component), member.da_name.c_str());
                         copy_string(signal.fc, sizeof(signal.fc), member.fc.c_str());
-                        const SclResolvedValueType resolved_type = resolve_member_value_type(templates, device, member);
                         signal.initial_value_kind = value_kind_for_b_type(resolved_type.b_type);
                         const std::string default_value = default_value_for_resolved_type(templates, resolved_type, signal.initial_value_kind);
                         copy_string(signal.initial_value, sizeof(signal.initial_value), default_value.c_str());

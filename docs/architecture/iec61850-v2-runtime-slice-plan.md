@@ -29,11 +29,10 @@ Already implemented:
 - DataSet `FCDA` and `FCD` parsing;
 - ReportControl parsing for `datSet`, `rptID`, `buffered`, `confRev`, `indexed`, `bufTime`, `intgPd`, `TrgOps`, and `OptFields`;
 - basic diagnostics with C-readable context fields;
-- typed defaults from direct `LNodeType -> DOType -> DA`, direct `DAType/BDA`, and first `EnumVal` for enum defaults.
+- typed defaults from direct `LNodeType -> DOType -> DA`, `DOType/SDO -> nested DOType -> DA`, direct `DAType/BDA`, and first `EnumVal` for enum defaults.
 
 Known remaining gaps:
 
-- SDO resolution;
 - full nested path expansion;
 - q/t metadata derivation;
 - unresolved template diagnostics are still incomplete;
@@ -63,7 +62,7 @@ Exit criteria:
 
 ### Slice 2 - SDO Resolution
 
-Add `DOType/SDO -> nested DOType` resolution for dataset members.
+Status: implemented. Dataset FCDA members with dotted `doName` now resolve through `DOType/SDO -> nested DOType` before value-leaf typing. Unresolved SDO-backed members produce `SCL_DATASET_MEMBER_SDO_UNRESOLVED` diagnostics and are not emitted as runtime signals.
 
 Deliverables:
 

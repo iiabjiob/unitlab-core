@@ -31,6 +31,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"stVal\" fc=\"ST\" />"
         "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"origin.orIdent\" fc=\"ST\" />"
         "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"ctlModel\" fc=\"CF\" />"
+        "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Beh.subState\" daName=\"stVal\" fc=\"ST\" />"
         "<scl:FCD ldInst=\"LD0\" lnClass=\"PGGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />"
         "</scl:DataSet>"
         "<scl:ReportControl name=\"brcbEvents\" buffered=\"true\" rptID=\"events\" datSet=\"dsEvents\" confRev=\"7\" indexed=\"false\" bufTime=\"100\" intgPd=\"1000\">"
@@ -43,9 +44,11 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "</scl:LDevice></scl:Server></scl:AccessPoint></scl:IED>"
         "<scl:IED name=\"IED2\"><scl:AccessPoint name=\"AP1\" /></scl:IED>"
         "<scl:DataTypeTemplates>"
-        "<scl:LNodeType id=\"XCBR_TYPE\" lnClass=\"XCBR\"><scl:DO name=\"Pos\" type=\"DPC_POS\" /></scl:LNodeType>"
+        "<scl:LNodeType id=\"XCBR_TYPE\" lnClass=\"XCBR\"><scl:DO name=\"Pos\" type=\"DPC_POS\" /><scl:DO name=\"Beh\" type=\"BEH_ROOT\" /></scl:LNodeType>"
         "<scl:LNodeType id=\"PGGIO_TYPE\" lnClass=\"PGGIO\"><scl:DO name=\"Ind1\" type=\"INS_IND\" /></scl:LNodeType>"
         "<scl:DOType id=\"DPC_POS\" cdc=\"DPC\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"BOOLEAN\" /><scl:DA name=\"origin\" fc=\"ST\" bType=\"Struct\" type=\"ORIGINATOR\" /><scl:DA name=\"ctlModel\" fc=\"CF\" bType=\"Enum\" type=\"CtlModelKind\" /></scl:DOType>"
+        "<scl:DOType id=\"BEH_ROOT\" cdc=\"ENS\"><scl:SDO name=\"subState\" type=\"BEH_SUB\" /></scl:DOType>"
+        "<scl:DOType id=\"BEH_SUB\" cdc=\"ENS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /></scl:DOType>"
         "<scl:DOType id=\"INS_IND\" cdc=\"INS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /></scl:DOType>"
         "<scl:DAType id=\"ORIGINATOR\"><scl:BDA name=\"orIdent\" bType=\"VisString64\" /></scl:DAType>"
         "<scl:EnumType id=\"CtlModelKind\"><scl:EnumVal ord=\"1\" desc=\"direct-with-normal-security\" /></scl:EnumType>"
@@ -69,7 +72,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_true(plan->logical_node_count == 3U, "three logical nodes");
         passed &= expect_true(plan->data_set_count == 1U, "one DataSet");
         passed &= expect_true(plan->report_count == 1U, "one ReportControl");
-        passed &= expect_true(plan->signal_count == 4U, "four DataSet members");
+        passed &= expect_true(plan->signal_count == 5U, "five DataSet members");
         passed &= expect_string(plan->logical_devices[0].inst, "IED1LD0", "MMS domain");
         passed &= expect_string(plan->data_sets[0].reference, "IED1/AP1/LD0/LLN0.dsEvents", "DataSet reference");
         passed &= expect_string(plan->data_sets[0].logical_device_inst, "IED1LD0", "DataSet domain");
@@ -102,10 +105,14 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_string(plan->signals[2].object_reference, "IED1LD0.XCBR1.Pos.ctlModel", "third signal enum object ref");
         passed &= expect_true(plan->signals[2].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "third signal enum default kind");
         passed &= expect_string(plan->signals[2].initial_value, "1", "third signal enum default value");
-        passed &= expect_string(plan->signals[3].reference, "LD0/PGGIO1.Ind1[ST]", "fourth signal ref");
-        passed &= expect_string(plan->signals[3].object_reference, "IED1LD0.PGGIO1.Ind1", "fourth signal object ref");
-        passed &= expect_true(plan->signals[3].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "fourth signal typed default kind");
-        passed &= expect_string(plan->signals[3].initial_value, "0", "fourth signal typed default value");
+        passed &= expect_string(plan->signals[3].reference, "LD0/XCBR1.Beh.subState.stVal[ST]", "fourth signal SDO ref");
+        passed &= expect_string(plan->signals[3].object_reference, "IED1LD0.XCBR1.Beh.subState.stVal", "fourth signal SDO object ref");
+        passed &= expect_true(plan->signals[3].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "fourth signal SDO typed default kind");
+        passed &= expect_string(plan->signals[3].initial_value, "0", "fourth signal SDO typed default value");
+        passed &= expect_string(plan->signals[4].reference, "LD0/PGGIO1.Ind1[ST]", "fifth signal ref");
+        passed &= expect_string(plan->signals[4].object_reference, "IED1LD0.PGGIO1.Ind1", "fifth signal object ref");
+        passed &= expect_true(plan->signals[4].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "fifth signal typed default kind");
+        passed &= expect_string(plan->signals[4].initial_value, "0", "fifth signal typed default value");
     }
 
     unitlab_scl_compile_result_free(result);
@@ -160,6 +167,47 @@ static int test_compile_reports_invalid_dataset_member_and_missing_report_datase
         passed &= expect_true(plan->data_sets[0].member_count == 0U, "invalid DataSet member should not become a signal");
         passed &= expect_true(plan->signal_count == 0U, "invalid member should not produce runtime signal");
         passed &= expect_true(plan->report_count == 0U, "ReportControl with missing DataSet should not compile");
+    }
+
+    unitlab_scl_compile_result_free(result);
+    return passed;
+}
+
+
+static int test_compile_reports_unresolved_sdo_path(void)
+{
+    const char* scl =
+        "<SCL><IED name=\"IED1\"><AccessPoint name=\"AP1\"><Server><LDevice inst=\"LD0\">"
+        "<LN0><DataSet name=\"dsBroken\">"
+        "<FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Beh.subState\" daName=\"stVal\" fc=\"ST\" />"
+        "</DataSet></LN0>"
+        "<LN lnClass=\"XCBR\" inst=\"1\" lnType=\"XCBR_TYPE\" />"
+        "</LDevice></Server></AccessPoint></IED>"
+        "<DataTypeTemplates>"
+        "<LNodeType id=\"XCBR_TYPE\" lnClass=\"XCBR\"><DO name=\"Beh\" type=\"BEH_ROOT\" /></LNodeType>"
+        "<DOType id=\"BEH_ROOT\" cdc=\"ENS\" />"
+        "</DataTypeTemplates></SCL>";
+    UnitLabSclCompileResult* result = NULL;
+    char error[128];
+    int passed = 1;
+
+    passed &= expect_true(unitlab_scl_compile_from_memory(scl, strlen(scl), "IED1", &result, error, sizeof(error)) == 1,
+        "unresolved SDO should return structured diagnostics through C API");
+    passed &= expect_true(result != NULL, "unresolved SDO result should be allocated");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_count(result) == 1U, "unresolved SDO diagnostic should be present");
+
+    UnitLabSclCompileDiagnostic diagnostic;
+    passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 0U, &diagnostic) == 1, "unresolved SDO diagnostic should be readable");
+    passed &= expect_string(diagnostic.severity, "error", "unresolved SDO severity");
+    passed &= expect_string(diagnostic.code, "SCL_DATASET_MEMBER_SDO_UNRESOLVED", "unresolved SDO code");
+    passed &= expect_string(diagnostic.member_reference, "LD0/XCBR1.Beh.subState.stVal[ST]", "unresolved SDO member reference context");
+
+    const UnitLabIedModelPlan* plan = unitlab_scl_compile_model_plan(result);
+    passed &= expect_true(plan != NULL, "partial model plan should be readable for unresolved SDO");
+    if (plan != NULL) {
+        passed &= expect_true(plan->data_set_count == 1U, "unresolved SDO DataSet should still be represented");
+        passed &= expect_true(plan->data_sets[0].member_count == 0U, "unresolved SDO member should not become a DataSet signal");
+        passed &= expect_true(plan->signal_count == 0U, "unresolved SDO should not produce runtime signal");
     }
 
     unitlab_scl_compile_result_free(result);
@@ -230,6 +278,7 @@ int main(void)
     int passed = 1;
     passed &= test_compile_builds_model_plan_through_c_api();
     passed &= test_compile_reports_invalid_dataset_member_and_missing_report_dataset();
+    passed &= test_compile_reports_unresolved_sdo_path();
     passed &= test_compile_reports_invalid_selected_ied();
     passed &= test_compile_reports_malformed_xml();
     passed &= test_compile_rejects_empty_input();
