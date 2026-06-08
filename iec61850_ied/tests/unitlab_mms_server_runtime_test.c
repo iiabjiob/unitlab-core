@@ -52,6 +52,8 @@ static int find_bytes_offset(const uint8_t* haystack, size_t haystack_length, co
     return 0;
 }
 
+static int build_data_change_report_plan(UnitLabIedModelPlan* plan);
+
 static int contains_bytes(const uint8_t* haystack, size_t haystack_length, const uint8_t* needle, size_t needle_length)
 {
     return find_bytes_offset(haystack, haystack_length, needle, needle_length, NULL);
@@ -463,11 +465,14 @@ static void test_server_runtime_rptena_write_updates_brcb_read_state(void)
     uint8_t response_bytes[1024U];
     uint8_t value_byte = 0x2AU;
     UnitLabMmsBerElement data_element;
+    UnitLabIedModelPlan plan;
     size_t request_length = 0U;
     size_t consumed_length = 0U;
     size_t response_length = 0U;
 
+    assert(build_data_change_report_plan(&plan) == 1);
     unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
     assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
     assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
     assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
@@ -513,6 +518,8 @@ static void test_server_runtime_rptena_write_updates_brcb_read_state(void)
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"IED1LD0/LLN0$dsEvents", strlen("IED1LD0/LLN0$dsEvents")) == 1);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x83\x01\x01", 3U) == 1);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x85\x01\x2A", 3U) == 1);
+
+    unitlab_free_ied_model_plan(&plan);
 }
 
 
@@ -596,12 +603,15 @@ static void test_server_runtime_gi_write_queues_information_report(void)
     UnitLabMmsBerElement data_element;
     UnitLabMmsAssociationFrame report_frame;
     UnitLabMmsPdu report_pdu;
+    UnitLabIedModelPlan plan;
     size_t request_length = 0U;
     size_t consumed_length = 0U;
     size_t response_length = 0U;
     size_t report_length = 0U;
 
+    assert(build_data_change_report_plan(&plan) == 1);
     unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
     assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
     assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
     assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
@@ -643,6 +653,8 @@ static void test_server_runtime_gi_write_queues_information_report(void)
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$stVal", strlen("IED1LD0/PGGIO1$ST$Ind1$stVal")) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x06\xC0", 4U) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x02\x04", 4U) == 1);
+
+    unitlab_free_ied_model_plan(&plan);
 }
 
 
@@ -1358,6 +1370,27 @@ static void test_server_runtime_dataset_write_without_rptena_does_not_queue_repo
     assert(server_runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE);
 
     unitlab_free_ied_model_plan(&plan);
+}
+
+static void test_server_runtime_information_report_requires_model_dataset(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    uint8_t report_bytes[2048U];
+    size_t report_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+    server_runtime.pending_gi_report = 1U;
+    server_runtime.pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_GI;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic) == 0);
+    assert(report_length == 0U);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED);
 }
 
 static void test_server_runtime_gi_requires_enabled_rptena(void)
@@ -4325,6 +4358,7 @@ int main(void)
     test_server_runtime_information_report_omits_disabled_optional_fields();
     test_server_runtime_data_change_reports_advance_sequence_and_entry_time();
     test_server_runtime_dataset_write_without_rptena_does_not_queue_report();
+    test_server_runtime_information_report_requires_model_dataset();
     test_server_runtime_gi_requires_enabled_rptena();
     test_server_runtime_rptena_false_clears_pending_gi();
     test_server_runtime_purgebuf_write_resets_brcb_runtime_state();
