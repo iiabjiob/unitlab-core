@@ -2270,7 +2270,7 @@ static void test_server_runtime_disabled_rcb_accepts_option_and_trigger_writes(v
     uint8_t response_bytes[1024U];
     uint8_t value_byte = 0x01U;
     const uint8_t opt_flds_value[] = { 0x06U, 0x01U, 0x00U };
-    const uint8_t trg_ops_value[] = { 0x02U, 0x40U };
+    const uint8_t trg_ops_value[] = { 0x02U, 0x0CU };
     UnitLabMmsBerElement data_element;
     UnitLabIedModelPlan plan;
     size_t request_length = 0U;
@@ -2314,7 +2314,7 @@ static void test_server_runtime_disabled_rcb_accepts_option_and_trigger_writes(v
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(contains_bytes(response_bytes, response_length, (const uint8_t[]){ 0x02U, 0x01U, 0x34U, 0xA5U, 0x02U, 0x81U, 0x00U }, 7U) == 1);
     assert(server_runtime.brcb_trigger_options_mask_known == 1U);
-    assert(server_runtime.brcb_trigger_options_mask == UNITLAB_IED_MODEL_TRG_OPT_GI);
+    assert(server_runtime.brcb_trigger_options_mask == (UNITLAB_IED_MODEL_TRG_OPT_INTEGRITY | UNITLAB_IED_MODEL_TRG_OPT_GI));
     assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
 
     assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 53U, 7U, 1000U, 100U, &diagnostic) == 1);
@@ -2325,7 +2325,7 @@ static void test_server_runtime_disabled_rcb_accepts_option_and_trigger_writes(v
     snprintf(server_runtime.pending_request.read_attribute_references[1], sizeof(server_runtime.pending_request.read_attribute_references[1]), "%s", "TrgOps");
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x03\x06\x01\x00", 5U) == 1);
-    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x02\x40", 4U) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x02\x0C", 4U) == 1);
     assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
 
     assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));

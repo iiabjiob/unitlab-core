@@ -97,9 +97,26 @@ static void server_runtime_encode_report_optional_fields_bitstring(const UnitLab
 static void server_runtime_encode_report_trigger_options_bitstring(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report, uint8_t* buffer)
 {
     uint8_t mask = server_runtime_report_trigger_options_mask(server_runtime, report);
+    uint8_t wire_mask = 0U;
+
+    if ((mask & UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED) != 0U) {
+        wire_mask |= 0x40U;
+    }
+    if ((mask & UNITLAB_IED_MODEL_TRG_OPT_QUALITY_CHANGED) != 0U) {
+        wire_mask |= 0x20U;
+    }
+    if ((mask & UNITLAB_IED_MODEL_TRG_OPT_DATA_UPDATE) != 0U) {
+        wire_mask |= 0x10U;
+    }
+    if ((mask & UNITLAB_IED_MODEL_TRG_OPT_INTEGRITY) != 0U) {
+        wire_mask |= 0x08U;
+    }
+    if ((mask & UNITLAB_IED_MODEL_TRG_OPT_GI) != 0U) {
+        wire_mask |= 0x04U;
+    }
 
     buffer[0] = 0x02U;
-    buffer[1] = (uint8_t)((mask & 0x1FU) << 2U);
+    buffer[1] = wire_mask;
 }
 
 static void server_runtime_format_report_id_reference(

@@ -207,6 +207,16 @@ static int native_wire_emit_test_tick_if_due(
         set_result(result, "NATIVE_WIRE_SERVER_TEST_TICK_UPDATE_FAILED", diagnostic.message);
         return 0;
     }
+    if (!unitlab_mms_server_runtime_has_pending_gi_report(server_runtime)) {
+        printf(
+            "native-wire-server: test-report-tick-suppressed object=%s value=%u interval-ms=%d reason=no-trigger\n",
+            object_reference,
+            (unsigned)*tick_value,
+            interval_ms);
+        fflush(stdout);
+        *next_tick_ms = now_ms + (uint64_t)interval_ms;
+        return 1;
+    }
     printf(
         "native-wire-server: test-report-tick object=%s value=%u interval-ms=%d\n",
         object_reference,

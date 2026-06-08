@@ -29,10 +29,32 @@ static int server_runtime_decode_optional_fields_mask(const uint8_t* value_bytes
 
 static int server_runtime_decode_trigger_options_mask(const uint8_t* value_bytes, size_t value_length, uint8_t* mask)
 {
+    uint8_t wire_mask;
+    uint8_t decoded_mask = 0U;
+
     if (value_bytes == NULL || mask == NULL || value_length != 2U || value_bytes[0] != 0x02U) {
         return 0;
     }
-    *mask = (uint8_t)((value_bytes[1] >> 2U) & 0x1FU);
+    wire_mask = value_bytes[1];
+    if ((wire_mask & 0x03U) != 0U) {
+        return 0;
+    }
+    if ((wire_mask & 0x40U) != 0U) {
+        decoded_mask |= UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED;
+    }
+    if ((wire_mask & 0x20U) != 0U) {
+        decoded_mask |= UNITLAB_IED_MODEL_TRG_OPT_QUALITY_CHANGED;
+    }
+    if ((wire_mask & 0x10U) != 0U) {
+        decoded_mask |= UNITLAB_IED_MODEL_TRG_OPT_DATA_UPDATE;
+    }
+    if ((wire_mask & 0x08U) != 0U) {
+        decoded_mask |= UNITLAB_IED_MODEL_TRG_OPT_INTEGRITY;
+    }
+    if ((wire_mask & 0x04U) != 0U) {
+        decoded_mask |= UNITLAB_IED_MODEL_TRG_OPT_GI;
+    }
+    *mask = decoded_mask;
     return 1;
 }
 
@@ -280,6 +302,18 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                     }
                     server_runtime->brcb_optional_fields_mask_known = 1U;
                     server_runtime->brcb_optional_fields_mask = mask;
+                    printf(
+                        "native-wire-server: rcb-write field=OptFlds mask=%u sequence-number=%s report-time-stamp=%s reason-for-inclusion=%s data-set-name=%s data-reference=%s buf-ovfl=%s entry-id=%s conf-rev=%s\n",
+                        (unsigned)mask,
+                        (mask & UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM) != 0U ? "true" : "false",
+                        (mask & UNITLAB_IED_MODEL_RPT_OPT_TIME_STAMP) != 0U ? "true" : "false",
+                        (mask & UNITLAB_IED_MODEL_RPT_OPT_REASON_FOR_INCLUSION) != 0U ? "true" : "false",
+                        (mask & UNITLAB_IED_MODEL_RPT_OPT_DATA_SET) != 0U ? "true" : "false",
+                        (mask & UNITLAB_IED_MODEL_RPT_OPT_DATA_REFERENCE) != 0U ? "true" : "false",
+                        (mask & UNITLAB_IED_MODEL_RPT_OPT_BUFFER_OVERFLOW) != 0U ? "true" : "false",
+                        (mask & UNITLAB_IED_MODEL_RPT_OPT_ENTRY_ID) != 0U ? "true" : "false",
+                        (mask & UNITLAB_IED_MODEL_RPT_OPT_CONF_REV) != 0U ? "true" : "false");
+                    fflush(stdout);
                     continue;
                 }
                 if (strcmp(rcb_field_name, "TrgOps") == 0) {
@@ -291,6 +325,15 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                     server_runtime->brcb_trigger_options_mask_known = 1U;
                     server_runtime->brcb_trigger_options_mask = mask;
                     server_runtime_clear_pending_reports(server_runtime);
+                    printf(
+                        "native-wire-server: rcb-write field=TrgOps mask=%u data-change=%s quality-change=%s data-update=%s integrity=%s gi=%s\n",
+                        (unsigned)mask,
+                        (mask & UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED) != 0U ? "true" : "false",
+                        (mask & UNITLAB_IED_MODEL_TRG_OPT_QUALITY_CHANGED) != 0U ? "true" : "false",
+                        (mask & UNITLAB_IED_MODEL_TRG_OPT_DATA_UPDATE) != 0U ? "true" : "false",
+                        (mask & UNITLAB_IED_MODEL_TRG_OPT_INTEGRITY) != 0U ? "true" : "false",
+                        (mask & UNITLAB_IED_MODEL_TRG_OPT_GI) != 0U ? "true" : "false");
+                    fflush(stdout);
                     continue;
                 }
                 if (server_runtime_write_field_is_static_same_value_allowed(rcb_field_name)
