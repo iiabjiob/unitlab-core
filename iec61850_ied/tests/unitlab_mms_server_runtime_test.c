@@ -757,7 +757,7 @@ static void test_server_runtime_gi_report_uses_model_dataset_members(void)
     unitlab_mms_association_frame_init(&report_frame);
     assert(unitlab_mms_association_frame_decode(&report_frame, report_bytes, report_length, &consumed_length, &diagnostic));
     assert(consumed_length == report_length);
-    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1IED1LD0/GGIO1$ST$Ind2$stVal", strlen("IED1IED1LD0/GGIO1$ST$Ind2$stVal")) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1LD0/GGIO1$ST$Ind2$stVal", strlen("IED1LD0/GGIO1$ST$Ind2$stVal")) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x86\x01\x0B", 3U) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x05\xE0", 4U) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x85\x01\x03", 3U) == 1);
@@ -2140,7 +2140,7 @@ static void test_server_runtime_brcb_read_uses_model_report_dataset_reference(vo
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"IED1LD0/LLN0.BR.Events", strlen("IED1LD0/LLN0.BR.Events")) == 1);
-    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"IED1IED1LD0/LLN0$dsEvents", strlen("IED1IED1LD0/LLN0$dsEvents")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"IED1LD0/LLN0$dsEvents", strlen("IED1LD0/LLN0$dsEvents")) == 1);
 
     unitlab_free_ied_model_plan(&plan);
 }

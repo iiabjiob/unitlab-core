@@ -105,15 +105,26 @@ static void server_runtime_format_dataset_reference(
         const char* first_slash = strchr(report->data_set_ref, '/');
         if (first_slash != NULL && first_slash != report->data_set_ref) {
             size_t ied_name_length = (size_t)(first_slash - report->data_set_ref);
-            snprintf(
-                buffer,
-                buffer_length,
-                "%.*s%s/%s$%s",
-                (int)ied_name_length,
-                report->data_set_ref,
-                data_set->logical_device_inst,
-                data_set->logical_node_name,
-                data_set->name);
+            if (strncmp(data_set->logical_device_inst, report->data_set_ref, ied_name_length) == 0) {
+                snprintf(
+                    buffer,
+                    buffer_length,
+                    "%s/%s$%s",
+                    data_set->logical_device_inst,
+                    data_set->logical_node_name,
+                    data_set->name);
+            }
+            else {
+                snprintf(
+                    buffer,
+                    buffer_length,
+                    "%.*s%s/%s$%s",
+                    (int)ied_name_length,
+                    report->data_set_ref,
+                    data_set->logical_device_inst,
+                    data_set->logical_node_name,
+                    data_set->name);
+            }
             return;
         }
     }
