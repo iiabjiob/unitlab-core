@@ -3914,6 +3914,54 @@ static void test_server_runtime_apply_pcap_resvtms_write_builds_response(void)
     assert(contains_bytes(response_bytes, response_length, (const uint8_t[]){ 0x02U, 0x01U, 0x13U, 0xA5U, 0x02U, 0x81U, 0x00U }, 7U) == 1);
 }
 
+static void test_server_runtime_apply_pcap_resvtms_write_rejects_when_enabled(void)
+{
+    static const uint8_t wire_bytes[] = {
+        0x03U, 0x00U, 0x00U, 0x4DU, 0x02U, 0xF0U, 0x80U, 0x01U,
+        0x00U, 0x01U, 0x00U, 0x61U, 0x40U, 0x30U, 0x3EU, 0x02U,
+        0x01U, 0x03U, 0xA0U, 0x39U, 0xA0U, 0x37U, 0x02U, 0x01U,
+        0x13U, 0xA5U, 0x32U, 0xA0U, 0x2BU, 0x30U, 0x29U, 0xA0U,
+        0x27U, 0xA1U, 0x25U, 0x1AU, 0x07U, 'I',  'E',  'D',  '1',
+        'L',  'D',  '0',  0x1AU, 0x1AU, 'L',  'L',  'N',  '0',  '$',
+        'B',  'R',  '$',  'b',  'r',  'c',  'b',  'E',  'v',  'e',
+        'n',  't',  's',  '$',  'R',  'e',  's',  'v',  'T',  'm',
+        's',  0xA0U, 0x03U, 0x85U, 0x01U, 0x2AU
+    };
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    uint8_t response_bytes[256U];
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    server_runtime.brcb_resv_tms = 30U;
+    server_runtime.brcb_rpt_ena = 1U;
+
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, wire_bytes, sizeof(wire_bytes), &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(consumed_length == sizeof(wire_bytes));
+    assert(server_runtime.pending_request.kind == UNITLAB_MMS_REQUEST_WRITE);
+    assert(server_runtime.pending_request.invoke_id == 19U);
+    assert(strcmp(server_runtime.pending_request.object_reference, "IED1LD0.LLN0.BR.brcbEvents.ResvTms") == 0);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+    assert(server_runtime.brcb_resv_tms == 30U);
+    assert(server_runtime.brcb_rpt_ena == 1U);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t[]){ 0x02U, 0x01U, 0x13U, 0xA5U, 0x03U, 0x80U, 0x01U, 0x09U }, 8U) == 1);
+}
+
 static void test_server_runtime_apply_pcap_multi_rptena_write_builds_response(void)
 {
     static const uint8_t wire_bytes[] = {
@@ -5323,6 +5371,7 @@ int main(void)
     test_server_runtime_apply_confirmed_request_and_build_response_roundtrips();
     test_server_runtime_rejects_mismatched_confirmed_response_invoke_id();
     test_server_runtime_apply_pcap_resvtms_write_builds_response();
+    test_server_runtime_apply_pcap_resvtms_write_rejects_when_enabled();
     test_server_runtime_apply_pcap_multi_rptena_write_builds_response();
     test_server_runtime_apply_write_request_and_build_response_roundtrips();
     test_server_runtime_rptena_write_updates_brcb_read_state();
