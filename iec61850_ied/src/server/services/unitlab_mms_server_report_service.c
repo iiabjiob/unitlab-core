@@ -288,6 +288,89 @@ static const char* server_runtime_report_data_ref_with_dataset_prefix(
     return buffer;
 }
 
+static int server_runtime_report_replace_trailing_component(const char* reference, const char* replacement, char* buffer, size_t buffer_length)
+{
+    const char* separator = NULL;
+    size_t prefix_length = 0U;
+    size_t replacement_length = 0U;
+
+    if (reference == NULL || replacement == NULL || buffer == NULL || buffer_length == 0U) {
+        return 0;
+    }
+    separator = strrchr(reference, '$');
+    if (separator == NULL) {
+        separator = strrchr(reference, '.');
+    }
+    if (separator == NULL) {
+        return 0;
+    }
+    prefix_length = (size_t)(separator - reference) + 1U;
+    replacement_length = strlen(replacement);
+    if (prefix_length + replacement_length + 1U > buffer_length) {
+        return 0;
+    }
+    memcpy(buffer, reference, prefix_length);
+    memcpy(&buffer[prefix_length], replacement, replacement_length);
+    buffer[prefix_length + replacement_length] = '\0';
+    return 1;
+}
+
+static const char* server_runtime_report_signal_reference(const UnitLabIedModelSignal* signal)
+{
+    if (signal == NULL) {
+        return NULL;
+    }
+    return signal->data_set_entry_variable[0] != '\0' ? signal->data_set_entry_variable : signal->object_reference;
+}
+
+static int server_runtime_report_signal_references_same_value_leaf(const UnitLabIedModelSignal* candidate, const UnitLabIedModelSignal* value_signal)
+{
+    const char* candidate_reference = NULL;
+    const char* value_reference = NULL;
+    char candidate_value_reference[256U];
+
+    if (candidate == NULL || value_signal == NULL) {
+        return 0;
+    }
+    if (strcmp(candidate->data_attribute_path, "q") != 0 && strcmp(candidate->data_attribute_path, "t") != 0) {
+        return 0;
+    }
+    candidate_reference = server_runtime_report_signal_reference(candidate);
+    value_reference = server_runtime_report_signal_reference(value_signal);
+    if (candidate_reference == NULL || value_reference == NULL) {
+        return 0;
+    }
+    if (server_runtime_report_replace_trailing_component(candidate_reference, "stVal", candidate_value_reference, sizeof(candidate_value_reference))
+        && strcmp(candidate_value_reference, value_reference) == 0) {
+        return 1;
+    }
+    if (server_runtime_report_replace_trailing_component(candidate_reference, "f", candidate_value_reference, sizeof(candidate_value_reference))
+        && strcmp(candidate_value_reference, value_reference) == 0) {
+        return 1;
+    }
+    return 0;
+}
+
+static int server_runtime_report_member_already_included(const size_t* included_member_indices, size_t included_member_count, size_t member_index)
+{
+    for (size_t index = 0U; index < included_member_count; index++) {
+        if (included_member_indices[index] == member_index) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int server_runtime_report_inclusion_bit_set(uint8_t* inclusion_bitstring, size_t member_count, size_t member_index)
+{
+    if (inclusion_bitstring == NULL || member_index >= 8U) {
+        return 0;
+    }
+    inclusion_bitstring[0] = member_count <= 8U ? (uint8_t)(8U - member_count) : 0U;
+    inclusion_bitstring[1] = (uint8_t)(inclusion_bitstring[1] | (uint8_t)(0x80U >> member_index));
+    return 1;
+}
+
 int server_runtime_encode_report_control_block_field_value(
     const UnitLabMmsServerRuntime* server_runtime,
     const char* field_name,
@@ -671,10 +754,20 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         member_count = sizeof(included_member_indices) / sizeof(included_member_indices[0]);
     }
     if (server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE && server_runtime->pending_report_member_index < member_count && server_runtime->pending_report_value_length != 0U) {
-        included_member_count = 1U;
-        included_member_indices[0] = server_runtime->pending_report_member_index;
+        const UnitLabIedModelSignal* changed_signal = &server_runtime->model_plan->signals[data_set->first_signal_index + server_runtime->pending_report_member_index];
+        included_member_count = 0U;
         inclusion_bitstring[0] = member_count <= 8U ? (uint8_t)(8U - member_count) : 0U;
-        inclusion_bitstring[1] = server_runtime->pending_report_member_index < 8U ? (uint8_t)(0x80U >> server_runtime->pending_report_member_index) : 0U;
+        inclusion_bitstring[1] = 0U;
+        included_member_indices[included_member_count++] = server_runtime->pending_report_member_index;
+        (void)server_runtime_report_inclusion_bit_set(inclusion_bitstring, member_count, server_runtime->pending_report_member_index);
+        for (size_t member_index = 0U; member_index < member_count; member_index++) {
+            const UnitLabIedModelSignal* candidate_signal = &server_runtime->model_plan->signals[data_set->first_signal_index + member_index];
+            if (!server_runtime_report_member_already_included(included_member_indices, included_member_count, member_index)
+                && server_runtime_report_signal_references_same_value_leaf(candidate_signal, changed_signal)) {
+                included_member_indices[included_member_count++] = member_index;
+                (void)server_runtime_report_inclusion_bit_set(inclusion_bitstring, member_count, member_index);
+            }
+        }
         reason_code = reason_data_change;
     } else {
         included_member_count = member_count;
@@ -763,40 +856,31 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
 
     for (size_t included_index = 0U; included_index < included_member_count; included_index++) {
         size_t index = included_member_indices[included_index];
-        if (server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE && included_index == 0U && server_runtime->pending_report_value_length != 0U) {
-            if (report_values_length + server_runtime->pending_report_value_length > sizeof(report_values)) {
-                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Data-change report value buffer is too small.");
-                return 0;
-            }
-            memcpy(&report_values[report_values_length], server_runtime->pending_report_value, server_runtime->pending_report_value_length);
-            report_values_length += server_runtime->pending_report_value_length;
-        } else {
-            uint8_t value_bytes[512U];
-            size_t value_length = 0U;
-            const UnitLabIedModelSignal* signal = NULL;
-            if (data_set->first_signal_index + index >= server_runtime->model_plan->signal_count) {
-                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "InformationReport DataSet member is outside the model signal range.");
-                return 0;
-            }
-            signal = &server_runtime->model_plan->signals[data_set->first_signal_index + index];
-            if (strcmp(signal->data_attribute_path, "q") == 0) {
-                if (!server_runtime_encode_current_signal_quality(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
-                    return 0;
-                }
-            } else if (strcmp(signal->data_attribute_path, "t") == 0) {
-                if (!server_runtime_encode_current_signal_timestamp(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
-                    return 0;
-                }
-            } else if (!server_runtime_encode_current_signal_value(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
-                return 0;
-            }
-            if (report_values_length + value_length > sizeof(report_values)) {
-                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "GI report value buffer is too small.");
-                return 0;
-            }
-            memcpy(&report_values[report_values_length], value_bytes, value_length);
-            report_values_length += value_length;
+        uint8_t value_bytes[512U];
+        size_t value_length = 0U;
+        const UnitLabIedModelSignal* signal = NULL;
+        if (data_set->first_signal_index + index >= server_runtime->model_plan->signal_count) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "InformationReport DataSet member is outside the model signal range.");
+            return 0;
         }
+        signal = &server_runtime->model_plan->signals[data_set->first_signal_index + index];
+        if (strcmp(signal->data_attribute_path, "q") == 0) {
+            if (!server_runtime_encode_current_signal_quality(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+                return 0;
+            }
+        } else if (strcmp(signal->data_attribute_path, "t") == 0) {
+            if (!server_runtime_encode_current_signal_timestamp(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+                return 0;
+            }
+        } else if (!server_runtime_encode_current_signal_value(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+            return 0;
+        }
+        if (report_values_length + value_length > sizeof(report_values)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "InformationReport value buffer is too small.");
+            return 0;
+        }
+        memcpy(&report_values[report_values_length], value_bytes, value_length);
+        report_values_length += value_length;
     }
 
     if (server_runtime_report_optional_field_enabled(report, UNITLAB_IED_MODEL_RPT_OPT_REASON_FOR_INCLUSION)) {
