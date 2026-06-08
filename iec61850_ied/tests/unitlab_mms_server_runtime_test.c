@@ -751,8 +751,8 @@ static void test_server_runtime_gi_report_uses_model_dataset_members(void)
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
     assert(server_runtime.brcb_sq_num == 1U);
-    assert(server_runtime.brcb_entry_id_counter == 1U);
-    assert(server_runtime.brcb_entry_id[7] == 1U);
+    assert(server_runtime.brcb_entry_id_counter > 1000000000000ULL);
+    assert(contains_bytes(server_runtime.brcb_entry_id, sizeof(server_runtime.brcb_entry_id), (const uint8_t*)"\x01", 1U) == 1);
 
     unitlab_mms_association_frame_init(&report_frame);
     assert(unitlab_mms_association_frame_decode(&report_frame, report_bytes, report_length, &consumed_length, &diagnostic));
@@ -761,10 +761,89 @@ static void test_server_runtime_gi_report_uses_model_dataset_members(void)
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x86\x01\x0B", 3U) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x06\xC0", 4U) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x85\x01\x03", 3U) == 1);
-    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x89\x08\x00\x00\x00\x00\x00\x00\x00\x01", 10U) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x89\x08", 2U) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x8C\x06", 2U) == 1);
 
     unitlab_free_ied_model_plan(&plan);
+}
+
+
+static void test_server_runtime_gi_requires_enabled_rptena(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    uint8_t scratch[512U];
+    uint8_t request_bytes[512U];
+    uint8_t response_bytes[1024U];
+    uint8_t value_byte = 0x01U;
+    UnitLabMmsBerElement data_element;
+    size_t request_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+
+    unitlab_mms_ber_element_init(&data_element);
+    data_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    data_element.tag.constructed = 0;
+    data_element.tag.tag_number = 3U;
+    data_element.value_bytes = &value_byte;
+    data_element.value_length = 1U;
+    assert(unitlab_mms_build_write_request_frame("IED1LD0", "LLN0$BR$brcbEvents$GI", &data_element, 23U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(server_runtime.pending_gi_report == 0U);
+    assert(server_runtime.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
+}
+
+static void test_server_runtime_rptena_false_clears_pending_gi(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    uint8_t scratch[512U];
+    uint8_t request_bytes[512U];
+    uint8_t response_bytes[1024U];
+    uint8_t value_byte = 0x00U;
+    UnitLabMmsBerElement data_element;
+    size_t request_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_request_general_interrogation(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+    server_runtime.pending_gi_report = 1U;
+
+    unitlab_mms_ber_element_init(&data_element);
+    data_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    data_element.tag.constructed = 0;
+    data_element.tag.tag_number = 3U;
+    data_element.value_bytes = &value_byte;
+    data_element.value_length = 1U;
+    assert(unitlab_mms_build_write_request_frame("IED1LD0", "LLN0$BR$brcbEvents$RptEna", &data_element, 24U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(server_runtime.brcb_rpt_ena == 0U);
+    assert(server_runtime.pending_gi_report == 0U);
+    assert(server_runtime.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
 }
 
 static void test_server_runtime_purgebuf_write_resets_brcb_runtime_state(void)
@@ -3637,6 +3716,8 @@ int main(void)
     test_server_runtime_resvtms_no_br_alias_read_write_roundtrips();
     test_server_runtime_gi_write_queues_information_report();
     test_server_runtime_gi_report_uses_model_dataset_members();
+    test_server_runtime_gi_requires_enabled_rptena();
+    test_server_runtime_rptena_false_clears_pending_gi();
     test_server_runtime_purgebuf_write_resets_brcb_runtime_state();
     test_server_runtime_apply_wire_pdu_requires_running_state();
     test_server_runtime_apply_incoming_bytes_roundtrips_and_consumes_exact_frame();

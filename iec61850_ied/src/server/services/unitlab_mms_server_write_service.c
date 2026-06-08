@@ -87,18 +87,18 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                            || server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_REPORTING) {
                     UnitLabMmsDiagnostic disable_diagnostic;
                     unitlab_mms_diagnostic_clear(&disable_diagnostic);
+                    server_runtime->pending_gi_report = 0U;
                     (void)unitlab_iec61850_report_control_disable(&server_runtime->report_control, &disable_diagnostic);
                 }
                 continue;
             }
             if (server_runtime_write_reference_matches_report_control_field(object_reference, "GI")) {
-                if (value != 0U) {
+                if (value != 0U && server_runtime->brcb_rpt_ena != 0U) {
                     UnitLabMmsDiagnostic gi_diagnostic;
                     unitlab_mms_diagnostic_clear(&gi_diagnostic);
-                    if (server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_ENABLED) {
-                        (void)unitlab_iec61850_report_control_request_gi(&server_runtime->report_control, &gi_diagnostic);
+                    if (unitlab_iec61850_report_control_request_gi(&server_runtime->report_control, &gi_diagnostic)) {
+                        server_runtime->pending_gi_report = 1U;
                     }
-                    server_runtime->pending_gi_report = 1U;
                 }
                 continue;
             }

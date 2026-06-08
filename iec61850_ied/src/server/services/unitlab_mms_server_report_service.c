@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <stdint.h>
 
 /* Report service owns BRCB value encoding and unconfirmed InformationReport construction. */
 
@@ -168,32 +169,55 @@ static int server_runtime_encode_unsigned_value(uint32_t value, uint8_t* buffer,
     return 1;
 }
 
+static uint64_t server_runtime_current_time_ms(void)
+{
+    time_t now = time(NULL);
+
+    if (now <= (time_t)0) {
+        return 0U;
+    }
+    return (uint64_t)now * 1000U;
+}
+
+static void server_runtime_encode_binary_time_6(uint64_t timestamp_ms, uint8_t* binary_time, size_t binary_time_length)
+{
+    static const uint64_t unix_to_iec61850_epoch_days = 5113U;
+    uint64_t unix_days = timestamp_ms / 86400000U;
+    uint64_t milliseconds_of_day = timestamp_ms % 86400000U;
+    uint64_t days_since_1984 = unix_days > unix_to_iec61850_epoch_days ? unix_days - unix_to_iec61850_epoch_days : 0U;
+
+    if (binary_time == NULL || binary_time_length < 6U) {
+        return;
+    }
+
+    binary_time[0] = (uint8_t)((milliseconds_of_day >> 24U) & 0xFFU);
+    binary_time[1] = (uint8_t)((milliseconds_of_day >> 16U) & 0xFFU);
+    binary_time[2] = (uint8_t)((milliseconds_of_day >> 8U) & 0xFFU);
+    binary_time[3] = (uint8_t)(milliseconds_of_day & 0xFFU);
+    binary_time[4] = (uint8_t)((days_since_1984 >> 8U) & 0xFFU);
+    binary_time[5] = (uint8_t)(days_since_1984 & 0xFFU);
+}
+
 static void server_runtime_update_report_sequence(UnitLabMmsServerRuntime* server_runtime)
 {
-    uint64_t timestamp_ms = 0U;
-    time_t now;
+    uint64_t timestamp_ms;
 
     if (server_runtime == NULL) {
         return;
     }
 
-    server_runtime->brcb_sq_num++;
-    server_runtime->brcb_entry_id_counter++;
-    for (size_t index = 0U; index < sizeof(server_runtime->brcb_entry_id); index++) {
-        unsigned int shift = (unsigned int)((sizeof(server_runtime->brcb_entry_id) - index - 1U) * 8U);
-        server_runtime->brcb_entry_id[index] = (uint8_t)((server_runtime->brcb_entry_id_counter >> shift) & 0xFFU);
+    timestamp_ms = server_runtime_current_time_ms();
+    if (timestamp_ms <= server_runtime->brcb_entry_id_counter) {
+        timestamp_ms = server_runtime->brcb_entry_id_counter + 1U;
     }
 
-    now = time(NULL);
-    if (now > (time_t)0) {
-        timestamp_ms = (uint64_t)now * 1000U;
+    server_runtime->brcb_sq_num++;
+    server_runtime->brcb_entry_id_counter = timestamp_ms;
+    for (size_t index = 0U; index < sizeof(server_runtime->brcb_entry_id); index++) {
+        unsigned int shift = (unsigned int)((sizeof(server_runtime->brcb_entry_id) - index - 1U) * 8U);
+        server_runtime->brcb_entry_id[index] = (uint8_t)((timestamp_ms >> shift) & 0xFFU);
     }
-    server_runtime->brcb_time_of_entry[0] = (uint8_t)((timestamp_ms >> 24U) & 0xFFU);
-    server_runtime->brcb_time_of_entry[1] = (uint8_t)((timestamp_ms >> 16U) & 0xFFU);
-    server_runtime->brcb_time_of_entry[2] = (uint8_t)((timestamp_ms >> 8U) & 0xFFU);
-    server_runtime->brcb_time_of_entry[3] = (uint8_t)(timestamp_ms & 0xFFU);
-    server_runtime->brcb_time_of_entry[4] = 0U;
-    server_runtime->brcb_time_of_entry[5] = 0U;
+    server_runtime_encode_binary_time_6(timestamp_ms, server_runtime->brcb_time_of_entry, sizeof(server_runtime->brcb_time_of_entry));
 }
 
 static const char* server_runtime_report_data_ref_with_dataset_prefix(

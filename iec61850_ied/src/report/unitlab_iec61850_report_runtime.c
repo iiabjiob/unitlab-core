@@ -107,7 +107,7 @@ int unitlab_iec61850_report_control_request_gi(UnitLabIec61850ReportControl* rep
     if (report_control == NULL) {
         return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI, "report control is required for GI.");
     }
-    if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_ENABLED) {
+    if (report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_ENABLED && report_control->state != UNITLAB_IEC61850_REPORT_CONTROL_REPORTING) {
         return report_control_fail(report_control, diagnostic, UNITLAB_MMS_DIAGNOSTIC_RCB_NOT_ENABLED, UNITLAB_MMS_RUNTIME_EVENT_REPORT_REQUEST_GI, "GI requires an enabled report control.");
     }
     UnitLabIec61850ReportControlState before = report_control->state;
