@@ -37,6 +37,10 @@ typedef struct UnitLabMmsServerRuntimeSignalValue {
     char data_set_entry_variable[256];
     uint8_t encoded_value[UNITLAB_MMS_SERVER_RUNTIME_SIGNAL_VALUE_LENGTH];
     size_t encoded_value_length;
+    uint8_t quality_value[2];
+    size_t quality_value_length;
+    uint8_t timestamp_value[6];
+    size_t timestamp_value_length;
 } UnitLabMmsServerRuntimeSignalValue;
 
 typedef struct UnitLabMmsServerRuntime {
@@ -108,6 +112,28 @@ int unitlab_mms_server_runtime_update_signal_int32(
     UnitLabMmsServerRuntime* server_runtime,
     const char* object_reference,
     int32_t value,
+    UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_server_runtime_update_signal_boolean(
+    UnitLabMmsServerRuntime* server_runtime,
+    const char* object_reference,
+    int value,
+    UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_server_runtime_update_signal_visible_string(
+    UnitLabMmsServerRuntime* server_runtime,
+    const char* object_reference,
+    const char* value,
+    UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_server_runtime_update_signal_quality(
+    UnitLabMmsServerRuntime* server_runtime,
+    const char* value_leaf_reference,
+    const uint8_t* quality_bytes,
+    size_t quality_length,
+    UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_server_runtime_update_signal_timestamp(
+    UnitLabMmsServerRuntime* server_runtime,
+    const char* value_leaf_reference,
+    const uint8_t* timestamp_bytes,
+    size_t timestamp_length,
     UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRuntime* server_runtime, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_server_runtime_apply_wire_pdu(UnitLabMmsServerRuntime* server_runtime, const UnitLabMmsPdu* wire_pdu, UnitLabMmsOperationResult* operation_result);

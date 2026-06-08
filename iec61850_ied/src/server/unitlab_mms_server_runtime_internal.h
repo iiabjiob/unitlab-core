@@ -30,6 +30,8 @@ const UnitLabIedModelSignal* server_runtime_find_signal_by_object_reference(cons
 int server_runtime_reference_matches_signal(const char* object_reference, const UnitLabIedModelSignal* signal);
 const UnitLabMmsServerRuntimeSignalValue* server_runtime_find_signal_value(const UnitLabMmsServerRuntime* server_runtime, const char* object_reference);
 int server_runtime_encode_current_signal_value(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelSignal* signal, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
+int server_runtime_encode_current_signal_quality(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelSignal* signal, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
+int server_runtime_encode_current_signal_timestamp(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelSignal* signal, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int server_runtime_parse_int32_value(const char* source, int32_t* value);
 int server_runtime_encode_signed_integer(int32_t value, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int server_runtime_encode_mms_data_value(const UnitLabIedModelSignal* signal, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);

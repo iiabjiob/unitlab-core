@@ -779,7 +779,15 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
                 return 0;
             }
             signal = &server_runtime->model_plan->signals[data_set->first_signal_index + index];
-            if (!server_runtime_encode_current_signal_value(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+            if (strcmp(signal->data_attribute_path, "q") == 0) {
+                if (!server_runtime_encode_current_signal_quality(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+                    return 0;
+                }
+            } else if (strcmp(signal->data_attribute_path, "t") == 0) {
+                if (!server_runtime_encode_current_signal_timestamp(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+                    return 0;
+                }
+            } else if (!server_runtime_encode_current_signal_value(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
                 return 0;
             }
             if (report_values_length + value_length > sizeof(report_values)) {

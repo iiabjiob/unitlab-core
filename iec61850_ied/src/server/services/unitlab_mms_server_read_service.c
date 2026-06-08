@@ -352,7 +352,15 @@ static int server_runtime_append_signal_data_object_structure(
             || strcmp(signal->data_object_name, first_signal->data_object_name) != 0) {
             break;
         }
-        if (!server_runtime_encode_current_signal_value(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+        if (strcmp(signal->data_attribute_path, "q") == 0) {
+            if (!server_runtime_encode_current_signal_quality(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+                return 0;
+            }
+        } else if (strcmp(signal->data_attribute_path, "t") == 0) {
+            if (!server_runtime_encode_current_signal_timestamp(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+                return 0;
+            }
+        } else if (!server_runtime_encode_current_signal_value(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
             return 0;
         }
         if (!server_runtime_encode_attribute_structure_value(value_bytes, value_length, signal->data_attribute_path, attribute_bytes, sizeof(attribute_bytes), &attribute_length, diagnostic)) {
@@ -445,6 +453,75 @@ static int server_runtime_encode_fc_root_structure_value(
     return unitlab_mms_ber_write(&element, buffer, buffer_length, encoded_length, diagnostic);
 }
 
+static int server_runtime_reference_ends_with_component(const char* object_reference, const char* component_name)
+{
+    size_t reference_length = 0U;
+    size_t component_length = 0U;
+
+    if (object_reference == NULL || component_name == NULL) {
+        return 0;
+    }
+    reference_length = strlen(object_reference);
+    component_length = strlen(component_name);
+    if (reference_length <= component_length) {
+        return 0;
+    }
+    if (strcmp(&object_reference[reference_length - component_length], component_name) != 0) {
+        return 0;
+    }
+    return object_reference[reference_length - component_length - 1U] == '.';
+}
+
+static int server_runtime_try_encode_leaf_metadata_read(
+    UnitLabMmsServerRuntime* server_runtime,
+    const char* object_reference,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    int* value_supported,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    char value_reference[192U];
+    const UnitLabIedModelSignal* signal = NULL;
+    size_t reference_length = 0U;
+
+    if (value_supported != NULL) {
+        *value_supported = 0;
+    }
+    if (server_runtime == NULL || object_reference == NULL || buffer == NULL || encoded_length == NULL || value_supported == NULL) {
+        return 0;
+    }
+    if (!server_runtime_reference_ends_with_component(object_reference, "q") && !server_runtime_reference_ends_with_component(object_reference, "t")) {
+        return 0;
+    }
+    reference_length = strlen(object_reference);
+    if (reference_length + 6U > sizeof(value_reference)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Metadata leaf reference buffer is too small.");
+        return 0;
+    }
+    memcpy(value_reference, object_reference, reference_length + 1U);
+    value_reference[reference_length - 1U] = '\0';
+    snprintf(&value_reference[strlen(value_reference)], sizeof(value_reference) - strlen(value_reference), "stVal");
+    signal = server_runtime_find_signal_by_object_reference(server_runtime, value_reference);
+    if (signal == NULL) {
+        value_reference[reference_length - 1U] = '\0';
+        snprintf(&value_reference[strlen(value_reference)], sizeof(value_reference) - strlen(value_reference), "f");
+        signal = server_runtime_find_signal_by_object_reference(server_runtime, value_reference);
+    }
+    if (signal == NULL) {
+        return 0;
+    }
+    if (server_runtime_reference_ends_with_component(object_reference, "q")) {
+        if (!server_runtime_encode_current_signal_quality(server_runtime, signal, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+    } else if (!server_runtime_encode_current_signal_timestamp(server_runtime, signal, buffer, buffer_length, encoded_length, diagnostic)) {
+        return 0;
+    }
+    *value_supported = 1;
+    return 1;
+}
+
 static int server_runtime_build_read_response_value(
     UnitLabMmsServerRuntime* server_runtime,
     const char* object_reference,
@@ -487,6 +564,10 @@ static int server_runtime_build_read_response_value(
     }
     if (diagnostic != NULL && diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_OK && diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED) {
         return 0;
+    }
+
+    if (server_runtime_try_encode_leaf_metadata_read(server_runtime, object_reference, buffer, buffer_length, encoded_length, value_supported, diagnostic)) {
+        return 1;
     }
 
     signal = server_runtime_find_signal_by_object_reference(server_runtime, object_reference);
