@@ -336,7 +336,6 @@ static void assert_read_response_access_result_tags(
         assert(unitlab_mms_ber_read(&access_result_element, &list_of_access_result_element.value_bytes[offset], list_of_access_result_element.value_length - offset, &access_result_consumed_length, &diagnostic) == 1);
         assert(index < expected_tag_count);
         assert_ber_tag(&access_result_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, expected_tags[index] == 2U ? 1 : 0, expected_tags[index]);
-        assert(access_result_element.tag.tag_number != 0U);
         offset += access_result_consumed_length;
         index++;
     }
@@ -3249,6 +3248,37 @@ static void test_server_runtime_build_read_failure_uses_data_access_error_access
     assert_read_response_failure_access_result(response_bytes, response_length, 17U);
 }
 
+static void test_server_runtime_mixed_multi_read_preserves_access_result_failures(void)
+{
+    static const uint32_t expected_tags[] = { 10U, 0U };
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    uint8_t response_bytes[512U];
+    size_t response_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 34U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "LD0.LLN0.DC.NamPlt.vendor");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "vendor");
+    server_runtime.pending_request.read_object_reference_count = 2U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "LD0.LLN0.DC.NamPlt.vendor");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "vendor");
+    snprintf(server_runtime.pending_request.read_object_references[1], sizeof(server_runtime.pending_request.read_object_references[1]), "%s", "LD0.LLN0.BR.brcbEvents.Unknown");
+    snprintf(server_runtime.pending_request.read_attribute_references[1], sizeof(server_runtime.pending_request.read_attribute_references[1]), "%s", "Unknown");
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert_read_response_access_result_tags(response_bytes, response_length, 34U, expected_tags, sizeof(expected_tags) / sizeof(expected_tags[0]));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"UnitLab", strlen("UnitLab")) == 1);
+}
+
 
 static void test_server_runtime_build_ordinary_ln_gva_response_exposes_fc_roots(void)
 {
@@ -5010,6 +5040,7 @@ int main(void)
     test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results();
     test_server_runtime_brcb_read_uses_model_report_dataset_reference();
     test_server_runtime_build_read_failure_uses_data_access_error_access_result();
+    test_server_runtime_mixed_multi_read_preserves_access_result_failures();
     test_server_runtime_build_ordinary_ln_gva_response_exposes_fc_roots();
     test_server_runtime_build_fc_root_reads_match_lib_shape();
     test_server_runtime_build_brcb_gva_response_exposes_fields();
