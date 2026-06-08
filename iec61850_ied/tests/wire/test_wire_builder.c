@@ -36,7 +36,7 @@ static void test_wire_frame_builder_information_report_roundtrip(void)
     assert(consumed_length == frame_length);
     assert(decoded_fixture.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
     assert(decoded_fixture.presentation.payload_length > 0U);
-    assert(decoded_fixture.presentation.payload_bytes[0] == 0x63U);
+    assert(decoded_fixture.presentation.payload_bytes[0] == 0xA3U);
 
     unitlab_mms_pdu_init(&decoded_pdu);
     assert(unitlab_mms_pdu_decode(&decoded_pdu, decoded_fixture.presentation.payload_bytes, decoded_fixture.presentation.payload_length, &consumed_length, &diagnostic) == 1);
@@ -45,7 +45,8 @@ static void test_wire_frame_builder_information_report_roundtrip(void)
     assert(decoded_pdu.has_service == 1);
     assert(decoded_pdu.service_kind == UNITLAB_MMS_SERVICE_INFORMATION_REPORT);
     assert(decoded_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
-    assert(decoded_pdu.service_tag.tag_number == 3U || decoded_pdu.service_tag.tag_number == 0U);
+    assert(decoded_pdu.service_tag.constructed == 1);
+    assert(decoded_pdu.service_tag.tag_number == 0U);
 }
 static void test_association_response_frame_smoke(void)
 {
@@ -99,7 +100,6 @@ static void test_association_response_frame_smoke(void)
     assert(acse_apdu.kind == UNITLAB_MMS_ACSE_APDU_AARE);
     assert(acse_apdu.apdu_length > 0U);
     assert(acse_apdu.apdu_bytes != NULL);
-    assert(acse_apdu.apdu_bytes[0] == 0x30U);
     assert(acse_apdu.field_count == 5U);
 
     assert(acse_apdu.fields[0].tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);

@@ -196,6 +196,30 @@ static void server_runtime_update_report_sequence(UnitLabMmsServerRuntime* serve
     server_runtime->brcb_time_of_entry[5] = 0U;
 }
 
+static const char* server_runtime_report_data_ref_with_dataset_prefix(
+    const char* data_ref,
+    const char* dataset_reference,
+    char* buffer,
+    size_t buffer_length)
+{
+    const char* dataset_slash;
+    const char* data_ref_slash;
+    size_t dataset_prefix_length;
+
+    if (data_ref == NULL || data_ref[0] == '\0') {
+        return NULL;
+    }
+    dataset_slash = dataset_reference != NULL ? strchr(dataset_reference, '/') : NULL;
+    data_ref_slash = strchr(data_ref, '/');
+    if (dataset_slash == NULL || dataset_slash == dataset_reference || data_ref_slash == NULL || buffer == NULL || buffer_length == 0U) {
+        return data_ref;
+    }
+
+    dataset_prefix_length = (size_t)(dataset_slash - dataset_reference);
+    snprintf(buffer, buffer_length, "%.*s%s", (int)dataset_prefix_length, dataset_reference, data_ref_slash);
+    return buffer;
+}
+
 int server_runtime_encode_report_control_block_field_value(
     const UnitLabMmsServerRuntime* server_runtime,
     const char* field_name,
@@ -544,6 +568,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     size_t service_content_length = 0U;
     size_t service_length = 0U;
     const uint8_t opt_flds[3U] = { 0x06U, 0x7FU, 0x80U };
+    const uint8_t inclusion_bitstring[2U] = { 0x06U, 0xC0U };
     const uint8_t bool_true[1U] = { 0x01U };
     const uint8_t st_zero[1U] = { 0x00U };
     const uint8_t st_one[1U] = { 0x01U };
@@ -607,12 +632,17 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 6U, unsigned_value, unsigned_value_length, report_values, sizeof(report_values), &report_values_length, diagnostic)) {
         return 0;
     }
+    if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 4U, inclusion_bitstring, sizeof(inclusion_bitstring), report_values, sizeof(report_values), &report_values_length, diagnostic)) {
+        return 0;
+    }
 
     for (size_t index = 0U; index < member_count; index++) {
         const char* data_ref = NULL;
+        char normalized_data_ref[192U];
         if (data_set != NULL && server_runtime->model_plan != NULL && data_set->first_signal_index + index < server_runtime->model_plan->signal_count) {
             const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[data_set->first_signal_index + index];
             data_ref = signal->data_set_entry_variable[0] != '\0' ? signal->data_set_entry_variable : signal->object_reference;
+            data_ref = server_runtime_report_data_ref_with_dataset_prefix(data_ref, dataset_reference, normalized_data_ref, sizeof(normalized_data_ref));
         }
         else {
             data_ref = index == 0U ? data_ref_1 : data_ref_2;
@@ -658,7 +688,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 0U, report_values, report_values_length, service_content, sizeof(service_content), &service_content_length, diagnostic)) {
         return 0;
     }
-    if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 3U, service_content, service_content_length, service_bytes, sizeof(service_bytes), &service_length, diagnostic)) {
+    if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 0U, service_content, service_content_length, service_bytes, sizeof(service_bytes), &service_length, diagnostic)) {
         return 0;
     }
 

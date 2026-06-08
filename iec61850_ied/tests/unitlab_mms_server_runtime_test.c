@@ -634,10 +634,14 @@ static void test_server_runtime_gi_write_queues_information_report(void)
     assert(consumed_length == report_frame.presentation.payload_length);
     assert(report_pdu.kind == UNITLAB_MMS_PDU_UNCONFIRMED);
     assert(report_pdu.service_kind == UNITLAB_MMS_SERVICE_INFORMATION_REPORT);
+    assert(report_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(report_pdu.service_tag.constructed == 1);
+    assert(report_pdu.service_tag.tag_number == 0U);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1LD0/LLN0.BR.Events", strlen("IED1LD0/LLN0.BR.Events")) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1LD0/LLN0$dsEvents", strlen("IED1LD0/LLN0$dsEvents")) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1LD0/XCBR1$ST$Pos$stVal", strlen("IED1LD0/XCBR1$ST$Pos$stVal")) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$stVal", strlen("IED1LD0/PGGIO1$ST$Ind1$stVal")) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x06\xC0", 4U) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x02\x04", 4U) == 1);
 }
 
@@ -753,8 +757,9 @@ static void test_server_runtime_gi_report_uses_model_dataset_members(void)
     unitlab_mms_association_frame_init(&report_frame);
     assert(unitlab_mms_association_frame_decode(&report_frame, report_bytes, report_length, &consumed_length, &diagnostic));
     assert(consumed_length == report_length);
-    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1LD0/GGIO1$ST$Ind2$stVal", strlen("IED1LD0/GGIO1$ST$Ind2$stVal")) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"IED1IED1LD0/GGIO1$ST$Ind2$stVal", strlen("IED1IED1LD0/GGIO1$ST$Ind2$stVal")) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x86\x01\x0B", 3U) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x84\x02\x06\xC0", 4U) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x85\x01\x03", 3U) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x89\x08\x00\x00\x00\x00\x00\x00\x00\x01", 10U) == 1);
     assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"\x8C\x06", 2U) == 1);

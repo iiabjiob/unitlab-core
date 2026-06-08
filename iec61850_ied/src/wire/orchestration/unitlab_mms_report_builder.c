@@ -125,7 +125,7 @@ int unitlab_mms_build_information_report_frame(
     if (!wire_builder_encode_nested_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
             1,
-            3U,
+            0U,
             report_content_bytes,
             report_content_length,
             report_pdu_bytes,
