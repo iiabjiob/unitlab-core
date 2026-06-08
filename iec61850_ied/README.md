@@ -77,6 +77,12 @@ Current working IEDScout baseline for the native wire server:
 
 Manual confirmation still requires IEDScout outside this environment: subscribe to `IED1LD0/LLN0.BR.brcbEvents` and verify `PGGIO1$ST$Ind1$stVal` alternates between `0` and `1` while the ticker is enabled. Save the capture under `artifacts/` before comparing it against the libIEC61850 baseline.
 
+Validate a captured native checkpoint with:
+
+```bash
+scripts/check-native-wire-pcap.py artifacts/native-wire-discover-rptEna-GI-03.pcapng --port 12447 --min-reports 5
+```
+
 ## Apples-to-Apples Capture
 
 Use the same fixture for both backends:
