@@ -91,6 +91,14 @@ typedef struct UnitLabMmsServerRuntime {
     size_t pending_report_value_lengths[UNITLAB_MMS_SERVER_RUNTIME_MAX_REPORT_MEMBERS];
     UnitLabMmsServerPendingReportEntry pending_report_queue[UNITLAB_MMS_SERVER_RUNTIME_MAX_PENDING_REPORTS];
     size_t pending_report_queue_count;
+    uint8_t write_result_failures[UNITLAB_MMS_MAX_READ_VARIABLES];
+    uint8_t write_result_error_codes[UNITLAB_MMS_MAX_READ_VARIABLES];
+    size_t write_result_count;
+    uint64_t report_events_queued;
+    uint64_t report_events_coalesced;
+    uint64_t report_events_dropped;
+    uint64_t reports_sent;
+    size_t report_queue_high_watermark;
     UnitLabMmsServerRuntimeSignalValue signal_values[UNITLAB_MMS_SERVER_RUNTIME_MAX_SIGNAL_VALUES];
     size_t signal_value_count;
     UnitLabMmsTransportExchange transport;

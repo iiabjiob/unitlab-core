@@ -1069,6 +1069,7 @@ int server_runtime_queue_pending_report_event(UnitLabMmsServerRuntime* server_ru
         server_runtime->pending_report_value_length = value_length;
         memcpy(server_runtime->pending_report_values[member_index], value, value_length);
         server_runtime->pending_report_value_lengths[member_index] = value_length;
+        server_runtime->report_events_queued++;
         return 1;
     }
     if (server_runtime->pending_report_kind == kind) {
@@ -1078,6 +1079,8 @@ int server_runtime_queue_pending_report_event(UnitLabMmsServerRuntime* server_ru
         server_runtime->pending_report_value_length = value_length;
         memcpy(server_runtime->pending_report_values[member_index], value, value_length);
         server_runtime->pending_report_value_lengths[member_index] = value_length;
+        server_runtime->report_events_queued++;
+        server_runtime->report_events_coalesced++;
         return 1;
     }
     for (size_t index = 0U; index < server_runtime->pending_report_queue_count; index++) {
@@ -1087,11 +1090,21 @@ int server_runtime_queue_pending_report_event(UnitLabMmsServerRuntime* server_ru
             entry->member_mask |= member_mask;
             memcpy(entry->values[member_index], value, value_length);
             entry->value_lengths[member_index] = value_length;
+            server_runtime->report_events_queued++;
+            server_runtime->report_events_coalesced++;
             return 1;
         }
     }
     if (server_runtime->pending_report_queue_count >= UNITLAB_MMS_SERVER_RUNTIME_MAX_PENDING_REPORTS) {
         server_runtime->brcb_buffer_overflow = 1U;
+        server_runtime->report_events_dropped++;
+        printf(
+            "native-wire-server: report-queue-overflow kind=%u member=%zu queue-depth=%zu dropped=%llu\n",
+            (unsigned)kind,
+            member_index,
+            server_runtime->pending_report_queue_count,
+            (unsigned long long)server_runtime->report_events_dropped);
+        fflush(stdout);
         return 0;
     }
     server_runtime->pending_report_queue[server_runtime->pending_report_queue_count] = (UnitLabMmsServerPendingReportEntry){
@@ -1102,6 +1115,10 @@ int server_runtime_queue_pending_report_event(UnitLabMmsServerRuntime* server_ru
     memcpy(server_runtime->pending_report_queue[server_runtime->pending_report_queue_count].values[member_index], value, value_length);
     server_runtime->pending_report_queue[server_runtime->pending_report_queue_count].value_lengths[member_index] = value_length;
     server_runtime->pending_report_queue_count++;
+    if (server_runtime->pending_report_queue_count > server_runtime->report_queue_high_watermark) {
+        server_runtime->report_queue_high_watermark = server_runtime->pending_report_queue_count;
+    }
+    server_runtime->report_events_queued++;
     return 1;
 }
 
@@ -1604,6 +1621,14 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     server_runtime->brcb_buffer_overflow = 0U;
     server_runtime_clear_pending_reports(server_runtime);
     memset(server_runtime->pending_report_value, 0, sizeof(server_runtime->pending_report_value));
+    memset(server_runtime->write_result_failures, 0, sizeof(server_runtime->write_result_failures));
+    memset(server_runtime->write_result_error_codes, 0, sizeof(server_runtime->write_result_error_codes));
+    server_runtime->write_result_count = 0U;
+    server_runtime->report_events_queued = 0U;
+    server_runtime->report_events_coalesced = 0U;
+    server_runtime->report_events_dropped = 0U;
+    server_runtime->reports_sent = 0U;
+    server_runtime->report_queue_high_watermark = 0U;
     memset(server_runtime->signal_values, 0, sizeof(server_runtime->signal_values));
     server_runtime->signal_value_count = 0U;
     unitlab_mms_transport_exchange_init(&server_runtime->transport);

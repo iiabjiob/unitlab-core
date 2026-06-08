@@ -71,9 +71,11 @@ Current working IEDScout baseline for the native wire server:
 - report `DataRef` values must use the advertised domain once, for example `IED1LD0/PGGIO1$ST$Ind1$stVal`;
 - `IED1IED1LD0` is invalid and should fail regression tests;
 - data-change inclusion bits follow DataSet member position: member 0 is `84 02 06 80`, member 1 is `84 02 06 40`;
-- the current manual golden capture is `artifacts/native-wire-discover-rptEna-GI.pcapng`.
+- the current manual golden capture is `artifacts/native-wire-discover-rptEna-GI.pcapng`;
+- v1 manual pcap gates should be captured as separate artifacts for: discovery, `RptEna=true`, `GI`, ticker-driven data-change, and cleanup/close;
+- expected report diagnostics include `write-result`, `report-sent`, and `report-queue-overflow` lines when those paths are exercised.
 
-Manual confirmation still requires IEDScout outside this environment: subscribe to `IED1LD0/LLN0.BR.brcbEvents` and verify `PGGIO1$ST$Ind1$stVal` alternates between `0` and `1` while the ticker is enabled.
+Manual confirmation still requires IEDScout outside this environment: subscribe to `IED1LD0/LLN0.BR.brcbEvents` and verify `PGGIO1$ST$Ind1$stVal` alternates between `0` and `1` while the ticker is enabled. Save the capture under `artifacts/` before comparing it against the libIEC61850 baseline.
 
 ## Apples-to-Apples Capture
 

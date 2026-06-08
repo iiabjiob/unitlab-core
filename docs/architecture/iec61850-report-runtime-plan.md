@@ -99,6 +99,8 @@ Implemented in this slice:
 - Map values to DataSet order.
 - Carry sequence number, time of entry, reason code, DataSet reference, config revision, entry ID, buffer overflow, and optional data references when present.
 - Native MMS reports encode `BufOvfl=false` by default, set it when the bounded pending-report queue overflows, and clear it after the next emitted report carries the overflow state.
+- Native MMS write handling returns per-item WriteResponse failures for unsupported signal writes, `GI=true` while `RptEna=false`, and static RCB configuration writes attempted while the BRCB is enabled; same-value static RCB writes remain accepted before enable for client compatibility.
+- Native report diagnostics track queued, coalesced, dropped, sent, and high-watermark report queue state; queue overflow sets `BufOvfl` and logs the drop.
 - Surface missing optional fields as diagnostics, not fatal errors.
 - Preserve reported subset events for data change, quality change, and integrity reports while still ordering known values by SCD DataSet index.
 - Support common report data-reference forms used by simulator/MMS-facing adapters: SCD dot form, slash form, IED-prefixed full path, and `$FC$` MMS-style form.

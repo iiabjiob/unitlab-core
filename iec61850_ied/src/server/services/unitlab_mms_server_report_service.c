@@ -950,6 +950,18 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         return 0;
     }
     server_runtime->brcb_buffer_overflow = 0U;
+    server_runtime->reports_sent++;
+    printf(
+        "native-wire-server: report-sent sqNum=%u kind=%u included-members=%zu queue-depth=%zu queued=%llu coalesced=%llu dropped=%llu sent=%llu\n",
+        (unsigned)report_sequence_number,
+        (unsigned)server_runtime->pending_report_kind,
+        included_member_count,
+        server_runtime->pending_report_queue_count,
+        (unsigned long long)server_runtime->report_events_queued,
+        (unsigned long long)server_runtime->report_events_coalesced,
+        (unsigned long long)server_runtime->report_events_dropped,
+        (unsigned long long)server_runtime->reports_sent);
+    fflush(stdout);
     server_runtime_advance_pending_report_queue(server_runtime);
     if (server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING) {
         UnitLabMmsDiagnostic report_diagnostic;
