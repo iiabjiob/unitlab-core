@@ -309,8 +309,15 @@ int server_runtime_build_write_response_service(
     }
     for (size_t index = 0U; index < write_result_count; index++) {
         size_t single_member_length = 0U;
+        const char* object_reference = server_runtime->pending_request.object_reference;
+        const char* field_name = NULL;
 
         uint8_t failure_code[1U] = { UNITLAB_MMS_WRITE_DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED };
+
+        if (index < server_runtime->pending_request.write_object_reference_count && server_runtime->pending_request.write_object_references[index][0] != '\0') {
+            object_reference = server_runtime->pending_request.write_object_references[index];
+        }
+        field_name = server_runtime_write_report_control_field_name(object_reference);
 
         unitlab_mms_ber_element_init(&member_element);
         member_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
@@ -326,9 +333,11 @@ int server_runtime_build_write_response_service(
             member_element.value_length = 0U;
         }
         printf(
-            "native-wire-server: write-result invoke=%u index=%zu status=%s error=%u\n",
+            "native-wire-server: write-result invoke=%u index=%zu object=%s field=%s status=%s error=%u\n",
             (unsigned)invoke_id,
             index,
+            object_reference != NULL && object_reference[0] != '\0' ? object_reference : "<none>",
+            field_name != NULL ? field_name : "<none>",
             member_element.tag.tag_number == 0U ? "failure" : "success",
             member_element.tag.tag_number == 0U ? (unsigned)failure_code[0] : 0U);
         fflush(stdout);
