@@ -68,6 +68,39 @@ static void assert_ber_tag(const UnitLabMmsBerElement* element, UnitLabMmsBerTag
     assert(element->tag.tag_number == tag_number);
 }
 
+static void assert_information_report_wire_envelope(const uint8_t* report_bytes, size_t report_length)
+{
+    UnitLabMmsAssociationFrame report_frame;
+    UnitLabMmsPdu report_pdu;
+    UnitLabMmsDiagnostic diagnostic;
+    size_t consumed_length = 0U;
+    uint16_t tpkt_length = 0U;
+
+    assert(report_bytes != NULL);
+    assert(report_length >= 7U);
+    assert(report_bytes[0] == 0x03U);
+    assert(report_bytes[1] == 0x00U);
+    tpkt_length = (uint16_t)(((uint16_t)report_bytes[2] << 8U) | report_bytes[3]);
+    assert(tpkt_length == report_length);
+    assert(report_bytes[4] == 0x02U);
+    assert(report_bytes[5] == 0xF0U);
+    assert(report_bytes[6] == 0x80U);
+
+    unitlab_mms_association_frame_init(&report_frame);
+    assert(unitlab_mms_association_frame_decode(&report_frame, report_bytes, report_length, &consumed_length, &diagnostic));
+    assert(consumed_length == report_length);
+    assert(report_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
+
+    unitlab_mms_pdu_init(&report_pdu);
+    assert(unitlab_mms_pdu_decode(&report_pdu, report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, &consumed_length, &diagnostic));
+    assert(consumed_length == report_frame.presentation.payload_length);
+    assert(report_pdu.kind == UNITLAB_MMS_PDU_UNCONFIRMED);
+    assert(report_pdu.service_kind == UNITLAB_MMS_SERVICE_INFORMATION_REPORT);
+    assert(report_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(report_pdu.service_tag.constructed == 1);
+    assert(report_pdu.service_tag.tag_number == 0U);
+}
+
 static void assert_read_response_success_visible_string(const uint8_t* response_bytes, size_t response_length, uint32_t expected_invoke_id, const char* expected_value)
 {
     UnitLabMmsAssociationFrame response_frame;
@@ -708,6 +741,7 @@ static void test_server_runtime_gi_write_queues_information_report(void)
     assert(unitlab_mms_server_runtime_has_pending_gi_report(&server_runtime) == 1);
     assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
     assert(unitlab_mms_server_runtime_has_pending_gi_report(&server_runtime) == 0);
+    assert_information_report_wire_envelope(report_bytes, report_length);
 
     unitlab_mms_association_frame_init(&report_frame);
     assert(unitlab_mms_association_frame_decode(&report_frame, report_bytes, report_length, &consumed_length, &diagnostic));
@@ -1403,6 +1437,7 @@ static void test_server_runtime_update_dataset_member_queues_report_when_enabled
     assert(server_runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE);
     assert(server_runtime.pending_report_member_index == 1U);
     assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
+    assert_information_report_wire_envelope(report_bytes, report_length);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$stVal", strlen("IED1LD0/PGGIO1$ST$Ind1$stVal")) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x85\x01\x01", 3U) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x06\x40", 4U) == 1);
@@ -1438,6 +1473,7 @@ static void test_server_runtime_multiple_dataset_updates_share_one_data_change_r
     assert((server_runtime.pending_report_member_mask & 0x03U) == 0x03U);
 
     assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
+    assert_information_report_wire_envelope(report_bytes, report_length);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/XCBR1$ST$Pos$stVal", strlen("IED1LD0/XCBR1$ST$Pos$stVal")) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$stVal", strlen("IED1LD0/PGGIO1$ST$Ind1$stVal")) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x85\x01\x03", 3U) == 1);
