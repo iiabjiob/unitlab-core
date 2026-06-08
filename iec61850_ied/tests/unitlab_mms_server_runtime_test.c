@@ -851,6 +851,204 @@ static int build_data_change_report_plan(UnitLabIedModelPlan* plan)
 
 
 
+static int build_runtime_value_store_plan(UnitLabIedModelPlan* plan)
+{
+    UnitLabIedFixtureSignal event_signals[2U] = {
+        {
+            .data_set_index = 0U,
+            .reference = "LD0/XCBR1.Pos.stVal[ST]",
+            .kind = "FCDA",
+            .component = "stVal",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+            .initial_value = "0",
+        },
+        {
+            .data_set_index = 1U,
+            .reference = "LD0/PGGIO1.Ind1.stVal[ST]",
+            .kind = "FCDA",
+            .component = "stVal",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+            .initial_value = "0",
+        },
+    };
+    UnitLabIedFixtureSignal wire_signals[1U] = {
+        {
+            .data_set_index = 0U,
+            .reference = "LD0/GGIO1.AnIn1.mag.f[MX]",
+            .kind = "FCDA",
+            .component = "f",
+            .fc = "MX",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+            .initial_value = "0",
+        },
+    };
+    UnitLabIedFixtureDataSet data_sets[2U] = {
+        {
+            .reference = "IED1/AP1/LD0/LLN0.dsEvents",
+            .signal_count = 2U,
+            .signals = event_signals,
+        },
+        {
+            .reference = "IED1/AP1/LD0/GGIO1.dsWire",
+            .signal_count = 1U,
+            .signals = wire_signals,
+        },
+    };
+    UnitLabIedFixtureReport reports[1U] = {
+        {
+            .key = "IED1/AP1/LD0/LLN0/brcbEvents/buffered",
+            .logical_device_inst = "LD0",
+            .logical_node_name = "LLN0",
+            .report_control_name = "brcbEvents",
+            .report_kind = "buffered",
+            .rpt_id = "IED1LD0/LLN0.BR.Events",
+            .data_set_ref = "IED1/AP1/LD0/LLN0.dsEvents",
+            .conf_rev = "7",
+            .indexed_known = 1,
+            .indexed = 0,
+            .buffer_time_ms_known = 1,
+            .buffer_time_ms = 100,
+            .integrity_period_ms_known = 1,
+            .integrity_period_ms = 1000,
+        },
+    };
+    UnitLabIedFixtureModel fixture = {
+        .device_count = 1U,
+        .ied_name = "IED1",
+        .access_point_name = "AP1",
+        .data_set_count = 2U,
+        .data_sets = data_sets,
+        .report_count = 1U,
+        .reports = reports,
+        .signal_count = 3U,
+    };
+    char error[256U];
+
+    reports[0].optional_fields.sequence_number = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.timestamp = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.reason_code = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.data_set_name = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.data_reference = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.buffer_overflow = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.entry_id = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.config_revision = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    return unitlab_build_ied_model_plan(&fixture, plan, error, sizeof(error));
+}
+
+static void test_server_runtime_update_signal_value_changes_read_value(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    uint8_t response_bytes[1024U];
+    uint8_t value_byte = 0x2AU;
+    size_t response_length = 0U;
+
+    assert(build_runtime_value_store_plan(&plan) == 1);
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_update_signal_value(&server_runtime, "IED1LD0/PGGIO1$ST$Ind1$stVal", &value_byte, 1U, &diagnostic));
+
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 61U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "IED1LD0.PGGIO1.ST.Ind1.stVal");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "stVal");
+    server_runtime.pending_request.read_object_reference_count = 1U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "IED1LD0.PGGIO1.ST.Ind1.stVal");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "stVal");
+
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x85\x01\x2A", 3U) == 1);
+
+    unitlab_mms_pending_request_init(&server_runtime.pending_request);
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 63U, 8U, 1000U, 110U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "IED1LD0.PGGIO1.ST");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "ST");
+    server_runtime.pending_request.read_object_reference_count = 1U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "IED1LD0.PGGIO1.ST");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "ST");
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x85\x01\x2A", 3U) == 1);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
+static void test_server_runtime_update_dataset_member_queues_report_when_enabled(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    uint8_t report_bytes[2048U];
+    uint8_t value_byte = 0x01U;
+    size_t report_length = 0U;
+
+    assert(build_runtime_value_store_plan(&plan) == 1);
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+
+    assert(unitlab_mms_server_runtime_update_signal_value(&server_runtime, "IED1LD0/PGGIO1$ST$Ind1$stVal", &value_byte, 1U, &diagnostic));
+    assert(server_runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE);
+    assert(server_runtime.pending_report_member_index == 1U);
+    assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$stVal", strlen("IED1LD0/PGGIO1$ST$Ind1$stVal")) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x85\x01\x01", 3U) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x06\x40", 4U) == 1);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
+static void test_server_runtime_update_non_report_dataset_signal_does_not_queue_report(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    uint8_t response_bytes[1024U];
+    uint8_t value_byte = 0x07U;
+    size_t response_length = 0U;
+
+    assert(build_runtime_value_store_plan(&plan) == 1);
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+
+    assert(unitlab_mms_server_runtime_update_signal_value(&server_runtime, "IED1LD0/GGIO1$MX$AnIn1$mag$f", &value_byte, 1U, &diagnostic));
+    assert(server_runtime.pending_gi_report == 0U);
+    assert(server_runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE);
+
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 62U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "IED1LD0.GGIO1.MX.AnIn1.mag.f");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "f");
+    server_runtime.pending_request.read_object_reference_count = 1U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "IED1LD0.GGIO1.MX.AnIn1.mag.f");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "f");
+
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x85\x01\x07", 3U) == 1);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
+
+
 static void test_server_runtime_dataset_write_queues_data_change_report(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -4112,6 +4310,9 @@ int main(void)
     test_server_runtime_resvtms_no_br_alias_read_write_roundtrips();
     test_server_runtime_gi_write_queues_information_report();
     test_server_runtime_gi_report_uses_model_dataset_members();
+    test_server_runtime_update_signal_value_changes_read_value();
+    test_server_runtime_update_dataset_member_queues_report_when_enabled();
+    test_server_runtime_update_non_report_dataset_signal_does_not_queue_report();
     test_server_runtime_dataset_write_queues_data_change_report();
     test_server_runtime_dataset_write_second_member_marks_second_inclusion_bit();
     test_server_runtime_report_option_fields_use_model_masks();

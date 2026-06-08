@@ -223,6 +223,86 @@ static int server_runtime_encode_nested_integer_structure_value(
     return 1;
 }
 
+
+static int server_runtime_encode_nested_data_structure_value(
+    const uint8_t* value_bytes,
+    size_t value_length,
+    size_t nested_structure_count,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t current_storage[256U];
+    uint8_t next_storage[256U];
+    size_t current_length = 0U;
+    UnitLabMmsBerElement element;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (value_bytes == NULL || value_length == 0U || buffer == NULL || encoded_length == NULL || nested_structure_count == 0U) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Nested structure encoding requires a value and output buffer.");
+        return 0;
+    }
+    if (value_length > sizeof(current_storage)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Nested structure source value is too large.");
+        return 0;
+    }
+    memcpy(current_storage, value_bytes, value_length);
+    current_length = value_length;
+
+    for (size_t index = 0U; index < nested_structure_count; index++) {
+        size_t next_length = 0U;
+
+        unitlab_mms_ber_element_init(&element);
+        element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+        element.tag.constructed = 1;
+        element.tag.tag_number = 2U;
+        element.value_bytes = current_storage;
+        element.value_length = current_length;
+        if (!unitlab_mms_ber_write(&element, next_storage, sizeof(next_storage), &next_length, diagnostic)) {
+            return 0;
+        }
+        if (next_length > sizeof(current_storage)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Nested structure buffer is too small.");
+            return 0;
+        }
+        memcpy(current_storage, next_storage, next_length);
+        current_length = next_length;
+    }
+
+    if (current_length > buffer_length) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Nested structure output buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, current_storage, current_length);
+    *encoded_length = current_length;
+    return 1;
+}
+
+static int server_runtime_encode_nested_signal_structure_value(
+    UnitLabMmsServerRuntime* server_runtime,
+    const char* object_reference,
+    size_t nested_structure_count,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t value_bytes[128U];
+    size_t value_length = 0U;
+    const UnitLabIedModelSignal* signal = server_runtime_find_signal_by_object_reference(server_runtime, object_reference);
+
+    if (signal == NULL) {
+        return 0;
+    }
+    if (!server_runtime_encode_current_signal_value(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+        return 0;
+    }
+    return server_runtime_encode_nested_data_structure_value(value_bytes, value_length, nested_structure_count, buffer, buffer_length, encoded_length, diagnostic);
+}
+
 static int server_runtime_build_read_response_value(
     UnitLabMmsServerRuntime* server_runtime,
     const char* object_reference,
@@ -260,21 +340,24 @@ static int server_runtime_build_read_response_value(
         sizeof(rcb_data_set_reference));
 
     if (server_runtime_object_reference_has_suffix(object_reference, ".PGGIO1.ST")) {
-        if (!server_runtime_encode_nested_integer_structure_value(1, 2U, buffer, buffer_length, encoded_length, diagnostic)) {
+        if (!server_runtime_encode_nested_signal_structure_value(server_runtime, "PGGIO1.ST.Ind1.stVal", 2U, buffer, buffer_length, encoded_length, diagnostic)
+            && !server_runtime_encode_nested_integer_structure_value(1, 2U, buffer, buffer_length, encoded_length, diagnostic)) {
             return 0;
         }
         *value_supported = 1;
         return 1;
     }
     if (server_runtime_object_reference_has_suffix(object_reference, ".GGIO1.MX")) {
-        if (!server_runtime_encode_nested_integer_structure_value(0, 3U, buffer, buffer_length, encoded_length, diagnostic)) {
+        if (!server_runtime_encode_nested_signal_structure_value(server_runtime, "GGIO1.MX.AnIn1.mag.f", 3U, buffer, buffer_length, encoded_length, diagnostic)
+            && !server_runtime_encode_nested_integer_structure_value(0, 3U, buffer, buffer_length, encoded_length, diagnostic)) {
             return 0;
         }
         *value_supported = 1;
         return 1;
     }
     if (server_runtime_object_reference_has_suffix(object_reference, ".XCBR1.ST")) {
-        if (!server_runtime_encode_nested_integer_structure_value(0, 2U, buffer, buffer_length, encoded_length, diagnostic)) {
+        if (!server_runtime_encode_nested_signal_structure_value(server_runtime, "XCBR1.ST.Pos.stVal", 2U, buffer, buffer_length, encoded_length, diagnostic)
+            && !server_runtime_encode_nested_integer_structure_value(0, 2U, buffer, buffer_length, encoded_length, diagnostic)) {
             return 0;
         }
         *value_supported = 1;
@@ -283,7 +366,7 @@ static int server_runtime_build_read_response_value(
 
     signal = server_runtime_find_signal_by_object_reference(server_runtime, object_reference);
     if (signal != NULL) {
-        if (server_runtime_encode_mms_data_value(signal, buffer, buffer_length, encoded_length, diagnostic)) {
+        if (server_runtime_encode_current_signal_value(server_runtime, signal, buffer, buffer_length, encoded_length, diagnostic)) {
             *value_supported = 1;
             return 1;
         }

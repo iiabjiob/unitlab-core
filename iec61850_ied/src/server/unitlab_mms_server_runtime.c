@@ -462,6 +462,51 @@ int server_runtime_parse_object_reference(const char* object_reference, char* do
     return 1;
 }
 
+static void server_runtime_normalize_reference_key(const char* reference, char* buffer, size_t buffer_length)
+{
+    size_t offset = 0U;
+
+    if (buffer == NULL || buffer_length == 0U) {
+        return;
+    }
+    buffer[0] = '\0';
+    if (reference == NULL) {
+        return;
+    }
+    for (size_t index = 0U; reference[index] != '\0' && offset + 1U < buffer_length; index++) {
+        char ch = reference[index];
+        if (ch == '/' || ch == '$') {
+            ch = '.';
+        }
+        buffer[offset++] = ch;
+    }
+    buffer[offset] = '\0';
+}
+
+int server_runtime_reference_matches_signal(const char* object_reference, const UnitLabIedModelSignal* signal)
+{
+    char object_key[256U];
+    char signal_key[256U];
+
+    if (object_reference == NULL || signal == NULL) {
+        return 0;
+    }
+    server_runtime_normalize_reference_key(object_reference, object_key, sizeof(object_key));
+    if (signal->object_reference[0] != '\0') {
+        server_runtime_normalize_reference_key(signal->object_reference, signal_key, sizeof(signal_key));
+        if (strcmp(object_key, signal_key) == 0 || strstr(object_key, signal_key) != NULL) {
+            return 1;
+        }
+    }
+    if (signal->data_set_entry_variable[0] != '\0') {
+        server_runtime_normalize_reference_key(signal->data_set_entry_variable, signal_key, sizeof(signal_key));
+        if (strcmp(object_key, signal_key) == 0 || strstr(object_key, signal_key) != NULL) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 const UnitLabIedModelSignal* server_runtime_find_signal_by_object_reference(const UnitLabMmsServerRuntime* server_runtime, const char* object_reference)
 {
     if (server_runtime == NULL || server_runtime->model_plan == NULL || object_reference == NULL || object_reference[0] == '\0') {
@@ -474,6 +519,9 @@ const UnitLabIedModelSignal* server_runtime_find_signal_by_object_reference(cons
         const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[index];
         const char* suffix = object_reference;
 
+        if (server_runtime_reference_matches_signal(object_reference, signal)) {
+            return signal;
+        }
         while (suffix != NULL && suffix[0] != '\0') {
             if (strcmp(signal->object_reference, object_reference) == 0 || strcmp(signal->object_reference, suffix) == 0) {
                 return signal;
@@ -482,6 +530,28 @@ const UnitLabIedModelSignal* server_runtime_find_signal_by_object_reference(cons
             if (suffix != NULL) {
                 suffix++;
             }
+        }
+    }
+    return NULL;
+}
+
+const UnitLabMmsServerRuntimeSignalValue* server_runtime_find_signal_value(const UnitLabMmsServerRuntime* server_runtime, const char* object_reference)
+{
+    if (server_runtime == NULL || object_reference == NULL || object_reference[0] == '\0') {
+        return NULL;
+    }
+    for (size_t index = 0U; index < server_runtime->signal_value_count; index++) {
+        const UnitLabMmsServerRuntimeSignalValue* value = &server_runtime->signal_values[index];
+        UnitLabIedModelSignal signal;
+
+        if (value->in_use == 0) {
+            continue;
+        }
+        memset(&signal, 0, sizeof(signal));
+        snprintf(signal.object_reference, sizeof(signal.object_reference), "%s", value->object_reference);
+        snprintf(signal.data_set_entry_variable, sizeof(signal.data_set_entry_variable), "%s", value->data_set_entry_variable);
+        if (server_runtime_reference_matches_signal(object_reference, &signal)) {
+            return value;
         }
     }
     return NULL;
@@ -615,6 +685,214 @@ int server_runtime_encode_mms_data_value(
     }
 }
 
+
+static int server_runtime_encode_signal_write_value(
+    const UnitLabIedModelSignal* signal,
+    const uint8_t* value_bytes,
+    size_t value_length,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint32_t tag_number = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (signal == NULL || value_bytes == NULL || value_length == 0U || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Signal update requires a signal, value bytes, and output buffer.");
+        return 0;
+    }
+    switch (signal->initial_value_kind) {
+        case UNITLAB_IED_FIXTURE_VALUE_BOOLEAN:
+            tag_number = 3U;
+            break;
+        case UNITLAB_IED_FIXTURE_VALUE_INTEGER:
+            tag_number = 5U;
+            break;
+        case UNITLAB_IED_FIXTURE_VALUE_STRING:
+            tag_number = 10U;
+            break;
+        default:
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Signal update value kind is unsupported.");
+            return 0;
+    }
+    return server_runtime_encode_ber_element(
+        UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+        0,
+        tag_number,
+        value_bytes,
+        value_length,
+        buffer,
+        buffer_length,
+        encoded_length,
+        diagnostic);
+}
+
+int server_runtime_encode_current_signal_value(
+    const UnitLabMmsServerRuntime* server_runtime,
+    const UnitLabIedModelSignal* signal,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    const UnitLabMmsServerRuntimeSignalValue* runtime_value = NULL;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (server_runtime == NULL || signal == NULL || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Current signal value encoding requires runtime, signal, and output buffer.");
+        return 0;
+    }
+    runtime_value = server_runtime_find_signal_value(server_runtime, signal->data_set_entry_variable[0] != '\0' ? signal->data_set_entry_variable : signal->object_reference);
+    if (runtime_value != NULL && runtime_value->encoded_value_length != 0U) {
+        if (runtime_value->encoded_value_length > buffer_length) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Current signal value buffer is too small.");
+            return 0;
+        }
+        memcpy(buffer, runtime_value->encoded_value, runtime_value->encoded_value_length);
+        *encoded_length = runtime_value->encoded_value_length;
+        return 1;
+    }
+    return server_runtime_encode_mms_data_value(signal, buffer, buffer_length, encoded_length, diagnostic);
+}
+
+static void server_runtime_reset_signal_values(UnitLabMmsServerRuntime* server_runtime)
+{
+    if (server_runtime == NULL) {
+        return;
+    }
+    memset(server_runtime->signal_values, 0, sizeof(server_runtime->signal_values));
+    server_runtime->signal_value_count = 0U;
+}
+
+static int server_runtime_seed_signal_values(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic)
+{
+    if (server_runtime == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime is required to seed signal values.");
+        return 0;
+    }
+    server_runtime_reset_signal_values(server_runtime);
+    if (server_runtime->model_plan == NULL || server_runtime->model_plan->signals == NULL) {
+        return 1;
+    }
+    for (size_t index = 0U; index < server_runtime->model_plan->signal_count; index++) {
+        UnitLabMmsServerRuntimeSignalValue* runtime_value = NULL;
+        const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[index];
+        size_t encoded_length = 0U;
+
+        if (server_runtime->signal_value_count >= UNITLAB_MMS_SERVER_RUNTIME_MAX_SIGNAL_VALUES) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Runtime signal value store is too small for the model plan.");
+            return 0;
+        }
+        runtime_value = &server_runtime->signal_values[server_runtime->signal_value_count];
+        if (!server_runtime_encode_mms_data_value(signal, runtime_value->encoded_value, sizeof(runtime_value->encoded_value), &encoded_length, diagnostic)) {
+            if (diagnostic != NULL && diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED) {
+                return 0;
+            }
+            unitlab_mms_diagnostic_clear(diagnostic);
+            continue;
+        }
+        runtime_value->in_use = 1;
+        snprintf(runtime_value->object_reference, sizeof(runtime_value->object_reference), "%s", signal->object_reference);
+        snprintf(runtime_value->data_set_entry_variable, sizeof(runtime_value->data_set_entry_variable), "%s", signal->data_set_entry_variable);
+        runtime_value->encoded_value_length = encoded_length;
+        server_runtime->signal_value_count++;
+    }
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
+int unitlab_mms_server_runtime_update_signal_value(
+    UnitLabMmsServerRuntime* server_runtime,
+    const char* object_reference,
+    const uint8_t* value_bytes,
+    size_t value_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    const UnitLabIedModelSignal* signal = NULL;
+    UnitLabMmsServerRuntimeSignalValue* runtime_value = NULL;
+    uint8_t encoded_value[UNITLAB_MMS_SERVER_RUNTIME_SIGNAL_VALUE_LENGTH];
+    size_t encoded_value_length = 0U;
+    size_t member_index = 0U;
+    int report_member = 0;
+
+    if (server_runtime == NULL || object_reference == NULL || value_bytes == NULL || value_length == 0U) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Signal update requires runtime, object reference, and value bytes.");
+        return 0;
+    }
+    signal = server_runtime_find_signal_by_object_reference(server_runtime, object_reference);
+    if (signal == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Signal update object is not present in the model plan.");
+        return 0;
+    }
+    if (!server_runtime_encode_signal_write_value(signal, value_bytes, value_length, encoded_value, sizeof(encoded_value), &encoded_value_length, diagnostic)) {
+        return 0;
+    }
+    for (size_t index = 0U; index < server_runtime->signal_value_count; index++) {
+        UnitLabMmsServerRuntimeSignalValue* candidate = &server_runtime->signal_values[index];
+        if (candidate->in_use == 0) {
+            continue;
+        }
+        if (server_runtime_reference_matches_signal(object_reference, signal)
+            && ((signal->data_set_entry_variable[0] != '\0' && strcmp(candidate->data_set_entry_variable, signal->data_set_entry_variable) == 0)
+                || (signal->object_reference[0] != '\0' && strcmp(candidate->object_reference, signal->object_reference) == 0))) {
+            runtime_value = candidate;
+            break;
+        }
+    }
+    if (runtime_value == NULL) {
+        if (server_runtime->signal_value_count >= UNITLAB_MMS_SERVER_RUNTIME_MAX_SIGNAL_VALUES) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Runtime signal value store is full.");
+            return 0;
+        }
+        runtime_value = &server_runtime->signal_values[server_runtime->signal_value_count++];
+        memset(runtime_value, 0, sizeof(*runtime_value));
+        runtime_value->in_use = 1;
+        snprintf(runtime_value->object_reference, sizeof(runtime_value->object_reference), "%s", signal->object_reference);
+        snprintf(runtime_value->data_set_entry_variable, sizeof(runtime_value->data_set_entry_variable), "%s", signal->data_set_entry_variable);
+    }
+    memcpy(runtime_value->encoded_value, encoded_value, encoded_value_length);
+    runtime_value->encoded_value_length = encoded_value_length;
+
+    if (server_runtime->brcb_rpt_ena != 0U && server_runtime->model_plan != NULL && server_runtime->model_plan->report_count != 0U && server_runtime->model_plan->reports != NULL) {
+        const UnitLabIedModelReportControl* report = &server_runtime->model_plan->reports[0];
+        const UnitLabIedModelDataSet* data_set = NULL;
+        if (report->data_set_index < server_runtime->model_plan->data_set_count && server_runtime->model_plan->data_sets != NULL) {
+            data_set = &server_runtime->model_plan->data_sets[report->data_set_index];
+        }
+        if (data_set != NULL && server_runtime->model_plan->signals != NULL) {
+            for (size_t index = 0U; index < data_set->member_count; index++) {
+                size_t signal_index = data_set->first_signal_index + index;
+                if (signal_index >= server_runtime->model_plan->signal_count) {
+                    break;
+                }
+                if (server_runtime_reference_matches_signal(object_reference, &server_runtime->model_plan->signals[signal_index])) {
+                    member_index = index;
+                    report_member = 1;
+                    break;
+                }
+            }
+        }
+    }
+    if (report_member != 0) {
+        if (encoded_value_length > sizeof(server_runtime->pending_report_value)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Pending report value buffer is too small.");
+            return 0;
+        }
+        memcpy(server_runtime->pending_report_value, encoded_value, encoded_value_length);
+        server_runtime->pending_report_value_length = encoded_value_length;
+        server_runtime->pending_report_member_index = member_index;
+        server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE;
+        server_runtime->pending_gi_report = 1U;
+    }
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
+}
+
 int unitlab_mms_server_runtime_apply_model_plan(UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelPlan* plan)
 {
     if (server_runtime == NULL) {
@@ -630,6 +908,9 @@ int unitlab_mms_server_runtime_apply_model_plan(UnitLabMmsServerRuntime* server_
     server_runtime->last_outgoing_invoke_id = 0U;
     server_runtime->last_outgoing_service[0] = '\0';
     server_runtime->last_outgoing_summary[0] = '\0';
+    if (!server_runtime_seed_signal_values(server_runtime, NULL)) {
+        return 0;
+    }
     unitlab_mms_server_runtime_capture_snapshot(server_runtime);
     return 1;
 }
@@ -832,6 +1113,8 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     server_runtime->pending_report_member_index = 0U;
     memset(server_runtime->pending_report_value, 0, sizeof(server_runtime->pending_report_value));
     server_runtime->pending_report_value_length = 0U;
+    memset(server_runtime->signal_values, 0, sizeof(server_runtime->signal_values));
+    server_runtime->signal_value_count = 0U;
     unitlab_mms_transport_exchange_init(&server_runtime->transport);
     unitlab_mms_operation_result_init(&server_runtime->last_result);
     unitlab_mms_runtime_snapshot_init(&server_runtime->snapshot);

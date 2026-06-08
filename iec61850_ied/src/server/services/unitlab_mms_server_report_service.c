@@ -788,7 +788,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
             uint8_t value_bytes[512U];
             size_t value_length = 0U;
             const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[data_set->first_signal_index + index];
-            if (!server_runtime_encode_mms_data_value(signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+            if (!server_runtime_encode_current_signal_value(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
                 return 0;
             }
             if (report_values_length + value_length > sizeof(report_values)) {

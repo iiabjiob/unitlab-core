@@ -28,94 +28,6 @@ static int server_runtime_write_reference_matches_report_control_field(const cha
 
 
 
-static void server_runtime_normalize_reference_key(const char* reference, char* buffer, size_t buffer_length)
-{
-    size_t offset = 0U;
-
-    if (buffer == NULL || buffer_length == 0U) {
-        return;
-    }
-    buffer[0] = '\0';
-    if (reference == NULL) {
-        return;
-    }
-    for (size_t index = 0U; reference[index] != '\0' && offset + 1U < buffer_length; index++) {
-        char ch = reference[index];
-        if (ch == '/' || ch == '$') {
-            ch = '.';
-        }
-        buffer[offset++] = ch;
-    }
-    buffer[offset] = '\0';
-}
-
-static int server_runtime_reference_matches_signal(const char* object_reference, const UnitLabIedModelSignal* signal)
-{
-    char object_key[256U];
-    char signal_key[256U];
-
-    if (object_reference == NULL || signal == NULL) {
-        return 0;
-    }
-    server_runtime_normalize_reference_key(object_reference, object_key, sizeof(object_key));
-    if (signal->object_reference[0] != '\0') {
-        server_runtime_normalize_reference_key(signal->object_reference, signal_key, sizeof(signal_key));
-        if (strcmp(object_key, signal_key) == 0 || strstr(object_key, signal_key) != NULL) {
-            return 1;
-        }
-    }
-    if (signal->data_set_entry_variable[0] != '\0') {
-        server_runtime_normalize_reference_key(signal->data_set_entry_variable, signal_key, sizeof(signal_key));
-        if (strcmp(object_key, signal_key) == 0 || strstr(object_key, signal_key) != NULL) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-
-static int server_runtime_encode_written_signal_value(
-    const UnitLabIedModelSignal* signal,
-    const uint8_t* value_bytes,
-    size_t value_length,
-    uint8_t* buffer,
-    size_t buffer_length,
-    size_t* encoded_length,
-    UnitLabMmsDiagnostic* diagnostic)
-{
-    uint32_t tag_number = 0U;
-
-    if (encoded_length != NULL) {
-        *encoded_length = 0U;
-    }
-    if (signal == NULL || value_bytes == NULL || value_length == 0U || buffer == NULL || encoded_length == NULL) {
-        return 0;
-    }
-    switch (signal->initial_value_kind) {
-        case UNITLAB_IED_FIXTURE_VALUE_BOOLEAN:
-            tag_number = 3U;
-            break;
-        case UNITLAB_IED_FIXTURE_VALUE_INTEGER:
-            tag_number = 5U;
-            break;
-        case UNITLAB_IED_FIXTURE_VALUE_STRING:
-            tag_number = 10U;
-            break;
-        default:
-            return 0;
-    }
-    return server_runtime_encode_ber_element(
-        UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
-        0,
-        tag_number,
-        value_bytes,
-        value_length,
-        buffer,
-        buffer_length,
-        encoded_length,
-        diagnostic);
-}
-
 int unitlab_mms_server_runtime_queue_data_change_report_value(
     UnitLabMmsServerRuntime* server_runtime,
     const char* object_reference,
@@ -123,50 +35,22 @@ int unitlab_mms_server_runtime_queue_data_change_report_value(
     size_t value_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    const UnitLabIedModelReportControl* report;
-    const UnitLabIedModelDataSet* data_set;
-
     if (server_runtime == NULL || object_reference == NULL || value_bytes == NULL || value_length == 0U) {
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Data-change report queue requires runtime, object reference, and value bytes.");
         return 0;
     }
-    if (server_runtime->brcb_rpt_ena == 0U || server_runtime->model_plan == NULL || server_runtime->model_plan->report_count == 0U) {
-        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Data-change report queue requires enabled BRCB and model-backed report control.");
+    if (server_runtime->brcb_rpt_ena == 0U) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Data-change report queue requires enabled BRCB.");
         return 0;
     }
-    report = &server_runtime->model_plan->reports[0];
-    if (report->data_set_index >= server_runtime->model_plan->data_set_count || server_runtime->model_plan->data_sets == NULL || server_runtime->model_plan->signals == NULL) {
-        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Data-change report queue could not resolve the active report DataSet.");
+    if (!unitlab_mms_server_runtime_update_signal_value(server_runtime, object_reference, value_bytes, value_length, diagnostic)) {
         return 0;
     }
-    data_set = &server_runtime->model_plan->data_sets[report->data_set_index];
-    for (size_t index = 0U; index < data_set->member_count; index++) {
-        size_t signal_index = data_set->first_signal_index + index;
-        if (signal_index >= server_runtime->model_plan->signal_count) {
-            break;
-        }
-        if (server_runtime_reference_matches_signal(object_reference, &server_runtime->model_plan->signals[signal_index])) {
-            size_t encoded_value_length = 0U;
-            if (!server_runtime_encode_written_signal_value(
-                    &server_runtime->model_plan->signals[signal_index],
-                    value_bytes,
-                    value_length,
-                    server_runtime->pending_report_value,
-                    sizeof(server_runtime->pending_report_value),
-                    &encoded_value_length,
-                    diagnostic)) {
-                return 0;
-            }
-            server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE;
-            server_runtime->pending_gi_report = 1U;
-            server_runtime->pending_report_member_index = index;
-            server_runtime->pending_report_value_length = encoded_value_length;
-            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
-            return 1;
-        }
+    if (server_runtime->pending_report_kind != UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE || server_runtime->pending_report_value_length == 0U) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Data-change report queue object is not a member of the active report DataSet.");
+        return 0;
     }
-    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Data-change report queue object is not a member of the active report DataSet.");
-    return 0;
+    return 1;
 }
 
 static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsDiagnostic* diagnostic)
@@ -261,7 +145,7 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                 continue;
             }
 
-            (void)unitlab_mms_server_runtime_queue_data_change_report_value(server_runtime, object_reference, value_bytes, value_length, NULL);
+            (void)unitlab_mms_server_runtime_update_signal_value(server_runtime, object_reference, value_bytes, value_length, NULL);
         }
     }
 

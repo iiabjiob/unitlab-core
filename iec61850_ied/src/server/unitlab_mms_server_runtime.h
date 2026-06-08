@@ -22,12 +22,22 @@ typedef enum UnitLabMmsServerRuntimeState {
 } UnitLabMmsServerRuntimeState;
 
 #define UNITLAB_MMS_SERVER_RUNTIME_WIRE_SCRATCH_LENGTH 4096U
+#define UNITLAB_MMS_SERVER_RUNTIME_MAX_SIGNAL_VALUES 64U
+#define UNITLAB_MMS_SERVER_RUNTIME_SIGNAL_VALUE_LENGTH 128U
 
 typedef enum UnitLabMmsServerPendingReportKind {
     UNITLAB_MMS_SERVER_PENDING_REPORT_NONE = 0,
     UNITLAB_MMS_SERVER_PENDING_REPORT_GI = 1,
     UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE = 2
 } UnitLabMmsServerPendingReportKind;
+
+typedef struct UnitLabMmsServerRuntimeSignalValue {
+    int in_use;
+    char object_reference[192];
+    char data_set_entry_variable[256];
+    uint8_t encoded_value[UNITLAB_MMS_SERVER_RUNTIME_SIGNAL_VALUE_LENGTH];
+    size_t encoded_value_length;
+} UnitLabMmsServerRuntimeSignalValue;
 
 typedef struct UnitLabMmsServerRuntime {
     UnitLabMmsServerRuntimeState state;
@@ -56,6 +66,8 @@ typedef struct UnitLabMmsServerRuntime {
     size_t pending_report_member_index;
     uint8_t pending_report_value[128];
     size_t pending_report_value_length;
+    UnitLabMmsServerRuntimeSignalValue signal_values[UNITLAB_MMS_SERVER_RUNTIME_MAX_SIGNAL_VALUES];
+    size_t signal_value_count;
     UnitLabMmsTransportExchange transport;
     UnitLabMmsOperationResult last_result;
     UnitLabMmsRuntimeSnapshot snapshot;
@@ -81,6 +93,12 @@ int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRu
 int unitlab_mms_server_runtime_build_release_response_bytes(UnitLabMmsServerRuntime* server_runtime, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_server_runtime_has_pending_gi_report(const UnitLabMmsServerRuntime* server_runtime);
 int unitlab_mms_server_runtime_queue_data_change_report_value(
+    UnitLabMmsServerRuntime* server_runtime,
+    const char* object_reference,
+    const uint8_t* value_bytes,
+    size_t value_length,
+    UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_server_runtime_update_signal_value(
     UnitLabMmsServerRuntime* server_runtime,
     const char* object_reference,
     const uint8_t* value_bytes,

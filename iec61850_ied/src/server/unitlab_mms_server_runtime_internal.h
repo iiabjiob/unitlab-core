@@ -27,6 +27,9 @@ int server_runtime_encode_ber_element(UnitLabMmsBerTagClass tag_class, int const
 int server_runtime_encode_invoke_id_element(uint32_t invoke_id, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int server_runtime_parse_object_reference(const char* object_reference, char* domain_id, size_t domain_id_size, char* item_id, size_t item_id_size);
 const UnitLabIedModelSignal* server_runtime_find_signal_by_object_reference(const UnitLabMmsServerRuntime* server_runtime, const char* object_reference);
+int server_runtime_reference_matches_signal(const char* object_reference, const UnitLabIedModelSignal* signal);
+const UnitLabMmsServerRuntimeSignalValue* server_runtime_find_signal_value(const UnitLabMmsServerRuntime* server_runtime, const char* object_reference);
+int server_runtime_encode_current_signal_value(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelSignal* signal, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int server_runtime_parse_int32_value(const char* source, int32_t* value);
 int server_runtime_encode_signed_integer(int32_t value, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int server_runtime_encode_mms_data_value(const UnitLabIedModelSignal* signal, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
