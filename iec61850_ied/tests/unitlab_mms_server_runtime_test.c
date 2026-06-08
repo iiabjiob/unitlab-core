@@ -944,7 +944,6 @@ static void test_server_runtime_update_signal_value_changes_read_value(void)
     UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
     UnitLabIedModelPlan plan;
     uint8_t response_bytes[1024U];
-    uint8_t value_byte = 0x2AU;
     size_t response_length = 0U;
 
     assert(build_runtime_value_store_plan(&plan) == 1);
@@ -952,7 +951,7 @@ static void test_server_runtime_update_signal_value_changes_read_value(void)
     assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
     assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
     assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
-    assert(unitlab_mms_server_runtime_update_signal_value(&server_runtime, "IED1LD0/PGGIO1$ST$Ind1$stVal", &value_byte, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_update_signal_int32(&server_runtime, "IED1LD0/PGGIO1$ST$Ind1$stVal", 42, &diagnostic));
 
     assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 61U, 7U, 1000U, 100U, &diagnostic) == 1);
     snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "IED1LD0.PGGIO1.ST.Ind1.stVal");
@@ -2606,12 +2605,17 @@ static void test_server_runtime_build_fc_root_reads_match_lib_shape(void)
             .bind_address = "127.0.0.1",
             .port = 102,
         };
+        UnitLabIedModelPlan plan;
         uint8_t response_bytes[512U];
+        uint8_t pggio_value = 0x01U;
         size_t response_length = 0U;
 
+        assert(build_runtime_value_store_plan(&plan) == 1);
         unitlab_mms_server_runtime_init(&server_runtime);
+        assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
         assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
         assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+        assert(unitlab_mms_server_runtime_update_signal_value(&server_runtime, "IED1LD0/PGGIO1$ST$Ind1$stVal", &pggio_value, 1U, &diagnostic));
         assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, (uint32_t)(40U + index), 7U, 1000U, 100U, &diagnostic) == 1);
         snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", cases[index].object_reference);
         snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", cases[index].attribute_reference);
@@ -2621,6 +2625,8 @@ static void test_server_runtime_build_fc_root_reads_match_lib_shape(void)
         assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
         assert(response_length > 0U);
         assert(contains_bytes(response_bytes, response_length, cases[index].expected_bytes, cases[index].expected_length) == 1);
+
+        unitlab_free_ied_model_plan(&plan);
     }
 }
 

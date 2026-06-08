@@ -184,7 +184,7 @@ static int native_wire_emit_test_tick_if_due(
     }
     *tick_value = *tick_value == 0U ? 1U : 0U;
     unitlab_mms_diagnostic_clear(&diagnostic);
-    if (!unitlab_mms_server_runtime_update_signal_value(server_runtime, object_reference, tick_value, 1U, &diagnostic)) {
+    if (!unitlab_mms_server_runtime_update_signal_int32(server_runtime, object_reference, (int32_t)*tick_value, &diagnostic)) {
         set_result(result, "NATIVE_WIRE_SERVER_TEST_TICK_UPDATE_FAILED", diagnostic.message);
         return 0;
     }

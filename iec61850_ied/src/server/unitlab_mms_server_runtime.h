@@ -104,6 +104,11 @@ int unitlab_mms_server_runtime_update_signal_value(
     const uint8_t* value_bytes,
     size_t value_length,
     UnitLabMmsDiagnostic* diagnostic);
+int unitlab_mms_server_runtime_update_signal_int32(
+    UnitLabMmsServerRuntime* server_runtime,
+    const char* object_reference,
+    int32_t value,
+    UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRuntime* server_runtime, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);
 int unitlab_mms_server_runtime_apply_wire_pdu(UnitLabMmsServerRuntime* server_runtime, const UnitLabMmsPdu* wire_pdu, UnitLabMmsOperationResult* operation_result);
 void unitlab_mms_server_runtime_capture_snapshot(UnitLabMmsServerRuntime* server_runtime);

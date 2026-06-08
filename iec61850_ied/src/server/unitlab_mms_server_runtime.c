@@ -893,6 +893,21 @@ int unitlab_mms_server_runtime_update_signal_value(
     return 1;
 }
 
+int unitlab_mms_server_runtime_update_signal_int32(
+    UnitLabMmsServerRuntime* server_runtime,
+    const char* object_reference,
+    int32_t value,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t value_bytes[5U];
+    size_t value_length = 0U;
+
+    if (!server_runtime_encode_signed_integer(value, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+        return 0;
+    }
+    return unitlab_mms_server_runtime_update_signal_value(server_runtime, object_reference, value_bytes, value_length, diagnostic);
+}
+
 int unitlab_mms_server_runtime_apply_model_plan(UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelPlan* plan)
 {
     if (server_runtime == NULL) {

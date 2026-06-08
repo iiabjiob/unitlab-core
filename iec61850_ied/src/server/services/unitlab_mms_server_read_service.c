@@ -158,72 +158,6 @@ static void server_runtime_log_read_response_tree(
     fflush(stdout);
 }
 
-static int server_runtime_encode_nested_integer_structure_value(
-    int32_t value,
-    size_t nested_structure_count,
-    uint8_t* buffer,
-    size_t buffer_length,
-    size_t* encoded_length,
-    UnitLabMmsDiagnostic* diagnostic)
-{
-    uint8_t integer_storage[5U];
-    uint8_t current_storage[256U];
-    uint8_t next_storage[256U];
-    UnitLabMmsBerElement element;
-    size_t integer_length = 0U;
-    size_t current_length = 0U;
-
-    if (encoded_length != NULL) {
-        *encoded_length = 0U;
-    }
-    if (buffer == NULL || encoded_length == NULL || nested_structure_count == 0U) {
-        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Nested integer structure encoding requires output pointers and at least one structure.");
-        return 0;
-    }
-    if (!server_runtime_encode_signed_integer(value, integer_storage, sizeof(integer_storage), &integer_length, diagnostic)) {
-        return 0;
-    }
-
-    unitlab_mms_ber_element_init(&element);
-    element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
-    element.tag.constructed = 0;
-    element.tag.tag_number = 5U;
-    element.value_bytes = integer_storage;
-    element.value_length = integer_length;
-    if (!unitlab_mms_ber_write(&element, current_storage, sizeof(current_storage), &current_length, diagnostic)) {
-        return 0;
-    }
-
-    for (size_t index = 0U; index < nested_structure_count; index++) {
-        size_t next_length = 0U;
-
-        unitlab_mms_ber_element_init(&element);
-        element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
-        element.tag.constructed = 1;
-        element.tag.tag_number = 2U;
-        element.value_bytes = current_storage;
-        element.value_length = current_length;
-        if (!unitlab_mms_ber_write(&element, next_storage, sizeof(next_storage), &next_length, diagnostic)) {
-            return 0;
-        }
-        if (next_length > sizeof(current_storage)) {
-            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Nested integer structure buffer is too small.");
-            return 0;
-        }
-        memcpy(current_storage, next_storage, next_length);
-        current_length = next_length;
-    }
-
-    if (current_length > buffer_length) {
-        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Nested integer structure output buffer is too small.");
-        return 0;
-    }
-    memcpy(buffer, current_storage, current_length);
-    *encoded_length = current_length;
-    return 1;
-}
-
-
 static int server_runtime_encode_nested_data_structure_value(
     const uint8_t* value_bytes,
     size_t value_length,
@@ -281,26 +215,234 @@ static int server_runtime_encode_nested_data_structure_value(
     return 1;
 }
 
-static int server_runtime_encode_nested_signal_structure_value(
-    UnitLabMmsServerRuntime* server_runtime,
-    const char* object_reference,
-    size_t nested_structure_count,
+static size_t server_runtime_count_path_components(const char* path)
+{
+    size_t count = 0U;
+    int in_component = 0;
+
+    if (path == NULL || path[0] == '\0') {
+        return 0U;
+    }
+    for (size_t index = 0U; path[index] != '\0'; index++) {
+        if (path[index] == '.') {
+            in_component = 0;
+        } else if (in_component == 0) {
+            count++;
+            in_component = 1;
+        }
+    }
+    return count;
+}
+
+static int server_runtime_encode_attribute_structure_value(
+    const uint8_t* value_bytes,
+    size_t value_length,
+    const char* data_attribute_path,
     uint8_t* buffer,
     size_t buffer_length,
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    uint8_t value_bytes[128U];
-    size_t value_length = 0U;
-    const UnitLabIedModelSignal* signal = server_runtime_find_signal_by_object_reference(server_runtime, object_reference);
+    size_t component_count = server_runtime_count_path_components(data_attribute_path);
+    size_t wrapper_count = component_count > 1U ? component_count - 1U : 0U;
 
-    if (signal == NULL) {
+    if (wrapper_count == 0U) {
+        if (value_length > buffer_length) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Attribute value output buffer is too small.");
+            return 0;
+        }
+        memcpy(buffer, value_bytes, value_length);
+        *encoded_length = value_length;
+        return 1;
+    }
+    return server_runtime_encode_nested_data_structure_value(value_bytes, value_length, wrapper_count, buffer, buffer_length, encoded_length, diagnostic);
+}
+
+static int server_runtime_parse_fc_root_reference(const char* object_reference, char* logical_node_name, size_t logical_node_name_size, char* fc, size_t fc_size)
+{
+    char normalized[256U];
+    char components[16U][64U];
+    size_t component_count = 0U;
+    size_t offset = 0U;
+
+    if (object_reference == NULL || logical_node_name == NULL || fc == NULL || logical_node_name_size == 0U || fc_size == 0U) {
         return 0;
     }
-    if (!server_runtime_encode_current_signal_value(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+    logical_node_name[0] = '\0';
+    fc[0] = '\0';
+    for (size_t index = 0U; object_reference[index] != '\0' && offset + 1U < sizeof(normalized); index++) {
+        char ch = object_reference[index];
+        if (ch == '/' || ch == '$') {
+            ch = '.';
+        }
+        normalized[offset++] = ch;
+    }
+    normalized[offset] = '\0';
+
+    offset = 0U;
+    for (size_t index = 0U;; index++) {
+        char ch = normalized[index];
+        if (ch == '.' || ch == '\0') {
+            if (offset != 0U) {
+                if (component_count >= sizeof(components) / sizeof(components[0])) {
+                    return 0;
+                }
+                components[component_count][offset] = '\0';
+                component_count++;
+                offset = 0U;
+            }
+            if (ch == '\0') {
+                break;
+            }
+        } else if (offset + 1U < sizeof(components[0])) {
+            components[component_count][offset++] = ch;
+        } else {
+            return 0;
+        }
+    }
+    if (component_count < 2U) {
         return 0;
     }
-    return server_runtime_encode_nested_data_structure_value(value_bytes, value_length, nested_structure_count, buffer, buffer_length, encoded_length, diagnostic);
+    snprintf(logical_node_name, logical_node_name_size, "%s", components[component_count - 2U]);
+    snprintf(fc, fc_size, "%s", components[component_count - 1U]);
+    return logical_node_name[0] != '\0' && fc[0] != '\0';
+}
+
+static int server_runtime_signal_matches_fc_root(const UnitLabIedModelSignal* signal, const char* logical_node_name, const char* fc)
+{
+    if (signal == NULL || logical_node_name == NULL || fc == NULL) {
+        return 0;
+    }
+    return strcmp(signal->logical_node_name, logical_node_name) == 0 && strcmp(signal->fc, fc) == 0 && signal->data_object_name[0] != '\0';
+}
+
+static int server_runtime_append_signal_data_object_structure(
+    UnitLabMmsServerRuntime* server_runtime,
+    const UnitLabIedModelSignal* first_signal,
+    size_t first_signal_index,
+    size_t* consumed_count,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t object_content[512U];
+    uint8_t object_structure[640U];
+    size_t object_content_length = 0U;
+    size_t object_structure_length = 0U;
+    UnitLabMmsBerElement element;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (server_runtime == NULL || first_signal == NULL || consumed_count == NULL || buffer == NULL || encoded_length == NULL || server_runtime->model_plan == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "FC-root structure encoding requires runtime, signal, and output buffer.");
+        return 0;
+    }
+    *consumed_count = 0U;
+    for (size_t index = first_signal_index; index < server_runtime->model_plan->signal_count; index++) {
+        const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[index];
+        uint8_t value_bytes[128U];
+        uint8_t attribute_bytes[256U];
+        size_t value_length = 0U;
+        size_t attribute_length = 0U;
+
+        if (strcmp(signal->logical_node_name, first_signal->logical_node_name) != 0
+            || strcmp(signal->fc, first_signal->fc) != 0
+            || strcmp(signal->data_object_name, first_signal->data_object_name) != 0) {
+            break;
+        }
+        if (!server_runtime_encode_current_signal_value(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
+            return 0;
+        }
+        if (!server_runtime_encode_attribute_structure_value(value_bytes, value_length, signal->data_attribute_path, attribute_bytes, sizeof(attribute_bytes), &attribute_length, diagnostic)) {
+            return 0;
+        }
+        if (object_content_length + attribute_length > sizeof(object_content)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "FC-root data object content buffer is too small.");
+            return 0;
+        }
+        memcpy(&object_content[object_content_length], attribute_bytes, attribute_length);
+        object_content_length += attribute_length;
+        (*consumed_count)++;
+    }
+
+    unitlab_mms_ber_element_init(&element);
+    element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    element.tag.constructed = 1;
+    element.tag.tag_number = 2U;
+    element.value_bytes = object_content;
+    element.value_length = object_content_length;
+    if (!unitlab_mms_ber_write(&element, object_structure, sizeof(object_structure), &object_structure_length, diagnostic)) {
+        return 0;
+    }
+    if (object_structure_length > buffer_length) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "FC-root data object output buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, object_structure, object_structure_length);
+    *encoded_length = object_structure_length;
+    return 1;
+}
+
+static int server_runtime_encode_fc_root_structure_value(
+    UnitLabMmsServerRuntime* server_runtime,
+    const char* object_reference,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    char logical_node_name[128U];
+    char fc[32U];
+    uint8_t root_content[1024U];
+    size_t root_content_length = 0U;
+    UnitLabMmsBerElement element;
+    int found_signal = 0;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || server_runtime->model_plan->signals == NULL || buffer == NULL || encoded_length == NULL) {
+        return 0;
+    }
+    if (!server_runtime_parse_fc_root_reference(object_reference, logical_node_name, sizeof(logical_node_name), fc, sizeof(fc))) {
+        return 0;
+    }
+
+    for (size_t index = 0U; index < server_runtime->model_plan->signal_count;) {
+        const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[index];
+        uint8_t object_bytes[640U];
+        size_t object_length = 0U;
+        size_t consumed_count = 0U;
+
+        if (!server_runtime_signal_matches_fc_root(signal, logical_node_name, fc)) {
+            index++;
+            continue;
+        }
+        if (!server_runtime_append_signal_data_object_structure(server_runtime, signal, index, &consumed_count, object_bytes, sizeof(object_bytes), &object_length, diagnostic)) {
+            return 0;
+        }
+        if (root_content_length + object_length > sizeof(root_content)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "FC-root structure content buffer is too small.");
+            return 0;
+        }
+        memcpy(&root_content[root_content_length], object_bytes, object_length);
+        root_content_length += object_length;
+        found_signal = 1;
+        index += consumed_count != 0U ? consumed_count : 1U;
+    }
+    if (found_signal == 0) {
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&element);
+    element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    element.tag.constructed = 1;
+    element.tag.tag_number = 2U;
+    element.value_bytes = root_content;
+    element.value_length = root_content_length;
+    return unitlab_mms_ber_write(&element, buffer, buffer_length, encoded_length, diagnostic);
 }
 
 static int server_runtime_build_read_response_value(
@@ -339,29 +481,12 @@ static int server_runtime_build_read_response_value(
         rcb_data_set_reference,
         sizeof(rcb_data_set_reference));
 
-    if (server_runtime_object_reference_has_suffix(object_reference, ".PGGIO1.ST")) {
-        if (!server_runtime_encode_nested_signal_structure_value(server_runtime, "PGGIO1.ST.Ind1.stVal", 2U, buffer, buffer_length, encoded_length, diagnostic)
-            && !server_runtime_encode_nested_integer_structure_value(1, 2U, buffer, buffer_length, encoded_length, diagnostic)) {
-            return 0;
-        }
+    if (server_runtime_encode_fc_root_structure_value(server_runtime, object_reference, buffer, buffer_length, encoded_length, diagnostic)) {
         *value_supported = 1;
         return 1;
     }
-    if (server_runtime_object_reference_has_suffix(object_reference, ".GGIO1.MX")) {
-        if (!server_runtime_encode_nested_signal_structure_value(server_runtime, "GGIO1.MX.AnIn1.mag.f", 3U, buffer, buffer_length, encoded_length, diagnostic)
-            && !server_runtime_encode_nested_integer_structure_value(0, 3U, buffer, buffer_length, encoded_length, diagnostic)) {
-            return 0;
-        }
-        *value_supported = 1;
-        return 1;
-    }
-    if (server_runtime_object_reference_has_suffix(object_reference, ".XCBR1.ST")) {
-        if (!server_runtime_encode_nested_signal_structure_value(server_runtime, "XCBR1.ST.Pos.stVal", 2U, buffer, buffer_length, encoded_length, diagnostic)
-            && !server_runtime_encode_nested_integer_structure_value(0, 2U, buffer, buffer_length, encoded_length, diagnostic)) {
-            return 0;
-        }
-        *value_supported = 1;
-        return 1;
+    if (diagnostic != NULL && diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_OK && diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED) {
+        return 0;
     }
 
     signal = server_runtime_find_signal_by_object_reference(server_runtime, object_reference);
