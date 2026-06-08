@@ -975,6 +975,11 @@ static int server_runtime_report_quality_change_trigger_enabled(const UnitLabIed
     return (server_runtime_report_trigger_options_mask_or_default(report) & UNITLAB_IED_MODEL_TRG_OPT_QUALITY_CHANGED) != 0U;
 }
 
+static int server_runtime_report_data_update_trigger_enabled(const UnitLabIedModelReportControl* report)
+{
+    return (server_runtime_report_trigger_options_mask_or_default(report) & UNITLAB_IED_MODEL_TRG_OPT_DATA_UPDATE) != 0U;
+}
+
 static int server_runtime_reference_with_replaced_component_matches_signal(const char* object_reference, const char* component, const UnitLabIedModelSignal* signal)
 {
     char candidate_reference[256U];
@@ -1040,6 +1045,8 @@ int unitlab_mms_server_runtime_update_signal_value(
     size_t encoded_value_length = 0U;
     size_t member_index = 0U;
     int report_member = 0;
+    int value_changed = 1;
+    UnitLabMmsServerPendingReportKind queued_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_NONE;
 
     if (server_runtime == NULL || object_reference == NULL || value_bytes == NULL || value_length == 0U) {
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Signal update requires runtime, object reference, and value bytes.");
@@ -1065,6 +1072,10 @@ int unitlab_mms_server_runtime_update_signal_value(
             break;
         }
     }
+    if (runtime_value != NULL && runtime_value->encoded_value_length == encoded_value_length
+        && memcmp(runtime_value->encoded_value, encoded_value, encoded_value_length) == 0) {
+        value_changed = 0;
+    }
     if (runtime_value == NULL) {
         if (server_runtime->signal_value_count >= UNITLAB_MMS_SERVER_RUNTIME_MAX_SIGNAL_VALUES) {
             server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Runtime signal value store is full.");
@@ -1082,7 +1093,12 @@ int unitlab_mms_server_runtime_update_signal_value(
     if (server_runtime->brcb_rpt_ena != 0U && server_runtime->model_plan != NULL && server_runtime->model_plan->report_count != 0U && server_runtime->model_plan->reports != NULL) {
         const UnitLabIedModelReportControl* report = &server_runtime->model_plan->reports[0];
         const UnitLabIedModelDataSet* data_set = NULL;
-        if (server_runtime_report_data_change_trigger_enabled(report) && report->data_set_index < server_runtime->model_plan->data_set_count && server_runtime->model_plan->data_sets != NULL) {
+        if (value_changed && server_runtime_report_data_change_trigger_enabled(report)) {
+            queued_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE;
+        } else if (server_runtime_report_data_update_trigger_enabled(report)) {
+            queued_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_UPDATE;
+        }
+        if (queued_kind != UNITLAB_MMS_SERVER_PENDING_REPORT_NONE && report->data_set_index < server_runtime->model_plan->data_set_count && server_runtime->model_plan->data_sets != NULL) {
             data_set = &server_runtime->model_plan->data_sets[report->data_set_index];
         }
         if (data_set != NULL && server_runtime->model_plan->signals != NULL) {
@@ -1110,7 +1126,11 @@ int unitlab_mms_server_runtime_update_signal_value(
         if (member_index < 64U) {
             server_runtime->pending_report_member_mask |= ((uint64_t)1U << member_index);
         }
-        server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE;
+        if (queued_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE
+            || server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE
+            || server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_UPDATE) {
+            server_runtime->pending_report_kind = queued_kind;
+        }
         server_runtime->pending_gi_report = 1U;
     }
     server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
