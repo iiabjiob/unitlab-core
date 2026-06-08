@@ -59,6 +59,7 @@ add_library(unitlab::iec61850_mms ALIAS unitlab-iec61850-mms)
 
 add_library(unitlab-iec61850-scl-compiler STATIC
   third_party/pugixml/pugixml.cpp
+  src/scl_compiler/scl_dom.cpp
   src/scl_compiler/unitlab_scl_compiler.cpp
 )
 target_include_directories(unitlab-iec61850-scl-compiler PUBLIC src PRIVATE third_party/pugixml)
