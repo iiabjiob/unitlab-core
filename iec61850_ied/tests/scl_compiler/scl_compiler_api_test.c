@@ -115,9 +115,21 @@ static int test_compile_reports_invalid_dataset_member_and_missing_report_datase
     passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 0U, &diagnostic) == 1, "invalid member diagnostic should be readable");
     passed &= expect_string(diagnostic.severity, "error", "invalid member severity");
     passed &= expect_string(diagnostic.code, "SCL_DATASET_MEMBER_INVALID", "invalid member code");
+    passed &= expect_string(diagnostic.ied_name, "IED1", "invalid member IED context");
+    passed &= expect_string(diagnostic.access_point_name, "AP1", "invalid member AccessPoint context");
+    passed &= expect_string(diagnostic.logical_device_inst, "LD0", "invalid member LD context");
+    passed &= expect_string(diagnostic.logical_node_name, "LLN0", "invalid member LN context");
+    passed &= expect_string(diagnostic.data_set_name, "dsBroken", "invalid member DataSet context");
+    passed &= expect_string(diagnostic.member_reference, "LD0/XCBR1.Pos[ST]", "invalid member reference context");
     passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 1U, &diagnostic) == 1, "missing DataSet diagnostic should be readable");
     passed &= expect_string(diagnostic.severity, "error", "missing DataSet severity");
     passed &= expect_string(diagnostic.code, "SCL_REPORT_DATASET_MISSING", "missing DataSet code");
+    passed &= expect_string(diagnostic.ied_name, "IED1", "missing DataSet IED context");
+    passed &= expect_string(diagnostic.access_point_name, "AP1", "missing DataSet AccessPoint context");
+    passed &= expect_string(diagnostic.logical_device_inst, "LD0", "missing DataSet LD context");
+    passed &= expect_string(diagnostic.logical_node_name, "LLN0", "missing DataSet LN context");
+    passed &= expect_string(diagnostic.data_set_name, "missingDataSet", "missing DataSet context");
+    passed &= expect_string(diagnostic.report_control_name, "brcbBroken", "missing DataSet ReportControl context");
 
     const UnitLabIedModelPlan* plan = unitlab_scl_compile_model_plan(result);
     passed &= expect_true(plan != NULL, "partial model plan should be readable");
@@ -149,6 +161,7 @@ static int test_compile_reports_invalid_selected_ied(void)
     passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 0U, &diagnostic) == 1, "error diagnostic should be readable");
     passed &= expect_string(diagnostic.severity, "error", "missing IED severity");
     passed &= expect_string(diagnostic.code, "SCL_SELECTED_IED_MISSING", "missing IED code");
+    passed &= expect_string(diagnostic.ied_name, "MISSING", "missing IED context");
 
     unitlab_scl_compile_result_free(result);
     return passed;

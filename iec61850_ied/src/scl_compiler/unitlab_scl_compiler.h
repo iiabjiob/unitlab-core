@@ -15,6 +15,13 @@ typedef struct UnitLabSclCompileDiagnostic {
     char severity[16];
     char code[64];
     char message[256];
+    char ied_name[128];
+    char access_point_name[128];
+    char logical_device_inst[128];
+    char logical_node_name[128];
+    char data_set_name[128];
+    char report_control_name[128];
+    char member_reference[256];
 } UnitLabSclCompileDiagnostic;
 
 int unitlab_scl_compile_from_memory(

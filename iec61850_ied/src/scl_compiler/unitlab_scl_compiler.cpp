@@ -102,6 +102,29 @@ UnitLabSclCompileDiagnostic diagnostic(const char* severity, const char* code, c
     return item;
 }
 
+UnitLabSclCompileDiagnostic contextual_diagnostic(
+    const char* severity,
+    const char* code,
+    const char* message,
+    const char* ied_name,
+    const char* access_point_name,
+    const char* logical_device_inst,
+    const char* logical_node_name,
+    const char* data_set_name,
+    const char* report_control_name,
+    const char* member_reference)
+{
+    UnitLabSclCompileDiagnostic item = diagnostic(severity, code, message);
+    copy_string(item.ied_name, sizeof(item.ied_name), ied_name);
+    copy_string(item.access_point_name, sizeof(item.access_point_name), access_point_name);
+    copy_string(item.logical_device_inst, sizeof(item.logical_device_inst), logical_device_inst);
+    copy_string(item.logical_node_name, sizeof(item.logical_node_name), logical_node_name);
+    copy_string(item.data_set_name, sizeof(item.data_set_name), data_set_name);
+    copy_string(item.report_control_name, sizeof(item.report_control_name), report_control_name);
+    copy_string(item.member_reference, sizeof(item.member_reference), member_reference);
+    return item;
+}
+
 bool contains_scl_root(const std::string& xml)
 {
     return xml.find("<SCL") != std::string::npos || xml.find(":SCL") != std::string::npos;
@@ -664,10 +687,17 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied)
                     for (size_t member_index = 0U; member_index < data_set.members.size(); member_index++) {
                         const SclMember& member = data_set.members[member_index];
                         if (!is_valid_data_set_member(member)) {
-                            result.diagnostics.push_back(diagnostic(
+                            result.diagnostics.push_back(contextual_diagnostic(
                                 "error",
                                 "SCL_DATASET_MEMBER_INVALID",
-                                "DataSet member is missing required FCDA/FCD attributes."));
+                                "DataSet member is missing required FCDA/FCD attributes.",
+                                ied.name.c_str(),
+                                access_point.name.c_str(),
+                                device.inst.c_str(),
+                                node.name.c_str(),
+                                data_set.name.c_str(),
+                                "",
+                                signal_ref(member, device.inst).c_str()));
                             continue;
                         }
                         const std::string member_ld = member.ld_inst.empty() ? device.inst : member.ld_inst;
@@ -706,7 +736,17 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied)
                         return domain == data_set.logical_device_inst && node.name == data_set.logical_node_name && report.data_set == data_set.name;
                     });
                     if (data_set_it == result.data_sets.end()) {
-                        result.diagnostics.push_back(diagnostic("error", "SCL_REPORT_DATASET_MISSING", "ReportControl references a missing DataSet."));
+                        result.diagnostics.push_back(contextual_diagnostic(
+                            "error",
+                            "SCL_REPORT_DATASET_MISSING",
+                            "ReportControl references a missing DataSet.",
+                            ied.name.c_str(),
+                            access_point.name.c_str(),
+                            device.inst.c_str(),
+                            node.name.c_str(),
+                            report.data_set.c_str(),
+                            report.name.c_str(),
+                            ""));
                         continue;
                     }
                     const size_t data_set_index = static_cast<size_t>(data_set_it - result.data_sets.begin());
@@ -786,7 +826,7 @@ extern "C" int unitlab_scl_compile_from_memory(
     if (selected_ied_name != nullptr && selected_ied_name[0] != '\0') {
         const auto found = std::find_if(ieds.begin(), ieds.end(), [&](const SclIed& ied) { return ied.name == selected_ied_name; });
         if (found == ieds.end()) {
-            compiled->diagnostics.push_back(diagnostic("error", "SCL_SELECTED_IED_MISSING", "Selected IED was not found in the SCL file."));
+            compiled->diagnostics.push_back(contextual_diagnostic("error", "SCL_SELECTED_IED_MISSING", "Selected IED was not found in the SCL file.", selected_ied_name, "", "", "", "", "", ""));
             compiled->selected_ied_name = selected_ied_name;
             sync_plan(*compiled);
             *result = compiled;
@@ -801,7 +841,7 @@ extern "C" int unitlab_scl_compile_from_memory(
     compiled->selected_ied_name = selected->name;
     compile_ied(*compiled, *selected);
     if (compiled->plan.logical_device_count == 0U) {
-        compiled->diagnostics.push_back(diagnostic("error", "SCL_SERVER_MODEL_MISSING", "Selected IED does not contain a server logical-device model."));
+        compiled->diagnostics.push_back(contextual_diagnostic("error", "SCL_SERVER_MODEL_MISSING", "Selected IED does not contain a server logical-device model.", selected->name.c_str(), "", "", "", "", "", ""));
     }
 
     *result = compiled;
