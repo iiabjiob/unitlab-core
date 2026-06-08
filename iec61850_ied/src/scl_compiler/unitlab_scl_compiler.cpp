@@ -88,10 +88,21 @@ struct SclDaTypeTemplate {
     std::vector<SclDaTemplate> basic_data_attributes;
 };
 
+struct SclEnumTypeTemplate {
+    std::string id;
+    std::string first_value;
+};
+
+struct SclResolvedValueType {
+    std::string b_type;
+    std::string type;
+};
+
 struct SclDataTypeTemplates {
     std::vector<SclLNodeTypeTemplate> lnode_types;
     std::vector<SclDoTypeTemplate> do_types;
     std::vector<SclDaTypeTemplate> da_types;
+    std::vector<SclEnumTypeTemplate> enum_types;
 };
 
 struct SclLogicalDevice {
@@ -690,6 +701,20 @@ std::vector<SclDaTemplate> parse_da_type_bdas(const std::string& body)
     return data_attributes;
 }
 
+std::string parse_enum_type_first_value(const std::string& body)
+{
+    const size_t start = find_start_tag(body, "EnumVal", 0U);
+    if (start == std::string::npos) {
+        return {};
+    }
+    const std::string element = start_element_text(body, start);
+    std::string value = extract_attr(element, "ord");
+    if (value.empty()) {
+        value = extract_attr(element, "value");
+    }
+    return value;
+}
+
 SclDataTypeTemplates parse_data_type_templates(const std::string& source)
 {
     SclDataTypeTemplates templates;
@@ -760,6 +785,25 @@ SclDataTypeTemplates parse_data_type_templates(const std::string& source)
         pos = type_end;
     }
 
+    pos = 0U;
+    while (true) {
+        const size_t type_start = find_start_tag(body, "EnumType", pos);
+        if (type_start == std::string::npos) {
+            break;
+        }
+        const size_t type_end = find_matching_end(body, "EnumType", type_start);
+        if (type_end == std::string::npos) {
+            break;
+        }
+        SclEnumTypeTemplate type;
+        type.id = extract_attr(start_element_text(body, type_start), "id");
+        type.first_value = parse_enum_type_first_value(element_body(body, type_start, type_end));
+        if (!type.id.empty()) {
+            templates.enum_types.push_back(type);
+        }
+        pos = type_end;
+    }
+
     return templates;
 }
 
@@ -800,6 +844,14 @@ const SclDaTypeTemplate* find_da_type(const SclDataTypeTemplates& templates, con
     return found == templates.da_types.end() ? nullptr : &(*found);
 }
 
+const SclEnumTypeTemplate* find_enum_type(const SclDataTypeTemplates& templates, const std::string& id)
+{
+    const auto found = std::find_if(templates.enum_types.begin(), templates.enum_types.end(), [&](const SclEnumTypeTemplate& item) {
+        return item.id == id;
+    });
+    return found == templates.enum_types.end() ? nullptr : &(*found);
+}
+
 std::vector<std::string> split_path(const std::string& path)
 {
     std::vector<std::string> parts;
@@ -818,41 +870,41 @@ std::vector<std::string> split_path(const std::string& path)
     return parts;
 }
 
-std::string resolve_member_b_type(const SclDataTypeTemplates& templates, const SclLogicalDevice& device, const SclMember& member)
+SclResolvedValueType resolve_member_value_type(const SclDataTypeTemplates& templates, const SclLogicalDevice& device, const SclMember& member)
 {
     if (member.kind != "FCDA" || member.da_name.empty()) {
-        return {};
+        return SclResolvedValueType{};
     }
     const SclLogicalNode* node = find_logical_node(device, member, device.inst);
     if (node == nullptr || node->ln_type.empty()) {
-        return {};
+        return SclResolvedValueType{};
     }
     const SclLNodeTypeTemplate* lnode_type = find_lnode_type(templates, node->ln_type);
     if (lnode_type == nullptr) {
-        return {};
+        return SclResolvedValueType{};
     }
     const auto do_found = std::find_if(lnode_type->data_objects.begin(), lnode_type->data_objects.end(), [&](const SclDoTemplate& item) {
         return item.name == member.do_name;
     });
     if (do_found == lnode_type->data_objects.end() || do_found->type.empty()) {
-        return {};
+        return SclResolvedValueType{};
     }
     const SclDoTypeTemplate* do_type = find_do_type(templates, do_found->type);
     if (do_type == nullptr) {
-        return {};
+        return SclResolvedValueType{};
     }
     const std::vector<std::string> path = split_path(member.da_name);
     if (path.empty()) {
-        return {};
+        return SclResolvedValueType{};
     }
     const auto da_found = std::find_if(do_type->data_attributes.begin(), do_type->data_attributes.end(), [&](const SclDaTemplate& item) {
         return item.name == path.front();
     });
     if (da_found == do_type->data_attributes.end()) {
-        return {};
+        return SclResolvedValueType{};
     }
     if (path.size() == 1U || da_found->type.empty()) {
-        return da_found->b_type;
+        return SclResolvedValueType{ da_found->b_type, da_found->type };
     }
 
     const SclDaTypeTemplate* da_type = find_da_type(templates, da_found->type);
@@ -861,14 +913,14 @@ std::string resolve_member_b_type(const SclDataTypeTemplates& templates, const S
             return item.name == path[index];
         });
         if (bda_found == da_type->basic_data_attributes.end()) {
-            return {};
+            return SclResolvedValueType{};
         }
         if (index + 1U == path.size()) {
-            return bda_found->b_type;
+            return SclResolvedValueType{ bda_found->b_type, bda_found->type };
         }
         da_type = bda_found->type.empty() ? nullptr : find_da_type(templates, bda_found->type);
     }
-    return {};
+    return SclResolvedValueType{};
 }
 
 UnitLabIedFixtureValueKind value_kind_for_b_type(const std::string& b_type)
@@ -888,8 +940,14 @@ UnitLabIedFixtureValueKind value_kind_for_b_type(const std::string& b_type)
     return UNITLAB_IED_FIXTURE_VALUE_INTEGER;
 }
 
-const char* default_value_for_kind(UnitLabIedFixtureValueKind kind)
+std::string default_value_for_resolved_type(const SclDataTypeTemplates& templates, const SclResolvedValueType& resolved, UnitLabIedFixtureValueKind kind)
 {
+    if (resolved.b_type == "Enum" && !resolved.type.empty()) {
+        const SclEnumTypeTemplate* enum_type = find_enum_type(templates, resolved.type);
+        if (enum_type != nullptr && !enum_type->first_value.empty()) {
+            return enum_type->first_value;
+        }
+    }
     switch (kind) {
         case UNITLAB_IED_FIXTURE_VALUE_BOOLEAN:
             return "false";
@@ -1045,9 +1103,10 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied, const SclDa
                         signal.data_set_entry_component_known = !member.da_name.empty() ? 1 : 0;
                         copy_string(signal.data_set_entry_component, sizeof(signal.data_set_entry_component), member.da_name.c_str());
                         copy_string(signal.fc, sizeof(signal.fc), member.fc.c_str());
-                        const std::string b_type = resolve_member_b_type(templates, device, member);
-                        signal.initial_value_kind = value_kind_for_b_type(b_type);
-                        copy_string(signal.initial_value, sizeof(signal.initial_value), default_value_for_kind(signal.initial_value_kind));
+                        const SclResolvedValueType resolved_type = resolve_member_value_type(templates, device, member);
+                        signal.initial_value_kind = value_kind_for_b_type(resolved_type.b_type);
+                        const std::string default_value = default_value_for_resolved_type(templates, resolved_type, signal.initial_value_kind);
+                        copy_string(signal.initial_value, sizeof(signal.initial_value), default_value.c_str());
                         result.signals.push_back(signal);
                         valid_member_index++;
                     }

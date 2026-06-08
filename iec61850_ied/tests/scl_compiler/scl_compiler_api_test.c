@@ -30,6 +30,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "<scl:DataSet name=\"dsEvents\">"
         "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"stVal\" fc=\"ST\" />"
         "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"origin.orIdent\" fc=\"ST\" />"
+        "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"ctlModel\" fc=\"CF\" />"
         "<scl:FCD ldInst=\"LD0\" lnClass=\"PGGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />"
         "</scl:DataSet>"
         "<scl:ReportControl name=\"brcbEvents\" buffered=\"true\" rptID=\"events\" datSet=\"dsEvents\" confRev=\"7\" indexed=\"false\" bufTime=\"100\" intgPd=\"1000\">"
@@ -44,9 +45,10 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "<scl:DataTypeTemplates>"
         "<scl:LNodeType id=\"XCBR_TYPE\" lnClass=\"XCBR\"><scl:DO name=\"Pos\" type=\"DPC_POS\" /></scl:LNodeType>"
         "<scl:LNodeType id=\"PGGIO_TYPE\" lnClass=\"PGGIO\"><scl:DO name=\"Ind1\" type=\"INS_IND\" /></scl:LNodeType>"
-        "<scl:DOType id=\"DPC_POS\" cdc=\"DPC\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"BOOLEAN\" /><scl:DA name=\"origin\" fc=\"ST\" bType=\"Struct\" type=\"ORIGINATOR\" /></scl:DOType>"
+        "<scl:DOType id=\"DPC_POS\" cdc=\"DPC\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"BOOLEAN\" /><scl:DA name=\"origin\" fc=\"ST\" bType=\"Struct\" type=\"ORIGINATOR\" /><scl:DA name=\"ctlModel\" fc=\"CF\" bType=\"Enum\" type=\"CtlModelKind\" /></scl:DOType>"
         "<scl:DOType id=\"INS_IND\" cdc=\"INS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /></scl:DOType>"
         "<scl:DAType id=\"ORIGINATOR\"><scl:BDA name=\"orIdent\" bType=\"VisString64\" /></scl:DAType>"
+        "<scl:EnumType id=\"CtlModelKind\"><scl:EnumVal ord=\"1\" desc=\"direct-with-normal-security\" /></scl:EnumType>"
         "</scl:DataTypeTemplates>"
         "</scl:SCL>";
     UnitLabSclCompileResult* result = NULL;
@@ -67,7 +69,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_true(plan->logical_node_count == 3U, "three logical nodes");
         passed &= expect_true(plan->data_set_count == 1U, "one DataSet");
         passed &= expect_true(plan->report_count == 1U, "one ReportControl");
-        passed &= expect_true(plan->signal_count == 3U, "three DataSet members");
+        passed &= expect_true(plan->signal_count == 4U, "four DataSet members");
         passed &= expect_string(plan->logical_devices[0].inst, "IED1LD0", "MMS domain");
         passed &= expect_string(plan->data_sets[0].reference, "IED1/AP1/LD0/LLN0.dsEvents", "DataSet reference");
         passed &= expect_string(plan->data_sets[0].logical_device_inst, "IED1LD0", "DataSet domain");
@@ -96,10 +98,14 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_string(plan->signals[1].object_reference, "IED1LD0.XCBR1.Pos.origin.orIdent", "second signal nested object ref");
         passed &= expect_true(plan->signals[1].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_STRING, "second signal nested typed default kind");
         passed &= expect_string(plan->signals[1].initial_value, "", "second signal nested typed default value");
-        passed &= expect_string(plan->signals[2].reference, "LD0/PGGIO1.Ind1[ST]", "third signal ref");
-        passed &= expect_string(plan->signals[2].object_reference, "IED1LD0.PGGIO1.Ind1", "third signal object ref");
-        passed &= expect_true(plan->signals[2].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "third signal typed default kind");
-        passed &= expect_string(plan->signals[2].initial_value, "0", "third signal typed default value");
+        passed &= expect_string(plan->signals[2].reference, "LD0/XCBR1.Pos.ctlModel[CF]", "third signal enum ref");
+        passed &= expect_string(plan->signals[2].object_reference, "IED1LD0.XCBR1.Pos.ctlModel", "third signal enum object ref");
+        passed &= expect_true(plan->signals[2].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "third signal enum default kind");
+        passed &= expect_string(plan->signals[2].initial_value, "1", "third signal enum default value");
+        passed &= expect_string(plan->signals[3].reference, "LD0/PGGIO1.Ind1[ST]", "fourth signal ref");
+        passed &= expect_string(plan->signals[3].object_reference, "IED1LD0.PGGIO1.Ind1", "fourth signal object ref");
+        passed &= expect_true(plan->signals[3].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "fourth signal typed default kind");
+        passed &= expect_string(plan->signals[3].initial_value, "0", "fourth signal typed default value");
     }
 
     unitlab_scl_compile_result_free(result);
