@@ -1741,6 +1741,45 @@ static void test_server_runtime_report_option_fields_use_model_masks(void)
 }
 
 
+static void test_server_runtime_report_option_scalar_reads_use_model_masks(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    uint8_t response_bytes[1024U];
+    size_t response_length = 0U;
+
+    assert(build_data_change_report_plan(&plan) == 1);
+    plan.reports[0].optional_fields_mask = UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM
+        | UNITLAB_IED_MODEL_RPT_OPT_REASON_FOR_INCLUSION
+        | UNITLAB_IED_MODEL_RPT_OPT_BUFFER_OVERFLOW
+        | UNITLAB_IED_MODEL_RPT_OPT_CONF_REV;
+    plan.reports[0].trigger_options_mask = UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED
+        | UNITLAB_IED_MODEL_TRG_OPT_DATA_UPDATE
+        | UNITLAB_IED_MODEL_TRG_OPT_GI;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 50U, 7U, 1000U, 100U, &diagnostic) == 1);
+    server_runtime.pending_request.read_object_reference_count = 2U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "IED1LD0.LLN0.BR.brcbEvents.OptFlds");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "OptFlds");
+    snprintf(server_runtime.pending_request.read_object_references[1], sizeof(server_runtime.pending_request.read_object_references[1]), "%s", "IED1LD0.LLN0.BR.brcbEvents.TrgOps");
+    snprintf(server_runtime.pending_request.read_attribute_references[1], sizeof(server_runtime.pending_request.read_attribute_references[1]), "%s", "TrgOps");
+
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x03\x06\x25\x80", 5U) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x02\x54", 4U) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x03\x06\x7F\x80", 5U) == 0);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x02\x64", 4U) == 0);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
+
 static void test_server_runtime_information_report_omits_disabled_optional_fields(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -5306,6 +5345,7 @@ int main(void)
     test_server_runtime_dataset_write_queues_data_change_report();
     test_server_runtime_dataset_write_second_member_marks_second_inclusion_bit();
     test_server_runtime_report_option_fields_use_model_masks();
+    test_server_runtime_report_option_scalar_reads_use_model_masks();
     test_server_runtime_information_report_omits_disabled_optional_fields();
     test_server_runtime_data_change_reports_advance_sequence_and_entry_time();
     test_server_runtime_information_report_buffer_overflow_false_by_default();
