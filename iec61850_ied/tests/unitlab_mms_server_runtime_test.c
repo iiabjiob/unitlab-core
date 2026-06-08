@@ -1774,6 +1774,78 @@ static void test_server_runtime_data_change_reports_advance_sequence_and_entry_t
     unitlab_free_ied_model_plan(&plan);
 }
 
+static void test_server_runtime_information_report_buffer_overflow_false_by_default(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    uint8_t report_bytes[4096U];
+    size_t report_length = 0U;
+    UnitLabIedModelPlan plan;
+
+    assert(build_data_change_report_plan(&plan) == 1);
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+
+    assert(unitlab_mms_server_runtime_update_signal_int32(&server_runtime, "IED1LD0/PGGIO1$ST$Ind1$stVal", 1, &diagnostic));
+    assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
+
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x83\x01\x00", 3U) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x83\x01\x01", 3U) == 0);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
+static void test_server_runtime_information_report_buffer_overflow_reports_and_clears(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    uint8_t report_bytes[4096U];
+    size_t report_length = 0U;
+    UnitLabIedModelPlan plan;
+
+    assert(build_data_change_report_plan(&plan) == 1);
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+
+    assert(unitlab_mms_server_runtime_update_signal_int32(&server_runtime, "IED1LD0/PGGIO1$ST$Ind1$stVal", 1, &diagnostic));
+    server_runtime.brcb_buffer_overflow = 1U;
+    assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
+
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x83\x01\x01", 3U) == 1);
+    assert(server_runtime.brcb_buffer_overflow == 0U);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
+static void test_server_runtime_pending_report_queue_overflow_sets_bufovfl(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    uint8_t encoded_value[3U] = { 0x85U, 0x01U, 0x01U };
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    server_runtime.pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE;
+    server_runtime.pending_report_queue_count = UNITLAB_MMS_SERVER_RUNTIME_MAX_PENDING_REPORTS;
+
+    assert(server_runtime_queue_pending_report_event(&server_runtime, UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE, 1U, encoded_value, sizeof(encoded_value)) == 0);
+    assert(server_runtime.brcb_buffer_overflow == 1U);
+}
+
 static void test_server_runtime_dataset_write_without_rptena_does_not_queue_report(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -4848,6 +4920,9 @@ int main(void)
     test_server_runtime_report_option_fields_use_model_masks();
     test_server_runtime_information_report_omits_disabled_optional_fields();
     test_server_runtime_data_change_reports_advance_sequence_and_entry_time();
+    test_server_runtime_information_report_buffer_overflow_false_by_default();
+    test_server_runtime_information_report_buffer_overflow_reports_and_clears();
+    test_server_runtime_pending_report_queue_overflow_sets_bufovfl();
     test_server_runtime_dataset_write_without_rptena_does_not_queue_report();
     test_server_runtime_integrity_poll_queues_full_dataset_report();
     test_server_runtime_information_report_requires_model_dataset();

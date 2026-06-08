@@ -1015,6 +1015,7 @@ void server_runtime_clear_pending_reports(UnitLabMmsServerRuntime* server_runtim
     memset(server_runtime->pending_report_value_lengths, 0, sizeof(server_runtime->pending_report_value_lengths));
     memset(server_runtime->pending_report_queue, 0, sizeof(server_runtime->pending_report_queue));
     server_runtime->pending_report_queue_count = 0U;
+    server_runtime->brcb_buffer_overflow = 0U;
 }
 
 void server_runtime_advance_pending_report_queue(UnitLabMmsServerRuntime* server_runtime)
@@ -1090,6 +1091,7 @@ int server_runtime_queue_pending_report_event(UnitLabMmsServerRuntime* server_ru
         }
     }
     if (server_runtime->pending_report_queue_count >= UNITLAB_MMS_SERVER_RUNTIME_MAX_PENDING_REPORTS) {
+        server_runtime->brcb_buffer_overflow = 1U;
         return 0;
     }
     server_runtime->pending_report_queue[server_runtime->pending_report_queue_count] = (UnitLabMmsServerPendingReportEntry){
@@ -1599,6 +1601,7 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     server_runtime->brcb_entry_id_counter = 0U;
     memset(server_runtime->brcb_entry_id, 0, sizeof(server_runtime->brcb_entry_id));
     memset(server_runtime->brcb_time_of_entry, 0, sizeof(server_runtime->brcb_time_of_entry));
+    server_runtime->brcb_buffer_overflow = 0U;
     server_runtime_clear_pending_reports(server_runtime);
     memset(server_runtime->pending_report_value, 0, sizeof(server_runtime->pending_report_value));
     memset(server_runtime->signal_values, 0, sizeof(server_runtime->signal_values));

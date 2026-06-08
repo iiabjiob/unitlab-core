@@ -721,6 +721,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     uint8_t opt_flds[3U];
     uint8_t inclusion_bitstring[2U] = { 0x06U, 0xC0U };
     const uint8_t bool_true[1U] = { 0x01U };
+    const uint8_t bool_false[1U] = { 0x00U };
     const uint8_t reason_gi[2U] = { 0x02U, 0x04U };
     const uint8_t reason_data_change[2U] = { 0x02U, 0x80U };
     const uint8_t reason_quality_change[2U] = { 0x02U, 0x40U };
@@ -840,7 +841,8 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         }
     }
     if (server_runtime_report_optional_field_enabled(report, UNITLAB_IED_MODEL_RPT_OPT_BUFFER_OVERFLOW)) {
-        if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 3U, bool_true, sizeof(bool_true), report_values, sizeof(report_values), &report_values_length, diagnostic)) {
+        const uint8_t* overflow_value = server_runtime->brcb_buffer_overflow != 0U ? bool_true : bool_false;
+        if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 3U, overflow_value, 1U, report_values, sizeof(report_values), &report_values_length, diagnostic)) {
             return 0;
         }
     }
@@ -947,6 +949,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     if (!unitlab_mms_build_wire_frame_from_pdu(&report_pdu, scratch, sizeof(scratch), buffer, buffer_length, encoded_length, diagnostic)) {
         return 0;
     }
+    server_runtime->brcb_buffer_overflow = 0U;
     server_runtime_advance_pending_report_queue(server_runtime);
     if (server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING) {
         UnitLabMmsDiagnostic report_diagnostic;

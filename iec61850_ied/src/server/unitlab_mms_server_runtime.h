@@ -79,6 +79,7 @@ typedef struct UnitLabMmsServerRuntime {
     uint64_t brcb_entry_id_counter;
     uint8_t brcb_entry_id[8];
     uint8_t brcb_time_of_entry[6];
+    uint8_t brcb_buffer_overflow;
     uint8_t pending_gi_report;
     uint64_t next_integrity_report_ms;
     UnitLabMmsServerPendingReportKind pending_report_kind;
