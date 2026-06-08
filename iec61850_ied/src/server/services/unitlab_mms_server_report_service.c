@@ -64,6 +64,33 @@ static uint32_t server_runtime_report_integrity_period_ms(const UnitLabIedModelR
     return report != NULL && report->integrity_period_ms_known ? report->integrity_period_ms : 1000U;
 }
 
+static uint8_t server_runtime_report_optional_fields_mask(const UnitLabIedModelReportControl* report)
+{
+    return report != NULL ? report->optional_fields_mask : 0xFFU;
+}
+
+static uint8_t server_runtime_report_trigger_options_mask(const UnitLabIedModelReportControl* report)
+{
+    return report != NULL ? report->trigger_options_mask : (UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED | UNITLAB_IED_MODEL_TRG_OPT_QUALITY_CHANGED | UNITLAB_IED_MODEL_TRG_OPT_GI);
+}
+
+static void server_runtime_encode_report_optional_fields_bitstring(const UnitLabIedModelReportControl* report, uint8_t* buffer)
+{
+    uint8_t mask = server_runtime_report_optional_fields_mask(report);
+
+    buffer[0] = 0x06U;
+    buffer[1] = (uint8_t)(mask & 0x7FU);
+    buffer[2] = (uint8_t)((mask & UNITLAB_IED_MODEL_RPT_OPT_CONF_REV) != 0U ? 0x80U : 0x00U);
+}
+
+static void server_runtime_encode_report_trigger_options_bitstring(const UnitLabIedModelReportControl* report, uint8_t* buffer)
+{
+    uint8_t mask = server_runtime_report_trigger_options_mask(report);
+
+    buffer[0] = 0x02U;
+    buffer[1] = (uint8_t)((mask & 0x1FU) << 2U);
+}
+
 static void server_runtime_format_report_id_reference(
     const UnitLabMmsServerRuntime* server_runtime,
     const UnitLabIedModelReportControl* report,
@@ -143,6 +170,7 @@ void server_runtime_format_report_control_references(
     size_t data_set_reference_size)
 {
     const UnitLabIedModelReportControl* report = server_runtime_active_report_control(server_runtime);
+
     const UnitLabIedModelDataSet* data_set = server_runtime_report_data_set(server_runtime, report);
 
     server_runtime_format_report_id_reference(server_runtime, report, report_id_reference, report_id_reference_size);
@@ -305,8 +333,8 @@ static int server_runtime_encode_report_control_block_structure_field_value(
     uint8_t bool_value[1U] = { 0x00U };
     uint8_t unsigned_value[4U];
     size_t unsigned_value_length = 0U;
-    uint8_t opt_flds[3U] = { 0x06U, 0x7FU, 0x80U };
-    uint8_t trg_ops[2U] = { 0x02U, 0x64U };
+    uint8_t opt_flds[3U];
+    uint8_t trg_ops[2U];
     const UnitLabIedModelReportControl* report = server_runtime_active_report_control(server_runtime);
 
     if (encoded_length != NULL) {
@@ -318,6 +346,8 @@ static int server_runtime_encode_report_control_block_structure_field_value(
     }
 
     unitlab_mms_ber_element_init(&value_element);
+    server_runtime_encode_report_optional_fields_bitstring(report, opt_flds);
+    server_runtime_encode_report_trigger_options_bitstring(report, trg_ops);
 
     if (strcmp(field_name, "RptID") == 0) {
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
@@ -602,7 +632,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     size_t report_values_length = 0U;
     size_t service_content_length = 0U;
     size_t service_length = 0U;
-    const uint8_t opt_flds[3U] = { 0x06U, 0x7FU, 0x80U };
+    uint8_t opt_flds[3U];
     uint8_t inclusion_bitstring[2U] = { 0x06U, 0xC0U };
     const uint8_t bool_true[1U] = { 0x01U };
     const uint8_t st_zero[1U] = { 0x00U };
@@ -630,6 +660,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     domain_name = server_runtime_advertised_domain_name(server_runtime);
     report = server_runtime_active_report_control(server_runtime);
     data_set = server_runtime_report_data_set(server_runtime, report);
+    server_runtime_encode_report_optional_fields_bitstring(report, opt_flds);
     server_runtime_format_report_id_reference(server_runtime, report, report_id_reference, sizeof(report_id_reference));
     server_runtime_format_dataset_reference(server_runtime, report, data_set, dataset_reference, sizeof(dataset_reference));
     {
