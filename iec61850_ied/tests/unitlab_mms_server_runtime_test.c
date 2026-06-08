@@ -2259,6 +2259,84 @@ static void test_server_runtime_gi_requires_enabled_rptena(void)
     assert(server_runtime.report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_DISABLED);
 }
 
+static void test_server_runtime_disabled_rcb_accepts_option_and_trigger_writes(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    uint8_t scratch[512U];
+    uint8_t request_bytes[512U];
+    uint8_t response_bytes[1024U];
+    uint8_t value_byte = 0x01U;
+    const uint8_t opt_flds_value[] = { 0x06U, 0x01U, 0x00U };
+    const uint8_t trg_ops_value[] = { 0x02U, 0x40U };
+    UnitLabMmsBerElement data_element;
+    UnitLabIedModelPlan plan;
+    size_t request_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+
+    assert(build_data_change_report_plan(&plan) == 1);
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+
+    unitlab_mms_ber_element_init(&data_element);
+    data_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    data_element.tag.constructed = 0;
+    data_element.tag.tag_number = 4U;
+    data_element.value_bytes = opt_flds_value;
+    data_element.value_length = sizeof(opt_flds_value);
+    assert(unitlab_mms_build_write_request_frame("IED1LD0", "LLN0$BR$brcbEvents$OptFlds", &data_element, 51U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t[]){ 0x02U, 0x01U, 0x33U, 0xA5U, 0x02U, 0x81U, 0x00U }, 7U) == 1);
+    assert(server_runtime.brcb_optional_fields_mask_known == 1U);
+    assert(server_runtime.brcb_optional_fields_mask == UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    unitlab_mms_ber_element_init(&data_element);
+    data_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    data_element.tag.constructed = 0;
+    data_element.tag.tag_number = 4U;
+    data_element.value_bytes = trg_ops_value;
+    data_element.value_length = sizeof(trg_ops_value);
+    assert(unitlab_mms_build_write_request_frame("IED1LD0", "LLN0$BR$brcbEvents$TrgOps", &data_element, 52U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t[]){ 0x02U, 0x01U, 0x34U, 0xA5U, 0x02U, 0x81U, 0x00U }, 7U) == 1);
+    assert(server_runtime.brcb_trigger_options_mask_known == 1U);
+    assert(server_runtime.brcb_trigger_options_mask == UNITLAB_IED_MODEL_TRG_OPT_GI);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 53U, 7U, 1000U, 100U, &diagnostic) == 1);
+    server_runtime.pending_request.read_object_reference_count = 2U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "IED1LD0.LLN0.BR.brcbEvents.OptFlds");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "OptFlds");
+    snprintf(server_runtime.pending_request.read_object_references[1], sizeof(server_runtime.pending_request.read_object_references[1]), "%s", "IED1LD0.LLN0.BR.brcbEvents.TrgOps");
+    snprintf(server_runtime.pending_request.read_attribute_references[1], sizeof(server_runtime.pending_request.read_attribute_references[1]), "%s", "TrgOps");
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x03\x06\x01\x00", 5U) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x02\x40", 4U) == 1);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+    assert(unitlab_mms_server_runtime_update_signal_value(&server_runtime, "IED1LD0/PGGIO1$ST$Ind1$stVal", &value_byte, 1U, &diagnostic));
+    assert(server_runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
 static void test_server_runtime_enabled_rcb_rejects_static_config_write(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -5659,6 +5737,7 @@ int main(void)
     test_server_runtime_integrity_poll_queues_full_dataset_report();
     test_server_runtime_information_report_requires_model_dataset();
     test_server_runtime_gi_requires_enabled_rptena();
+    test_server_runtime_disabled_rcb_accepts_option_and_trigger_writes();
     test_server_runtime_enabled_rcb_rejects_static_config_write();
     test_server_runtime_enabled_rcb_rejects_static_field_matrix();
     test_server_runtime_enabled_rcb_rejects_identity_and_owner_writes();

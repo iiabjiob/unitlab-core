@@ -64,33 +64,39 @@ static uint32_t server_runtime_report_integrity_period_ms(const UnitLabIedModelR
     return report != NULL && report->integrity_period_ms_known ? report->integrity_period_ms : 1000U;
 }
 
-static uint8_t server_runtime_report_optional_fields_mask(const UnitLabIedModelReportControl* report)
+static uint8_t server_runtime_report_optional_fields_mask(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report)
 {
+    if (server_runtime != NULL && server_runtime->brcb_optional_fields_mask_known != 0U) {
+        return server_runtime->brcb_optional_fields_mask;
+    }
     return report != NULL ? report->optional_fields_mask : 0xFFU;
 }
 
-static uint8_t server_runtime_report_trigger_options_mask(const UnitLabIedModelReportControl* report)
+static uint8_t server_runtime_report_trigger_options_mask(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report)
 {
+    if (server_runtime != NULL && server_runtime->brcb_trigger_options_mask_known != 0U) {
+        return server_runtime->brcb_trigger_options_mask;
+    }
     return report != NULL ? report->trigger_options_mask : (UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED | UNITLAB_IED_MODEL_TRG_OPT_QUALITY_CHANGED | UNITLAB_IED_MODEL_TRG_OPT_GI);
 }
 
-static int server_runtime_report_optional_field_enabled(const UnitLabIedModelReportControl* report, uint8_t option)
+static int server_runtime_report_optional_field_enabled(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report, uint8_t option)
 {
-    return (server_runtime_report_optional_fields_mask(report) & option) != 0U;
+    return (server_runtime_report_optional_fields_mask(server_runtime, report) & option) != 0U;
 }
 
-static void server_runtime_encode_report_optional_fields_bitstring(const UnitLabIedModelReportControl* report, uint8_t* buffer)
+static void server_runtime_encode_report_optional_fields_bitstring(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report, uint8_t* buffer)
 {
-    uint8_t mask = server_runtime_report_optional_fields_mask(report);
+    uint8_t mask = server_runtime_report_optional_fields_mask(server_runtime, report);
 
     buffer[0] = 0x06U;
     buffer[1] = (uint8_t)(mask & 0x7FU);
     buffer[2] = (uint8_t)((mask & UNITLAB_IED_MODEL_RPT_OPT_CONF_REV) != 0U ? 0x80U : 0x00U);
 }
 
-static void server_runtime_encode_report_trigger_options_bitstring(const UnitLabIedModelReportControl* report, uint8_t* buffer)
+static void server_runtime_encode_report_trigger_options_bitstring(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report, uint8_t* buffer)
 {
-    uint8_t mask = server_runtime_report_trigger_options_mask(report);
+    uint8_t mask = server_runtime_report_trigger_options_mask(server_runtime, report);
 
     buffer[0] = 0x02U;
     buffer[1] = (uint8_t)((mask & 0x1FU) << 2U);
@@ -434,8 +440,8 @@ static int server_runtime_encode_report_control_block_structure_field_value(
     }
 
     unitlab_mms_ber_element_init(&value_element);
-    server_runtime_encode_report_optional_fields_bitstring(report, opt_flds);
-    server_runtime_encode_report_trigger_options_bitstring(report, trg_ops);
+    server_runtime_encode_report_optional_fields_bitstring(server_runtime, report, opt_flds);
+    server_runtime_encode_report_trigger_options_bitstring(server_runtime, report, trg_ops);
 
     if (strcmp(field_name, "RptID") == 0) {
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
@@ -746,7 +752,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
 
     report = server_runtime_active_report_control(server_runtime);
     data_set = server_runtime_report_data_set(server_runtime, report);
-    server_runtime_encode_report_optional_fields_bitstring(report, opt_flds);
+    server_runtime_encode_report_optional_fields_bitstring(server_runtime, report, opt_flds);
     server_runtime_format_report_id_reference(server_runtime, report, report_id_reference, sizeof(report_id_reference));
     server_runtime_format_dataset_reference(server_runtime, report, data_set, dataset_reference, sizeof(dataset_reference));
     if (data_set == NULL || server_runtime->model_plan == NULL || server_runtime->model_plan->signals == NULL) {
@@ -829,34 +835,34 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 4U, opt_flds, sizeof(opt_flds), report_values, sizeof(report_values), &report_values_length, diagnostic)) {
         return 0;
     }
-    if (server_runtime_report_optional_field_enabled(report, UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM)) {
+    if (server_runtime_report_optional_field_enabled(server_runtime, report, UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM)) {
         if (!server_runtime_encode_unsigned_value(report_sequence_number, unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)
             || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 6U, unsigned_value, unsigned_value_length, report_values, sizeof(report_values), &report_values_length, diagnostic)) {
             return 0;
         }
     }
-    if (server_runtime_report_optional_field_enabled(report, UNITLAB_IED_MODEL_RPT_OPT_TIME_STAMP)) {
+    if (server_runtime_report_optional_field_enabled(server_runtime, report, UNITLAB_IED_MODEL_RPT_OPT_TIME_STAMP)) {
         if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 12U, server_runtime->brcb_time_of_entry, sizeof(server_runtime->brcb_time_of_entry), report_values, sizeof(report_values), &report_values_length, diagnostic)) {
             return 0;
         }
     }
-    if (server_runtime_report_optional_field_enabled(report, UNITLAB_IED_MODEL_RPT_OPT_DATA_SET)) {
+    if (server_runtime_report_optional_field_enabled(server_runtime, report, UNITLAB_IED_MODEL_RPT_OPT_DATA_SET)) {
         if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 10U, (const uint8_t*)dataset_reference, strlen(dataset_reference), report_values, sizeof(report_values), &report_values_length, diagnostic)) {
             return 0;
         }
     }
-    if (server_runtime_report_optional_field_enabled(report, UNITLAB_IED_MODEL_RPT_OPT_BUFFER_OVERFLOW)) {
+    if (server_runtime_report_optional_field_enabled(server_runtime, report, UNITLAB_IED_MODEL_RPT_OPT_BUFFER_OVERFLOW)) {
         const uint8_t* overflow_value = server_runtime->brcb_buffer_overflow != 0U ? bool_true : bool_false;
         if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 3U, overflow_value, 1U, report_values, sizeof(report_values), &report_values_length, diagnostic)) {
             return 0;
         }
     }
-    if (server_runtime_report_optional_field_enabled(report, UNITLAB_IED_MODEL_RPT_OPT_ENTRY_ID)) {
+    if (server_runtime_report_optional_field_enabled(server_runtime, report, UNITLAB_IED_MODEL_RPT_OPT_ENTRY_ID)) {
         if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 9U, server_runtime->brcb_entry_id, sizeof(server_runtime->brcb_entry_id), report_values, sizeof(report_values), &report_values_length, diagnostic)) {
             return 0;
         }
     }
-    if (server_runtime_report_optional_field_enabled(report, UNITLAB_IED_MODEL_RPT_OPT_CONF_REV)) {
+    if (server_runtime_report_optional_field_enabled(server_runtime, report, UNITLAB_IED_MODEL_RPT_OPT_CONF_REV)) {
         if (!server_runtime_encode_unsigned_value(server_runtime_report_conf_rev(report), unsigned_value, sizeof(unsigned_value), &unsigned_value_length, diagnostic)
             || !server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 6U, unsigned_value, unsigned_value_length, report_values, sizeof(report_values), &report_values_length, diagnostic)) {
             return 0;
@@ -866,7 +872,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         return 0;
     }
 
-    if (server_runtime_report_optional_field_enabled(report, UNITLAB_IED_MODEL_RPT_OPT_DATA_REFERENCE)) {
+    if (server_runtime_report_optional_field_enabled(server_runtime, report, UNITLAB_IED_MODEL_RPT_OPT_DATA_REFERENCE)) {
         for (size_t included_index = 0U; included_index < included_member_count; included_index++) {
             size_t index = included_member_indices[included_index];
             const char* data_ref = NULL;
@@ -928,7 +934,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         report_values_length += value_length;
     }
 
-    if (server_runtime_report_optional_field_enabled(report, UNITLAB_IED_MODEL_RPT_OPT_REASON_FOR_INCLUSION)) {
+    if (server_runtime_report_optional_field_enabled(server_runtime, report, UNITLAB_IED_MODEL_RPT_OPT_REASON_FOR_INCLUSION)) {
         for (size_t index = 0U; index < included_member_count; index++) {
             if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 4U, reason_code, 2U, report_values, sizeof(report_values), &report_values_length, diagnostic)) {
                 return 0;

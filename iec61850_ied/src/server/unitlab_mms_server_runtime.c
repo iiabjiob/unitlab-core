@@ -968,8 +968,11 @@ static UnitLabMmsServerRuntimeSignalValue* server_runtime_find_signal_value_muta
     return NULL;
 }
 
-static uint8_t server_runtime_report_trigger_options_mask_or_default(const UnitLabIedModelReportControl* report)
+static uint8_t server_runtime_report_trigger_options_mask_or_default(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report)
 {
+    if (server_runtime != NULL && server_runtime->brcb_trigger_options_mask_known != 0U) {
+        return server_runtime->brcb_trigger_options_mask;
+    }
     if (report == NULL) {
         return 0U;
     }
@@ -979,24 +982,24 @@ static uint8_t server_runtime_report_trigger_options_mask_or_default(const UnitL
     return report->trigger_options_mask;
 }
 
-static int server_runtime_report_data_change_trigger_enabled(const UnitLabIedModelReportControl* report)
+static int server_runtime_report_data_change_trigger_enabled(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report)
 {
-    return (server_runtime_report_trigger_options_mask_or_default(report) & UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED) != 0U;
+    return (server_runtime_report_trigger_options_mask_or_default(server_runtime, report) & UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED) != 0U;
 }
 
-static int server_runtime_report_quality_change_trigger_enabled(const UnitLabIedModelReportControl* report)
+static int server_runtime_report_quality_change_trigger_enabled(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report)
 {
-    return (server_runtime_report_trigger_options_mask_or_default(report) & UNITLAB_IED_MODEL_TRG_OPT_QUALITY_CHANGED) != 0U;
+    return (server_runtime_report_trigger_options_mask_or_default(server_runtime, report) & UNITLAB_IED_MODEL_TRG_OPT_QUALITY_CHANGED) != 0U;
 }
 
-static int server_runtime_report_data_update_trigger_enabled(const UnitLabIedModelReportControl* report)
+static int server_runtime_report_data_update_trigger_enabled(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report)
 {
-    return (server_runtime_report_trigger_options_mask_or_default(report) & UNITLAB_IED_MODEL_TRG_OPT_DATA_UPDATE) != 0U;
+    return (server_runtime_report_trigger_options_mask_or_default(server_runtime, report) & UNITLAB_IED_MODEL_TRG_OPT_DATA_UPDATE) != 0U;
 }
 
-static int server_runtime_report_integrity_trigger_enabled(const UnitLabIedModelReportControl* report)
+static int server_runtime_report_integrity_trigger_enabled(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report)
 {
-    return (server_runtime_report_trigger_options_mask_or_default(report) & UNITLAB_IED_MODEL_TRG_OPT_INTEGRITY) != 0U;
+    return (server_runtime_report_trigger_options_mask_or_default(server_runtime, report) & UNITLAB_IED_MODEL_TRG_OPT_INTEGRITY) != 0U;
 }
 
 static uint32_t server_runtime_report_integrity_period_ms_or_default(const UnitLabIedModelReportControl* report)
@@ -1150,7 +1153,7 @@ static int server_runtime_queue_quality_change_report_member(UnitLabMmsServerRun
         return 0;
     }
     report = &server_runtime->model_plan->reports[0];
-    if (!server_runtime_report_quality_change_trigger_enabled(report)
+    if (!server_runtime_report_quality_change_trigger_enabled(server_runtime, report)
         || report->data_set_index >= server_runtime->model_plan->data_set_count
         || server_runtime->model_plan->data_sets == NULL
         || server_runtime->model_plan->signals == NULL) {
@@ -1192,7 +1195,7 @@ int server_runtime_poll_integrity_report(UnitLabMmsServerRuntime* server_runtime
     }
     report = &server_runtime->model_plan->reports[0];
     interval_ms = server_runtime_report_integrity_period_ms_or_default(report);
-    if (!server_runtime_report_integrity_trigger_enabled(report) || interval_ms == 0U) {
+    if (!server_runtime_report_integrity_trigger_enabled(server_runtime, report) || interval_ms == 0U) {
         server_runtime->next_integrity_report_ms = 0U;
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
         return 1;
@@ -1277,9 +1280,9 @@ int unitlab_mms_server_runtime_update_signal_value(
     if (server_runtime->brcb_rpt_ena != 0U && server_runtime->model_plan != NULL && server_runtime->model_plan->report_count != 0U && server_runtime->model_plan->reports != NULL) {
         const UnitLabIedModelReportControl* report = &server_runtime->model_plan->reports[0];
         const UnitLabIedModelDataSet* data_set = NULL;
-        if (value_changed && server_runtime_report_data_change_trigger_enabled(report)) {
+        if (value_changed && server_runtime_report_data_change_trigger_enabled(server_runtime, report)) {
             queued_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE;
-        } else if (server_runtime_report_data_update_trigger_enabled(report)) {
+        } else if (server_runtime_report_data_update_trigger_enabled(server_runtime, report)) {
             queued_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_UPDATE;
         }
         if (queued_kind != UNITLAB_MMS_SERVER_PENDING_REPORT_NONE && report->data_set_index < server_runtime->model_plan->data_set_count && server_runtime->model_plan->data_sets != NULL) {
@@ -1631,6 +1634,10 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     server_runtime->brcb_rpt_ena = 0U;
     server_runtime->brcb_resv_tms = 0U;
     server_runtime->brcb_owner[0] = 0;
+    server_runtime->brcb_optional_fields_mask_known = 0U;
+    server_runtime->brcb_optional_fields_mask = 0U;
+    server_runtime->brcb_trigger_options_mask_known = 0U;
+    server_runtime->brcb_trigger_options_mask = 0U;
     server_runtime->brcb_sq_num = 0U;
     server_runtime->brcb_entry_id_counter = 0U;
     memset(server_runtime->brcb_entry_id, 0, sizeof(server_runtime->brcb_entry_id));

@@ -18,6 +18,24 @@ static uint32_t server_runtime_decode_write_unsigned_bytes(const uint8_t* value_
     return value;
 }
 
+static int server_runtime_decode_optional_fields_mask(const uint8_t* value_bytes, size_t value_length, uint8_t* mask)
+{
+    if (value_bytes == NULL || mask == NULL || value_length != 3U || value_bytes[0] != 0x06U) {
+        return 0;
+    }
+    *mask = (uint8_t)((value_bytes[1] & 0x7FU) | ((value_bytes[2] & 0x80U) != 0U ? UNITLAB_IED_MODEL_RPT_OPT_CONF_REV : 0U));
+    return 1;
+}
+
+static int server_runtime_decode_trigger_options_mask(const uint8_t* value_bytes, size_t value_length, uint8_t* mask)
+{
+    if (value_bytes == NULL || mask == NULL || value_length != 2U || value_bytes[0] != 0x02U) {
+        return 0;
+    }
+    *mask = (uint8_t)((value_bytes[1] >> 2U) & 0x1FU);
+    return 1;
+}
+
 
 #define UNITLAB_MMS_WRITE_DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED 0x09U
 
@@ -252,6 +270,27 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                         memset(server_runtime->brcb_time_of_entry, 0, sizeof(server_runtime->brcb_time_of_entry));
                         server_runtime_clear_pending_reports(server_runtime);
                     }
+                    continue;
+                }
+                if (strcmp(rcb_field_name, "OptFlds") == 0) {
+                    uint8_t mask = 0U;
+                    if (server_runtime->brcb_rpt_ena != 0U || !server_runtime_decode_optional_fields_mask(value_bytes, value_length, &mask)) {
+                        server_runtime_mark_write_failure(server_runtime, index, UNITLAB_MMS_WRITE_DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED);
+                        continue;
+                    }
+                    server_runtime->brcb_optional_fields_mask_known = 1U;
+                    server_runtime->brcb_optional_fields_mask = mask;
+                    continue;
+                }
+                if (strcmp(rcb_field_name, "TrgOps") == 0) {
+                    uint8_t mask = 0U;
+                    if (server_runtime->brcb_rpt_ena != 0U || !server_runtime_decode_trigger_options_mask(value_bytes, value_length, &mask)) {
+                        server_runtime_mark_write_failure(server_runtime, index, UNITLAB_MMS_WRITE_DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED);
+                        continue;
+                    }
+                    server_runtime->brcb_trigger_options_mask_known = 1U;
+                    server_runtime->brcb_trigger_options_mask = mask;
+                    server_runtime_clear_pending_reports(server_runtime);
                     continue;
                 }
                 if (server_runtime_write_field_is_static_same_value_allowed(rcb_field_name)

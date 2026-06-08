@@ -82,6 +82,10 @@ typedef struct UnitLabMmsServerRuntime {
     uint8_t brcb_rpt_ena;
     uint32_t brcb_resv_tms;
     char brcb_owner[64];
+    uint8_t brcb_optional_fields_mask_known;
+    uint8_t brcb_optional_fields_mask;
+    uint8_t brcb_trigger_options_mask_known;
+    uint8_t brcb_trigger_options_mask;
     uint32_t brcb_sq_num;
     uint64_t brcb_entry_id_counter;
     uint8_t brcb_entry_id[8];
