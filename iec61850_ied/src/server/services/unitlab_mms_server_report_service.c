@@ -955,7 +955,9 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     server_runtime->brcb_buffer_overflow = 0U;
     server_runtime->reports_sent++;
     printf(
-        "native-wire-server: report-sent sqNum=%u kind=%u included-members=%zu queue-depth=%zu queued=%llu coalesced=%llu dropped=%llu sent=%llu\n",
+        "native-wire-server: report-sent rptId=%s datSet=%s sqNum=%u kind=%u included-members=%zu queue-depth=%zu queued=%llu coalesced=%llu dropped=%llu sent=%llu\n",
+        report_id_reference[0] != '\0' ? report_id_reference : "<none>",
+        dataset_reference[0] != '\0' ? dataset_reference : "<none>",
         (unsigned)report_sequence_number,
         (unsigned)server_runtime->pending_report_kind,
         included_member_count,
