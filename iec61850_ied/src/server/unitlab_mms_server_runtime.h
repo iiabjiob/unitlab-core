@@ -25,6 +25,7 @@ typedef enum UnitLabMmsServerRuntimeState {
 #define UNITLAB_MMS_SERVER_RUNTIME_MAX_SIGNAL_VALUES 64U
 #define UNITLAB_MMS_SERVER_RUNTIME_SIGNAL_VALUE_LENGTH 128U
 #define UNITLAB_MMS_SERVER_RUNTIME_MAX_PENDING_REPORTS 8U
+#define UNITLAB_MMS_SERVER_RUNTIME_MAX_REPORT_MEMBERS 16U
 
 typedef enum UnitLabMmsServerPendingReportKind {
     UNITLAB_MMS_SERVER_PENDING_REPORT_NONE = 0,
@@ -39,6 +40,8 @@ typedef struct UnitLabMmsServerPendingReportEntry {
     UnitLabMmsServerPendingReportKind kind;
     size_t member_index;
     uint64_t member_mask;
+    uint8_t values[UNITLAB_MMS_SERVER_RUNTIME_MAX_REPORT_MEMBERS][UNITLAB_MMS_SERVER_RUNTIME_SIGNAL_VALUE_LENGTH];
+    size_t value_lengths[UNITLAB_MMS_SERVER_RUNTIME_MAX_REPORT_MEMBERS];
 }
 UnitLabMmsServerPendingReportEntry;
 
@@ -83,6 +86,8 @@ typedef struct UnitLabMmsServerRuntime {
     uint64_t pending_report_member_mask;
     uint8_t pending_report_value[128];
     size_t pending_report_value_length;
+    uint8_t pending_report_values[UNITLAB_MMS_SERVER_RUNTIME_MAX_REPORT_MEMBERS][UNITLAB_MMS_SERVER_RUNTIME_SIGNAL_VALUE_LENGTH];
+    size_t pending_report_value_lengths[UNITLAB_MMS_SERVER_RUNTIME_MAX_REPORT_MEMBERS];
     UnitLabMmsServerPendingReportEntry pending_report_queue[UNITLAB_MMS_SERVER_RUNTIME_MAX_PENDING_REPORTS];
     size_t pending_report_queue_count;
     UnitLabMmsServerRuntimeSignalValue signal_values[UNITLAB_MMS_SERVER_RUNTIME_MAX_SIGNAL_VALUES];

@@ -893,7 +893,18 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
             return 0;
         }
         signal = &server_runtime->model_plan->signals[data_set->first_signal_index + index];
-        if (strcmp(signal->data_attribute_path, "q") == 0) {
+        if (index < UNITLAB_MMS_SERVER_RUNTIME_MAX_REPORT_MEMBERS
+            && server_runtime->pending_report_value_lengths[index] != 0U
+            && (server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE
+                || server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_UPDATE
+                || server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE)) {
+            if (server_runtime->pending_report_value_lengths[index] > sizeof(value_bytes)) {
+                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Pending report snapshot value is too large.");
+                return 0;
+            }
+            memcpy(value_bytes, server_runtime->pending_report_values[index], server_runtime->pending_report_value_lengths[index]);
+            value_length = server_runtime->pending_report_value_lengths[index];
+        } else if (strcmp(signal->data_attribute_path, "q") == 0) {
             if (!server_runtime_encode_current_signal_quality(server_runtime, signal, value_bytes, sizeof(value_bytes), &value_length, diagnostic)) {
                 return 0;
             }

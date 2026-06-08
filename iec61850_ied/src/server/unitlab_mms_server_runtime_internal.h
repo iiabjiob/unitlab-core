@@ -42,7 +42,7 @@ int server_runtime_object_reference_matches_report_control_object(const char* ob
 const char* server_runtime_advertised_domain_name(const UnitLabMmsServerRuntime* server_runtime);
 void server_runtime_clear_pending_reports(UnitLabMmsServerRuntime* server_runtime);
 void server_runtime_advance_pending_report_queue(UnitLabMmsServerRuntime* server_runtime);
-int server_runtime_queue_pending_report_event(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsServerPendingReportKind kind, size_t member_index);
+int server_runtime_queue_pending_report_event(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsServerPendingReportKind kind, size_t member_index, const uint8_t* value, size_t value_length);
 int server_runtime_poll_integrity_report(UnitLabMmsServerRuntime* server_runtime, uint64_t now_ms, UnitLabMmsDiagnostic* diagnostic);
 
 /* Browse service handles discovery, GVA, and named variable list attributes. */
