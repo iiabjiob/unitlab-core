@@ -1,12 +1,15 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(unitlab_iec61850_ied_sim C)
+project(unitlab_iec61850_ied_sim C CXX)
 
 find_package(Threads REQUIRED)
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850 "Link libIEC61850 for the internal IEC 61850 IED simulator" OFF)
 
@@ -54,6 +57,13 @@ target_include_directories(unitlab-iec61850-mms PUBLIC src)
 unitlab_iec61850_sim_warnings(unitlab-iec61850-mms)
 add_library(unitlab::iec61850_mms ALIAS unitlab-iec61850-mms)
 
+add_library(unitlab-iec61850-scl-compiler STATIC
+  src/scl_compiler/unitlab_scl_compiler.cpp
+)
+target_include_directories(unitlab-iec61850-scl-compiler PUBLIC src)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-scl-compiler)
+add_library(unitlab::iec61850_scl_compiler ALIAS unitlab-iec61850-scl-compiler)
+
 add_executable(unitlab-iec61850-ied-sim
   src/app/client_probe.c
   src/fixture/fixture_parser.c
@@ -80,6 +90,17 @@ if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)
 endif()
 
 enable_testing()
+
+add_executable(unitlab-iec61850-scl-compiler-api-test
+  tests/scl_compiler/scl_compiler_api_test.c
+)
+target_link_libraries(unitlab-iec61850-scl-compiler-api-test PRIVATE unitlab-iec61850-scl-compiler)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-scl-compiler-api-test)
+
+add_test(
+  NAME unitlab-iec61850-scl-compiler-api
+  COMMAND unitlab-iec61850-scl-compiler-api-test
+)
 
 add_executable(unitlab-iec61850-ied-fixture-parser-test
   src/fixture/fixture_parser.c
