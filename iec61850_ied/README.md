@@ -131,6 +131,8 @@ ctest --test-dir /tmp/unitlab-iec61850-ied-build --output-on-failure
 
 Do not ship a libIEC61850-linked binary as part of closed UnitLab runtime without a separate licensing decision.
 
+Vendored native build dependency: `third_party/pugixml` is MIT-licensed and used by the SCL compiler only. See `third_party/README.md`.
+
 ## Dry Run
 
 ```bash
