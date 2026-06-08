@@ -954,6 +954,20 @@ static UnitLabMmsServerRuntimeSignalValue* server_runtime_find_signal_value_muta
     return NULL;
 }
 
+static int server_runtime_report_data_change_trigger_enabled(const UnitLabIedModelReportControl* report)
+{
+    uint8_t trigger_options_mask = 0U;
+
+    if (report == NULL) {
+        return 0;
+    }
+    trigger_options_mask = report->trigger_options_mask;
+    if (trigger_options_mask == 0U) {
+        trigger_options_mask = UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED | UNITLAB_IED_MODEL_TRG_OPT_GI;
+    }
+    return (trigger_options_mask & UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED) != 0U;
+}
+
 int unitlab_mms_server_runtime_update_signal_value(
     UnitLabMmsServerRuntime* server_runtime,
     const char* object_reference,
@@ -1009,7 +1023,7 @@ int unitlab_mms_server_runtime_update_signal_value(
     if (server_runtime->brcb_rpt_ena != 0U && server_runtime->model_plan != NULL && server_runtime->model_plan->report_count != 0U && server_runtime->model_plan->reports != NULL) {
         const UnitLabIedModelReportControl* report = &server_runtime->model_plan->reports[0];
         const UnitLabIedModelDataSet* data_set = NULL;
-        if (report->data_set_index < server_runtime->model_plan->data_set_count && server_runtime->model_plan->data_sets != NULL) {
+        if (server_runtime_report_data_change_trigger_enabled(report) && report->data_set_index < server_runtime->model_plan->data_set_count && server_runtime->model_plan->data_sets != NULL) {
             data_set = &server_runtime->model_plan->data_sets[report->data_set_index];
         }
         if (data_set != NULL && server_runtime->model_plan->signals != NULL) {
