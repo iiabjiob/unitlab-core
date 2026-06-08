@@ -40,6 +40,12 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "<scl:LN lnClass=\"PGGIO\" inst=\"1\" lnType=\"PGGIO_TYPE\" />"
         "</scl:LDevice></scl:Server></scl:AccessPoint></scl:IED>"
         "<scl:IED name=\"IED2\"><scl:AccessPoint name=\"AP1\" /></scl:IED>"
+        "<scl:DataTypeTemplates>"
+        "<scl:LNodeType id=\"XCBR_TYPE\" lnClass=\"XCBR\"><scl:DO name=\"Pos\" type=\"DPC_POS\" /></scl:LNodeType>"
+        "<scl:LNodeType id=\"PGGIO_TYPE\" lnClass=\"PGGIO\"><scl:DO name=\"Ind1\" type=\"INS_IND\" /></scl:LNodeType>"
+        "<scl:DOType id=\"DPC_POS\" cdc=\"DPC\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"BOOLEAN\" /></scl:DOType>"
+        "<scl:DOType id=\"INS_IND\" cdc=\"INS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /></scl:DOType>"
+        "</scl:DataTypeTemplates>"
         "</scl:SCL>";
     UnitLabSclCompileResult* result = NULL;
     char error[128];
@@ -82,8 +88,12 @@ static int test_compile_builds_model_plan_through_c_api(void)
             "ReportControl OptFlds mask");
         passed &= expect_string(plan->signals[0].reference, "LD0/XCBR1.Pos.stVal[ST]", "first signal ref");
         passed &= expect_string(plan->signals[0].object_reference, "IED1LD0.XCBR1.Pos.stVal", "first signal object ref");
+        passed &= expect_true(plan->signals[0].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_BOOLEAN, "first signal typed default kind");
+        passed &= expect_string(plan->signals[0].initial_value, "false", "first signal typed default value");
         passed &= expect_string(plan->signals[1].reference, "LD0/PGGIO1.Ind1[ST]", "second signal ref");
         passed &= expect_string(plan->signals[1].object_reference, "IED1LD0.PGGIO1.Ind1", "second signal object ref");
+        passed &= expect_true(plan->signals[1].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "second signal typed default kind");
+        passed &= expect_string(plan->signals[1].initial_value, "0", "second signal typed default value");
     }
 
     unitlab_scl_compile_result_free(result);

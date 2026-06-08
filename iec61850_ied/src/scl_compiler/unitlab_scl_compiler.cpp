@@ -57,8 +57,34 @@ struct SclReport {
 
 struct SclLogicalNode {
     std::string name;
+    std::string ln_type;
     std::vector<SclDataSet> data_sets;
     std::vector<SclReport> reports;
+};
+
+struct SclDoTemplate {
+    std::string name;
+    std::string type;
+};
+
+struct SclDaTemplate {
+    std::string name;
+    std::string b_type;
+};
+
+struct SclLNodeTypeTemplate {
+    std::string id;
+    std::vector<SclDoTemplate> data_objects;
+};
+
+struct SclDoTypeTemplate {
+    std::string id;
+    std::vector<SclDaTemplate> data_attributes;
+};
+
+struct SclDataTypeTemplates {
+    std::vector<SclLNodeTypeTemplate> lnode_types;
+    std::vector<SclDoTypeTemplate> do_types;
 };
 
 struct SclLogicalDevice {
@@ -479,6 +505,7 @@ std::vector<SclLogicalNode> parse_logical_nodes(const std::string& ldevice_body)
             } else {
                 node.name = ln_name(extract_attr(element, "prefix"), extract_attr(element, "lnClass"), extract_attr(element, "inst"));
             }
+            node.ln_type = extract_attr(element, "lnType");
             const std::string body = element_body(ldevice_body, start, end);
             node.data_sets = parse_data_sets(body);
             node.reports = parse_reports(body);
@@ -579,6 +606,207 @@ std::vector<SclIed> parse_ieds(const std::string& source)
     return ieds;
 }
 
+std::vector<SclDoTemplate> parse_lnode_type_dos(const std::string& body)
+{
+    std::vector<SclDoTemplate> data_objects;
+    size_t pos = 0U;
+    while (true) {
+        const size_t start = find_start_tag(body, "DO", pos);
+        if (start == std::string::npos) {
+            break;
+        }
+        const std::string element = start_element_text(body, start);
+        SclDoTemplate data_object;
+        data_object.name = extract_attr(element, "name");
+        data_object.type = extract_attr(element, "type");
+        if (!data_object.name.empty()) {
+            data_objects.push_back(data_object);
+        }
+        const size_t close = body.find('>', start);
+        if (close == std::string::npos) {
+            break;
+        }
+        pos = close + 1U;
+    }
+    return data_objects;
+}
+
+std::vector<SclDaTemplate> parse_do_type_das(const std::string& body)
+{
+    std::vector<SclDaTemplate> data_attributes;
+    size_t pos = 0U;
+    while (true) {
+        const size_t start = find_start_tag(body, "DA", pos);
+        if (start == std::string::npos) {
+            break;
+        }
+        const std::string element = start_element_text(body, start);
+        SclDaTemplate data_attribute;
+        data_attribute.name = extract_attr(element, "name");
+        data_attribute.b_type = extract_attr(element, "bType");
+        if (!data_attribute.name.empty()) {
+            data_attributes.push_back(data_attribute);
+        }
+        const size_t close = body.find('>', start);
+        if (close == std::string::npos) {
+            break;
+        }
+        pos = close + 1U;
+    }
+    return data_attributes;
+}
+
+SclDataTypeTemplates parse_data_type_templates(const std::string& source)
+{
+    SclDataTypeTemplates templates;
+    const size_t start = find_start_tag(source, "DataTypeTemplates", 0U);
+    if (start == std::string::npos) {
+        return templates;
+    }
+    const size_t end = find_matching_end(source, "DataTypeTemplates", start);
+    if (end == std::string::npos) {
+        return templates;
+    }
+    const std::string body = element_body(source, start, end);
+
+    size_t pos = 0U;
+    while (true) {
+        const size_t type_start = find_start_tag(body, "LNodeType", pos);
+        if (type_start == std::string::npos) {
+            break;
+        }
+        const size_t type_end = find_matching_end(body, "LNodeType", type_start);
+        if (type_end == std::string::npos) {
+            break;
+        }
+        SclLNodeTypeTemplate type;
+        type.id = extract_attr(start_element_text(body, type_start), "id");
+        type.data_objects = parse_lnode_type_dos(element_body(body, type_start, type_end));
+        if (!type.id.empty()) {
+            templates.lnode_types.push_back(type);
+        }
+        pos = type_end;
+    }
+
+    pos = 0U;
+    while (true) {
+        const size_t type_start = find_start_tag(body, "DOType", pos);
+        if (type_start == std::string::npos) {
+            break;
+        }
+        const size_t type_end = find_matching_end(body, "DOType", type_start);
+        if (type_end == std::string::npos) {
+            break;
+        }
+        SclDoTypeTemplate type;
+        type.id = extract_attr(start_element_text(body, type_start), "id");
+        type.data_attributes = parse_do_type_das(element_body(body, type_start, type_end));
+        if (!type.id.empty()) {
+            templates.do_types.push_back(type);
+        }
+        pos = type_end;
+    }
+
+    return templates;
+}
+
+const SclLogicalNode* find_logical_node(const SclLogicalDevice& device, const SclMember& member, const std::string& fallback_ld_inst)
+{
+    const std::string member_ld = member.ld_inst.empty() ? fallback_ld_inst : member.ld_inst;
+    if (member_ld != device.inst) {
+        return nullptr;
+    }
+    const std::string member_ln = ln_name(member.prefix, member.ln_class, member.ln_inst);
+    const auto found = std::find_if(device.logical_nodes.begin(), device.logical_nodes.end(), [&](const SclLogicalNode& node) {
+        return node.name == member_ln;
+    });
+    return found == device.logical_nodes.end() ? nullptr : &(*found);
+}
+
+const SclLNodeTypeTemplate* find_lnode_type(const SclDataTypeTemplates& templates, const std::string& id)
+{
+    const auto found = std::find_if(templates.lnode_types.begin(), templates.lnode_types.end(), [&](const SclLNodeTypeTemplate& item) {
+        return item.id == id;
+    });
+    return found == templates.lnode_types.end() ? nullptr : &(*found);
+}
+
+const SclDoTypeTemplate* find_do_type(const SclDataTypeTemplates& templates, const std::string& id)
+{
+    const auto found = std::find_if(templates.do_types.begin(), templates.do_types.end(), [&](const SclDoTypeTemplate& item) {
+        return item.id == id;
+    });
+    return found == templates.do_types.end() ? nullptr : &(*found);
+}
+
+std::string first_path_part(const std::string& path)
+{
+    const size_t dot = path.find('.');
+    return dot == std::string::npos ? path : path.substr(0U, dot);
+}
+
+std::string resolve_member_b_type(const SclDataTypeTemplates& templates, const SclLogicalDevice& device, const SclMember& member)
+{
+    if (member.kind != "FCDA" || member.da_name.empty()) {
+        return {};
+    }
+    const SclLogicalNode* node = find_logical_node(device, member, device.inst);
+    if (node == nullptr || node->ln_type.empty()) {
+        return {};
+    }
+    const SclLNodeTypeTemplate* lnode_type = find_lnode_type(templates, node->ln_type);
+    if (lnode_type == nullptr) {
+        return {};
+    }
+    const auto do_found = std::find_if(lnode_type->data_objects.begin(), lnode_type->data_objects.end(), [&](const SclDoTemplate& item) {
+        return item.name == member.do_name;
+    });
+    if (do_found == lnode_type->data_objects.end() || do_found->type.empty()) {
+        return {};
+    }
+    const SclDoTypeTemplate* do_type = find_do_type(templates, do_found->type);
+    if (do_type == nullptr) {
+        return {};
+    }
+    const std::string da_name = first_path_part(member.da_name);
+    const auto da_found = std::find_if(do_type->data_attributes.begin(), do_type->data_attributes.end(), [&](const SclDaTemplate& item) {
+        return item.name == da_name;
+    });
+    return da_found == do_type->data_attributes.end() ? std::string{} : da_found->b_type;
+}
+
+UnitLabIedFixtureValueKind value_kind_for_b_type(const std::string& b_type)
+{
+    if (b_type == "BOOLEAN") {
+        return UNITLAB_IED_FIXTURE_VALUE_BOOLEAN;
+    }
+    if (b_type == "FLOAT32" || b_type == "FLOAT64") {
+        return UNITLAB_IED_FIXTURE_VALUE_REAL;
+    }
+    if (b_type.rfind("VisString", 0U) == 0 || b_type.rfind("Unicode", 0U) == 0 || b_type == "ObjRef" || b_type == "Timestamp" || b_type == "EntryTime") {
+        return UNITLAB_IED_FIXTURE_VALUE_STRING;
+    }
+    if (b_type.empty()) {
+        return UNITLAB_IED_FIXTURE_VALUE_INTEGER;
+    }
+    return UNITLAB_IED_FIXTURE_VALUE_INTEGER;
+}
+
+const char* default_value_for_kind(UnitLabIedFixtureValueKind kind)
+{
+    switch (kind) {
+        case UNITLAB_IED_FIXTURE_VALUE_BOOLEAN:
+            return "false";
+        case UNITLAB_IED_FIXTURE_VALUE_REAL:
+            return "0.0";
+        case UNITLAB_IED_FIXTURE_VALUE_STRING:
+            return "";
+        case UNITLAB_IED_FIXTURE_VALUE_INTEGER:
+        default:
+            return "0";
+    }
+}
+
 uint8_t trigger_mask(const UnitLabIedFixtureTriggerOptions& options)
 {
     uint8_t mask = 0U;
@@ -660,7 +888,7 @@ void append_logical_node_once(UnitLabSclCompileResult& result, const std::string
     result.logical_nodes.push_back(node);
 }
 
-void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied)
+void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied, const SclDataTypeTemplates& templates)
 {
     for (const SclAccessPoint& access_point : ied.access_points) {
         for (const SclLogicalDevice& device : access_point.logical_devices) {
@@ -721,8 +949,9 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied)
                         signal.data_set_entry_component_known = !member.da_name.empty() ? 1 : 0;
                         copy_string(signal.data_set_entry_component, sizeof(signal.data_set_entry_component), member.da_name.c_str());
                         copy_string(signal.fc, sizeof(signal.fc), member.fc.c_str());
-                        signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER;
-                        copy_string(signal.initial_value, sizeof(signal.initial_value), "0");
+                        const std::string b_type = resolve_member_b_type(templates, device, member);
+                        signal.initial_value_kind = value_kind_for_b_type(b_type);
+                        copy_string(signal.initial_value, sizeof(signal.initial_value), default_value_for_kind(signal.initial_value_kind));
                         result.signals.push_back(signal);
                         valid_member_index++;
                     }
@@ -839,7 +1068,8 @@ extern "C" int unitlab_scl_compile_from_memory(
     }
 
     compiled->selected_ied_name = selected->name;
-    compile_ied(*compiled, *selected);
+    const SclDataTypeTemplates templates = parse_data_type_templates(source);
+    compile_ied(*compiled, *selected, templates);
     if (compiled->plan.logical_device_count == 0U) {
         compiled->diagnostics.push_back(contextual_diagnostic("error", "SCL_SERVER_MODEL_MISSING", "Selected IED does not contain a server logical-device model.", selected->name.c_str(), "", "", "", "", "", ""));
     }
