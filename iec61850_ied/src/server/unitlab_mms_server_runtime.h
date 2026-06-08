@@ -27,6 +27,12 @@ typedef enum UnitLabMmsServerRuntimeState {
 #define UNITLAB_MMS_SERVER_RUNTIME_MAX_PENDING_REPORTS 8U
 #define UNITLAB_MMS_SERVER_RUNTIME_MAX_REPORT_MEMBERS 16U
 
+/*
+ * Report backpressure policy for the bounded pending-report FIFO:
+ * coalesce matching report kinds first, otherwise drop the newest event, set BufOvfl,
+ * increment diagnostics counters, and keep the queued report order stable.
+ */
+
 typedef enum UnitLabMmsServerPendingReportKind {
     UNITLAB_MMS_SERVER_PENDING_REPORT_NONE = 0,
     UNITLAB_MMS_SERVER_PENDING_REPORT_GI = 1,

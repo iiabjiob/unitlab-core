@@ -1921,6 +1921,41 @@ static void test_server_runtime_pending_report_queue_overflow_sets_bufovfl(void)
     assert(server_runtime.report_events_dropped == 1U);
 }
 
+static void test_server_runtime_full_report_queue_coalesces_before_drop_newest(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    uint8_t first_value[3U] = { 0x85U, 0x01U, 0x01U };
+    uint8_t second_value[3U] = { 0x85U, 0x01U, 0x02U };
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    server_runtime.pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE;
+    server_runtime.pending_report_queue_count = UNITLAB_MMS_SERVER_RUNTIME_MAX_PENDING_REPORTS;
+    for (size_t index = 0U; index < server_runtime.pending_report_queue_count; index++) {
+        server_runtime.pending_report_queue[index].kind = UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_UPDATE;
+        server_runtime.pending_report_queue[index].member_index = 0U;
+        server_runtime.pending_report_queue[index].member_mask = 0x01U;
+        memcpy(server_runtime.pending_report_queue[index].values[0], first_value, sizeof(first_value));
+        server_runtime.pending_report_queue[index].value_lengths[0] = sizeof(first_value);
+    }
+
+    assert(server_runtime_queue_pending_report_event(&server_runtime, UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_UPDATE, 1U, second_value, sizeof(second_value)) == 1);
+    assert(server_runtime.pending_report_queue_count == UNITLAB_MMS_SERVER_RUNTIME_MAX_PENDING_REPORTS);
+    assert(server_runtime.pending_report_queue[0].member_index == 1U);
+    assert((server_runtime.pending_report_queue[0].member_mask & 0x02U) == 0x02U);
+    assert(memcmp(server_runtime.pending_report_queue[0].values[1], second_value, sizeof(second_value)) == 0);
+    assert(server_runtime.report_events_queued == 1U);
+    assert(server_runtime.report_events_coalesced == 1U);
+    assert(server_runtime.report_events_dropped == 0U);
+    assert(server_runtime.brcb_buffer_overflow == 0U);
+
+    assert(server_runtime_queue_pending_report_event(&server_runtime, UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE, 1U, second_value, sizeof(second_value)) == 0);
+    assert(server_runtime.pending_report_queue_count == UNITLAB_MMS_SERVER_RUNTIME_MAX_PENDING_REPORTS);
+    assert(server_runtime.report_events_queued == 1U);
+    assert(server_runtime.report_events_coalesced == 1U);
+    assert(server_runtime.report_events_dropped == 1U);
+    assert(server_runtime.brcb_buffer_overflow == 1U);
+}
+
 static void test_server_runtime_dataset_write_without_rptena_does_not_queue_report(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -5225,6 +5260,7 @@ int main(void)
     test_server_runtime_information_report_buffer_overflow_false_by_default();
     test_server_runtime_information_report_buffer_overflow_reports_and_clears();
     test_server_runtime_pending_report_queue_overflow_sets_bufovfl();
+    test_server_runtime_full_report_queue_coalesces_before_drop_newest();
     test_server_runtime_dataset_write_without_rptena_does_not_queue_report();
     test_server_runtime_integrity_poll_queues_full_dataset_report();
     test_server_runtime_information_report_requires_model_dataset();

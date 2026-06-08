@@ -1113,10 +1113,12 @@ int server_runtime_queue_pending_report_event(UnitLabMmsServerRuntime* server_ru
         server_runtime->brcb_buffer_overflow = 1U;
         server_runtime->report_events_dropped++;
         printf(
-            "native-wire-server: report-queue-overflow kind=%u member=%zu queue-depth=%zu dropped=%llu\n",
+            "native-wire-server: report-queue-overflow policy=drop-newest-after-coalesce kind=%u member=%zu queue-depth=%zu queued=%llu coalesced=%llu dropped=%llu\n",
             (unsigned)kind,
             member_index,
             server_runtime->pending_report_queue_count,
+            (unsigned long long)server_runtime->report_events_queued,
+            (unsigned long long)server_runtime->report_events_coalesced,
             (unsigned long long)server_runtime->report_events_dropped);
         fflush(stdout);
         return 0;
