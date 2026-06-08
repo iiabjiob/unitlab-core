@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.encoders import jsonable_encoder
 
 from app.services.iec61850.client_control import get_iec61850_client_control_service
 from app.services.iec61850.report_runtime import Iec61850ReportRuntimeError
+from app.services.iec61850.scl_import import import_scl_source, scl_import_result_to_payload
 
 router = APIRouter(prefix="/api/v1/iec61850/client", tags=["IEC 61850 Client"])
 
@@ -83,6 +84,28 @@ async def emit_wire_report() -> dict:
 @router.post("/wire/stop")
 async def stop_wire_transport() -> dict:
     return _run_action("wire-stop", get_iec61850_client_control_service().stop_live_wire_transport)
+
+
+@router.post("/scl/import")
+async def import_scl_model(
+    file: UploadFile = File(...),
+    selected_ied_name: str | None = Form(default=None),
+) -> dict:
+    contents = await file.read()
+    try:
+        xml_text = contents.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "SCL_ENCODING_UNSUPPORTED", "message": "SCL import expects UTF-8 XML."},
+        ) from exc
+
+    result = import_scl_source(
+        file_name=file.filename or "uploaded.scd",
+        xml_text=xml_text,
+        selected_ied_name=selected_ied_name,
+    )
+    return jsonable_encoder(scl_import_result_to_payload(result))
 
 
 def _run_action(action: str, operation) -> dict:

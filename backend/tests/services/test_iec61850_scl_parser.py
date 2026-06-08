@@ -156,3 +156,19 @@ def test_build_ied_simulator_fixture_from_scl_model_uses_native_fixture_contract
             "bufferOverflow": True,
         },
     }
+
+
+def test_import_scl_source_returns_model_and_fixture_summary() -> None:
+    from app.services.iec61850 import import_scl_source, scl_import_result_to_payload
+
+    result = import_scl_source(file_name="test.scd", xml_text=SCD_FIXTURE, selected_ied_name="IED1")
+    payload = scl_import_result_to_payload(result)
+
+    assert payload["summary"] == {
+        "iedCount": 1,
+        "deviceCount": 1,
+        "errorCount": 0,
+        "warningCount": 0,
+    }
+    assert payload["model"]["source"]["contentHash"].startswith("sha256:")
+    assert payload["simulatorFixture"]["devices"][0]["reports"][0]["dataSetRef"] == "IED1/AP1/LD0/LLN0.dsEvents"

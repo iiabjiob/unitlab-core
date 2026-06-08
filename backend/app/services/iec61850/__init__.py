@@ -65,6 +65,12 @@ from .ied_simulator_fixture import (
     ied_simulator_fixture_to_payload,
 )
 
+from .scl_import import (
+    Iec61850SclImportResult,
+    import_scl_source,
+    scl_import_result_to_payload,
+)
+
 from .scl_parser import (
     SCL_NORMALIZED_SCHEMA,
     Iec61850SclAccessPoint,
@@ -152,6 +158,9 @@ __all__ = [
     "Iec61850MmsEndpointCatalog",
     "Iec61850MmsEndpointCatalogEntry",
     "Iec61850UnavailableMmsAdapter",
+    "Iec61850SclImportResult",
+    "import_scl_source",
+    "scl_import_result_to_payload",
     "SCL_NORMALIZED_SCHEMA",
     "Iec61850SclAccessPoint",
     "Iec61850SclAddressParameter",
