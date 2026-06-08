@@ -990,6 +990,84 @@ static int server_runtime_reference_with_replaced_component_matches_signal(const
     return server_runtime_reference_matches_signal(candidate_reference, signal);
 }
 
+void server_runtime_clear_pending_reports(UnitLabMmsServerRuntime* server_runtime)
+{
+    if (server_runtime == NULL) {
+        return;
+    }
+    server_runtime->pending_gi_report = 0U;
+    server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_NONE;
+    server_runtime->pending_report_member_index = 0U;
+    server_runtime->pending_report_member_mask = 0U;
+    server_runtime->pending_report_value_length = 0U;
+    memset(server_runtime->pending_report_queue, 0, sizeof(server_runtime->pending_report_queue));
+    server_runtime->pending_report_queue_count = 0U;
+}
+
+void server_runtime_advance_pending_report_queue(UnitLabMmsServerRuntime* server_runtime)
+{
+    UnitLabMmsServerPendingReportEntry next_entry;
+
+    if (server_runtime == NULL) {
+        return;
+    }
+    if (server_runtime->pending_report_queue_count == 0U) {
+        server_runtime_clear_pending_reports(server_runtime);
+        return;
+    }
+    next_entry = server_runtime->pending_report_queue[0];
+    for (size_t index = 1U; index < server_runtime->pending_report_queue_count; index++) {
+        server_runtime->pending_report_queue[index - 1U] = server_runtime->pending_report_queue[index];
+    }
+    server_runtime->pending_report_queue_count--;
+    memset(&server_runtime->pending_report_queue[server_runtime->pending_report_queue_count], 0, sizeof(server_runtime->pending_report_queue[server_runtime->pending_report_queue_count]));
+    server_runtime->pending_gi_report = 1U;
+    server_runtime->pending_report_kind = next_entry.kind;
+    server_runtime->pending_report_member_index = next_entry.member_index;
+    server_runtime->pending_report_member_mask = next_entry.member_mask;
+    server_runtime->pending_report_value_length = 1U;
+}
+
+int server_runtime_queue_pending_report_event(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsServerPendingReportKind kind, size_t member_index)
+{
+    uint64_t member_mask = member_index < 64U ? ((uint64_t)1U << member_index) : 0U;
+
+    if (server_runtime == NULL || kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE || member_mask == 0U) {
+        return 0;
+    }
+    if (server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE) {
+        server_runtime->pending_gi_report = 1U;
+        server_runtime->pending_report_kind = kind;
+        server_runtime->pending_report_member_index = member_index;
+        server_runtime->pending_report_member_mask = member_mask;
+        server_runtime->pending_report_value_length = 1U;
+        return 1;
+    }
+    if (server_runtime->pending_report_kind == kind) {
+        server_runtime->pending_report_member_index = member_index;
+        server_runtime->pending_report_member_mask |= member_mask;
+        server_runtime->pending_report_value_length = 1U;
+        return 1;
+    }
+    for (size_t index = 0U; index < server_runtime->pending_report_queue_count; index++) {
+        UnitLabMmsServerPendingReportEntry* entry = &server_runtime->pending_report_queue[index];
+        if (entry->kind == kind) {
+            entry->member_index = member_index;
+            entry->member_mask |= member_mask;
+            return 1;
+        }
+    }
+    if (server_runtime->pending_report_queue_count >= UNITLAB_MMS_SERVER_RUNTIME_MAX_PENDING_REPORTS) {
+        return 0;
+    }
+    server_runtime->pending_report_queue[server_runtime->pending_report_queue_count++] = (UnitLabMmsServerPendingReportEntry){
+        .kind = kind,
+        .member_index = member_index,
+        .member_mask = member_mask,
+    };
+    return 1;
+}
+
 static int server_runtime_queue_quality_change_report_member(UnitLabMmsServerRuntime* server_runtime, const char* value_leaf_reference)
 {
     const UnitLabIedModelReportControl* report = NULL;
@@ -1017,16 +1095,7 @@ static int server_runtime_queue_quality_change_report_member(UnitLabMmsServerRun
         candidate = &server_runtime->model_plan->signals[signal_index];
         if (strcmp(candidate->data_attribute_path, "q") == 0
             && server_runtime_reference_with_replaced_component_matches_signal(value_leaf_reference, "q", candidate)) {
-            server_runtime->pending_report_member_index = index;
-            if (index < 64U) {
-                server_runtime->pending_report_member_mask |= ((uint64_t)1U << index);
-            }
-            if (server_runtime->pending_report_kind != UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE) {
-                server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE;
-            }
-            server_runtime->pending_report_value_length = 1U;
-            server_runtime->pending_gi_report = 1U;
-            return 1;
+            return server_runtime_queue_pending_report_event(server_runtime, UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE, index);
         }
     }
     return 0;
@@ -1122,16 +1191,7 @@ int unitlab_mms_server_runtime_update_signal_value(
         }
         memcpy(server_runtime->pending_report_value, encoded_value, encoded_value_length);
         server_runtime->pending_report_value_length = encoded_value_length;
-        server_runtime->pending_report_member_index = member_index;
-        if (member_index < 64U) {
-            server_runtime->pending_report_member_mask |= ((uint64_t)1U << member_index);
-        }
-        if (queued_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE
-            || server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE
-            || server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_UPDATE) {
-            server_runtime->pending_report_kind = queued_kind;
-        }
-        server_runtime->pending_gi_report = 1U;
+        (void)server_runtime_queue_pending_report_event(server_runtime, queued_kind, member_index);
     }
     server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
@@ -1459,12 +1519,8 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     server_runtime->brcb_entry_id_counter = 0U;
     memset(server_runtime->brcb_entry_id, 0, sizeof(server_runtime->brcb_entry_id));
     memset(server_runtime->brcb_time_of_entry, 0, sizeof(server_runtime->brcb_time_of_entry));
-    server_runtime->pending_gi_report = 0U;
-    server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_NONE;
-    server_runtime->pending_report_member_index = 0U;
-    server_runtime->pending_report_member_mask = 0U;
+    server_runtime_clear_pending_reports(server_runtime);
     memset(server_runtime->pending_report_value, 0, sizeof(server_runtime->pending_report_value));
-    server_runtime->pending_report_value_length = 0U;
     memset(server_runtime->signal_values, 0, sizeof(server_runtime->signal_values));
     server_runtime->signal_value_count = 0U;
     unitlab_mms_transport_exchange_init(&server_runtime->transport);

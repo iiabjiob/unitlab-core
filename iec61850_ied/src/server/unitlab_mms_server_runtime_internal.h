@@ -40,6 +40,9 @@ int server_runtime_object_reference_has_suffix_any(const char* object_reference,
 int server_runtime_object_reference_matches_report_control_field(const char* object_reference, const char* field_name);
 int server_runtime_object_reference_matches_report_control_object(const char* object_reference);
 const char* server_runtime_advertised_domain_name(const UnitLabMmsServerRuntime* server_runtime);
+void server_runtime_clear_pending_reports(UnitLabMmsServerRuntime* server_runtime);
+void server_runtime_advance_pending_report_queue(UnitLabMmsServerRuntime* server_runtime);
+int server_runtime_queue_pending_report_event(UnitLabMmsServerRuntime* server_runtime, UnitLabMmsServerPendingReportKind kind, size_t member_index);
 
 /* Browse service handles discovery, GVA, and named variable list attributes. */
 int server_runtime_build_get_name_list_response_service(UnitLabMmsServerRuntime* server_runtime, uint32_t invoke_id, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic);

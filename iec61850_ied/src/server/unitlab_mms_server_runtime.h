@@ -24,6 +24,7 @@ typedef enum UnitLabMmsServerRuntimeState {
 #define UNITLAB_MMS_SERVER_RUNTIME_WIRE_SCRATCH_LENGTH 4096U
 #define UNITLAB_MMS_SERVER_RUNTIME_MAX_SIGNAL_VALUES 64U
 #define UNITLAB_MMS_SERVER_RUNTIME_SIGNAL_VALUE_LENGTH 128U
+#define UNITLAB_MMS_SERVER_RUNTIME_MAX_PENDING_REPORTS 8U
 
 typedef enum UnitLabMmsServerPendingReportKind {
     UNITLAB_MMS_SERVER_PENDING_REPORT_NONE = 0,
@@ -32,6 +33,13 @@ typedef enum UnitLabMmsServerPendingReportKind {
     UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE = 3,
     UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_UPDATE = 4
 } UnitLabMmsServerPendingReportKind;
+
+typedef struct UnitLabMmsServerPendingReportEntry {
+    UnitLabMmsServerPendingReportKind kind;
+    size_t member_index;
+    uint64_t member_mask;
+}
+UnitLabMmsServerPendingReportEntry;
 
 typedef struct UnitLabMmsServerRuntimeSignalValue {
     int in_use;
@@ -73,6 +81,8 @@ typedef struct UnitLabMmsServerRuntime {
     uint64_t pending_report_member_mask;
     uint8_t pending_report_value[128];
     size_t pending_report_value_length;
+    UnitLabMmsServerPendingReportEntry pending_report_queue[UNITLAB_MMS_SERVER_RUNTIME_MAX_PENDING_REPORTS];
+    size_t pending_report_queue_count;
     UnitLabMmsServerRuntimeSignalValue signal_values[UNITLAB_MMS_SERVER_RUNTIME_MAX_SIGNAL_VALUES];
     size_t signal_value_count;
     UnitLabMmsTransportExchange transport;

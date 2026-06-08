@@ -927,10 +927,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     if (!unitlab_mms_build_wire_frame_from_pdu(&report_pdu, scratch, sizeof(scratch), buffer, buffer_length, encoded_length, diagnostic)) {
         return 0;
     }
-    server_runtime->pending_gi_report = 0U;
-    server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_NONE;
-    server_runtime->pending_report_member_mask = 0U;
-    server_runtime->pending_report_value_length = 0U;
+    server_runtime_advance_pending_report_queue(server_runtime);
     if (server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING) {
         UnitLabMmsDiagnostic report_diagnostic;
         unitlab_mms_diagnostic_clear(&report_diagnostic);
