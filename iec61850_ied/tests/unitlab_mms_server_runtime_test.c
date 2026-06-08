@@ -2635,7 +2635,6 @@ static void test_server_runtime_prepare_start_stop(void)
 {
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
-    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -2693,7 +2692,6 @@ static void test_wire_builder_builds_confirmed_response_frame_roundtrips(void)
 {
     UnitLabMmsPdu response_pdu;
     UnitLabMmsDiagnostic diagnostic;
-    UnitLabMmsOperationResult operation_result;
     uint8_t response_bytes[256];
     uint8_t response_payload[6] = { 0x02U, 0x01U, 0x29U, 0xA4U, 0x01U, 0xAAU };
     size_t encoded_length = 0U;
@@ -2754,7 +2752,6 @@ static void test_server_runtime_build_confirmed_response_bytes_roundtrips(void)
 {
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
-    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -3808,7 +3805,6 @@ static void test_server_runtime_confirmed_response_fails_after_timeout(void)
 {
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
-    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -4696,7 +4692,6 @@ static void test_server_runtime_apply_iedscout_vmd_directory_request_scope_zero_
 {
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
-    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -4775,7 +4770,6 @@ static void test_server_runtime_apply_iedscout_aa_specific_directory_request_sco
 {
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
-    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
@@ -4785,8 +4779,6 @@ static void test_server_runtime_apply_iedscout_aa_specific_directory_request_sco
     UnitLabIedModelDataSet data_sets[2U];
     uint8_t response_bytes[2048U];
     size_t response_length = 0U;
-    size_t response_consumed_length = 0U;
-
     memset(&plan, 0, sizeof(plan));
     memset(logical_devices, 0, sizeof(logical_devices));
     memset(data_sets, 0, sizeof(data_sets));
@@ -5031,7 +5023,6 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
     };
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
-    UnitLabMmsOperationResult operation_result;
     UnitLabIedServerConfig config = {
         .bind_address = "127.0.0.1",
         .port = 102,
