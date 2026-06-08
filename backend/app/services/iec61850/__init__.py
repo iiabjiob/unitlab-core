@@ -60,6 +60,7 @@ from .ied_simulator_fixture import (
     Iec61850IedSimulatorFixtureDevice,
     Iec61850IedSimulatorFixtureReport,
     Iec61850IedSimulatorFixtureSignal,
+    build_ied_simulator_fixture_from_scl_model,
     build_ied_simulator_fixture_from_subscription_plan,
     ied_simulator_fixture_to_payload,
 )
@@ -180,6 +181,7 @@ __all__ = [
     "Iec61850IedSimulatorProcessResult",
     "Iec61850IedSimulatorProcessSpec",
     "Iec61850IedSimulatorProcessStopResult",
+    "build_ied_simulator_fixture_from_scl_model",
     "build_ied_simulator_fixture_from_subscription_plan",
     "build_ied_simulator_process_spec",
     "build_simulator_endpoint_for_plan_device",

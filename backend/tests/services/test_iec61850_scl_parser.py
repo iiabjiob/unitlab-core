@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from app.services.iec61850 import SCL_NORMALIZED_SCHEMA, parse_scl_source, scl_model_to_payload
+from app.services.iec61850 import (
+    SCL_NORMALIZED_SCHEMA,
+    build_ied_simulator_fixture_from_scl_model,
+    ied_simulator_fixture_to_payload,
+    parse_scl_source,
+    scl_model_to_payload,
+)
 
 
 SCD_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
@@ -92,3 +98,61 @@ def test_scl_model_to_payload_uses_backend_contract_keys() -> None:
 
     assert payload["schema"] == SCL_NORMALIZED_SCHEMA
     assert payload["ieds"][0]["accessPoints"][0]["logicalDevices"][0]["logicalNodes"][0]["reportControls"][0]["dataSetRef"] == "LD0/LLN0$dsEvents"
+
+
+def test_build_ied_simulator_fixture_from_scl_model_uses_native_fixture_contract() -> None:
+    model = parse_scl_source(file_name="test.scd", content_hash="sha256:test", xml_text=SCD_FIXTURE)
+
+    fixture = build_ied_simulator_fixture_from_scl_model(model, selected_ied_name="IED1")
+    payload = ied_simulator_fixture_to_payload(fixture)
+
+    assert payload["schema"] == "unitlab.iec61850.ied-simulator-fixture.v1"
+    assert payload["devices"][0]["iedName"] == "IED1"
+    assert payload["devices"][0]["accessPointName"] == "AP1"
+    assert payload["devices"][0]["dataSets"][0]["reference"] == "IED1/AP1/LD0/LLN0.dsEvents"
+    assert payload["devices"][0]["dataSets"][0]["members"] == [
+        {
+            "dataSetIndex": 0,
+            "reference": "LD0/XCBR1.Pos.stVal[ST]",
+            "kind": "FCDA",
+            "fc": "ST",
+            "initialValue": 0,
+        },
+        {
+            "dataSetIndex": 1,
+            "reference": "LD0/PGGIO1.Ind1[ST]",
+            "kind": "FCD",
+            "fc": "ST",
+            "initialValue": 1,
+        },
+    ]
+    assert payload["devices"][0]["reports"][0] == {
+        "key": "IED1/AP1/LD0/LLN0/brcbEvents/buffered",
+        "logicalDeviceInst": "LD0",
+        "logicalNodeName": "LLN0",
+        "reportControlName": "brcbEvents",
+        "reportKind": "buffered",
+        "rptId": "IED1LD0/LLN0.BR.Events",
+        "dataSetRef": "IED1/AP1/LD0/LLN0.dsEvents",
+        "confRev": "7",
+        "indexed": False,
+        "bufferTimeMs": 100,
+        "integrityPeriodMs": 1000,
+        "triggerOptions": {
+            "dataChange": True,
+            "qualityChange": True,
+            "dataUpdate": False,
+            "periodic": False,
+            "generalInterrogation": True,
+        },
+        "optionalFields": {
+            "sequenceNumber": True,
+            "timestamp": True,
+            "reasonCode": True,
+            "dataSetName": True,
+            "dataReference": True,
+            "entryId": True,
+            "configRevision": True,
+            "bufferOverflow": True,
+        },
+    }
