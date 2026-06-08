@@ -189,6 +189,29 @@ static int test_compile_reports_invalid_selected_ied(void)
     return passed;
 }
 
+static int test_compile_reports_malformed_xml(void)
+{
+    const char* scl = "<SCL><IED name=\"IED1\"></SCL>";
+    UnitLabSclCompileResult* result = NULL;
+    char error[128];
+    int passed = 1;
+
+    passed &= expect_true(unitlab_scl_compile_from_memory(scl, strlen(scl), "IED1", &result, error, sizeof(error)) == 1,
+        "malformed XML should return structured diagnostics");
+    passed &= expect_true(result != NULL, "malformed XML result should be allocated");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_count(result) == 1U, "malformed XML diagnostic should be present");
+
+    UnitLabSclCompileDiagnostic diagnostic;
+    passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 0U, &diagnostic) == 1, "malformed XML diagnostic should be readable");
+    passed &= expect_string(diagnostic.severity, "error", "malformed XML severity");
+    passed &= expect_string(diagnostic.code, "SCL_XML_PARSE_FAILED", "malformed XML code");
+    passed &= expect_true(unitlab_scl_compile_model_plan(result) != NULL, "malformed XML empty plan should be readable");
+    passed &= expect_true(unitlab_scl_compile_model_plan(result)->logical_device_count == 0U, "malformed XML should not compile model");
+
+    unitlab_scl_compile_result_free(result);
+    return passed;
+}
+
 static int test_compile_rejects_empty_input(void)
 {
     UnitLabSclCompileResult* result = NULL;
@@ -208,6 +231,7 @@ int main(void)
     passed &= test_compile_builds_model_plan_through_c_api();
     passed &= test_compile_reports_invalid_dataset_member_and_missing_report_dataset();
     passed &= test_compile_reports_invalid_selected_ied();
+    passed &= test_compile_reports_malformed_xml();
     passed &= test_compile_rejects_empty_input();
     return passed ? 0 : 1;
 }
