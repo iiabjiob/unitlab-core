@@ -90,6 +90,48 @@ static int test_compile_builds_model_plan_through_c_api(void)
     return passed;
 }
 
+static int test_compile_reports_invalid_dataset_member_and_missing_report_dataset(void)
+{
+    const char* scl =
+        "<SCL><IED name=\"IED1\"><AccessPoint name=\"AP1\"><Server><LDevice inst=\"LD0\">"
+        "<LN0>"
+        "<DataSet name=\"dsBroken\">"
+        "<FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" fc=\"ST\" />"
+        "</DataSet>"
+        "<ReportControl name=\"brcbBroken\" buffered=\"true\" datSet=\"missingDataSet\" />"
+        "</LN0>"
+        "<LN lnClass=\"XCBR\" inst=\"1\" />"
+        "</LDevice></Server></AccessPoint></IED></SCL>";
+    UnitLabSclCompileResult* result = NULL;
+    char error[128];
+    int passed = 1;
+
+    passed &= expect_true(unitlab_scl_compile_from_memory(scl, strlen(scl), "IED1", &result, error, sizeof(error)) == 1,
+        "broken SCL should return structured diagnostics through C API");
+    passed &= expect_true(result != NULL, "broken SCL result should be allocated");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_count(result) == 2U, "invalid member and missing report DataSet diagnostics");
+
+    UnitLabSclCompileDiagnostic diagnostic;
+    passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 0U, &diagnostic) == 1, "invalid member diagnostic should be readable");
+    passed &= expect_string(diagnostic.severity, "error", "invalid member severity");
+    passed &= expect_string(diagnostic.code, "SCL_DATASET_MEMBER_INVALID", "invalid member code");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 1U, &diagnostic) == 1, "missing DataSet diagnostic should be readable");
+    passed &= expect_string(diagnostic.severity, "error", "missing DataSet severity");
+    passed &= expect_string(diagnostic.code, "SCL_REPORT_DATASET_MISSING", "missing DataSet code");
+
+    const UnitLabIedModelPlan* plan = unitlab_scl_compile_model_plan(result);
+    passed &= expect_true(plan != NULL, "partial model plan should be readable");
+    if (plan != NULL) {
+        passed &= expect_true(plan->data_set_count == 1U, "broken DataSet should still be represented");
+        passed &= expect_true(plan->data_sets[0].member_count == 0U, "invalid DataSet member should not become a signal");
+        passed &= expect_true(plan->signal_count == 0U, "invalid member should not produce runtime signal");
+        passed &= expect_true(plan->report_count == 0U, "ReportControl with missing DataSet should not compile");
+    }
+
+    unitlab_scl_compile_result_free(result);
+    return passed;
+}
+
 static int test_compile_reports_invalid_selected_ied(void)
 {
     const char* scl = "<SCL><IED name=\"IED1\" /></SCL>";
@@ -129,6 +171,7 @@ int main(void)
 {
     int passed = 1;
     passed &= test_compile_builds_model_plan_through_c_api();
+    passed &= test_compile_reports_invalid_dataset_member_and_missing_report_dataset();
     passed &= test_compile_reports_invalid_selected_ied();
     passed &= test_compile_rejects_empty_input();
     return passed ? 0 : 1;

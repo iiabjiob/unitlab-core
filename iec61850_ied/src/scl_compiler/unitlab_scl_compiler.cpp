@@ -299,6 +299,20 @@ std::string signal_ref(const SclMember& member, const std::string& fallback_ld_i
     return reference;
 }
 
+bool is_valid_data_set_member(const SclMember& member)
+{
+    if (member.kind != "FCDA" && member.kind != "FCD") {
+        return false;
+    }
+    if (member.ln_class.empty() || member.do_name.empty() || member.fc.empty()) {
+        return false;
+    }
+    if (member.kind == "FCDA" && member.da_name.empty()) {
+        return false;
+    }
+    return true;
+}
+
 std::vector<SclMember> parse_data_set_members(const std::string& body)
 {
     std::vector<SclMember> members;
@@ -643,11 +657,19 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied)
                     copy_string(compiled_data_set.logical_node_name, sizeof(compiled_data_set.logical_node_name), node.name.c_str());
                     copy_string(compiled_data_set.name, sizeof(compiled_data_set.name), data_set.name.c_str());
                     compiled_data_set.first_signal_index = result.signals.size();
-                    compiled_data_set.member_count = data_set.members.size();
+                    compiled_data_set.member_count = 0U;
                     result.data_sets.push_back(compiled_data_set);
 
+                    size_t valid_member_index = 0U;
                     for (size_t member_index = 0U; member_index < data_set.members.size(); member_index++) {
                         const SclMember& member = data_set.members[member_index];
+                        if (!is_valid_data_set_member(member)) {
+                            result.diagnostics.push_back(diagnostic(
+                                "error",
+                                "SCL_DATASET_MEMBER_INVALID",
+                                "DataSet member is missing required FCDA/FCD attributes."));
+                            continue;
+                        }
                         const std::string member_ld = member.ld_inst.empty() ? device.inst : member.ld_inst;
                         const std::string member_domain = mms_domain(ied.name, member_ld);
                         const std::string member_ln = ln_name(member.prefix, member.ln_class, member.ln_inst);
@@ -657,7 +679,7 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied)
                         copy_string(signal.reference, sizeof(signal.reference), signal_ref(member, device.inst).c_str());
                         copy_string(signal.kind, sizeof(signal.kind), member.kind.c_str());
                         signal.data_set_index = data_set_index;
-                        signal.member_index = member_index;
+                        signal.member_index = valid_member_index;
                         copy_string(signal.logical_device_inst, sizeof(signal.logical_device_inst), member_domain.c_str());
                         copy_string(signal.logical_node_name, sizeof(signal.logical_node_name), member_ln.c_str());
                         copy_string(signal.data_object_name, sizeof(signal.data_object_name), member.do_name.c_str());
@@ -672,7 +694,9 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied)
                         signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER;
                         copy_string(signal.initial_value, sizeof(signal.initial_value), "0");
                         result.signals.push_back(signal);
+                        valid_member_index++;
                     }
+                    result.data_sets[data_set_index].member_count = valid_member_index;
                 }
             }
 
