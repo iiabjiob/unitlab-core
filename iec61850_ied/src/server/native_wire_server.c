@@ -68,6 +68,8 @@ static void log_native_wire_data_recv_disconnect(const UnitLabMmsServerRuntime* 
 }
 
 
+static uint64_t native_wire_now_ms(void);
+
 static int send_all(int fd, const uint8_t* buffer, size_t length)
 {
     size_t offset = 0U;
@@ -86,6 +88,116 @@ static int send_all(int fd, const uint8_t* buffer, size_t length)
     }
     return 1;
 }
+
+static int send_pending_information_report(
+    UnitLabMmsServerRuntime* server_runtime,
+    int data_client_fd,
+    const char* log_label,
+    UnitLabIedModelLoadResult* result)
+{
+    UnitLabMmsDiagnostic diagnostic;
+    uint8_t response_frame[2048U];
+    size_t response_length = 0U;
+
+    if (server_runtime == NULL || data_client_fd < 0 || !unitlab_mms_server_runtime_has_pending_gi_report(server_runtime)) {
+        return 1;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    if (!unitlab_mms_server_runtime_build_pending_gi_report_bytes(
+            server_runtime,
+            response_frame,
+            sizeof(response_frame),
+            &response_length,
+            &diagnostic)) {
+        set_result(result, "NATIVE_WIRE_SERVER_REPORT_BUILD_FAILED", diagnostic.message);
+        return 0;
+    }
+    if (!send_all(data_client_fd, response_frame, response_length)) {
+        set_result(result, "NATIVE_WIRE_SERVER_REPORT_SEND_FAILED", "Native wire server could not send information report frame.");
+        return 0;
+    }
+    printf("native-wire-server: %s bytes=%zu\n", log_label != NULL ? log_label : "information-report-sent", response_length);
+    fflush(stdout);
+    return 1;
+}
+
+static const char* native_wire_test_tick_reference(const UnitLabMmsServerRuntime* server_runtime)
+{
+    const UnitLabIedModelReportControl* report;
+    const UnitLabIedModelDataSet* data_set;
+
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || server_runtime->model_plan->report_count == 0U || server_runtime->model_plan->reports == NULL) {
+        return NULL;
+    }
+    report = &server_runtime->model_plan->reports[0];
+    if (report->data_set_index >= server_runtime->model_plan->data_set_count || server_runtime->model_plan->data_sets == NULL || server_runtime->model_plan->signals == NULL) {
+        return NULL;
+    }
+    data_set = &server_runtime->model_plan->data_sets[report->data_set_index];
+    for (size_t index = 0U; index < data_set->member_count; index++) {
+        size_t signal_index = data_set->first_signal_index + index;
+        const UnitLabIedModelSignal* signal;
+        if (signal_index >= server_runtime->model_plan->signal_count) {
+            break;
+        }
+        signal = &server_runtime->model_plan->signals[signal_index];
+        if (strstr(signal->data_set_entry_variable, "PGGIO1$ST$Ind1$stVal") != NULL) {
+            return signal->data_set_entry_variable;
+        }
+    }
+    if (data_set->member_count > 1U && data_set->first_signal_index + 1U < server_runtime->model_plan->signal_count) {
+        return server_runtime->model_plan->signals[data_set->first_signal_index + 1U].data_set_entry_variable;
+    }
+    return NULL;
+}
+
+static int native_wire_emit_test_tick_if_due(
+    UnitLabMmsServerRuntime* server_runtime,
+    int data_client_fd,
+    int interval_ms,
+    uint64_t* next_tick_ms,
+    uint8_t* tick_value,
+    UnitLabIedModelLoadResult* result)
+{
+    uint64_t now_ms;
+    const char* object_reference;
+    UnitLabMmsDiagnostic diagnostic;
+
+    if (interval_ms <= 0 || server_runtime == NULL || next_tick_ms == NULL || tick_value == NULL || data_client_fd < 0) {
+        return 1;
+    }
+    if (server_runtime->brcb_rpt_ena == 0U || unitlab_mms_server_runtime_has_pending_gi_report(server_runtime)) {
+        return 1;
+    }
+    now_ms = native_wire_now_ms();
+    if (*next_tick_ms == 0U) {
+        *next_tick_ms = now_ms + (uint64_t)interval_ms;
+        return 1;
+    }
+    if (now_ms < *next_tick_ms) {
+        return 1;
+    }
+    object_reference = native_wire_test_tick_reference(server_runtime);
+    if (object_reference == NULL) {
+        set_result(result, "NATIVE_WIRE_SERVER_TEST_TICK_REFERENCE_MISSING", "Native test report tick could not find a report DataSet member to toggle.");
+        return 0;
+    }
+    *tick_value = *tick_value == 0U ? 1U : 0U;
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    if (!unitlab_mms_server_runtime_queue_data_change_report_value(server_runtime, object_reference, tick_value, 1U, &diagnostic)) {
+        set_result(result, "NATIVE_WIRE_SERVER_TEST_TICK_QUEUE_FAILED", diagnostic.message);
+        return 0;
+    }
+    printf(
+        "native-wire-server: test-report-tick object=%s value=%u interval-ms=%d\n",
+        object_reference,
+        (unsigned)*tick_value,
+        interval_ms);
+    fflush(stdout);
+    *next_tick_ms = now_ms + (uint64_t)interval_ms;
+    return send_pending_information_report(server_runtime, data_client_fd, "test-data-change-report-sent", result);
+}
+
 static int emit_text_response(int response_fd, const char* text)
 {
     size_t length = strlen(text);
@@ -421,22 +533,8 @@ static int native_wire_process_received_tpkt_frame(
         }
         printf("native-wire-server: confirmed-response-sent bytes=%zu\n", response_length);
         fflush(stdout);
-        if (unitlab_mms_server_runtime_has_pending_gi_report(server_runtime)) {
-            if (!unitlab_mms_server_runtime_build_pending_gi_report_bytes(
-                    server_runtime,
-                    response_frame,
-                    sizeof(response_frame),
-                    &response_length,
-                    &response_diagnostic)) {
-                set_result(result, "NATIVE_WIRE_SERVER_GI_REPORT_BUILD_FAILED", response_diagnostic.message);
-                return -1;
-            }
-            if (!send_all(data_client_fd, response_frame, response_length)) {
-                set_result(result, "NATIVE_WIRE_SERVER_GI_REPORT_SEND_FAILED", "Native wire server could not send GI information report frame.");
-                return -1;
-            }
-            printf("native-wire-server: gi-information-report-sent bytes=%zu\n", response_length);
-            fflush(stdout);
+        if (!send_pending_information_report(server_runtime, data_client_fd, "gi-information-report-sent", result)) {
+            return -1;
         }
     }
     else {
@@ -703,6 +801,8 @@ int unitlab_run_native_wire_server(
     uint8_t data_rx_buffer[16384U];
     size_t frame_length = 0U;
     size_t data_rx_length = 0U;
+    uint64_t next_test_tick_ms = 0U;
+    uint8_t test_tick_value = 1U;
     if (result != NULL) {
         memset(result, 0, sizeof(*result));
     }
@@ -770,6 +870,9 @@ int unitlab_run_native_wire_server(
             goto fail;
         }
         if (poll_rc == 0) {
+            if (!native_wire_emit_test_tick_if_due(server_runtime, data_client_fd, config->native_test_report_tick_ms, &next_test_tick_ms, &test_tick_value, result)) {
+                goto fail;
+            }
             continue;
         }
         for (nfds_t index = 0U; index < poll_count; index++) {
@@ -787,6 +890,8 @@ int unitlab_run_native_wire_server(
                 }
                 data_client_fd = accepted;
                 data_rx_length = 0U;
+                next_test_tick_ms = 0U;
+                test_tick_value = 1U;
                 reset_native_wire_runtime_state(server_runtime);
                 printf("native-wire-server: data-client-connected session-state=%u\n", (unsigned)server_runtime->session.state);
                 fflush(stdout);
@@ -816,6 +921,8 @@ int unitlab_run_native_wire_server(
                         if (retried > 0) {
                             data_client_fd = retried;
                             data_rx_length = 0U;
+                            next_test_tick_ms = 0U;
+                            test_tick_value = 1U;
                             printf("native-wire-server: data-client-connected\n");
                             fflush(stdout);
                         }
@@ -836,6 +943,8 @@ int unitlab_run_native_wire_server(
                     close_fd(&data_client_fd);
                     close_fd(&control_client_fd);
                     data_rx_length = 0U;
+                    next_test_tick_ms = 0U;
+                    test_tick_value = 1U;
                     reset_native_wire_runtime_state(server_runtime);
                 }
                 else {
@@ -870,6 +979,8 @@ int unitlab_run_native_wire_server(
                                 close_fd(&data_client_fd);
                                 close_fd(&control_client_fd);
                                 data_rx_length = 0U;
+                                next_test_tick_ms = 0U;
+                                test_tick_value = 1U;
                                 reset_native_wire_runtime_state(server_runtime);
                                 break;
                             }
@@ -885,6 +996,8 @@ int unitlab_run_native_wire_server(
                     close_fd(&control_client_fd);
                     close_fd(&data_client_fd);
                     data_rx_length = 0U;
+                    next_test_tick_ms = 0U;
+                    test_tick_value = 1U;
                     reset_native_wire_runtime_state(server_runtime);
                     continue;
                 }
@@ -910,6 +1023,9 @@ int unitlab_run_native_wire_server(
                     goto stop;
                 }
             }
+        }
+        if (!native_wire_emit_test_tick_if_due(server_runtime, data_client_fd, config->native_test_report_tick_ms, &next_test_tick_ms, &test_tick_value, result)) {
+            goto fail;
         }
     }
 stop:

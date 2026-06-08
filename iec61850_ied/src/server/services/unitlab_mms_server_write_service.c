@@ -116,23 +116,27 @@ static int server_runtime_encode_written_signal_value(
         diagnostic);
 }
 
-static int server_runtime_queue_data_change_report(
+int unitlab_mms_server_runtime_queue_data_change_report_value(
     UnitLabMmsServerRuntime* server_runtime,
     const char* object_reference,
     const uint8_t* value_bytes,
-    size_t value_length)
+    size_t value_length,
+    UnitLabMmsDiagnostic* diagnostic)
 {
     const UnitLabIedModelReportControl* report;
     const UnitLabIedModelDataSet* data_set;
 
     if (server_runtime == NULL || object_reference == NULL || value_bytes == NULL || value_length == 0U) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Data-change report queue requires runtime, object reference, and value bytes.");
         return 0;
     }
     if (server_runtime->brcb_rpt_ena == 0U || server_runtime->model_plan == NULL || server_runtime->model_plan->report_count == 0U) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Data-change report queue requires enabled BRCB and model-backed report control.");
         return 0;
     }
     report = &server_runtime->model_plan->reports[0];
     if (report->data_set_index >= server_runtime->model_plan->data_set_count || server_runtime->model_plan->data_sets == NULL || server_runtime->model_plan->signals == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Data-change report queue could not resolve the active report DataSet.");
         return 0;
     }
     data_set = &server_runtime->model_plan->data_sets[report->data_set_index];
@@ -150,16 +154,18 @@ static int server_runtime_queue_data_change_report(
                     server_runtime->pending_report_value,
                     sizeof(server_runtime->pending_report_value),
                     &encoded_value_length,
-                    NULL)) {
+                    diagnostic)) {
                 return 0;
             }
             server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE;
             server_runtime->pending_gi_report = 1U;
             server_runtime->pending_report_member_index = index;
             server_runtime->pending_report_value_length = encoded_value_length;
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
             return 1;
         }
     }
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Data-change report queue object is not a member of the active report DataSet.");
     return 0;
 }
 
@@ -255,7 +261,7 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                 continue;
             }
 
-            (void)server_runtime_queue_data_change_report(server_runtime, object_reference, value_bytes, value_length);
+            (void)unitlab_mms_server_runtime_queue_data_change_report_value(server_runtime, object_reference, value_bytes, value_length, NULL);
         }
     }
 

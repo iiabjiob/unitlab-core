@@ -641,8 +641,8 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     if (server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE && server_runtime->pending_report_member_index < member_count && server_runtime->pending_report_value_length != 0U) {
         included_member_count = 1U;
         included_member_indices[0] = server_runtime->pending_report_member_index;
-        inclusion_bitstring[0] = 0x07U;
-        inclusion_bitstring[1] = 0x80U;
+        inclusion_bitstring[0] = member_count <= 8U ? (uint8_t)(8U - member_count) : 0U;
+        inclusion_bitstring[1] = server_runtime->pending_report_member_index < 8U ? (uint8_t)(0x80U >> server_runtime->pending_report_member_index) : 0U;
         reason_code = reason_data_change;
     } else {
         included_member_count = member_count;

@@ -5,6 +5,7 @@ typedef struct UnitLabIedServerConfig {
     const char* bind_address;
     int port;
     int control_port;
+    int native_test_report_tick_ms;
 } UnitLabIedServerConfig;
 
 typedef struct UnitLabIedModelLoadResult {

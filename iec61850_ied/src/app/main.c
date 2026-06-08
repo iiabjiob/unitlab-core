@@ -29,6 +29,7 @@ typedef struct SimulatorOptions {
     int native_wire_client_start;
     int metadata_probe;
     int gi_probe;
+    int native_test_report_tick_ms;
     const char* report_key;
 } SimulatorOptions;
 
@@ -54,7 +55,7 @@ static int immediate_stop_requested(void* context)
 
 static void print_usage(const char* program_name)
 {
-    printf("Usage: %s --fixture PATH --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--native-smoke-start] [--native-wire-start] [--native-wire-client-start] [--metadata-probe] [--gi-probe] [--report-key KEY]\n", program_name);
+    printf("Usage: %s --fixture PATH --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--native-smoke-start] [--native-wire-start] [--native-wire-client-start] [--metadata-probe] [--gi-probe] [--report-key KEY] [--native-test-report-tick-ms MS]\n", program_name);
     printf("\n");
     printf("Options:\n");
     printf("  --fixture PATH   UnitLab IEC 61850 IED simulator fixture JSON.\n");
@@ -69,6 +70,7 @@ static void print_usage(const char* program_name)
     printf("  --metadata-probe Connect to the endpoint and verify DataSet/BRCB metadata, then exit.\n");
     printf("  --gi-probe       Connect to the endpoint, enable report(s), request GI, verify fixture values, then exit.\n");
     printf("  --report-key KEY Limit --gi-probe validation to one fixture ReportControl key.\n");
+    printf("  --native-test-report-tick-ms MS  With --native-wire-start, emit cyclic PGGIO1 data-change reports after RptEna. Default: 0/off.\n");
     printf("  --help           Show this help text.\n");
 }
 
@@ -99,6 +101,7 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
     options->native_wire_client_start = 0;
     options->metadata_probe = 0;
     options->gi_probe = 0;
+    options->native_test_report_tick_ms = 0;
     options->report_key = NULL;
 
     for (int index = 1; index < argc; index++) {
@@ -137,6 +140,13 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         }
         if (strcmp(arg, "--report-key") == 0 && index + 1 < argc) {
             options->report_key = argv[++index];
+            continue;
+        }
+        if (strcmp(arg, "--native-test-report-tick-ms") == 0 && index + 1 < argc) {
+            if (!parse_int(argv[++index], &options->native_test_report_tick_ms)) {
+                fprintf(stderr, "INVALID_NATIVE_TEST_REPORT_TICK_MS: expected interval in range 1..65535.\n");
+                return -1;
+            }
             continue;
         }
         if (strcmp(arg, "--fixture") == 0 && index + 1 < argc) {
@@ -184,6 +194,10 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
     }
     if (options->report_key != NULL && !options->gi_probe) {
         fprintf(stderr, "INVALID_ARGUMENT: --report-key requires --gi-probe.\n");
+        return -1;
+    }
+    if (options->native_test_report_tick_ms != 0 && !options->native_wire_start) {
+        fprintf(stderr, "INVALID_ARGUMENT: --native-test-report-tick-ms requires --native-wire-start.\n");
         return -1;
     }
 
@@ -403,6 +417,7 @@ int main(int argc, char** argv)
         .bind_address = options.bind_address,
         .port = options.port,
         .control_port = options.port < 65535 ? options.port + 1 : 0,
+        .native_test_report_tick_ms = options.native_test_report_tick_ms,
     };
     if (options.metadata_probe) {
         if (!unitlab_probe_ied_server_metadata(&fixture_model, &model_plan, &server_config, &load_result)) {

@@ -4,6 +4,7 @@ set -euo pipefail
 PROJECT_DIR="/workspace/iec61850_ied"
 BUILD_DIR="$PROJECT_DIR/build-dev"
 BIN="$BUILD_DIR/unitlab-iec61850-ied-sim"
+NATIVE_TEST_REPORT_TICK_MS="${NATIVE_TEST_REPORT_TICK_MS:-1000}"
 
 if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
   echo "configuring..."
@@ -36,9 +37,19 @@ stop_listeners_on_port 12447
 stop_listeners_on_port 12448
 
 echo "starting native wire server..."
-exec "$BIN" \
-  --fixture "$PROJECT_DIR/examples/single-report.fixture.json" \
-  --ied IED1 \
-  --bind 0.0.0.0 \
-  --port 12447 \
+args=(
+  --fixture "$PROJECT_DIR/examples/single-report.fixture.json"
+  --ied IED1
+  --bind 0.0.0.0
+  --port 12447
   --native-wire-start
+)
+
+if [ "$NATIVE_TEST_REPORT_TICK_MS" != "0" ]; then
+  echo "native test report tick: ${NATIVE_TEST_REPORT_TICK_MS}ms"
+  args+=(--native-test-report-tick-ms "$NATIVE_TEST_REPORT_TICK_MS")
+else
+  echo "native test report tick: disabled"
+fi
+
+exec "$BIN" "${args[@]}"
