@@ -4277,6 +4277,68 @@ static void test_server_runtime_apply_iedscout_logical_node_directory_request_cl
     }
 }
 
+static void test_server_runtime_unsupported_confirmed_service_builds_confirmed_error(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = {
+        .bind_address = "127.0.0.1",
+        .port = 102,
+    };
+    UnitLabMmsPdu request_pdu;
+    UnitLabMmsAssociationFrame response_frame;
+    UnitLabMmsPdu response_pdu;
+    uint8_t scratch[512U];
+    uint8_t request_bytes[512U];
+    uint8_t response_bytes[512U];
+    const uint8_t unsupported_confirmed_request[] = { 0x02U, 0x01U, 0x23U, 0xA7U, 0x00U };
+    size_t request_length = 0U;
+    size_t response_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_consumed_length = 0U;
+    size_t pdu_consumed_length = 0U;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+
+    unitlab_mms_pdu_init(&request_pdu);
+    request_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+    request_pdu.has_invoke_id = 1;
+    request_pdu.invoke_id = 35U;
+    request_pdu.has_service = 1;
+    request_pdu.service_kind = UNITLAB_MMS_SERVICE_RAW;
+    request_pdu.pdu_bytes = unsupported_confirmed_request;
+    request_pdu.pdu_length = sizeof(unsupported_confirmed_request);
+    assert(unitlab_mms_build_wire_frame_from_pdu(&request_pdu, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result) == 0);
+    assert(operation_result.ok == 0);
+    assert(operation_result.diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED);
+    assert(server_runtime.last_wire_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_REQUEST);
+    assert(server_runtime.last_wire_pdu.invoke_id == 35U);
+    assert(server_runtime.last_wire_pdu.service_kind == UNITLAB_MMS_SERVICE_RAW);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_error_bytes(&server_runtime, server_runtime.last_wire_pdu.invoke_id, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+
+    unitlab_mms_association_frame_init(&response_frame);
+    assert(unitlab_mms_association_frame_decode(&response_frame, response_bytes, response_length, &response_consumed_length, &diagnostic));
+    assert(response_consumed_length == response_length);
+    unitlab_mms_pdu_init(&response_pdu);
+    assert(unitlab_mms_pdu_decode(&response_pdu, response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, &pdu_consumed_length, &diagnostic));
+    assert(pdu_consumed_length == response_frame.presentation.payload_length);
+    assert(response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_ERROR);
+    assert(response_pdu.has_invoke_id == 1);
+    assert(response_pdu.invoke_id == 35U);
+    assert(response_pdu.service_tag.tag_class == UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC);
+    assert(response_pdu.service_tag.constructed == 1);
+    assert(response_pdu.service_tag.tag_number == 2U);
+}
+
 static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -5056,6 +5118,7 @@ int main(void)
     test_server_runtime_apply_iedscout_aa_specific_directory_request_scope_two_builds_response();
     test_server_runtime_apply_iedscout_vmd_get_variable_access_attributes_request_builds_response();
     test_server_runtime_build_confirmed_error_bytes_roundtrips();
+    test_server_runtime_unsupported_confirmed_service_builds_confirmed_error();
     test_server_runtime_apply_iedscout_logical_node_directory_request_builds_response();
     test_server_runtime_build_confirmed_response_bytes_matches_fixture_style_object_reference();
     test_server_runtime_apply_confirmed_request_and_build_response_roundtrips();
