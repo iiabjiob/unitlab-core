@@ -954,18 +954,77 @@ static UnitLabMmsServerRuntimeSignalValue* server_runtime_find_signal_value_muta
     return NULL;
 }
 
+static uint8_t server_runtime_report_trigger_options_mask_or_default(const UnitLabIedModelReportControl* report)
+{
+    if (report == NULL) {
+        return 0U;
+    }
+    if (report->trigger_options_mask == 0U) {
+        return UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED | UNITLAB_IED_MODEL_TRG_OPT_GI;
+    }
+    return report->trigger_options_mask;
+}
+
 static int server_runtime_report_data_change_trigger_enabled(const UnitLabIedModelReportControl* report)
 {
-    uint8_t trigger_options_mask = 0U;
+    return (server_runtime_report_trigger_options_mask_or_default(report) & UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED) != 0U;
+}
 
-    if (report == NULL) {
+static int server_runtime_report_quality_change_trigger_enabled(const UnitLabIedModelReportControl* report)
+{
+    return (server_runtime_report_trigger_options_mask_or_default(report) & UNITLAB_IED_MODEL_TRG_OPT_QUALITY_CHANGED) != 0U;
+}
+
+static int server_runtime_reference_with_replaced_component_matches_signal(const char* object_reference, const char* component, const UnitLabIedModelSignal* signal)
+{
+    char candidate_reference[256U];
+
+    if (!server_runtime_replace_trailing_component(object_reference, component, candidate_reference, sizeof(candidate_reference))) {
         return 0;
     }
-    trigger_options_mask = report->trigger_options_mask;
-    if (trigger_options_mask == 0U) {
-        trigger_options_mask = UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED | UNITLAB_IED_MODEL_TRG_OPT_GI;
+    return server_runtime_reference_matches_signal(candidate_reference, signal);
+}
+
+static int server_runtime_queue_quality_change_report_member(UnitLabMmsServerRuntime* server_runtime, const char* value_leaf_reference)
+{
+    const UnitLabIedModelReportControl* report = NULL;
+    const UnitLabIedModelDataSet* data_set = NULL;
+
+    if (server_runtime == NULL || value_leaf_reference == NULL || server_runtime->brcb_rpt_ena == 0U
+        || server_runtime->model_plan == NULL || server_runtime->model_plan->report_count == 0U || server_runtime->model_plan->reports == NULL) {
+        return 0;
     }
-    return (trigger_options_mask & UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED) != 0U;
+    report = &server_runtime->model_plan->reports[0];
+    if (!server_runtime_report_quality_change_trigger_enabled(report)
+        || report->data_set_index >= server_runtime->model_plan->data_set_count
+        || server_runtime->model_plan->data_sets == NULL
+        || server_runtime->model_plan->signals == NULL) {
+        return 0;
+    }
+    data_set = &server_runtime->model_plan->data_sets[report->data_set_index];
+    for (size_t index = 0U; index < data_set->member_count; index++) {
+        size_t signal_index = data_set->first_signal_index + index;
+        const UnitLabIedModelSignal* candidate = NULL;
+
+        if (signal_index >= server_runtime->model_plan->signal_count) {
+            break;
+        }
+        candidate = &server_runtime->model_plan->signals[signal_index];
+        if (strcmp(candidate->data_attribute_path, "q") == 0
+            && server_runtime_reference_with_replaced_component_matches_signal(value_leaf_reference, "q", candidate)) {
+            server_runtime->pending_report_member_index = index;
+            if (index < 64U) {
+                server_runtime->pending_report_member_mask |= ((uint64_t)1U << index);
+            }
+            if (server_runtime->pending_report_kind != UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE) {
+                server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE;
+            }
+            server_runtime->pending_report_value_length = 1U;
+            server_runtime->pending_gi_report = 1U;
+            return 1;
+        }
+    }
+    return 0;
 }
 
 int unitlab_mms_server_runtime_update_signal_value(
@@ -1126,6 +1185,7 @@ int unitlab_mms_server_runtime_update_signal_quality(
     }
     memcpy(runtime_value->quality_value, quality_bytes, quality_length);
     runtime_value->quality_value_length = quality_length;
+    (void)server_runtime_queue_quality_change_report_member(server_runtime, value_leaf_reference);
     server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }

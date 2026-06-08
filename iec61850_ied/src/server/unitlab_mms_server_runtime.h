@@ -28,7 +28,8 @@ typedef enum UnitLabMmsServerRuntimeState {
 typedef enum UnitLabMmsServerPendingReportKind {
     UNITLAB_MMS_SERVER_PENDING_REPORT_NONE = 0,
     UNITLAB_MMS_SERVER_PENDING_REPORT_GI = 1,
-    UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE = 2
+    UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE = 2,
+    UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE = 3
 } UnitLabMmsServerPendingReportKind;
 
 typedef struct UnitLabMmsServerRuntimeSignalValue {
