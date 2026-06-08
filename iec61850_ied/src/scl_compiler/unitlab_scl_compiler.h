@@ -3,6 +3,8 @@
 
 #include <stddef.h>
 
+#include "model/model_plan.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -25,6 +27,7 @@ int unitlab_scl_compile_from_memory(
 
 const char* unitlab_scl_compile_selected_ied_name(const UnitLabSclCompileResult* result);
 size_t unitlab_scl_compile_source_size(const UnitLabSclCompileResult* result);
+const UnitLabIedModelPlan* unitlab_scl_compile_model_plan(const UnitLabSclCompileResult* result);
 size_t unitlab_scl_compile_diagnostic_count(const UnitLabSclCompileResult* result);
 int unitlab_scl_compile_diagnostic_at(
     const UnitLabSclCompileResult* result,
