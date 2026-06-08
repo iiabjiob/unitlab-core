@@ -963,6 +963,74 @@ static void test_server_runtime_dataset_write_second_member_marks_second_inclusi
     unitlab_free_ied_model_plan(&plan);
 }
 
+
+static void test_server_runtime_data_change_reports_advance_sequence_and_entry_time(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    uint8_t scratch[512U];
+    uint8_t request_bytes[512U];
+    uint8_t response_bytes[1024U];
+    uint8_t first_report_bytes[2048U];
+    uint8_t second_report_bytes[2048U];
+    uint8_t first_value_byte = 0x00U;
+    uint8_t second_value_byte = 0x01U;
+    uint8_t first_entry_id[8U];
+    uint8_t first_time_of_entry[6U];
+    UnitLabMmsBerElement data_element;
+    UnitLabIedModelPlan plan;
+    size_t request_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+    size_t first_report_length = 0U;
+    size_t second_report_length = 0U;
+
+    assert(build_data_change_report_plan(&plan) == 1);
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+
+    unitlab_mms_ber_element_init(&data_element);
+    data_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    data_element.tag.constructed = 0;
+    data_element.tag.tag_number = 5U;
+    data_element.value_bytes = &first_value_byte;
+    data_element.value_length = 1U;
+    assert(unitlab_mms_build_write_request_frame("IED1LD0", "PGGIO1$ST$Ind1$stVal", &data_element, 47U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, first_report_bytes, sizeof(first_report_bytes), &first_report_length, &diagnostic));
+    assert(server_runtime.brcb_sq_num == 1U);
+    memcpy(first_entry_id, server_runtime.brcb_entry_id, sizeof(first_entry_id));
+    memcpy(first_time_of_entry, server_runtime.brcb_time_of_entry, sizeof(first_time_of_entry));
+    assert(contains_bytes(first_report_bytes, first_report_length, (const uint8_t*)"\x86\x01\x00", 3U) == 1);
+    assert(contains_bytes(first_report_bytes, first_report_length, (const uint8_t*)"\x86\x01\x07", 3U) == 1);
+    assert(contains_bytes(first_report_bytes, first_report_length, (const uint8_t*)"\x84\x02\x06\x40", 4U) == 1);
+    assert(contains_bytes(first_report_bytes, first_report_length, (const uint8_t*)"\x84\x02\x02\x80", 4U) == 1);
+
+    assert(unitlab_mms_server_runtime_queue_data_change_report_value(&server_runtime, "IED1LD0/PGGIO1$ST$Ind1$stVal", &second_value_byte, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, second_report_bytes, sizeof(second_report_bytes), &second_report_length, &diagnostic));
+    assert(server_runtime.brcb_sq_num == 2U);
+    assert(memcmp(first_entry_id, server_runtime.brcb_entry_id, sizeof(first_entry_id)) != 0);
+    assert(memcmp(first_time_of_entry, server_runtime.brcb_time_of_entry, sizeof(first_time_of_entry)) != 0);
+    assert(contains_bytes(second_report_bytes, second_report_length, (const uint8_t*)"\x86\x01\x01", 3U) == 1);
+    assert(contains_bytes(second_report_bytes, second_report_length, (const uint8_t*)"\x86\x01\x07", 3U) == 1);
+    assert(contains_bytes(second_report_bytes, second_report_length, (const uint8_t*)"\x84\x02\x06\x40", 4U) == 1);
+    assert(contains_bytes(second_report_bytes, second_report_length, (const uint8_t*)"\x84\x02\x02\x80", 4U) == 1);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
 static void test_server_runtime_dataset_write_without_rptena_does_not_queue_report(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -3955,6 +4023,7 @@ int main(void)
     test_server_runtime_gi_report_uses_model_dataset_members();
     test_server_runtime_dataset_write_queues_data_change_report();
     test_server_runtime_dataset_write_second_member_marks_second_inclusion_bit();
+    test_server_runtime_data_change_reports_advance_sequence_and_entry_time();
     test_server_runtime_dataset_write_without_rptena_does_not_queue_report();
     test_server_runtime_gi_requires_enabled_rptena();
     test_server_runtime_rptena_false_clears_pending_gi();
