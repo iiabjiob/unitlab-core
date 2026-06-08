@@ -703,6 +703,15 @@ static void test_server_runtime_gi_report_uses_model_dataset_members(void)
             .integrity_period_ms = 1000,
         },
     };
+    reports[0].optional_fields.sequence_number = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.timestamp = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.reason_code = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.data_set_name = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.data_reference = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.buffer_overflow = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.entry_id = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.config_revision = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+
     UnitLabIedFixtureModel fixture = {
         .device_count = 1U,
         .ied_name = "IED1",
@@ -816,6 +825,15 @@ static int build_data_change_report_plan(UnitLabIedModelPlan* plan)
             .integrity_period_ms = 1000,
         },
     };
+    reports[0].optional_fields.sequence_number = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.timestamp = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.reason_code = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.data_set_name = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.data_reference = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.buffer_overflow = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.entry_id = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    reports[0].optional_fields.config_revision = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+
     UnitLabIedFixtureModel fixture = {
         .device_count = 1U,
         .ied_name = "IED1",
@@ -994,6 +1012,45 @@ static void test_server_runtime_report_option_fields_use_model_masks(void)
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x02\x44", 4U) == 1);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x03\x06\x7F\x80", 5U) == 0);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x02\x64", 4U) == 0);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
+
+static void test_server_runtime_information_report_omits_disabled_optional_fields(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    uint8_t report_bytes[2048U];
+    uint8_t value_byte = 0x01U;
+    size_t report_length = 0U;
+
+    assert(build_data_change_report_plan(&plan) == 1);
+    plan.reports[0].optional_fields_mask = UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM | UNITLAB_IED_MODEL_RPT_OPT_DATA_REFERENCE;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+
+    assert(unitlab_mms_server_runtime_queue_data_change_report_value(&server_runtime, "IED1LD0/PGGIO1$ST$Ind1$stVal", &value_byte, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
+
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x03\x06\x11\x00", 5U) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x86\x01\x00", 3U) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$stVal", strlen("IED1LD0/PGGIO1$ST$Ind1$stVal")) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/LLN0$dsEvents", strlen("IED1LD0/LLN0$dsEvents")) == 0);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x8C\x06", 2U) == 0);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x89\x08", 2U) == 0);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x86\x01\x07", 3U) == 0);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x02\x80", 4U) == 0);
 
     unitlab_free_ied_model_plan(&plan);
 }
@@ -4058,6 +4115,7 @@ int main(void)
     test_server_runtime_dataset_write_queues_data_change_report();
     test_server_runtime_dataset_write_second_member_marks_second_inclusion_bit();
     test_server_runtime_report_option_fields_use_model_masks();
+    test_server_runtime_information_report_omits_disabled_optional_fields();
     test_server_runtime_data_change_reports_advance_sequence_and_entry_time();
     test_server_runtime_dataset_write_without_rptena_does_not_queue_report();
     test_server_runtime_gi_requires_enabled_rptena();
