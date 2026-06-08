@@ -1048,6 +1048,9 @@ int unitlab_mms_server_runtime_update_signal_value(
         memcpy(server_runtime->pending_report_value, encoded_value, encoded_value_length);
         server_runtime->pending_report_value_length = encoded_value_length;
         server_runtime->pending_report_member_index = member_index;
+        if (member_index < 64U) {
+            server_runtime->pending_report_member_mask |= ((uint64_t)1U << member_index);
+        }
         server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE;
         server_runtime->pending_gi_report = 1U;
     }
@@ -1379,6 +1382,7 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     server_runtime->pending_gi_report = 0U;
     server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_NONE;
     server_runtime->pending_report_member_index = 0U;
+    server_runtime->pending_report_member_mask = 0U;
     memset(server_runtime->pending_report_value, 0, sizeof(server_runtime->pending_report_value));
     server_runtime->pending_report_value_length = 0U;
     memset(server_runtime->signal_values, 0, sizeof(server_runtime->signal_values));

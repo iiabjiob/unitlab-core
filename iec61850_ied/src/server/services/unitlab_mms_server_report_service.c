@@ -753,19 +753,29 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     if (member_count > sizeof(included_member_indices) / sizeof(included_member_indices[0])) {
         member_count = sizeof(included_member_indices) / sizeof(included_member_indices[0]);
     }
-    if (server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE && server_runtime->pending_report_member_index < member_count && server_runtime->pending_report_value_length != 0U) {
-        const UnitLabIedModelSignal* changed_signal = &server_runtime->model_plan->signals[data_set->first_signal_index + server_runtime->pending_report_member_index];
+    if (server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE
+        && server_runtime->pending_report_member_mask != 0U
+        && server_runtime->pending_report_value_length != 0U) {
         included_member_count = 0U;
         inclusion_bitstring[0] = member_count <= 8U ? (uint8_t)(8U - member_count) : 0U;
         inclusion_bitstring[1] = 0U;
-        included_member_indices[included_member_count++] = server_runtime->pending_report_member_index;
-        (void)server_runtime_report_inclusion_bit_set(inclusion_bitstring, member_count, server_runtime->pending_report_member_index);
-        for (size_t member_index = 0U; member_index < member_count; member_index++) {
-            const UnitLabIedModelSignal* candidate_signal = &server_runtime->model_plan->signals[data_set->first_signal_index + member_index];
-            if (!server_runtime_report_member_already_included(included_member_indices, included_member_count, member_index)
-                && server_runtime_report_signal_references_same_value_leaf(candidate_signal, changed_signal)) {
-                included_member_indices[included_member_count++] = member_index;
-                (void)server_runtime_report_inclusion_bit_set(inclusion_bitstring, member_count, member_index);
+        for (size_t changed_index = 0U; changed_index < member_count; changed_index++) {
+            const UnitLabIedModelSignal* changed_signal = NULL;
+            if (changed_index >= 64U || (server_runtime->pending_report_member_mask & ((uint64_t)1U << changed_index)) == 0U) {
+                continue;
+            }
+            if (!server_runtime_report_member_already_included(included_member_indices, included_member_count, changed_index)) {
+                included_member_indices[included_member_count++] = changed_index;
+                (void)server_runtime_report_inclusion_bit_set(inclusion_bitstring, member_count, changed_index);
+            }
+            changed_signal = &server_runtime->model_plan->signals[data_set->first_signal_index + changed_index];
+            for (size_t member_index = 0U; member_index < member_count; member_index++) {
+                const UnitLabIedModelSignal* candidate_signal = &server_runtime->model_plan->signals[data_set->first_signal_index + member_index];
+                if (!server_runtime_report_member_already_included(included_member_indices, included_member_count, member_index)
+                    && server_runtime_report_signal_references_same_value_leaf(candidate_signal, changed_signal)) {
+                    included_member_indices[included_member_count++] = member_index;
+                    (void)server_runtime_report_inclusion_bit_set(inclusion_bitstring, member_count, member_index);
+                }
             }
         }
         reason_code = reason_data_change;
@@ -909,6 +919,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     }
     server_runtime->pending_gi_report = 0U;
     server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_NONE;
+    server_runtime->pending_report_member_mask = 0U;
     server_runtime->pending_report_value_length = 0U;
     if (server_runtime->report_control.state == UNITLAB_IEC61850_REPORT_CONTROL_GI_PENDING) {
         UnitLabMmsDiagnostic report_diagnostic;

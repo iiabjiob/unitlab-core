@@ -115,6 +115,7 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                     unitlab_mms_diagnostic_clear(&disable_diagnostic);
                     server_runtime->pending_gi_report = 0U;
                     server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_NONE;
+                    server_runtime->pending_report_member_mask = 0U;
                     server_runtime->pending_report_value_length = 0U;
                     (void)unitlab_iec61850_report_control_disable(&server_runtime->report_control, &disable_diagnostic);
                 }
@@ -140,6 +141,7 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
                     memset(server_runtime->brcb_time_of_entry, 0, sizeof(server_runtime->brcb_time_of_entry));
                     server_runtime->pending_gi_report = 0U;
                     server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_NONE;
+                    server_runtime->pending_report_member_mask = 0U;
                     server_runtime->pending_report_value_length = 0U;
                 }
                 continue;

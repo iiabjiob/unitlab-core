@@ -68,6 +68,7 @@ typedef struct UnitLabMmsServerRuntime {
     uint8_t pending_gi_report;
     UnitLabMmsServerPendingReportKind pending_report_kind;
     size_t pending_report_member_index;
+    uint64_t pending_report_member_mask;
     uint8_t pending_report_value[128];
     size_t pending_report_value_length;
     UnitLabMmsServerRuntimeSignalValue signal_values[UNITLAB_MMS_SERVER_RUNTIME_MAX_SIGNAL_VALUES];
