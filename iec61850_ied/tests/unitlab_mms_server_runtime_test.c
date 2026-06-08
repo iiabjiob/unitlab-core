@@ -1,6 +1,7 @@
 #include <assert.h>
 
 #include "server/unitlab_mms_server_runtime.h"
+#include "server/unitlab_mms_server_runtime_internal.h"
 #include "model/model_plan.h"
 #include "wire/acse/unitlab_mms_acse.h"
 #include "wire/ber/unitlab_mms_ber.h"
@@ -1768,6 +1769,45 @@ static void test_server_runtime_dataset_write_without_rptena_does_not_queue_repo
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(server_runtime.pending_gi_report == 0U);
     assert(server_runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
+static void test_server_runtime_integrity_poll_queues_full_dataset_report(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    uint8_t report_bytes[4096U];
+    size_t report_length = 0U;
+
+    assert(build_runtime_value_store_plan(&plan) == 1);
+    plan.reports[0].trigger_options_mask = UNITLAB_IED_MODEL_TRG_OPT_INTEGRITY | UNITLAB_IED_MODEL_TRG_OPT_GI;
+    plan.reports[0].integrity_period_ms_known = 1;
+    plan.reports[0].integrity_period_ms = 100U;
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+
+    assert(server_runtime_poll_integrity_report(&server_runtime, 1000U, &diagnostic));
+    assert(server_runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE);
+    assert(server_runtime.next_integrity_report_ms == 1100U);
+    assert(server_runtime_poll_integrity_report(&server_runtime, 1099U, &diagnostic));
+    assert(server_runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE);
+    assert(server_runtime_poll_integrity_report(&server_runtime, 1100U, &diagnostic));
+    assert(server_runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_INTEGRITY);
+    assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/XCBR1$ST$Pos$stVal", strlen("IED1LD0/XCBR1$ST$Pos$stVal")) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$stVal", strlen("IED1LD0/PGGIO1$ST$Ind1$stVal")) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x06\xC0", 4U) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x02\x10", 4U) == 1);
 
     unitlab_free_ied_model_plan(&plan);
 }
@@ -4766,6 +4806,7 @@ int main(void)
     test_server_runtime_information_report_omits_disabled_optional_fields();
     test_server_runtime_data_change_reports_advance_sequence_and_entry_time();
     test_server_runtime_dataset_write_without_rptena_does_not_queue_report();
+    test_server_runtime_integrity_poll_queues_full_dataset_report();
     test_server_runtime_information_report_requires_model_dataset();
     test_server_runtime_gi_requires_enabled_rptena();
     test_server_runtime_rptena_false_clears_pending_gi();

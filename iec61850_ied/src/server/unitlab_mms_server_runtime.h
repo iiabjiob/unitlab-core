@@ -31,7 +31,8 @@ typedef enum UnitLabMmsServerPendingReportKind {
     UNITLAB_MMS_SERVER_PENDING_REPORT_GI = 1,
     UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE = 2,
     UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE = 3,
-    UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_UPDATE = 4
+    UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_UPDATE = 4,
+    UNITLAB_MMS_SERVER_PENDING_REPORT_INTEGRITY = 5
 } UnitLabMmsServerPendingReportKind;
 
 typedef struct UnitLabMmsServerPendingReportEntry {
@@ -76,6 +77,7 @@ typedef struct UnitLabMmsServerRuntime {
     uint8_t brcb_entry_id[8];
     uint8_t brcb_time_of_entry[6];
     uint8_t pending_gi_report;
+    uint64_t next_integrity_report_ms;
     UnitLabMmsServerPendingReportKind pending_report_kind;
     size_t pending_report_member_index;
     uint64_t pending_report_member_mask;

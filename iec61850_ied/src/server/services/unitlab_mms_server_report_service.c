@@ -725,6 +725,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     const uint8_t reason_data_change[2U] = { 0x02U, 0x80U };
     const uint8_t reason_quality_change[2U] = { 0x02U, 0x40U };
     const uint8_t reason_data_update[2U] = { 0x02U, 0x20U };
+    const uint8_t reason_integrity[2U] = { 0x02U, 0x10U };
     const uint8_t* reason_code = reason_gi;
     UnitLabMmsPdu report_pdu;
     const UnitLabIedModelReportControl* report = NULL;
@@ -755,7 +756,15 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     if (member_count > sizeof(included_member_indices) / sizeof(included_member_indices[0])) {
         member_count = sizeof(included_member_indices) / sizeof(included_member_indices[0]);
     }
-    if ((server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE
+    if (server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_INTEGRITY) {
+        included_member_count = member_count;
+        for (size_t index = 0U; index < included_member_count; index++) {
+            included_member_indices[index] = index;
+        }
+        inclusion_bitstring[0] = member_count <= 8U ? (uint8_t)(8U - member_count) : 0U;
+        inclusion_bitstring[1] = member_count >= 8U ? 0xFFU : (uint8_t)(0xFFU << (8U - member_count));
+        reason_code = reason_integrity;
+    } else if ((server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE
             || server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE
             || server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_UPDATE)
         && server_runtime->pending_report_member_mask != 0U

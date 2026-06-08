@@ -980,6 +980,16 @@ static int server_runtime_report_data_update_trigger_enabled(const UnitLabIedMod
     return (server_runtime_report_trigger_options_mask_or_default(report) & UNITLAB_IED_MODEL_TRG_OPT_DATA_UPDATE) != 0U;
 }
 
+static int server_runtime_report_integrity_trigger_enabled(const UnitLabIedModelReportControl* report)
+{
+    return (server_runtime_report_trigger_options_mask_or_default(report) & UNITLAB_IED_MODEL_TRG_OPT_INTEGRITY) != 0U;
+}
+
+static uint32_t server_runtime_report_integrity_period_ms_or_default(const UnitLabIedModelReportControl* report)
+{
+    return report != NULL && report->integrity_period_ms_known ? report->integrity_period_ms : 0U;
+}
+
 static int server_runtime_reference_with_replaced_component_matches_signal(const char* object_reference, const char* component, const UnitLabIedModelSignal* signal)
 {
     char candidate_reference[256U];
@@ -996,6 +1006,7 @@ void server_runtime_clear_pending_reports(UnitLabMmsServerRuntime* server_runtim
         return;
     }
     server_runtime->pending_gi_report = 0U;
+    server_runtime->next_integrity_report_ms = 0U;
     server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_NONE;
     server_runtime->pending_report_member_index = 0U;
     server_runtime->pending_report_member_mask = 0U;
@@ -1099,6 +1110,46 @@ static int server_runtime_queue_quality_change_report_member(UnitLabMmsServerRun
         }
     }
     return 0;
+}
+
+int server_runtime_poll_integrity_report(UnitLabMmsServerRuntime* server_runtime, uint64_t now_ms, UnitLabMmsDiagnostic* diagnostic)
+{
+    const UnitLabIedModelReportControl* report = NULL;
+    uint32_t interval_ms = 0U;
+
+    if (server_runtime == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Server runtime is required for integrity report polling.");
+        return 0;
+    }
+    if (server_runtime->brcb_rpt_ena == 0U || server_runtime->pending_gi_report != 0U
+        || server_runtime->model_plan == NULL || server_runtime->model_plan->report_count == 0U || server_runtime->model_plan->reports == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+        return 1;
+    }
+    report = &server_runtime->model_plan->reports[0];
+    interval_ms = server_runtime_report_integrity_period_ms_or_default(report);
+    if (!server_runtime_report_integrity_trigger_enabled(report) || interval_ms == 0U) {
+        server_runtime->next_integrity_report_ms = 0U;
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+        return 1;
+    }
+    if (server_runtime->next_integrity_report_ms == 0U) {
+        server_runtime->next_integrity_report_ms = now_ms + (uint64_t)interval_ms;
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+        return 1;
+    }
+    if (now_ms < server_runtime->next_integrity_report_ms) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+        return 1;
+    }
+    server_runtime->pending_gi_report = 1U;
+    server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_INTEGRITY;
+    server_runtime->pending_report_member_index = 0U;
+    server_runtime->pending_report_member_mask = 0U;
+    server_runtime->pending_report_value_length = 1U;
+    server_runtime->next_integrity_report_ms = now_ms + (uint64_t)interval_ms;
+    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+    return 1;
 }
 
 int unitlab_mms_server_runtime_update_signal_value(

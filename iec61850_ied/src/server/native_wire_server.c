@@ -13,6 +13,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include "model/model_loader.h"
+#include "server/unitlab_mms_server_runtime_internal.h"
 #include "wire/mms/unitlab_mms_pdu.h"
 #include "wire/transport/unitlab_mms_transport_frame.h"
 #include "wire/orchestration/unitlab_mms_live_wire_probe.h"
@@ -149,6 +150,24 @@ static const char* native_wire_test_tick_reference(const UnitLabMmsServerRuntime
         return server_runtime->model_plan->signals[data_set->first_signal_index + 1U].data_set_entry_variable;
     }
     return NULL;
+}
+
+static int native_wire_emit_integrity_if_due(
+    UnitLabMmsServerRuntime* server_runtime,
+    int data_client_fd,
+    UnitLabIedModelLoadResult* result)
+{
+    UnitLabMmsDiagnostic diagnostic;
+
+    if (server_runtime == NULL || data_client_fd < 0 || unitlab_mms_server_runtime_has_pending_gi_report(server_runtime)) {
+        return 1;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    if (!server_runtime_poll_integrity_report(server_runtime, native_wire_now_ms(), &diagnostic)) {
+        set_result(result, "NATIVE_WIRE_SERVER_INTEGRITY_POLL_FAILED", diagnostic.message);
+        return 0;
+    }
+    return send_pending_information_report(server_runtime, data_client_fd, "integrity-report-sent", result);
 }
 
 static int native_wire_emit_test_tick_if_due(
@@ -870,6 +889,9 @@ int unitlab_run_native_wire_server(
             goto fail;
         }
         if (poll_rc == 0) {
+            if (!native_wire_emit_integrity_if_due(server_runtime, data_client_fd, result)) {
+                goto fail;
+            }
             if (!native_wire_emit_test_tick_if_due(server_runtime, data_client_fd, config->native_test_report_tick_ms, &next_test_tick_ms, &test_tick_value, result)) {
                 goto fail;
             }
@@ -1023,6 +1045,9 @@ int unitlab_run_native_wire_server(
                     goto stop;
                 }
             }
+        }
+        if (!native_wire_emit_integrity_if_due(server_runtime, data_client_fd, result)) {
+            goto fail;
         }
         if (!native_wire_emit_test_tick_if_due(server_runtime, data_client_fd, config->native_test_report_tick_ms, &next_test_tick_ms, &test_tick_value, result)) {
             goto fail;
