@@ -12,6 +12,7 @@ from app.infrastructure.db.database import AsyncSessionLocal, get_db
 from app.schemas.iec61850_scl_schema import (
     Iec61850RuntimeSelectionRequestSchema,
     Iec61850RuntimeSelectionResponseSchema,
+    Iec61850VirtualMmsServerLogsSchema,
     Iec61850VirtualMmsServerStartRequestSchema,
     Iec61850VirtualMmsServerStateSchema,
     Iec61850SclImportBatchJobStartResponseSchema,
@@ -405,6 +406,13 @@ async def get_virtual_mms_server_state(workspace_id: int) -> Iec61850VirtualMmsS
     _ = workspace_id
     return _virtual_mms_server_response(get_virtual_mms_server_service().snapshot())
 
+
+
+
+@scl_router.get("/virtual-mms-server/logs", response_model=Iec61850VirtualMmsServerLogsSchema)
+async def get_virtual_mms_server_logs(workspace_id: int) -> Iec61850VirtualMmsServerLogsSchema:
+    _ = workspace_id
+    return Iec61850VirtualMmsServerLogsSchema(lines=list(get_virtual_mms_server_service().logs()))
 
 @scl_router.post("/virtual-mms-server/start", response_model=Iec61850VirtualMmsServerStateSchema)
 async def start_virtual_mms_server(

@@ -3,9 +3,10 @@ from __future__ import annotations
 import os
 import subprocess
 import tempfile
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from threading import RLock
+from threading import RLock, Thread
 
 from app.core.config import REPO_ROOT, get_settings
 
@@ -31,6 +32,8 @@ class Iec61850VirtualMmsServerSnapshot:
 class Iec61850VirtualMmsServerService:
     def __init__(self) -> None:
         self._lock = RLock()
+        self._logs: deque[str] = deque(maxlen=5000)
+        self._log_threads: list[Thread] = []
         self._process: subprocess.Popen[str] | None = None
         self._source_dir: tempfile.TemporaryDirectory[str] | None = None
         self._source_path: str | None = None
@@ -85,6 +88,7 @@ class Iec61850VirtualMmsServerService:
                 raise
 
             self._process = process
+            self._start_log_drain(process)
             self._source_dir = source_dir
             self._source_path = str(source_path)
             self._binary_path = str(binary_path)
@@ -109,10 +113,41 @@ class Iec61850VirtualMmsServerService:
             if self._source_dir is not None:
                 self._source_dir.cleanup()
             self._process = None
+            self._log_threads = []
             self._source_dir = None
             self._source_path = None
             self._message = "Virtual MMS server stopped."
             return self._snapshot_locked()
+
+
+    def logs(self) -> tuple[str, ...]:
+        with self._lock:
+            return tuple(self._logs)
+
+    def _start_log_drain(self, process: subprocess.Popen[str]) -> None:
+        self._logs.clear()
+        self._log_threads = []
+        if process.stdout is not None:
+            self._log_threads.append(self._start_stream_drain(process.stdout, "stdout"))
+        if process.stderr is not None:
+            self._log_threads.append(self._start_stream_drain(process.stderr, "stderr"))
+
+    def _start_stream_drain(self, stream, name: str) -> Thread:
+        thread = Thread(target=self._drain_stream, args=(stream, name), daemon=True)
+        thread.start()
+        return thread
+
+    def _drain_stream(self, stream, name: str) -> None:
+        try:
+            for line in iter(stream.readline, ""):
+                text = line.rstrip("\r\n")
+                if not text:
+                    continue
+                with self._lock:
+                    self._logs.append(f"{name}: {text}")
+        except Exception as exc:  # pragma: no cover - defensive runtime logging path
+            with self._lock:
+                self._logs.append(f"{name}: <log-drain-error {exc}>")
 
     def _snapshot_locked(self) -> Iec61850VirtualMmsServerSnapshot:
         process = self._process

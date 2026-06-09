@@ -104,6 +104,11 @@ class Iec61850VirtualMmsServerStateSchema(BaseModel):
     message: str | None = None
 
 
+
+class Iec61850VirtualMmsServerLogsSchema(BaseModel):
+    lines: list[str]
+
+
 class Iec61850RuntimeSelectionRequestSchema(BaseModel):
     import_id: str
     selected_by: str | None = None

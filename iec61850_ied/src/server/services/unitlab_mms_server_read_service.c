@@ -258,6 +258,87 @@ static int server_runtime_encode_attribute_structure_value(
     return server_runtime_encode_nested_data_structure_value(value_bytes, value_length, wrapper_count, buffer, buffer_length, encoded_length, diagnostic);
 }
 
+
+static const UnitLabIedModelDataSet* server_runtime_read_report_data_set(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report)
+{
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || report == NULL || server_runtime->model_plan->data_sets == NULL) {
+        return NULL;
+    }
+    if (report->data_set_index >= server_runtime->model_plan->data_set_count) {
+        return NULL;
+    }
+    return &server_runtime->model_plan->data_sets[report->data_set_index];
+}
+
+static int server_runtime_read_reference_has_report_alias(const char* object_reference, const char* alias, const char* field_name)
+{
+    char suffix[192U];
+    char br_suffix[224U];
+
+    if (object_reference == NULL || alias == NULL || alias[0] == '\0') {
+        return 0;
+    }
+    if (field_name != NULL && field_name[0] != '\0') {
+        snprintf(suffix, sizeof(suffix), ".%s.%s", alias, field_name);
+        snprintf(br_suffix, sizeof(br_suffix), ".BR.%s.%s", alias, field_name);
+    }
+    else {
+        snprintf(suffix, sizeof(suffix), ".%s", alias);
+        snprintf(br_suffix, sizeof(br_suffix), ".BR.%s", alias);
+    }
+    return server_runtime_object_reference_has_suffix(object_reference, suffix)
+        || server_runtime_object_reference_has_suffix(object_reference, br_suffix);
+}
+
+static const UnitLabIedModelReportControl* server_runtime_read_find_report_control(
+    const UnitLabMmsServerRuntime* server_runtime,
+    const char* object_reference,
+    const char* field_name)
+{
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || server_runtime->model_plan->reports == NULL || object_reference == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < server_runtime->model_plan->report_count; index++) {
+        const UnitLabIedModelReportControl* report = &server_runtime->model_plan->reports[index];
+        const UnitLabIedModelDataSet* data_set = server_runtime_read_report_data_set(server_runtime, report);
+        if (server_runtime_read_reference_has_report_alias(object_reference, report->name, field_name)) {
+            return report;
+        }
+        if (data_set != NULL && server_runtime_read_reference_has_report_alias(object_reference, data_set->name, field_name)) {
+            return report;
+        }
+    }
+    return NULL;
+}
+
+static void server_runtime_read_format_report_references(
+    const UnitLabMmsServerRuntime* server_runtime,
+    const UnitLabIedModelReportControl* report,
+    char* report_id_reference,
+    size_t report_id_reference_size,
+    char* data_set_reference,
+    size_t data_set_reference_size)
+{
+    const UnitLabIedModelDataSet* data_set = server_runtime_read_report_data_set(server_runtime, report);
+
+    if (report_id_reference != NULL && report_id_reference_size != 0U) {
+        if (report != NULL && report->rpt_id[0] != '\0') {
+            snprintf(report_id_reference, report_id_reference_size, "%s", report->rpt_id);
+        }
+        else {
+            snprintf(report_id_reference, report_id_reference_size, "%s/LLN0.BR.Events", server_runtime_advertised_domain_name(server_runtime));
+        }
+    }
+    if (data_set_reference != NULL && data_set_reference_size != 0U) {
+        if (data_set != NULL && data_set->logical_device_inst[0] != '\0' && data_set->logical_node_name[0] != '\0' && data_set->name[0] != '\0') {
+            snprintf(data_set_reference, data_set_reference_size, "%s/%s$%s", data_set->logical_device_inst, data_set->logical_node_name, data_set->name);
+        }
+        else {
+            snprintf(data_set_reference, data_set_reference_size, "%s/LLN0$dsEvents", server_runtime_advertised_domain_name(server_runtime));
+        }
+    }
+}
+
 static int server_runtime_parse_fc_root_reference(const char* object_reference, char* logical_node_name, size_t logical_node_name_size, char* fc, size_t fc_size)
 {
     char normalized[256U];
@@ -539,6 +620,7 @@ static int server_runtime_build_read_response_value(
     uint8_t value_single[1U];
     char rcb_report_id_reference[256U];
     char rcb_data_set_reference[256U];
+    const UnitLabIedModelReportControl* read_report = NULL;
     size_t integer_length = 0U;
 
     if (encoded_length != NULL) {
@@ -557,6 +639,22 @@ static int server_runtime_build_read_response_value(
         sizeof(rcb_report_id_reference),
         rcb_data_set_reference,
         sizeof(rcb_data_set_reference));
+
+    read_report = server_runtime_read_find_report_control(server_runtime, object_reference, NULL);
+    if (read_report != NULL) {
+        server_runtime_read_format_report_references(
+            server_runtime,
+            read_report,
+            rcb_report_id_reference,
+            sizeof(rcb_report_id_reference),
+            rcb_data_set_reference,
+            sizeof(rcb_data_set_reference));
+        if (!server_runtime_encode_report_control_block_value(server_runtime, rcb_report_id_reference, rcb_data_set_reference, buffer, buffer_length, encoded_length, diagnostic)) {
+            return 0;
+        }
+        *value_supported = 1;
+        return 1;
+    }
 
     if (server_runtime_encode_fc_root_structure_value(server_runtime, object_reference, buffer, buffer_length, encoded_length, diagnostic)) {
         *value_supported = 1;
@@ -670,7 +768,17 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
-    if (server_runtime_object_reference_matches_report_control_field(object_reference, "Owner")) {
+    read_report = server_runtime_read_find_report_control(server_runtime, object_reference, "Owner");
+    if (read_report != NULL) {
+        server_runtime_read_format_report_references(
+            server_runtime,
+            read_report,
+            rcb_report_id_reference,
+            sizeof(rcb_report_id_reference),
+            rcb_data_set_reference,
+            sizeof(rcb_data_set_reference));
+    }
+    if (read_report != NULL || server_runtime_object_reference_matches_report_control_field(object_reference, "Owner")) {
         if (!server_runtime_encode_report_control_block_field_value(
                 server_runtime,
                 "Owner",
@@ -696,7 +804,17 @@ static int server_runtime_build_read_response_value(
             snprintf(legacy_suffix, sizeof(legacy_suffix), ".BR.LLN0_Events_BuffRep01.%s", rcb_fields[rcb_field_index]);
             (void)brcb_suffix;
             (void)legacy_suffix;
-            if (server_runtime_object_reference_matches_report_control_field(object_reference, rcb_fields[rcb_field_index])) {
+            read_report = server_runtime_read_find_report_control(server_runtime, object_reference, rcb_fields[rcb_field_index]);
+            if (read_report != NULL) {
+                server_runtime_read_format_report_references(
+                    server_runtime,
+                    read_report,
+                    rcb_report_id_reference,
+                    sizeof(rcb_report_id_reference),
+                    rcb_data_set_reference,
+                    sizeof(rcb_data_set_reference));
+            }
+            if (read_report != NULL || server_runtime_object_reference_matches_report_control_field(object_reference, rcb_fields[rcb_field_index])) {
                 if (!server_runtime_encode_report_control_block_field_value(
                         server_runtime,
                         rcb_fields[rcb_field_index],
@@ -844,12 +962,12 @@ int server_runtime_build_read_response_service(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    uint8_t value_bytes[128U];
-    uint8_t access_result_value_bytes[160U];
-    uint8_t list_of_access_result_bytes[256U];
-    uint8_t list_of_access_result_wrapper_bytes[288U];
-    uint8_t read_response_body_bytes[320U];
-    uint8_t service_bytes[360U];
+    uint8_t value_bytes[4096U];
+    uint8_t access_result_value_bytes[4352U];
+    uint8_t list_of_access_result_bytes[4608U];
+    uint8_t list_of_access_result_wrapper_bytes[4864U];
+    uint8_t read_response_body_bytes[5120U];
+    uint8_t service_bytes[5376U];
     uint8_t invoke_id_element_bytes[16U];
     char domain_id[128U];
     char item_id[128U];

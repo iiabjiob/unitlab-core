@@ -70,7 +70,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "<scl:FCD ldInst=\"LD0\" lnClass=\"PGGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />",
         "<scl:FCDA ldInst=\"LD0\" prefix=\"Led\" lnClass=\"GGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />",
         "<scl:FCDA ldInst=\"LD1\" lnClass=\"PGGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />",
-        "<scl:FCD ldInst=\"LD0\" lnClass=\"MMXU\" lnInst=\"1\" doName=\"PhV.phsA\" fc=\"MX\" />",
+        "<scl:FCD ldInst=\"LD0\" lnClass=\"MMXU\" lnInst=\"1\" doName=\"PhV\" fc=\"MX\" />",
         "<scl:FCD ldInst=\"LD0\" lnClass=\"MMXU\" lnInst=\"1\" doName=\"Hz\" fc=\"MX\" />",
         "</scl:DataSet>",
         "<scl:ReportControl name=\"brcbEvents\" buffered=\"true\" rptID=\"events\" datSet=\"dsEvents\" confRev=\"7\" indexed=\"false\" bufTime=\"100\" intgPd=\"1000\">",
@@ -96,7 +96,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "<scl:DOType id=\"BEH_ROOT\" cdc=\"ENS\"><scl:SDO name=\"subState\" type=\"BEH_SUB\" /></scl:DOType>",
         "<scl:DOType id=\"BEH_SUB\" cdc=\"ENS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /></scl:DOType>",
         "<scl:DOType id=\"INS_IND\" cdc=\"INS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /><scl:DA name=\"q\" fc=\"ST\" bType=\"Quality\" /><scl:DA name=\"t\" fc=\"ST\" bType=\"Timestamp\" /></scl:DOType>",
-        "<scl:DOType id=\"PHV_ROOT\" cdc=\"WYE\"><scl:SDO name=\"phsA\" type=\"CMV_ROOT\" /></scl:DOType>",
+        "<scl:DOType id=\"PHV_ROOT\" cdc=\"WYE\"><scl:SDO name=\"phsA\" type=\"CMV_ROOT\" /><scl:SDO name=\"phsB\" type=\"CMV_ROOT\" /><scl:SDO name=\"phsC\" type=\"CMV_ROOT\" /></scl:DOType>",
         "<scl:DOType id=\"CMV_ROOT\" cdc=\"CMV\"><scl:DA name=\"cVal\" fc=\"MX\" bType=\"Struct\" type=\"Vector\" /><scl:DA name=\"q\" fc=\"MX\" bType=\"Quality\" /><scl:DA name=\"t\" fc=\"MX\" bType=\"Timestamp\" /></scl:DOType>",
         "<scl:DOType id=\"MV_ROOT\" cdc=\"MV\"><scl:DA name=\"mag\" fc=\"MX\" bType=\"Struct\" type=\"AnalogueValue\" /><scl:DA name=\"q\" fc=\"MX\" bType=\"Quality\" /><scl:DA name=\"t\" fc=\"MX\" bType=\"Timestamp\" /></scl:DOType>",
         "<scl:DAType id=\"ORIGINATOR\"><scl:BDA name=\"orIdent\" bType=\"VisString64\" /><scl:BDA name=\"nested\" bType=\"Struct\" type=\"ORIGINATOR_NESTED\" /></scl:DAType>",
@@ -131,7 +131,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_true(plan->logical_node_count == 6U, "six logical nodes including prefixed, cross-LD, and MMXU LN");
         passed &= expect_true(plan->data_set_count == 1U, "one DataSet");
         passed &= expect_true(plan->report_count == 2U, "buffered and unbuffered ReportControls");
-        passed &= expect_true(plan->signal_count == 20U, "twenty DataSet members including recursive CMV/MV leaves");
+        passed &= expect_true(plan->signal_count == 26U, "twenty-six DataSet members including recursive root CMV/MV leaves");
         passed &= expect_string(plan->logical_devices[0].inst, "IED1LD0", "MMS domain");
         passed &= expect_string(plan->data_sets[0].reference, "IED1/AP1/LD0/LLN0.dsEvents", "DataSet reference");
         passed &= expect_string(plan->data_sets[0].logical_device_inst, "IED1LD0", "DataSet domain");
@@ -218,10 +218,18 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_true(plan->signals[14].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_REAL, "fifteenth signal CMV mag.f typed default kind");
         passed &= expect_string(plan->signals[15].reference, "LD0/MMXU1.PhV.phsA.q[MX]", "sixteenth signal CMV quality ref");
         passed &= expect_string(plan->signals[16].reference, "LD0/MMXU1.PhV.phsA.t[MX]", "seventeenth signal CMV timestamp ref");
-        passed &= expect_string(plan->signals[17].reference, "LD0/MMXU1.Hz.mag.f[MX]", "eighteenth signal MV mag.f ref");
-        passed &= expect_string(plan->signals[17].data_set_entry_variable, "IED1LD0/MMXU1$MX$Hz$mag$f", "eighteenth signal MV canonical DataSet entry variable");
-        passed &= expect_string(plan->signals[18].reference, "LD0/MMXU1.Hz.q[MX]", "nineteenth signal MV quality ref");
-        passed &= expect_string(plan->signals[19].reference, "LD0/MMXU1.Hz.t[MX]", "twentieth signal MV timestamp ref");
+        passed &= expect_string(plan->signals[17].reference, "LD0/MMXU1.PhV.phsB.cVal.mag.f[MX]", "eighteenth signal CMV phsB nested mag.f ref");
+        passed &= expect_string(plan->signals[17].data_set_entry_variable, "IED1LD0/MMXU1$MX$PhV$phsB$cVal$mag$f", "eighteenth signal CMV phsB canonical DataSet entry variable");
+        passed &= expect_string(plan->signals[18].reference, "LD0/MMXU1.PhV.phsB.q[MX]", "nineteenth signal CMV phsB quality ref");
+        passed &= expect_string(plan->signals[19].reference, "LD0/MMXU1.PhV.phsB.t[MX]", "twentieth signal CMV phsB timestamp ref");
+        passed &= expect_string(plan->signals[20].reference, "LD0/MMXU1.PhV.phsC.cVal.mag.f[MX]", "twenty-first signal CMV phsC nested mag.f ref");
+        passed &= expect_string(plan->signals[20].data_set_entry_variable, "IED1LD0/MMXU1$MX$PhV$phsC$cVal$mag$f", "twenty-first signal CMV phsC canonical DataSet entry variable");
+        passed &= expect_string(plan->signals[21].reference, "LD0/MMXU1.PhV.phsC.q[MX]", "twenty-second signal CMV phsC quality ref");
+        passed &= expect_string(plan->signals[22].reference, "LD0/MMXU1.PhV.phsC.t[MX]", "twenty-third signal CMV phsC timestamp ref");
+        passed &= expect_string(plan->signals[23].reference, "LD0/MMXU1.Hz.mag.f[MX]", "twenty-fourth signal MV mag.f ref");
+        passed &= expect_string(plan->signals[23].data_set_entry_variable, "IED1LD0/MMXU1$MX$Hz$mag$f", "twenty-fourth signal MV canonical DataSet entry variable");
+        passed &= expect_string(plan->signals[24].reference, "LD0/MMXU1.Hz.q[MX]", "twenty-fifth signal MV quality ref");
+        passed &= expect_string(plan->signals[25].reference, "LD0/MMXU1.Hz.t[MX]", "twenty-sixth signal MV timestamp ref");
     }
 
     size_t json_size = unitlab_scl_compile_normalized_json_size(result);

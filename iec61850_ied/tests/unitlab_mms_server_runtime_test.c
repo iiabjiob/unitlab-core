@@ -54,6 +54,7 @@ static int find_bytes_offset(const uint8_t* haystack, size_t haystack_length, co
 }
 
 static int build_data_change_report_plan(UnitLabIedModelPlan* plan);
+static int build_two_model_backed_rcb_plan(UnitLabIedModelPlan* plan);
 
 static int contains_bytes(const uint8_t* haystack, size_t haystack_length, const uint8_t* needle, size_t needle_length)
 {
@@ -696,6 +697,60 @@ static void test_server_runtime_resvtms_no_br_alias_read_write_roundtrips(void)
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x85\x01\x2A", 3U) == 1);
 }
 
+
+static void test_server_runtime_reads_model_backed_rcb_dataset_aliases(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    uint8_t scratch[512U];
+    uint8_t request_bytes[512U];
+    uint8_t response_bytes[8192U];
+    size_t request_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+
+    assert(build_two_model_backed_rcb_plan(&plan) == 1);
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+
+    assert(unitlab_mms_build_read_request_frame("KINTE08TDIFFSystem", "LLN0$RCB1", 195U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(response_length > 0U);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0.brcbA", strlen("KINTE08TDIFFSystem/LLN0.brcbA")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0$RCB1", strlen("KINTE08TDIFFSystem/LLN0$RCB1")) == 1);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    assert(unitlab_mms_build_read_request_frame("KINTE08TDIFFSystem", "LLN0$RCB2", 196U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(response_length > 0U);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0.brcbB", strlen("KINTE08TDIFFSystem/LLN0.brcbB")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0$RCB2", strlen("KINTE08TDIFFSystem/LLN0$RCB2")) == 1);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    assert(unitlab_mms_build_read_request_frame("KINTE08TDIFFSystem", "LLN0$RCB2$Owner", 197U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x8A\x00", 2U) == 1);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
 static void test_server_runtime_gi_write_queues_information_report(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -969,6 +1024,101 @@ static int build_data_change_report_plan(UnitLabIedModelPlan* plan)
     return unitlab_build_ied_model_plan(&fixture, plan, error, sizeof(error));
 }
 
+
+
+static int build_two_model_backed_rcb_plan(UnitLabIedModelPlan* plan)
+{
+    UnitLabIedFixtureSignal signals[2U] = {
+        {
+            .data_set_index = 0U,
+            .reference = "System/LLN0.Mod.stVal[ST]",
+            .kind = "FCDA",
+            .component = "stVal",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+            .initial_value = "0",
+        },
+        {
+            .data_set_index = 0U,
+            .reference = "Protection/LLN0.Beh.stVal[ST]",
+            .kind = "FCDA",
+            .component = "stVal",
+            .fc = "ST",
+            .initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER,
+            .initial_value = "0",
+        },
+    };
+    UnitLabIedFixtureDataSet data_sets[2U] = {
+        {
+            .reference = "KINTE08TDIFF/AP1/System/LLN0.RCB1",
+            .signal_count = 1U,
+            .signals = &signals[0],
+        },
+        {
+            .reference = "KINTE08TDIFF/AP1/System/LLN0.RCB2",
+            .signal_count = 1U,
+            .signals = &signals[1],
+        },
+    };
+    UnitLabIedFixtureReport reports[2U] = {
+        {
+            .key = "KINTE08TDIFF/AP1/System/LLN0/brcbA/buffered",
+            .logical_device_inst = "System",
+            .logical_node_name = "LLN0",
+            .report_control_name = "brcbA",
+            .report_kind = "buffered",
+            .rpt_id = "KINTE08TDIFFSystem/LLN0.brcbA",
+            .data_set_ref = "KINTE08TDIFF/AP1/System/LLN0.RCB1",
+            .conf_rev = "10001",
+            .indexed_known = 1,
+            .indexed = 1,
+            .buffer_time_ms_known = 1,
+            .buffer_time_ms = 500,
+            .integrity_period_ms_known = 1,
+            .integrity_period_ms = 0,
+        },
+        {
+            .key = "KINTE08TDIFF/AP1/System/LLN0/brcbB/buffered",
+            .logical_device_inst = "System",
+            .logical_node_name = "LLN0",
+            .report_control_name = "brcbB",
+            .report_kind = "buffered",
+            .rpt_id = "KINTE08TDIFFSystem/LLN0.brcbB",
+            .data_set_ref = "KINTE08TDIFF/AP1/System/LLN0.RCB2",
+            .conf_rev = "10001",
+            .indexed_known = 1,
+            .indexed = 1,
+            .buffer_time_ms_known = 1,
+            .buffer_time_ms = 500,
+            .integrity_period_ms_known = 1,
+            .integrity_period_ms = 0,
+        },
+    };
+    UnitLabIedFixtureModel fixture = {
+        .device_count = 1U,
+        .ied_name = "KINTE08TDIFF",
+        .access_point_name = "AP1",
+        .data_set_count = 2U,
+        .data_sets = data_sets,
+        .report_count = 2U,
+        .reports = reports,
+        .signal_count = 2U,
+    };
+    char error[256U];
+
+    for (size_t index = 0U; index < 2U; index++) {
+        reports[index].optional_fields.sequence_number = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+        reports[index].optional_fields.timestamp = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+        reports[index].optional_fields.reason_code = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+        reports[index].optional_fields.data_set_name = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+        reports[index].optional_fields.data_reference = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+        reports[index].optional_fields.buffer_overflow = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+        reports[index].optional_fields.entry_id = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+        reports[index].optional_fields.config_revision = (UnitLabIedFixtureOptionalBool){ .known = 1, .value = 1 };
+    }
+
+    return unitlab_build_ied_model_plan(&fixture, plan, error, sizeof(error));
+}
 
 
 static int build_runtime_value_store_plan(UnitLabIedModelPlan* plan)
@@ -5741,6 +5891,7 @@ int main(void)
     test_server_runtime_build_brcb_read_uses_default_advertised_domain();
     test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results();
     test_server_runtime_brcb_read_uses_model_report_dataset_reference();
+    test_server_runtime_reads_model_backed_rcb_dataset_aliases();
     test_server_runtime_build_read_failure_uses_data_access_error_access_result();
     test_server_runtime_mixed_multi_read_preserves_access_result_failures();
     test_server_runtime_build_ordinary_ln_gva_response_exposes_fc_roots();
