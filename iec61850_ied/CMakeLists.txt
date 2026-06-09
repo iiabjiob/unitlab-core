@@ -104,6 +104,17 @@ add_test(
   COMMAND unitlab-iec61850-scl-compiler-api-test
 )
 
+add_executable(unitlab-iec61850-scl-to-server-runtime-smoke-test
+  tests/scl_compiler/scl_to_server_runtime_smoke_test.c
+)
+target_link_libraries(unitlab-iec61850-scl-to-server-runtime-smoke-test PRIVATE unitlab-iec61850-scl-compiler unitlab-iec61850-mms)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-scl-to-server-runtime-smoke-test)
+
+add_test(
+  NAME unitlab-iec61850-scl-to-server-runtime-smoke
+  COMMAND unitlab-iec61850-scl-to-server-runtime-smoke-test
+)
+
 add_executable(unitlab-iec61850-ied-fixture-parser-test
   src/fixture/fixture_parser.c
   tests/fixture_parser_test.c

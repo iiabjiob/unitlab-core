@@ -135,7 +135,7 @@ Exit criteria:
 
 ### Slice 7 - Native SCD-to-Server Smoke
 
-Compile an SCD fixture and apply the resulting `UnitLabIedModelPlan` to the native MMS server runtime.
+Status: implemented. A focused native smoke test now compiles an SCL fixture through the compiler C API, applies the resulting `UnitLabIedModelPlan` to `UnitLabMmsServerRuntime`, and validates discovery-style model lookup, signal/read lookup, and BRCB/DataSet references from the compiled model.
 
 Deliverables:
 
