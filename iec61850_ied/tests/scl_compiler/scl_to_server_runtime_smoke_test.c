@@ -72,7 +72,9 @@ int main(void)
     char data_set_reference[256U];
     size_t json_size = 0U;
     uint8_t report_bytes[4096U];
+    uint8_t data_change_report_bytes[4096U];
     size_t report_length = 0U;
+    size_t data_change_report_length = 0U;
 
     const char* scl = smoke_scl();
     assert(unitlab_scl_compile_from_memory(scl, strlen(scl), "IED1", &compile_result, error, sizeof(error)) == 1);
@@ -153,6 +155,19 @@ int main(void)
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1IED1LD0", strlen("IED1IED1LD0")) == 0);
     assert((report->optional_fields_mask & UNITLAB_IED_MODEL_RPT_OPT_REASON_FOR_INCLUSION) != 0U);
     assert(runtime.brcb_sq_num == 1U);
+
+    assert(unitlab_mms_server_runtime_update_signal_int32(&runtime, "IED1LD0/PGGIO1$ST$Ind1$stVal", 43, &diagnostic) == 1);
+    assert(runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE);
+    assert(runtime.pending_report_member_index == 1U);
+    assert((runtime.pending_report_member_mask & 0x02U) == 0x02U);
+    assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&runtime, data_change_report_bytes, sizeof(data_change_report_bytes), &data_change_report_length, &diagnostic) == 1);
+    assert(data_change_report_length > 0U);
+    assert(contains_bytes(data_change_report_bytes, data_change_report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$stVal", strlen("IED1LD0/PGGIO1$ST$Ind1$stVal")) == 1);
+    assert(contains_bytes(data_change_report_bytes, data_change_report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$q", strlen("IED1LD0/PGGIO1$ST$Ind1$q")) == 1);
+    assert(contains_bytes(data_change_report_bytes, data_change_report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$t", strlen("IED1LD0/PGGIO1$ST$Ind1$t")) == 1);
+    assert(contains_bytes(data_change_report_bytes, data_change_report_length, (const uint8_t*)"IED1LD0/XCBR1$ST$Pos$stVal", strlen("IED1LD0/XCBR1$ST$Pos$stVal")) == 0);
+    assert(contains_bytes(data_change_report_bytes, data_change_report_length, (const uint8_t*)"\x84\x02\x04\x70", 4U) == 1);
+    assert(runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_NONE);
 
     unitlab_scl_compile_result_free(compile_result);
     return 0;

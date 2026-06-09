@@ -150,7 +150,7 @@ Exit criteria:
 
 ### Slice 8 - Report Payload From Compiled SCD Dataset
 
-Status: implemented for GI report payload smoke. The compiled-SCL runtime smoke now builds a GI InformationReport from the compiled DataSet membership and verifies value/q/t DataRefs are emitted from `UnitLabIedModelPlan` DataSet entries rather than fixture shortcuts.
+Status: implemented. The compiled-SCL runtime smoke now builds GI and data-change InformationReports from compiled DataSet membership. It verifies value/q/t DataRefs, changed-member inclusion bitstrings, and no fixture shortcuts.
 
 Deliverables:
 
