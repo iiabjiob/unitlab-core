@@ -339,6 +339,95 @@ static void server_runtime_read_format_report_references(
     }
 }
 
+static int server_runtime_read_reference_is_report_class_container(const char* object_reference, char* domain_id, size_t domain_id_size)
+{
+    char parsed_domain[128U];
+    char parsed_item[128U];
+
+    if (object_reference == NULL) {
+        return 0;
+    }
+    if (!server_runtime_parse_object_reference(object_reference, parsed_domain, sizeof(parsed_domain), parsed_item, sizeof(parsed_item))) {
+        return 0;
+    }
+    if (strcmp(parsed_item, "LLN0.BR") != 0 && strcmp(parsed_item, "LLN0$BR") != 0) {
+        return 0;
+    }
+    if (domain_id != NULL && domain_id_size != 0U) {
+        snprintf(domain_id, domain_id_size, "%s", parsed_domain);
+    }
+    return 1;
+}
+
+static int server_runtime_try_encode_model_report_class_container(
+    const UnitLabMmsServerRuntime* server_runtime,
+    const char* object_reference,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    char domain_id[128U];
+    uint8_t report_values[60000U];
+    size_t report_values_length = 0U;
+    size_t matching_report_count = 0U;
+    UnitLabMmsBerElement structure_element;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || server_runtime->model_plan->reports == NULL || object_reference == NULL) {
+        return 0;
+    }
+    if (!server_runtime_read_reference_is_report_class_container(object_reference, domain_id, sizeof(domain_id))) {
+        return 0;
+    }
+
+    for (size_t index = 0U; index < server_runtime->model_plan->report_count; index++) {
+        const UnitLabIedModelReportControl* report = &server_runtime->model_plan->reports[index];
+        char report_id_reference[256U];
+        char data_set_reference[256U];
+        uint8_t report_value[2048U];
+        size_t report_value_length = 0U;
+
+        if (!report->is_buffered || strcmp(report->logical_device_inst, domain_id) != 0 || strcmp(report->logical_node_name, "LLN0") != 0) {
+            continue;
+        }
+        server_runtime_read_format_report_references(
+            server_runtime,
+            report,
+            report_id_reference,
+            sizeof(report_id_reference),
+            data_set_reference,
+            sizeof(data_set_reference));
+        if (!server_runtime_encode_report_control_block_value(server_runtime, report_id_reference, data_set_reference, report_value, sizeof(report_value), &report_value_length, diagnostic)) {
+            return 0;
+        }
+        if (report_values_length + report_value_length > sizeof(report_values)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Model ReportControl class container is too large.");
+            return 0;
+        }
+        memcpy(&report_values[report_values_length], report_value, report_value_length);
+        report_values_length += report_value_length;
+        matching_report_count++;
+    }
+
+    if (matching_report_count == 0U) {
+        return 0;
+    }
+
+    unitlab_mms_ber_element_init(&structure_element);
+    structure_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    structure_element.tag.constructed = 1;
+    structure_element.tag.tag_number = 2U;
+    structure_element.value_bytes = report_values;
+    structure_element.value_length = report_values_length;
+    if (!unitlab_mms_ber_write(&structure_element, buffer, buffer_length, encoded_length, diagnostic)) {
+        return 0;
+    }
+    return 1;
+}
+
 static int server_runtime_parse_fc_root_reference(const char* object_reference, char* logical_node_name, size_t logical_node_name_size, char* fc, size_t fc_size)
 {
     char normalized[256U];
@@ -936,6 +1025,14 @@ static int server_runtime_build_read_response_value(
         return 1;
     }
     if (server_runtime_object_reference_has_suffix(object_reference, ".BR")) {
+        if (server_runtime_try_encode_model_report_class_container(server_runtime, object_reference, buffer, buffer_length, encoded_length, diagnostic)
+            || (diagnostic != NULL && diagnostic->code == UNITLAB_MMS_DIAGNOSTIC_OK && encoded_length != NULL && *encoded_length != 0U)) {
+            *value_supported = 1;
+            return 1;
+        }
+        if (diagnostic != NULL && diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_OK && diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED) {
+            return 0;
+        }
         if (!server_runtime_encode_report_control_block_container_value(server_runtime, rcb_report_id_reference, rcb_data_set_reference, buffer, buffer_length, encoded_length, diagnostic)) {
             return 0;
         }

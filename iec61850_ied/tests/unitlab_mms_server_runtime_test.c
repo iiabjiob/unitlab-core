@@ -720,6 +720,21 @@ static void test_server_runtime_reads_model_backed_rcb_dataset_aliases(void)
     assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
     assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
 
+    assert(unitlab_mms_build_read_request_frame("KINTE08TDIFFSystem", "LLN0$BR", 194U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(response_length > 0U);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0.brcbA", strlen("KINTE08TDIFFSystem/LLN0.brcbA")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0.brcbB", strlen("KINTE08TDIFFSystem/LLN0.brcbB")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0$RCB1", strlen("KINTE08TDIFFSystem/LLN0$RCB1")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0$RCB2", strlen("KINTE08TDIFFSystem/LLN0$RCB2")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"brcbEvents", strlen("brcbEvents")) == 0);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    response_length = 0U;
+    consumed_length = 0U;
     assert(unitlab_mms_build_read_request_frame("KINTE08TDIFFSystem", "LLN0$RCB1", 195U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
     unitlab_mms_operation_result_init(&operation_result);
     assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
