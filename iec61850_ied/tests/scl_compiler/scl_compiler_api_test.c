@@ -128,16 +128,19 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_string(plan->signals[5].reference, "LD0/PGGIO1.Ind1.stVal[ST]", "sixth signal FCD value ref");
         passed &= expect_string(plan->signals[5].object_reference, "IED1LD0.PGGIO1.Ind1.stVal", "sixth signal FCD value object ref");
         passed &= expect_string(plan->signals[5].data_attribute_path, "stVal", "sixth signal FCD value attribute");
+        passed &= expect_string(plan->signals[5].data_set_entry_variable, "IED1LD0/PGGIO1$ST$Ind1$stVal", "sixth signal FCD value DataSet entry variable");
         passed &= expect_true(plan->signals[5].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "sixth signal FCD value typed default kind");
         passed &= expect_string(plan->signals[5].initial_value, "0", "sixth signal FCD value typed default value");
         passed &= expect_string(plan->signals[6].reference, "LD0/PGGIO1.Ind1.q[ST]", "seventh signal FCD quality ref");
         passed &= expect_string(plan->signals[6].object_reference, "IED1LD0.PGGIO1.Ind1.q", "seventh signal FCD quality object ref");
         passed &= expect_string(plan->signals[6].data_attribute_path, "q", "seventh signal FCD quality attribute");
+        passed &= expect_string(plan->signals[6].data_set_entry_variable, "IED1LD0/PGGIO1$ST$Ind1$q", "seventh signal FCD quality DataSet entry variable");
         passed &= expect_true(plan->signals[6].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "seventh signal FCD quality typed default kind");
         passed &= expect_string(plan->signals[6].initial_value, "0", "seventh signal FCD quality typed default value");
         passed &= expect_string(plan->signals[7].reference, "LD0/PGGIO1.Ind1.t[ST]", "eighth signal FCD timestamp ref");
         passed &= expect_string(plan->signals[7].object_reference, "IED1LD0.PGGIO1.Ind1.t", "eighth signal FCD timestamp object ref");
         passed &= expect_string(plan->signals[7].data_attribute_path, "t", "eighth signal FCD timestamp attribute");
+        passed &= expect_string(plan->signals[7].data_set_entry_variable, "IED1LD0/PGGIO1$ST$Ind1$t", "eighth signal FCD timestamp DataSet entry variable");
         passed &= expect_true(plan->signals[7].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_STRING, "eighth signal FCD timestamp typed default kind");
         passed &= expect_string(plan->signals[7].initial_value, "", "eighth signal FCD timestamp typed default value");
     }

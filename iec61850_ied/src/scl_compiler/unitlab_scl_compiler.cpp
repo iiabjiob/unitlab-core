@@ -332,6 +332,14 @@ std::string member_reference_with_attribute(const SclMember& member, const std::
     return signal_ref(attributed, fallback_ld_inst);
 }
 
+std::string data_set_entry_variable_ref(const std::string& member_domain, const std::string& member_ln, const std::string& fc, const std::string& data_object_name, const std::string& attribute_path)
+{
+    std::string object_path = data_object_name;
+    if (!attribute_path.empty()) object_path += "." + attribute_path;
+    std::replace(object_path.begin(), object_path.end(), '.', '$');
+    return member_domain + "/" + member_ln + "$" + fc + "$" + object_path;
+}
+
 void append_compiled_signal(
     UnitLabSclCompileResult& result,
     size_t data_set_index,
@@ -358,7 +366,8 @@ void append_compiled_signal(
     copy_string(signal.data_object_name, sizeof(signal.data_object_name), member.do_name.c_str());
     copy_string(signal.data_attribute_path, sizeof(signal.data_attribute_path), attribute_path.c_str());
     copy_string(signal.object_reference, sizeof(signal.object_reference), object_reference.c_str());
-    copy_string(signal.data_set_entry_variable, sizeof(signal.data_set_entry_variable), object_reference.c_str());
+    const std::string data_set_entry_variable = data_set_entry_variable_ref(member_domain, member_ln, member.fc, member.do_name, attribute_path);
+    copy_string(signal.data_set_entry_variable, sizeof(signal.data_set_entry_variable), data_set_entry_variable.c_str());
     signal.data_set_entry_component_known = !attribute_path.empty() ? 1 : 0;
     copy_string(signal.data_set_entry_component, sizeof(signal.data_set_entry_component), attribute_path.c_str());
     copy_string(signal.fc, sizeof(signal.fc), member.fc.c_str());

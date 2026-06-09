@@ -2,6 +2,8 @@
 #include "server/unitlab_mms_server_runtime.h"
 #include "server/unitlab_mms_server_runtime_internal.h"
 #include "model/model_plan.h"
+#include "wire/acse/unitlab_mms_acse.h"
+#include "wire/mms/unitlab_mms_pdu.h"
 
 #include <assert.h>
 #include <string.h>
@@ -42,6 +44,15 @@ static int name_list_contains(char** names, size_t count, const char* expected)
     return 0;
 }
 
+static int contains_bytes(const uint8_t* haystack, size_t haystack_length, const uint8_t* needle, size_t needle_length)
+{
+    if (haystack == NULL || needle == NULL || needle_length == 0U || haystack_length < needle_length) return 0;
+    for (size_t index = 0U; index + needle_length <= haystack_length; index++) {
+        if (memcmp(&haystack[index], needle, needle_length) == 0) return 1;
+    }
+    return 0;
+}
+
 int main(void)
 {
     UnitLabSclCompileResult* compile_result = NULL;
@@ -60,6 +71,8 @@ int main(void)
     char rpt_id_reference[256U];
     char data_set_reference[256U];
     size_t json_size = 0U;
+    uint8_t report_bytes[4096U];
+    size_t report_length = 0U;
 
     const char* scl = smoke_scl();
     assert(unitlab_scl_compile_from_memory(scl, strlen(scl), "IED1", &compile_result, error, sizeof(error)) == 1);
@@ -124,6 +137,22 @@ int main(void)
     server_runtime_format_report_control_references(&runtime, rpt_id_reference, sizeof(rpt_id_reference), data_set_reference, sizeof(data_set_reference));
     assert(strcmp(rpt_id_reference, "events") == 0);
     assert(strcmp(data_set_reference, "IED1LD0/LLN0$dsEvents") == 0);
+
+    assert(unitlab_mms_server_runtime_reserve_report_control(&runtime, &diagnostic) == 1);
+    assert(unitlab_mms_server_runtime_enable_report_control(&runtime, &diagnostic) == 1);
+    runtime.brcb_rpt_ena = 1U;
+    assert(unitlab_mms_server_runtime_request_general_interrogation(&runtime, &diagnostic) == 1);
+    assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic) == 1);
+    assert(unitlab_mms_server_runtime_has_pending_gi_report(&runtime) == 0);
+    assert(report_length > 0U);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/XCBR1$ST$Pos$stVal", strlen("IED1LD0/XCBR1$ST$Pos$stVal")) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$stVal", strlen("IED1LD0/PGGIO1$ST$Ind1$stVal")) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$q", strlen("IED1LD0/PGGIO1$ST$Ind1$q")) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$t", strlen("IED1LD0/PGGIO1$ST$Ind1$t")) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/LLN0$dsEvents", strlen("IED1LD0/LLN0$dsEvents")) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1IED1LD0", strlen("IED1IED1LD0")) == 0);
+    assert((report->optional_fields_mask & UNITLAB_IED_MODEL_RPT_OPT_REASON_FOR_INCLUSION) != 0U);
+    assert(runtime.brcb_sq_num == 1U);
 
     unitlab_scl_compile_result_free(compile_result);
     return 0;
