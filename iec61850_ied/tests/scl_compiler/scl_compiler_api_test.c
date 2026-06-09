@@ -251,6 +251,8 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_contains(json, "\"reference\":\"LD0/PGGIO1.Ind1.q[ST]\"", "normalized JSON q signal");
         passed &= expect_contains(json, "\"dataAttributePath\":\"t\"", "normalized JSON t attribute");
         passed &= expect_contains(json, "\"reference\":\"LD0/LedGGIO1.Ind1.stVal[ST]\"", "normalized JSON FCDA DO-level prefixed signal");
+        passed &= expect_contains(json, "\"triggerOptions\":{\"dataChange\":\"true\"", "normalized JSON expanded TrgOps");
+        passed &= expect_contains(json, "\"optionalFields\":{\"bufferOverflow\":\"true\"", "normalized JSON expanded OptFlds");
         passed &= expect_contains(json, "\"diagnostics\":[]", "normalized JSON empty diagnostics");
         free(json);
     }
@@ -531,8 +533,12 @@ static int test_compile_exports_network_metadata(void)
             passed &= expect_contains(json, "\"subNetworkType\":\"8-MMS\"", "ConnectedAP SubNetwork type");
             passed &= expect_contains(json, "\"accessPointName\":\"AP1\"", "ConnectedAP AccessPoint name");
             passed &= expect_contains(json, "\"IP\":\"192.168.14.50\"", "ConnectedAP IP address");
+            passed &= expect_contains(json, "\"ipAddress\":\"192.168.14.50\"", "ConnectedAP direct IP address");
             passed &= expect_contains(json, "\"IP-SUBNET\":\"255.255.255.0\"", "ConnectedAP subnet");
+            passed &= expect_contains(json, "\"ipSubnet\":\"255.255.255.0\"", "ConnectedAP direct subnet");
             passed &= expect_contains(json, "\"IP-GATEWAY\":\"192.168.14.1\"", "ConnectedAP gateway");
+            passed &= expect_contains(json, "\"ipGateway\":\"192.168.14.1\"", "ConnectedAP direct gateway");
+            passed &= expect_contains(json, "\"osiApTitle\":\"1,3,9999,23\"", "ConnectedAP direct OSI AP title");
             passed &= expect_true(strstr(json, "10.10.10.2") == NULL, "selected IED network view should not include other IED address");
             free(json);
         }

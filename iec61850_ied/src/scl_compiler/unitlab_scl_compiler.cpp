@@ -73,6 +73,22 @@ UnitLabSclCompileDiagnostic contextual_diagnostic(
     return item;
 }
 
+
+const char* optional_bool_json_value(UnitLabIedFixtureOptionalBool value)
+{
+    if (value.known == 0) return "unknown";
+    return value.value != 0 ? "true" : "false";
+}
+
+std::string address_value_by_type(const SclConnectedAccessPoint& connected_ap, const char* type)
+{
+    if (type == nullptr) return {};
+    for (const SclAddressParameter& parameter : connected_ap.address_parameters) {
+        if (parameter.type == type) return parameter.value;
+    }
+    return {};
+}
+
 std::string ln_name(const std::string& prefix, const std::string& ln_class, const std::string& inst)
 {
     if (ln_class == "LLN0") return "LLN0";
@@ -692,6 +708,14 @@ std::string normalized_json_for_result(const UnitLabSclCompileResult& result)
             {"accessPointName", connected_ap.access_point_name},
             {"subNetworkName", connected_ap.sub_network_name},
             {"subNetworkType", connected_ap.sub_network_type},
+            {"ipAddress", address_value_by_type(connected_ap, "IP")},
+            {"ipSubnet", address_value_by_type(connected_ap, "IP-SUBNET")},
+            {"ipGateway", address_value_by_type(connected_ap, "IP-GATEWAY")},
+            {"osiApTitle", address_value_by_type(connected_ap, "OSI-AP-Title")},
+            {"osiAeQualifier", address_value_by_type(connected_ap, "OSI-AE-Qualifier")},
+            {"osiPSelector", address_value_by_type(connected_ap, "OSI-PSEL")},
+            {"osiSSelector", address_value_by_type(connected_ap, "OSI-SSEL")},
+            {"osiTSelector", address_value_by_type(connected_ap, "OSI-TSEL")},
             {"address", address_by_type},
             {"addressParameters", address_parameters},
         });
@@ -753,6 +777,23 @@ std::string normalized_json_for_result(const UnitLabSclCompileResult& result)
             {"integrityPeriodMs", report.integrity_period_ms},
             {"triggerOptionsMask", report.trigger_options_mask},
             {"optionalFieldsMask", report.optional_fields_mask},
+            {"triggerOptions", {
+                {"dataChange", optional_bool_json_value(report.trigger_options.data_change)},
+                {"qualityChange", optional_bool_json_value(report.trigger_options.quality_change)},
+                {"dataUpdate", optional_bool_json_value(report.trigger_options.data_update)},
+                {"periodic", optional_bool_json_value(report.trigger_options.periodic)},
+                {"generalInterrogation", optional_bool_json_value(report.trigger_options.general_interrogation)},
+            }},
+            {"optionalFields", {
+                {"sequenceNumber", optional_bool_json_value(report.optional_fields.sequence_number)},
+                {"timestamp", optional_bool_json_value(report.optional_fields.timestamp)},
+                {"reasonCode", optional_bool_json_value(report.optional_fields.reason_code)},
+                {"dataSetName", optional_bool_json_value(report.optional_fields.data_set_name)},
+                {"dataReference", optional_bool_json_value(report.optional_fields.data_reference)},
+                {"bufferOverflow", optional_bool_json_value(report.optional_fields.buffer_overflow)},
+                {"entryId", optional_bool_json_value(report.optional_fields.entry_id)},
+                {"configRevision", optional_bool_json_value(report.optional_fields.config_revision)},
+            }},
         });
     }
     model["signals"] = json::array();

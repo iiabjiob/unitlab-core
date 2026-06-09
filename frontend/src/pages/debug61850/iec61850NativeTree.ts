@@ -167,6 +167,11 @@ export function buildIec61850NativeTreeDocument(response: Iec61850SclImportRespo
           { label: "IP", value: ip },
           { label: "IP-SUBNET", value: addressValue(connectedAccessPoint, "IP-SUBNET") },
           { label: "IP-GATEWAY", value: addressValue(connectedAccessPoint, "IP-GATEWAY") },
+          { label: "OSI-AP-Title", value: text(connectedAccessPoint.osiApTitle) || addressValue(connectedAccessPoint, "OSI-AP-Title") },
+          { label: "OSI-AE-Qualifier", value: text(connectedAccessPoint.osiAeQualifier) || addressValue(connectedAccessPoint, "OSI-AE-Qualifier") },
+          { label: "OSI-PSEL", value: text(connectedAccessPoint.osiPSelector) || addressValue(connectedAccessPoint, "OSI-PSEL") },
+          { label: "OSI-SSEL", value: text(connectedAccessPoint.osiSSelector) || addressValue(connectedAccessPoint, "OSI-SSEL") },
+          { label: "OSI-TSEL", value: text(connectedAccessPoint.osiTSelector) || addressValue(connectedAccessPoint, "OSI-TSEL") },
           ...addressParameterRows(connectedAccessPoint),
         ],
       },
@@ -275,8 +280,22 @@ export function buildIec61850NativeTreeDocument(response: Iec61850SclImportRespo
           { label: "DataSet", value: text(report.dataSetRef) },
           { label: "DataSet index", value: formatOptionalNumber(dataSetIndex) },
           { label: "ConfRev", value: formatOptionalNumber(numberValue(report.confRev)) },
+          { label: "RptID", value: text(report.rptId) },
           { label: "TrgOps mask", value: formatOptionalNumber(numberValue(report.triggerOptionsMask)) },
+          { label: "TrgOps dchg", value: nestedText(report, "triggerOptions", "dataChange") },
+          { label: "TrgOps qchg", value: nestedText(report, "triggerOptions", "qualityChange") },
+          { label: "TrgOps dupd", value: nestedText(report, "triggerOptions", "dataUpdate") },
+          { label: "TrgOps period", value: nestedText(report, "triggerOptions", "periodic") },
+          { label: "TrgOps gi", value: nestedText(report, "triggerOptions", "generalInterrogation") },
           { label: "OptFlds mask", value: formatOptionalNumber(numberValue(report.optionalFieldsMask)) },
+          { label: "OptFlds seqNum", value: nestedText(report, "optionalFields", "sequenceNumber") },
+          { label: "OptFlds timeStamp", value: nestedText(report, "optionalFields", "timestamp") },
+          { label: "OptFlds reasonCode", value: nestedText(report, "optionalFields", "reasonCode") },
+          { label: "OptFlds dataSet", value: nestedText(report, "optionalFields", "dataSetName") },
+          { label: "OptFlds dataRef", value: nestedText(report, "optionalFields", "dataReference") },
+          { label: "OptFlds entryID", value: nestedText(report, "optionalFields", "entryId") },
+          { label: "OptFlds configRef", value: nestedText(report, "optionalFields", "configRevision") },
+          { label: "OptFlds bufOvfl", value: nestedText(report, "optionalFields", "bufferOverflow") },
           { label: "BufTm", value: formatOptionalNumber(numberValue(report.bufferTimeMs)) },
           { label: "IntgPd", value: formatOptionalNumber(numberValue(report.integrityPeriodMs)) },
           { label: "resolved leaves", value: String(reportSignals.length) },
@@ -353,8 +372,15 @@ function recordValue(value: unknown): NativeRecord {
 }
 
 function addressValue(connectedAccessPoint: NativeRecord, type: string): string {
+  if (type === "IP") return text(connectedAccessPoint.ipAddress) || text(recordValue(connectedAccessPoint.address)[type])
+  if (type === "IP-SUBNET") return text(connectedAccessPoint.ipSubnet) || text(recordValue(connectedAccessPoint.address)[type])
+  if (type === "IP-GATEWAY") return text(connectedAccessPoint.ipGateway) || text(recordValue(connectedAccessPoint.address)[type])
   const address = recordValue(connectedAccessPoint.address)
   return text(address[type])
+}
+
+function nestedText(record: NativeRecord, objectKey: string, valueKey: string): string {
+  return text(recordValue(record[objectKey])[valueKey])
 }
 
 function addressParameterRows(connectedAccessPoint: NativeRecord): Iec61850NativeDetailRow[] {

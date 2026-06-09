@@ -20,6 +20,14 @@ describe("buildIec61850NativeTreeDocument", () => {
             accessPointName: "AP1",
             subNetworkName: "StationBus",
             subNetworkType: "8-MMS",
+            ipAddress: "192.168.14.50",
+            ipSubnet: "255.255.255.0",
+            ipGateway: "192.168.14.1",
+            osiApTitle: "1,3,9999,23",
+            osiAeQualifier: "23",
+            osiPSelector: "00000001",
+            osiSSelector: "0001",
+            osiTSelector: "0001",
             address: { IP: "192.168.14.50", "IP-SUBNET": "255.255.255.0", "IP-GATEWAY": "192.168.14.1" },
             addressParameters: [{ type: "IP", value: "192.168.14.50" }],
           }],
@@ -27,7 +35,19 @@ describe("buildIec61850NativeTreeDocument", () => {
         logicalDevices: [{ inst: "IED1LD0" }],
         logicalNodes: [{ logicalDeviceInst: "IED1LD0", name: "LLN0" }, { logicalDeviceInst: "IED1LD0", name: "PGGIO1" }],
         dataSets: [{ name: "dsEvents", reference: "IED1/AP1/LD0/LLN0.dsEvents", logicalDeviceInst: "IED1LD0", logicalNodeName: "LLN0", firstSignalIndex: 0, memberCount: 1 }],
-        reports: [{ name: "brcbEvents", reportKind: "buffered", isBuffered: true, dataSetRef: "IED1/AP1/LD0/LLN0.dsEvents", dataSetIndex: 0, confRev: 7, triggerOptionsMask: 3, optionalFieldsMask: 159 }],
+        reports: [{
+          name: "brcbEvents",
+          reportKind: "buffered",
+          isBuffered: true,
+          rptId: "IED1LD0/LLN0.BR.Events",
+          dataSetRef: "IED1/AP1/LD0/LLN0.dsEvents",
+          dataSetIndex: 0,
+          confRev: 7,
+          triggerOptionsMask: 3,
+          optionalFieldsMask: 159,
+          triggerOptions: { dataChange: "true", qualityChange: "true", dataUpdate: "false", periodic: "false", generalInterrogation: "true" },
+          optionalFields: { sequenceNumber: "true", timestamp: "true", reasonCode: "true", dataSetName: "true", dataReference: "true", entryId: "true", configRevision: "true", bufferOverflow: "false" },
+        }],
         signals: [{ reference: "LD0/PGGIO1.Ind1.stVal[ST]", dataSetEntryVariable: "IED1LD0/PGGIO1$ST$Ind1$stVal", objectReference: "IED1LD0.PGGIO1.Ind1.stVal", logicalDeviceInst: "IED1LD0", logicalNodeName: "PGGIO1", dataSetIndex: 0, dataObjectName: "Ind1", dataAttributePath: "stVal", fc: "ST", initialValue: "0" }],
       },
       diagnostics: [{ severity: "warning", code: "SCL_REPORT_DATASET_EMPTY", message: "empty", iedName: "IED1", accessPointName: "AP1", logicalDeviceInst: "LD0", logicalNodeName: "LLN0", dataSetName: "", reportControlName: "urcbC", memberReference: "" }],
@@ -40,6 +60,9 @@ describe("buildIec61850NativeTreeDocument", () => {
     expect(document.rows.some(row => row.kind === "report-control" && row.label === "brcbEvents" && row.meta === "buffered · 1 leaves")).toBe(true)
     expect(document.rows.some(row => row.kind === "connected-access-point" && row.label === "AP1" && row.meta === "192.168.14.50")).toBe(true)
     expect(document.rows.some(row => row.detail.rows.some(detail => detail.label === "IP-GATEWAY" && detail.value === "192.168.14.1"))).toBe(true)
+    expect(document.rows.some(row => row.detail.rows.some(detail => detail.label === "OSI-AP-Title" && detail.value === "1,3,9999,23"))).toBe(true)
+    expect(document.rows.some(row => row.detail.rows.some(detail => detail.label === "TrgOps dchg" && detail.value === "true"))).toBe(true)
+    expect(document.rows.some(row => row.detail.rows.some(detail => detail.label === "OptFlds dataRef" && detail.value === "true"))).toBe(true)
     expect(document.rows.some(row => row.label === "SCL_REPORT_DATASET_EMPTY")).toBe(false)
   })
 })
