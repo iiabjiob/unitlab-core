@@ -9,3 +9,4 @@ def test_iec61850_scl_import_router_keeps_client_paths_separate() -> None:
 
     assert "/api/v1/iec61850/client/state" in client_paths
     assert "/api/v1/workspaces/{workspace_id}/iec61850/scl/import" in scl_paths
+    assert "/api/v1/workspaces/{workspace_id}/iec61850/runtime/selection" in scl_paths

@@ -30,3 +30,21 @@ class Iec61850SclImportResponseSchema(BaseModel):
     normalized_schema: str
     normalized_model: dict[str, Any]
     diagnostics: list[Iec61850SclDiagnosticSchema]
+
+
+class Iec61850RuntimeSelectionRequestSchema(BaseModel):
+    import_id: str
+    selected_by: str | None = None
+    reason: str | None = None
+
+
+class Iec61850RuntimeSelectionResponseSchema(BaseModel):
+    selection_id: str
+    workspace_id: int
+    import_id: str
+    runtime_revision: int
+    selected_ied: str
+    source_hash: str
+    normalized_schema: str
+    selected_by: str | None = None
+    selection_reason: str | None = None

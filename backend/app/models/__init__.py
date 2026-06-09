@@ -7,7 +7,11 @@ from .signal import Signal  # noqa: F401
 from .signal_sheet import SignalAllocation, SignalAllocationEvent, SignalSheet, SignalSheetPreset, SignalTestRunStepEvidence  # noqa: F401
 from .processed_job import ProcessedJob  # noqa: F401
 from .workspace import Workspace, WorkspaceSequence, WorkspaceSwitchgear  # noqa: F401
-from .workspace_iec61850 import WorkspaceIec61850SclImport  # noqa: F401
+from .workspace_iec61850 import (
+    WorkspaceIec61850RuntimeSelection,
+    WorkspaceIec61850RuntimeSelectionEvent,
+    WorkspaceIec61850SclImport,
+)  # noqa: F401
 
 __all__ = [
     "Device",
@@ -29,4 +33,6 @@ __all__ = [
     "WorkspaceSwitchgear",
     "WorkspaceSequence",
     "WorkspaceIec61850SclImport",
+    "WorkspaceIec61850RuntimeSelectionEvent",
+    "WorkspaceIec61850RuntimeSelection",
 ]

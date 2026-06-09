@@ -13,7 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.workspace import Workspace
-from app.models.workspace_iec61850 import WorkspaceIec61850SclImport
+from app.models.workspace_iec61850 import (
+    WorkspaceIec61850RuntimeSelection,
+    WorkspaceIec61850RuntimeSelectionEvent,
+    WorkspaceIec61850SclImport,
+)
 
 
 SCL_NORMALIZED_SCHEMA = "unitlab.iec61850.scl.normalized.v1"
@@ -47,6 +51,19 @@ class Iec61850SclCompilerOutput:
     source_size: int
     model: dict[str, Any]
     diagnostics: tuple[Iec61850SclCompilerDiagnostic, ...]
+
+
+@dataclass(frozen=True)
+class Iec61850RuntimeSelectionRecord:
+    selection_id: str
+    workspace_id: int
+    import_id: str
+    runtime_revision: int
+    selected_ied: str
+    source_hash: str
+    normalized_schema: str
+    selected_by: str | None
+    selection_reason: str | None
 
 
 @dataclass(frozen=True)
@@ -136,6 +153,98 @@ class Iec61850SqlAlchemySclImportRepository:
         await self.db.refresh(row)
         return _record_from_row(row)
 
+    async def get_import(self, *, workspace_id: int, import_id: str) -> Iec61850SclImportRecord | None:
+        row = await self._get_import_row(workspace_id=workspace_id, import_id=import_id)
+        return _record_from_row(row) if row is not None else None
+
+    async def get_active_runtime_selection(self, *, workspace_id: int) -> Iec61850RuntimeSelectionRecord | None:
+        result = await self.db.execute(
+            select(WorkspaceIec61850RuntimeSelection, WorkspaceIec61850SclImport)
+            .join(WorkspaceIec61850SclImport, WorkspaceIec61850SclImport.id == WorkspaceIec61850RuntimeSelection.scl_import_id)
+            .where(WorkspaceIec61850RuntimeSelection.workspace_id == workspace_id)
+            .limit(1)
+        )
+        item = result.first()
+        if item is None:
+            return None
+        selection, scl_import = item
+        return _selection_record_from_rows(selection, scl_import)
+
+    async def select_runtime_import(
+        self,
+        *,
+        workspace_id: int,
+        import_id: str,
+        selected_by: str | None = None,
+        reason: str | None = None,
+    ) -> Iec61850RuntimeSelectionRecord:
+        scl_import = await self._get_import_row(workspace_id=workspace_id, import_id=import_id)
+        if scl_import is None:
+            raise Iec61850SclImportError("SCL_IMPORT_NOT_FOUND", "SCL import was not found for this workspace.")
+
+        result = await self.db.execute(
+            select(WorkspaceIec61850RuntimeSelection)
+            .where(WorkspaceIec61850RuntimeSelection.workspace_id == workspace_id)
+            .limit(1)
+        )
+        selection = result.scalar_one_or_none()
+        if selection is None:
+            runtime_revision = 1
+            selection = WorkspaceIec61850RuntimeSelection(
+                workspace_id=workspace_id,
+                scl_import_id=scl_import.id,
+                runtime_revision=runtime_revision,
+                selected_by=selected_by,
+                selection_reason=reason,
+            )
+            self.db.add(selection)
+            await self.db.flush()
+        elif selection.scl_import_id == scl_import.id:
+            runtime_revision = selection.runtime_revision
+            selection.selected_by = selected_by
+            selection.selection_reason = reason
+            await self.db.flush()
+        else:
+            runtime_revision = int(selection.runtime_revision) + 1
+            selection.scl_import_id = scl_import.id
+            selection.runtime_revision = runtime_revision
+            selection.selected_by = selected_by
+            selection.selection_reason = reason
+            await self.db.flush()
+
+        event = WorkspaceIec61850RuntimeSelectionEvent(
+            workspace_id=workspace_id,
+            scl_import_id=scl_import.id,
+            runtime_revision=runtime_revision,
+            operation="select",
+            selected_by=selected_by,
+            selection_reason=reason,
+            payload={
+                "sourceHash": scl_import.source_hash,
+                "selectedIed": scl_import.selected_ied,
+                "normalizedSchema": scl_import.normalized_schema,
+            },
+        )
+        self.db.add(event)
+        await self.db.commit()
+        await self.db.refresh(selection)
+        return _selection_record_from_rows(selection, scl_import)
+
+    async def _get_import_row(self, *, workspace_id: int, import_id: str) -> WorkspaceIec61850SclImport | None:
+        try:
+            parsed_import_id = int(import_id)
+        except ValueError:
+            return None
+        result = await self.db.execute(
+            select(WorkspaceIec61850SclImport)
+            .where(
+                WorkspaceIec61850SclImport.workspace_id == workspace_id,
+                WorkspaceIec61850SclImport.id == parsed_import_id,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
 
 def _diagnostic_to_payload(item: Iec61850SclCompilerDiagnostic) -> dict[str, str]:
     return {
@@ -179,6 +288,23 @@ def _record_from_row(row: WorkspaceIec61850SclImport) -> Iec61850SclImportRecord
         normalized_schema=row.normalized_schema,
         normalized_model=row.normalized_model if isinstance(row.normalized_model, dict) else {},
         diagnostics=tuple(_diagnostic_from_payload(item) for item in diagnostics if isinstance(item, dict)),
+    )
+
+
+def _selection_record_from_rows(
+    selection: WorkspaceIec61850RuntimeSelection,
+    scl_import: WorkspaceIec61850SclImport,
+) -> Iec61850RuntimeSelectionRecord:
+    return Iec61850RuntimeSelectionRecord(
+        selection_id=str(selection.id),
+        workspace_id=selection.workspace_id,
+        import_id=str(scl_import.id),
+        runtime_revision=selection.runtime_revision,
+        selected_ied=scl_import.selected_ied,
+        source_hash=scl_import.source_hash,
+        normalized_schema=scl_import.normalized_schema,
+        selected_by=selection.selected_by,
+        selection_reason=selection.selection_reason,
     )
 
 

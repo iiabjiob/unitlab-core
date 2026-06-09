@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.infrastructure.db.database import get_db
-from app.schemas.iec61850_scl_schema import Iec61850SclImportResponseSchema
+from app.schemas.iec61850_scl_schema import (
+    Iec61850RuntimeSelectionRequestSchema,
+    Iec61850RuntimeSelectionResponseSchema,
+    Iec61850SclImportResponseSchema,
+)
 from app.services.iec61850 import (
     Iec61850InMemorySclImportRepository,
     Iec61850SclImportError,
@@ -164,4 +168,51 @@ def _scl_import_response(record) -> Iec61850SclImportResponseSchema:
             }
             for item in record.diagnostics
         ],
+    )
+
+
+@scl_router.get("/runtime/selection", response_model=Iec61850RuntimeSelectionResponseSchema | None)
+async def get_runtime_selection(
+    workspace_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> Iec61850RuntimeSelectionResponseSchema | None:
+    repository = Iec61850SqlAlchemySclImportRepository(db)
+    if not await repository.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    selection = await repository.get_active_runtime_selection(workspace_id=workspace_id)
+    return _runtime_selection_response(selection) if selection is not None else None
+
+
+@scl_router.post("/runtime/selection", response_model=Iec61850RuntimeSelectionResponseSchema)
+async def select_runtime_import(
+    workspace_id: int,
+    payload: Iec61850RuntimeSelectionRequestSchema,
+    db: AsyncSession = Depends(get_db),
+) -> Iec61850RuntimeSelectionResponseSchema:
+    repository = Iec61850SqlAlchemySclImportRepository(db)
+    if not await repository.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        selection = await repository.select_runtime_import(
+            workspace_id=workspace_id,
+            import_id=payload.import_id,
+            selected_by=payload.selected_by,
+            reason=payload.reason,
+        )
+    except Iec61850SclImportError as exc:
+        raise HTTPException(status_code=404, detail={"code": exc.code, "message": exc.message}) from exc
+    return _runtime_selection_response(selection)
+
+
+def _runtime_selection_response(selection) -> Iec61850RuntimeSelectionResponseSchema:
+    return Iec61850RuntimeSelectionResponseSchema(
+        selection_id=selection.selection_id,
+        workspace_id=selection.workspace_id,
+        import_id=selection.import_id,
+        runtime_revision=selection.runtime_revision,
+        selected_ied=selection.selected_ied,
+        source_hash=selection.source_hash,
+        normalized_schema=selection.normalized_schema,
+        selected_by=selection.selected_by,
+        selection_reason=selection.selection_reason,
     )

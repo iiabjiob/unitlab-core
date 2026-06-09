@@ -182,14 +182,14 @@ Exit criteria:
 
 ### Slice 10 - Runtime Selection And Revision Binding
 
-Bind compiled SCD runtime model to project/signal-list revision semantics.
+Status: implemented. Imported SCL models are not made active implicitly. A workspace-level runtime selection now points to a persisted SCL import, carries a monotonically increasing runtime revision when the selected import changes, and writes an append-only selection event with source hash, selected IED, schema, operator, and reason metadata.
 
 Deliverables:
 
-- project/revision association for imported SCD;
-- active runtime model selection;
-- audit trail for import and selected IED;
-- reports/test evidence can reference imported SCD hash/revision.
+- workspace runtime revision association for imported SCD/SCL;
+- active runtime model selection endpoint;
+- audit trail for selected IED and source hash;
+- future reports/test evidence can reference import id, SCD hash, selected IED, and runtime revision.
 
 Exit criteria:
 

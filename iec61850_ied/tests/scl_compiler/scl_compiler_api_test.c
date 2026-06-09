@@ -44,6 +44,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"ctlModel\" fc=\"CF\" />"
         "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Beh.subState\" daName=\"stVal\" fc=\"ST\" />"
         "<scl:FCD ldInst=\"LD0\" lnClass=\"PGGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />"
+        "<scl:FCDA ldInst=\"LD0\" prefix=\"Led\" lnClass=\"GGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />"
         "</scl:DataSet>"
         "<scl:ReportControl name=\"brcbEvents\" buffered=\"true\" rptID=\"events\" datSet=\"dsEvents\" confRev=\"7\" indexed=\"false\" bufTime=\"100\" intgPd=\"1000\">"
         "<scl:TrgOps dchg=\"true\" qchg=\"true\" dupd=\"false\" period=\"false\" gi=\"true\" />"
@@ -52,6 +53,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "</scl:LN0>"
         "<scl:LN lnClass=\"XCBR\" inst=\"1\" lnType=\"XCBR_TYPE\" />"
         "<scl:LN lnClass=\"PGGIO\" inst=\"1\" lnType=\"PGGIO_TYPE\" />"
+        "<scl:LN prefix=\"Led\" lnClass=\"GGIO\" inst=\"1\" lnType=\"PGGIO_TYPE\" />"
         "</scl:LDevice></scl:Server></scl:AccessPoint></scl:IED>"
         "<scl:IED name=\"IED2\"><scl:AccessPoint name=\"AP1\" /></scl:IED>"
         "<scl:DataTypeTemplates>"
@@ -81,10 +83,10 @@ static int test_compile_builds_model_plan_through_c_api(void)
     passed &= expect_true(plan != NULL, "model plan should be available");
     if (plan != NULL) {
         passed &= expect_true(plan->logical_device_count == 1U, "one logical device");
-        passed &= expect_true(plan->logical_node_count == 3U, "three logical nodes");
+        passed &= expect_true(plan->logical_node_count == 4U, "four logical nodes including prefixed LN");
         passed &= expect_true(plan->data_set_count == 1U, "one DataSet");
         passed &= expect_true(plan->report_count == 1U, "one ReportControl");
-        passed &= expect_true(plan->signal_count == 8U, "eight DataSet members including derived q/t");
+        passed &= expect_true(plan->signal_count == 11U, "eleven DataSet members including FCD and FCDA DO-level q/t");
         passed &= expect_string(plan->logical_devices[0].inst, "IED1LD0", "MMS domain");
         passed &= expect_string(plan->data_sets[0].reference, "IED1/AP1/LD0/LLN0.dsEvents", "DataSet reference");
         passed &= expect_string(plan->data_sets[0].logical_device_inst, "IED1LD0", "DataSet domain");
@@ -143,6 +145,14 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_string(plan->signals[7].data_set_entry_variable, "IED1LD0/PGGIO1$ST$Ind1$t", "eighth signal FCD timestamp DataSet entry variable");
         passed &= expect_true(plan->signals[7].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_STRING, "eighth signal FCD timestamp typed default kind");
         passed &= expect_string(plan->signals[7].initial_value, "", "eighth signal FCD timestamp typed default value");
+        passed &= expect_string(plan->signals[8].reference, "LD0/LedGGIO1.Ind1.stVal[ST]", "ninth signal FCDA DO-level value ref");
+        passed &= expect_string(plan->signals[8].object_reference, "IED1LD0.LedGGIO1.Ind1.stVal", "ninth signal FCDA DO-level value object ref");
+        passed &= expect_string(plan->signals[8].data_attribute_path, "stVal", "ninth signal FCDA DO-level value attribute");
+        passed &= expect_string(plan->signals[8].data_set_entry_variable, "IED1LD0/LedGGIO1$ST$Ind1$stVal", "ninth signal FCDA DO-level value DataSet entry variable");
+        passed &= expect_string(plan->signals[9].reference, "LD0/LedGGIO1.Ind1.q[ST]", "tenth signal FCDA DO-level quality ref");
+        passed &= expect_string(plan->signals[9].data_set_entry_variable, "IED1LD0/LedGGIO1$ST$Ind1$q", "tenth signal FCDA DO-level quality DataSet entry variable");
+        passed &= expect_string(plan->signals[10].reference, "LD0/LedGGIO1.Ind1.t[ST]", "eleventh signal FCDA DO-level timestamp ref");
+        passed &= expect_string(plan->signals[10].data_set_entry_variable, "IED1LD0/LedGGIO1$ST$Ind1$t", "eleventh signal FCDA DO-level timestamp DataSet entry variable");
     }
 
     size_t json_size = unitlab_scl_compile_normalized_json_size(result);
@@ -163,6 +173,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_contains(json, "\"logicalDevices\":[{\"inst\":\"IED1LD0\"}]", "normalized JSON logical devices");
         passed &= expect_contains(json, "\"reference\":\"LD0/PGGIO1.Ind1.q[ST]\"", "normalized JSON q signal");
         passed &= expect_contains(json, "\"dataAttributePath\":\"t\"", "normalized JSON t attribute");
+        passed &= expect_contains(json, "\"reference\":\"LD0/LedGGIO1.Ind1.stVal[ST]\"", "normalized JSON FCDA DO-level prefixed signal");
         passed &= expect_contains(json, "\"diagnostics\":[]", "normalized JSON empty diagnostics");
         free(json);
     }
@@ -177,7 +188,7 @@ static int test_compile_reports_invalid_dataset_member_and_missing_report_datase
         "<SCL><IED name=\"IED1\"><AccessPoint name=\"AP1\"><Server><LDevice inst=\"LD0\">"
         "<LN0>"
         "<DataSet name=\"dsBroken\">"
-        "<FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" fc=\"ST\" />"
+        "<FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" fc=\"ST\" />"
         "</DataSet>"
         "<ReportControl name=\"brcbBroken\" buffered=\"true\" datSet=\"missingDataSet\" />"
         "</LN0>"
@@ -201,7 +212,7 @@ static int test_compile_reports_invalid_dataset_member_and_missing_report_datase
     passed &= expect_string(diagnostic.logical_device_inst, "LD0", "invalid member LD context");
     passed &= expect_string(diagnostic.logical_node_name, "LLN0", "invalid member LN context");
     passed &= expect_string(diagnostic.data_set_name, "dsBroken", "invalid member DataSet context");
-    passed &= expect_string(diagnostic.member_reference, "LD0/XCBR1.Pos[ST]", "invalid member reference context");
+    passed &= expect_string(diagnostic.member_reference, "LD0/XCBR1[ST]", "invalid member reference context");
     passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 1U, &diagnostic) == 1, "missing DataSet diagnostic should be readable");
     passed &= expect_string(diagnostic.severity, "error", "missing DataSet severity");
     passed &= expect_string(diagnostic.code, "SCL_REPORT_DATASET_MISSING", "missing DataSet code");

@@ -101,7 +101,6 @@ bool is_valid_data_set_member(const SclMember& member)
 {
     if (member.kind != "FCDA" && member.kind != "FCD") return false;
     if (member.ln_class.empty() || member.do_name.empty() || member.fc.empty()) return false;
-    if (member.kind == "FCDA" && member.da_name.empty()) return false;
     return true;
 }
 
@@ -442,13 +441,13 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied, const SclDa
                         const size_t diagnostics_before_resolution = result.diagnostics.size();
                         const SclDoTypeTemplate* member_do_type = resolve_member_do_type_with_diagnostic(result, templates, ied, access_point, device, node, data_set, member);
                         if (member_do_type == nullptr) continue;
-                        if (member.kind == "FCD") {
+                        if (member.kind == "FCD" || member.da_name.empty()) {
                             size_t emitted_attribute_count = 0U;
                             for (const SclDaTemplate& attribute : member_do_type->data_attributes) {
                                 if (!attribute.fc.empty() && attribute.fc != member.fc) continue;
                                 const SclResolvedValueType attribute_type{attribute.b_type, attribute.type};
                                 if (resolved_enum_type_missing(templates, attribute_type)) {
-                                    append_member_diagnostic(result, "SCL_TEMPLATE_ENUMTYPE_MISSING", "DataSet FCD member attribute references a missing EnumType template.", ied, access_point, device, node, data_set, member);
+                                    append_member_diagnostic(result, "SCL_TEMPLATE_ENUMTYPE_MISSING", "DataSet DO-level member attribute references a missing EnumType template.", ied, access_point, device, node, data_set, member);
                                     break;
                                 }
                                 append_compiled_signal(result, data_set_index, valid_member_index, member_domain, member_ln, member, device.inst, attribute.name, attribute_type, templates);
@@ -456,7 +455,7 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied, const SclDa
                                 emitted_attribute_count++;
                             }
                             if (emitted_attribute_count != 0U || result.diagnostics.size() != diagnostics_before_resolution) continue;
-                            append_member_diagnostic(result, "SCL_TEMPLATE_DA_MISSING", "DataSet FCD member DOType has no DA matching the requested FC.", ied, access_point, device, node, data_set, member);
+                            append_member_diagnostic(result, "SCL_TEMPLATE_DA_MISSING", "DataSet DO-level member DOType has no DA matching the requested FC.", ied, access_point, device, node, data_set, member);
                             continue;
                         }
 

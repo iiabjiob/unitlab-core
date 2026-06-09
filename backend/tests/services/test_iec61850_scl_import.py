@@ -183,3 +183,121 @@ async def test_sqlalchemy_scl_import_repository_persists_source_model_and_diagno
     assert row.diagnostics[0]["code"] == "SCL_X"
     assert saved.import_id == "7"
     assert saved.diagnostics[0].code == "SCL_X"
+
+
+class _FakeSelectionExecuteResult:
+    def __init__(self, *, scalar=None, first=None) -> None:
+        self._scalar = scalar
+        self._first = first
+
+    def scalar_one_or_none(self):
+        return self._scalar
+
+    def first(self):
+        return self._first
+
+
+class _FakeSelectionSession:
+    def __init__(self, import_row, selection_row=None) -> None:
+        self.import_row = import_row
+        self.selection_row = selection_row
+        self.added = []
+        self.committed = False
+        self.refreshes = []
+        self.execute_count = 0
+
+    async def execute(self, _stmt):
+        self.execute_count += 1
+        if self.execute_count == 1:
+            return _FakeSelectionExecuteResult(scalar=self.import_row)
+        if self.execute_count == 2:
+            return _FakeSelectionExecuteResult(scalar=self.selection_row)
+        return _FakeSelectionExecuteResult(first=(self.selection_row, self.import_row) if self.selection_row else None)
+
+    def add(self, row):
+        self.added.append(row)
+        if row.__class__.__name__ == "WorkspaceIec61850RuntimeSelection":
+            row.id = 11
+            self.selection_row = row
+        elif row.__class__.__name__ == "WorkspaceIec61850RuntimeSelectionEvent":
+            row.id = 12
+
+    async def flush(self):
+        return None
+
+    async def commit(self):
+        self.committed = True
+
+    async def refresh(self, row):
+        self.refreshes.append(row)
+
+
+class _ImportRow:
+    id = 5
+    workspace_id = 9
+    source_filename = "station.scd"
+    source_hash = "abc"
+    source_size = 12
+    selected_ied = "IED1"
+    normalized_schema = SCL_NORMALIZED_SCHEMA
+    normalized_model = {"reports": []}
+    diagnostics = []
+
+
+class _SelectionRow:
+    id = 11
+    workspace_id = 9
+    scl_import_id = 4
+    runtime_revision = 2
+    selected_by = "old"
+    selection_reason = "old"
+
+
+@pytest.mark.anyio
+async def test_runtime_selection_is_explicit_and_auditable() -> None:
+    session = _FakeSelectionSession(_ImportRow())
+    repository = Iec61850SqlAlchemySclImportRepository(session)  # type: ignore[arg-type]
+
+    selection = await repository.select_runtime_import(
+        workspace_id=9,
+        import_id="5",
+        selected_by="operator",
+        reason="commissioning",
+    )
+
+    assert selection.import_id == "5"
+    assert selection.runtime_revision == 1
+    assert selection.selected_ied == "IED1"
+    assert session.committed is True
+    assert [item.__class__.__name__ for item in session.added] == [
+        "WorkspaceIec61850RuntimeSelection",
+        "WorkspaceIec61850RuntimeSelectionEvent",
+    ]
+    event = session.added[1]
+    assert event.operation == "select"
+    assert event.payload["sourceHash"] == "abc"
+    assert event.payload["selectedIed"] == "IED1"
+
+
+@pytest.mark.anyio
+async def test_runtime_selection_revision_increments_only_when_import_changes() -> None:
+    import_row = _ImportRow()
+    selection_row = _SelectionRow()
+    session = _FakeSelectionSession(import_row, selection_row)
+    repository = Iec61850SqlAlchemySclImportRepository(session)  # type: ignore[arg-type]
+
+    selection = await repository.select_runtime_import(workspace_id=9, import_id="5", selected_by="operator")
+
+    assert selection.runtime_revision == 3
+    assert selection_row.scl_import_id == 5
+    assert selection_row.runtime_revision == 3
+
+    same_selection = _SelectionRow()
+    same_selection.scl_import_id = 5
+    same_session = _FakeSelectionSession(import_row, same_selection)
+    same_repository = Iec61850SqlAlchemySclImportRepository(same_session)  # type: ignore[arg-type]
+
+    same = await same_repository.select_runtime_import(workspace_id=9, import_id="5", selected_by="operator")
+
+    assert same.runtime_revision == 2
+    assert same_selection.runtime_revision == 2
