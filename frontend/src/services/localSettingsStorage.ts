@@ -29,6 +29,8 @@ export const localSettingsKeys = {
   switchgearsActiveView: "switchgears.activeView",
   themeMode: "theme.mode",
   uiChrome: "ui.chrome",
+  iec61850NativeTreeView: (workspaceId: number | null | undefined, scope: string) =>
+    `iec61850.native-tree-view.${normalizeSettingsSegment(workspaceId ?? "none")}.${normalizeSettingsSegment(scope)}`,
   dataGridColumnWidths: (tableId: string, datasetKey: string) =>
     `datagrid.${normalizeSettingsSegment(tableId)}.columnWidths.${normalizeSettingsSegment(datasetKey)}`,
   dataGridDatasetKey: (tableId: string) =>

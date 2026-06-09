@@ -13,7 +13,8 @@ export type Iec61850NativeTreeNodeKind =
   | "network-group"
   | "connected-access-point"
   | "ied-index"
-  | "report-signal"
+  | "report-dataset-link"
+  | "report-signal-preview"
 
 export type Iec61850NativeDetailRow = {
   label: string
@@ -178,6 +179,21 @@ export function buildIec61850NativeTreeDocument(response: Iec61850SclImportRespo
     })
   }
 
+  const dataSetsByScope = new Map<string, NativeRecord[]>()
+  const reportsByScope = new Map<string, NativeRecord[]>()
+  dataSets.forEach((dataSet, index) => {
+    const key = scopeKey(text(dataSet.logicalDeviceInst), text(dataSet.logicalNodeName))
+    const bucket = dataSetsByScope.get(key) ?? []
+    bucket.push({ ...dataSet, __nativeIndex: index })
+    dataSetsByScope.set(key, bucket)
+  })
+  reports.forEach((report, index) => {
+    const key = scopeKey(text(report.logicalDeviceInst), text(report.logicalNodeName))
+    const bucket = reportsByScope.get(key) ?? []
+    bucket.push({ ...report, __nativeIndex: index })
+    reportsByScope.set(key, bucket)
+  })
+
   const ldGroup = "group:logical-devices"
   rows.push(groupRow(ldGroup, root, "logical-devices-group", "Logical devices", `${logicalDevices.length}`))
   for (const device of logicalDevices) {
@@ -185,125 +201,69 @@ export function buildIec61850NativeTreeDocument(response: Iec61850SclImportRespo
     if (!inst) continue
     const ldValue = `ld:${inst}`
     const childNodes = logicalNodes.filter(node => text(node.logicalDeviceInst) === inst)
+    const deviceSignals = signals.filter(signal => text(signal.logicalDeviceInst) === inst)
+    const deviceDataSets = dataSets.filter(dataSet => text(dataSet.logicalDeviceInst) === inst)
+    const deviceReports = reports.filter(report => text(report.logicalDeviceInst) === inst)
     rows.push({
       value: ldValue,
       parent: ldGroup,
       kind: "logical-device",
       label: inst,
-      meta: `${childNodes.length} LN`,
+      meta: `${childNodes.length} LN · ${deviceDataSets.length} DS · ${deviceReports.length} RCB`,
       isLeaf: childNodes.length === 0,
       detail: {
         title: inst,
         subtitle: "logical device",
         rows: [
           { label: "logical nodes", value: String(childNodes.length) },
-          { label: "signals", value: String(signals.filter(signal => text(signal.logicalDeviceInst) === inst).length) },
+          { label: "DataSets", value: String(deviceDataSets.length) },
+          { label: "ReportControls", value: String(deviceReports.length) },
+          { label: "signals", value: String(deviceSignals.length) },
         ],
       },
     })
     for (const node of childNodes) {
       const name = text(node.name)
       if (!name) continue
+      const nodeValue = `ln:${inst}:${name}`
+      const scopedDataSets = dataSetsByScope.get(scopeKey(inst, name)) ?? []
+      const scopedReports = reportsByScope.get(scopeKey(inst, name)) ?? []
+      const nodeSignals = signals.filter(signal => text(signal.logicalDeviceInst) === inst && text(signal.logicalNodeName) === name)
       rows.push({
-        value: `ln:${inst}:${name}`,
+        value: nodeValue,
         parent: ldValue,
         kind: "logical-node",
         label: name,
-        meta: String(signals.filter(signal => text(signal.logicalDeviceInst) === inst && text(signal.logicalNodeName) === name).length),
-        isLeaf: true,
+        meta: `${scopedDataSets.length} DS · ${scopedReports.length} RCB · ${nodeSignals.length} leaves`,
+        isLeaf: scopedDataSets.length === 0 && scopedReports.length === 0,
         detail: {
           title: `${inst}/${name}`,
           subtitle: "logical node",
           rows: [
             { label: "logical device", value: inst },
             { label: "logical node", value: name },
+            { label: "DataSets", value: String(scopedDataSets.length) },
+            { label: "ReportControls", value: String(scopedReports.length) },
+            { label: "resolved leaves", value: String(nodeSignals.length) },
           ],
         },
       })
-    }
-  }
 
-  const dataSetGroup = "group:datasets"
-  rows.push(groupRow(dataSetGroup, root, "datasets-group", "DataSets", `${dataSets.length}`))
-  for (const [index, dataSet] of dataSets.entries()) {
-    const name = text(dataSet.name) || `DataSet ${index + 1}`
-    const reference = text(dataSet.reference)
-    const firstSignalIndex = numberValue(dataSet.firstSignalIndex)
-    const memberCount = numberValue(dataSet.memberCount)
-    const members = signals.filter(signal => numberValue(signal.dataSetIndex) === index)
-    const dataSetValue = `dataset:${index}`
-    rows.push({
-      value: dataSetValue,
-      parent: dataSetGroup,
-      kind: "dataset",
-      label: name,
-      meta: `${members.length} leaves`,
-      isLeaf: members.length === 0,
-      detail: {
-        title: name,
-        subtitle: reference,
-        rows: [
-          { label: "reference", value: reference },
-          { label: "logical device", value: text(dataSet.logicalDeviceInst) },
-          { label: "logical node", value: text(dataSet.logicalNodeName) },
-          { label: "first signal index", value: formatOptionalNumber(firstSignalIndex) },
-          { label: "declared member count", value: formatOptionalNumber(memberCount) },
-          { label: "resolved leaves", value: String(members.length) },
-        ],
-      },
-    })
-    for (const [memberIndex, signal] of members.entries()) {
-      rows.push(signalRow(`dataset-member:${index}:${memberIndex}`, dataSetValue, signal))
-    }
-  }
+      if (scopedDataSets.length > 0) {
+        const dataSetGroup = `ln:${inst}:${name}:datasets`
+        rows.push(groupRow(dataSetGroup, nodeValue, "datasets-group", "DataSets", `${scopedDataSets.length}`))
+        for (const dataSet of scopedDataSets) {
+          appendDataSetRows(rows, dataSetGroup, dataSet, signals)
+        }
+      }
 
-  const reportGroup = "group:reports"
-  rows.push(groupRow(reportGroup, root, "reports-group", "ReportControls", `${reports.length}`))
-  for (const [index, report] of reports.entries()) {
-    const name = text(report.name) || `Report ${index + 1}`
-    const dataSetIndex = numberValue(report.dataSetIndex)
-    const reportSignals = dataSetIndex == null ? [] : signals.filter(signal => numberValue(signal.dataSetIndex) === dataSetIndex)
-    const reportValue = `report:${index}`
-    rows.push({
-      value: reportValue,
-      parent: reportGroup,
-      kind: "report-control",
-      label: name,
-      meta: `${text(report.reportKind) || "report"} · ${reportSignals.length} leaves`,
-      isLeaf: reportSignals.length === 0,
-      detail: {
-        title: name,
-        subtitle: text(report.key),
-        rows: [
-          { label: "kind", value: text(report.reportKind) },
-          { label: "buffered", value: String(Boolean(report.isBuffered)) },
-          { label: "DataSet", value: text(report.dataSetRef) },
-          { label: "DataSet index", value: formatOptionalNumber(dataSetIndex) },
-          { label: "ConfRev", value: formatOptionalNumber(numberValue(report.confRev)) },
-          { label: "RptID", value: text(report.rptId) },
-          { label: "TrgOps mask", value: formatOptionalNumber(numberValue(report.triggerOptionsMask)) },
-          { label: "TrgOps dchg", value: nestedText(report, "triggerOptions", "dataChange") },
-          { label: "TrgOps qchg", value: nestedText(report, "triggerOptions", "qualityChange") },
-          { label: "TrgOps dupd", value: nestedText(report, "triggerOptions", "dataUpdate") },
-          { label: "TrgOps period", value: nestedText(report, "triggerOptions", "periodic") },
-          { label: "TrgOps gi", value: nestedText(report, "triggerOptions", "generalInterrogation") },
-          { label: "OptFlds mask", value: formatOptionalNumber(numberValue(report.optionalFieldsMask)) },
-          { label: "OptFlds seqNum", value: nestedText(report, "optionalFields", "sequenceNumber") },
-          { label: "OptFlds timeStamp", value: nestedText(report, "optionalFields", "timestamp") },
-          { label: "OptFlds reasonCode", value: nestedText(report, "optionalFields", "reasonCode") },
-          { label: "OptFlds dataSet", value: nestedText(report, "optionalFields", "dataSetName") },
-          { label: "OptFlds dataRef", value: nestedText(report, "optionalFields", "dataReference") },
-          { label: "OptFlds entryID", value: nestedText(report, "optionalFields", "entryId") },
-          { label: "OptFlds configRef", value: nestedText(report, "optionalFields", "configRevision") },
-          { label: "OptFlds bufOvfl", value: nestedText(report, "optionalFields", "bufferOverflow") },
-          { label: "BufTm", value: formatOptionalNumber(numberValue(report.bufferTimeMs)) },
-          { label: "IntgPd", value: formatOptionalNumber(numberValue(report.integrityPeriodMs)) },
-          { label: "resolved leaves", value: String(reportSignals.length) },
-        ],
-      },
-    })
-    for (const [signalIndex, signal] of reportSignals.entries()) {
-      rows.push(signalRow(`report-signal:${index}:${signalIndex}`, reportValue, signal, "report-signal"))
+      if (scopedReports.length > 0) {
+        const reportGroup = `ln:${inst}:${name}:reports`
+        rows.push(groupRow(reportGroup, nodeValue, "reports-group", "ReportControls", `${scopedReports.length}`))
+        for (const report of scopedReports) {
+          appendReportRows(rows, reportGroup, report, dataSets, signals)
+        }
+      }
     }
   }
 
@@ -319,6 +279,119 @@ export function buildIec61850NativeTreeDocument(response: Iec61850SclImportRespo
     },
     rows,
   }
+}
+
+
+function appendDataSetRows(rows: Iec61850NativeTreeRow[], parent: string, dataSet: NativeRecord, signals: NativeRecord[]) {
+  const index = numberValue(dataSet.__nativeIndex)
+  if (index == null) return
+  const name = text(dataSet.name) || `DataSet ${index + 1}`
+  const reference = text(dataSet.reference)
+  const firstSignalIndex = numberValue(dataSet.firstSignalIndex)
+  const memberCount = numberValue(dataSet.memberCount)
+  const members = signals.filter(signal => numberValue(signal.dataSetIndex) === index)
+  const dataSetValue = `dataset:${index}`
+  rows.push({
+    value: dataSetValue,
+    parent,
+    kind: "dataset",
+    label: name,
+    meta: `${members.length} leaves`,
+    isLeaf: members.length === 0,
+    detail: {
+      title: name,
+      subtitle: reference,
+      rows: [
+        { label: "reference", value: reference },
+        { label: "logical device", value: text(dataSet.logicalDeviceInst) },
+        { label: "logical node", value: text(dataSet.logicalNodeName) },
+        { label: "first signal index", value: formatOptionalNumber(firstSignalIndex) },
+        { label: "declared member count", value: formatOptionalNumber(memberCount) },
+        { label: "resolved leaves", value: String(members.length) },
+      ],
+    },
+  })
+  for (const [memberIndex, signal] of members.entries()) {
+    rows.push(signalRow(`dataset-member:${index}:${memberIndex}`, dataSetValue, signal))
+  }
+}
+
+function appendReportRows(rows: Iec61850NativeTreeRow[], parent: string, report: NativeRecord, dataSets: NativeRecord[], signals: NativeRecord[]) {
+  const index = numberValue(report.__nativeIndex)
+  if (index == null) return
+  const name = text(report.name) || `Report ${index + 1}`
+  const dataSetIndex = numberValue(report.dataSetIndex)
+  const dataSet = dataSetIndex == null ? null : dataSets[dataSetIndex] ?? null
+  const reportSignals = dataSetIndex == null ? [] : signals.filter(signal => numberValue(signal.dataSetIndex) === dataSetIndex)
+  const dataSetName = dataSet ? text(dataSet.name) : ""
+  const reportValue = `report:${index}`
+  rows.push({
+    value: reportValue,
+    parent,
+    kind: "report-control",
+    label: name,
+    meta: `${text(report.reportKind) || "report"} · ${dataSetName || text(report.dataSetRef) || "no DatSet"}`,
+    isLeaf: false,
+    detail: {
+      title: name,
+      subtitle: text(report.key),
+      rows: [
+        { label: "kind", value: text(report.reportKind) },
+        { label: "buffered", value: String(Boolean(report.isBuffered)) },
+        { label: "DataSet", value: text(report.dataSetRef) },
+        { label: "DataSet name", value: dataSetName },
+        { label: "DataSet index", value: formatOptionalNumber(dataSetIndex) },
+        { label: "ConfRev", value: formatOptionalNumber(numberValue(report.confRev)) },
+        { label: "RptID", value: text(report.rptId) },
+        { label: "TrgOps mask", value: formatOptionalNumber(numberValue(report.triggerOptionsMask)) },
+        { label: "TrgOps dchg", value: nestedText(report, "triggerOptions", "dataChange") },
+        { label: "TrgOps qchg", value: nestedText(report, "triggerOptions", "qualityChange") },
+        { label: "TrgOps dupd", value: nestedText(report, "triggerOptions", "dataUpdate") },
+        { label: "TrgOps period", value: nestedText(report, "triggerOptions", "periodic") },
+        { label: "TrgOps gi", value: nestedText(report, "triggerOptions", "generalInterrogation") },
+        { label: "OptFlds mask", value: formatOptionalNumber(numberValue(report.optionalFieldsMask)) },
+        { label: "OptFlds seqNum", value: nestedText(report, "optionalFields", "sequenceNumber") },
+        { label: "OptFlds timeStamp", value: nestedText(report, "optionalFields", "timestamp") },
+        { label: "OptFlds reasonCode", value: nestedText(report, "optionalFields", "reasonCode") },
+        { label: "OptFlds dataSet", value: nestedText(report, "optionalFields", "dataSetName") },
+        { label: "OptFlds dataRef", value: nestedText(report, "optionalFields", "dataReference") },
+        { label: "OptFlds entryID", value: nestedText(report, "optionalFields", "entryId") },
+        { label: "OptFlds configRef", value: nestedText(report, "optionalFields", "configRevision") },
+        { label: "OptFlds bufOvfl", value: nestedText(report, "optionalFields", "bufferOverflow") },
+        { label: "BufTm", value: formatOptionalNumber(numberValue(report.bufferTimeMs)) },
+        { label: "IntgPd", value: formatOptionalNumber(numberValue(report.integrityPeriodMs)) },
+        { label: "resolved DataSet leaves", value: String(reportSignals.length) },
+      ],
+    },
+  })
+
+  const linkValue = `report:${index}:dataset-link`
+  rows.push({
+    value: linkValue,
+    parent: reportValue,
+    kind: "report-dataset-link",
+    label: dataSetName || text(report.dataSetRef) || "DatSet unresolved",
+    meta: `${reportSignals.length} preview leaves`,
+    isLeaf: reportSignals.length === 0,
+    detail: {
+      title: dataSetName || "DatSet unresolved",
+      subtitle: "ReportControl DatSet link",
+      rows: [
+        { label: "ReportControl", value: name },
+        { label: "DatSet reference", value: text(report.dataSetRef) },
+        { label: "DataSet name", value: dataSetName },
+        { label: "DataSet index", value: formatOptionalNumber(dataSetIndex) },
+        { label: "preview ownership", value: "DataSet owns these members; ReportControl only references them." },
+      ],
+    },
+  })
+  for (const [signalIndex, signal] of reportSignals.entries()) {
+    rows.push(signalRow(`report-dataset-preview:${index}:${signalIndex}`, linkValue, signal, "report-signal-preview"))
+  }
+}
+
+function scopeKey(logicalDeviceInst: string, logicalNodeName: string): string {
+  return `${logicalDeviceInst}\u0000${logicalNodeName}`
 }
 
 function groupRow(value: string, parent: string, kind: Iec61850NativeTreeNodeKind, label: string, meta: string): Iec61850NativeTreeRow {
@@ -337,7 +410,7 @@ function groupRow(value: string, parent: string, kind: Iec61850NativeTreeNodeKin
   }
 }
 
-function signalRow(value: string, parent: string, signal: NativeRecord, kind: "dataset-member" | "report-signal" = "dataset-member"): Iec61850NativeTreeRow {
+function signalRow(value: string, parent: string, signal: NativeRecord, kind: "dataset-member" | "report-signal-preview" = "dataset-member"): Iec61850NativeTreeRow {
   const reference = text(signal.reference)
   return {
     value,

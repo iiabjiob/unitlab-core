@@ -4024,6 +4024,115 @@ static void test_server_runtime_build_ordinary_ln_gva_response_exposes_fc_roots(
     }
 }
 
+static void test_server_runtime_build_model_fc_root_gva_response_exposes_dataset_do_tree(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelSignal signals[3U];
+    uint8_t response_bytes[8192U];
+    size_t response_length = 0U;
+    size_t response_consumed_length = 0U;
+    UnitLabMmsAssociationFrame frame;
+
+    memset(&plan, 0, sizeof(plan));
+    memset(signals, 0, sizeof(signals));
+    for (size_t index = 0U; index < 3U; index++) {
+        snprintf(signals[index].logical_device_inst, sizeof(signals[index].logical_device_inst), "%s", "KINTE15FMPSystem");
+        snprintf(signals[index].logical_node_name, sizeof(signals[index].logical_node_name), "%s", "RlyGGIO1");
+        snprintf(signals[index].data_object_name, sizeof(signals[index].data_object_name), "%s", "Ind9");
+        snprintf(signals[index].fc, sizeof(signals[index].fc), "%s", "ST");
+        signals[index].initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER;
+        snprintf(signals[index].initial_value, sizeof(signals[index].initial_value), "%s", "0");
+    }
+    snprintf(signals[0].data_attribute_path, sizeof(signals[0].data_attribute_path), "%s", "stVal");
+    snprintf(signals[0].data_set_entry_variable, sizeof(signals[0].data_set_entry_variable), "%s", "KINTE15FMPSystem/RlyGGIO1$ST$Ind9$stVal");
+    snprintf(signals[1].data_attribute_path, sizeof(signals[1].data_attribute_path), "%s", "q");
+    snprintf(signals[1].data_set_entry_variable, sizeof(signals[1].data_set_entry_variable), "%s", "KINTE15FMPSystem/RlyGGIO1$ST$Ind9$q");
+    snprintf(signals[2].data_attribute_path, sizeof(signals[2].data_attribute_path), "%s", "t");
+    snprintf(signals[2].data_set_entry_variable, sizeof(signals[2].data_set_entry_variable), "%s", "KINTE15FMPSystem/RlyGGIO1$ST$Ind9$t");
+    plan.signal_count = 3U;
+    plan.signals = signals;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES, 77U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "KINTE15FMPSystem.RlyGGIO1.ST");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "ST");
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+
+    unitlab_mms_association_frame_init(&frame);
+    assert(unitlab_mms_association_frame_decode(&frame, response_bytes, response_length, &response_consumed_length, &diagnostic));
+    assert(response_consumed_length == response_length);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"Ind9", strlen("Ind9")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"stVal", strlen("stVal")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"q", strlen("q")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"t", strlen("t")) == 1);
+}
+
+
+static void test_server_runtime_build_model_report_gva_response_uses_report_control_names(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    uint8_t response_bytes[8192U];
+    size_t response_length = 0U;
+    size_t response_consumed_length = 0U;
+    UnitLabMmsAssociationFrame frame;
+
+    assert(build_two_model_backed_rcb_plan(&plan) == 1);
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES, 78U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "KINTE08TDIFFSystem.LLN0.BR");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "BR");
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+
+    unitlab_mms_association_frame_init(&frame);
+    assert(unitlab_mms_association_frame_decode(&frame, response_bytes, response_length, &response_consumed_length, &diagnostic));
+    assert(response_consumed_length == response_length);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"brcbA", strlen("brcbA")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"brcbB", strlen("brcbB")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"brcbEvents", strlen("brcbEvents")) == 0);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES, 79U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "KINTE08TDIFFSystem.LLN0.BR.brcbA");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "brcbA");
+
+    response_length = 0U;
+    response_consumed_length = 0U;
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+
+    unitlab_mms_association_frame_init(&frame);
+    assert(unitlab_mms_association_frame_decode(&frame, response_bytes, response_length, &response_consumed_length, &diagnostic));
+    assert(response_consumed_length == response_length);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"RptID", strlen("RptID")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"DatSet", strlen("DatSet")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"TrgOps", strlen("TrgOps")) == 1);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
+
 static void test_server_runtime_build_fc_root_reads_match_lib_shape(void)
 {
     static const uint8_t ggio1_mx_expected[] = { 0xA2U, 0x07U, 0xA2U, 0x05U, 0xA2U, 0x03U, 0x85U, 0x01U, 0x00U };
@@ -6091,6 +6200,8 @@ int main(void)
     test_server_runtime_build_read_failure_uses_data_access_error_access_result();
     test_server_runtime_mixed_multi_read_preserves_access_result_failures();
     test_server_runtime_build_ordinary_ln_gva_response_exposes_fc_roots();
+    test_server_runtime_build_model_fc_root_gva_response_exposes_dataset_do_tree();
+    test_server_runtime_build_model_report_gva_response_uses_report_control_names();
     test_server_runtime_build_fc_root_reads_match_lib_shape();
     test_server_runtime_build_brcb_gva_response_exposes_fields();
     test_server_runtime_apply_release_request_builds_lib_shape_response();

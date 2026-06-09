@@ -1477,24 +1477,67 @@ int server_runtime_object_reference_has_suffix_any(
     return 0;
 }
 
+static int server_runtime_object_reference_has_report_control_class_field(const char* object_reference, const char* marker, const char* field_name)
+{
+    const char* marker_position = NULL;
+    const char* report_name = NULL;
+    char field_suffix[96U];
+    size_t object_length = 0U;
+    size_t suffix_length = 0U;
+
+    if (object_reference == NULL || marker == NULL || field_name == NULL || field_name[0] == '\0') {
+        return 0;
+    }
+    marker_position = strstr(object_reference, marker);
+    if (marker_position == NULL) {
+        return 0;
+    }
+    report_name = marker_position + strlen(marker);
+    if (report_name[0] == '\0' || report_name[0] == '.') {
+        return 0;
+    }
+    snprintf(field_suffix, sizeof(field_suffix), ".%s", field_name);
+    object_length = strlen(object_reference);
+    suffix_length = strlen(field_suffix);
+    if (object_length <= suffix_length || strcmp(object_reference + object_length - suffix_length, field_suffix) != 0) {
+        return 0;
+    }
+    return object_reference + object_length - suffix_length > report_name;
+}
+
+static int server_runtime_object_reference_has_report_control_class_object(const char* object_reference, const char* marker)
+{
+    const char* marker_position = NULL;
+    const char* report_name = NULL;
+
+    if (object_reference == NULL || marker == NULL) {
+        return 0;
+    }
+    marker_position = strstr(object_reference, marker);
+    if (marker_position == NULL) {
+        return 0;
+    }
+    report_name = marker_position + strlen(marker);
+    if (report_name[0] == '\0' || report_name[0] == '.') {
+        return 0;
+    }
+    return strchr(report_name, '.') == NULL;
+}
+
 int server_runtime_object_reference_matches_report_control_field(const char* object_reference, const char* field_name)
 {
-    char br_suffix[128U];
-    char legacy_br_suffix[160U];
-    char no_br_suffix[128U];
+    char legacy_brcb_suffix[128U];
     char legacy_no_br_suffix[160U];
 
     if (object_reference == NULL || field_name == NULL || field_name[0] == '\0') {
         return 0;
     }
-    snprintf(br_suffix, sizeof(br_suffix), ".BR.brcbEvents.%s", field_name);
-    snprintf(legacy_br_suffix, sizeof(legacy_br_suffix), ".BR.LLN0_Events_BuffRep01.%s", field_name);
-    snprintf(no_br_suffix, sizeof(no_br_suffix), ".brcbEvents.%s", field_name);
+    snprintf(legacy_brcb_suffix, sizeof(legacy_brcb_suffix), ".brcbEvents.%s", field_name);
     snprintf(legacy_no_br_suffix, sizeof(legacy_no_br_suffix), ".LLN0_Events_BuffRep01.%s", field_name);
-    return server_runtime_object_reference_has_suffix_any(
-        object_reference,
-        (const char* const[]){ br_suffix, legacy_br_suffix, no_br_suffix, legacy_no_br_suffix },
-        4U);
+    return server_runtime_object_reference_has_report_control_class_field(object_reference, ".BR.", field_name)
+        || server_runtime_object_reference_has_report_control_class_field(object_reference, ".RP.", field_name)
+        || server_runtime_object_reference_has_suffix(object_reference, legacy_brcb_suffix)
+        || server_runtime_object_reference_has_suffix(object_reference, legacy_no_br_suffix);
 }
 
 int server_runtime_object_reference_matches_report_control_object(const char* object_reference)
@@ -1502,10 +1545,10 @@ int server_runtime_object_reference_matches_report_control_object(const char* ob
     if (object_reference == NULL) {
         return 0;
     }
-    return server_runtime_object_reference_has_suffix_any(
-        object_reference,
-        (const char* const[]){ ".BR.brcbEvents", ".BR.LLN0_Events_BuffRep01", ".brcbEvents", ".LLN0_Events_BuffRep01" },
-        4U);
+    return server_runtime_object_reference_has_report_control_class_object(object_reference, ".BR.")
+        || server_runtime_object_reference_has_report_control_class_object(object_reference, ".RP.")
+        || server_runtime_object_reference_has_suffix(object_reference, ".brcbEvents")
+        || server_runtime_object_reference_has_suffix(object_reference, ".LLN0_Events_BuffRep01");
 }
 
 const char* server_runtime_advertised_domain_name(const UnitLabMmsServerRuntime* server_runtime)

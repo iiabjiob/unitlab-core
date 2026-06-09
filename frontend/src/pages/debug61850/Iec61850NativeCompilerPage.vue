@@ -8,6 +8,7 @@ import UiButton from "@/components/ui/UiButton.vue"
 import UiModal from "@/components/ui/UiModal.vue"
 import Iec61850DiagnosticsGrid from "./Iec61850DiagnosticsGrid.vue"
 import type { ScdDiagnostic } from "@/modules/scd-sld-core"
+import { localSettingsKeys, readLocalSetting, writeLocalSetting } from "@/services/localSettingsStorage"
 import { useWorkspaceStore } from "@/stores/workspaceStore"
 import { useToastStore } from "@/stores/toastStore"
 import {
@@ -23,6 +24,7 @@ type RenderedNativeTreeRow = { row: Iec61850NativeTreeRow; meta: VirtualTreeview
 
 const TREE_ROW_HEIGHT = 30
 const TREE_OVERSCAN_ROWS = 12
+const TREE_STATE_STORAGE_KEY = "unitlab.61850-native-tree-view"
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const fileName = ref<string | null>(null)
@@ -51,6 +53,7 @@ const treeSearchInputRef = ref<HTMLInputElement | null>(null)
 const treeViewportRef = ref<HTMLDivElement | null>(null)
 let treeViewportResizeObserver: ResizeObserver | null = null
 const itemElements = new Map<NodeValue, HTMLButtonElement>()
+const isRestoringTreeState = ref(false)
 
 const workspaceStore = useWorkspaceStore()
 const toastStore = useToastStore()
@@ -62,6 +65,8 @@ const tree = useVirtualTreeviewController<NodeValue>({
   overscan: TREE_OVERSCAN_ROWS,
   viewportHeight: 0,
 })
+
+const treeCorePatch = tree.core as unknown as { patch: (next: { active: NodeValue | null; selected: NodeValue | null; expanded: NodeValue[] }) => void }
 
 const rows = computed(() => document.value?.rows ?? [])
 const rowByValue = computed(() => {
@@ -82,6 +87,32 @@ const parentByValue = computed(() => {
   return map
 })
 const expandedSet = computed(() => new Set(tree.state.value.expanded))
+const expandableTreeValues = computed(() => rows.value
+  .filter(row => childrenByParent.value.has(row.value))
+  .map(row => row.value),
+)
+const expandableTreeValueSet = computed(() => new Set(expandableTreeValues.value))
+const treePersistenceSourceHash = computed(() => importResponse.value?.source_hash ?? compiledImports.value[0]?.source_hash ?? null)
+const treeStateScope = computed(() => {
+  if (treePersistenceSourceHash.value) {
+    return `compiled:${treePersistenceSourceHash.value}`
+  }
+  if (discoveryResponse.value) {
+    return `discovery:${discoveryResponse.value.schema}:${discoveryResponse.value.sourceSize}`
+  }
+  if (fileName.value) {
+    return `file:${fileName.value}`
+  }
+  return "empty"
+})
+const treeStateStorageKey = computed(() => localSettingsKeys.iec61850NativeTreeView(
+  workspaceStore.activeWorkspaceId,
+  treeStateScope.value,
+))
+const treeExpandToggleLabel = computed(() => {
+  if (!expandableTreeValues.value.length) return "Expand all"
+  return expandableTreeValues.value.every(value => expandedSet.value.has(value)) ? "Collapse all" : "Expand all"
+})
 const childrenByParent = computed(() => {
   const map = new Map<NodeValue | null, NodeValue[]>()
   rows.value.forEach((row) => {
@@ -240,9 +271,18 @@ watch(treeNodes, (nodes) => {
     selectedValue.value = null
     return
   }
-  expandDefaults()
+  restoreTreeExpansionState()
   selectNode(nodes[0].value)
 }, { immediate: true })
+
+watch(
+  () => tree.state.value.expanded,
+  () => {
+    if (isRestoringTreeState.value) return
+    persistTreeExpansionState()
+  },
+  { deep: true },
+)
 
 watch(treeSearch, (query) => {
   tree.setSearchQuery(query)
@@ -485,11 +525,83 @@ function buildCombinedNativeTreeDocument(responses: Iec61850SclImportResponse[])
   return combined
 }
 
-function expandDefaults() {
-  for (const row of rows.value) {
-    if (row.kind === "import" || row.kind.endsWith("group")) {
-      tree.expand(row.value)
-    }
+function normalizePersistedTreeExpansion(value: unknown): NodeValue[] | null {
+  if (!Array.isArray(value)) {
+    return null
+  }
+
+  const next: NodeValue[] = []
+  const seen = new Set<string>()
+
+  for (const item of value) {
+    if (typeof item !== "string") continue
+    if (seen.has(item)) continue
+    seen.add(item)
+    next.push(item)
+  }
+
+  return next
+}
+
+function persistTreeExpansionState() {
+  const expanded = new Set<NodeValue>(tree.state.value.expanded)
+  const state: NodeValue[] = Array.from(expanded)
+    .filter(node => expandableTreeValueSet.value.has(node))
+    .sort((a, b) => a.localeCompare(b))
+
+  writeLocalSetting(treeStateStorageKey.value, state, {
+    legacyKeys: [TREE_STATE_STORAGE_KEY],
+  })
+}
+
+function restoreTreeExpansionState() {
+  const persisted = readLocalSetting<NodeValue[] | null>(
+    treeStateStorageKey.value,
+    null,
+    {
+      validate: normalizePersistedTreeExpansion,
+    },
+  )
+
+  const valuesToExpand = persisted
+    ? persisted.filter(node => expandableTreeValueSet.value.has(node))
+    : []
+
+  isRestoringTreeState.value = true
+
+  try {
+    setTreeExpandedValues(valuesToExpand)
+  } finally {
+    isRestoringTreeState.value = false
+  }
+}
+
+function collapseTreeNodes(values: readonly NodeValue[]) {
+  if (!values.length) return
+  setTreeExpandedValues([])
+}
+
+function expandTreeNodes(values: readonly NodeValue[]) {
+  setTreeExpandedValues(values)
+}
+
+function setTreeExpandedValues(values: readonly NodeValue[]) {
+  treeCorePatch.patch({
+    active: tree.state.value.active,
+    selected: tree.state.value.selected,
+    expanded: Array.from(new Set(values)),
+  })
+  tree.refreshWindow()
+}
+
+function toggleTreeExpansionAll() {
+  if (!expandableTreeValues.value.length) return
+
+  const shouldExpandAll = !expandableTreeValues.value.every(value => expandedSet.value.has(value))
+  if (shouldExpandAll) {
+    expandTreeNodes(expandableTreeValues.value)
+  } else {
+    collapseTreeNodes(expandableTreeValues.value)
   }
 }
 
@@ -831,6 +943,14 @@ onUnmounted(() => {
               autocomplete="off"
               spellcheck="false"
             >
+            <button
+              v-if="expandableTreeValues.length"
+              type="button"
+              class="iec61850-native-page__tree-search-action"
+              @click="toggleTreeExpansionAll"
+            >
+              {{ treeExpandToggleLabel }}
+            </button>
             <button
               v-if="normalizedTreeSearchQuery"
               type="button"
@@ -1416,7 +1536,8 @@ onUnmounted(() => {
 }
 
 .iec61850-native-page__search {
-  width: calc(100% - 24px);
+  width: auto;
+  min-width: 0;
   margin: 10px 12px;
 }
 
@@ -1433,7 +1554,8 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-.iec61850-native-page__tree-search-clear {
+.iec61850-native-page__tree-search-clear,
+.iec61850-native-page__tree-search-action {
   height: 32px;
   border: 1px solid #cbd4df;
   border-radius: 6px;
@@ -1445,7 +1567,8 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
-.iec61850-native-page__tree-search-clear:hover {
+.iec61850-native-page__tree-search-clear:hover,
+.iec61850-native-page__tree-search-action:hover {
   border-color: #7da7d9;
   color: #172033;
 }
