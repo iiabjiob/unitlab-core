@@ -1,0 +1,298 @@
+import type { Iec61850SclDiagnostic, Iec61850SclImportResponse } from "@/api/iec61850Client.api"
+
+export type Iec61850NativeTreeNodeKind =
+  | "import"
+  | "logical-devices-group"
+  | "logical-device"
+  | "logical-node"
+  | "datasets-group"
+  | "dataset"
+  | "dataset-member"
+  | "reports-group"
+  | "report-control"
+  | "diagnostics-group"
+  | "diagnostic"
+
+export type Iec61850NativeDetailRow = {
+  label: string
+  value: string
+}
+
+export type Iec61850NativeTreeRow = {
+  value: string
+  parent: string | null
+  kind: Iec61850NativeTreeNodeKind
+  label: string
+  meta: string | null
+  isLeaf: boolean
+  detail: {
+    title: string
+    subtitle: string
+    rows: Iec61850NativeDetailRow[]
+  }
+}
+
+export type Iec61850NativeStats = {
+  logicalDevices: number
+  logicalNodes: number
+  dataSets: number
+  reports: number
+  signals: number
+  errors: number
+  warnings: number
+}
+
+export type Iec61850NativeTreeDocument = {
+  stats: Iec61850NativeStats
+  rows: Iec61850NativeTreeRow[]
+}
+
+type NativeRecord = Record<string, unknown>
+
+export function buildIec61850NativeTreeDocument(response: Iec61850SclImportResponse): Iec61850NativeTreeDocument {
+  const model = response.normalized_model ?? {}
+  const logicalDevices = asRecords(model.logicalDevices)
+  const logicalNodes = asRecords(model.logicalNodes)
+  const dataSets = asRecords(model.dataSets)
+  const reports = asRecords(model.reports)
+  const signals = asRecords(model.signals)
+  const rows: Iec61850NativeTreeRow[] = []
+  const root = "import:root"
+
+  rows.push({
+    value: root,
+    parent: null,
+    kind: "import",
+    label: response.selected_ied,
+    meta: response.normalized_schema,
+    isLeaf: false,
+    detail: {
+      title: response.selected_ied,
+      subtitle: response.source_filename ?? "compiled SCL import",
+      rows: [
+        { label: "import id", value: response.import_id },
+        { label: "workspace", value: String(response.workspace_id) },
+        { label: "schema", value: response.normalized_schema },
+        { label: "source size", value: String(response.source_size) },
+        { label: "source hash", value: response.source_hash },
+      ],
+    },
+  })
+
+  const ldGroup = "group:logical-devices"
+  rows.push(groupRow(ldGroup, root, "logical-devices-group", "Logical devices", `${logicalDevices.length}`))
+  for (const device of logicalDevices) {
+    const inst = text(device.inst)
+    if (!inst) continue
+    const ldValue = `ld:${inst}`
+    const childNodes = logicalNodes.filter(node => text(node.logicalDeviceInst) === inst)
+    rows.push({
+      value: ldValue,
+      parent: ldGroup,
+      kind: "logical-device",
+      label: inst,
+      meta: `${childNodes.length} LN`,
+      isLeaf: childNodes.length === 0,
+      detail: {
+        title: inst,
+        subtitle: "logical device",
+        rows: [
+          { label: "logical nodes", value: String(childNodes.length) },
+          { label: "signals", value: String(signals.filter(signal => text(signal.logicalDeviceInst) === inst).length) },
+        ],
+      },
+    })
+    for (const node of childNodes) {
+      const name = text(node.name)
+      if (!name) continue
+      rows.push({
+        value: `ln:${inst}:${name}`,
+        parent: ldValue,
+        kind: "logical-node",
+        label: name,
+        meta: String(signals.filter(signal => text(signal.logicalDeviceInst) === inst && text(signal.logicalNodeName) === name).length),
+        isLeaf: true,
+        detail: {
+          title: `${inst}/${name}`,
+          subtitle: "logical node",
+          rows: [
+            { label: "logical device", value: inst },
+            { label: "logical node", value: name },
+          ],
+        },
+      })
+    }
+  }
+
+  const dataSetGroup = "group:datasets"
+  rows.push(groupRow(dataSetGroup, root, "datasets-group", "DataSets", `${dataSets.length}`))
+  for (const [index, dataSet] of dataSets.entries()) {
+    const name = text(dataSet.name) || `DataSet ${index + 1}`
+    const reference = text(dataSet.reference)
+    const firstSignalIndex = numberValue(dataSet.firstSignalIndex)
+    const memberCount = numberValue(dataSet.memberCount)
+    const members = signals.filter(signal => numberValue(signal.dataSetIndex) === index)
+    const dataSetValue = `dataset:${index}`
+    rows.push({
+      value: dataSetValue,
+      parent: dataSetGroup,
+      kind: "dataset",
+      label: name,
+      meta: `${members.length} leaves`,
+      isLeaf: members.length === 0,
+      detail: {
+        title: name,
+        subtitle: reference,
+        rows: [
+          { label: "reference", value: reference },
+          { label: "logical device", value: text(dataSet.logicalDeviceInst) },
+          { label: "logical node", value: text(dataSet.logicalNodeName) },
+          { label: "first signal index", value: formatOptionalNumber(firstSignalIndex) },
+          { label: "declared member count", value: formatOptionalNumber(memberCount) },
+          { label: "resolved leaves", value: String(members.length) },
+        ],
+      },
+    })
+    for (const [memberIndex, signal] of members.entries()) {
+      rows.push(signalRow(`dataset-member:${index}:${memberIndex}`, dataSetValue, signal))
+    }
+  }
+
+  const reportGroup = "group:reports"
+  rows.push(groupRow(reportGroup, root, "reports-group", "ReportControls", `${reports.length}`))
+  for (const [index, report] of reports.entries()) {
+    const name = text(report.name) || `Report ${index + 1}`
+    const dataSetIndex = numberValue(report.dataSetIndex)
+    const reportSignals = dataSetIndex == null ? [] : signals.filter(signal => numberValue(signal.dataSetIndex) === dataSetIndex)
+    const reportValue = `report:${index}`
+    rows.push({
+      value: reportValue,
+      parent: reportGroup,
+      kind: "report-control",
+      label: name,
+      meta: `${text(report.reportKind) || "report"} · ${reportSignals.length} leaves`,
+      isLeaf: true,
+      detail: {
+        title: name,
+        subtitle: text(report.key),
+        rows: [
+          { label: "kind", value: text(report.reportKind) },
+          { label: "buffered", value: String(Boolean(report.isBuffered)) },
+          { label: "DataSet", value: text(report.dataSetRef) },
+          { label: "DataSet index", value: formatOptionalNumber(dataSetIndex) },
+          { label: "ConfRev", value: formatOptionalNumber(numberValue(report.confRev)) },
+          { label: "TrgOps mask", value: formatOptionalNumber(numberValue(report.triggerOptionsMask)) },
+          { label: "OptFlds mask", value: formatOptionalNumber(numberValue(report.optionalFieldsMask)) },
+          { label: "BufTm", value: formatOptionalNumber(numberValue(report.bufferTimeMs)) },
+          { label: "IntgPd", value: formatOptionalNumber(numberValue(report.integrityPeriodMs)) },
+          { label: "resolved leaves", value: String(reportSignals.length) },
+        ],
+      },
+    })
+  }
+
+  const diagnosticGroup = "group:diagnostics"
+  rows.push(groupRow(diagnosticGroup, root, "diagnostics-group", "Diagnostics", `${response.diagnostics.length}`))
+  for (const [index, diagnostic] of response.diagnostics.entries()) {
+    rows.push(diagnosticRow(index, diagnosticGroup, diagnostic))
+  }
+
+  return {
+    stats: {
+      logicalDevices: logicalDevices.length,
+      logicalNodes: logicalNodes.length,
+      dataSets: dataSets.length,
+      reports: reports.length,
+      signals: signals.length,
+      errors: response.diagnostics.filter(diagnostic => diagnostic.severity === "error").length,
+      warnings: response.diagnostics.filter(diagnostic => diagnostic.severity === "warning").length,
+    },
+    rows,
+  }
+}
+
+function groupRow(value: string, parent: string, kind: Iec61850NativeTreeNodeKind, label: string, meta: string): Iec61850NativeTreeRow {
+  return {
+    value,
+    parent,
+    kind,
+    label,
+    meta,
+    isLeaf: false,
+    detail: {
+      title: label,
+      subtitle: `${meta} items`,
+      rows: [{ label: "count", value: meta }],
+    },
+  }
+}
+
+function signalRow(value: string, parent: string, signal: NativeRecord): Iec61850NativeTreeRow {
+  const reference = text(signal.reference)
+  return {
+    value,
+    parent,
+    kind: "dataset-member",
+    label: reference || text(signal.objectReference),
+    meta: text(signal.fc),
+    isLeaf: true,
+    detail: {
+      title: reference,
+      subtitle: text(signal.dataSetEntryVariable),
+      rows: [
+        { label: "canonical variable", value: text(signal.dataSetEntryVariable) },
+        { label: "object reference", value: text(signal.objectReference) },
+        { label: "logical device", value: text(signal.logicalDeviceInst) },
+        { label: "logical node", value: text(signal.logicalNodeName) },
+        { label: "data object", value: text(signal.dataObjectName) },
+        { label: "data attribute", value: text(signal.dataAttributePath) },
+        { label: "FC", value: text(signal.fc) },
+        { label: "initial value", value: text(signal.initialValue) },
+      ],
+    },
+  }
+}
+
+function diagnosticRow(index: number, parent: string, diagnostic: Iec61850SclDiagnostic): Iec61850NativeTreeRow {
+  return {
+    value: `diagnostic:${index}`,
+    parent,
+    kind: "diagnostic",
+    label: diagnostic.code,
+    meta: diagnostic.severity,
+    isLeaf: true,
+    detail: {
+      title: diagnostic.code,
+      subtitle: diagnostic.message,
+      rows: [
+        { label: "severity", value: diagnostic.severity },
+        { label: "message", value: diagnostic.message },
+        { label: "IED", value: diagnostic.iedName },
+        { label: "AccessPoint", value: diagnostic.accessPointName },
+        { label: "logical device", value: diagnostic.logicalDeviceInst },
+        { label: "logical node", value: diagnostic.logicalNodeName },
+        { label: "DataSet", value: diagnostic.dataSetName },
+        { label: "ReportControl", value: diagnostic.reportControlName },
+        { label: "member", value: diagnostic.memberReference },
+      ],
+    },
+  }
+}
+
+function asRecords(value: unknown): NativeRecord[] {
+  return Array.isArray(value) ? value.filter((item): item is NativeRecord => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : []
+}
+
+function text(value: unknown): string {
+  if (typeof value === "string") return value
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  return ""
+}
+
+function numberValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function formatOptionalNumber(value: number | null): string {
+  return value == null ? "" : String(value)
+}

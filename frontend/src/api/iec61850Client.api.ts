@@ -1,6 +1,52 @@
 import { httpData } from "./http"
 import { API_V1 } from "./utils"
 
+
+export type Iec61850SclDiagnostic = {
+  severity: string
+  code: string
+  message: string
+  iedName: string
+  accessPointName: string
+  logicalDeviceInst: string
+  logicalNodeName: string
+  dataSetName: string
+  reportControlName: string
+  memberReference: string
+}
+
+export type Iec61850NativeNormalizedModel = {
+  logicalDevices?: Array<Record<string, unknown>>
+  logicalNodes?: Array<Record<string, unknown>>
+  dataSets?: Array<Record<string, unknown>>
+  reports?: Array<Record<string, unknown>>
+  signals?: Array<Record<string, unknown>>
+}
+
+export type Iec61850SclImportResponse = {
+  import_id: string
+  workspace_id: number
+  source_filename: string | null
+  source_hash: string
+  source_size: number
+  selected_ied: string
+  normalized_schema: string
+  normalized_model: Iec61850NativeNormalizedModel
+  diagnostics: Iec61850SclDiagnostic[]
+}
+
+export type Iec61850RuntimeSelectionResponse = {
+  selection_id: string
+  workspace_id: number
+  import_id: string
+  runtime_revision: number
+  selected_ied: string
+  source_hash: string
+  normalized_schema: string
+  selected_by: string | null
+  selection_reason: string | null
+}
+
 export type Iec61850ClientDiagnostic = {
   action: string
   code: string
@@ -66,6 +112,28 @@ export type Iec61850ClientState = {
   live_wire_last_frame_length: number | null
   live_wire_last_frame_hex: string | null
   live_wire_last_diagnostic: Iec61850ClientDiagnostic | null
+}
+
+export const Iec61850SclAPI = {
+  importScl(workspaceId: number, file: File, selectedIed?: string) {
+    const form = new FormData()
+    form.append("file", file)
+    const normalizedSelectedIed = selectedIed?.trim()
+    if (normalizedSelectedIed) {
+      form.append("selected_ied", normalizedSelectedIed)
+    }
+    return httpData.post<Iec61850SclImportResponse>(`${API_V1}/workspaces/${workspaceId}/iec61850/scl/import`, form, {
+      timeout: 120000,
+    })
+  },
+
+  runtimeSelection(workspaceId: number) {
+    return httpData.get<Iec61850RuntimeSelectionResponse | null>(`${API_V1}/workspaces/${workspaceId}/iec61850/runtime/selection`)
+  },
+
+  selectRuntimeImport(workspaceId: number, payload: { import_id: string; selected_by?: string | null; reason?: string | null }) {
+    return httpData.post<Iec61850RuntimeSelectionResponse>(`${API_V1}/workspaces/${workspaceId}/iec61850/runtime/selection`, payload)
+  },
 }
 
 export const Iec61850ClientAPI = {

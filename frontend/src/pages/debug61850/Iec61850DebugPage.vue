@@ -874,6 +874,9 @@ onUnmounted(() => {
         <RouterLink class="iec61850-debug-page__nav-link" to="/61850-debug/client">
           MMS client test
         </RouterLink>
+        <RouterLink class="iec61850-debug-page__nav-link" to="/61850-debug/native">
+          Backend compiler
+        </RouterLink>
         <UiButton
           variant="secondary"
           size="sm"
