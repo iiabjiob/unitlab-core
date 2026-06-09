@@ -158,6 +158,17 @@ const treeCountLabel = computed(() => {
 })
 const treeLoading = computed(() => persistedImportsLoading.value || loadingPhase.value === "discover")
 const treeLoadingLabel = computed(() => persistedImportsLoading.value ? "Loading saved SCL imports" : "Reading SCD device index")
+const selectedTreeIedName = computed(() => resolveCompiledIedName(selectedValue.value) ?? resolveCompiledIedName(tree.state.value.active))
+const selectedCompiledImport = computed(() => {
+  const selectedIed = selectedTreeIedName.value
+  if (!selectedIed) return null
+  return compiledImports.value.find(item => item.selected_ied === selectedIed) ?? null
+})
+const canStartVirtualServer = computed(() => Boolean(selectedCompiledImport.value?.import_id && !virtualServerLoading.value))
+const virtualServerStartLabel = computed(() => {
+  if (virtualServerLoading.value) return "Starting..."
+  return selectedCompiledImport.value ? `Start ${selectedCompiledImport.value.selected_ied}` : "Select compiled IED"
+})
 const virtualServerEndpointLabel = computed(() => {
   const state = virtualServerState.value
   if (!state?.running || !state.host || !state.port) return "Virtual MMS server stopped"
@@ -169,8 +180,6 @@ const virtualServerConnectHint = computed(() => {
   if (state.host === "0.0.0.0") return `Use IEDScout endpoint <host IP>:${state.port}, for example 192.168.14.1:${state.port}`
   return `Use IEDScout endpoint ${state.host}:${state.port}`
 })
-const canStartVirtualServer = computed(() => Boolean(compiledImports.value[0]?.import_id && !virtualServerLoading.value))
-
 const nativeDiagnostics = computed<ScdDiagnostic[]>(() => {
   const rows: ScdDiagnostic[] = []
   for (const response of compiledImports.value) {
@@ -490,6 +499,14 @@ function selectNode(value: NodeValue) {
   tree.select(value)
 }
 
+function resolveCompiledIedName(value: NodeValue | null | undefined): string | null {
+  if (!value) return null
+  for (const response of compiledImports.value) {
+    if (value.startsWith(`ied:${response.selected_ied}:`)) return response.selected_ied
+  }
+  return null
+}
+
 function onRowClick(row: Iec61850NativeTreeRow) {
   selectNode(row.value)
   if (!row.isLeaf) tree.toggle(row.value)
@@ -628,7 +645,7 @@ async function refreshVirtualServerState() {
 }
 
 async function startVirtualServer() {
-  const selectedImport = compiledImports.value[0]
+  const selectedImport = selectedCompiledImport.value
   if (!selectedImport?.import_id || virtualServerLoading.value) return
   virtualServerLoading.value = true
   error.value = null
@@ -641,7 +658,7 @@ async function startVirtualServer() {
       host: "0.0.0.0",
       port: 12447,
     })
-    toastStore.success(`Virtual MMS server started on ${virtualServerState.value.host}:${virtualServerState.value.port}`)
+    toastStore.success(`Virtual MMS server started for ${selectedImport.selected_ied} on ${virtualServerState.value.host}:${virtualServerState.value.port}`)
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : "Virtual MMS server start failed"
     toastStore.error(error.value)
@@ -740,7 +757,7 @@ onUnmounted(() => {
           :disabled="!canStartVirtualServer"
           @click="startVirtualServer"
         >
-          Start virtual MMS
+          {{ virtualServerStartLabel }}
         </UiButton>
         <UiButton variant="secondary" size="sm" :disabled="loading || persistedImportsLoading" @click="openFileDialog">
           {{ importResponse || discoveryResponse ? "Choose another SCD" : "Choose SCD" }}
