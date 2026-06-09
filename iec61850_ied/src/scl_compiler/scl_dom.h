@@ -52,7 +52,7 @@ struct SclLogicalNode {
 
 struct SclDoTemplate { std::string name; std::string type; };
 struct SclSdoTemplate { std::string name; std::string type; };
-struct SclDaTemplate { std::string name; std::string b_type; std::string type; };
+struct SclDaTemplate { std::string name; std::string fc; std::string b_type; std::string type; };
 struct SclLNodeTypeTemplate { std::string id; std::vector<SclDoTemplate> data_objects; };
 struct SclDoTypeTemplate { std::string id; std::vector<SclDaTemplate> data_attributes; std::vector<SclSdoTemplate> sub_data_objects; };
 struct SclDaTypeTemplate { std::string id; std::vector<SclDaTemplate> basic_data_attributes; };

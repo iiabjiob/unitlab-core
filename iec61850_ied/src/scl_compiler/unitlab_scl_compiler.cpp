@@ -239,6 +239,49 @@ uint8_t optional_fields_mask(const UnitLabIedFixtureOptionalFields& fields)
     return mask;
 }
 
+std::string member_reference_with_attribute(const SclMember& member, const std::string& fallback_ld_inst, const std::string& attribute_path)
+{
+    SclMember attributed = member;
+    attributed.da_name = attribute_path;
+    return signal_ref(attributed, fallback_ld_inst);
+}
+
+void append_compiled_signal(
+    UnitLabSclCompileResult& result,
+    size_t data_set_index,
+    size_t member_index,
+    const std::string& member_domain,
+    const std::string& member_ln,
+    const SclMember& member,
+    const std::string& fallback_ld_inst,
+    const std::string& attribute_path,
+    const SclResolvedValueType& resolved_type,
+    const SclDataTypeTemplates& templates)
+{
+    UnitLabIedModelSignal signal{};
+    const std::string reference = attribute_path.empty()
+        ? signal_ref(member, fallback_ld_inst)
+        : member_reference_with_attribute(member, fallback_ld_inst, attribute_path);
+    const std::string object_reference = member_domain + "." + member_ln + "." + member.do_name + (attribute_path.empty() ? "" : "." + attribute_path);
+    copy_string(signal.reference, sizeof(signal.reference), reference.c_str());
+    copy_string(signal.kind, sizeof(signal.kind), member.kind.c_str());
+    signal.data_set_index = data_set_index;
+    signal.member_index = member_index;
+    copy_string(signal.logical_device_inst, sizeof(signal.logical_device_inst), member_domain.c_str());
+    copy_string(signal.logical_node_name, sizeof(signal.logical_node_name), member_ln.c_str());
+    copy_string(signal.data_object_name, sizeof(signal.data_object_name), member.do_name.c_str());
+    copy_string(signal.data_attribute_path, sizeof(signal.data_attribute_path), attribute_path.c_str());
+    copy_string(signal.object_reference, sizeof(signal.object_reference), object_reference.c_str());
+    copy_string(signal.data_set_entry_variable, sizeof(signal.data_set_entry_variable), object_reference.c_str());
+    signal.data_set_entry_component_known = !attribute_path.empty() ? 1 : 0;
+    copy_string(signal.data_set_entry_component, sizeof(signal.data_set_entry_component), attribute_path.c_str());
+    copy_string(signal.fc, sizeof(signal.fc), member.fc.c_str());
+    signal.initial_value_kind = value_kind_for_b_type(resolved_type.b_type);
+    const std::string default_value = default_value_for_resolved_type(templates, resolved_type, signal.initial_value_kind);
+    copy_string(signal.initial_value, sizeof(signal.initial_value), default_value.c_str());
+    result.signals.push_back(signal);
+}
+
 void sync_plan(UnitLabSclCompileResult& result)
 {
     result.plan.logical_device_count = result.logical_devices.size();
@@ -306,31 +349,23 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied, const SclDa
                             result.diagnostics.push_back(contextual_diagnostic("error", "SCL_DATASET_MEMBER_SDO_UNRESOLVED", "DataSet FCDA member references an unresolved SDO path.", ied.name.c_str(), access_point.name.c_str(), device.inst.c_str(), node.name.c_str(), data_set.name.c_str(), "", signal_ref(member, device.inst).c_str()));
                             continue;
                         }
+                        if (member.kind == "FCD" && member_do_type != nullptr) {
+                            size_t emitted_attribute_count = 0U;
+                            for (const SclDaTemplate& attribute : member_do_type->data_attributes) {
+                                if (!attribute.fc.empty() && attribute.fc != member.fc) continue;
+                                append_compiled_signal(result, data_set_index, valid_member_index, member_domain, member_ln, member, device.inst, attribute.name, {attribute.b_type, attribute.type}, templates);
+                                valid_member_index++;
+                                emitted_attribute_count++;
+                            }
+                            if (emitted_attribute_count != 0U) continue;
+                        }
+
                         const SclResolvedValueType resolved_type = member.kind == "FCDA" ? resolve_attribute_value_type(templates, member_do_type, split_path(member.da_name)) : SclResolvedValueType{};
                         if (member.kind == "FCDA" && member.da_name.find('.') != std::string::npos && resolved_type.b_type.empty()) {
                             result.diagnostics.push_back(contextual_diagnostic("error", "SCL_DATASET_MEMBER_ATTRIBUTE_UNRESOLVED", "DataSet FCDA member references an unresolved nested data attribute path.", ied.name.c_str(), access_point.name.c_str(), device.inst.c_str(), node.name.c_str(), data_set.name.c_str(), "", signal_ref(member, device.inst).c_str()));
                             continue;
                         }
-
-                        UnitLabIedModelSignal signal{};
-                        copy_string(signal.reference, sizeof(signal.reference), signal_ref(member, device.inst).c_str());
-                        copy_string(signal.kind, sizeof(signal.kind), member.kind.c_str());
-                        signal.data_set_index = data_set_index;
-                        signal.member_index = valid_member_index;
-                        copy_string(signal.logical_device_inst, sizeof(signal.logical_device_inst), member_domain.c_str());
-                        copy_string(signal.logical_node_name, sizeof(signal.logical_node_name), member_ln.c_str());
-                        copy_string(signal.data_object_name, sizeof(signal.data_object_name), member.do_name.c_str());
-                        copy_string(signal.data_attribute_path, sizeof(signal.data_attribute_path), member.da_name.c_str());
-                        const std::string object_reference = member_domain + "." + member_ln + "." + member.do_name + (member.da_name.empty() ? "" : "." + member.da_name);
-                        copy_string(signal.object_reference, sizeof(signal.object_reference), object_reference.c_str());
-                        copy_string(signal.data_set_entry_variable, sizeof(signal.data_set_entry_variable), object_reference.c_str());
-                        signal.data_set_entry_component_known = !member.da_name.empty() ? 1 : 0;
-                        copy_string(signal.data_set_entry_component, sizeof(signal.data_set_entry_component), member.da_name.c_str());
-                        copy_string(signal.fc, sizeof(signal.fc), member.fc.c_str());
-                        signal.initial_value_kind = value_kind_for_b_type(resolved_type.b_type);
-                        const std::string default_value = default_value_for_resolved_type(templates, resolved_type, signal.initial_value_kind);
-                        copy_string(signal.initial_value, sizeof(signal.initial_value), default_value.c_str());
-                        result.signals.push_back(signal);
+                        append_compiled_signal(result, data_set_index, valid_member_index, member_domain, member_ln, member, device.inst, member.da_name, resolved_type, templates);
                         valid_member_index++;
                     }
                     result.data_sets[data_set_index].member_count = valid_member_index;

@@ -29,11 +29,10 @@ Already implemented:
 - DataSet `FCDA` and `FCD` parsing;
 - ReportControl parsing for `datSet`, `rptID`, `buffered`, `confRev`, `indexed`, `bufTime`, `intgPd`, `TrgOps`, and `OptFields`;
 - basic diagnostics with C-readable context fields;
-- typed defaults from direct `LNodeType -> DOType -> DA`, `DOType/SDO -> nested DOType -> DA`, nested `DAType/BDA` chains, and first `EnumVal` for enum defaults.
+- typed defaults from direct `LNodeType -> DOType -> DA`, `DOType/SDO -> nested DOType -> DA`, nested `DAType/BDA` chains, derived `FCD` value/q/t leaves, and first `EnumVal` for enum defaults.
 
 Known remaining gaps:
 
-- q/t metadata derivation;
 - unresolved template diagnostics are still incomplete;
 - C API does not yet expose normalized JSON or diagnostics with line/column/XPath;
 - native server smoke does not yet compile SCD directly into server runtime.
@@ -91,7 +90,7 @@ Exit criteria:
 
 ### Slice 4 - q/t Metadata Derivation
 
-Derive quality and timestamp metadata from resolved DO/DA definitions instead of fixture assumptions.
+Status: implemented for compiled `FCD` DataSet members. The compiler now expands `FCD` members through resolved `DOType/DA` definitions and emits ordered value/q/t runtime signals when the SCL template contains those leaves. This keeps q/t near the value leaf without changing the public C ABI.
 
 Deliverables:
 

@@ -50,7 +50,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "<scl:DOType id=\"DPC_POS\" cdc=\"DPC\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"BOOLEAN\" /><scl:DA name=\"origin\" fc=\"ST\" bType=\"Struct\" type=\"ORIGINATOR\" /><scl:DA name=\"ctlModel\" fc=\"CF\" bType=\"Enum\" type=\"CtlModelKind\" /></scl:DOType>"
         "<scl:DOType id=\"BEH_ROOT\" cdc=\"ENS\"><scl:SDO name=\"subState\" type=\"BEH_SUB\" /></scl:DOType>"
         "<scl:DOType id=\"BEH_SUB\" cdc=\"ENS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /></scl:DOType>"
-        "<scl:DOType id=\"INS_IND\" cdc=\"INS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /></scl:DOType>"
+        "<scl:DOType id=\"INS_IND\" cdc=\"INS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /><scl:DA name=\"q\" fc=\"ST\" bType=\"Quality\" /><scl:DA name=\"t\" fc=\"ST\" bType=\"Timestamp\" /></scl:DOType>"
         "<scl:DAType id=\"ORIGINATOR\"><scl:BDA name=\"orIdent\" bType=\"VisString64\" /><scl:BDA name=\"nested\" bType=\"Struct\" type=\"ORIGINATOR_NESTED\" /></scl:DAType>"
         "<scl:DAType id=\"ORIGINATOR_NESTED\"><scl:BDA name=\"deepIdent\" bType=\"VisString64\" /></scl:DAType>"
         "<scl:EnumType id=\"CtlModelKind\"><scl:EnumVal ord=\"1\" desc=\"direct-with-normal-security\" /></scl:EnumType>"
@@ -74,7 +74,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_true(plan->logical_node_count == 3U, "three logical nodes");
         passed &= expect_true(plan->data_set_count == 1U, "one DataSet");
         passed &= expect_true(plan->report_count == 1U, "one ReportControl");
-        passed &= expect_true(plan->signal_count == 6U, "six DataSet members");
+        passed &= expect_true(plan->signal_count == 8U, "eight DataSet members including derived q/t");
         passed &= expect_string(plan->logical_devices[0].inst, "IED1LD0", "MMS domain");
         passed &= expect_string(plan->data_sets[0].reference, "IED1/AP1/LD0/LLN0.dsEvents", "DataSet reference");
         passed &= expect_string(plan->data_sets[0].logical_device_inst, "IED1LD0", "DataSet domain");
@@ -115,10 +115,21 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_string(plan->signals[4].object_reference, "IED1LD0.XCBR1.Beh.subState.stVal", "fifth signal SDO object ref");
         passed &= expect_true(plan->signals[4].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "fifth signal SDO typed default kind");
         passed &= expect_string(plan->signals[4].initial_value, "0", "fifth signal SDO typed default value");
-        passed &= expect_string(plan->signals[5].reference, "LD0/PGGIO1.Ind1[ST]", "sixth signal ref");
-        passed &= expect_string(plan->signals[5].object_reference, "IED1LD0.PGGIO1.Ind1", "sixth signal object ref");
-        passed &= expect_true(plan->signals[5].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "sixth signal typed default kind");
-        passed &= expect_string(plan->signals[5].initial_value, "0", "sixth signal typed default value");
+        passed &= expect_string(plan->signals[5].reference, "LD0/PGGIO1.Ind1.stVal[ST]", "sixth signal FCD value ref");
+        passed &= expect_string(plan->signals[5].object_reference, "IED1LD0.PGGIO1.Ind1.stVal", "sixth signal FCD value object ref");
+        passed &= expect_string(plan->signals[5].data_attribute_path, "stVal", "sixth signal FCD value attribute");
+        passed &= expect_true(plan->signals[5].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "sixth signal FCD value typed default kind");
+        passed &= expect_string(plan->signals[5].initial_value, "0", "sixth signal FCD value typed default value");
+        passed &= expect_string(plan->signals[6].reference, "LD0/PGGIO1.Ind1.q[ST]", "seventh signal FCD quality ref");
+        passed &= expect_string(plan->signals[6].object_reference, "IED1LD0.PGGIO1.Ind1.q", "seventh signal FCD quality object ref");
+        passed &= expect_string(plan->signals[6].data_attribute_path, "q", "seventh signal FCD quality attribute");
+        passed &= expect_true(plan->signals[6].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "seventh signal FCD quality typed default kind");
+        passed &= expect_string(plan->signals[6].initial_value, "0", "seventh signal FCD quality typed default value");
+        passed &= expect_string(plan->signals[7].reference, "LD0/PGGIO1.Ind1.t[ST]", "eighth signal FCD timestamp ref");
+        passed &= expect_string(plan->signals[7].object_reference, "IED1LD0.PGGIO1.Ind1.t", "eighth signal FCD timestamp object ref");
+        passed &= expect_string(plan->signals[7].data_attribute_path, "t", "eighth signal FCD timestamp attribute");
+        passed &= expect_true(plan->signals[7].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_STRING, "eighth signal FCD timestamp typed default kind");
+        passed &= expect_string(plan->signals[7].initial_value, "", "eighth signal FCD timestamp typed default value");
     }
 
     unitlab_scl_compile_result_free(result);

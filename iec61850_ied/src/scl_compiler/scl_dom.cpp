@@ -224,7 +224,7 @@ std::vector<SclDaTemplate> parse_do_type_das(pugi::xml_node do_type)
     std::vector<SclDaTemplate> attributes;
     for (pugi::xml_node child : do_type.children()) {
         if (!is_node(child, "DA")) continue;
-        SclDaTemplate attribute{attr(child, "name"), attr(child, "bType"), attr(child, "type")};
+        SclDaTemplate attribute{attr(child, "name"), attr(child, "fc"), attr(child, "bType"), attr(child, "type")};
         if (!attribute.name.empty()) attributes.push_back(attribute);
     }
     return attributes;
@@ -246,7 +246,7 @@ std::vector<SclDaTemplate> parse_da_type_bdas(pugi::xml_node da_type)
     std::vector<SclDaTemplate> attributes;
     for (pugi::xml_node child : da_type.children()) {
         if (!is_node(child, "BDA")) continue;
-        SclDaTemplate attribute{attr(child, "name"), attr(child, "bType"), attr(child, "type")};
+        SclDaTemplate attribute{attr(child, "name"), attr(child, "fc"), attr(child, "bType"), attr(child, "type")};
         if (!attribute.name.empty()) attributes.push_back(attribute);
     }
     return attributes;
