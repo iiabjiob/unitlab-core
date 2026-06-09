@@ -5871,6 +5871,119 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
 }
 
 
+
+static void test_server_runtime_gi_report_handles_large_model_dataset(void)
+{
+    enum { signal_count = 120U };
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelDataSet data_sets[1U];
+    UnitLabIedModelReportControl reports[1U];
+    UnitLabIedModelSignal signals[signal_count];
+    UnitLabMmsAssociationFrame report_frame;
+    UnitLabMmsPdu report_pdu;
+    uint8_t report_bytes[65535U];
+    size_t report_length = 0U;
+    size_t consumed_length = 0U;
+    static const uint8_t expected_inclusion_prefix[] = {
+        0x84U, 0x10U, 0x00U, 0xFFU, 0xFFU, 0xFFU, 0xFFU, 0xFFU,
+        0xFFU, 0xFFU, 0xFFU, 0xFFU, 0xFFU, 0xFFU, 0xFFU, 0xFFU,
+        0xFFU, 0xFFU
+    };
+
+    memset(&plan, 0, sizeof(plan));
+    memset(data_sets, 0, sizeof(data_sets));
+    memset(reports, 0, sizeof(reports));
+    memset(signals, 0, sizeof(signals));
+
+    snprintf(data_sets[0].reference, sizeof(data_sets[0].reference), "%s", "KINTE08TDIFF/AP1/KINTE08TDIFFSystem/LLN0.RCB2");
+    snprintf(data_sets[0].logical_device_inst, sizeof(data_sets[0].logical_device_inst), "%s", "KINTE08TDIFFSystem");
+    snprintf(data_sets[0].logical_node_name, sizeof(data_sets[0].logical_node_name), "%s", "LLN0");
+    snprintf(data_sets[0].name, sizeof(data_sets[0].name), "%s", "RCB2");
+    data_sets[0].first_signal_index = 0U;
+    data_sets[0].member_count = signal_count;
+
+    snprintf(reports[0].key, sizeof(reports[0].key), "%s", "KINTE08TDIFF/AP1/KINTE08TDIFFSystem/LLN0/brcbB/buffered");
+    snprintf(reports[0].logical_device_inst, sizeof(reports[0].logical_device_inst), "%s", "KINTE08TDIFFSystem");
+    snprintf(reports[0].logical_node_name, sizeof(reports[0].logical_node_name), "%s", "LLN0");
+    snprintf(reports[0].name, sizeof(reports[0].name), "%s", "brcbB");
+    snprintf(reports[0].report_kind, sizeof(reports[0].report_kind), "%s", "buffered");
+    snprintf(reports[0].rpt_id, sizeof(reports[0].rpt_id), "%s", "KINTE08TDIFFSystem/LLN0.BR.brcbB");
+    snprintf(reports[0].data_set_ref, sizeof(reports[0].data_set_ref), "%s", "KINTE08TDIFF/AP1/KINTE08TDIFFSystem/LLN0.RCB2");
+    reports[0].is_buffered = 1;
+    reports[0].data_set_index = 0U;
+    reports[0].conf_rev_known = 1;
+    reports[0].conf_rev = 12U;
+    reports[0].buffer_time_ms_known = 1;
+    reports[0].buffer_time_ms = 100U;
+    reports[0].integrity_period_ms_known = 1;
+    reports[0].integrity_period_ms = 1000U;
+    reports[0].trigger_options_mask = UNITLAB_IED_MODEL_TRG_OPT_DATA_CHANGED | UNITLAB_IED_MODEL_TRG_OPT_QUALITY_CHANGED | UNITLAB_IED_MODEL_TRG_OPT_GI;
+    reports[0].optional_fields_mask = UNITLAB_IED_MODEL_RPT_OPT_SEQ_NUM
+        | UNITLAB_IED_MODEL_RPT_OPT_TIME_STAMP
+        | UNITLAB_IED_MODEL_RPT_OPT_REASON_FOR_INCLUSION
+        | UNITLAB_IED_MODEL_RPT_OPT_DATA_SET
+        | UNITLAB_IED_MODEL_RPT_OPT_DATA_REFERENCE
+        | UNITLAB_IED_MODEL_RPT_OPT_BUFFER_OVERFLOW
+        | UNITLAB_IED_MODEL_RPT_OPT_ENTRY_ID
+        | UNITLAB_IED_MODEL_RPT_OPT_CONF_REV;
+
+    for (size_t index = 0U; index < signal_count; index++) {
+        snprintf(signals[index].reference, sizeof(signals[index].reference), "KINTE08TDIFFSystem/MMXU%zu.A.phsA.cVal.mag.f[MX]", index + 1U);
+        snprintf(signals[index].kind, sizeof(signals[index].kind), "%s", "FCDA");
+        signals[index].data_set_index = 0U;
+        signals[index].member_index = index;
+        snprintf(signals[index].logical_device_inst, sizeof(signals[index].logical_device_inst), "%s", "KINTE08TDIFFSystem");
+        snprintf(signals[index].logical_node_name, sizeof(signals[index].logical_node_name), "MMXU%zu", index + 1U);
+        snprintf(signals[index].data_object_name, sizeof(signals[index].data_object_name), "%s", "A");
+        snprintf(signals[index].data_attribute_path, sizeof(signals[index].data_attribute_path), "%s", "phsA.cVal.mag.f");
+        snprintf(signals[index].object_reference, sizeof(signals[index].object_reference), "A.phsA.cVal.mag.f");
+        snprintf(signals[index].data_set_entry_variable, sizeof(signals[index].data_set_entry_variable), "KINTE08TDIFFSystem/MMXU%zu$MX$A$phsA$cVal$mag$f", index + 1U);
+        snprintf(signals[index].fc, sizeof(signals[index].fc), "%s", "MX");
+        signals[index].initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER;
+        snprintf(signals[index].initial_value, sizeof(signals[index].initial_value), "%zu", index);
+    }
+
+    plan.data_set_count = 1U;
+    plan.data_sets = data_sets;
+    plan.report_count = 1U;
+    plan.reports = reports;
+    plan.signal_count = signal_count;
+    plan.signals = signals;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&server_runtime, &diagnostic));
+    server_runtime.brcb_rpt_ena = 1U;
+    server_runtime.pending_gi_report = 1U;
+    server_runtime.pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_GI;
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(report_length > 4096U);
+    assert_information_report_wire_envelope(report_bytes, report_length);
+
+    unitlab_mms_association_frame_init(&report_frame);
+    assert(unitlab_mms_association_frame_decode(&report_frame, report_bytes, report_length, &consumed_length, &diagnostic));
+    assert(consumed_length == report_length);
+    unitlab_mms_pdu_init(&report_pdu);
+    assert(unitlab_mms_pdu_decode(&report_pdu, report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, &consumed_length, &diagnostic));
+    assert(consumed_length == report_frame.presentation.payload_length);
+    assert(report_pdu.kind == UNITLAB_MMS_PDU_UNCONFIRMED);
+    assert(report_pdu.service_kind == UNITLAB_MMS_SERVICE_INFORMATION_REPORT);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, expected_inclusion_prefix, sizeof(expected_inclusion_prefix)) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"KINTE08TDIFFSystem/MMXU120$MX$A$phsA$cVal$mag$f", strlen("KINTE08TDIFFSystem/MMXU120$MX$A$phsA$cVal$mag$f")) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0$RCB2", strlen("KINTE08TDIFFSystem/LLN0$RCB2")) == 1);
+}
+
 static void test_server_runtime_named_variable_list_attributes_handles_large_model_dataset(void)
 {
     enum { signal_count = 120U };
@@ -6008,6 +6121,7 @@ int main(void)
     test_server_runtime_resvtms_no_br_alias_read_write_roundtrips();
     test_server_runtime_gi_write_queues_information_report();
     test_server_runtime_gi_report_uses_model_dataset_members();
+    test_server_runtime_gi_report_handles_large_model_dataset();
     test_server_runtime_updates_quality_timestamp_next_to_value_leaf();
     test_server_runtime_queued_report_uses_event_value_snapshot();
     test_server_runtime_different_report_kinds_are_queued_in_order();

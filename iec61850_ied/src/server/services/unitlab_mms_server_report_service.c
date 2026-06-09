@@ -384,13 +384,42 @@ static int server_runtime_report_member_already_included(const size_t* included_
     return 0;
 }
 
-static int server_runtime_report_inclusion_bit_set(uint8_t* inclusion_bitstring, size_t member_count, size_t member_index)
+static size_t server_runtime_report_inclusion_bitstring_value_length(size_t member_count)
 {
-    if (inclusion_bitstring == NULL || member_index >= 8U) {
+    return 1U + ((member_count + 7U) / 8U);
+}
+
+static void server_runtime_report_inclusion_bitstring_init(uint8_t* inclusion_bitstring, size_t bitstring_size, size_t member_count)
+{
+    size_t bitstring_length = server_runtime_report_inclusion_bitstring_value_length(member_count);
+    if (inclusion_bitstring == NULL || bitstring_size == 0U) {
+        return;
+    }
+    if (bitstring_length > bitstring_size) {
+        bitstring_length = bitstring_size;
+    }
+    memset(inclusion_bitstring, 0, bitstring_size);
+    inclusion_bitstring[0] = member_count == 0U ? 0U : (uint8_t)((8U - (member_count % 8U)) % 8U);
+}
+
+static int server_runtime_report_inclusion_bit_set(uint8_t* inclusion_bitstring, size_t bitstring_size, size_t member_count, size_t member_index)
+{
+    size_t byte_index = 1U + (member_index / 8U);
+    if (inclusion_bitstring == NULL || member_index >= member_count || byte_index >= bitstring_size) {
         return 0;
     }
-    inclusion_bitstring[0] = member_count <= 8U ? (uint8_t)(8U - member_count) : 0U;
-    inclusion_bitstring[1] = (uint8_t)(inclusion_bitstring[1] | (uint8_t)(0x80U >> member_index));
+    inclusion_bitstring[byte_index] = (uint8_t)(inclusion_bitstring[byte_index] | (uint8_t)(0x80U >> (member_index % 8U)));
+    return 1;
+}
+
+static int server_runtime_report_inclusion_bitstring_set_all(uint8_t* inclusion_bitstring, size_t bitstring_size, size_t member_count)
+{
+    server_runtime_report_inclusion_bitstring_init(inclusion_bitstring, bitstring_size, member_count);
+    for (size_t index = 0U; index < member_count; index++) {
+        if (!server_runtime_report_inclusion_bit_set(inclusion_bitstring, bitstring_size, member_count, index)) {
+            return 0;
+        }
+    }
     return 1;
 }
 
@@ -730,11 +759,11 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
 {
     char report_id_reference[160U];
     char dataset_reference[160U];
-    uint8_t service_content[4096U];
+    uint8_t service_content[62000U];
     uint8_t variable_list_name[32U];
-    uint8_t report_values[4096U];
-    uint8_t service_bytes[4608U];
-    uint8_t scratch[8192U];
+    uint8_t report_values[60000U];
+    uint8_t service_bytes[63000U];
+    uint8_t scratch[65535U];
     uint8_t unsigned_value[4U];
     size_t unsigned_value_length = 0U;
     size_t variable_list_name_length = 0U;
@@ -742,7 +771,8 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     size_t service_content_length = 0U;
     size_t service_length = 0U;
     uint8_t opt_flds[3U];
-    uint8_t inclusion_bitstring[2U] = { 0x06U, 0xC0U };
+    uint8_t inclusion_bitstring[65U];
+    size_t inclusion_bitstring_length = 0U;
     const uint8_t bool_true[1U] = { 0x01U };
     const uint8_t bool_false[1U] = { 0x00U };
     const uint8_t reason_gi[2U] = { 0x02U, 0x04U };
@@ -756,7 +786,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     const UnitLabIedModelDataSet* data_set = NULL;
     size_t member_count = 0U;
     size_t included_member_count = 0U;
-    size_t included_member_indices[16U];
+    size_t included_member_indices[512U];
     uint32_t report_sequence_number = 0U;
 
     if (encoded_length != NULL) {
@@ -780,13 +810,20 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
     if (member_count > sizeof(included_member_indices) / sizeof(included_member_indices[0])) {
         member_count = sizeof(included_member_indices) / sizeof(included_member_indices[0]);
     }
+    inclusion_bitstring_length = server_runtime_report_inclusion_bitstring_value_length(member_count);
+    if (inclusion_bitstring_length > sizeof(inclusion_bitstring)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "InformationReport inclusion bitstring buffer is too small.");
+        return 0;
+    }
     if (server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_INTEGRITY) {
         included_member_count = member_count;
         for (size_t index = 0U; index < included_member_count; index++) {
             included_member_indices[index] = index;
         }
-        inclusion_bitstring[0] = member_count <= 8U ? (uint8_t)(8U - member_count) : 0U;
-        inclusion_bitstring[1] = member_count >= 8U ? 0xFFU : (uint8_t)(0xFFU << (8U - member_count));
+        if (!server_runtime_report_inclusion_bitstring_set_all(inclusion_bitstring, sizeof(inclusion_bitstring), member_count)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "InformationReport inclusion bitstring buffer is too small.");
+            return 0;
+        }
         reason_code = reason_integrity;
     } else if ((server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE
             || server_runtime->pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE
@@ -794,8 +831,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         && server_runtime->pending_report_member_mask != 0U
         && server_runtime->pending_report_value_length != 0U) {
         included_member_count = 0U;
-        inclusion_bitstring[0] = member_count <= 8U ? (uint8_t)(8U - member_count) : 0U;
-        inclusion_bitstring[1] = 0U;
+        server_runtime_report_inclusion_bitstring_init(inclusion_bitstring, sizeof(inclusion_bitstring), member_count);
         for (size_t changed_index = 0U; changed_index < member_count; changed_index++) {
             const UnitLabIedModelSignal* changed_signal = NULL;
             if (changed_index >= 64U || (server_runtime->pending_report_member_mask & ((uint64_t)1U << changed_index)) == 0U) {
@@ -803,7 +839,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
             }
             if (!server_runtime_report_member_already_included(included_member_indices, included_member_count, changed_index)) {
                 included_member_indices[included_member_count++] = changed_index;
-                (void)server_runtime_report_inclusion_bit_set(inclusion_bitstring, member_count, changed_index);
+                (void)server_runtime_report_inclusion_bit_set(inclusion_bitstring, sizeof(inclusion_bitstring), member_count, changed_index);
             }
             changed_signal = server_runtime_data_set_member_signal(server_runtime, data_set, changed_index);
             if (changed_signal == NULL) {
@@ -816,7 +852,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
                     && candidate_signal != NULL
                     && server_runtime_report_signal_references_same_value_leaf(candidate_signal, changed_signal)) {
                     included_member_indices[included_member_count++] = member_index;
-                    (void)server_runtime_report_inclusion_bit_set(inclusion_bitstring, member_count, member_index);
+                    (void)server_runtime_report_inclusion_bit_set(inclusion_bitstring, sizeof(inclusion_bitstring), member_count, member_index);
                 }
             }
         }
@@ -832,8 +868,10 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         for (size_t index = 0U; index < included_member_count; index++) {
             included_member_indices[index] = index;
         }
-        inclusion_bitstring[0] = member_count <= 8U ? (uint8_t)(8U - member_count) : 0U;
-        inclusion_bitstring[1] = member_count >= 8U ? 0xFFU : (uint8_t)(0xFFU << (8U - member_count));
+        if (!server_runtime_report_inclusion_bitstring_set_all(inclusion_bitstring, sizeof(inclusion_bitstring), member_count)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "InformationReport inclusion bitstring buffer is too small.");
+            return 0;
+        }
         server_runtime->pending_report_kind = UNITLAB_MMS_SERVER_PENDING_REPORT_GI;
         reason_code = reason_gi;
     }
@@ -885,7 +923,7 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
             return 0;
         }
     }
-    if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 4U, inclusion_bitstring, sizeof(inclusion_bitstring), report_values, sizeof(report_values), &report_values_length, diagnostic)) {
+    if (!server_runtime_append_ber(UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 4U, inclusion_bitstring, inclusion_bitstring_length, report_values, sizeof(report_values), &report_values_length, diagnostic)) {
         return 0;
     }
 
