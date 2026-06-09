@@ -1667,6 +1667,133 @@ static int server_runtime_encode_named_variable_list_object_name(
     return 1;
 }
 
+static int server_runtime_encode_alternate_access_component_path(
+    const char* component_path,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    char components[12U][64U];
+    size_t component_count = 0U;
+    size_t component_offset = 0U;
+    uint8_t nested_alternate_access_bytes[512U];
+    size_t nested_alternate_access_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (component_path == NULL || component_path[0] == '\0' || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "AlternateAccess encoding requires a component path and output buffer.");
+        return 0;
+    }
+
+    memset(components, 0, sizeof(components));
+    for (const char* cursor = component_path;; cursor++) {
+        if (*cursor == '.' || *cursor == '\0') {
+            if (component_offset == 0U || component_count >= sizeof(components) / sizeof(components[0])) {
+                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "AlternateAccess component path is malformed.");
+                return 0;
+            }
+            components[component_count][component_offset] = '\0';
+            component_count++;
+            component_offset = 0U;
+            if (*cursor == '\0') {
+                break;
+            }
+            continue;
+        }
+        if (component_offset + 1U >= sizeof(components[0])) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "AlternateAccess component name is too long.");
+            return 0;
+        }
+        components[component_count][component_offset++] = *cursor;
+    }
+
+    for (size_t reverse_index = component_count; reverse_index > 0U; reverse_index--) {
+        const char* component = components[reverse_index - 1U];
+        uint8_t component_name_bytes[96U];
+        uint8_t named_content_bytes[768U];
+        uint8_t named_bytes[896U];
+        size_t component_name_length = 0U;
+        size_t named_content_length = 0U;
+        size_t named_length = 0U;
+
+        if (!server_runtime_encode_ber_element(
+                UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+                0,
+                26U,
+                (const uint8_t*)component,
+                strlen(component),
+                component_name_bytes,
+                sizeof(component_name_bytes),
+                &component_name_length,
+                diagnostic)) {
+            return 0;
+        }
+        if (component_name_length > sizeof(named_content_bytes)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "AlternateAccess named component buffer is too small.");
+            return 0;
+        }
+        memcpy(named_content_bytes, component_name_bytes, component_name_length);
+        named_content_length = component_name_length;
+
+        if (nested_alternate_access_length != 0U) {
+            uint8_t select_alternate_access_bytes[640U];
+            size_t select_alternate_access_length = 0U;
+
+            if (!server_runtime_encode_ber_element(
+                    UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                    1,
+                    0U,
+                    nested_alternate_access_bytes,
+                    nested_alternate_access_length,
+                    select_alternate_access_bytes,
+                    sizeof(select_alternate_access_bytes),
+                    &select_alternate_access_length,
+                    diagnostic)) {
+                return 0;
+            }
+            if (named_content_length + select_alternate_access_length > sizeof(named_content_bytes)) {
+                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "AlternateAccess nested component buffer is too small.");
+                return 0;
+            }
+            memcpy(&named_content_bytes[named_content_length], select_alternate_access_bytes, select_alternate_access_length);
+            named_content_length += select_alternate_access_length;
+        }
+
+        if (!server_runtime_encode_ber_element(
+                UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                1,
+                1U,
+                named_content_bytes,
+                named_content_length,
+                named_bytes,
+                sizeof(named_bytes),
+                &named_length,
+                diagnostic)) {
+            return 0;
+        }
+        if (named_length > sizeof(nested_alternate_access_bytes)) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "AlternateAccess output buffer is too small.");
+            return 0;
+        }
+        memcpy(nested_alternate_access_bytes, named_bytes, named_length);
+        nested_alternate_access_length = named_length;
+    }
+
+    return server_runtime_encode_ber_element(
+        UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+        1,
+        16U,
+        nested_alternate_access_bytes,
+        nested_alternate_access_length,
+        buffer,
+        buffer_length,
+        encoded_length,
+        diagnostic);
+}
+
 static int server_runtime_encode_named_variable_list_member_item(
     const UnitLabIedModelSignal* signal,
     char* domain_id,
@@ -2064,6 +2191,7 @@ static int server_runtime_encode_named_variable_list_member(
 
     const char* domain_id,
     const char* item_id,
+    const char* component_path,
     uint8_t* buffer,
     size_t buffer_length,
     size_t* encoded_length,
@@ -2071,9 +2199,13 @@ static int server_runtime_encode_named_variable_list_member(
 {
     uint8_t object_name_bytes[1300U];
     uint8_t variable_spec_bytes[1600U];
-    uint8_t member_bytes[1800U];
+    uint8_t alternate_access_bytes[1200U];
+    uint8_t member_content_bytes[2800U];
+    uint8_t member_bytes[3200U];
     size_t object_name_length = 0U;
     size_t variable_spec_length = 0U;
+    size_t alternate_access_length = 0U;
+    size_t member_content_length = 0U;
     size_t member_length = 0U;
 
     if (encoded_length != NULL) {
@@ -2104,12 +2236,32 @@ static int server_runtime_encode_named_variable_list_member(
             diagnostic)) {
         return 0;
     }
+    if (component_path != NULL && component_path[0] != '\0') {
+        if (!server_runtime_encode_alternate_access_component_path(
+                component_path,
+                alternate_access_bytes,
+                sizeof(alternate_access_bytes),
+                &alternate_access_length,
+                diagnostic)) {
+            return 0;
+        }
+    }
+    if (variable_spec_length + alternate_access_length > sizeof(member_content_bytes)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Named variable list member content buffer is too small.");
+        return 0;
+    }
+    memcpy(member_content_bytes, variable_spec_bytes, variable_spec_length);
+    member_content_length = variable_spec_length;
+    if (alternate_access_length != 0U) {
+        memcpy(&member_content_bytes[member_content_length], alternate_access_bytes, alternate_access_length);
+        member_content_length += alternate_access_length;
+    }
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
             1,
             16U,
-            variable_spec_bytes,
-            variable_spec_length,
+            member_content_bytes,
+            member_content_length,
             member_bytes,
             sizeof(member_bytes),
             &member_length,
@@ -2220,6 +2372,7 @@ int server_runtime_build_get_named_variable_list_attributes_response_service(
         if (!server_runtime_encode_named_variable_list_member(
                 member_domain,
                 member_item,
+                signal->data_set_entry_component_known != 0 ? signal->data_set_entry_component : NULL,
                 &member_bytes[member_bytes_length],
                 sizeof(member_bytes) - member_bytes_length,
                 &member_length,
