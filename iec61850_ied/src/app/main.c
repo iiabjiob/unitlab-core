@@ -304,6 +304,11 @@ static int run_scl_native_wire_mode(const SimulatorOptions* options)
         unitlab_scl_compile_result_free(compile_result);
         return 65;
     }
+    if (model_plan->logical_device_count == 0U) {
+        fprintf(stderr, "SCL_MODEL_EMPTY: selected IED %s has no MMS LogicalDevice in the compiled model.\n", options->ied_name);
+        unitlab_scl_compile_result_free(compile_result);
+        return 65;
+    }
 
     if (options->dry_run) {
         printf("unitlab-iec61850-ied-sim: SCL accepted\n");
