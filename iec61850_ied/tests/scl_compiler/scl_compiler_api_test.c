@@ -53,6 +53,10 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "<scl:TrgOps dchg=\"true\" qchg=\"true\" dupd=\"false\" period=\"false\" gi=\"true\" />"
         "<scl:OptFields seqNum=\"true\" timeStamp=\"true\" reasonCode=\"true\" dataSet=\"true\" dataRef=\"true\" bufOvfl=\"true\" entryID=\"true\" configRef=\"true\" />"
         "</scl:ReportControl>"
+        "<scl:ReportControl name=\"urcbEvents\" buffered=\"false\" rptID=\"eventsU\" datSet=\"dsEvents\" confRev=\"8\" indexed=\"false\">"
+        "<scl:TrgOps dchg=\"true\" qchg=\"false\" dupd=\"false\" period=\"false\" gi=\"true\" />"
+        "<scl:OptFields seqNum=\"true\" timeStamp=\"true\" reasonCode=\"true\" dataSet=\"true\" dataRef=\"true\" />"
+        "</scl:ReportControl>"
         "</scl:LN0>"
         "<scl:LN lnClass=\"XCBR\" inst=\"1\" lnType=\"XCBR_TYPE\" />"
         "<scl:LN lnClass=\"PGGIO\" inst=\"1\" lnType=\"PGGIO_TYPE\" />"
@@ -95,13 +99,15 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_true(plan->logical_device_count == 2U, "two logical devices including cross-LD member target");
         passed &= expect_true(plan->logical_node_count == 6U, "six logical nodes including prefixed, cross-LD, and MMXU LN");
         passed &= expect_true(plan->data_set_count == 1U, "one DataSet");
-        passed &= expect_true(plan->report_count == 1U, "one ReportControl");
+        passed &= expect_true(plan->report_count == 2U, "buffered and unbuffered ReportControls");
         passed &= expect_true(plan->signal_count == 20U, "twenty DataSet members including recursive CMV/MV leaves");
         passed &= expect_string(plan->logical_devices[0].inst, "IED1LD0", "MMS domain");
         passed &= expect_string(plan->data_sets[0].reference, "IED1/AP1/LD0/LLN0.dsEvents", "DataSet reference");
         passed &= expect_string(plan->data_sets[0].logical_device_inst, "IED1LD0", "DataSet domain");
         passed &= expect_string(plan->reports[0].name, "brcbEvents", "ReportControl name");
         passed &= expect_string(plan->reports[0].data_set_ref, "IED1/AP1/LD0/LLN0.dsEvents", "ReportControl DatSet ref");
+        passed &= expect_true(plan->reports[0].is_buffered == 1, "buffered ReportControl flag");
+        passed &= expect_string(plan->reports[0].report_kind, "buffered", "buffered ReportControl kind");
         passed &= expect_true(plan->reports[0].conf_rev_known == 1, "ConfRev should be known");
         passed &= expect_true(plan->reports[0].conf_rev == 7U, "ConfRev value");
         passed &= expect_true(plan->reports[0].buffer_time_ms == 100U, "BufTm value");
@@ -117,6 +123,14 @@ static int test_compile_builds_model_plan_through_c_api(void)
                     | UNITLAB_IED_MODEL_RPT_OPT_DATA_REFERENCE | UNITLAB_IED_MODEL_RPT_OPT_BUFFER_OVERFLOW
                     | UNITLAB_IED_MODEL_RPT_OPT_ENTRY_ID | UNITLAB_IED_MODEL_RPT_OPT_CONF_REV),
             "ReportControl OptFlds mask");
+        passed &= expect_string(plan->reports[1].name, "urcbEvents", "unbuffered ReportControl name");
+        passed &= expect_true(plan->reports[1].is_buffered == 0, "unbuffered ReportControl flag");
+        passed &= expect_string(plan->reports[1].report_kind, "unbuffered", "unbuffered ReportControl kind");
+        passed &= expect_string(plan->reports[1].data_set_ref, "IED1/AP1/LD0/LLN0.dsEvents", "unbuffered ReportControl DatSet ref");
+        passed &= expect_true(plan->reports[1].data_set_index == 0U, "unbuffered ReportControl DataSet index");
+        passed &= expect_true(plan->reports[1].conf_rev_known == 1, "unbuffered ConfRev should be known");
+        passed &= expect_true(plan->reports[1].conf_rev == 8U, "unbuffered ConfRev value");
+
         passed &= expect_string(plan->signals[0].reference, "LD0/XCBR1.Pos.stVal[ST]", "first signal ref");
         passed &= expect_string(plan->signals[0].object_reference, "IED1LD0.XCBR1.Pos.stVal", "first signal object ref");
         passed &= expect_true(plan->signals[0].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_BOOLEAN, "first signal typed default kind");
@@ -215,6 +229,7 @@ static int test_compile_reports_invalid_dataset_member_and_missing_report_datase
         "<FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" fc=\"ST\" />"
         "</DataSet>"
         "<ReportControl name=\"brcbBroken\" buffered=\"true\" datSet=\"missingDataSet\" />"
+        "<ReportControl name=\"urcbNoDataSet\" buffered=\"false\" />"
         "</LN0>"
         "<LN lnClass=\"XCBR\" inst=\"1\" />"
         "</LDevice></Server></AccessPoint></IED></SCL>";
@@ -225,7 +240,7 @@ static int test_compile_reports_invalid_dataset_member_and_missing_report_datase
     passed &= expect_true(unitlab_scl_compile_from_memory(scl, strlen(scl), "IED1", &result, error, sizeof(error)) == 1,
         "broken SCL should return structured diagnostics through C API");
     passed &= expect_true(result != NULL, "broken SCL result should be allocated");
-    passed &= expect_true(unitlab_scl_compile_diagnostic_count(result) == 2U, "invalid member and missing report DataSet diagnostics");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_count(result) == 3U, "invalid member, missing report DataSet, and empty report DataSet diagnostics");
 
     UnitLabSclCompileDiagnostic diagnostic;
     passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 0U, &diagnostic) == 1, "invalid member diagnostic should be readable");
@@ -246,6 +261,11 @@ static int test_compile_reports_invalid_dataset_member_and_missing_report_datase
     passed &= expect_string(diagnostic.logical_node_name, "LLN0", "missing DataSet LN context");
     passed &= expect_string(diagnostic.data_set_name, "missingDataSet", "missing DataSet context");
     passed &= expect_string(diagnostic.report_control_name, "brcbBroken", "missing DataSet ReportControl context");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 2U, &diagnostic) == 1, "empty DataSet diagnostic should be readable");
+    passed &= expect_string(diagnostic.severity, "warning", "empty DataSet severity");
+    passed &= expect_string(diagnostic.code, "SCL_REPORT_DATASET_EMPTY", "empty DataSet code");
+    passed &= expect_string(diagnostic.data_set_name, "", "empty DataSet context");
+    passed &= expect_string(diagnostic.report_control_name, "urcbNoDataSet", "empty DataSet ReportControl context");
 
     const UnitLabIedModelPlan* plan = unitlab_scl_compile_model_plan(result);
     passed &= expect_true(plan != NULL, "partial model plan should be readable");

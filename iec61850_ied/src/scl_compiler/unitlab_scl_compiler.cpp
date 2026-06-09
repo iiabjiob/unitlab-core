@@ -552,6 +552,10 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied, const SclDa
 
             for (const SclLogicalNode& node : device.logical_nodes) {
                 for (const SclReport& report : node.reports) {
+                    if (report.data_set.empty()) {
+                        result.diagnostics.push_back(contextual_diagnostic("warning", "SCL_REPORT_DATASET_EMPTY", "ReportControl has no datSet binding and is not emitted into the runtime model.", ied.name.c_str(), access_point.name.c_str(), device.inst.c_str(), node.name.c_str(), "", report.name.c_str(), ""));
+                        continue;
+                    }
                     const auto data_set_it = std::find_if(result.data_sets.begin(), result.data_sets.end(), [&](const UnitLabIedModelDataSet& data_set) {
                         return domain == data_set.logical_device_inst && node.name == data_set.logical_node_name && report.data_set == data_set.name;
                     });
