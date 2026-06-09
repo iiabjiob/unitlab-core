@@ -19,9 +19,10 @@ Current native entrypoint:
 - `unitlab_scl_compile_from_memory(...)`
 - opaque `UnitLabSclCompileResult`
 - `unitlab_scl_compile_model_plan(...)` for C-readable `UnitLabIedModelPlan` output
+- `unitlab_scl_compile_normalized_json_size(...)` / `unitlab_scl_compile_normalized_json(...)` for serialized normalized JSON output
 - C-readable diagnostics
 
-Current implemented compiler coverage is intentionally narrow: selected IED, AccessPoint, Server, LDevice, LN0/LN, DataSet FCDA/FCD members, ReportControl, TrgOps, OptFields, and minimal DataTypeTemplates lookup for typed defaults, including derived `FCD` value/q/t leaves, `DOType/SDO` nested data-object paths, chained `DAType/BDA` nested attribute paths, and first-value `EnumType` defaults. Invalid FCDA/FCD members are reported with `SCL_DATASET_MEMBER_INVALID`; unresolved template references are reported with `SCL_TEMPLATE_*` diagnostics and are not emitted as runtime signals. ReportControl objects referencing missing datasets are reported with `SCL_REPORT_DATASET_MISSING` and are not emitted as runtime RCBs. Diagnostics carry C-readable context fields for IED, AccessPoint, logical device, logical node, DataSet, ReportControl, and member reference where available. SCL XML is parsed through vendored `pugixml` in the internal `scl_dom` layer; malformed XML returns `SCL_XML_PARSE_FAILED` diagnostics instead of an empty silent model.
+Current implemented compiler coverage is intentionally narrow: selected IED, AccessPoint, Server, LDevice, LN0/LN, DataSet FCDA/FCD members, ReportControl, TrgOps, OptFields, and minimal DataTypeTemplates lookup for typed defaults, including derived `FCD` value/q/t leaves, `DOType/SDO` nested data-object paths, chained `DAType/BDA` nested attribute paths, and first-value `EnumType` defaults. Invalid FCDA/FCD members are reported with `SCL_DATASET_MEMBER_INVALID`; unresolved template references are reported with `SCL_TEMPLATE_*` diagnostics and are not emitted as runtime signals. ReportControl objects referencing missing datasets are reported with `SCL_REPORT_DATASET_MISSING` and are not emitted as runtime RCBs. Diagnostics carry C-readable context fields for IED, AccessPoint, logical device, logical node, DataSet, ReportControl, and member reference where available. SCL XML is parsed through vendored `pugixml` in the internal `scl_dom` layer, and normalized JSON is serialized through vendored `nlohmann/json`; malformed XML returns `SCL_XML_PARSE_FAILED` diagnostics instead of an empty silent model.
 
 ## Next Compiler Slices
 
@@ -29,7 +30,6 @@ Current implemented compiler coverage is intentionally narrow: selected IED, Acc
 2. Extend `DataTypeTemplates` resolution beyond current `LNodeType -> DOType/SDO -> DA/DAType/BDA/EnumType` lookup: complete EnumVal metadata and CDC-specific leaves.
 3. Add line/column or XPath location on top of the `pugixml` DOM traversal.
 4. Add an SLD compiler layer for Substation, VoltageLevel, Bay, ConductingEquipment, ConnectivityNode, Terminal, and graph topology.
-5. Expose normalized JSON only as an adapter output; native runtime should consume typed compiled model structures.
 
 ## Non-goals
 

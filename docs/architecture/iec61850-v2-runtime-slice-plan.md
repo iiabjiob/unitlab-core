@@ -33,7 +33,7 @@ Already implemented:
 
 Known remaining gaps:
 
-- C API does not yet expose normalized JSON or diagnostics with line/column/XPath;
+- C API diagnostics do not yet include line/column/XPath;
 - native server smoke does not yet compile SCD directly into server runtime.
 
 ## Slice Plan
@@ -119,7 +119,7 @@ Exit criteria:
 
 ### Slice 6 - C API Normalized Output
 
-Expose a normalized runtime-model JSON adapter from the native compiler.
+Status: implemented. The native compiler exposes a serialized normalized JSON adapter through C ABI size-query/write-buffer functions. JSON is generated with vendored `nlohmann/json`; C++ JSON types do not cross the public ABI.
 
 Deliverables:
 

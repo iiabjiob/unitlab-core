@@ -1,6 +1,7 @@
 #include "scl_compiler/unitlab_scl_compiler.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int expect_true(int condition, const char* message)
@@ -15,6 +16,15 @@ static int expect_string(const char* actual, const char* expected, const char* m
 {
     if (strcmp(actual, expected) != 0) {
         fprintf(stderr, "FAIL: %s: expected \"%s\", got \"%s\"\n", message, expected, actual);
+        return 0;
+    }
+    return 1;
+}
+
+static int expect_contains(const char* actual, const char* expected, const char* message)
+{
+    if (strstr(actual, expected) == NULL) {
+        fprintf(stderr, "FAIL: %s: expected substring \"%s\" in JSON\n", message, expected);
         return 0;
     }
     return 1;
@@ -130,6 +140,28 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_string(plan->signals[7].data_attribute_path, "t", "eighth signal FCD timestamp attribute");
         passed &= expect_true(plan->signals[7].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_STRING, "eighth signal FCD timestamp typed default kind");
         passed &= expect_string(plan->signals[7].initial_value, "", "eighth signal FCD timestamp typed default value");
+    }
+
+    size_t json_size = unitlab_scl_compile_normalized_json_size(result);
+    char* json = NULL;
+    size_t written_size = 0U;
+    passed &= expect_true(json_size > 64U, "normalized JSON size should include payload and null terminator");
+    passed &= expect_true(unitlab_scl_compile_normalized_json(result, error, 8U, &written_size) == 0,
+        "normalized JSON should reject too-small buffer");
+    passed &= expect_true(written_size == 0U, "failed normalized JSON write should not report bytes written");
+    json = (char*)malloc(json_size);
+    passed &= expect_true(json != NULL, "normalized JSON buffer should allocate");
+    if (json != NULL) {
+        passed &= expect_true(unitlab_scl_compile_normalized_json(result, json, json_size, &written_size) == 1,
+            "normalized JSON should write into exact-size buffer");
+        passed &= expect_true(written_size == json_size, "normalized JSON written size should include null terminator");
+        passed &= expect_contains(json, "\"schema\":\"unitlab.iec61850.scl.normalized.v1\"", "normalized JSON schema");
+        passed &= expect_contains(json, "\"selectedIed\":\"IED1\"", "normalized JSON selected IED");
+        passed &= expect_contains(json, "\"logicalDevices\":[{\"inst\":\"IED1LD0\"}]", "normalized JSON logical devices");
+        passed &= expect_contains(json, "\"reference\":\"LD0/PGGIO1.Ind1.q[ST]\"", "normalized JSON q signal");
+        passed &= expect_contains(json, "\"dataAttributePath\":\"t\"", "normalized JSON t attribute");
+        passed &= expect_contains(json, "\"diagnostics\":[]", "normalized JSON empty diagnostics");
+        free(json);
     }
 
     unitlab_scl_compile_result_free(result);
@@ -380,6 +412,16 @@ static int test_compile_reports_malformed_xml(void)
     passed &= expect_string(diagnostic.code, "SCL_XML_PARSE_FAILED", "malformed XML code");
     passed &= expect_true(unitlab_scl_compile_model_plan(result) != NULL, "malformed XML empty plan should be readable");
     passed &= expect_true(unitlab_scl_compile_model_plan(result)->logical_device_count == 0U, "malformed XML should not compile model");
+    size_t json_size = unitlab_scl_compile_normalized_json_size(result);
+    char* json = (char*)malloc(json_size);
+    size_t written_size = 0U;
+    passed &= expect_true(json != NULL, "malformed XML normalized JSON buffer should allocate");
+    if (json != NULL) {
+        passed &= expect_true(unitlab_scl_compile_normalized_json(result, json, json_size, &written_size) == 1,
+            "malformed XML normalized JSON should write diagnostics");
+        passed &= expect_contains(json, "\"code\":\"SCL_XML_PARSE_FAILED\"", "malformed XML normalized JSON diagnostic code");
+        free(json);
+    }
 
     unitlab_scl_compile_result_free(result);
     return passed;

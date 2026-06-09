@@ -11,3 +11,13 @@ This directory contains source dependencies vendored for the standalone IEC 6185
 - Local path: `pugixml/`
 
 `pugixml` is used internally by the C++ SCL compiler. It does not cross the public C ABI; consumers continue to use `scl_compiler/unitlab_scl_compiler.h`.
+
+## nlohmann/json
+
+- Version: 3.11.3
+- Upstream: https://github.com/nlohmann/json
+- Source: https://github.com/nlohmann/json/releases/tag/v3.11.3
+- License: MIT
+- Local path: `nlohmann/`
+
+`nlohmann/json` is used internally by the C++ SCL compiler normalized JSON adapter. JSON is exposed only as serialized bytes through the public C ABI.

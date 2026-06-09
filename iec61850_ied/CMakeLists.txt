@@ -62,7 +62,7 @@ add_library(unitlab-iec61850-scl-compiler STATIC
   src/scl_compiler/scl_dom.cpp
   src/scl_compiler/unitlab_scl_compiler.cpp
 )
-target_include_directories(unitlab-iec61850-scl-compiler PUBLIC src PRIVATE third_party/pugixml)
+target_include_directories(unitlab-iec61850-scl-compiler PUBLIC src PRIVATE third_party/pugixml third_party/nlohmann)
 unitlab_iec61850_sim_warnings(unitlab-iec61850-scl-compiler)
 add_library(unitlab::iec61850_scl_compiler ALIAS unitlab-iec61850-scl-compiler)
 

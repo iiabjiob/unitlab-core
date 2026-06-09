@@ -2,6 +2,8 @@
 
 #include "scl_compiler/scl_dom.h"
 
+#include "json.hpp"
+
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -11,6 +13,7 @@
 struct UnitLabSclCompileResult {
     std::string selected_ied_name;
     size_t source_size = 0U;
+    mutable std::string normalized_json;
     UnitLabIedModelPlan plan{};
     std::vector<UnitLabIedModelLogicalDevice> logical_devices;
     std::vector<UnitLabIedModelLogicalNode> logical_nodes;
@@ -502,6 +505,114 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied, const SclDa
     sync_plan(result);
 }
 
+
+std::string normalized_json_for_result(const UnitLabSclCompileResult& result)
+{
+    using nlohmann::json;
+    json document;
+    document["schema"] = "unitlab.iec61850.scl.normalized.v1";
+    document["selectedIed"] = result.selected_ied_name;
+    document["sourceSize"] = result.source_size;
+
+    json model;
+    model["logicalDevices"] = json::array();
+    for (size_t index = 0U; index < result.plan.logical_device_count; index++) {
+        const UnitLabIedModelLogicalDevice& device = result.plan.logical_devices[index];
+        model["logicalDevices"].push_back({{"inst", device.inst}});
+    }
+    model["logicalNodes"] = json::array();
+    for (size_t index = 0U; index < result.plan.logical_node_count; index++) {
+        const UnitLabIedModelLogicalNode& node = result.plan.logical_nodes[index];
+        model["logicalNodes"].push_back({{"logicalDeviceInst", node.logical_device_inst}, {"name", node.name}});
+    }
+    model["dataSets"] = json::array();
+    for (size_t index = 0U; index < result.plan.data_set_count; index++) {
+        const UnitLabIedModelDataSet& data_set = result.plan.data_sets[index];
+        model["dataSets"].push_back({
+            {"reference", data_set.reference},
+            {"logicalDeviceInst", data_set.logical_device_inst},
+            {"logicalNodeName", data_set.logical_node_name},
+            {"name", data_set.name},
+            {"firstSignalIndex", data_set.first_signal_index},
+            {"memberCount", data_set.member_count},
+        });
+    }
+    model["reports"] = json::array();
+    for (size_t index = 0U; index < result.plan.report_count; index++) {
+        const UnitLabIedModelReportControl& report = result.plan.reports[index];
+        model["reports"].push_back({
+            {"key", report.key},
+            {"logicalDeviceInst", report.logical_device_inst},
+            {"logicalNodeName", report.logical_node_name},
+            {"name", report.name},
+            {"reportKind", report.report_kind},
+            {"isBuffered", report.is_buffered != 0},
+            {"rptId", report.rpt_id},
+            {"dataSetRef", report.data_set_ref},
+            {"dataSetIndex", report.data_set_index},
+            {"confRevKnown", report.conf_rev_known != 0},
+            {"confRev", report.conf_rev},
+            {"indexedKnown", report.indexed_known != 0},
+            {"indexed", report.indexed != 0},
+            {"bufferTimeMsKnown", report.buffer_time_ms_known != 0},
+            {"bufferTimeMs", report.buffer_time_ms},
+            {"integrityPeriodMsKnown", report.integrity_period_ms_known != 0},
+            {"integrityPeriodMs", report.integrity_period_ms},
+            {"triggerOptionsMask", report.trigger_options_mask},
+            {"optionalFieldsMask", report.optional_fields_mask},
+        });
+    }
+    model["signals"] = json::array();
+    for (size_t index = 0U; index < result.plan.signal_count; index++) {
+        const UnitLabIedModelSignal& signal = result.plan.signals[index];
+        model["signals"].push_back({
+            {"reference", signal.reference},
+            {"kind", signal.kind},
+            {"dataSetIndex", signal.data_set_index},
+            {"memberIndex", signal.member_index},
+            {"logicalDeviceInst", signal.logical_device_inst},
+            {"logicalNodeName", signal.logical_node_name},
+            {"dataObjectName", signal.data_object_name},
+            {"dataAttributePath", signal.data_attribute_path},
+            {"objectReference", signal.object_reference},
+            {"dataSetEntryVariable", signal.data_set_entry_variable},
+            {"dataSetEntryComponentKnown", signal.data_set_entry_component_known != 0},
+            {"dataSetEntryComponent", signal.data_set_entry_component},
+            {"fc", signal.fc},
+            {"initialValueKind", static_cast<int>(signal.initial_value_kind)},
+            {"initialValue", signal.initial_value},
+        });
+    }
+    document["model"] = model;
+
+    document["diagnostics"] = json::array();
+    for (const UnitLabSclCompileDiagnostic& diagnostic_item : result.diagnostics) {
+        document["diagnostics"].push_back({
+            {"severity", diagnostic_item.severity},
+            {"code", diagnostic_item.code},
+            {"message", diagnostic_item.message},
+            {"iedName", diagnostic_item.ied_name},
+            {"accessPointName", diagnostic_item.access_point_name},
+            {"logicalDeviceInst", diagnostic_item.logical_device_inst},
+            {"logicalNodeName", diagnostic_item.logical_node_name},
+            {"dataSetName", diagnostic_item.data_set_name},
+            {"reportControlName", diagnostic_item.report_control_name},
+            {"memberReference", diagnostic_item.member_reference},
+        });
+    }
+    return document.dump();
+}
+
+const std::string& normalized_json_cache(const UnitLabSclCompileResult* result)
+{
+    static const std::string empty_json = "";
+    if (result == nullptr) return empty_json;
+    if (result->normalized_json.empty()) {
+        result->normalized_json = normalized_json_for_result(*result);
+    }
+    return result->normalized_json;
+}
+
 } // namespace
 
 extern "C" int unitlab_scl_compile_from_memory(
@@ -582,6 +693,25 @@ extern "C" size_t unitlab_scl_compile_source_size(const UnitLabSclCompileResult*
 extern "C" const UnitLabIedModelPlan* unitlab_scl_compile_model_plan(const UnitLabSclCompileResult* result)
 {
     return result == nullptr ? nullptr : &result->plan;
+}
+
+
+extern "C" size_t unitlab_scl_compile_normalized_json_size(const UnitLabSclCompileResult* result)
+{
+    const std::string& json = normalized_json_cache(result);
+    return result == nullptr ? 0U : json.size() + 1U;
+}
+
+extern "C" int unitlab_scl_compile_normalized_json(const UnitLabSclCompileResult* result, char* buffer, size_t buffer_size, size_t* written_size)
+{
+    if (written_size != nullptr) *written_size = 0U;
+    if (result == nullptr || buffer == nullptr || buffer_size == 0U) return 0;
+    const std::string& json = normalized_json_cache(result);
+    const size_t required_size = json.size() + 1U;
+    if (buffer_size < required_size) return 0;
+    std::memcpy(buffer, json.c_str(), required_size);
+    if (written_size != nullptr) *written_size = required_size;
+    return 1;
 }
 
 extern "C" size_t unitlab_scl_compile_diagnostic_count(const UnitLabSclCompileResult* result)
