@@ -1098,6 +1098,7 @@ int server_runtime_build_get_variable_access_attributes_response_service(
     char fc_root_fc[32U];
     int use_model_fc_root = 0;
     int use_model_lln0_report_tree = 0;
+    int use_model_lln0_unbuffered_report_tree = 0;
     const char* root_parent_component_name = NULL;
     char** names = NULL;
     size_t name_count = 0U;
@@ -1137,9 +1138,6 @@ int server_runtime_build_get_variable_access_attributes_response_service(
     snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", item_id);
     if (strcmp(item_id, "LLN0") == 0) {
         snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", "LLN0");
-        if (!server_runtime_copy_static_names(lln0_gva_children, sizeof(lln0_gva_children) / sizeof(lln0_gva_children[0]), &names, &name_count, diagnostic)) {
-            return 0;
-        }
         if (server_runtime->model_plan != NULL && domain_id[0] != '\0') {
             char** report_names = NULL;
             size_t report_count = 0U;
@@ -1153,12 +1151,45 @@ int server_runtime_build_get_variable_access_attributes_response_service(
                     &report_count,
                     model_error,
                     sizeof(model_error))) {
-                unitlab_free_ied_model_name_list(names, name_count);
                 server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "Buffered ReportControl lookup failed.");
                 return 0;
             }
-            use_model_lln0_report_tree = report_count > 0U;
+            if (report_count > 0U) {
+                if (!server_runtime_append_unique_gva_name(&names, &name_count, "BR")) {
+                    unitlab_free_ied_model_name_list(report_names, report_count);
+                    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "LLN0 model GVA report class list allocation failed.");
+                    return 0;
+                }
+                use_model_lln0_report_tree = 1;
+            }
             unitlab_free_ied_model_name_list(report_names, report_count);
+
+            if (!unitlab_collect_ied_model_logical_node_reports(
+                    server_runtime->model_plan,
+                    domain_id,
+                    "LLN0",
+                    UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_UNBUFFERED,
+                    &report_names,
+                    &report_count,
+                    model_error,
+                    sizeof(model_error))) {
+                unitlab_free_ied_model_name_list(names, name_count);
+                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "Unbuffered ReportControl lookup failed.");
+                return 0;
+            }
+            if (report_count > 0U) {
+                if (!server_runtime_append_unique_gva_name(&names, &name_count, "RP")) {
+                    unitlab_free_ied_model_name_list(report_names, report_count);
+                    unitlab_free_ied_model_name_list(names, name_count);
+                    server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "LLN0 model GVA report class list allocation failed.");
+                    return 0;
+                }
+                use_model_lln0_unbuffered_report_tree = 1;
+            }
+            unitlab_free_ied_model_name_list(report_names, report_count);
+        }
+        else if (!server_runtime_copy_static_names(lln0_gva_children, sizeof(lln0_gva_children) / sizeof(lln0_gva_children[0]), &names, &name_count, diagnostic)) {
+            return 0;
         }
     }
     else if (strcmp(item_id, "LLN0$BR") == 0 || strcmp(item_id, "LLN0.BR") == 0) {
@@ -1178,7 +1209,7 @@ int server_runtime_build_get_variable_access_attributes_response_service(
                 return 0;
             }
         }
-        if (names == NULL && !server_runtime_copy_static_names(lln0_br_children, sizeof(lln0_br_children) / sizeof(lln0_br_children[0]), &names, &name_count, diagnostic)) {
+        if (server_runtime->model_plan == NULL && names == NULL && !server_runtime_copy_static_names(lln0_br_children, sizeof(lln0_br_children) / sizeof(lln0_br_children[0]), &names, &name_count, diagnostic)) {
             return 0;
         }
     }
@@ -1278,25 +1309,29 @@ int server_runtime_build_get_variable_access_attributes_response_service(
     for (size_t index = 0U; index < name_count; index++) {
         size_t component_length = 0U;
 
-        if (use_model_lln0_report_tree != 0 && strcmp(names[index], "BR") == 0) {
+        if ((use_model_lln0_report_tree != 0 && strcmp(names[index], "BR") == 0)
+            || (use_model_lln0_unbuffered_report_tree != 0 && strcmp(names[index], "RP") == 0)) {
             char** report_names = NULL;
             size_t report_count = 0U;
+            UnitLabIedModelReportControlKind report_kind = strcmp(names[index], "BR") == 0
+                ? UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_BUFFERED
+                : UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_UNBUFFERED;
 
             if (!unitlab_collect_ied_model_logical_node_reports(
                     server_runtime->model_plan,
                     domain_id,
                     "LLN0",
-                    UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_BUFFERED,
+                    report_kind,
                     &report_names,
                     &report_count,
                     model_error,
                     sizeof(model_error))) {
                 unitlab_free_ied_model_name_list(names, name_count);
-                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "Buffered ReportControl lookup failed.");
+                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "ReportControl lookup failed.");
                 return 0;
             }
             if (!server_runtime_encode_model_report_class_gva_component_tree(
-                    "BR",
+                    names[index],
                     report_names,
                     report_count,
                     &component_bytes[component_bytes_length],

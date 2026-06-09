@@ -1025,13 +1025,16 @@ static int server_runtime_build_read_response_value(
         return 1;
     }
     if (server_runtime_object_reference_has_suffix(object_reference, ".BR")) {
-        if (server_runtime_try_encode_model_report_class_container(server_runtime, object_reference, buffer, buffer_length, encoded_length, diagnostic)
-            || (diagnostic != NULL && diagnostic->code == UNITLAB_MMS_DIAGNOSTIC_OK && encoded_length != NULL && *encoded_length != 0U)) {
-            *value_supported = 1;
+        if (server_runtime->model_plan != NULL && server_runtime_read_reference_is_report_class_container(object_reference, NULL, 0U)) {
+            if (server_runtime_try_encode_model_report_class_container(server_runtime, object_reference, buffer, buffer_length, encoded_length, diagnostic)) {
+                *value_supported = 1;
+                return 1;
+            }
+            if (diagnostic != NULL && diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_OK && diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED) {
+                return 0;
+            }
+            *value_supported = 0;
             return 1;
-        }
-        if (diagnostic != NULL && diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_OK && diagnostic->code != UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED) {
-            return 0;
         }
         if (!server_runtime_encode_report_control_block_container_value(server_runtime, rcb_report_id_reference, rcb_data_set_reference, buffer, buffer_length, encoded_length, diagnostic)) {
             return 0;

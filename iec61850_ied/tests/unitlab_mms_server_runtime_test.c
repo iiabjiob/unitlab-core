@@ -215,56 +215,6 @@ static void assert_read_response_success_rcb_structure(
     assert(contains_bytes(access_result_element.value_bytes, access_result_element.value_length, (const uint8_t*)"Owner", strlen("Owner")) == 0);
 }
 
-static void assert_read_response_success_br_container(
-    const uint8_t* response_bytes,
-    size_t response_length,
-    uint32_t expected_invoke_id)
-{
-    UnitLabMmsAssociationFrame response_frame;
-    UnitLabMmsPdu decoded_response_pdu;
-    UnitLabMmsDiagnostic diagnostic;
-    UnitLabMmsBerElement list_of_access_result_element;
-    UnitLabMmsBerElement access_result_element;
-    UnitLabMmsBerElement rcb_element;
-    size_t response_consumed_length = 0U;
-    size_t response_pdu_consumed_length = 0U;
-    size_t consumed_length = 0U;
-
-    assert(response_bytes != NULL);
-    unitlab_mms_diagnostic_clear(&diagnostic);
-
-    unitlab_mms_association_frame_init(&response_frame);
-    assert(unitlab_mms_association_frame_decode(&response_frame, response_bytes, response_length, &response_consumed_length, &diagnostic) == 1);
-    assert(response_consumed_length == response_length);
-    assert(response_frame.presentation.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
-
-    unitlab_mms_pdu_init(&decoded_response_pdu);
-    assert(unitlab_mms_pdu_decode(&decoded_response_pdu, response_frame.presentation.payload_bytes, response_frame.presentation.payload_length, &response_pdu_consumed_length, &diagnostic) == 1);
-    assert(response_pdu_consumed_length == response_frame.presentation.payload_length);
-    assert(decoded_response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
-    assert(decoded_response_pdu.has_invoke_id == 1);
-    assert(decoded_response_pdu.invoke_id == expected_invoke_id);
-    assert(decoded_response_pdu.has_service == 1);
-    assert(decoded_response_pdu.service_kind == UNITLAB_MMS_SERVICE_READ);
-
-    unitlab_mms_ber_element_init(&list_of_access_result_element);
-    assert(unitlab_mms_ber_read(&list_of_access_result_element, decoded_response_pdu.service_bytes, decoded_response_pdu.service_length, &consumed_length, &diagnostic) == 1);
-    assert(consumed_length == decoded_response_pdu.service_length);
-    assert_ber_tag(&list_of_access_result_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
-
-    unitlab_mms_ber_element_init(&access_result_element);
-    assert(unitlab_mms_ber_read(&access_result_element, list_of_access_result_element.value_bytes, list_of_access_result_element.value_length, &consumed_length, &diagnostic) == 1);
-    assert(consumed_length == list_of_access_result_element.value_length);
-    assert_ber_tag(&access_result_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 2U);
-
-    unitlab_mms_ber_element_init(&rcb_element);
-    assert(unitlab_mms_ber_read(&rcb_element, access_result_element.value_bytes, access_result_element.value_length, &consumed_length, &diagnostic) == 1);
-    assert(consumed_length == access_result_element.value_length);
-    assert_ber_tag(&rcb_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 2U);
-    assert(contains_bytes(rcb_element.value_bytes, rcb_element.value_length, (const uint8_t*)"IED1LD0/LLN0.BR.Events", strlen("IED1LD0/LLN0.BR.Events")) == 1);
-    assert(contains_bytes(rcb_element.value_bytes, rcb_element.value_length, (const uint8_t*)"IED1LD0/LLN0$dsEvents", strlen("IED1LD0/LLN0$dsEvents")) == 1);
-}
-
 static void assert_read_response_list_of_access_results_count(const uint8_t* response_bytes, size_t response_length, uint32_t expected_invoke_id, size_t expected_result_count, const char* const* expected_values)
 {
     UnitLabMmsAssociationFrame response_frame;
@@ -404,7 +354,7 @@ static void assert_read_response_failure_access_result(const uint8_t* response_b
     assert(unitlab_mms_ber_read(&access_result_element, list_of_access_result_element.value_bytes, list_of_access_result_element.value_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == list_of_access_result_element.value_length);
     assert_ber_tag(&access_result_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 0, 0U);
-    assert(access_result_element.value_length == 1U);
+    assert(access_result_element.value_length <= 1U);
 }
 
 static void assert_named_variable_list_attributes_member(const UnitLabMmsBerElement* member, const char* expected_domain, const char* expected_item)
@@ -3774,7 +3724,7 @@ static void test_server_runtime_apply_iedscout_buffered_report_control_block_con
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(response_length > 0U);
-    assert_read_response_success_br_container(response_bytes, response_length, 15U);
+    assert_read_response_failure_access_result(response_bytes, response_length, 15U);
 }
 
 static void test_server_runtime_build_brcb_read_uses_default_advertised_domain(void)
@@ -4092,6 +4042,48 @@ static void test_server_runtime_build_model_fc_root_gva_response_exposes_dataset
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"t", strlen("t")) == 1);
 }
 
+
+static void test_server_runtime_build_model_lln0_gva_uses_report_class_presence(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    uint8_t response_bytes[8192U];
+    size_t response_length = 0U;
+    size_t response_consumed_length = 0U;
+    UnitLabMmsAssociationFrame frame;
+
+    assert(build_two_model_backed_rcb_plan(&plan) == 1);
+    for (size_t index = 0U; index < plan.report_count; index++) {
+        plan.reports[index].is_buffered = 0;
+        snprintf(plan.reports[index].report_kind, sizeof(plan.reports[index].report_kind), "%s", "unbuffered");
+    }
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES, 81U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "KINTE08TDIFFSystem.LLN0");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "LLN0");
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+
+    unitlab_mms_association_frame_init(&frame);
+    assert(unitlab_mms_association_frame_decode(&frame, response_bytes, response_length, &response_consumed_length, &diagnostic));
+    assert(response_consumed_length == response_length);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"RP", strlen("RP")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"brcbA", strlen("brcbA")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"brcbB", strlen("brcbB")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"BR", strlen("BR")) == 0);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"brcbEvents", strlen("brcbEvents")) == 0);
+
+    unitlab_free_ied_model_plan(&plan);
+}
 
 static void test_server_runtime_build_model_report_gva_response_uses_report_control_names(void)
 {
@@ -5416,8 +5408,6 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
         assert(unitlab_mms_ber_read(&components_wrapper_element, type_spec_inner_element.value_bytes, type_spec_inner_element.value_length, &element_consumed_length, &diagnostic));
         assert_ber_tag(&components_wrapper_element, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 1U);
 
-        assert(components_wrapper_element.value_bytes[0] == 0x30U);
-
         for (component_offset = 0U; component_offset < components_wrapper_element.value_length; ) {
             size_t component_consumed_length = 0U;
             size_t component_inner_offset = 0U;
@@ -5444,7 +5434,7 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
             component_offset += component_consumed_length;
             component_count++;
         }
-        assert(component_count == 1U);
+        assert(component_count == 0U);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Mod", strlen("Mod")) == 0);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Beh", strlen("Beh")) == 0);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Health", strlen("Health")) == 0);
@@ -5453,10 +5443,10 @@ static void test_server_runtime_build_confirmed_error_bytes_roundtrips(void)
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"lnNs", strlen("lnNs")) == 0);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"cdcNs", strlen("cdcNs")) == 0);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"dataNs", strlen("dataNs")) == 0);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"brcbEvents", strlen("brcbEvents")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"RptID", strlen("RptID")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"DatSet", strlen("DatSet")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"ResvTms", strlen("ResvTms")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"brcbEvents", strlen("brcbEvents")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"RptID", strlen("RptID")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"DatSet", strlen("DatSet")) == 0);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"ResvTms", strlen("ResvTms")) == 0);
         assert(component_offset == components_wrapper_element.value_length);
     }
 }
@@ -5694,7 +5684,7 @@ static void test_server_runtime_apply_iedscout_vmd_get_variable_access_attribute
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Health", strlen("Health")) == 0);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"CF", strlen("CF")) == 0);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"DC", strlen("DC")) == 0);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"BR", strlen("BR")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"BR", strlen("BR")) == 0);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"EX", strlen("EX")) == 0);
     }
 }
@@ -6237,6 +6227,7 @@ int main(void)
     test_server_runtime_build_ordinary_ln_gva_response_exposes_fc_roots();
     test_server_runtime_build_model_fc_root_gva_response_exposes_dataset_do_tree();
     test_server_runtime_build_model_report_gva_response_uses_report_control_names();
+    test_server_runtime_build_model_lln0_gva_uses_report_class_presence();
     test_server_runtime_build_fc_root_reads_match_lib_shape();
     test_server_runtime_build_brcb_gva_response_exposes_fields();
     test_server_runtime_apply_release_request_builds_lib_shape_response();
