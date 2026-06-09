@@ -1,6 +1,7 @@
 #include "unitlab_mms_presentation.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void presentation_set_diagnostic(UnitLabMmsDiagnostic* diagnostic, UnitLabMmsDiagnosticCode code, const char* message)
@@ -26,8 +27,10 @@ static int presentation_encode_fully_encoded_data(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    uint8_t pdv_list_content[1024U];
-    uint8_t pdv_list_bytes[1024U];
+    uint8_t* pdv_list_content = NULL;
+    uint8_t* pdv_list_bytes = NULL;
+    size_t pdv_list_content_capacity = payload_length + 64U;
+    size_t pdv_list_capacity = payload_length + 96U;
     uint8_t presentation_context_identifier[] = { 0x00U };
     size_t pdv_list_content_length = 0U;
     size_t context_identifier_length = 0U;
@@ -46,8 +49,16 @@ static int presentation_encode_fully_encoded_data(
         presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "presentation payload bytes are required when payload length is non-zero.");
         return 0;
     }
-    if (payload_length > sizeof(pdv_list_content) - 32U || payload_length > sizeof(pdv_list_bytes) - 48U) {
-        presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "presentation fully-encoded-data scratch buffer is too small.");
+    if (pdv_list_content_capacity < payload_length || pdv_list_capacity < payload_length) {
+        presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "presentation fully-encoded-data scratch size overflow.");
+        return 0;
+    }
+    pdv_list_content = (uint8_t*)malloc(pdv_list_content_capacity);
+    pdv_list_bytes = (uint8_t*)malloc(pdv_list_capacity);
+    if (pdv_list_content == NULL || pdv_list_bytes == NULL) {
+        free(pdv_list_content);
+        free(pdv_list_bytes);
+        presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "presentation fully-encoded-data scratch allocation failed.");
         return 0;
     }
 
@@ -58,7 +69,9 @@ static int presentation_encode_fully_encoded_data(
     presentation_context_identifier[0] = context_identifier;
     element.value_bytes = presentation_context_identifier;
     element.value_length = sizeof(presentation_context_identifier);
-    if (!unitlab_mms_ber_write(&element, pdv_list_content, sizeof(pdv_list_content), &context_identifier_length, diagnostic)) {
+    if (!unitlab_mms_ber_write(&element, pdv_list_content, pdv_list_content_capacity, &context_identifier_length, diagnostic)) {
+        free(pdv_list_content);
+        free(pdv_list_bytes);
         return 0;
     }
 
@@ -68,7 +81,9 @@ static int presentation_encode_fully_encoded_data(
     element.tag.tag_number = 0U;
     element.value_bytes = payload_bytes;
     element.value_length = payload_length;
-    if (!unitlab_mms_ber_write(&element, pdv_list_content + context_identifier_length, sizeof(pdv_list_content) - context_identifier_length, &payload_wrapper_length, diagnostic)) {
+    if (!unitlab_mms_ber_write(&element, pdv_list_content + context_identifier_length, pdv_list_content_capacity - context_identifier_length, &payload_wrapper_length, diagnostic)) {
+        free(pdv_list_content);
+        free(pdv_list_bytes);
         return 0;
     }
     pdv_list_content_length = context_identifier_length + payload_wrapper_length;
@@ -79,7 +94,9 @@ static int presentation_encode_fully_encoded_data(
     element.tag.tag_number = 16U;
     element.value_bytes = pdv_list_content;
     element.value_length = pdv_list_content_length;
-    if (!unitlab_mms_ber_write(&element, pdv_list_bytes, sizeof(pdv_list_bytes), &pdv_list_length, diagnostic)) {
+    if (!unitlab_mms_ber_write(&element, pdv_list_bytes, pdv_list_capacity, &pdv_list_length, diagnostic)) {
+        free(pdv_list_content);
+        free(pdv_list_bytes);
         return 0;
     }
 
@@ -90,9 +107,13 @@ static int presentation_encode_fully_encoded_data(
     element.value_bytes = pdv_list_bytes;
     element.value_length = pdv_list_length;
     if (!unitlab_mms_ber_write(&element, buffer, buffer_length, encoded_length, diagnostic)) {
+        free(pdv_list_content);
+        free(pdv_list_bytes);
         return 0;
     }
 
+    free(pdv_list_content);
+    free(pdv_list_bytes);
     presentation_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
 }

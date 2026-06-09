@@ -87,8 +87,8 @@ class Iec61850SclImportBatchJobStatusSchema(BaseModel):
 
 class Iec61850VirtualMmsServerStartRequestSchema(BaseModel):
     import_id: str
-    host: str = "127.0.0.1"
-    port: int = 1102
+    host: str = "0.0.0.0"
+    port: int = 12447
 
 
 class Iec61850VirtualMmsServerStateSchema(BaseModel):

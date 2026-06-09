@@ -170,6 +170,40 @@ static void test_presentation_fully_encoded_roundtrip(void)
     assert(decoded_apdu.payload_length == sizeof(payload));
     assert(memcmp(decoded_apdu.payload_bytes, payload, sizeof(payload)) == 0);
 }
+
+static void test_presentation_fully_encoded_accepts_large_payload(void)
+{
+    uint8_t payload[1500U];
+    uint8_t buffer[1700U];
+    UnitLabMmsPresentationApdu apdu;
+    UnitLabMmsPresentationApdu decoded_apdu;
+    UnitLabMmsDiagnostic diagnostic;
+    size_t encoded_length = 0U;
+    size_t consumed_length = 0U;
+
+    for (size_t index = 0U; index < sizeof(payload); index++) {
+        payload[index] = (uint8_t)(index & 0xFFU);
+    }
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_presentation_apdu_init(&apdu);
+    apdu.kind = UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED;
+    apdu.context_identifier = 3U;
+    apdu.payload_bytes = payload;
+    apdu.payload_length = sizeof(payload);
+
+    assert(unitlab_mms_presentation_encode(&apdu, buffer, sizeof(buffer), &encoded_length, &diagnostic) == 1);
+    assert(encoded_length > sizeof(payload));
+
+    unitlab_mms_presentation_apdu_init(&decoded_apdu);
+    assert(unitlab_mms_presentation_decode(&decoded_apdu, buffer, encoded_length, &consumed_length, &diagnostic) == 1);
+    assert(consumed_length == encoded_length);
+    assert(decoded_apdu.kind == UNITLAB_MMS_PRESENTATION_APDU_FULLY_ENCODED);
+    assert(decoded_apdu.context_identifier == 3U);
+    assert(decoded_apdu.payload_length == sizeof(payload));
+    assert(memcmp(decoded_apdu.payload_bytes, payload, sizeof(payload)) == 0);
+}
+
 static void test_presentation_decode_accepts_pdv_list_wrapper(void)
 {
     uint8_t buffer[64];
@@ -261,6 +295,7 @@ int main(void)
     test_presentation_decode_reports_trailing_bytes();
     test_presentation_decode_resets_output_on_failure();
     test_presentation_fully_encoded_roundtrip();
+    test_presentation_fully_encoded_accepts_large_payload();
     test_presentation_decode_accepts_pdv_list_wrapper();
     test_presentation_decode_rejects_unsupported_outer_tag();
     test_presentation_encode_rejects_non_supported_kind();

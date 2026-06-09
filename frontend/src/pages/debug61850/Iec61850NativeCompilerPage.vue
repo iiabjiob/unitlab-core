@@ -161,7 +161,13 @@ const treeLoadingLabel = computed(() => persistedImportsLoading.value ? "Loading
 const virtualServerEndpointLabel = computed(() => {
   const state = virtualServerState.value
   if (!state?.running || !state.host || !state.port) return "Virtual MMS server stopped"
-  return `${state.selected_ied ?? "IED"} · ${state.host}:${state.port}`
+  return `${state.selected_ied ?? "IED"} · bind ${state.host}:${state.port}`
+})
+const virtualServerConnectHint = computed(() => {
+  const state = virtualServerState.value
+  if (!state?.running || !state.port) return "Start an MMS server from the compiled model before connecting IEDScout."
+  if (state.host === "0.0.0.0") return `Use IEDScout endpoint <host IP>:${state.port}, for example 192.168.14.1:${state.port}`
+  return `Use IEDScout endpoint ${state.host}:${state.port}`
 })
 const canStartVirtualServer = computed(() => Boolean(compiledImports.value[0]?.import_id && !virtualServerLoading.value))
 
@@ -632,10 +638,10 @@ async function startVirtualServer() {
     if (!workspaceId) throw new Error("Active workspace is not selected")
     virtualServerState.value = await Iec61850SclAPI.startVirtualMmsServer(workspaceId, {
       import_id: selectedImport.import_id,
-      host: "127.0.0.1",
-      port: 1102,
+      host: "0.0.0.0",
+      port: 12447,
     })
-    toastStore.success(`Virtual MMS server started: ${virtualServerState.value.host}:${virtualServerState.value.port}`)
+    toastStore.success(`Virtual MMS server started on ${virtualServerState.value.host}:${virtualServerState.value.port}`)
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : "Virtual MMS server start failed"
     toastStore.error(error.value)
@@ -754,8 +760,7 @@ onUnmounted(() => {
 
     <section class="iec61850-native-page__virtual-server" aria-label="Virtual MMS server state">
       <span>{{ virtualServerEndpointLabel }}</span>
-      <small v-if="virtualServerState?.running">Use IEDScout endpoint {{ virtualServerState.host }}:{{ virtualServerState.port }}</small>
-      <small v-else>Start a localhost MMS server from the compiled model before connecting IEDScout.</small>
+      <small>{{ virtualServerConnectHint }}</small>
     </section>
 
 

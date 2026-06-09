@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -50,8 +51,8 @@ class Iec61850VirtualMmsServerService:
         record: Iec61850SclImportRecord,
         *,
         source_bytes: bytes,
-        host: str = "127.0.0.1",
-        port: int = 1102,
+        host: str = "0.0.0.0",
+        port: int = 12447,
     ) -> Iec61850VirtualMmsServerSnapshot:
         with self._lock:
             if self._process is not None:
@@ -64,16 +65,20 @@ class Iec61850VirtualMmsServerService:
                 source_path = Path(source_dir.name) / f"{record.selected_ied}.scd"
                 source_path.write_bytes(source_bytes)
                 binary_path = _resolve_ied_simulator_binary_path()
+                _validate_native_binary_path(binary_path)
                 command = _scl_native_wire_command(binary_path, source_path, record.selected_ied, host, port)
                 _run_startup_check(command)
-                process = subprocess.Popen(
-                    command,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    bufsize=1,
-                )
+                try:
+                    process = subprocess.Popen(
+                        command,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        bufsize=1,
+                    )
+                except OSError as exc:
+                    raise Iec61850ReportRuntimeError("VIRTUAL_MMS_PROCESS_START_FAILED", f"Virtual MMS server process could not be started: {exc}") from exc
                 wait_ied_native_wire_server_ready(None, process, timeout_seconds=10.0)  # type: ignore[arg-type]
             except Exception:
                 source_dir.cleanup()
@@ -149,9 +154,29 @@ def _run_startup_check(command: tuple[str, ...]) -> None:
         completed = subprocess.run(dry_run_command, capture_output=True, text=True, timeout=15.0, check=False)
     except subprocess.TimeoutExpired as exc:
         raise Iec61850ReportRuntimeError("VIRTUAL_MMS_STARTUP_CHECK_TIMEOUT", "Virtual MMS server SCL dry-run check timed out.") from exc
+    except OSError as exc:
+        raise Iec61850ReportRuntimeError("VIRTUAL_MMS_STARTUP_CHECK_FAILED", f"Virtual MMS server SCL dry-run check could not be started: {exc}") from exc
     if completed.returncode != 0:
         details = (completed.stderr or completed.stdout).strip()
         raise Iec61850ReportRuntimeError("VIRTUAL_MMS_STARTUP_CHECK_FAILED", f"Virtual MMS server SCL dry-run check failed: {details}")
+
+
+def _validate_native_binary_path(binary_path: Path) -> None:
+    if not binary_path.exists():
+        raise Iec61850ReportRuntimeError(
+            "VIRTUAL_MMS_BINARY_NOT_FOUND",
+            f"IEC 61850 virtual MMS binary was not found: {binary_path}",
+        )
+    if not binary_path.is_file():
+        raise Iec61850ReportRuntimeError(
+            "VIRTUAL_MMS_BINARY_INVALID",
+            f"IEC 61850 virtual MMS binary path is not a file: {binary_path}",
+        )
+    if not os.access(binary_path, os.X_OK):
+        raise Iec61850ReportRuntimeError(
+            "VIRTUAL_MMS_BINARY_NOT_EXECUTABLE",
+            f"IEC 61850 virtual MMS binary is not executable: {binary_path}",
+        )
 
 
 def _resolve_ied_simulator_binary_path() -> Path:
