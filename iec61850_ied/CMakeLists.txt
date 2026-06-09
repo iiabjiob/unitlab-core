@@ -66,6 +66,12 @@ target_include_directories(unitlab-iec61850-scl-compiler PUBLIC src PRIVATE thir
 unitlab_iec61850_sim_warnings(unitlab-iec61850-scl-compiler)
 add_library(unitlab::iec61850_scl_compiler ALIAS unitlab-iec61850-scl-compiler)
 
+add_executable(unitlab-iec61850-scl-compiler-cli
+  src/app/scl_compiler_cli.cpp
+)
+target_link_libraries(unitlab-iec61850-scl-compiler-cli PRIVATE unitlab-iec61850-scl-compiler)
+unitlab_iec61850_sim_warnings(unitlab-iec61850-scl-compiler-cli)
+
 add_executable(unitlab-iec61850-ied-sim
   src/app/client_probe.c
   src/fixture/fixture_parser.c

@@ -101,6 +101,8 @@ class Settings(BaseSettings):
     iec61850_ied_live_wire_control_port: int = 12448
     iec61850_ied_wire_bind_address: str = "127.0.0.1"
     iec61850_ied_live_wire_binary_path: str | None = None
+    iec61850_scl_compiler_binary_path: str | None = None
+    iec61850_scl_compiler_timeout_seconds: float = 10.0
 
     # ---- Database URL ----
     @property
