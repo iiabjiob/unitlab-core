@@ -14,6 +14,16 @@ describe("buildIec61850NativeTreeDocument", () => {
       selected_ied: "IED1",
       normalized_schema: "unitlab.iec61850.scl.normalized.v1",
       normalized_model: {
+        network: {
+          connectedAccessPoints: [{
+            iedName: "IED1",
+            accessPointName: "AP1",
+            subNetworkName: "StationBus",
+            subNetworkType: "8-MMS",
+            address: { IP: "192.168.14.50", "IP-SUBNET": "255.255.255.0", "IP-GATEWAY": "192.168.14.1" },
+            addressParameters: [{ type: "IP", value: "192.168.14.50" }],
+          }],
+        },
         logicalDevices: [{ inst: "IED1LD0" }],
         logicalNodes: [{ logicalDeviceInst: "IED1LD0", name: "LLN0" }, { logicalDeviceInst: "IED1LD0", name: "PGGIO1" }],
         dataSets: [{ name: "dsEvents", reference: "IED1/AP1/LD0/LLN0.dsEvents", logicalDeviceInst: "IED1LD0", logicalNodeName: "LLN0", firstSignalIndex: 0, memberCount: 1 }],
@@ -28,6 +38,8 @@ describe("buildIec61850NativeTreeDocument", () => {
     expect(document.stats).toMatchObject({ logicalDevices: 1, logicalNodes: 2, dataSets: 1, reports: 1, signals: 1, warnings: 1 })
     expect(document.rows.some(row => row.kind === "dataset-member" && row.detail.subtitle === "IED1LD0/PGGIO1$ST$Ind1$stVal")).toBe(true)
     expect(document.rows.some(row => row.kind === "report-control" && row.label === "brcbEvents" && row.meta === "buffered · 1 leaves")).toBe(true)
+    expect(document.rows.some(row => row.kind === "connected-access-point" && row.label === "AP1" && row.meta === "192.168.14.50")).toBe(true)
+    expect(document.rows.some(row => row.detail.rows.some(detail => detail.label === "IP-GATEWAY" && detail.value === "192.168.14.1"))).toBe(true)
     expect(document.rows.some(row => row.label === "SCL_REPORT_DATASET_EMPTY")).toBe(false)
   })
 })

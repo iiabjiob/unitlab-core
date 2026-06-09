@@ -10,6 +10,8 @@ export type Iec61850NativeTreeNodeKind =
   | "dataset-member"
   | "reports-group"
   | "report-control"
+  | "network-group"
+  | "connected-access-point"
   | "ied-index"
   | "report-signal"
 
@@ -113,6 +115,8 @@ export function buildIec61850NativeTreeDocument(response: Iec61850SclImportRespo
   const dataSets = asRecords(model.dataSets)
   const reports = asRecords(model.reports)
   const signals = asRecords(model.signals)
+  const network = recordValue(model.network)
+  const connectedAccessPoints = asRecords(network.connectedAccessPoints)
   const rows: Iec61850NativeTreeRow[] = []
   const root = "import:root"
 
@@ -132,9 +136,42 @@ export function buildIec61850NativeTreeDocument(response: Iec61850SclImportRespo
         { label: "schema", value: response.normalized_schema },
         { label: "source size", value: String(response.source_size) },
         { label: "source hash", value: response.source_hash },
+        { label: "ConnectedAP", value: String(connectedAccessPoints.length) },
+        { label: "IP addresses", value: connectedAccessPoints.map(formatConnectedAccessPointAddress).filter(Boolean).join(", ") },
       ],
     },
   })
+
+
+  const networkGroup = "group:network"
+  rows.push(groupRow(networkGroup, root, "network-group", "Network", `${connectedAccessPoints.length}`))
+  for (const [index, connectedAccessPoint] of connectedAccessPoints.entries()) {
+    const apName = text(connectedAccessPoint.accessPointName) || `AP ${index + 1}`
+    const subNetworkName = text(connectedAccessPoint.subNetworkName)
+    const ip = addressValue(connectedAccessPoint, "IP")
+    rows.push({
+      value: `network:connected-ap:${index}`,
+      parent: networkGroup,
+      kind: "connected-access-point",
+      label: apName,
+      meta: ip || subNetworkName,
+      isLeaf: true,
+      detail: {
+        title: apName,
+        subtitle: subNetworkName || "ConnectedAP",
+        rows: [
+          { label: "IED", value: text(connectedAccessPoint.iedName) },
+          { label: "AccessPoint", value: apName },
+          { label: "SubNetwork", value: subNetworkName },
+          { label: "SubNetwork type", value: text(connectedAccessPoint.subNetworkType) },
+          { label: "IP", value: ip },
+          { label: "IP-SUBNET", value: addressValue(connectedAccessPoint, "IP-SUBNET") },
+          { label: "IP-GATEWAY", value: addressValue(connectedAccessPoint, "IP-GATEWAY") },
+          ...addressParameterRows(connectedAccessPoint),
+        ],
+      },
+    })
+  }
 
   const ldGroup = "group:logical-devices"
   rows.push(groupRow(ldGroup, root, "logical-devices-group", "Logical devices", `${logicalDevices.length}`))
@@ -309,6 +346,28 @@ function signalRow(value: string, parent: string, signal: NativeRecord, kind: "d
 
 function asRecords(value: unknown): NativeRecord[] {
   return Array.isArray(value) ? value.filter((item): item is NativeRecord => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : []
+}
+
+function recordValue(value: unknown): NativeRecord {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value) ? value as NativeRecord : {}
+}
+
+function addressValue(connectedAccessPoint: NativeRecord, type: string): string {
+  const address = recordValue(connectedAccessPoint.address)
+  return text(address[type])
+}
+
+function addressParameterRows(connectedAccessPoint: NativeRecord): Iec61850NativeDetailRow[] {
+  return asRecords(connectedAccessPoint.addressParameters)
+    .map(parameter => ({ label: `P:${text(parameter.type)}`, value: text(parameter.value) }))
+    .filter(row => Boolean(row.label !== "P:" || row.value))
+}
+
+function formatConnectedAccessPointAddress(connectedAccessPoint: NativeRecord): string {
+  const ap = text(connectedAccessPoint.accessPointName)
+  const ip = addressValue(connectedAccessPoint, "IP")
+  if (!ap && !ip) return ""
+  return ip ? `${ap || "AP"} ${ip}` : ap
 }
 
 function text(value: unknown): string {

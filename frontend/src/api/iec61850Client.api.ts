@@ -28,6 +28,7 @@ export type Iec61850SclIedDiscoveryResponse = {
 }
 
 export type Iec61850NativeNormalizedModel = {
+  network?: Record<string, unknown>
   logicalDevices?: Array<Record<string, unknown>>
   logicalNodes?: Array<Record<string, unknown>>
   dataSets?: Array<Record<string, unknown>>

@@ -492,6 +492,55 @@ static int test_compile_reports_invalid_selected_ied(void)
     return passed;
 }
 
+
+static int test_compile_exports_network_metadata(void)
+{
+    const char* scl =
+        "<SCL>"
+        "<Communication>"
+        "<SubNetwork name=\"StationBus\" type=\"8-MMS\">"
+        "<ConnectedAP iedName=\"IED1\" apName=\"AP1\"><Address>"
+        "<P type=\"IP\">192.168.14.50</P>"
+        "<P type=\"IP-SUBNET\">255.255.255.0</P>"
+        "<P type=\"IP-GATEWAY\">192.168.14.1</P>"
+        "<P type=\"OSI-AP-Title\">1,3,9999,23</P>"
+        "</Address></ConnectedAP>"
+        "<ConnectedAP iedName=\"IED2\" apName=\"AP1\"><Address><P type=\"IP\">10.10.10.2</P></Address></ConnectedAP>"
+        "</SubNetwork>"
+        "</Communication>"
+        "<IED name=\"IED1\"><AccessPoint name=\"AP1\"><Server><LDevice inst=\"LD0\"><LN0 /></LDevice></Server></AccessPoint></IED>"
+        "<IED name=\"IED2\"><AccessPoint name=\"AP1\"><Server><LDevice inst=\"LD0\"><LN0 /></LDevice></Server></AccessPoint></IED>"
+        "</SCL>";
+    UnitLabSclCompileResult* result = NULL;
+    char error[128];
+    int passed = 1;
+
+    passed &= expect_true(unitlab_scl_compile_from_memory(scl, strlen(scl), "IED1", &result, error, sizeof(error)) == 1,
+        "SCL compile should preserve Communication metadata");
+    passed &= expect_true(result != NULL, "network compile result should be allocated");
+    if (result != NULL) {
+        size_t json_size = unitlab_scl_compile_normalized_json_size(result);
+        char* json = (char*)malloc(json_size);
+        size_t written_size = 0U;
+        passed &= expect_true(json != NULL, "network normalized JSON buffer should allocate");
+        if (json != NULL) {
+            passed &= expect_true(unitlab_scl_compile_normalized_json(result, json, json_size, &written_size) == 1,
+                "network normalized JSON should write");
+            passed &= expect_contains(json, "\"network\":{", "normalized JSON network section");
+            passed &= expect_contains(json, "\"subNetworkName\":\"StationBus\"", "ConnectedAP SubNetwork name");
+            passed &= expect_contains(json, "\"subNetworkType\":\"8-MMS\"", "ConnectedAP SubNetwork type");
+            passed &= expect_contains(json, "\"accessPointName\":\"AP1\"", "ConnectedAP AccessPoint name");
+            passed &= expect_contains(json, "\"IP\":\"192.168.14.50\"", "ConnectedAP IP address");
+            passed &= expect_contains(json, "\"IP-SUBNET\":\"255.255.255.0\"", "ConnectedAP subnet");
+            passed &= expect_contains(json, "\"IP-GATEWAY\":\"192.168.14.1\"", "ConnectedAP gateway");
+            passed &= expect_true(strstr(json, "10.10.10.2") == NULL, "selected IED network view should not include other IED address");
+            free(json);
+        }
+        unitlab_scl_compile_result_free(result);
+    }
+    return passed;
+}
+
 static int test_compile_reports_malformed_xml(void)
 {
     const char* scl = "<SCL><IED name=\"IED1\"></SCL>";
@@ -547,6 +596,7 @@ int main(void)
     passed &= test_compile_reports_unresolved_nested_attribute_path();
     passed &= test_compile_reports_missing_template_kinds();
     passed &= test_compile_reports_invalid_selected_ied();
+    passed &= test_compile_exports_network_metadata();
     passed &= test_compile_reports_malformed_xml();
     passed &= test_compile_rejects_empty_input();
     return passed ? 0 : 1;

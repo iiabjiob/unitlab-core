@@ -67,14 +67,30 @@ struct SclDataTypeTemplates {
 };
 
 struct SclLogicalDevice { std::string inst; std::vector<SclLogicalNode> logical_nodes; };
+
+struct SclAddressParameter {
+    std::string type;
+    std::string value;
+};
+
+struct SclConnectedAccessPoint {
+    std::string ied_name;
+    std::string access_point_name;
+    std::string sub_network_name;
+    std::string sub_network_type;
+    std::vector<SclAddressParameter> address_parameters;
+};
+
 struct SclAccessPoint { std::string name; std::vector<SclLogicalDevice> logical_devices; };
-struct SclIed { std::string name; std::vector<SclAccessPoint> access_points; };
+struct SclIed { std::string name; std::vector<SclAccessPoint> access_points; std::vector<SclConnectedAccessPoint> connected_access_points; };
+struct SclSubNetwork { std::string name; std::string type; std::vector<SclConnectedAccessPoint> connected_access_points; };
 
 struct SclDomParseResult {
     bool ok = false;
     std::string error_code;
     std::string error_message;
     std::vector<SclIed> ieds;
+    std::vector<SclSubNetwork> sub_networks;
     SclDataTypeTemplates data_type_templates;
 };
 

@@ -21,6 +21,8 @@ struct UnitLabSclCompileResult {
     std::vector<UnitLabIedModelReportControl> reports;
     std::vector<UnitLabIedModelSignal> signals;
     std::vector<UnitLabSclCompileDiagnostic> diagnostics;
+    std::vector<unitlab::iec61850::scl::SclSubNetwork> sub_networks;
+    std::vector<unitlab::iec61850::scl::SclConnectedAccessPoint> selected_connected_access_points;
 };
 
 namespace {
@@ -676,6 +678,36 @@ std::string normalized_json_for_result(const UnitLabSclCompileResult& result)
     document["sourceSize"] = result.source_size;
 
     json model;
+    model["network"] = json::object();
+    model["network"]["connectedAccessPoints"] = json::array();
+    for (const SclConnectedAccessPoint& connected_ap : result.selected_connected_access_points) {
+        json address_parameters = json::array();
+        json address_by_type = json::object();
+        for (const SclAddressParameter& parameter : connected_ap.address_parameters) {
+            address_parameters.push_back({{"type", parameter.type}, {"value", parameter.value}});
+            if (!parameter.type.empty()) address_by_type[parameter.type] = parameter.value;
+        }
+        model["network"]["connectedAccessPoints"].push_back({
+            {"iedName", connected_ap.ied_name},
+            {"accessPointName", connected_ap.access_point_name},
+            {"subNetworkName", connected_ap.sub_network_name},
+            {"subNetworkType", connected_ap.sub_network_type},
+            {"address", address_by_type},
+            {"addressParameters", address_parameters},
+        });
+    }
+    model["network"]["communicationSubNetworks"] = json::array();
+    for (const SclSubNetwork& sub_network : result.sub_networks) {
+        json connected = json::array();
+        for (const SclConnectedAccessPoint& connected_ap : sub_network.connected_access_points) {
+            connected.push_back({{"iedName", connected_ap.ied_name}, {"accessPointName", connected_ap.access_point_name}});
+        }
+        model["network"]["communicationSubNetworks"].push_back({
+            {"name", sub_network.name},
+            {"type", sub_network.type},
+            {"connectedAccessPoints", connected},
+        });
+    }
     model["logicalDevices"] = json::array();
     for (size_t index = 0U; index < result.plan.logical_device_count; index++) {
         const UnitLabIedModelLogicalDevice& device = result.plan.logical_devices[index];
@@ -814,6 +846,8 @@ extern "C" int unitlab_scl_compile_from_memory(
         return 1;
     }
 
+    compiled->sub_networks = dom.sub_networks;
+
     const SclIed* selected = nullptr;
     if (selected_ied_name != nullptr && selected_ied_name[0] != '\0') {
         const auto found = std::find_if(dom.ieds.begin(), dom.ieds.end(), [&](const SclIed& ied) { return ied.name == selected_ied_name; });
@@ -831,6 +865,7 @@ extern "C" int unitlab_scl_compile_from_memory(
     }
 
     compiled->selected_ied_name = selected->name;
+    compiled->selected_connected_access_points = selected->connected_access_points;
     compile_ied(*compiled, *selected, dom.data_type_templates);
     if (compiled->plan.logical_device_count == 0U) {
         compiled->diagnostics.push_back(contextual_diagnostic("error", "SCL_SERVER_MODEL_MISSING", "Selected IED does not contain a server logical-device model.", selected->name.c_str(), "", "", "", "", "", ""));

@@ -65,6 +65,56 @@ std::string ln_name(const std::string& prefix, const std::string& ln_class, cons
     return prefix + ln_class + inst;
 }
 
+
+std::string address_parameter_value(pugi::xml_node parameter)
+{
+    const pugi::xml_node text = parameter.first_child();
+    return text ? text.value() : "";
+}
+
+std::vector<SclAddressParameter> parse_address_parameters(pugi::xml_node connected_ap)
+{
+    std::vector<SclAddressParameter> parameters;
+    const pugi::xml_node address = first_child(connected_ap, "Address");
+    if (!address) return parameters;
+    for (pugi::xml_node parameter_node : address.children()) {
+        if (!is_node(parameter_node, "P")) continue;
+        SclAddressParameter parameter;
+        parameter.type = attr(parameter_node, "type");
+        parameter.value = address_parameter_value(parameter_node);
+        if (!parameter.type.empty() || !parameter.value.empty()) parameters.push_back(parameter);
+    }
+    return parameters;
+}
+
+std::vector<SclSubNetwork> parse_communication(pugi::xml_node root)
+{
+    std::vector<SclSubNetwork> sub_networks;
+    const pugi::xml_node communication = first_child(root, "Communication");
+    if (!communication) return sub_networks;
+
+    for (pugi::xml_node sub_network_node : communication.children()) {
+        if (!is_node(sub_network_node, "SubNetwork")) continue;
+        SclSubNetwork sub_network;
+        sub_network.name = attr(sub_network_node, "name");
+        sub_network.type = attr(sub_network_node, "type");
+        for (pugi::xml_node connected_ap_node : sub_network_node.children()) {
+            if (!is_node(connected_ap_node, "ConnectedAP")) continue;
+            SclConnectedAccessPoint connected_ap;
+            connected_ap.ied_name = attr(connected_ap_node, "iedName");
+            connected_ap.access_point_name = attr(connected_ap_node, "apName");
+            connected_ap.sub_network_name = sub_network.name;
+            connected_ap.sub_network_type = sub_network.type;
+            connected_ap.address_parameters = parse_address_parameters(connected_ap_node);
+            if (!connected_ap.ied_name.empty() || !connected_ap.access_point_name.empty()) {
+                sub_network.connected_access_points.push_back(connected_ap);
+            }
+        }
+        if (!sub_network.name.empty() || !sub_network.connected_access_points.empty()) sub_networks.push_back(sub_network);
+    }
+    return sub_networks;
+}
+
 std::vector<SclMember> parse_data_set_members(pugi::xml_node data_set_node)
 {
     std::vector<SclMember> members;
@@ -195,7 +245,7 @@ std::vector<SclAccessPoint> parse_access_points(pugi::xml_node ied)
     return access_points;
 }
 
-std::vector<SclIed> parse_ieds(pugi::xml_node root)
+std::vector<SclIed> parse_ieds(pugi::xml_node root, const std::vector<SclSubNetwork>& sub_networks)
 {
     std::vector<SclIed> ieds;
     for (pugi::xml_node child : root.children()) {
@@ -203,6 +253,11 @@ std::vector<SclIed> parse_ieds(pugi::xml_node root)
         SclIed ied;
         ied.name = attr(child, "name");
         ied.access_points = parse_access_points(child);
+        for (const SclSubNetwork& sub_network : sub_networks) {
+            for (const SclConnectedAccessPoint& connected_ap : sub_network.connected_access_points) {
+                if (connected_ap.ied_name == ied.name) ied.connected_access_points.push_back(connected_ap);
+            }
+        }
         if (!ied.name.empty()) ieds.push_back(ied);
     }
     return ieds;
@@ -316,7 +371,8 @@ SclDomParseResult parse_scl_document(const char* xml, size_t xml_size)
     }
 
     result.ok = true;
-    result.ieds = parse_ieds(root);
+    result.sub_networks = parse_communication(root);
+    result.ieds = parse_ieds(root, result.sub_networks);
     result.data_type_templates = parse_data_type_templates(root);
     return result;
 }
