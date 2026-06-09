@@ -958,6 +958,129 @@ static int server_runtime_encode_gva_component_tree(
     return 1;
 }
 
+static int server_runtime_encode_model_report_class_gva_component_tree(
+    const char* report_class_name,
+    char** report_names,
+    size_t report_count,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    uint8_t component_name_bytes[256U];
+    uint8_t child_component_bytes[32768U];
+    uint8_t component_components_wrapper_bytes[33792U];
+    uint8_t component_structure_bytes[34816U];
+    uint8_t component_type_wrapper_bytes[35840U];
+    uint8_t component_content_bytes[36864U];
+    uint8_t component_bytes[38912U];
+    size_t component_name_length = 0U;
+    size_t child_component_bytes_length = 0U;
+    size_t component_components_wrapper_length = 0U;
+    size_t component_structure_length = 0U;
+    size_t component_type_wrapper_length = 0U;
+    size_t component_content_length = 0U;
+    size_t component_length = 0U;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (report_class_name == NULL || report_names == NULL || report_count == 0U || buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Model ReportControl GVA component encoding requires a report class, report names, buffer, and encoded_length.");
+        return 0;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            0,
+            0U,
+            (const uint8_t*)report_class_name,
+            strlen(report_class_name),
+            component_name_bytes,
+            sizeof(component_name_bytes),
+            &component_name_length,
+            diagnostic)) {
+        return 0;
+    }
+    for (size_t report_index = 0U; report_index < report_count; report_index++) {
+        size_t report_length = 0U;
+
+        if (!server_runtime_encode_gva_component_tree(
+                "LLN0",
+                report_class_name,
+                report_names[report_index],
+                &child_component_bytes[child_component_bytes_length],
+                sizeof(child_component_bytes) - child_component_bytes_length,
+                &report_length,
+                diagnostic)) {
+            return 0;
+        }
+        child_component_bytes_length += report_length;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            1U,
+            child_component_bytes,
+            child_component_bytes_length,
+            component_components_wrapper_bytes,
+            sizeof(component_components_wrapper_bytes),
+            &component_components_wrapper_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            2U,
+            component_components_wrapper_bytes,
+            component_components_wrapper_length,
+            component_structure_bytes,
+            sizeof(component_structure_bytes),
+            &component_structure_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+            1,
+            1U,
+            component_structure_bytes,
+            component_structure_length,
+            component_type_wrapper_bytes,
+            sizeof(component_type_wrapper_bytes),
+            &component_type_wrapper_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (component_name_length + component_type_wrapper_length > sizeof(component_content_bytes)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Model ReportControl GVA component encoding buffer is too small.");
+        return 0;
+    }
+    memcpy(component_content_bytes, component_name_bytes, component_name_length);
+    memcpy(&component_content_bytes[component_name_length], component_type_wrapper_bytes, component_type_wrapper_length);
+    component_content_length = component_name_length + component_type_wrapper_length;
+    if (!server_runtime_encode_ber_element(
+            UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
+            1,
+            16U,
+            component_content_bytes,
+            component_content_length,
+            component_bytes,
+            sizeof(component_bytes),
+            &component_length,
+            diagnostic)) {
+        return 0;
+    }
+    if (component_length > buffer_length) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Model ReportControl GVA component output buffer is too small.");
+        return 0;
+    }
+    memcpy(buffer, component_bytes, component_length);
+    *encoded_length = component_length;
+    return 1;
+}
+
+
 int server_runtime_build_get_variable_access_attributes_response_service(
     UnitLabMmsServerRuntime* server_runtime,
     uint32_t invoke_id,
@@ -974,6 +1097,7 @@ int server_runtime_build_get_variable_access_attributes_response_service(
     char fc_root_logical_node[128U];
     char fc_root_fc[32U];
     int use_model_fc_root = 0;
+    int use_model_lln0_report_tree = 0;
     const char* root_parent_component_name = NULL;
     char** names = NULL;
     size_t name_count = 0U;
@@ -1015,6 +1139,26 @@ int server_runtime_build_get_variable_access_attributes_response_service(
         snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", "LLN0");
         if (!server_runtime_copy_static_names(lln0_gva_children, sizeof(lln0_gva_children) / sizeof(lln0_gva_children[0]), &names, &name_count, diagnostic)) {
             return 0;
+        }
+        if (server_runtime->model_plan != NULL && domain_id[0] != '\0') {
+            char** report_names = NULL;
+            size_t report_count = 0U;
+
+            if (!unitlab_collect_ied_model_logical_node_reports(
+                    server_runtime->model_plan,
+                    domain_id,
+                    "LLN0",
+                    UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_BUFFERED,
+                    &report_names,
+                    &report_count,
+                    model_error,
+                    sizeof(model_error))) {
+                unitlab_free_ied_model_name_list(names, name_count);
+                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "Buffered ReportControl lookup failed.");
+                return 0;
+            }
+            use_model_lln0_report_tree = report_count > 0U;
+            unitlab_free_ied_model_name_list(report_names, report_count);
         }
     }
     else if (strcmp(item_id, "LLN0$BR") == 0 || strcmp(item_id, "LLN0.BR") == 0) {
@@ -1134,7 +1278,37 @@ int server_runtime_build_get_variable_access_attributes_response_service(
     for (size_t index = 0U; index < name_count; index++) {
         size_t component_length = 0U;
 
-        if (use_model_fc_root != 0) {
+        if (use_model_lln0_report_tree != 0 && strcmp(names[index], "BR") == 0) {
+            char** report_names = NULL;
+            size_t report_count = 0U;
+
+            if (!unitlab_collect_ied_model_logical_node_reports(
+                    server_runtime->model_plan,
+                    domain_id,
+                    "LLN0",
+                    UNITLAB_IED_MODEL_REPORT_CONTROL_KIND_BUFFERED,
+                    &report_names,
+                    &report_count,
+                    model_error,
+                    sizeof(model_error))) {
+                unitlab_free_ied_model_name_list(names, name_count);
+                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, model_error[0] != '\0' ? model_error : "Buffered ReportControl lookup failed.");
+                return 0;
+            }
+            if (!server_runtime_encode_model_report_class_gva_component_tree(
+                    "BR",
+                    report_names,
+                    report_count,
+                    &component_bytes[component_bytes_length],
+                    sizeof(component_bytes) - component_bytes_length,
+                    &component_length,
+                    diagnostic)) {
+                unitlab_free_ied_model_name_list(report_names, report_count);
+                unitlab_free_ied_model_name_list(names, name_count);
+                return 0;
+            }
+            unitlab_free_ied_model_name_list(report_names, report_count);
+        } else if (use_model_fc_root != 0) {
             if (!server_runtime_encode_model_gva_component_tree(
                     server_runtime->model_plan,
                     domain_id,

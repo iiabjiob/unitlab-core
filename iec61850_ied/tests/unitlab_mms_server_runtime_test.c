@@ -4095,9 +4095,29 @@ static void test_server_runtime_build_model_report_gva_response_uses_report_cont
     assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
     assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
     assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES, 78U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "KINTE08TDIFFSystem.LLN0");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "LLN0");
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+
+    unitlab_mms_association_frame_init(&frame);
+    assert(unitlab_mms_association_frame_decode(&frame, response_bytes, response_length, &response_consumed_length, &diagnostic));
+    assert(response_consumed_length == response_length);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"BR", strlen("BR")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"brcbA", strlen("brcbA")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"brcbB", strlen("brcbB")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"brcbEvents", strlen("brcbEvents")) == 0);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES, 79U, 7U, 1000U, 100U, &diagnostic) == 1);
     snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "KINTE08TDIFFSystem.LLN0.BR");
     snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "BR");
 
+    response_length = 0U;
+    response_consumed_length = 0U;
     unitlab_mms_diagnostic_clear(&diagnostic);
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
@@ -4111,7 +4131,7 @@ static void test_server_runtime_build_model_report_gva_response_uses_report_cont
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"brcbEvents", strlen("brcbEvents")) == 0);
     assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
 
-    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES, 79U, 7U, 1000U, 100U, &diagnostic) == 1);
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES, 80U, 7U, 1000U, 100U, &diagnostic) == 1);
     snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "KINTE08TDIFFSystem.LLN0.BR.brcbA");
     snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "brcbA");
 
