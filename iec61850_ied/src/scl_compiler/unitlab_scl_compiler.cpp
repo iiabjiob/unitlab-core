@@ -151,45 +151,128 @@ std::vector<std::string> split_path(const std::string& path)
     return parts;
 }
 
-SclResolvedValueType resolve_attribute_value_type(const SclDataTypeTemplates& templates, const SclDoTypeTemplate* do_type, const std::vector<std::string>& path)
+void append_member_diagnostic(
+    UnitLabSclCompileResult& result,
+    const char* code,
+    const char* message,
+    const SclIed& ied,
+    const SclAccessPoint& access_point,
+    const SclLogicalDevice& device,
+    const SclLogicalNode& node,
+    const SclDataSet& data_set,
+    const SclMember& member)
 {
-    if (do_type == nullptr || path.empty()) return {};
-    const auto da_found = std::find_if(do_type->data_attributes.begin(), do_type->data_attributes.end(), [&](const SclDaTemplate& item) { return item.name == path.front(); });
-    if (da_found == do_type->data_attributes.end()) return {};
-    if (path.size() == 1U || da_found->type.empty()) return {da_found->b_type, da_found->type};
-    const SclDaTypeTemplate* da_type = find_da_type(templates, da_found->type);
-    for (size_t index = 1U; da_type != nullptr && index < path.size(); index++) {
-        const auto bda_found = std::find_if(da_type->basic_data_attributes.begin(), da_type->basic_data_attributes.end(), [&](const SclDaTemplate& item) { return item.name == path[index]; });
-        if (bda_found == da_type->basic_data_attributes.end()) return {};
-        if (index + 1U == path.size()) return {bda_found->b_type, bda_found->type};
-        da_type = bda_found->type.empty() ? nullptr : find_da_type(templates, bda_found->type);
-    }
-    return {};
+    result.diagnostics.push_back(contextual_diagnostic("error", code, message, ied.name.c_str(), access_point.name.c_str(), device.inst.c_str(), node.name.c_str(), data_set.name.c_str(), "", signal_ref(member, device.inst).c_str()));
 }
 
-const SclDoTypeTemplate* resolve_member_do_type(const SclDataTypeTemplates& templates, const SclLNodeTypeTemplate& lnode_type, const std::vector<std::string>& do_path)
+const char* missing_do_type_code = "SCL_TEMPLATE_DOTYPE_MISSING";
+
+const SclDoTypeTemplate* resolve_member_do_type_with_diagnostic(
+    UnitLabSclCompileResult& result,
+    const SclDataTypeTemplates& templates,
+    const SclIed& ied,
+    const SclAccessPoint& access_point,
+    const SclLogicalDevice& device,
+    const SclLogicalNode& data_set_node,
+    const SclDataSet& data_set,
+    const SclMember& member)
 {
-    if (do_path.empty()) return nullptr;
-    const auto do_found = std::find_if(lnode_type.data_objects.begin(), lnode_type.data_objects.end(), [&](const SclDoTemplate& item) { return item.name == do_path.front(); });
-    if (do_found == lnode_type.data_objects.end() || do_found->type.empty()) return nullptr;
+    const SclLogicalNode* member_node = find_logical_node(device, member, device.inst);
+    if (member_node == nullptr || member_node->ln_type.empty()) {
+        append_member_diagnostic(result, "SCL_TEMPLATE_LNODETYPE_MISSING", "DataSet member logical node has no resolvable LNodeType.", ied, access_point, device, data_set_node, data_set, member);
+        return nullptr;
+    }
+    const SclLNodeTypeTemplate* lnode_type = find_lnode_type(templates, member_node->ln_type);
+    if (lnode_type == nullptr) {
+        append_member_diagnostic(result, "SCL_TEMPLATE_LNODETYPE_MISSING", "DataSet member references a missing LNodeType template.", ied, access_point, device, data_set_node, data_set, member);
+        return nullptr;
+    }
+    const std::vector<std::string> do_path = split_path(member.do_name);
+    if (do_path.empty()) {
+        append_member_diagnostic(result, "SCL_TEMPLATE_DO_MISSING", "DataSet member has an empty DO path.", ied, access_point, device, data_set_node, data_set, member);
+        return nullptr;
+    }
+    const auto do_found = std::find_if(lnode_type->data_objects.begin(), lnode_type->data_objects.end(), [&](const SclDoTemplate& item) { return item.name == do_path.front(); });
+    if (do_found == lnode_type->data_objects.end()) {
+        append_member_diagnostic(result, "SCL_TEMPLATE_DO_MISSING", "DataSet member references a missing DO template.", ied, access_point, device, data_set_node, data_set, member);
+        return nullptr;
+    }
+    if (do_found->type.empty()) {
+        append_member_diagnostic(result, missing_do_type_code, "DataSet member DO template has no DOType reference.", ied, access_point, device, data_set_node, data_set, member);
+        return nullptr;
+    }
     const SclDoTypeTemplate* do_type = find_do_type(templates, do_found->type);
-    for (size_t index = 1U; do_type != nullptr && index < do_path.size(); index++) {
+    if (do_type == nullptr) {
+        append_member_diagnostic(result, missing_do_type_code, "DataSet member references a missing DOType template.", ied, access_point, device, data_set_node, data_set, member);
+        return nullptr;
+    }
+    for (size_t index = 1U; index < do_path.size(); index++) {
         const auto sdo_found = std::find_if(do_type->sub_data_objects.begin(), do_type->sub_data_objects.end(), [&](const SclSdoTemplate& item) { return item.name == do_path[index]; });
-        if (sdo_found == do_type->sub_data_objects.end() || sdo_found->type.empty()) return nullptr;
+        if (sdo_found == do_type->sub_data_objects.end()) {
+            append_member_diagnostic(result, "SCL_TEMPLATE_SDO_MISSING", "DataSet member references a missing SDO template.", ied, access_point, device, data_set_node, data_set, member);
+            return nullptr;
+        }
+        if (sdo_found->type.empty()) {
+            append_member_diagnostic(result, missing_do_type_code, "DataSet member SDO template has no DOType reference.", ied, access_point, device, data_set_node, data_set, member);
+            return nullptr;
+        }
         do_type = find_do_type(templates, sdo_found->type);
+        if (do_type == nullptr) {
+            append_member_diagnostic(result, missing_do_type_code, "DataSet member SDO references a missing DOType template.", ied, access_point, device, data_set_node, data_set, member);
+            return nullptr;
+        }
     }
     return do_type;
 }
 
-const SclDoTypeTemplate* resolve_member_do_type(const SclDataTypeTemplates& templates, const SclLogicalDevice& device, const SclMember& member)
+SclResolvedValueType resolve_attribute_value_type_with_diagnostic(
+    UnitLabSclCompileResult& result,
+    const SclDataTypeTemplates& templates,
+    const SclDoTypeTemplate* do_type,
+    const std::vector<std::string>& path,
+    const SclIed& ied,
+    const SclAccessPoint& access_point,
+    const SclLogicalDevice& device,
+    const SclLogicalNode& node,
+    const SclDataSet& data_set,
+    const SclMember& member)
 {
-    const SclLogicalNode* node = find_logical_node(device, member, device.inst);
-    if (node == nullptr || node->ln_type.empty()) return nullptr;
-    const SclLNodeTypeTemplate* lnode_type = find_lnode_type(templates, node->ln_type);
-    if (lnode_type == nullptr) return nullptr;
-    return resolve_member_do_type(templates, *lnode_type, split_path(member.do_name));
+    if (do_type == nullptr || path.empty()) return {};
+    const auto da_found = std::find_if(do_type->data_attributes.begin(), do_type->data_attributes.end(), [&](const SclDaTemplate& item) { return item.name == path.front(); });
+    if (da_found == do_type->data_attributes.end()) {
+        append_member_diagnostic(result, "SCL_TEMPLATE_DA_MISSING", "DataSet FCDA member references a missing DA template.", ied, access_point, device, node, data_set, member);
+        return {};
+    }
+    if (path.size() == 1U || da_found->type.empty()) return {da_found->b_type, da_found->type};
+    const SclDaTypeTemplate* da_type = find_da_type(templates, da_found->type);
+    if (da_type == nullptr) {
+        append_member_diagnostic(result, "SCL_TEMPLATE_DATYPE_MISSING", "DataSet FCDA member references a missing DAType template.", ied, access_point, device, node, data_set, member);
+        return {};
+    }
+    for (size_t index = 1U; index < path.size(); index++) {
+        const auto bda_found = std::find_if(da_type->basic_data_attributes.begin(), da_type->basic_data_attributes.end(), [&](const SclDaTemplate& item) { return item.name == path[index]; });
+        if (bda_found == da_type->basic_data_attributes.end()) {
+            append_member_diagnostic(result, "SCL_TEMPLATE_BDA_MISSING", "DataSet FCDA member references a missing BDA template.", ied, access_point, device, node, data_set, member);
+            return {};
+        }
+        if (index + 1U == path.size()) return {bda_found->b_type, bda_found->type};
+        if (bda_found->type.empty()) {
+            append_member_diagnostic(result, "SCL_TEMPLATE_DATYPE_MISSING", "DataSet FCDA member nested BDA has no DAType reference.", ied, access_point, device, node, data_set, member);
+            return {};
+        }
+        da_type = find_da_type(templates, bda_found->type);
+        if (da_type == nullptr) {
+            append_member_diagnostic(result, "SCL_TEMPLATE_DATYPE_MISSING", "DataSet FCDA member nested BDA references a missing DAType template.", ied, access_point, device, node, data_set, member);
+            return {};
+        }
+    }
+    return {};
 }
 
+bool resolved_enum_type_missing(const SclDataTypeTemplates& templates, const SclResolvedValueType& resolved)
+{
+    return resolved.b_type == "Enum" && !resolved.type.empty() && find_enum_type(templates, resolved.type) == nullptr;
+}
 
 UnitLabIedFixtureValueKind value_kind_for_b_type(const std::string& b_type)
 {
@@ -344,25 +427,31 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied, const SclDa
                         const std::string member_ln = ln_name(member.prefix, member.ln_class, member.ln_inst);
                         append_logical_node_once(result, member_domain, member_ln);
 
-                        const SclDoTypeTemplate* member_do_type = resolve_member_do_type(templates, device, member);
-                        if (member.kind == "FCDA" && member.do_name.find('.') != std::string::npos && member_do_type == nullptr) {
-                            result.diagnostics.push_back(contextual_diagnostic("error", "SCL_DATASET_MEMBER_SDO_UNRESOLVED", "DataSet FCDA member references an unresolved SDO path.", ied.name.c_str(), access_point.name.c_str(), device.inst.c_str(), node.name.c_str(), data_set.name.c_str(), "", signal_ref(member, device.inst).c_str()));
-                            continue;
-                        }
-                        if (member.kind == "FCD" && member_do_type != nullptr) {
+                        const size_t diagnostics_before_resolution = result.diagnostics.size();
+                        const SclDoTypeTemplate* member_do_type = resolve_member_do_type_with_diagnostic(result, templates, ied, access_point, device, node, data_set, member);
+                        if (member_do_type == nullptr) continue;
+                        if (member.kind == "FCD") {
                             size_t emitted_attribute_count = 0U;
                             for (const SclDaTemplate& attribute : member_do_type->data_attributes) {
                                 if (!attribute.fc.empty() && attribute.fc != member.fc) continue;
-                                append_compiled_signal(result, data_set_index, valid_member_index, member_domain, member_ln, member, device.inst, attribute.name, {attribute.b_type, attribute.type}, templates);
+                                const SclResolvedValueType attribute_type{attribute.b_type, attribute.type};
+                                if (resolved_enum_type_missing(templates, attribute_type)) {
+                                    append_member_diagnostic(result, "SCL_TEMPLATE_ENUMTYPE_MISSING", "DataSet FCD member attribute references a missing EnumType template.", ied, access_point, device, node, data_set, member);
+                                    break;
+                                }
+                                append_compiled_signal(result, data_set_index, valid_member_index, member_domain, member_ln, member, device.inst, attribute.name, attribute_type, templates);
                                 valid_member_index++;
                                 emitted_attribute_count++;
                             }
-                            if (emitted_attribute_count != 0U) continue;
+                            if (emitted_attribute_count != 0U || result.diagnostics.size() != diagnostics_before_resolution) continue;
+                            append_member_diagnostic(result, "SCL_TEMPLATE_DA_MISSING", "DataSet FCD member DOType has no DA matching the requested FC.", ied, access_point, device, node, data_set, member);
+                            continue;
                         }
 
-                        const SclResolvedValueType resolved_type = member.kind == "FCDA" ? resolve_attribute_value_type(templates, member_do_type, split_path(member.da_name)) : SclResolvedValueType{};
-                        if (member.kind == "FCDA" && member.da_name.find('.') != std::string::npos && resolved_type.b_type.empty()) {
-                            result.diagnostics.push_back(contextual_diagnostic("error", "SCL_DATASET_MEMBER_ATTRIBUTE_UNRESOLVED", "DataSet FCDA member references an unresolved nested data attribute path.", ied.name.c_str(), access_point.name.c_str(), device.inst.c_str(), node.name.c_str(), data_set.name.c_str(), "", signal_ref(member, device.inst).c_str()));
+                        const SclResolvedValueType resolved_type = resolve_attribute_value_type_with_diagnostic(result, templates, member_do_type, split_path(member.da_name), ied, access_point, device, node, data_set, member);
+                        if (resolved_type.b_type.empty()) continue;
+                        if (resolved_enum_type_missing(templates, resolved_type)) {
+                            append_member_diagnostic(result, "SCL_TEMPLATE_ENUMTYPE_MISSING", "DataSet FCDA member references a missing EnumType template.", ied, access_point, device, node, data_set, member);
                             continue;
                         }
                         append_compiled_signal(result, data_set_index, valid_member_index, member_domain, member_ln, member, device.inst, member.da_name, resolved_type, templates);

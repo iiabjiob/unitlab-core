@@ -216,7 +216,7 @@ static int test_compile_reports_unresolved_sdo_path(void)
     UnitLabSclCompileDiagnostic diagnostic;
     passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 0U, &diagnostic) == 1, "unresolved SDO diagnostic should be readable");
     passed &= expect_string(diagnostic.severity, "error", "unresolved SDO severity");
-    passed &= expect_string(diagnostic.code, "SCL_DATASET_MEMBER_SDO_UNRESOLVED", "unresolved SDO code");
+    passed &= expect_string(diagnostic.code, "SCL_TEMPLATE_SDO_MISSING", "unresolved SDO code");
     passed &= expect_string(diagnostic.member_reference, "LD0/XCBR1.Beh.subState.stVal[ST]", "unresolved SDO member reference context");
 
     const UnitLabIedModelPlan* plan = unitlab_scl_compile_model_plan(result);
@@ -258,7 +258,7 @@ static int test_compile_reports_unresolved_nested_attribute_path(void)
     UnitLabSclCompileDiagnostic diagnostic;
     passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 0U, &diagnostic) == 1, "unresolved nested attribute diagnostic should be readable");
     passed &= expect_string(diagnostic.severity, "error", "unresolved nested attribute severity");
-    passed &= expect_string(diagnostic.code, "SCL_DATASET_MEMBER_ATTRIBUTE_UNRESOLVED", "unresolved nested attribute code");
+    passed &= expect_string(diagnostic.code, "SCL_TEMPLATE_BDA_MISSING", "unresolved nested attribute code");
     passed &= expect_string(diagnostic.member_reference, "LD0/XCBR1.Pos.origin.missing.deepIdent[ST]", "unresolved nested attribute member reference context");
 
     const UnitLabIedModelPlan* plan = unitlab_scl_compile_model_plan(result);
@@ -267,6 +267,72 @@ static int test_compile_reports_unresolved_nested_attribute_path(void)
         passed &= expect_true(plan->data_set_count == 1U, "unresolved nested attribute DataSet should still be represented");
         passed &= expect_true(plan->data_sets[0].member_count == 0U, "unresolved nested attribute member should not become a DataSet signal");
         passed &= expect_true(plan->signal_count == 0U, "unresolved nested attribute should not produce runtime signal");
+    }
+
+    unitlab_scl_compile_result_free(result);
+    return passed;
+}
+
+
+static int test_compile_reports_missing_template_kinds(void)
+{
+    const char* scl =
+        "<SCL><IED name=\"IED1\"><AccessPoint name=\"AP1\"><Server><LDevice inst=\"LD0\">"
+        "<LN0><DataSet name=\"dsBroken\">"
+        "<FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"stVal\" fc=\"ST\" />"
+        "<FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"2\" doName=\"Pos\" daName=\"stVal\" fc=\"ST\" />"
+        "<FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"3\" doName=\"Pos\" daName=\"stVal\" fc=\"ST\" />"
+        "<FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"4\" doName=\"Pos\" daName=\"stVal\" fc=\"ST\" />"
+        "<FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"5\" doName=\"Pos\" daName=\"origin.orIdent\" fc=\"ST\" />"
+        "<FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"6\" doName=\"Pos\" daName=\"ctlModel\" fc=\"CF\" />"
+        "</DataSet></LN0>"
+        "<LN lnClass=\"XCBR\" inst=\"1\" lnType=\"MISSING_LNODE_TYPE\" />"
+        "<LN lnClass=\"XCBR\" inst=\"2\" lnType=\"LNODE_MISSING_DO\" />"
+        "<LN lnClass=\"XCBR\" inst=\"3\" lnType=\"LNODE_MISSING_DOTYPE\" />"
+        "<LN lnClass=\"XCBR\" inst=\"4\" lnType=\"LNODE_MISSING_DA\" />"
+        "<LN lnClass=\"XCBR\" inst=\"5\" lnType=\"LNODE_MISSING_DATYPE\" />"
+        "<LN lnClass=\"XCBR\" inst=\"6\" lnType=\"LNODE_MISSING_ENUM\" />"
+        "</LDevice></Server></AccessPoint></IED>"
+        "<DataTypeTemplates>"
+        "<LNodeType id=\"LNODE_MISSING_DO\" lnClass=\"XCBR\" />"
+        "<LNodeType id=\"LNODE_MISSING_DOTYPE\" lnClass=\"XCBR\"><DO name=\"Pos\" type=\"MISSING_DO_TYPE\" /></LNodeType>"
+        "<LNodeType id=\"LNODE_MISSING_DA\" lnClass=\"XCBR\"><DO name=\"Pos\" type=\"DPC_EMPTY\" /></LNodeType>"
+        "<LNodeType id=\"LNODE_MISSING_DATYPE\" lnClass=\"XCBR\"><DO name=\"Pos\" type=\"DPC_MISSING_DATYPE\" /></LNodeType>"
+        "<LNodeType id=\"LNODE_MISSING_ENUM\" lnClass=\"XCBR\"><DO name=\"Pos\" type=\"DPC_MISSING_ENUM\" /></LNodeType>"
+        "<DOType id=\"DPC_EMPTY\" cdc=\"DPC\" />"
+        "<DOType id=\"DPC_MISSING_DATYPE\" cdc=\"DPC\"><DA name=\"origin\" fc=\"ST\" bType=\"Struct\" type=\"MISSING_DA_TYPE\" /></DOType>"
+        "<DOType id=\"DPC_MISSING_ENUM\" cdc=\"DPC\"><DA name=\"ctlModel\" fc=\"CF\" bType=\"Enum\" type=\"MISSING_ENUM\" /></DOType>"
+        "</DataTypeTemplates></SCL>";
+    UnitLabSclCompileResult* result = NULL;
+    char error[128];
+    int passed = 1;
+
+    passed &= expect_true(unitlab_scl_compile_from_memory(scl, strlen(scl), "IED1", &result, error, sizeof(error)) == 1,
+        "missing templates should return structured diagnostics through C API");
+    passed &= expect_true(result != NULL, "missing template result should be allocated");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_count(result) == 6U, "missing template diagnostics should be present");
+
+    UnitLabSclCompileDiagnostic diagnostic;
+    passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 0U, &diagnostic) == 1, "missing LNodeType diagnostic should be readable");
+    passed &= expect_string(diagnostic.code, "SCL_TEMPLATE_LNODETYPE_MISSING", "missing LNodeType code");
+    passed &= expect_string(diagnostic.member_reference, "LD0/XCBR1.Pos.stVal[ST]", "missing LNodeType member ref");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 1U, &diagnostic) == 1, "missing DO diagnostic should be readable");
+    passed &= expect_string(diagnostic.code, "SCL_TEMPLATE_DO_MISSING", "missing DO code");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 2U, &diagnostic) == 1, "missing DOType diagnostic should be readable");
+    passed &= expect_string(diagnostic.code, "SCL_TEMPLATE_DOTYPE_MISSING", "missing DOType code");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 3U, &diagnostic) == 1, "missing DA diagnostic should be readable");
+    passed &= expect_string(diagnostic.code, "SCL_TEMPLATE_DA_MISSING", "missing DA code");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 4U, &diagnostic) == 1, "missing DAType diagnostic should be readable");
+    passed &= expect_string(diagnostic.code, "SCL_TEMPLATE_DATYPE_MISSING", "missing DAType code");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 5U, &diagnostic) == 1, "missing EnumType diagnostic should be readable");
+    passed &= expect_string(diagnostic.code, "SCL_TEMPLATE_ENUMTYPE_MISSING", "missing EnumType code");
+
+    const UnitLabIedModelPlan* plan = unitlab_scl_compile_model_plan(result);
+    passed &= expect_true(plan != NULL, "partial model plan should be readable for missing templates");
+    if (plan != NULL) {
+        passed &= expect_true(plan->data_set_count == 1U, "missing template DataSet should still be represented");
+        passed &= expect_true(plan->data_sets[0].member_count == 0U, "missing template members should not become DataSet signals");
+        passed &= expect_true(plan->signal_count == 0U, "missing template members should not produce runtime signals");
     }
 
     unitlab_scl_compile_result_free(result);
@@ -339,6 +405,7 @@ int main(void)
     passed &= test_compile_reports_invalid_dataset_member_and_missing_report_dataset();
     passed &= test_compile_reports_unresolved_sdo_path();
     passed &= test_compile_reports_unresolved_nested_attribute_path();
+    passed &= test_compile_reports_missing_template_kinds();
     passed &= test_compile_reports_invalid_selected_ied();
     passed &= test_compile_reports_malformed_xml();
     passed &= test_compile_rejects_empty_input();

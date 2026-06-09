@@ -33,7 +33,6 @@ Already implemented:
 
 Known remaining gaps:
 
-- unresolved template diagnostics are still incomplete;
 - C API does not yet expose normalized JSON or diagnostics with line/column/XPath;
 - native server smoke does not yet compile SCD directly into server runtime.
 
@@ -105,7 +104,7 @@ Exit criteria:
 
 ### Slice 5 - Template Diagnostics Hardening
 
-Turn unresolved template references into explicit diagnostics.
+Status: implemented. Missing `LNodeType`, `DOType`, `DAType`, `EnumType`, DO, DA, SDO, and BDA references now produce stable template diagnostics and do not emit runtime signals through silent default fallback.
 
 Deliverables:
 
