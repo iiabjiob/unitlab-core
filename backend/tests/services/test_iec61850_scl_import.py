@@ -80,6 +80,30 @@ def test_scl_import_service_rejects_schema_or_size_mismatch() -> None:
 
 
 
+
+def test_scl_cli_compiler_discovers_ieds_without_python_xml_parsing(tmp_path: Path) -> None:
+    output = {
+        "schema": "unitlab.iec61850.scl.ied-list.v1",
+        "sourceSize": len(b"<SCL/>"),
+        "ieds": [{"name": "IED1", "accessPointCount": 2}, {"name": "IED2", "accessPointCount": 1}],
+        "diagnostics": [],
+    }
+    fake_compiler = tmp_path / "fake_scl_compiler.py"
+    fake_compiler.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "assert sys.argv[1] == '--input'\n"
+        "assert sys.argv[3:] == ['--list-ieds']\n"
+        f"print({json.dumps(json.dumps(output))})\n"
+    )
+    fake_compiler.chmod(0o755)
+
+    discovered = Iec61850SclCliCompiler(fake_compiler).discover_ieds(b"<SCL/>")
+
+    assert discovered.schema == "unitlab.iec61850.scl.ied-list.v1"
+    assert [ied.name for ied in discovered.ieds] == ["IED1", "IED2"]
+    assert discovered.ieds[0].access_point_count == 2
+
 def test_scl_cli_compiler_settings_uses_dev_build_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core.config import get_settings
 

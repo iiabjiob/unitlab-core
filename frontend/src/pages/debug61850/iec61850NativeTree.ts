@@ -1,4 +1,4 @@
-import type { Iec61850SclDiagnostic, Iec61850SclImportResponse } from "@/api/iec61850Client.api"
+import type { Iec61850SclIedDiscoveryResponse, Iec61850SclImportResponse } from "@/api/iec61850Client.api"
 
 export type Iec61850NativeTreeNodeKind =
   | "import"
@@ -10,8 +10,8 @@ export type Iec61850NativeTreeNodeKind =
   | "dataset-member"
   | "reports-group"
   | "report-control"
-  | "diagnostics-group"
-  | "diagnostic"
+  | "ied-index"
+  | "report-signal"
 
 export type Iec61850NativeDetailRow = {
   label: string
@@ -48,6 +48,63 @@ export type Iec61850NativeTreeDocument = {
 }
 
 type NativeRecord = Record<string, unknown>
+
+
+export function buildIec61850IedDiscoveryTreeDocument(response: Iec61850SclIedDiscoveryResponse, filename: string | null): Iec61850NativeTreeDocument {
+  const root = "discovery:root"
+  const rows: Iec61850NativeTreeRow[] = [{
+    value: root,
+    parent: null,
+    kind: "import",
+    label: filename ?? "SCD",
+    meta: response.schema,
+    isLeaf: false,
+    detail: {
+      title: filename ?? "SCD",
+      subtitle: "SCL IED discovery index",
+      rows: [
+        { label: "schema", value: response.schema },
+        { label: "source size", value: String(response.sourceSize) },
+        { label: "IED devices", value: String(response.ieds.length) },
+      ],
+    },
+  }]
+
+  const iedGroup = "discovery:ieds"
+  rows.push(groupRow(iedGroup, root, "logical-devices-group", "IED devices", String(response.ieds.length)))
+  for (const ied of response.ieds) {
+    rows.push({
+      value: `discovery:ied:${ied.name}`,
+      parent: iedGroup,
+      kind: "ied-index",
+      label: ied.name,
+      meta: `${ied.accessPointCount} AP`,
+      isLeaf: true,
+      detail: {
+        title: ied.name,
+        subtitle: "discovered IED",
+        rows: [
+          { label: "name", value: ied.name },
+          { label: "AccessPoints", value: String(ied.accessPointCount) },
+          { label: "runtime model", value: "not compiled" },
+        ],
+      },
+    })
+  }
+
+  return {
+    stats: {
+      logicalDevices: 0,
+      logicalNodes: response.ieds.length,
+      dataSets: 0,
+      reports: 0,
+      signals: 0,
+      errors: response.diagnostics.filter(diagnostic => diagnostic.severity === "error").length,
+      warnings: response.diagnostics.filter(diagnostic => diagnostic.severity === "warning").length,
+    },
+    rows,
+  }
+}
 
 export function buildIec61850NativeTreeDocument(response: Iec61850SclImportResponse): Iec61850NativeTreeDocument {
   const model = response.normalized_model ?? {}
@@ -171,7 +228,7 @@ export function buildIec61850NativeTreeDocument(response: Iec61850SclImportRespo
       kind: "report-control",
       label: name,
       meta: `${text(report.reportKind) || "report"} · ${reportSignals.length} leaves`,
-      isLeaf: true,
+      isLeaf: reportSignals.length === 0,
       detail: {
         title: name,
         subtitle: text(report.key),
@@ -189,12 +246,9 @@ export function buildIec61850NativeTreeDocument(response: Iec61850SclImportRespo
         ],
       },
     })
-  }
-
-  const diagnosticGroup = "group:diagnostics"
-  rows.push(groupRow(diagnosticGroup, root, "diagnostics-group", "Diagnostics", `${response.diagnostics.length}`))
-  for (const [index, diagnostic] of response.diagnostics.entries()) {
-    rows.push(diagnosticRow(index, diagnosticGroup, diagnostic))
+    for (const [signalIndex, signal] of reportSignals.entries()) {
+      rows.push(signalRow(`report-signal:${index}:${signalIndex}`, reportValue, signal, "report-signal"))
+    }
   }
 
   return {
@@ -227,12 +281,12 @@ function groupRow(value: string, parent: string, kind: Iec61850NativeTreeNodeKin
   }
 }
 
-function signalRow(value: string, parent: string, signal: NativeRecord): Iec61850NativeTreeRow {
+function signalRow(value: string, parent: string, signal: NativeRecord, kind: "dataset-member" | "report-signal" = "dataset-member"): Iec61850NativeTreeRow {
   const reference = text(signal.reference)
   return {
     value,
     parent,
-    kind: "dataset-member",
+    kind,
     label: reference || text(signal.objectReference),
     meta: text(signal.fc),
     isLeaf: true,
@@ -248,32 +302,6 @@ function signalRow(value: string, parent: string, signal: NativeRecord): Iec6185
         { label: "data attribute", value: text(signal.dataAttributePath) },
         { label: "FC", value: text(signal.fc) },
         { label: "initial value", value: text(signal.initialValue) },
-      ],
-    },
-  }
-}
-
-function diagnosticRow(index: number, parent: string, diagnostic: Iec61850SclDiagnostic): Iec61850NativeTreeRow {
-  return {
-    value: `diagnostic:${index}`,
-    parent,
-    kind: "diagnostic",
-    label: diagnostic.code,
-    meta: diagnostic.severity,
-    isLeaf: true,
-    detail: {
-      title: diagnostic.code,
-      subtitle: diagnostic.message,
-      rows: [
-        { label: "severity", value: diagnostic.severity },
-        { label: "message", value: diagnostic.message },
-        { label: "IED", value: diagnostic.iedName },
-        { label: "AccessPoint", value: diagnostic.accessPointName },
-        { label: "logical device", value: diagnostic.logicalDeviceInst },
-        { label: "logical node", value: diagnostic.logicalNodeName },
-        { label: "DataSet", value: diagnostic.dataSetName },
-        { label: "ReportControl", value: diagnostic.reportControlName },
-        { label: "member", value: diagnostic.memberReference },
       ],
     },
   }

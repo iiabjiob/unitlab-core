@@ -15,6 +15,18 @@ export type Iec61850SclDiagnostic = {
   memberReference: string
 }
 
+export type Iec61850SclIedSummary = {
+  name: string
+  accessPointCount: number
+}
+
+export type Iec61850SclIedDiscoveryResponse = {
+  schema: string
+  sourceSize: number
+  ieds: Iec61850SclIedSummary[]
+  diagnostics: Iec61850SclDiagnostic[]
+}
+
 export type Iec61850NativeNormalizedModel = {
   logicalDevices?: Array<Record<string, unknown>>
   logicalNodes?: Array<Record<string, unknown>>
@@ -33,6 +45,56 @@ export type Iec61850SclImportResponse = {
   normalized_schema: string
   normalized_model: Iec61850NativeNormalizedModel
   diagnostics: Iec61850SclDiagnostic[]
+}
+
+export type Iec61850SclImportFailure = {
+  selected_ied: string
+  code: string
+  message: string
+}
+
+export type Iec61850SclImportBatchResponse = {
+  workspace_id: number
+  source_filename: string | null
+  source_size: number
+  imports: Iec61850SclImportResponse[]
+  failures: Iec61850SclImportFailure[]
+}
+
+export type Iec61850SclImportListResponse = {
+  workspace_id: number
+  imports: Iec61850SclImportResponse[]
+}
+
+export type Iec61850SclImportBatchJobStartResponse = {
+  job_id: string
+  total: number
+}
+
+export type Iec61850SclImportBatchJobStatus = {
+  job_id: string
+  status: "queued" | "running" | "completed" | "failed" | "cancelled" | string
+  workspace_id: number
+  source_filename: string | null
+  total: number
+  current: number
+  current_ied: string | null
+  imports: Iec61850SclImportResponse[]
+  failures: Iec61850SclImportFailure[]
+  message: string | null
+}
+
+export type Iec61850VirtualMmsServerState = {
+  running: boolean
+  import_id: string | null
+  selected_ied: string | null
+  source_hash: string | null
+  host: string | null
+  port: number | null
+  pid: number | null
+  fixture_path: string | null
+  binary_path: string | null
+  message: string | null
 }
 
 export type Iec61850RuntimeSelectionResponse = {
@@ -115,6 +177,45 @@ export type Iec61850ClientState = {
 }
 
 export const Iec61850SclAPI = {
+  listSclImports(workspaceId: number, limit = 100) {
+    return httpData.get<Iec61850SclImportListResponse>(`${API_V1}/workspaces/${workspaceId}/iec61850/scl/imports`, { params: { limit } })
+  },
+
+  discoverIeds(workspaceId: number, file: File) {
+    const form = new FormData()
+    form.append("file", file)
+    return httpData.post<Iec61850SclIedDiscoveryResponse>(`${API_V1}/workspaces/${workspaceId}/iec61850/scl/ieds`, form, {
+      timeout: 300000,
+    })
+  },
+
+  startSclImportBatchJob(workspaceId: number, file: File, selectedIeds: string[]) {
+    const form = new FormData()
+    form.append("file", file)
+    form.append("selected_ieds", JSON.stringify(selectedIeds))
+    return httpData.post<Iec61850SclImportBatchJobStartResponse>(`${API_V1}/workspaces/${workspaceId}/iec61850/scl/import-batch/jobs`, form, {
+      timeout: 120000,
+    })
+  },
+
+  getSclImportBatchJob(workspaceId: number, jobId: string) {
+    return httpData.get<Iec61850SclImportBatchJobStatus>(`${API_V1}/workspaces/${workspaceId}/iec61850/scl/import-batch/jobs/${jobId}`)
+  },
+
+  cancelSclImportBatchJob(workspaceId: number, jobId: string) {
+    return httpData.post<Iec61850SclImportBatchJobStatus>(`${API_V1}/workspaces/${workspaceId}/iec61850/scl/import-batch/jobs/${jobId}/cancel`)
+  },
+
+  importSclBatch(workspaceId: number, file: File, selectedIeds: string[], signal?: AbortSignal) {
+    const form = new FormData()
+    form.append("file", file)
+    form.append("selected_ieds", JSON.stringify(selectedIeds))
+    return httpData.post<Iec61850SclImportBatchResponse>(`${API_V1}/workspaces/${workspaceId}/iec61850/scl/import-batch`, form, {
+      timeout: 600000,
+      signal,
+    })
+  },
+
   importScl(workspaceId: number, file: File, selectedIed?: string) {
     const form = new FormData()
     form.append("file", file)
@@ -125,6 +226,18 @@ export const Iec61850SclAPI = {
     return httpData.post<Iec61850SclImportResponse>(`${API_V1}/workspaces/${workspaceId}/iec61850/scl/import`, form, {
       timeout: 120000,
     })
+  },
+
+  virtualMmsServerState(workspaceId: number) {
+    return httpData.get<Iec61850VirtualMmsServerState>(`${API_V1}/workspaces/${workspaceId}/iec61850/virtual-mms-server`)
+  },
+
+  startVirtualMmsServer(workspaceId: number, payload: { import_id: string; host?: string; port?: number }) {
+    return httpData.post<Iec61850VirtualMmsServerState>(`${API_V1}/workspaces/${workspaceId}/iec61850/virtual-mms-server/start`, payload, { timeout: 30000 })
+  },
+
+  stopVirtualMmsServer(workspaceId: number) {
+    return httpData.post<Iec61850VirtualMmsServerState>(`${API_V1}/workspaces/${workspaceId}/iec61850/virtual-mms-server/stop`, undefined, { timeout: 10000 })
   },
 
   runtimeSelection(workspaceId: number) {

@@ -28,6 +28,6 @@ describe("buildIec61850NativeTreeDocument", () => {
     expect(document.stats).toMatchObject({ logicalDevices: 1, logicalNodes: 2, dataSets: 1, reports: 1, signals: 1, warnings: 1 })
     expect(document.rows.some(row => row.kind === "dataset-member" && row.detail.subtitle === "IED1LD0/PGGIO1$ST$Ind1$stVal")).toBe(true)
     expect(document.rows.some(row => row.kind === "report-control" && row.label === "brcbEvents" && row.meta === "buffered · 1 leaves")).toBe(true)
-    expect(document.rows.some(row => row.kind === "diagnostic" && row.label === "SCL_REPORT_DATASET_EMPTY")).toBe(true)
+    expect(document.rows.some(row => row.label === "SCL_REPORT_DATASET_EMPTY")).toBe(false)
   })
 })

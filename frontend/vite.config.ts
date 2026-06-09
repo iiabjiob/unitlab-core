@@ -57,8 +57,8 @@ export default defineConfig({
         headers: {
           'accept-encoding': 'identity',
         },
-        timeout: 30000,
-        proxyTimeout: 30000,
+        timeout: 600000,
+        proxyTimeout: 600000,
       },
       '/ws': {
         target: 'ws://localhost:8000',

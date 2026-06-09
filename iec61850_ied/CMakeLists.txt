@@ -81,7 +81,7 @@ add_executable(unitlab-iec61850-ied-sim
   src/server/native_wire_server.c
   src/model/model_loader.c
 )
-target_link_libraries(unitlab-iec61850-ied-sim PRIVATE unitlab-iec61850-mms)
+target_link_libraries(unitlab-iec61850-ied-sim PRIVATE unitlab-iec61850-mms unitlab-iec61850-scl-compiler)
 unitlab_iec61850_sim_warnings(unitlab-iec61850-ied-sim)
 
 if(UNITLAB_IEC61850_SIM_WITH_LIBIEC61850)

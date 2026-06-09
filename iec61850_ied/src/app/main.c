@@ -9,6 +9,7 @@
 #include "fixture/fixture_parser.h"
 #include "model/model_loader.h"
 #include "model/model_plan.h"
+#include "scl_compiler/unitlab_scl_compiler.h"
 #include "server/native_wire_client.h"
 #include "server/native_wire_server.h"
 #include "server/unitlab_mms_server_runtime.h"
@@ -19,6 +20,7 @@
 
 typedef struct SimulatorOptions {
     const char* fixture_path;
+    const char* scl_path;
     const char* ied_name;
     const char* bind_address;
     int port;
@@ -32,6 +34,8 @@ typedef struct SimulatorOptions {
     int native_test_report_tick_ms;
     const char* report_key;
 } SimulatorOptions;
+
+static const char* libiec61850_status(void);
 
 static volatile sig_atomic_t g_running = 1;
 
@@ -55,10 +59,11 @@ static int immediate_stop_requested(void* context)
 
 static void print_usage(const char* program_name)
 {
-    printf("Usage: %s --fixture PATH --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--native-smoke-start] [--native-wire-start] [--native-wire-client-start] [--metadata-probe] [--gi-probe] [--report-key KEY] [--native-test-report-tick-ms MS]\n", program_name);
+    printf("Usage: %s (--fixture PATH | --scl PATH) --ied NAME [--bind ADDRESS] [--port PORT] [--dry-run] [--smoke-start] [--native-smoke-start] [--native-wire-start] [--native-wire-client-start] [--metadata-probe] [--gi-probe] [--report-key KEY] [--native-test-report-tick-ms MS]\n", program_name);
     printf("\n");
     printf("Options:\n");
     printf("  --fixture PATH   UnitLab IEC 61850 IED simulator fixture JSON.\n");
+    printf("  --scl PATH       SCL/SCD source compiled by the native SCL compiler for native wire server mode.\n");
     printf("  --ied NAME       IED name from the fixture to expose.\n");
     printf("  --bind ADDRESS   Bind address for the MMS server. Default: 0.0.0.0.\n");
     printf("  --port PORT      TCP port for the MMS server. Default: 102.\n");
@@ -91,6 +96,7 @@ static int parse_int(const char* value, int* out)
 static int parse_args(int argc, char** argv, SimulatorOptions* options)
 {
     options->fixture_path = NULL;
+    options->scl_path = NULL;
     options->ied_name = NULL;
     options->bind_address = "0.0.0.0";
     options->port = 102;
@@ -153,6 +159,10 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
             options->fixture_path = argv[++index];
             continue;
         }
+        if (strcmp(arg, "--scl") == 0 && index + 1 < argc) {
+            options->scl_path = argv[++index];
+            continue;
+        }
         if (strcmp(arg, "--ied") == 0 && index + 1 < argc) {
             options->ied_name = argv[++index];
             continue;
@@ -172,8 +182,12 @@ static int parse_args(int argc, char** argv, SimulatorOptions* options)
         return -1;
     }
 
-    if (options->fixture_path == NULL || options->fixture_path[0] == '\0') {
-        fprintf(stderr, "FIXTURE_REQUIRED: --fixture PATH is required.\n");
+    if ((options->fixture_path == NULL || options->fixture_path[0] == '\0') && (options->scl_path == NULL || options->scl_path[0] == '\0')) {
+        fprintf(stderr, "SOURCE_REQUIRED: --fixture PATH or --scl PATH is required.\n");
+        return -1;
+    }
+    if (options->fixture_path != NULL && options->fixture_path[0] != '\0' && options->scl_path != NULL && options->scl_path[0] != '\0') {
+        fprintf(stderr, "INVALID_ARGUMENT: --fixture and --scl are mutually exclusive.\n");
         return -1;
     }
     if (options->ied_name == NULL || options->ied_name[0] == '\0') {
@@ -254,6 +268,120 @@ static char* read_text_file(const char* path)
     return buffer;
 }
 
+static int run_scl_native_wire_mode(const SimulatorOptions* options)
+{
+    char* scl_text;
+    UnitLabSclCompileResult* compile_result = NULL;
+    const UnitLabIedModelPlan* model_plan = NULL;
+    char compile_error[512];
+    UnitLabIedServerConfig server_config;
+
+    if (options == NULL || options->scl_path == NULL || options->scl_path[0] == '\0') {
+        fprintf(stderr, "SCL_REQUIRED: --scl PATH is required.\n");
+        return 64;
+    }
+    if (options->metadata_probe || options->gi_probe || options->smoke_start || options->native_wire_client_start) {
+        fprintf(stderr, "INVALID_ARGUMENT: --scl currently supports --dry-run, --native-smoke-start, and --native-wire-start.\n");
+        return 64;
+    }
+
+    scl_text = read_text_file(options->scl_path);
+    if (scl_text == NULL) {
+        return 66;
+    }
+
+    compile_error[0] = '\0';
+    if (!unitlab_scl_compile_from_memory(scl_text, strlen(scl_text), options->ied_name, &compile_result, compile_error, sizeof(compile_error))) {
+        fprintf(stderr, "SCL_COMPILE_FAILED: %s\n", compile_error[0] != '\0' ? compile_error : "native SCL compiler failed");
+        free(scl_text);
+        return 65;
+    }
+    free(scl_text);
+
+    model_plan = unitlab_scl_compile_model_plan(compile_result);
+    if (model_plan == NULL) {
+        fprintf(stderr, "SCL_MODEL_PLAN_MISSING: native SCL compiler did not return a model plan.\n");
+        unitlab_scl_compile_result_free(compile_result);
+        return 65;
+    }
+
+    if (options->dry_run) {
+        printf("unitlab-iec61850-ied-sim: SCL accepted\n");
+        printf("ied=%s\n", options->ied_name);
+        printf("schema=unitlab.iec61850.scl.normalized.v1\n");
+        printf("modelLogicalDevices=%zu\n", model_plan->logical_device_count);
+        printf("modelLogicalNodes=%zu\n", model_plan->logical_node_count);
+        printf("modelDataSets=%zu\n", model_plan->data_set_count);
+        printf("modelReports=%zu\n", model_plan->report_count);
+        printf("modelSignals=%zu\n", model_plan->signal_count);
+        printf("bind=%s\n", options->bind_address);
+        printf("port=%d\n", options->port);
+        printf("libiec61850=%s\n", libiec61850_status());
+        unitlab_scl_compile_result_free(compile_result);
+        return 0;
+    }
+
+    server_config.bind_address = options->bind_address;
+    server_config.port = options->port;
+    server_config.control_port = options->port < 65535 ? options->port + 1 : 0;
+    server_config.native_test_report_tick_ms = options->native_test_report_tick_ms;
+
+    if (options->native_smoke_start) {
+        UnitLabMmsServerRuntime server_runtime;
+        UnitLabMmsDiagnostic server_diagnostic;
+        unitlab_mms_server_runtime_init(&server_runtime);
+        unitlab_mms_server_runtime_apply_model_plan(&server_runtime, model_plan);
+        unitlab_mms_diagnostic_clear(&server_diagnostic);
+        if (!unitlab_mms_server_runtime_prepare(&server_runtime, &server_config, &server_diagnostic)
+            || !unitlab_mms_server_runtime_start(&server_runtime, &server_diagnostic)) {
+            fprintf(stderr, "SCL_NATIVE_SERVER_START_FAILED: %s\n", server_diagnostic.message);
+            unitlab_scl_compile_result_free(compile_result);
+            return 69;
+        }
+        printf("unitlab-iec61850-ied-sim: SCL native server smoke-start accepted\n");
+        printf("ied=%s\n", options->ied_name);
+        printf("bind=%s\n", options->bind_address);
+        printf("port=%d\n", options->port);
+        printf("runtime=%d\n", server_runtime.state);
+        unitlab_scl_compile_result_free(compile_result);
+        return 0;
+    }
+
+    if (options->native_wire_start) {
+        UnitLabMmsServerRuntime server_runtime;
+        UnitLabMmsDiagnostic server_diagnostic;
+        UnitLabIedModelLoadResult wire_result;
+        unitlab_mms_server_runtime_init(&server_runtime);
+        unitlab_mms_server_runtime_apply_model_plan(&server_runtime, model_plan);
+        unitlab_mms_diagnostic_clear(&server_diagnostic);
+        if (!unitlab_mms_server_runtime_prepare(&server_runtime, &server_config, &server_diagnostic)) {
+            fprintf(stderr, "%s: %s\n", "NATIVE_WIRE_SERVER_PREPARE_FAILED", server_diagnostic.message);
+            unitlab_scl_compile_result_free(compile_result);
+            return 69;
+        }
+        if (!unitlab_mms_server_runtime_start(&server_runtime, &server_diagnostic)) {
+            fprintf(stderr, "%s: %s\n", "NATIVE_WIRE_SERVER_START_FAILED", server_diagnostic.message);
+            unitlab_scl_compile_result_free(compile_result);
+            return 69;
+        }
+        if (!unitlab_run_native_wire_server(&server_runtime, &server_config, &wire_result, signal_stop_requested, NULL)) {
+            fprintf(stderr, "%s: %s\n", wire_result.code, wire_result.message);
+            unitlab_scl_compile_result_free(compile_result);
+            return 69;
+        }
+        printf("unitlab-iec61850-ied-sim: SCL native wire server stopped\n");
+        printf("ied=%s\n", options->ied_name);
+        printf("bind=%s\n", options->bind_address);
+        printf("port=%d\n", options->port);
+        unitlab_scl_compile_result_free(compile_result);
+        return 0;
+    }
+
+    fprintf(stderr, "INVALID_ARGUMENT: --scl requires --dry-run, --native-smoke-start, or --native-wire-start.\n");
+    unitlab_scl_compile_result_free(compile_result);
+    return 64;
+}
+
 static const char* libiec61850_status(void)
 {
 #ifdef UNITLAB_WITH_LIBIEC61850
@@ -304,6 +432,10 @@ int main(int argc, char** argv)
     }
     if (parsed < 0) {
         return 64;
+    }
+
+    if (options.scl_path != NULL && options.scl_path[0] != '\0') {
+        return run_scl_native_wire_mode(&options);
     }
 
     char* fixture_text = read_text_file(options.fixture_path);
