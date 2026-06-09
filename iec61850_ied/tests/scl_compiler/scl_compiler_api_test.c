@@ -30,6 +30,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "<scl:DataSet name=\"dsEvents\">"
         "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"stVal\" fc=\"ST\" />"
         "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"origin.orIdent\" fc=\"ST\" />"
+        "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"origin.nested.deepIdent\" fc=\"ST\" />"
         "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"ctlModel\" fc=\"CF\" />"
         "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Beh.subState\" daName=\"stVal\" fc=\"ST\" />"
         "<scl:FCD ldInst=\"LD0\" lnClass=\"PGGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />"
@@ -50,7 +51,8 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "<scl:DOType id=\"BEH_ROOT\" cdc=\"ENS\"><scl:SDO name=\"subState\" type=\"BEH_SUB\" /></scl:DOType>"
         "<scl:DOType id=\"BEH_SUB\" cdc=\"ENS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /></scl:DOType>"
         "<scl:DOType id=\"INS_IND\" cdc=\"INS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /></scl:DOType>"
-        "<scl:DAType id=\"ORIGINATOR\"><scl:BDA name=\"orIdent\" bType=\"VisString64\" /></scl:DAType>"
+        "<scl:DAType id=\"ORIGINATOR\"><scl:BDA name=\"orIdent\" bType=\"VisString64\" /><scl:BDA name=\"nested\" bType=\"Struct\" type=\"ORIGINATOR_NESTED\" /></scl:DAType>"
+        "<scl:DAType id=\"ORIGINATOR_NESTED\"><scl:BDA name=\"deepIdent\" bType=\"VisString64\" /></scl:DAType>"
         "<scl:EnumType id=\"CtlModelKind\"><scl:EnumVal ord=\"1\" desc=\"direct-with-normal-security\" /></scl:EnumType>"
         "</scl:DataTypeTemplates>"
         "</scl:SCL>";
@@ -72,7 +74,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_true(plan->logical_node_count == 3U, "three logical nodes");
         passed &= expect_true(plan->data_set_count == 1U, "one DataSet");
         passed &= expect_true(plan->report_count == 1U, "one ReportControl");
-        passed &= expect_true(plan->signal_count == 5U, "five DataSet members");
+        passed &= expect_true(plan->signal_count == 6U, "six DataSet members");
         passed &= expect_string(plan->logical_devices[0].inst, "IED1LD0", "MMS domain");
         passed &= expect_string(plan->data_sets[0].reference, "IED1/AP1/LD0/LLN0.dsEvents", "DataSet reference");
         passed &= expect_string(plan->data_sets[0].logical_device_inst, "IED1LD0", "DataSet domain");
@@ -101,18 +103,22 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_string(plan->signals[1].object_reference, "IED1LD0.XCBR1.Pos.origin.orIdent", "second signal nested object ref");
         passed &= expect_true(plan->signals[1].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_STRING, "second signal nested typed default kind");
         passed &= expect_string(plan->signals[1].initial_value, "", "second signal nested typed default value");
-        passed &= expect_string(plan->signals[2].reference, "LD0/XCBR1.Pos.ctlModel[CF]", "third signal enum ref");
-        passed &= expect_string(plan->signals[2].object_reference, "IED1LD0.XCBR1.Pos.ctlModel", "third signal enum object ref");
-        passed &= expect_true(plan->signals[2].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "third signal enum default kind");
-        passed &= expect_string(plan->signals[2].initial_value, "1", "third signal enum default value");
-        passed &= expect_string(plan->signals[3].reference, "LD0/XCBR1.Beh.subState.stVal[ST]", "fourth signal SDO ref");
-        passed &= expect_string(plan->signals[3].object_reference, "IED1LD0.XCBR1.Beh.subState.stVal", "fourth signal SDO object ref");
-        passed &= expect_true(plan->signals[3].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "fourth signal SDO typed default kind");
-        passed &= expect_string(plan->signals[3].initial_value, "0", "fourth signal SDO typed default value");
-        passed &= expect_string(plan->signals[4].reference, "LD0/PGGIO1.Ind1[ST]", "fifth signal ref");
-        passed &= expect_string(plan->signals[4].object_reference, "IED1LD0.PGGIO1.Ind1", "fifth signal object ref");
-        passed &= expect_true(plan->signals[4].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "fifth signal typed default kind");
-        passed &= expect_string(plan->signals[4].initial_value, "0", "fifth signal typed default value");
+        passed &= expect_string(plan->signals[2].reference, "LD0/XCBR1.Pos.origin.nested.deepIdent[ST]", "third signal deep nested ref");
+        passed &= expect_string(plan->signals[2].object_reference, "IED1LD0.XCBR1.Pos.origin.nested.deepIdent", "third signal deep nested object ref");
+        passed &= expect_true(plan->signals[2].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_STRING, "third signal deep nested typed default kind");
+        passed &= expect_string(plan->signals[2].initial_value, "", "third signal deep nested typed default value");
+        passed &= expect_string(plan->signals[3].reference, "LD0/XCBR1.Pos.ctlModel[CF]", "fourth signal enum ref");
+        passed &= expect_string(plan->signals[3].object_reference, "IED1LD0.XCBR1.Pos.ctlModel", "fourth signal enum object ref");
+        passed &= expect_true(plan->signals[3].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "fourth signal enum default kind");
+        passed &= expect_string(plan->signals[3].initial_value, "1", "fourth signal enum default value");
+        passed &= expect_string(plan->signals[4].reference, "LD0/XCBR1.Beh.subState.stVal[ST]", "fifth signal SDO ref");
+        passed &= expect_string(plan->signals[4].object_reference, "IED1LD0.XCBR1.Beh.subState.stVal", "fifth signal SDO object ref");
+        passed &= expect_true(plan->signals[4].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "fifth signal SDO typed default kind");
+        passed &= expect_string(plan->signals[4].initial_value, "0", "fifth signal SDO typed default value");
+        passed &= expect_string(plan->signals[5].reference, "LD0/PGGIO1.Ind1[ST]", "sixth signal ref");
+        passed &= expect_string(plan->signals[5].object_reference, "IED1LD0.PGGIO1.Ind1", "sixth signal object ref");
+        passed &= expect_true(plan->signals[5].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_INTEGER, "sixth signal typed default kind");
+        passed &= expect_string(plan->signals[5].initial_value, "0", "sixth signal typed default value");
     }
 
     unitlab_scl_compile_result_free(result);
@@ -214,6 +220,48 @@ static int test_compile_reports_unresolved_sdo_path(void)
     return passed;
 }
 
+
+static int test_compile_reports_unresolved_nested_attribute_path(void)
+{
+    const char* scl =
+        "<SCL><IED name=\"IED1\"><AccessPoint name=\"AP1\"><Server><LDevice inst=\"LD0\">"
+        "<LN0><DataSet name=\"dsBroken\">"
+        "<FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"origin.missing.deepIdent\" fc=\"ST\" />"
+        "</DataSet></LN0>"
+        "<LN lnClass=\"XCBR\" inst=\"1\" lnType=\"XCBR_TYPE\" />"
+        "</LDevice></Server></AccessPoint></IED>"
+        "<DataTypeTemplates>"
+        "<LNodeType id=\"XCBR_TYPE\" lnClass=\"XCBR\"><DO name=\"Pos\" type=\"DPC_POS\" /></LNodeType>"
+        "<DOType id=\"DPC_POS\" cdc=\"DPC\"><DA name=\"origin\" fc=\"ST\" bType=\"Struct\" type=\"ORIGINATOR\" /></DOType>"
+        "<DAType id=\"ORIGINATOR\"><BDA name=\"orIdent\" bType=\"VisString64\" /></DAType>"
+        "</DataTypeTemplates></SCL>";
+    UnitLabSclCompileResult* result = NULL;
+    char error[128];
+    int passed = 1;
+
+    passed &= expect_true(unitlab_scl_compile_from_memory(scl, strlen(scl), "IED1", &result, error, sizeof(error)) == 1,
+        "unresolved nested attribute should return structured diagnostics through C API");
+    passed &= expect_true(result != NULL, "unresolved nested attribute result should be allocated");
+    passed &= expect_true(unitlab_scl_compile_diagnostic_count(result) == 1U, "unresolved nested attribute diagnostic should be present");
+
+    UnitLabSclCompileDiagnostic diagnostic;
+    passed &= expect_true(unitlab_scl_compile_diagnostic_at(result, 0U, &diagnostic) == 1, "unresolved nested attribute diagnostic should be readable");
+    passed &= expect_string(diagnostic.severity, "error", "unresolved nested attribute severity");
+    passed &= expect_string(diagnostic.code, "SCL_DATASET_MEMBER_ATTRIBUTE_UNRESOLVED", "unresolved nested attribute code");
+    passed &= expect_string(diagnostic.member_reference, "LD0/XCBR1.Pos.origin.missing.deepIdent[ST]", "unresolved nested attribute member reference context");
+
+    const UnitLabIedModelPlan* plan = unitlab_scl_compile_model_plan(result);
+    passed &= expect_true(plan != NULL, "partial model plan should be readable for unresolved nested attribute");
+    if (plan != NULL) {
+        passed &= expect_true(plan->data_set_count == 1U, "unresolved nested attribute DataSet should still be represented");
+        passed &= expect_true(plan->data_sets[0].member_count == 0U, "unresolved nested attribute member should not become a DataSet signal");
+        passed &= expect_true(plan->signal_count == 0U, "unresolved nested attribute should not produce runtime signal");
+    }
+
+    unitlab_scl_compile_result_free(result);
+    return passed;
+}
+
 static int test_compile_reports_invalid_selected_ied(void)
 {
     const char* scl = "<SCL><IED name=\"IED1\" /></SCL>";
@@ -279,6 +327,7 @@ int main(void)
     passed &= test_compile_builds_model_plan_through_c_api();
     passed &= test_compile_reports_invalid_dataset_member_and_missing_report_dataset();
     passed &= test_compile_reports_unresolved_sdo_path();
+    passed &= test_compile_reports_unresolved_nested_attribute_path();
     passed &= test_compile_reports_invalid_selected_ied();
     passed &= test_compile_reports_malformed_xml();
     passed &= test_compile_rejects_empty_input();

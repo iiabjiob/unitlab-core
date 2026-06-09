@@ -29,11 +29,10 @@ Already implemented:
 - DataSet `FCDA` and `FCD` parsing;
 - ReportControl parsing for `datSet`, `rptID`, `buffered`, `confRev`, `indexed`, `bufTime`, `intgPd`, `TrgOps`, and `OptFields`;
 - basic diagnostics with C-readable context fields;
-- typed defaults from direct `LNodeType -> DOType -> DA`, `DOType/SDO -> nested DOType -> DA`, direct `DAType/BDA`, and first `EnumVal` for enum defaults.
+- typed defaults from direct `LNodeType -> DOType -> DA`, `DOType/SDO -> nested DOType -> DA`, nested `DAType/BDA` chains, and first `EnumVal` for enum defaults.
 
 Known remaining gaps:
 
-- full nested path expansion;
 - q/t metadata derivation;
 - unresolved template diagnostics are still incomplete;
 - C API does not yet expose normalized JSON or diagnostics with line/column/XPath;
@@ -77,7 +76,7 @@ Exit criteria:
 
 ### Slice 3 - Full Nested Attribute Expansion
 
-Support deeper `DAType/BDA` chains and consistent path traversal for nested structured attributes.
+Status: implemented. FCDA nested `daName` paths now traverse chained `DAType/BDA` templates beyond one struct level. Unresolved dotted data-attribute paths produce `SCL_DATASET_MEMBER_ATTRIBUTE_UNRESOLVED` diagnostics and are not emitted as runtime signals.
 
 Deliverables:
 
