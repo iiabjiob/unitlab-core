@@ -1,12 +1,24 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.encoders import jsonable_encoder
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
+from app.infrastructure.db.database import get_db
+from app.schemas.iec61850_scl_schema import Iec61850SclImportResponseSchema
+from app.services.iec61850 import (
+    Iec61850InMemorySclImportRepository,
+    Iec61850SclImportError,
+    Iec61850SclImportService,
+    Iec61850SqlAlchemySclImportRepository,
+    create_scl_cli_compiler_from_settings,
+)
 from app.services.iec61850.client_control import get_iec61850_client_control_service
 from app.services.iec61850.report_runtime import Iec61850ReportRuntimeError
 
 router = APIRouter(prefix="/api/v1/iec61850/client", tags=["IEC 61850 Client"])
+scl_router = APIRouter(prefix="/api/v1/workspaces/{workspace_id}/iec61850", tags=["IEC 61850 SCL"])
 
 
 @router.get("/state")
@@ -94,3 +106,62 @@ def _run_action(action: str, operation) -> dict:
             detail={"action": action, "code": exc.code, "message": str(exc)},
         ) from exc
     return jsonable_encoder(snapshot)
+
+
+@scl_router.post("/scl/import", response_model=Iec61850SclImportResponseSchema)
+async def import_scl(
+    workspace_id: int,
+    file: UploadFile = File(...),
+    selected_ied: str | None = Form(default=None),
+    db: AsyncSession = Depends(get_db),
+) -> Iec61850SclImportResponseSchema:
+    repository = Iec61850SqlAlchemySclImportRepository(db)
+    if not await repository.ensure_workspace(workspace_id):
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Uploaded SCL file is empty")
+
+    try:
+        service = Iec61850SclImportService(create_scl_cli_compiler_from_settings(), Iec61850InMemorySclImportRepository())
+        prepared = await run_in_threadpool(
+            service.prepare_import_record,
+            workspace_id=workspace_id,
+            source=raw,
+            filename=file.filename,
+            selected_ied=selected_ied,
+        )
+        saved = await repository.save(prepared, source=raw)
+    except Iec61850SclImportError as exc:
+        raise HTTPException(status_code=400, detail={"code": exc.code, "message": exc.message}) from exc
+
+    return _scl_import_response(saved)
+
+
+def _scl_import_response(record) -> Iec61850SclImportResponseSchema:
+    return Iec61850SclImportResponseSchema(
+        import_id=record.import_id,
+        workspace_id=record.workspace_id,
+        source_filename=record.source_filename,
+        source_hash=record.source_hash,
+        source_size=record.source_size,
+        selected_ied=record.selected_ied,
+        normalized_schema=record.normalized_schema,
+        normalized_model=record.normalized_model,
+        diagnostics=[
+            {
+                "severity": item.severity,
+                "code": item.code,
+                "message": item.message,
+                "iedName": item.ied_name,
+                "accessPointName": item.access_point_name,
+                "logicalDeviceInst": item.logical_device_inst,
+                "logicalNodeName": item.logical_node_name,
+                "dataSetName": item.data_set_name,
+                "reportControlName": item.report_control_name,
+                "memberReference": item.member_reference,
+            }
+            for item in record.diagnostics
+        ],
+    )

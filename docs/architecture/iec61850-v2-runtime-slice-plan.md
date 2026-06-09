@@ -166,19 +166,14 @@ Exit criteria:
 
 ### Slice 9 - Backend Compiler Invocation Boundary
 
-Status: service boundary implemented. The backend has an IEC 61850 SCL import service that stores source bytes through a repository boundary, calculates a SHA-256 content hash, keeps selected IED explicit, invokes the native compiler through a CLI adapter, and returns normalized runtime payload plus compiler diagnostics without Python XML parsing. Durable DB repository and REST upload endpoint remain the next part of this slice before it is fully closed.
+Status: implemented. The backend has an IEC 61850 SCL import service and durable SQLAlchemy/Alembic repository that store source bytes, SHA-256 content hash, selected IED, normalized runtime payload, and compiler diagnostics. The upload endpoint calls the native compiler through the CLI adapter and does not parse SCL XML in Python.
 
 Deliverables:
 
-- backend stores SCD source and content hash through a repository boundary;
+- backend stores SCD source and content hash through a durable repository;
 - backend calls native compiler through CLI wrapper;
-- backend carries normalized runtime payload and diagnostics as opaque compiler output;
+- backend persists normalized runtime payload and diagnostics;
 - selected IED is explicit.
-
-Remaining before full exit:
-
-- durable SQLAlchemy/Alembic repository for SCD source, normalized payload, and diagnostics;
-- backend upload/import API wired to the service boundary.
 
 Exit criteria:
 

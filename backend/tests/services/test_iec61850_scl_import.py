@@ -12,6 +12,7 @@ from app.services.iec61850 import (
     Iec61850SclCompilerOutput,
     Iec61850SclImportError,
     Iec61850SclImportService,
+    Iec61850SqlAlchemySclImportRepository,
     SCL_NORMALIZED_SCHEMA,
 )
 
@@ -121,3 +122,64 @@ def test_scl_cli_compiler_surfaces_compiler_failures(tmp_path: Path) -> None:
 
     assert error.value.code == "SCL_COMPILER_FAILED"
     assert "compile failed" in error.value.message
+
+
+class _FakeExecuteResult:
+    def __init__(self, value=None) -> None:
+        self.value = value
+
+    def scalar_one_or_none(self):
+        return self.value
+
+
+class _FakeAsyncSession:
+    def __init__(self) -> None:
+        self.added = []
+        self.committed = False
+        self.refreshed = None
+
+    async def execute(self, _stmt):
+        return _FakeExecuteResult(None)
+
+    def add(self, row):
+        self.added.append(row)
+
+    async def flush(self):
+        if self.added:
+            self.added[-1].id = 7
+
+    async def commit(self):
+        self.committed = True
+
+    async def refresh(self, row):
+        self.refreshed = row
+
+
+@pytest.mark.anyio
+async def test_sqlalchemy_scl_import_repository_persists_source_model_and_diagnostics() -> None:
+    session = _FakeAsyncSession()
+    repository = Iec61850SqlAlchemySclImportRepository(session)  # type: ignore[arg-type]
+    record = Iec61850SclImportService(
+        _RecordingCompiler(
+            Iec61850SclCompilerOutput(
+                schema=SCL_NORMALIZED_SCHEMA,
+                selected_ied="IED1",
+                source_size=len(b"<SCL/>"),
+                model={"logicalDevices": [{"inst": "IED1LD0"}]},
+                diagnostics=(Iec61850SclCompilerDiagnostic(severity="error", code="SCL_X", message="x"),),
+            )
+        ),
+        Iec61850InMemorySclImportRepository(),
+    ).prepare_import_record(workspace_id=3, source=b"<SCL/>", filename="station.scd", selected_ied="IED1")
+
+    saved = await repository.save(record, source=b"<SCL/>")
+
+    assert session.committed is True
+    assert len(session.added) == 1
+    row = session.added[0]
+    assert row.workspace_id == 3
+    assert row.source_bytes == b"<SCL/>"
+    assert row.normalized_model["logicalDevices"][0]["inst"] == "IED1LD0"
+    assert row.diagnostics[0]["code"] == "SCL_X"
+    assert saved.import_id == "7"
+    assert saved.diagnostics[0].code == "SCL_X"

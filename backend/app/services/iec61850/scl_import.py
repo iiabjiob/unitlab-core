@@ -8,7 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import get_settings
+from app.models.workspace import Workspace
+from app.models.workspace_iec61850 import WorkspaceIec61850SclImport
 
 
 SCL_NORMALIZED_SCHEMA = "unitlab.iec61850.scl.normalized.v1"
@@ -65,6 +70,10 @@ class Iec61850SclImportRepository(Protocol):
     def save(self, record: Iec61850SclImportRecord, *, source: bytes) -> Iec61850SclImportRecord: ...
 
 
+class Iec61850AsyncSclImportRepository(Protocol):
+    async def save(self, record: Iec61850SclImportRecord, *, source: bytes) -> Iec61850SclImportRecord: ...
+
+
 class Iec61850InMemorySclImportRepository:
     def __init__(self) -> None:
         self._records: list[tuple[Iec61850SclImportRecord, bytes]] = []
@@ -81,6 +90,96 @@ class Iec61850InMemorySclImportRepository:
             if record.import_id == import_id:
                 return source
         raise KeyError(import_id)
+
+
+class Iec61850SqlAlchemySclImportRepository:
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+
+    async def ensure_workspace(self, workspace_id: int) -> bool:
+        result = await self.db.execute(select(Workspace.id).where(Workspace.id == workspace_id).limit(1))
+        return result.scalar_one_or_none() is not None
+
+    async def save(self, record: Iec61850SclImportRecord, *, source: bytes) -> Iec61850SclImportRecord:
+        result = await self.db.execute(
+            select(WorkspaceIec61850SclImport).where(
+                WorkspaceIec61850SclImport.workspace_id == record.workspace_id,
+                WorkspaceIec61850SclImport.source_hash == record.source_hash,
+                WorkspaceIec61850SclImport.selected_ied == record.selected_ied,
+            ).limit(1)
+        )
+        row = result.scalar_one_or_none()
+        diagnostics = [_diagnostic_to_payload(item) for item in record.diagnostics]
+        if row is None:
+            row = WorkspaceIec61850SclImport(
+                workspace_id=record.workspace_id,
+                source_filename=record.source_filename,
+                source_hash=record.source_hash,
+                source_size=record.source_size,
+                selected_ied=record.selected_ied,
+                normalized_schema=record.normalized_schema,
+                source_bytes=source,
+                normalized_model=record.normalized_model,
+                diagnostics=diagnostics,
+            )
+            self.db.add(row)
+            await self.db.flush()
+        else:
+            row.source_filename = record.source_filename
+            row.source_size = record.source_size
+            row.normalized_schema = record.normalized_schema
+            row.source_bytes = source
+            row.normalized_model = record.normalized_model
+            row.diagnostics = diagnostics
+            await self.db.flush()
+        await self.db.commit()
+        await self.db.refresh(row)
+        return _record_from_row(row)
+
+
+def _diagnostic_to_payload(item: Iec61850SclCompilerDiagnostic) -> dict[str, str]:
+    return {
+        "severity": item.severity,
+        "code": item.code,
+        "message": item.message,
+        "iedName": item.ied_name,
+        "accessPointName": item.access_point_name,
+        "logicalDeviceInst": item.logical_device_inst,
+        "logicalNodeName": item.logical_node_name,
+        "dataSetName": item.data_set_name,
+        "reportControlName": item.report_control_name,
+        "memberReference": item.member_reference,
+    }
+
+
+def _diagnostic_from_payload(item: dict[str, Any]) -> Iec61850SclCompilerDiagnostic:
+    return Iec61850SclCompilerDiagnostic(
+        severity=str(item.get("severity", "")),
+        code=str(item.get("code", "")),
+        message=str(item.get("message", "")),
+        ied_name=str(item.get("iedName", "")),
+        access_point_name=str(item.get("accessPointName", "")),
+        logical_device_inst=str(item.get("logicalDeviceInst", "")),
+        logical_node_name=str(item.get("logicalNodeName", "")),
+        data_set_name=str(item.get("dataSetName", "")),
+        report_control_name=str(item.get("reportControlName", "")),
+        member_reference=str(item.get("memberReference", "")),
+    )
+
+
+def _record_from_row(row: WorkspaceIec61850SclImport) -> Iec61850SclImportRecord:
+    diagnostics = row.diagnostics if isinstance(row.diagnostics, list) else []
+    return Iec61850SclImportRecord(
+        import_id=str(row.id),
+        workspace_id=row.workspace_id,
+        source_filename=row.source_filename,
+        source_hash=row.source_hash,
+        source_size=row.source_size,
+        selected_ied=row.selected_ied,
+        normalized_schema=row.normalized_schema,
+        normalized_model=row.normalized_model if isinstance(row.normalized_model, dict) else {},
+        diagnostics=tuple(_diagnostic_from_payload(item) for item in diagnostics if isinstance(item, dict)),
+    )
 
 
 class Iec61850SclCliCompiler:
@@ -121,7 +220,7 @@ class Iec61850SclImportService:
         self._compiler = compiler
         self._repository = repository
 
-    def import_scl(
+    def prepare_import_record(
         self,
         *,
         workspace_id: int,
@@ -141,7 +240,7 @@ class Iec61850SclImportService:
         if compiled.source_size != len(source):
             raise Iec61850SclImportError("SCL_SOURCE_SIZE_MISMATCH", "Compiler source size does not match imported source bytes.")
 
-        record = Iec61850SclImportRecord(
+        return Iec61850SclImportRecord(
             import_id=source_hash,
             workspace_id=workspace_id,
             source_filename=filename,
@@ -151,6 +250,21 @@ class Iec61850SclImportService:
             normalized_schema=compiled.schema,
             normalized_model=compiled.model,
             diagnostics=compiled.diagnostics,
+        )
+
+    def import_scl(
+        self,
+        *,
+        workspace_id: int,
+        source: bytes,
+        filename: str | None = None,
+        selected_ied: str | None = None,
+    ) -> Iec61850SclImportRecord:
+        record = self.prepare_import_record(
+            workspace_id=workspace_id,
+            source=source,
+            filename=filename,
+            selected_ied=selected_ied,
         )
         return self._repository.save(record, source=source)
 

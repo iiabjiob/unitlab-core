@@ -43,6 +43,7 @@ from .report_runtime import (
     to_report_control_ref,
 )
 from .scl_import import (
+    Iec61850AsyncSclImportRepository,
     Iec61850InMemorySclImportRepository,
     Iec61850SclCliCompiler,
     Iec61850SclCompilerDiagnostic,
@@ -50,6 +51,7 @@ from .scl_import import (
     Iec61850SclImportError,
     Iec61850SclImportRecord,
     Iec61850SclImportService,
+    Iec61850SqlAlchemySclImportRepository,
     SCL_NORMALIZED_SCHEMA,
     create_scl_cli_compiler_from_settings,
 )
@@ -107,6 +109,8 @@ from .ied_simulator_process import (
 )
 
 __all__ = [
+    "Iec61850SqlAlchemySclImportRepository",
+    "Iec61850AsyncSclImportRepository",
     "create_scl_cli_compiler_from_settings",
     "SCL_NORMALIZED_SCHEMA",
     "Iec61850SclImportService",
