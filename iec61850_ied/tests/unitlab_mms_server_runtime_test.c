@@ -6006,6 +6006,95 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
 
 
 
+static void test_server_runtime_named_variable_list_attributes_coalesces_expanded_do_members(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelDataSet data_sets[1U];
+    UnitLabIedModelSignal signals[3U];
+    uint8_t request_bytes[512U];
+    uint8_t response_bytes[4096U];
+    uint8_t scratch[1024U];
+    size_t request_length = 0U;
+    size_t response_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_consumed_length = 0U;
+
+    memset(&plan, 0, sizeof(plan));
+    memset(data_sets, 0, sizeof(data_sets));
+    memset(signals, 0, sizeof(signals));
+    snprintf(data_sets[0].logical_device_inst, sizeof(data_sets[0].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[0].logical_node_name, sizeof(data_sets[0].logical_node_name), "%s", "LLN0");
+    snprintf(data_sets[0].name, sizeof(data_sets[0].name), "%s", "dsEvents");
+    data_sets[0].first_signal_index = 0U;
+    data_sets[0].member_count = 3U;
+    for (size_t index = 0U; index < 3U; index++) {
+        snprintf(signals[index].logical_device_inst, sizeof(signals[index].logical_device_inst), "%s", "LD0");
+        snprintf(signals[index].logical_node_name, sizeof(signals[index].logical_node_name), "%s", "PGGIO1");
+        snprintf(signals[index].data_object_name, sizeof(signals[index].data_object_name), "%s", "Ind1");
+        snprintf(signals[index].fc, sizeof(signals[index].fc), "%s", "ST");
+        signals[index].data_set_entry_component_known = 1;
+    }
+    snprintf(signals[0].data_set_entry_component, sizeof(signals[0].data_set_entry_component), "%s", "stVal");
+    snprintf(signals[0].data_set_entry_variable, sizeof(signals[0].data_set_entry_variable), "%s", "LD0/PGGIO1$ST$Ind1$stVal");
+    snprintf(signals[1].data_set_entry_component, sizeof(signals[1].data_set_entry_component), "%s", "q");
+    snprintf(signals[1].data_set_entry_variable, sizeof(signals[1].data_set_entry_variable), "%s", "LD0/PGGIO1$ST$Ind1$q");
+    snprintf(signals[2].data_set_entry_component, sizeof(signals[2].data_set_entry_component), "%s", "t");
+    snprintf(signals[2].data_set_entry_variable, sizeof(signals[2].data_set_entry_variable), "%s", "LD0/PGGIO1$ST$Ind1$t");
+    plan.data_set_count = 1U;
+    plan.data_sets = data_sets;
+    plan.signal_count = 3U;
+    plan.signals = signals;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+
+    {
+        UnitLabMmsPdu request_pdu;
+        UnitLabMmsAssociationFrame frame;
+        UnitLabMmsPdu response_pdu;
+
+        unitlab_mms_pdu_init(&request_pdu);
+        request_pdu.kind = UNITLAB_MMS_PDU_CONFIRMED_REQUEST;
+        request_pdu.has_invoke_id = 1;
+        request_pdu.invoke_id = 14U;
+        request_pdu.has_service = 1;
+        request_pdu.service_kind = UNITLAB_MMS_SERVICE_GET_NAMED_VARIABLE_LIST_ATTRIBUTES;
+        request_pdu.pdu_bytes = (const uint8_t[]){ 0x02U, 0x01U, 0x0EU, 0xACU, 0x16U, 0xA1U, 0x14U, 0x1AU, 0x03U, 'L', 'D', '0', 0x1AU, 0x0DU, 'L', 'L', 'N', '0', '$', 'd', 's', 'E', 'v', 'e', 'n', 't', 's' };
+        request_pdu.pdu_length = 27U;
+
+        assert(unitlab_mms_build_wire_frame_from_pdu(&request_pdu, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+        unitlab_mms_operation_result_init(&operation_result);
+        assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+        assert(operation_result.ok == 1);
+        assert(consumed_length == request_length);
+
+        unitlab_mms_diagnostic_clear(&diagnostic);
+        assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+        assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+        assert(response_length > 0U);
+
+        unitlab_mms_association_frame_init(&frame);
+        assert(unitlab_mms_association_frame_decode(&frame, response_bytes, response_length, &response_consumed_length, &diagnostic));
+        assert(response_consumed_length == response_length);
+        unitlab_mms_pdu_init(&response_pdu);
+        assert(unitlab_mms_pdu_decode(&response_pdu, frame.presentation.payload_bytes, frame.presentation.payload_length, &consumed_length, &diagnostic));
+        assert(consumed_length == frame.presentation.payload_length);
+        assert(response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
+        assert(response_pdu.service_kind == UNITLAB_MMS_SERVICE_GET_NAMED_VARIABLE_LIST_ATTRIBUTES);
+        assert_named_variable_list_attributes_response_shape(&response_pdu, "PGGIO1$ST$Ind1", NULL, 1U);
+        assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"PGGIO1$ST$Ind1$stVal", strlen("PGGIO1$ST$Ind1$stVal")) == 0);
+    }
+}
+
+
 static void test_server_runtime_gi_report_handles_large_model_dataset(void)
 {
     enum { signal_count = 120U };
@@ -6239,6 +6328,7 @@ int main(void)
     test_server_runtime_apply_iedscout_vmd_directory_request_scope_zero_builds_response();
     test_server_runtime_apply_named_variable_list_attributes_request_and_build_response_roundtrips();
     test_server_runtime_apply_named_variable_list_attributes_request_and_build_response_matches_live_fixture_style();
+    test_server_runtime_named_variable_list_attributes_coalesces_expanded_do_members();
     test_server_runtime_named_variable_list_attributes_handles_large_model_dataset();
     test_server_runtime_apply_iedscout_aa_specific_directory_request_scope_two_builds_response();
     test_server_runtime_apply_iedscout_vmd_get_variable_access_attributes_request_builds_response();

@@ -1673,6 +1673,116 @@ static int server_runtime_encode_named_variable_list_member_item(
     size_t domain_id_size,
     char* item_id,
     size_t item_id_size,
+    UnitLabMmsDiagnostic* diagnostic);
+
+static int server_runtime_component_to_item_suffix(const char* component, char* suffix, size_t suffix_size)
+{
+    size_t offset = 0U;
+
+    if (component == NULL || component[0] == '\0' || suffix == NULL || suffix_size < 2U) {
+        return 0;
+    }
+    suffix[offset++] = '$';
+    for (const char* cursor = component; *cursor != '\0'; cursor++) {
+        if (offset + 1U >= suffix_size) {
+            return 0;
+        }
+        suffix[offset++] = (*cursor == '.') ? '$' : *cursor;
+    }
+    suffix[offset] = '\0';
+    return 1;
+}
+
+static int server_runtime_strip_member_item_component(const char* item_id, const char* component, char* base_item_id, size_t base_item_id_size)
+{
+    char suffix[160U];
+    size_t item_length = 0U;
+    size_t suffix_length = 0U;
+    size_t base_length = 0U;
+
+    if (item_id == NULL || base_item_id == NULL || base_item_id_size == 0U) {
+        return 0;
+    }
+    base_item_id[0] = '\0';
+    if (!server_runtime_component_to_item_suffix(component, suffix, sizeof(suffix))) {
+        return 0;
+    }
+    item_length = strlen(item_id);
+    suffix_length = strlen(suffix);
+    if (item_length <= suffix_length || strcmp(&item_id[item_length - suffix_length], suffix) != 0) {
+        return 0;
+    }
+    base_length = item_length - suffix_length;
+    if (base_length == 0U || base_length >= base_item_id_size) {
+        return 0;
+    }
+    memcpy(base_item_id, item_id, base_length);
+    base_item_id[base_length] = '\0';
+    return 1;
+}
+
+static int server_runtime_named_variable_list_member_base_item(
+    const UnitLabIedModelSignal* signal,
+    char* domain_id,
+    size_t domain_id_size,
+    char* item_id,
+    size_t item_id_size,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    char full_item_id[256U];
+    char base_item_id[256U];
+
+    if (!server_runtime_encode_named_variable_list_member_item(signal, domain_id, domain_id_size, full_item_id, sizeof(full_item_id), diagnostic)) {
+        return 0;
+    }
+    if (signal != NULL
+        && signal->data_set_entry_component_known != 0
+        && server_runtime_strip_member_item_component(full_item_id, signal->data_set_entry_component, base_item_id, sizeof(base_item_id))) {
+        int written = snprintf(item_id, item_id_size, "%s", base_item_id);
+        if (written <= 0 || (size_t)written >= item_id_size) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Named variable list base member item output buffer is too small.");
+            return 0;
+        }
+        return 1;
+    }
+    {
+        int written = snprintf(item_id, item_id_size, "%s", full_item_id);
+        if (written <= 0 || (size_t)written >= item_id_size) {
+            server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Named variable list member item output buffer is too small.");
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int server_runtime_named_variable_list_next_member_shares_base(
+    const UnitLabMmsServerRuntime* server_runtime,
+    const UnitLabIedModelDataSet* data_set,
+    size_t member_index,
+    const char* domain_id,
+    const char* item_id,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    const UnitLabIedModelSignal* next_signal = NULL;
+    char next_domain_id[128U];
+    char next_item_id[256U];
+
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || data_set == NULL || member_index + 1U >= data_set->member_count) {
+        return 0;
+    }
+    next_signal = &server_runtime->model_plan->signals[data_set->first_signal_index + member_index + 1U];
+    if (!server_runtime_named_variable_list_member_base_item(next_signal, next_domain_id, sizeof(next_domain_id), next_item_id, sizeof(next_item_id), diagnostic)) {
+        return 0;
+    }
+    return strcmp(next_domain_id, domain_id) == 0 && strcmp(next_item_id, item_id) == 0;
+}
+
+static int server_runtime_encode_named_variable_list_member_item(
+    const UnitLabIedModelSignal* signal,
+    char* domain_id,
+    size_t domain_id_size,
+    char* item_id,
+    size_t item_id_size,
     UnitLabMmsDiagnostic* diagnostic)
 {
     const char* entry = NULL;
@@ -2076,20 +2186,39 @@ int server_runtime_build_get_named_variable_list_attributes_response_service(
 
     for (size_t member_index = 0U; member_index < data_set->member_count; member_index++) {
         const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[data_set->first_signal_index + member_index];
+        char member_domain[128U];
         char member_item[256U];
         size_t member_length = 0U;
 
-        if (!server_runtime_encode_named_variable_list_member_item(
+        if (!server_runtime_named_variable_list_member_base_item(
                 signal,
-                logical_device_inst,
-                sizeof(logical_device_inst),
+                member_domain,
+                sizeof(member_domain),
                 member_item,
                 sizeof(member_item),
                 diagnostic)) {
             return 0;
         }
+        if (member_index > 0U) {
+            const UnitLabIedModelSignal* previous_signal = &server_runtime->model_plan->signals[data_set->first_signal_index + member_index - 1U];
+            char previous_domain[128U];
+            char previous_item[256U];
+
+            if (!server_runtime_named_variable_list_member_base_item(
+                    previous_signal,
+                    previous_domain,
+                    sizeof(previous_domain),
+                    previous_item,
+                    sizeof(previous_item),
+                    diagnostic)) {
+                return 0;
+            }
+            if (strcmp(previous_domain, member_domain) == 0 && strcmp(previous_item, member_item) == 0) {
+                continue;
+            }
+        }
         if (!server_runtime_encode_named_variable_list_member(
-                logical_device_inst,
+                member_domain,
                 member_item,
                 &member_bytes[member_bytes_length],
                 sizeof(member_bytes) - member_bytes_length,
@@ -2098,7 +2227,12 @@ int server_runtime_build_get_named_variable_list_attributes_response_service(
             return 0;
         }
         member_bytes_length += member_length;
-        printf("native-wire-server: nvl-attribute-member[%zu]=%s/%s\n", member_index, logical_device_inst, member_item);
+        printf(
+            "native-wire-server: nvl-attribute-member[%zu]=%s/%s coalesced-next=%u\n",
+            member_index,
+            member_domain,
+            member_item,
+            (unsigned)server_runtime_named_variable_list_next_member_shares_base(server_runtime, data_set, member_index, member_domain, member_item, diagnostic));
     }
 
     {
