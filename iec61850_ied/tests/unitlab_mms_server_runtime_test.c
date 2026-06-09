@@ -692,7 +692,9 @@ static void test_server_runtime_reads_model_backed_rcb_dataset_aliases(void)
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(response_length > 0U);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0.brcbA", strlen("KINTE08TDIFFSystem/LLN0.brcbA")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0.brcbB", strlen("KINTE08TDIFFSystem/LLN0.brcbB")) == 0);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0$RCB1", strlen("KINTE08TDIFFSystem/LLN0$RCB1")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0$RCB2", strlen("KINTE08TDIFFSystem/LLN0$RCB2")) == 0);
     assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
 
     assert(unitlab_mms_build_read_request_frame("KINTE08TDIFFSystem", "LLN0$RCB2", 196U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
@@ -701,7 +703,9 @@ static void test_server_runtime_reads_model_backed_rcb_dataset_aliases(void)
     assert(operation_result.ok == 1);
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(response_length > 0U);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0.brcbA", strlen("KINTE08TDIFFSystem/LLN0.brcbA")) == 0);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0.brcbB", strlen("KINTE08TDIFFSystem/LLN0.brcbB")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0$RCB1", strlen("KINTE08TDIFFSystem/LLN0$RCB1")) == 0);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0$RCB2", strlen("KINTE08TDIFFSystem/LLN0$RCB2")) == 1);
     assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
 

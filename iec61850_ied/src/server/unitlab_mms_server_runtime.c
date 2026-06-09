@@ -1477,6 +1477,20 @@ int server_runtime_object_reference_has_suffix_any(
     return 0;
 }
 
+static int server_runtime_report_reference_separator_for_marker(const char* marker)
+{
+    size_t marker_length = 0U;
+
+    if (marker == NULL) {
+        return '.';
+    }
+    marker_length = strlen(marker);
+    if (marker_length != 0U && marker[marker_length - 1U] == '$') {
+        return '$';
+    }
+    return '.';
+}
+
 static int server_runtime_object_reference_has_report_control_class_field(const char* object_reference, const char* marker, const char* field_name)
 {
     const char* marker_position = NULL;
@@ -1484,6 +1498,7 @@ static int server_runtime_object_reference_has_report_control_class_field(const 
     char field_suffix[96U];
     size_t object_length = 0U;
     size_t suffix_length = 0U;
+    int separator = '.';
 
     if (object_reference == NULL || marker == NULL || field_name == NULL || field_name[0] == '\0') {
         return 0;
@@ -1492,11 +1507,12 @@ static int server_runtime_object_reference_has_report_control_class_field(const 
     if (marker_position == NULL) {
         return 0;
     }
+    separator = server_runtime_report_reference_separator_for_marker(marker);
     report_name = marker_position + strlen(marker);
-    if (report_name[0] == '\0' || report_name[0] == '.') {
+    if (report_name[0] == '\0' || report_name[0] == '.' || report_name[0] == '$') {
         return 0;
     }
-    snprintf(field_suffix, sizeof(field_suffix), ".%s", field_name);
+    snprintf(field_suffix, sizeof(field_suffix), "%c%s", separator, field_name);
     object_length = strlen(object_reference);
     suffix_length = strlen(field_suffix);
     if (object_length <= suffix_length || strcmp(object_reference + object_length - suffix_length, field_suffix) != 0) {
@@ -1509,6 +1525,7 @@ static int server_runtime_object_reference_has_report_control_class_object(const
 {
     const char* marker_position = NULL;
     const char* report_name = NULL;
+    int separator = '.';
 
     if (object_reference == NULL || marker == NULL) {
         return 0;
@@ -1517,11 +1534,12 @@ static int server_runtime_object_reference_has_report_control_class_object(const
     if (marker_position == NULL) {
         return 0;
     }
+    separator = server_runtime_report_reference_separator_for_marker(marker);
     report_name = marker_position + strlen(marker);
-    if (report_name[0] == '\0' || report_name[0] == '.') {
+    if (report_name[0] == '\0' || report_name[0] == '.' || report_name[0] == '$') {
         return 0;
     }
-    return strchr(report_name, '.') == NULL;
+    return strchr(report_name, separator) == NULL;
 }
 
 int server_runtime_object_reference_matches_report_control_field(const char* object_reference, const char* field_name)
@@ -1536,6 +1554,8 @@ int server_runtime_object_reference_matches_report_control_field(const char* obj
     snprintf(legacy_no_br_suffix, sizeof(legacy_no_br_suffix), ".LLN0_Events_BuffRep01.%s", field_name);
     return server_runtime_object_reference_has_report_control_class_field(object_reference, ".BR.", field_name)
         || server_runtime_object_reference_has_report_control_class_field(object_reference, ".RP.", field_name)
+        || server_runtime_object_reference_has_report_control_class_field(object_reference, "$BR$", field_name)
+        || server_runtime_object_reference_has_report_control_class_field(object_reference, "$RP$", field_name)
         || server_runtime_object_reference_has_suffix(object_reference, legacy_brcb_suffix)
         || server_runtime_object_reference_has_suffix(object_reference, legacy_no_br_suffix);
 }
@@ -1547,6 +1567,8 @@ int server_runtime_object_reference_matches_report_control_object(const char* ob
     }
     return server_runtime_object_reference_has_report_control_class_object(object_reference, ".BR.")
         || server_runtime_object_reference_has_report_control_class_object(object_reference, ".RP.")
+        || server_runtime_object_reference_has_report_control_class_object(object_reference, "$BR$")
+        || server_runtime_object_reference_has_report_control_class_object(object_reference, "$RP$")
         || server_runtime_object_reference_has_suffix(object_reference, ".brcbEvents")
         || server_runtime_object_reference_has_suffix(object_reference, ".LLN0_Events_BuffRep01");
 }

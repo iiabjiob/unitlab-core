@@ -272,22 +272,38 @@ static const UnitLabIedModelDataSet* server_runtime_read_report_data_set(const U
 
 static int server_runtime_read_reference_has_report_alias(const char* object_reference, const char* alias, const char* field_name)
 {
-    char suffix[192U];
-    char br_suffix[224U];
+    char dot_suffix[192U];
+    char dollar_suffix[192U];
+    char br_dot_suffix[224U];
+    char rp_dot_suffix[224U];
+    char br_dollar_suffix[224U];
+    char rp_dollar_suffix[224U];
 
     if (object_reference == NULL || alias == NULL || alias[0] == '\0') {
         return 0;
     }
     if (field_name != NULL && field_name[0] != '\0') {
-        snprintf(suffix, sizeof(suffix), ".%s.%s", alias, field_name);
-        snprintf(br_suffix, sizeof(br_suffix), ".BR.%s.%s", alias, field_name);
+        snprintf(dot_suffix, sizeof(dot_suffix), ".%s.%s", alias, field_name);
+        snprintf(dollar_suffix, sizeof(dollar_suffix), "$%s$%s", alias, field_name);
+        snprintf(br_dot_suffix, sizeof(br_dot_suffix), ".BR.%s.%s", alias, field_name);
+        snprintf(rp_dot_suffix, sizeof(rp_dot_suffix), ".RP.%s.%s", alias, field_name);
+        snprintf(br_dollar_suffix, sizeof(br_dollar_suffix), "$BR$%s$%s", alias, field_name);
+        snprintf(rp_dollar_suffix, sizeof(rp_dollar_suffix), "$RP$%s$%s", alias, field_name);
     }
     else {
-        snprintf(suffix, sizeof(suffix), ".%s", alias);
-        snprintf(br_suffix, sizeof(br_suffix), ".BR.%s", alias);
+        snprintf(dot_suffix, sizeof(dot_suffix), ".%s", alias);
+        snprintf(dollar_suffix, sizeof(dollar_suffix), "$%s", alias);
+        snprintf(br_dot_suffix, sizeof(br_dot_suffix), ".BR.%s", alias);
+        snprintf(rp_dot_suffix, sizeof(rp_dot_suffix), ".RP.%s", alias);
+        snprintf(br_dollar_suffix, sizeof(br_dollar_suffix), "$BR$%s", alias);
+        snprintf(rp_dollar_suffix, sizeof(rp_dollar_suffix), "$RP$%s", alias);
     }
-    return server_runtime_object_reference_has_suffix(object_reference, suffix)
-        || server_runtime_object_reference_has_suffix(object_reference, br_suffix);
+    return server_runtime_object_reference_has_suffix(object_reference, dot_suffix)
+        || server_runtime_object_reference_has_suffix(object_reference, dollar_suffix)
+        || server_runtime_object_reference_has_suffix(object_reference, br_dot_suffix)
+        || server_runtime_object_reference_has_suffix(object_reference, rp_dot_suffix)
+        || server_runtime_object_reference_has_suffix(object_reference, br_dollar_suffix)
+        || server_runtime_object_reference_has_suffix(object_reference, rp_dollar_suffix);
 }
 
 static const UnitLabIedModelReportControl* server_runtime_read_find_report_control(
