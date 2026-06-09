@@ -364,7 +364,6 @@ static void assert_named_variable_list_attributes_member(const UnitLabMmsBerElem
     UnitLabMmsBerElement child;
     UnitLabMmsDiagnostic diagnostic;
     size_t consumed_length = 0U;
-    size_t variable_spec_consumed_length = 0U;
     size_t child_consumed_length = 0U;
     size_t offset = 0U;
 
@@ -374,10 +373,8 @@ static void assert_named_variable_list_attributes_member(const UnitLabMmsBerElem
 
     unitlab_mms_ber_element_init(&variable_spec);
     assert(unitlab_mms_ber_read(&variable_spec, member->value_bytes, member->value_length, &consumed_length, &diagnostic) == 1);
-    assert(consumed_length <= member->value_length);
+    assert(consumed_length == member->value_length);
     assert_ber_tag(&variable_spec, UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC, 1, 0U);
-    variable_spec_consumed_length = consumed_length;
-
     unitlab_mms_ber_element_init(&object_name);
     assert(unitlab_mms_ber_read(&object_name, variable_spec.value_bytes, variable_spec.value_length, &consumed_length, &diagnostic) == 1);
     assert(consumed_length == variable_spec.value_length);
@@ -397,22 +394,6 @@ static void assert_named_variable_list_attributes_member(const UnitLabMmsBerElem
     assert(memcmp(child.value_bytes, expected_item, child.value_length) == 0);
     offset += child_consumed_length;
     assert(offset == object_name.value_length);
-
-    if (variable_spec_consumed_length < member->value_length) {
-        UnitLabMmsBerElement alternate_access;
-        size_t alternate_access_consumed_length = 0U;
-
-        unitlab_mms_ber_element_init(&alternate_access);
-        assert(unitlab_mms_ber_read(
-                   &alternate_access,
-                   &member->value_bytes[variable_spec_consumed_length],
-                   member->value_length - variable_spec_consumed_length,
-                   &alternate_access_consumed_length,
-                   &diagnostic) == 1);
-        assert_ber_tag(&alternate_access, UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL, 1, 16U);
-        variable_spec_consumed_length += alternate_access_consumed_length;
-    }
-    assert(variable_spec_consumed_length == member->value_length);
 }
 
 static void assert_named_variable_list_attributes_response_shape(const UnitLabMmsPdu* response_pdu, const char* expected_member_token_0, const char* expected_member_token_1, size_t expected_member_token_count)
