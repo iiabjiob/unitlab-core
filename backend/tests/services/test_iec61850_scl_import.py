@@ -14,6 +14,7 @@ from app.services.iec61850 import (
     Iec61850SclImportService,
     Iec61850SqlAlchemySclImportRepository,
     SCL_NORMALIZED_SCHEMA,
+    create_scl_cli_compiler_from_settings,
 )
 
 
@@ -77,6 +78,20 @@ def test_scl_import_service_rejects_schema_or_size_mismatch() -> None:
         bad_size_service.import_scl(workspace_id=1, source=source)
     assert size_error.value.code == "SCL_SOURCE_SIZE_MISMATCH"
 
+
+
+def test_scl_cli_compiler_settings_uses_dev_build_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.core.config import get_settings
+
+    monkeypatch.delenv("IEC61850_SCL_COMPILER_BINARY_PATH", raising=False)
+    monkeypatch.setenv("APP_ENV", "development")
+    get_settings.cache_clear()
+    try:
+        compiler = create_scl_cli_compiler_from_settings()
+    finally:
+        get_settings.cache_clear()
+
+    assert compiler.binary_path.name == "unitlab-iec61850-scl-compiler-cli"
 
 def test_scl_cli_compiler_invokes_external_compiler_without_python_xml_parsing(tmp_path: Path) -> None:
     output = {

@@ -17,7 +17,7 @@ type NodeValue = string
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const fileName = ref<string | null>(null)
-const selectedIed = ref("KINTE15FMP")
+const selectedIed = ref(import.meta.env.VITE_IEC61850_NATIVE_SELECTED_IED ?? "KINTE15FMP")
 const loading = ref(false)
 const error = ref<string | null>(null)
 const importResponse = ref<Iec61850SclImportResponse | null>(null)

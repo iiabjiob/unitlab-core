@@ -11,7 +11,7 @@ from typing import Any, Protocol
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
+from app.core.config import REPO_ROOT, get_settings
 from app.models.workspace import Workspace
 from app.models.workspace_iec61850 import (
     WorkspaceIec61850RuntimeSelection,
@@ -397,12 +397,20 @@ class Iec61850SclImportService:
 
 def create_scl_cli_compiler_from_settings() -> Iec61850SclCliCompiler:
     settings = get_settings()
-    if not settings.iec61850_scl_compiler_binary_path:
+    binary_path = settings.iec61850_scl_compiler_binary_path or _default_dev_scl_compiler_binary_path(settings.app_env)
+    if not binary_path:
         raise Iec61850SclImportError("SCL_COMPILER_UNCONFIGURED", "iec61850_scl_compiler_binary_path is not configured.")
     return Iec61850SclCliCompiler(
-        settings.iec61850_scl_compiler_binary_path,
+        binary_path,
         timeout_seconds=settings.iec61850_scl_compiler_timeout_seconds,
     )
+
+
+def _default_dev_scl_compiler_binary_path(app_env: str) -> str | None:
+    if app_env.lower() in {"production", "prod"}:
+        return None
+    candidate = REPO_ROOT.parent / "iec61850_ied" / "build" / "unitlab-iec61850-scl-compiler-cli"
+    return str(candidate) if candidate.exists() else None
 
 
 def _parse_compiler_json(payload: str) -> Iec61850SclCompilerOutput:

@@ -4,6 +4,7 @@ interface ImportMetaEnv {
 	readonly VITE_WS_URL?: string
 	readonly VITE_WS_FALLBACK_URL?: string
 	readonly VITE_RELEASE_VERSION?: string
+	readonly VITE_IEC61850_NATIVE_SELECTED_IED?: string
 }
 
 interface ImportMeta {
