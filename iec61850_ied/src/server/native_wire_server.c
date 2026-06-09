@@ -97,7 +97,7 @@ static int send_pending_information_report(
     UnitLabIedModelLoadResult* result)
 {
     UnitLabMmsDiagnostic diagnostic;
-    uint8_t response_frame[2048U];
+    uint8_t response_frame[65535U];
     size_t response_length = 0U;
 
     if (server_runtime == NULL || data_client_fd < 0 || !unitlab_mms_server_runtime_has_pending_gi_report(server_runtime)) {
@@ -438,7 +438,7 @@ static int native_wire_process_received_tpkt_frame(
 {
     UnitLabMmsOperationResult incoming_result;
     UnitLabMmsDiagnostic response_diagnostic;
-    uint8_t response_frame[2048U];
+    uint8_t response_frame[65535U];
     size_t consumed_length = 0U;
     size_t response_length = 0U;
     UnitLabMmsTransportFrame incoming_transport;

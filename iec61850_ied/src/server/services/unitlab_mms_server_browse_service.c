@@ -1422,11 +1422,11 @@ int server_runtime_build_get_named_variable_list_attributes_response_service(
     char logical_node_name[128U];
     char list_name[128U];
     const UnitLabIedModelDataSet* data_set = NULL;
-    uint8_t member_bytes[8192U];
-    uint8_t list_of_variable_bytes[9000U];
-    uint8_t response_payload_bytes[9500U];
-    uint8_t service_payload_bytes[9600U];
-    uint8_t service_bytes[9700U];
+    uint8_t member_bytes[60000U];
+    uint8_t list_of_variable_bytes[61000U];
+    uint8_t response_payload_bytes[62000U];
+    uint8_t service_payload_bytes[63000U];
+    uint8_t service_bytes[64000U];
     size_t member_bytes_length = 0U;
     size_t list_of_variable_length = 0U;
     size_t response_payload_length = 0U;

@@ -1949,7 +1949,7 @@ int unitlab_mms_server_runtime_build_confirmed_error_bytes(UnitLabMmsServerRunti
 int unitlab_mms_server_runtime_build_confirmed_response_bytes(UnitLabMmsServerRuntime* server_runtime, const uint8_t* service_bytes, size_t service_length, uint8_t* buffer, size_t buffer_length, size_t* encoded_length, UnitLabMmsDiagnostic* diagnostic)
 {
     UnitLabMmsPdu response_pdu;
-    uint8_t synthesized_service_bytes[2048U];
+    uint8_t synthesized_service_bytes[65535U];
     size_t synthesized_service_length = 0U;
     size_t response_length = 0U;
 
