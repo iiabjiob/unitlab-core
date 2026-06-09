@@ -30,61 +30,92 @@ static int expect_contains(const char* actual, const char* expected, const char*
     return 1;
 }
 
+
+static char* join_strings(const char* const* parts, size_t part_count)
+{
+    size_t total_size = 0U;
+    for (size_t i = 0U; i < part_count; ++i) {
+        total_size += strlen(parts[i]);
+    }
+
+    char* joined = (char*)malloc(total_size + 1U);
+    if (joined == NULL) {
+        return NULL;
+    }
+
+    char* cursor = joined;
+    for (size_t i = 0U; i < part_count; ++i) {
+        const size_t part_size = strlen(parts[i]);
+        memcpy(cursor, parts[i], part_size);
+        cursor += part_size;
+    }
+    joined[total_size] = '\0';
+    return joined;
+}
+
 static int test_compile_builds_model_plan_through_c_api(void)
 {
-    const char* scl =
-        "<?xml version=\"1.0\"?>"
-        "<scl:SCL xmlns:scl=\"http://www.iec.ch/61850/2003/SCL\">"
-        "<scl:IED name=\"IED1\"><scl:AccessPoint name=\"AP1\"><scl:Server><scl:LDevice inst=\"LD0\">"
-        "<scl:LN0 lnType=\"LLN0_TYPE\">"
-        "<scl:DataSet name=\"dsEvents\">"
-        "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"stVal\" fc=\"ST\" />"
-        "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"origin.orIdent\" fc=\"ST\" />"
-        "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"origin.nested.deepIdent\" fc=\"ST\" />"
-        "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"ctlModel\" fc=\"CF\" />"
-        "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Beh.subState\" daName=\"stVal\" fc=\"ST\" />"
-        "<scl:FCD ldInst=\"LD0\" lnClass=\"PGGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />"
-        "<scl:FCDA ldInst=\"LD0\" prefix=\"Led\" lnClass=\"GGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />"
-        "<scl:FCDA ldInst=\"LD1\" lnClass=\"PGGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />"
-        "<scl:FCD ldInst=\"LD0\" lnClass=\"MMXU\" lnInst=\"1\" doName=\"PhV.phsA\" fc=\"MX\" />"
-        "<scl:FCD ldInst=\"LD0\" lnClass=\"MMXU\" lnInst=\"1\" doName=\"Hz\" fc=\"MX\" />"
-        "</scl:DataSet>"
-        "<scl:ReportControl name=\"brcbEvents\" buffered=\"true\" rptID=\"events\" datSet=\"dsEvents\" confRev=\"7\" indexed=\"false\" bufTime=\"100\" intgPd=\"1000\">"
-        "<scl:TrgOps dchg=\"true\" qchg=\"true\" dupd=\"false\" period=\"false\" gi=\"true\" />"
-        "<scl:OptFields seqNum=\"true\" timeStamp=\"true\" reasonCode=\"true\" dataSet=\"true\" dataRef=\"true\" bufOvfl=\"true\" entryID=\"true\" configRef=\"true\" />"
-        "</scl:ReportControl>"
-        "<scl:ReportControl name=\"urcbEvents\" buffered=\"false\" rptID=\"eventsU\" datSet=\"dsEvents\" confRev=\"8\" indexed=\"false\">"
-        "<scl:TrgOps dchg=\"true\" qchg=\"false\" dupd=\"false\" period=\"false\" gi=\"true\" />"
-        "<scl:OptFields seqNum=\"true\" timeStamp=\"true\" reasonCode=\"true\" dataSet=\"true\" dataRef=\"true\" />"
-        "</scl:ReportControl>"
-        "</scl:LN0>"
-        "<scl:LN lnClass=\"XCBR\" inst=\"1\" lnType=\"XCBR_TYPE\" />"
-        "<scl:LN lnClass=\"PGGIO\" inst=\"1\" lnType=\"PGGIO_TYPE\" />"
-        "<scl:LN prefix=\"Led\" lnClass=\"GGIO\" inst=\"1\" lnType=\"PGGIO_TYPE\" />"
-        "<scl:LN lnClass=\"MMXU\" inst=\"1\" lnType=\"MMXU_TYPE\" />"
-        "</scl:LDevice><scl:LDevice inst=\"LD1\"><scl:LN lnClass=\"PGGIO\" inst=\"1\" lnType=\"PGGIO_TYPE\" /></scl:LDevice></scl:Server></scl:AccessPoint></scl:IED>"
-        "<scl:IED name=\"IED2\"><scl:AccessPoint name=\"AP1\" /></scl:IED>"
-        "<scl:DataTypeTemplates>"
-        "<scl:LNodeType id=\"XCBR_TYPE\" lnClass=\"XCBR\"><scl:DO name=\"Pos\" type=\"DPC_POS\" /><scl:DO name=\"Beh\" type=\"BEH_ROOT\" /></scl:LNodeType>"
-        "<scl:LNodeType id=\"PGGIO_TYPE\" lnClass=\"PGGIO\"><scl:DO name=\"Ind1\" type=\"INS_IND\" /></scl:LNodeType>"
-        "<scl:LNodeType id=\"MMXU_TYPE\" lnClass=\"MMXU\"><scl:DO name=\"PhV\" type=\"PHV_ROOT\" /><scl:DO name=\"Hz\" type=\"MV_ROOT\" /></scl:LNodeType>"
-        "<scl:DOType id=\"DPC_POS\" cdc=\"DPC\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"BOOLEAN\" /><scl:DA name=\"origin\" fc=\"ST\" bType=\"Struct\" type=\"ORIGINATOR\" /><scl:DA name=\"ctlModel\" fc=\"CF\" bType=\"Enum\" type=\"CtlModelKind\" /></scl:DOType>"
-        "<scl:DOType id=\"BEH_ROOT\" cdc=\"ENS\"><scl:SDO name=\"subState\" type=\"BEH_SUB\" /></scl:DOType>"
-        "<scl:DOType id=\"BEH_SUB\" cdc=\"ENS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /></scl:DOType>"
-        "<scl:DOType id=\"INS_IND\" cdc=\"INS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /><scl:DA name=\"q\" fc=\"ST\" bType=\"Quality\" /><scl:DA name=\"t\" fc=\"ST\" bType=\"Timestamp\" /></scl:DOType>"
-        "<scl:DOType id=\"PHV_ROOT\" cdc=\"WYE\"><scl:SDO name=\"phsA\" type=\"CMV_ROOT\" /></scl:DOType>"
-        "<scl:DOType id=\"CMV_ROOT\" cdc=\"CMV\"><scl:DA name=\"cVal\" fc=\"MX\" bType=\"Struct\" type=\"Vector\" /><scl:DA name=\"q\" fc=\"MX\" bType=\"Quality\" /><scl:DA name=\"t\" fc=\"MX\" bType=\"Timestamp\" /></scl:DOType>"
-        "<scl:DOType id=\"MV_ROOT\" cdc=\"MV\"><scl:DA name=\"mag\" fc=\"MX\" bType=\"Struct\" type=\"AnalogueValue\" /><scl:DA name=\"q\" fc=\"MX\" bType=\"Quality\" /><scl:DA name=\"t\" fc=\"MX\" bType=\"Timestamp\" /></scl:DOType>"
-        "<scl:DAType id=\"ORIGINATOR\"><scl:BDA name=\"orIdent\" bType=\"VisString64\" /><scl:BDA name=\"nested\" bType=\"Struct\" type=\"ORIGINATOR_NESTED\" /></scl:DAType>"
-        "<scl:DAType id=\"Vector\"><scl:BDA name=\"mag\" bType=\"Struct\" type=\"AnalogueValue\" /></scl:DAType>"
-        "<scl:DAType id=\"AnalogueValue\"><scl:BDA name=\"f\" bType=\"FLOAT32\" /></scl:DAType>"
-        "<scl:DAType id=\"ORIGINATOR_NESTED\"><scl:BDA name=\"deepIdent\" bType=\"VisString64\" /></scl:DAType>"
-        "<scl:EnumType id=\"CtlModelKind\"><scl:EnumVal ord=\"1\" desc=\"direct-with-normal-security\" /></scl:EnumType>"
-        "</scl:DataTypeTemplates>"
-        "</scl:SCL>";
+    const char* const scl_parts[] =
+    {
+        "<?xml version=\"1.0\"?>",
+        "<scl:SCL xmlns:scl=\"http://www.iec.ch/61850/2003/SCL\">",
+        "<scl:IED name=\"IED1\"><scl:AccessPoint name=\"AP1\"><scl:Server><scl:LDevice inst=\"LD0\">",
+        "<scl:LN0 lnType=\"LLN0_TYPE\">",
+        "<scl:DataSet name=\"dsEvents\">",
+        "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"stVal\" fc=\"ST\" />",
+        "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"origin.orIdent\" fc=\"ST\" />",
+        "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"origin.nested.deepIdent\" fc=\"ST\" />",
+        "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Pos\" daName=\"ctlModel\" fc=\"CF\" />",
+        "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Beh.subState\" daName=\"stVal\" fc=\"ST\" />",
+        "<scl:FCD ldInst=\"LD0\" lnClass=\"PGGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />",
+        "<scl:FCDA ldInst=\"LD0\" prefix=\"Led\" lnClass=\"GGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />",
+        "<scl:FCDA ldInst=\"LD1\" lnClass=\"PGGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />",
+        "<scl:FCD ldInst=\"LD0\" lnClass=\"MMXU\" lnInst=\"1\" doName=\"PhV.phsA\" fc=\"MX\" />",
+        "<scl:FCD ldInst=\"LD0\" lnClass=\"MMXU\" lnInst=\"1\" doName=\"Hz\" fc=\"MX\" />",
+        "</scl:DataSet>",
+        "<scl:ReportControl name=\"brcbEvents\" buffered=\"true\" rptID=\"events\" datSet=\"dsEvents\" confRev=\"7\" indexed=\"false\" bufTime=\"100\" intgPd=\"1000\">",
+        "<scl:TrgOps dchg=\"true\" qchg=\"true\" dupd=\"false\" period=\"false\" gi=\"true\" />",
+        "<scl:OptFields seqNum=\"true\" timeStamp=\"true\" reasonCode=\"true\" dataSet=\"true\" dataRef=\"true\" bufOvfl=\"true\" entryID=\"true\" configRef=\"true\" />",
+        "</scl:ReportControl>",
+        "<scl:ReportControl name=\"urcbEvents\" buffered=\"false\" rptID=\"eventsU\" datSet=\"dsEvents\" confRev=\"8\" indexed=\"false\">",
+        "<scl:TrgOps dchg=\"true\" qchg=\"false\" dupd=\"false\" period=\"false\" gi=\"true\" />",
+        "<scl:OptFields seqNum=\"true\" timeStamp=\"true\" reasonCode=\"true\" dataSet=\"true\" dataRef=\"true\" />",
+        "</scl:ReportControl>",
+        "</scl:LN0>",
+        "<scl:LN lnClass=\"XCBR\" inst=\"1\" lnType=\"XCBR_TYPE\" />",
+        "<scl:LN lnClass=\"PGGIO\" inst=\"1\" lnType=\"PGGIO_TYPE\" />",
+        "<scl:LN prefix=\"Led\" lnClass=\"GGIO\" inst=\"1\" lnType=\"PGGIO_TYPE\" />",
+        "<scl:LN lnClass=\"MMXU\" inst=\"1\" lnType=\"MMXU_TYPE\" />",
+        "</scl:LDevice><scl:LDevice inst=\"LD1\"><scl:LN lnClass=\"PGGIO\" inst=\"1\" lnType=\"PGGIO_TYPE\" /></scl:LDevice></scl:Server></scl:AccessPoint></scl:IED>",
+        "<scl:IED name=\"IED2\"><scl:AccessPoint name=\"AP1\" /></scl:IED>",
+        "<scl:DataTypeTemplates>",
+        "<scl:LNodeType id=\"XCBR_TYPE\" lnClass=\"XCBR\"><scl:DO name=\"Pos\" type=\"DPC_POS\" /><scl:DO name=\"Beh\" type=\"BEH_ROOT\" /></scl:LNodeType>",
+        "<scl:LNodeType id=\"PGGIO_TYPE\" lnClass=\"PGGIO\"><scl:DO name=\"Ind1\" type=\"INS_IND\" /></scl:LNodeType>",
+        "<scl:LNodeType id=\"MMXU_TYPE\" lnClass=\"MMXU\"><scl:DO name=\"PhV\" type=\"PHV_ROOT\" /><scl:DO name=\"Hz\" type=\"MV_ROOT\" /></scl:LNodeType>",
+        "<scl:DOType id=\"DPC_POS\" cdc=\"DPC\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"BOOLEAN\" /><scl:DA name=\"origin\" fc=\"ST\" bType=\"Struct\" type=\"ORIGINATOR\" /><scl:DA name=\"ctlModel\" fc=\"CF\" bType=\"Enum\" type=\"CtlModelKind\" /></scl:DOType>",
+        "<scl:DOType id=\"BEH_ROOT\" cdc=\"ENS\"><scl:SDO name=\"subState\" type=\"BEH_SUB\" /></scl:DOType>",
+        "<scl:DOType id=\"BEH_SUB\" cdc=\"ENS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /></scl:DOType>",
+        "<scl:DOType id=\"INS_IND\" cdc=\"INS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /><scl:DA name=\"q\" fc=\"ST\" bType=\"Quality\" /><scl:DA name=\"t\" fc=\"ST\" bType=\"Timestamp\" /></scl:DOType>",
+        "<scl:DOType id=\"PHV_ROOT\" cdc=\"WYE\"><scl:SDO name=\"phsA\" type=\"CMV_ROOT\" /></scl:DOType>",
+        "<scl:DOType id=\"CMV_ROOT\" cdc=\"CMV\"><scl:DA name=\"cVal\" fc=\"MX\" bType=\"Struct\" type=\"Vector\" /><scl:DA name=\"q\" fc=\"MX\" bType=\"Quality\" /><scl:DA name=\"t\" fc=\"MX\" bType=\"Timestamp\" /></scl:DOType>",
+        "<scl:DOType id=\"MV_ROOT\" cdc=\"MV\"><scl:DA name=\"mag\" fc=\"MX\" bType=\"Struct\" type=\"AnalogueValue\" /><scl:DA name=\"q\" fc=\"MX\" bType=\"Quality\" /><scl:DA name=\"t\" fc=\"MX\" bType=\"Timestamp\" /></scl:DOType>",
+        "<scl:DAType id=\"ORIGINATOR\"><scl:BDA name=\"orIdent\" bType=\"VisString64\" /><scl:BDA name=\"nested\" bType=\"Struct\" type=\"ORIGINATOR_NESTED\" /></scl:DAType>",
+        "<scl:DAType id=\"Vector\"><scl:BDA name=\"mag\" bType=\"Struct\" type=\"AnalogueValue\" /></scl:DAType>",
+        "<scl:DAType id=\"AnalogueValue\"><scl:BDA name=\"f\" bType=\"FLOAT32\" /></scl:DAType>",
+        "<scl:DAType id=\"ORIGINATOR_NESTED\"><scl:BDA name=\"deepIdent\" bType=\"VisString64\" /></scl:DAType>",
+        "<scl:EnumType id=\"CtlModelKind\"><scl:EnumVal ord=\"1\" desc=\"direct-with-normal-security\" /></scl:EnumType>",
+        "</scl:DataTypeTemplates>",
+        "</scl:SCL>",
+    };
+    char* scl = join_strings(scl_parts, sizeof(scl_parts) / sizeof(scl_parts[0]));
     UnitLabSclCompileResult* result = NULL;
     char error[128];
     int passed = 1;
+
+    passed &= expect_true(scl != NULL, "SCL fixture should allocate");
+    if (scl == NULL) {
+        return 0;
+    }
 
     passed &= expect_true(unitlab_scl_compile_from_memory(scl, strlen(scl), "IED1", &result, error, sizeof(error)) == 1,
         "SCL compile should succeed through C API");
@@ -217,6 +248,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
     }
 
     unitlab_scl_compile_result_free(result);
+    free(scl);
     return passed;
 }
 
