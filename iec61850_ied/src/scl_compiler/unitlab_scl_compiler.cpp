@@ -115,6 +115,15 @@ const SclLogicalNode* find_logical_node(const SclLogicalDevice& device, const Sc
     return found == device.logical_nodes.end() ? nullptr : &(*found);
 }
 
+const SclLogicalNode* find_logical_node(const SclAccessPoint& access_point, const SclMember& member, const std::string& fallback_ld_inst)
+{
+    for (const SclLogicalDevice& device : access_point.logical_devices) {
+        const SclLogicalNode* node = find_logical_node(device, member, fallback_ld_inst);
+        if (node != nullptr) return node;
+    }
+    return nullptr;
+}
+
 const SclLNodeTypeTemplate* find_lnode_type(const SclDataTypeTemplates& templates, const std::string& id)
 {
     const auto found = std::find_if(templates.lnode_types.begin(), templates.lnode_types.end(), [&](const SclLNodeTypeTemplate& item) { return item.id == id; });
@@ -179,7 +188,7 @@ const SclDoTypeTemplate* resolve_member_do_type_with_diagnostic(
     const SclDataSet& data_set,
     const SclMember& member)
 {
-    const SclLogicalNode* member_node = find_logical_node(device, member, device.inst);
+    const SclLogicalNode* member_node = find_logical_node(access_point, member, device.inst);
     if (member_node == nullptr || member_node->ln_type.empty()) {
         append_member_diagnostic(result, "SCL_TEMPLATE_LNODETYPE_MISSING", "DataSet member logical node has no resolvable LNodeType.", ied, access_point, device, data_set_node, data_set, member);
         return nullptr;
@@ -376,6 +385,65 @@ void append_compiled_signal(
     result.signals.push_back(signal);
 }
 
+
+size_t append_compiled_attribute_leaves(
+    UnitLabSclCompileResult& result,
+    size_t data_set_index,
+    size_t& member_index,
+    const std::string& member_domain,
+    const std::string& member_ln,
+    const SclMember& member,
+    const std::string& fallback_ld_inst,
+    const std::string& attribute_path,
+    const SclResolvedValueType& resolved_type,
+    const SclDataTypeTemplates& templates,
+    const SclIed& ied,
+    const SclAccessPoint& access_point,
+    const SclLogicalDevice& device,
+    const SclLogicalNode& node,
+    const SclDataSet& data_set)
+{
+    if (resolved_type.b_type == "Struct") {
+        if (resolved_type.type.empty()) {
+            append_member_diagnostic(result, "SCL_TEMPLATE_DATYPE_MISSING", "DataSet structured attribute has no DAType reference.", ied, access_point, device, node, data_set, member);
+            return 0U;
+        }
+        const SclDaTypeTemplate* da_type = find_da_type(templates, resolved_type.type);
+        if (da_type == nullptr) {
+            append_member_diagnostic(result, "SCL_TEMPLATE_DATYPE_MISSING", "DataSet structured attribute references a missing DAType template.", ied, access_point, device, node, data_set, member);
+            return 0U;
+        }
+        size_t emitted_count = 0U;
+        for (const SclDaTemplate& child : da_type->basic_data_attributes) {
+            const std::string child_path = attribute_path.empty() ? child.name : attribute_path + "." + child.name;
+            emitted_count += append_compiled_attribute_leaves(
+                result,
+                data_set_index,
+                member_index,
+                member_domain,
+                member_ln,
+                member,
+                fallback_ld_inst,
+                child_path,
+                SclResolvedValueType{child.b_type, child.type},
+                templates,
+                ied,
+                access_point,
+                device,
+                node,
+                data_set);
+        }
+        return emitted_count;
+    }
+    if (resolved_enum_type_missing(templates, resolved_type)) {
+        append_member_diagnostic(result, "SCL_TEMPLATE_ENUMTYPE_MISSING", "DataSet member leaf references a missing EnumType template.", ied, access_point, device, node, data_set, member);
+        return 0U;
+    }
+    append_compiled_signal(result, data_set_index, member_index, member_domain, member_ln, member, fallback_ld_inst, attribute_path, resolved_type, templates);
+    member_index++;
+    return 1U;
+}
+
 void sync_plan(UnitLabSclCompileResult& result)
 {
     result.plan.logical_device_count = result.logical_devices.size();
@@ -446,13 +514,23 @@ void compile_ied(UnitLabSclCompileResult& result, const SclIed& ied, const SclDa
                             for (const SclDaTemplate& attribute : member_do_type->data_attributes) {
                                 if (!attribute.fc.empty() && attribute.fc != member.fc) continue;
                                 const SclResolvedValueType attribute_type{attribute.b_type, attribute.type};
-                                if (resolved_enum_type_missing(templates, attribute_type)) {
-                                    append_member_diagnostic(result, "SCL_TEMPLATE_ENUMTYPE_MISSING", "DataSet DO-level member attribute references a missing EnumType template.", ied, access_point, device, node, data_set, member);
-                                    break;
-                                }
-                                append_compiled_signal(result, data_set_index, valid_member_index, member_domain, member_ln, member, device.inst, attribute.name, attribute_type, templates);
-                                valid_member_index++;
-                                emitted_attribute_count++;
+                                emitted_attribute_count += append_compiled_attribute_leaves(
+                                    result,
+                                    data_set_index,
+                                    valid_member_index,
+                                    member_domain,
+                                    member_ln,
+                                    member,
+                                    device.inst,
+                                    attribute.name,
+                                    attribute_type,
+                                    templates,
+                                    ied,
+                                    access_point,
+                                    device,
+                                    node,
+                                    data_set);
+                                if (result.diagnostics.size() != diagnostics_before_resolution) break;
                             }
                             if (emitted_attribute_count != 0U || result.diagnostics.size() != diagnostics_before_resolution) continue;
                             append_member_diagnostic(result, "SCL_TEMPLATE_DA_MISSING", "DataSet DO-level member DOType has no DA matching the requested FC.", ied, access_point, device, node, data_set, member);

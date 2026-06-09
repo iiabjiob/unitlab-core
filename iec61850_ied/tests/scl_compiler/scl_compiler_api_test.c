@@ -45,6 +45,9 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "<scl:FCDA ldInst=\"LD0\" lnClass=\"XCBR\" lnInst=\"1\" doName=\"Beh.subState\" daName=\"stVal\" fc=\"ST\" />"
         "<scl:FCD ldInst=\"LD0\" lnClass=\"PGGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />"
         "<scl:FCDA ldInst=\"LD0\" prefix=\"Led\" lnClass=\"GGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />"
+        "<scl:FCDA ldInst=\"LD1\" lnClass=\"PGGIO\" lnInst=\"1\" doName=\"Ind1\" fc=\"ST\" />"
+        "<scl:FCD ldInst=\"LD0\" lnClass=\"MMXU\" lnInst=\"1\" doName=\"PhV.phsA\" fc=\"MX\" />"
+        "<scl:FCD ldInst=\"LD0\" lnClass=\"MMXU\" lnInst=\"1\" doName=\"Hz\" fc=\"MX\" />"
         "</scl:DataSet>"
         "<scl:ReportControl name=\"brcbEvents\" buffered=\"true\" rptID=\"events\" datSet=\"dsEvents\" confRev=\"7\" indexed=\"false\" bufTime=\"100\" intgPd=\"1000\">"
         "<scl:TrgOps dchg=\"true\" qchg=\"true\" dupd=\"false\" period=\"false\" gi=\"true\" />"
@@ -54,16 +57,23 @@ static int test_compile_builds_model_plan_through_c_api(void)
         "<scl:LN lnClass=\"XCBR\" inst=\"1\" lnType=\"XCBR_TYPE\" />"
         "<scl:LN lnClass=\"PGGIO\" inst=\"1\" lnType=\"PGGIO_TYPE\" />"
         "<scl:LN prefix=\"Led\" lnClass=\"GGIO\" inst=\"1\" lnType=\"PGGIO_TYPE\" />"
-        "</scl:LDevice></scl:Server></scl:AccessPoint></scl:IED>"
+        "<scl:LN lnClass=\"MMXU\" inst=\"1\" lnType=\"MMXU_TYPE\" />"
+        "</scl:LDevice><scl:LDevice inst=\"LD1\"><scl:LN lnClass=\"PGGIO\" inst=\"1\" lnType=\"PGGIO_TYPE\" /></scl:LDevice></scl:Server></scl:AccessPoint></scl:IED>"
         "<scl:IED name=\"IED2\"><scl:AccessPoint name=\"AP1\" /></scl:IED>"
         "<scl:DataTypeTemplates>"
         "<scl:LNodeType id=\"XCBR_TYPE\" lnClass=\"XCBR\"><scl:DO name=\"Pos\" type=\"DPC_POS\" /><scl:DO name=\"Beh\" type=\"BEH_ROOT\" /></scl:LNodeType>"
         "<scl:LNodeType id=\"PGGIO_TYPE\" lnClass=\"PGGIO\"><scl:DO name=\"Ind1\" type=\"INS_IND\" /></scl:LNodeType>"
+        "<scl:LNodeType id=\"MMXU_TYPE\" lnClass=\"MMXU\"><scl:DO name=\"PhV\" type=\"PHV_ROOT\" /><scl:DO name=\"Hz\" type=\"MV_ROOT\" /></scl:LNodeType>"
         "<scl:DOType id=\"DPC_POS\" cdc=\"DPC\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"BOOLEAN\" /><scl:DA name=\"origin\" fc=\"ST\" bType=\"Struct\" type=\"ORIGINATOR\" /><scl:DA name=\"ctlModel\" fc=\"CF\" bType=\"Enum\" type=\"CtlModelKind\" /></scl:DOType>"
         "<scl:DOType id=\"BEH_ROOT\" cdc=\"ENS\"><scl:SDO name=\"subState\" type=\"BEH_SUB\" /></scl:DOType>"
         "<scl:DOType id=\"BEH_SUB\" cdc=\"ENS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /></scl:DOType>"
         "<scl:DOType id=\"INS_IND\" cdc=\"INS\"><scl:DA name=\"stVal\" fc=\"ST\" bType=\"INT32\" /><scl:DA name=\"q\" fc=\"ST\" bType=\"Quality\" /><scl:DA name=\"t\" fc=\"ST\" bType=\"Timestamp\" /></scl:DOType>"
+        "<scl:DOType id=\"PHV_ROOT\" cdc=\"WYE\"><scl:SDO name=\"phsA\" type=\"CMV_ROOT\" /></scl:DOType>"
+        "<scl:DOType id=\"CMV_ROOT\" cdc=\"CMV\"><scl:DA name=\"cVal\" fc=\"MX\" bType=\"Struct\" type=\"Vector\" /><scl:DA name=\"q\" fc=\"MX\" bType=\"Quality\" /><scl:DA name=\"t\" fc=\"MX\" bType=\"Timestamp\" /></scl:DOType>"
+        "<scl:DOType id=\"MV_ROOT\" cdc=\"MV\"><scl:DA name=\"mag\" fc=\"MX\" bType=\"Struct\" type=\"AnalogueValue\" /><scl:DA name=\"q\" fc=\"MX\" bType=\"Quality\" /><scl:DA name=\"t\" fc=\"MX\" bType=\"Timestamp\" /></scl:DOType>"
         "<scl:DAType id=\"ORIGINATOR\"><scl:BDA name=\"orIdent\" bType=\"VisString64\" /><scl:BDA name=\"nested\" bType=\"Struct\" type=\"ORIGINATOR_NESTED\" /></scl:DAType>"
+        "<scl:DAType id=\"Vector\"><scl:BDA name=\"mag\" bType=\"Struct\" type=\"AnalogueValue\" /></scl:DAType>"
+        "<scl:DAType id=\"AnalogueValue\"><scl:BDA name=\"f\" bType=\"FLOAT32\" /></scl:DAType>"
         "<scl:DAType id=\"ORIGINATOR_NESTED\"><scl:BDA name=\"deepIdent\" bType=\"VisString64\" /></scl:DAType>"
         "<scl:EnumType id=\"CtlModelKind\"><scl:EnumVal ord=\"1\" desc=\"direct-with-normal-security\" /></scl:EnumType>"
         "</scl:DataTypeTemplates>"
@@ -82,11 +92,11 @@ static int test_compile_builds_model_plan_through_c_api(void)
     const UnitLabIedModelPlan* plan = unitlab_scl_compile_model_plan(result);
     passed &= expect_true(plan != NULL, "model plan should be available");
     if (plan != NULL) {
-        passed &= expect_true(plan->logical_device_count == 1U, "one logical device");
-        passed &= expect_true(plan->logical_node_count == 4U, "four logical nodes including prefixed LN");
+        passed &= expect_true(plan->logical_device_count == 2U, "two logical devices including cross-LD member target");
+        passed &= expect_true(plan->logical_node_count == 6U, "six logical nodes including prefixed, cross-LD, and MMXU LN");
         passed &= expect_true(plan->data_set_count == 1U, "one DataSet");
         passed &= expect_true(plan->report_count == 1U, "one ReportControl");
-        passed &= expect_true(plan->signal_count == 11U, "eleven DataSet members including FCD and FCDA DO-level q/t");
+        passed &= expect_true(plan->signal_count == 20U, "twenty DataSet members including recursive CMV/MV leaves");
         passed &= expect_string(plan->logical_devices[0].inst, "IED1LD0", "MMS domain");
         passed &= expect_string(plan->data_sets[0].reference, "IED1/AP1/LD0/LLN0.dsEvents", "DataSet reference");
         passed &= expect_string(plan->data_sets[0].logical_device_inst, "IED1LD0", "DataSet domain");
@@ -153,6 +163,20 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_string(plan->signals[9].data_set_entry_variable, "IED1LD0/LedGGIO1$ST$Ind1$q", "tenth signal FCDA DO-level quality DataSet entry variable");
         passed &= expect_string(plan->signals[10].reference, "LD0/LedGGIO1.Ind1.t[ST]", "eleventh signal FCDA DO-level timestamp ref");
         passed &= expect_string(plan->signals[10].data_set_entry_variable, "IED1LD0/LedGGIO1$ST$Ind1$t", "eleventh signal FCDA DO-level timestamp DataSet entry variable");
+        passed &= expect_string(plan->signals[11].reference, "LD1/PGGIO1.Ind1.stVal[ST]", "twelfth signal cross-LD FCDA DO-level value ref");
+        passed &= expect_string(plan->signals[11].object_reference, "IED1LD1.PGGIO1.Ind1.stVal", "twelfth signal cross-LD FCDA DO-level value object ref");
+        passed &= expect_string(plan->signals[11].data_set_entry_variable, "IED1LD1/PGGIO1$ST$Ind1$stVal", "twelfth signal cross-LD FCDA DO-level value DataSet entry variable");
+        passed &= expect_string(plan->signals[12].reference, "LD1/PGGIO1.Ind1.q[ST]", "thirteenth signal cross-LD quality ref");
+        passed &= expect_string(plan->signals[13].reference, "LD1/PGGIO1.Ind1.t[ST]", "fourteenth signal cross-LD timestamp ref");
+        passed &= expect_string(plan->signals[14].reference, "LD0/MMXU1.PhV.phsA.cVal.mag.f[MX]", "fifteenth signal CMV nested mag.f ref");
+        passed &= expect_string(plan->signals[14].data_set_entry_variable, "IED1LD0/MMXU1$MX$PhV$phsA$cVal$mag$f", "fifteenth signal CMV canonical DataSet entry variable");
+        passed &= expect_true(plan->signals[14].initial_value_kind == UNITLAB_IED_FIXTURE_VALUE_REAL, "fifteenth signal CMV mag.f typed default kind");
+        passed &= expect_string(plan->signals[15].reference, "LD0/MMXU1.PhV.phsA.q[MX]", "sixteenth signal CMV quality ref");
+        passed &= expect_string(plan->signals[16].reference, "LD0/MMXU1.PhV.phsA.t[MX]", "seventeenth signal CMV timestamp ref");
+        passed &= expect_string(plan->signals[17].reference, "LD0/MMXU1.Hz.mag.f[MX]", "eighteenth signal MV mag.f ref");
+        passed &= expect_string(plan->signals[17].data_set_entry_variable, "IED1LD0/MMXU1$MX$Hz$mag$f", "eighteenth signal MV canonical DataSet entry variable");
+        passed &= expect_string(plan->signals[18].reference, "LD0/MMXU1.Hz.q[MX]", "nineteenth signal MV quality ref");
+        passed &= expect_string(plan->signals[19].reference, "LD0/MMXU1.Hz.t[MX]", "twentieth signal MV timestamp ref");
     }
 
     size_t json_size = unitlab_scl_compile_normalized_json_size(result);
@@ -170,7 +194,7 @@ static int test_compile_builds_model_plan_through_c_api(void)
         passed &= expect_true(written_size == json_size, "normalized JSON written size should include null terminator");
         passed &= expect_contains(json, "\"schema\":\"unitlab.iec61850.scl.normalized.v1\"", "normalized JSON schema");
         passed &= expect_contains(json, "\"selectedIed\":\"IED1\"", "normalized JSON selected IED");
-        passed &= expect_contains(json, "\"logicalDevices\":[{\"inst\":\"IED1LD0\"}]", "normalized JSON logical devices");
+        passed &= expect_contains(json, "\"logicalDevices\":[{\"inst\":\"IED1LD0\"},{\"inst\":\"IED1LD1\"}]", "normalized JSON logical devices");
         passed &= expect_contains(json, "\"reference\":\"LD0/PGGIO1.Ind1.q[ST]\"", "normalized JSON q signal");
         passed &= expect_contains(json, "\"dataAttributePath\":\"t\"", "normalized JSON t attribute");
         passed &= expect_contains(json, "\"reference\":\"LD0/LedGGIO1.Ind1.stVal[ST]\"", "normalized JSON FCDA DO-level prefixed signal");
