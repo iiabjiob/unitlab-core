@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netdb.h>
+#include <netinet/tcp.h>
 #include <poll.h>
 #include <signal.h>
 #include <time.h>
@@ -90,6 +91,17 @@ static int send_all(int fd, const uint8_t* buffer, size_t length)
     return 1;
 }
 
+/* Keep the next MMS response out of the same TCP payload as the final COTP segment. */
+static void pause_after_segmented_transport_response(void)
+{
+    struct timespec delay;
+
+    delay.tv_sec = 0;
+    delay.tv_nsec = 2L * 1000L * 1000L;
+    while (nanosleep(&delay, &delay) != 0 && errno == EINTR) {
+    }
+}
+
 static int send_transport_frame_segmented(int fd, const uint8_t* frame, size_t frame_length, const char* log_label)
 {
     enum { native_wire_cotp_user_data_segment_length = 1021U };
@@ -140,6 +152,7 @@ static int send_transport_frame_segmented(int fd, const uint8_t* frame, size_t f
         segment_count,
         (unsigned)native_wire_cotp_user_data_segment_length);
     fflush(stdout);
+    pause_after_segmented_transport_response();
     return 1;
 }
 
@@ -709,12 +722,15 @@ static int bind_listen(const char* bind_address, int port)
 static int accept_connection(int listen_fd)
 {
     int client_fd = accept(listen_fd, NULL, NULL);
+    int tcp_no_delay = 1;
+
     if (client_fd < 0) {
         if (errno == EINTR) {
             return -2;
         }
         return -1;
     }
+    (void)setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &tcp_no_delay, sizeof(tcp_no_delay));
     return client_fd;
 }
 static int read_command_from_socket(int fd, char* command, size_t command_length)
