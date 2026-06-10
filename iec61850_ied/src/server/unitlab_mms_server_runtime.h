@@ -59,7 +59,7 @@ typedef struct UnitLabMmsServerRuntimeSignalValue {
     size_t encoded_value_length;
     uint8_t quality_value[2];
     size_t quality_value_length;
-    uint8_t timestamp_value[6];
+    uint8_t timestamp_value[8];
     size_t timestamp_value_length;
 } UnitLabMmsServerRuntimeSignalValue;
 

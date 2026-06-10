@@ -1378,7 +1378,7 @@ static void test_server_runtime_updates_quality_timestamp_next_to_value_leaf(voi
     UnitLabIedModelPlan plan;
     uint8_t response_bytes[1024U];
     const uint8_t quality_bytes[2U] = { 0x12U, 0x34U };
-    const uint8_t timestamp_bytes[6U] = { 0x01U, 0x02U, 0x03U, 0x04U, 0x05U, 0x06U };
+    const uint8_t timestamp_bytes[8U] = { 0x01U, 0x02U, 0x03U, 0x04U, 0x05U, 0x06U, 0x07U, 0x08U };
     size_t response_length = 0U;
 
     assert(build_runtime_quality_timestamp_plan(&plan) == 1);
@@ -1399,7 +1399,7 @@ static void test_server_runtime_updates_quality_timestamp_next_to_value_leaf(voi
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x83\x01\xFF", 3U) == 1);
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x12\x34", 4U) == 1);
-    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x8C\x06\x01\x02\x03\x04\x05\x06", 8U) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x91\x08\x01\x02\x03\x04\x05\x06\x07\x08", 10U) == 1);
 
     unitlab_free_ied_model_plan(&plan);
 }
@@ -1499,7 +1499,7 @@ static void test_server_runtime_quality_update_queues_quality_change_report(void
     UnitLabIedModelPlan plan;
     uint8_t report_bytes[4096U];
     const uint8_t quality_bytes[2U] = { 0x31U, 0x42U };
-    const uint8_t timestamp_bytes[6U] = { 0x01U, 0x02U, 0x03U, 0x04U, 0x05U, 0x06U };
+    const uint8_t timestamp_bytes[8U] = { 0x01U, 0x02U, 0x03U, 0x04U, 0x05U, 0x06U, 0x07U, 0x08U };
     size_t report_length = 0U;
 
     assert(build_runtime_quality_timestamp_plan(&plan) == 1);
@@ -1541,7 +1541,7 @@ static void test_server_runtime_quality_timestamp_update_aliases_share_stored_va
     uint8_t report_bytes[4096U];
     uint8_t response_bytes[1024U];
     const uint8_t quality_bytes[2U] = { 0x61U, 0x62U };
-    const uint8_t timestamp_bytes[6U] = { 0x10U, 0x11U, 0x12U, 0x13U, 0x14U, 0x15U };
+    const uint8_t timestamp_bytes[8U] = { 0x10U, 0x11U, 0x12U, 0x13U, 0x14U, 0x15U, 0x16U, 0x17U };
     size_t report_length = 0U;
     size_t response_length = 0U;
 
@@ -1574,7 +1574,7 @@ static void test_server_runtime_quality_timestamp_update_aliases_share_stored_va
     snprintf(server_runtime.pending_request.read_attribute_references[1], sizeof(server_runtime.pending_request.read_attribute_references[1]), "%s", "t");
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x84\x02\x61\x62", 4U) == 1);
-    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x8C\x06\x10\x11\x12\x13\x14\x15", 8U) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x91\x08\x10\x11\x12\x13\x14\x15\x16\x17", 10U) == 1);
     assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
 
     assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
@@ -1592,7 +1592,7 @@ static void test_server_runtime_gi_report_uses_stored_quality_timestamp_members(
     UnitLabIedModelPlan plan;
     uint8_t report_bytes[4096U];
     const uint8_t quality_bytes[2U] = { 0x45U, 0x67U };
-    const uint8_t timestamp_bytes[6U] = { 0x10U, 0x20U, 0x30U, 0x40U, 0x50U, 0x60U };
+    const uint8_t timestamp_bytes[8U] = { 0x10U, 0x20U, 0x30U, 0x40U, 0x50U, 0x60U, 0x70U, 0x80U };
     size_t report_length = 0U;
 
     assert(build_runtime_quality_timestamp_plan(&plan) == 1);
@@ -1613,7 +1613,7 @@ static void test_server_runtime_gi_report_uses_stored_quality_timestamp_members(
     assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x83\x01\xFF", 3U) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x45\x67", 4U) == 1);
-    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x8C\x06\x10\x20\x30\x40\x50\x60", 8U) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x91\x08\x10\x20\x30\x40\x50\x60\x70\x80", 10U) == 1);
 
     unitlab_free_ied_model_plan(&plan);
 }
@@ -1626,7 +1626,7 @@ static void test_server_runtime_data_change_report_uses_stored_quality_timestamp
     UnitLabIedModelPlan plan;
     uint8_t report_bytes[4096U];
     const uint8_t quality_bytes[2U] = { 0x7AU, 0xBCU };
-    const uint8_t timestamp_bytes[6U] = { 0x21U, 0x22U, 0x23U, 0x24U, 0x25U, 0x26U };
+    const uint8_t timestamp_bytes[8U] = { 0x21U, 0x22U, 0x23U, 0x24U, 0x25U, 0x26U, 0x27U, 0x28U };
     size_t report_length = 0U;
 
     assert(build_runtime_quality_timestamp_plan(&plan) == 1);
@@ -1653,7 +1653,7 @@ static void test_server_runtime_data_change_report_uses_stored_quality_timestamp
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"IED1LD0/PGGIO1$ST$Ind1$t", strlen("IED1LD0/PGGIO1$ST$Ind1$t")) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x83\x01\xFF", 3U) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x7A\xBC", 4U) == 1);
-    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x8C\x06\x21\x22\x23\x24\x25\x26", 8U) == 1);
+    assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x91\x08\x21\x22\x23\x24\x25\x26\x27\x28", 10U) == 1);
     assert(contains_bytes(report_bytes, report_length, (const uint8_t*)"\x84\x02\x05\xE0", 4U) == 1);
 
     unitlab_free_ied_model_plan(&plan);

@@ -899,7 +899,7 @@ int server_runtime_encode_current_signal_timestamp(
     UnitLabMmsDiagnostic* diagnostic)
 {
     const UnitLabMmsServerRuntimeSignalValue* runtime_value = NULL;
-    const uint8_t default_timestamp[6U] = { 0U, 0U, 0U, 0U, 0U, 0U };
+    const uint8_t default_timestamp[8U] = { 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U };
     const uint8_t* timestamp_bytes = default_timestamp;
     size_t timestamp_length = sizeof(default_timestamp);
 
@@ -912,7 +912,7 @@ int server_runtime_encode_current_signal_timestamp(
         timestamp_bytes = runtime_value->timestamp_value;
         timestamp_length = runtime_value->timestamp_value_length;
     }
-    return server_runtime_encode_context_data(12U, timestamp_bytes, timestamp_length, buffer, buffer_length, encoded_length, diagnostic);
+    return server_runtime_encode_context_data(17U, timestamp_bytes, timestamp_length, buffer, buffer_length, encoded_length, diagnostic);
 }
 
 static void server_runtime_reset_signal_values(UnitLabMmsServerRuntime* server_runtime)
@@ -1417,8 +1417,8 @@ int unitlab_mms_server_runtime_update_signal_timestamp(
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Signal timestamp update requires runtime, value leaf reference, and timestamp bytes.");
         return 0;
     }
-    if (timestamp_length > sizeof(((UnitLabMmsServerRuntimeSignalValue*)0)->timestamp_value)) {
-        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL, "Signal timestamp value is too large.");
+    if (timestamp_length != sizeof(((UnitLabMmsServerRuntimeSignalValue*)0)->timestamp_value)) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "Signal timestamp update requires an 8-byte UTC-time value.");
         return 0;
     }
     signal = server_runtime_find_signal_by_object_reference(server_runtime, value_leaf_reference);
