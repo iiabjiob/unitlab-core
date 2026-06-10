@@ -4291,6 +4291,28 @@ static void test_server_runtime_build_model_lln0_gva_uses_report_class_presence(
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"brcbB", strlen("brcbB")) == 1);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"BR", strlen("BR")) == 0);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"brcbEvents", strlen("brcbEvents")) == 0);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_GET_VARIABLE_ACCESS_ATTRIBUTES, 82U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "KINTE08TDIFFSystem.LLN0.RP.brcbA");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "brcbA");
+
+    response_length = 0U;
+    response_consumed_length = 0U;
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 0U);
+
+    unitlab_mms_association_frame_init(&frame);
+    assert(unitlab_mms_association_frame_decode(&frame, response_bytes, response_length, &response_consumed_length, &diagnostic));
+    assert(response_consumed_length == response_length);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"RptID", strlen("RptID")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"Resv", strlen("Resv")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"DatSet", strlen("DatSet")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"PurgeBuf", strlen("PurgeBuf")) == 0);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"EntryID", strlen("EntryID")) == 0);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"ResvTms", strlen("ResvTms")) == 0);
 
     unitlab_free_ied_model_plan(&plan);
 }

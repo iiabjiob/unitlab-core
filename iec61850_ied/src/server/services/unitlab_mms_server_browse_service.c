@@ -201,6 +201,19 @@ static const char* const lln0_br_rcb_children[] = {
     "TimeofEntry",
     "ResvTms"
 };
+static const char* const lln0_rp_rcb_children[] = {
+    "RptID",
+    "RptEna",
+    "Resv",
+    "DatSet",
+    "ConfRev",
+    "OptFlds",
+    "BufTm",
+    "SqNum",
+    "TrgOps",
+    "IntgPd",
+    "GI"
+};
 static const char* const lln0_ex_children[] = { "NamPlt" };
 static const char* const lln0_ex_namplt_children[] = { "ldNs", "lnNs", "cdcNs", "dataNs" };
 static const char* const lln0_namplt_children[] = { "vendor", "swRev", "d", "configRev" };
@@ -578,9 +591,13 @@ static const char* const* server_runtime_lookup_gva_children(
         *child_count = sizeof(lln0_namplt_children) / sizeof(lln0_namplt_children[0]);
         return lln0_namplt_children;
     }
-    else if ((strcmp(parent_component_name, "BR") == 0 || strcmp(parent_component_name, "RP") == 0) && component_name[0] != '\0') {
+    else if (strcmp(parent_component_name, "BR") == 0 && component_name[0] != '\0') {
         *child_count = sizeof(lln0_br_rcb_children) / sizeof(lln0_br_rcb_children[0]);
         return lln0_br_rcb_children;
+    }
+    else if (strcmp(parent_component_name, "RP") == 0 && component_name[0] != '\0') {
+        *child_count = sizeof(lln0_rp_rcb_children) / sizeof(lln0_rp_rcb_children[0]);
+        return lln0_rp_rcb_children;
     }
     else if (strcmp(parent_component_name, "EX") == 0 && strcmp(component_name, "NamPlt") == 0) {
         *child_count = sizeof(lln0_ex_namplt_children) / sizeof(lln0_ex_namplt_children[0]);
@@ -1561,8 +1578,14 @@ int server_runtime_build_get_variable_access_attributes_response_service(
         }
     }
     else if (strncmp(item_id, "LLN0$BR$", 8U) == 0 || strncmp(item_id, "LLN0.BR.", 8U) == 0 || strncmp(item_id, "LLN0$RP$", 8U) == 0 || strncmp(item_id, "LLN0.RP.", 8U) == 0) {
+        const int is_rp_rcb = strncmp(item_id, "LLN0$RP$", 8U) == 0 || strncmp(item_id, "LLN0.RP.", 8U) == 0;
+        const char* const* rcb_children = is_rp_rcb ? lln0_rp_rcb_children : lln0_br_rcb_children;
+        const size_t rcb_child_count = is_rp_rcb
+            ? sizeof(lln0_rp_rcb_children) / sizeof(lln0_rp_rcb_children[0])
+            : sizeof(lln0_br_rcb_children) / sizeof(lln0_br_rcb_children[0]);
+
         snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", "LLN0");
-        if (!server_runtime_copy_static_names(lln0_br_rcb_children, sizeof(lln0_br_rcb_children) / sizeof(lln0_br_rcb_children[0]), &names, &name_count, diagnostic)) {
+        if (!server_runtime_copy_static_names(rcb_children, rcb_child_count, &names, &name_count, diagnostic)) {
             return 0;
         }
     }
