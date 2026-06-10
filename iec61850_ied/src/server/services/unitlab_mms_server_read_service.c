@@ -355,10 +355,11 @@ static void server_runtime_read_format_report_references(
     }
 }
 
-static int server_runtime_read_reference_is_report_class_container(const char* object_reference, char* domain_id, size_t domain_id_size)
+static int server_runtime_read_reference_is_report_class_container(const char* object_reference, char* domain_id, size_t domain_id_size, int* is_buffered)
 {
     char parsed_domain[128U];
     char parsed_item[128U];
+    int parsed_is_buffered = 0;
 
     if (object_reference == NULL) {
         return 0;
@@ -366,17 +367,26 @@ static int server_runtime_read_reference_is_report_class_container(const char* o
     if (!server_runtime_parse_object_reference(object_reference, parsed_domain, sizeof(parsed_domain), parsed_item, sizeof(parsed_item))) {
         return 0;
     }
-    if (strcmp(parsed_item, "LLN0.BR") != 0 && strcmp(parsed_item, "LLN0$BR") != 0) {
+    if (strcmp(parsed_item, "LLN0.BR") == 0 || strcmp(parsed_item, "LLN0$BR") == 0) {
+        parsed_is_buffered = 1;
+    }
+    else if (strcmp(parsed_item, "LLN0.RP") == 0 || strcmp(parsed_item, "LLN0$RP") == 0) {
+        parsed_is_buffered = 0;
+    }
+    else {
         return 0;
     }
     if (domain_id != NULL && domain_id_size != 0U) {
         snprintf(domain_id, domain_id_size, "%s", parsed_domain);
     }
+    if (is_buffered != NULL) {
+        *is_buffered = parsed_is_buffered;
+    }
     return 1;
 }
 
 static int server_runtime_try_encode_model_report_class_container(
-    const UnitLabMmsServerRuntime* server_runtime,
+    UnitLabMmsServerRuntime* server_runtime,
     const char* object_reference,
     uint8_t* buffer,
     size_t buffer_length,
@@ -384,6 +394,7 @@ static int server_runtime_try_encode_model_report_class_container(
     UnitLabMmsDiagnostic* diagnostic)
 {
     char domain_id[128U];
+    int requested_is_buffered = 0;
     uint8_t report_values[60000U];
     size_t report_values_length = 0U;
     size_t matching_report_count = 0U;
@@ -395,7 +406,7 @@ static int server_runtime_try_encode_model_report_class_container(
     if (server_runtime == NULL || server_runtime->model_plan == NULL || server_runtime->model_plan->reports == NULL || object_reference == NULL) {
         return 0;
     }
-    if (!server_runtime_read_reference_is_report_class_container(object_reference, domain_id, sizeof(domain_id))) {
+    if (!server_runtime_read_reference_is_report_class_container(object_reference, domain_id, sizeof(domain_id), &requested_is_buffered)) {
         return 0;
     }
 
@@ -406,9 +417,10 @@ static int server_runtime_try_encode_model_report_class_container(
         uint8_t report_value[2048U];
         size_t report_value_length = 0U;
 
-        if (!report->is_buffered || strcmp(report->logical_device_inst, domain_id) != 0 || strcmp(report->logical_node_name, "LLN0") != 0) {
+        if ((report->is_buffered != requested_is_buffered) || strcmp(report->logical_device_inst, domain_id) != 0 || strcmp(report->logical_node_name, "LLN0") != 0) {
             continue;
         }
+        server_runtime->active_report_index = index;
         server_runtime_read_format_report_references(
             server_runtime,
             report,
@@ -1176,8 +1188,8 @@ static int server_runtime_build_read_response_value(
         *value_supported = 1;
         return 1;
     }
-    if (server_runtime_object_reference_has_suffix(object_reference, ".BR")) {
-        if (server_runtime->model_plan != NULL && server_runtime_read_reference_is_report_class_container(object_reference, NULL, 0U)) {
+    if (server_runtime_object_reference_has_suffix(object_reference, ".BR") || server_runtime_object_reference_has_suffix(object_reference, ".RP")) {
+        if (server_runtime->model_plan != NULL && server_runtime_read_reference_is_report_class_container(object_reference, NULL, 0U, NULL)) {
             if (server_runtime_try_encode_model_report_class_container(server_runtime, object_reference, buffer, buffer_length, encoded_length, diagnostic)) {
                 *value_supported = 1;
                 return 1;

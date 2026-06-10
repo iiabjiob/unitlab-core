@@ -727,6 +727,50 @@ static void test_server_runtime_reads_model_backed_rcb_dataset_aliases(void)
 }
 
 
+
+static void test_server_runtime_reads_model_backed_urcb_class_container(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    uint8_t scratch[512U];
+    uint8_t request_bytes[512U];
+    uint8_t response_bytes[8192U];
+    size_t request_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+
+    assert(build_two_model_backed_rcb_plan(&plan) == 1);
+    for (size_t index = 0U; index < plan.report_count; index++) {
+        plan.reports[index].is_buffered = 0;
+        snprintf(plan.reports[index].report_kind, sizeof(plan.reports[index].report_kind), "%s", "unbuffered");
+        snprintf(plan.reports[index].rpt_id, sizeof(plan.reports[index].rpt_id), "KINTE08TDIFFSystem/LLN0.urcb%c", (char)('A' + index));
+    }
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+
+    assert(unitlab_mms_build_read_request_frame("KINTE08TDIFFSystem", "LLN0$RP", 198U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(response_length > 0U);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0.urcbA", strlen("KINTE08TDIFFSystem/LLN0.urcbA")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0.urcbB", strlen("KINTE08TDIFFSystem/LLN0.urcbB")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0$RCB1", strlen("KINTE08TDIFFSystem/LLN0$RCB1")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0$RCB2", strlen("KINTE08TDIFFSystem/LLN0$RCB2")) == 1);
+    assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"object-access-unsupported", strlen("object-access-unsupported")) == 0);
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
 static void test_server_runtime_second_model_rcb_gi_uses_second_dataset(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -6514,6 +6558,7 @@ int main(void)
     test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results();
     test_server_runtime_brcb_read_uses_model_report_dataset_reference();
     test_server_runtime_reads_model_backed_rcb_dataset_aliases();
+    test_server_runtime_reads_model_backed_urcb_class_container();
     test_server_runtime_second_model_rcb_gi_uses_second_dataset();
     test_server_runtime_build_read_failure_uses_data_access_error_access_result();
     test_server_runtime_model_placeholder_reads_keep_discovery_flow_alive();
