@@ -852,16 +852,12 @@ static int server_runtime_build_read_response_value(
     int* value_supported,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    UnitLabMmsBerElement value_element;
     UnitLabIedModelSignal synthetic_signal;
     const UnitLabIedModelSignal* signal = NULL;
-    int32_t integer_value = 0;
-    uint8_t integer_bytes[5U];
     uint8_t value_single[1U];
     char rcb_report_id_reference[256U];
     char rcb_data_set_reference[256U];
     const UnitLabIedModelReportControl* read_report = NULL;
-    size_t integer_length = 0U;
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -925,7 +921,6 @@ static int server_runtime_build_read_response_value(
     }
 
 
-    unitlab_mms_ber_element_init(&value_element);
     memset(&synthetic_signal, 0, sizeof(synthetic_signal));
 
     {
@@ -1049,13 +1044,6 @@ static int server_runtime_build_read_response_value(
         size_t rcb_field_count = 0U;
         const char* const* rcb_fields = server_runtime_report_control_block_fields(&rcb_field_count);
         for (size_t rcb_field_index = 0U; rcb_field_index < rcb_field_count; rcb_field_index++) {
-            char brcb_suffix[128U];
-            char legacy_suffix[160U];
-
-            snprintf(brcb_suffix, sizeof(brcb_suffix), ".BR.brcbEvents.%s", rcb_fields[rcb_field_index]);
-            snprintf(legacy_suffix, sizeof(legacy_suffix), ".BR.LLN0_Events_BuffRep01.%s", rcb_fields[rcb_field_index]);
-            (void)brcb_suffix;
-            (void)legacy_suffix;
             read_report = server_runtime_read_find_report_control(server_runtime, object_reference, rcb_fields[rcb_field_index]);
             if (read_report != NULL) {
                 (void)server_runtime_select_report_control_by_reference(server_runtime, object_reference);
@@ -1083,103 +1071,6 @@ static int server_runtime_build_read_response_value(
                 return 1;
             }
         }
-    }
-    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.RptID", ".BR.LLN0_Events_BuffRep01.RptID" }, 2U)) {
-        synthetic_signal.initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
-        snprintf(synthetic_signal.initial_value, sizeof(synthetic_signal.initial_value), "%s", "IED1LD0/LLN0.BR.Events");
-        if (!server_runtime_encode_mms_data_value(&synthetic_signal, buffer, buffer_length, encoded_length, diagnostic)) {
-            return 0;
-        }
-        *value_supported = 1;
-        return 1;
-    }
-    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.DatSet", ".BR.LLN0_Events_BuffRep01.DatSet" }, 2U)) {
-        if (!server_runtime_encode_report_control_block_field_value(server_runtime, "DatSet", rcb_report_id_reference, rcb_data_set_reference, buffer, buffer_length, encoded_length, diagnostic)) {
-            return 0;
-        }
-        *value_supported = 1;
-        return 1;
-    }
-    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.ConfRev", ".BR.LLN0_Events_BuffRep01.ConfRev" }, 2U)) {
-        integer_value = 7;
-        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
-            return 0;
-        }
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 2U;
-        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
-        value_element.value_length = integer_length;
-        if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
-            return 0;
-        }
-        *value_supported = 1;
-        return 1;
-    }
-    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.BufTm", ".BR.LLN0_Events_BuffRep01.BufTm" }, 2U)) {
-        integer_value = 100;
-        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
-            return 0;
-        }
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 2U;
-        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
-        value_element.value_length = integer_length;
-        if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
-            return 0;
-        }
-        *value_supported = 1;
-        return 1;
-    }
-    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.IntgPd", ".BR.LLN0_Events_BuffRep01.IntgPd" }, 2U)) {
-        integer_value = 1000;
-        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
-            return 0;
-        }
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 2U;
-        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
-        value_element.value_length = integer_length;
-        if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
-            return 0;
-        }
-        *value_supported = 1;
-        return 1;
-    }
-    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.SqNum", ".BR.LLN0_Events_BuffRep01.SqNum" }, 2U)
-        || server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.ResvTms", ".BR.LLN0_Events_BuffRep01.ResvTms" }, 2U)) {
-        integer_value = server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.ResvTms", ".BR.LLN0_Events_BuffRep01.ResvTms" }, 2U) ? (int32_t)server_runtime->brcb_resv_tms : 0;
-        if (!server_runtime_encode_signed_integer(integer_value, integer_bytes, sizeof(integer_bytes), &integer_length, diagnostic)) {
-            return 0;
-        }
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 2U;
-        value_element.value_bytes = &integer_bytes[sizeof(integer_bytes) - integer_length];
-        value_element.value_length = integer_length;
-        if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
-            return 0;
-        }
-        *value_supported = 1;
-        return 1;
-    }
-    if (server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.GI", ".BR.LLN0_Events_BuffRep01.GI" }, 2U)
-        || server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.PurgeBuf", ".BR.LLN0_Events_BuffRep01.PurgeBuf" }, 2U)
-        || server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.RptEna", ".BR.LLN0_Events_BuffRep01.RptEna" }, 2U)) {
-        uint8_t boolean_value = server_runtime_object_reference_has_suffix_any(object_reference, (const char* const[]){ ".BR.brcbEvents.RptEna", ".BR.LLN0_Events_BuffRep01.RptEna" }, 2U) && server_runtime->brcb_rpt_ena != 0U ? 0x01U : 0x00U;
-
-        value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL;
-        value_element.tag.constructed = 0;
-        value_element.tag.tag_number = 1U;
-        value_element.value_bytes = &boolean_value;
-        value_element.value_length = 1U;
-        if (!unitlab_mms_ber_write(&value_element, buffer, buffer_length, encoded_length, diagnostic)) {
-            return 0;
-        }
-        *value_supported = 1;
-        return 1;
     }
     if (server_runtime_object_reference_matches_report_control_object(object_reference)) {
         if (!server_runtime_encode_report_control_block_value(server_runtime, rcb_report_id_reference, rcb_data_set_reference, buffer, buffer_length, encoded_length, diagnostic)) {
