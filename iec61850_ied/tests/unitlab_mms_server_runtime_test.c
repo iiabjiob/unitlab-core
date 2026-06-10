@@ -15,6 +15,7 @@
 #include "protocols/mms/unitlab_mms_wire_semantic_bridge.h"
 
 #include <string.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
 
@@ -4572,6 +4573,103 @@ static void test_server_runtime_build_fc_root_reads_match_lib_shape(void)
     }
 }
 
+
+static void test_server_runtime_large_model_fc_root_read_stays_within_wire_response(void)
+{
+    enum { ST_OBJECT_COUNT = 320U, OR_SIGNAL_COUNT = 2U, ST_SIGNAL_COUNT = ST_OBJECT_COUNT * 3U, SIGNAL_COUNT = OR_SIGNAL_COUNT + ST_SIGNAL_COUNT };
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLogicalDevice logical_devices[1U];
+    UnitLabIedModelLogicalNode logical_nodes[1U];
+    UnitLabIedModelSignal* signals = NULL;
+    uint8_t response_bytes[65535U];
+    uint32_t expected_tags[2U] = { 2U, 2U };
+    size_t signal_index = 0U;
+    size_t response_length = 0U;
+
+    signals = (UnitLabIedModelSignal*)calloc(SIGNAL_COUNT, sizeof(UnitLabIedModelSignal));
+    assert(signals != NULL);
+    memset(&plan, 0, sizeof(plan));
+    memset(logical_devices, 0, sizeof(logical_devices));
+    memset(logical_nodes, 0, sizeof(logical_nodes));
+
+    snprintf(logical_devices[0].inst, sizeof(logical_devices[0].inst), "%s", "KINTE05BCU01SYSTEM");
+    snprintf(logical_nodes[0].logical_device_inst, sizeof(logical_nodes[0].logical_device_inst), "%s", "KINTE05BCU01SYSTEM");
+    snprintf(logical_nodes[0].name, sizeof(logical_nodes[0].name), "%s", "C26xLDIA1");
+
+    for (size_t index = 0U; index < OR_SIGNAL_COUNT; index++) {
+        UnitLabIedModelSignal* signal = &signals[signal_index++];
+        const char* object_name = index == 0U ? "LEDId" : "MdbEna";
+        snprintf(signal->reference, sizeof(signal->reference), "SYSTEM/C26xLDIA1.%s.opRcvd[OR]", object_name);
+        snprintf(signal->kind, sizeof(signal->kind), "%s", "FCDA");
+        snprintf(signal->logical_device_inst, sizeof(signal->logical_device_inst), "%s", "KINTE05BCU01SYSTEM");
+        snprintf(signal->logical_node_name, sizeof(signal->logical_node_name), "%s", "C26xLDIA1");
+        snprintf(signal->data_object_name, sizeof(signal->data_object_name), "%s", object_name);
+        snprintf(signal->data_attribute_path, sizeof(signal->data_attribute_path), "%s", "opRcvd");
+        snprintf(signal->object_reference, sizeof(signal->object_reference), "KINTE05BCU01SYSTEM.C26xLDIA1.%s.opRcvd", object_name);
+        snprintf(signal->data_set_entry_variable, sizeof(signal->data_set_entry_variable), "KINTE05BCU01SYSTEM/C26xLDIA1$OR$%s$opRcvd", object_name);
+        snprintf(signal->fc, sizeof(signal->fc), "%s", "OR");
+        signal->initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_BOOLEAN;
+        snprintf(signal->initial_value, sizeof(signal->initial_value), "%s", "false");
+    }
+
+    for (size_t object_index = 0U; object_index < ST_OBJECT_COUNT; object_index++) {
+        char object_name[32U];
+        snprintf(object_name, sizeof(object_name), "AIUSt%zu", object_index);
+        for (size_t attribute_index = 0U; attribute_index < 3U; attribute_index++) {
+            UnitLabIedModelSignal* signal = &signals[signal_index++];
+            const char* attribute = attribute_index == 0U ? "stVal" : (attribute_index == 1U ? "q" : "t");
+            snprintf(signal->reference, sizeof(signal->reference), "SYSTEM/C26xLDIA1.%s.%s[ST]", object_name, attribute);
+            snprintf(signal->kind, sizeof(signal->kind), "%s", "FCDA");
+            snprintf(signal->logical_device_inst, sizeof(signal->logical_device_inst), "%s", "KINTE05BCU01SYSTEM");
+            snprintf(signal->logical_node_name, sizeof(signal->logical_node_name), "%s", "C26xLDIA1");
+            snprintf(signal->data_object_name, sizeof(signal->data_object_name), "%s", object_name);
+            snprintf(signal->data_attribute_path, sizeof(signal->data_attribute_path), "%s", attribute);
+            snprintf(signal->object_reference, sizeof(signal->object_reference), "KINTE05BCU01SYSTEM.C26xLDIA1.%s.%s", object_name, attribute);
+            snprintf(signal->data_set_entry_variable, sizeof(signal->data_set_entry_variable), "KINTE05BCU01SYSTEM/C26xLDIA1$ST$%s$%s", object_name, attribute);
+            snprintf(signal->fc, sizeof(signal->fc), "%s", "ST");
+            if (attribute_index == 2U) {
+                signal->initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+                snprintf(signal->initial_value, sizeof(signal->initial_value), "%s", "");
+            } else {
+                signal->initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER;
+                snprintf(signal->initial_value, sizeof(signal->initial_value), "%s", "0");
+            }
+        }
+    }
+    assert(signal_index == SIGNAL_COUNT);
+
+    plan.logical_device_count = 1U;
+    plan.logical_devices = logical_devices;
+    plan.logical_node_count = 1U;
+    plan.logical_nodes = logical_nodes;
+    plan.signal_count = SIGNAL_COUNT;
+    plan.signals = signals;
+
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_pending_request_start(&server_runtime.pending_request, UNITLAB_MMS_REQUEST_READ, 205U, 7U, 1000U, 100U, &diagnostic) == 1);
+    snprintf(server_runtime.pending_request.object_reference, sizeof(server_runtime.pending_request.object_reference), "%s", "KINTE05BCU01SYSTEM.C26xLDIA1.OR");
+    snprintf(server_runtime.pending_request.attribute_reference, sizeof(server_runtime.pending_request.attribute_reference), "%s", "OR");
+    server_runtime.pending_request.read_object_reference_count = 2U;
+    snprintf(server_runtime.pending_request.read_object_references[0], sizeof(server_runtime.pending_request.read_object_references[0]), "%s", "KINTE05BCU01SYSTEM.C26xLDIA1.OR");
+    snprintf(server_runtime.pending_request.read_attribute_references[0], sizeof(server_runtime.pending_request.read_attribute_references[0]), "%s", "OR");
+    snprintf(server_runtime.pending_request.read_object_references[1], sizeof(server_runtime.pending_request.read_object_references[1]), "%s", "KINTE05BCU01SYSTEM.C26xLDIA1.ST");
+    snprintf(server_runtime.pending_request.read_attribute_references[1], sizeof(server_runtime.pending_request.read_attribute_references[1]), "%s", "ST");
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(response_length > 5120U);
+    assert_read_response_access_result_tags(response_bytes, response_length, 205U, expected_tags, 2U);
+
+    free(signals);
+}
+
 static void test_server_runtime_build_brcb_gva_response_exposes_fields(void)
 {
     UnitLabMmsServerRuntime server_runtime;
@@ -6791,6 +6889,7 @@ int main(void)
     test_server_runtime_build_model_report_gva_response_uses_report_control_names();
     test_server_runtime_build_model_lln0_gva_uses_report_class_presence();
     test_server_runtime_build_fc_root_reads_match_lib_shape();
+    test_server_runtime_large_model_fc_root_read_stays_within_wire_response();
     test_server_runtime_build_brcb_gva_response_exposes_fields();
     test_server_runtime_apply_release_request_builds_lib_shape_response();
     test_server_runtime_apply_get_name_list_request_and_build_response_roundtrips();

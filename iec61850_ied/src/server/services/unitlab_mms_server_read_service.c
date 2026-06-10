@@ -5,6 +5,13 @@
 
 /* Read service handles ReadResponse construction, AccessResult encoding, and current value lookup. */
 
+#define UNITLAB_MMS_READ_VALUE_BUFFER_LENGTH 60000U
+#define UNITLAB_MMS_READ_ACCESS_RESULT_BUFFER_LENGTH 60128U
+#define UNITLAB_MMS_READ_SERVICE_BUFFER_LENGTH 65535U
+#define UNITLAB_MMS_READ_OBJECT_BUFFER_LENGTH 4096U
+#define UNITLAB_MMS_READ_OBJECT_CONTENT_BUFFER_LENGTH 2048U
+#define UNITLAB_MMS_READ_OBJECT_STRUCTURE_BUFFER_LENGTH 2304U
+
 static const char* server_runtime_ber_tag_class_label(UnitLabMmsBerTagClass tag_class)
 {
     switch (tag_class) {
@@ -524,8 +531,8 @@ static int server_runtime_append_signal_data_object_structure(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    uint8_t object_content[512U];
-    uint8_t object_structure[640U];
+    uint8_t object_content[UNITLAB_MMS_READ_OBJECT_CONTENT_BUFFER_LENGTH];
+    uint8_t object_structure[UNITLAB_MMS_READ_OBJECT_STRUCTURE_BUFFER_LENGTH];
     size_t object_content_length = 0U;
     size_t object_structure_length = 0U;
     UnitLabMmsBerElement element;
@@ -601,7 +608,7 @@ static int server_runtime_encode_fc_root_structure_value(
 {
     char logical_node_name[128U];
     char fc[32U];
-    uint8_t root_content[1024U];
+    uint8_t root_content[UNITLAB_MMS_READ_VALUE_BUFFER_LENGTH];
     size_t root_content_length = 0U;
     UnitLabMmsBerElement element;
     int found_signal = 0;
@@ -618,7 +625,7 @@ static int server_runtime_encode_fc_root_structure_value(
 
     for (size_t index = 0U; index < server_runtime->model_plan->signal_count;) {
         const UnitLabIedModelSignal* signal = &server_runtime->model_plan->signals[index];
-        uint8_t object_bytes[640U];
+        uint8_t object_bytes[UNITLAB_MMS_READ_OBJECT_BUFFER_LENGTH];
         size_t object_length = 0U;
         size_t consumed_count = 0U;
 
@@ -1117,12 +1124,12 @@ int server_runtime_build_read_response_service(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic)
 {
-    uint8_t value_bytes[4096U];
-    uint8_t access_result_value_bytes[4352U];
-    uint8_t list_of_access_result_bytes[4608U];
-    uint8_t list_of_access_result_wrapper_bytes[4864U];
-    uint8_t read_response_body_bytes[5120U];
-    uint8_t service_bytes[5376U];
+    uint8_t value_bytes[UNITLAB_MMS_READ_VALUE_BUFFER_LENGTH];
+    uint8_t access_result_value_bytes[UNITLAB_MMS_READ_ACCESS_RESULT_BUFFER_LENGTH];
+    uint8_t list_of_access_result_bytes[UNITLAB_MMS_READ_SERVICE_BUFFER_LENGTH];
+    uint8_t list_of_access_result_wrapper_bytes[UNITLAB_MMS_READ_SERVICE_BUFFER_LENGTH];
+    uint8_t read_response_body_bytes[UNITLAB_MMS_READ_SERVICE_BUFFER_LENGTH];
+    uint8_t service_bytes[UNITLAB_MMS_READ_SERVICE_BUFFER_LENGTH];
     uint8_t invoke_id_element_bytes[16U];
     char domain_id[128U];
     char item_id[128U];
@@ -1195,7 +1202,21 @@ int server_runtime_build_read_response_service(
                 &value_length,
                 &value_supported,
                 diagnostic)) {
-            return 0;
+            if (diagnostic != NULL && diagnostic->code == UNITLAB_MMS_DIAGNOSTIC_BUFFER_TOO_SMALL) {
+                printf(
+                    "native-wire-server: read-result invoke=%u index=%zu object=%s target=%s status=failure reason=oversized\n",
+                    (unsigned)invoke_id,
+                    index,
+                    current_object_reference[0] != '\0' ? current_object_reference : "<none>",
+                    current_attribute_reference != NULL && current_attribute_reference[0] != '\0' ? current_attribute_reference : "<none>");
+                fflush(stdout);
+                value_bytes[0] = 0x09U;
+                value_length = 1U;
+                value_supported = 0;
+                server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
+            } else {
+                return 0;
+            }
         }
         if (index == 0U) {
             server_runtime_store_read_summary(server_runtime, invoke_id, value_supported, value_bytes, value_length);
