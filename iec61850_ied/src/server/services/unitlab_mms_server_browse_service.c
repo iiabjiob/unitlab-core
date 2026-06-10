@@ -349,6 +349,155 @@ static int server_runtime_encode_gva_leaf_type_spec(
     return 1;
 }
 
+static int server_runtime_gva_path_last_segment_equals(const char* path, const char* segment)
+{
+    const char* last_dot = NULL;
+    const char* candidate = NULL;
+
+    if (path == NULL || segment == NULL || path[0] == 0 || segment[0] == 0) {
+        return 0;
+    }
+    last_dot = strrchr(path, '.');
+    candidate = last_dot != NULL ? last_dot + 1U : path;
+    return strcmp(candidate, segment) == 0;
+}
+
+static const UnitLabIedModelSignal* server_runtime_find_model_gva_leaf_signal(
+    const UnitLabIedModelPlan* plan,
+    const char* domain_id,
+    const char* logical_node_name,
+    const char* fc,
+    const char* data_object_name,
+    const char* attribute_path)
+{
+    if (plan == NULL || plan->signals == NULL || domain_id == NULL || logical_node_name == NULL || fc == NULL || data_object_name == NULL || attribute_path == NULL) {
+        return NULL;
+    }
+    for (size_t index = 0U; index < plan->signal_count; index++) {
+        const UnitLabIedModelSignal* signal = &plan->signals[index];
+
+        if (strcmp(signal->logical_device_inst, domain_id) != 0
+            || strcmp(signal->logical_node_name, logical_node_name) != 0
+            || strcmp(signal->fc, fc) != 0
+            || strcmp(signal->data_object_name, data_object_name) != 0
+            || strcmp(signal->data_attribute_path, attribute_path) != 0) {
+            continue;
+        }
+        return signal;
+    }
+    return NULL;
+}
+
+static int server_runtime_encode_gva_leaf_type_spec_for_value_kind(
+    UnitLabIedFixtureValueKind value_kind,
+    const char* component_name,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement type_element;
+    const uint8_t* value_bytes = NULL;
+    size_t value_length = 0U;
+    uint8_t value_single[2U];
+    uint8_t floating_point_content[8U];
+    uint8_t tag_number = 3U;
+    int constructed = 0;
+
+    if (encoded_length != NULL) {
+        *encoded_length = 0U;
+    }
+    if (buffer == NULL || encoded_length == NULL) {
+        server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GVA model leaf type encoding requires a buffer and encoded_length.");
+        return 0;
+    }
+
+    switch (value_kind) {
+        case UNITLAB_IED_FIXTURE_VALUE_BOOLEAN:
+            tag_number = 3U;
+            break;
+        case UNITLAB_IED_FIXTURE_VALUE_INTEGER:
+            value_single[0] = 0x20U;
+            tag_number = 5U;
+            value_bytes = value_single;
+            value_length = 1U;
+            break;
+        case UNITLAB_IED_FIXTURE_VALUE_REAL: {
+            uint8_t format_width = 0x20U;
+            uint8_t exponent_width = 0x08U;
+            size_t format_length = 0U;
+            size_t exponent_length = 0U;
+
+            if (!server_runtime_encode_ber_element(
+                    UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                    0,
+                    0U,
+                    &format_width,
+                    1U,
+                    floating_point_content,
+                    sizeof(floating_point_content),
+                    &format_length,
+                    diagnostic)
+                || !server_runtime_encode_ber_element(
+                    UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                    0,
+                    1U,
+                    &exponent_width,
+                    1U,
+                    &floating_point_content[format_length],
+                    sizeof(floating_point_content) - format_length,
+                    &exponent_length,
+                    diagnostic)) {
+                return 0;
+            }
+            tag_number = 7U;
+            constructed = 1;
+            value_bytes = floating_point_content;
+            value_length = format_length + exponent_length;
+            break;
+        }
+        case UNITLAB_IED_FIXTURE_VALUE_STRING:
+            value_single[0] = 0xFFU;
+            value_single[1] = 0x01U;
+            tag_number = 10U;
+            value_bytes = value_single;
+            value_length = 2U;
+            break;
+        case UNITLAB_IED_FIXTURE_VALUE_NULL:
+        case UNITLAB_IED_FIXTURE_VALUE_UNKNOWN:
+        default:
+            return server_runtime_encode_gva_leaf_type_spec(component_name, buffer, buffer_length, encoded_length, diagnostic);
+    }
+
+    unitlab_mms_ber_element_init(&type_element);
+    type_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    type_element.tag.constructed = constructed;
+    type_element.tag.tag_number = tag_number;
+    type_element.value_bytes = value_bytes;
+    type_element.value_length = value_length;
+    return unitlab_mms_ber_write(&type_element, buffer, buffer_length, encoded_length, diagnostic);
+}
+
+static int server_runtime_encode_model_gva_leaf_type_spec(
+    const UnitLabIedModelSignal* signal,
+    const char* component_name,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    if (signal == NULL) {
+        return server_runtime_encode_gva_leaf_type_spec(component_name, buffer, buffer_length, encoded_length, diagnostic);
+    }
+    if (strcmp(component_name, "q") == 0 || server_runtime_gva_path_last_segment_equals(signal->data_attribute_path, "q")) {
+        return server_runtime_encode_gva_leaf_type_spec("q", buffer, buffer_length, encoded_length, diagnostic);
+    }
+    if (strcmp(component_name, "t") == 0 || server_runtime_gva_path_last_segment_equals(signal->data_attribute_path, "t")) {
+        return server_runtime_encode_gva_leaf_type_spec("t", buffer, buffer_length, encoded_length, diagnostic);
+    }
+    return server_runtime_encode_gva_leaf_type_spec_for_value_kind(signal->initial_value_kind, component_name, buffer, buffer_length, encoded_length, diagnostic);
+}
+
 static const char* const* server_runtime_lookup_gva_children(
     const char* logical_node_name,
     const char* parent_component_name,
@@ -814,9 +963,19 @@ static int server_runtime_encode_model_gva_component_tree(
         }
         memcpy(component_type_bytes, component_structure_bytes, component_structure_length);
         component_type_length = component_structure_length;
-    } else if (!server_runtime_encode_gva_leaf_type_spec(component_name, component_type_bytes, sizeof(component_type_bytes), &component_type_length, diagnostic)) {
-        unitlab_free_ied_model_name_list(child_names, child_count);
-        return 0;
+    } else {
+        const UnitLabIedModelSignal* leaf_signal = server_runtime_find_model_gva_leaf_signal(
+            plan,
+            domain_id,
+            logical_node_name,
+            fc,
+            data_object_name,
+            next_prefix);
+
+        if (!server_runtime_encode_model_gva_leaf_type_spec(leaf_signal, component_name, component_type_bytes, sizeof(component_type_bytes), &component_type_length, diagnostic)) {
+            unitlab_free_ied_model_name_list(child_names, child_count);
+            return 0;
+        }
     }
     unitlab_free_ied_model_name_list(child_names, child_count);
 

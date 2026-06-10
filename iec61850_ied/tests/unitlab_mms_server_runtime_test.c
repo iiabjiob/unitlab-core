@@ -4183,15 +4183,15 @@ static void test_server_runtime_build_model_fc_root_gva_response_exposes_dataset
     UnitLabMmsDiagnostic diagnostic;
     UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
     UnitLabIedModelPlan plan;
-    UnitLabIedModelSignal signals[3U];
-    uint8_t response_bytes[8192U];
+    UnitLabIedModelSignal signals[5U];
+    uint8_t response_bytes[16384U];
     size_t response_length = 0U;
     size_t response_consumed_length = 0U;
     UnitLabMmsAssociationFrame frame;
 
     memset(&plan, 0, sizeof(plan));
     memset(signals, 0, sizeof(signals));
-    for (size_t index = 0U; index < 3U; index++) {
+    for (size_t index = 0U; index < 5U; index++) {
         snprintf(signals[index].logical_device_inst, sizeof(signals[index].logical_device_inst), "%s", "KINTE15FMPSystem");
         snprintf(signals[index].logical_node_name, sizeof(signals[index].logical_node_name), "%s", "RlyGGIO1");
         snprintf(signals[index].data_object_name, sizeof(signals[index].data_object_name), "%s", "Ind9");
@@ -4199,13 +4199,25 @@ static void test_server_runtime_build_model_fc_root_gva_response_exposes_dataset
         signals[index].initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER;
         snprintf(signals[index].initial_value, sizeof(signals[index].initial_value), "%s", "0");
     }
+    signals[0].initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_BOOLEAN;
+    snprintf(signals[0].initial_value, sizeof(signals[0].initial_value), "%s", "false");
     snprintf(signals[0].data_attribute_path, sizeof(signals[0].data_attribute_path), "%s", "stVal");
     snprintf(signals[0].data_set_entry_variable, sizeof(signals[0].data_set_entry_variable), "%s", "KINTE15FMPSystem/RlyGGIO1$ST$Ind9$stVal");
     snprintf(signals[1].data_attribute_path, sizeof(signals[1].data_attribute_path), "%s", "q");
     snprintf(signals[1].data_set_entry_variable, sizeof(signals[1].data_set_entry_variable), "%s", "KINTE15FMPSystem/RlyGGIO1$ST$Ind9$q");
+    signals[2].initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_STRING;
+    snprintf(signals[2].initial_value, sizeof(signals[2].initial_value), "%s", "");
     snprintf(signals[2].data_attribute_path, sizeof(signals[2].data_attribute_path), "%s", "t");
     snprintf(signals[2].data_set_entry_variable, sizeof(signals[2].data_set_entry_variable), "%s", "KINTE15FMPSystem/RlyGGIO1$ST$Ind9$t");
-    plan.signal_count = 3U;
+    snprintf(signals[3].data_object_name, sizeof(signals[3].data_object_name), "%s", "Str");
+    snprintf(signals[3].data_attribute_path, sizeof(signals[3].data_attribute_path), "%s", "dirGeneral");
+    snprintf(signals[3].data_set_entry_variable, sizeof(signals[3].data_set_entry_variable), "%s", "KINTE15FMPSystem/RlyGGIO1$ST$Str$dirGeneral");
+    signals[4].initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_REAL;
+    snprintf(signals[4].initial_value, sizeof(signals[4].initial_value), "%s", "0.0");
+    snprintf(signals[4].data_object_name, sizeof(signals[4].data_object_name), "%s", "Ana");
+    snprintf(signals[4].data_attribute_path, sizeof(signals[4].data_attribute_path), "%s", "mag.f");
+    snprintf(signals[4].data_set_entry_variable, sizeof(signals[4].data_set_entry_variable), "%s", "KINTE15FMPSystem/RlyGGIO1$ST$Ana$mag$f");
+    plan.signal_count = 5U;
     plan.signals = signals;
 
     unitlab_mms_server_runtime_init(&server_runtime);
@@ -4228,6 +4240,16 @@ static void test_server_runtime_build_model_fc_root_gva_response_exposes_dataset
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"stVal", strlen("stVal")) == 1);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"q", strlen("q")) == 1);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"t", strlen("t")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"Str", strlen("Str")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"dirGeneral", strlen("dirGeneral")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"Ana", strlen("Ana")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"mag", strlen("mag")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"f", strlen("f")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x83U, 0x00U }, 2U) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x84U, 0x01U, 0xF3U }, 3U) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x91U, 0x00U }, 2U) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x85U, 0x01U, 0x20U }, 3U) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0xA7U, 0x06U, 0x80U, 0x01U, 0x20U, 0x81U, 0x01U, 0x08U }, 8U) == 1);
 }
 
 
