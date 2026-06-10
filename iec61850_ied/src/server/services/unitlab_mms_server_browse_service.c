@@ -239,7 +239,7 @@ static int server_runtime_encode_gva_leaf_type_spec(
     }
 
     if (strcmp(component_name, "q") == 0) {
-        value_q_or_bool[0] = 0xF3U;
+        value_q_or_bool[0] = 0x0DU;
         tag_number = 4U;
         value_bytes = value_q_or_bool;
         value_length = sizeof(value_q_or_bool);

@@ -4246,7 +4246,7 @@ static void test_server_runtime_build_model_fc_root_gva_response_exposes_dataset
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"mag", strlen("mag")) == 1);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"f", strlen("f")) == 1);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x83U, 0x00U }, 2U) == 1);
-    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x84U, 0x01U, 0xF3U }, 3U) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x84U, 0x01U, 0x0DU }, 3U) == 1);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x91U, 0x00U }, 2U) == 1);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x85U, 0x01U, 0x20U }, 3U) == 1);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0xA7U, 0x06U, 0x80U, 0x01U, 0x20U, 0x81U, 0x01U, 0x08U }, 8U) == 1);
