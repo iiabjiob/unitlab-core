@@ -4249,7 +4249,7 @@ static void test_server_runtime_build_model_fc_root_gva_response_exposes_dataset
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x85U, 0x01U, 0x20U }, 3U) == 1);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x8AU, 0x02U, 0xFFU, 0x01U }, 4U) == 1);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x85U, 0x01U, 0x20U }, 3U) == 1);
-    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0xA7U, 0x06U, 0x80U, 0x01U, 0x20U, 0x81U, 0x01U, 0x08U }, 8U) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0xA7U, 0x06U, 0x02U, 0x01U, 0x20U, 0x02U, 0x01U, 0x08U }, 8U) == 1);
 }
 
 
@@ -4310,6 +4310,7 @@ static void test_server_runtime_build_model_lln0_gva_uses_report_class_presence(
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"RptID", strlen("RptID")) == 1);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"Resv", strlen("Resv")) == 1);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"DatSet", strlen("DatSet")) == 1);
+    assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t[]){ 0x80U, 0x05U, 0x53U, 0x71U, 0x4EU, 0x75U, 0x6DU, 0xA1U, 0x03U, 0x86U, 0x01U, 0x08U }, 12U) == 1);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"PurgeBuf", strlen("PurgeBuf")) == 0);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"EntryID", strlen("EntryID")) == 0);
     assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"ResvTms", strlen("ResvTms")) == 0);

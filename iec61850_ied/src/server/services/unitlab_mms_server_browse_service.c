@@ -362,6 +362,30 @@ static int server_runtime_encode_gva_leaf_type_spec(
     return 1;
 }
 
+static int server_runtime_encode_gva_leaf_type_spec_for_report_class(
+    const char* report_class_name,
+    const char* component_name,
+    uint8_t* buffer,
+    size_t buffer_length,
+    size_t* encoded_length,
+    UnitLabMmsDiagnostic* diagnostic)
+{
+    UnitLabMmsBerElement type_element;
+    uint8_t value_single[1U];
+
+    if (report_class_name != NULL && component_name != NULL && strcmp(report_class_name, "RP") == 0 && strcmp(component_name, "SqNum") == 0) {
+        value_single[0] = 0x08U;
+        unitlab_mms_ber_element_init(&type_element);
+        type_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+        type_element.tag.constructed = 0;
+        type_element.tag.tag_number = 6U;
+        type_element.value_bytes = value_single;
+        type_element.value_length = sizeof(value_single);
+        return unitlab_mms_ber_write(&type_element, buffer, buffer_length, encoded_length, diagnostic);
+    }
+    return server_runtime_encode_gva_leaf_type_spec(component_name, buffer, buffer_length, encoded_length, diagnostic);
+}
+
 static const UnitLabIedModelSignal* server_runtime_find_model_gva_leaf_signal(
     const UnitLabIedModelPlan* plan,
     const char* domain_id,
@@ -429,9 +453,9 @@ static int server_runtime_encode_gva_leaf_type_spec_for_value_kind(
             size_t exponent_length = 0U;
 
             if (!server_runtime_encode_ber_element(
-                    UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                    UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
                     0,
-                    0U,
+                    2U,
                     &format_width,
                     1U,
                     floating_point_content,
@@ -439,9 +463,9 @@ static int server_runtime_encode_gva_leaf_type_spec_for_value_kind(
                     &format_length,
                     diagnostic)
                 || !server_runtime_encode_ber_element(
-                    UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
+                    UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
                     0,
-                    1U,
+                    2U,
                     &exponent_width,
                     1U,
                     &floating_point_content[format_length],
@@ -1160,6 +1184,7 @@ static int server_runtime_encode_gva_component_tree(
     const char* logical_node_name,
     const char* parent_component_name,
     const char* component_name,
+    const char* report_class_context,
     uint8_t* buffer,
     size_t buffer_length,
     size_t* encoded_length,
@@ -1181,6 +1206,7 @@ static int server_runtime_encode_gva_component_tree(
     size_t component_type_wrapper_length = 0U;
     size_t component_content_length = 0U;
     size_t component_length = 0U;
+    const char* child_report_class_context = report_class_context;
     if (encoded_length != NULL) {
         *encoded_length = 0U;
     }
@@ -1202,6 +1228,9 @@ static int server_runtime_encode_gva_component_tree(
         return 0;
     }
 
+    if (logical_node_name != NULL && strcmp(logical_node_name, "LLN0") == 0 && (strcmp(component_name, "BR") == 0 || strcmp(component_name, "RP") == 0)) {
+        child_report_class_context = component_name;
+    }
     child_names = server_runtime_lookup_gva_children(logical_node_name, parent_component_name, component_name, &child_count);
     if (child_names != NULL && child_count > 0U) {
         size_t child_component_bytes_length = 0U;
@@ -1213,6 +1242,7 @@ static int server_runtime_encode_gva_component_tree(
                     logical_node_name,
                     component_name,
                     child_names[child_index],
+                    child_report_class_context,
                     &component_content_bytes[child_component_bytes_length],
                     sizeof(component_content_bytes) - child_component_bytes_length,
                     &child_length,
@@ -1254,7 +1284,8 @@ static int server_runtime_encode_gva_component_tree(
         memcpy(component_type_bytes, component_structure_bytes, component_structure_length);
         component_type_length = component_structure_length;
     } else {
-        if (!server_runtime_encode_gva_leaf_type_spec(
+        if (!server_runtime_encode_gva_leaf_type_spec_for_report_class(
+                report_class_context,
                 component_name,
                 component_type_bytes,
                 sizeof(component_type_bytes),
@@ -1354,6 +1385,7 @@ static int server_runtime_encode_model_report_class_gva_component_tree(
                 "LLN0",
                 report_class_name,
                 report_names[report_index],
+                report_class_name,
                 &child_component_bytes[child_component_bytes_length],
                 sizeof(child_component_bytes) - child_component_bytes_length,
                 &report_length,
@@ -1447,6 +1479,7 @@ int server_runtime_build_get_variable_access_attributes_response_service(
     int use_model_lln0_report_tree = 0;
     int use_model_lln0_unbuffered_report_tree = 0;
     const char* root_parent_component_name = NULL;
+    const char* report_class_context = NULL;
     char** names = NULL;
     size_t name_count = 0U;
     uint8_t component_bytes[60000U];
@@ -1584,6 +1617,7 @@ int server_runtime_build_get_variable_access_attributes_response_service(
             ? sizeof(lln0_rp_rcb_children) / sizeof(lln0_rp_rcb_children[0])
             : sizeof(lln0_br_rcb_children) / sizeof(lln0_br_rcb_children[0]);
 
+        report_class_context = is_rp_rcb ? "RP" : "BR";
         snprintf(logical_node_for_gva, sizeof(logical_node_for_gva), "%s", "LLN0");
         if (!server_runtime_copy_static_names(rcb_children, rcb_child_count, &names, &name_count, diagnostic)) {
             return 0;
@@ -1742,6 +1776,7 @@ int server_runtime_build_get_variable_access_attributes_response_service(
                 logical_node_for_gva,
                 root_parent_component_name,
                 names[index],
+                report_class_context,
                 &component_bytes[component_bytes_length],
                 sizeof(component_bytes) - component_bytes_length,
                 &component_length,
