@@ -90,6 +90,59 @@ static int send_all(int fd, const uint8_t* buffer, size_t length)
     return 1;
 }
 
+static int send_transport_frame_segmented(int fd, const uint8_t* frame, size_t frame_length, const char* log_label)
+{
+    enum { native_wire_cotp_user_data_segment_length = 1021U };
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsTransportFrame decoded_frame;
+    size_t consumed_length = 0U;
+    size_t offset = 0U;
+    size_t segment_count = 0U;
+
+    if (frame == NULL || frame_length == 0U) {
+        return 0;
+    }
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    unitlab_mms_transport_frame_init(&decoded_frame);
+    if (!unitlab_mms_transport_frame_decode(&decoded_frame, frame, frame_length, &consumed_length, &diagnostic)
+        || decoded_frame.cotp.kind != UNITLAB_MMS_COTP_TPDU_DT
+        || decoded_frame.cotp.user_data == NULL
+        || decoded_frame.cotp.user_data_length <= native_wire_cotp_user_data_segment_length) {
+        return send_all(fd, frame, frame_length);
+    }
+
+    while (offset < decoded_frame.cotp.user_data_length) {
+        UnitLabMmsTransportFrame segment_frame;
+        uint8_t segment_bytes[1200U];
+        size_t remaining_length = decoded_frame.cotp.user_data_length - offset;
+        size_t chunk_length = remaining_length > native_wire_cotp_user_data_segment_length ? native_wire_cotp_user_data_segment_length : remaining_length;
+        size_t segment_length = 0U;
+
+        unitlab_mms_transport_frame_init(&segment_frame);
+        segment_frame.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
+        segment_frame.cotp.eot = (offset + chunk_length) >= decoded_frame.cotp.user_data_length;
+        segment_frame.cotp.user_data = &decoded_frame.cotp.user_data[offset];
+        segment_frame.cotp.user_data_length = chunk_length;
+        if (!unitlab_mms_transport_frame_encode(&segment_frame, segment_bytes, sizeof(segment_bytes), &segment_length, &diagnostic)) {
+            return 0;
+        }
+        if (!send_all(fd, segment_bytes, segment_length)) {
+            return 0;
+        }
+        offset += chunk_length;
+        segment_count++;
+    }
+    printf(
+        "native-wire-server: cotp-segmented-send label=%s original-bytes=%zu user-data=%zu segments=%zu chunk=%u\n",
+        log_label != NULL && log_label[0] != '\0' ? log_label : "response",
+        frame_length,
+        decoded_frame.cotp.user_data_length,
+        segment_count,
+        (unsigned)native_wire_cotp_user_data_segment_length);
+    fflush(stdout);
+    return 1;
+}
+
 static int send_pending_information_report(
     UnitLabMmsServerRuntime* server_runtime,
     int data_client_fd,
@@ -113,7 +166,7 @@ static int send_pending_information_report(
         set_result(result, "NATIVE_WIRE_SERVER_REPORT_BUILD_FAILED", diagnostic.message);
         return 0;
     }
-    if (!send_all(data_client_fd, response_frame, response_length)) {
+    if (!send_transport_frame_segmented(data_client_fd, response_frame, response_length, log_label)) {
         set_result(result, "NATIVE_WIRE_SERVER_REPORT_SEND_FAILED", "Native wire server could not send information report frame.");
         return 0;
     }
@@ -552,7 +605,7 @@ static int native_wire_process_received_tpkt_frame(
             set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_BUILD_FAILED", response_diagnostic.message);
             return -1;
         }
-        if (!send_all(data_client_fd, response_frame, response_length)) {
+        if (!send_transport_frame_segmented(data_client_fd, response_frame, response_length, "confirmed-response")) {
             set_result(result, "NATIVE_WIRE_SERVER_RESPONSE_SEND_FAILED", "Native wire server could not send confirmed response frame.");
             return -1;
         }
@@ -583,7 +636,7 @@ static int native_wire_process_received_tpkt_frame(
                     sizeof(response_frame),
                     &response_length,
                     &response_diagnostic)) {
-                if (send_all(data_client_fd, response_frame, response_length)) {
+                if (send_transport_frame_segmented(data_client_fd, response_frame, response_length, "confirmed-error")) {
                     printf("native-wire-server: confirmed-error-sent invoke=%u bytes=%zu\n", (unsigned)server_runtime->last_wire_pdu.invoke_id, response_length);
                     fflush(stdout);
                 } else {
