@@ -1590,7 +1590,25 @@ static const UnitLabIedModelDataSet* server_runtime_find_named_variable_list_dat
         return matched_data_set;
     }
 
-    return unitlab_find_ied_model_data_set(server_runtime->model_plan, logical_device_inst, logical_node_name, list_name);
+    {
+        const UnitLabIedModelDataSet* data_set = unitlab_find_ied_model_data_set(server_runtime->model_plan, logical_device_inst, logical_node_name, list_name);
+        if (data_set != NULL) {
+            return data_set;
+        }
+    }
+
+    {
+        const UnitLabIedModelReportControl* report = unitlab_find_ied_model_report_control(server_runtime->model_plan, logical_device_inst, logical_node_name, list_name);
+        const UnitLabIedModelDataSet* data_set = server_runtime_model_report_data_set(server_runtime, report);
+        if (data_set != NULL) {
+            snprintf(logical_device_inst, logical_device_inst_size, "%s", data_set->logical_device_inst);
+            snprintf(logical_node_name, logical_node_name_size, "%s", data_set->logical_node_name);
+            snprintf(list_name, list_name_size, "%s", data_set->name);
+            return data_set;
+        }
+    }
+
+    return NULL;
 }
 
 static int server_runtime_encode_named_variable_list_object_name(

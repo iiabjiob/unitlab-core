@@ -5854,10 +5854,12 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
         const char* object_reference;
         const char* expected_member_token_0;
         const char* expected_member_token_1;
+        const char* expected_member_token_2;
         size_t expected_member_token_count;
     } cases[] = {
-        { (const uint8_t[]){ 0x02U, 0x01U, 0x0BU, 0xACU, 0x0AU, 0x80U, 0x08U, 'd', 's', 'E', 'v', 'e', 'n', 't', 's' }, 15U, 11U, "dsEvents", "LLN0$ST$Mod", "LLN0$ST$Beh", 2U },
-        { (const uint8_t[]){ 0x02U, 0x01U, 0x0EU, 0xACU, 0x15U, 0xA1U, 0x13U, 0x1AU, 0x03U, 'L', 'D', '0', 0x1AU, 0x0CU, 'G', 'G', 'I', 'O', '1', '$', 'd', 's', 'W', 'i', 'r', 'e' }, 26U, 14U, "LD0/GGIO1$dsWire", "GGIO1$ST$Ind1", NULL, 1U },
+        { (const uint8_t[]){ 0x02U, 0x01U, 0x0BU, 0xACU, 0x0AU, 0x80U, 0x08U, 'd', 's', 'E', 'v', 'e', 'n', 't', 's' }, 15U, 11U, "dsEvents", "LLN0$ST$Mod", "LLN0$ST$Beh", NULL, 2U },
+        { (const uint8_t[]){ 0x02U, 0x01U, 0x0EU, 0xACU, 0x15U, 0xA1U, 0x13U, 0x1AU, 0x03U, 'L', 'D', '0', 0x1AU, 0x0CU, 'G', 'G', 'I', 'O', '1', '$', 'd', 's', 'W', 'i', 'r', 'e' }, 26U, 14U, "LD0/GGIO1$dsWire", "GGIO1$ST$Ind1", NULL, NULL, 1U },
+        { (const uint8_t[]){ 0x02U, 0x01U, 0x0FU, 0xACU, 0x17U, 0xA1U, 0x15U, 0x1AU, 0x03U, 'L', 'D', '0', 0x1AU, 0x0EU, 'L', 'L', 'N', '0', '$', 'M', 'E', 'A', 'S', '_', 'R', 'C', 'B', '1' }, 28U, 15U, "LD0/LLN0$MEAS_RCB1", "MMXU1$MX$A$phsA$cVal$mag$f", NULL, NULL, 1U },
     };
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
@@ -5866,8 +5868,9 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
         .port = 102,
     };
     UnitLabIedModelPlan plan;
-    UnitLabIedModelDataSet data_sets[2U];
-    UnitLabIedModelSignal signals[3U];
+    UnitLabIedModelDataSet data_sets[3U];
+    UnitLabIedModelReportControl reports[1U];
+    UnitLabIedModelSignal signals[4U];
     uint8_t request_bytes[512U];
     uint8_t response_bytes[4096U];
     uint8_t scratch[1024U];
@@ -5878,6 +5881,7 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
 
     memset(&plan, 0, sizeof(plan));
     memset(data_sets, 0, sizeof(data_sets));
+    memset(reports, 0, sizeof(reports));
     memset(signals, 0, sizeof(signals));
     snprintf(data_sets[0].logical_device_inst, sizeof(data_sets[0].logical_device_inst), "%s", "LD0");
     snprintf(data_sets[0].logical_node_name, sizeof(data_sets[0].logical_node_name), "%s", "LLN0");
@@ -5889,12 +5893,24 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
     snprintf(data_sets[1].name, sizeof(data_sets[1].name), "%s", "dsWire");
     data_sets[1].first_signal_index = 2U;
     data_sets[1].member_count = 1U;
+    snprintf(data_sets[2].logical_device_inst, sizeof(data_sets[2].logical_device_inst), "%s", "LD0");
+    snprintf(data_sets[2].logical_node_name, sizeof(data_sets[2].logical_node_name), "%s", "LLN0");
+    snprintf(data_sets[2].name, sizeof(data_sets[2].name), "%s", "dsMeas");
+    data_sets[2].first_signal_index = 3U;
+    data_sets[2].member_count = 1U;
+    snprintf(reports[0].logical_device_inst, sizeof(reports[0].logical_device_inst), "%s", "LD0");
+    snprintf(reports[0].logical_node_name, sizeof(reports[0].logical_node_name), "%s", "LLN0");
+    snprintf(reports[0].name, sizeof(reports[0].name), "%s", "MEAS_RCB1");
+    reports[0].data_set_index = 2U;
     snprintf(signals[0].data_set_entry_variable, sizeof(signals[0].data_set_entry_variable), "%s", "LD0/LLN0$ST$Mod");
     snprintf(signals[1].data_set_entry_variable, sizeof(signals[1].data_set_entry_variable), "%s", "LD0/LLN0$ST$Beh");
     snprintf(signals[2].data_set_entry_variable, sizeof(signals[2].data_set_entry_variable), "%s", "LD0/GGIO1$ST$Ind1");
-    plan.data_set_count = 2U;
+    snprintf(signals[3].data_set_entry_variable, sizeof(signals[3].data_set_entry_variable), "%s", "LD0/MMXU1$MX$A$phsA$cVal$mag$f");
+    plan.data_set_count = 3U;
     plan.data_sets = data_sets;
-    plan.signal_count = 3U;
+    plan.report_count = 1U;
+    plan.reports = reports;
+    plan.signal_count = 4U;
     plan.signals = signals;
 
     unitlab_mms_server_runtime_init(&server_runtime);
@@ -5965,7 +5981,7 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
             &response_pdu,
             cases[index].expected_member_token_0,
             cases[index].expected_member_token_1,
-            NULL,
+            cases[index].expected_member_token_2,
             cases[index].expected_member_token_count);
         assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)cases[index].expected_member_token_0, strlen(cases[index].expected_member_token_0)) == 1);
         if (cases[index].expected_member_token_count > 1U) {

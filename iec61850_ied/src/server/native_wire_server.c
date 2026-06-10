@@ -828,8 +828,11 @@ int unitlab_run_native_wire_server(
     int control_client_fd = -1;
     uint8_t frame[2048U];
     uint8_t data_rx_buffer[16384U];
+    uint8_t data_cotp_rx_buffer[65535U];
+    uint8_t data_cotp_frame_buffer[65535U];
     size_t frame_length = 0U;
     size_t data_rx_length = 0U;
+    size_t data_cotp_rx_length = 0U;
     uint64_t next_test_tick_ms = 0U;
     uint8_t test_tick_value = 1U;
     if (result != NULL) {
@@ -922,6 +925,7 @@ int unitlab_run_native_wire_server(
                 }
                 data_client_fd = accepted;
                 data_rx_length = 0U;
+                data_cotp_rx_length = 0U;
                 next_test_tick_ms = 0U;
                 test_tick_value = 1U;
                 reset_native_wire_runtime_state(server_runtime);
@@ -953,6 +957,7 @@ int unitlab_run_native_wire_server(
                         if (retried > 0) {
                             data_client_fd = retried;
                             data_rx_length = 0U;
+                            data_cotp_rx_length = 0U;
                             next_test_tick_ms = 0U;
                             test_tick_value = 1U;
                             printf("native-wire-server: data-client-connected\n");
@@ -975,6 +980,7 @@ int unitlab_run_native_wire_server(
                     close_fd(&data_client_fd);
                     close_fd(&control_client_fd);
                     data_rx_length = 0U;
+                    data_cotp_rx_length = 0U;
                     next_test_tick_ms = 0U;
                     test_tick_value = 1U;
                     reset_native_wire_runtime_state(server_runtime);
@@ -998,9 +1004,59 @@ int unitlab_run_native_wire_server(
                             break;
                         }
                         {
-                            int frame_outcome = native_wire_process_received_tpkt_frame(server_runtime, data_client_fd, data_rx_buffer, frame_length_bytes, result);
-                            if (frame_outcome < 0) {
-                                goto fail;
+                            UnitLabMmsDiagnostic cotp_diagnostic;
+                            UnitLabMmsTransportFrame incoming_transport;
+                            const uint8_t* process_frame = data_rx_buffer;
+                            size_t process_frame_length = frame_length_bytes;
+                            int should_process_frame = 1;
+                            int frame_outcome = 1;
+
+                            unitlab_mms_diagnostic_clear(&cotp_diagnostic);
+                            unitlab_mms_transport_frame_init(&incoming_transport);
+                            if (unitlab_mms_transport_frame_decode(&incoming_transport, data_rx_buffer, frame_length_bytes, &(size_t){0}, &cotp_diagnostic)
+                                && incoming_transport.cotp.kind == UNITLAB_MMS_COTP_TPDU_DT
+                                && (data_cotp_rx_length > 0U || !incoming_transport.cotp.eot)) {
+                                UnitLabMmsTransportFrame reassembled_transport;
+                                size_t synthetic_length = 0U;
+
+                                if (incoming_transport.cotp.user_data_length > sizeof(data_cotp_rx_buffer) - data_cotp_rx_length) {
+                                    set_result(result, "NATIVE_WIRE_SERVER_COTP_REASSEMBLY_BUFFER_FULL", "Native wire server COTP reassembly buffer is full.");
+                                    goto fail;
+                                }
+                                if (incoming_transport.cotp.user_data_length > 0U) {
+                                    memcpy(&data_cotp_rx_buffer[data_cotp_rx_length], incoming_transport.cotp.user_data, incoming_transport.cotp.user_data_length);
+                                    data_cotp_rx_length += incoming_transport.cotp.user_data_length;
+                                }
+                                should_process_frame = incoming_transport.cotp.eot;
+                                if (should_process_frame) {
+                                    unitlab_mms_transport_frame_init(&reassembled_transport);
+                                    reassembled_transport.cotp.kind = UNITLAB_MMS_COTP_TPDU_DT;
+                                    reassembled_transport.cotp.eot = 1;
+                                    reassembled_transport.cotp.user_data = data_cotp_rx_buffer;
+                                    reassembled_transport.cotp.user_data_length = data_cotp_rx_length;
+                                    if (!unitlab_mms_transport_frame_encode(
+                                            &reassembled_transport,
+                                            data_cotp_frame_buffer,
+                                            sizeof(data_cotp_frame_buffer),
+                                            &synthetic_length,
+                                            &cotp_diagnostic)) {
+                                        set_result(result, "NATIVE_WIRE_SERVER_COTP_REASSEMBLY_FAILED", cotp_diagnostic.message);
+                                        goto fail;
+                                    }
+                                    process_frame = data_cotp_frame_buffer;
+                                    process_frame_length = synthetic_length;
+                                } else {
+                                    printf("native-wire-server: cotp-segment-buffered bytes=%zu total=%zu eot=false\n", incoming_transport.cotp.user_data_length, data_cotp_rx_length);
+                                    fflush(stdout);
+                                }
+                            }
+
+                            if (should_process_frame) {
+                                frame_outcome = native_wire_process_received_tpkt_frame(server_runtime, data_client_fd, process_frame, process_frame_length, result);
+                                data_cotp_rx_length = 0U;
+                                if (frame_outcome < 0) {
+                                    goto fail;
+                                }
                             }
                             if (data_rx_length > frame_length_bytes) {
                                 memmove(data_rx_buffer, data_rx_buffer + frame_length_bytes, data_rx_length - frame_length_bytes);
@@ -1011,6 +1067,7 @@ int unitlab_run_native_wire_server(
                                 close_fd(&data_client_fd);
                                 close_fd(&control_client_fd);
                                 data_rx_length = 0U;
+                                data_cotp_rx_length = 0U;
                                 next_test_tick_ms = 0U;
                                 test_tick_value = 1U;
                                 reset_native_wire_runtime_state(server_runtime);
@@ -1028,6 +1085,7 @@ int unitlab_run_native_wire_server(
                     close_fd(&control_client_fd);
                     close_fd(&data_client_fd);
                     data_rx_length = 0U;
+                    data_cotp_rx_length = 0U;
                     next_test_tick_ms = 0U;
                     test_tick_value = 1U;
                     reset_native_wire_runtime_state(server_runtime);
