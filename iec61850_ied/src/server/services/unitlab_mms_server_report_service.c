@@ -30,25 +30,6 @@ static int server_runtime_encode_report_control_block_structure_field_value(
     size_t* encoded_length,
     UnitLabMmsDiagnostic* diagnostic);
 
-static const UnitLabIedModelReportControl* server_runtime_active_report_control(const UnitLabMmsServerRuntime* server_runtime)
-{
-    if (server_runtime == NULL || server_runtime->model_plan == NULL || server_runtime->model_plan->report_count == 0U || server_runtime->model_plan->reports == NULL) {
-        return NULL;
-    }
-    return &server_runtime->model_plan->reports[0];
-}
-
-static const UnitLabIedModelDataSet* server_runtime_report_data_set(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report)
-{
-    if (server_runtime == NULL || server_runtime->model_plan == NULL || report == NULL || server_runtime->model_plan->data_sets == NULL) {
-        return NULL;
-    }
-    if (report->data_set_index >= server_runtime->model_plan->data_set_count) {
-        return NULL;
-    }
-    return &server_runtime->model_plan->data_sets[report->data_set_index];
-}
-
 static uint32_t server_runtime_report_conf_rev(const UnitLabIedModelReportControl* report)
 {
     return report != NULL && report->conf_rev_known ? report->conf_rev : 7U;
@@ -197,9 +178,9 @@ void server_runtime_format_report_control_references(
     char* data_set_reference,
     size_t data_set_reference_size)
 {
-    const UnitLabIedModelReportControl* report = server_runtime_active_report_control(server_runtime);
+    const UnitLabIedModelReportControl* report = server_runtime_active_model_report_control(server_runtime);
 
-    const UnitLabIedModelDataSet* data_set = server_runtime_report_data_set(server_runtime, report);
+    const UnitLabIedModelDataSet* data_set = server_runtime_model_report_data_set(server_runtime, report);
 
     server_runtime_format_report_id_reference(server_runtime, report, report_id_reference, report_id_reference_size);
     server_runtime_format_dataset_reference(server_runtime, report, data_set, data_set_reference, data_set_reference_size);
@@ -475,7 +456,7 @@ static int server_runtime_encode_report_control_block_structure_field_value(
     size_t unsigned_value_length = 0U;
     uint8_t opt_flds[3U];
     uint8_t trg_ops[2U];
-    const UnitLabIedModelReportControl* report = server_runtime_active_report_control(server_runtime);
+    const UnitLabIedModelReportControl* report = server_runtime_active_model_report_control(server_runtime);
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -797,8 +778,8 @@ int unitlab_mms_server_runtime_build_pending_gi_report_bytes(UnitLabMmsServerRun
         return 0;
     }
 
-    report = server_runtime_active_report_control(server_runtime);
-    data_set = server_runtime_report_data_set(server_runtime, report);
+    report = server_runtime_active_model_report_control(server_runtime);
+    data_set = server_runtime_model_report_data_set(server_runtime, report);
     server_runtime_encode_report_optional_fields_bitstring(server_runtime, report, opt_flds);
     server_runtime_format_report_id_reference(server_runtime, report, report_id_reference, sizeof(report_id_reference));
     server_runtime_format_dataset_reference(server_runtime, report, data_set, dataset_reference, sizeof(dataset_reference));

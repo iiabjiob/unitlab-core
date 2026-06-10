@@ -79,6 +79,7 @@ typedef struct UnitLabMmsServerRuntime {
     char last_outgoing_service[64];
     char last_outgoing_summary[512];
     UnitLabIec61850ReportControl report_control;
+    size_t active_report_index;
     uint8_t brcb_rpt_ena;
     uint32_t brcb_resv_tms;
     char brcb_owner[64];

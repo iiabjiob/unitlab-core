@@ -232,6 +232,7 @@ static int server_runtime_apply_report_control_write(UnitLabMmsServerRuntime* se
             rcb_field_name = server_runtime_write_report_control_field_name(object_reference);
 
             if (rcb_field_name != NULL) {
+                (void)server_runtime_select_report_control_by_reference(server_runtime, object_reference);
                 if (strcmp(rcb_field_name, "ResvTms") == 0) {
                     if (server_runtime->brcb_rpt_ena != 0U) {
                         server_runtime_mark_write_failure(server_runtime, index, UNITLAB_MMS_WRITE_DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED);

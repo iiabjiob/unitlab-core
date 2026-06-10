@@ -747,6 +747,7 @@ static int server_runtime_build_read_response_value(
 
     read_report = server_runtime_read_find_report_control(server_runtime, object_reference, NULL);
     if (read_report != NULL) {
+        (void)server_runtime_select_report_control_by_reference(server_runtime, object_reference);
         server_runtime_read_format_report_references(
             server_runtime,
             read_report,

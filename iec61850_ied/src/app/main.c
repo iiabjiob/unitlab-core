@@ -280,8 +280,8 @@ static int run_scl_native_wire_mode(const SimulatorOptions* options)
         fprintf(stderr, "SCL_REQUIRED: --scl PATH is required.\n");
         return 64;
     }
-    if (options->metadata_probe || options->gi_probe || options->smoke_start || options->native_wire_client_start) {
-        fprintf(stderr, "INVALID_ARGUMENT: --scl currently supports --dry-run, --native-smoke-start, and --native-wire-start.\n");
+    if (options->metadata_probe || options->gi_probe || options->native_wire_client_start) {
+        fprintf(stderr, "INVALID_ARGUMENT: --scl currently supports --dry-run, --smoke-start, --native-smoke-start, --native-wire-start, or linked server start.\n");
         return 64;
     }
 
@@ -382,9 +382,40 @@ static int run_scl_native_wire_mode(const SimulatorOptions* options)
         return 0;
     }
 
-    fprintf(stderr, "INVALID_ARGUMENT: --scl requires --dry-run, --native-smoke-start, or --native-wire-start.\n");
-    unitlab_scl_compile_result_free(compile_result);
-    return 64;
+    {
+        UnitLabIedFixtureModel fixture_model;
+        UnitLabIedModelLoadResult load_result;
+        UnitLabIedServerStopRequested stop_requested = options->smoke_start ? immediate_stop_requested : signal_stop_requested;
+
+        memset(&fixture_model, 0, sizeof(fixture_model));
+        snprintf(fixture_model.ied_name, sizeof(fixture_model.ied_name), "%s", options->ied_name);
+        snprintf(fixture_model.access_point_name, sizeof(fixture_model.access_point_name), "%s", "AP1");
+
+        if (!options->smoke_start) {
+            signal(SIGINT, handle_stop_signal);
+            signal(SIGTERM, handle_stop_signal);
+        }
+
+        printf("unitlab-iec61850-ied-sim: SCL linked libIEC61850 server starting\n");
+        printf("ied=%s\n", options->ied_name);
+        printf("bind=%s\n", options->bind_address);
+        printf("port=%d\n", options->port);
+        printf("libiec61850=%s\n", libiec61850_status());
+        fflush(stdout);
+
+        if (!unitlab_run_ied_server(&fixture_model, model_plan, &server_config, stop_requested, NULL, &load_result)) {
+            fprintf(stderr, "%s: %s\n", load_result.code, load_result.message);
+            fprintf(stderr, "libiec61850=%s\n", libiec61850_status());
+            unitlab_scl_compile_result_free(compile_result);
+            return 69;
+        }
+        printf("unitlab-iec61850-ied-sim: SCL linked libIEC61850 server stopped\n");
+        printf("ied=%s\n", options->ied_name);
+        printf("bind=%s\n", options->bind_address);
+        printf("port=%d\n", options->port);
+        unitlab_scl_compile_result_free(compile_result);
+        return 0;
+    }
 }
 
 static const char* libiec61850_status(void)

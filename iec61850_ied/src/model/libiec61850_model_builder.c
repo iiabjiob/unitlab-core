@@ -41,6 +41,86 @@ static void destroy_libiec61850_handles(UnitLabLibIedModelHandles* handles)
     memset(handles, 0, sizeof(*handles));
 }
 
+static const char* libiec61850_logical_device_inst_for_create(const UnitLabIedFixtureModel* fixture, const char* logical_device_inst)
+{
+    size_t ied_name_length = 0U;
+
+    if (fixture == NULL || fixture->ied_name[0] == '\0' || logical_device_inst == NULL) {
+        return logical_device_inst;
+    }
+    ied_name_length = strlen(fixture->ied_name);
+    if (strncmp(logical_device_inst, fixture->ied_name, ied_name_length) == 0 && logical_device_inst[ied_name_length] != '\0') {
+        return &logical_device_inst[ied_name_length];
+    }
+    return logical_device_inst;
+}
+
+static int libiec61850_format_data_set_entry_variable_for_create(
+    const UnitLabIedFixtureModel* fixture,
+    const char* variable,
+    char* buffer,
+    size_t buffer_size)
+{
+    const char* separator = NULL;
+    const char* domain = NULL;
+    const char* item = NULL;
+    const char* domain_for_create = NULL;
+    size_t domain_length = 0U;
+    int written = 0;
+
+    if (variable == NULL || buffer == NULL || buffer_size == 0U) {
+        return 0;
+    }
+    buffer[0] = '\0';
+    separator = strchr(variable, '/');
+    if (separator == NULL) {
+        written = snprintf(buffer, buffer_size, "%s", variable);
+        return written > 0 && (size_t)written < buffer_size;
+    }
+
+    domain = variable;
+    item = separator + 1;
+    domain_length = (size_t)(separator - variable);
+    if (domain_length == 0U || item[0] == '\0') {
+        return 0;
+    }
+
+    {
+        char domain_buffer[128U];
+        if (domain_length >= sizeof(domain_buffer)) {
+            return 0;
+        }
+        memcpy(domain_buffer, domain, domain_length);
+        domain_buffer[domain_length] = '\0';
+        domain_for_create = libiec61850_logical_device_inst_for_create(fixture, domain_buffer);
+        written = snprintf(buffer, buffer_size, "%s/%s", domain_for_create, item);
+    }
+    return written > 0 && (size_t)written < buffer_size;
+}
+
+static int libiec61850_variable_ends_with_component(const char* variable, const char* component)
+{
+    char suffix[160U];
+    size_t variable_length = 0U;
+    size_t suffix_length = 0U;
+    size_t offset = 0U;
+
+    if (variable == NULL || component == NULL || component[0] == '\0') {
+        return 0;
+    }
+    suffix[offset++] = '$';
+    for (const char* cursor = component; *cursor != '\0'; cursor++) {
+        if (offset + 1U >= sizeof(suffix)) {
+            return 0;
+        }
+        suffix[offset++] = (*cursor == '.') ? '$' : *cursor;
+    }
+    suffix[offset] = '\0';
+    variable_length = strlen(variable);
+    suffix_length = strlen(suffix);
+    return variable_length > suffix_length && strcmp(&variable[variable_length - suffix_length], suffix) == 0;
+}
+
 static LogicalDevice* find_logical_device(
     const UnitLabIedModelPlan* plan,
     UnitLabLibIedModelHandles* handles,
@@ -292,6 +372,7 @@ static int create_signal_model(
 }
 
 static int create_data_sets(
+    const UnitLabIedFixtureModel* fixture,
     const UnitLabIedModelPlan* plan,
     UnitLabLibIedModelHandles* handles,
     DataSet*** data_sets_out,
@@ -323,7 +404,17 @@ static int create_data_sets(
             size_t signal_index = data_set->first_signal_index + member;
             const UnitLabIedModelSignal* signal = &plan->signals[signal_index];
             const char* component = signal->data_set_entry_component_known ? signal->data_set_entry_component : NULL;
-            if (DataSetEntry_create(data_sets[index], signal->data_set_entry_variable, -1, component) == NULL) {
+            char entry_variable[256U];
+
+            if (!libiec61850_format_data_set_entry_variable_for_create(fixture, signal->data_set_entry_variable, entry_variable, sizeof(entry_variable))) {
+                free(data_sets);
+                set_result(result, "LIBIEC61850_DATASET_ENTRY_REFERENCE_INVALID", "Cannot normalize a DataSetEntry reference for libIEC61850.");
+                return 0;
+            }
+            if (libiec61850_variable_ends_with_component(entry_variable, component)) {
+                component = NULL;
+            }
+            if (DataSetEntry_create(data_sets[index], entry_variable, -1, component) == NULL) {
                 free(data_sets);
                 set_result(result, "LIBIEC61850_DATASET_ENTRY_CREATE_FAILED", "libIEC61850 failed to create a DataSetEntry.");
                 return 0;
@@ -395,7 +486,9 @@ static int create_libiec61850_model(
     }
 
     for (size_t index = 0U; index < plan->logical_device_count; index++) {
-        handles->logical_devices[index] = LogicalDevice_create(plan->logical_devices[index].inst, handles->ied_model);
+        handles->logical_devices[index] = LogicalDevice_create(
+            libiec61850_logical_device_inst_for_create(fixture, plan->logical_devices[index].inst),
+            handles->ied_model);
         if (handles->logical_devices[index] == NULL) {
             set_result(result, "LIBIEC61850_LOGICAL_DEVICE_CREATE_FAILED", "libIEC61850 failed to create a logical device.");
             return 0;
@@ -423,7 +516,7 @@ static int create_libiec61850_model(
     }
 
     DataSet** data_sets = NULL;
-    if (!create_data_sets(plan, handles, &data_sets, result)) {
+    if (!create_data_sets(fixture, plan, handles, &data_sets, result)) {
         return 0;
     }
     free(data_sets);

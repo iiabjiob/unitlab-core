@@ -396,7 +396,7 @@ static void assert_named_variable_list_attributes_member(const UnitLabMmsBerElem
     assert(offset == object_name.value_length);
 }
 
-static void assert_named_variable_list_attributes_response_shape(const UnitLabMmsPdu* response_pdu, const char* expected_member_token_0, const char* expected_member_token_1, size_t expected_member_token_count)
+static void assert_named_variable_list_attributes_response_shape(const UnitLabMmsPdu* response_pdu, const char* expected_member_token_0, const char* expected_member_token_1, const char* expected_member_token_2, size_t expected_member_token_count)
 {
     UnitLabMmsBerElement deletable_element;
     UnitLabMmsBerElement list_of_variable_element;
@@ -431,6 +431,13 @@ static void assert_named_variable_list_attributes_response_shape(const UnitLabMm
         assert(unitlab_mms_ber_read(&member, &list_of_variable_element.value_bytes[offset], list_of_variable_element.value_length - offset, &member_consumed_length, &diagnostic) == 1);
         assert(member_consumed_length > 0U);
         assert_named_variable_list_attributes_member(&member, "LD0", expected_member_token_1);
+        offset += member_consumed_length;
+    }
+    if (expected_member_token_count > 2U) {
+        unitlab_mms_ber_element_init(&member);
+        assert(unitlab_mms_ber_read(&member, &list_of_variable_element.value_bytes[offset], list_of_variable_element.value_length - offset, &member_consumed_length, &diagnostic) == 1);
+        assert(member_consumed_length > 0U);
+        assert_named_variable_list_attributes_member(&member, "LD0", expected_member_token_2);
         offset += member_consumed_length;
     }
     assert(offset == list_of_variable_element.value_length);
@@ -715,6 +722,70 @@ static void test_server_runtime_reads_model_backed_rcb_dataset_aliases(void)
     assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
     assert(contains_bytes(response_bytes, response_length, (const uint8_t*)"\x8A\x00", 2U) == 1);
     assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    unitlab_free_ied_model_plan(&plan);
+}
+
+
+static void test_server_runtime_second_model_rcb_gi_uses_second_dataset(void)
+{
+    UnitLabMmsServerRuntime server_runtime;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabMmsOperationResult operation_result;
+    UnitLabIedServerConfig config = { .bind_address = "127.0.0.1", .port = 102 };
+    UnitLabIedModelPlan plan;
+    uint8_t scratch[1024U];
+    uint8_t request_bytes[1024U];
+    uint8_t response_bytes[2048U];
+    uint8_t report_bytes[8192U];
+    uint8_t value_byte = 0x01U;
+    size_t request_length = 0U;
+    size_t consumed_length = 0U;
+    size_t response_length = 0U;
+    size_t report_length = 0U;
+    UnitLabMmsBerElement data_element;
+    UnitLabMmsAssociationFrame report_frame;
+
+    assert(build_two_model_backed_rcb_plan(&plan) == 1);
+    unitlab_mms_server_runtime_init(&server_runtime);
+    assert(unitlab_mms_server_runtime_prepare(&server_runtime, &config, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&server_runtime, &plan) == 1);
+    assert(unitlab_mms_server_runtime_start(&server_runtime, &diagnostic));
+    assert(unitlab_mms_session_begin_association(&server_runtime.session, &diagnostic));
+    assert(unitlab_mms_session_complete_association(&server_runtime.session, 1U, &diagnostic));
+
+    unitlab_mms_ber_element_init(&data_element);
+    data_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
+    data_element.tag.constructed = 0;
+    data_element.tag.tag_number = 3U;
+    data_element.value_bytes = &value_byte;
+    data_element.value_length = 1U;
+
+    assert(unitlab_mms_build_write_request_frame("KINTE08TDIFFSystem", "LLN0$BR$brcbB$RptEna", &data_element, 210U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(server_runtime.active_report_index == 1U);
+    assert(server_runtime.brcb_rpt_ena == 1U);
+    assert(unitlab_mms_pending_request_complete(&server_runtime.pending_request, 0U, &diagnostic));
+
+    assert(unitlab_mms_build_write_request_frame("KINTE08TDIFFSystem", "LLN0$BR$brcbB$GI", &data_element, 211U, scratch, sizeof(scratch), request_bytes, sizeof(request_bytes), &request_length, &diagnostic));
+    unitlab_mms_operation_result_init(&operation_result);
+    assert(unitlab_mms_server_runtime_apply_incoming_bytes(&server_runtime, request_bytes, request_length, &consumed_length, &operation_result));
+    assert(operation_result.ok == 1);
+    assert(unitlab_mms_server_runtime_build_confirmed_response_bytes(&server_runtime, NULL, 0U, response_bytes, sizeof(response_bytes), &response_length, &diagnostic));
+    assert(server_runtime.active_report_index == 1U);
+    assert(unitlab_mms_server_runtime_has_pending_gi_report(&server_runtime) == 1);
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_build_pending_gi_report_bytes(&server_runtime, report_bytes, sizeof(report_bytes), &report_length, &diagnostic));
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    unitlab_mms_association_frame_init(&report_frame);
+    assert(unitlab_mms_association_frame_decode(&report_frame, report_bytes, report_length, &consumed_length, &diagnostic));
+    assert(consumed_length == report_length);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0$RCB2", strlen("KINTE08TDIFFSystem/LLN0$RCB2")) == 1);
+    assert(contains_bytes(report_frame.presentation.payload_bytes, report_frame.presentation.payload_length, (const uint8_t*)"KINTE08TDIFFSystem/LLN0$RCB1", strlen("KINTE08TDIFFSystem/LLN0$RCB1")) == 0);
 
     unitlab_free_ied_model_plan(&plan);
 }
@@ -5894,6 +5965,7 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
             &response_pdu,
             cases[index].expected_member_token_0,
             cases[index].expected_member_token_1,
+            NULL,
             cases[index].expected_member_token_count);
         assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)cases[index].expected_member_token_0, strlen(cases[index].expected_member_token_0)) == 1);
         if (cases[index].expected_member_token_count > 1U) {
@@ -5994,7 +6066,7 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
         assert(response_pdu.has_invoke_id == 1);
         assert(response_pdu.invoke_id == 13U);
         assert(response_pdu.service_kind == UNITLAB_MMS_SERVICE_GET_NAMED_VARIABLE_LIST_ATTRIBUTES);
-        assert_named_variable_list_attributes_response_shape(&response_pdu, "XCBR1$ST$Pos$stVal", "PGGIO1$ST$Ind1$stVal", 2U);
+        assert_named_variable_list_attributes_response_shape(&response_pdu, "XCBR1$ST$Pos$stVal", "PGGIO1$ST$Ind1$stVal", NULL, 2U);
         assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"XCBR1$ST$Pos$stVal", strlen("XCBR1$ST$Pos$stVal")) == 1);
         assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"PGGIO1$ST$Ind1$stVal", strlen("PGGIO1$ST$Ind1$stVal")) == 1);
         unitlab_mms_semantic_result_init(&semantic_result);
@@ -6009,7 +6081,7 @@ static void test_server_runtime_apply_named_variable_list_attributes_request_and
 
 
 
-static void test_server_runtime_named_variable_list_attributes_coalesces_expanded_do_members(void)
+static void test_server_runtime_named_variable_list_attributes_returns_expanded_leaf_members(void)
 {
     UnitLabMmsServerRuntime server_runtime;
     UnitLabMmsDiagnostic diagnostic;
@@ -6092,8 +6164,10 @@ static void test_server_runtime_named_variable_list_attributes_coalesces_expande
         assert(consumed_length == frame.presentation.payload_length);
         assert(response_pdu.kind == UNITLAB_MMS_PDU_CONFIRMED_RESPONSE);
         assert(response_pdu.service_kind == UNITLAB_MMS_SERVICE_GET_NAMED_VARIABLE_LIST_ATTRIBUTES);
-        assert_named_variable_list_attributes_response_shape(&response_pdu, "PGGIO1$ST$Ind1", NULL, 1U);
-        assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"PGGIO1$ST$Ind1$stVal", strlen("PGGIO1$ST$Ind1$stVal")) == 0);
+        assert_named_variable_list_attributes_response_shape(&response_pdu, "PGGIO1$ST$Ind1$stVal", "PGGIO1$ST$Ind1$q", "PGGIO1$ST$Ind1$t", 3U);
+        assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"PGGIO1$ST$Ind1$stVal", strlen("PGGIO1$ST$Ind1$stVal")) == 1);
+        assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"PGGIO1$ST$Ind1$q", strlen("PGGIO1$ST$Ind1$q")) == 1);
+        assert(contains_bytes(frame.presentation.payload_bytes, frame.presentation.payload_length, (const uint8_t*)"PGGIO1$ST$Ind1$t", strlen("PGGIO1$ST$Ind1$t")) == 1);
     }
 }
 
@@ -6314,6 +6388,7 @@ int main(void)
     test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_access_results();
     test_server_runtime_brcb_read_uses_model_report_dataset_reference();
     test_server_runtime_reads_model_backed_rcb_dataset_aliases();
+    test_server_runtime_second_model_rcb_gi_uses_second_dataset();
     test_server_runtime_build_read_failure_uses_data_access_error_access_result();
     test_server_runtime_mixed_multi_read_preserves_access_result_failures();
     test_server_runtime_build_ordinary_ln_gva_response_exposes_fc_roots();
@@ -6331,7 +6406,7 @@ int main(void)
     test_server_runtime_apply_iedscout_vmd_directory_request_scope_zero_builds_response();
     test_server_runtime_apply_named_variable_list_attributes_request_and_build_response_roundtrips();
     test_server_runtime_apply_named_variable_list_attributes_request_and_build_response_matches_live_fixture_style();
-    test_server_runtime_named_variable_list_attributes_coalesces_expanded_do_members();
+    test_server_runtime_named_variable_list_attributes_returns_expanded_leaf_members();
     test_server_runtime_named_variable_list_attributes_handles_large_model_dataset();
     test_server_runtime_apply_iedscout_aa_specific_directory_request_scope_two_builds_response();
     test_server_runtime_apply_iedscout_vmd_get_variable_access_attributes_request_builds_response();

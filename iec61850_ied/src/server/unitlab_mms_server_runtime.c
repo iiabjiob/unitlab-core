@@ -1573,6 +1573,95 @@ int server_runtime_object_reference_matches_report_control_object(const char* ob
         || server_runtime_object_reference_has_suffix(object_reference, ".LLN0_Events_BuffRep01");
 }
 
+const UnitLabIedModelReportControl* server_runtime_model_report_control_by_index(const UnitLabMmsServerRuntime* server_runtime, size_t report_index)
+{
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || server_runtime->model_plan->reports == NULL || report_index >= server_runtime->model_plan->report_count) {
+        return NULL;
+    }
+    return &server_runtime->model_plan->reports[report_index];
+}
+
+const UnitLabIedModelReportControl* server_runtime_active_model_report_control(const UnitLabMmsServerRuntime* server_runtime)
+{
+    const UnitLabIedModelReportControl* report = NULL;
+
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || server_runtime->model_plan->report_count == 0U || server_runtime->model_plan->reports == NULL) {
+        return NULL;
+    }
+    report = server_runtime_model_report_control_by_index(server_runtime, server_runtime->active_report_index);
+    return report != NULL ? report : &server_runtime->model_plan->reports[0];
+}
+
+const UnitLabIedModelDataSet* server_runtime_model_report_data_set(const UnitLabMmsServerRuntime* server_runtime, const UnitLabIedModelReportControl* report)
+{
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || report == NULL || server_runtime->model_plan->data_sets == NULL || report->data_set_index >= server_runtime->model_plan->data_set_count) {
+        return NULL;
+    }
+    return &server_runtime->model_plan->data_sets[report->data_set_index];
+}
+
+static int server_runtime_object_reference_has_report_alias_segment(const char* object_reference, const char* segment)
+{
+    const char* position = NULL;
+    size_t segment_length = 0U;
+
+    if (object_reference == NULL || segment == NULL || segment[0] == '\0') {
+        return 0;
+    }
+    position = strstr(object_reference, segment);
+    if (position == NULL) {
+        return 0;
+    }
+    segment_length = strlen(segment);
+    return position[segment_length] == '\0' || position[segment_length] == '.' || position[segment_length] == '$';
+}
+
+static int server_runtime_object_reference_has_report_alias(const char* object_reference, const char* alias)
+{
+    char dot_suffix[160U];
+    char dollar_suffix[160U];
+    char br_dot_suffix[192U];
+    char rp_dot_suffix[192U];
+    char br_dollar_suffix[192U];
+    char rp_dollar_suffix[192U];
+
+    if (object_reference == NULL || alias == NULL || alias[0] == '\0') {
+        return 0;
+    }
+    snprintf(dot_suffix, sizeof(dot_suffix), ".%s", alias);
+    snprintf(dollar_suffix, sizeof(dollar_suffix), "$%s", alias);
+    snprintf(br_dot_suffix, sizeof(br_dot_suffix), ".BR.%s", alias);
+    snprintf(rp_dot_suffix, sizeof(rp_dot_suffix), ".RP.%s", alias);
+    snprintf(br_dollar_suffix, sizeof(br_dollar_suffix), "$BR$%s", alias);
+    snprintf(rp_dollar_suffix, sizeof(rp_dollar_suffix), "$RP$%s", alias);
+    return server_runtime_object_reference_has_report_alias_segment(object_reference, br_dot_suffix)
+        || server_runtime_object_reference_has_report_alias_segment(object_reference, rp_dot_suffix)
+        || server_runtime_object_reference_has_report_alias_segment(object_reference, br_dollar_suffix)
+        || server_runtime_object_reference_has_report_alias_segment(object_reference, rp_dollar_suffix)
+        || server_runtime_object_reference_has_suffix(object_reference, dot_suffix)
+        || server_runtime_object_reference_has_suffix(object_reference, dollar_suffix);
+}
+
+int server_runtime_select_report_control_by_reference(UnitLabMmsServerRuntime* server_runtime, const char* object_reference)
+{
+    if (server_runtime == NULL || server_runtime->model_plan == NULL || server_runtime->model_plan->reports == NULL || object_reference == NULL) {
+        return 0;
+    }
+    for (size_t index = 0U; index < server_runtime->model_plan->report_count; index++) {
+        const UnitLabIedModelReportControl* report = &server_runtime->model_plan->reports[index];
+        const UnitLabIedModelDataSet* data_set = server_runtime_model_report_data_set(server_runtime, report);
+        if (report->name[0] != '\0' && server_runtime_object_reference_has_report_alias(object_reference, report->name)) {
+            server_runtime->active_report_index = index;
+            return 1;
+        }
+        if (data_set != NULL && data_set->name[0] != '\0' && server_runtime_object_reference_has_report_alias(object_reference, data_set->name)) {
+            server_runtime->active_report_index = index;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 const char* server_runtime_advertised_domain_name(const UnitLabMmsServerRuntime* server_runtime)
 {
     if (server_runtime != NULL
@@ -1696,6 +1785,7 @@ void unitlab_mms_server_runtime_init(UnitLabMmsServerRuntime* server_runtime)
     server_runtime->read_response_value_length = 0U;
     server_runtime->has_read_response_value = 0;
     unitlab_iec61850_report_control_init(&server_runtime->report_control);
+    server_runtime->active_report_index = 0U;
     server_runtime->brcb_rpt_ena = 0U;
     server_runtime->brcb_resv_tms = 0U;
     server_runtime->brcb_owner[0] = 0;
