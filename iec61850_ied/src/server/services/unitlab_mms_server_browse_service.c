@@ -349,19 +349,6 @@ static int server_runtime_encode_gva_leaf_type_spec(
     return 1;
 }
 
-static int server_runtime_gva_path_last_segment_equals(const char* path, const char* segment)
-{
-    const char* last_dot = NULL;
-    const char* candidate = NULL;
-
-    if (path == NULL || segment == NULL || path[0] == 0 || segment[0] == 0) {
-        return 0;
-    }
-    last_dot = strrchr(path, '.');
-    candidate = last_dot != NULL ? last_dot + 1U : path;
-    return strcmp(candidate, segment) == 0;
-}
-
 static const UnitLabIedModelSignal* server_runtime_find_model_gva_leaf_signal(
     const UnitLabIedModelPlan* plan,
     const char* domain_id,
@@ -488,12 +475,6 @@ static int server_runtime_encode_model_gva_leaf_type_spec(
 {
     if (signal == NULL) {
         return server_runtime_encode_gva_leaf_type_spec(component_name, buffer, buffer_length, encoded_length, diagnostic);
-    }
-    if (strcmp(component_name, "q") == 0 || server_runtime_gva_path_last_segment_equals(signal->data_attribute_path, "q")) {
-        return server_runtime_encode_gva_leaf_type_spec("q", buffer, buffer_length, encoded_length, diagnostic);
-    }
-    if (strcmp(component_name, "t") == 0 || server_runtime_gva_path_last_segment_equals(signal->data_attribute_path, "t")) {
-        return server_runtime_encode_gva_leaf_type_spec("t", buffer, buffer_length, encoded_length, diagnostic);
     }
     return server_runtime_encode_gva_leaf_type_spec_for_value_kind(signal->initial_value_kind, component_name, buffer, buffer_length, encoded_length, diagnostic);
 }
