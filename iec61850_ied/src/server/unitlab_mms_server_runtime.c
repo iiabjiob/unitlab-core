@@ -744,6 +744,9 @@ static int server_runtime_encode_signal_write_value(
         case UNITLAB_IED_FIXTURE_VALUE_STRING:
             tag_number = 10U;
             break;
+        case UNITLAB_IED_FIXTURE_VALUE_REAL:
+            tag_number = 7U;
+            break;
         default:
             server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_UNSUPPORTED, "Signal update value kind is unsupported.");
             return 0;

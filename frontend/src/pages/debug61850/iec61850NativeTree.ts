@@ -21,6 +21,14 @@ export type Iec61850NativeDetailRow = {
   value: string
 }
 
+export type Iec61850NativeRuntimeSignal = {
+  objectReference: string
+  canonicalVariable: string
+  valueKind: "boolean" | "integer" | "enum" | "real" | "string"
+  initialValue: string
+  enumValues: Array<{ ord: number; text: string }>
+}
+
 export type Iec61850NativeTreeRow = {
   value: string
   parent: string | null
@@ -33,6 +41,7 @@ export type Iec61850NativeTreeRow = {
     subtitle: string
     rows: Iec61850NativeDetailRow[]
   }
+  runtimeSignal?: Iec61850NativeRuntimeSignal
 }
 
 export type Iec61850NativeStats = {
@@ -412,6 +421,7 @@ function groupRow(value: string, parent: string, kind: Iec61850NativeTreeNodeKin
 
 function signalRow(value: string, parent: string, signal: NativeRecord, kind: "dataset-member" | "report-signal-preview" = "dataset-member"): Iec61850NativeTreeRow {
   const reference = text(signal.reference)
+  const runtimeSignal = runtimeSignalFromRecord(signal)
   return {
     value,
     parent,
@@ -419,6 +429,7 @@ function signalRow(value: string, parent: string, signal: NativeRecord, kind: "d
     label: reference || text(signal.objectReference),
     meta: text(signal.fc),
     isLeaf: true,
+    runtimeSignal,
     detail: {
       title: reference,
       subtitle: text(signal.dataSetEntryVariable),
@@ -430,9 +441,47 @@ function signalRow(value: string, parent: string, signal: NativeRecord, kind: "d
         { label: "data object", value: text(signal.dataObjectName) },
         { label: "data attribute", value: text(signal.dataAttributePath) },
         { label: "FC", value: text(signal.fc) },
+        { label: "value kind", value: runtimeSignal?.valueKind ?? "" },
         { label: "initial value", value: text(signal.initialValue) },
       ],
     },
+  }
+}
+
+function runtimeSignalFromRecord(signal: NativeRecord): Iec61850NativeRuntimeSignal | undefined {
+  const objectReference = text(signal.objectReference) || text(signal.dataSetEntryVariable)
+  const canonicalVariable = text(signal.dataSetEntryVariable) || objectReference
+  if (!objectReference || !canonicalVariable) return undefined
+
+  const enumValues = asRecords(signal.enumValues)
+    .map(item => ({ ord: numberValue(item.ord) ?? 0, text: text(item.text) }))
+    .sort((a, b) => a.ord - b.ord)
+  const enumTypeKnown = signal.enumTypeKnown === true
+  const initialValueKind = numberValue(signal.initialValueKind)
+  const valueKind = enumTypeKnown ? "enum" : runtimeValueKind(initialValueKind)
+  if (!valueKind) return undefined
+
+  return {
+    objectReference,
+    canonicalVariable,
+    valueKind,
+    initialValue: text(signal.initialValue),
+    enumValues,
+  }
+}
+
+function runtimeValueKind(initialValueKind: number | null): Iec61850NativeRuntimeSignal["valueKind"] | null {
+  switch (initialValueKind) {
+    case 2:
+      return "boolean"
+    case 3:
+      return "integer"
+    case 4:
+      return "real"
+    case 5:
+      return "string"
+    default:
+      return null
   }
 }
 

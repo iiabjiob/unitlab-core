@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+import socket
 import subprocess
 import tempfile
 from collections import deque
@@ -14,6 +16,37 @@ from .ied_simulator_process import wait_ied_native_wire_server_ready
 from .report_runtime import Iec61850ReportRuntimeError
 from .scl_import import Iec61850SclImportRecord
 
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850VirtualMmsRuntimeStatus:
+    running: bool
+    data_client_connected: bool
+    data_client: str
+    report_enabled: bool
+    active_report: str
+    active_report_key: str
+    report_kind: str
+    report_id_reference: str
+    data_set_ref: str
+    data_set_reference: str
+    owner: str
+    pending_report_kind: str
+    pending_report_queue_count: int
+    reports_sent: int
+    report_events_queued: int
+
+
+@dataclass(frozen=True, slots=True)
+class Iec61850VirtualMmsSignalUpdateResult:
+    ok: bool
+    object_reference: str
+    value_kind: str
+    value: str
+    report_queued: bool
+    report_sent: bool
+    pending_report_kind: str
+    message: str
 
 @dataclass(frozen=True, slots=True)
 class Iec61850VirtualMmsServerSnapshot:
@@ -124,6 +157,88 @@ class Iec61850VirtualMmsServerService:
         with self._lock:
             return tuple(self._logs)
 
+    def runtime_status(self) -> Iec61850VirtualMmsRuntimeStatus:
+        payload = self._send_control_json("status")
+        return _runtime_status_from_payload(payload)
+
+    def update_signal(self, *, object_reference: str, value_kind: str, value: object) -> Iec61850VirtualMmsSignalUpdateResult:
+        normalized_reference = object_reference.strip()
+        normalized_kind = _normalize_signal_value_kind(value_kind)
+        normalized_value = _normalize_signal_value(normalized_kind, value)
+        if not normalized_reference:
+            raise Iec61850ReportRuntimeError("VIRTUAL_MMS_SIGNAL_REFERENCE_EMPTY", "Signal object reference is required.")
+        command = "update-signal {kind} {reference_hex} {value_hex}".format(
+            kind=normalized_kind,
+            reference_hex=normalized_reference.encode("utf-8").hex(),
+            value_hex=normalized_value.encode("utf-8").hex(),
+        )
+        payload = self._send_control_json(command)
+        if not bool(payload.get("ok")):
+            raise Iec61850ReportRuntimeError(
+                str(payload.get("code") or "VIRTUAL_MMS_SIGNAL_UPDATE_FAILED"),
+                str(payload.get("message") or "Virtual MMS signal update failed."),
+            )
+        return Iec61850VirtualMmsSignalUpdateResult(
+            ok=True,
+            object_reference=str(payload.get("objectReference") or normalized_reference),
+            value_kind=str(payload.get("valueKind") or normalized_kind),
+            value=str(payload.get("value") or normalized_value),
+            report_queued=bool(payload.get("reportQueued")),
+            report_sent=bool(payload.get("reportSent")),
+            pending_report_kind=str(payload.get("pendingReportKind") or "none"),
+            message=str(payload.get("message") or "signal updated"),
+        )
+
+    def _send_control_json(self, command: str, *, timeout_seconds: float = 3.0) -> dict:
+        response = self._send_control_command(command, timeout_seconds=timeout_seconds)
+        try:
+            payload = json.loads(response)
+        except json.JSONDecodeError as exc:
+            raise Iec61850ReportRuntimeError("VIRTUAL_MMS_CONTROL_RESPONSE_INVALID", f"Virtual MMS control response is not JSON: {response}") from exc
+        if not isinstance(payload, dict):
+            raise Iec61850ReportRuntimeError("VIRTUAL_MMS_CONTROL_RESPONSE_INVALID", "Virtual MMS control response must be a JSON object.")
+        if not bool(payload.get("ok")):
+            raise Iec61850ReportRuntimeError(
+                str(payload.get("code") or "VIRTUAL_MMS_CONTROL_FAILED"),
+                str(payload.get("message") or "Virtual MMS control command failed."),
+            )
+        return payload
+
+    def _send_control_command(self, command: str, *, timeout_seconds: float) -> str:
+        with self._lock:
+            process = self._process
+            if process is None or process.poll() is not None:
+                raise Iec61850ReportRuntimeError("VIRTUAL_MMS_NOT_RUNNING", "Virtual MMS server is not running.")
+            host = _control_connect_host(self._host)
+            port = _control_port(self._port)
+
+        if port is None:
+            raise Iec61850ReportRuntimeError("VIRTUAL_MMS_CONTROL_PORT_UNAVAILABLE", "Virtual MMS control port is not available.")
+
+        try:
+            with socket.create_connection((host, port), timeout=timeout_seconds) as control_socket:
+                control_socket.settimeout(timeout_seconds)
+                control_socket.sendall(command.encode("utf-8") + b"\n")
+                try:
+                    control_socket.shutdown(socket.SHUT_WR)
+                except OSError:
+                    pass
+                chunks: list[bytes] = []
+                while True:
+                    chunk = control_socket.recv(4096)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    if b"\n" in chunk:
+                        break
+        except OSError as exc:
+            raise Iec61850ReportRuntimeError("VIRTUAL_MMS_CONTROL_REQUEST_FAILED", f"Virtual MMS control command failed: {exc}") from exc
+
+        raw = b"".join(chunks).split(b"\n", 1)[0].decode("utf-8", errors="replace").strip()
+        if not raw:
+            raise Iec61850ReportRuntimeError("VIRTUAL_MMS_CONTROL_RESPONSE_EMPTY", "Virtual MMS control command returned an empty response.")
+        return raw
+
     def _start_log_drain(self, process: subprocess.Popen[str]) -> None:
         self._logs.clear()
         self._log_threads = []
@@ -221,6 +336,103 @@ def _resolve_ied_simulator_binary_path() -> Path:
         return Path(configured)
     return REPO_ROOT.parent / "iec61850_ied" / "build" / "unitlab-iec61850-ied-sim"
 
+
+
+
+def _control_connect_host(host: str | None) -> str:
+    normalized = (host or "").strip()
+    if normalized in {"", "0.0.0.0", "::", "[::]"}:
+        return "127.0.0.1"
+    return normalized
+
+
+def _control_port(port: int | None) -> int | None:
+    if port is None or port <= 0 or port >= 65535:
+        return None
+    return port + 1
+
+
+def _normalize_signal_value_kind(value_kind: str) -> str:
+    normalized = value_kind.strip().lower().replace("_", "-")
+    aliases = {
+        "bool": "boolean",
+        "boolean": "boolean",
+        "int": "integer",
+        "int32": "integer",
+        "integer": "integer",
+        "enum": "enum",
+        "real": "real",
+        "float": "real",
+        "float32": "real",
+        "string": "string",
+        "visible-string": "string",
+        "visible_string": "string",
+    }
+    resolved = aliases.get(normalized)
+    if resolved is None:
+        raise Iec61850ReportRuntimeError("VIRTUAL_MMS_SIGNAL_VALUE_KIND_UNSUPPORTED", f"Unsupported signal value kind: {value_kind}")
+    return resolved
+
+
+def _normalize_signal_value(value_kind: str, value: object) -> str:
+    if value_kind == "boolean":
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        normalized = str(value).strip().lower()
+        if normalized in {"true", "1", "on"}:
+            return "true"
+        if normalized in {"false", "0", "off"}:
+            return "false"
+        raise Iec61850ReportRuntimeError("VIRTUAL_MMS_SIGNAL_BOOLEAN_INVALID", "Boolean signal value must be true/false or 1/0.")
+    if value_kind in {"integer", "enum"}:
+        try:
+            parsed = int(str(value).strip(), 10)
+        except ValueError as exc:
+            raise Iec61850ReportRuntimeError("VIRTUAL_MMS_SIGNAL_INTEGER_INVALID", "Integer signal value must be a base-10 integer.") from exc
+        if parsed < -(2**31) or parsed > 2**31 - 1:
+            raise Iec61850ReportRuntimeError("VIRTUAL_MMS_SIGNAL_INTEGER_INVALID", "Integer signal value must fit int32.")
+        return str(parsed)
+    if value_kind == "real":
+        text = str(value).strip()
+        try:
+            parsed = float(text)
+        except ValueError as exc:
+            raise Iec61850ReportRuntimeError("VIRTUAL_MMS_SIGNAL_REAL_INVALID", "Real signal value must be numeric.") from exc
+        if parsed != parsed or parsed in {float("inf"), float("-inf")}:
+            raise Iec61850ReportRuntimeError("VIRTUAL_MMS_SIGNAL_REAL_INVALID", "Real signal value must be finite.")
+        return text
+    return str(value)
+
+
+def _runtime_status_from_payload(payload: dict) -> Iec61850VirtualMmsRuntimeStatus:
+    return Iec61850VirtualMmsRuntimeStatus(
+        running=True,
+        data_client_connected=bool(payload.get("dataClientConnected")),
+        data_client=str(payload.get("dataClient") or ""),
+        report_enabled=bool(payload.get("reportEnabled")),
+        active_report=str(payload.get("activeReport") or ""),
+        active_report_key=str(payload.get("activeReportKey") or ""),
+        report_kind=str(payload.get("reportKind") or ""),
+        report_id_reference=str(payload.get("reportIdReference") or ""),
+        data_set_ref=str(payload.get("dataSetRef") or ""),
+        data_set_reference=str(payload.get("dataSetReference") or ""),
+        owner=str(payload.get("owner") or ""),
+        pending_report_kind=str(payload.get("pendingReportKind") or "none"),
+        pending_report_queue_count=_int_payload(payload.get("pendingReportQueueCount")),
+        reports_sent=_int_payload(payload.get("reportsSent")),
+        report_events_queued=_int_payload(payload.get("reportEventsQueued")),
+    )
+
+
+def _int_payload(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value), 10)
+    except (TypeError, ValueError):
+        return 0
 
 _virtual_mms_server_service = Iec61850VirtualMmsServerService()
 

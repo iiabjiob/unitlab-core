@@ -12,9 +12,12 @@ from app.infrastructure.db.database import AsyncSessionLocal, get_db
 from app.schemas.iec61850_scl_schema import (
     Iec61850RuntimeSelectionRequestSchema,
     Iec61850RuntimeSelectionResponseSchema,
+    Iec61850VirtualMmsRuntimeStatusSchema,
     Iec61850VirtualMmsServerLogsSchema,
     Iec61850VirtualMmsServerStartRequestSchema,
     Iec61850VirtualMmsServerStateSchema,
+    Iec61850VirtualMmsSignalUpdateRequestSchema,
+    Iec61850VirtualMmsSignalUpdateResponseSchema,
     Iec61850SclImportBatchJobStartResponseSchema,
     Iec61850SclImportBatchJobStatusSchema,
     Iec61850SclImportBatchResponseSchema,
@@ -225,7 +228,7 @@ async def discover_scl_ieds(
         service = Iec61850SclImportService(create_scl_cli_compiler_from_settings(), Iec61850InMemorySclImportRepository())
         discovered = await run_in_threadpool(service.discover_ieds, source=raw)
     except Iec61850SclImportError as exc:
-        raise HTTPException(status_code=400, detail={"code": exc.code, "message": exc.message}) from exc
+        raise HTTPException(status_code=400, detail={"code": exc.code, "message": str(exc)}) from exc
 
     return Iec61850SclIedDiscoveryResponseSchema(
         schema=discovered.schema,
@@ -395,7 +398,7 @@ async def import_scl(
         )
         saved = await repository.save(prepared, source=raw)
     except Iec61850SclImportError as exc:
-        raise HTTPException(status_code=400, detail={"code": exc.code, "message": exc.message}) from exc
+        raise HTTPException(status_code=400, detail={"code": exc.code, "message": str(exc)}) from exc
 
     return _scl_import_response(saved)
 
@@ -414,6 +417,35 @@ async def get_virtual_mms_server_logs(workspace_id: int) -> Iec61850VirtualMmsSe
     _ = workspace_id
     return Iec61850VirtualMmsServerLogsSchema(lines=list(get_virtual_mms_server_service().logs()))
 
+
+@scl_router.get("/virtual-mms-server/runtime", response_model=Iec61850VirtualMmsRuntimeStatusSchema)
+async def get_virtual_mms_runtime_status(workspace_id: int) -> Iec61850VirtualMmsRuntimeStatusSchema:
+    _ = workspace_id
+    try:
+        status = await run_in_threadpool(get_virtual_mms_server_service().runtime_status)
+    except Iec61850ReportRuntimeError as exc:
+        raise HTTPException(status_code=409, detail={"code": exc.code, "message": str(exc)}) from exc
+    return _virtual_mms_runtime_status_response(status)
+
+
+@scl_router.post("/virtual-mms-server/signals/update", response_model=Iec61850VirtualMmsSignalUpdateResponseSchema)
+async def update_virtual_mms_signal(
+    workspace_id: int,
+    payload: Iec61850VirtualMmsSignalUpdateRequestSchema,
+) -> Iec61850VirtualMmsSignalUpdateResponseSchema:
+    _ = workspace_id
+    try:
+        result = await run_in_threadpool(
+            get_virtual_mms_server_service().update_signal,
+            object_reference=payload.object_reference,
+            value_kind=payload.value_kind,
+            value=payload.value,
+        )
+    except Iec61850ReportRuntimeError as exc:
+        raise HTTPException(status_code=409, detail={"code": exc.code, "message": str(exc)}) from exc
+    return _virtual_mms_signal_update_response(result)
+
+
 @scl_router.post("/virtual-mms-server/start", response_model=Iec61850VirtualMmsServerStateSchema)
 async def start_virtual_mms_server(
     workspace_id: int,
@@ -430,7 +462,7 @@ async def start_virtual_mms_server(
     try:
         snapshot = get_virtual_mms_server_service().start(record, source_bytes=source, host=payload.host, port=payload.port)
     except Iec61850ReportRuntimeError as exc:
-        raise HTTPException(status_code=409, detail={"code": exc.code, "message": exc.message}) from exc
+        raise HTTPException(status_code=409, detail={"code": exc.code, "message": str(exc)}) from exc
     return _virtual_mms_server_response(snapshot)
 
 
@@ -453,6 +485,40 @@ def _virtual_mms_server_response(snapshot) -> Iec61850VirtualMmsServerStateSchem
         binary_path=snapshot.binary_path,
         message=snapshot.message,
     )
+
+
+def _virtual_mms_runtime_status_response(status) -> Iec61850VirtualMmsRuntimeStatusSchema:
+    return Iec61850VirtualMmsRuntimeStatusSchema(
+        running=status.running,
+        data_client_connected=status.data_client_connected,
+        data_client=status.data_client,
+        report_enabled=status.report_enabled,
+        active_report=status.active_report,
+        active_report_key=status.active_report_key,
+        report_kind=status.report_kind,
+        report_id_reference=status.report_id_reference,
+        data_set_ref=status.data_set_ref,
+        data_set_reference=status.data_set_reference,
+        owner=status.owner,
+        pending_report_kind=status.pending_report_kind,
+        pending_report_queue_count=status.pending_report_queue_count,
+        reports_sent=status.reports_sent,
+        report_events_queued=status.report_events_queued,
+    )
+
+
+def _virtual_mms_signal_update_response(result) -> Iec61850VirtualMmsSignalUpdateResponseSchema:
+    return Iec61850VirtualMmsSignalUpdateResponseSchema(
+        ok=result.ok,
+        object_reference=result.object_reference,
+        value_kind=result.value_kind,
+        value=result.value,
+        report_queued=result.report_queued,
+        report_sent=result.report_sent,
+        pending_report_kind=result.pending_report_kind,
+        message=result.message,
+    )
+
 
 def _scl_import_response(record) -> Iec61850SclImportResponseSchema:
     return Iec61850SclImportResponseSchema(
@@ -511,7 +577,7 @@ async def select_runtime_import(
             reason=payload.reason,
         )
     except Iec61850SclImportError as exc:
-        raise HTTPException(status_code=404, detail={"code": exc.code, "message": exc.message}) from exc
+        raise HTTPException(status_code=404, detail={"code": exc.code, "message": str(exc)}) from exc
     return _runtime_selection_response(selection)
 
 

@@ -98,6 +98,41 @@ export type Iec61850VirtualMmsServerState = {
   message: string | null
 }
 
+export type Iec61850VirtualMmsRuntimeStatus = {
+  running: boolean
+  data_client_connected: boolean
+  data_client: string
+  report_enabled: boolean
+  active_report: string
+  active_report_key: string
+  report_kind: string
+  report_id_reference: string
+  data_set_ref: string
+  data_set_reference: string
+  owner: string
+  pending_report_kind: string
+  pending_report_queue_count: number
+  reports_sent: number
+  report_events_queued: number
+}
+
+export type Iec61850VirtualMmsSignalUpdateResponse = {
+  ok: boolean
+  object_reference: string
+  value_kind: string
+  value: string
+  report_queued: boolean
+  report_sent: boolean
+  pending_report_kind: string
+  message: string
+}
+
+export type Iec61850VirtualMmsSignalUpdatePayload = {
+  object_reference: string
+  value_kind: string
+  value: string | number | boolean
+}
+
 export type Iec61850RuntimeSelectionResponse = {
   selection_id: string
   workspace_id: number
@@ -239,6 +274,14 @@ export const Iec61850SclAPI = {
 
   stopVirtualMmsServer(workspaceId: number) {
     return httpData.post<Iec61850VirtualMmsServerState>(`${API_V1}/workspaces/${workspaceId}/iec61850/virtual-mms-server/stop`, undefined, { timeout: 10000 })
+  },
+
+  virtualMmsRuntimeStatus(workspaceId: number) {
+    return httpData.get<Iec61850VirtualMmsRuntimeStatus>(`${API_V1}/workspaces/${workspaceId}/iec61850/virtual-mms-server/runtime`, { timeout: 10000 })
+  },
+
+  updateVirtualMmsSignal(workspaceId: number, payload: Iec61850VirtualMmsSignalUpdatePayload) {
+    return httpData.post<Iec61850VirtualMmsSignalUpdateResponse>(`${API_V1}/workspaces/${workspaceId}/iec61850/virtual-mms-server/signals/update`, payload, { timeout: 10000 })
   },
 
   runtimeSelection(workspaceId: number) {

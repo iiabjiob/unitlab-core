@@ -109,6 +109,41 @@ class Iec61850VirtualMmsServerLogsSchema(BaseModel):
     lines: list[str]
 
 
+class Iec61850VirtualMmsRuntimeStatusSchema(BaseModel):
+    running: bool
+    data_client_connected: bool = False
+    data_client: str = ""
+    report_enabled: bool = False
+    active_report: str = ""
+    active_report_key: str = ""
+    report_kind: str = ""
+    report_id_reference: str = ""
+    data_set_ref: str = ""
+    data_set_reference: str = ""
+    owner: str = ""
+    pending_report_kind: str = "none"
+    pending_report_queue_count: int = 0
+    reports_sent: int = 0
+    report_events_queued: int = 0
+
+
+class Iec61850VirtualMmsSignalUpdateRequestSchema(BaseModel):
+    object_reference: str
+    value_kind: str
+    value: Any
+
+
+class Iec61850VirtualMmsSignalUpdateResponseSchema(BaseModel):
+    ok: bool
+    object_reference: str
+    value_kind: str
+    value: str
+    report_queued: bool
+    report_sent: bool
+    pending_report_kind: str
+    message: str
+
+
 class Iec61850RuntimeSelectionRequestSchema(BaseModel):
     import_id: str
     selected_by: str | None = None

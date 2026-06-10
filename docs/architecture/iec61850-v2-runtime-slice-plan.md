@@ -29,7 +29,8 @@ Already implemented:
 - DataSet `FCDA` and `FCD` parsing;
 - ReportControl parsing for `datSet`, `rptID`, `buffered`, `confRev`, `indexed`, `bufTime`, `intgPd`, `TrgOps`, and `OptFields`;
 - basic diagnostics with C-readable context fields;
-- typed defaults from direct `LNodeType -> DOType -> DA`, `DOType/SDO -> nested DOType -> DA`, nested `DAType/BDA` chains, derived `FCD` value/q/t leaves, and first `EnumVal` for enum defaults.
+- typed defaults from direct `LNodeType -> DOType -> DA`, `DOType/SDO -> nested DOType -> DA`, nested `DAType/BDA` chains, derived `FCD` value/q/t leaves, and first `EnumVal` for enum defaults;
+- virtual MMS backend control can read native runtime subscription state and update compiled model signal leaves through the native control socket, causing normal report-trigger evaluation and pending report emission when a subscribed client is connected.
 
 Known remaining gaps:
 
@@ -195,6 +196,17 @@ Exit criteria:
 
 - backend service test proves model revision is explicit and auditable;
 - no implicit replacement of active model.
+
+### Runtime Control Extension - Operator Signal Mutation
+
+Status: implemented. The debug/runtime UI can select a compiled DataSet leaf, send a typed value update to the backend, and have the native MMS runtime update the stored signal value. The native runtime evaluates the active ReportControl triggers and sends the pending report immediately when an MMS data client is connected. A runtime status endpoint exposes the current data client, active ReportControl, `RptEna`, owner, DataSet reference, pending queue count, and sent-report counters.
+
+Boundaries:
+
+- frontend does not mutate the tree as source of truth; it sends an explicit backend command and shows the acknowledged result;
+- backend owns REST validation and talks to the native process over the internal control socket;
+- native wire data socket is independent from one-shot control socket connections, so polling status must not disconnect IEDScout;
+- supported value kinds for this slice are boolean, integer/enum, real/float32, and visible string.
 
 ### Slice 11 - Native Wire Golden Regression
 

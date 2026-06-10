@@ -37,6 +37,8 @@ describe("buildIec61850NativeTreeDocument", () => {
         dataSets: [{ name: "dsEvents", reference: "IED1/AP1/LD0/LLN0.dsEvents", logicalDeviceInst: "IED1LD0", logicalNodeName: "LLN0", firstSignalIndex: 0, memberCount: 1 }],
         reports: [{
           name: "brcbEvents",
+          logicalDeviceInst: "IED1LD0",
+          logicalNodeName: "LLN0",
           reportKind: "buffered",
           isBuffered: true,
           rptId: "IED1LD0/LLN0.BR.Events",
@@ -48,7 +50,7 @@ describe("buildIec61850NativeTreeDocument", () => {
           triggerOptions: { dataChange: "true", qualityChange: "true", dataUpdate: "false", periodic: "false", generalInterrogation: "true" },
           optionalFields: { sequenceNumber: "true", timestamp: "true", reasonCode: "true", dataSetName: "true", dataReference: "true", entryId: "true", configRevision: "true", bufferOverflow: "false" },
         }],
-        signals: [{ reference: "LD0/PGGIO1.Ind1.stVal[ST]", dataSetEntryVariable: "IED1LD0/PGGIO1$ST$Ind1$stVal", objectReference: "IED1LD0.PGGIO1.Ind1.stVal", logicalDeviceInst: "IED1LD0", logicalNodeName: "PGGIO1", dataSetIndex: 0, dataObjectName: "Ind1", dataAttributePath: "stVal", fc: "ST", initialValue: "0" }],
+        signals: [{ reference: "LD0/PGGIO1.Ind1.stVal[ST]", dataSetEntryVariable: "IED1LD0/PGGIO1$ST$Ind1$stVal", objectReference: "IED1LD0.PGGIO1.Ind1.stVal", logicalDeviceInst: "IED1LD0", logicalNodeName: "PGGIO1", dataSetIndex: 0, dataObjectName: "Ind1", dataAttributePath: "stVal", fc: "ST", initialValueKind: 3, initialValue: "0" }],
       },
       diagnostics: [{ severity: "warning", code: "SCL_REPORT_DATASET_EMPTY", message: "empty", iedName: "IED1", accessPointName: "AP1", logicalDeviceInst: "LD0", logicalNodeName: "LLN0", dataSetName: "", reportControlName: "urcbC", memberReference: "" }],
     }
@@ -57,7 +59,8 @@ describe("buildIec61850NativeTreeDocument", () => {
 
     expect(document.stats).toMatchObject({ logicalDevices: 1, logicalNodes: 2, dataSets: 1, reports: 1, signals: 1, warnings: 1 })
     expect(document.rows.some(row => row.kind === "dataset-member" && row.detail.subtitle === "IED1LD0/PGGIO1$ST$Ind1$stVal")).toBe(true)
-    expect(document.rows.some(row => row.kind === "report-control" && row.label === "brcbEvents" && row.meta === "buffered · 1 leaves")).toBe(true)
+    expect(document.rows.some(row => row.kind === "report-control" && row.label === "brcbEvents" && row.meta === "buffered · dsEvents")).toBe(true)
+    expect(document.rows.some(row => row.kind === "dataset-member" && row.runtimeSignal?.valueKind === "integer" && row.runtimeSignal.objectReference === "IED1LD0.PGGIO1.Ind1.stVal")).toBe(true)
     expect(document.rows.some(row => row.kind === "connected-access-point" && row.label === "AP1" && row.meta === "192.168.14.50")).toBe(true)
     expect(document.rows.some(row => row.detail.rows.some(detail => detail.label === "IP-GATEWAY" && detail.value === "192.168.14.1"))).toBe(true)
     expect(document.rows.some(row => row.detail.rows.some(detail => detail.label === "OSI-AP-Title" && detail.value === "1,3,9999,23"))).toBe(true)

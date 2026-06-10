@@ -2,6 +2,7 @@
 
 #include "server/native_wire_server.h"
 #include "server/unitlab_mms_server_runtime.h"
+#include "model/model_plan.h"
 #include "wire/acse/unitlab_mms_acse.h"
 #include "wire/ber/unitlab_mms_ber.h"
 #include "wire/mms/unitlab_mms_pdu.h"
@@ -14,6 +15,7 @@
 #include <netinet/in.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -92,6 +94,58 @@ static int recv_exact(int fd, uint8_t* buffer, size_t length)
         offset += (size_t)received;
     }
     return 1;
+}
+
+static int recv_line(int fd, char* buffer, size_t buffer_size)
+{
+    size_t offset = 0U;
+
+    if (buffer == NULL || buffer_size == 0U) {
+        return 0;
+    }
+    while (offset + 1U < buffer_size) {
+        char byte = 0;
+        ssize_t received = recv(fd, &byte, 1U, 0);
+        if (received < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return 0;
+        }
+        if (received == 0) {
+            break;
+        }
+        if (byte == '\n') {
+            break;
+        }
+        buffer[offset++] = byte;
+    }
+    buffer[offset] = '\0';
+    return offset > 0U;
+}
+
+static int send_line(int fd, const char* text)
+{
+    return text != NULL
+        && send_all(fd, (const uint8_t*)text, strlen(text))
+        && send_all(fd, (const uint8_t*)"\n", 1U);
+}
+
+static void hex_encode_text(const char* text, char* output, size_t output_size)
+{
+    static const char hex_digits[] = "0123456789abcdef";
+    size_t length;
+
+    assert(text != NULL);
+    assert(output != NULL);
+    length = strlen(text);
+    assert(output_size >= length * 2U + 1U);
+    for (size_t index = 0U; index < length; index++) {
+        unsigned char value = (unsigned char)text[index];
+        output[index * 2U] = hex_digits[(value >> 4U) & 0x0FU];
+        output[index * 2U + 1U] = hex_digits[value & 0x0FU];
+    }
+    output[length * 2U] = '\0';
 }
 
 static int contains_bytes(const uint8_t* haystack, size_t haystack_length, const uint8_t* needle, size_t needle_length)
@@ -305,8 +359,112 @@ static void test_native_wire_server_speaks_reference_handshake(void)
     assert(strcmp(context.result.code, "NATIVE_WIRE_SERVER_STOPPED") == 0);
 }
 
+
+static void test_native_wire_server_control_status_and_signal_update(void)
+{
+    NativeWireServerTestContext context;
+    pthread_t thread;
+    UnitLabMmsDiagnostic diagnostic;
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelDataSet data_sets[1];
+    UnitLabIedModelReportControl reports[1];
+    UnitLabIedModelSignal signals[1];
+    char response[2048U];
+    char reference_hex[512U];
+    char value_hex[32U];
+    char command[768U];
+    int control_fd;
+
+    memset(&context, 0, sizeof(context));
+    memset(&plan, 0, sizeof(plan));
+    memset(data_sets, 0, sizeof(data_sets));
+    memset(reports, 0, sizeof(reports));
+    memset(signals, 0, sizeof(signals));
+
+    snprintf(data_sets[0].reference, sizeof(data_sets[0].reference), "%s", "IED1LD0/LLN0$dsEvents");
+    snprintf(data_sets[0].logical_device_inst, sizeof(data_sets[0].logical_device_inst), "%s", "IED1LD0");
+    snprintf(data_sets[0].logical_node_name, sizeof(data_sets[0].logical_node_name), "%s", "LLN0");
+    snprintf(data_sets[0].name, sizeof(data_sets[0].name), "%s", "dsEvents");
+    data_sets[0].first_signal_index = 0U;
+    data_sets[0].member_count = 1U;
+
+    snprintf(reports[0].key, sizeof(reports[0].key), "%s", "IED1LD0/LLN0/brcbEvents/buffered");
+    snprintf(reports[0].logical_device_inst, sizeof(reports[0].logical_device_inst), "%s", "IED1LD0");
+    snprintf(reports[0].logical_node_name, sizeof(reports[0].logical_node_name), "%s", "LLN0");
+    snprintf(reports[0].name, sizeof(reports[0].name), "%s", "brcbEvents");
+    snprintf(reports[0].report_kind, sizeof(reports[0].report_kind), "%s", "buffered");
+    snprintf(reports[0].rpt_id, sizeof(reports[0].rpt_id), "%s", "IED1LD0/LLN0.BR.Events");
+    snprintf(reports[0].data_set_ref, sizeof(reports[0].data_set_ref), "%s", "IED1LD0/LLN0$dsEvents");
+    reports[0].is_buffered = 1;
+    reports[0].data_set_index = 0U;
+
+    snprintf(signals[0].reference, sizeof(signals[0].reference), "%s", "LD0/PGGIO1.Ind1.stVal[ST]");
+    snprintf(signals[0].kind, sizeof(signals[0].kind), "%s", "FCDA");
+    signals[0].data_set_index = 0U;
+    signals[0].member_index = 0U;
+    snprintf(signals[0].logical_device_inst, sizeof(signals[0].logical_device_inst), "%s", "IED1LD0");
+    snprintf(signals[0].logical_node_name, sizeof(signals[0].logical_node_name), "%s", "PGGIO1");
+    snprintf(signals[0].data_object_name, sizeof(signals[0].data_object_name), "%s", "Ind1");
+    snprintf(signals[0].data_attribute_path, sizeof(signals[0].data_attribute_path), "%s", "stVal");
+    snprintf(signals[0].object_reference, sizeof(signals[0].object_reference), "%s", "IED1LD0.PGGIO1.Ind1.stVal");
+    snprintf(signals[0].data_set_entry_variable, sizeof(signals[0].data_set_entry_variable), "%s", "IED1LD0/PGGIO1$ST$Ind1$stVal");
+    snprintf(signals[0].fc, sizeof(signals[0].fc), "%s", "ST");
+    signals[0].initial_value_kind = UNITLAB_IED_FIXTURE_VALUE_INTEGER;
+    snprintf(signals[0].initial_value, sizeof(signals[0].initial_value), "%s", "1");
+
+    plan.data_set_count = 1U;
+    plan.data_sets = data_sets;
+    plan.report_count = 1U;
+    plan.reports = reports;
+    plan.signal_count = 1U;
+    plan.signals = signals;
+
+    unitlab_mms_server_runtime_init(&context.runtime);
+    context.config.bind_address = "127.0.0.1";
+    context.config.port = 12459;
+    context.config.control_port = 12460;
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_server_runtime_prepare(&context.runtime, &context.config, &diagnostic));
+    assert(unitlab_mms_server_runtime_apply_model_plan(&context.runtime, &plan));
+    assert(unitlab_mms_server_runtime_start(&context.runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_reserve_report_control(&context.runtime, &diagnostic));
+    assert(unitlab_mms_server_runtime_enable_report_control(&context.runtime, &diagnostic));
+    context.runtime.brcb_rpt_ena = 1U;
+
+    assert(pthread_create(&thread, NULL, run_server_thread, &context) == 0);
+
+    control_fd = connect_with_retry(context.config.control_port);
+    assert(control_fd >= 0);
+    assert(send_line(control_fd, "status"));
+    assert(recv_line(control_fd, response, sizeof(response)));
+    assert(strstr(response, "\"ok\":true") != NULL);
+    assert(strstr(response, "\"dataClientConnected\":false") != NULL);
+    assert(strstr(response, "\"reportEnabled\":true") != NULL);
+    close(control_fd);
+    sleep_briefly();
+
+    hex_encode_text("IED1LD0/PGGIO1$ST$Ind1$stVal", reference_hex, sizeof(reference_hex));
+    hex_encode_text("11", value_hex, sizeof(value_hex));
+    snprintf(command, sizeof(command), "update-signal integer %s %s", reference_hex, value_hex);
+    control_fd = connect_with_retry(context.config.control_port);
+    assert(control_fd >= 0);
+    assert(send_line(control_fd, command));
+    assert(recv_line(control_fd, response, sizeof(response)));
+    assert(strstr(response, "\"ok\":true") != NULL);
+    assert(strstr(response, "\"reportQueued\":true") != NULL);
+    assert(strstr(response, "\"reportSent\":false") != NULL);
+    assert(context.runtime.pending_report_kind == UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE);
+    close(control_fd);
+
+    context.stop_requested = 1;
+    assert(pthread_join(thread, NULL) == 0);
+    assert(context.run_result == 1);
+    assert(strcmp(context.result.code, "NATIVE_WIRE_SERVER_STOPPED") == 0);
+}
+
 int main(void)
 {
     test_native_wire_server_speaks_reference_handshake();
+    test_native_wire_server_control_status_and_signal_update();
     return 0;
 }

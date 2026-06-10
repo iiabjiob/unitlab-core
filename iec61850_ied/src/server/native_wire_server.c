@@ -6,6 +6,8 @@
 #include <netinet/tcp.h>
 #include <poll.h>
 #include <signal.h>
+#include <math.h>
+#include <stdint.h>
 #include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -324,6 +326,389 @@ static int format_hex_response(const uint8_t* frame, size_t frame_length, char* 
     }
     response[offset] = '\0';
     return 1;
+}
+
+
+static int append_text(char* buffer, size_t buffer_size, size_t* offset, const char* text)
+{
+    size_t length;
+    if (buffer == NULL || offset == NULL || text == NULL) {
+        return 0;
+    }
+    length = strlen(text);
+    if (*offset + length >= buffer_size) {
+        return 0;
+    }
+    memcpy(buffer + *offset, text, length);
+    *offset += length;
+    buffer[*offset] = '\0';
+    return 1;
+}
+
+static int append_json_string(char* buffer, size_t buffer_size, size_t* offset, const char* value)
+{
+    const unsigned char* current;
+
+    if (!append_text(buffer, buffer_size, offset, "\"")) {
+        return 0;
+    }
+    current = (const unsigned char*)(value != NULL ? value : "");
+    while (*current != '\0') {
+        char escaped[7U];
+        if (*current == '\"' || *current == '\\') {
+            escaped[0] = '\\';
+            escaped[1] = (char)*current;
+            escaped[2] = '\0';
+            if (!append_text(buffer, buffer_size, offset, escaped)) {
+                return 0;
+            }
+        } else if (*current < 0x20U) {
+            snprintf(escaped, sizeof(escaped), "\\u%04x", (unsigned)*current);
+            if (!append_text(buffer, buffer_size, offset, escaped)) {
+                return 0;
+            }
+        } else {
+            if (*offset + 1U >= buffer_size) {
+                return 0;
+            }
+            buffer[(*offset)++] = (char)*current;
+            buffer[*offset] = '\0';
+        }
+        current++;
+    }
+    return append_text(buffer, buffer_size, offset, "\"");
+}
+
+static int hex_nibble_value(char value)
+{
+    if (value >= '0' && value <= '9') {
+        return value - '0';
+    }
+    if (value >= 'a' && value <= 'f') {
+        return value - 'a' + 10;
+    }
+    if (value >= 'A' && value <= 'F') {
+        return value - 'A' + 10;
+    }
+    return -1;
+}
+
+static int decode_hex_argument(const char* hex, char* output, size_t output_size)
+{
+    size_t length;
+    size_t output_length;
+
+    if (hex == NULL || output == NULL || output_size == 0U) {
+        return 0;
+    }
+    length = strlen(hex);
+    if ((length % 2U) != 0U) {
+        return 0;
+    }
+    output_length = length / 2U;
+    if (output_length >= output_size) {
+        return 0;
+    }
+    for (size_t index = 0U; index < output_length; index++) {
+        int high = hex_nibble_value(hex[index * 2U]);
+        int low = hex_nibble_value(hex[index * 2U + 1U]);
+        if (high < 0 || low < 0) {
+            return 0;
+        }
+        output[index] = (char)((high << 4) | low);
+    }
+    output[output_length] = '\0';
+    return 1;
+}
+
+static int parse_boolean_argument(const char* value, int* parsed)
+{
+    if (value == NULL || parsed == NULL) {
+        return 0;
+    }
+    if (strcmp(value, "true") == 0 || strcmp(value, "1") == 0 || strcmp(value, "on") == 0) {
+        *parsed = 1;
+        return 1;
+    }
+    if (strcmp(value, "false") == 0 || strcmp(value, "0") == 0 || strcmp(value, "off") == 0) {
+        *parsed = 0;
+        return 1;
+    }
+    return 0;
+}
+
+static int parse_int32_argument(const char* value, int32_t* parsed)
+{
+    char* end = NULL;
+    long result;
+
+    if (value == NULL || parsed == NULL || value[0] == '\0') {
+        return 0;
+    }
+    errno = 0;
+    result = strtol(value, &end, 10);
+    if (errno != 0 || end == value || end == NULL || *end != '\0' || result < INT32_MIN || result > INT32_MAX) {
+        return 0;
+    }
+    *parsed = (int32_t)result;
+    return 1;
+}
+
+static int encode_real32_argument(const char* value, uint8_t* encoded, size_t encoded_size, size_t* encoded_length)
+{
+    char* end = NULL;
+    double parsed;
+    float real_value;
+    uint32_t real_bits = 0U;
+
+    if (value == NULL || encoded == NULL || encoded_size < 5U || encoded_length == NULL || value[0] == '\0') {
+        return 0;
+    }
+    errno = 0;
+    parsed = strtod(value, &end);
+    if (errno != 0 || end == value || end == NULL || *end != '\0' || !isfinite(parsed)) {
+        return 0;
+    }
+    real_value = (float)parsed;
+    memcpy(&real_bits, &real_value, sizeof(real_bits));
+    encoded[0] = 0x08U;
+    encoded[1] = (uint8_t)((real_bits >> 24U) & 0xFFU);
+    encoded[2] = (uint8_t)((real_bits >> 16U) & 0xFFU);
+    encoded[3] = (uint8_t)((real_bits >> 8U) & 0xFFU);
+    encoded[4] = (uint8_t)(real_bits & 0xFFU);
+    *encoded_length = 5U;
+    return 1;
+}
+
+static const char* pending_report_kind_label(UnitLabMmsServerPendingReportKind kind)
+{
+    switch (kind) {
+        case UNITLAB_MMS_SERVER_PENDING_REPORT_GI:
+            return "gi";
+        case UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_CHANGE:
+            return "data-change";
+        case UNITLAB_MMS_SERVER_PENDING_REPORT_QUALITY_CHANGE:
+            return "quality-change";
+        case UNITLAB_MMS_SERVER_PENDING_REPORT_DATA_UPDATE:
+            return "data-update";
+        case UNITLAB_MMS_SERVER_PENDING_REPORT_INTEGRITY:
+            return "integrity";
+        case UNITLAB_MMS_SERVER_PENDING_REPORT_NONE:
+        default:
+            return "none";
+    }
+}
+
+static void socket_peer_label(int fd, char* output, size_t output_size)
+{
+    struct sockaddr_storage address;
+    socklen_t address_length = sizeof(address);
+    char host[128U];
+    char service[32U];
+
+    if (output == NULL || output_size == 0U) {
+        return;
+    }
+    output[0] = '\0';
+    if (fd < 0) {
+        return;
+    }
+    if (getpeername(fd, (struct sockaddr*)&address, &address_length) != 0) {
+        return;
+    }
+    if (getnameinfo((struct sockaddr*)&address, address_length, host, sizeof(host), service, sizeof(service), NI_NUMERICHOST | NI_NUMERICSERV) != 0) {
+        return;
+    }
+    snprintf(output, output_size, "%s:%s", host, service);
+}
+
+static int emit_control_error(int response_fd, const char* code, const char* message)
+{
+    char response[512U];
+    size_t offset = 0U;
+
+    response[0] = '\0';
+    if (!append_text(response, sizeof(response), &offset, "{\"ok\":false,\"code\":")) {
+        return 0;
+    }
+    if (!append_json_string(response, sizeof(response), &offset, code != NULL ? code : "NATIVE_WIRE_CONTROL_ERROR")) {
+        return 0;
+    }
+    if (!append_text(response, sizeof(response), &offset, ",\"message\":")) {
+        return 0;
+    }
+    if (!append_json_string(response, sizeof(response), &offset, message != NULL ? message : "Native wire control command failed.")) {
+        return 0;
+    }
+    if (!append_text(response, sizeof(response), &offset, "}")) {
+        return 0;
+    }
+    return emit_text_response(response_fd, response);
+}
+
+static int emit_runtime_status_response(UnitLabMmsServerRuntime* server_runtime, int data_client_fd, int response_fd)
+{
+    char response[2048U];
+    char peer[128U];
+    char report_id_reference[160U];
+    char data_set_reference[160U];
+    const UnitLabIedModelReportControl* report = NULL;
+    size_t offset = 0U;
+    char number_text[64U];
+
+    if (server_runtime == NULL) {
+        return emit_control_error(response_fd, "NATIVE_WIRE_RUNTIME_MISSING", "Native wire runtime is not available.");
+    }
+    response[0] = '\0';
+    peer[0] = '\0';
+    report_id_reference[0] = '\0';
+    data_set_reference[0] = '\0';
+    socket_peer_label(data_client_fd, peer, sizeof(peer));
+    report = server_runtime_active_model_report_control(server_runtime);
+    server_runtime_format_report_control_references(server_runtime, report_id_reference, sizeof(report_id_reference), data_set_reference, sizeof(data_set_reference));
+
+    if (!append_text(response, sizeof(response), &offset, "{\"ok\":true")) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"dataClientConnected\":")) return 0;
+    if (!append_text(response, sizeof(response), &offset, data_client_fd >= 0 ? "true" : "false")) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"dataClient\":")) return 0;
+    if (!append_json_string(response, sizeof(response), &offset, peer)) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"reportEnabled\":")) return 0;
+    if (!append_text(response, sizeof(response), &offset, server_runtime->brcb_rpt_ena != 0U ? "true" : "false")) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"activeReport\":")) return 0;
+    if (!append_json_string(response, sizeof(response), &offset, report != NULL ? report->name : "")) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"activeReportKey\":")) return 0;
+    if (!append_json_string(response, sizeof(response), &offset, report != NULL ? report->key : "")) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"reportKind\":")) return 0;
+    if (!append_json_string(response, sizeof(response), &offset, report != NULL ? report->report_kind : "")) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"reportIdReference\":")) return 0;
+    if (!append_json_string(response, sizeof(response), &offset, report_id_reference)) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"dataSetRef\":")) return 0;
+    if (!append_json_string(response, sizeof(response), &offset, report != NULL ? report->data_set_ref : "")) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"dataSetReference\":")) return 0;
+    if (!append_json_string(response, sizeof(response), &offset, data_set_reference)) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"owner\":")) return 0;
+    if (!append_json_string(response, sizeof(response), &offset, server_runtime->brcb_owner)) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"pendingReportKind\":")) return 0;
+    if (!append_json_string(response, sizeof(response), &offset, pending_report_kind_label(server_runtime->pending_report_kind))) return 0;
+    snprintf(number_text, sizeof(number_text), ",\"pendingReportQueueCount\":%zu", server_runtime->pending_report_queue_count);
+    if (!append_text(response, sizeof(response), &offset, number_text)) return 0;
+    snprintf(number_text, sizeof(number_text), ",\"reportsSent\":%llu", (unsigned long long)server_runtime->reports_sent);
+    if (!append_text(response, sizeof(response), &offset, number_text)) return 0;
+    snprintf(number_text, sizeof(number_text), ",\"reportEventsQueued\":%llu", (unsigned long long)server_runtime->report_events_queued);
+    if (!append_text(response, sizeof(response), &offset, number_text)) return 0;
+    if (!append_text(response, sizeof(response), &offset, "}")) return 0;
+
+    return emit_text_response(response_fd, response);
+}
+
+static int handle_update_signal_command(
+    UnitLabMmsServerRuntime* server_runtime,
+    int data_client_fd,
+    int response_fd,
+    const char* command,
+    UnitLabIedModelLoadResult* result)
+{
+    char command_copy[1024U];
+    char* context = NULL;
+    char* token = NULL;
+    char* kind = NULL;
+    char* object_reference_hex = NULL;
+    char* value_hex = NULL;
+    char object_reference[256U];
+    char value[256U];
+    UnitLabMmsDiagnostic diagnostic;
+    int update_ok = 0;
+    int report_queued = 0;
+    int report_sent = 0;
+    char response[1024U];
+    size_t offset = 0U;
+
+    if (server_runtime == NULL || command == NULL) {
+        return emit_control_error(response_fd, "NATIVE_WIRE_UPDATE_SIGNAL_INVALID", "Signal update requires runtime and command.");
+    }
+    if (strlen(command) >= sizeof(command_copy)) {
+        return emit_control_error(response_fd, "NATIVE_WIRE_UPDATE_SIGNAL_TOO_LONG", "Signal update command is too long.");
+    }
+    memcpy(command_copy, command, strlen(command) + 1U);
+    token = strtok_r(command_copy, " ", &context);
+    (void)token;
+    kind = strtok_r(NULL, " ", &context);
+    object_reference_hex = strtok_r(NULL, " ", &context);
+    value_hex = strtok_r(NULL, " ", &context);
+    if (kind == NULL || object_reference_hex == NULL || value_hex == NULL) {
+        return emit_control_error(response_fd, "NATIVE_WIRE_UPDATE_SIGNAL_ARGS_REQUIRED", "Signal update requires kind, object reference hex, and value hex.");
+    }
+    if (!decode_hex_argument(object_reference_hex, object_reference, sizeof(object_reference)) || object_reference[0] == '\0') {
+        return emit_control_error(response_fd, "NATIVE_WIRE_UPDATE_SIGNAL_OBJECT_INVALID", "Signal update object reference hex is invalid.");
+    }
+    if (!decode_hex_argument(value_hex, value, sizeof(value))) {
+        return emit_control_error(response_fd, "NATIVE_WIRE_UPDATE_SIGNAL_VALUE_INVALID", "Signal update value hex is invalid.");
+    }
+
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    if (strcmp(kind, "boolean") == 0 || strcmp(kind, "bool") == 0) {
+        int parsed = 0;
+        if (!parse_boolean_argument(value, &parsed)) {
+            return emit_control_error(response_fd, "NATIVE_WIRE_UPDATE_SIGNAL_BOOLEAN_INVALID", "Boolean signal update value must be true/false or 1/0.");
+        }
+        update_ok = unitlab_mms_server_runtime_update_signal_boolean(server_runtime, object_reference, parsed, &diagnostic);
+    } else if (strcmp(kind, "integer") == 0 || strcmp(kind, "int32") == 0 || strcmp(kind, "enum") == 0) {
+        int32_t parsed = 0;
+        if (!parse_int32_argument(value, &parsed)) {
+            return emit_control_error(response_fd, "NATIVE_WIRE_UPDATE_SIGNAL_INTEGER_INVALID", "Integer signal update value must fit int32.");
+        }
+        update_ok = strcmp(kind, "enum") == 0
+            ? unitlab_mms_server_runtime_update_signal_enum(server_runtime, object_reference, (int)parsed, &diagnostic)
+            : unitlab_mms_server_runtime_update_signal_int32(server_runtime, object_reference, parsed, &diagnostic);
+    } else if (strcmp(kind, "real") == 0 || strcmp(kind, "float32") == 0) {
+        uint8_t encoded_real[5U];
+        size_t encoded_real_length = 0U;
+        if (!encode_real32_argument(value, encoded_real, sizeof(encoded_real), &encoded_real_length)) {
+            return emit_control_error(response_fd, "NATIVE_WIRE_UPDATE_SIGNAL_REAL_INVALID", "Real signal update value must be a finite number.");
+        }
+        update_ok = unitlab_mms_server_runtime_update_signal_value(server_runtime, object_reference, encoded_real, encoded_real_length, &diagnostic);
+    } else if (strcmp(kind, "string") == 0 || strcmp(kind, "visible-string") == 0) {
+        update_ok = unitlab_mms_server_runtime_update_signal_visible_string(server_runtime, object_reference, value, &diagnostic);
+    } else {
+        return emit_control_error(response_fd, "NATIVE_WIRE_UPDATE_SIGNAL_KIND_INVALID", "Signal update kind is unsupported.");
+    }
+
+    if (!update_ok) {
+        return emit_control_error(response_fd, "NATIVE_WIRE_UPDATE_SIGNAL_FAILED", diagnostic.message[0] != '\0' ? diagnostic.message : "Signal update failed.");
+    }
+
+    report_queued = unitlab_mms_server_runtime_has_pending_gi_report(server_runtime) != 0;
+    if (report_queued && data_client_fd >= 0) {
+        if (!send_pending_information_report(server_runtime, data_client_fd, "ui-signal-update-report-sent", result)) {
+            return 0;
+        }
+        report_sent = 1;
+    }
+
+    response[0] = '\0';
+    if (!append_text(response, sizeof(response), &offset, "{\"ok\":true,\"objectReference\":")) return 0;
+    if (!append_json_string(response, sizeof(response), &offset, object_reference)) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"valueKind\":")) return 0;
+    if (!append_json_string(response, sizeof(response), &offset, kind)) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"value\":")) return 0;
+    if (!append_json_string(response, sizeof(response), &offset, value)) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"reportQueued\":")) return 0;
+    if (!append_text(response, sizeof(response), &offset, report_queued ? "true" : "false")) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"reportSent\":")) return 0;
+    if (!append_text(response, sizeof(response), &offset, report_sent ? "true" : "false")) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"pendingReportKind\":")) return 0;
+    if (!append_json_string(response, sizeof(response), &offset, pending_report_kind_label(server_runtime->pending_report_kind))) return 0;
+    if (!append_text(response, sizeof(response), &offset, ",\"message\":\"signal updated\"}")) return 0;
+
+    printf(
+        "native-wire-server: ui-signal-update object=%s kind=%s value=%s report-queued=%d report-sent=%d\n",
+        object_reference,
+        kind,
+        value,
+        report_queued,
+        report_sent);
+    fflush(stdout);
+    return emit_text_response(response_fd, response);
 }
 
 static void log_hex_bytes(const char* label, const uint8_t* bytes, size_t length)
@@ -757,6 +1142,20 @@ static int handle_command(
     size_t* encoded_length,
     UnitLabIedModelLoadResult* result)
 {
+    if (strncmp(command, "status", 6U) == 0) {
+        if (!emit_runtime_status_response(server_runtime, data_client_fd != NULL ? *data_client_fd : -1, response_fd)) {
+            set_result(result, "NATIVE_WIRE_SERVER_STATUS_RESPONSE_FAILED", "Native wire server could not send runtime status response.");
+            return -1;
+        }
+        return 1;
+    }
+    if (strncmp(command, "update-signal", 13U) == 0) {
+        if (!handle_update_signal_command(server_runtime, data_client_fd != NULL ? *data_client_fd : -1, response_fd, command, result)) {
+            set_result(result, "NATIVE_WIRE_SERVER_UPDATE_SIGNAL_FAILED", "Native wire server could not update the requested signal.");
+            return -1;
+        }
+        return 1;
+    }
     if (strncmp(command, "emit-report", 11U) == 0) {
         UnitLabMmsDiagnostic diagnostic;
         unitlab_mms_diagnostic_clear(&diagnostic);
@@ -980,7 +1379,28 @@ int unitlab_run_native_wire_server(
             continue;
         }
         for (nfds_t index = 0U; index < poll_count; index++) {
+            if (poll_fds[index].revents == 0) {
+                continue;
+            }
             if (!(poll_fds[index].revents & POLLIN)) {
+                if (control_client_fd >= 0
+                    && poll_fds[index].fd == control_client_fd
+                    && (poll_fds[index].revents & (POLLHUP | POLLERR | POLLNVAL))) {
+                    printf("native-wire-server: control-client-disconnected\n");
+                    fflush(stdout);
+                    close_fd(&control_client_fd);
+                } else if (data_client_fd >= 0
+                    && poll_fds[index].fd == data_client_fd
+                    && (poll_fds[index].revents & (POLLHUP | POLLERR | POLLNVAL))) {
+                    log_native_wire_disconnect(server_runtime, "data-client-disconnected");
+                    close_fd(&data_client_fd);
+                    close_fd(&control_client_fd);
+                    data_rx_length = 0U;
+                    data_cotp_rx_length = 0U;
+                    next_test_tick_ms = 0U;
+                    test_tick_value = 1U;
+                    reset_native_wire_runtime_state(server_runtime);
+                }
                 continue;
             }
             if (data_client_fd < 0 && poll_fds[index].fd == data_listen_fd) {
@@ -1014,26 +1434,6 @@ int unitlab_run_native_wire_server(
                 control_client_fd = accepted;
                 printf("native-wire-server: control-client-connected\n");
                 fflush(stdout);
-                if (data_client_fd < 0) {
-                    struct pollfd wait_fd;
-                    int wait_rc;
-                    wait_fd.fd = data_listen_fd;
-                    wait_fd.events = POLLIN;
-                    wait_fd.revents = 0;
-                    wait_rc = poll(&wait_fd, 1, 2000);
-                    if (wait_rc > 0 && (wait_fd.revents & POLLIN)) {
-                        int retried = accept_connection(data_listen_fd);
-                        if (retried > 0) {
-                            data_client_fd = retried;
-                            data_rx_length = 0U;
-                            data_cotp_rx_length = 0U;
-                            next_test_tick_ms = 0U;
-                            test_tick_value = 1U;
-                            printf("native-wire-server: data-client-connected\n");
-                            fflush(stdout);
-                        }
-                    }
-                }
                 continue;
             }
             if (data_client_fd >= 0 && poll_fds[index].fd == data_client_fd) {
@@ -1148,16 +1548,11 @@ int unitlab_run_native_wire_server(
                 continue;
             }
             if (control_client_fd >= 0 && poll_fds[index].fd == control_client_fd) {
-                char command[128U];
+                char command[1024U];
                 if (!read_command_from_socket(control_client_fd, command, sizeof(command))) {
-                    log_native_wire_disconnect(server_runtime, "control-client-disconnected; closing data socket due to control disconnect");
+                    printf("native-wire-server: control-client-disconnected\n");
+                    fflush(stdout);
                     close_fd(&control_client_fd);
-                    close_fd(&data_client_fd);
-                    data_rx_length = 0U;
-                    data_cotp_rx_length = 0U;
-                    next_test_tick_ms = 0U;
-                    test_tick_value = 1U;
-                    reset_native_wire_runtime_state(server_runtime);
                     continue;
                 }
                 int outcome = handle_command(server_runtime, &data_client_fd, data_listen_fd, control_client_fd, command, frame, sizeof(frame), &frame_length, result);
@@ -1170,7 +1565,7 @@ int unitlab_run_native_wire_server(
                 continue;
             }
             if (poll_fds[index].fd == STDIN_FILENO) {
-                char command[128U];
+                char command[1024U];
                 if (fgets(command, sizeof(command), stdin) == NULL) {
                     continue;
                 }
