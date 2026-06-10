@@ -519,6 +519,9 @@ static void test_collects_flattened_domain_named_variables_for_real_model_discov
     assert(name_list_contains(names, count, "LLN0$BR"));
     assert(name_list_contains(names, count, "LLN0$BR$brcbA"));
     assert(name_list_contains(names, count, "LLN0$BR$brcbA$DatSet"));
+    for (size_t index = 1U; index < count; index++) {
+        assert(strcmp(names[index - 1U], names[index]) < 0);
+    }
 
     unitlab_free_ied_model_name_list(names, count);
 }

@@ -198,7 +198,7 @@ static const char* const lln0_br_rcb_children[] = {
     "GI",
     "PurgeBuf",
     "EntryID",
-    "TimeOfEntry",
+    "TimeofEntry",
     "ResvTms"
 };
 static const char* const lln0_ex_children[] = { "NamPlt" };
@@ -323,7 +323,7 @@ static int server_runtime_encode_gva_leaf_type_spec(
         value_bytes = value_single;
         value_length = sizeof(value_single);
     }
-    else if (strcmp(component_name, "TimeOfEntry") == 0 || strcmp(component_name, "TimeofEntry") == 0) {
+    else if (strcmp(component_name, "TimeofEntry") == 0 || strcmp(component_name, "TimeOfEntry") == 0) {
         value_single[0] = 0x01U;
         tag_number = 12U;
         value_bytes = value_single;

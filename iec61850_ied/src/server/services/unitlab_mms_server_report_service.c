@@ -9,7 +9,7 @@
 
 static const char* const buffered_report_control_block_fields[] = {
     "RptID", "RptEna", "DatSet", "ConfRev", "OptFlds", "BufTm", "SqNum",
-    "TrgOps", "IntgPd", "GI", "PurgeBuf", "EntryID", "TimeOfEntry", "ResvTms"
+    "TrgOps", "IntgPd", "GI", "PurgeBuf", "EntryID", "TimeofEntry", "ResvTms"
 };
 
 static const char* const unbuffered_report_control_block_fields[] = {
@@ -561,7 +561,7 @@ static int server_runtime_encode_report_control_block_structure_field_value(
         value_element.value_bytes = server_runtime != NULL ? server_runtime->brcb_entry_id : empty_entry_id;
         value_element.value_length = server_runtime != NULL ? sizeof(server_runtime->brcb_entry_id) : sizeof(empty_entry_id);
     }
-    else if (strcmp(field_name, "TimeOfEntry") == 0) {
+    else if (strcmp(field_name, "TimeofEntry") == 0 || strcmp(field_name, "TimeOfEntry") == 0) {
         static const uint8_t empty_binary_time[6U] = { 0U, 0U, 0U, 0U, 0U, 0U };
         value_element.tag.tag_class = UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC;
         value_element.tag.constructed = 0;

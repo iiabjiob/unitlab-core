@@ -3886,7 +3886,7 @@ static void test_server_runtime_build_brcb_scalar_multi_read_uses_direct_data_ac
         "GI",
         "PurgeBuf",
         "EntryID",
-        "TimeOfEntry",
+        "TimeofEntry",
         "ResvTms"
     };
     static const uint32_t expected_tags[] = { 10U, 3U, 10U, 6U, 4U, 6U, 6U, 4U, 6U, 3U, 3U, 9U, 12U, 5U };
@@ -4398,7 +4398,7 @@ static void test_server_runtime_build_brcb_gva_response_exposes_fields(void)
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"GI", strlen("GI")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"PurgeBuf", strlen("PurgeBuf")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"EntryID", strlen("EntryID")) == 1);
-        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"TimeOfEntry", strlen("TimeOfEntry")) == 1);
+        assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"TimeofEntry", strlen("TimeofEntry")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"ResvTms", strlen("ResvTms")) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t[]){ 0x80U, 0x07U, 'R', 'e', 's', 'v', 'T', 'm', 's', 0xA1U, 0x03U, 0x85U, 0x01U, 0x10U }, 14U) == 1);
         assert(contains_bytes(fixture.presentation.payload_bytes, fixture.presentation.payload_length, (const uint8_t*)"Owner", strlen("Owner")) == 0);

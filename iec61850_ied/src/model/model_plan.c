@@ -978,7 +978,7 @@ static int append_report_variable_prefixes_for_logical_device(
         "GI",
         "PurgeBuf",
         "EntryID",
-        "TimeOfEntry",
+        "TimeofEntry",
         "ResvTms"
     };
     static const char* const unbuffered_report_fields[] = {
@@ -1239,6 +1239,7 @@ int unitlab_collect_ied_model_logical_device_variables(
         }
     }
 
+    sort_metadata_names(*names, *count);
     return 1;
 }
 
