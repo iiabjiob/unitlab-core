@@ -1071,6 +1071,7 @@ int unitlab_collect_ied_model_logical_devices(
             return 0;
         }
     }
+    sort_metadata_names(*names, *count);
     return 1;
 }
 

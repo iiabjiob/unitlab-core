@@ -206,6 +206,39 @@ static int test_model_plan_builds_blueprint(void)
     return passed;
 }
 
+static int test_collects_logical_devices_sorted_for_vmd_browse(void)
+{
+    UnitLabIedModelLogicalDevice logical_devices[5] = {
+        { .inst = "KINTE06SMPPROT" },
+        { .inst = "KINTE06SMPMEAS" },
+        { .inst = "KINTE06SMPDR" },
+        { .inst = "KINTE06SMPCTRL" },
+        { .inst = "KINTE06SMPEXT" },
+    };
+    UnitLabIedModelPlan plan = {
+        .logical_device_count = 5U,
+        .logical_devices = logical_devices,
+    };
+    const char* const expected[] = {
+        "KINTE06SMPCTRL",
+        "KINTE06SMPDR",
+        "KINTE06SMPEXT",
+        "KINTE06SMPMEAS",
+        "KINTE06SMPPROT",
+    };
+    char error[256];
+    char** names = NULL;
+    size_t count = 0U;
+    int ok = unitlab_collect_ied_model_logical_devices(&plan, &names, &count, error, sizeof(error));
+    int passed = expect_true(ok, "logical devices should collect");
+
+    if (ok) {
+        passed &= expect_list_matches(names, count, expected, sizeof(expected) / sizeof(expected[0]), "logical devices sorted for VMD browse");
+    }
+    unitlab_free_ied_model_name_list(names, count);
+    return passed;
+}
+
 static int test_collects_named_variables_for_domain_browse(void)
 {
     UnitLabIedModelLogicalDevice logical_devices[1] = {
@@ -248,9 +281,18 @@ static int test_collects_named_variables_for_domain_browse(void)
         passed &= expect_list_matches(
             names,
             count,
-            (const char*[]){ "LLN0", "XCBR1", "PGGIO1" },
-            3U,
-            "domain browse should collect only top-level logical nodes");
+            (const char*[]){
+                "LLN0",
+                "PGGIO1",
+                "PGGIO1$ST",
+                "PGGIO1$ST$Ind1",
+                "XCBR1",
+                "XCBR1$ST",
+                "XCBR1$ST$Pos",
+                "XCBR1$ST$Pos$stVal",
+            },
+            8U,
+            "domain browse should collect sorted logical-node roots and flattened prefixes");
     }
 
     unitlab_free_ied_model_name_list(names, count);
@@ -707,6 +749,7 @@ int main(void)
 {
     int passed = 1;
     passed &= test_model_plan_builds_blueprint();
+    passed &= test_collects_logical_devices_sorted_for_vmd_browse();
     passed &= test_collects_named_variables_for_domain_browse();
     passed &= test_collects_logical_node_namespace_attributes();
     passed &= test_collects_logical_node_variables_for_directory_browse();
