@@ -435,6 +435,9 @@ static int server_runtime_encode_gva_leaf_type_spec_for_value_kind(
         server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_INVALID_ARGUMENT, "GVA model leaf type encoding requires a buffer and encoded_length.");
         return 0;
     }
+    if (component_name != NULL && (strcmp(component_name, "q") == 0 || strcmp(component_name, "t") == 0)) {
+        return server_runtime_encode_gva_leaf_type_spec(component_name, buffer, buffer_length, encoded_length, diagnostic);
+    }
 
     switch (value_kind) {
         case UNITLAB_IED_FIXTURE_VALUE_BOOLEAN:
