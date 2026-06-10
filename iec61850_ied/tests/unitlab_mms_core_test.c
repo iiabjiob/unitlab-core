@@ -396,6 +396,19 @@ static void test_runtime_apply_semantic_result(void)
     assert(unitlab_mms_runtime_event_log_count(&operation_result.trace) == 1U);
 }
 
+static int name_list_contains(char** names, size_t count, const char* expected)
+{
+    if (expected == NULL) {
+        return 0;
+    }
+    for (size_t index = 0U; index < count; index++) {
+        if (names[index] != NULL && strcmp(names[index], expected) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void test_get_name_list_browse_collection_filters_continue_after(void)
 {
     UnitLabMmsPendingRequest request;
@@ -441,6 +454,71 @@ static void test_get_name_list_browse_collection_filters_continue_after(void)
     assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
     assert(count == 1U);
     assert(strcmp(names[0], "LLN0$dsUpdates") == 0);
+
+    unitlab_free_ied_model_name_list(names, count);
+}
+
+static void test_collects_flattened_domain_named_variables_for_real_model_discovery(void)
+{
+    UnitLabMmsPendingRequest request;
+    UnitLabIedModelPlan plan;
+    UnitLabIedModelLogicalDevice logical_devices[1U];
+    UnitLabIedModelLogicalNode logical_nodes[2U];
+    UnitLabIedModelSignal signals[1U];
+    UnitLabIedModelReportControl reports[1U];
+    UnitLabMmsDiagnostic diagnostic;
+    char** names = NULL;
+    size_t count = 0U;
+
+    memset(&plan, 0, sizeof(plan));
+    memset(logical_devices, 0, sizeof(logical_devices));
+    memset(logical_nodes, 0, sizeof(logical_nodes));
+    memset(signals, 0, sizeof(signals));
+    memset(reports, 0, sizeof(reports));
+
+    snprintf(logical_devices[0].inst, sizeof(logical_devices[0].inst), "%s", "LD0");
+    snprintf(logical_nodes[0].logical_device_inst, sizeof(logical_nodes[0].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[0].name, sizeof(logical_nodes[0].name), "%s", "LLN0");
+    snprintf(logical_nodes[1].logical_device_inst, sizeof(logical_nodes[1].logical_device_inst), "%s", "LD0");
+    snprintf(logical_nodes[1].name, sizeof(logical_nodes[1].name), "%s", "RFLO1");
+    snprintf(signals[0].logical_device_inst, sizeof(signals[0].logical_device_inst), "%s", "LD0");
+    snprintf(signals[0].logical_node_name, sizeof(signals[0].logical_node_name), "%s", "RFLO1");
+    snprintf(signals[0].data_object_name, sizeof(signals[0].data_object_name), "%s", "FltDiskm");
+    snprintf(signals[0].data_attribute_path, sizeof(signals[0].data_attribute_path), "%s", "mag.f");
+    snprintf(signals[0].fc, sizeof(signals[0].fc), "%s", "MX");
+    snprintf(signals[0].data_set_entry_variable, sizeof(signals[0].data_set_entry_variable), "%s", "LD0/RFLO1$MX$FltDiskm$mag$f");
+    snprintf(reports[0].logical_device_inst, sizeof(reports[0].logical_device_inst), "%s", "LD0");
+    snprintf(reports[0].logical_node_name, sizeof(reports[0].logical_node_name), "%s", "LLN0");
+    snprintf(reports[0].name, sizeof(reports[0].name), "%s", "brcbA");
+    reports[0].is_buffered = 1;
+
+    plan.logical_device_count = 1U;
+    plan.logical_devices = logical_devices;
+    plan.logical_node_count = 2U;
+    plan.logical_nodes = logical_nodes;
+    plan.signal_count = 1U;
+    plan.signals = signals;
+    plan.report_count = 1U;
+    plan.reports = reports;
+
+    unitlab_mms_pending_request_init(&request);
+    unitlab_mms_diagnostic_clear(&diagnostic);
+    assert(unitlab_mms_pending_request_start(&request, UNITLAB_MMS_REQUEST_GET_NAME_LIST, 7U, 1U, 1000U, 100U, &diagnostic) == 1);
+    request.browse_object_class = 0U;
+    request.browse_object_scope = 1U;
+    snprintf(request.browse_domain_id, sizeof(request.browse_domain_id), "%s", "LD0");
+
+    assert(unitlab_mms_pending_request_collect_get_name_list_names(&request, &plan, &names, &count, &diagnostic) == 1);
+    assert(diagnostic.code == UNITLAB_MMS_DIAGNOSTIC_OK);
+    assert(name_list_contains(names, count, "LLN0"));
+    assert(name_list_contains(names, count, "RFLO1"));
+    assert(name_list_contains(names, count, "RFLO1$MX"));
+    assert(name_list_contains(names, count, "RFLO1$MX$FltDiskm"));
+    assert(name_list_contains(names, count, "RFLO1$MX$FltDiskm$mag"));
+    assert(name_list_contains(names, count, "RFLO1$MX$FltDiskm$mag$f"));
+    assert(name_list_contains(names, count, "LLN0$BR"));
+    assert(name_list_contains(names, count, "LLN0$BR$brcbA"));
+    assert(name_list_contains(names, count, "LLN0$BR$brcbA$DatSet"));
 
     unitlab_free_ied_model_name_list(names, count);
 }
@@ -667,6 +745,7 @@ int main(void)
     test_runtime_apply_semantic_correlation_mismatch();
     test_get_name_list_browse_collection_filters_continue_after();
     test_collects_vmd_named_variable_lists_for_browse_class_two_scope_zero();
+    test_collects_flattened_domain_named_variables_for_real_model_discovery();
     test_collects_aa_specific_get_name_list_as_empty_list();
     test_collects_logical_node_variables_for_directory_browse_class_one();
     test_runtime_apply_semantic_decode_failure();

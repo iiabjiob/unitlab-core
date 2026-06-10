@@ -868,6 +868,149 @@ static int append_unique_metadata_name(char*** names, size_t* count, const char*
     return append_metadata_name(names, count, name);
 }
 
+static int append_mms_variable_path_prefixes(char*** names, size_t* count, const char* variable_path)
+{
+    char prefix[256U];
+    size_t variable_path_length;
+
+    if (names == NULL || count == NULL || variable_path == NULL || variable_path[0] == '\0') {
+        return 0;
+    }
+    variable_path_length = strlen(variable_path);
+    if (variable_path_length >= sizeof(prefix)) {
+        return 0;
+    }
+    for (size_t index = 0U; index <= variable_path_length; index++) {
+        if (variable_path[index] != '$' && variable_path[index] != '\0') {
+            continue;
+        }
+        if (index == 0U || index >= sizeof(prefix)) {
+            continue;
+        }
+        memcpy(prefix, variable_path, index);
+        prefix[index] = '\0';
+        if (!append_unique_metadata_name(names, count, prefix)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+static int append_signal_variable_prefixes_for_logical_device(
+    char*** names,
+    size_t* count,
+    const UnitLabIedModelSignal* signal,
+    const char* logical_device_inst)
+{
+    char expected_prefix[160U];
+    char fallback_path[256U];
+    const char* variable_path = NULL;
+
+    if (names == NULL || count == NULL || signal == NULL || logical_device_inst == NULL) {
+        return 0;
+    }
+    if (strcmp(signal->logical_device_inst, logical_device_inst) != 0) {
+        return 1;
+    }
+    if (signal->data_set_entry_variable[0] != '\0') {
+        int written = snprintf(expected_prefix, sizeof(expected_prefix), "%s/", logical_device_inst);
+        if (written <= 0 || (size_t)written >= sizeof(expected_prefix)) {
+            return 0;
+        }
+        if (strncmp(signal->data_set_entry_variable, expected_prefix, (size_t)written) == 0) {
+            variable_path = signal->data_set_entry_variable + (size_t)written;
+        }
+    }
+    if (variable_path == NULL) {
+        if (signal->logical_node_name[0] == '\0' || signal->fc[0] == '\0' || signal->data_object_name[0] == '\0') {
+            return 1;
+        }
+        if (signal->data_attribute_path[0] != '\0') {
+            int written = snprintf(
+                fallback_path,
+                sizeof(fallback_path),
+                "%s$%s$%s$%s",
+                signal->logical_node_name,
+                signal->fc,
+                signal->data_object_name,
+                signal->data_attribute_path);
+            if (written <= 0 || (size_t)written >= sizeof(fallback_path)) {
+                return 0;
+            }
+            for (char* cursor = fallback_path; *cursor != '\0'; cursor++) {
+                if (*cursor == '.') {
+                    *cursor = '$';
+                }
+            }
+        } else {
+            int written = snprintf(
+                fallback_path,
+                sizeof(fallback_path),
+                "%s$%s$%s",
+                signal->logical_node_name,
+                signal->fc,
+                signal->data_object_name);
+            if (written <= 0 || (size_t)written >= sizeof(fallback_path)) {
+                return 0;
+            }
+        }
+        variable_path = fallback_path;
+    }
+    return append_mms_variable_path_prefixes(names, count, variable_path);
+}
+
+static int append_report_variable_prefixes_for_logical_device(
+    char*** names,
+    size_t* count,
+    const UnitLabIedModelReportControl* report,
+    const char* logical_device_inst)
+{
+    static const char* const report_fields[] = {
+        "RptID",
+        "RptEna",
+        "DatSet",
+        "ConfRev",
+        "OptFlds",
+        "BufTm",
+        "SqNum",
+        "TrgOps",
+        "IntgPd",
+        "GI",
+        "PurgeBuf",
+        "EntryID",
+        "TimeOfEntry",
+        "ResvTms",
+        "Owner"
+    };
+    char report_path[256U];
+    const char* report_fc;
+
+    if (names == NULL || count == NULL || report == NULL || logical_device_inst == NULL) {
+        return 0;
+    }
+    if (strcmp(report->logical_device_inst, logical_device_inst) != 0) {
+        return 1;
+    }
+    report_fc = report->is_buffered ? "BR" : "RP";
+    int written = snprintf(report_path, sizeof(report_path), "%s$%s$%s", report->logical_node_name, report_fc, report->name);
+    if (written <= 0 || (size_t)written >= sizeof(report_path)) {
+        return 0;
+    }
+    if (!append_mms_variable_path_prefixes(names, count, report_path)) {
+        return 0;
+    }
+    for (size_t index = 0U; index < sizeof(report_fields) / sizeof(report_fields[0]); index++) {
+        written = snprintf(report_path, sizeof(report_path), "%s$%s$%s$%s", report->logical_node_name, report_fc, report->name, report_fields[index]);
+        if (written <= 0 || (size_t)written >= sizeof(report_path)) {
+            return 0;
+        }
+        if (!append_unique_metadata_name(names, count, report_path)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static void sort_metadata_names(char** names, size_t count)
 {
     if (names == NULL || count < 2U) {
@@ -1056,6 +1199,24 @@ int unitlab_collect_ied_model_logical_device_variables(
             *names = NULL;
             *count = 0U;
             set_error(error, error_size, "OUT_OF_MEMORY: cannot collect NamedVariables.");
+            return 0;
+        }
+    }
+    for (size_t signal_index = 0U; signal_index < plan->signal_count; signal_index++) {
+        if (!append_signal_variable_prefixes_for_logical_device(names, count, &plan->signals[signal_index], logical_device_inst)) {
+            unitlab_free_ied_model_name_list(*names, *count);
+            *names = NULL;
+            *count = 0U;
+            set_error(error, error_size, "OUT_OF_MEMORY: cannot collect flattened NamedVariables.");
+            return 0;
+        }
+    }
+    for (size_t report_index = 0U; report_index < plan->report_count; report_index++) {
+        if (!append_report_variable_prefixes_for_logical_device(names, count, &plan->reports[report_index], logical_device_inst)) {
+            unitlab_free_ied_model_name_list(*names, *count);
+            *names = NULL;
+            *count = 0U;
+            set_error(error, error_size, "OUT_OF_MEMORY: cannot collect report NamedVariables.");
             return 0;
         }
     }

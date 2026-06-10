@@ -16,17 +16,19 @@ int server_runtime_build_get_name_list_response_service(
 {
     char** names = NULL;
     size_t name_count = 0U;
-    uint8_t visible_strings_bytes[2048U];
-    uint8_t list_of_identifier_bytes[2048U];
-    uint8_t get_name_list_body_bytes[2048U];
-    uint8_t service_payload_bytes[2048U];
-    uint8_t service_bytes[2048U];
+    uint8_t visible_strings_bytes[65535U];
+    uint8_t list_of_identifier_bytes[65535U];
+    uint8_t get_name_list_body_bytes[65535U];
+    uint8_t service_payload_bytes[65535U];
+    uint8_t service_bytes[65535U];
     size_t visible_strings_length = 0U;
     size_t list_of_identifier_length = 0U;
     size_t get_name_list_body_length = 0U;
     size_t service_payload_length = 0U;
     size_t invoke_id_length = 0U;
     size_t total_length = 0U;
+    size_t encoded_name_count = 0U;
+    int more_follows = 0;
 
     if (encoded_length != NULL) {
         *encoded_length = 0U;
@@ -59,7 +61,7 @@ int server_runtime_build_get_name_list_response_service(
     }
 
     printf(
-        "native-wire-server: confirmed-response invoke=%u service=GetNameList semantic=%s browse-class=%u browse-scope=%u domain=%s continue-after=%s identifiers=%zu moreFollows=false\n",
+        "native-wire-server: confirmed-response invoke=%u service=GetNameList semantic=%s browse-class=%u browse-scope=%u domain=%s continue-after=%s identifiers=%zu moreFollows=pending\n",
         (unsigned)invoke_id,
         browse_semantics,
         (unsigned)server_runtime->pending_request.browse_object_class,
@@ -70,7 +72,12 @@ int server_runtime_build_get_name_list_response_service(
     fflush(stdout);
     for (size_t index = 0U; index < name_count; index++) {
         size_t encoded_name_length = 0U;
+        size_t remaining_length = sizeof(visible_strings_bytes) - visible_strings_length;
 
+        if (strlen(names[index]) + 8U > remaining_length) {
+            more_follows = 1;
+            break;
+        }
         if (!server_runtime_encode_ber_element(
                 UNITLAB_MMS_BER_TAG_CLASS_UNIVERSAL,
                 0,
@@ -78,13 +85,14 @@ int server_runtime_build_get_name_list_response_service(
                 (const uint8_t*)names[index],
                 strlen(names[index]),
                 &visible_strings_bytes[visible_strings_length],
-                sizeof(visible_strings_bytes) - visible_strings_length,
+                remaining_length,
                 &encoded_name_length,
                 diagnostic)) {
             unitlab_free_ied_model_name_list(names, name_count);
             return 0;
         }
         visible_strings_length += encoded_name_length;
+        encoded_name_count++;
     }
     if (!server_runtime_encode_ber_element(
             UNITLAB_MMS_BER_TAG_CLASS_CONTEXT_SPECIFIC,
@@ -101,7 +109,7 @@ int server_runtime_build_get_name_list_response_service(
     }
     memcpy(get_name_list_body_bytes, list_of_identifier_bytes, list_of_identifier_length);
     {
-        uint8_t more_follows_bytes[1U] = { 0x00U };
+        uint8_t more_follows_bytes[1U] = { more_follows ? 0xFFU : 0x00U };
         size_t more_follows_length = 0U;
 
         if (!server_runtime_encode_ber_element(
@@ -155,7 +163,14 @@ int server_runtime_build_get_name_list_response_service(
     }
     memcpy(buffer, service_bytes, total_length);
     *encoded_length = total_length;
-    server_runtime_store_name_list_summary(server_runtime, invoke_id, "GetNameList", "identifiers", (const char* const*)names, name_count);
+    printf(
+        "native-wire-server: get-name-list-page invoke=%u encoded-identifiers=%zu total-identifiers=%zu moreFollows=%s\n",
+        (unsigned)invoke_id,
+        encoded_name_count,
+        name_count,
+        more_follows ? "true" : "false");
+    fflush(stdout);
+    server_runtime_store_name_list_summary(server_runtime, invoke_id, "GetNameList", "identifiers", (const char* const*)names, encoded_name_count);
     unitlab_free_ied_model_name_list(names, name_count);
     server_runtime_set_diagnostic(diagnostic, UNITLAB_MMS_DIAGNOSTIC_OK, NULL);
     return 1;
