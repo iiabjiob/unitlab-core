@@ -19,7 +19,7 @@ typedef enum UnitLabMmsServiceOutcome {
     UNITLAB_MMS_SERVICE_OUTCOME_ERROR = 3
 } UnitLabMmsServiceOutcome;
 
-enum { UNITLAB_MMS_MAX_READ_VARIABLES = 16 };
+enum { UNITLAB_MMS_MAX_READ_VARIABLES = 64 };
 
 typedef enum UnitLabMmsDecodedPduKind {
     UNITLAB_MMS_DECODED_PDU_NONE = 0,
